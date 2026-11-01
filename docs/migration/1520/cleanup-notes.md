@@ -2183,7 +2183,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 022: catalog前半のIO所有とJSON parseを二重frameworkにしない
 
-- 状態: **Sol6.1 xhighがRust実装中。原本参照9件は両OS成功、native比較は未実行**。
+- 状態: **Sol6.1 xhigh実装Source確定。原本参照9件は両OS成功、native比較は未実行**。
 - 場所: `bootstrap_catalog.rs`/`original_profile_catalog_io.rs`、既存NativePath/dispatcher、
   `tools/original_catalog_prefix_reference.py`。
 - 整理: 同journal guardで元bundle/dev選択→resource bindingの実walk/read/hash→実
@@ -2192,9 +2192,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   child専用の元RUMI_ENVIRONMENT/RUMI_APP_DIRは同AppConfig/Kernel条件から借用し、
   native processのambient envへ置き換えない。別occurrence再読取や元close地点を維持する。
 - JSON: 新parser/文言推測を増やさず、Hostが当該時点で読んだmanifestを同Storeの固定pure
-  parseへ渡す案。元UTF8/read_text/newline/json.loadsと実例外/catch/causeを保持する。
-  既存decoderの過大なbyte一律予約は、実alloc上界を保ったprivate見積りだけを検討し、
-  旧journal/Authority入口や64MiB/2B/絶対30秒を変更しない。まだnative実証はない。
+  parseへ渡す。元UTF8/read_text/newline/json.loadsと実例外/catch/causeを保持する。
+  既存decoderの過大なbyte一律予約は、実Vec容量と成長時同居を含むprivate上界へ置換。
+  数値は旧単位を保ち、到達したkey比較も同NativeWorkへ課金する。旧journal/Authorityの
+  入口・予約量と64MiB/2B/絶対30秒は維持する。Rust7件とGuest6件の新検証Sourceがあり、
+  CIで原本9件→実Wasm正常1件→独立比較を行う準備ができたが、まだnative実証はない。
 - 原本: a0971c4b5のCI41282428075は両OS9件成功。verbatim staged Pythonと実root getters/
   catalogを通し、constructor呼出aliasだけsentinelで停止した（本体0）。packaged入力、
   artifact-root不在、CRLF、dev-bundledは到達、manifest/UTF8/JSON/schema/unlisted失敗は
@@ -2203,10 +2205,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   constructor移行/初期登録、outer Authority、GUI、native実行の成功ではない。
   正常IO Joinと希少Join不確定のcustodyを分け、未完をcompleted flagやmutex取得で完了にしない。
   型/資金/capacity不足は未達を残し、正規移行writeの省略や新cache/grant/allowanceで隠さない。
+  pointer/length witnessはAstra highの回答に従い撤去し、同immutable managed AppConfigの
+  実fieldを両APIが借り、Work/AppHandleがcleanupまで保持するSource契約を根拠とする。
+  非object manifest、非ASCII filename repr、複合IO context、dev resolve競合、深い例外と
+  rare Join不確定は未閉鎖であり、既存getter/正常fixtureの資格を流用しない。
 
 ## 023: 保存全履歴とモデルへ渡す文脈の200件上限を分ける
 
-- 状態: **Sol6.1 xhighの修正Sourceが確定。新43ケースと既存回帰のCIは未実行**。
+- 状態: **修正c2037a10f、生成物取込02dcbdf25。両OSで新43ケース込み483件成功**。
 - 場所: `saved_bridge._saved_read_projection`、protocolの`build_saved_model_messages`、
   Guest saved conversationの`_history`。
 - 問題: 全保存履歴へ200件の先行制限を適用すると、user追加後だけ201件になり拒否したり、
@@ -2219,8 +2225,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   reconciliationへ進め、readinessやモデル実行を増やさない。
 - 維持/削除前提: 198/199/200/201件と別枝大量履歴を実Host/Guest/Storeで確認し、
   次送信・lost ACK・resume・512KiBの各中間形・画像込み3MiB・2048件・revision競合を
-  新43ケースで検証する。元仕様とAstra highの回答で設計を固定したが、現時点はASTと
-  whitespace確認だけであり、実動作成功ではない。旧テスト・Guest ABIは維持する。
+  新43ケースで検証した。CI41288040466はmacOS/Linuxとも既存440件込み483件成功、
+  frontend59件と型・境界検査も成功。CI41287749591で生成したprotocolのsource hashだけを
+  674Bの一致patchとして取り込んだ。旧テスト・Guest ABIは維持し、実モデル/Native Wasm/
+  全GUIの成功へ範囲を拡大しない。
 - 限界: 全ID投影が512KiBを超える巨大graphは保存前に明示拒否し、owner照会への
   置換は別の未完移行項目。後で確定するassistant本文/tool結果等は到達点の既存制限を
   維持する。全容量失敗の保存前拒否、履歴削除、上限引上げ、新budgetを実装したとはしない。

@@ -187,6 +187,23 @@ impl NativeErrorGraph {
         details: CoreBuffer,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Self> {
+        Self::decode_inner(code, message, details, budget, false)
+    }
+    pub(crate) fn decode_catalog_io(
+        code: CoreBuffer,
+        message: CoreBuffer,
+        details: CoreBuffer,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Self> {
+        Self::decode_inner(code, message, details, budget, true)
+    }
+    fn decode_inner(
+        code: CoreBuffer,
+        message: CoreBuffer,
+        details: CoreBuffer,
+        budget: &Arc<dyn AllocationBudget>,
+        catalog_paths: bool,
+    ) -> Result<Self> {
         let bytes = code
             .len()
             .checked_add(message.len())
@@ -219,7 +236,7 @@ impl NativeErrorGraph {
             return Err(NativeErrorGraphError::Invalid);
         }
         for node in array.iter() {
-            validate_node(&node, array.len())?;
+            validate_node(&node, array.len(), catalog_paths)?;
         }
         let node = array
             .get(root as usize)
@@ -337,7 +354,7 @@ fn kind(node: &CoreValue) -> Result<NativeErrorKind> {
             .ok_or(NativeErrorGraphError::Invalid)?,
     )
 }
-fn validate_node(node: &CoreValue, length: usize) -> Result<()> {
+fn validate_node(node: &CoreValue, length: usize, catalog_paths: bool) -> Result<()> {
     exact(
         node,
         &[
@@ -369,8 +386,11 @@ fn validate_node(node: &CoreValue, length: usize) -> Result<()> {
         let text = strerror.as_str().ok_or(NativeErrorGraphError::Invalid)?;
         if field(&fields, "errno")?.as_i64() != Some(number)
             || field(&fields, "strerror")?.as_str() != Some(text)
-            || !matches!(field(&fields, "filename")?.inspect(), CoreRef::Null)
-            || !matches!(field(&fields, "filename2")?.inspect(), CoreRef::Null)
+            || !nullable_path(&field(&fields, "filename")?)
+            || !nullable_path(&field(&fields, "filename2")?)
+            || (!catalog_paths
+                && (!matches!(field(&fields, "filename")?.inspect(), CoreRef::Null)
+                    || !matches!(field(&fields, "filename2")?.inspect(), CoreRef::Null)))
         {
             return Err(NativeErrorGraphError::Unsupported);
         }
@@ -451,15 +471,42 @@ fn validate_message(node: &CoreValue, kind: NativeErrorKind, message: &str) -> R
     let valid = if kind.os() {
         let errno = Decimal::new(first.as_i64().ok_or(NativeErrorGraphError::Invalid)?);
         let text = args.get_index(1).ok_or(NativeErrorGraphError::Invalid)?;
-        parts(
-            message,
-            &[
-                "[Errno ",
-                errno.as_str(),
-                "] ",
-                text.as_str().ok_or(NativeErrorGraphError::Invalid)?,
-            ],
-        )
+        let mut rest = message;
+        let prefix = [
+            "[Errno ",
+            errno.as_str(),
+            "] ",
+            text.as_str().ok_or(NativeErrorGraphError::Invalid)?,
+        ];
+        let mut valid = true;
+        for part in prefix {
+            if let Some(tail) = rest.strip_prefix(part) {
+                rest = tail;
+            } else {
+                valid = false;
+                break;
+            }
+        }
+        let fields = field(node, "fields")?;
+        for (name, separator) in [("filename", ": "), ("filename2", " -> ")] {
+            let value = field(&fields, name)?;
+            if let Some(path) = value.as_str() {
+                if let Some(tail) = rest.strip_prefix(separator) {
+                    rest = tail;
+                } else {
+                    valid = false;
+                    break;
+                }
+                match strip_ascii_repr(rest, path) {
+                    Some(tail) => rest = tail,
+                    None => {
+                        valid = false;
+                        break;
+                    }
+                }
+            }
+        }
+        valid && rest.is_empty()
     } else {
         first.as_str() == Some(message)
     };
@@ -468,6 +515,62 @@ fn validate_message(node: &CoreValue, kind: NativeErrorKind, message: &str) -> R
     } else {
         Err(NativeErrorGraphError::Invalid)
     }
+}
+
+fn nullable_path(value: &CoreValue) -> bool {
+    matches!(value.inspect(), CoreRef::Null) || value.as_str().is_some()
+}
+// No allocation, coercion, or source permission. Non-ASCII exception filename
+// display is explicitly outside this finite native producer qualification.
+fn strip_ascii_repr<'a>(mut message: &'a str, value: &str) -> Option<&'a str> {
+    if !value.is_ascii() {
+        return None;
+    }
+    let quote = if value.contains('\'') && !value.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    message = message.strip_prefix(quote)?;
+    for byte in value.bytes() {
+        let mut escaped = [0_u8; 4];
+        let length = match byte {
+            b'\\' => {
+                escaped[..2].copy_from_slice(b"\\\\");
+                2
+            }
+            b'\n' => {
+                escaped[..2].copy_from_slice(b"\\n");
+                2
+            }
+            b'\r' => {
+                escaped[..2].copy_from_slice(b"\\r");
+                2
+            }
+            b'\t' => {
+                escaped[..2].copy_from_slice(b"\\t");
+                2
+            }
+            v if v == quote as u8 => {
+                escaped[0] = b'\\';
+                escaped[1] = v;
+                2
+            }
+            v if !(32..127).contains(&v) => {
+                escaped[0] = b'\\';
+                escaped[1] = b'x';
+                escaped[2] = b"0123456789abcdef"[usize::from(v >> 4)];
+                escaped[3] = b"0123456789abcdef"[usize::from(v & 15)];
+                4
+            }
+            v => {
+                escaped[0] = v;
+                1
+            }
+        };
+        message = message.strip_prefix(std::str::from_utf8(&escaped[..length]).ok()?)?;
+    }
+    message.strip_prefix(quote)
 }
 fn parts(mut value: &str, parts: &[&str]) -> bool {
     for part in parts {

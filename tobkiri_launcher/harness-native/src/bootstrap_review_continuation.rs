@@ -229,14 +229,15 @@ async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         return Ok(Err(original_failure(error)));
     }
     pack.require_same_runtime()?;
-    // The original next call is host_profile_catalog(base_dir). Its body,
-    // Authority constructor and workspace.exists are not executed by this unit.
-    Ok(Err(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::HostProfileCatalogNotBound,
-    )))
+    if review.identity_prefix {
+        return Ok(Err(BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::HostProfileCatalogNotBound,
+        )));
+    }
+    super::catalog::run(review, pack).await
 }
 
-async fn denied<S: BootstrapInputOwner>(
+pub(super) async fn denied<S: BootstrapInputOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     message: &str,
@@ -281,7 +282,7 @@ fn protocol_graph(
 }
 
 impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
-    fn require_same_runtime(&self) -> Result<()> {
+    pub(super) fn require_same_runtime(&self) -> Result<()> {
         if self.work.get().phase.load(Ordering::Acquire) != REVIEW {
             bail!("original review runtime is no longer live");
         }

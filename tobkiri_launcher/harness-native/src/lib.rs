@@ -8,8 +8,8 @@ mod bootstrap_metadata;
 mod bootstrap_review;
 mod bootstrap_runtime;
 pub use bootstrap_review::{
-    BootstrapReviewCleanupFailure, BootstrapReviewFailure, BootstrapReviewOptions,
-    BootstrapReviewOwner, BootstrapReviewReachpoint,
+    BootstrapCatalogSource, BootstrapReviewCleanupFailure, BootstrapReviewFailure,
+    BootstrapReviewOptions, BootstrapReviewOwner, BootstrapReviewReachpoint,
 };
 mod exception_graph;
 mod init_diagnostic;

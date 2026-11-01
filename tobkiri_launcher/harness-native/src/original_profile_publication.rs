@@ -17,6 +17,8 @@ use model::{Pointer, validate_pointer};
 #[cfg(unix)]
 #[path = "original_active_profile.rs"]
 mod active_profile;
+#[path = "original_profile_catalog_io.rs"]
+pub(crate) mod catalog;
 
 const JOURNAL: &str = "bootstrap-publication.json";
 const LOCK: &str = ".bootstrap-publication.lock";
@@ -44,6 +46,9 @@ pub(crate) struct PublicationRead {
     remove_intent_after_lock: bool,
 }
 impl PublicationRead {
+    pub(crate) fn catalog_cleanup(&self) -> Arc<CleanupState> {
+        self.cleanup.clone()
+    }
     pub(crate) fn new(
         invocation: &NativeSetupInvocation,
     ) -> std::result::Result<Self, OriginalAuthorityAdmission> {

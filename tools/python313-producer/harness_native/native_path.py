@@ -70,6 +70,23 @@ class PathBridge:
         self._decode_error = decode_error
         self._cwd = None if cwd_binding is None else _binding(cwd_binding)
         self.os = NativeOS(self, dict(os_flags))
+        # This is only the active original call's codec context. The native
+        # fixed REVIEW caller selects/adopts the real controller independently;
+        # changing this guest field cannot enable any native operation.
+        self._catalog_root: NativePath | None = None
+
+    def _load_catalog(self, target: Callable, root: NativePath) -> Any:
+        if self._catalog_root is not None or root._bridge is not self:
+            raise UnsupportedValue("nested or foreign catalog call")
+        selected = self._value(self._catalog_request(root._target(), "root", []), "path", catalog=True)
+        self._catalog_root = selected
+        try:
+            return target(selected)
+        finally:
+            self._catalog_root = None
+
+    def _catalog_request(self, target: dict, operation: str, args: list) -> dict:
+        return self._request(target, operation, args, catalog=True)
 
     def bind(self, binding: str, lexical: str) -> NativePath:
         """Wrap an already admitted native target and its exact disclosed value."""
@@ -119,11 +136,14 @@ class PathBridge:
 
         return Path
 
-    def _request(self, target: dict[str, Any], operation: str, args: list) -> dict:
+    def _request(self, target: dict[str, Any], operation: str, args: list,
+                 *, catalog: bool = False) -> dict:
         # Do not catch native resource/cancellation/panic failures. Only the
         # explicitly returned closed domain DATA channel may be decoded below.
         response = self._inspect(wire.dumps({
-            "format": _PREFIX + "request.v1", "scope": self.scope.wire(),
+            "format": (_PREFIX + "catalog-request.v1" if catalog or
+                       self._catalog_root is not None else _PREFIX + "request.v1"),
+            "scope": self.scope.wire(),
             "target": target, "operation": operation, "args": args,
         }))
         try:
@@ -147,13 +167,24 @@ class PathBridge:
             raise UnsupportedValue("invalid native inspection result")
         return frame["result"]
 
-    def _value(self, row: dict, kind: str) -> Any:
+    def _value(self, row: dict, kind: str, *, catalog: bool = False) -> Any:
         if row.get("kind") != kind:
             raise UnsupportedValue("native result kind does not match operation")
         if kind == "path":
-            if set(row) != {"kind", "binding", "value"}:
+            if set(row) not in ({"kind", "binding", "value"},
+                                {"kind", "binding", "value", "steps"}):
                 raise UnsupportedValue("invalid native path result")
-            return self.bind(row["binding"], row["value"])
+            if "steps" in row and not (catalog or self._catalog_root is not None):
+                raise UnsupportedValue("catalog path DATA outside its fixed call")
+            result = self.bind(row["binding"], row["value"])
+            if "steps" in row:
+                steps = row["steps"]
+                if (type(steps) is not list or any(type(s) is not list or
+                        len(s) != 2 or any(type(v) is not str for v in s)
+                        for s in steps)):
+                    raise UnsupportedValue("invalid catalog path DATA")
+                result._steps = tuple(tuple(s) for s in steps)
+            return result
         if kind == "unit":
             if set(row) != {"kind"}:
                 raise UnsupportedValue("invalid native unit result")

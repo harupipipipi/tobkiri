@@ -102,12 +102,13 @@ struct Decoder<'a, 'op, 'inv, S> {
     ticks: usize,
     strict: bool,
     operation: &'op Operation<'inv, S>,
+    catalog_work: Option<std::sync::Arc<dyn tobkiri_canon::AllocationBudget>>,
 }
 pub(super) fn decode<S: OriginalAuthorityOwner>(
     input: &[u8],
     op: &Operation<'_, S>,
 ) -> Result<Funded<Document>> {
-    decode_inner(input, op, false)
+    decode_inner(input, op, false, None)
 }
 
 /// Publication uses strict_loads; legacy Authority JSON keeps its overwrite rule.
@@ -118,15 +119,191 @@ pub(super) fn decode_strict<S: OriginalAuthorityOwner>(
     if input.len() > tobkiri_canon::MAX_BYTES {
         return Err(strict_error("json input exceeds size limit"));
     }
-    let doc = decode_inner(input, op, true).map_err(strict_parse_error)?;
+    let doc = decode_inner(input, op, true, None).map_err(strict_parse_error)?;
     validate_strict(&doc, op)?;
     Ok(doc)
 }
+
+/// Only the fixed catalog caller, after its actual same-Store json.loads,
+/// uses this accounting path. Syntax/value decoding is the SAME decoder;
+/// neither legacy Authority nor strict journal callers use this estimate.
+pub(super) fn decode_catalog_manifest<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+) -> Result<Funded<Document>> {
+    budget
+        .reserve(tobkiri_canon::AllocationRequest {
+            kind: tobkiri_canon::AllocationKind::Temporary,
+            bytes: 0,
+            elements: 0,
+            depth: 0,
+            work: (input.len() as u64)
+                .checked_mul(8)
+                .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?,
+        })
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let bound = catalog_allocation_bound(input)
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    decode_inner(input, op, false, Some((bound, budget.clone())))
+}
+
+/// The fixed catalog resource index keeps the OLD strict allocation bound;
+/// only its otherwise quadratic duplicate checks gain the same actual meter.
+pub(super) fn decode_catalog_lock<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+) -> Result<Funded<Document>> {
+    if input.len() > tobkiri_canon::MAX_BYTES {
+        return Err(strict_error("json input exceeds size limit"));
+    }
+    budget
+        .reserve(tobkiri_canon::AllocationRequest {
+            kind: tobkiri_canon::AllocationKind::Temporary,
+            bytes: 0,
+            elements: 0,
+            depth: 0,
+            work: input.len() as u64 * 8,
+        })
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let bound = input
+        .len()
+        .checked_add(1024)
+        .and_then(|n| n.checked_mul(legacy_allocation_unit()))
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let doc =
+        decode_inner(input, op, true, Some((bound, budget.clone()))).map_err(strict_parse_error)?;
+    validate_strict(&doc, op)?;
+    Ok(doc)
+}
+
+fn catalog_key_equal(
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+    left: &Text,
+    right: &Text,
+) -> Result<bool> {
+    // Prepay each reached comparison (including the length test), and the
+    // largest u32 comparison extent BEFORE invoking Vec equality. No n^2
+    // reservation or second work counter: actual loops debit this same Store.
+    let work = 1_u64
+        .checked_add(if left.0.len() == right.0.len() {
+            left.0.len() as u64
+        } else {
+            0
+        })
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    budget
+        .reserve(tobkiri_canon::AllocationRequest {
+            kind: tobkiri_canon::AllocationKind::Temporary,
+            bytes: 0,
+            elements: 0,
+            depth: 0,
+            work,
+        })
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    Ok(left == right)
+}
+
+// A lexical density scan, not a parser or validation fallback. Count ALL
+// quoted strings, including keys/duplicates, and ALL scalar/container starts.
+// The total bounds unreachable duplicate values too. Raw string bytes bound
+// decoded u32 points (including every escape/surrogate); numeric bytes cover
+// the existing scalar decoder's token/BigInt temporary copies.
+fn catalog_allocation_bound(input: &[u8]) -> Option<usize> {
+    let (mut atoms, mut containers, mut strings, mut text, mut numeric) =
+        (0_usize, 0_usize, 0_usize, 0_usize, 0_usize);
+    let (mut quoted, mut escaped, mut scalar) = (false, false, false);
+    for &byte in input {
+        if quoted {
+            if !escaped && byte == b'"' {
+                quoted = false;
+            } else {
+                text = text.checked_add(1)?;
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                }
+            }
+        } else {
+            match byte {
+                b'"' => {
+                    strings = strings.checked_add(1)?;
+                    atoms = atoms.checked_add(1)?;
+                    quoted = true;
+                    scalar = false;
+                }
+                b'{' | b'[' => {
+                    containers = containers.checked_add(1)?;
+                    atoms = atoms.checked_add(1)?;
+                    scalar = false;
+                }
+                b'}' | b']' | b':' | b',' | b' ' | b'\t' | b'\r' | b'\n' => scalar = false,
+                _ => {
+                    numeric = numeric.checked_add(1)?;
+                    if !scalar {
+                        atoms = atoms.checked_add(1)?;
+                        scalar = true;
+                    }
+                }
+            }
+        }
+    }
+    if quoted || escaped || atoms == 0 {
+        return None;
+    }
+    // Vec<T> here has nonzero T, min capacity 4 and doubling growth. For one
+    // arena/stack old+new capacity <= 3*n+4. Across per-container edge Vecs,
+    // retained + one growing old allocation <= 3*edges+4*containers. Across
+    // all Text Vec<u32>, <= 3*points+4*quoted-strings. Keys count as atoms too,
+    // so atoms+strings safely bounds every array edge/object pair together.
+    let arena = atoms
+        .checked_mul(3)?
+        .checked_add(4)?
+        .checked_mul(std::mem::size_of::<Node>())?;
+    let frames = containers
+        .checked_mul(3)?
+        .checked_add(4)?
+        .checked_mul(std::mem::size_of::<Frame>())?;
+    let edges = atoms
+        .checked_add(strings)?
+        .checked_mul(3)?
+        .checked_add(containers.checked_mul(4)?)?
+        .checked_mul(std::mem::size_of::<(Text, usize)>())?;
+    let points = text
+        .checked_mul(3)?
+        .checked_add(strings.checked_mul(4)?)?
+        .checked_mul(std::mem::size_of::<u32>())?;
+    // Reuse the ORIGINAL scalar per-byte provision unchanged, including std
+    // numeric conversion scratch; no new small float/BigInt multiplier is
+    // assumed by this slice. Only strings/structure receive a density bound.
+    arena
+        .checked_add(frames)?
+        .checked_add(edges)?
+        .checked_add(points)?
+        .checked_add(numeric.checked_mul(legacy_allocation_unit())?)?
+        .checked_add(8192)
+}
+
+const fn legacy_allocation_unit() -> usize {
+    std::mem::size_of::<Node>() * 3
+        + std::mem::size_of::<Frame>() * 3
+        + std::mem::size_of::<(Text, usize)>() * 6
+        + std::mem::size_of::<usize>() * 6
+        + std::mem::size_of::<u32>() * 6
+        + 24
+}
+
+#[cfg(test)]
+#[path = "original_catalog_json_tests.rs"]
+mod catalog_funding_tests;
 
 fn decode_inner<S: OriginalAuthorityOwner>(
     input: &[u8],
     op: &Operation<'_, S>,
     strict: bool,
+    catalog_bound: Option<(usize, std::sync::Arc<dyn tobkiri_canon::AllocationBudget>)>,
 ) -> Result<Funded<Document>> {
     let source = std::str::from_utf8(input).map_err(|error| utf8_error(input, error))?;
     if source.starts_with('\u{feff}') {
@@ -144,17 +321,18 @@ fn decode_inner<S: OriginalAuthorityOwner>(
     // one per node. Numeric conversion's token/BigInt temporaries have their
     // own byte allowance. The fixed extra units cover the three migration
     // insertions (request/activation/plan), never arbitrary caller updates.
-    let unit = std::mem::size_of::<Node>() * 3
-        + std::mem::size_of::<Frame>() * 3
-        + std::mem::size_of::<(Text, usize)>() * 6
-        + std::mem::size_of::<usize>() * 6
-        + std::mem::size_of::<u32>() * 6
-        + 24;
-    let bound = input
-        .len()
-        .checked_add(1024)
-        .and_then(|n| n.checked_mul(unit))
-        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let unit = legacy_allocation_unit();
+    let (bound, catalog_work) = match catalog_bound {
+        Some((bound, work)) => (bound, Some(work)),
+        None => (
+            input
+                .len()
+                .checked_add(1024)
+                .and_then(|n| n.checked_mul(unit))
+                .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?,
+            None,
+        ),
+    };
     let capacity = op.reserve(OriginalAuthorityStage::Audit, bound)?;
     let mut decoder = Decoder {
         source,
@@ -169,6 +347,7 @@ fn decode_inner<S: OriginalAuthorityOwner>(
         ticks: 0,
         strict,
         operation: op,
+        catalog_work,
     };
     decoder.space();
     let (root, frame) = decoder.start()?;
@@ -254,6 +433,18 @@ fn decode_inner<S: OriginalAuthorityOwner>(
                 };
                 if strict {
                     items.push((name, child));
+                } else if let Some(work) = &decoder.catalog_work {
+                    let mut found = false;
+                    for (key, old) in items.iter_mut() {
+                        if catalog_key_equal(work, key, &name)? {
+                            *old = child;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        items.push((name, child));
+                    }
                 } else if let Some((_, old)) = items.iter_mut().find(|(key, _)| *key == name) {
                     *old = child;
                 } else {
@@ -310,7 +501,19 @@ impl<S: OriginalAuthorityOwner> Decoder<'_, '_, '_, S> {
             let pairs = self.doc.entries(id).expect("object frame");
             for (index, (key, _)) in pairs.iter().enumerate() {
                 self.operation.check(OriginalAuthorityStage::Audit)?;
-                if pairs[..index].iter().any(|(previous, _)| previous == key) {
+                let duplicate = if let Some(work) = &self.catalog_work {
+                    let mut found = false;
+                    for (previous, _) in &pairs[..index] {
+                        if catalog_key_equal(work, previous, key)? {
+                            found = true;
+                            break;
+                        }
+                    }
+                    found
+                } else {
+                    pairs[..index].iter().any(|(previous, _)| previous == key)
+                };
+                if duplicate {
                     return Err(strict_error(format!(
                         "duplicate JSON object key: {}",
                         repr_text(key)

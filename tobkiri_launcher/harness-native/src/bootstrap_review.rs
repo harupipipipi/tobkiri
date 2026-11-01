@@ -8,6 +8,14 @@ use crate::{
 use tobkiri_canon::CoreBuffer;
 use tobkiri_gate::NativeSetupInvocation;
 
+/// Borrowed original Kernel launch inputs at the fixed catalog reachpoint.
+/// The environment fields select original branches; they confer no IO rights.
+pub struct BootstrapCatalogSource<'host> {
+    pub runtime: &'host std::path::Path,
+    pub environment: &'host str,
+    pub configured_app: Option<&'host std::path::Path>,
+}
+
 /// Explicit original review capability, separate from module metadata and the
 /// fixed old-Authority read. Implemented by the same actual application owner.
 pub trait BootstrapReviewOwner: OriginalAuthorityOwner {
@@ -15,6 +23,19 @@ pub trait BootstrapReviewOwner: OriginalAuthorityOwner {
         &self,
         use_root: impl FnOnce(&std::path::Path) -> R,
     ) -> Result<R, OriginalAuthorityError>;
+
+    /// Actual selected runtime resource origin at the fixed catalog caller.
+    /// Neither metadata policy nor a guest Path can supply this Host borrow.
+    /// An owner that also implements BootstrapInputOwner must borrow the SAME
+    /// immutable selected runtime in with_roots and here for the operation's
+    /// lifetime. Work retains that actual owner through native IO cleanup;
+    /// resolved DATA, path equality and allocation addresses cannot prove it.
+    fn with_original_catalog_source<R>(
+        &self,
+        _operation: impl for<'host> FnOnce(BootstrapCatalogSource<'host>) -> R,
+    ) -> Result<R, OriginalAuthorityError> {
+        Err(OriginalAuthorityError::unavailable())
+    }
 }
 
 /// Original Host presentation inputs. They select no owner, path or authority.
@@ -30,6 +51,8 @@ pub enum BootstrapReviewReachpoint {
     CatalogNotBound,
     BootstrapProfileIdNotBound,
     HostProfileCatalogNotBound,
+    CatalogSourceNotBound,
+    ProfileDefinitionStoreNotBound,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,
@@ -87,12 +110,19 @@ pub(crate) struct Review {
     _flags: (bool, bool, bool),
     pub(crate) attempted: bool,
     pub(crate) actual: ActualCustody,
+    pub(crate) identity_prefix: bool,
 }
 #[derive(Default)]
 pub(crate) struct ActualCustody {
     pub(crate) getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) denied: Option<crate::BootstrapDenied>,
     pub(crate) factory_failure: Option<crate::BootstrapDeniedFailure>,
+    pub(crate) host_root: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) bundle_root: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) catalog: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) catalog_input: Option<CoreBuffer>,
+    pub(crate) manifest: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) manifest_input: Option<CoreBuffer>,
 }
 impl Review {
     pub(crate) fn new(
@@ -113,6 +143,7 @@ impl Review {
             ),
             attempted: false,
             actual: ActualCustody::default(),
+            identity_prefix: false,
         })
     }
     pub(crate) fn receipt(&self) -> OriginalAuthorityCloseReceipt {

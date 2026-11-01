@@ -138,7 +138,10 @@ on both platforms in [CI41282428075](https://github.com/harupipipipi/tobkiri/act
 It executes unchanged original getters/catalog to a constructor-entry sentinel,
 with no ProfileDefinitionStore body or outer Authority. Native implementation and
 comparison of that larger boundary are still pending; fixture artifact directories
-do not establish actual installed executable or GUI qualification.
+do not establish actual installed executable or GUI qualification. The same-guard
+Rust catalog adapter, fixed same-Store manifest parse and independent actual-component
+comparison driver are now implemented in source; their compilation and execution
+remain unverified. Constructor/migration bodies and outer Authority remain unbound.
 
 Saved Project parity source at `eb5dabff0` restores existing owner-based membership
 and exact mutation acknowledgements while preserving the conversation execution
@@ -158,6 +161,18 @@ real-loader, old-owner ABI and saved-owner regressions in
 440 tests on each OS, including16 new capture cases, plus frontend59/type/boundary
 checks. Legacy global capture retire and comprehensive funding remain open;
 these results do not establish full GUI or native adoption.
+
+The active saved-history200 guards were then removed at `c2037a10f`, preserving
+the whole durable graph, branch selection and existing input/read budgets.
+After the CI-generated protocol source hash was imported at `02dcbdf25`,
+[CI41288040466](https://github.com/harupipipipi/tobkiri/actions/runs/41288040466)
+passed483 backend tests on each OS (the existing440 plus43 new history cases),
+frontend59 and type/boundary checks. Tests exercise actual saved Host/Guest/Store
+and continuation exchange with finite model adapters, including201+ history,
+next sends, unselected branches, duplicate/lost acknowledgements, intermediate
+read shapes and input limits. Graphs exceeding the existing512KiB full-ID read
+budget still require a later owner-lookup migration; this is not whole-graph,
+native Wasm, real-provider or full-GUI qualification.
 
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and

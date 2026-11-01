@@ -251,21 +251,80 @@ def prepare(original: Path, destination: Path) -> None:
                         "actual installed executable, approval, GUI, native comparison or full goal"})
 
 
+def compare_actual(original: Path, fixtures: Path, observations: Path, output: Path) -> None:
+    """Compare actual reachpoint/effects, never inject expected DATA into Guest."""
+    check_original(original)
+    if fixtures.stat().st_size > 2 * 1024 * 1024 or observations.stat().st_size > 2 * 1024 * 1024:
+        raise ValueError("catalog comparison input exceeds bounded observations")
+    reference = json.loads(fixtures.read_text())
+    native = json.loads(observations.read_text())
+    if (reference.get("format") != FORMAT or reference.get("original_head") != ORIGINAL_HEAD
+            or reference.get("case_count") != 9
+            or native.get("format") != "io.tobkiri.actual-catalog-prefix-observations.v1"
+            or native.get("name") != "packaged-valid"):
+        raise ValueError("catalog observation identity differs")
+    rows = [row for row in reference["cases"] if row["name"] == "packaged-valid"]
+    if len(rows) != 1:
+        raise ValueError("closed normal catalog reference required")
+    row = rows[0]
+    input_path = Path(row["native_input"])
+    if input_path != fixtures.parent / "packaged-valid/native/input.json":
+        raise ValueError("catalog fixture directory was substituted")
+    user_data = input_path.parent / "user-data"
+    state = filesystem(user_data)
+    observed = native.get("observation") or {}
+    boundary = {"outcome": observed.get("outcome"), "stage": observed.get("stage")}
+    capacities = native.get("capacity", {})
+    after = capacities.get("after_reap", {})
+    flags = ("execution_matched_branch", "cleanup_verified", "journal_lock_released_after_finish",
+             "source_destructor_reached")
+    measured = ("same_original_deadline", "journal_lock_held_before_finish",
+                "actual_host_root_retained", "actual_bundle_root_retained", "actual_catalog_retained")
+    seed_key = fixtures.parent / "packaged-valid/seed-user-data/profiles/.publication-key"
+    actual_key = user_data / "profiles/.publication-key"
+    key_unchanged = seed_key.read_bytes() == actual_key.read_bytes()
+    matched = (row["constructor_body_executed"] is False and row["constructor_entries"] == 1
+               and boundary == row["expected"] and state == row["user_data_after"]
+               and all(native.get(key) is True for key in flags)
+               and all(observed.get(key) is True for key in measured)
+               and observed.get("budget_resets") == 0
+               and type(observed.get("fuel_before")) is int
+               and type(observed.get("fuel_after")) is int
+               and 0 <= observed["fuel_after"] < observed["fuel_before"]
+               and after == {"bytes": 0, "reservations": 0} and key_unchanged)
+    write_json(output, {"format": "io.tobkiri.actual-catalog-prefix-comparison.v1",
+               "original_head": ORIGINAL_HEAD, "name": "packaged-valid", "matched": matched,
+               "reachpoint_matches": boundary == row["expected"],
+               "user_data_state_matches": state == row["user_data_after"],
+               "existing_key_unchanged": key_unchanged, "native_comparison": True,
+               "qualification": False, "production_enabled": False,
+               "scope": "one actual same-guard catalog operation against original resource fixture; "
+                        "no all9 native, constructor, migrations, Authority, installed executable or GUI qualification"})
+    if not matched:
+        raise AssertionError("actual catalog comparison differs; see bounded receipt")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "probe"))
+    parser.add_argument("command", choices=("prepare", "probe", "compare-actual"))
     parser.add_argument("--original-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--user-data", type=Path)
+    parser.add_argument("--fixtures", type=Path)
+    parser.add_argument("--observations", type=Path)
     args = parser.parse_args()
     original = args.original_root.resolve(strict=True)
     if args.command == "prepare":
         prepare(original, args.output.resolve())
-    else:
+    elif args.command == "probe":
         if args.runtime is None or args.user_data is None:
             parser.error("probe requires --runtime and --user-data")
         probe(original, args.runtime.resolve(strict=True), args.user_data.resolve(strict=True), args.output)
+    else:
+        if args.fixtures is None or args.observations is None:
+            parser.error("compare-actual requires --fixtures and --observations")
+        compare_actual(original, args.fixtures.resolve(strict=True), args.observations.resolve(strict=True), args.output)
 
 
 if __name__ == "__main__":

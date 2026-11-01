@@ -93,6 +93,22 @@ def _root_message(node: dict[str, object]) -> str:
 
 
 class NativeExceptionGraphTests(unittest.TestCase):
+    def test_catalog_filename_policy_is_separate_from_path_free_graphs(self):
+        fields = {"errno": 2, "strerror": "missing",
+                  "filename": "resource/'quoted\\file", "filename2": None}
+        details = _details([_node("file-not-found-error", [2, "missing"], fields)])
+        original = FileNotFoundError(2, "missing", fields["filename"])
+        with self.assertRaises(exception_graph.UnsupportedNativeException):
+            exception_graph.ExceptionGraphStore().materialize(
+                "file-not-found-error", str(original), details)
+        result = exception_graph.ExceptionGraphStore(_catalog_paths=True).materialize(
+            "file-not-found-error", str(original), details)
+        self.assertIs(type(result), FileNotFoundError)
+        self.assertEqual(result.args, original.args)
+        self.assertEqual(result.filename, original.filename)
+        self.assertIsNone(result.filename2)
+        self.assertEqual(str(result), str(original))
+
     def setUp(self) -> None:
         self.store = exception_graph.ExceptionGraphStore()
 

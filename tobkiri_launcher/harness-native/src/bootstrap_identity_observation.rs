@@ -86,6 +86,7 @@ pub struct BootstrapGetterError {
     observation: CoreValue,
     budget: Arc<dyn AllocationBudget>,
     recovery_catch: BootstrapRecoveryCatch,
+    origin: &'static str,
 }
 impl BootstrapGetterError {
     pub fn error(&self) -> &NativeDataError {
@@ -99,6 +100,10 @@ impl BootstrapGetterError {
     }
     pub fn recovery_catch(&self) -> BootstrapRecoveryCatch {
         self.recovery_catch
+    }
+    /// Fixed actual caller provenance, independently of any exception tag.
+    pub fn origin(&self) -> &'static str {
+        self.origin
     }
 
     pub(super) fn check_store(
@@ -138,6 +143,7 @@ pub enum BootstrapIdentityStage {
 /// explicitly unsupported DATA, not a new original runtime/operation limit.
 pub struct BootstrapIdentityFailure {
     stage: BootstrapIdentityStage,
+    origin: &'static str,
     error: NativeDataError,
     getter: Option<NativeDataError>,
     _retained: [Option<CoreBuffer>; 2],
@@ -145,6 +151,9 @@ pub struct BootstrapIdentityFailure {
 impl BootstrapIdentityFailure {
     pub fn stage(&self) -> BootstrapIdentityStage {
         self.stage
+    }
+    pub fn origin(&self) -> &'static str {
+        self.origin
     }
     pub fn error(&self) -> &NativeDataError {
         &self.error
@@ -198,12 +207,46 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
     pub(super) async fn observe_bootstrap_profile_id(
         &mut self,
     ) -> Result<BootstrapIdentityOutcome> {
+        let input = self.call.clone();
+        self.observe_fixed_call(1, &input, "getter").await
+    }
+
+    pub(super) async fn observe_fixed_call(
+        &mut self,
+        slot: usize,
+        input: &CoreBuffer,
+        origin: &'static str,
+    ) -> Result<BootstrapIdentityOutcome> {
+        if !matches!(
+            (slot, origin),
+            (1, "getter")
+                | (3, "host-root")
+                | (4, "bundle-root")
+                | (7, "catalog")
+                | (2, "manifest")
+        ) {
+            bail!("fixed original caller is unavailable");
+        }
         let entry = self.work.get().phase.load(Ordering::Acquire);
         if !matches!(entry, READY | REVIEW) || self.identity_pending.is_some() {
             bail!("raw getter observation is unavailable");
         }
-        let phase = if entry == READY { IDENTITY } else { REVIEW };
+        let phase = match (entry, slot) {
+            (REVIEW, 3) => REVIEW_HOST_ROOT,
+            (REVIEW, 4) => REVIEW_BUNDLE_ROOT,
+            (REVIEW, 7) => CATALOG_LOAD,
+            (REVIEW, 2) => CATALOG_PARSE,
+            (READY, 1) => IDENTITY,
+            (REVIEW, 1) => REVIEW,
+            _ => bail!("fixed original caller is outside review"),
+        };
         self.work.get().source.check_live()?;
+        if matches!(slot, 3 | 4) {
+            self.work
+                .get()
+                .source_occurrence
+                .store(0, Ordering::Release);
+        }
         *self.identity_pending = Some(IdentityCallCustody {
             result: None,
             getter: None,
@@ -218,7 +261,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             completed: false,
         };
         self.work.get().phase.store(phase, Ordering::Release);
-        let outcome = match self.identity_in_phase(phase).await {
+        let outcome = match self.identity_in_phase(phase, slot, input, origin).await {
             Err(original) => Err(self.retire_failure(original).await),
             result => result,
         };
@@ -229,9 +272,14 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         outcome
     }
 
-    async fn identity_in_phase(&mut self, phase: u8) -> Result<BootstrapIdentityOutcome> {
-        let input = self.call.clone();
-        match self.string_call_in_phase(1, &input, phase).await? {
+    async fn identity_in_phase(
+        &mut self,
+        phase: u8,
+        slot: usize,
+        input: &CoreBuffer,
+        origin: &'static str,
+    ) -> Result<BootstrapIdentityOutcome> {
+        match self.string_call_in_phase(slot, input, phase).await? {
             Ok(value) => {
                 self.identity_pending
                     .as_mut()
@@ -251,7 +299,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             .as_ref()
             .is_some_and(|error| error.code().as_bytes() != b"method-raised")
         {
-            return Ok(self.identity_refused(BootstrapIdentityStage::Getter));
+            return Ok(self.identity_refused(BootstrapIdentityStage::Getter, origin));
         }
         let raised = pending.getter.is_some();
         let bytes = match &pending.getter {
@@ -278,7 +326,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         ownership(&packet, &root, false)?;
         let request = frame(
             self,
-            "io.tobkiri.native-bootstrap-identity-describe.v1",
+            if origin == "getter" {
+                "io.tobkiri.native-bootstrap-identity-describe.v1"
+            } else {
+                "io.tobkiri.native-bootstrap-call-describe.v1"
+            },
             [("root", root.clone())],
         )?;
         match self.string_call_in_phase(2, &request, phase).await? {
@@ -293,7 +345,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                     .as_mut()
                     .expect("admitted getter")
                     .describe_error = Some(error);
-                return Ok(self.identity_refused(BootstrapIdentityStage::Describe));
+                return Ok(self.identity_refused(BootstrapIdentityStage::Describe, origin));
             }
         }
         let pending = self.identity_pending.as_ref().expect("admitted getter");
@@ -305,7 +357,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 .as_bytes(),
             self.input_budget,
         )?;
-        let validated = validate_view(&observation, &root, &scope, raised);
+        let validated = validate_view(&observation, &root, &scope, raised, origin);
         let (builtin, recovery_catch) = match validated {
             Ok(value) => value,
             Err(error) => {
@@ -327,6 +379,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 observation,
                 budget: Arc::clone(self.input_budget),
                 recovery_catch,
+                origin,
             })
         } else {
             BootstrapIdentityOutcome::Returned(BootstrapIdentityValue {
@@ -338,7 +391,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         })
     }
 
-    fn identity_refused(&mut self, stage: BootstrapIdentityStage) -> BootstrapIdentityOutcome {
+    fn identity_refused(
+        &mut self,
+        stage: BootstrapIdentityStage,
+        origin: &'static str,
+    ) -> BootstrapIdentityOutcome {
         let mut pending = self.identity_pending.take().expect("admitted getter");
         let error = match stage {
             BootstrapIdentityStage::Getter => pending.getter.take().expect("actual getter refusal"),
@@ -349,6 +406,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         };
         BootstrapIdentityOutcome::Refused(BootstrapIdentityFailure {
             stage,
+            origin,
             error,
             getter: pending.getter,
             _retained: [pending.result, pending.view],
@@ -424,6 +482,46 @@ fn scalar(value: &CoreValue) -> Result<()> {
 fn hex(value: u8) -> bool {
     value.is_ascii_digit() || (b'a'..=b'f').contains(&value)
 }
+fn finite_bytes(value: &CoreValue) -> Result<()> {
+    exact(value, &["kind", "value"])?;
+    if field(value, "kind")?.as_str() != Some("bytes") {
+        bail!("manifest decoder object is not bytes");
+    }
+    let text = field(value, "value")?;
+    let text = text
+        .as_str()
+        .context("manifest decoder bytes are not base64")?;
+    if text.len() > MAX_BYTES || !text.len().is_multiple_of(4) {
+        bail!("manifest decoder byte envelope is invalid");
+    }
+    let sextet = |byte| match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    };
+    let padding = text.bytes().rev().take_while(|&b| b == b'=').count();
+    if padding > 2
+        || text.as_bytes()[..text.len() - padding]
+            .iter()
+            .any(|&byte| sextet(byte).is_none())
+    {
+        bail!("manifest decoder bytes are not canonical base64");
+    }
+    if padding != 0 {
+        let last = text
+            .as_bytes()
+            .get(text.len() - padding - 1)
+            .and_then(|&byte| sextet(byte))
+            .context("manifest decoder base64 is empty")?;
+        if (padding == 1 && last & 3 != 0) || (padding == 2 && last & 15 != 0) {
+            bail!("manifest decoder base64 tail is not canonical");
+        }
+    }
+    Ok(())
+}
 
 fn error_catch(kind: &str) -> Result<BootstrapRecoveryCatch> {
     use BootstrapRecoveryCatch::*;
@@ -433,6 +531,7 @@ fn error_catch(kind: &str) -> Result<BootstrapRecoveryCatch> {
         | "canonicalization-error"
         | "schema-validation-error"
         | "json-decode-error" => ValueError,
+        "unicode-decode-error" => ValueError,
         "os-error"
         | "file-not-found-error"
         | "permission-error"
@@ -461,11 +560,28 @@ fn error_catch(kind: &str) -> Result<BootstrapRecoveryCatch> {
     })
 }
 
+fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
+    matches!(
+        (actual, origin, raised),
+        (Some("getter-returned"), "getter", false)
+            | (Some("getter-raised"), "getter", true)
+            | (Some("host-root-returned"), "host-root", false)
+            | (Some("host-root-raised"), "host-root", true)
+            | (Some("bundle-root-returned"), "bundle-root", false)
+            | (Some("bundle-root-raised"), "bundle-root", true)
+            | (Some("catalog-returned"), "catalog", false)
+            | (Some("catalog-raised"), "catalog", true)
+            | (Some("manifest-returned"), "manifest", false)
+            | (Some("manifest-raised"), "manifest", true)
+    )
+}
+
 fn validate_view(
     value: &CoreValue,
     root: &CoreValue,
     scope: &CoreValue,
     raised: bool,
+    origin: &str,
 ) -> Result<(BootstrapBuiltinKind, BootstrapRecoveryCatch)> {
     exact(
         value,
@@ -484,12 +600,7 @@ fn validate_view(
     if field(value, "format")?.as_str() != Some("io.tobkiri.native-bootstrap-identity-view.v1")
         || !same_scope(&field(value, "scope")?, scope)
         || !same_reference(&field(value, "root")?, root)?
-        || field(value, "origin")?.as_str()
-            != Some(if raised {
-                "getter-raised"
-            } else {
-                "getter-returned"
-            })
+        || !origin_matches(field(value, "origin")?.as_str(), origin, raised)
     {
         bail!("raw getter view has different actual origin/scope/ref");
     }
@@ -556,8 +667,9 @@ fn validate_view(
     if builtin != BootstrapBuiltinKind::Record {
         bail!("raw getter throw is not a registered exception");
     }
-    exact(
-        &exception,
+    let json_fields = origin == "manifest" && kind_text == "json-decode-error";
+    let unicode_fields = origin == "manifest" && kind_text == "unicode-decode-error";
+    let keys: &[&str] = if unicode_fields {
         &[
             "recovery_catch",
             "args",
@@ -565,8 +677,56 @@ fn validate_view(
             "context",
             "suppress_context",
             "os_fields",
-        ],
-    )?;
+            "unicode_fields",
+        ]
+    } else if json_fields {
+        &[
+            "recovery_catch",
+            "args",
+            "cause",
+            "context",
+            "suppress_context",
+            "os_fields",
+            "json_fields",
+        ]
+    } else {
+        &[
+            "recovery_catch",
+            "args",
+            "cause",
+            "context",
+            "suppress_context",
+            "os_fields",
+        ]
+    };
+    exact(&exception, keys)?;
+    if json_fields {
+        let fields = field(&exception, "json_fields")?;
+        exact(&fields, &["msg", "doc", "pos", "lineno", "colno"])?;
+        string(&field(&fields, "msg")?, 4096, false)?;
+        string(&field(&fields, "doc")?, MAX_BYTES, false)?;
+        for name in ["pos", "lineno", "colno"] {
+            if field(&fields, name)?.as_i64().is_none_or(|v| v < 0) {
+                bail!("actual manifest parser position is invalid");
+            }
+        }
+    }
+    if unicode_fields {
+        let fields = field(&exception, "unicode_fields")?;
+        exact(&fields, &["encoding", "object", "start", "end", "reason"])?;
+        string(&field(&fields, "encoding")?, 4096, false)?;
+        string(&field(&fields, "reason")?, 4096, false)?;
+        finite_bytes(&field(&fields, "object")?)?;
+        let start = field(&fields, "start")?
+            .as_i64()
+            .context("actual UnicodeDecodeError start missing")?;
+        let end = field(&fields, "end")?
+            .as_i64()
+            .context("actual UnicodeDecodeError end missing")?;
+        if start < 0 || end < start {
+            bail!("actual UnicodeDecodeError positions invalid");
+        }
+    }
     let recovery_catch = match field(&exception, "recovery_catch")?.as_str() {
         Some("none") => BootstrapRecoveryCatch::None,
         Some("value-error") => BootstrapRecoveryCatch::ValueError,
@@ -586,7 +746,12 @@ fn validate_view(
         bail!("raw getter exception args exceed the finite ABI");
     }
     for index in 0..args.len() {
-        scalar(&args.get(index).context("raw getter argument missing")?)?;
+        let argument = args.get(index).context("raw getter argument missing")?;
+        if unicode_fields && field(&argument, "kind")?.as_str() == Some("bytes") {
+            finite_bytes(&argument)?;
+        } else {
+            scalar(&argument)?;
+        }
     }
     if field(&exception, "suppress_context")?.as_bool().is_none() {
         bail!("raw getter intrinsic suppression is invalid");

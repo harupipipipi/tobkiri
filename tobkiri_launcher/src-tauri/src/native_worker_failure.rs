@@ -104,6 +104,7 @@ pub(crate) enum ReviewSourceRecord {
     GetterRaised(ReviewGuestError),
     ObservationRefused {
         stage: tobkiri_harness_native::BootstrapIdentityStage,
+        caller: &'static str,
         error: ReviewGuestError,
         getter: Option<ReviewGuestError>,
     },
@@ -391,6 +392,7 @@ impl Detachment {
             ),
             ObservationRefused(error) => ReviewSourceRecord::ObservationRefused {
                 stage: error.stage(),
+                caller: error.origin(),
                 error: self.review_guest_error(error.error(), None)?,
                 getter: error
                     .getter_error()

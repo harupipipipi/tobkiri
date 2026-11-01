@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import struct
+import base64
 from typing import Any, Callable
 
 import ordered_json_v2 as wire
@@ -349,10 +350,22 @@ class Registry:
         A real getter throw additionally discloses fixed builtin descriptors;
         its intrinsic edges remain opaque actual refs, with no recursive view.
         """
+        return self._describe_fixed_call(root, {"getter-returned", "getter-raised"})
+
+    def describe_bootstrap_call(self, root: Reference) -> str:
+        """Finite observation of the three reached catalog callers only."""
+        return self._describe_fixed_call(root, {
+            "host-root-returned", "host-root-raised",
+            "bundle-root-returned", "bundle-root-raised",
+            "catalog-returned", "catalog-raised",
+            "manifest-returned", "manifest-raised",
+        })
+
+    def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:
         value = self.borrow(root)
         origin = self._bootstrap_identity.get(root.object_id)
-        if origin not in {"getter-returned", "getter-raised"}:
-            raise InvalidReference("reference has no actual raw getter origin")
+        if origin not in origins:
+            raise InvalidReference("reference has no requested actual caller origin")
         kind = self._kind(value)
         if issubclass(type(value), str) and type(value) is not str:
             raise UnsupportedValue("raw getter str subclass is outside the finite ABI")
@@ -369,7 +382,7 @@ class Registry:
 
         try:
             exception = None
-            if origin == "getter-raised":
+            if origin.endswith("-raised"):
                 if not issubclass(type(value), BaseException):
                     raise InvalidReference("raw getter throw is not an actual exception")
                 args = BaseException.args.__get__(value)
@@ -387,14 +400,36 @@ class Registry:
                         "filename": self._identity_scalar(OSError.filename.__get__(value)),
                         "filename2": self._identity_scalar(OSError.filename2.__get__(value)),
                     }
+                unicode_error = origin == "manifest-raised" and type(value) is UnicodeDecodeError
+
+                def argument(item):
+                    if unicode_error and type(item) is bytes:
+                        return {"kind": "bytes", "value": base64.b64encode(item).decode("ascii")}
+                    return self._identity_scalar(item)
+
                 exception = {
                     "recovery_catch": catch,
-                    "args": [self._identity_scalar(item) for item in args],
+                    "args": [argument(item) for item in args],
                     "cause": edge(BaseException.__cause__.__get__(value)),
                     "context": edge(BaseException.__context__.__get__(value)),
                     "suppress_context": BaseException.__suppress_context__.__get__(value),
                     "os_fields": os_fields,
                 }
+                if origin == "manifest-raised" and kind == "json-decode-error":
+                    # Actual parser fields, no message-to-position recovery.
+                    exception["json_fields"] = {
+                        "msg": self._identity_string(value.msg, 4096),
+                        "doc": self._identity_string(value.doc, wire.MAX_BYTES),
+                        "pos": value.pos, "lineno": value.lineno, "colno": value.colno,
+                    }
+                if unicode_error:
+                    exception["unicode_fields"] = {
+                        "encoding": self._identity_string(UnicodeDecodeError.encoding.__get__(value), 4096),
+                        "object": argument(UnicodeDecodeError.object.__get__(value)),
+                        "start": UnicodeDecodeError.start.__get__(value),
+                        "end": UnicodeDecodeError.end.__get__(value),
+                        "reason": self._identity_string(UnicodeDecodeError.reason.__get__(value), 4096),
+                    }
             return wire.dumps({
                 "format": _IDENTITY_VIEW, "scope": self.scope.wire(),
                 "root": root.wire(), "origin": origin, "kind": kind,

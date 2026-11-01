@@ -85,11 +85,15 @@ class _CachedGraph:
 class ExceptionGraphStore:
     """Materialize native exception graphs and preserve per-invocation identity."""
 
-    def __init__(self, error_classes: ErrorClasses | None = None) -> None:
+    def __init__(self, error_classes: ErrorClasses | None = None, *,
+                 _catalog_paths: bool = False) -> None:
         """Create an invocation-scoped store with optional trusted class references."""
         if error_classes is not None and type(error_classes) is not ErrorClasses:
             raise UnsupportedNativeException("invalid trusted exception class bundle")
         self._error_classes = error_classes or ErrorClasses()
+        if type(_catalog_paths) is not bool:
+            raise UnsupportedNativeException("invalid fixed catalog exception policy")
+        self._catalog_paths = _catalog_paths
         self._domain_classes = self._validated_domain_classes(self._error_classes)
         self._graphs: dict[int, _CachedGraph] = {}
 
@@ -410,9 +414,8 @@ class ExceptionGraphStore:
             raise UnsupportedNativeException("JSON decode error derived fields differ")
         return instance
 
-    @staticmethod
     def _create_os_error(
-        kind: str, args: list[Any], fields: dict[str, Any]
+        self, kind: str, args: list[Any], fields: dict[str, Any]
     ) -> BaseException:
         exception_class = _FIXED_EXCEPTION_CLASSES[kind]
         if (
@@ -422,10 +425,12 @@ class ExceptionGraphStore:
             or fields.keys() != _OS_ERROR_KEYS
             or not ExceptionGraphStore._is_safe_integer(fields["errno"])
             or type(fields["strerror"]) is not str
-            or fields["filename"] is not None
-            or fields["filename2"] is not None
+            or (fields["filename"] is not None and type(fields["filename"]) is not str)
+            or (fields["filename2"] is not None and type(fields["filename2"]) is not str)
             or fields["errno"] != args[0]
             or fields["strerror"] != args[1]
+            or (not self._catalog_paths and (fields["filename"] is not None
+                                             or fields["filename2"] is not None))
         ):
             raise UnsupportedNativeException("path-free OS error payload is malformed")
 
@@ -441,15 +446,23 @@ class ExceptionGraphStore:
         BaseException.__init__(instance, args[0], args[1])
         instance.errno = args[0]
         instance.strerror = args[1]
+        if fields["filename"] is not None:
+            instance.filename = fields["filename"]
+        if fields["filename2"] is not None:
+            instance.filename2 = fields["filename2"]
 
         expected_display = f"[Errno {args[0]}] {args[1]}"
+        if fields["filename"] is not None:
+            expected_display += f": {fields['filename']!r}"
+        if fields["filename2"] is not None:
+            expected_display += f" -> {fields['filename2']!r}"
         if (
             type(instance) is not exception_class
             or instance.args != (args[0], args[1])
             or instance.errno != args[0]
             or instance.strerror != args[1]
-            or instance.filename is not None
-            or instance.filename2 is not None
+            or instance.filename != fields["filename"]
+            or instance.filename2 != fields["filename2"]
             or getattr(instance, "winerror", None) is not None
             or getattr(instance, "characters_written", None) is not None
             or str(instance) != expected_display

@@ -48,6 +48,8 @@ def _load_bound_runtime(inputs) -> OriginalRuntime:
         ("key-error", KeyError),
         ("index-error", IndexError),
         ("attribute-error", AttributeError),
+        ("stop-iteration", StopIteration),
+        ("unicode-decode-error", UnicodeDecodeError),
         *_FIXED_EXCEPTION_CLASSES.items(),
         ("default-profile-v4-error", DefaultProfileV4Error),
         ("bundle-integrity-error", BundleIntegrityError),

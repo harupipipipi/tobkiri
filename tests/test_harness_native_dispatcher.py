@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import base64
 import json
 from pathlib import Path
 import sys
@@ -38,6 +39,79 @@ import prepare_harness_native as prepare  # noqa: E402
 
 
 MISSING = object()
+
+
+class FixedManifestParseTests(unittest.TestCase):
+    """Actual stdlib parser/finite provenance, not native IO or Wasm proof."""
+
+    def setUp(self):
+        errors = (("json-decode-error", json.JSONDecodeError),
+                  ("stop-iteration", StopIteration),
+                  ("unicode-decode-error", UnicodeDecodeError))
+        self.dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
+            object(), tuple(RecordType(kind, cls) for kind, cls in errors),
+            tuple(cls for _, cls in errors)))
+        self.scope = ["1", "2", "3", "4"]
+        self.dispatcher.init(wire.dumps({"format": PREFIX + "init.v1", "scope": self.scope}))
+
+    def parse(self, raw):
+        return self.dispatcher.describe_value(wire.dumps({
+            "format": PREFIX + "catalog-manifest-parse.v1", "scope": self.scope,
+            "bytes": base64.b64encode(raw).decode("ascii")}))
+
+    def observed_error(self, raw):
+        with self.assertRaises(MethodRaised) as caught:
+            self.parse(raw)
+        packet = json.loads(caught.exception.details)
+        registry = self.dispatcher._current().registry
+        actual = registry.borrow(registry.reference(packet["root"]))
+        view = json.loads(self.dispatcher.describe_value(wire.dumps({
+            "format": PREFIX + "bootstrap-call-describe.v1", "scope": self.scope,
+            "root": packet["root"]})))
+        return packet, actual, view
+
+    def test_read_text_newlines_permissive_values_and_origin_are_preserved(self):
+        packet = json.loads(self.parse(b'{\r\n"x": 1, "x": 2, "nan": NaN, "s": "\\ud800"}'))
+        registry = self.dispatcher._current().registry
+        value = registry.borrow(registry.reference(packet["root"]))
+        self.assertEqual(value["x"], 2)
+        self.assertNotEqual(value["nan"], value["nan"])
+        self.assertEqual(value["s"], "\ud800")
+        with self.assertRaises(InvalidReference):
+            registry.describe_bootstrap_identity(registry.reference(packet["root"]))
+        view = json.loads(registry.describe_bootstrap_call(registry.reference(packet["root"])))
+        self.assertEqual(view["origin"], "manifest-returned")
+        self.dispatcher.release_values(wire.dumps({
+            "format": PREFIX + "values-release.v1", "scope": self.scope,
+            "refs": [packet["root"]]}))
+        with self.assertRaises(InvalidReference):
+            registry.describe_bootstrap_call(registry.reference(packet["root"]))
+
+    def test_invalid_json_keeps_actual_normalized_doc_and_parser_positions(self):
+        _, actual, view = self.observed_error(b'{\r\n"bad": }')
+        self.assertIs(type(actual), json.JSONDecodeError)
+        fields = view["exception"]["json_fields"]
+        self.assertEqual(fields["doc"]["codepoints"], list(map(ord, actual.doc)))
+        self.assertEqual(actual.doc, '{\n"bad": }')
+        self.assertEqual((fields["pos"], fields["lineno"], fields["colno"]),
+                         (actual.pos, actual.lineno, actual.colno))
+        self.assertEqual(view["origin"], "manifest-raised")
+
+    def test_utf8_bom_is_not_the_bytes_overload_of_json_loads(self):
+        _, actual, view = self.observed_error(b'\xef\xbb\xbf{}')
+        self.assertEqual(actual.pos, 0)
+        self.assertEqual(actual.doc, "\ufeff{}")
+        self.assertEqual(view["exception"]["json_fields"]["doc"]["codepoints"], [65279, 123, 125])
+
+    def test_invalid_utf8_keeps_the_actual_decoder_bytes_and_fields(self):
+        _, actual, view = self.observed_error(b'\xff')
+        self.assertIs(type(actual), UnicodeDecodeError)
+        fields = view["exception"]["unicode_fields"]
+        self.assertEqual(fields["object"], {"kind": "bytes", "value": "/w=="})
+        self.assertEqual((fields["start"], fields["end"]), (actual.start, actual.end))
+        self.assertEqual(fields["encoding"]["codepoints"], list(map(ord, actual.encoding)))
+        self.assertEqual(fields["reason"]["codepoints"], list(map(ord, actual.reason)))
+        self.assertEqual(view["exception"]["recovery_catch"], "value-error")
 
 
 class PrivateError(Exception):

@@ -56,6 +56,15 @@ class NativeBootstrapInputs:
             scope, data["flavor"], inspect, os_flags=data["os_flags"],
             cwd_binding=data["cwd_binding"],
         )
+        from .exception_graph import ExceptionGraphStore
+        errors = ExceptionGraphStore(_catalog_paths=True)
+
+        def decode_catalog_error(row):
+            if type(row) is not dict or set(row) != {"code", "message", "details"}:
+                raise UnsupportedValue("invalid fixed catalog IO error")
+            return errors.materialize(row["code"], row["message"], row["details"])
+
+        bridge._decode_error = decode_catalog_error
         # Same native-issued object ID/value preserves a true alias. Equal
         # lexical values with different native bindings never merge roles.
         paths: dict[str, NativePath] = {}

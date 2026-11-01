@@ -184,7 +184,9 @@ async fn original_default_component_driver() -> Result<()> {
         let mut cleanup_probe = None;
         let mut observed = None;
         let execution:Result<()>=async {
-            let failure=match runtime.setup_review_listing(&BootstrapReviewOptions::default()).await? {
+            // Keep the previous identity unit's explicit test boundary while
+            // the normal listing continues into the real catalog reader.
+            let failure=match runtime.setup_review_identity_prefix(&BootstrapReviewOptions::default()).await? {
                 Ok(value)=>{held_success=Some(value);bail!("unbound review unexpectedly returned success");}
                 Err(error)=>error,
             };

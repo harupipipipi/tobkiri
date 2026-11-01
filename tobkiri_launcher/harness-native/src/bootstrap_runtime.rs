@@ -33,6 +33,10 @@ const CLOSED: u8 = 5;
 const REVIEW: u8 = 6;
 const DENIED: u8 = 7;
 const IDENTITY: u8 = 8;
+const REVIEW_HOST_ROOT: u8 = 9;
+const REVIEW_BUNDLE_ROOT: u8 = 10;
+const CATALOG_LOAD: u8 = 11;
+const CATALOG_PARSE: u8 = 12;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -48,6 +52,8 @@ pub use identity_observation::{
     BootstrapBuiltinKind, BootstrapGetterError, BootstrapIdentityFailure, BootstrapIdentityOutcome,
     BootstrapIdentityStage, BootstrapIdentityValue, BootstrapRecoveryCatch,
 };
+#[path = "bootstrap_catalog.rs"]
+mod catalog;
 #[path = "bootstrap_review_continuation.rs"]
 mod review_continuation;
 
@@ -111,6 +117,9 @@ struct Work<S> {
     first_bundle_resolution: OnceLock<CoreBuffer>,
     init_diagnostic: OnceLock<CoreBuffer>,
     init_trace: InitTrace,
+    catalog: std::sync::Mutex<Option<crate::original_authority::catalog::CatalogIo>>,
+    catalog_dispatch: OnceLock<catalog::Dispatch<S>>,
+    review_root: std::sync::Mutex<Option<catalog::RootResolution>>,
 }
 struct Funding {
     _native: NativeSetupReservation,
@@ -269,7 +278,15 @@ fn inspect<S: BootstrapInputOwner>(
             }
         }
     }
-    if !context.same_invocation(&state.invocation) || !matches!(phase, HOST_ROOT | BUNDLE_ROOT) {
+    if phase == CATALOG_LOAD {
+        return catalog::inspect(context, work.clone());
+    }
+    if !context.same_invocation(&state.invocation)
+        || !matches!(
+            phase,
+            HOST_ROOT | BUNDLE_ROOT | REVIEW_HOST_ROOT | REVIEW_BUNDLE_ROOT
+        )
+    {
         state.init_trace.reject(if phase == INITIALIZING {
             InitializationRejection::Frame
         } else {
@@ -350,7 +367,18 @@ fn inspect<S: BootstrapInputOwner>(
         )?;
         // Native-only observation of the real module resolution, not a guest
         // path disclosure or a capability for subsequent resource operations.
-        let first = if phase == HOST_ROOT {
+        if matches!(phase, REVIEW_HOST_ROOT | REVIEW_BUNDLE_ROOT) {
+            *state.review_root.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(catalog::RootResolution {
+                    resolved: resolved.clone(),
+                    binding: CoreBuffer::copy_from(
+                        binding.as_bytes(),
+                        output.allocation_owners().graph(),
+                    )
+                    .map_err(|_| NativeDataIoError::Capacity)?,
+                });
+        }
+        let first = if matches!(phase, HOST_ROOT | REVIEW_HOST_ROOT) {
             &state.first_host_resolution
         } else {
             &state.first_bundle_resolution
@@ -398,6 +426,7 @@ pub struct NativeBootstrap<S: BootstrapInputOwner> {
     // outside caught/dropped child futures until actual retire/finish.
     denied_pending: Option<denied::DeniedCallCustody>,
     identity_pending: Option<identity_observation::IdentityCallCustody>,
+    call_pending: Option<std::result::Result<NativeDataValue, NativeDataError>>,
 }
 
 // A private field split, not another Store/owner or a resumable guest token.
@@ -412,6 +441,7 @@ struct ReviewPackBorrow<'a, S: BootstrapInputOwner> {
     cancellation: &'a CoreCancellation,
     denied_pending: &'a mut Option<denied::DeniedCallCustody>,
     identity_pending: &'a mut Option<identity_observation::IdentityCallCustody>,
+    call_pending: &'a mut Option<std::result::Result<NativeDataValue, NativeDataError>>,
     defer_pending_drop: bool,
 }
 
@@ -426,6 +456,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             cancellation: &self.cancellation,
             denied_pending: &mut self.denied_pending,
             identity_pending: &mut self.identity_pending,
+            call_pending: &mut self.call_pending,
             defer_pending_drop: false,
         }
     }
@@ -482,6 +513,9 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 first_bundle_resolution: OnceLock::new(),
                 init_diagnostic: OnceLock::new(),
                 init_trace: InitTrace::new(),
+                catalog: std::sync::Mutex::new(None),
+                catalog_dispatch: OnceLock::new(),
+                review_root: std::sync::Mutex::new(None),
             },
             Funding {
                 _native: native,
@@ -547,6 +581,10 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 export: NativeDataExport::new(Some(TRANSPORT), "import-values"),
                 result: Some(contract(NativeDataSuccessType::String)),
             },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "load-catalog"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
         ];
         work.get().init_trace.phase(1);
         let program = match store.prepare_data_program(component, &bindings).await {
@@ -574,6 +612,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             review: None,
             denied_pending: None,
             identity_pending: None,
+            call_pending: None,
         };
         runner
             .work
@@ -771,6 +810,29 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
+        self.setup_review_inner(options, false).await
+    }
+
+    /// Historical same-guard identity boundary only; not the product candidate.
+    #[cfg(test)]
+    pub async fn setup_review_identity_prefix(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+    ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
+        self.setup_review_inner(options, true).await
+    }
+
+    async fn setup_review_inner(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+        identity_prefix: bool,
+    ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
         if self.work.get().phase.load(Ordering::Acquire) != READY {
             bail!("native bootstrap review is not initialized");
         }
@@ -784,7 +846,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .as_ref()
             .map(|text| self.copy_input(text.as_bytes()))
             .transpose()?;
-        let review = match crate::bootstrap_review::Review::new(
+        let mut review = match crate::bootstrap_review::Review::new(
             &self.work.get().invocation,
             options,
             diagnostic,
@@ -792,6 +854,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             Ok(review) => review,
             Err(error) => return Ok(Err(crate::BootstrapReviewFailure::Admission(error))),
         };
+        review.identity_prefix = identity_prefix;
         // The carrier remains in self, outside dispatch's caught future, even
         // if a source callback panics during its real persistence operation.
         self.review = Some(review);
@@ -814,6 +877,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 review,
                 denied_pending,
                 identity_pending,
+                call_pending,
             } = &mut *self;
             let mut pack = ReviewPackBorrow {
                 program,
@@ -824,6 +888,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 cancellation,
                 denied_pending,
                 identity_pending,
+                call_pending,
                 defer_pending_drop: true,
             };
             match review_continuation::run(review.as_mut().expect("admitted review"), &mut pack)
@@ -856,6 +921,22 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             program.retire();
         }
         let joined = self.io.retire_and_wait().await;
+        // The actual IO worker has finished; completed catalog scratch carries
+        // no source/FD. Uncertain descriptors remain in the original ledger.
+        if joined.is_ok() {
+            drop(
+                self.work
+                    .get()
+                    .catalog
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take(),
+            );
+        } else if let Ok(mut current) = self.work.get().catalog.try_lock() {
+            // Never wait on an unknown IO body's mutex after a failed Join.
+            // An active body keeps the real Work/controller/FD custody itself.
+            drop(current.take());
+        }
         // Even a failed Join attempt cannot skip the actual native journal
         // close. It remains a failed cleanup; no successful receipt is forged.
         let closed = self
@@ -864,6 +945,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .is_none_or(crate::bootstrap_review::Review::close_continuation);
         drop(self.denied_pending.take());
         drop(self.identity_pending.take());
+        drop(self.call_pending.take());
         if let Some(review) = &mut self.review {
             review.release_actual_data();
         }
@@ -895,8 +977,25 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         input: &CoreBuffer,
         phase: u8,
     ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
+        if slot == 2 && phase != CATALOG_PARSE {
+            match CoreValue::parse_guest(input.as_bytes(), self.input_budget) {
+                Ok(frame)
+                    if frame.get_key("format").and_then(|v| {
+                        v.as_str()
+                            .map(|v| v == "io.tobkiri.native-catalog-manifest-parse.v1")
+                    }) == Some(true) =>
+                {
+                    bail!("manifest parse is outside the fixed Review reachpoint")
+                }
+                Ok(_) | Err(tobkiri_canon::AllocationError::Invalid) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
         if self.work.get().phase.load(Ordering::Acquire) != phase {
             bail!("native bootstrap is not initialized");
+        }
+        if self.call_pending.is_some() {
+            bail!("prior actual call result is still pending cleanup");
         }
         if let Err(original) = self.work.get().source.check_live() {
             return Err(self.retire_failure(original.into()).await);
@@ -907,14 +1006,14 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             .context("native bootstrap was retired")?
             .invoke(slot, Some(input))
             .await;
-        let result = match result {
-            Ok(result) => result,
+        match result {
+            Ok(result) => *self.call_pending = Some(result),
             Err(original) => return Err(self.retire_failure(original).await),
-        };
+        }
         if let Err(original) = self.work.get().source.check_live() {
             return Err(self.retire_failure(original.into()).await);
         }
-        match result {
+        match self.call_pending.take().expect("actual completed call") {
             Ok(NativeDataValue::String(value)) => Ok(Ok(value)),
             Err(error) => Ok(Err(error)),
             Ok(NativeDataValue::Unit) => Err(self
@@ -995,6 +1094,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         }
         if !self.defer_pending_drop {
             drop(self.identity_pending.take());
+            drop(self.call_pending.take());
         }
         outcome
     }
@@ -1025,6 +1125,14 @@ fn initialization_failure<S>(
 ))]
 #[path = "bootstrap_actual_ci.rs"]
 mod actual_ci;
+#[cfg(all(
+    test,
+    feature = "bootstrap-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "bootstrap_catalog_actual_ci.rs"]
+mod catalog_actual_ci;
 #[cfg(all(
     test,
     feature = "bootstrap-ci",

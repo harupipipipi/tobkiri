@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 from typing import Any, Callable
+import base64
+import json
 
 import ordered_json_v2 as wire
 
@@ -263,7 +265,8 @@ class Dispatcher:
             state.registry._rollback(created)
             raise
 
-    def _apply_original(self, action: Callable[[], Any], *, identity: bool = False) -> Any:
+    def _apply_original(self, action: Callable[[], Any], *, identity: bool = False,
+                        caller: str | None = None) -> Any:
         state = self._current()
         try:
             value = action()
@@ -278,7 +281,8 @@ class Dispatcher:
             # may later request its separate finite builtin observation.
             failure = MethodRaised("")
             failure.details = self._result(
-                error, identity_origin="getter-raised" if identity else None)
+                error, identity_origin=("getter-raised" if identity else
+                                        caller + "-raised" if caller else None))
             raise failure from None
         return value
 
@@ -306,11 +310,24 @@ class Dispatcher:
             kwargs[item[0]] = state.registry.borrow(state.registry.reference(item[1]))
         target = getattr(state.runtime, method)
         identity = method == "bootstrap_profile_id" and not args and not kwargs
-        value = self._apply_original(lambda: target(*args, **kwargs), identity=identity)
+        caller = ({"host_resource_root": "host-root",
+                   "bundled_profile_root": "bundle-root"}.get(method)
+                  if not args and not kwargs else None)
+        if method == "load_catalog" and len(args) == 1 and not kwargs:
+            from .native_path import NativePath
+            if type(args[0]) is NativePath:
+                caller = "catalog"
+                action = lambda: args[0]._bridge._load_catalog(target, args[0])
+            else:
+                action = lambda: target(*args, **kwargs)
+        else:
+            action = lambda: target(*args, **kwargs)
+        value = self._apply_original(action, identity=identity, caller=caller)
         message = (args[0] if method == "denied" and len(args) == 1
                    and type(args[0]) is str and not kwargs else None)
         return self._result(value, denied_message=message,
-                            identity_origin="getter-returned" if identity else None)
+                            identity_origin=("getter-returned" if identity else
+                                             caller + "-returned" if caller else None))
 
     def import_values(self, payload: str) -> str:
         """Import only builtin DATA and existing issued references."""
@@ -358,11 +375,27 @@ class Dispatcher:
         """Describe reviewed DATA fields, never arbitrary reflection."""
         state = self._current()
         frame = self._load(payload)
+        if frame.get("format") == PREFIX + "catalog-manifest-parse.v1":
+            if (set(frame) != {"format", "scope", "bytes"}
+                    or frame["scope"] != state.registry.scope.wire()
+                    or type(frame["bytes"]) is not str):
+                raise InvalidFrame("invalid fixed manifest parse frame")
+            raw = base64.b64decode(frame["bytes"], validate=True)
+
+            def parse_manifest():
+                # Exactly Path.read_text(encoding='utf-8')'s strict decoder and
+                # universal newlines, followed by the actual json.loads(str).
+                text = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+                return json.loads(text)
+
+            value = self._apply_original(parse_manifest, caller="manifest")
+            return self._result(value, identity_origin="manifest-returned")
         if (set(frame) != {"format", "scope", "root"}
                 or frame["scope"] != state.registry.scope.wire()
                 or type(frame["format"]) is not str
                 or frame["format"] not in {PREFIX + "value-describe.v1",
-                                           PREFIX + "bootstrap-identity-describe.v1"}):
+                                           PREFIX + "bootstrap-identity-describe.v1",
+                                           PREFIX + "bootstrap-call-describe.v1"}):
             raise InvalidFrame("invalid or foreign transport frame")
         # A closed request on the existing export, not general exception field
         # permission. Registry provenance is checked again against the actual
@@ -370,6 +403,8 @@ class Dispatcher:
         root = state.registry.reference(frame["root"])
         if frame["format"] == PREFIX + "bootstrap-identity-describe.v1":
             return state.registry.describe_bootstrap_identity(root)
+        if frame["format"] == PREFIX + "bootstrap-call-describe.v1":
+            return state.registry.describe_bootstrap_call(root)
         return state.registry.describe(root)
 
     def copy_data_dictionary(self, payload: str) -> str:

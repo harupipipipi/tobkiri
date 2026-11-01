@@ -225,6 +225,20 @@ impl OriginalAuthorityOwner for OriginalBootstrapInputs {
     }
 }
 impl tobkiri_harness_native::BootstrapReviewOwner for OriginalBootstrapInputs {
+    // with_roots above and this catalog borrow use the SAME immutable
+    // AppConfig managed by Launcher setup (legacy.rs). Both reach app_dir via
+    // NativeHostSourceInputs. Work retains this actual AppHandle owner through
+    // IO cleanup; a module's resolved DATA does not establish that custody.
+    fn with_original_catalog_source<R>(
+        &self,
+        operation: impl for<'host> FnOnce(tobkiri_harness_native::BootstrapCatalogSource<'host>) -> R,
+    ) -> std::result::Result<R, OriginalAuthorityError> {
+        crate::native_harness_host_inputs::with_original_review_source(
+            &self.owner.get().app,
+            |inputs| operation(inputs.catalog_source()),
+        )
+        .map_err(|_| OriginalAuthorityError::unavailable())
+    }
     fn with_original_review_user_data<R>(
         &self,
         use_root: impl FnOnce(&std::path::Path) -> R,

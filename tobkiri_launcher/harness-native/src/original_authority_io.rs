@@ -32,7 +32,7 @@ use tobkiri_gate::{ControlKind, ControlReservation, CoreControl};
 pub(crate) mod publication;
 
 #[derive(Default)]
-pub(super) struct CleanupState {
+pub(crate) struct CleanupState {
     files: AtomicUsize,
     connections: AtomicUsize,
     uncertain: AtomicBool,

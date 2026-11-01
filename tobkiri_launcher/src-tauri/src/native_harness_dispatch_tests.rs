@@ -537,7 +537,7 @@ fn component(
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "init" (func $init)) (export "bootstrap-profile-id" (func $profile))
         (export "host-resource-root" (func $host)) (export "bundled-profile-root" (func $bundle))
-        (export "denied" (func $denied)))
+        (export "denied" (func $denied)) (export "load-catalog" (func $bundle)))
       (instance $transport
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "describe-value" (func $describe)) (export "import-values" (func $import)))
@@ -929,7 +929,7 @@ fn review_continuation(probe: ReviewProbe) {
     match (probe, output) {
         (ReviewProbe::Boundary, Err(DetachedFailure::Execution { stage:Stage::Review,
             source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
-                tobkiri_harness_native::BootstrapReviewReachpoint::HostProfileCatalogNotBound)) })) => {}
+                tobkiri_harness_native::BootstrapReviewReachpoint::CatalogSourceNotBound)) })) => {}
         (ReviewProbe::Canonical, Err(DetachedFailure::Execution { stage:Stage::Review,
             source:SourceRecord::Review(ReviewSourceRecord::ActualDenied { view, message,
                 host_cause:Some(ReviewHostCause::NativeGraph { code, message:cause_message, details }), suppress_context:true }) })) => {
@@ -1233,7 +1233,7 @@ fn review_pointer(case: ReviewPointerCase) {
     match (case, output) {
         (ReviewPointerCase::Same, Err(DetachedFailure::Execution { stage: Stage::Review,
             source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
-                tobkiri_harness_native::BootstrapReviewReachpoint::HostProfileCatalogNotBound)) })) => {}
+                tobkiri_harness_native::BootstrapReviewReachpoint::CatalogSourceNotBound)) })) => {}
         (ReviewPointerCase::Stale, Err(DetachedFailure::Execution { stage: Stage::Review,
             source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
                 tobkiri_harness_native::BootstrapReviewReachpoint::CatalogNotBound)) })) => {}

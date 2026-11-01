@@ -50,6 +50,30 @@ class ScriptedPort:
 
 
 class NativePathAdapterTests(unittest.TestCase):
+    def test_fixed_catalog_codec_preserves_old_binding_and_clears_after_throw(self):
+        scope = Scope(1, 2, 3, 4)
+        port = ScriptedPort(scope, [
+            ("root", {**path("existing_module", "/app/bundle"), "steps": []}),
+            ("read-bytes", blob(b"first actual read")),
+        ])
+        bridge = PathBridge(scope, "posix", port, os_flags={"O_RDONLY": 0})
+        root = bridge.bind("existing_module", "/app/module.py").parent
+
+        def load(selected):
+            self.assertEqual(str(selected), "/app/bundle")
+            self.assertEqual(selected.read_bytes(), b"first actual read")
+            raise ValueError("original loader failure")
+
+        with self.assertRaisesRegex(ValueError, "original loader failure"):
+            bridge._load_catalog(load, root)
+        self.assertIsNone(bridge._catalog_root)
+        self.assertEqual([row["format"] for row in port.requests],
+                         ["io.tobkiri.native-catalog-request.v1"] * 2)
+        self.assertEqual(port.requests[1]["target"],
+                         {"binding": "existing_module", "steps": []})
+        with self.assertRaises(UnsupportedValue):
+            bridge._value({**path("existing_module", "/app/bundle"), "steps": []}, "path")
+
     def setUp(self):
         self.scope = Scope(1, 2, 3, 4)
 

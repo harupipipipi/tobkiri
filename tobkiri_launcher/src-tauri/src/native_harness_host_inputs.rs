@@ -32,6 +32,22 @@ pub(crate) struct NativeHostSourceInputs<'host> {
 }
 
 impl NativeHostSourceInputs<'_> {
+    /// Match the existing Kernel role's child environment, not this process's
+    /// ambient environment. Packaged role setup also pins RUMI_APP_DIR to app.
+    /// Runtime below and root(Runtime) borrow the same immutable managed
+    /// AppConfig.app_dir; neither accessor resolves or replaces that selection.
+    #[cfg(feature = "native-harness-bootstrap")]
+    pub(crate) fn catalog_source(&self) -> tobkiri_harness_native::BootstrapCatalogSource<'_> {
+        tobkiri_harness_native::BootstrapCatalogSource {
+            runtime: &self.config.app_dir,
+            environment: if cfg!(debug_assertions) || self.config.is_dev_workspace() {
+                "development"
+            } else {
+                "production"
+            },
+            configured_app: Some(&self.config.app_dir),
+        }
+    }
     /// Internal storage location already selected by the original config. It
     /// is deliberately not a published native source role or an IO permission.
     #[cfg(feature = "native-harness-bootstrap")]
