@@ -98,7 +98,11 @@ impl OriginalAuthorityOwner for Source {
         Ok(use_root(&self.root))
     }
     fn check_original_owner(&self) -> std::result::Result<(), OriginalAuthorityError> {
-        Ok(())
+        // Review enters through this same selected owner's gate, including
+        // options without a diagnostic/copy_input call. Use its real test
+        // barrier before any journal existence/read, rather than waiting for
+        // a getter-only check_live call that this native body never performs.
+        BootstrapInputOwner::check_live(self).map_err(|_| OriginalAuthorityError::unavailable())
     }
 }
 impl tobkiri_harness_native::BootstrapReviewOwner for Source {

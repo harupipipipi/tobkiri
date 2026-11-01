@@ -61,9 +61,12 @@ typed failures, independently inspected file effects, existing keys and actual
 close/OS-lock release/capacity release/owner reopen. Linux passed the original
 77-case reference; both platforms passed strict Clippy and locked resolution.
 The [same-source Authority regression](https://github.com/harupipipipi/tobkiri/actions/runs/41252586573)
-also passed its existing 93-case comparison. The three new actual caller cases
-and current-source packaging are being checked by
-[Desktop CI41253253796](https://github.com/harupipipipi/tobkiri/actions/runs/41253253796).
+also passed its existing 93-case comparison.
+[Desktop CI41253253796](https://github.com/harupipipipi/tobkiri/actions/runs/41253253796)
+compiled the actual caller and passed the existing 638 library tests, including
+all 12 previous finite cases. The three new pointer/snapshot caller cases failed
+with a 30-second channel-receive timeout. This failure is being investigated;
+the current-source installer/cold-boot/DMG did not complete.
 Bootstrap-identity getter/factory/canonical semantics, catalog and subsequent
 recovery/listing, product adoption and the original GUI remain unqualified.
 

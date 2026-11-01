@@ -282,14 +282,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同sourceの[Authority回帰41252586573](https://github.com/harupipipipi/tobkiri/actions/runs/41252586573)
   も両OS成功し、Mac normal4＋実93比較、Linux normal2＋原本93が成功した。
   小artifactはRAM内でsize/SHAを照合し、必要JSON480,011B/225,052Bのみ保存した。
-  新caller3件を含む全finite15は同8b800のDesktop CI41253253796で確認中であり、
+  同8b800のDesktop CI41253253796はcompileを通過し、library638成功/3失敗/skip0。
+  既存finite12件はすべて成功、新pointer/snapshot caller3件だけreceiveの30秒timeoutで
+  失敗した。失敗したInstaller/cold boot/DMGは成功と数えず、元Native77/93成功とも分ける。
+  Solが原因を特定: test Sourceのcheck_original_ownerは常にOkで、diagnostic=Noneの
+  新3件はcopy_inputのcheck_liveを通らず、fixture配置前にNoJournalで終わっていた。
+  test owner gateを同Sourceのcheck_liveへ委譲する最小修正を追加。製品処理・timeout・
+  予算は変更せず、実owner gateで停止→fixture配置→resumeの順に直す。再実行は未確認。
   全recovery/実factory/GUI接続、NFC、bootstrap ID/catalog以降は未完のまま。
   次の削減候補をSourceで確定: 元denied factoryはExceptionを返すだけで、cause/contextは
   Hostのraiseが作る。Host ProtocolErrorをGuestへ往復して作り直す追加bridgeは不要。
   Astra highは同Storeの実factory ref＋有限観測DATAと、Host cause/contextを別由来で
   保持する方針を採用。まず既存import-values/denied/describeの限定接続をSolが実装し、
   原本8case（同じmessageの別callもfresh例外）と独立lifecycle回帰で比較する。
-  これは準備中で未検証。Guest例外にcauseを設定済みと偽らず、一般exception RPCや
+  原本factory8件のreference CI41254654137は両OS成功。実port.is_resolution_deniedを
+  追加したv2 CI41255001377も両OS成功し、actualkindとfactory DATAを比較できる形にした。
+  Rust/実componentとの比較はまだ未実行。Guest例外にcauseを設定済みと偽らず、一般exception RPCや
   Core内のPack class固定、ownedReview文字列へのCoreBuffer資金混在を追加しない。
   追加の削減候補: 新Reviewは同invocationの固定bodyを直接呼ぶ。別jobを作る旧試作の
   read_original_authority_snapshot/OriginalAuthorityJob/Dataは現在のtracked callerがなく、
