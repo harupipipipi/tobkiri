@@ -221,11 +221,20 @@ class NativeWorkflowContracts(unittest.TestCase):
         fixtures = '\n#[cfg(all(test, target_os = "macos"))]\n'
         self.assertEqual(shared.count(fixtures), 1)
         shared = shared.split(fixtures, 1)[0]
-        self.assertLess(adapter.index("state.begin(&app)?"),
-                        adapter.index("NativeComponentPreparation::new("))
-        self.assertIn("self.preparation", adapter)
-        self.assertIn(".compile(artifact, expected)?", adapter)
-        self.assertIn(".initialize(index)", adapter)
+        # The finite worker now owns admission, cancellation and compilation;
+        # the earlier adapter-local preparation carrier was removed. Check
+        # the real current job sequence rather than the deleted spelling.
+        current = adapter.split("async fn run_original_job(", 1)[1]
+        current = re.sub(r"\s+", "", current)
+        positions = [current.index(token) for token in (
+            "runtime.begin(&app,&job)?",
+            "job.attach_invocation(&invocation)?",
+            "OriginalBootstrapInputs::new(app,job.source_custody()?,&invocation)?",
+            "NativeComponentPreparation::new_with_cancellation_parent(",
+            ".compile(artifact,&expected)?",
+            "caught(prepared.initialize(index)).await",
+        )]
+        self.assertEqual(positions, sorted(positions))
         for caller in (adapter, actual):
             self.assertNotIn("Component::new(", caller)
             self.assertNotIn("WasmEngine::new_", caller)
