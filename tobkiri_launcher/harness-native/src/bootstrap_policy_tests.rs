@@ -407,13 +407,30 @@ async fn init_checkpoint_is_data_and_cannot_authorize_root_inspection() -> Resul
     let fuel_before = runtime.fuel_remaining()?;
     assert!(runtime.host_resource_root().await.is_err());
     assert_eq!(runtime.initialization_trace().checkpoint_count, 1);
+    // This owner has no admitted metadata. Root policy rejects before Guest
+    // execution, so neither fuel nor a retired-call observation may change.
+    assert_eq!(runtime.fuel_remaining()?, fuel_before);
+    assert!(runtime.ci_retired_call().is_none());
+    assert_eq!(runtime.inspection_attempts(), 1);
+    // The same runtime/account permits this READY export, whose hostile WAT
+    // text body attempts the same inspect import without acquiring authority.
+    let failure = runtime
+        .bootstrap_profile_id()
+        .await
+        .err()
+        .context("hostile READY call did not fail actual Guest execution")?;
+    assert!(
+        format!("{failure:#}")
+            .contains("native inspection is unavailable in the metadata-only bootstrap phase")
+    );
+    assert_eq!(runtime.inspection_attempts(), 2);
     // The real failing call retired its Store. Its earlier Copy sample must
     // remain available without a dead-Store query or another guest call.
     assert!(runtime.fuel_remaining().is_err());
     let failed_call = runtime
         .ci_retired_call()
         .context("actual retired-call sample missing")?;
-    assert_eq!(failed_call.phase_at_retire_failure, "host-root");
+    assert_eq!(failed_call.phase_at_retire_failure, "ready");
     assert!(failed_call.store_retired && !failed_call.post_return);
     assert!(!failed_call.deadline_exceeded);
     assert!(
