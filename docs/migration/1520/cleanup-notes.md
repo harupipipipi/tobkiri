@@ -2151,7 +2151,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 021: foreign Pack helperのambient importとcaptured classのDATA残留
 
-- 状態: **Source修正あり、real-loader受入未実行。legacy capture解放/包括的会計は未完**。
+- 状態: **2782b2d35のreal-loaderを含む両OS440件成功。legacy capture解放/包括的会計は未完**。
 - 場所: `captured_provider_modules_v4.py`/`artifact_materialization.py`、production composition、
   conversation-storeの`runtime/saved_project_context.py`、Turn host/saved、Project read factory。
 - 問題: 自Pack importはprivate namespaceへ入るが、foreign Pack importはambient
@@ -2167,7 +2167,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   plain chat/canonical codingを保持、Group/aliases/bindings/rootのproof不足は明示拒否。
   返却factsはnestedもexact builtins/Host-static DTOだけ、port参照はfinallyで解放する。
 - 受入Source: real loaderでpoison、disk差替え、選択Pack更新、Project不在、別scope/consumer、
-  wire copy、DATA graph、port weakref、旧ABI互換を確認する。実行はまだである。
+  wire copy、DATA graph、port weakref、旧ABI互換を確認する。
+  clean 2782b2d35のCI41283852793はLinux/macOS各440/0fail、新capture16ケースの実行も
+  ログで確認。frontend59/既存lintも成功し、選択証拠7,444Bを保存した。
 - 削除前提: accepted captureはglobal _CAPTURES/sys.meta_path/sys.modulesに残り、production
   retireへrelease/refcountがない。raw512MiB上限はcompiled code/globals/copiesの同invocation
   会計ではない。port参照解放をSource最終解放と読まず、汎用Python lease/frameworkを新設しない。
@@ -2177,7 +2179,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   legacy identity/期待値を変えず実implementation bytesのdigestだけ更新した。
   CI41283183002はfrontend59/既存lint/UIbuild/全生成・strict integrityが成功。
   artifact13073823619（15,597B）をRAM検証し、23 JSON/patch135,968BをSource/hash/path照合して
-  取り込んだ。実capture16ケースと旧suiteのclean-source回帰はこれからである。
+  取り込んだ。実capture16ケースと旧suiteのclean-source回帰も上記CIで成功した。
 
 ## 022: catalog前半のIO所有とJSON parseを二重frameworkにしない
 
@@ -2201,3 +2203,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   constructor移行/初期登録、outer Authority、GUI、native実行の成功ではない。
   正常IO Joinと希少Join不確定のcustodyを分け、未完をcompleted flagやmutex取得で完了にしない。
   型/資金/capacity不足は未達を残し、正規移行writeの省略や新cache/grant/allowanceで隠さない。
+
+## 023: 保存全履歴とモデルへ渡す文脈の200件上限を分ける
+
+- 状態: **関連PRレビューからSource調査中。修正・実行結果はまだない**。
+- 場所: `saved_bridge._saved_read_projection`、protocolの`build_saved_model_messages`、
+  Guest saved conversationの`_history`。
+- 問題: 全保存履歴へ200件の先行制限を適用すると、user追加後だけ201件になり拒否したり、
+  短い選択枝まで別枝の大量履歴で拒否したりする。現Sourceのguard残存は確認したが、
+  各Guest経路の実到達・元MessageBuilderの予算規則は別に確認する。
+- 整理候補: durable historyを保持し、同じ選択枝・追加予定user・モデル文脈投影を
+  保存前後へ一貫適用する。履歴削除、上限引上げ、新budget、role/branch検証省略はしない。
+- 維持/削除前提: 198/199/200/201件と別枝大量履歴を実Host/Guest/Storeで確認し、
+  保存後だけ失敗してuserだけ残る状態を防ぐ。設計は元仕様とAstra highの回答後に固定する。

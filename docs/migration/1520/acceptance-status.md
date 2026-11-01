@@ -152,9 +152,12 @@ passed frontend59 and backend341 on each OS in
 [CI41279045948](https://github.com/harupipipipi/tobkiri/actions/runs/41279045948).
 The generated source also reproduced with zero differences in
 [CI41277582684](https://github.com/harupipipipi/tobkiri/actions/runs/41277582684).
-Foreign-helper captured-code ownership and detached DATA are a subsequent source
-fix awaiting real-loader regressions. Legacy global capture retire and comprehensive
-funding remain open; these results do not establish full GUI or native adoption.
+Foreign-helper captured-code ownership and detached DATA subsequently passed
+real-loader, old-owner ABI and saved-owner regressions in
+[CI41283852793](https://github.com/harupipipipi/tobkiri/actions/runs/41283852793):
+440 tests on each OS, including16 new capture cases, plus frontend59/type/boundary
+checks. Legacy global capture retire and comprehensive funding remain open;
+these results do not establish full GUI or native adoption.
 
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
