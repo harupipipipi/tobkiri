@@ -7,16 +7,16 @@ use std::{fs::File, path::PathBuf, sync::atomic::AtomicBool};
 use tobkiri_canon::{CoreValue, Digest};
 use tobkiri_core::RuntimeOwner;
 
-mod selected {
+pub(super) mod selected {
     use super::{BootstrapModule, BootstrapModuleIndex};
     include!(env!("TOBKIRI_HARNESS_NATIVE_MODULE_INDEX_RS"));
 }
 
-struct SelectedRuntime {
-    root: PathBuf,
-    _directory: File,
-    retired: AtomicBool,
-    process: u32,
+pub(super) struct SelectedRuntime {
+    pub(super) root: PathBuf,
+    pub(super) _directory: File,
+    pub(super) retired: AtomicBool,
+    pub(super) process: u32,
 }
 impl BootstrapInputOwner for SelectedRuntime {
     fn original_module_metadata_policy(&self) -> Option<&'static crate::ModuleMetadataPolicy> {

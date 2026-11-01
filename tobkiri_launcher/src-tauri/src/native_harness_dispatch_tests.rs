@@ -138,6 +138,8 @@ fn expected_getters(operation: OriginalOperation) -> Vec<OriginalGetter> {
         ],
         OriginalOperation::Unbound(_) => panic!("unbound fixture must not compile"),
         OriginalOperation::ReviewListing(_) => vec![],
+        OriginalOperation::VerifyDenied(_) => vec![],
+        OriginalOperation::VerifyDeniedCodec => vec![],
     }
 }
 fn scope(invocation: &NativeSetupInvocation) -> serde_json::Value {
@@ -186,14 +188,27 @@ fn component(
     scenario: Scenario,
 ) -> Vec<u8> {
     let actual_scope = scope(invocation);
+    let denied = matches!(
+        &operation,
+        OriginalOperation::VerifyDenied(_) | OriginalOperation::VerifyDeniedCodec
+    );
+    let denied_codec = matches!(&operation, OriginalOperation::VerifyDeniedCodec);
     let mut memory = String::new();
     let mut offset = 1024;
     let call = format!(
         "{{\"format\":\"io.tobkiri.native-call.v1\",\"scope\":{actual_scope},\"args\":[],\"kwargs\":[]}}"
     );
     let (call_ptr, call_len) = data(&mut memory, &mut offset, call.as_bytes());
-    let message = "actual second getter refusal λ";
-    let details = " { \"after\": \"profile-description\" }\n";
+    let message = if denied {
+        ""
+    } else {
+        "actual second getter refusal λ"
+    };
+    let details = if denied {
+        serde_json::json!({"format":"io.tobkiri.native-value-result.v1","scope":actual_scope,"root":{"scope":actual_scope,"object":"ee3"},"owned":["ee3"]}).to_string()
+    } else {
+        " { \"after\": \"profile-description\" }\n".to_owned()
+    };
     let (message_ptr, message_len) = data(&mut memory, &mut offset, message.as_bytes());
     let (details_ptr, details_len) = data(&mut memory, &mut offset, details.as_bytes());
     let mut getters = String::new();
@@ -260,6 +275,53 @@ fn component(
             stage + 2,
         ));
     }
+    if denied {
+        let argument = serde_json::json!({"scope":actual_scope,"object":"ee1"});
+        let root = serde_json::json!({"scope":actual_scope,"object":"ee2"});
+        let import = format!(
+            r#"{{"format":"io.tobkiri.native-value-input.v1","scope":{actual_scope},"nodes":[{{"kind":"str","value":"{WORKER_DENIED_MESSAGE}"}}],"root":{{"node":0}}}}"#
+        );
+        let factory = format!(
+            r#"{{"format":"io.tobkiri.native-call.v1","scope":{actual_scope},"args":[{argument}],"kwargs":[]}}"#
+        );
+        let describe = format!(
+            r#"{{"format":"io.tobkiri.native-value-describe.v1","scope":{actual_scope},"root":{root}}}"#
+        );
+        let imported = serde_json::json!({"format":"io.tobkiri.native-values-imported.v1","scope":actual_scope,"root":argument,"owned":["ee1"]}).to_string();
+        let returned = serde_json::json!({"format":"io.tobkiri.native-value-result.v1","scope":actual_scope,"root":root,"owned":["ee2"]}).to_string();
+        let observed_message = if denied_codec {
+            "different actual factory message"
+        } else {
+            WORKER_DENIED_MESSAGE
+        };
+        let viewed = serde_json::json!({"format":"io.tobkiri.native-value-view.v1","scope":actual_scope,"root":root,"owned":[],"nodes":[{"ref":root,"kind":"profile-resolution-denied","opaque_native_binding":false,"fields":[],"factory_denied":{"args":[observed_message],"cause":null,"context":null,"suppress_context":false}}]}).to_string();
+        for (name, stage, input, output) in [
+            ("import", 0, import, imported),
+            ("denied", 1, factory, returned),
+        ] {
+            let (input_ptr, input_len) = data(&mut memory, &mut offset, input.as_bytes());
+            let (output_ptr, output_len) = data(&mut memory, &mut offset, output.as_bytes());
+            let body = if name == "denied" && matches!(scenario, Scenario::HostDomain) {
+                "call $refuse".to_owned()
+            } else {
+                format!("i32.const {output_ptr} i32.const {output_len} call $emit")
+            };
+            getters.push_str(&format!(
+                "(func (export \"{name}\") (param $p i32) (param $n i32) (result i32)
+                global.get $stage i32.const {stage} i32.ne if unreachable end
+                local.get $p local.get $n i32.const {input_ptr} i32.const {input_len} call $check
+                i32.const {} global.set $stage {body})\n",
+                stage + 1
+            ));
+        }
+        let (input_ptr, input_len) = data(&mut memory, &mut offset, describe.as_bytes());
+        let (output_ptr, output_len) = data(&mut memory, &mut offset, viewed.as_bytes());
+        descriptions.push_str(&format!("global.get $stage i32.const 2 i32.eq if
+            local.get $p local.get $n i32.const {input_ptr} i32.const {input_len} call $check
+            i32.const 3 global.set $stage i32.const {output_ptr} i32.const {output_len} call $emit return end\n"));
+    } else {
+        getters.push_str("(func (export \"import\") (param i32 i32) (result i32) unreachable)\n(func (export \"denied\") (param i32 i32) (result i32) unreachable)\n");
+    }
     let source = r#"(component
       (type $code (enum "not-initialized" "already-initialized" "invalid-frame"
         "invalid-reference" "unsupported-value" "method-raised"))
@@ -307,6 +369,8 @@ fn component(
       (alias core export $m "host" (core func $host))
       (alias core export $m "bundle" (core func $bundle))
       (alias core export $m "describe" (core func $describe))
+      (alias core export $m "import" (core func $import))
+      (alias core export $m "denied" (core func $denied))
       (func $init (param "payload" string) (result $unit)
         (canon lift (core func $init) (memory $memory) (realloc $realloc)))
       (func $profile (param "payload" string) (result $text)
@@ -317,13 +381,18 @@ fn component(
         (canon lift (core func $bundle) (memory $memory) (realloc $realloc)))
       (func $describe (param "payload" string) (result $text)
         (canon lift (core func $describe) (memory $memory) (realloc $realloc)))
+      (func $import (param "payload" string) (result $text)
+        (canon lift (core func $import) (memory $memory) (realloc $realloc)))
+      (func $denied (param "payload" string) (result $text)
+        (canon lift (core func $denied) (memory $memory) (realloc $realloc)))
       (instance $runtime
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "init" (func $init)) (export "bootstrap-profile-id" (func $profile))
-        (export "host-resource-root" (func $host)) (export "bundled-profile-root" (func $bundle)))
+        (export "host-resource-root" (func $host)) (export "bundled-profile-root" (func $bundle))
+        (export "denied" (func $denied)))
       (instance $transport
         (export "error-code" (type $code)) (export "error" (type $error))
-        (export "describe-value" (func $describe)))
+        (export "describe-value" (func $describe)) (export "import-values" (func $import)))
       (export "tobkiri-ui:harness-native/runtime@1.0.0" (instance $runtime))
       (export "tobkiri-ui:harness-native/transport@1.0.0" (instance $transport)))"#
         .replace("@MEMORY@", &memory)
@@ -510,6 +579,71 @@ fn finite_review_enters_the_original_no_journal_prefix_on_its_same_store() {
     assert!(!running._root.0.join("profiles").exists());
     assert!(!running._root.0.join("authority").exists());
     assert_eq!(receive(&running.published), (true, true));
+    drain(&running.jobs, &running.controls, &invocation, true);
+}
+
+#[test]
+fn denied_plain_carrier_survives_finish_then_drops_before_join() {
+    denied_worker(false, Scenario::Normal);
+}
+
+#[test]
+fn denied_host_from_cause_and_context_share_identity_through_finish() {
+    denied_worker(true, Scenario::Normal);
+}
+
+#[test]
+fn denied_factory_throw_keeps_ambient_context_without_applying_host_from() {
+    denied_worker(true, Scenario::HostDomain);
+}
+
+#[test]
+fn denied_malformed_view_keeps_pending_outputs_until_store_and_io_retire() {
+    let running = launch(
+        OriginalOperation::VerifyDeniedCodec,
+        Scenario::Normal,
+        0,
+        false,
+    );
+    let invocation = receive(&running.ready);
+    let deadline = invocation.deadline().unwrap();
+    let output = tauri::async_runtime::block_on(running.waiter.result());
+    assert!(matches!(
+        output,
+        Err(DetachedFailure::Execution {
+            stage: Stage::Operation,
+            source: SourceRecord::Unsupported(Unsupported::AnyhowBoundary)
+        })
+    ));
+    assert_eq!(invocation.deadline().unwrap(), deadline);
+    assert_eq!(receive(&running.published), (true, true));
+    // The library's debug invariants check actual pending result/view at both
+    // sides of Store retire/IO wait. The existing probes check later Source,
+    // retained error, physical Join and capacity=0 independently.
+    drain(&running.jobs, &running.controls, &invocation, true);
+}
+
+fn denied_worker(from_host: bool, scenario: Scenario) {
+    let running = launch(
+        OriginalOperation::VerifyDenied(from_host),
+        scenario,
+        0,
+        false,
+    );
+    let invocation = receive(&running.ready);
+    let deadline = invocation.deadline().unwrap();
+    let output = tauri::async_runtime::block_on(running.waiter.result());
+    assert!(matches!(
+        output,
+        Err(DetachedFailure::Execution {
+            stage: Stage::Operation,
+            source: SourceRecord::Unsupported(Unsupported::AnyhowBoundary)
+        })
+    ));
+    assert_eq!(invocation.deadline().unwrap(), deadline);
+    assert_eq!(receive(&running.published), (true, true));
+    // The normal Source/Result destructor probes assert that these funded
+    // carriers survive finish, and are gone before physical Join/capacity=0.
     drain(&running.jobs, &running.controls, &invocation, true);
 }
 

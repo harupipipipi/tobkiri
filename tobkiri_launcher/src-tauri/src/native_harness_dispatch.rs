@@ -34,6 +34,10 @@ pub(crate) enum OriginalOperation {
     /// each immediately followed by description in the same original Store.
     #[cfg(test)]
     VerifyBoundGetters,
+    #[cfg(test)]
+    VerifyDenied(bool),
+    #[cfg(test)]
+    VerifyDeniedCodec,
     /// Reject before owner/Engine construction. This is not a native binding.
     Unbound(UnboundOperation),
 }
@@ -43,6 +47,10 @@ pub(super) enum AdmittedOperation {
     ReviewListing(BootstrapReviewOptions),
     #[cfg(test)]
     VerifyBoundGetters,
+    #[cfg(test)]
+    VerifyDenied(bool),
+    #[cfg(test)]
+    VerifyDeniedCodec,
 }
 impl OriginalOperation {
     pub(super) fn admit(self) -> std::result::Result<AdmittedOperation, DetachedFailure> {
@@ -62,6 +70,10 @@ impl OriginalOperation {
             }
             #[cfg(test)]
             Self::VerifyBoundGetters => Ok(AdmittedOperation::VerifyBoundGetters),
+            #[cfg(test)]
+            Self::VerifyDenied(from_host) => Ok(AdmittedOperation::VerifyDenied(from_host)),
+            #[cfg(test)]
+            Self::VerifyDeniedCodec => Ok(AdmittedOperation::VerifyDeniedCodec),
             Self::Unbound(operation) => Err(DetachedFailure::integration(
                 IntegrationFailure::OperationNotBound(operation),
             )),
@@ -75,6 +87,8 @@ enum Failure {
     Integration(IntegrationFailure),
     Panic,
     Review(BootstrapReviewFailure),
+    #[cfg(test)]
+    DeniedFunding(DeniedFunding),
 }
 impl Failure {
     fn detach(&self, detachment: &mut Detachment) -> DetachedFailure {
@@ -87,6 +101,26 @@ impl Failure {
             Self::Native(error) => detachment.native(error, Stage::Operation),
             Self::Integration(error) => DetachedFailure::integration(*error),
             Self::Panic => DetachedFailure::condition(Stage::Operation, Condition::NativePanic),
+            #[cfg(test)]
+            Self::DeniedFunding(value) => {
+                match value {
+                    DeniedFunding::Returned(value) => {
+                        let _ = value.result();
+                    }
+                    DeniedFunding::Raised(value) => {
+                        let _ = value.error();
+                    }
+                    DeniedFunding::CodecRejected(error) => {
+                        let _ = error;
+                    }
+                }
+                DetachedFailure::Execution {
+                    stage: Stage::Operation,
+                    source: SourceRecord::Unsupported(
+                        crate::native_worker_failure::Unsupported::AnyhowBoundary,
+                    ),
+                }
+            }
             Self::Review(error) => {
                 let source = match error {
                     BootstrapReviewFailure::NotBound(point) => {
@@ -192,6 +226,44 @@ pub(super) async fn execute<
     operation: AdmittedOperation,
 ) -> std::result::Result<Observations, Failed> {
     let getters = match operation {
+        #[cfg(test)]
+        AdmittedOperation::VerifyDeniedCodec => {
+            let error = match runner
+                .denied(
+                    WORKER_DENIED_MESSAGE,
+                    tobkiri_harness_native::BootstrapDeniedRaise::Plain,
+                )
+                .await
+            {
+                Err(error) => error,
+                Ok(_) => panic!("malformed factory view was not a native contract rejection"),
+            };
+            assert_eq!(
+                error.to_string(),
+                "denied factory actual exception fields differ"
+            );
+            assert!(
+                runner.fuel_remaining().is_err(),
+                "codec rejection left the same Store live"
+            );
+            return Err(Failed {
+                failure: Failure::DeniedFunding(DeniedFunding::CodecRejected(error)),
+                _completed: Observations([None, None, None]),
+            });
+        }
+        #[cfg(test)]
+        AdmittedOperation::VerifyDenied(from_host) => {
+            return Err(Failed {
+                // A trap/codec failure must fail this verification, rather
+                // than accidentally match its deliberate Unsupported result.
+                failure: Failure::DeniedFunding(
+                    denied_funding(runner, from_host)
+                        .await
+                        .expect("small component denied binding contract"),
+                ),
+                _completed: Observations([None, None, None]),
+            });
+        }
         AdmittedOperation::ReviewListing(options) => {
             let result = runner.setup_review_listing(&options).await;
             return Err(Failed {
@@ -227,6 +299,67 @@ pub(super) async fn execute<
         }
     }
     Ok(output)
+}
+
+#[cfg(test)]
+const WORKER_DENIED_MESSAGE: &str = "native worker factory value";
+
+// This deliberately unsupported test-only variant keeps the real funded carrier
+// through ordinary detachment/finish/drop/Join. It opens no production route.
+#[cfg(test)]
+#[derive(Debug)]
+enum DeniedFunding {
+    Returned(tobkiri_harness_native::BootstrapDenied),
+    Raised(tobkiri_harness_native::BootstrapDeniedFailure),
+    CodecRejected(anyhow::Error),
+}
+#[cfg(test)]
+async fn denied_funding<S: BootstrapInputOwner>(
+    runner: &mut NativeBootstrap<S>,
+    from_host: bool,
+) -> anyhow::Result<DeniedFunding> {
+    use tobkiri_harness_native::{BootstrapDeniedRaise, NativeErrorGraph};
+    let host_raise = if from_host {
+        let budget = runner.data_budget();
+        let code = CoreBuffer::copy_from(b"protocol-error", budget)?;
+        let message = CoreBuffer::copy_from(b"original Host cause", budget)?;
+        let details = CoreBuffer::copy_from(br#"{"format":"tobkiri.native-exception/1","graph_id":1,"root":0,"nodes":[{"kind":"protocol-error","args":["original Host cause"],"fields":{},"cause":null,"context":null,"suppress_context":false}]}"#, budget)?;
+        BootstrapDeniedRaise::ExplicitFrom(NativeErrorGraph::decode(
+            code, message, details, budget,
+        )?)
+    } else {
+        BootstrapDeniedRaise::Plain
+    };
+    match runner.denied(WORKER_DENIED_MESSAGE, host_raise).await? {
+        Ok(value) => {
+            assert_eq!(value.message().as_str()?, WORKER_DENIED_MESSAGE);
+            assert_eq!(value.suppress_context(), from_host);
+            if from_host {
+                assert!(std::ptr::eq(
+                    value.cause().unwrap(),
+                    value.context().unwrap()
+                ));
+                assert_eq!(
+                    value.cause().unwrap().root().kind(),
+                    tobkiri_harness_native::NativeErrorKind::ProtocolError
+                );
+            } else {
+                assert!(value.cause().is_none() && value.context().is_none());
+            }
+            Ok(DeniedFunding::Returned(value))
+        }
+        Err(value) => {
+            assert_eq!(
+                value.stage(),
+                tobkiri_harness_native::BootstrapDeniedStage::Factory
+            );
+            assert_eq!(value.error().code().as_str()?, "method-raised");
+            assert_eq!(value.host_except_context().is_some(), from_host);
+            // No explicit-from/suppression is applied to this thrown factory;
+            // the original opaque method error and ambient context are kept.
+            Ok(DeniedFunding::Raised(value))
+        }
+    }
 }
 
 async fn observe<S: BootstrapInputOwner>(

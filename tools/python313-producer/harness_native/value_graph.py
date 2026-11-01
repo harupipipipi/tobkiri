@@ -146,6 +146,10 @@ class Registry:
         self._objects: dict[int, Any] = {}
         self._identity: dict[int, int] = {}
         self._permissions: dict[int, tuple[bool, bool]] = {}
+        # Same guest linear heap/account as the registry: one small live entry
+        # per fresh factory result, referencing its existing string, not a new
+        # native allowance or external table. Release/rollback/retire erase it.
+        self._denied: dict[int, str] = {}
         self._next = 1
         self._retired = False
 
@@ -215,6 +219,34 @@ class Registry:
             self._objects.pop(reference.object_id)
             self._identity.pop(identity)
             self._permissions.pop(reference.object_id)
+            self._denied.pop(reference.object_id, None)
+
+    @staticmethod
+    def _denied_fields(value: BaseException, message: str) -> dict[str, Any] | None:
+        # Fixed builtin descriptors bypass subclass hooks. No str/repr,
+        # reflection, recursive graph or caller-selected attribute is used.
+        args = BaseException.args.__get__(value)
+        if (type(args) is not tuple or len(args) != 1 or type(args[0]) is not str
+                or args[0] != message
+                or BaseException.__cause__.__get__(value) is not None
+                or BaseException.__context__.__get__(value) is not None
+                or BaseException.__suppress_context__.__get__(value) is not False):
+            return None
+        return {"args": [args[0]], "cause": None, "context": None,
+                "suppress_context": False}
+
+    def _mark_denied(self, reference: Reference, message: str) -> None:
+        value = self.borrow(reference)
+        record = self._records.get(type(value))
+        if (record is None or record.kind != "profile-resolution-denied"
+                or not isinstance(value, BaseException)
+                or self._denied_fields(value, message) is None):
+            return
+        try:
+            self._denied[reference.object_id] = message
+        except BaseException:
+            self._denied.pop(reference.object_id, None)
+            raise
 
     def retain(
         self, value: Any, *, append: bool = False, set_items: bool = False,
@@ -266,6 +298,7 @@ class Registry:
             value = self._objects.pop(number)
             del self._identity[id(value)]
             del self._permissions[number]
+            self._denied.pop(number, None)
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -273,6 +306,7 @@ class Registry:
         self._objects.clear()
         self._identity.clear()
         self._permissions.clear()
+        self._denied.clear()
 
     def append(self, target: Reference, item: Reference) -> None:
         """Apply only an explicitly permitted original list append, atomically."""
@@ -333,6 +367,13 @@ class Registry:
                     row["opaque_native_binding"] = record.native_binding
                     row["fields"] = [[name, edge(getattr(value, name))]
                                      for name in record.fields]
+                    message = self._denied.get(reference.object_id)
+                    if reference == root and message is not None:
+                        fields = self._denied_fields(value, message)
+                        if fields is None:
+                            self._denied.pop(reference.object_id, None)
+                        else:
+                            row["factory_denied"] = fields
                 rows.append(row)
             return wire.dumps({"format": _VIEW, "scope": self.scope.wire(),
                                "root": root.wire(), "nodes": rows,

@@ -1,7 +1,7 @@
 //! The actual native-only component runner and original source metadata seam.
 //!
 //! Only initialization, the original first Profile-id method and reviewed DATA
-//! description are exposed, followed by the two original opaque root getters
+//! description and fixed denied factory are exposed, with the two opaque root getters
 //! only when composition explicitly admits their fixed module operation.
 //! Initialization permits bounded failure observations, never filesystem IO.
 use crate::bootstrap_metadata::{self, BootstrapInputOwner, BootstrapModuleIndex, Scope};
@@ -31,9 +31,16 @@ const HOST_ROOT: u8 = 3;
 const BUNDLE_ROOT: u8 = 4;
 const CLOSED: u8 = 5;
 const REVIEW: u8 = 6;
+const DENIED: u8 = 7;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
+
+#[path = "bootstrap_denied.rs"]
+mod denied;
+pub use denied::{
+    BootstrapDenied, BootstrapDeniedFailure, BootstrapDeniedRaise, BootstrapDeniedStage,
+};
 
 /// Preserve both the original execution failure and failed physical cleanup.
 /// This is native diagnostic data, never a replacement guest/domain outcome.
@@ -378,6 +385,9 @@ pub struct NativeBootstrap<S: BootstrapInputOwner> {
     input_budget: Arc<dyn AllocationBudget>,
     cancellation: CoreCancellation,
     review: Option<crate::bootstrap_review::Review>,
+    // CoreBuffer/cause DATA only; no extra source or IO capability. Keep it
+    // outside caught/dropped child futures until actual retire/finish.
+    denied_pending: Option<denied::DeniedCallCustody>,
 }
 
 impl<S: BootstrapInputOwner> NativeBootstrap<S> {
@@ -491,6 +501,14 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 export: NativeDataExport::new(Some(RUNTIME), "bundled-profile-root"),
                 result: Some(contract(NativeDataSuccessType::String)),
             },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "denied"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(TRANSPORT), "import-values"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
         ];
         work.get().init_trace.phase(1);
         let program = match store.prepare_data_program(component, &bindings).await {
@@ -516,6 +534,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             input_budget: budget,
             cancellation,
             review: None,
+            denied_pending: None,
         };
         runner
             .work
@@ -684,18 +703,46 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     }
 
     async fn retire_failure(&mut self, original: anyhow::Error) -> anyhow::Error {
+        #[cfg(debug_assertions)]
+        let rejected_factory_view = self
+            .denied_pending
+            .as_ref()
+            .is_some_and(denied::DeniedCallCustody::view_rejected);
+        #[cfg(debug_assertions)]
+        if rejected_factory_view {
+            self.denied_pending
+                .as_ref()
+                .expect("rejected factory custody")
+                .assert_rejected_outputs_live();
+        }
         self.work.get().phase.store(CLOSED, Ordering::Release);
         if let Some(mut program) = self.program.take() {
             program.retire();
+            #[cfg(debug_assertions)]
+            if rejected_factory_view {
+                assert!(
+                    program.observation().store_retired,
+                    "rejected factory Store was not physically retired"
+                );
+            }
         }
-        match self.io.retire_and_wait().await {
+        let outcome = match self.io.retire_and_wait().await {
             Ok(()) => original,
             Err(cleanup) => BootstrapCleanupFailure {
                 original,
                 cleanup: cleanup.into(),
             }
             .into(),
+        };
+        #[cfg(debug_assertions)]
+        if rejected_factory_view {
+            self.denied_pending
+                .as_ref()
+                .expect("rejected factory custody survived IO wait")
+                .assert_rejected_outputs_live();
         }
+        drop(self.denied_pending.take());
+        outcome
     }
 
     fn initialization_failure(&self, original: anyhow::Error) -> anyhow::Error {
@@ -805,6 +852,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             program.retire();
         }
         self.io.retire_and_wait().await?;
+        drop(self.denied_pending.take());
         if let Some(review) = &self.review {
             let receipt = review.receipt();
             if !receipt.verified() {
@@ -840,6 +888,14 @@ fn initialization_failure<S>(
 ))]
 #[path = "bootstrap_actual_ci.rs"]
 mod actual_ci;
+#[cfg(all(
+    test,
+    feature = "bootstrap-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "bootstrap_denied_actual_ci.rs"]
+mod denied_actual_ci;
 #[cfg(all(test, target_os = "macos"))]
 #[path = "bootstrap_domain_cleanup_tests.rs"]
 mod domain_cleanup_tests;

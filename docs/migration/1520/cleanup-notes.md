@@ -299,6 +299,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   追加したv2 CI41255001377も両OS成功し、actualkindとfactory DATAを比較できる形にした。
   Rust/実componentとの比較はまだ未実行。Guest例外にcauseを設定済みと偽らず、一般exception RPCや
   Core内のPack class固定、ownedReview文字列へのCoreBuffer資金混在を追加しない。
+  Sol6.1 xhighの第一factory単位をsource freeze。同Storeの既存import-values→denied→
+  実返値限定describeをRustへ接続し、Host cause/contextは別由来の有限native graphとして
+  保持する。例外の一般fields公開はせず、実fresh factory refだけargs/None/None/Falseを
+  builtin descriptorで観測。provenanceは既存Guest64MiB heap上で、release/rollback/retire
+  と再利用/raised時に失効する。既存WIT署名/予算/account/Store/製品dispatcherは不変。
+  Rootがchild future内だけに返値を保持しないことを再確認し、固定runner pendingへ
+  実result/view/error共有を保持。retire/IO wait後に解放し、正常返値/Factory MethodRaisedは
+  finish後dropのcarrierへmoveする。Root独立driverも受領直後に保持し、観測失敗で先に
+  破棄しない。transport5件、実worker4件（不正describeの契約拒否と実Store退役を含む）を
+  追加、独立actual component8比較を既存producer/consumer CIへ配線した。Source/AST/
+  8adapter inventory/format/YAMLのみ確認済みで、実Rust/Guest/新19finiteはまだ未実行。
+  async journal/getter接続、NFC、完全panic/cancel/IO fault、製品採用とは分ける。
   追加の削減候補: 新Reviewは同invocationの固定bodyを直接呼ぶ。別jobを作る旧試作の
   read_original_authority_snapshot/OriginalAuthorityJob/Dataは現在のtracked callerがなく、
   将来のsnapshot接続後も独立prefetchとして使わない。直接snapshot接続と実caller回帰を

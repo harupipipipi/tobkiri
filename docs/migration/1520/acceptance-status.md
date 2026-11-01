@@ -70,6 +70,14 @@ the current-source installer/cold-boot/DMG did not complete.
 Bootstrap-identity getter/factory/canonical semantics, catalog and subsequent
 recovery/listing, product adoption and the original GUI remain unqualified.
 
+The next finite denial-factory implementation connects the existing import,
+factory and limited-description exports on the same Store. Its original eight
+reference cases passed, including the application's actual denial classifier.
+Five transport and four worker/funding regressions plus an independent actual
+component driver have been prepared; native execution is pending. The Host's
+cause/context remain separate from the Guest exception's observed fields.
+This does not yet connect async recovery or qualify the product factory/GUI.
+
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
 inventory tests **9** passed. That snapshot reported 837 units and

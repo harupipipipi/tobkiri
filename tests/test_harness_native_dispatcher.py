@@ -88,6 +88,169 @@ class PortableRuntime:
         raise LookupError("not in closed inventory")
 
 
+class FactoryDeniedFixture(Exception):
+    """Portable ABI fixture only; the original factory has independent CI."""
+
+    def __str__(self):
+        raise AssertionError("factory observations must not format exceptions")
+
+    def __repr__(self):
+        raise AssertionError("factory observations must not format exceptions")
+
+    def __getattribute__(self, name):
+        if name in {"args", "__cause__", "__context__", "__suppress_context__"}:
+            raise AssertionError("factory observations must use builtin descriptors")
+        return super().__getattribute__(name)
+
+
+class FactoryRuntimeFixture:
+    def __init__(self):
+        self.last = None
+        self.reuse = False
+        self.failure = None
+
+    def denied(self, message):
+        if self.failure is not None:
+            raise self.failure
+        if not self.reuse:
+            self.last = FactoryDeniedFixture(message)
+        return self.last
+
+    def resolve_profile(self):
+        raise self.last
+
+    def setup_preview(self):
+        return [self.last]
+
+
+class DeniedFactoryTransportTests(unittest.TestCase):
+    """Finite provenance/rollback ABI, not original factory or native proof."""
+
+    def setUp(self):
+        self.runtime = FactoryRuntimeFixture()
+        self.scope = Scope(1, 2, 3, 4)
+        self.dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
+            self.runtime,
+            (RecordType("profile-resolution-denied", FactoryDeniedFixture),
+             RecordType("type-error", TypeError), RecordType("runtime-error", RuntimeError)),
+            (FactoryDeniedFixture, TypeError, RuntimeError),
+        ))
+        self.dispatcher.init(self.frame("init"))
+        self.registry = self.dispatcher._current().registry
+
+    def frame(self, kind, **fields):
+        return wire.dumps({"format": PREFIX + kind + ".v1",
+                           "scope": self.scope.wire(), **fields})
+
+    def call_frame(self, message):
+        imported = json.loads(self.dispatcher.import_values(self.frame(
+            "value-input", nodes=[{"kind": "str", "value": message}], root={"node": 0})))
+        return self.frame("call", args=[imported["root"]], kwargs=[])
+
+    def call(self, message):
+        return json.loads(self.dispatcher.call("denied", self.call_frame(message)))
+
+    def view(self, packet):
+        return json.loads(self.dispatcher.describe_value(
+            self.frame("value-describe", root=packet["root"])))
+
+    def test_fresh_factory_values_have_only_the_fixed_builtin_observation(self):
+        previous = set()
+        for message in ("", "plain", "λ 日本語", 'quote" and \\ slash', "line\n\x00"):
+            packet = self.call(message)
+            self.assertNotIn(packet["root"]["object"], previous)
+            previous.add(packet["root"]["object"])
+            self.assertEqual(packet["owned"], [packet["root"]["object"]])
+            view = self.view(packet)
+            self.assertEqual(view["owned"], [])
+            self.assertEqual(view["nodes"], [{
+                "ref": packet["root"], "kind": "profile-resolution-denied",
+                "opaque_native_binding": False, "fields": [],
+                "factory_denied": {"args": [message], "cause": None,
+                                   "context": None, "suppress_context": False},
+            }])
+
+    def test_other_errors_nested_views_reuse_and_raised_values_stay_opaque(self):
+        existing = self.registry.retain(FactoryDeniedFixture("private"))
+        self.assertNotIn("factory_denied", json.loads(self.registry.describe(existing))["nodes"][0])
+        packet = self.call("fresh")
+        nested = json.loads(self.dispatcher.call("setup_preview", self.frame("call", args=[], kwargs=[])))
+        self.assertTrue(all("factory_denied" not in row for row in self.view(nested)["nodes"]))
+        self.runtime.reuse = True
+        reused = self.call("fresh")
+        self.assertEqual(reused["root"], packet["root"])
+        self.assertEqual(reused["owned"], [])
+        self.assertNotIn("factory_denied", self.view(reused)["nodes"][0])
+        self.runtime.reuse = False
+        packet = self.call("raised later")
+        with self.assertRaises(MethodRaised) as caught:
+            self.dispatcher.call("resolve_profile", self.frame("call", args=[], kwargs=[]))
+        raised = json.loads(caught.exception.details)
+        self.assertEqual(raised["root"], packet["root"])
+        self.assertNotIn("factory_denied", self.view(raised)["nodes"][0])
+
+    def test_mutation_foreign_scope_release_retire_and_fake_kind_do_not_disclose(self):
+        packet = self.call("before mutation")
+        reference = self.registry.reference(packet["root"])
+        BaseException.args.__set__(self.registry.borrow(reference), ("secret",))
+        self.assertNotIn("factory_denied", self.view(packet)["nodes"][0])
+        packet = self.call("release")
+        foreign = {**packet["root"], "scope": ["1", "2", "9", "4"]}
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.describe_value(self.frame("value-describe", root=foreign))
+        self.dispatcher.release_values(self.frame("values-release", refs=[packet["root"]]))
+        self.assertNotIn(int(packet["root"]["object"], 16), self.registry._denied)
+        with self.assertRaises(InvalidReference):
+            self.view(packet)
+        with self.assertRaises((InvalidFrame, UnsupportedValue)):
+            self.dispatcher.import_values(self.frame("value-input", nodes=[{
+                "kind": "profile-resolution-denied", "args": ["fake"]}], root={"node": 0}))
+        self.call("retire")
+        self.registry.retire()
+        self.assertEqual(self.registry._denied, {})
+        with self.assertRaises(InvalidReference):
+            self.view(packet)
+
+    def test_provenance_allocation_and_output_failures_roll_back_fresh_rows(self):
+        class FailInsertion(dict):
+            def __setitem__(self, key, value):
+                super().__setitem__(key, value)
+                raise MemoryError("injected provenance allocation failure")
+
+        for insertion in (False, True):
+            with self.subTest(insertion=insertion):
+                frame = self.call_frame("rollback")
+                before = (dict(self.registry._objects), dict(self.registry._identity),
+                          dict(self.registry._permissions), dict(self.registry._denied))
+                if insertion:
+                    self.registry._denied = FailInsertion(self.registry._denied)
+                    with self.assertRaises(MemoryError):
+                        self.dispatcher.call("denied", frame)
+                    self.registry._denied = dict(self.registry._denied)
+                else:
+                    with patch("harness_native.dispatcher.wire.dumps", side_effect=MemoryError("output")):
+                        with self.assertRaises(MemoryError):
+                            self.dispatcher.call("denied", frame)
+                self.assertEqual((self.registry._objects, self.registry._identity,
+                                  self.registry._permissions, self.registry._denied), before)
+
+    def test_signature_typeerror_and_mock_faults_are_not_returned_factory_values(self):
+        with self.assertRaises(MethodRaised) as caught:
+            self.dispatcher.call("denied", self.frame("call", args=[], kwargs=[]))
+        packet = json.loads(caught.exception.details)
+        error = self.registry.borrow(self.registry.reference(packet["root"]))
+        self.assertIs(type(error), TypeError)
+        self.assertNotIn("factory_denied", self.view(packet)["nodes"][0])
+        # These injected ABI faults are separate from original-factory CI.
+        for error, expected in ((RuntimeError("fixture"), MethodRaised),
+                                (ImportError("fixture"), UnsupportedValue),
+                                (MemoryError("fixture"), MemoryError),
+                                (RecursionError("fixture"), RecursionError)):
+            self.runtime.failure = error
+            with self.subTest(kind=type(error)), self.assertRaises(expected):
+                self.call("not returned")
+
+
 def original(runtime=None):
     return OriginalRuntime(
         runtime or PortableRuntime(),

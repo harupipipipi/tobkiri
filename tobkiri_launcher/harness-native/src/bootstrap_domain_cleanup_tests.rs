@@ -77,10 +77,11 @@ async fn domain(root: &Path) -> Result<NativeDataError> {
       (instance $runtime
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "init" (func $init)) (export "bootstrap-profile-id" (func $text))
-        (export "host-resource-root" (func $text)) (export "bundled-profile-root" (func $text)))
+        (export "host-resource-root" (func $text)) (export "bundled-profile-root" (func $text))
+        (export "denied" (func $text)))
       (instance $transport
         (export "error-code" (type $code)) (export "error" (type $error))
-        (export "describe-value" (func $text)))
+        (export "describe-value" (func $text)) (export "import-values" (func $text)))
       (export "tobkiri-ui:harness-native/runtime@1.0.0" (instance $runtime))
       (export "tobkiri-ui:harness-native/transport@1.0.0" (instance $transport)))"#
         .replace("@MESSAGE@", &escape(MESSAGE))

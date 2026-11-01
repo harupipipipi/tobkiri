@@ -232,11 +232,18 @@ class Dispatcher:
             raise InvalidFrame("invalid or foreign transport frame")
         return frame
 
-    def _result(self, value: Any, *, set_items: bool = False) -> str:
+    def _result(self, value: Any, *, set_items: bool = False,
+                denied_message: str | None = None) -> str:
         state = self._current()
         created: list[tuple[Reference, int]] = []
         try:
-            ref, _ = state.registry._retain(value, set_items=set_items, created=created)
+            ref, fresh = state.registry._retain(value, set_items=set_items, created=created)
+            # Only a fresh value returned by the actual fixed denied call may
+            # gain this finite observation. Reusing/raising an existing object
+            # removes its old provenance; no new authority is issued.
+            state.registry._denied.pop(ref.object_id, None)
+            if fresh and denied_message is not None:
+                state.registry._mark_denied(ref, denied_message)
             return wire.dumps(
                 {
                     "format": PREFIX + "value-result.v1",
@@ -289,7 +296,10 @@ class Dispatcher:
                 raise InvalidFrame("invalid or duplicate original keyword")
             kwargs[item[0]] = state.registry.borrow(state.registry.reference(item[1]))
         target = getattr(state.runtime, method)
-        return self._result(self._apply_original(lambda: target(*args, **kwargs)))
+        value = self._apply_original(lambda: target(*args, **kwargs))
+        message = (args[0] if method == "denied" and len(args) == 1
+                   and type(args[0]) is str and not kwargs else None)
+        return self._result(value, denied_message=message)
 
     def import_values(self, payload: str) -> str:
         """Import only builtin DATA and existing issued references."""
