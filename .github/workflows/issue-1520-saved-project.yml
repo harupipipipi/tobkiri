@@ -47,6 +47,8 @@ jobs:
         working-directory: tobkiri_runtime
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch the exact migration provenance tree required by existing generators
+        run: git fetch --no-tags --depth=1 origin 1329f300cd2a8e15170edb1accce8d7c3167882b
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13.16"
@@ -131,6 +133,8 @@ jobs:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch the exact migration provenance tree required by existing generators
+        run: git fetch --no-tags --depth=1 origin 1329f300cd2a8e15170edb1accce8d7c3167882b
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13.16"
