@@ -13,6 +13,7 @@ from importlib.util import resolve_name
 from typing import Any
 
 from .data_facade import DataFacade, assemble as assemble_data_facade
+from .persistence_guard import validate as validate_persistence_boundary
 
 
 _CAPSULE_FORMAT = "io.tobkiri.harness-native-source-capsule.v1"
@@ -676,7 +677,7 @@ def _manifest(
     sources: dict[str, dict[str, Any]], definitions: list[dict[str, Any]],
     composition: bytes, port: bytes, files: dict[str, bytes], facade: DataFacade,
     source_index_sha256: str, source_index_module_count: int,
-    source_index_path_module_count: int,
+    source_index_path_module_count: int, persistence_replacement: dict,
 ) -> bytes:
     external = capsule_metadata.get("external_runtime_dependencies", [])
     if not isinstance(external, list) or any(not isinstance(item, str) for item in external):
@@ -807,6 +808,7 @@ def _manifest(
         "native_root_getters": capsule_metadata.get("native_root_getters", {}),
         "native_imports": capsule_metadata.get("native_imports", []),
         "original_service_package": service_custody,
+        "catalog_host_dependency_replacement": persistence_replacement,
         "unconnected_native_dependencies": native_dependencies,
         "external_runtime_dependencies": external,
         "schema_resources": schema_resources,
@@ -843,6 +845,10 @@ def assemble(capsule: Mapping[str, bytes]) -> dict[str, bytes]:
         methods, decision_bytes, composition_source, port_source,
     )
     facade = assemble_data_facade(capsule, metadata, _extent)
+    replacement = validate_persistence_boundary({
+        path: capsule[row["stored_as"]]
+        for path, row in sources.items() if row.get("stored_as") is not None
+    })
 
     files: dict[str, bytes] = {}
     for path, record in sources.items():
@@ -875,6 +881,6 @@ def assemble(capsule: Mapping[str, bytes]) -> dict[str, bytes]:
     definitions = _definition_extents(metadata, sources, files, composition, port)
     files["source-package/provenance.json"] = _manifest(
         metadata, checksum, sources, definitions, composition, port, files, facade,
-        index_sha256, index_module_count, path_module_count,
+        index_sha256, index_module_count, path_module_count, replacement,
     )
     return files

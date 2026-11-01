@@ -11,9 +11,10 @@ from .native_path import NativePath
 from .value_graph import RecordType, Scope
 
 
-def load_original_runtime(scope: Scope) -> OriginalRuntime:
+def load_original_runtime(scope: Scope, *, _catalog_capture=None) -> OriginalRuntime:
     """Use the original qualified classes; never select them from a frame."""
-    inputs = installed_inputs(scope)
+    inputs = (installed_inputs(scope) if _catalog_capture is None else
+              installed_inputs(scope, _catalog_capture=_catalog_capture))
     inputs.modules.install()
     try:
         return _load_bound_runtime(inputs)

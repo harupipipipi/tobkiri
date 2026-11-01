@@ -95,11 +95,13 @@ DISPATCHER_SOURCES = (
     "tools/python313-producer/harness_native/bootstrap.py",
     "tools/python313-producer/harness_native/native_bootstrap.py",
     "tools/python313-producer/harness_native/native_module_loader.py",
+    "tools/python313-producer/harness_native/persistence_view.py",
     "tools/python313-producer/harness_native/init_diagnostic.py",
     "tools/python313-producer/harness_native/app.py",
     NATIVE_PATH_ADAPTER,
 )
 DATA_FACADE_SOURCE = "tools/python313-producer/harness_native/data_facade.py"
+PERSISTENCE_GUARD_SOURCE = "tools/python313-producer/harness_native/persistence_guard.py"
 _NATIVE_KIT_SOURCES = (
     "tobkiri_launcher/harness-native/Cargo.toml",
     "tobkiri_launcher/harness-native/src/lib.rs",
@@ -255,6 +257,7 @@ _CAPSULE_SOURCE_FILES = (
     NATIVE_BINDINGS_WIT,
     *DISPATCHER_SOURCES,
     DATA_FACADE_SOURCE,
+    PERSISTENCE_GUARD_SOURCE,
     PROFILE_RESOLUTION,
     PROFILE_RUNTIME_RECORDS,
     SETUP_CONTRACT,

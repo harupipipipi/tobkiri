@@ -6,7 +6,7 @@ import sys
 import sysconfig
 from types import FunctionType
 
-from harness_native_captured_loader import install
+from harness_native_captured_loader import Finder, Loader, install
 from harness_native_dependency_data import (
     DISTRIBUTIONS,
     FILES,
@@ -77,7 +77,7 @@ if (
     raise RuntimeError("native Harness requires the original Wasm CPython/rpds")
 
 # Re-export the actual classes, without replacing their dispatcher or bodies.
-from app import Runtime, Transport  # noqa: E402, F401
+from app import Runtime, Transport, _bind_catalog_capture  # noqa: E402, F401
 
 # Their later imports must retrieve these SAME module/callable objects. Sealed
 # capture deliberately has no fallback for uncaptured generated modules.
@@ -90,3 +90,6 @@ if any(name in sys.modules for name in PATH_MODULES) or any(
     raise RuntimeError("original runtime executed before native binding")
 
 _FINDER.seal()
+# Actual installation return and class objects from the SAME fixed import.
+# Bind only after the real seal returns, never by responder/name/hash lookup.
+_bind_catalog_capture(_FINDER, Finder, Loader)

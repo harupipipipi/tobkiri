@@ -2238,6 +2238,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   次の固定IO入口前のlazy import経路をSourceで調べる。service/App moduleはcapture済みで、
   transitive secure_persistence→secrets/ctypesとHost-only責務の分離を検討中。ctypesの
   Python部分だけ追加してC拡張や元IO動作まで実装できたとはしない。
+  Astra highの回答に従い、catalog期間の実selected serviceにだけ固定2symbolの依存viewを
+  実装した。元service/catalog/initはverbatim、whole DataFacadeは未採用のまま。
+  SecureDirectoryは状態/Source/handle/callback/成功IOを持たず、使用すれば未接続で停止。
+  SecurePersistenceErrorのpass本文は別private classとして翻訳し、元identityやmethod-error/
+  cause資格を与えない。成功枝だけでなく失敗枝/例外matching/class使用も0である閉じた
+  Source AST群をpinする。元import環境/初期化副作用/実persistenceの再現とはしない。
+  最初のowner案は任意responderのduck属性照合で偽装可能と独立Source監査で判明したため、
+  未実行のうちに撤去。実entry install返値と同固定Finder/Loader型を、実seal後・初init前に
+  既存bootstrapへ一回だけprivate配線する。Frame/WIT/名前/hashからownerを再発見しない。
+  同class別instanceと偽属性を拒否し、closeは既存ownfinder除去と追加borrow解放だけを行う。
+  13新検証Source（6catalog正常/失敗subcase、実captured owner、偽装/poison、Source drift、
+  init/import失敗）を追加し、Root CIで実依存もlock固定する。実component/予算検証は未実行。
+  将来の整理は未接続HostコードをGuest closureから外して実Rustへ移すことだが、今回の
+  依存置換の成功だけでSource削除や後続activation機能の達成を認定しない。
 
 ## 024: frozen component checkpointを現在のProfileへ誤照合しない
 

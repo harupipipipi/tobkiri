@@ -64,6 +64,23 @@ jobs:
           python-version: '3.13.16'
       - name: Fetch the original source for the frozen producer checkpoint
         run: git fetch --no-tags --depth=1 origin c6d7001249c661552416672448bda123c59b33ca
+      - name: Install lock-pinned Host dependencies for real catalog source tests
+        run: |
+          python3 -B - "$RUNNER_TEMP/native-source-test-requirements.txt" <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "tools")
+          from original_authority_reference import requirements
+          # Host test dependencies use this checkout's lock. Independent
+          # original references still require their separate clean checkout.
+          requirements(Path.cwd(), Path(sys.argv[1]), packages=(
+              "jsonschema", "attrs", "jsonschema-specifications", "referencing",
+              "rpds-py", "packaging", "typing-extensions",
+          ), versions={"rpds-py": "2026.6.3"})
+          PY
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/native-source-test-requirements.txt"
       - name: Verify actual whole-component sources and native-only boundary
         run: |
           python3 -B tools/quality/test_harness_native_workflow.py

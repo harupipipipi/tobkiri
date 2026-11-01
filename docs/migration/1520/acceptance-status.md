@@ -165,6 +165,18 @@ The actual catalog failure is now an exact `ModuleNotFoundError`, with inspectio
 counts7→10 and the same RootSymlink reachpoint. Source investigation is examining
 the captured service's transitive Host-only imports; no dependency or IO fallback
 is enabled by these diagnostics. Cleanup/reap still passed independently.
+The next candidate implements a catalog-only fixed dependency view for the real
+selected service's two unused Host-persistence imports. The original service,
+initializer and catalog source bytes remain intact; whole DataFacade execution
+remains disabled. Unconnected operations refuse, and the translated exception
+has a distinct private identity without method-error/cause qualification.
+The actual installation return and fixed class objects are borrowed after real
+seal through private bootstrap parameters; name/hash/duck attributes cannot select
+an owner. Independent Source review closed an initial responder-forgery defect.
+Thirteen new Source tests include normal/failure catalog paths and owner/cleanup/
+drift refusals. Compilation, runtime and resource limits await CI. This qualifies
+only bodies under an explicit dependency replacement if verified, rather than
+the original import environment, initialization effects or real persistence.
 
 The independent original constructor/list reference subsequently passed13 controlled
 cases on each OS in [CI41323891367](https://github.com/harupipipipi/tobkiri/actions/runs/41323891367):

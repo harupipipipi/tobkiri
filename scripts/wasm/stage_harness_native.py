@@ -24,6 +24,7 @@ BINDINGS_INTERFACE = "tobkiri-native:harness/bindings@1.0.0"
 ADAPTERS = (
     "bootstrap.py", "dispatcher.py", "exception_graph.py", "native_bootstrap.py",
     "native_module_loader.py", "native_path.py", "value_graph.py", "init_diagnostic.py",
+    "persistence_view.py",
 )
 
 
@@ -73,6 +74,9 @@ def captured() -> dict[str, bytes]:
             package["source-package/provenance.json"]
         ).hexdigest(),
         "source_index": manifest["source_index"],
+        "catalog_host_dependency_replacement": manifest[
+            "catalog_host_dependency_replacement"
+        ],
         "sources": [
             {"path": name, "bytes": len(data),
              "sha256": hashlib.sha256(data).hexdigest()}

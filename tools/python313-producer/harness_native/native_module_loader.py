@@ -15,7 +15,13 @@ from types import ModuleType
 from typing import Any
 
 from .native_path import NativePath, PathBridge
+from .persistence_view import VIEW as _PERSISTENCE_VIEW
 from .value_graph import UnsupportedValue
+
+_SERVICE = "ecosystem.defaultspack.domain.runtime_v4.service"
+_SERVICE_SOURCE = "ecosystem/defaultspack/domain/runtime_v4/service.py"
+_PERSISTENCE = "tobkiri_protocol.secure_persistence"
+_PERSISTENCE_EXPORTS = ("SecureDirectory", "SecurePersistenceError")
 
 
 class _PathlibView(ModuleType):
@@ -53,7 +59,8 @@ class _PathlibView(ModuleType):
 
 
 class _ModuleLoader:
-    def __init__(self, spec: Any, bridge: PathBridge, anchor: NativePath):
+    def __init__(self, spec: Any, bridge: PathBridge, anchor: NativePath,
+                 source_owner=None, catalog_capture=None):
         # This is the actual finder's existing spec/source DATA. It never
         # selects a host resource; the NativeAnchor is independently supplied.
         if (type(spec) is not ModuleSpec or type(spec.origin) is not str
@@ -62,6 +69,11 @@ class _ModuleLoader:
         self.original, self.spec = spec.loader, spec
         self.origin = spec.origin
         self.bridge, self.anchor = bridge, anchor
+        # The actual finder that produced this spec, not a name-selected owner.
+        # This only narrows an unavailable dependency; it grants no operation.
+        self.source_owner = source_owner
+        self.source_tree = getattr(self.original, "_source_tree", None)
+        self.catalog_capture = catalog_capture
 
     def create_module(self, spec):
         create = getattr(self.original, "create_module", None)
@@ -84,6 +96,41 @@ class _ModuleLoader:
         original_import = builtins.__import__
 
         def scoped_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if level == 0 and name == _PERSISTENCE:
+                owner = self.source_owner
+                capture = self.catalog_capture
+                if (
+                    capture is None
+                    or owner is not capture[0] or type(owner) is not capture[1]
+                    or type(self.original) is not capture[2]
+                    or self.source_tree is not capture[3]
+                    or self.spec.name != _SERVICE
+                    or type(fromlist) is not tuple or fromlist != _PERSISTENCE_EXPORTS
+                    or globals is not attributes
+                    or sys.modules.get(_SERVICE) is not module
+                    or attributes.get("__spec__") is not self.spec
+                    or attributes.get("__loader__") is not self.original
+                    or self.spec.loader is not self.original
+                    or type(attributes.get("__file__")) is not str
+                    or attributes.get("__file__") != self.origin
+                    or type(self.spec.origin) is not str
+                    or self.spec.origin != self.origin
+                    or self.bridge._catalog_root is None
+                    or owner is None or not any(f is owner for f in sys.meta_path)
+                    or getattr(owner, "sealed", False) is not True
+                    or getattr(self.original, "finder", None) is not owner
+                    or self.source_tree is None
+                    or getattr(owner, "tree", None) is not self.source_tree
+                    or getattr(self.original, "_source_tree", None) is not self.source_tree
+                    or getattr(self.original, "source", None) != _SERVICE_SOURCE
+                    or getattr(self.original, "name", None) != _SERVICE
+                    or type(getattr(owner, "root", None)) is not str
+                    or self.origin != getattr(owner, "root", "") + "/" + _SERVICE_SOURCE
+                ):
+                    raise UnsupportedValue("catalog Host dependency owner is not bound")
+                # The guarded original import executes in this actual owner's
+                # globals. No persistence module is imported or registered.
+                return _PERSISTENCE_VIEW
             if level == 0 and name == "pathlib":
                 return view
             if level == 0 and name.startswith("pathlib."):
@@ -119,7 +166,8 @@ class ModulePathBindings:
     The finder stays alive for the interpreter's lazy original imports.
     """
 
-    def __init__(self, bridge: PathBridge, anchors: dict[str, NativePath]):
+    def __init__(self, bridge: PathBridge, anchors: dict[str, NativePath],
+                 *, _catalog_capture=None):
         if (type(anchors) is not dict or not anchors
                 or any(type(path) is not NativePath or path._bridge is not bridge
                        for path in anchors.values())):
@@ -128,6 +176,14 @@ class ModulePathBindings:
         self.anchors = dict(anchors)
         self.finders: tuple[Any, ...] = ()
         self.installed = False
+        if _catalog_capture is not None and (
+            type(_catalog_capture) is not tuple or len(_catalog_capture) != 4
+            or type(_catalog_capture[0]) is not _catalog_capture[1]
+            or _catalog_capture[0].sealed is not True
+            or _catalog_capture[0].tree is not _catalog_capture[3]
+        ):
+            raise UnsupportedValue("catalog capture is not the installed owner")
+        self._catalog_capture = _catalog_capture
 
     def install(self) -> None:
         if self.installed or any(name in sys.modules for name in self.anchors):
@@ -145,6 +201,7 @@ class ModulePathBindings:
         if self.installed:
             sys.meta_path[:] = [finder for finder in sys.meta_path if finder is not self]
             self.installed = False
+        self._catalog_capture = None
 
     def find_spec(self, fullname, path=None, target=None):
         anchor = self.anchors.get(fullname)
@@ -159,6 +216,13 @@ class ModulePathBindings:
                 continue
             if spec.loader is None:
                 raise UnsupportedValue("original bound module has no code loader")
-            spec.loader = _ModuleLoader(spec, self.bridge, anchor)
+            capture = self._catalog_capture
+            if fullname == _SERVICE and capture is not None and (
+                finder is not capture[0] or type(finder) is not capture[1]
+                or type(spec.loader) is not capture[2]
+                or finder.tree is not capture[3]
+            ):
+                raise UnsupportedValue("catalog source responder is not selected")
+            spec.loader = _ModuleLoader(spec, self.bridge, anchor, finder, capture)
             return spec
         raise ModuleNotFoundError(fullname)

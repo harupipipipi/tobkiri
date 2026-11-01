@@ -23,6 +23,27 @@ _dispatcher = Dispatcher(
 )
 
 
+def _bind_catalog_capture(finder, finder_type, loader_type):
+    """One fixed entry-install dependency, before any initialization attempt.
+
+    Only entry_wrapper calls this, immediately after that install's real seal.
+    There is no WIT/frame selector, registry, or secondary source lookup.
+    """
+    if (_dispatcher._bootstrap is not load_original_runtime
+            or _dispatcher._state is not None
+            or _dispatcher._init_failure is not None
+            or type(finder) is not finder_type or finder.sealed is not True):
+        raise UnsupportedValue("catalog capture cannot be rebound")
+    original = _dispatcher._bootstrap
+    capture = (finder, finder_type, loader_type, finder.tree)
+
+    def bound(scope, _bootstrap=original, _capture=capture):
+        return _bootstrap(scope, _catalog_capture=_capture)
+
+    # Keep the SAME dispatcher, observers, failed-init custody and once guard.
+    _dispatcher._bootstrap = bound
+
+
 def _invoke(action, *args, _catalog_diagnostic=None):
     try:
         return action(*args)

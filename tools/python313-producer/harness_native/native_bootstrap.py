@@ -32,7 +32,7 @@ class NativeBootstrapInputs:
     @classmethod
     def from_inventory(
         cls, scope: Scope, payload: str, inspect: Callable[[str], str],
-        *, index_sha256: str, path_modules: tuple[str, ...],
+        *, index_sha256: str, path_modules: tuple[str, ...], _catalog_capture=None,
     ) -> NativeBootstrapInputs:
         try:
             data = wire.loads(payload)
@@ -98,10 +98,12 @@ class NativeBootstrapInputs:
             anchors[row["module"]] = bind(row["binding"], row["value"])
         if set(anchors) != expected:
             raise UnsupportedValue("native module anchor set is incomplete")
-        return cls(bridge, tuple(inputs), ModulePathBindings(bridge, anchors))
+        return cls(bridge, tuple(inputs), ModulePathBindings(
+            bridge, anchors, _catalog_capture=_catalog_capture,
+        ))
 
 
-def installed_inputs(scope: Scope) -> NativeBootstrapInputs:
+def installed_inputs(scope: Scope, *, _catalog_capture=None) -> NativeBootstrapInputs:
     """Use the component's fixed WIT imports and immutable generated index."""
     from harness_native_source_index import INDEX_SHA256, PATH_MODULES
     from wit_world.imports.bindings import inspect, inventory
@@ -109,4 +111,5 @@ def installed_inputs(scope: Scope) -> NativeBootstrapInputs:
     return NativeBootstrapInputs.from_inventory(
         scope, inventory(), inspect,
         index_sha256=INDEX_SHA256, path_modules=PATH_MODULES,
+        _catalog_capture=_catalog_capture,
     )
