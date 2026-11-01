@@ -122,8 +122,8 @@ fn same_data(left: &Document, right: &Document) {
     }
 }
 
-#[test]
-fn catalog_density_covers_actual_vec_capacities_and_preserves_legacy_data() {
+#[tokio::test(flavor = "current_thread")]
+async fn catalog_density_covers_actual_vec_capacities_and_preserves_legacy_data() {
     with_operation(|op, budget, work| {
         let cases = vec![
             "{}".to_owned(),
@@ -156,8 +156,8 @@ fn catalog_density_covers_actual_vec_capacities_and_preserves_legacy_data() {
     });
 }
 
-#[test]
-fn long_string_density_is_funded_and_insufficient_capacity_refuses_before_decode() {
+#[tokio::test(flavor = "current_thread")]
+async fn long_string_density_is_funded_and_insufficient_capacity_refuses_before_decode() {
     with_operation(|op, budget, work| {
         let input = format!("\"{}\"", "x".repeat(250_000));
         assert!(decode(input.as_bytes(), op).is_err());
@@ -203,8 +203,8 @@ fn long_string_density_is_funded_and_insufficient_capacity_refuses_before_decode
     });
 }
 
-#[test]
-fn catalog_long_key_comparisons_debit_the_same_work_budget_before_equality() {
+#[tokio::test(flavor = "current_thread")]
+async fn catalog_long_key_comparisons_debit_the_same_work_budget_before_equality() {
     with_operation(|op, budget, work| {
         let prefix = "shared".repeat(32);
         let input = format!(

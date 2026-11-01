@@ -92,6 +92,12 @@ fn lock_is_free(root: &Path) -> Result<bool> {
     Ok(false)
 }
 
+fn diagnostic_text(value: &CoreBuffer) -> Value {
+    let text = String::from_utf8_lossy(value.as_bytes());
+    json!({"text":text.chars().take(4096).collect::<String>(),
+        "source_bytes":value.len(),"truncated":text.chars().count()>4096})
+}
+
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires actual component and independent pinned original CI fixtures"]
 async fn original_catalog_component_driver() -> Result<()> {
@@ -229,6 +235,16 @@ async fn original_catalog_component_driver() -> Result<()> {
             .as_ref()
             .or(diagnostic.as_ref())
             .context("actual outcome required")?;
+        cleanup_probe = runtime.original_review_uncertain_cleanup();
+        if let BootstrapReviewFailure::ObservationRefused(failure) = error {
+            let native = failure.error();
+            observed = Some(json!({"outcome":"observation-refused",
+                "stage":format!("{:?}",failure.stage()),"origin":failure.origin(),
+                "native_code":diagnostic_text(native.code()),
+                "native_message":diagnostic_text(native.message()),
+                "native_details":native.details().map(diagnostic_text),
+                "qualification":false}));
+        }
         ensure!(
             matches!(
                 error,
@@ -249,7 +265,6 @@ async fn original_catalog_component_driver() -> Result<()> {
         );
         let fuel_after = runtime.fuel_remaining()?;
         ensure!(fuel_after < fuel_before && invocation.deadline()? == deadline);
-        cleanup_probe = runtime.original_review_uncertain_cleanup();
         ensure!(cleanup_probe.is_some() && !lock_is_free(&user_data)?);
         observed = Some(
             json!({"outcome":"integration-boundary", "stage":"profile-definition-store-entry",

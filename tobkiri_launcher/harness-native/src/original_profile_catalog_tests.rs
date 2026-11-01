@@ -122,8 +122,8 @@ fn call(
     serde_json::from_slice::<Value>(output.as_bytes()).unwrap()["result"].clone()
 }
 
-#[test]
-fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
+#[tokio::test(flavor = "current_thread")]
+async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
     with_source(false, |source, invocation, budget, io, _| {
         let bundle = source.root.join("ecosystem/defaultspack/v4");
         fs::create_dir_all(&bundle).unwrap();
@@ -273,8 +273,8 @@ fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
     });
 }
 
-#[test]
-fn catalog_development_selection_uses_original_inputs_and_skips_manifest() {
+#[tokio::test(flavor = "current_thread")]
+async fn catalog_development_selection_uses_original_inputs_and_skips_manifest() {
     with_source(true, |source, invocation, _, io, _| {
         let generated = source.root.join("bundled/dev-defaults");
         fs::create_dir_all(generated.join("v4")).unwrap();
@@ -285,8 +285,8 @@ fn catalog_development_selection_uses_original_inputs_and_skips_manifest() {
     });
 }
 
-#[test]
-fn catalog_cancelled_read_refuses_before_open_and_leaves_no_descriptor() {
+#[tokio::test(flavor = "current_thread")]
+async fn catalog_cancelled_read_refuses_before_open_and_leaves_no_descriptor() {
     with_source(false, |source, invocation, budget, io, cleanup| {
         let cancellation = io.cancellation.clone();
         let op = io.operation(source, invocation, &cancellation).unwrap();
@@ -306,8 +306,8 @@ fn catalog_cancelled_read_refuses_before_open_and_leaves_no_descriptor() {
     });
 }
 
-#[test]
-fn catalog_binding_walk_uses_actual_hashes_preserves_ignored_surrogates_and_detects_change() {
+#[tokio::test(flavor = "current_thread")]
+async fn catalog_binding_walk_uses_actual_hashes_preserves_ignored_surrogates_and_detects_change() {
     with_source(false, |source, invocation, _, io, _| {
         let bundle = source.root.join("ecosystem/defaultspack/v4");
         fs::create_dir_all(&bundle).unwrap();
