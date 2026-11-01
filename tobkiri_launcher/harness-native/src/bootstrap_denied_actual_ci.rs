@@ -5,9 +5,44 @@ use super::*;
 use crate::{BootstrapDeniedRaise, NativeComponentPreparation};
 use anyhow::ensure;
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, fs::File, path::PathBuf, sync::atomic::AtomicBool};
+use std::{
+    collections::BTreeSet,
+    fs::File,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use tobkiri_canon::Digest;
 use tobkiri_core::RuntimeOwner;
+
+// Test-only witness after the real selected source's fields are destroyed.
+// It observes destructor reachability, not an OS close-fault receipt.
+struct SourceDropped(Arc<AtomicBool>);
+impl Drop for SourceDropped {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+struct ObservedSource {
+    source: SelectedRuntime,
+    _dropped: SourceDropped,
+}
+impl BootstrapInputOwner for ObservedSource {
+    fn original_module_metadata_policy(&self) -> Option<&'static crate::ModuleMetadataPolicy> {
+        self.source.original_module_metadata_policy()
+    }
+    fn with_roots<R>(
+        &self,
+        roots: impl for<'a> FnOnce(crate::BootstrapRoots<'a>) -> R,
+    ) -> std::result::Result<R, NativeDataIoError> {
+        self.source.with_roots(roots)
+    }
+    fn check_live(&self) -> std::result::Result<(), NativeDataIoError> {
+        self.source.check_live()
+    }
+}
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires this execution's fresh original factory fixtures and actual component"]
@@ -53,11 +88,16 @@ async fn original_reference_driver() -> Result<()> {
             .context("actual selected runtime required")?,
     );
     ensure!(root.is_absolute() && root.canonicalize()? == root);
-    let source = SelectedRuntime {
+    let selected_source = SelectedRuntime {
         _directory: File::open(&root)?,
         root,
         retired: AtomicBool::new(false),
         process: std::process::id(),
+    };
+    let source_dropped = Arc::new(AtomicBool::new(false));
+    let source = ObservedSource {
+        source: selected_source,
+        _dropped: SourceDropped(source_dropped.clone()),
     };
     let scratch = tempfile::tempdir()?;
     let owner_path = scratch.path().canonicalize()?.join("native-factory");
@@ -92,6 +132,12 @@ async fn original_reference_driver() -> Result<()> {
     let mut observed = Vec::new();
     let mut references = BTreeSet::new();
     let mut scope = None;
+    let capacity_observation = || -> Result<Value> {
+        let capacity = invocation.capacity_snapshot()?;
+        Ok(json!({"charged_bytes":capacity.charged_bytes,
+            "reservations":capacity.reservations,
+            "source_destructor_reached":source_dropped.load(Ordering::Acquire)}))
+    };
     let execution: Result<()> = async {
         for case in cases {
             let name = case["name"].as_str().context("factory name required")?;
@@ -160,6 +206,7 @@ async fn original_reference_driver() -> Result<()> {
             let bytes = serde_json::to_vec_pretty(&json!({
                 "format":"io.tobkiri.original-denied-factory-native-observations.v2",
                 "native_comparison":true,"qualification":false,"production_enabled":false,
+                "cleanup_verified":false,
                 "same_store":true,"budget_resets":0,"original_deadline_preserved":true,
                 "cases":observed,
             }))?;
@@ -169,13 +216,51 @@ async fn original_reference_driver() -> Result<()> {
         Ok(())
     }
     .await;
+    let before_finish = capacity_observation()?;
     let cleanup = runtime.finish().await;
+    let after_finish = capacity_observation()?;
     drop(retained);
     drop(retained_failures);
+    let after_carriers = capacity_observation()?;
+    // Existing allocator custody deliberately retains its zero-byte record
+    // until explicit reap proves there are no remaining Arc or Weak users.
+    // Collect the real record after DATA drops; do not waive reservations=0.
+    let allocator_records_reaped = tobkiri_wasm::reap_allocation_owners()?;
+    let after_reap = capacity_observation()?;
+    eprintln!(
+        "CI_FACTORY_CAPACITY before_finish={before_finish} after_finish={after_finish} after_carriers={after_carriers} allocator_records_reaped={allocator_records_reaped} after_reap={after_reap}"
+    );
+    let observations_path = manifest.with_file_name("native-observations.json");
+    if observations_path.is_file() {
+        let bytes = std::fs::read(&observations_path)?;
+        ensure!(bytes.len() <= 2 * 1024 * 1024);
+        let mut output: Value = serde_json::from_slice(&bytes)?;
+        output["cleanup"] = json!({"before_finish":before_finish,
+            "after_finish":after_finish,"after_carriers":after_carriers,
+            "allocator_records_reaped":allocator_records_reaped,"after_reap":after_reap});
+        output["cleanup_verified"] = json!(
+            cleanup.is_ok()
+                && after_reap["charged_bytes"] == 0
+                && after_reap["reservations"] == 0
+                && source_dropped.load(Ordering::Acquire)
+        );
+        let bytes = serde_json::to_vec_pretty(&output)?;
+        ensure!(bytes.len() <= 2 * 1024 * 1024);
+        std::fs::write(observations_path, bytes)?;
+    }
     cleanup?;
     execution?;
     let capacity = invocation.capacity_snapshot()?;
-    ensure!(capacity.charged_bytes == 0 && capacity.reservations == 0);
+    ensure!(
+        capacity.charged_bytes == 0 && capacity.reservations == 0,
+        "factory allocations survived finish, carrier drop and actual custody reap: bytes={} reservations={}",
+        capacity.charged_bytes,
+        capacity.reservations
+    );
+    ensure!(
+        source_dropped.load(Ordering::Acquire),
+        "actual selected source did not drop"
+    );
     ensure!(references.len() == cases.len() && previous_fuel < initial_fuel);
     drop(invocation);
     drop(owner);
