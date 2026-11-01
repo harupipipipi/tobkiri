@@ -2292,6 +2292,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   見落としていた。元の拒否とfuel不変・snapshot不在を維持し、同じruntime/accountの許可済み
   READY export内から禁止inspectを行う実Wasm失敗で退役Copyを確認するようtestだけ修正する。
   metadata許可は追加せず、元の6件・init/replay・予算を維持。修正後の実検証は次CI待ち。
+  実3eの全9比較は終了し、missing/JSON/UTF8/schema/unlistedの5件が原本の例外graph・
+  parser固有field・filesystem・既存key・元予算まで一致した。正常4件はすべて最初の
+  pack read後（実loader entries/entry1/walk2/pins0）でfuel0。初回check_schemaかcold42内かは
+  まだ区別しない。全9件で実finish/probe・Source破棄・FD解放・owner再open・reap0/0が成功、
+  最大peak56,254,129Bで64MiB以内。old1も実probeを取得し、catalog-loadでfuel0/26.15秒、
+  deadline未超過・Store破棄・cleanup_verified=trueを観測した。全9一致は5/9のままで未達。
+  比較reportのcleanup欄がexecution成功も含めてfalseとなる混同は分離するが、全体matchedは
+  引き続きexecution成功も必須にして5成功/4失敗を維持する。32KB ZIPをRAM検証し必要JSON
+  68,520Bだけ保存、9,945,120B componentはmetadataのみ。対象はsupported Macの有限fixtureで、
+  製品GUI・深い任意例外・constructor以降を検証したものではない。
   将来の整理は未接続HostコードをGuest closureから外して実Rustへ移すことだが、今回の
   依存置換の成功だけでSource削除や後続activation機能の達成を認定しない。
 

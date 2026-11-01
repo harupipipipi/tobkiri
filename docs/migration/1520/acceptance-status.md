@@ -186,6 +186,18 @@ driver did not capture its existing cleanup probe, so `cleanup_verified=false`
 remains unqualified rather than being inferred from those separate observations.
 Fuel profiling and early cleanup custody are the next work; limits remain unchanged.
 
+At `3e1179917`, [CI41349560999](https://github.com/harupipipipi/tobkiri/actions/runs/41349560999)
+passed171 Harness tests and built/compiled the current component. Five negative
+catalog cases independently matched original error graphs/parser fields/files/key
+and budgets. Four positive cases still exhausted2B fuel after the first pack read;
+entry into the first schema check or cold42 loop remains unproved. Actual cleanup,
+Source destruction, FD release, owner reopen and reap0/0 were verified for all9;
+maximum peak was56,254,129 bytes within64MiB. All-nine agreement remains5/9.
+The strengthened policy test mistook a pre-Guest admission refusal for retirement;
+test-only fix `7f7685cb7` preserves that refusal and separately exercises a hostile
+READY export under the same account. Its fresh execution is pending. No product
+route or limit changed, and no whole-catalog/GUI/constructor qualification follows.
+
 The independent original constructor/list reference subsequently passed13 controlled
 cases on each OS in [CI41323891367](https://github.com/harupipipipi/tobkiri/actions/runs/41323891367):
 4 positive migration-entry boundaries and9 invalid-state/file cases, with the actual

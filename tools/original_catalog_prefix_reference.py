@@ -352,7 +352,7 @@ def compare_nine_actual(
         original_scope = (original_case["constructor_body_executed"] is False
                           and original_case["constructor_entries"] == int(boundary))
         flags = (
-            "execution_matched_branch", "cleanup_verified", "source_destructor_reached",
+            "cleanup_verified", "source_destructor_reached",
             "physical_owner_reopened", "journal_lock_held_before_finish",
             "journal_lock_released_after_finish",
         )
@@ -361,6 +361,7 @@ def compare_nine_actual(
         measured = actual.get("measurement")
         measured = measured if isinstance(measured, dict) else {}
         independent_lock_free = journal_is_free(user_data)
+        execution_matches = actual.get("execution_matched_branch") is True
         cleanup = (all(actual.get(key) is True for key in flags)
                    and independent_lock_free
                    and first_difference({"bytes": 0, "reservations": 0},
@@ -381,10 +382,11 @@ def compare_nine_actual(
                      and measured.get("actual_bundle_root_retained")
                      is (name != "development-bundled"))
         matched = (difference is None and files_match and key_matches
-                   and original_scope and cleanup and budget and roots)
+                   and original_scope and execution_matches and cleanup and budget and roots)
         results.append({"name": name, "matched": matched, "difference": difference,
                         "independent_files_match": files_match, "existing_key_unchanged": key_matches,
                         "original_scope_matches": original_scope, "cleanup_verified": cleanup,
+                        "execution_matched_branch": execution_matches,
                         "independent_journal_lock_free": independent_lock_free,
                         "original_budget_preserved": budget, "actual_roots_match": roots})
     passed = sum(row["matched"] for row in results)
