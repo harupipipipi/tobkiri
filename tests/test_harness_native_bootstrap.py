@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import importlib
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 import sys
 import tempfile
@@ -101,7 +102,10 @@ class NativeBootstrapTests(unittest.TestCase):
         module = importlib.import_module(self.modules[0])
         self.assertIs(type(module.RUNTIME_ROOT), NativePath)
         self.assertEqual(str(module.RUNTIME_ROOT), str(self.native.resolve().parent))
-        self.assertEqual(module.__file__, str(self.native / f"{self.modules[0]}.py"))
+        self.assertEqual(module.__file__, str(self.root / f"{self.modules[0]}.py"))
+        self.assertEqual(module.__file__, module.__spec__.origin)
+        self.assertIs(module.__loader__, module.__spec__.loader)
+        self.assertIs(type(module.__loader__), SourceFileLoader)
         self.assertEqual(self.events, [0])
         self.assertIs(builtins.__import__, original_import)
         self.assertIs(Path, importlib.import_module("pathlib").Path)

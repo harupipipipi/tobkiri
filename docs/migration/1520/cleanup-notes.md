@@ -2217,6 +2217,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   別のSource欠落として、Native `_ModuleLoader` wrapperが実captured loaderのschema
   resource-owner accessor/identityを維持していない。今回unsupportedの原因とは未断定で、
   単純forwardやPath fallbackで済ませず、実owner/spec.loader/__loader__対応の閉鎖が必要。
+  Sol6.1 xhighが実original.exec_moduleを一度だけ実行する修正と、実CapturedFinderを使う
+  独立6件を用意した。module-local import viewを先に設置し、本来の__file__/loader/
+  成功weakrefを原本ownerに生成させる。shared loaderのguard/APIを緩めず、まだ実行未検証。
+  finder.closeは従来の自分finder除去だけとし、whole-scope/Host retirement拒否と分ける。
+  catalog診断は既存outside分類でexact builtin6種の固定tagだけ追加（512B内）。この修正群の
+  実catalog解消と全closureの__file__互換は、それぞれ別に実証する。
 
 ## 024: frozen component checkpointを現在のProfileへ誤照合しない
 

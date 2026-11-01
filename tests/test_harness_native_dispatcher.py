@@ -234,6 +234,7 @@ class CatalogDiagnosticTests(unittest.TestCase):
         registry = self.dispatcher._current().registry
         self.assertIs(registry.borrow(registry.reference(packet["root"])), self.runtime.value)
         self.assertEqual((self.observed[-1].phase, self.observed[-1].reason), (None, None))
+        self.assertIsNone(self.observed[-1].outside_builtin)
         self.runtime.failure = ValueError("actual domain object")
         with self.assertRaises(self.abi_error) as caught:
             self.call_catalog()
@@ -241,11 +242,67 @@ class CatalogDiagnosticTests(unittest.TestCase):
         packet = json.loads(caught.exception.value.details)
         self.assertIs(registry.borrow(registry.reference(packet["root"])), self.runtime.failure)
         self.assertEqual((self.observed[-1].phase, self.observed[-1].reason), (None, None))
+        self.assertIsNone(self.observed[-1].outside_builtin)
         for error in (MemoryError("fatal"), RecursionError("fatal"), KeyboardInterrupt()):
             self.runtime.failure = error
             with self.assertRaises(type(error)):
                 self.call_catalog()
             self.assertEqual((self.observed[-1].phase, self.observed[-1].reason), (None, None))
+            self.assertIsNone(self.observed[-1].outside_builtin)
+
+    def test_outside_inventory_tags_only_six_exact_builtins_and_never_their_args(self):
+        self.setup_dispatcher()
+
+        class Secret:
+            def __str__(self):
+                raise AssertionError("must not format original argument")
+
+            def __repr__(self):
+                raise AssertionError("must not render original argument")
+
+        cases = []
+        for builtin, tag in (
+            (TypeError, "type-error"), (AttributeError, "attribute-error"),
+            (NameError, "name-error"), (ImportError, "import-error"),
+            (NotImplementedError, "not-implemented-error"),
+            (AssertionError, "assertion-error"),
+        ):
+            class Subclass(builtin):
+                def __getattribute__(self, name):
+                    if name == "args":
+                        raise AssertionError("must not inspect original subclass args")
+                    return super().__getattribute__(name)
+
+            cases.extend(((builtin(Secret()), tag), (Subclass(Secret()), "unknown")))
+        cases.append((LookupError(Secret()), "unknown"))
+        for error, expected in cases:
+            with self.subTest(expected=expected, exact_builtin=type(error) in
+                              (TypeError, AttributeError, NameError, ImportError,
+                               NotImplementedError, AssertionError)):
+                self.runtime.failure = error
+                with self.assertRaises(UnsupportedValue):
+                    self.dispatcher.call("load_catalog", self.payload)
+                with self.assertRaises(self.abi_error) as caught:
+                    self.call_catalog()
+                value = caught.exception.value
+                self.assertEqual((value.code, value.message),
+                                 ("UNSUPPORTED_VALUE", "original DATA is not represented"))
+                self.assertLessEqual(len(value.details), _CatalogDiagnostic.MAX_BYTES)
+                self.assertEqual(json.loads(value.details), {
+                    "format": "io.tobkiri.native-catalog-refusal-ci.v1",
+                    "phase": "original-call", "reason": "outside-fixed-method-inventory",
+                    "outside_builtin": expected,
+                })
+                self.assertEqual((self.observed[-1].phase, self.observed[-1].reason,
+                                  self.observed[-1].outside_builtin), (None, None, None))
+
+        # Exact types which ARE in the fixed inventory keep MethodRaised.
+        self.runtime.failure = ValueError("actual domain object")
+        with self.assertRaises(self.abi_error) as caught:
+            self.call_catalog()
+        self.assertEqual(caught.exception.value.code, "METHOD_RAISED")
+        self.assertEqual((self.observed[-1].phase, self.observed[-1].reason,
+                          self.observed[-1].outside_builtin), (None, None, None))
 
     def test_diagnostic_encoding_failure_remains_fatal_and_clears_copy_data(self):
         diagnostic = _CatalogDiagnostic()

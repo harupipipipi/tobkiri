@@ -8,9 +8,10 @@ Only the fixed native inspector can validate the actual target and operation.
 from __future__ import annotations
 
 import builtins
+from importlib.machinery import ModuleSpec
 from pathlib import PurePath as OriginalPurePath, PurePosixPath, PureWindowsPath
 import sys
-from types import CodeType, ModuleType
+from types import ModuleType
 from typing import Any
 
 from .native_path import NativePath, PathBridge
@@ -52,26 +53,34 @@ class _PathlibView(ModuleType):
 
 
 class _ModuleLoader:
-    def __init__(self, original: Any, bridge: PathBridge, anchor: NativePath):
-        self.original, self.bridge, self.anchor = original, bridge, anchor
+    def __init__(self, spec: Any, bridge: PathBridge, anchor: NativePath):
+        # This is the actual finder's existing spec/source DATA. It never
+        # selects a host resource; the NativeAnchor is independently supplied.
+        if (type(spec) is not ModuleSpec or type(spec.origin) is not str
+                or not spec.origin or spec.has_location is not True or spec.loader is None):
+            raise UnsupportedValue("original module origin is not represented")
+        self.original, self.spec = spec.loader, spec
+        self.origin = spec.origin
+        self.bridge, self.anchor = bridge, anchor
 
     def create_module(self, spec):
         create = getattr(self.original, "create_module", None)
         return None if create is None else create(spec)
 
     def exec_module(self, module: ModuleType) -> None:
-        # Load the unchanged original code from the component's authenticated
-        # package. Do not delegate exec_module: it could execute constants
-        # before these globals/constructors have been bound.
-        get_code = getattr(self.original, "get_code", None)
-        if get_code is None:
-            raise UnsupportedValue("original module loader cannot expose its code")
-        code = get_code(module.__name__)
-        if type(code) is not CodeType:
-            raise UnsupportedValue("original module code is unavailable")
-        filename = str(self.anchor)
-        module.__file__ = filename
-        view = _PathlibView(self.bridge, filename, self.anchor)
+        if type(module) is not ModuleType:
+            raise UnsupportedValue("original module execution owner changed")
+        attributes = module.__dict__
+        if (attributes.get("__spec__") is not self.spec
+                or attributes.get("__loader__") is not self or self.spec.loader is not self
+                or type(attributes.get("__file__")) is not str
+                or attributes["__file__"] != self.origin
+                or type(self.spec.origin) is not str or self.spec.origin != self.origin):
+            raise UnsupportedValue("original module execution owner changed")
+        execute = getattr(self.original, "exec_module", None)
+        if not callable(execute):
+            raise UnsupportedValue("original module loader cannot execute its code")
+        view = _PathlibView(self.bridge, self.origin, self.anchor)
         original_import = builtins.__import__
 
         def scoped_import(name, globals=None, locals=None, fromlist=(), level=0):
@@ -84,9 +93,21 @@ class _ModuleLoader:
         namespace = dict(vars(builtins))
         namespace["__import__"] = scoped_import
         module.__dict__["__builtins__"] = namespace
-        # Original functions/classes/constants are executed without AST/body
-        # rewriting. This is not a new source selected by a transport frame.
-        exec(code, module.__dict__)
+        # Install scoped imports BEFORE eager constants execute, then let the
+        # actual owner perform its one original execution and success witness.
+        # Its captured __file__/resource tree stay intact. Path(__file__) maps
+        # that known origin to the already supplied anchor, without OS fallback.
+        module.__loader__ = self.original
+        self.spec.loader = self.original
+        execute(module)
+        if (attributes.get("__spec__") is not self.spec
+                or attributes.get("__loader__") is not self.original
+                or self.spec.loader is not self.original
+                or type(attributes.get("__file__")) is not str
+                or attributes["__file__"] != self.origin
+                or type(self.spec.origin) is not str or self.spec.origin != self.origin
+                or attributes.get("__builtins__") is not namespace):
+            raise UnsupportedValue("original module execution owner changed")
 
 
 class ModulePathBindings:
@@ -116,7 +137,11 @@ class ModulePathBindings:
         self.installed = True
 
     def close(self) -> None:
-        """Remove only this hook; never reset another module or native scope."""
+        """Remove only this hook, preserving other module/resource owners.
+
+        Existing NativePath objects are not revoked here. Actual Host phase,
+        owner and Store retirement/IO Join separately close their IO scope.
+        """
         if self.installed:
             sys.meta_path[:] = [finder for finder in sys.meta_path if finder is not self]
             self.installed = False
@@ -134,6 +159,6 @@ class ModulePathBindings:
                 continue
             if spec.loader is None:
                 raise UnsupportedValue("original bound module has no code loader")
-            spec.loader = _ModuleLoader(spec.loader, self.bridge, anchor)
+            spec.loader = _ModuleLoader(spec, self.bridge, anchor)
             return spec
         raise ModuleNotFoundError(fullname)

@@ -48,7 +48,7 @@ PREFIX = "io.tobkiri.native-"
 class _CatalogDiagnostic:
     """Caller-local Copy DATA, never an exception/ref/source carrier."""
 
-    __slots__ = ("phase", "reason")
+    __slots__ = ("phase", "reason", "outside_builtin")
     _REASONS = {
         "unsupported concrete original DATA type": "unrepresented-result-type",
         "nested or foreign catalog call": "foreign-catalog-context",
@@ -71,6 +71,14 @@ class _CatalogDiagnostic:
         "unbound lexical Path has no native IO target": "unbound-path",
     }
     _PHASES = frozenset({"frame", "argument-binding", "original-call", "result-retain"})
+    _OUTSIDE_BUILTINS = (
+        (TypeError, "type-error"),
+        (AttributeError, "attribute-error"),
+        (NameError, "name-error"),
+        (ImportError, "import-error"),
+        (NotImplementedError, "not-implemented-error"),
+        (AssertionError, "assertion-error"),
+    )
     MAX_BYTES = 512
 
     def __init__(self):
@@ -79,6 +87,16 @@ class _CatalogDiagnostic:
     def clear(self):
         self.phase = None
         self.reason = None
+        self.outside_builtin = None
+
+    def record_outside(self, error_type):
+        # Only Copy tags at the existing outside-inventory classification.
+        # Identity checks do not invoke a foreign class's hash/equality hooks.
+        self.outside_builtin = "unknown"
+        for builtin, tag in self._OUTSIDE_BUILTINS:
+            if error_type is builtin:
+                self.outside_builtin = tag
+                break
 
     def record(self, error):
         if self.reason is not None:
@@ -100,11 +118,19 @@ class _CatalogDiagnostic:
             reason = self.reason if self.reason in {
                 *self._REASONS.values(), "unknown", "outside-fixed-method-inventory"
             } else "unknown"
-            result = wire.dumps({
+            frame = {
                 "format": "io.tobkiri.native-catalog-refusal-ci.v1",
                 "phase": self.phase if self.phase in self._PHASES else "unknown",
                 "reason": reason,
-            })
+            }
+            if reason == "outside-fixed-method-inventory":
+                frame["outside_builtin"] = (
+                    self.outside_builtin if type(self.outside_builtin) is str
+                    and self.outside_builtin in {
+                        tag for _, tag in self._OUTSIDE_BUILTINS
+                    } else "unknown"
+                )
+            result = wire.dumps(frame)
             if len(result) > self.MAX_BYTES:
                 raise MemoryError("fixed catalog diagnostic exceeds its bound")
             return result
@@ -347,6 +373,7 @@ class Dispatcher:
                         _catalog_diagnostic.record(error)
                     else:
                         _catalog_diagnostic.reason = "outside-fixed-method-inventory"
+                        _catalog_diagnostic.record_outside(type(error))
                 raise UnsupportedValue(
                     "original method failure is not represented"
                 ) from None
