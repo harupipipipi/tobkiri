@@ -38,6 +38,8 @@ pub(crate) struct PublicationRead {
     cleanup: Arc<CleanupState>,
     calls: u8,
     _capacity: NativeSetupReservation,
+    #[cfg(unix)]
+    pending: Option<PendingRecoveryScope>,
     #[cfg(test)]
     remove_intent_after_lock: bool,
 }
@@ -59,16 +61,43 @@ impl PublicationRead {
             cleanup: Arc::new(CleanupState::new(control)),
             calls: 0,
             _capacity: capacity,
+            #[cfg(unix)]
+            pending: None,
             #[cfg(test)]
             remove_intent_after_lock: false,
         })
     }
+    #[cfg(test)]
     pub(crate) fn run<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
         discard_superseded: bool,
     ) -> Result<Prefix> {
+        self.run_inner(owner, cancellation, discard_superseded, false)
+    }
+    pub(crate) fn enter_recovery<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        discard_superseded: bool,
+    ) -> Result<Prefix> {
+        self.run_inner(owner, cancellation, discard_superseded, true)
+    }
+    fn run_inner<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        discard_superseded: bool,
+        retain_continuation: bool,
+    ) -> Result<Prefix> {
+        #[cfg(unix)]
+        if self.pending.is_some() {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Guard,
+                "publication continuation is already held",
+            ));
+        }
         if self.calls > 1 || discard_superseded != (self.calls == 0) {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Source,
@@ -100,6 +129,9 @@ impl PublicationRead {
                     &op,
                     root,
                     discard_superseded,
+                    retain_continuation,
+                    #[cfg(unix)]
+                    &mut self.pending,
                     #[cfg(test)]
                     remove_intent_after_lock,
                 )
@@ -115,6 +147,107 @@ impl PublicationRead {
     }
     pub(crate) fn uncertain_cleanup(&self) -> Option<OriginalAuthorityCleanup> {
         (!self.cleanup.verified()).then(|| OriginalAuthorityCleanup(self.cleanup.clone()))
+    }
+
+    /// No guard, path, intent or resumable token is exposed to a Pack/guest.
+    pub(crate) fn check_continuation_thread(&self) -> Result<()> {
+        #[cfg(unix)]
+        if let Some(pending) = &self.pending {
+            return pending.check_thread();
+        }
+        Err(OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Guard,
+            "publication continuation is not held",
+        ))
+    }
+    pub(crate) fn candidate_matches_identity(&self, identity: &[u32]) -> Result<bool> {
+        self.check_continuation_thread()?;
+        #[cfg(unix)]
+        {
+            let pending = self
+                .pending
+                .as_ref()
+                .expect("held publication continuation");
+            Ok(
+                matches!(pending.intent.doc.node(pending.profile_id), Node::String(text) if text.0.as_slice() == identity),
+            )
+        }
+        #[cfg(not(unix))]
+        Err(OriginalAuthorityError::unavailable())
+    }
+    pub(crate) fn construct_workspace<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        identity: &str,
+    ) -> Result<()> {
+        self.check_continuation_thread()?;
+        #[cfg(unix)]
+        {
+            let op = Operation {
+                owner,
+                invocation: &self.invocation,
+                cancellation,
+                deadline: self
+                    .invocation
+                    .deadline()
+                    .map_err(|_| OriginalAuthorityError::unavailable())?,
+                pid: std::process::id(),
+                cleanup: self.cleanup.clone(),
+                #[cfg(test)]
+                fixture: None,
+            };
+            op.check(OriginalAuthorityStage::Source)?;
+            let pending = self
+                .pending
+                .as_mut()
+                .expect("held publication continuation");
+            let bytes = pending
+                .root
+                .as_os_str()
+                .len()
+                .checked_add(identity.len())
+                .and_then(|bytes| bytes.checked_add(32))
+                .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
+            let capacity = op.reserve(OriginalAuthorityStage::Path, bytes.saturating_add(8192))?;
+            // Exactly the original pure Path joins. No exists, resolve,
+            // canonicalize, directory creation, catalog or Authority IO.
+            // Prepay/check the actual one owned buffer before pushing; do not
+            // leave two transient PathBuf join allocations outside funding.
+            let mut workspace = PathBuf::new();
+            workspace
+                .try_reserve_exact(bytes)
+                .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
+            if workspace.capacity() != bytes {
+                return Err(OriginalAuthorityError::capacity(
+                    OriginalAuthorityStage::Path,
+                ));
+            }
+            workspace.push(pending.root.as_path());
+            workspace.push("workspaces");
+            workspace.push(identity);
+            pending._workspace = Some(Funded {
+                value: workspace,
+                _capacity: capacity,
+            });
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (owner, cancellation, identity);
+            Err(OriginalAuthorityError::unavailable())
+        }
+    }
+    /// Called after actual Store retirement and native IO Join. Exceptional
+    /// exits skip Python's post-yield validation; actual unlock/close always run.
+    pub(crate) fn close_continuation(&mut self) -> Result<()> {
+        #[cfg(unix)]
+        if let Some(mut pending) = self.pending.take() {
+            let thread = pending.check_thread();
+            let closed = pending.scope.guard.close();
+            return finish_scope(thread, closed);
+        }
+        Ok(())
     }
 }
 
@@ -200,15 +333,19 @@ fn prefix<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
     discard_superseded: bool,
+    retain_continuation: bool,
+    #[cfg(unix)] pending: &mut Option<PendingRecoveryScope>,
     #[cfg(test)] remove_intent_after_lock: bool,
 ) -> Result<Prefix> {
-    let _paths = op.reserve(
-        OriginalAuthorityStage::Source,
-        root.as_os_str()
-            .len()
-            .saturating_mul(16)
-            .saturating_add(8192),
-    )?;
+    let mut paths_capacity = Some(
+        op.reserve(
+            OriginalAuthorityStage::Source,
+            root.as_os_str()
+                .len()
+                .saturating_mul(16)
+                .saturating_add(8192),
+        )?,
+    );
     let profiles = root.join("profiles");
     let path = profiles.join(JOURNAL);
     // Original exists() suppresses inaccessible/non-directory branches; a
@@ -223,7 +360,7 @@ fn prefix<S: OriginalAuthorityOwner>(
     {
         let directory = Directory::capture(op, &profiles, true)?;
         let guard = PublicationLock::acquire(op, &directory)?;
-        let scope = RecoveryScope { directory, guard };
+        let mut scope = Some(RecoveryScope { directory, guard });
         // This private lexical body is the only continuation. Neither an
         // authenticated arena nor a guard escapes for a later reacquisition.
         let result = (|| {
@@ -266,19 +403,62 @@ fn prefix<S: OriginalAuthorityOwner>(
                 .doc
                 .get(intent.payload, "candidate")
                 .expect("intent payload");
-            let _profile_id = subscript(&intent.doc, candidate, "profile_id")?;
+            let profile_id = subscript(&intent.doc, candidate, "profile_id")?;
+            if retain_continuation {
+                *pending = Some(PendingRecoveryScope {
+                    scope: scope.take().expect("live publication scope"),
+                    root: Funded {
+                        value: root.to_path_buf(),
+                        _capacity: paths_capacity.take().expect("funded publication paths"),
+                    },
+                    intent,
+                    profile_id,
+                    _current: current,
+                    _expected: expected,
+                    _workspace: None,
+                    thread: std::thread::current().id(),
+                });
+            }
             // The next actual dependency is _bootstrap_profile_id(), before
             // runtime/catalog/Authority. Reaching it is no publication grant.
             Ok(Prefix::BootstrapProfileIdNotBound)
         })();
-        scope.finish(op, result)
+        match scope {
+            Some(scope) => scope.finish(op, result),
+            None => result,
+        }
     }
     #[cfg(not(unix))]
     {
+        let _ = (retain_continuation, paths_capacity);
         Err(OriginalAuthorityError::unsupported(
             OriginalAuthorityStage::Source,
             "Windows publication persistence/ACL",
         ))
+    }
+}
+
+#[cfg(unix)]
+struct PendingRecoveryScope {
+    scope: RecoveryScope,
+    root: Funded<PathBuf>,
+    intent: Intent,
+    profile_id: usize,
+    _current: Option<active_profile::LoadedPointer>,
+    _expected: Option<Pointer>,
+    _workspace: Option<Funded<PathBuf>>,
+    thread: std::thread::ThreadId,
+}
+#[cfg(unix)]
+impl PendingRecoveryScope {
+    fn check_thread(&self) -> Result<()> {
+        if self.thread != std::thread::current().id() {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Guard,
+                "publication continuation moved from its logical worker thread",
+            ));
+        }
+        Ok(())
     }
 }
 

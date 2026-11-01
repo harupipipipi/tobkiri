@@ -67,11 +67,9 @@ pub use fd_read::write_fd_read;
 #[cfg(unix)]
 pub use fd_stat::write_fd_stat;
 
-// Stage pure Unicode parity independently; product validation is not adopted.
-#[cfg(test)]
+// Generic Unicode and the separate migration App policy share one implementation.
+// This alone does not adopt a product Setup/GUI route.
 mod unicode15_1;
-#[cfg(test)]
 mod unicode15_1_data;
 // Original App policy stays separate from generic Unicode/Core mechanisms.
-#[cfg(test)]
 mod app_bootstrap_identity;

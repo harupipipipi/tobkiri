@@ -40,6 +40,8 @@ pub(crate) enum OriginalOperation {
     VerifyDeniedCodec,
     #[cfg(test)]
     VerifyIdentity(IdentityProbe),
+    #[cfg(test)]
+    VerifyReview(ReviewProbe),
     /// Reject before owner/Engine construction. This is not a native binding.
     Unbound(UnboundOperation),
 }
@@ -55,6 +57,8 @@ pub(super) enum AdmittedOperation {
     VerifyDeniedCodec,
     #[cfg(test)]
     VerifyIdentity(IdentityProbe),
+    #[cfg(test)]
+    VerifyReview(ReviewProbe),
 }
 impl OriginalOperation {
     pub(super) fn admit(self) -> std::result::Result<AdmittedOperation, DetachedFailure> {
@@ -80,6 +84,8 @@ impl OriginalOperation {
             Self::VerifyDeniedCodec => Ok(AdmittedOperation::VerifyDeniedCodec),
             #[cfg(test)]
             Self::VerifyIdentity(probe) => Ok(AdmittedOperation::VerifyIdentity(probe)),
+            #[cfg(test)]
+            Self::VerifyReview(probe) => Ok(AdmittedOperation::VerifyReview(probe)),
             Self::Unbound(operation) => Err(DetachedFailure::integration(
                 IntegrationFailure::OperationNotBound(operation),
             )),
@@ -159,6 +165,15 @@ impl Failure {
                             Err(error) => return error,
                         }
                     }
+                    actual @ (BootstrapReviewFailure::ActualDenied { .. }
+                    | BootstrapReviewFailure::ActualFactoryFailure { .. }
+                    | BootstrapReviewFailure::GetterRaised(_)
+                    | BootstrapReviewFailure::ObservationRefused(_)) => {
+                        match detachment.review_actual(actual) {
+                            Ok(value) => SourceRecord::Review(value),
+                            Err(error) => return error,
+                        }
+                    }
                 };
                 DetachedFailure::Execution {
                     stage: Stage::Review,
@@ -222,7 +237,8 @@ impl Failed {
     /// These owned strings/causes borrow Review's prepaid diagnostic allowance.
     /// They own no IO, source or CoreBuffer; that custody stays in the runner.
     pub(super) fn owns_review_diagnostics(&self) -> bool {
-        matches!(&self.failure, Failure::Review(_)) && self._completed.0.iter().all(Option::is_none)
+        matches!(&self.failure, Failure::Review(value) if value.owns_original_diagnostics())
+            && self._completed.0.iter().all(Option::is_none)
     }
 }
 
@@ -235,6 +251,22 @@ pub(super) async fn execute<
     operation: AdmittedOperation,
 ) -> std::result::Result<Observations, Failed> {
     let getters = match operation {
+        #[cfg(test)]
+        AdmittedOperation::VerifyReview(probe) => {
+            let options = BootstrapReviewOptions {
+                include_source_additions: probe == ReviewProbe::Boundary,
+                ..Default::default()
+            };
+            let result = runner.setup_review_listing(&options).await;
+            return Err(Failed {
+                failure: match result {
+                    Ok(Err(error)) => Failure::Review(error),
+                    Err(error) => Failure::Native(error),
+                    Ok(Ok(_)) => panic!("review boundary became listing success"),
+                },
+                _completed: Observations([None, None, None]),
+            });
+        }
         #[cfg(test)]
         AdmittedOperation::VerifyIdentity(probe) => {
             return Err(Failed {
@@ -345,6 +377,16 @@ pub(crate) enum IdentityProbe {
     FactoryRaised,
     CodecRejected,
     Refused,
+}
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReviewProbe {
+    Boundary,
+    Canonical,
+    RawValue,
+    RawType,
+    Mismatch,
+    FactoryFailure,
 }
 
 #[cfg(test)]

@@ -88,6 +88,41 @@ pub(crate) enum ReviewSourceRecord {
         message: String,
         cause: tobkiri_harness_native::OriginalAuthorityCause,
     },
+    ActualDenied {
+        view: String,
+        message: String,
+        host_cause: Option<ReviewHostCause>,
+        // One native Host cause is also its context, by construction. Guest
+        // intrinsic edges in the finite view have a separate provenance.
+        suppress_context: bool,
+    },
+    ActualFactoryFailure {
+        stage: tobkiri_harness_native::BootstrapDeniedStage,
+        error: ReviewGuestError,
+        host_context: Option<ReviewHostCause>,
+    },
+    GetterRaised(ReviewGuestError),
+    ObservationRefused {
+        stage: tobkiri_harness_native::BootstrapIdentityStage,
+        error: ReviewGuestError,
+        getter: Option<ReviewGuestError>,
+    },
+}
+#[derive(Debug)]
+pub(crate) struct ReviewGuestError {
+    pub(crate) code: String,
+    pub(crate) message: String,
+    pub(crate) details: Option<String>,
+    pub(crate) view: Option<String>,
+}
+#[derive(Debug)]
+pub(crate) enum ReviewHostCause {
+    NativeGraph {
+        code: String,
+        message: String,
+        details: String,
+    },
+    OpaqueGetter(ReviewGuestError),
 }
 
 pub(crate) type Outcome = std::result::Result<serde_json::Value, DetachedFailure>;
@@ -294,6 +329,81 @@ impl Detachment {
                 issue,
             })
     }
+    fn review_guest_error(
+        &mut self,
+        error: &NativeDataError,
+        view: Option<&CoreBuffer>,
+    ) -> Result<ReviewGuestError, DetachedFailure> {
+        Ok(ReviewGuestError {
+            code: self.description(error.code())?,
+            message: self.description(error.message())?,
+            details: error
+                .details()
+                .map(|value| self.description(value))
+                .transpose()?,
+            view: view.map(|value| self.description(value)).transpose()?,
+        })
+    }
+    fn review_host_cause(
+        &mut self,
+        graph: Option<&tobkiri_harness_native::NativeErrorGraph>,
+        getter: Option<&tobkiri_harness_native::BootstrapGetterError>,
+    ) -> Result<Option<ReviewHostCause>, DetachedFailure> {
+        if let Some(graph) = graph {
+            return Ok(Some(ReviewHostCause::NativeGraph {
+                code: self.description(graph.code())?,
+                message: self.description(graph.message())?,
+                details: self.description(graph.details())?,
+            }));
+        }
+        getter
+            .map(|error| {
+                self.review_guest_error(error.error(), Some(error.view()))
+                    .map(ReviewHostCause::OpaqueGetter)
+            })
+            .transpose()
+    }
+    /// Fixed actual-factory/getter DATA only. Borrow and copy each funded
+    /// envelope under the original invocation; never inspect a general graph,
+    /// call str/repr or rebuild an exception from these diagnostic strings.
+    pub(crate) fn review_actual(
+        &mut self,
+        failure: &tobkiri_harness_native::BootstrapReviewFailure,
+    ) -> Result<ReviewSourceRecord, DetachedFailure> {
+        use tobkiri_harness_native::BootstrapReviewFailure::*;
+        Ok(match failure {
+            ActualDenied { denied, .. } => ReviewSourceRecord::ActualDenied {
+                view: self.description(denied.view())?,
+                message: self.description(denied.message())?,
+                host_cause: self.review_host_cause(denied.cause(), denied.opaque_cause())?,
+                suppress_context: denied.suppress_context(),
+            },
+            ActualFactoryFailure { failure, .. } => ReviewSourceRecord::ActualFactoryFailure {
+                stage: failure.stage(),
+                error: self.review_guest_error(failure.error(), None)?,
+                host_context: self.review_host_cause(
+                    failure.host_except_context(),
+                    failure.opaque_except_context(),
+                )?,
+            },
+            GetterRaised(error) => ReviewSourceRecord::GetterRaised(
+                self.review_guest_error(error.error(), Some(error.view()))?,
+            ),
+            ObservationRefused(error) => ReviewSourceRecord::ObservationRefused {
+                stage: error.stage(),
+                error: self.review_guest_error(error.error(), None)?,
+                getter: error
+                    .getter_error()
+                    .map(|error| self.review_guest_error(error, None))
+                    .transpose()?,
+            },
+            _ => {
+                return Err(DetachedFailure::integration(
+                    IntegrationFailure::InvalidValueResult,
+                ))
+            }
+        })
+    }
     fn gate(&mut self, error: &GateError, depth: usize) -> Result<SourceRecord, DetachmentIssue> {
         Self::depth(depth)?;
         let mut record = SourceRecord::Gate {
@@ -403,7 +513,9 @@ impl Detachment {
         }
         if matches!(stage, Stage::Initialize | Stage::Operation | Stage::Finish) {
             if let Some(value) = outer.downcast_ref::<BootstrapCleanupFailure>() {
-                let original_stage = if stage == Stage::Operation {
+                let original_stage = if stage == Stage::Finish {
+                    Stage::Finish
+                } else if stage == Stage::Operation {
                     Stage::Operation
                 } else {
                     Stage::Initialize

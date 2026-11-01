@@ -174,23 +174,25 @@ impl std::fmt::Debug for BootstrapDeniedFailure {
     }
 }
 
-impl<S: BootstrapInputOwner> NativeBootstrap<S> {
+impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
     /// Call the original factory in this initialized Store, then observe only
     /// its fresh returned Exception. This unit does not enter Review/recovery.
     /// Keep its funded value/failure until the original Store finish, exactly
     /// as for existing getter/CoreBuffer results; detach DATA separately.
-    pub async fn denied(
+    pub(super) async fn denied(
         &mut self,
         message: &str,
         host_raise: BootstrapDeniedRaise,
     ) -> Result<std::result::Result<BootstrapDenied, BootstrapDeniedFailure>> {
-        if self.work.get().phase.load(Ordering::Acquire) != READY || self.denied_pending.is_some() {
+        let entry = self.work.get().phase.load(Ordering::Acquire);
+        if !matches!(entry, READY | REVIEW) || self.denied_pending.is_some() {
             bail!("native denied factory is unavailable or exceeds the envelope");
         }
+        let phase = if entry == READY { DENIED } else { REVIEW };
         // Move even an opaque actual getter cause into runner custody BEFORE
         // input/codec/source validation. Every admission failure then retires
         // this same Store and awaits IO before dropping that original carrier.
-        self.denied_pending = Some(DeniedCallCustody {
+        *self.denied_pending = Some(DeniedCallCustody {
             message: None,
             input: None,
             host_raise,
@@ -205,17 +207,17 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             return Err(self.retire_failure(error).await);
         }
         let mut guard = RootCallGuard {
-            work: self.work.clone(),
-            io: self.io.clone(),
+            work: (*self.work).clone(),
+            io: (*self.io).clone(),
             completed: false,
         };
-        self.work.get().phase.store(DENIED, Ordering::Release);
-        let result = match self.denied_in_phase().await {
+        self.work.get().phase.store(phase, Ordering::Release);
+        let result = match self.denied_in_phase(phase).await {
             Err(original) => Err(self.retire_failure(original).await),
             result => result,
         };
-        if self.work.get().phase.load(Ordering::Acquire) == DENIED {
-            self.work.get().phase.store(READY, Ordering::Release);
+        if self.work.get().phase.load(Ordering::Acquire) == phase {
+            self.work.get().phase.store(entry, Ordering::Release);
         }
         guard.completed = true;
         result
@@ -267,6 +269,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
 
     async fn denied_in_phase(
         &mut self,
+        phase: u8,
     ) -> Result<std::result::Result<BootstrapDenied, BootstrapDeniedFailure>> {
         let input = self
             .denied_pending
@@ -277,7 +280,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .expect("admitted factory input")
             .clone();
         let imported = match self
-            .string_call_in_phase(IMPORT_SLOT, &input, DENIED)
+            .string_call_in_phase(IMPORT_SLOT, &input, phase)
             .await?
         {
             Ok(value) => value,
@@ -313,7 +316,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             ],
         )?;
         let returned = match self
-            .string_call_in_phase(FACTORY_SLOT, &call, DENIED)
+            .string_call_in_phase(FACTORY_SLOT, &call, phase)
             .await?
         {
             Ok(value) => value,
@@ -355,7 +358,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             "io.tobkiri.native-value-describe.v1",
             [("root", root.clone())],
         )?;
-        let view = match self.string_call_in_phase(2, &request, DENIED).await? {
+        let view = match self.string_call_in_phase(2, &request, phase).await? {
             Ok(value) => value,
             Err(error) => {
                 return Ok(Err(
@@ -408,7 +411,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
 }
 
 fn import_message<S: BootstrapInputOwner>(
-    runner: &NativeBootstrap<S>,
+    runner: &ReviewPackBorrow<'_, S>,
     message: &str,
 ) -> Result<CoreBuffer> {
     let mut out = CoreBuffer::builder(&runner.input_budget, MAX_BYTES);
@@ -420,7 +423,7 @@ fn import_message<S: BootstrapInputOwner>(
     Ok(out.finish()?)
 }
 pub(super) fn frame<S: BootstrapInputOwner, const N: usize>(
-    runner: &NativeBootstrap<S>,
+    runner: &ReviewPackBorrow<'_, S>,
     format: &str,
     values: [(&str, CoreValue); N],
 ) -> Result<CoreBuffer> {
@@ -594,4 +597,19 @@ fn validate_view(
         bail!("denied factory actual exception fields differ");
     }
     Ok(())
+}
+
+impl<S: BootstrapInputOwner> NativeBootstrap<S> {
+    /// Standalone fixed factory call. Review uses the same private Pack borrow;
+    /// this public READY entry never admits an in-progress review scope.
+    pub async fn denied(
+        &mut self,
+        message: &str,
+        host_raise: BootstrapDeniedRaise,
+    ) -> Result<std::result::Result<BootstrapDenied, BootstrapDeniedFailure>> {
+        if self.work.get().phase.load(Ordering::Acquire) != READY {
+            bail!("native denied factory is unavailable");
+        }
+        self.pack_borrow().denied(message, host_raise).await
+    }
 }

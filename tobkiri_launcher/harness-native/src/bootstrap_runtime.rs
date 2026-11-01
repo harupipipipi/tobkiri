@@ -48,6 +48,8 @@ pub use identity_observation::{
     BootstrapBuiltinKind, BootstrapGetterError, BootstrapIdentityFailure, BootstrapIdentityOutcome,
     BootstrapIdentityStage, BootstrapIdentityValue, BootstrapRecoveryCatch,
 };
+#[path = "bootstrap_review_continuation.rs"]
+mod review_continuation;
 
 /// Preserve both the original execution failure and failed physical cleanup.
 /// This is native diagnostic data, never a replacement guest/domain outcome.
@@ -398,7 +400,35 @@ pub struct NativeBootstrap<S: BootstrapInputOwner> {
     identity_pending: Option<identity_observation::IdentityCallCustody>,
 }
 
+// A private field split, not another Store/owner or a resumable guest token.
+// Review and its actual journal remain in the outer runner while this finite
+// Pack borrow awaits calls on the same immutable program and funding.
+struct ReviewPackBorrow<'a, S: BootstrapInputOwner> {
+    program: &'a mut Option<NativeDataProgram<State<S>>>,
+    work: &'a ControlHandle<Work<S>>,
+    io: &'a NativeDataIo,
+    call: &'a CoreBuffer,
+    input_budget: &'a Arc<dyn AllocationBudget>,
+    cancellation: &'a CoreCancellation,
+    denied_pending: &'a mut Option<denied::DeniedCallCustody>,
+    identity_pending: &'a mut Option<identity_observation::IdentityCallCustody>,
+    defer_pending_drop: bool,
+}
+
 impl<S: BootstrapInputOwner> NativeBootstrap<S> {
+    fn pack_borrow(&mut self) -> ReviewPackBorrow<'_, S> {
+        ReviewPackBorrow {
+            program: &mut self.program,
+            work: &self.work,
+            io: &self.io,
+            call: &self.call,
+            input_budget: &self.input_budget,
+            cancellation: &self.cancellation,
+            denied_pending: &mut self.denied_pending,
+            identity_pending: &mut self.identity_pending,
+            defer_pending_drop: false,
+        }
+    }
     /// Bind actual native metadata before instantiation and explicit Runtime.init.
     /// Source ownership and the real invocation come from trusted composition;
     /// a serialized identity or source digest cannot construct either here.
@@ -681,6 +711,190 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         input: &CoreBuffer,
         phase: u8,
     ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
+        self.pack_borrow()
+            .string_call_in_phase(slot, input, phase)
+            .await
+    }
+    async fn retire_failure(&mut self, original: anyhow::Error) -> anyhow::Error {
+        self.pack_borrow().retire_failure(original).await
+    }
+
+    fn initialization_failure(&self, original: anyhow::Error) -> anyhow::Error {
+        initialization_failure(
+            self.work.get(),
+            self.program.as_ref().map(|p| p.observation()),
+            original,
+        )
+    }
+
+    /// Actual import observations, separate from guest-reported progress DATA.
+    pub fn initialization_trace(&self) -> crate::InitializationTrace {
+        self.work.get().init_trace.snapshot()
+    }
+
+    /// Actual inspection import entries, including fixed init checkpoints and
+    /// failure DATA. This count does not imply filesystem IO or grant rights.
+    pub fn inspection_attempts(&self) -> u64 {
+        self.work.get().inspections.load(Ordering::Acquire)
+    }
+
+    /// Actual module metadata observations for trusted native diagnostics. These
+    /// do not prove the opaque getter's parents calculation or resource reads.
+    pub fn first_source_resolutions(&self) -> (Option<&CoreBuffer>, Option<&CoreBuffer>) {
+        (
+            self.work.get().first_host_resolution.get(),
+            self.work.get().first_bundle_resolution.get(),
+        )
+    }
+
+    /// Sample fuel from this same Store; no execution allowance is replaced.
+    pub fn fuel_remaining(&self) -> Result<u64> {
+        self.program
+            .as_ref()
+            .context("native bootstrap was retired")?
+            .fuel_remaining()
+    }
+
+    /// Borrow the original DATA codec account for native frame codecs. Cloning
+    /// its handle retains these same limits, deadline and physical accounting.
+    pub fn data_budget(&self) -> &Arc<dyn AllocationBudget> {
+        &self.input_budget
+    }
+
+    /// Enter the actual original review continuation on this same Store. The
+    /// current prefix always refuses its next unbound reachpoint explicitly.
+    /// No guest inspection import or independent begin/prefetch is involved.
+    pub async fn setup_review_listing(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+    ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
+        if self.work.get().phase.load(Ordering::Acquire) != READY {
+            bail!("native bootstrap review is not initialized");
+        }
+        if self.review.is_some() {
+            return Ok(Err(crate::BootstrapReviewFailure::Admission(
+                crate::OriginalAuthorityAdmission::AlreadyAttempted,
+            )));
+        }
+        let diagnostic = options
+            .denial_diagnostic
+            .as_ref()
+            .map(|text| self.copy_input(text.as_bytes()))
+            .transpose()?;
+        let review = match crate::bootstrap_review::Review::new(
+            &self.work.get().invocation,
+            options,
+            diagnostic,
+        ) {
+            Ok(review) => review,
+            Err(error) => return Ok(Err(error)),
+        };
+        // The carrier remains in self, outside dispatch's caught future, even
+        // if a source callback panics during its real persistence operation.
+        self.review = Some(review);
+        let mut guard = RootCallGuard {
+            work: self.work.clone(),
+            io: self.io.clone(),
+            completed: false,
+        };
+        self.work.get().phase.store(REVIEW, Ordering::Release);
+        let result = {
+            // Explicit field split: the actual journal/intent stays outside
+            // this child future in runner.review, throughout every Pack await.
+            let Self {
+                program,
+                work,
+                io,
+                call,
+                input_budget,
+                cancellation,
+                review,
+                denied_pending,
+                identity_pending,
+            } = &mut *self;
+            let mut pack = ReviewPackBorrow {
+                program,
+                work,
+                io,
+                call,
+                input_budget,
+                cancellation,
+                denied_pending,
+                identity_pending,
+                defer_pending_drop: true,
+            };
+            match review_continuation::run(review.as_mut().expect("admitted review"), &mut pack)
+                .await
+            {
+                Err(error) => Err(pack.retire_failure(error).await),
+                outcome => outcome,
+            }
+        };
+        // The one review attempt is complete, but its exceptional lexical
+        // journal scope may still await actual finish. Do not reopen public
+        // READY calls outside that private continuation while it is held.
+        self.work.get().phase.store(CLOSED, Ordering::Release);
+        guard.completed = true;
+        result
+    }
+
+    /// Only physically uncertain original IO may retain source custody in the
+    /// native coordinator. This contains no success DATA or source permission.
+    pub fn original_review_uncertain_cleanup(&self) -> Option<crate::OriginalAuthorityCleanup> {
+        self.review
+            .as_ref()
+            .and_then(|review| review.uncertain_cleanup())
+    }
+
+    /// Retire the actual Store and await original native physical cleanup.
+    pub async fn finish(mut self) -> Result<()> {
+        self.work.get().phase.store(CLOSED, Ordering::Release);
+        if let Some(mut program) = self.program.take() {
+            program.retire();
+        }
+        let joined = self.io.retire_and_wait().await;
+        // Even a failed Join attempt cannot skip the actual native journal
+        // close. It remains a failed cleanup; no successful receipt is forged.
+        let closed = self
+            .review
+            .as_mut()
+            .is_none_or(crate::bootstrap_review::Review::close_continuation);
+        drop(self.denied_pending.take());
+        drop(self.identity_pending.take());
+        if let Some(review) = &mut self.review {
+            review.release_actual_data();
+        }
+        let receipt_failure = self.review.as_ref().and_then(|review| {
+            let receipt = review.receipt();
+            if !closed || !receipt.verified() {
+                Some(crate::BootstrapReviewCleanupFailure { receipt })
+            } else {
+                None
+            }
+        });
+        match (joined, receipt_failure) {
+            (Err(cleanup), Some(original)) => Err(BootstrapCleanupFailure {
+                original: original.into(),
+                cleanup: cleanup.into(),
+            }
+            .into()),
+            (Err(error), None) => Err(error.into()),
+            (Ok(()), Some(error)) => Err(error.into()),
+            (Ok(()), None) => Ok(()),
+        }
+    }
+}
+
+impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
+    async fn string_call_in_phase(
+        &mut self,
+        slot: usize,
+        input: &CoreBuffer,
+        phase: u8,
+    ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
         if self.work.get().phase.load(Ordering::Acquire) != phase {
             bail!("native bootstrap is not initialized");
         }
@@ -769,7 +983,9 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 .expect("rejected factory custody survived IO wait")
                 .assert_rejected_outputs_live();
         }
-        drop(self.denied_pending.take());
+        if !self.defer_pending_drop {
+            drop(self.denied_pending.take());
+        }
         #[cfg(debug_assertions)]
         if rejected_identity_view {
             self.identity_pending
@@ -777,126 +993,10 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 .expect("rejected getter custody survived IO wait")
                 .assert_rejected_outputs_live();
         }
-        drop(self.identity_pending.take());
+        if !self.defer_pending_drop {
+            drop(self.identity_pending.take());
+        }
         outcome
-    }
-
-    fn initialization_failure(&self, original: anyhow::Error) -> anyhow::Error {
-        initialization_failure(
-            self.work.get(),
-            self.program.as_ref().map(|p| p.observation()),
-            original,
-        )
-    }
-
-    /// Actual import observations, separate from guest-reported progress DATA.
-    pub fn initialization_trace(&self) -> crate::InitializationTrace {
-        self.work.get().init_trace.snapshot()
-    }
-
-    /// Actual inspection import entries, including fixed init checkpoints and
-    /// failure DATA. This count does not imply filesystem IO or grant rights.
-    pub fn inspection_attempts(&self) -> u64 {
-        self.work.get().inspections.load(Ordering::Acquire)
-    }
-
-    /// Actual module metadata observations for trusted native diagnostics. These
-    /// do not prove the opaque getter's parents calculation or resource reads.
-    pub fn first_source_resolutions(&self) -> (Option<&CoreBuffer>, Option<&CoreBuffer>) {
-        (
-            self.work.get().first_host_resolution.get(),
-            self.work.get().first_bundle_resolution.get(),
-        )
-    }
-
-    /// Sample fuel from this same Store; no execution allowance is replaced.
-    pub fn fuel_remaining(&self) -> Result<u64> {
-        self.program
-            .as_ref()
-            .context("native bootstrap was retired")?
-            .fuel_remaining()
-    }
-
-    /// Borrow the original DATA codec account for native frame codecs. Cloning
-    /// its handle retains these same limits, deadline and physical accounting.
-    pub fn data_budget(&self) -> &Arc<dyn AllocationBudget> {
-        &self.input_budget
-    }
-
-    /// Enter the actual original review continuation on this same Store. The
-    /// current prefix always refuses its next unbound reachpoint explicitly.
-    /// No guest inspection import or independent begin/prefetch is involved.
-    pub async fn setup_review_listing(
-        &mut self,
-        options: &crate::BootstrapReviewOptions,
-    ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
-    where
-        S: crate::BootstrapReviewOwner,
-    {
-        if self.work.get().phase.load(Ordering::Acquire) != READY {
-            bail!("native bootstrap review is not initialized");
-        }
-        if self.review.is_some() {
-            return Ok(Err(crate::BootstrapReviewFailure::Admission(
-                crate::OriginalAuthorityAdmission::AlreadyAttempted,
-            )));
-        }
-        let diagnostic = options
-            .denial_diagnostic
-            .as_ref()
-            .map(|text| self.copy_input(text.as_bytes()))
-            .transpose()?;
-        let review = match crate::bootstrap_review::Review::new(
-            &self.work.get().invocation,
-            options,
-            diagnostic,
-        ) {
-            Ok(review) => review,
-            Err(error) => return Ok(Err(error)),
-        };
-        // The carrier remains in self, outside dispatch's caught future, even
-        // if a source callback panics during its real persistence operation.
-        self.review = Some(review);
-        let mut guard = RootCallGuard {
-            work: self.work.clone(),
-            io: self.io.clone(),
-            completed: false,
-        };
-        self.work.get().phase.store(REVIEW, Ordering::Release);
-        let result = self
-            .review
-            .as_mut()
-            .expect("admitted review")
-            .run(&self.work.get().source, &self.cancellation);
-        self.work.get().phase.store(READY, Ordering::Release);
-        guard.completed = true;
-        Ok(result)
-    }
-
-    /// Only physically uncertain original IO may retain source custody in the
-    /// native coordinator. This contains no success DATA or source permission.
-    pub fn original_review_uncertain_cleanup(&self) -> Option<crate::OriginalAuthorityCleanup> {
-        self.review
-            .as_ref()
-            .and_then(|review| review.uncertain_cleanup())
-    }
-
-    /// Retire the actual Store and await original native physical cleanup.
-    pub async fn finish(mut self) -> Result<()> {
-        self.work.get().phase.store(CLOSED, Ordering::Release);
-        if let Some(mut program) = self.program.take() {
-            program.retire();
-        }
-        self.io.retire_and_wait().await?;
-        drop(self.denied_pending.take());
-        drop(self.identity_pending.take());
-        if let Some(review) = &self.review {
-            let receipt = review.receipt();
-            if !receipt.verified() {
-                return Err(crate::BootstrapReviewCleanupFailure { receipt }.into());
-            }
-        }
-        Ok(())
     }
 }
 
@@ -947,6 +1047,14 @@ mod identity_actual_ci;
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 #[path = "bootstrap_policy_tests.rs"]
 mod policy_tests;
+#[cfg(all(
+    test,
+    feature = "bootstrap-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "bootstrap_review_identity_actual_ci.rs"]
+mod review_identity_actual_ci;
 impl<S: BootstrapInputOwner> Drop for NativeBootstrap<S> {
     fn drop(&mut self) {
         self.work.get().phase.store(CLOSED, Ordering::Release);

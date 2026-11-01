@@ -192,16 +192,19 @@ impl IdentityCallCustody {
     }
 }
 
-impl<S: BootstrapInputOwner> NativeBootstrap<S> {
+impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
     /// One same-Store raw getter followed by its finite top-level observation.
     /// This standalone stage does not enter the journal/canonical/listing path.
-    pub async fn observe_bootstrap_profile_id(&mut self) -> Result<BootstrapIdentityOutcome> {
-        if self.work.get().phase.load(Ordering::Acquire) != READY || self.identity_pending.is_some()
-        {
+    pub(super) async fn observe_bootstrap_profile_id(
+        &mut self,
+    ) -> Result<BootstrapIdentityOutcome> {
+        let entry = self.work.get().phase.load(Ordering::Acquire);
+        if !matches!(entry, READY | REVIEW) || self.identity_pending.is_some() {
             bail!("raw getter observation is unavailable");
         }
+        let phase = if entry == READY { IDENTITY } else { REVIEW };
         self.work.get().source.check_live()?;
-        self.identity_pending = Some(IdentityCallCustody {
+        *self.identity_pending = Some(IdentityCallCustody {
             result: None,
             getter: None,
             view: None,
@@ -210,25 +213,25 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             view_rejected: false,
         });
         let mut guard = RootCallGuard {
-            work: self.work.clone(),
-            io: self.io.clone(),
+            work: (*self.work).clone(),
+            io: (*self.io).clone(),
             completed: false,
         };
-        self.work.get().phase.store(IDENTITY, Ordering::Release);
-        let outcome = match self.identity_in_phase().await {
+        self.work.get().phase.store(phase, Ordering::Release);
+        let outcome = match self.identity_in_phase(phase).await {
             Err(original) => Err(self.retire_failure(original).await),
             result => result,
         };
-        if self.work.get().phase.load(Ordering::Acquire) == IDENTITY {
-            self.work.get().phase.store(READY, Ordering::Release);
+        if self.work.get().phase.load(Ordering::Acquire) == phase {
+            self.work.get().phase.store(entry, Ordering::Release);
         }
         guard.completed = true;
         outcome
     }
 
-    async fn identity_in_phase(&mut self) -> Result<BootstrapIdentityOutcome> {
+    async fn identity_in_phase(&mut self, phase: u8) -> Result<BootstrapIdentityOutcome> {
         let input = self.call.clone();
-        match self.string_call_in_phase(1, &input, IDENTITY).await? {
+        match self.string_call_in_phase(1, &input, phase).await? {
             Ok(value) => {
                 self.identity_pending
                     .as_mut()
@@ -278,7 +281,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             "io.tobkiri.native-bootstrap-identity-describe.v1",
             [("root", root.clone())],
         )?;
-        match self.string_call_in_phase(2, &request, IDENTITY).await? {
+        match self.string_call_in_phase(2, &request, phase).await? {
             Ok(value) => {
                 self.identity_pending
                     .as_mut()
@@ -322,7 +325,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 error: pending.getter.expect("actual getter exception"),
                 view,
                 observation,
-                budget: self.input_budget.clone(),
+                budget: Arc::clone(self.input_budget),
                 recovery_catch,
             })
         } else {
@@ -626,4 +629,14 @@ fn validate_view(
         }
     }
     Ok((builtin, recovery_catch))
+}
+
+impl<S: BootstrapInputOwner> NativeBootstrap<S> {
+    /// Standalone same-Store raw observation, with unchanged READY admission.
+    pub async fn observe_bootstrap_profile_id(&mut self) -> Result<BootstrapIdentityOutcome> {
+        if self.work.get().phase.load(Ordering::Acquire) != READY {
+            bail!("raw getter observation is unavailable");
+        }
+        self.pack_borrow().observe_bootstrap_profile_id().await
+    }
 }

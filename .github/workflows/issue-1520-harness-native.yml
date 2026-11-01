@@ -35,7 +35,7 @@ on:
       verification:
         description: Original runtime regression or additional actual factory/getter comparison
         type: choice
-        options: [bootstrap, denied-factory, bootstrap-identity]
+        options: [bootstrap, denied-factory, bootstrap-identity, review-identity]
         default: bootstrap
 
 permissions:
@@ -204,7 +204,7 @@ jobs:
           bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
           -- --nocapture
       - name: Checkout pinned original factory and identity references
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         uses: actions/checkout@v4
         with:
           ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
@@ -212,7 +212,7 @@ jobs:
           persist-credentials: false
       - name: Install original reference dependencies once
         id: original_reference_dependencies
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: |
           python3 -B tools/original_setup_review_reference.py requirements \
             --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
@@ -262,7 +262,35 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::identity_actual_ci::original_getter_driver
           -- --ignored --exact --test-threads=1 --nocapture
+      - name: Prepare fresh original continuous recovery observations
+        id: review_identity_reference
+        if: ${{ !cancelled() && inputs.verification == 'review-identity' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_publication_identity_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-publication-identity-reference"
+      - name: Execute actual same-guard getter comparison and factory branches
+        id: review_identity_native
+        if: ${{ !cancelled() && steps.review_identity_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_PUBLICATION_IDENTITY_FIXTURES: ${{ runner.temp }}/original-publication-identity-reference/fixtures.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-review-identity.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::review_identity_actual_ci::original_default_component_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Independently compare actual continuous recovery with the original
+        if: ${{ !cancelled() && steps.review_identity_native.outcome != 'skipped' && steps.review_identity_reference.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_publication_identity_reference.py compare-actual-default
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --fixtures "$RUNNER_TEMP/original-publication-identity-reference/fixtures.json"
+          --observations "$RUNNER_TEMP/original-publication-identity-reference/actual-default-review-observations.json"
+          --output "$RUNNER_TEMP/original-publication-identity-reference/actual-default-comparison.json"
       - name: Retain resolved and actually compiled runtime features
+        # Each compared operation compiles and initializes under its own
+        # original clock, one account and one actual Store.
         if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: |
           evidence="$RUNNER_TEMP/harness-native-runtime-features"
@@ -304,4 +332,8 @@ jobs:
             ${{ runner.temp }}/harness-native-bootstrap-identity.log*
             ${{ runner.temp }}/original-bootstrap-identity-reference/summary.json
             ${{ runner.temp }}/original-bootstrap-identity-reference/actual-getter-observations.json
+            ${{ runner.temp }}/harness-native-review-identity.log*
+            ${{ runner.temp }}/original-publication-identity-reference/summary.json
+            ${{ runner.temp }}/original-publication-identity-reference/actual-default-review-observations.json
+            ${{ runner.temp }}/original-publication-identity-reference/actual-default-comparison.json
           if-no-files-found: warn

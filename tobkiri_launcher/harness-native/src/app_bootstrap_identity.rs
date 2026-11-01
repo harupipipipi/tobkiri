@@ -55,7 +55,9 @@ pub(crate) struct BootstrapProtocolError {
 }
 
 impl BootstrapProtocolError {
+    #[cfg(test)]
     pub(crate) const CLASS: &'static str = "tobkiri_protocol.errors.ProtocolError";
+    #[cfg(test)]
     pub(crate) const CODE: &'static str = "protocol_error";
 }
 

@@ -489,6 +489,10 @@ async fn finish_bound_job<S: BootstrapInputOwner + tobkiri_harness_native::Boots
     // The owned Review diagnostics have already died under their live Read.
     drop(result);
     drop(cleanup);
+    // A whole recovery scope may have been OPEN when this handle was sampled
+    // before finish. Retain source/invocation only for the actual remaining
+    // uncertain IO after Store/Join/journal close, never for detached DATA.
+    let uncertain = uncertain.filter(|cleanup| !cleanup.is_verified());
     let permitted = original.is_err() || job.ensure_accepting(jobs).is_ok();
     let clean = cleanup_error.is_none();
     let output = crate::native_worker_failure::complete(original, cleanup_error, permitted);

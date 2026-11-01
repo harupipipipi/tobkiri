@@ -15,7 +15,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from original_authority_reference import ORIGINAL_HEAD, error_graph, write_json
+from original_authority_reference import ORIGINAL_HEAD, error_graph, first_difference, load_json, write_json
 from original_bootstrap_identity_reference import (
     controlled_getter, exception_graph as raw_exception_graph,
     return_cases, raised_cases, returned_value,
@@ -131,8 +131,14 @@ def prepare(original: Path, destination: Path) -> None:
 
     install_defaultspack_profile_runtime()
     port = require_profile_runtime()
-    if capture._bootstrap_profile_id() != "defaults":
+    default_identity = capture._bootstrap_profile_id()
+    if default_identity != "defaults":
         raise AssertionError("unmodified default getter changed")
+    denial_probe = port.denied("Profile publication identity changed")
+    if port.is_resolution_denied(denial_probe) is not True:
+        raise AssertionError("actual original factory classifier changed")
+    if BaseException.args.__get__(denial_probe) != ("Profile publication identity changed",):
+        raise AssertionError("actual original denial message arguments changed")
     write_activation = original_activation_writer(runtime, protocol)
     destination.mkdir(mode=0o700, parents=True, exist_ok=False)
     inventory = [(name, name, None) for name in PREVIOUS_CASES]
@@ -199,6 +205,9 @@ def prepare(original: Path, destination: Path) -> None:
     if require_profile_runtime() is not port or capture._bootstrap_profile_id() != "defaults":
         raise AssertionError("original immutable runtime changed")
     metadata = {"format": FORMAT, "original_head": ORIGINAL_HEAD, "python": "3.13.16",
+                "unmodified_default_identity": default_identity,
+                "application_denial_class": type(denial_probe).__module__ + "." + type(denial_probe).__qualname__,
+                "application_denial_kind": "profile-resolution-denied",
                 "sources": {name: hashlib.sha256((runtime / name).read_bytes()).hexdigest()
                             for name in SOURCES}, "cases": reports,
                 "original_previous_inputs_retained": 77, "controlled_raw_getter_cases": 69,
@@ -221,12 +230,95 @@ def prepare(original: Path, destination: Path) -> None:
            "qualification": False, "production_enabled": False})
 
 
+def compare_actual_default(original: Path, fixtures: Path, observations: Path, output: Path) -> None:
+    """Compare two real-component operations; the controlled147 remain separate."""
+    check_original(original)
+    reference, native = load_json(fixtures), load_json(observations)
+    if (reference["format"] != FORMAT or reference["original_head"] != ORIGINAL_HEAD
+            or reference["reference_checks_passed"] is not True
+            or native["format"] != "io.tobkiri.actual-default-publication-identity-observations.v1"):
+        raise ValueError("fresh original/default-component observations required")
+    names = {"valid", "identity-candidate-mismatch"}
+    actual = {row["name"]: row for row in native["cases"]}
+    source = {row["name"]: row for row in reference["cases"]}
+    if set(actual) != names or len(native["cases"]) != 2 or len(source) != 147:
+        raise ValueError("exact two actual default cases required")
+    report = {"format": "io.tobkiri.actual-default-publication-identity-comparison.v1",
+              "original_head": ORIGINAL_HEAD, "cases": [], "matched": False,
+              "native_comparison": True, "qualification": False, "production_enabled": False,
+              "scope": "two real-component default-getter operations only; no controlled147, "
+                       "full recovery, close-fault, actual Tauri worker Join or GUI qualification"}
+    for name in sorted(names):
+        expected, observed = source[name], actual[name]
+        if expected["getter_fixture"]["mode"] != "unmodified-default":
+            raise ValueError("controlled input cannot qualify actual default path")
+        row = observed["observation"]
+        if not isinstance(row, dict):
+            raise ValueError("actual operation observation missing")
+        for flag in ("execution_matched_branch", "cleanup_verified",
+                     "journal_lock_released_after_finish", "source_destructor_reached"):
+            if observed.get(flag) is not True:
+                raise AssertionError((name, flag))
+        if (row["journal_lock_held_before_finish"] is not True
+                or row["uncertain_before_finish"] is not True
+                or row["same_original_deadline"] is not True
+                or row["budget_resets"] != 0 or row["extra_inspections"] != 0
+                or not 0 <= row["fuel_after"] < row["fuel_before"] <= 2_000_000_000
+                or observed["capacity"]["after_reap"] != {"bytes": 0, "reservations": 0}):
+            raise AssertionError((name, "actual scope/budget/cleanup proof differs"))
+        if row["getter"]["string"] != {
+                "length": len(reference["unmodified_default_identity"]),
+                "codepoints": [ord(c) for c in reference["unmodified_default_identity"]]}:
+            raise AssertionError((name, "actual original getter differs"))
+        outcome = row["outcome"]
+        if name == "valid":
+            difference = first_difference(expected["expected"], outcome)
+        else:
+            original_error = expected["expected"]["error"]
+            if (expected["expected"]["outcome"] != "error"
+                    or original_error["type"] != reference["application_denial_class"]
+                    or original_error["cause"] is not None or original_error["context"] is not None
+                    or original_error["suppressed"] is not False):
+                raise AssertionError("original mismatch raise is not a plain classified denial")
+            wanted = {"outcome": "actual-denied", "kind": reference["application_denial_kind"],
+                      "factory_denied": {"args": [original_error["message"]], "cause": None,
+                                         "context": None, "suppress_context": False},
+                      "host_cause": None, "host_context": None, "host_suppress_context": False}
+            difference = first_difference(wanted, outcome)
+        root = Path(expected["user_data_dir"])
+        if root != fixtures.parent / name / "native":
+            raise ValueError("actual fixture root was substituted")
+        state_difference = first_difference(expected["reference_state"], filesystem(root))
+        if ((root / "profiles/.publication-key").read_bytes()
+                != (root.parent / "seed/profiles/.publication-key").read_bytes()):
+            raise AssertionError("existing original publication key changed")
+        report["cases"].append({"name": name, "outcome_difference": difference,
+                                "filesystem_difference": state_difference,
+                                "existing_key_unchanged": True})
+    report["matched"] = all(row["outcome_difference"] is None and row["filesystem_difference"] is None
+                            for row in report["cases"])
+    write_json(output, report)
+    if not report["matched"]:
+        raise AssertionError("actual default recovery comparison differs")
+    print({"actual_default_cases": 2, "matched": True, "qualification": False})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", nargs="?", choices=("prepare", "compare-actual-default"), default="prepare")
     parser.add_argument("--original-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--fixtures", type=Path)
+    parser.add_argument("--observations", type=Path)
     args = parser.parse_args()
-    prepare(args.original_root.resolve(strict=True), args.output.resolve())
+    root = args.original_root.resolve(strict=True)
+    if args.command == "prepare":
+        prepare(root, args.output.resolve())
+    else:
+        if args.fixtures is None or args.observations is None:
+            parser.error("compare-actual-default requires --fixtures and --observations")
+        compare_actual_default(root, args.fixtures.resolve(strict=True),
+                               args.observations.resolve(strict=True), args.output.resolve())
 
 
 if __name__ == "__main__":

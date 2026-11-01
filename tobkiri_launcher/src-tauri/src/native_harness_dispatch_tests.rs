@@ -39,6 +39,9 @@ struct Controls {
     released: AtomicBool,
     result_dropped: Arc<AtomicBool>,
     review_diagnostics: bool,
+    review_root_returned: AtomicBool,
+    pause_review: AtomicBool,
+    panic_review: bool,
     entered: mpsc::Sender<()>,
     resume: Mutex<mpsc::Receiver<()>>,
 }
@@ -78,6 +81,16 @@ impl BootstrapInputOwner for Source {
         }))
     }
     fn check_live(&self) -> std::result::Result<(), NativeDataIoError> {
+        if self.release.0.review_root_returned.load(Ordering::Acquire) {
+            assert!(
+                !self.release.0.panic_review,
+                "supplied review continuation panic"
+            );
+            if self.release.0.pause_review.swap(false, Ordering::AcqRel) {
+                self.release.0.entered.send(()).unwrap();
+                receive(&self.release.0.resume.lock().unwrap());
+            }
+        }
         if self.release.0.pause_after.fetch_update(
             Ordering::AcqRel,
             Ordering::Acquire,
@@ -110,7 +123,14 @@ impl tobkiri_harness_native::BootstrapReviewOwner for Source {
         &self,
         use_root: impl FnOnce(&std::path::Path) -> R,
     ) -> std::result::Result<R, OriginalAuthorityError> {
-        Ok(use_root(&self.root))
+        let value = use_root(&self.root);
+        // A narrow existing-Source phase witness: the real recovery callback
+        // has returned and stored its pending guard before the next check_live.
+        self.release
+            .0
+            .review_root_returned
+            .store(true, Ordering::Release);
+        Ok(value)
     }
 }
 static INDEX: BootstrapModuleIndex = BootstrapModuleIndex {
@@ -127,6 +147,8 @@ enum Scenario {
     HostDomain,
     DescribeTrap,
     MalformedResult,
+    ReviewPaused,
+    ReviewPanic,
 }
 fn expected_getters(operation: OriginalOperation) -> Vec<OriginalGetter> {
     match operation {
@@ -141,6 +163,7 @@ fn expected_getters(operation: OriginalOperation) -> Vec<OriginalGetter> {
         OriginalOperation::VerifyDenied(_) => vec![],
         OriginalOperation::VerifyDeniedCodec => vec![],
         OriginalOperation::VerifyIdentity(_) => vec![],
+        OriginalOperation::VerifyReview(_) => vec![],
     }
 }
 fn scope(invocation: &NativeSetupInvocation) -> serde_json::Value {
@@ -189,17 +212,41 @@ fn component(
     scenario: Scenario,
 ) -> Vec<u8> {
     let actual_scope = scope(invocation);
+    let review = match &operation {
+        OriginalOperation::ReviewListing(_) => Some(ReviewProbe::Boundary),
+        OriginalOperation::VerifyReview(probe) => Some(*probe),
+        _ => None,
+    };
     let identity = match &operation {
         OriginalOperation::VerifyIdentity(probe) => Some(*probe),
+        _ if review.is_some() => Some(match review.unwrap() {
+            ReviewProbe::RawValue | ReviewProbe::RawType => IdentityProbe::ValueError,
+            ReviewProbe::FactoryFailure => IdentityProbe::FactoryRaised,
+            _ => IdentityProbe::String,
+        }),
+        _ => None,
+    };
+    let review_message = match review {
+        Some(ReviewProbe::Canonical) => {
+            Some("application bootstrap Profile identity is not canonical")
+        }
+        Some(ReviewProbe::RawValue | ReviewProbe::FactoryFailure) => {
+            Some("Profile publication recovery failed closed")
+        }
+        Some(ReviewProbe::Mismatch) => Some("Profile publication identity changed"),
         _ => None,
     };
     let denied = matches!(
         &operation,
         OriginalOperation::VerifyDenied(_) | OriginalOperation::VerifyDeniedCodec
-    ) || matches!(
-        identity,
-        Some(IdentityProbe::ValueError | IdentityProbe::OsError | IdentityProbe::FactoryRaised)
-    );
+    ) || if review.is_some() {
+        review_message.is_some()
+    } else {
+        matches!(
+            identity,
+            Some(IdentityProbe::ValueError | IdentityProbe::OsError | IdentityProbe::FactoryRaised)
+        )
+    };
     let denied_codec = matches!(&operation, OriginalOperation::VerifyDeniedCodec);
     let mut memory = String::new();
     let mut offset = 1024;
@@ -312,7 +359,9 @@ fn component(
             i32.const 1 global.set $stage {body})\n"
         ));
         let os = probe == IdentityProbe::OsError;
-        let kind = if raised {
+        let kind = if review == Some(ReviewProbe::RawType) {
+            "type-error"
+        } else if raised {
             if os {
                 "os-error"
             } else {
@@ -327,20 +376,30 @@ fn component(
             let none = serde_json::json!({"kind":"none","value":null});
             let raw =
                 serde_json::json!({"kind":"str","value":{"length":3,"codepoints":[114,97,119]}});
-            serde_json::json!({"recovery_catch":if os {"os-error"} else {"value-error"},
-                "args":[raw],"cause":root,"context":root,"suppress_context":false,
+            serde_json::json!({"recovery_catch":if review == Some(ReviewProbe::RawType) {"none"} else if os {"os-error"} else {"value-error"},
+                "args":[raw],"cause":if review.is_some() {serde_json::Value::Null} else {root.clone()},
+                "context":if review.is_some() {serde_json::Value::Null} else {root.clone()},"suppress_context":false,
                 "os_fields":if os {serde_json::json!({"errno":{"kind":"int","value":"2"},"strerror":raw,"filename":none,"filename2":none})} else {serde_json::Value::Null}})
         } else {
             serde_json::Value::Null
         };
+        let string = if review == Some(ReviewProbe::Canonical) {
+            serde_json::json!({"length":2,"codepoints":[101,769]})
+        } else if review.is_some() {
+            serde_json::json!({"length":8,"codepoints":[100,101,102,97,117,108,116,115]})
+        } else {
+            serde_json::json!({"length":if probe == IdentityProbe::CodecRejected {1} else {2},"codepoints":[55296,66560]})
+        };
         let viewed = serde_json::json!({"format":"io.tobkiri.native-bootstrap-identity-view.v1",
             "scope":actual_scope,"root":root,"origin":if raised {"getter-raised"} else {"getter-returned"},
             "kind":kind,"registered_builtin_kind":if raised {"record"} else {kind},
-            "string":if kind == "str" {serde_json::json!({"length":if probe == IdentityProbe::CodecRejected {1} else {2},"codepoints":[55296,66560]})} else {serde_json::Value::Null},
+            "string":if kind == "str" {string} else {serde_json::Value::Null},
             "exception":exception,"owned":[]}).to_string();
         let (input_ptr, input_len) = data(&mut memory, &mut offset, describe.as_bytes());
         let (output_ptr, output_len) = data(&mut memory, &mut offset, viewed.as_bytes());
-        let described = if probe == IdentityProbe::Refused {
+        let described = if matches!(scenario, Scenario::DescribeTrap) {
+            "unreachable".to_owned()
+        } else if probe == IdentityProbe::Refused {
             "call $unsupported return".to_owned()
         } else {
             format!("i32.const {output_ptr} i32.const {output_len} call $emit return")
@@ -353,10 +412,11 @@ fn component(
     }
     if denied {
         let first_stage = if identity.is_some() { 2 } else { 0 };
+        let factory_message = review_message.unwrap_or(WORKER_DENIED_MESSAGE);
         let argument = serde_json::json!({"scope":actual_scope,"object":"ee1"});
         let root = serde_json::json!({"scope":actual_scope,"object":"ee2"});
         let import = format!(
-            r#"{{"format":"io.tobkiri.native-value-input.v1","scope":{actual_scope},"nodes":[{{"kind":"str","value":"{WORKER_DENIED_MESSAGE}"}}],"root":{{"node":0}}}}"#
+            r#"{{"format":"io.tobkiri.native-value-input.v1","scope":{actual_scope},"nodes":[{{"kind":"str","value":"{factory_message}"}}],"root":{{"node":0}}}}"#
         );
         let factory = format!(
             r#"{{"format":"io.tobkiri.native-call.v1","scope":{actual_scope},"args":[{argument}],"kwargs":[]}}"#
@@ -369,7 +429,7 @@ fn component(
         let observed_message = if denied_codec {
             "different actual factory message"
         } else {
-            WORKER_DENIED_MESSAGE
+            factory_message
         };
         let viewed = serde_json::json!({"format":"io.tobkiri.native-value-view.v1","scope":actual_scope,"root":root,"owned":[],"nodes":[{"ref":root,"kind":"profile-resolution-denied","opaque_native_binding":false,"fields":[],"factory_denied":{"args":[observed_message],"cause":null,"context":null,"suppress_context":false}}]}).to_string();
         for (name, stage, input, output) in [
@@ -528,7 +588,17 @@ fn launch_with_detachment(
         release_panics: AtomicBool::new(false),
         released: AtomicBool::new(false),
         result_dropped: Arc::new(AtomicBool::new(false)),
-        review_diagnostics: matches!(&operation, OriginalOperation::ReviewListing(_)),
+        review_diagnostics: matches!(
+            &operation,
+            OriginalOperation::ReviewListing(_)
+                | OriginalOperation::VerifyReview(ReviewProbe::Boundary)
+        ) && !matches!(
+            scenario,
+            Scenario::DescribeTrap | Scenario::ReviewPaused | Scenario::ReviewPanic
+        ),
+        review_root_returned: AtomicBool::new(false),
+        pause_review: AtomicBool::new(matches!(scenario, Scenario::ReviewPaused)),
+        panic_review: matches!(scenario, Scenario::ReviewPanic),
         entered,
         resume: Mutex::new(resuming),
     });
@@ -720,6 +790,239 @@ fn identity_observation_refusal_keeps_the_actual_getter_error_until_finish() {
     identity_worker(IdentityProbe::Refused);
 }
 
+#[test]
+fn review_same_guard_reaches_catalog_after_dynamic_identity_and_pure_workspace() {
+    review_continuation(ReviewProbe::Boundary);
+}
+#[test]
+fn review_canonical_protocol_cause_uses_the_actual_factory_under_the_same_guard() {
+    review_continuation(ReviewProbe::Canonical);
+}
+#[test]
+fn review_raw_value_error_keeps_its_opaque_recovery_cause_through_finish() {
+    review_continuation(ReviewProbe::RawValue);
+}
+#[test]
+fn review_raw_type_error_stays_outside_the_canonical_catch() {
+    review_continuation(ReviewProbe::RawType);
+}
+#[test]
+fn review_candidate_mismatch_uses_the_actual_plain_factory() {
+    review_continuation(ReviewProbe::Mismatch);
+}
+#[test]
+fn review_factory_failure_never_falls_back_to_the_old_typed_request() {
+    review_continuation(ReviewProbe::FactoryFailure);
+}
+
+#[test]
+fn review_guest_trap_keeps_the_real_guard_until_finish_then_releases_it() {
+    review_interruption(Scenario::DescribeTrap);
+}
+#[test]
+fn review_panic_after_storing_the_guard_still_closes_it_under_finish() {
+    review_interruption(Scenario::ReviewPanic);
+}
+#[test]
+fn review_shutdown_with_the_actual_flock_held_closes_it_before_physical_join() {
+    review_interruption(Scenario::ReviewPaused);
+}
+
+fn review_interruption(scenario: Scenario) {
+    use std::os::fd::AsRawFd;
+    let running = launch(
+        OriginalOperation::VerifyReview(ReviewProbe::Boundary),
+        scenario,
+        1,
+        false,
+    );
+    let invocation = receive(&running.ready);
+    receive(&running.entered);
+    let journal = seed_review_continuation(&running._root.0, false);
+    running.resume.send(()).unwrap();
+    let mut observer = None;
+    if matches!(scenario, Scenario::ReviewPaused) {
+        // The real prefix callback has returned, storing the SAME guard in
+        // runner.review. Observe its OS lock independently before shutdown.
+        receive(&running.entered);
+        let file =
+            File::open(running._root.0.join("profiles/.bootstrap-publication.lock")).unwrap();
+        assert_eq!(
+            unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+            -1
+        );
+        assert!(matches!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::EWOULDBLOCK)
+        ));
+        observer = Some(file);
+        running.jobs.request_shutdown();
+        running.resume.send(()).unwrap();
+    }
+    let output = tauri::async_runtime::block_on(running.waiter.result());
+    if matches!(scenario, Scenario::ReviewPanic) {
+        assert!(matches!(
+            output,
+            Err(DetachedFailure::Execution {
+                stage: Stage::Operation,
+                source: SourceRecord::Condition(
+                    crate::native_worker_failure::Condition::NativePanic
+                )
+            })
+        ));
+    } else if matches!(scenario, Scenario::DescribeTrap) {
+        assert!(matches!(
+            output,
+            Err(DetachedFailure::Execution {
+                stage: Stage::Operation,
+                source: SourceRecord::Unsupported(Unsupported::AnyhowBoundary)
+            })
+        ));
+    } else {
+        assert!(
+            matches!(
+                output,
+                Err(DetachedFailure::Execution {
+                    stage: Stage::Operation,
+                    ..
+                } | DetachedFailure::Detachment { .. })
+            ),
+            "shutdown became a canonical denial, boundary success or publication retry"
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(running._root.0.join("profiles/bootstrap-publication.json")).unwrap(),
+        journal
+    );
+    let file = observer.unwrap_or_else(|| {
+        File::open(running._root.0.join("profiles/.bootstrap-publication.lock")).unwrap()
+    });
+    assert_eq!(
+        unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+        0
+    );
+    assert_eq!(unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) }, 0);
+    drop(file);
+    assert!(!running._root.0.join("workspaces").exists());
+    assert!(!running._root.0.join("authority").exists());
+    assert_eq!(receive(&running.published), (true, true));
+    drain(&running.jobs, &running.controls, &invocation, true);
+}
+
+fn review_continuation(probe: ReviewProbe) {
+    use crate::native_worker_failure::{ReviewHostCause, ReviewSourceRecord};
+    use serde_json::json;
+    let running = launch(
+        OriginalOperation::VerifyReview(probe),
+        Scenario::Normal,
+        1,
+        false,
+    );
+    let invocation = receive(&running.ready);
+    let deadline = invocation.deadline().unwrap();
+    receive(&running.entered);
+    let profiles = running._root.0.join("profiles");
+    let key = "original-publication-fixture-key-material";
+    let journal = seed_review_continuation(&running._root.0, probe == ReviewProbe::Mismatch);
+    running.resume.send(()).unwrap();
+    let output = tauri::async_runtime::block_on(running.waiter.result());
+    match (probe, output) {
+        (ReviewProbe::Boundary, Err(DetachedFailure::Execution { stage:Stage::Review,
+            source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
+                tobkiri_harness_native::BootstrapReviewReachpoint::HostProfileCatalogNotBound)) })) => {}
+        (ReviewProbe::Canonical, Err(DetachedFailure::Execution { stage:Stage::Review,
+            source:SourceRecord::Review(ReviewSourceRecord::ActualDenied { view, message,
+                host_cause:Some(ReviewHostCause::NativeGraph { code, message:cause_message, details }), suppress_context:true }) })) => {
+            assert_eq!(message, "application bootstrap Profile identity is not canonical");
+            assert_eq!(code, "protocol-error");
+            assert_eq!(cause_message, "bootstrap_profile_id is not Unicode-normalized");
+            let graph:serde_json::Value=serde_json::from_str(&details).unwrap();
+            assert_eq!(graph["nodes"][0]["args"], json!([cause_message]));
+            let value:serde_json::Value=serde_json::from_str(&view).unwrap();
+            assert_eq!(value["nodes"][0]["factory_denied"]["args"], json!([message]));
+        }
+        (ReviewProbe::RawValue, Err(DetachedFailure::Execution { stage:Stage::Review,
+            source:SourceRecord::Review(ReviewSourceRecord::ActualDenied { message,
+                host_cause:Some(ReviewHostCause::OpaqueGetter(cause)), suppress_context:true, .. }) })) => {
+            assert_eq!(message, "Profile publication recovery failed closed");
+            assert_eq!(cause.code, "method-raised");
+            let value:serde_json::Value=serde_json::from_str(cause.view.as_deref().unwrap()).unwrap();
+            assert_eq!(value["kind"], "value-error");
+            assert_eq!(value["exception"]["recovery_catch"], "value-error");
+        }
+        (ReviewProbe::RawType, Err(DetachedFailure::Execution { stage:Stage::Review,
+            source:SourceRecord::Review(ReviewSourceRecord::GetterRaised(error)) })) => {
+            assert_eq!(error.code, "method-raised");
+            assert_eq!(error.message, "");
+            assert!(error.details.is_some());
+            let value:serde_json::Value=serde_json::from_str(error.view.as_deref().unwrap()).unwrap();
+            assert_eq!(value["kind"], "type-error");
+            assert_eq!(value["exception"]["recovery_catch"], "none");
+        }
+        (ReviewProbe::Mismatch, Err(DetachedFailure::Execution { stage:Stage::Review,
+            source:SourceRecord::Review(ReviewSourceRecord::ActualDenied { message,
+                host_cause:None, suppress_context:false, .. }) })) => assert_eq!(message, "Profile publication identity changed"),
+        (ReviewProbe::FactoryFailure, Err(DetachedFailure::Execution { stage:Stage::Review,
+            source:SourceRecord::Review(ReviewSourceRecord::ActualFactoryFailure { stage, error,
+                host_context:Some(ReviewHostCause::OpaqueGetter(context)) }) })) => {
+            assert_eq!(stage, tobkiri_harness_native::BootstrapDeniedStage::Factory);
+            assert_eq!(error.code, "method-raised");
+            assert!(error.details.as_deref().unwrap().contains("\"object\":\"ee5\""));
+            assert_eq!(context.code, "method-raised");
+            assert!(context.details.as_deref().unwrap().contains("\"object\":\"ee3\""));
+        }
+        (_, other) => panic!("unexpected whole review result: {other:?}"),
+    }
+    assert_eq!(invocation.deadline().unwrap(), deadline);
+    assert_eq!(
+        fs::read_to_string(profiles.join("bootstrap-publication.json")).unwrap(),
+        journal
+    );
+    assert_eq!(
+        fs::read_to_string(profiles.join(".publication-key")).unwrap(),
+        key
+    );
+    assert!(
+        !running._root.0.join("workspaces").exists(),
+        "pure Path joins created a directory"
+    );
+    assert!(!running._root.0.join("authority").exists());
+    assert!(!profiles.join("active.json").exists());
+    assert_eq!(receive(&running.published), (true, true));
+    // launch asserts the post-finish cleanup handle is None. The ordinary
+    // Source/result probes and Census drain separately require real Join/cap0.
+    drain(&running.jobs, &running.controls, &invocation, true);
+}
+
+fn seed_review_continuation(root: &std::path::Path, mismatch: bool) -> String {
+    use hmac::{Hmac, Mac};
+    use serde_json::json;
+    let profiles = root.join("profiles");
+    fs::create_dir(&profiles).unwrap();
+    let key = "original-publication-fixture-key-material";
+    fs::write(profiles.join(".publication-key"), key).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            profiles.join(".publication-key"),
+            fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+    }
+    let payload = json!({"schema":"io.tobkiri.profile-publication-intent.v1",
+        "candidate":{"profile_id":if mismatch {"another"} else {"defaults"}},
+        "predecessor":null,"confirmation_digest":null});
+    let mut hmac = Hmac::<sha2::Sha256>::new_from_slice(key.as_bytes()).unwrap();
+    hmac.update(review_fixture_json(&payload, true).as_bytes());
+    let journal = review_fixture_json(
+        &json!({"payload":payload,"hmac":hex::encode(hmac.finalize().into_bytes())}),
+        false,
+    );
+    fs::write(profiles.join("bootstrap-publication.json"), &journal).unwrap();
+    journal
+}
+
 fn identity_worker(probe: IdentityProbe) {
     let running = launch(
         OriginalOperation::VerifyIdentity(probe),
@@ -902,7 +1205,7 @@ fn review_pointer(case: ReviewPointerCase) {
     let payload = json!({
         "schema":"io.tobkiri.profile-publication-intent.v1",
         "predecessor":if matches!(case, ReviewPointerCase::Stale) { serde_json::Value::Null } else { pointer },
-        "candidate":{"profile_id":"other","profile_revision":digest,
+        "candidate":{"profile_id":if matches!(case, ReviewPointerCase::Same) {"defaults"} else {"other"},"profile_revision":digest,
             "activation_id":"activation:fixture1","plan_digest":digest,"lock_digest":digest},
         "confirmation_digest":null,
     });
@@ -930,7 +1233,7 @@ fn review_pointer(case: ReviewPointerCase) {
     match (case, output) {
         (ReviewPointerCase::Same, Err(DetachedFailure::Execution { stage: Stage::Review,
             source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
-                tobkiri_harness_native::BootstrapReviewReachpoint::BootstrapProfileIdNotBound)) })) => {}
+                tobkiri_harness_native::BootstrapReviewReachpoint::HostProfileCatalogNotBound)) })) => {}
         (ReviewPointerCase::Stale, Err(DetachedFailure::Execution { stage: Stage::Review,
             source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
                 tobkiri_harness_native::BootstrapReviewReachpoint::CatalogNotBound)) })) => {}
