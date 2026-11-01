@@ -2054,7 +2054,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 019: ID検証に必要なUnicode処理と生成表の重複
 
-- 状態: **Unicode primitiveのSol6.1 xhigh実装と原本表の生成済み、Rust比較は未実行**。
+- 状態: **Unicode primitiveのSol6.1 xhigh実装・原本表生成・両OS全域比較が成功、製品未接続**。
 - 場所: harness-nativeの`unicode15_1.rs`/`unicode15_1_data.rs`、
   `tools/unicode15_1_reference.py`、既存`packs/ordered-python-compat/src/unicode15_1.json`。
 - 問題: Core ProfileIdの別規約やHostのUnicode版を流用すると、元canonical IDの
@@ -2066,5 +2066,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   削減候補だが、旧Guest表の廃止は既存全consumerとの一致を確認してから。
 - 維持: surrogate、NFC composition blocking/exclusions/Hangul、文脈Sigma、Python repr。
   生成CI41263883959は成功し、公式19,074行の36,482 unique NFC入力、全1,114,112
-  codepoint、32contextの原本観測と104,440Bの固定表を生成。Rust11単体/全域digest比較は
-  次CIで検査し、型観測・opaque cause・async journal/getterや製品採用とは分ける。
+  codepoint、32contextの原本観測と104,440Bの固定表を生成。実装commit821231531の
+  CI41264808102はLinux/macOSともRust11単体・公式36,482 NFC全配列・32context・
+  全1,114,112 scalar NFC/lower・128codepoint単位の全域repr digest・strict Clippyに成功。
+  再生成表もbyte一致。選択JSON8,095Bだけ保存し、fixtureやZIPはローカルに残さない。
+  cfg(test)内のprimitive比較なので、実NativeInvocationのscratch予算・型観測・opaque
+  cause・async journal/getter・製品採用の成功には読み替えない。
+  原本getter/Host検証は別toolの69入力で観測し、元のport/factory/validatorを保持する。
+  同一test Source destructor witnessは実factory/getter driver間で共有し重複を減らす。

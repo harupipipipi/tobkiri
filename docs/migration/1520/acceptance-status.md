@@ -65,8 +65,11 @@ also passed its existing 93-case comparison.
 [Desktop CI41253253796](https://github.com/harupipipipi/tobkiri/actions/runs/41253253796)
 compiled the actual caller and passed the existing 638 library tests, including
 all 12 previous finite cases. The three new pointer/snapshot caller cases failed
-with a 30-second channel-receive timeout. This failure is being investigated;
-the current-source installer/cold-boot/DMG did not complete.
+with a 30-second channel-receive timeout. Sol traced the test Source's bypassed
+owner check; the isolated test-only fix at `bc3e84aa0` passed all641 library tests,
+including all15 finite caller cases,123 build-script/18 resource tests and the
+sealed cold-boot/DMG/mounted checks in CI41256412808. The failed8b run remains
+recorded; product code, timeouts and limits were not changed by this test fix.
 Bootstrap-identity getter/factory/canonical semantics, catalog and subsequent
 recovery/listing, product adoption and the original GUI remain unqualified.
 
@@ -83,6 +86,18 @@ owner reopen confirmed. The new four Tauri cases remain under verification in
 The Host's
 cause/context remain separate from the Guest exception's observed fields.
 This does not yet connect async recovery or qualify the product factory/GUI.
+
+[Unicode primitive CI41264808102](https://github.com/harupipipipi/tobkiri/actions/runs/41264808102)
+at `821231531` passed on Linux and macOS:11 regressions,36,482 official NFC
+sequences,32 context cases, all1,114,112 scalar NFC/lower observations and
+128-codepoint-block repr over the full domain, plus strict library validation.
+Fresh pinned CPython3.13.16/Unicode15.1 generation matched the committed static
+data. These modules remain test-only; actual invocation scratch/work funding,
+canonical-validation integration and recovery are not qualified by this run.
+[Original identity CI41265632295](https://github.com/harupipipipi/tobkiri/actions/runs/41265632295)
+separately passed69 controlled raw-getter inputs through the unchanged original
+validator/factory/Host raise on both platforms. This is an original reference,
+without native comparison, publication guard or product adoption.
 
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
