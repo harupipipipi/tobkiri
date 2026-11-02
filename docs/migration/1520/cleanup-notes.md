@@ -2434,7 +2434,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じ順序で呼び、同じ`String`抽出を`Cow::Owned`へ包む。未知名やsubclassを
   static経路へ追加せず、結果cache・予算・provider選択・製品defaultを変えない。
 - status: Astra highのQ&A確認とSol6.1 mediumのread-only source review済み。
-  rustfmt/差分検査のみ実施。実corpus/実Wasmの検証はCI待ち。allocation失敗や
+  `5fc0b9a0a`のCI41536252846で実native corpusと元caller比較は成功した。
+  実Wasm CI41536252795は凍結producerの参照commit未取得によりSource検査で停止し、
+  Rust/Wasm実行は0件。workflowに原本commitの明示取得を追加し、検査を省略せず再検証する。
+  allocation失敗や
   fuel停止位置は変わり得るため、速度向上・cold42・全catalog成功は未証明。
   wholeHarnessのgenuine validator計測とは別の未採用backend改善であり、
   採用やPython廃止の根拠にはしない。

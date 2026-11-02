@@ -54,6 +54,8 @@ jobs:
         with:
           python-version: '3.13.16'
       - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Fetch the original source for the frozen producer checkpoint
+        run: git fetch --no-tags --depth=1 origin c6d7001249c661552416672448bda123c59b33ca
       - name: Check closed source adapters and new build scopes
         run: |
           if [ "$APP_SCHEMA_PROGRESS" = 1 ] && [ "$APP_SCHEMA_BACKEND" != 1 ]; then
