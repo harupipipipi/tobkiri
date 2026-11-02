@@ -19,6 +19,7 @@ import runtime_inputs
 
 ENTRYPOINT = "harness_native_entry"
 METADATA = "harness-native-dependencies.json"
+DIAGNOSTIC_FORMAT = "tobkiri.harness-native-schema-diagnostic-dependencies/1"
 MAX_FILE = 8 * 1024 * 1024
 MAX_TOTAL = 32 * 1024 * 1024
 EXPORTS = [
@@ -216,6 +217,20 @@ def stage(
         )
         for item in plan["sources"]
     }
+    diagnostic = original.get("schema_call_diagnostic", False)
+    if type(diagnostic) is not bool:
+        raise ValueError("schema diagnostic source selection must be explicit")
+    component_provenance = _read(destination / "provenance.json", original["files"]["provenance.json"])
+    source_proof = json.loads(component_provenance)
+    if diagnostic:
+        from harness_native.schema_diagnostic_stage import validate
+
+        component_sources = {
+            item["source"]: files[item["destination"]] for item in plan["sources"]
+        }
+        source_proof = validate({**component_sources, "provenance.json": component_provenance})
+    elif source_proof.get("format") != "io.tobkiri.harness-native-component-source.v1":
+        raise ValueError("diagnostic sources require the explicit diagnostic producer selection")
     modules, namespaces = _index(files)
     stdlib_preimports = _stdlib_preimports(files, modules)
     original_files = dict(files)
@@ -318,11 +333,11 @@ def stage(
         name for name in original_files if name.startswith("tobkiri_protocol/schemas/")
     ]
     proof = {
-        "format": "tobkiri.harness-native-dependencies/1",
+        "format": DIAGNOSTIC_FORMAT if diagnostic else "tobkiri.harness-native-dependencies/1",
         "original_plan_sha256": original["plan_sha256"],
         "entrypoint": ENTRYPOINT,
         "original_entrypoint": "app",
-        "original_source_files_unchanged": True,
+        "original_source_files_unchanged": not diagnostic,
         "original_module_count": len(modules),
         "original_schema_count": len(schema_files),
         "captured_tree_files": len(tree_files),
@@ -355,6 +370,16 @@ def stage(
         "native_imports_connected": False,
         "production_enabled": False,
     }
+    if diagnostic:
+        proof.update({
+            "diagnostic_only": True, "staged_source_files_unchanged": True,
+            "other_original_members_unchanged": True,
+            "schema_diagnostic_source_sha256": hashlib.sha256(component_provenance).hexdigest(),
+            "checkpoint_contract": source_proof["checkpoint_contract"],
+            "source_index": source_proof["source_index"],
+            "validation_derivation": source_proof["validation_derivation"],
+            "provider_substitution": False, "whole_catalog_acceptance": False,
+        })
     metadata = (json.dumps(proof, sort_keys=True, indent=2) + "\n").encode()
     add(METADATA, metadata)
     if (
@@ -378,7 +403,7 @@ def stage(
     plan["entrypoint"] = ENTRYPOINT
     plan_bytes = (json.dumps(plan, sort_keys=True, indent=2) + "\n").encode()
     (destination / "plan.json").write_bytes(plan_bytes)
-    return {
+    selected = {
         **original,
         "plan_sha256": hashlib.sha256(plan_bytes).hexdigest(),
         "source_files": plan["sources"],
@@ -390,6 +415,9 @@ def stage(
             "entrypoint": ENTRYPOINT,
         },
     }
+    if diagnostic:
+        selected["harness_native_dependencies"]["schema_call_diagnostic"] = True
+    return selected
 
 
 def verify_component_receipt(proof: dict, source: dict, inputs: Path) -> None:

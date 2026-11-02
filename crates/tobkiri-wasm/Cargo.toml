@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
+# Explicit opt-in CI-only fixed-import entry observations.
+bootstrap-ci = []
 # Keep the checksum-pinned private SQLite producer available for experiments.
 # Production DATA uses the bounded native Store backend.
 private-sqlite-experiment = []

@@ -123,6 +123,109 @@ fn diagnostic_text(value: &CoreBuffer) -> Value {
 #[ignore = "requires actual component and independent pinned original CI fixtures"]
 async fn original_catalog_component_driver() -> Result<()> {
     ensure!(
+        !cfg!(feature = "catalog-diagnostics-ci"),
+        "unmeasured catalog gate requires the baseline Core configuration"
+    );
+    run_original_catalog_component_driver(false).await
+}
+
+#[cfg(feature = "catalog-diagnostics-ci")]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires explicitly derived schema-checkpoint artifact and CI Core configuration"]
+async fn original_catalog_schema_diagnostic_driver() -> Result<()> {
+    ensure!(
+        std::env::var("TOBKIRI_TEST_NATIVE_HARNESS_SCHEMA_DIAGNOSTIC").as_deref() == Ok("1")
+            && selected::CI_SCHEMA_TAG_COUNT == 69,
+        "explicitly bound diagnostic source/index required"
+    );
+    // Diagnostic observation never turns the original catalog failure into
+    // functional qualification, even if the measured call reaches its end.
+    let outcome = run_original_catalog_component_driver(true).await;
+    drop(outcome);
+    bail!("schema checkpoint diagnostic remains unqualified; inspect bounded evidence")
+}
+
+#[cfg(feature = "catalog-diagnostics-ci")]
+fn write_schema_trace(
+    path: &Path,
+    snapshot: Option<schema_diagnostic_ci::Snapshot>,
+) -> Result<Value> {
+    use sha2::{Digest as _, Sha256};
+    use std::io::{Cursor, Write as _};
+    let Some(packet) = snapshot else {
+        return Ok(json!({"available":false,"qualification":false}));
+    };
+    let data = packet.data();
+    // Every row consists only of fixed ASCII keys/stages, u8 tags and a
+    // maximum 20-digit u64. 1000 header bytes plus 128 * 116 row bytes
+    // fit in the one prepaid 16KiB output. Cursor over a fixed slice cannot
+    // grow, even if this bound regresses. The owned packet funds both its
+    // borrowed DATA and this buffer until the file write/hash have finished.
+    const MAX_ENCODED_BYTES: usize = 1000 + schema_diagnostic_ci::MAX_RECORDS * 116;
+    ensure!(MAX_ENCODED_BYTES <= schema_diagnostic_ci::MAX_REPORT_JSON_BYTES);
+    ensure!(usize::from(data.count) <= schema_diagnostic_ci::MAX_RECORDS);
+    let mut bytes = Vec::<u8>::new();
+    bytes.try_reserve_exact(schema_diagnostic_ci::MAX_REPORT_JSON_BYTES)?;
+    ensure!(bytes.capacity() == schema_diagnostic_ci::MAX_REPORT_JSON_BYTES);
+    bytes.resize(schema_diagnostic_ci::MAX_REPORT_JSON_BYTES, 0);
+    let length = {
+        let mut output = Cursor::new(bytes.as_mut_slice());
+        write!(
+            output,
+            "{{\"format\":\"io.tobkiri.actual-schema-checkpoint-trace.v1\",\"count\":{},\"maximum_records\":{},\"schema_tag_count\":{},\"overflow\":{},\"unavailable\":{},\"attempt_limit\":{},\"attempts_remaining\":{},\"records\":[",
+            data.count,
+            data.maximum_records,
+            data.schema_tag_count,
+            data.overflow,
+            data.unavailable,
+            data.attempt_limit,
+            data.attempts_remaining
+        )?;
+        let mut first = true;
+        let mut rows = 0usize;
+        for record in data.records.iter().flatten() {
+            if !first {
+                output.write_all(b",")?;
+            }
+            first = false;
+            rows += 1;
+            write!(
+                output,
+                "{{\"sequence\":{},\"stage\":\"{}\",\"schema_tag\":",
+                record.sequence,
+                record.stage.as_str()
+            )?;
+            match record.schema_tag {
+                Some(tag) => write!(output, "{tag}")?,
+                None => output.write_all(b"null")?,
+            }
+            output.write_all(b",\"fuel_remaining\":")?;
+            match record.fuel_remaining {
+                Some(fuel) => write!(output, "{fuel}")?,
+                None => output.write_all(b"null")?,
+            }
+            output.write_all(b"}")?;
+        }
+        ensure!(rows == usize::from(data.count));
+        output.write_all(b"],\"fuel_sample_boundary\":\"actual-import-construction-entry\",\"pure_check_schema_cost_proven\":false,\"qualification\":false}")?;
+        usize::try_from(output.position())?
+    };
+    ensure!(length <= MAX_ENCODED_BYTES);
+    std::fs::write(path, &bytes[..length])?;
+    let digest = Sha256::digest(&bytes[..length]);
+    // Only bounded file metadata escapes the funded packet, never the trace
+    // array or an unfunded serde Value/Vec representation of its records.
+    let metadata = json!({"available":true,"file":"actual-catalog-schema-trace.json",
+        "bytes":length,"sha256":format!("{digest:x}"),"qualification":false});
+    drop(bytes);
+    drop(packet);
+    Ok(metadata)
+}
+
+async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Result<()> {
+    #[cfg(not(feature = "catalog-diagnostics-ci"))]
+    let _ = schema_diagnostic;
+    ensure!(
         std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
             && std::env::var("TOBKIRI_TEST_NATIVE_HARNESS_CI").as_deref() == Ok("1")
     );
@@ -239,6 +342,8 @@ async fn original_catalog_component_driver() -> Result<()> {
     let mut cleanup_probe = None;
     let mut observed = None;
     let mut post_review_copy = None;
+    #[cfg(feature = "catalog-diagnostics-ci")]
+    let mut schema_trace = None;
     let execution: Result<()> = async {
         let outcome = runtime
             // Preserve this constructor-entry proof while normal listing
@@ -280,6 +385,12 @@ async fn original_catalog_component_driver() -> Result<()> {
             "cleanup_probe_verified_before_finish":cleanup_probe.as_ref().map(|v| v.is_verified()),
             "qualification":false,
         }));
+        #[cfg(feature = "catalog-diagnostics-ci")]
+        if schema_diagnostic {
+            // The real log is retained by Work; no Guest call or dead-Store
+            // fuel query is made by this bounded native observation.
+            schema_trace = runtime.ci_schema_trace();
+        }
         if outcome.is_err() {
             observed = Some(json!({"outcome":"outer-error", "qualification":false}));
         }
@@ -370,6 +481,15 @@ async fn original_catalog_component_driver() -> Result<()> {
     let before = invocation.capacity_snapshot();
     let cleanup = runtime.finish().await;
     let after_finish = invocation.capacity_snapshot();
+    #[cfg(feature = "catalog-diagnostics-ci")]
+    let schema_trace_file = if schema_diagnostic {
+        write_schema_trace(
+            &fixtures_path.with_file_name("actual-catalog-schema-trace.json"),
+            schema_trace.take(),
+        )
+    } else {
+        Ok(Value::Null)
+    };
     let probe_present = cleanup_probe.is_some();
     let verified = cleanup_probe.as_ref().map(|v| v.is_verified());
     let lock_released = lock_is_free(&user_data)?;
@@ -397,11 +517,26 @@ async fn original_catalog_component_driver() -> Result<()> {
         "reaped":reaped,"after_reap":{"bytes":after_reap.charged_bytes,"reservations":after_reap.reservations}},
         "qualification":false,"production_enabled":false,
         "scope":"one actual catalog operation with controlled CI resource owner and empty artifact directory; no constructor, migration, Authority, actual installed executable, GUI or full9 native qualification"});
+    #[cfg(feature = "catalog-diagnostics-ci")]
+    let output = {
+        let mut output = output;
+        if schema_diagnostic {
+            output["schema_checkpoint_diagnostic"] = json!({
+                "enabled":true,"core_feature":"catalog-diagnostics-ci",
+                "unmeasured_catalog_gate":false,"observer_costs_in_same_original_limits":true,
+                "source_provider_substitution":false,
+                "trace_file":schema_trace_file.as_ref().ok(),
+                "trace_write_error":schema_trace_file.as_ref().err().map(ToString::to_string)});
+        }
+        output
+    };
     std::fs::write(
         fixtures_path.with_file_name("actual-catalog-observations.json"),
         serde_json::to_vec_pretty(&output)?,
     )?;
     cleanup?;
+    #[cfg(feature = "catalog-diagnostics-ci")]
+    schema_trace_file?;
     execution?;
     ensure!(
         verified == Some(true)

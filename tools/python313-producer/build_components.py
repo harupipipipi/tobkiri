@@ -20,6 +20,7 @@ import runtime_inputs
 def run(source: Path | None, producer: Path, validation: Path, destination: Path,
         *, all_five: bool = False, harness_setup: bool = False,
         harness_native: bool = False,
+        schema_call_diagnostic: bool = False,
         native_input_stack: bool = False,
         native_input_stack_import_diagnostics: bool = False,
         native_thread_capabilities: bool = False,
@@ -51,6 +52,10 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         raise ValueError('App backend is a distinct explicitly selected kernel scope')
     if type(app_schema_progress) is not bool or (app_schema_progress and not app_schema_backend):
         raise ValueError('schema progress is a separate explicitly selected App diagnostic')
+    if (type(schema_call_diagnostic) is not bool
+            or (schema_call_diagnostic and (not harness_native
+                or any(path is None for path in (schema_inputs, stdlib, rpds))))):
+        raise ValueError('schema-call diagnostic requires the whole native Harness and locked dependencies')
     app_data_mode = capability_projection or bundle_catalog or bundle_catalog_kernel
     if (bundle_catalog or bundle_catalog_kernel) != (bundle_cases is not None):
         raise ValueError('bundle catalog requires its separate original DATA input')
@@ -145,7 +150,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     elif native_input_stack:
         receipt_format = 'tobkiri.python313-native-input-stack-candidate/1'
     elif harness_native:
-        receipt_format = 'tobkiri.python313-native-harness-candidate/1'
+        receipt_format = ('tobkiri.python313-native-harness-schema-diagnostic/1'
+                          if schema_call_diagnostic
+                          else 'tobkiri.python313-native-harness-candidate/1')
     elif harness_setup:
         receipt_format = 'tobkiri.python313-setup-candidate/1'
     else:
@@ -179,6 +186,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     elif native_input_stack_import_diagnostics:
         receipt['diagnostic_only'] = True
         receipt['diagnostic_outcome_must_fail'] = True
+    elif schema_call_diagnostic:
+        receipt.update(diagnostic_only=True, whole_catalog_acceptance=False,
+                       provider_substitution=False, baseline_component=False)
     receipt_path = destination / 'components-build.json'
     if bundle_catalog_kernel:
         from bundle_catalog_kernel_inputs import component_name
@@ -196,7 +206,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     elif native_input_stack:
         component_names = ('harness-input-stack',)
     elif harness_native:
-        component_names = ('harness-native',)
+        component_names = ('harness-native-schema-diagnostic' if schema_call_diagnostic
+                           else 'harness-native',)
     elif harness_setup:
         component_names = ('harness-setup',)
     else:
@@ -232,6 +243,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 if native_input_stack_import_diagnostics
                 else component_inputs.stage_native_input_stack(repo, inputs)
                 if native_input_stack
+                else component_inputs.stage_harness_native(
+                    repo, inputs, schema_call_diagnostic=True)
+                if harness_native and schema_call_diagnostic
                 else component_inputs.stage_harness_native(repo, inputs)
                 if harness_native
                 else component_inputs.stage_harness_setup(repo, inputs)
@@ -326,6 +340,7 @@ if __name__ == '__main__':
     mode.add_argument('--all-five', action='store_true')
     mode.add_argument('--harness-setup', action='store_true')
     mode.add_argument('--harness-native', action='store_true')
+    parser.add_argument('--schema-call-diagnostic', action='store_true')
     mode.add_argument('--native-input-stack', action='store_true')
     mode.add_argument('--native-input-stack-import-diagnostics', action='store_true')
     mode.add_argument('--native-thread-capabilities', action='store_true')

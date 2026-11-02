@@ -105,7 +105,12 @@ def run() -> None:
         if sdk.sha256(selected) != dependencies['metadata_sha256']:
             raise ValueError('native dependency source metadata changed')
         dependency_evidence = json.loads(selected)
-        if (dependency_evidence['format'] != 'tobkiri.harness-native-dependencies/1'
+        schema_diagnostic = dependencies.get('schema_call_diagnostic', False)
+        if type(schema_diagnostic) is not bool:
+            raise ValueError('schema diagnostic producer selection must be explicit')
+        dependency_format = ('tobkiri.harness-native-schema-diagnostic-dependencies/1'
+                             if schema_diagnostic else 'tobkiri.harness-native-dependencies/1')
+        if (dependency_evidence['format'] != dependency_format
                 or dependency_evidence['entrypoint'] != plan['entrypoint']
                 or dependency_evidence['original_plan_sha256']
                 != dependencies['original_plan_sha256']
@@ -113,6 +118,15 @@ def run() -> None:
                 or dependency_evidence['dependency_closure_complete'] is not False
                 or dependency_evidence['component_init_performed'] is not False):
             raise ValueError('native dependency evidence overstates its scope')
+        if schema_diagnostic and (
+            dependency_evidence.get('diagnostic_only') is not True
+            or dependency_evidence.get('original_source_files_unchanged') is not False
+            or dependency_evidence.get('staged_source_files_unchanged') is not True
+            or dependency_evidence.get('other_original_members_unchanged') is not True
+            or dependency_evidence.get('provider_substitution') is not False
+            or dependency_evidence.get('whole_catalog_acceptance') is not False
+        ):
+            raise ValueError('schema diagnostic dependency evidence overstates original equivalence')
     stage = Path('/work/stage')
     stage.mkdir()
     for name in ('home', 'tmp'):

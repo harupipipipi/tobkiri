@@ -35,7 +35,7 @@ on:
       verification:
         description: Original runtime regression or additional actual factory/getter comparison
         type: choice
-        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix]
+        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, catalog-schema-diagnostic]
         default: bootstrap
 
 permissions:
@@ -136,6 +136,7 @@ jobs:
       - name: Build the actual native Harness dispatcher and original module closure
         run: >-
           python3 -B tools/python313-producer/build_components.py --harness-native
+          ${{ inputs.verification == 'catalog-schema-diagnostic' && '--schema-call-diagnostic' || '' }}
           --producer "$RUNNER_TEMP/harness-producer"
           --validation "$RUNNER_TEMP/harness-validation"
           --destination "$RUNNER_TEMP/harness-native"
@@ -157,6 +158,12 @@ jobs:
             ${{ runner.temp }}/harness-native/harness-native/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native/work/generated-bindings/
             ${{ runner.temp }}/harness-native/harness-native/work/component.wasm
+            ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/plan.json
+            ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/provenance.json
+            ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/build/
+            ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/component.build.json
+            ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/generated-bindings/
+            ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/component.wasm
           if-no-files-found: warn
 
   execute-original-native-bootstrap:
@@ -190,10 +197,19 @@ jobs:
           path: ${{ runner.temp }}/harness-built
       - name: Bind the actual component, original modules and native index
         id: native_inputs
-        run: >-
-          python3 -B tools/python313-producer/harness_native_ci_inputs.py
-          --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native/work/component.wasm"
-          --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
+        env:
+          SCHEMA_DIAGNOSTIC: ${{ inputs.verification == 'catalog-schema-diagnostic' }}
+        run: |
+          if [ "$SCHEMA_DIAGNOSTIC" = true ]; then
+            python3 -B tools/python313-producer/harness_native_ci_inputs.py \
+              --schema-call-diagnostic \
+              --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native-schema-diagnostic/work/component.wasm" \
+              --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
+          else
+            python3 -B tools/python313-producer/harness_native_ci_inputs.py \
+              --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native/work/component.wasm" \
+              --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
+          fi
       - name: Verify actual source metadata operations without general source rights
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -237,7 +253,7 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           original_authority::io::publication::catalog::tests:: -- --test-threads=1 --nocapture
       - name: Checkout pinned original factory and identity references
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'catalog-schema-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         uses: actions/checkout@v4
         with:
           ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
@@ -245,7 +261,7 @@ jobs:
           persist-credentials: false
       - name: Install original reference dependencies once
         id: original_reference_dependencies
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'catalog-schema-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: |
           python3 -B tools/original_setup_review_reference.py requirements \
             --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
@@ -353,14 +369,14 @@ jobs:
           --output "$RUNNER_TEMP/original-publication-identity-reference/actual-default-comparison.json"
       - name: Prepare independent original catalog resource fixtures
         id: catalog_prefix_reference
-        if: ${{ !cancelled() && inputs.verification == 'catalog-prefix' && steps.original_reference_dependencies.conclusion == 'success' }}
+        if: ${{ !cancelled() && (inputs.verification == 'catalog-prefix' || inputs.verification == 'catalog-schema-diagnostic') && steps.original_reference_dependencies.conclusion == 'success' }}
         run: >-
           python3 -B tools/original_catalog_prefix_reference.py prepare
           --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
           --output "$RUNNER_TEMP/original-catalog-prefix"
       - name: Execute the actual same-guard catalog to constructor entry
         id: catalog_prefix_native
-        if: ${{ !cancelled() && steps.catalog_prefix_reference.conclusion == 'success' }}
+        if: ${{ !cancelled() && inputs.verification == 'catalog-prefix' && steps.catalog_prefix_reference.conclusion == 'success' }}
         env:
           TOBKIRI_ORIGINAL_CATALOG_PREFIX_FIXTURES: ${{ runner.temp }}/original-catalog-prefix/summary.json
         run: >-
@@ -370,13 +386,40 @@ jobs:
           bootstrap_runtime::catalog_actual_ci::original_catalog_component_driver
           -- --ignored --exact --test-threads=1 --nocapture
       - name: Independently compare actual catalog reachpoint and effects
-        if: ${{ !cancelled() && steps.catalog_prefix_native.outcome != 'skipped' && steps.catalog_prefix_reference.conclusion == 'success' }}
+        if: ${{ !cancelled() && inputs.verification == 'catalog-prefix' && steps.catalog_prefix_native.outcome != 'skipped' && steps.catalog_prefix_reference.conclusion == 'success' }}
         run: >-
           python3 -B tools/original_catalog_prefix_reference.py compare-actual
           --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
           --fixtures "$RUNNER_TEMP/original-catalog-prefix/summary.json"
           --observations "$RUNNER_TEMP/original-catalog-prefix/actual-catalog-observations.json"
           --output "$RUNNER_TEMP/original-catalog-prefix/actual-catalog-comparison.json"
+      - name: Verify bounded Core fixed-import schema checkpoints
+        if: ${{ !cancelled() && inputs.verification == 'catalog-schema-diagnostic' && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-schema-fixed-import.log" --expected-passed 6 --
+          cargo test --locked -p tobkiri-wasm --lib --features bootstrap-ci
+          native_fixed_import_ -- --nocapture
+      - name: Verify bounded Host schema checkpoint state
+        if: ${{ !cancelled() && inputs.verification == 'catalog-schema-diagnostic' && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-schema-checkpoint.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-harness-native --lib --features catalog-diagnostics-ci
+          ci_schema_checkpoint_ -- --nocapture
+      - name: Observe actual catalog schema checkpoints without qualification
+        id: catalog_schema_diagnostic_native
+        if: ${{ !cancelled() && inputs.verification == 'catalog-schema-diagnostic' && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' && steps.catalog_prefix_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_CATALOG_PREFIX_FIXTURES: ${{ runner.temp }}/original-catalog-prefix/summary.json
+        # This driver intentionally fails as unqualified after retaining evidence.
+        # A completed observation must never turn this diagnostic into acceptance.
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-catalog-schema-diagnostic.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib --features catalog-diagnostics-ci
+          bootstrap_runtime::catalog_actual_ci::original_catalog_schema_diagnostic_driver
+          -- --ignored --exact --test-threads=1 --nocapture
       - name: Prepare fresh independent original nine-case catalog fixtures
         id: catalog_nine_reference
         if: ${{ !cancelled() && inputs.verification == 'catalog-prefix' && steps.original_reference_dependencies.conclusion == 'success' }}
@@ -413,9 +456,17 @@ jobs:
           evidence="$RUNNER_TEMP/harness-native-runtime-features"
           mkdir "$evidence"
           rustc --version --verbose > "$evidence/rustc.txt"
-          cargo tree --locked --offline -p tobkiri-harness-native --features bootstrap-ci \
-            --target aarch64-apple-darwin --edges features --invert wasmtime@47.0.4 \
-            > "$evidence/resolved-wasmtime-features.txt"
+          if [ "${{ inputs.verification }}" = catalog-schema-diagnostic ]; then
+            cargo tree --locked --offline -p tobkiri-harness-native --features catalog-diagnostics-ci \
+              --target aarch64-apple-darwin --edges features --invert wasmtime@47.0.4 \
+              > "$evidence/resolved-wasmtime-features.txt"
+            cp "$RUNNER_TEMP/harness-built/harness-native/harness-native-schema-diagnostic/inputs/provenance.json" \
+              "$evidence/schema-diagnostic-source-provenance.json"
+          else
+            cargo tree --locked --offline -p tobkiri-harness-native --features bootstrap-ci \
+              --target aarch64-apple-darwin --edges features --invert wasmtime@47.0.4 \
+              > "$evidence/resolved-wasmtime-features.txt"
+          fi
           for fingerprint in "$CARGO_TARGET_DIR"/debug/.fingerprint/wasmtime-*/lib-wasmtime.json; do
             test -f "$fingerprint"
             test -s "${fingerprint%.json}"
@@ -436,6 +487,8 @@ jobs:
           name: whole-native-harness-runtime
           path: |
             ${{ runner.temp }}/harness-native-inputs/
+            ${{ runner.temp }}/harness-built/harness-native/harness-native-schema-diagnostic/inputs/plan.json
+            ${{ runner.temp }}/harness-built/harness-native/harness-native-schema-diagnostic/inputs/provenance.json
             ${{ runner.temp }}/harness-native-runtime.log*
             ${{ runner.temp }}/harness-native-source-metadata.log*
             ${{ runner.temp }}/harness-native-inspection-policy.log*
@@ -462,6 +515,10 @@ jobs:
             ${{ runner.temp }}/harness-native-catalog-reader.log*
             ${{ runner.temp }}/original-catalog-prefix/summary.json
             ${{ runner.temp }}/original-catalog-prefix/actual-catalog-observations.json
+            ${{ runner.temp }}/original-catalog-prefix/actual-catalog-schema-trace.json
+            ${{ runner.temp }}/harness-native-schema-fixed-import.log*
+            ${{ runner.temp }}/harness-native-schema-checkpoint.log*
+            ${{ runner.temp }}/harness-native-catalog-schema-diagnostic.log*
             ${{ runner.temp }}/original-catalog-prefix/actual-catalog-comparison.json
             ${{ runner.temp }}/harness-native-catalog-nine-prefix.log*
             ${{ runner.temp }}/original-catalog-nine-prefix/summary.json

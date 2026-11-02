@@ -59,8 +59,18 @@ pub struct NativeImportContext<'a, T> {
     io: crate::NativeDataIo,
     proof: Proof,
     input: Option<CoreBuffer>,
+    #[cfg(feature = "bootstrap-ci")]
+    fuel_at_import_entry: Option<u64>,
 }
 impl<T> NativeImportContext<'_, T> {
+    /// CI-only Copy of remaining fuel at this import's construction entry.
+    /// None means unavailable. This grants no Store, source or execution right.
+    #[cfg(feature = "bootstrap-ci")]
+    #[doc(hidden)]
+    pub fn ci_fuel_at_import_entry(&self) -> Option<u64> {
+        self.fuel_at_import_entry
+    }
+
     /// Borrow the fixed typed context. New deep allocations require original
     /// charged constructors; borrowing/cloning an owner grants no authority.
     pub fn state(&self) -> &T {
@@ -316,6 +326,8 @@ async fn call<T: Send + 'static>(
     params: &[Val],
     results: &mut [Val],
 ) -> Result<()> {
+    #[cfg(feature = "bootstrap-ci")]
+    let fuel_at_import_entry = store.get_fuel().ok();
     ensure_active(store.data_mut())?;
     if results.len() != 1 {
         bail!("native import result arity differs");
@@ -361,6 +373,8 @@ async fn call<T: Send + 'static>(
                 .clone(),
             proof: proof.clone(),
             input,
+            #[cfg(feature = "bootstrap-ci")]
+            fuel_at_import_entry,
         };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (binding.prepare)(context)))
             .map_err(|_| anyhow::anyhow!("native import factory panicked"))??

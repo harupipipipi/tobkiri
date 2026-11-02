@@ -2402,3 +2402,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じJSON文字列/整数の出力処理がcatalog/recoveryに分かれる点は将来の整理候補だが、
   App mappingとprivate policyをCoreへ広げず、同資金・エラー順の一致を示してから共通化する。
   native IO原因・Guest class実生成・実factory failure・GUIの証拠へ範囲を拡大しない。
+
+
+### 2026-11-03: カタログの計測と後から減らせる重複
+
+- CI `41353160738`（`8be3110a3`）では、権限境界6件と既存のnative検証が成功した。
+  実componentのカタログ9入力は負例5件が原本と一致し、正常4件は元の燃料上限で停止した。
+  全9件の実cleanup・独立lock解放は成功したが、正常系の機能同等性は未達のまま。
+- 次の計測は元の非計測componentと別の明示的なCI生成物に限定する。
+  `check_schema` の実開始・正常終了とschema store入口を固定タグで記録し、
+  元のvalidator・例外・cache・順序・2B fuel・64MiBを維持する。
+  計測を通ったことを製品採用やカタログ正常系の成功へ数えない。
+- コード削減候補: 旧1入力driverと9入力driverのSource/cleanup観測に重複がある。
+  実失敗と実closeを保持した同等性を確認してから共通化する。先に共通化して
+  別々の観測経路を同じ期待値で自己検証する形にはしない。
+- 計測DATAの報告は固定16KiBのASCII sidecar一つとhash/サイズのmetadataへ限定する。
+  retire後に解除された予算へ再課金せず、実行中に同じaccountから事前確保した
+  owned packetで報告終了までDATA寿命を保持する。完了後のreap 0/0も別に検証する。
+  計測機構は機能移植後に除去できるCI専用コードで、製品Python廃止の代用にはしない。

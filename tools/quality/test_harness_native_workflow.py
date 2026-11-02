@@ -39,6 +39,80 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.workflow = WORKFLOW.read_text(encoding="utf-8")
         self.native = job(self.workflow, "execute-original-native-bootstrap")
 
+    def test_schema_diagnostic_is_an_explicit_separate_producer_and_binder(self) -> None:
+        self.assertIn("catalog-prefix, catalog-schema-diagnostic]", self.workflow)
+        build = job(self.workflow, "build-whole-native-harness")
+        producer = step(build, "Build the actual native Harness dispatcher and original module closure")
+        self.assertIn("build_components.py --harness-native", producer)
+        self.assertIn("inputs.verification == 'catalog-schema-diagnostic' && '--schema-call-diagnostic' || ''", producer)
+        binder = step(self.native, "Bind the actual component, original modules and native index")
+        self.assertIn("--schema-call-diagnostic", binder)
+        self.assertIn('if [ "$SCHEMA_DIAGNOSTIC" = true ]; then', binder)
+        for component in ("harness-native", "harness-native-schema-diagnostic"):
+            self.assertIn(f'harness-built/harness-native/{component}/work/component.wasm', binder)
+            for path in ("inputs/plan.json", "inputs/provenance.json", "work/component.wasm"):
+                self.assertIn(f'harness-native/{component}/{path}', build)
+
+    def test_schema_diagnostic_keeps_fresh_originals_and_skips_baseline_acceptance(self) -> None:
+        for name in (
+            "Checkout pinned original factory and identity references",
+            "Install original reference dependencies once",
+            "Prepare independent original catalog resource fixtures",
+        ):
+            source = step(self.native, name)
+            self.assertIn("inputs.verification == 'catalog-schema-diagnostic'", source)
+            self.assertIn("!cancelled()", source)
+        for name in (
+            "Execute the actual same-guard catalog to constructor entry",
+            "Independently compare actual catalog reachpoint and effects",
+            "Prepare fresh independent original nine-case catalog fixtures",
+        ):
+            source = step(self.native, name)
+            condition = re.search(r"(?m)^        if: (.+)$", source).group(1)
+            self.assertIn("inputs.verification == 'catalog-prefix'", condition)
+            self.assertNotIn("catalog-schema-diagnostic", condition)
+        self.assertIn("bootstrap_runtime::catalog_parity_actual_ci::original_catalog_nine_driver", self.native)
+
+    def test_schema_diagnostic_commands_fail_closed_and_preserve_evidence(self) -> None:
+        commands = (
+            ("Verify bounded Core fixed-import schema checkpoints", 6,
+             "cargo test --locked -p tobkiri-wasm --lib --features bootstrap-ci",
+             "native_fixed_import_ -- --nocapture"),
+            ("Verify bounded Host schema checkpoint state", 4,
+             "cargo test --locked -p tobkiri-harness-native --lib --features catalog-diagnostics-ci",
+             "ci_schema_checkpoint_ -- --nocapture"),
+            ("Observe actual catalog schema checkpoints without qualification", 1,
+             "cargo test --locked -p tobkiri-harness-native --lib --features catalog-diagnostics-ci",
+             "bootstrap_runtime::catalog_actual_ci::original_catalog_schema_diagnostic_driver"),
+        )
+        for name, count, cargo, target in commands:
+            with self.subTest(step=name):
+                source = step(self.native, name)
+                for required in (
+                    "!cancelled()", "inputs.verification == 'catalog-schema-diagnostic'",
+                    "steps.native_platform.conclusion == 'success'",
+                    "steps.native_inputs.conclusion == 'success'",
+                    f"--expected-passed {count} --", cargo, target,
+                ):
+                    self.assertIn(required, source)
+                for bypass in ("continue-on-error", "|| true", "--skip", "--no-run", "--list"):
+                    self.assertNotIn(bypass, source)
+        driver = step(self.native, commands[-1][0])
+        self.assertIn("steps.catalog_prefix_reference.conclusion == 'success'", driver)
+        self.assertIn("-- --ignored --exact --test-threads=1 --nocapture", driver)
+        features = step(self.native, "Retain resolved and actually compiled runtime features")
+        self.assertIn("--features catalog-diagnostics-ci", features)
+        self.assertIn("schema-diagnostic-source-provenance.json", features)
+        evidence = step(self.native, "Retain actual native execution evidence")
+        self.assertIn("if: always()", evidence)
+        for path in (
+            "original-catalog-prefix/actual-catalog-observations.json",
+            "original-catalog-prefix/actual-catalog-schema-trace.json",
+            "harness-native-schema-fixed-import.log*", "harness-native-schema-checkpoint.log*",
+            "harness-native-catalog-schema-diagnostic.log*", "harness-native-runtime-features/",
+        ):
+            self.assertIn(path, evidence)
+
     def test_platform_and_bound_inputs_are_explicit_prerequisites(self) -> None:
         platform = step(self.native, "Require original supported physical ownership platform")
         binder = step(self.native, "Bind the actual component, original modules and native index")

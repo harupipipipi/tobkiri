@@ -23,8 +23,13 @@ TRANSPORT = "tobkiri-ui:harness-native/transport@1.0.0"
 IMPORT = "tobkiri-native:harness/bindings@1.0.0"
 
 
-def bind(artifact: Path, output: Path, github_env: Path) -> dict:
+def bind(
+    artifact: Path, output: Path, github_env: Path, *,
+    schema_call_diagnostic: bool = False,
+) -> dict:
     """Verify immutable source/build identities and emit data-only Rust bindings."""
+    if type(schema_call_diagnostic) is not bool:
+        raise TypeError("diagnostic binding requires an explicit boolean")
     if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("native Harness inputs are restricted to actual Mac CI")
     if not artifact.is_absolute() or artifact.resolve(strict=True) != artifact:
@@ -54,9 +59,29 @@ def bind(artifact: Path, output: Path, github_env: Path) -> dict:
     try:
         import stage_harness_native as stage
 
-        base = stage.captured()
+        base = (stage.captured(schema_call_diagnostic=True)
+                if schema_call_diagnostic else stage.captured())
     finally:
         sys.path[:] = previous
+    diagnostic_contract = None
+    if schema_call_diagnostic:
+        # Independently regenerate the admitted derivation. The derived module
+        # must bind its ACTUAL bytes/index, never an original-source digest.
+        provenance = (inputs / "provenance.json").read_bytes()
+        if provenance != base["provenance.json"]:
+            raise ValueError("diagnostic provenance differs from the current exact derivation")
+        derived = json.loads(provenance)
+        diagnostic_contract = derived.get("checkpoint_contract", {})
+        if (derived.get("format")
+                != "io.tobkiri.harness-native-schema-call-diagnostic-source.v1"
+                or derived.get("diagnostic_only") is not True
+                or derived.get("original_source_files_unchanged") is not False
+                or derived.get("other_original_members_unchanged") is not True
+                or diagnostic_contract.get("tag_count") != 69
+                or len(diagnostic_contract.get("schema_tags", [])) != 69
+                or diagnostic_contract.get("maximum_sequence") != 128
+                or derived.get("production_enabled") is not False):
+            raise ValueError("explicit bounded schema diagnostic source required")
     actual = {row["source"]: row for row in plan["sources"]}
     if len(actual) != len(plan["sources"]):
         raise ValueError("duplicate actual component input")
@@ -94,6 +119,11 @@ def bind(artifact: Path, output: Path, github_env: Path) -> dict:
                   for name, relative in selected)
         + "    ],\n};\n"
     ).encode()
+    if diagnostic_contract is not None:
+        header += (
+            '#[cfg(feature = "catalog-diagnostics-ci")]\n'
+            'pub const CI_SCHEMA_TAG_COUNT: usize = 69;\n'
+        ).encode()
     if not output.is_absolute() or output.parent.resolve(strict=True) != output.parent:
         raise ValueError("new physical output directory required")
     output.mkdir(mode=0o700)
@@ -106,6 +136,8 @@ def bind(artifact: Path, output: Path, github_env: Path) -> dict:
         "TOBKIRI_TEST_NATIVE_HARNESS_RUNTIME_ROOT": str(ROOT / "tobkiri_runtime"),
         "TOBKIRI_TEST_NATIVE_HARNESS_CI": "1",
     }
+    if schema_call_diagnostic:
+        env["TOBKIRI_TEST_NATIVE_HARNESS_SCHEMA_DIAGNOSTIC"] = "1"
     if any("\n" in value or "\r" in value for value in env.values()):
         raise ValueError("native input path cannot contain an environment delimiter")
     report = {
@@ -115,6 +147,15 @@ def bind(artifact: Path, output: Path, github_env: Path) -> dict:
         "native_rust_index": fingerprint(index_path), "current_sources_verified": True,
         "component_init_verified": False, "production_enabled": False,
     }
+    if diagnostic_contract is not None:
+        report.update({
+            "schema_call_diagnostic": True,
+            "original_source_files_unchanged": False,
+            "actual_derived_source_index_verified": True,
+            "diagnostic_source_provenance": fingerprint(inputs / "provenance.json"),
+            "checkpoint_contract": diagnostic_contract,
+            "whole_catalog_acceptance": False,
+        })
     (output / "inputs.json").write_text(json.dumps(report, indent=2) + "\n")
     with github_env.open("a", encoding="utf-8") as stream:
         for name, value in env.items():
@@ -127,5 +168,9 @@ if __name__ == "__main__":
     parser.add_argument("--artifact", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--github-env", type=Path, required=True)
+    parser.add_argument("--schema-call-diagnostic", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(bind(args.artifact, args.output, args.github_env), sort_keys=True))
+    print(json.dumps(bind(
+        args.artifact, args.output, args.github_env,
+        schema_call_diagnostic=args.schema_call_diagnostic,
+    ), sort_keys=True))

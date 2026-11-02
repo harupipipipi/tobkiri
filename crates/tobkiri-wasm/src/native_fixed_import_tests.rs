@@ -1,6 +1,8 @@
 //! Real portable Wasm imports and funded worker custody; not nativeKit/GUI proof.
 use super::*;
 use crate::{NativeDataBinding, NativeDataExport, NativeDataValue, WasmEngine};
+#[cfg(feature = "bootstrap-ci")]
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tobkiri_canon::Digest;
 use tobkiri_gate::{
@@ -10,6 +12,10 @@ use tobkiri_gate::{
 use wasmtime::component::Component;
 
 const INTERFACE: &str = "tobkiri-native:test/inventory@1.0.0";
+// Copy-only test measurement. TEST_CUSTODY serializes these actual imports;
+// no Source, worker, callback, allocation or execution authority is retained.
+#[cfg(feature = "bootstrap-ci")]
+static IMPORT_FUEL_AT_ENTRY: AtomicU64 = AtomicU64::new(u64::MAX);
 struct ProofLease;
 impl NativeSetupLease for ProofLease {
     fn validate(&self) -> std::result::Result<(), GateError> {
@@ -36,6 +42,13 @@ impl NativeImportState for State {
 }
 fn inventory(context: NativeImportContext<'_, State>) -> Result<NativeImportOperation> {
     assert!(context.same_invocation(&context.state().invocation));
+    #[cfg(feature = "bootstrap-ci")]
+    IMPORT_FUEL_AT_ENTRY.store(
+        context
+            .ci_fuel_at_import_entry()
+            .context("actual fixed-import entry fuel unavailable")?,
+        Ordering::Relaxed,
+    );
     let input = context.input().cloned();
     context.inspect(move |output| {
         if let Some(input) = input {
@@ -199,6 +212,8 @@ async fn native_fixed_import_real_worker_runs_during_start_and_across_typed_expo
     let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let _census = crate::child_census::lock_census_fixture().await;
     for string in [false, true] {
+        #[cfg(feature = "bootstrap-ci")]
+        IMPORT_FUEL_AT_ENTRY.store(u64::MAX, Ordering::Relaxed);
         let (account, invocation) = funding();
         let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
         let component = component(&engine, string, false, true);
@@ -220,12 +235,26 @@ async fn native_fixed_import_real_worker_runs_during_start_and_across_typed_expo
             )
             .await
             .unwrap();
+        #[cfg(feature = "bootstrap-ci")]
+        {
+            let at_start_import = IMPORT_FUEL_AT_ENTRY.load(Ordering::Relaxed);
+            let after_start = program.fuel_remaining().unwrap();
+            assert!(after_start <= at_start_import && at_start_import < 2_000_000_000);
+        }
         for _ in 0..2 {
+            #[cfg(feature = "bootstrap-ci")]
+            let before_call = program.fuel_remaining().unwrap();
             let NativeDataValue::String(bytes) = program.invoke(0, None).await.unwrap().unwrap()
             else {
                 panic!("string expected")
             };
             assert_eq!(bytes.as_bytes(), if string { b"XYZ" } else { b"ABC" });
+            #[cfg(feature = "bootstrap-ci")]
+            {
+                let at_import = IMPORT_FUEL_AT_ENTRY.load(Ordering::Relaxed);
+                let after_call = program.fuel_remaining().unwrap();
+                assert!(after_call <= at_import && at_import < before_call);
+            }
         }
         drop(program);
         io.retire_and_wait().await.unwrap();

@@ -56,6 +56,14 @@ pub use identity_observation::{
 mod catalog;
 #[path = "bootstrap_review_continuation.rs"]
 mod review_continuation;
+#[cfg(all(
+    test,
+    feature = "catalog-diagnostics-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "bootstrap_schema_diagnostic_ci.rs"]
+mod schema_diagnostic_ci;
 
 /// Preserve both the original execution failure and failed physical cleanup.
 /// This is native diagnostic data, never a replacement guest/domain outcome.
@@ -164,6 +172,13 @@ struct Work<S> {
     review_root: std::sync::Mutex<Option<catalog::RootResolution>>,
     #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
     ci_retired_call: OnceLock<CiRetiredCall>,
+    #[cfg(all(
+        test,
+        feature = "catalog-diagnostics-ci",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    ci_schema_trace: schema_diagnostic_ci::Trace,
 }
 struct Funding {
     _native: NativeSetupReservation,
@@ -323,6 +338,46 @@ fn inspect<S: BootstrapInputOwner>(
         }
     }
     if phase == CATALOG_LOAD {
+        #[cfg(all(
+            test,
+            feature = "catalog-diagnostics-ci",
+            target_os = "macos",
+            target_arch = "aarch64"
+        ))]
+        {
+            let marker = {
+                let request = context.input().context("catalog request is missing")?;
+                let frame = CoreValue::parse_guest(
+                    request.as_bytes(),
+                    context.allocation_owners().graph(),
+                )?;
+                context
+                    .allocation_owners()
+                    .graph()
+                    .reserve(tobkiri_canon::AllocationRequest {
+                        kind: tobkiri_canon::AllocationKind::Temporary,
+                        bytes: 0,
+                        elements: 0,
+                        depth: 0,
+                        work: 128,
+                    })?;
+                schema_diagnostic_ci::marker(&frame)
+            };
+            match marker {
+                Ok(Some(marker)) => {
+                    return schema_diagnostic_ci::prepare(context, work.clone(), marker);
+                }
+                Ok(None) => {}
+                Err(failure) => {
+                    state
+                        .ci_schema_trace
+                        .try_lock()
+                        .map_err(|_| anyhow::anyhow!("schema checkpoint trace is unavailable"))?
+                        .reject(failure);
+                    bail!("schema checkpoint frame was refused");
+                }
+            }
+        }
         return catalog::inspect(context, work.clone());
     }
     if !context.same_invocation(&state.invocation)
@@ -562,6 +617,13 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 review_root: std::sync::Mutex::new(None),
                 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
                 ci_retired_call: OnceLock::new(),
+                #[cfg(all(
+                    test,
+                    feature = "catalog-diagnostics-ci",
+                    target_os = "macos",
+                    target_arch = "aarch64"
+                ))]
+                ci_schema_trace: schema_diagnostic_ci::Trace::new(),
             },
             Funding {
                 _native: native,
@@ -845,6 +907,19 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
     pub(crate) fn ci_retired_call(&self) -> Option<CiRetiredCall> {
         self.work.get().ci_retired_call.get().copied()
+    }
+
+    /// Owned bounded DATA/report funding; None means no prepaid attempt,
+    /// busy or poisoned. Copying uses only work prepaid before retirement.
+    /// This never selects a source/schema or supplies a cleanup receipt.
+    #[cfg(all(
+        test,
+        feature = "catalog-diagnostics-ci",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    pub(crate) fn ci_schema_trace(&self) -> Option<schema_diagnostic_ci::Snapshot> {
+        schema_diagnostic_ci::snapshot(&self.work.get().ci_schema_trace)
     }
 
     /// Borrow the original DATA codec account for native frame codecs. Cloning

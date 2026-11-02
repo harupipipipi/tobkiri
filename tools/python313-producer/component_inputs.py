@@ -191,10 +191,13 @@ def stage_harness_setup(repo: Path, destination: Path) -> dict:
             'source_files': plan['sources'], 'files': files}
 
 
-def stage_harness_native(repo: Path, destination: Path) -> dict:
+def stage_harness_native(repo: Path, destination: Path, *,
+                         schema_call_diagnostic: bool = False) -> dict:
     """Stage the actual native Harness, separate from every frozen Pack plan."""
     if repo != HERE.parents[1] or repo.resolve() != repo:
         raise ValueError('physical current repository required')
+    if type(schema_call_diagnostic) is not bool:
+        raise TypeError('schema diagnostic selection must be an explicit boolean')
     previous_path = sys.path[:]
     sys.path.insert(0, str(repo / 'scripts/wasm'))
     try:
@@ -202,7 +205,8 @@ def stage_harness_native(repo: Path, destination: Path) -> dict:
         if (Path(module.__file__).resolve() != repo / 'scripts/wasm/stage_harness_native.py'
                 or module.ROOT != repo):
             raise ValueError('native Harness stager belongs to another repository')
-        plan = module.stage(destination)
+        plan = (module.stage(destination, schema_call_diagnostic=True)
+                if schema_call_diagnostic else module.stage(destination))
     finally:
         sys.path[:] = previous_path
     files = inventory(destination)
@@ -220,8 +224,11 @@ def stage_harness_native(repo: Path, destination: Path) -> dict:
     for item in plan['sources']:
         if files[item['source']]['sha256'] != item['sha256']:
             raise ValueError('native Harness source changed after staging')
-    return {'plan_sha256': hashlib.sha256(raw).hexdigest(),
-            'source_files': plan['sources'], 'files': files}
+    receipt = {'plan_sha256': hashlib.sha256(raw).hexdigest(),
+               'source_files': plan['sources'], 'files': files}
+    if schema_call_diagnostic:
+        receipt['schema_call_diagnostic'] = True
+    return receipt
 
 
 def stage_native_input_stack(repo: Path, destination: Path) -> dict:

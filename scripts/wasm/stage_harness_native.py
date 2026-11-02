@@ -32,7 +32,7 @@ def _json_bytes(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("utf-8")
 
 
-def captured() -> dict[str, bytes]:
+def _captured_original() -> dict[str, bytes]:
     """Map the authenticated original package into its actual import layout."""
     previous = sys.path[:]
     sys.path.insert(0, str(ROOT / "tools/python313-producer"))
@@ -110,11 +110,33 @@ def plan_for(files: dict[str, bytes]) -> dict:
     }
 
 
-def stage(output: Path) -> dict:
+def captured(*, schema_call_diagnostic: bool = False) -> dict[str, bytes]:
+    if type(schema_call_diagnostic) is not bool:
+        raise TypeError("schema diagnostic staging requires an explicit boolean")
+    files = _captured_original()  # Authenticate/assemble the complete baseline FIRST.
+    if not schema_call_diagnostic:
+        return files
+    previous = sys.path[:]
+    sys.path.insert(0, str(ROOT / "tools/python313-producer"))
+    try:
+        from harness_native import schema_diagnostic_stage
+
+        if Path(schema_diagnostic_stage.__file__).resolve() != (
+            ROOT / ADAPTER_ROOT / "schema_diagnostic_stage.py"
+        ):
+            raise ValueError("diagnostic derivation belongs to another source tree")
+        return schema_diagnostic_stage.derive(files)
+    finally:
+        sys.path[:] = previous
+
+
+def stage(output: Path, *, schema_call_diagnostic: bool = False) -> dict:
     """Publish fresh bounded sources without importing the original runtime."""
-    files = captured()
+    if type(schema_call_diagnostic) is not bool:
+        raise TypeError("schema diagnostic staging requires an explicit boolean")
+    files = captured(schema_call_diagnostic=schema_call_diagnostic)
     plan = plan_for(files)
-    if captured() != files:
+    if captured(schema_call_diagnostic=schema_call_diagnostic) != files:
         raise ValueError("native Harness sources changed during staging")
     _publish(output, {**files, "plan.json": _json_bytes(plan)})
     return plan
@@ -123,4 +145,6 @@ def stage(output: Path) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    stage(parser.parse_args().output)
+    parser.add_argument("--schema-call-diagnostic", action="store_true")
+    args = parser.parse_args()
+    stage(args.output, schema_call_diagnostic=args.schema_call_diagnostic)
