@@ -2441,3 +2441,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   fuel停止位置は変わり得るため、速度向上・cold42・全catalog成功は未証明。
   wholeHarnessのgenuine validator計測とは別の未採用backend改善であり、
   採用やPython廃止の根拠にはしない。
+
+
+### 2026-11-03: 実cold schema入口の確認と残る燃料上限
+
+- `0e59ab5c5`の計測専用CI41535218618はproducer185件とCore固定import6件に成功。
+  Host4件は3成功・1失敗で、失敗は検証fixtureのinline core instanceが
+  `(memory $memory)`を`(core memory $memory)`と記していた構文エラーだった。
+  assertion/予算を保って1行だけ修正し、4件の実行成功は次のCIで確認する。
+- 実whole componentの計測データは12checkpointを保存した。alias `pack`の実検査は
+  正常終了し、cold store本体へ入り、`activation_record_v1`、`activation_record_v2`、
+  `base_definition_v4`、`cli_io_v1`の正常終了と`common_v1`開始を記録した後、
+  元の2B fuelを使い切った。純checker費用や非計測版の厳密な停止位置は証明しない。
+  全体25.92秒、失敗時33,104,603B/18予約、finish後は報告packet分19,472B/2予約、
+  報告・DATA解放後0B/1予約、reap後0/0。実cleanup/Source destructor/lock解放も成功。
+- 固定名保持を簡素化した別backendの非計測実Wasm CI41536729155は、Source/原本比較と
+  実component生成まで進んだが、cold42とfull catalogの両方がfuel0で失敗した。
+  文字列確保削減で元予算内に収まったとは主張しない。genuine wholeとは別の実測である。
+- 次の優先順は、既存の有限累積診断でApp-owned Rust処理の消費区間を選び、
+  cold42/fullの非計測gateを維持して改善する。その後、実selected owner/providerへ
+  正規bindingし、初期化・IOを含むwhole同一Store累積予算で検証する。
+  Astra high回答に従い、genuine側へ追加計測を増やすことや、予算増加・cache先入れ・
+  検査省略で代替しない。旧Python/VM削除とGUI採用は未資格のまま。

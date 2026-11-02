@@ -767,7 +767,7 @@ mod tests {
               i32.const 136 i32.const 68 i32.load i32.store
               i32.const 128))
           (core instance $ri (instantiate $run (with "m" (instance
-            (export "memory" (core memory $memory)) (export "inspect" (func $inspect-lowered))))))
+            (export "memory" (memory $memory)) (export "inspect" (func $inspect-lowered))))))
           (alias core export $ri "init" (core func $init))
           (alias core export $ri "text" (core func $text))
           (func $init (param "payload" string) (result $unit) (canon lift (core func $init) (memory $memory) (realloc $realloc)))
