@@ -7,6 +7,7 @@ use pyo3::{
     prelude::*,
     types::{PyIterator, PyList, PyString, PyTuple},
 };
+use std::borrow::Cow;
 
 pub(super) struct Pair {
     pub(super) key: Object,
@@ -41,61 +42,68 @@ impl Pair {
 pub(super) struct Keyword {
     pub(super) keyword: Object,
     pub(super) value: Object,
-    pub(super) name: String,
+    pub(super) name: Cow<'static, str>,
 }
-fn select(pair: &Pair, py: Python<'_>, root: bool) -> PyResult<Option<String>> {
+fn select(pair: &Pair, py: Python<'_>, root: bool) -> PyResult<Option<Cow<'static, str>>> {
     let key = pair.key.bind(py);
     if key.is_exact_instance_of::<PyString>() {
         let Ok(name) = key.cast::<PyString>()?.to_str() else {
             return Ok(None); // No fixed ASCII keyword contains a surrogate.
         };
-        return Ok(match name {
-            "$dynamicRef"
-            | "$ref"
-            | "additionalProperties"
-            | "allOf"
-            | "anyOf"
-            | "const"
-            | "contains"
-            | "dependentRequired"
-            | "dependentSchemas"
-            | "enum"
-            | "exclusiveMaximum"
-            | "exclusiveMinimum"
-            | "format"
-            | "if"
-            | "items"
-            | "maxItems"
-            | "maxLength"
-            | "maxProperties"
-            | "maximum"
-            | "minItems"
-            | "minLength"
-            | "minProperties"
-            | "minimum"
-            | "multipleOf"
-            | "not"
-            | "oneOf"
-            | "pattern"
-            | "patternProperties"
-            | "prefixItems"
-            | "properties"
-            | "propertyNames"
-            | "required"
-            | "type"
-            | "unevaluatedItems"
-            | "unevaluatedProperties"
-            | "uniqueItems" => Some(name.to_owned()),
-            _ => None,
-        });
+        // This branch has already proved an exact builtin string and a
+        // closed known name. Retain only a Rust static spelling; the actual
+        // Python keyword/value objects stay in their original fields. Frozen
+        // row clones no longer allocate another copy of these fixed bytes.
+        return Ok(Some(Cow::Borrowed(match name {
+            "$dynamicRef" => "$dynamicRef",
+            "$ref" => "$ref",
+            "additionalProperties" => "additionalProperties",
+            "allOf" => "allOf",
+            "anyOf" => "anyOf",
+            "const" => "const",
+            "contains" => "contains",
+            "dependentRequired" => "dependentRequired",
+            "dependentSchemas" => "dependentSchemas",
+            "enum" => "enum",
+            "exclusiveMaximum" => "exclusiveMaximum",
+            "exclusiveMinimum" => "exclusiveMinimum",
+            "format" => "format",
+            "if" => "if",
+            "items" => "items",
+            "maxItems" => "maxItems",
+            "maxLength" => "maxLength",
+            "maxProperties" => "maxProperties",
+            "maximum" => "maximum",
+            "minItems" => "minItems",
+            "minLength" => "minLength",
+            "minProperties" => "minProperties",
+            "minimum" => "minimum",
+            "multipleOf" => "multipleOf",
+            "not" => "not",
+            "oneOf" => "oneOf",
+            "pattern" => "pattern",
+            "patternProperties" => "patternProperties",
+            "prefixItems" => "prefixItems",
+            "properties" => "properties",
+            "propertyNames" => "propertyNames",
+            "required" => "required",
+            "type" => "type",
+            "unevaluatedItems" => "unevaluatedItems",
+            "unevaluatedProperties" => "unevaluatedProperties",
+            "uniqueItems" => "uniqueItems",
+            _ => return Ok(None),
+        })));
     }
+
     // Unknown/non-string keys are not converted to UTF-8. A foreign key keeps
     // its actual hash/equality calls against the App's source-defined table.
     let selected = module_member(py, "app_schema_model", "select_keyword")?.call1((key, root))?;
     if selected.is_none() {
         Ok(None)
     } else {
-        selected.extract().map(Some)
+        selected
+            .extract::<String>()
+            .map(|name| Some(Cow::Owned(name)))
     }
 }
 

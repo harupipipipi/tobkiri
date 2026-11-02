@@ -2420,3 +2420,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   retire後に解除された予算へ再課金せず、実行中に同じaccountから事前確保した
   owned packetで報告終了までDATA寿命を保持する。完了後のreap 0/0も別に検証する。
   計測機構は機能移植後に除去できるCI専用コードで、製品Python廃止の代用にはしない。
+
+
+### 2026-11-03: 未採用App schema backendの固定名保持
+
+- source: `tools/python313-producer/schema_kernel/src/app_schema/cursor.rs` と
+  `src/app_schema.rs`。exact builtin Python文字列の既知36 keywordに対し、
+  Rust名の保持・frozen rowの取り出し・Frameへの引き継ぎで同じ固定bytesの
+  `String`確保/cloneを繰り返していた。
+- source修正: `Cow<'static, str>`を用い、既存のexact builtin判定と同じ36名の
+  matchを通過したものだけRustのstatic literalを保持する。実Python keywordと
+  valueは元のobjectのまま保持する。foreign keyは元のlive `select_keyword`を
+  同じ順序で呼び、同じ`String`抽出を`Cow::Owned`へ包む。未知名やsubclassを
+  static経路へ追加せず、結果cache・予算・provider選択・製品defaultを変えない。
+- status: Astra highのQ&A確認とSol6.1 mediumのread-only source review済み。
+  rustfmt/差分検査のみ実施。実corpus/実Wasmの検証はCI待ち。allocation失敗や
+  fuel停止位置は変わり得るため、速度向上・cold42・全catalog成功は未証明。
+  wholeHarnessのgenuine validator計測とは別の未採用backend改善であり、
+  採用やPython廃止の根拠にはしない。

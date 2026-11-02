@@ -475,7 +475,7 @@ impl Frame {
                     live: false,
                 }));
             };
-            match name.as_str() {
+            match name.as_ref() {
                 "properties" | "patternProperties" | "additionalProperties" => {
                     match object::start(py, &env.value_policy, &name, &value, instance, schema)? {
                         object::Start::Skip => {}
