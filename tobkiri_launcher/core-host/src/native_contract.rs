@@ -138,9 +138,8 @@ pub fn trusted_permission_review<'a>(
     }
     let mut detail = String::from("Complete Core candidate:\n");
     detail.push_str(content);
-    let mut count = 0usize;
     let mut dangerous = false;
-    for prompt in prompts {
+    for (count, prompt) in prompts.enumerate() {
         if !matches!(
             prompt.effect,
             EffectRequest::Permissions { .. } | EffectRequest::UserPermissions { .. }
@@ -160,7 +159,6 @@ pub fn trusted_permission_review<'a>(
         detail.push_str(&header);
         detail.push_str(&item.detail);
         dangerous |= item.dangerous;
-        count += 1;
     }
     Ok(TrustedReview {
         title: if dangerous {

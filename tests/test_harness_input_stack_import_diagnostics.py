@@ -464,6 +464,8 @@ class ImportDiagnosticsSourceTests(unittest.TestCase):
                 "--native-input-stack-import-diagnostics",
                 "--native-thread-capabilities",
                 "--capability-projection",
+                "--bundle-catalog",
+                "--bundle-catalog-kernel",
             },
         )
 
