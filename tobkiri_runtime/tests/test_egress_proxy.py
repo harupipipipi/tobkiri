@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import socket
 import struct
 from pathlib import Path
@@ -724,3 +725,236 @@ class TestTCPFallback:
         finally:
             if started:
                 server.stop()
+
+
+class TestHttpPackAuthentication:
+    """Exercise the HTTP handler without sockets or external requests."""
+
+    @staticmethod
+    def handler(payload, *, token=None, claimed=None, manager=True, auth=True):
+        from core_runtime.egress_proxy import EgressHTTPServer, EgressProxyHandler
+        from core_runtime.ipc_auth import IpcAuthManager
+
+        authority = IpcAuthManager()
+        valid = authority.generate_token("pack-a")
+        server = object.__new__(EgressHTTPServer)
+        server.ipc_auth = authority if auth else None
+        server.network_grant_manager = MagicMock() if manager else None
+        server.audit_logger = None
+        server.allowed_internal_ips = ["127.0.0.1"]
+        handler = object.__new__(EgressProxyHandler)
+        handler.server = server
+        handler.client_address = ("127.0.0.1", 1234)
+        handler.path = "/proxy/request"
+        body = json.dumps(payload).encode()
+        handler.rfile = io.BytesIO(body)
+        handler.headers = {"Content-Length": str(len(body))}
+        if token is not None:
+            handler.headers["Authorization"] = "Bearer " + (valid if token == "valid" else token)
+        if claimed is not None:
+            handler.headers["X-Owner-Pack"] = claimed
+        handler._send_json_response = MagicMock()
+        handler._process_request = MagicMock()
+        return handler, valid
+
+    @pytest.mark.parametrize("token", [None, "forged", "non-ascii-あ"])
+    def test_self_reported_owner_never_authenticates(self, token):
+        handler, _ = self.handler({"owner_pack": "pack-a"}, token=token, claimed="pack-a")
+        handler.do_POST()
+        assert handler._send_json_response.call_args.args[0] == 403
+        handler._process_request.assert_not_called()
+
+    def test_missing_authority_and_missing_grant_manager_fail_closed(self):
+        for options in ({"auth": False}, {"manager": False}):
+            handler, _ = self.handler({"owner_pack": "pack-a"}, token="valid", **options)
+            handler.do_POST()
+            assert handler._send_json_response.call_args.args[0] == 403
+            handler._process_request.assert_not_called()
+
+    def test_token_cannot_claim_another_pack(self):
+        handler, _ = self.handler({"owner_pack": "pack-b"}, token="valid")
+        handler.do_POST()
+        assert handler._send_json_response.call_args.args[0] == 403
+        handler._process_request.assert_not_called()
+
+    def test_authenticated_pack_is_used_for_grant_and_normal_response(self):
+        from core_runtime.egress_proxy import EgressProxyHandler, ProxyResponse
+
+        handler, _ = self.handler({"owner_pack": "pack-a", "url": "https://example.com"}, token="valid")
+        del handler._process_request
+        handler.server.network_grant_manager.check_access.return_value.allowed = True
+        handler._execute_http_request = MagicMock(return_value=ProxyResponse(success=True, body="normal"))
+        handler.do_POST()
+        handler.server.network_grant_manager.check_access.assert_called_once_with("pack-a", "example.com", 443)
+        assert handler._send_json_response.call_args.args[1]["body"] == "normal"
+        handler.server.network_grant_manager = None
+        request = handler._execute_http_request.call_args.args[0]
+        assert EgressProxyHandler._process_request(handler, request).allowed is False
+        assert handler._execute_http_request.call_count == 1
+
+    def test_denied_grant_never_executes(self):
+        from core_runtime.egress_proxy import ProxyRequest, EgressProxyHandler
+
+        handler, _ = self.handler({}, token="valid")
+        handler.server.network_grant_manager.check_access.return_value.allowed = False
+        handler.server.network_grant_manager.check_access.return_value.reason = "not granted"
+        handler._execute_http_request = MagicMock()
+        result = EgressProxyHandler._process_request(handler, ProxyRequest("pack-a", "GET", "https://example.com", {}, None))
+        assert result.allowed is False
+        handler._execute_http_request.assert_not_called()
+
+    def test_responses_and_preflight_have_no_cors_grants(self):
+        from core_runtime.egress_proxy import EgressProxyHandler
+
+        handler, _ = self.handler({})
+        del handler._send_json_response
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_OPTIONS()
+        handler.send_response.assert_called_with(405)
+        EgressProxyHandler._send_json_response(handler, 403, {"success": False})
+        assert all(not args[0].startswith("Access-Control-") for args, _ in handler.send_header.call_args_list)
+
+    def test_proxy_client_sends_credential_only_to_proxy(self):
+        from core_runtime.egress_proxy import make_proxy_request
+
+        conn = MagicMock()
+        conn.getresponse.return_value.read.return_value = b'{"success":true,"allowed":true}'
+        with patch("core_runtime.egress_proxy.http.client.HTTPConnection", return_value=conn):
+            result = make_proxy_request(
+                "http://127.0.0.1:8766/proxy/request", "pack-a", "GET",
+                "https://example.com", auth_token="fixed-test-credential",
+            )
+        assert result.success is True
+        args = conn.request.call_args.kwargs
+        assert args["headers"]["Authorization"] == "Bearer fixed-test-credential"
+        assert "fixed-test-credential" not in args["body"].decode()
+        assert json.loads(args["body"])["headers"] == {}
+
+    def test_client_transport_failure_does_not_claim_a_grant(self):
+        from core_runtime.egress_proxy import make_proxy_request
+
+        with patch(
+            "core_runtime.egress_proxy.http.client.HTTPConnection",
+            side_effect=OSError("proxy unavailable"),
+        ):
+            result = make_proxy_request(
+                "http://127.0.0.1:8766/proxy/request", "pack-a", "GET",
+                "https://example.invalid", auth_token="test-credential",
+            )
+        assert result.success is False
+        assert result.allowed is False
+
+
+@pytest.mark.parametrize("grant", ["allowed", "denied", "missing"])
+def test_host_executor_http_authentication_crosses_fork(tmp_path, monkeypatch, grant):
+    """Exercise real worker, HTTP authentication and grant checks together."""
+    from core_runtime import egress_proxy as egress
+    from core_runtime.python_file_executor import ExecutionContext, PythonFileExecutor
+
+    manager = None if grant == "missing" else MagicMock()
+    if manager is not None:
+        manager.check_access.return_value.allowed = grant == "allowed"
+        manager.check_access.return_value.reason = "test grant denied"
+    proxy = egress.EgressProxyServer(port=0, network_grant_manager=manager)
+    assert proxy.start()
+    parent_pid = os.getpid()
+
+    def parent_only(method):
+        def checked(*args, **kwargs):
+            assert os.getpid() == parent_pid, "worker accessed parent proxy state"
+            return method(*args, **kwargs)
+
+        return checked
+
+    def get_proxy():
+        assert os.getpid() == parent_pid, "worker looked up the parent proxy"
+        return proxy
+
+    monkeypatch.setattr(egress, "get_egress_proxy", get_proxy)
+    for name in ("is_running", "get_endpoint", "get_pack_auth_token"):
+        monkeypatch.setattr(proxy, name, parent_only(getattr(proxy, name)))
+    monkeypatch.setattr(
+        proxy._ipc_auth,
+        "generate_token",
+        parent_only(proxy._ipc_auth.generate_token),
+    )
+    upstream = MagicMock(
+        return_value=egress.ProxyResponse(success=True, body="upstream response"),
+    )
+    monkeypatch.setattr(egress.EgressProxyHandler, "_execute_http_request", upstream)
+    pack_file = tmp_path / "pack_http.py"
+    pack_file.write_text(
+        "import os\n"
+        "def run(input_data, context):\n"
+        "    context['owner_pack'] = input_data['owner_pack']\n"
+        "    response = context['http_request'](\n"
+        "        'GET', input_data['url'], headers={'X-Target': 'present'})\n"
+        "    return {'worker_pid': os.getpid(), 'response': response}\n",
+        encoding="utf-8",
+    )
+    context = ExecutionContext(
+        flow_id="test-http",
+        step_id="request",
+        phase="test",
+        ts="",
+        owner_pack="pack-a",
+        inputs={},
+    )
+    executor = object.__new__(PythonFileExecutor)
+    try:
+        # The executor must issue this credential itself, in the real parent.
+        assert proxy._ipc_auth.get_token("pack-a") is None
+        result = executor._execute_on_host(
+            pack_file,
+            "pack-a",
+            {"owner_pack": "pack-b", "url": "https://example.invalid/target"},
+            context,
+            timeout_seconds=10,
+        )
+        assert result.success, result.error
+        assert result.output["worker_pid"] != parent_pid
+        credential = proxy._ipc_auth.get_token("pack-a")
+        assert credential and proxy._ipc_auth.verify_token(credential) == "pack-a"
+        assert proxy._ipc_auth.get_token("pack-b") is None
+        response = result.output["response"]
+        assert response["allowed"] is (grant == "allowed")
+        assert response["success"] is (grant == "allowed")
+        if manager is not None:
+            manager.check_access.assert_called_once_with("pack-a", "example.invalid", 443)
+        if grant == "allowed":
+            request, domain, port = upstream.call_args.args
+            assert (request.owner_pack, domain, port) == ("pack-a", "example.invalid", 443)
+            assert request.headers == {"X-Target": "present"}
+            assert response["body"] == "upstream response"
+        else:
+            upstream.assert_not_called()
+    finally:
+        assert proxy.stop()
+
+
+def test_uds_handler_keeps_socket_bound_pack_identity(tmp_path, monkeypatch):
+    """A normal UDS request cannot replace its socket's Pack with payload data."""
+    from core_runtime import egress_proxy as egress
+
+    execute = MagicMock(return_value={"success": True, "body": "socket-bound"})
+    monkeypatch.setattr(egress, "execute_http_request", execute)
+    server = egress.UDSEgressServer(
+        pack_id="pack-a",
+        socket_path=tmp_path / "pack-a.sock",
+        network_grant_manager=MagicMock(),
+        audit_logger=None,
+    )
+    client, accepted = socket.socketpair()
+    with client, accepted:
+        client.settimeout(5)
+        write_length_prefixed_json(client, {
+            "owner_pack": "pack-b", "method": "GET", "url": "https://example.invalid",
+        })
+        server._handle_client(accepted)
+        response = read_length_prefixed_json(client, MAX_RESPONSE_SIZE)
+    assert response == {"success": True, "body": "socket-bound"}
+    execute.assert_called_once()
+    assert execute.call_args.kwargs["pack_id"] == "pack-a"

@@ -1353,9 +1353,10 @@ class ProxyResponse:
 class EgressHTTPServer(HTTPServer):
     """カスタムHTTPServer（インスタンス変数でマネージャを保持）"""
 
-    def __init__(self, server_address, RequestHandlerClass, network_grant_manager=None, audit_logger=None):
+    def __init__(self, server_address, RequestHandlerClass, network_grant_manager=None, audit_logger=None, ipc_auth=None):
         super().__init__(server_address, RequestHandlerClass)
         self.network_grant_manager = network_grant_manager
+        self.ipc_auth = ipc_auth
         self.audit_logger = audit_logger
         self.allowed_internal_ips = ["127.0.0.1", "::1", "localhost"]
 
@@ -1392,7 +1393,6 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1401,11 +1401,9 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
         return client_ip in self.allowed_internal_ips
 
     def do_OPTIONS(self) -> None:
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Owner-Pack")
-        self.end_headers()
+        self._send_json_response(405, {
+            "success": False, "allowed": False, "error_type": "method_not_allowed",
+        })
 
     def do_POST(self) -> None:
         if not self._check_client_allowed():
@@ -1416,9 +1414,32 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
             self._send_json_response(404, {"success": False, "error": f"Not found: {self.path}", "error_type": "not_found"})
             return
 
+        # Loopback and owner_pack are claims, not Pack authentication.
+        authorization = self.headers.get("Authorization", "")
+        token = authorization.removeprefix("Bearer ") if authorization.startswith("Bearer ") else ""
+        auth = self.server.ipc_auth
+        try:
+            owner_pack = auth.verify_token(token) if auth is not None else None
+        except (TypeError, ValueError):
+            owner_pack = None
+        if not owner_pack:
+            self._send_json_response(403, {
+                "success": False, "allowed": False, "error_type": "pack_auth_required",
+            })
+            return
+        if self.network_grant_manager is None:
+            self._send_json_response(403, {
+                "success": False, "allowed": False,
+                "error_type": "grant_manager_unavailable",
+            })
+            return
+
         try:
             content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length) if content_length > 0 else b""
+            if not 0 < content_length <= MAX_REQUEST_SIZE:
+                self._send_json_response(400, {"success": False, "allowed": False, "error_type": "invalid_size"})
+                return
+            body = self.rfile.read(content_length)
             request_data = json.loads(body.decode("utf-8")) if body else {}
         except json.JSONDecodeError as e:
             self._send_json_response(400, {"success": False, "error": f"Invalid JSON: {e}", "error_type": "invalid_json"})
@@ -1427,9 +1448,12 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
             self._send_json_response(400, {"success": False, "error": f"Request error: {e}", "error_type": "request_error"})
             return
 
-        owner_pack = self.headers.get("X-Owner-Pack") or request_data.get("owner_pack")
-        if not owner_pack:
-            self._send_json_response(400, {"success": False, "error": "Missing owner_pack", "error_type": "missing_owner_pack"})
+        if not isinstance(request_data, dict):
+            self._send_json_response(400, {"success": False, "allowed": False, "error_type": "invalid_json"})
+            return
+        claimed_owner = self.headers.get("X-Owner-Pack") or request_data.get("owner_pack")
+        if claimed_owner and claimed_owner != owner_pack:
+            self._send_json_response(403, {"success": False, "allowed": False, "error_type": "pack_identity_mismatch"})
             return
 
         request_data["owner_pack"] = owner_pack
@@ -1461,8 +1485,19 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
             )
             return response
 
+        # Fail closed even for internal callers of this helper.
+        if self.network_grant_manager is None:
+            self._log_request(
+                request, domain, port, False, 0, allowed=False,
+                rejection_reason="grant_manager_unavailable",
+            )
+            return ProxyResponse(
+                success=False, allowed=False,
+                error_type="network_denied",
+                rejection_reason="grant_manager_unavailable",
+            )
         # ネットワーク権限チェック
-        if self.network_grant_manager:
+        if self.network_grant_manager is not None:
             check_result = self.network_grant_manager.check_access(request.owner_pack, domain, port)
             if not check_result.allowed:
                 response = ProxyResponse(
@@ -1608,12 +1643,13 @@ class EgressProxyServer:
     def __init__(self, host: str | None = None, port: int | None = None,
                  network_grant_manager=None, audit_logger=None):
         self.host = host or self.DEFAULT_HOST
-        self.port = port or self.DEFAULT_PORT
+        self.port = self.DEFAULT_PORT if port is None else port
         self._network_grant_manager = network_grant_manager
         self._audit_logger = audit_logger
         self._server: Optional[EgressHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
+        self._ipc_auth = IpcAuthManager()
 
     def start(self) -> bool:
         with self._lock:
@@ -1624,8 +1660,10 @@ class EgressProxyServer:
                     (self.host, self.port),
                     EgressProxyHandler,
                     network_grant_manager=self._network_grant_manager,
-                    audit_logger=self._audit_logger
+                    audit_logger=self._audit_logger,
+                    ipc_auth=self._ipc_auth,
                 )
+                self.port = self._server.server_port
                 self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
                 self._thread.start()
                 print(f"[EgressProxy] Started on http://{self.host}:{self.port}")
@@ -1643,7 +1681,9 @@ class EgressProxyServer:
             if self._server is None:
                 return False
             try:
+                self._ipc_auth.revoke_all()
                 self._server.shutdown()
+                self._server.server_close()
                 self._server = None
                 if self._thread:
                     self._thread.join(timeout=5)
@@ -1659,6 +1699,17 @@ class EgressProxyServer:
     def is_running(self) -> bool:
         with self._lock:
             return self._server is not None and self._thread is not None and self._thread.is_alive()
+
+    def get_pack_auth_token(self, pack_id: str) -> str:
+        """Supply a Pack credential to trusted parent executor wiring only.
+
+        Call before forking: child dictionary changes do not reach this server.
+        This is not exposed as an HTTP credential issuance endpoint.
+        """
+        if not pack_id:
+            raise ValueError("Pack identity is required")
+        with self._lock:
+            return self._ipc_auth.get_token(pack_id) or self._ipc_auth.generate_token(pack_id)
 
     def get_endpoint(self) -> str:
         return f"http://{self.host}:{self.port}/proxy/request"
@@ -1677,7 +1728,8 @@ class EgressProxyServer:
 def make_proxy_request(proxy_url: str, owner_pack: str, method: str, url: str,
                        headers: Dict[str, str] | None = None,
                        body: str | None = None,
-                       timeout_seconds: float = 30.0) -> ProxyResponse:
+                       timeout_seconds: float = 30.0,
+                       auth_token: str | None = None) -> ProxyResponse:
     """プロキシ経由でHTTPリクエストを送信"""
     try:
         parsed = urlparse(proxy_url)
@@ -1692,7 +1744,10 @@ def make_proxy_request(proxy_url: str, owner_pack: str, method: str, url: str,
                 "owner_pack": owner_pack, "method": method, "url": url,
                 "headers": headers or {}, "body": body or "", "timeout_seconds": timeout_seconds,
             }).encode("utf-8")
-            conn.request("POST", parsed.path or "/proxy/request", body=request_body, headers={"Content-Type": "application/json", "X-Owner-Pack": owner_pack})
+            proxy_headers = {"Content-Type": "application/json", "X-Owner-Pack": owner_pack}
+            if auth_token:
+                proxy_headers["Authorization"] = f"Bearer {auth_token}"
+            conn.request("POST", parsed.path or "/proxy/request", body=request_body, headers=proxy_headers)
             resp = conn.getresponse()
             resp_body = resp.read().decode("utf-8")
             resp_data = json.loads(resp_body)
@@ -1700,12 +1755,14 @@ def make_proxy_request(proxy_url: str, owner_pack: str, method: str, url: str,
                 success=resp_data.get("success", False), status_code=resp_data.get("status_code", 0),
                 headers=resp_data.get("headers", {}), body=resp_data.get("body", ""),
                 error=resp_data.get("error"), error_type=resp_data.get("error_type"),
-                allowed=resp_data.get("allowed", True), rejection_reason=resp_data.get("rejection_reason"),
+                allowed=resp_data.get("allowed", False), rejection_reason=resp_data.get("rejection_reason"),
             )
         finally:
             conn.close()
     except Exception as e:
-        return ProxyResponse(success=False, error=str(e), error_type=type(e).__name__)
+        return ProxyResponse(
+            success=False, allowed=False, error=str(e), error_type=type(e).__name__,
+        )
 
 
 _global_egress_proxy: Optional[EgressProxyServer] = None

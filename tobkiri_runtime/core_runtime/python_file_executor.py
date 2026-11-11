@@ -1890,6 +1890,10 @@ else:
         print(f"[PythonFileExecutor] SECURITY WARNING: Executing on host: {file_path}", file=sys.stderr)
         module_name = f"pfc_{owner_pack or 'unknown'}_{file_path.stem}_{abs(hash(str(file_path)))}"
         effective_timeout = min(timeout_seconds, MAX_HOST_EXECUTION_TIMEOUT)
+        # Resolve server state and issue the Pack credential in the trusted
+        # parent. A forked worker cannot inspect the parent's live threads or
+        # register a new token in the HTTP server's authority dictionary.
+        proxy_request_fn = self._create_proxy_request_fn(owner_pack)
 
         def _run_target() -> Dict[str, Any]:
             # Pack import can execute arbitrary top-level code. Keep its
@@ -1951,7 +1955,7 @@ else:
                     "owner_pack": owner_pack,
                     "inputs": input_data,
                     "network_check": self._create_network_check_fn(owner_pack),
-                    "http_request": self._create_proxy_request_fn(owner_pack),
+                    "http_request": proxy_request_fn,
                 }
                 if capability_sock_path:
                     exec_context["capability_socket"] = str(capability_sock_path)
@@ -2099,10 +2103,32 @@ else:
 
     def _create_proxy_request_fn(self, owner_pack: Optional[str]) -> Callable:
         """
-        プロキシ経由でHTTPリクエストを送信する関数を作成
+        Prepare a Pack-bound HTTP client in the parent before host execution.
 
-        python_file_call内のコードから外部通信を行うための関数を提供。
+        Capture only connection material in the callable; never mint a token
+        or inspect the parent's server thread from the forked Pack worker.
+        Permissive host execution still inherits parent process memory and
+        does not isolate that memory from Pack code.
         """
+        from .egress_proxy import make_proxy_request
+
+        proxy_url = ""
+        auth_token = ""
+        preparation_error = "No owner_pack specified"
+        if owner_pack:
+            try:
+                from .egress_proxy import get_egress_proxy
+
+                proxy = get_egress_proxy()
+                if proxy.is_running():
+                    proxy_url = proxy.get_endpoint()
+                    auth_token = proxy.get_pack_auth_token(owner_pack)
+                    preparation_error = ""
+                else:
+                    preparation_error = "Egress proxy is not running"
+            except Exception as e:
+                preparation_error = str(e)
+
         def proxy_request(
             method: str,
             url: str,
@@ -2131,26 +2157,17 @@ else:
                     "rejection_reason": str or None
                 }
             """
-            if not owner_pack:
+            if preparation_error:
                 return {
                     "success": False,
-                    "error": "No owner_pack specified",
+                    "error": preparation_error,
                     "allowed": False
                 }
 
             try:
-                from .egress_proxy import get_egress_proxy, make_proxy_request
-                proxy = get_egress_proxy()
-                if not proxy.is_running():
-                    return {
-                        "success": False,
-                        "error": "Egress proxy is not running",
-                        "allowed": False
-                    }
-
-                proxy_url = proxy.get_endpoint()
                 result = make_proxy_request(
                     proxy_url=proxy_url,
+                    auth_token=auth_token,
                     owner_pack=owner_pack,
                     method=method,
                     url=url,
