@@ -194,6 +194,18 @@ pub(crate) fn runtime_pack(
     permissions: tobkiri_gate::PermissionSet,
     ui: bool,
 ) -> tobkiri_manifest::VerifiedPack {
+    runtime_pack_with_step(directory, namespace, permissions, ui, None)
+}
+
+/// The same real component, optionally publishing its single Flow step as the
+/// Role shape `local.<namespace>.step@1.0` with the given overlay access.
+pub(crate) fn runtime_pack_with_step(
+    directory: &std::path::Path,
+    namespace: &str,
+    permissions: tobkiri_gate::PermissionSet,
+    ui: bool,
+    step_access: Option<tobkiri_profile::OverlayAccess>,
+) -> tobkiri_manifest::VerifiedPack {
     use tobkiri_canon::ids::PackId;
     use tobkiri_manifest::{
         FileEntry, InputDeclaration, PackManifest, PortDeclaration, Ports, RuntimeSpec,
@@ -203,8 +215,14 @@ pub(crate) fn runtime_pack(
     let id = PackId::parse(&format!("local.{namespace}")).unwrap();
     let input = ShapeRef::parse(&format!("local.{namespace}.input@1.0")).unwrap();
     let endpoint = ShapeRef::parse(&format!("local.{namespace}.turn@1.0")).unwrap();
+    let step_role = ShapeRef::parse(&format!("local.{namespace}.step@1.0")).unwrap();
+    let step_wit = if step_access.is_some() {
+        " interface step { run: func(); }"
+    } else {
+        ""
+    };
     let wit = format!(
-        "package local:{namespace}@1.0.0; interface input {{ use tobkiri:core/types@1.0.0.{{json, stream-handle, error}}; read: func() -> u32; echo: func(value: u32) -> u32; wait: func() -> u32; %stream: func() -> result<stream-handle, error>; }} interface turn {{ run: func(); }}"
+        "package local:{namespace}@1.0.0; interface input {{ use tobkiri:core/types@1.0.0.{{json, stream-handle, error}}; read: func() -> u32; echo: func(value: u32) -> u32; wait: func() -> u32; %stream: func() -> result<stream-handle, error>; }} interface turn {{ run: func(); }}{step_wit}"
     );
     let component = wat::parse_str(format!(
         r#"(component
@@ -305,8 +323,8 @@ pub(crate) fn runtime_pack(
         loop_limits: "profile-default".into(),
         steps: vec![Step {
             id: Some("echo".into()),
-            role: None,
-            overlay: OverlayAccess::Closed,
+            role: step_access.map(|_| step_role.clone()),
+            overlay: step_access.unwrap_or(OverlayAccess::Closed),
             out: None,
             stream: None,
             kind: StepKind::Call(tobkiri_profile::PortCall {
@@ -336,6 +354,19 @@ pub(crate) fn runtime_pack(
     if ui {
         files.insert("ui/main.html".into(), b"verified".to_vec());
     }
+    if step_access.is_some() {
+        files.insert(
+            "wit/step.shape.json".into(),
+            br#"{"cardinality":"one","streams":{},"callbacks":{}}"#.to_vec(),
+        );
+    }
+    let mut shapes = vec![
+        (input.clone(), ShapeKind::Port),
+        (endpoint, ShapeKind::Flow),
+    ];
+    if step_access.is_some() {
+        shapes.push((step_role, ShapeKind::Role));
+    }
     let manifest = PackManifest {
         format: "tobkiri.pack/1".into(),
         id: id.clone(),
@@ -347,18 +378,15 @@ pub(crate) fn runtime_pack(
             toolchain: "wat-test-fixture/1".into(),
             config: None,
         },
-        shapes: [
-            (input.clone(), ShapeKind::Port),
-            (endpoint, ShapeKind::Flow),
-        ]
-        .into_iter()
-        .map(|(reference, kind)| ShapeDefinition {
-            name: reference.name,
-            version: reference.version,
-            kind,
-            wit: "wit/fixture.wit".into(),
-        })
-        .collect(),
+        shapes: shapes
+            .into_iter()
+            .map(|(reference, kind)| ShapeDefinition {
+                name: reference.name,
+                version: reference.version,
+                kind,
+                wit: "wit/fixture.wit".into(),
+            })
+            .collect(),
         ports: Ports {
             provides: vec![PortDeclaration {
                 shape: input.name.clone(),

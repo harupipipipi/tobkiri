@@ -1,0 +1,115 @@
+name: Issue 1520 acceptance 6-7-8-10 evidence
+
+# Runs the exact tests that establish acceptance items 6, 7, 8 and 10 (foreign
+# Pack overlays, User overlays, the Gate that no overlay bypasses, and the
+# conflict-to-repair flow). Every step requires a successful cargo test with an
+# exact executed-test count, so a filtered-out or ignored test cannot silently
+# satisfy the receipt. The Core tests drive real verified Packs through the real
+# Profile compiler, Flow engine and Gate; none is a compiler-only fixture.
+on:
+  push:
+    branches: [claude/issue-1520-accept-6-7-8-10]
+    paths:
+      - '.github/workflows/issue-1520-acceptance-6-7-8-10.yml'
+      - 'Cargo.lock'
+      - 'crates/tobkiri-core/**'
+      - 'crates/tobkiri-flow/**'
+      - 'crates/tobkiri-gate/**'
+      - 'crates/tobkiri-profile/**'
+      - 'crates/tobkiri-store/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-acceptance-6-7-8-10-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance-6-7-8-10:
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-accept-6-7-8-10
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the actual supported native ownership platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt, clippy
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Items 6, 7 and 10 compiler topology (open roles, user override, single slot, total order)
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/profile-compiler.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-profile --test compiler
+          -- --exact --nocapture
+          pack_overlay_requires_open_role_and_ceiling_permission_user_overlay_can_override
+          user_overlay_can_override_private_closed_flow
+          single_provider_collision_needs_explicit_choice_and_many_is_automatic
+          overlapping_overlays_need_total_order_and_cycles_fail
+      - name: Items 6 and 7 Flow engine next semantics (wrap once, no second next)
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/flow-engine.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-flow --test engine
+          -- --exact --nocapture
+          overlay_next_wraps_once_and_preserves_original_deadline
+          calling_next_twice_fails_after_only_one_original_dispatch
+      - name: Item 8 Gate authority (User overlay effect always prompts)
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/store-authority.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-store --test authority
+          -- --exact --nocapture
+          user_overlay_direct_effect_always_reaches_trusted_prompt
+      - name: Items 6, 7, 8 and 10 through the actual Core, Flow engine and Gate
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/core-acceptance.log" --expected-passed 16 --
+          cargo test --locked -p tobkiri-core --lib
+          -- --exact --nocapture
+          session::acceptance_overlay_tests::foreign_pack_inserts_wraps_replaces_and_deletes_a_role_addressed_step_through_the_real_flow
+          session::acceptance_overlay_tests::foreign_pack_cannot_overlay_a_closed_step_or_address_an_open_step_by_id
+          session::acceptance_overlay_tests::foreign_pack_overlay_also_needs_profile_and_pack_permission
+          session::acceptance_overlay_tests::user_overlay_can_wrap_or_replace_a_closed_step_by_shape_name_or_by_flow_and_step_id
+          session::acceptance_overlay_tests::user_overlay_keeps_the_separate_user_policy_for_its_own_calls
+          session::acceptance_overlay_tests::user_overlay_effect_reaches_the_trusted_prompt_and_the_audit_log_while_pack_calls_do_not
+          session::acceptance_overlay_tests::user_overlay_denied_at_the_trusted_prompt_never_dispatches
+          session::acceptance_overlay_tests::authority_epoch_change_after_approval_blocks_the_overlay_effect
+          session::acceptance_overlay_tests::cancellation_while_the_overlay_effect_awaits_approval_never_dispatches
+          session::acceptance_overlay_tests::approval_revoked_while_a_user_overlay_runs_blocks_the_original_step
+          session::acceptance_overlay_tests::pack_overlay_effect_is_checked_with_the_overlay_packs_own_approval
+          session::acceptance_overlay_tests::unordered_pack_overlays_fail_keep_the_head_and_accept_a_bound_explicit_order
+          session::acceptance_overlay_tests::unordered_user_overlays_fail_keep_the_head_and_accept_a_user_order
+          session::acceptance_overlay_tests::second_provider_without_a_choice_fails_keeps_the_head_and_a_bound_repair_applies
+          session::acceptance_overlay_tests::repair_goes_stale_when_an_original_pack_changes
+          session::acceptance_overlay_tests::repair_cannot_widen_permissions_edit_originals_or_approve_itself
+      - name: Strict lint of the changed crate and its tests
+        run: >-
+          cargo clippy --locked -p tobkiri-core --all-targets --no-deps
+          -- -D warnings
+      - name: Retain executed-test receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-1520-acceptance-6-7-8-10
+          path: |
+            ${{ runner.temp }}/profile-compiler.log*
+            ${{ runner.temp }}/flow-engine.log*
+            ${{ runner.temp }}/store-authority.log*
+            ${{ runner.temp }}/core-acceptance.log*
+          if-no-files-found: warn
