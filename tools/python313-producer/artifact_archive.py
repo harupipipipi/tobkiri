@@ -237,10 +237,10 @@ def authenticate_archive(repo: str, pins: dict, pin: dict, kind: str) -> tuple[d
     if not isinstance(pin.get("archive_run"), int) or not isinstance(pin.get("archive_attempt"), int):
         fail(f"no archive run is pinned for {kind}")
     run = get_run(repo, pin["archive_run"], pin["archive_attempt"])
-    if (run.get("event") != "workflow_dispatch"
+    if (run.get("event") not in pins["archive_events"]
             or run.get("path", "").split("@")[0] != pins["archive_workflow_path"]
             or not re.fullmatch(r"[0-9a-f]{40}", run.get("head_sha", ""))):
-        fail("archive run is not the reviewed archive workflow dispatch")
+        fail("archive run is not the reviewed archive workflow")
     trusted(repo, pins, run["head_sha"])
     return run, {n: find_artifact(repo, run["id"], n, None) for n in archive_names(kind)}
 

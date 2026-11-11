@@ -1,6 +1,7 @@
 {
   "format": "tobkiri.artifact-archive-pins/1",
   "archive_workflow_path": ".github/workflows/issue-1520-artifact-archive.yml",
+  "archive_events": ["workflow_dispatch", "push"],
   "trusted_refs": [
     "claude/issue-1520-artifact-archive",
     "codex/issue-1520-native-shared-state",

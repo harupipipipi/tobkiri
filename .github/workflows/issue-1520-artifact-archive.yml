@@ -5,7 +5,15 @@ name: Issue 1520 private artifact archive
 # artifacts (90-day maximum): never a Release, package, git object or external
 # store. Re-run before expiry (every ~80 days) and pin the new archive run in
 # tools/python313-producer/artifact-archive-pins.json.
+#
+# workflow_dispatch needs this file on the default branch. Until then the push
+# trigger below archives all three pinned artifacts from the review branch.
 on:
+  push:
+    branches: [claude/issue-1520-artifact-archive]
+    paths:
+      - '.github/workflows/issue-1520-artifact-archive.yml'
+      - 'tools/python313-producer/artifact_archive.py'
   workflow_dispatch:
     inputs:
       kind:
@@ -24,13 +32,17 @@ permissions:
   actions: read
 
 concurrency:
-  group: issue-1520-artifact-archive-${{ inputs.kind }}
+  group: issue-1520-artifact-archive-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   archive:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.kind) || '["producer-cli","original-components","rpds"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,8 +53,8 @@ jobs:
       - name: Authenticate the source, verify every pinned byte and write provenance
         env:
           GH_TOKEN: ${{ github.token }}
-          ARCHIVE_KIND: ${{ inputs.kind }}
-          ARCHIVE_ORIGIN: ${{ inputs.origin }}
+          ARCHIVE_KIND: ${{ matrix.kind }}
+          ARCHIVE_ORIGIN: ${{ inputs.origin || 'original' }}
         run: >-
           python3 -B tools/python313-producer/artifact_archive.py archive
           --kind "$ARCHIVE_KIND"
@@ -51,7 +63,7 @@ jobs:
       - name: Re-upload the identical bytes privately for the 90-day maximum
         uses: actions/upload-artifact@v4
         with:
-          name: archive-${{ inputs.kind }}
+          name: archive-${{ matrix.kind }}
           path: ${{ runner.temp }}/archive/data/
           include-hidden-files: true
           if-no-files-found: error
@@ -60,7 +72,7 @@ jobs:
       - name: Retain the provenance of the archived bytes
         uses: actions/upload-artifact@v4
         with:
-          name: archive-${{ inputs.kind }}-provenance
+          name: archive-${{ matrix.kind }}-provenance
           path: ${{ runner.temp }}/archive/provenance/
           if-no-files-found: error
           retention-days: 90
