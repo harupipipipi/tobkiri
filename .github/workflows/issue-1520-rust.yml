@@ -28,32 +28,43 @@ jobs:
           targets: wasm32-wasip2
           components: rustfmt, clippy
       - name: Boundary checker regression
+        if: ${{ !cancelled() }}
         run: python3 tools/quality/test_issue_1520_gate.py
       - name: Launcher runtime dependency lock
+        if: ${{ !cancelled() }}
         run: python3 -B tools/quality/check_launcher_runtime_lock.py
       - name: CI execution and producer receipt regression
+        if: ${{ !cancelled() }}
         run: python3 -B tools/quality/test_issue_1520_ci.py
       - name: Workflow platform and artifact routing regression
+        if: ${{ !cancelled() }}
         run: python3 -B tools/quality/test_issue_1520_workflow.py
       - name: Bounded component module inventory regression
+        if: ${{ !cancelled() }}
         run: python3 -B tools/quality/test_component_module_inventory.py
       - name: Gateway tool-caller native routing regression
+        if: ${{ !cancelled() }}
         run: python3 -B tools/quality/test_gateway_tool_caller_workflow.py
       - name: Python 3.13 asset packager regression
+        if: ${{ !cancelled() }}
         run: |
           python3 -B -m unittest discover -s tools/python313-producer/packager/tests
           cargo test --locked --manifest-path tools/python313-producer/packager/Cargo.toml
       - name: Bounded component extraction regression
+        if: ${{ !cancelled() }}
         run: |
           python3 -B tools/component-unbundle/test_measure.py
           python3 -B tools/component-unbundle/test_materialize.py
           cargo fmt --manifest-path tools/component-unbundle/Cargo.toml -- --check
           cargo test --locked --manifest-path tools/component-unbundle/Cargo.toml
       - name: Preserved ordered Python component transport regression
+        if: ${{ !cancelled() }}
         run: python3 -B -m unittest discover -s tests -p test_stage_preserved_ordered_python.py
       - name: Preserved Gateway tool-caller transport regression
+        if: ${{ !cancelled() }}
         run: python3 -B -m unittest discover -s tests -p test_preserved_gateway_tool_caller.py
       - name: Original Harness Setup source and DATA projection regressions
+        if: ${{ !cancelled() }}
         run: |
           python3 -B scripts/wasm/prepare_harness_setup.py --verify
           python3 -B -m unittest discover -s tests -p test_harness_setup.py
@@ -69,16 +80,22 @@ jobs:
           python3 -B -m unittest discover -s tests -p test_harness_native_exception_graph.py
           python3 -B -m unittest discover -s tests -p test_harness_input_stack_import_diagnostics.py
       - name: Core and host boundaries
+        if: ${{ !cancelled() }}
         run: python3 tools/quality/issue_1520_gate.py --stage foundation
       - name: Verify migration inventory coverage
+        if: ${{ !cancelled() }}
         run: python3 -B migration/tests/test_inventory.py
       - name: Rust formatting
+        if: ${{ !cancelled() }}
         run: cargo fmt --all -- --check
       - name: Build actual typed Wasm test guests
+        if: ${{ !cancelled() }}
         run: cargo build --manifest-path crates/test-guests/Cargo.toml --workspace --locked --target wasm32-wasip2
       - name: Build actual M2 Pack components and pin their hashes
+        if: ${{ !cancelled() }}
         run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
       - name: Pure Flow dependency graph
+        if: ${{ !cancelled() }}
         run: |
           cargo tree --locked -p tobkiri-flow > flow-dependencies.txt
           python3 - <<'PYTHON'
@@ -92,6 +109,7 @@ jobs:
       # These suites do not require the production APFS/Darwin owner broker.
       # Mixed native/runtime suites run without filters in the native job below.
       - name: Portable Rust package tests
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-packages.log" -- cargo test --locked
@@ -99,67 +117,80 @@ jobs:
           -p tobkiri-profile -p tobkiri-flow -p tobkiri-gate -p tobkiri-cli
           -p tobkiri-harness-native
       - name: Portable handle metadata owner regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-handle-metadata.log" --
           cargo test -p tobkiri-wasm --lib handle_metadata_tests --locked
       - name: Portable typed runtime diagnostic regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-runtime-diagnostics.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-wasm --lib entry_diagnostics::tests
           -- --nocapture
       - name: Current-entry deadline and funded cancellation regression
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-execution-epoch.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-wasm --lib execution_epoch::tests
       - name: Native Setup Store capacity and lifetime regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-setup-store.log" --expected-passed 16 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::tests
       - name: Original captured namespace regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-captured-namespace.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-wasm --lib native_captured_inputs::tests
       - name: Native DATA entry owned ABI and cancellation regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-data-entry.log" --expected-passed 11 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::tests
       - name: Typed native result and post-return failure regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-data-result.log" --expected-passed 13 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::result_tests
       - name: Fixed native DATA exports and original initialization regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-data-program.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::program::tests
       - name: Native DATA blocking IO custody regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-data-io.log" --expected-passed 16 --
           cargo test --locked -p tobkiri-wasm --lib child_census::native_data_io::tests
       - name: Native inspection owner physical completion regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-inspection-custody.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-wasm --lib child_census::inspection_custody_tests
       - name: Fixed native imports and original invocation custody regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-fixed-import.log" --expected-passed 6 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::imports::tests
       - name: Closed native capture import and scope regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-capture-import.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::capture_import::tests
       - name: Private native import diagnostic custody regressions
+        if: ${{ !cancelled() }}
         # Private diagnostic imports remain excluded from ordinary Pack admission.
         # These portable fixtures do not claim actual OS/Python import proof.
         run: >-
@@ -167,11 +198,13 @@ jobs:
           --log "$RUNNER_TEMP/portable-native-import-diagnostics.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::import_trace::tests
       - name: Authenticated shared module source and import regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-core-modules.log" --
           cargo test -p tobkiri-wasm --lib core_modules::tests --locked
       - name: Decoded Registry original-source comparison
+        if: ${{ !cancelled() }}
         env:
           TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT: ${{ github.workspace }}/packs/local.provider-registry-rust/evidence/original-python/receipt.json
           TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: 4be9b93b9f041b5e57d91b18fa982e88fdd1b997f72f810353be814bfae82bed
@@ -189,6 +222,7 @@ jobs:
           cargo clippy --locked --manifest-path packs/Cargo.toml \
             -p tobkiri-pack-provider-registry-rust --all-targets -- -D warnings
       - name: Retain decoded Registry comparison evidence
+        if: ${{ !cancelled() }}
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -199,6 +233,7 @@ jobs:
             ${{ runner.temp }}/provider-registry-source.log*
           if-no-files-found: warn
       - name: Portable Wasm engine integration tests
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-wasm.log" -- cargo test --locked
@@ -206,29 +241,35 @@ jobs:
           --test input_generated_components --test limits --test static_lifts
           --test typed_values --test warm_fiber
       - name: Portable Core journal tests
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-journal.log" -- cargo test --locked
           -p tobkiri-core --test journal
       - name: Portable transformed Pack integrity regressions
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/shared-pack-integrity.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-e2e --test ordered_python shared_modules::
       - name: Native acceptance source contracts without runtime claims
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/native-source-contracts.log" -- cargo test --locked
           -p tobkiri-e2e --test native_acceptance
       - name: Unsupported Linux owner platform fails closed
+        if: ${{ !cancelled() }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/owner-unavailable.log" --expected-passed 1 --
           cargo test --locked -p tobkiri-store --test owner_unavailable
           unproven_allocation_owner_platform_is_unavailable -- --exact
       - name: Strict Rust lint
+        if: ${{ !cancelled() }}
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
       - name: Python guest SDK contracts
+        if: ${{ !cancelled() }}
         run: python3 -B -m unittest discover -s sdk/python/tests
       - uses: actions/setup-node@v4
         with:
@@ -236,15 +277,19 @@ jobs:
           cache: npm
           cache-dependency-path: sdk/js/package-lock.json
       - name: Native Pack UI source and CSP contract regression
+        if: ${{ !cancelled() }}
         run: node --experimental-vm-modules --test packs/native-acceptance/verify-source.test.mjs
       - name: Native IPC controller and root-script regressions
+        if: ${{ !cancelled() }}
         run: |
           python3 -B tools/native-ipc-probe/test_run.py
           node --test tools/native-ipc-probe/root.test.cjs
       - name: Install locked JS guest SDK build dependencies
+        if: ${{ !cancelled() }}
         working-directory: sdk/js
         run: npm ci --ignore-scripts
       - name: JS guest SDK contracts
+        if: ${{ !cancelled() }}
         working-directory: sdk/js
         run: npm test
 
