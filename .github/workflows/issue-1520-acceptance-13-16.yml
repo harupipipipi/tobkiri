@@ -51,36 +51,36 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/profile-compiler.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-profile --test compiler
+          -- --exact --nocapture
           required_provider_removal_blocks_candidate_and_pin_hash_is_exact
           published_allowlist_excludes_local_identity_and_rejects_authority_fields
           user_declaration_is_optional_published_and_intersected_with_ceiling
-          -- --exact --nocapture
       - name: Item 13 and 15 Gate authority (update delta, dangerous global storage)
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/store-authority.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-store --test authority
+          -- --exact --nocapture
           a_pack_hash_update_prompts_only_for_additions_and_other_profiles_have_no_approval
           dangerous_global_storage_can_share_data_only_after_explicit_permissions_and_prompt
-          -- --exact --nocapture
       - name: Item 14 and 15 storage tiers, per-pair approval, dangerous permissions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/store-security.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-store --test security
+          -- --exact --nocapture
           public_write_approval_is_once_per_writer_and_store_and_reads_do_not_prompt
           three_tiers_are_isolated_per_profile_and_public_approval_is_per_writer_store_pair
           native_and_cross_profile_storage_need_explicit_permission_and_warn_as_dangerous
           client_approved_payload_and_dangerous_declaration_do_not_override_ceiling
-          -- --exact --nocapture
       - name: Items 13, 15 and 16 through the actual Core
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/core-acceptance.log" --expected-passed 6 --
           cargo test --locked -p tobkiri-core --lib
+          -- --nocapture
           tests::acceptance_update_removal::
           tests::published_user_policy_import_requires_fresh_profile_scoped_approval
-          -- --nocapture
       - name: Strict lint of the changed crates and tests
         run: >-
           cargo clippy --locked -p tobkiri-gate -p tobkiri-store -p tobkiri-core
