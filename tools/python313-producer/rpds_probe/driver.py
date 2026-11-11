@@ -241,6 +241,82 @@ def observe(component_path: Path) -> dict:
             }
 
 
+def _leb(data: bytes, at: int) -> tuple[int, int]:
+    value = shift = 0
+    while True:
+        byte = data[at]
+        at += 1
+        value |= (byte & 127) << shift
+        shift += 7
+        if byte < 128:
+            return value, at
+
+
+def _sections(data: bytes, start: int) -> list[tuple[int, int, int]]:
+    out, at = [], start
+    while at < len(data):
+        kind = data[at]
+        size, body = _leb(data, at + 1)
+        out.append((kind, body, body + size))
+        at = body + size
+    return out
+
+
+def _delta(a: bytes, b: bytes, base: int, depth: int) -> list[dict]:
+    """Summarise differing top-level sections, recursing into nested modules."""
+    found = []
+    sa, sb = _sections(a, 8), _sections(b, 8)
+    if [s[0] for s in sa] != [s[0] for s in sb]:
+        return [{"layout": "section kinds differ", "a": len(sa), "b": len(sb)}]
+    for (kind, x0, x1), (_, y0, y1) in zip(sa, sb):
+        left, right = a[x0:x1], b[y0:y1]
+        if left == right:
+            continue
+        item = {"kind": kind, "offset": base + x0, "len_a": len(left),
+                "len_b": len(right)}
+        if len(left) == len(right):
+            diffs = [i for i in range(len(left)) if left[i] != right[i]]
+            item["differing_bytes"] = len(diffs)
+            item["first"] = diffs[:8]
+            item["samples"] = [
+                [left[max(0, i - 24): i + 40].decode("latin-1"),
+                 right[max(0, i - 24): i + 40].decode("latin-1")]
+                for i in diffs[:3]
+            ]
+        if depth < 2 and left[:4] == b"\0asm" and right[:4] == b"\0asm":
+            item["nested"] = _delta(left, right, base + x0, depth + 1)
+        found.append(item)
+    return found
+
+
+def diagnose(stage: Path, command: list[str], environment: dict[str, str]) -> None:
+    """Temporary: measure whether componentize-py output repeats byte-for-byte."""
+    base = stage / "component.wasm"
+    runs = {
+        "same_env_b": environment,
+        "same_env_c": environment,
+        "epoch0": {**environment, "SOURCE_DATE_EPOCH": "0", "TZ": "UTC"},
+    }
+    report = {"baseline": hashlib.sha256(base.read_bytes()).hexdigest(), "runs": {}}
+    for name, env in runs.items():
+        out = stage / f"diag-{name}.wasm"
+        subprocess.run(
+            [*command, "componentize", "--stub-wasi", "app", "-o", out.name],
+            cwd=stage, env=env, check=True, timeout=600,
+        )
+        a, b = base.read_bytes(), out.read_bytes()
+        entry = {"sha256": hashlib.sha256(b).hexdigest(), "equal": a == b,
+                 "len_a": len(a), "len_b": len(b)}
+        if a != b:
+            try:
+                entry["delta"] = _delta(a, b, 0, 0)
+            except Exception as error:
+                entry["delta_error"] = repr(error)
+        report["runs"][name] = entry
+        out.unlink()
+    Path("/work/probe-diagnostics.json").write_text(json.dumps(report, indent=1))
+
+
 def main() -> None:
     """Require actual limited-API evidence before giving the library an abi3 name."""
     from wasmtime import Config, Engine, MemoryType, Module, TableType
@@ -297,6 +373,7 @@ def main() -> None:
         check=True,
         timeout=600,
     )
+    diagnose(stage, command, environment)
     if read(stage / "rpds.abi3.so") != extension or any(
         (stage / name).read_bytes() != (Path("/probe-source") / name).read_bytes()
         for name in ("app.py", "probe.wit")
