@@ -116,7 +116,7 @@ def inventory(root: Path) -> dict:
 
 def constant(path: Path, name: str) -> str:
     """Read an existing hex pin from its source of truth without importing it."""
-    found = re.findall(rf'(?m)^{name}\s*=\s*"([0-9a-f]{{64}})"', path.read_text())
+    found = re.findall(rf'(?m)^{name}\s*=\s*["\']([0-9a-f]{{64}})["\']', path.read_text())
     if len(found) != 1:
         fail(f"pin {name} not found exactly once in {path.name}")
     return found[0]
