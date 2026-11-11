@@ -21,6 +21,27 @@ static POINTERS: AtomicUsize = AtomicUsize::new(0);
 static STATIC_ANCHORS: AtomicUsize = AtomicUsize::new(0);
 static DYNAMIC_ANCHORS: AtomicUsize = AtomicUsize::new(0);
 static ADAPTERS: AtomicUsize = AtomicUsize::new(0);
+static RETRIEVAL_HITS: AtomicUsize = AtomicUsize::new(0);
+
+/// Either the actual Retrieved object or a fast-path hit (registry, value).
+enum Retrieval<'py> {
+    Hit(Bound<'py, PyAny>, Bound<'py, PyAny>),
+    Actual(Bound<'py, PyAny>),
+}
+impl<'py> Retrieval<'py> {
+    fn registry(&self) -> PyResult<Bound<'py, PyAny>> {
+        match self {
+            Self::Hit(registry, _) => Ok(registry.clone()),
+            Self::Actual(retrieved) => retrieved.getattr("registry"),
+        }
+    }
+    fn value(&self) -> PyResult<Bound<'py, PyAny>> {
+        match self {
+            Self::Hit(_, value) => Ok(value.clone()),
+            Self::Actual(retrieved) => retrieved.getattr("value"),
+        }
+    }
+}
 
 /// Actual already-crawled builtin metadata objects, not a URI/result cache.
 /// Capture once at the trusted provider's first library load, never after each
@@ -36,6 +57,13 @@ pub(super) struct ResourcePolicy {
     dynamic_function: Object,
     maybe_function: Object,
     method_type: Object,
+    // Exact original lookup metadata. The fast path below is selected only
+    // while every one of these live objects is still the original one.
+    registry_type: Object,
+    get_or_retrieve_function: Object,
+    retrieved_type: Object,
+    retrieved_init: Object,
+    map_type: Object,
     resources: Vec<Object>,
     anchors: Vec<Object>,
 }
@@ -69,7 +97,14 @@ impl ResourcePolicy {
         let dynamic_type = module_member(py, "referencing.jsonschema", "DynamicAnchor")?;
         let registry = module_member(py, "jsonschema.validators", "SPECIFICATIONS")?;
         let (resources, anchors) = Self::inventory(&registry)?;
+        let registry_type = module_member(py, "referencing._core", "Registry")?;
+        let retrieved_type = module_member(py, "referencing._core", "Retrieved")?;
         Ok(Self {
+            get_or_retrieve_function: registry_type.getattr("get_or_retrieve")?.unbind(),
+            retrieved_init: retrieved_type.getattr("__init__")?.unbind(),
+            map_type: module_member(py, "rpds", "HashTrieMap")?.unbind(),
+            registry_type: registry_type.unbind(),
+            retrieved_type: retrieved_type.unbind(),
             pointer_function: resource_type.getattr("pointer")?.unbind(),
             static_function: static_type.getattr("resolve")?.unbind(),
             dynamic_function: dynamic_type.getattr("resolve")?.unbind(),
@@ -96,6 +131,11 @@ impl ResourcePolicy {
             dynamic_function: self.dynamic_function.clone_ref(py),
             maybe_function: self.maybe_function.clone_ref(py),
             method_type: self.method_type.clone_ref(py),
+            registry_type: self.registry_type.clone_ref(py),
+            get_or_retrieve_function: self.get_or_retrieve_function.clone_ref(py),
+            retrieved_type: self.retrieved_type.clone_ref(py),
+            retrieved_init: self.retrieved_init.clone_ref(py),
+            map_type: self.map_type.clone_ref(py),
             resources: self.resources.iter().map(|v| v.clone_ref(py)).collect(),
             anchors: self.anchors.iter().map(|v| v.clone_ref(py)).collect(),
         }
@@ -112,6 +152,11 @@ impl ResourcePolicy {
             &self.dynamic_function,
             &self.maybe_function,
             &self.method_type,
+            &self.registry_type,
+            &self.get_or_retrieve_function,
+            &self.retrieved_type,
+            &self.retrieved_init,
+            &self.map_type,
         ]
         .into_iter()
         .chain(self.resources.iter())
@@ -120,6 +165,54 @@ impl ResourcePolicy {
             visit.call(value)?;
         }
         Ok(())
+    }
+    /// Source `Registry.get_or_retrieve` first operation only: the actual
+    /// `_resources.get(uri)` hit. A hit creates no Retrieved (it would only be
+    /// read for `.registry`/`.value`). Anything else, including a miss, returns
+    /// None BEFORE any effect so the actual original method runs unchanged.
+    fn retrieve_hit<'py>(
+        &self,
+        registry: &Bound<'py, PyAny>,
+        uri: &Bound<'py, PyAny>,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        let py = registry.py();
+        let registry_type = self.registry_type.bind(py);
+        if !registry.get_type().is(registry_type)
+            || !uri.is_exact_instance_of::<PyString>()
+            || !registry_type
+                .getattr("get_or_retrieve")?
+                .is(self.get_or_retrieve_function.bind(py))
+        {
+            return Ok(None);
+        }
+        // The original function body resolves `Retrieved` from its globals.
+        let globals = self
+            .get_or_retrieve_function
+            .bind(py)
+            .getattr("__globals__")?;
+        let Ok(globals) = globals.cast::<PyDict>() else {
+            return Ok(None);
+        };
+        let retrieved = self.retrieved_type.bind(py);
+        if !globals
+            .get_item("Retrieved")?
+            .is_some_and(|value| value.is(retrieved))
+            || !retrieved
+                .getattr("__init__")?
+                .is(self.retrieved_init.bind(py))
+        {
+            return Ok(None);
+        }
+        let resources = registry.getattr("_resources")?;
+        if !resources.get_type().is(self.map_type.bind(py)) {
+            return Ok(None);
+        }
+        let value = resources.call_method1("get", (uri,))?;
+        if value.is_none() {
+            return Ok(None);
+        }
+        RETRIEVAL_HITS.fetch_add(1, Ordering::Relaxed);
+        Ok(Some(value))
     }
     fn resource(&self, value: &Bound<'_, PyAny>) -> PyResult<bool> {
         let py = value.py();
@@ -545,42 +638,45 @@ impl ReferenceState {
             ));
         };
         let (uri, fragment) = uri::resolve(py, base_uri.bind(py), reference)?;
-        let retrieved = match registry.bind(py).call_method1("get_or_retrieve", (&uri,)) {
-            Ok(value) => value,
-            Err(error) => {
-                let missing = module_member(py, "referencing.exceptions", "NoSuchResource")?;
-                let unavailable = module_member(py, "referencing.exceptions", "Unretrievable")?;
-                let suppress = error.value(py).is_instance(&missing)?;
-                if !suppress && !error.value(py).is_instance(&unavailable)? {
-                    return Err(error);
+        let hit = env.resource_policy.retrieve_hit(registry.bind(py), &uri)?;
+        let retrieved = match hit {
+            Some(value) => Retrieval::Hit(registry.bind(py).clone(), value),
+            None => match registry.bind(py).call_method1("get_or_retrieve", (&uri,)) {
+                Ok(value) => Retrieval::Actual(value),
+                Err(error) => {
+                    let missing = module_member(py, "referencing.exceptions", "NoSuchResource")?;
+                    let unavailable = module_member(py, "referencing.exceptions", "Unretrievable")?;
+                    let suppress = error.value(py).is_instance(&missing)?;
+                    if !suppress && !error.value(py).is_instance(&unavailable)? {
+                        return Err(error);
+                    }
+                    let kwargs = PyDict::new(py);
+                    kwargs.set_item("ref", reference)?;
+                    let value = module_member(py, "referencing.exceptions", "Unresolvable")?
+                        .call((), Some(&kwargs))?;
+                    value.setattr("__context__", error.value(py))?;
+                    let converted = PyErr::from_value(value);
+                    converted.set_cause(py, if suppress { None } else { Some(error) });
+                    return Err(converted);
                 }
-                let kwargs = PyDict::new(py);
-                kwargs.set_item("ref", reference)?;
-                let value = module_member(py, "referencing.exceptions", "Unresolvable")?
-                    .call((), Some(&kwargs))?;
-                value.setattr("__context__", error.value(py))?;
-                let converted = PyErr::from_value(value);
-                converted.set_cause(py, if suppress { None } else { Some(error) });
-                return Err(converted);
-            }
+            },
         };
         let pointer = fragment.call_method1("startswith", ("/",))?.is_truthy()?;
         if pointer || fragment.is_truthy()? {
             let selected = if pointer {
                 retrieved
             } else {
-                retrieved
-                    .getattr("registry")?
-                    .call_method1("anchor", (&uri, &fragment))?
+                Retrieval::Actual(
+                    retrieved
+                        .registry()?
+                        .call_method1("anchor", (&uri, &fragment))?,
+                )
             };
-            let state = self.evolved(py, uri, selected.getattr("registry")?)?;
-            return state.fragment(py, env, &selected.getattr("value")?, &fragment, pointer);
+            let state = self.evolved(py, uri, selected.registry()?)?;
+            return state.fragment(py, env, &selected.value()?, &fragment, pointer);
         }
-        let state = self.evolved(py, uri, retrieved.getattr("registry")?)?;
-        Ok((
-            retrieved.getattr("value")?.getattr("contents")?.unbind(),
-            state,
-        ))
+        let state = self.evolved(py, uri, retrieved.registry()?)?;
+        Ok((retrieved.value()?.getattr("contents")?.unbind(), state))
     }
     pub(super) fn descend(
         self: &Rc<Self>,
@@ -690,7 +786,13 @@ fn app_reference_counts(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     Ok(result)
 }
 
+#[pyfunction]
+fn app_retrieval_hits() -> usize {
+    RETRIEVAL_HITS.load(Ordering::Relaxed)
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(app_retrieval_hits, module)?)?;
     module.add_class::<DefaultReferencePolicy>()?;
     module.add_function(wrap_pyfunction!(default_reference_policy, module)?)?;
     module.add_function(wrap_pyfunction!(app_reference_policy, module)?)?;
