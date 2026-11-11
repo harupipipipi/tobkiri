@@ -223,7 +223,6 @@ jobs:
             -p tobkiri-pack-provider-registry-rust --all-targets -- -D warnings
       - name: Retain decoded Registry comparison evidence
         if: ${{ !cancelled() }}
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: provider-registry-decoded-source-${{ github.run_attempt }}
