@@ -160,7 +160,10 @@ fn key_identity(root: &Path) -> anyhow::Result<KeyIdentity> {
     })
 }
 
-fn index_identity(root: &Path) -> anyhow::Result<Option<(u64, u64, u64, u32, u64)>> {
+/// (dev, ino, nlink, mode, len) of the profile index file.
+type IndexIdentity = (u64, u64, u64, u32, u64);
+
+fn index_identity(root: &Path) -> anyhow::Result<Option<IndexIdentity>> {
     match fs::symlink_metadata(root.join("profiles/index.json")) {
         Ok(meta) => Ok(Some((
             meta.dev(),
