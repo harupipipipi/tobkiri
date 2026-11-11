@@ -57,6 +57,7 @@ mod process_catalog;
 mod profile_review;
 mod profile_save_review;
 mod profiles;
+mod repair;
 mod runtime_owner;
 mod session;
 #[cfg(test)]
@@ -83,6 +84,7 @@ pub use profile_review::{
     TargetReviewStatus, UserOriginReview,
 };
 pub use profile_save_review::ProfileSavePrecondition;
+pub use repair::{RepairBinding, RepairOffer};
 pub use runtime_owner::RuntimeOwner;
 pub use session::{
     NativeInput, NativeInputCompletion, NativeInputEvent, NativeInputRouteResult,

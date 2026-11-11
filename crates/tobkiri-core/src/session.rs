@@ -2015,3 +2015,7 @@ mod port_proxy_compat_tests;
 #[cfg(test)]
 #[path = "input_forwarding_guest_tests.rs"]
 mod input_forwarding_guest_tests;
+
+#[cfg(test)]
+#[path = "acceptance_overlay_tests.rs"]
+mod acceptance_overlay_tests;
