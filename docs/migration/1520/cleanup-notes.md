@@ -2563,8 +2563,39 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   cargo transcript hash のみ。他に attempt 1 の digest を pin する箇所は見つからなかった。
 - 注意: この変更より前の測定は attempt 1 の component を使っており、
   attempt 2 の component とは厳密に比較できない（燃料の値も僅かに異なる）。
-- follow-up（必須）: attempt 2 の artifact も 2026-11-25 に失効する。再実行すれば
-  digest はおそらくまた変わる。耐久的な artifact の置き場、または再現可能な
-  componentize-py build を用意する。`issue-1520-ui-rpds.yml` の artifact 保持期間は
-  今回変更していない（既存 run には効かないため）。長期化は別途検討する。
-- 検証: ローカルでは cargo / pytest / build を実行していない。CI での確認は未実施。
+- 再現不能性の確定: [CI run 42938394185](https://github.com/harupipipipi/tobkiri/actions/runs/42938394185)
+  は1 job内で同一入力・同一環境（`PYTHONHASHSEED=0`、加えて `SOURCE_DATE_EPOCH=0` の試行）で
+  componentize を4回実行し、出力はすべて異なった（サイズ 18.60〜18.63MB）。差分は core module の
+  data section（snapshot）と shim の export 順序。環境変数では抑えられない producer 側の非決定性で、
+  pin の再取得を繰り返しても恒久策にならない。
+- 保持期間: `8c91a0667` で artifact 保持を14日から90日へ延長した。既存の attempt 2 の artifact には
+  効かず、失効予定 2026-11-25 のまま。`python313-producer-cli`（run 39956025119）の失効予定は
+  2027-01-21。
+- follow-up（必須・実装中）: 非公開のアーカイブ連鎖を `claude/issue-1520-artifact-archive` で実装中。
+  **完了ではない**（未マージ・未検証）。再現可能な componentize-py build、または耐久的な置き場が
+  できるまで、digest pin は artifact の失効ごとに再固定が必要になる。
+- 検証: 非再現性は CI run 42938394185 で確認済み。再固定した pin 自体のCI通過は未確認。ローカルでは
+  cargo / pytest / build を実行していない。
+
+## 028: `Core::remove_pack` の pack_limits 残存修正と R2.10 の未解決点
+
+- 状態: **修正済み（CI検証済み）**。R2.10 の2点は**未解決**。
+- 場所: [core.rs](../../../crates/tobkiri-core/src/core.rs) `Core::remove_pack`、
+  `acceptance_update_removal` テスト、store 層の `orphan_pack`。
+- 修正: 削除対象 Pack 自身の `pack_limits` 項目が候補構成に残り、`permission-widening` で必ず失敗して
+  いた（limits を持つ Pack は一切削除できなかった）。候補から当該項目を落とすようにした。
+  維持する挙動: 他 Pack の必須ポートが満たされなくなる削除は失敗し、head とデータは変わらない
+  （R2.10 前半）。権限の拡大検査は緩めていない。
+- commit: `ab4fd131f`（共有ブランチ `ab4fd131f..ba0027367`）。
+- 検証範囲: CI run 42941462516（`issue-1520-acceptance-13-16.yml`、`605397f71`）で
+  `acceptance_update_removal` の5件と関連 gate/profile/store テストが `ok`。実 CLI・実 component での
+  削除は未実施。
+- 未解決1（R2.10 後半）: Core の削除は、削除した Pack の store を「持ち主のいないデータ」として
+  印付けしない。`orphan_pack` は store 層にしかなく Core から呼ばれていない。表示・消去・
+  同じ形の Pack による引き継ぎ（R7.3）は未接続。
+- 未解決2（質問）: Profile の上限が参照する形の最後の提供者を削除すると、必須ポートが壊れなくても
+  `policy-view` で失敗する。R2.10 は必須ポートが壊れる場合のみ失敗と読めるため過剰な拒否の
+  可能性がある。仕様判断（意図した保守的拒否か、緩和すべきか）が必要。
+  判断までは挙動を変えない。
+- 削除条件: 上記2点の決定と実装・テストが揃うまで、受け入れ項目13の周辺（R2.10 全体）を閉じたと
+  扱わない。

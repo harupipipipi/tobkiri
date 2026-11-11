@@ -2,13 +2,14 @@ name: Issue 1520 acceptance 9 11 12 Profile loop bounds, untyped ports, shape ve
 
 on:
   push:
-    branches: [claude/issue-1520-accept-9-11-12]
+    branches: [codex/issue-1520-native-shared-state]
     paths:
       - '.github/workflows/issue-1520-acceptance-9-11-12.yml'
       - 'crates/tobkiri-profile/**'
       - 'crates/tobkiri-manifest/**'
       - 'crates/tobkiri-flow/**'
       - 'crates/tobkiri-gate/**'
+      - 'Cargo.lock'
   workflow_dispatch:
 
 permissions:
