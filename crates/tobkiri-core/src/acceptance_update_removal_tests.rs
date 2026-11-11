@@ -92,7 +92,7 @@ fn build(dir: &Path, spec: &Spec<'_>) -> (String, PackHash) {
     let verified = tobkiri_manifest::verify_tpk(&artifact, &BTreeMap::new()).unwrap();
     let path = dir.join(format!("{}-{}-{}.tpk", spec.id, spec.version, spec.salt));
     std::fs::write(&path, artifact).unwrap();
-    (path.to_str().unwrap().to_string(), verified.hash)
+    (path.to_str().unwrap().to_string(), verified.hash.clone())
 }
 fn physical(dir: &tempfile::TempDir) -> PathBuf {
     std::fs::canonicalize(dir.path()).unwrap()
