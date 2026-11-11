@@ -293,7 +293,7 @@ async fn removing_a_provider_of_another_packs_required_port_fails_and_keeps_data
         let stores = tobkiri_store::TieredStore::open(&core.profiles.root, &profile.id).unwrap();
         stores
             .register(
-                &provider,
+                &consumer,
                 "notes",
                 tobkiri_gate::StoreTier::Private,
                 "local.fixture.notes@1.0",
@@ -326,17 +326,15 @@ async fn removing_a_provider_of_another_packs_required_port_fails_and_keeps_data
     );
 
     // Removing the consumer is allowed, after which the provider is no longer
-    // required by anyone and can go too. Its store metadata remains.
+    // required by anyone. The consumer's store metadata is kept. The provider
+    // stays: the Profile ceiling still names the port shape only it defines.
     let after_consumer = core.remove_pack(&profile.id, &consumer).await.unwrap();
     assert_ne!(after_consumer, head);
     let (profile_now, _) = core.profile(&profile.id).unwrap();
     assert_eq!(profile_now.packs.len(), 1);
     assert!(!profile_now.pack_limits.contains_key(&consumer));
-    let after_provider = core.remove_pack(&profile.id, &provider).await.unwrap();
-    assert_ne!(after_provider, after_consumer);
-    assert!(core.profile(&profile.id).unwrap().0.packs.is_empty());
     let stores = tobkiri_store::TieredStore::open(&core.profiles.root, &profile.id).unwrap();
-    let descriptor = stores.describe(&provider, "notes").unwrap();
+    let descriptor = stores.describe(&consumer, "notes").unwrap();
     assert_eq!(descriptor.tier, tobkiri_gate::StoreTier::Private);
 }
 
