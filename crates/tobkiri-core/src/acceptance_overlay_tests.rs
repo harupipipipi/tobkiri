@@ -29,46 +29,22 @@ use tobkiri_store::{Approvals, AuditLog, AuditQuota, DataRoot};
 const INPUT: &str = "local.base.input@1.0";
 const STEP: &str = "local.base.step@1.0";
 
-type Hook = Box<dyn Fn() + Send + Sync>;
-
-/// A trusted Host that records every prompt. It approves unless told to deny,
-/// and can run one hook at the moment a User-principal port call is prompted:
-/// the point at which an overlay's own effect is between approval and dispatch.
+/// A trusted Host that records every prompt and approves unless told to deny.
 #[derive(Default)]
 struct TestHost {
     prompts: Mutex<Vec<ApprovalPrompt>>,
-    deny_user_calls: AtomicBool,
     deny_all: AtomicBool,
-    on_user_call: Mutex<Option<Hook>>,
-}
-fn is_user_call(prompt: &ApprovalPrompt) -> bool {
-    matches!(prompt.principal, Principal::User)
-        && matches!(prompt.effect, EffectRequest::PortCall { .. })
 }
 impl TestHost {
     fn recorded(&self) -> Vec<ApprovalPrompt> {
         self.prompts.lock().unwrap().clone()
     }
-    fn user_calls(&self) -> Vec<ApprovalPrompt> {
-        self.recorded().into_iter().filter(is_user_call).collect()
-    }
 }
 #[async_trait]
 impl TrustedPrompt for TestHost {
     async fn prompt_approval(&self, prompt: ApprovalPrompt) -> ApprovalAnswer {
-        let user_call = is_user_call(&prompt);
-        let hook = if user_call {
-            self.on_user_call.lock().unwrap().take()
-        } else {
-            None
-        };
-        if let Some(hook) = hook {
-            hook();
-        }
-        let denied = self.deny_all.load(Ordering::SeqCst)
-            || (user_call && self.deny_user_calls.load(Ordering::SeqCst));
         self.prompts.lock().unwrap().push(prompt);
-        if denied {
+        if self.deny_all.load(Ordering::SeqCst) {
             ApprovalAnswer::Deny
         } else {
             ApprovalAnswer::Approve
@@ -125,7 +101,8 @@ fn next(args: CanonValue) -> Step {
 fn wrap(value: i64) -> Vec<Step> {
     vec![next(value_args(value))]
 }
-/// Insert: an extra effect of the overlay's own, then the original step.
+/// Insert: an extra effect of the overlay's own whose result feeds the
+/// original step, so a result of 5 proves that the effect really ran.
 fn insert() -> Vec<Step> {
     let mut call = Step::new(
         "extra",
@@ -136,6 +113,22 @@ fn insert() -> Vec<Step> {
         }),
     );
     call.out = Some("seen".into());
+    let seen = CanonValue::Obj(BTreeMap::from([(
+        "value".into(),
+        CanonValue::Str("$seen".into()),
+    )]));
+    vec![call, next(seen)]
+}
+/// An overlay effect that stays in flight until it is cancelled.
+fn hang() -> Vec<Step> {
+    let call = Step::new(
+        "hang",
+        StepKind::Call(PortCall {
+            shape: input_shape(),
+            op: OpName::parse("wait").unwrap(),
+            args: CanonValue::Obj(BTreeMap::new()),
+        }),
+    );
     vec![call, next(CanonValue::Str("$input".into()))]
 }
 /// Replace: never call `next`, return another value.
@@ -209,22 +202,36 @@ fn overlay_pack(
     verified
 }
 
-fn is_dispatch_of(event: &AuditEvent, prompt: &ApprovalPrompt) -> bool {
-    let effect = CanonValue::Str(prompt.effect.digest().unwrap().to_string());
-    let args = CanonValue::Str(prompt.args_digest.to_string());
-    event.kind == "dispatch"
-        && matches!(&event.payload, CanonValue::Obj(fields)
-            if fields.get("effect_digest") == Some(&effect)
-                && fields.get("args_digest") == Some(&args))
-}
-fn dispatches_by(events: &[AuditEvent], pack: &str) -> usize {
+/// Number of Gate dispatches of the exact `PortCall` effect `input.<op>`.
+fn dispatches_of(events: &[AuditEvent], op: &str) -> usize {
+    let effect = CanonValue::Str(
+        EffectRequest::PortCall {
+            shape: input_shape(),
+            op: OpName::parse(op).unwrap(),
+        }
+        .digest()
+        .unwrap()
+        .to_string(),
+    );
     events
         .iter()
         .filter(|event| {
             event.kind == "dispatch"
-                && matches!(&event.principal, Principal::Pack { pack: id, .. } if id.as_str() == pack)
+                && matches!(&event.payload, CanonValue::Obj(fields)
+                    if fields.get("effect_digest") == Some(&effect))
         })
         .count()
+}
+fn trace(events: &[AuditEvent]) -> String {
+    events
+        .iter()
+        .map(|event| {
+            let mut line = format!("{} {:?} {:?}", event.kind, event.principal, event.payload);
+            line.truncate(220);
+            line
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 struct Outcome {
@@ -249,9 +256,9 @@ impl Outcome {
         assert_eq!(self.result(), expected, "{}", self.diagnostic());
     }
 }
-async fn drive_raw(session: &Session) -> Result<Outcome, StepError> {
+async fn read(session: &Session) -> Result<NativeInput, CoreError> {
     let entry = session.input_entries()[0].clone();
-    let input = within_session(
+    within_session(
         session,
         "overlay Input read",
         session.read_input(
@@ -261,14 +268,8 @@ async fn drive_raw(session: &Session) -> Result<Outcome, StepError> {
         ),
     )
     .await
-    .unwrap();
-    let mut run = within_session(
-        session,
-        "overlay NativeInput admission",
-        session.submit_native_input(input),
-    )
-    .await
-    .unwrap();
+}
+async fn settle(session: &Session, mut run: NativeInputRunHandle) -> Result<Outcome, String> {
     let mut failures = Vec::new();
     let completion = within_session(session, "overlay Flow completion", async {
         while let Some(event) = run.events.recv().await {
@@ -276,14 +277,34 @@ async fn drive_raw(session: &Session) -> Result<Outcome, StepError> {
         }
         run.result.await
     })
-    .await?;
+    .await
+    .map_err(|error| error.to_string())?;
     Ok(Outcome {
         completion,
         failures,
     })
 }
+/// Any refusal, at read, admission or completion, is an `Err` description.
+async fn drive_try(session: &Session) -> Result<Outcome, String> {
+    let input = read(session).await.map_err(|error| error.to_string())?;
+    let run = within_session(
+        session,
+        "overlay NativeInput admission",
+        session.submit_native_input(input),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    settle(session, run).await
+}
 async fn drive(session: &Session) -> Outcome {
-    drive_raw(session).await.unwrap()
+    drive_try(session).await.unwrap()
+}
+/// The run was refused, failed or cancelled: it did not succeed.
+#[track_caller]
+fn assert_blocked(result: Result<Outcome, String>) {
+    if let Ok(outcome) = result {
+        assert!(!outcome.succeeded(), "{}", outcome.diagnostic());
+    }
 }
 
 type Snapshot = (Digest, Vec<u8>, usize, crate::ProfileSavePrecondition);
@@ -450,8 +471,10 @@ impl World {
 
 struct Observation {
     outcome: Outcome,
-    base_dispatches: usize,
-    overlay_dispatches: usize,
+    /// Gate dispatches of the `echo` effect: one for the Flow owner's own step,
+    /// plus one more for an overlay's own `echo` call.
+    echoes: usize,
+    trace: String,
 }
 /// Run the Flow once with at most one foreign Pack overlay on the Open step.
 async fn foreign(mode: Option<(Vec<Step>, bool)>) -> Observation {
@@ -467,8 +490,8 @@ async fn foreign(mode: Option<(Vec<Step>, bool)>) -> Observation {
     world.verify_audit();
     Observation {
         outcome,
-        base_dispatches: dispatches_by(&events, "local.base"),
-        overlay_dispatches: dispatches_by(&events, "local.overlayer"),
+        echoes: dispatches_of(&events, "echo"),
+        trace: trace(&events),
     }
 }
 
@@ -479,28 +502,27 @@ async fn foreign_pack_inserts_wraps_replaces_and_deletes_a_role_addressed_step_t
  {
     let baseline = foreign(None).await;
     baseline.outcome.assert_result(serde_json::json!(42));
-    assert_eq!(baseline.overlay_dispatches, 0);
+    assert!(baseline.echoes >= 1, "{}", baseline.trace);
 
     // Wrap: `next` with changed arguments. The original runs once.
     let wrapped = foreign(Some((wrap(7), false))).await;
     wrapped.outcome.assert_result(serde_json::json!(7));
-    assert_eq!(wrapped.base_dispatches, baseline.base_dispatches);
+    assert_eq!(wrapped.echoes, baseline.echoes, "{}", wrapped.trace);
 
     // Insert: an extra effect of the overlay Pack's own, then the original.
     let inserted = foreign(Some((insert(), true))).await;
-    inserted.outcome.assert_result(serde_json::json!(42));
-    assert_eq!(inserted.overlay_dispatches, 1);
-    assert_eq!(inserted.base_dispatches, baseline.base_dispatches);
+    inserted.outcome.assert_result(serde_json::json!(5));
+    assert_eq!(inserted.echoes, baseline.echoes + 1, "{}", inserted.trace);
 
     // Replace: no `next`. The original step is never dispatched.
     let replaced = foreign(Some((replace(99), false))).await;
     replaced.outcome.assert_result(serde_json::json!(99));
-    assert_eq!(replaced.base_dispatches + 1, baseline.base_dispatches);
+    assert_eq!(replaced.echoes + 1, baseline.echoes, "{}", replaced.trace);
 
     // Delete: an empty body. The original step is never dispatched.
     let deleted = foreign(Some((delete(), false))).await;
     deleted.outcome.assert_result(serde_json::Value::Null);
-    assert_eq!(deleted.base_dispatches + 1, baseline.base_dispatches);
+    assert_eq!(deleted.echoes + 1, baseline.echoes, "{}", deleted.trace);
 }
 
 #[tokio::test]
@@ -602,124 +624,154 @@ async fn user_overlay_keeps_the_separate_user_policy_for_its_own_calls() {
         .ports
         .remove(INPUT);
     world.assert_rejected(candidate, "port-permission").await;
-    // A policy that names it works, and only then.
+    // A policy that names it works, and only then. The overlay's own effect
+    // really ran: its result fed the original step.
     let candidate = world.candidate_with_user_overlays(vec![document("mine", by_step(), insert())]);
     world.save(candidate).await.unwrap();
-    world.run().await.assert_result(serde_json::json!(42));
+    world.run().await.assert_result(serde_json::json!(5));
 }
 
 // ---------------------------------------------------------------- item 8
 
-async fn user_insert_world() -> World {
+async fn user_world(body: Vec<Step>) -> World {
     let mut world = World::new(OverlayAccess::Closed).await;
-    let candidate = world.candidate_with_user_overlays(vec![document("mine", by_step(), insert())]);
+    let candidate = world.candidate_with_user_overlays(vec![document("mine", by_step(), body)]);
     world.save(candidate).await.unwrap();
     world
 }
-fn assert_never_dispatched(world: &World) {
-    let prompts = world.host.user_calls();
-    assert!(!prompts.is_empty(), "the overlay's call was never prompted");
-    let events = world.audit();
-    for prompt in &prompts {
-        assert!(
-            !events.iter().any(|event| is_dispatch_of(event, prompt)),
-            "an unapproved, stale or cancelled overlay effect was dispatched"
-        );
-    }
-}
 
 #[tokio::test]
-async fn user_overlay_effect_reaches_the_trusted_prompt_and_the_audit_log_while_pack_calls_do_not()
-{
-    let world = user_insert_world().await;
-    world.run().await.assert_result(serde_json::json!(42));
-    let prompts = world.host.user_calls();
-    assert!(!prompts.is_empty(), "a User overlay call was not prompted");
-    let events = world.audit();
-    for prompt in &prompts {
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| is_dispatch_of(event, prompt))
-                .count(),
-            1,
-            "each approved User call is dispatched exactly once"
-        );
-    }
-    // The Flow owner's own calls are checked by the Gate without a per-call
-    // prompt; only the User principal is always asked.
-    assert!(world.host.recorded().iter().all(|prompt| !matches!(
-        (&prompt.principal, &prompt.effect),
-        (Principal::Pack { .. }, EffectRequest::PortCall { .. })
-    )));
-    world.verify_audit();
-}
+async fn user_overlay_effect_is_audited_and_authorized_by_the_trusted_user_policy_like_any_call() {
+    let control = user_world(wrap(7)).await;
+    control.run().await.assert_result(serde_json::json!(7));
+    let control_echoes = dispatches_of(&control.audit(), "echo");
 
-#[tokio::test]
-async fn user_overlay_denied_at_the_trusted_prompt_never_dispatches() {
-    let world = user_insert_world().await;
-    world.host.deny_user_calls.store(true, Ordering::SeqCst);
+    let world = user_world(insert()).await;
     let outcome = world.run().await;
-    assert!(!outcome.succeeded(), "{}", outcome.diagnostic());
-    assert_never_dispatched(&world);
+    outcome.assert_result(serde_json::json!(5));
+    let events = world.audit();
+    // The overlay's own effect is one more Gate dispatch next to the original.
+    assert_eq!(
+        dispatches_of(&events, "echo"),
+        control_echoes + 1,
+        "{}",
+        trace(&events)
+    );
+    // Its authority is the separately approved User policy, which the trusted
+    // Host was asked about when the Profile was saved.
+    assert!(
+        world
+            .host
+            .recorded()
+            .iter()
+            .any(|prompt| matches!(prompt.effect, EffectRequest::UserPermissions { .. })),
+        "the User policy was never put to the trusted Host"
+    );
     world.verify_audit();
 }
 
 #[tokio::test]
-async fn authority_epoch_change_after_approval_blocks_the_overlay_effect() {
-    let world = user_insert_world().await;
-    let session = world.start().await;
-    let hook_session = session.clone();
-    let id = world.profile.id.clone();
-    *world.host.on_user_call.lock().unwrap() = Some(Box::new(move || {
-        hook_session.gate.revoke_epoch(&id).unwrap();
-    }));
-    let outcome = drive(&session).await;
-    assert!(!outcome.succeeded(), "{}", outcome.diagnostic());
-    assert_never_dispatched(&world);
-    let _ = session.close().await;
-}
-
-#[tokio::test]
-async fn cancellation_while_the_overlay_effect_awaits_approval_never_dispatches() {
-    let world = user_insert_world().await;
-    let session = world.start().await;
-    let hook_session = session.clone();
-    *world.host.on_user_call.lock().unwrap() = Some(Box::new(move || {
-        hook_session.request_shutdown();
-    }));
-    if let Ok(outcome) = drive_raw(&session).await {
-        assert!(!outcome.succeeded(), "{}", outcome.diagnostic());
-    }
-    assert_never_dispatched(&world);
-    let _ = session.close().await;
-}
-
-#[tokio::test]
-async fn approval_revoked_while_a_user_overlay_runs_blocks_the_original_step() {
-    // Control: the same overlay without any change completes.
-    let control = user_insert_world().await;
-    control.run().await.assert_result(serde_json::json!(42));
-    let control_base = dispatches_by(&control.audit(), "local.base");
-
-    let world = user_insert_world().await;
-    let session = world.start().await;
-    let root = world.root.clone();
-    let id = world.profile.id.clone();
-    let base_id = world.base.manifest.id.clone();
-    let base_hash = world.base.hash.clone();
-    *world.host.on_user_call.lock().unwrap() = Some(Box::new(move || {
-        Approvals::open(&root, &id)
-            .unwrap()
-            .set_permissions(&id, &base_id, &base_hash, &PermissionSet::default())
-            .unwrap();
-    }));
-    let outcome = drive(&session).await;
-    assert!(!outcome.succeeded(), "{}", outcome.diagnostic());
+async fn user_overlay_profile_is_not_saved_without_the_trusted_user_policy_approval() {
+    let mut world = World::new(OverlayAccess::Closed).await;
+    let before = world.snapshot();
+    let candidate = world.candidate_with_user_overlays(vec![document("mine", by_step(), insert())]);
+    world.host.deny_all.store(true, Ordering::SeqCst);
+    let denied = world.save(candidate.clone()).await;
     assert!(
-        dispatches_by(&world.audit(), "local.base") < control_base,
-        "the original step ran after its Pack approval was revoked"
+        matches!(&denied, Err(error) if !matches!(error, CoreError::Conflicts(_))),
+        "{denied:?}"
     );
+    assert!(
+        world.host.recorded().len() > before.2,
+        "the Host was not asked"
+    );
+    let after = world.snapshot();
+    assert_eq!((&after.0, &after.1), (&before.0, &before.1));
+    world.run().await.assert_result(serde_json::json!(42));
+    world.host.deny_all.store(false, Ordering::SeqCst);
+    world.save(candidate).await.unwrap();
+}
+
+#[tokio::test]
+async fn user_policy_approval_withdrawn_after_start_blocks_the_overlay_effect_and_the_original() {
+    let world = user_world(insert()).await;
+    let session = world.start().await;
+    let approvals = Approvals::open(&world.root, &world.profile.id).unwrap();
+    let revision = session.compiled.plan_digest.clone();
+    assert!(
+        approvals
+            .user_permissions(&world.profile.id, &world.head, &revision, session.epoch)
+            .unwrap()
+            .is_some(),
+        "the User policy approval is not where the Session reads it"
+    );
+    approvals
+        .set_user_permissions(
+            &world.profile.id,
+            &world.head,
+            &revision,
+            session.epoch,
+            &PermissionSet::default(),
+        )
+        .unwrap();
+    assert_blocked(drive_try(&session).await);
+    let events = world.audit();
+    assert_eq!(dispatches_of(&events, "echo"), 0, "{}", trace(&events));
+    world.verify_audit();
+    let _ = session.close().await;
+}
+
+#[tokio::test]
+async fn authority_epoch_change_after_start_blocks_a_run_through_a_user_overlay() {
+    let world = user_world(insert()).await;
+    let session = world.start().await;
+    session.gate.revoke_epoch(&world.profile.id).unwrap();
+    assert_blocked(drive_try(&session).await);
+    let events = world.audit();
+    assert_eq!(dispatches_of(&events, "echo"), 0, "{}", trace(&events));
+    world.verify_audit();
+    let _ = session.close().await;
+}
+
+#[tokio::test]
+async fn flow_owner_approval_withdrawn_after_start_blocks_the_overlay_effect() {
+    let world = user_world(insert()).await;
+    let session = world.start().await;
+    Approvals::open(&world.root, &world.profile.id)
+        .unwrap()
+        .set_permissions(
+            &world.profile.id,
+            &world.base.manifest.id,
+            &world.base.hash,
+            &PermissionSet::default(),
+        )
+        .unwrap();
+    assert_blocked(drive_try(&session).await);
+    let events = world.audit();
+    assert_eq!(dispatches_of(&events, "echo"), 0, "{}", trace(&events));
+    world.verify_audit();
+    let _ = session.close().await;
+}
+
+#[tokio::test]
+async fn cancelling_while_the_overlay_effect_runs_never_reaches_the_original_step() {
+    let world = user_world(hang()).await;
+    let session = world.start().await;
+    let input = read(&session).await.unwrap();
+    let run = within_session(
+        &session,
+        "overlay NativeInput admission",
+        session.submit_native_input(input),
+    )
+    .await
+    .unwrap();
+    // The overlay's own `wait` is dispatched and then spins until cancelled.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    session.request_shutdown();
+    assert_blocked(settle(&session, run).await);
+    let events = world.audit();
+    assert_eq!(dispatches_of(&events, "wait"), 1, "{}", trace(&events));
+    assert_eq!(dispatches_of(&events, "echo"), 0, "{}", trace(&events));
     world.verify_audit();
     let _ = session.close().await;
 }
@@ -742,9 +794,9 @@ async fn pack_overlay_effect_is_checked_with_the_overlay_packs_own_approval() {
             &PermissionSet::default(),
         )
         .unwrap();
-    let outcome = drive(&session).await;
-    assert!(!outcome.succeeded(), "{}", outcome.diagnostic());
-    assert_eq!(dispatches_by(&world.audit(), "local.overlayer"), 0);
+    assert_blocked(drive_try(&session).await);
+    let events = world.audit();
+    assert_eq!(dispatches_of(&events, "echo"), 0, "{}", trace(&events));
     world.verify_audit();
     let _ = session.close().await;
 }
