@@ -638,6 +638,16 @@ the three oversized cases in the earlier five-component replay.
 
 ## Acceptance checklist
 
+Status after the focused CI replays (2026-11-11): items 9, 11, 12 and 13 are
+checked (4 of 20); the other 16 remain unchecked. The aggregate
+`issue-1520-rust.yml` currently fails earlier at an unrelated Python fixture
+step, so it is not the evidence; the focused workflows
+`issue-1520-acceptance-9-11-12.yml` and `issue-1520-acceptance-13-16.yml` are.
+Open points: 11 lacks the 「未確認の接続」 UI label; 12 uses synthetic WIT; 13
+has R2.10 gaps (no 「持ち主のいないデータ」 marking in Core removal, `policy-view`
+over-rejection); 14 needs guest/runtime replay and existing-workspace migration;
+15 needs physical Proc/PTY; 16 needs real store writes and a CLI round trip.
+
 1. [ ] **CI rejects Pack IDs and Pack-owned shape names in core and hosts.**
    [Checker](../../../tools/quality/issue_1520_gate.py),
    [negative fixtures](../../../tools/quality/test_issue_1520_gate.py), and
@@ -691,11 +701,17 @@ the three oversized cases in the earlier five-component replay.
    separate original authorities. Current runtime denial, cancellation, and
    epoch-change replays are required; overlay composition alone is insufficient.
 
-9. [ ] **Profiles without default loop bounds fail validation.**
+9. [x] **Profiles without default loop bounds fail validation.**
    [Compiler tests](../../../crates/tobkiri-profile/tests/compiler.rs) include
    `default_loop_bounds_and_explicit_error_policy_keys_are_required`;
    [engine tests](../../../crates/tobkiri-flow/tests/engine.rs) reject missing or
-   widened limits. This is a focused, deterministic current replay candidate.
+   widened limits. Replayed in [run 42939221536](https://github.com/harupipipipi/tobkiri/actions/runs/42939221536) (focused workflow
+   `issue-1520-acceptance-9-11-12.yml`, commit `fea29488e`, shared-branch
+   `8da910009..a08ce1da6`): `profile_without_default_loop_bounds_fails_parse_and_compile`,
+   `flow_document_must_take_loop_bounds_from_the_profile_default`,
+   `default_loop_bounds_and_explicit_error_policy_keys_are_required`,
+   `loop_cannot_widen_defaults_or_run_without_profile_limits` and
+   `iteration_cost_and_wall_limits_stop_run` all printed `ok`, 0 ignored.
 
 10. [ ] **Ambiguous single ports/unordered overlays reject changes, preserve the
     old configuration, and offer a repair Pack.**
@@ -705,48 +721,84 @@ the three oversized cases in the earlier five-component replay.
     Prove one integrated conflict-to-repair flow, unchanged head on failure,
     stale original-hash rejection, and no automatic permission expansion.
 
-11. [ ] **A port without WIT is rejected unless explicitly `untyped`.**
+11. [x] **A port without WIT is rejected unless explicitly `untyped`.**
     [Manifest validation](../../../crates/tobkiri-manifest/src/package.rs) and
     [compiler tests](../../../crates/tobkiri-profile/tests/compiler.rs) distinguish
-    explicit untyped ports from typed required slots. Execute current malformed
-    manifest/type fixtures and verify the user-facing unverified-connection label.
+    explicit untyped ports from typed required slots. Replayed in [run 42939221536](https://github.com/harupipipipi/tobkiri/actions/runs/42939221536):
+    `typed_port_without_wit_shape_is_rejected_and_explicit_untyped_loads`,
+    `optional_and_untyped_ports_cannot_satisfy_required_typed_slots` (compiler) and
+    `explicit_untyped_ports_load_and_malformed_declarations_are_rejected`
+    (manifest contracts), all `ok`. The acceptance sentence is about load-time
+    rejection and is met. **Open gap (R3.5):** the UI label 「未確認の接続」 is not
+    implemented anywhere, so the user-facing display of untyped ports is unproven.
 
-12. [ ] **Compatible minor versions connect; different majors do not.**
+12. [x] **Compatible minor versions connect; different majors do not.**
     [Manifest tests](../../../crates/tobkiri-manifest/tests/contracts.rs) cover
     trailing-option projection and enum directionality;
     [compiler tests](../../../crates/tobkiri-profile/tests/compiler.rs) cover
-    verified minor snapshots and major mismatch. Replay current typed components;
-    do not treat arbitrary unknown minors as automatically compatible.
+    verified minor snapshots and major mismatch. Replayed in [run 42939221536](https://github.com/harupipipipi/tobkiri/actions/runs/42939221536):
+    `minor_difference_connects_both_ways_and_major_difference_needs_an_adapter`,
+    `compatible_minors_bind_from_verified_snapshots_unknown_minors_are_rejected`,
+    `subflow_implements_ambiguity_and_major_mismatch_fail` (compiler),
+    `compatible_trailing_options_project_both_directions` and
+    `enum_minor_extension_is_input_only_and_width_changes_need_adapter`
+    (contracts), all `ok`. Unknown minors are rejected, not assumed compatible.
+    **Scope limit:** the fixtures use synthetic WIT, not real typed components.
 
-13. [ ] **Updates approve only added permissions; removal cannot break required ports.**
+13. [x] **Updates approve only added permissions; removal cannot break required ports.**
     [Permission diff](../../../crates/tobkiri-gate/src/permissions.rs),
     [update authority tests](../../../crates/tobkiri-store/tests/authority.rs), and
-    [Core removal](../../../crates/tobkiri-core/src/core.rs) exist. Add/run the
-    complete update/removal transaction regression, including unchanged head on
-    denial and preservation of orphaned data.
+    [Core removal](../../../crates/tobkiri-core/src/core.rs). Replayed in [run 42941462516](https://github.com/harupipipipi/tobkiri/actions/runs/42941462516)
+    (workflow `issue-1520-acceptance-13-16.yml`, commit `605397f71`, shared-branch
+    `ab4fd131f..ba0027367`, success): gate `update_diff_contains_only_added_authority`
+    and `four_way_intersection_cannot_add_an_origin_or_dangerous_permission`;
+    store `a_pack_hash_update_prompts_only_for_additions_and_other_profiles_have_no_approval`;
+    Core `pack_update_asks_only_for_permissions_added_since_the_previous_version`
+    and `removing_a_provider_of_another_packs_required_port_fails_and_keeps_data`.
+    The replay also exposed and fixed a product bug in `ab4fd131f`:
+    `Core::remove_pack` now drops the removed Pack's own `pack_limits` entry;
+    before, removing any Pack that had limits failed with `permission-widening`.
+    **Open (R2.10, not part of this sentence):** Core removal does not mark the
+    removed Pack's stores as 「持ち主のいないデータ」 (`orphan_pack` exists only
+    at the store layer); removing the last provider of a shape referenced by the
+    Profile ceiling fails with `policy-view` even when no required port breaks,
+    which may be stricter than R2.10. See cleanup-notes 028.
 
 14. [ ] **Three storage tiers are Profile-isolated; public writes approve once
     per writer Pack/store pair.**
     [Tiered Store](../../../crates/tobkiri-store/src/tiered.rs),
     [security tests](../../../crates/tobkiri-store/tests/security.rs), and
-    [native quota tests](../../../crates/tobkiri-store/tests/native_quota.rs)
-    implement/check these mechanisms. Current guest/runtime replay and migration
-    of existing Profile workspaces remain distinct unfinished work.
+    [native quota tests](../../../crates/tobkiri-store/tests/native_quota.rs).
+    [run 42941462516](https://github.com/harupipipipi/tobkiri/actions/runs/42941462516): store `public_write_approval_is_once_per_writer_and_store_and_reads_do_not_prompt`
+    and `three_tiers_are_isolated_per_profile_and_public_approval_is_per_writer_store_pair`
+    passed. Left unchecked: these run at the store layer only, the tier data was
+    checked with marker files rather than real store writes, and guest/runtime
+    reproduction plus migration of existing Profile workspaces remain.
 
 15. [ ] **Native Packs and cross-Profile storage require explicit dangerous permission.**
     [Gate permissions](../../../crates/tobkiri-gate/src/permissions.rs),
     [process launch tests](../../../crates/tobkiri-store/tests/process_launch.rs),
-    and [global storage tests](../../../crates/tobkiri-store/tests/authority.rs)
-    cover denial/approval foundations. Physical Proc/PTY is still
-    [Unavailable](../../../crates/tobkiri-wasm/src/effects.rs); safe denial is not
-    a functioning, approved native execution implementation.
+    and [global storage tests](../../../crates/tobkiri-store/tests/authority.rs).
+    [run 42941462516](https://github.com/harupipipipi/tobkiri/actions/runs/42941462516): store `dangerous_global_storage_can_share_data_only_after_explicit_permissions_and_prompt`,
+    `native_and_cross_profile_storage_need_explicit_permission_and_warn_as_dangerous`,
+    `client_approved_payload_and_dangerous_declaration_do_not_override_ceiling`;
+    profile `user_declaration_is_optional_published_and_intersected_with_ceiling`;
+    Core `native_pack_requires_the_profile_to_allow_native_and_is_prompted_as_dangerous`
+    and `cross_profile_storage_is_only_asked_for_when_the_profile_ceiling_allows_it`
+    passed. Left unchecked: the denial and prompt side is evidenced, but physical
+    Proc/PTY is still [Unavailable](../../../crates/tobkiri-wasm/src/effects.rs),
+    so an approved native Pack cannot actually run.
 
 16. [ ] **Published Profiles exclude approvals, data, and secrets.**
     [Published allowlist](../../../crates/tobkiri-profile/src/lib.rs),
     [serialization tests](../../../crates/tobkiri-profile/tests/compiler.rs), and
-    [fresh import approval tests](../../../crates/tobkiri-core/src/core_tests.rs)
-    exist. Verify a current CLI export/import against populated stores and vaults,
-    including all tiers and user-global data, without exposing private payloads.
+    [fresh import approval tests](../../../crates/tobkiri-core/src/core_tests.rs).
+    [run 42941462516](https://github.com/harupipipipi/tobkiri/actions/runs/42941462516): profile `published_allowlist_excludes_local_identity_and_rejects_authority_fields`,
+    Core `published_profile_excludes_populated_approvals_data_secrets_and_user_global_storage`
+    and `published_user_policy_import_requires_fresh_profile_scoped_approval` passed.
+    Left unchecked: tier data and user-global storage were populated with marker
+    files, not real store writes, and no current CLI export/import round trip
+    against populated stores and vaults has run.
 
 17. [ ] **Pack UI is isolated and can access data only through gated ports.**
     [Core UI E2E](../../../crates/tobkiri-e2e/tests/ui.rs),
