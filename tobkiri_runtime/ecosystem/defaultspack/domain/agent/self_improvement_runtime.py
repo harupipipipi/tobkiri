@@ -42,7 +42,9 @@ SELF_IMPROVEMENT_TOOLS = [
     "web_search",
 ]
 
-SELF_IMPROVEMENT_TASK_STATES = ("pending", "running", "completed", "failed", "skipped")
+SELF_IMPROVEMENT_TASK_STATES = (
+    "pending", "running", "approval_pending", "completed", "failed", "skipped",
+)
 
 RESTRICTED_COMMIT_PATHS = frozenset({".env", ".env.local", ".env.production"})
 
@@ -184,6 +186,24 @@ class SelfImprovingDefaultspackRuntime:
         completed.append(task_id)
         state["last_self_improvement_result"] = result
         self._record_event(state, "task_completed", {"task_id": task_id, "result": result})
+        self._save_state(state)
+        return task
+
+    def wait_for_approval(self, task_id: str, result: dict[str, Any]) -> dict[str, Any]:
+        """Persist the existing tool request without completing or replaying it."""
+        state = self._load_state()
+        task = self._find_task(state, task_id)
+        task["status"] = "approval_pending"
+        task["result"] = dict(result)
+        state["running"] = False
+        state["current_task"] = task_id
+        waiting = state.setdefault("approval_waiting", [])
+        request_id = str(result.get("approval_request_id") or "")
+        if not any(item.get("approval_request_id") == request_id for item in waiting):
+            waiting.append({"task_id": task_id, "approval_request_id": request_id})
+        self._record_event(state, "approval_pending", {
+            "task_id": task_id, "approval_request_id": request_id,
+        })
         self._save_state(state)
         return task
 
