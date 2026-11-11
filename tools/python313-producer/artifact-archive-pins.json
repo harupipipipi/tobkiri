@@ -1,0 +1,47 @@
+{
+  "format": "tobkiri.artifact-archive-pins/1",
+  "archive_workflow_path": ".github/workflows/issue-1520-artifact-archive.yml",
+  "trusted_refs": [
+    "claude/issue-1520-artifact-archive",
+    "codex/issue-1520-native-shared-state",
+    "codex/issue-1520-rust-core"
+  ],
+  "artifacts": {
+    "producer-cli": {
+      "source": {
+        "run_id": 39956025119,
+        "run_attempt": 1,
+        "head_sha": "ae7f83080a36e823ac330342584210243dc38050",
+        "workflow_path": ".github/workflows/issue-1520-python313.yml",
+        "artifact_name": "python313-producer-cli",
+        "artifact_id": 12504280941
+      },
+      "archive_run": null,
+      "archive_attempt": 1
+    },
+    "original-components": {
+      "source": {
+        "run_id": 39956025119,
+        "run_attempt": 1,
+        "head_sha": "ae7f83080a36e823ac330342584210243dc38050",
+        "workflow_path": ".github/workflows/issue-1520-python313.yml",
+        "artifact_name": "python313-original-components",
+        "artifact_id": 12503763301
+      },
+      "archive_run": null,
+      "archive_attempt": 1
+    },
+    "rpds": {
+      "source": {
+        "run_id": 40182231971,
+        "run_attempt": 2,
+        "head_sha": "53163ed815c62c4853bbed3d8a082c0764e3084f",
+        "workflow_path": ".github/workflows/issue-1520-ui-rpds.yml",
+        "artifact_name": "ui-rpds-inactive-component",
+        "artifact_id": 13817115779
+      },
+      "archive_run": null,
+      "archive_attempt": 1
+    }
+  }
+}
