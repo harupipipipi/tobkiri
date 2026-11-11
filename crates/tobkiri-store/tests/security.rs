@@ -86,7 +86,7 @@ impl TrustedPrompt for Prompt {
     }
 }
 struct Fixture {
-    _temp: tempfile::TempDir,
+    _temp: Arc<tempfile::TempDir>,
     root: DataRoot,
     profile: ProfileId,
     approvals: Arc<Approvals>,
@@ -126,8 +126,31 @@ impl Fixture {
             ),
         });
         Self {
-            _temp: temp,
+            _temp: Arc::new(temp),
             root,
+            profile,
+            approvals,
+            audit,
+            prompt,
+            gate,
+        }
+    }
+    /// Another Profile in the same physical data root, with its own approvals,
+    /// audit log, prompt surface and Gate.
+    fn sibling(&self, profile: &str) -> Self {
+        let profile = ProfileId::parse(profile).unwrap();
+        let approvals = Arc::new(Approvals::open(&self.root, &profile).unwrap());
+        let audit = Arc::new(AuditLog::open(&self.root, &profile, AuditQuota::default()).unwrap());
+        let prompt = Arc::new(Prompt::new());
+        let gate = Arc::new(GateEngine::new(
+            approvals.clone(),
+            audit.clone(),
+            prompt.clone(),
+            MediatorChain::default(),
+        ));
+        Self {
+            _temp: self._temp.clone(),
+            root: self.root.clone(),
             profile,
             approvals,
             audit,
@@ -342,6 +365,219 @@ async fn public_write_approval_is_once_per_writer_and_store_and_reads_do_not_pro
     .await
     .unwrap();
     assert_eq!(f.prompt.calls.load(Ordering::SeqCst), baseline + 2);
+    f.audit.verify().unwrap();
+}
+
+async fn put_value(f: &Fixture, handle: &StoreHandle, cx: &CallCx, key: &str, value: &[u8]) {
+    execute(
+        f,
+        handle,
+        cx,
+        StoreCall::KvPut {
+            key: key.into(),
+            value: value.to_vec(),
+        },
+    )
+    .await
+    .unwrap();
+}
+async fn get_value(f: &Fixture, handle: &StoreHandle, cx: &CallCx, key: &str) -> Option<Vec<u8>> {
+    match execute(f, handle, cx, StoreCall::KvGet { key: key.into() })
+        .await
+        .unwrap()
+    {
+        StoreResult::Value(value) => value,
+        _ => panic!("a key read returned a non-value result"),
+    }
+}
+fn prompt_calls(f: &Fixture) -> usize {
+    f.prompt.calls.load(Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn three_tiers_are_isolated_per_profile_and_public_approval_is_per_writer_store_pair() {
+    let a = Fixture::new();
+    let b = a.sibling("prof_peer");
+    let owner_a = a.pack("local.owner", permissions()).await;
+    let writer_a = a.pack("local.writer", permissions()).await;
+    let owner_b = b.pack("local.owner", permissions()).await;
+    let writer_b = b.pack("local.writer", permissions()).await;
+    let owner_id = owner(&owner_a).clone();
+    let stores_a = TieredStore::open(&a.root, &a.profile).unwrap();
+    let stores_b = TieredStore::open(&b.root, &b.profile).unwrap();
+    for stores in [&stores_a, &stores_b] {
+        for (name, tier) in [
+            ("vault", StoreTier::Private),
+            ("notes", StoreTier::Public),
+            ("other-notes", StoreTier::Public),
+            ("catalog", StoreTier::ReadOnly),
+        ] {
+            stores
+                .register(&owner_id, name, tier, "local.owner.data@1.0")
+                .unwrap();
+        }
+    }
+    let vault_a = open(&a, &stores_a, &owner_a, &owner_id, "vault").await;
+    let catalog_a = open(&a, &stores_a, &owner_a, &owner_id, "catalog").await;
+    let notes_a = open(&a, &stores_a, &writer_a, &owner_id, "notes").await;
+    let other_a = open(&a, &stores_a, &writer_a, &owner_id, "other-notes").await;
+    let catalog_for_writer_a = open(&a, &stores_a, &writer_a, &owner_id, "catalog").await;
+    let vault_b = open(&b, &stores_b, &owner_b, &owner_id, "vault").await;
+    let catalog_b = open(&b, &stores_b, &owner_b, &owner_id, "catalog").await;
+    let notes_b = open(&b, &stores_b, &writer_b, &owner_id, "notes").await;
+    // Private data belongs to its owner Pack alone.
+    let (request, args) = stores_a.open_request(&owner_id, "vault").unwrap();
+    assert!(a.gate.authorize(&writer_a, request, args).await.is_err());
+
+    // Profile A writes into all three tiers. Only the first public write for
+    // this writer and store asks the user; private and read-only owner writes
+    // and every read do not.
+    let base_a = prompt_calls(&a);
+    put_value(&a, &vault_a, &owner_a, "k", b"a-private").await;
+    put_value(&a, &catalog_a, &owner_a, "k", b"a-readonly").await;
+    assert_eq!(prompt_calls(&a), base_a);
+    put_value(&a, &notes_a, &writer_a, "k", b"a-public").await;
+    assert_eq!(prompt_calls(&a), base_a + 1);
+    put_value(&a, &notes_a, &writer_a, "again", b"a-public-2").await;
+    assert_eq!(prompt_calls(&a), base_a + 1);
+    // The same writer on a different store is a different pair.
+    put_value(&a, &other_a, &writer_a, "k", b"a-other").await;
+    assert_eq!(prompt_calls(&a), base_a + 2);
+    put_value(&a, &other_a, &writer_a, "again", b"a-other-2").await;
+    assert_eq!(prompt_calls(&a), base_a + 2);
+    // A non-owner cannot write the read-only tier and is not even asked.
+    assert!(
+        execute(
+            &a,
+            &catalog_for_writer_a,
+            &writer_a,
+            StoreCall::KvPut {
+                key: "k".into(),
+                value: b"forged".to_vec()
+            }
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(prompt_calls(&a), base_a + 2);
+
+    // Another Profile's Pack cannot even be granted access to A's handles.
+    for handle in [&vault_a, &catalog_a, &notes_a] {
+        let call = StoreCall::KvGet { key: "k".into() };
+        let request = handle.request(&call).unwrap();
+        assert!(
+            b.gate
+                .authorize(&writer_b, request, call.digest().unwrap())
+                .await
+                .is_err()
+        );
+    }
+
+    // Profile B sees none of A's data in any tier, even for the same Pack IDs.
+    let base_b = prompt_calls(&b);
+    assert_eq!(get_value(&b, &vault_b, &owner_b, "k").await, None);
+    assert_eq!(get_value(&b, &catalog_b, &owner_b, "k").await, None);
+    assert_eq!(get_value(&b, &notes_b, &writer_b, "k").await, None);
+    assert_eq!(prompt_calls(&b), base_b);
+    // A's approval of this writer and store is not B's approval (R6.3).
+    put_value(&b, &notes_b, &writer_b, "k", b"b-public").await;
+    assert_eq!(prompt_calls(&b), base_b + 1);
+    put_value(&b, &vault_b, &owner_b, "k", b"b-private").await;
+    put_value(&b, &catalog_b, &owner_b, "k", b"b-readonly").await;
+    assert_eq!(prompt_calls(&b), base_b + 1);
+    assert_eq!(prompt_calls(&a), base_a + 2);
+
+    // Writes in B never reach A, and A keeps its own values.
+    assert_eq!(
+        get_value(&a, &vault_a, &owner_a, "k").await.as_deref(),
+        Some(&b"a-private"[..])
+    );
+    assert_eq!(
+        get_value(&a, &catalog_a, &owner_a, "k").await.as_deref(),
+        Some(&b"a-readonly"[..])
+    );
+    assert_eq!(
+        get_value(&a, &notes_a, &writer_a, "k").await.as_deref(),
+        Some(&b"a-public"[..])
+    );
+    assert_eq!(
+        get_value(&b, &notes_b, &writer_b, "k").await.as_deref(),
+        Some(&b"b-public"[..])
+    );
+    assert_eq!(
+        get_value(&b, &vault_b, &owner_b, "k").await.as_deref(),
+        Some(&b"b-private"[..])
+    );
+    assert_eq!(
+        get_value(&b, &catalog_b, &owner_b, "k").await.as_deref(),
+        Some(&b"b-readonly"[..])
+    );
+    a.audit.verify().unwrap();
+    b.audit.verify().unwrap();
+}
+
+#[tokio::test]
+async fn native_and_cross_profile_storage_need_explicit_permission_and_warn_as_dangerous() {
+    let f = Fixture::new();
+    let plain = f.pack("local.plain", permissions()).await;
+    let peer = ProfileId::parse("prof_peer").unwrap();
+    let args = Digest::hash(b"args");
+    let requests = |cx: &CallCx| {
+        [
+            EffectRequest::Native {
+                pack: owner(cx).clone(),
+            },
+            EffectRequest::UserGlobalStorage {
+                store: "shared".into(),
+                operation: StoreOperation::Read,
+            },
+            EffectRequest::Storage {
+                profile: peer.clone(),
+                owner: owner(cx).clone(),
+                store: "notes".into(),
+                tier: StoreTier::Public,
+                operation: StoreOperation::Read,
+            },
+        ]
+    };
+    // Ordinary storage and audit permissions do not imply either capability,
+    // and a denial never reaches the user as a prompt.
+    let base = prompt_calls(&f);
+    for request in requests(&plain) {
+        assert!(
+            f.gate
+                .authorize(&plain, request.clone(), args.clone())
+                .await
+                .is_err(),
+            "authorized {request:?} without explicit permission"
+        );
+    }
+    assert_eq!(prompt_calls(&f), base);
+
+    // The Pack, ceiling and Pack limit all explicitly allow them: the approval
+    // of the permissions and every native/user-global effect is Dangerous.
+    let mut dangerous = permissions();
+    dangerous.native = true;
+    dangerous.cross_profile_storage = true;
+    let risks_before = f.prompt.risks.lock().unwrap().len();
+    let allowed = f.pack("local.allowed", dangerous).await;
+    let risks = f.prompt.risks.lock().unwrap().clone();
+    assert_eq!(risks.len(), risks_before + 1);
+    assert_eq!(risks.last(), Some(&Risk::Dangerous));
+    let [native, global, cross] = requests(&allowed);
+    for request in [native, global] {
+        let before = prompt_calls(&f);
+        f.gate
+            .authorize(&allowed, request, args.clone())
+            .await
+            .unwrap();
+        assert_eq!(prompt_calls(&f), before + 1);
+        assert_eq!(
+            f.prompt.risks.lock().unwrap().last(),
+            Some(&Risk::Dangerous)
+        );
+    }
+    f.gate.authorize(&allowed, cross, args).await.unwrap();
     f.audit.verify().unwrap();
 }
 
