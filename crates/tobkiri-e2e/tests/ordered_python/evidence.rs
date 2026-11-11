@@ -39,8 +39,24 @@ pub(super) fn no_links(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Original Defaults Profile bytes bound by the frozen evidence. Unrelated Packs
+/// regenerate the live Profile, so the reviewed bytes are read from a verbatim
+/// snapshot; the evidence's own hashes still decide whether they are accepted.
+const FROZEN_ORIGINAL_SOURCES: [&str; 2] = [
+    "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
+    "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
+];
+const FROZEN_ORIGINAL_ROOT: &str = "tests/fixtures/issue1520/frozen-original-sources";
+
 pub(super) fn bounded_read(root: &Path, relative: &str, limit: usize) -> Result<Vec<u8>> {
     no_links(root)?;
+    let frozen;
+    let relative = if FROZEN_ORIGINAL_SOURCES.contains(&relative) {
+        frozen = format!("{FROZEN_ORIGINAL_ROOT}/{relative}.frozen");
+        frozen.as_str()
+    } else {
+        relative
+    };
     // Keep source traversal beneath the opened repository descriptor. The
     // shared reader rejects child symlinks and nonregular files without a
     // blocking open, and checks file identity and length across the read.

@@ -51,8 +51,19 @@ def _json_bytes(value: Any) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
+def _frozen_override(path: Path) -> Path:
+    """Read frozen original-source snapshots; see frozen_original_sources.py."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_frozen_original_sources",
+        Path(__file__).with_name("frozen_original_sources.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.frozen_override(path)
+
+
 def _capture(path: str) -> bytes:
-    source = ROOT / path
+    source = _frozen_override(ROOT / path)
     if source.is_symlink() or not source.is_file():
         raise ValueError(f"source must be a regular file: {path}")
     return source.read_bytes()

@@ -124,9 +124,21 @@ def _directory(path: Path, *, create: bool = False) -> int:
         raise
 
 
+def _frozen_override(path: Path) -> Path:
+    """Read frozen original-source snapshots; see frozen_original_sources.py."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_frozen_original_sources",
+        Path(__file__).with_name("frozen_original_sources.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.frozen_override(path)
+
+
 def bounded_read(path: Path, limit: int = MAX_SOURCE_BYTES) -> bytes:
     """Read a stable regular file, capped before and during the read."""
     path = Path(path)
+    path = _frozen_override(path)
     if ".." in path.parts:
         raise ValueError("parent traversal is not allowed")
     descriptor = parent = None
