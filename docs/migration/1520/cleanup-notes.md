@@ -2541,3 +2541,30 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Ruffの残るF401 7件はtest_egress_proxy.pyのHEAD由来（元8件のうちMagicMockは新検査で使用）。
   無関係なunused import削除を戻し、ruff formatは使っていない。実テスト/製品/依存導入は
   ローカルでもCIでも未実行。全受け入れ条件・inventory・legacy削除条件は未完のまま。
+
+## 027: rpds predecessor artifact の期限切れと再構築 component の再固定
+
+- 状態: **再固定済み・未検証（CI未実行）。恒久対策は未着手の必須follow-up**。
+- 場所: [build_schema.py](../../../tools/python313-producer/build_schema.py) の
+  `COMPONENT_SHA256`（`verify_inputs` で厳密比較）。各 workflow の
+  `RPDS_RUN=40182231971` / `RPDS_HEAD=53163ed815c62c4853bbed3d8a082c0764e3084f` は不変。
+- 経緯: 固定していた artifact `ui-rpds-inactive-component`（run 40182231971 の
+  attempt 1、2026-10-25）が保持期間14日で失効した。同じ run を再実行（attempt 2、
+  2026-11-11、同一 head SHA）し成功、新 artifact を得た（失効予定 2026-11-25）。
+- 問題: componentize-py の出力は同一入力でも byte 再現しない。
+  `rpds.abi3.so`（ace6bfa6…）と composition source（5e6a4bca…）は一致したが、
+  inner（b2ed5ebc… → d6c58a8e…）と outer component
+  （56d76506… → a118322a…）が変わった。旧 pin のままでは
+  `rpds predecessor component differs` で native Harness CI が build 前に失敗する。
+- 対応: `COMPONENT_SHA256` を attempt 2 の値へ置換しただけで、検査の緩和・削除はしない。
+  `probe.json` のうち `build_schema.py` が読む項目（passed / actual_limited_api /
+  observation.post_return / extension_sha256）は attempt 1・2 で同一。差分は
+  component_sha256・inner_sha256・observation.fuel_consumed（321255 → 320812）・
+  cargo transcript hash のみ。他に attempt 1 の digest を pin する箇所は見つからなかった。
+- 注意: この変更より前の測定は attempt 1 の component を使っており、
+  attempt 2 の component とは厳密に比較できない（燃料の値も僅かに異なる）。
+- follow-up（必須）: attempt 2 の artifact も 2026-11-25 に失効する。再実行すれば
+  digest はおそらくまた変わる。耐久的な artifact の置き場、または再現可能な
+  componentize-py build を用意する。`issue-1520-ui-rpds.yml` の artifact 保持期間は
+  今回変更していない（既存 run には効かないため）。長期化は別途検討する。
+- 検証: ローカルでは cargo / pytest / build を実行していない。CI での確認は未実施。

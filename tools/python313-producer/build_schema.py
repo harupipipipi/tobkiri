@@ -26,7 +26,10 @@ import ci_link_trace_source
 
 RPDS_HEAD = "53163ed815c62c4853bbed3d8a082c0764e3084f"
 EXTENSION_SHA256 = "ace6bfa6de9f435f12380e9c11b1b7ed0a9645b721bdcdf634fb02cdbbff720b"
-COMPONENT_SHA256 = "56d765060d8f2f9078a31cf2e96bdd591d737545250464afcb9bc9cdbc91c551"
+# Attempt 2 of rpds run 40182231971 at head 53163ed (attempt 1 artifact expired).
+# componentize-py output is not byte-reproducible: extension and composition
+# source digests are unchanged, but the component digest differs from attempt 1.
+COMPONENT_SHA256 = "a118322a535a594c0a83468c64c81157f3f75ec56c4a48da35d70bf29131ce8b"
 INPUT_LIMIT = 64 * 1024 * 1024
 POLL_PIN_PATH = HERE / "empty-poll-comparison-inputs.json"
 POLL_REFERENCE_PIN_PATH = HERE / "schema-poll-reference-inputs.json"
