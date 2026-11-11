@@ -1,4 +1,7 @@
 use super::*;
+#[cfg(test)]
+#[path = "acceptance_update_removal_tests.rs"]
+mod acceptance_update_removal;
 #[path = "native_profile_review_tests.rs"]
 mod native_profile_review_tests;
 #[path = "permission_review_tests.rs"]

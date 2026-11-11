@@ -749,6 +749,9 @@ impl Core {
             return Err(CoreError::NotFound("Pack is not installed".into()));
         }
         profile.bindings.retain(|_, provider| provider != pack);
+        // The removed Pack's own narrowing entry must go with it; compilation
+        // rejects limits that belong to no selected Pack.
+        profile.pack_limits.remove(pack);
         self.save_profile(profile, Some(head)).await
     }
 

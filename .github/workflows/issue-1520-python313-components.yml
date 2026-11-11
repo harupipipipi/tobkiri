@@ -25,8 +25,6 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.original-five-target
       CARGO_BUILD_JOBS: '1'
       CARGO_INCREMENTAL: '0'
-      PRODUCER_RUN: '39956025119'
-      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,27 +37,13 @@ jobs:
         run: |
           python3 -B -m unittest discover -s tools/python313-producer/tests
           python3 -B tools/quality/test_python313_sharing.py
-      - name: Authenticate the completed producer run and source head
+      - name: Restore the archived successful custom producer from its verified private archive
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/producer-run.json"
-          python3 -B - "$RUNNER_TEMP/producer-run.json" "$PRODUCER_HEAD" <<'PY'
-          import json, sys
-          from pathlib import Path
-          run = json.loads(Path(sys.argv[1]).read_bytes())
-          if run['head_sha'] != sys.argv[2]:
-              raise SystemExit('producer source head differs from the recorded commit')
-          if run['status'] != 'completed' or run['conclusion'] != 'success':
-              raise SystemExit('producer run did not complete successfully')
-          PY
-      - uses: actions/download-artifact@v4
-        with:
-          name: python313-producer-cli
-          repository: ${{ github.repository }}
-          run-id: ${{ env.PRODUCER_RUN }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/original-producer
+        run: >-
+          python3 -B tools/python313-producer/artifact_archive.py fetch
+          --kind producer-cli --destination "$RUNNER_TEMP/original-producer"
+          --provenance-out "$RUNNER_TEMP/producer-cli-archive-provenance.json"
       - name: Prepare isolated build tools
         run: |
           sudo apt-get update -qq
@@ -137,7 +121,7 @@ jobs:
         with:
           name: original-five-build-evidence
           path: |
-            ${{ runner.temp }}/producer-run.json
+            ${{ runner.temp }}/producer-cli-archive-provenance.json
             ${{ runner.temp }}/original-validation/validation-inputs.json
             ${{ runner.temp }}/original-five/components-build.json
             ${{ runner.temp }}/original-five/*/build/command.json

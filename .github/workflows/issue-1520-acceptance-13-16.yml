@@ -1,0 +1,99 @@
+name: Issue 1520 acceptance 13-16 evidence
+
+# Runs the exact tests that establish acceptance items 13-16 (Pack update and
+# removal, storage tiers, dangerous permissions, published Profile boundary).
+# Every step requires a successful cargo test with an exact executed-test count,
+# so a filtered-out or ignored test cannot silently satisfy the receipt.
+on:
+  push:
+    branches: [claude/issue-1520-accept-13-16]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-acceptance-13-16-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance-13-16:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-accept-13-16
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the actual supported native ownership platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt, clippy
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Item 13 and 15 permission lattice (added-only diff, no dangerous widening)
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/gate-permissions.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-gate --lib permissions::tests:: -- --nocapture
+      - name: Item 13 required-port removal compile, items 15 and 16 published allowlist
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/profile-compiler.log" --expected-passed 3 --
+          cargo test --locked -p tobkiri-profile --test compiler
+          -- --exact --nocapture
+          required_provider_removal_blocks_candidate_and_pin_hash_is_exact
+          published_allowlist_excludes_local_identity_and_rejects_authority_fields
+          user_declaration_is_optional_published_and_intersected_with_ceiling
+      - name: Item 13 and 15 Gate authority (update delta, dangerous global storage)
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/store-authority.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-store --test authority
+          -- --exact --nocapture
+          a_pack_hash_update_prompts_only_for_additions_and_other_profiles_have_no_approval
+          dangerous_global_storage_can_share_data_only_after_explicit_permissions_and_prompt
+      - name: Item 14 and 15 storage tiers, per-pair approval, dangerous permissions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/store-security.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-store --test security
+          -- --exact --nocapture
+          public_write_approval_is_once_per_writer_and_store_and_reads_do_not_prompt
+          three_tiers_are_isolated_per_profile_and_public_approval_is_per_writer_store_pair
+          native_and_cross_profile_storage_need_explicit_permission_and_warn_as_dangerous
+          client_approved_payload_and_dangerous_declaration_do_not_override_ceiling
+      - name: Items 13, 15 and 16 through the actual Core
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/core-acceptance.log" --expected-passed 6 --
+          cargo test --locked -p tobkiri-core --lib
+          -- --nocapture
+          tests::acceptance_update_removal::
+          tests::published_user_policy_import_requires_fresh_profile_scoped_approval
+      - name: Strict lint of the changed crates and tests
+        run: >-
+          cargo clippy --locked -p tobkiri-gate -p tobkiri-store -p tobkiri-core
+          -p tobkiri-profile --all-targets --no-deps -- -D warnings
+      - name: Retain executed-test receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-1520-acceptance-13-16
+          path: |
+            ${{ runner.temp }}/gate-permissions.log*
+            ${{ runner.temp }}/profile-compiler.log*
+            ${{ runner.temp }}/store-authority.log*
+            ${{ runner.temp }}/store-security.log*
+            ${{ runner.temp }}/core-acceptance.log*
+          if-no-files-found: warn

@@ -547,3 +547,36 @@ bind the complete trace to the exact producer invocation and final component.
 Non-stub C reference components and the cold restricted schema component remain
 separate, with separate Stores, host contexts and receipts. No ABI, provider,
 schema, GUI or activation success is inferred from compiling these CLIs.
+
+## Private 90-day archive of the pinned producer and rpds artifacts
+
+The producer CLI (`python313-producer-cli`, `python313-original-components`,
+run `39956025119`) and the rpds predecessor (`ui-rpds-inactive-component`, run
+`40182231971` attempt 2) are not byte-reproducible, so their exact bytes must
+outlive the original Actions retention. `issue-1520-artifact-archive.yml`
+re-uploads the identical bytes as repository-private Actions artifacts
+(`archive-<kind>` plus `archive-<kind>-provenance`, 90 days). The bytes are never
+published (no Release, package, git object or external store).
+
+`artifact-archive-pins.json` is the single place that names the source runs,
+attempts, heads, workflow paths, artifact ids, trusted refs and the current
+archive run. `artifact_archive.py archive` authenticates the source run and
+artifact against those pins, re-applies the existing byte pins
+(`EXTENSION_SHA256`, `COMPONENT_SHA256`, `RECIPE_SHA256`, `STAGED_SHA256`, the
+`cli-build.json` binary and `cli-source.json` records,
+`verify_original_components.py`) and writes a provenance manifest of every file
+SHA-256. Every consumer calls `artifact_archive.py fetch`, which requires the
+archive run to have succeeded as the reviewed archive workflow whose commit is
+reachable from a trusted ref of this repository, requires the provenance to
+name the pinned source run, attempt, head and artifact, requires the restored
+tree to match the manifest exactly, and then re-applies the same byte pins
+before any consumer executes the bytes.
+
+Re-archive about every 80 days, before the 90-day expiry
+(`artifact_archive.py status --minimum-days 14` reports the remaining days):
+
+1. Run the archive workflow with `origin=previous-archive` for each kind, from
+   a trusted ref (the previous archive is fully re-verified, and the original
+   source stays recorded with the archive chain).
+2. Set the new run id in `artifact-archive-pins.json` (`archive_run`) and
+   commit it. No consumer workflow needs to change.
