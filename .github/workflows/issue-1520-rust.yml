@@ -53,8 +53,6 @@ jobs:
         run: python3 -B -m unittest discover -s tests -p test_stage_preserved_ordered_python.py
       - name: Preserved Gateway tool-caller transport regression
         run: python3 -B -m unittest discover -s tests -p test_preserved_gateway_tool_caller.py
-      - name: Frozen original Profile evidence guard
-        run: python3 -B -m unittest discover -s tests -p test_frozen_original_sources.py
       - name: Original Harness Setup source and DATA projection regressions
         run: |
           python3 -B scripts/wasm/prepare_harness_setup.py --verify

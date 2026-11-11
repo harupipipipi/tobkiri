@@ -12,20 +12,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PACK = ROOT / "packs/local.ai-tool-bridge-ordered-python"
 
 
-def _frozen_override(path: Path) -> Path:
-    """Read frozen original-source snapshots; see frozen_original_sources.py."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "_frozen_original_sources",
-        Path(__file__).with_name("frozen_original_sources.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.frozen_override(path)
-
-
 def bounded_read(path: Path, limit: int) -> bytes:
     """Read a bounded regular file, rejecting links and overlarge evidence."""
-    path = _frozen_override(path)
     if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
         raise ValueError(f"invalid or oversized evidence file: {path.name}")
     with path.open("rb") as stream:
