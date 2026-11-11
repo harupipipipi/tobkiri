@@ -5,6 +5,7 @@ from blocks.chat._compact_helpers import (
     compact_selected_segment,
     normalize_protect_last_messages,
     plan_payload,
+    request_apply_approval,
     select_auto_segment,
 )
 from domain.chat.store import ChatStore
@@ -32,8 +33,15 @@ def run(input_data, context):
     if mode != "apply":
         return error("mode must be 'suggest' or 'apply'", "INVALID_INPUT")
 
-    if not approved_for_apply(input_data):
-        return error("approved=True or approval_token is required for apply mode", "APPROVAL_REQUIRED")
+    revision = conversation.get("conversation_revision")
+    if type(revision) is not int or revision < 0:
+        return error("Conversation revision is unavailable", "CONFLICT")
+    authorization_args = {**input_data, "expected_conversation_revision": revision}
+    authorization_args.pop("approved_token", None)
+    if not approved_for_apply(authorization_args, context):
+        result = error("A server-verified approval is required for apply mode", "APPROVAL_REQUIRED")
+        result["details"] = request_apply_approval(authorization_args)
+        return result
 
     if segment is None:
         return ok({

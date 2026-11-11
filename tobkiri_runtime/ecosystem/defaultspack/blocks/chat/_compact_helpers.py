@@ -35,11 +35,44 @@ def optional_bool(value):
     return None
 
 
-def approved_for_apply(input_data):
-    if optional_bool(input_data.get("approved")) is True:
-        return True
-    token = str(input_data.get("approval_token") or input_data.get("approved_token") or "").strip()
-    return bool(token)
+def approved_for_apply(input_data, context=None):
+    """Verify and consume existing server approval for these exact apply args."""
+    from blocks.coding._approval import is_server_approved
+
+    return is_server_approved(context, "chat.auto_compact", input_data)
+
+
+def request_apply_approval(input_data):
+    """Create a normal request for explicit API replay, without a fake tool ID."""
+    from urllib.parse import quote
+    from domain.safety import approval
+
+    arguments = dict(input_data)
+    for key in (
+        "approval_token", "approved_token", "approved", "_headers", "_method",
+        "_raw_body", "_raw_body_base64",
+    ):
+        arguments.pop(key, None)
+    conversation_id = str(arguments["conversation_id"])
+    request = approval.create_approval_request(
+        "chat.auto_compact", "high", arguments,
+        details={
+            "action": "chat.auto_compact",
+            "arguments": arguments,
+            "conversation_id": conversation_id,
+            "http_method": "POST",
+            "http_path": "/api/chat/conversations/"
+            + quote(conversation_id, safe="") + "/auto-compact",
+        },
+    )
+    return {
+        "approval_required": True,
+        "operation": "chat.auto_compact",
+        "approval_request_id": request["request_id"],
+        "args_hash": request["args_hash"],
+        "expires_at": request["expires_at"],
+        "display_summary": request["display_summary"],
+    }
 
 
 def normalize_protect_last_messages(input_data, default=12):
