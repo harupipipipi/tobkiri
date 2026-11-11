@@ -1,0 +1,90 @@
+name: Issue 1520 acceptance 9 11 12 Profile loop bounds, untyped ports, shape versions
+
+on:
+  push:
+    branches: [claude/issue-1520-accept-9-11-12]
+    paths:
+      - '.github/workflows/issue-1520-acceptance-9-11-12.yml'
+      - 'crates/tobkiri-profile/**'
+      - 'crates/tobkiri-manifest/**'
+      - 'crates/tobkiri-flow/**'
+      - 'crates/tobkiri-gate/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-acceptance-9-11-12-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  focused-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Acceptance 9 - Profile without default loop bounds fails (R4.5)
+        run: |
+          set -o pipefail
+          cargo test --locked -p tobkiri-profile --test compiler -- --nocapture \
+            default_loop_bounds_and_explicit_error_policy_keys_are_required \
+            profile_without_default_loop_bounds_fails_parse_and_compile \
+            flow_document_must_take_loop_bounds_from_the_profile_default 2>&1 | tee "$RUNNER_TEMP/a9-profile.log"
+          cargo test --locked -p tobkiri-flow --test engine -- \
+            loop_cannot_widen_defaults_or_run_without_profile_limits \
+            iteration_cost_and_wall_limits_stop_run 2>&1 | tee "$RUNNER_TEMP/a9-flow.log"
+          for name in default_loop_bounds_and_explicit_error_policy_keys_are_required \
+            profile_without_default_loop_bounds_fails_parse_and_compile \
+            flow_document_must_take_loop_bounds_from_the_profile_default; do
+            grep -F "test $name ... ok" "$RUNNER_TEMP/a9-profile.log"
+          done
+          for name in loop_cannot_widen_defaults_or_run_without_profile_limits \
+            iteration_cost_and_wall_limits_stop_run; do
+            grep -F "test $name ... ok" "$RUNNER_TEMP/a9-flow.log"
+          done
+      - name: Acceptance 11 - port without WIT is rejected unless explicitly untyped (R3.3, R3.5)
+        run: |
+          set -o pipefail
+          cargo test --locked -p tobkiri-profile --test compiler -- \
+            typed_port_without_wit_shape_is_rejected_and_explicit_untyped_loads \
+            optional_and_untyped_ports_cannot_satisfy_required_typed_slots 2>&1 | tee "$RUNNER_TEMP/a11-profile.log"
+          cargo test --locked -p tobkiri-manifest --test contracts -- \
+            explicit_untyped_ports_load_and_malformed_declarations_are_rejected 2>&1 | tee "$RUNNER_TEMP/a11-manifest.log"
+          for name in typed_port_without_wit_shape_is_rejected_and_explicit_untyped_loads \
+            optional_and_untyped_ports_cannot_satisfy_required_typed_slots; do
+            grep -F "test $name ... ok" "$RUNNER_TEMP/a11-profile.log"
+          done
+          grep -F "test explicit_untyped_ports_load_and_malformed_declarations_are_rejected ... ok" "$RUNNER_TEMP/a11-manifest.log"
+      - name: Acceptance 12 - minor versions connect, different majors need an adapter (R3.3, R3.10)
+        run: |
+          set -o pipefail
+          cargo test --locked -p tobkiri-profile --test compiler -- \
+            minor_difference_connects_both_ways_and_major_difference_needs_an_adapter \
+            compatible_minors_bind_from_verified_snapshots_unknown_minors_are_rejected \
+            subflow_implements_ambiguity_and_major_mismatch_fail 2>&1 | tee "$RUNNER_TEMP/a12-profile.log"
+          cargo test --locked -p tobkiri-manifest --test contracts -- \
+            compatible_trailing_options_project_both_directions \
+            enum_minor_extension_is_input_only_and_width_changes_need_adapter 2>&1 | tee "$RUNNER_TEMP/a12-manifest.log"
+          for name in minor_difference_connects_both_ways_and_major_difference_needs_an_adapter \
+            compatible_minors_bind_from_verified_snapshots_unknown_minors_are_rejected \
+            subflow_implements_ambiguity_and_major_mismatch_fail; do
+            grep -F "test $name ... ok" "$RUNNER_TEMP/a12-profile.log"
+          done
+          for name in compatible_trailing_options_project_both_directions \
+            enum_minor_extension_is_input_only_and_width_changes_need_adapter; do
+            grep -F "test $name ... ok" "$RUNNER_TEMP/a12-manifest.log"
+          done
+      - name: Whole crate suites
+        run: |
+          set -o pipefail
+          cargo test --locked -p tobkiri-profile -p tobkiri-manifest -p tobkiri-flow 2>&1 | tee "$RUNNER_TEMP/full.log"
+          grep -E '^test result:' "$RUNNER_TEMP/full.log"
