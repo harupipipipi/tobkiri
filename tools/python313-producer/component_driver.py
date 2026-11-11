@@ -108,7 +108,12 @@ def run() -> None:
         schema_diagnostic = dependencies.get('schema_call_diagnostic', False)
         if type(schema_diagnostic) is not bool:
             raise ValueError('schema diagnostic producer selection must be explicit')
-        dependency_format = ('tobkiri.harness-native-schema-diagnostic-dependencies/1'
+        app_provider = dependencies.get('app_schema_provider', False)
+        if type(app_provider) is not bool:
+            raise ValueError('App schema provider producer selection must be explicit')
+        dependency_format = ('tobkiri.harness-native-app-schema-provider-dependencies/1'
+                             if app_provider else
+                             'tobkiri.harness-native-schema-diagnostic-dependencies/1'
                              if schema_diagnostic else 'tobkiri.harness-native-dependencies/1')
         if (dependency_evidence['format'] != dependency_format
                 or dependency_evidence['entrypoint'] != plan['entrypoint']
@@ -118,7 +123,7 @@ def run() -> None:
                 or dependency_evidence['dependency_closure_complete'] is not False
                 or dependency_evidence['component_init_performed'] is not False):
             raise ValueError('native dependency evidence overstates its scope')
-        if schema_diagnostic and (
+        if schema_diagnostic and not app_provider and (
             dependency_evidence.get('diagnostic_only') is not True
             or dependency_evidence.get('original_source_files_unchanged') is not False
             or dependency_evidence.get('staged_source_files_unchanged') is not True
@@ -127,6 +132,21 @@ def run() -> None:
             or dependency_evidence.get('whole_catalog_acceptance') is not False
         ):
             raise ValueError('schema diagnostic dependency evidence overstates original equivalence')
+        if app_provider and (
+            dependency_evidence.get('app_schema_provider') is not True
+            or dependency_evidence.get('default_off') is not True
+            or dependency_evidence.get('explicit_ci_selection') is not True
+            or dependency_evidence.get('original_source_files_unchanged') is not False
+            or dependency_evidence.get('staged_source_files_unchanged') is not True
+            or dependency_evidence.get('other_original_members_unchanged') is not True
+            or dependency_evidence.get('whole_catalog_acceptance') is not False
+            or dependency_evidence.get('validation_results_prepared') is not False
+            or dependency_evidence.get('cache_preload') is not False
+            or dependency_evidence.get('diagnostic_only', False) is not schema_diagnostic
+            or dependency_evidence['validation_derivation'].get(
+                'provider_substitution_after_failure') is not False
+        ):
+            raise ValueError('App schema provider evidence overstates its scope')
     stage = Path('/work/stage')
     stage.mkdir()
     for name in ('home', 'tmp'):

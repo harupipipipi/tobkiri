@@ -53,6 +53,42 @@ class NativeWorkflowContracts(unittest.TestCase):
             for path in ("inputs/plan.json", "inputs/provenance.json", "work/component.wasm"):
                 self.assertIn(f'harness-native/{component}/{path}', build)
 
+    def test_app_schema_provider_is_an_explicit_default_off_ci_selection(self) -> None:
+        self.assertRegex(
+            self.workflow,
+            r"(?s)      app_schema_provider:\n.*?type: boolean\n\s+required: false\n\s+default: false\n",
+        )
+        build = job(self.workflow, "build-whole-native-harness")
+        for name in (
+            "Restore checksum-bound cross compiler and SDK for the explicit App provider",
+            "Restore verified registry closure for the App schema kernel",
+            "Compile only the source-built App backend Wasm kernel in the offline namespace",
+        ):
+            with self.subTest(step=name):
+                source = step(build, name)
+                self.assertIn("if: ${{ inputs.app_schema_provider }}", source)
+        compile_step = step(
+            build, "Compile only the source-built App backend Wasm kernel in the offline namespace"
+        )
+        self.assertIn("build_schema_kernel_extension.py --app-backend", compile_step)
+        producer = step(build, "Build the actual native Harness dispatcher and original module closure")
+        self.assertIn("inputs.app_schema_provider && '--app-schema-provider --kernel-extension' || ''", producer)
+        self.assertIn("runner.temp", producer)
+        # The unselected baseline and diagnostic builds never receive a provider flag.
+        self.assertNotIn("--app-schema-provider", producer.replace(
+            "inputs.app_schema_provider && '--app-schema-provider --kernel-extension' || ''", ""))
+        binder = step(self.native, "Bind the actual component, original modules and native index")
+        self.assertIn('APP_SCHEMA_PROVIDER: ${{ inputs.app_schema_provider == true }}', binder)
+        self.assertIn("--app-schema-provider", binder)
+        for component in ("harness-native-app-schema-provider",
+                          "harness-native-app-schema-provider-diagnostic"):
+            self.assertIn(f"harness-built/harness-native/{component}/work/component.wasm", binder)
+            for path in ("inputs/plan.json", "inputs/provenance.json", "work/component.wasm"):
+                self.assertIn(f"harness-native/{component}/{path}", build)
+        # Budgets and gates keep their existing steps; provider selection adds none.
+        for forbidden in ("--fuel", "TOBKIRI_TEST_NATIVE_HARNESS_FUEL=", "continue-on-error"):
+            self.assertNotIn(forbidden, binder + producer)
+
     def test_schema_diagnostic_keeps_fresh_originals_and_skips_baseline_acceptance(self) -> None:
         for name in (
             "Checkout pinned original factory and identity references",

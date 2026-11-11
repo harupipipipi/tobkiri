@@ -25,11 +25,11 @@ IMPORT = "tobkiri-native:harness/bindings@1.0.0"
 
 def bind(
     artifact: Path, output: Path, github_env: Path, *,
-    schema_call_diagnostic: bool = False,
+    schema_call_diagnostic: bool = False, app_schema_provider: bool = False,
 ) -> dict:
     """Verify immutable source/build identities and emit data-only Rust bindings."""
-    if type(schema_call_diagnostic) is not bool:
-        raise TypeError("diagnostic binding requires an explicit boolean")
+    if type(schema_call_diagnostic) is not bool or type(app_schema_provider) is not bool:
+        raise TypeError("diagnostic/provider binding requires explicit booleans")
     if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("native Harness inputs are restricted to actual Mac CI")
     if not artifact.is_absolute() or artifact.resolve(strict=True) != artifact:
@@ -59,11 +59,31 @@ def bind(
     try:
         import stage_harness_native as stage
 
-        base = (stage.captured(schema_call_diagnostic=True)
+        base = (stage.captured(schema_call_diagnostic=schema_call_diagnostic,
+                               app_schema_provider=True)
+                if app_schema_provider
+                else stage.captured(schema_call_diagnostic=True)
                 if schema_call_diagnostic else stage.captured())
     finally:
         sys.path[:] = previous
     diagnostic_contract = None
+    provider_proof = None
+    if app_schema_provider:
+        provenance = (inputs / "provenance.json").read_bytes()
+        if provenance != base["provenance.json"]:
+            raise ValueError("provider provenance differs from the current exact derivation")
+        provider_proof = json.loads(provenance)
+        if (provider_proof.get("format")
+                != "io.tobkiri.harness-native-app-schema-provider-source.v1"
+                or provider_proof.get("default_off") is not True
+                or provider_proof.get("explicit_ci_selection") is not True
+                or provider_proof.get("original_source_files_unchanged") is not False
+                or provider_proof.get("other_original_members_unchanged") is not True
+                or provider_proof.get("diagnostic_only") is not schema_call_diagnostic
+                or provider_proof["validation_derivation"].get("success_shortcut") is not False
+                or provider_proof["validation_derivation"].get("cache_preload") is not False
+                or provider_proof.get("production_enabled") is not False):
+            raise ValueError("explicit App schema provider source required")
     if schema_call_diagnostic:
         # Independently regenerate the admitted derivation. The derived module
         # must bind its ACTUAL bytes/index, never an original-source digest.
@@ -72,8 +92,9 @@ def bind(
             raise ValueError("diagnostic provenance differs from the current exact derivation")
         derived = json.loads(provenance)
         diagnostic_contract = derived.get("checkpoint_contract", {})
-        if (derived.get("format")
-                != "io.tobkiri.harness-native-schema-call-diagnostic-source.v1"
+        if (derived.get("format") != (
+                "io.tobkiri.harness-native-app-schema-provider-source.v1" if app_schema_provider
+                else "io.tobkiri.harness-native-schema-call-diagnostic-source.v1")
                 or derived.get("diagnostic_only") is not True
                 or derived.get("original_source_files_unchanged") is not False
                 or derived.get("other_original_members_unchanged") is not True
@@ -140,6 +161,8 @@ def bind(
     }
     if schema_call_diagnostic:
         env["TOBKIRI_TEST_NATIVE_HARNESS_SCHEMA_DIAGNOSTIC"] = "1"
+    if app_schema_provider:
+        env["TOBKIRI_TEST_NATIVE_HARNESS_APP_SCHEMA_PROVIDER"] = "1"
     if any("\n" in value or "\r" in value for value in env.values()):
         raise ValueError("native input path cannot contain an environment delimiter")
     report = {
@@ -158,6 +181,13 @@ def bind(
             "checkpoint_contract": diagnostic_contract,
             "whole_catalog_acceptance": False,
         })
+    if provider_proof is not None:
+        report.update({
+            "app_schema_provider": True, "default_off": True,
+            "original_source_files_unchanged": False,
+            "provider_source_provenance": fingerprint(inputs / "provenance.json"),
+            "whole_catalog_acceptance": False,
+        })
     (output / "inputs.json").write_text(json.dumps(report, indent=2) + "\n")
     with github_env.open("a", encoding="utf-8") as stream:
         for name, value in env.items():
@@ -171,8 +201,10 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--github-env", type=Path, required=True)
     parser.add_argument("--schema-call-diagnostic", action="store_true")
+    parser.add_argument("--app-schema-provider", action="store_true")
     args = parser.parse_args()
     print(json.dumps(bind(
         args.artifact, args.output, args.github_env,
         schema_call_diagnostic=args.schema_call_diagnostic,
+        app_schema_provider=args.app_schema_provider,
     ), sort_keys=True))

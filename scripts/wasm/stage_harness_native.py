@@ -110,33 +110,47 @@ def plan_for(files: dict[str, bytes]) -> dict:
     }
 
 
-def captured(*, schema_call_diagnostic: bool = False) -> dict[str, bytes]:
-    if type(schema_call_diagnostic) is not bool:
-        raise TypeError("schema diagnostic staging requires an explicit boolean")
+def captured(*, schema_call_diagnostic: bool = False,
+             app_schema_provider: bool = False) -> dict[str, bytes]:
+    if type(schema_call_diagnostic) is not bool or type(app_schema_provider) is not bool:
+        raise TypeError("schema source staging requires explicit booleans")
     files = _captured_original()  # Authenticate/assemble the complete baseline FIRST.
-    if not schema_call_diagnostic:
+    if not schema_call_diagnostic and not app_schema_provider:
         return files
     previous = sys.path[:]
     sys.path.insert(0, str(ROOT / "tools/python313-producer"))
     try:
-        from harness_native import schema_diagnostic_stage
+        if schema_call_diagnostic:
+            from harness_native import schema_diagnostic_stage
 
-        if Path(schema_diagnostic_stage.__file__).resolve() != (
-            ROOT / ADAPTER_ROOT / "schema_diagnostic_stage.py"
-        ):
-            raise ValueError("diagnostic derivation belongs to another source tree")
-        return schema_diagnostic_stage.derive(files)
+            if Path(schema_diagnostic_stage.__file__).resolve() != (
+                ROOT / ADAPTER_ROOT / "schema_diagnostic_stage.py"
+            ):
+                raise ValueError("diagnostic derivation belongs to another source tree")
+            files = schema_diagnostic_stage.derive(files)
+        if app_schema_provider:
+            from harness_native import schema_provider_stage
+
+            if Path(schema_provider_stage.__file__).resolve() != (
+                ROOT / ADAPTER_ROOT / "schema_provider_stage.py"
+            ):
+                raise ValueError("provider derivation belongs to another source tree")
+            files = schema_provider_stage.derive(files)
+        return files
     finally:
         sys.path[:] = previous
 
 
-def stage(output: Path, *, schema_call_diagnostic: bool = False) -> dict:
+def stage(output: Path, *, schema_call_diagnostic: bool = False,
+          app_schema_provider: bool = False) -> dict:
     """Publish fresh bounded sources without importing the original runtime."""
-    if type(schema_call_diagnostic) is not bool:
-        raise TypeError("schema diagnostic staging requires an explicit boolean")
-    files = captured(schema_call_diagnostic=schema_call_diagnostic)
+    if type(schema_call_diagnostic) is not bool or type(app_schema_provider) is not bool:
+        raise TypeError("schema source staging requires explicit booleans")
+    selected = {"schema_call_diagnostic": schema_call_diagnostic,
+                "app_schema_provider": app_schema_provider}
+    files = captured(**selected)
     plan = plan_for(files)
-    if captured(schema_call_diagnostic=schema_call_diagnostic) != files:
+    if captured(**selected) != files:
         raise ValueError("native Harness sources changed during staging")
     _publish(output, {**files, "plan.json": _json_bytes(plan)})
     return plan
@@ -146,5 +160,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--schema-call-diagnostic", action="store_true")
+    parser.add_argument("--app-schema-provider", action="store_true")
     args = parser.parse_args()
-    stage(args.output, schema_call_diagnostic=args.schema_call_diagnostic)
+    stage(args.output, schema_call_diagnostic=args.schema_call_diagnostic,
+          app_schema_provider=args.app_schema_provider)

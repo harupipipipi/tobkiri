@@ -13,6 +13,9 @@ on:
       - 'tools/python313-producer/component_driver.py'
       - 'tools/python313-producer/harness_native_dependencies.py'
       - 'tools/python313-producer/harness_native_ci_inputs.py'
+      - 'tools/python313-producer/harness_native_provider_inputs.py'
+      - 'tools/python313-producer/schema_kernel/**'
+      - 'tools/python313-producer/build_schema_kernel_extension.py'
       - 'tools/python313-producer/schema_probe/captured_loader.py'
       - 'tobkiri_launcher/harness-native/**'
       - 'crates/tobkiri-core/**'
@@ -37,6 +40,11 @@ on:
         type: choice
         options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, catalog-schema-diagnostic]
         default: bootstrap
+      app_schema_provider:
+        description: Explicit CI-only selection of the App-owned Rust schema provider (default off)
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -49,8 +57,10 @@ concurrency:
 jobs:
   build-whole-native-harness:
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
       PRODUCER_RUN: '39956025119'
       PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
       RPDS_RUN: '40182231971'
@@ -62,6 +72,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.16'
+      - uses: dtolnay/rust-toolchain@1.94.0
+        if: ${{ inputs.app_schema_provider }}
       - name: Fetch the original source for the frozen producer checkpoint
         run: git fetch --no-tags --depth=1 origin c6d7001249c661552416672448bda123c59b33ca
       - name: Install lock-pinned Host dependencies for real catalog source tests
@@ -133,10 +145,55 @@ jobs:
           python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/harness-validation"
           python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
           python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
+      - name: Restore checksum-bound cross compiler and SDK for the explicit App provider
+        if: ${{ inputs.app_schema_provider }}
+        run: |
+          set -euo pipefail
+          python3 -B tools/python313-producer/fetch_toolchain.py --destination "$RUNNER_TEMP/app-schema-rust"
+          python3 -B - <<'PYSDK'
+          from pathlib import Path
+          import os, sys
+          sys.path.insert(0, 'tools/python313-producer')
+          from fetch_sdk import acquire
+          acquire(Path(os.environ['RUNNER_TEMP'])/'app-schema-sdk')
+          PYSDK
+      - name: Restore verified registry closure for the App schema kernel
+        if: ${{ inputs.app_schema_provider }}
+        run: |
+          set -euo pipefail
+          export CARGO_HOME="$RUNNER_TEMP/app-schema-cargo-home"
+          cargo fetch --locked --manifest-path tools/python313-producer/schema_kernel/Cargo.toml
+          mkdir "$RUNNER_TEMP/app-schema-archives"
+          python3 -B - <<'PYCRATES'
+          from pathlib import Path
+          import os, shutil, sys
+          sys.path.insert(0, 'tools/python313-producer')
+          from build_schema_kernel import restore_registry_vendor
+          root=Path(os.environ['RUNNER_TEMP'])
+          for path in (root/'app-schema-cargo-home/registry/cache').glob('*/*.crate'):
+              target=root/'app-schema-archives'/path.name
+              if target.exists():
+                  raise ValueError('ambiguous registry archive name')
+              shutil.copyfile(path,target)
+          restore_registry_vendor(Path('tools/python313-producer/schema_kernel').resolve(),
+                                  root/'app-schema-archives',root/'app-schema-vendor')
+          PYCRATES
+      - name: Compile only the source-built App backend Wasm kernel in the offline namespace
+        if: ${{ inputs.app_schema_provider }}
+        run: >-
+          python3 -B tools/python313-producer/build_schema_kernel_extension.py --app-backend
+          --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel"
+          --vendor "$RUNNER_TEMP/app-schema-vendor"
+          --archives "$RUNNER_TEMP/app-schema-archives"
+          --rust "$RUNNER_TEMP/app-schema-rust"
+          --sdk "$RUNNER_TEMP/app-schema-sdk"
+          --destination "$RUNNER_TEMP/app-schema-extension"
       - name: Build the actual native Harness dispatcher and original module closure
         run: >-
           python3 -B tools/python313-producer/build_components.py --harness-native
           ${{ inputs.verification == 'catalog-schema-diagnostic' && '--schema-call-diagnostic' || '' }}
+          ${{ inputs.app_schema_provider && '--app-schema-provider --kernel-extension' || '' }}
+          ${{ inputs.app_schema_provider && format('{0}/app-schema-extension', runner.temp) || '' }}
           --producer "$RUNNER_TEMP/harness-producer"
           --validation "$RUNNER_TEMP/harness-validation"
           --destination "$RUNNER_TEMP/harness-native"
@@ -164,6 +221,19 @@ jobs:
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/generated-bindings/
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/component.wasm
+            ${{ runner.temp }}/app-schema-extension/extension-build.json
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider/inputs/plan.json
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider/inputs/provenance.json
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider/build/
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider/work/component.build.json
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider/work/generated-bindings/
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider/work/component.wasm
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider-diagnostic/inputs/plan.json
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider-diagnostic/inputs/provenance.json
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider-diagnostic/build/
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider-diagnostic/work/component.build.json
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider-diagnostic/work/generated-bindings/
+            ${{ runner.temp }}/harness-native/harness-native-app-schema-provider-diagnostic/work/component.wasm
           if-no-files-found: warn
 
   execute-original-native-bootstrap:
@@ -199,8 +269,19 @@ jobs:
         id: native_inputs
         env:
           SCHEMA_DIAGNOSTIC: ${{ inputs.verification == 'catalog-schema-diagnostic' }}
+          APP_SCHEMA_PROVIDER: ${{ inputs.app_schema_provider == true }}
         run: |
-          if [ "$SCHEMA_DIAGNOSTIC" = true ]; then
+          if [ "$APP_SCHEMA_PROVIDER" = true ] && [ "$SCHEMA_DIAGNOSTIC" = true ]; then
+            python3 -B tools/python313-producer/harness_native_ci_inputs.py \
+              --schema-call-diagnostic --app-schema-provider \
+              --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native-app-schema-provider-diagnostic/work/component.wasm" \
+              --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
+          elif [ "$APP_SCHEMA_PROVIDER" = true ]; then
+            python3 -B tools/python313-producer/harness_native_ci_inputs.py \
+              --app-schema-provider \
+              --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native-app-schema-provider/work/component.wasm" \
+              --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
+          elif [ "$SCHEMA_DIAGNOSTIC" = true ]; then
             python3 -B tools/python313-producer/harness_native_ci_inputs.py \
               --schema-call-diagnostic \
               --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native-schema-diagnostic/work/component.wasm" \
@@ -460,7 +541,11 @@ jobs:
             cargo tree --locked --offline -p tobkiri-harness-native --features catalog-diagnostics-ci \
               --target aarch64-apple-darwin --edges features --invert wasmtime@47.0.4 \
               > "$evidence/resolved-wasmtime-features.txt"
-            cp "$RUNNER_TEMP/harness-built/harness-native/harness-native-schema-diagnostic/inputs/provenance.json" \
+            diagnostic_component=harness-native-schema-diagnostic
+            if [ "${{ inputs.app_schema_provider }}" = true ]; then
+              diagnostic_component=harness-native-app-schema-provider-diagnostic
+            fi
+            cp "$RUNNER_TEMP/harness-built/harness-native/$diagnostic_component/inputs/provenance.json" \
               "$evidence/schema-diagnostic-source-provenance.json"
           else
             cargo tree --locked --offline -p tobkiri-harness-native --features bootstrap-ci \
@@ -489,6 +574,10 @@ jobs:
             ${{ runner.temp }}/harness-native-inputs/
             ${{ runner.temp }}/harness-built/harness-native/harness-native-schema-diagnostic/inputs/plan.json
             ${{ runner.temp }}/harness-built/harness-native/harness-native-schema-diagnostic/inputs/provenance.json
+            ${{ runner.temp }}/harness-built/harness-native/harness-native-app-schema-provider/inputs/plan.json
+            ${{ runner.temp }}/harness-built/harness-native/harness-native-app-schema-provider/inputs/provenance.json
+            ${{ runner.temp }}/harness-built/harness-native/harness-native-app-schema-provider-diagnostic/inputs/plan.json
+            ${{ runner.temp }}/harness-built/harness-native/harness-native-app-schema-provider-diagnostic/inputs/provenance.json
             ${{ runner.temp }}/harness-native-runtime.log*
             ${{ runner.temp }}/harness-native-source-metadata.log*
             ${{ runner.temp }}/harness-native-inspection-policy.log*

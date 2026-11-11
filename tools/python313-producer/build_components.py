@@ -21,6 +21,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         *, all_five: bool = False, harness_setup: bool = False,
         harness_native: bool = False,
         schema_call_diagnostic: bool = False,
+        app_schema_provider: bool = False,
         native_input_stack: bool = False,
         native_input_stack_import_diagnostics: bool = False,
         native_thread_capabilities: bool = False,
@@ -56,10 +57,14 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             or (schema_call_diagnostic and (not harness_native
                 or any(path is None for path in (schema_inputs, stdlib, rpds))))):
         raise ValueError('schema-call diagnostic requires the whole native Harness and locked dependencies')
+    if (type(app_schema_provider) is not bool
+            or (app_schema_provider and (not harness_native or kernel_extension is None
+                                         or any(path is None for path in (schema_inputs, stdlib, rpds))))):
+        raise ValueError('App schema provider requires the whole native Harness, locked dependencies and its actual extension')
     app_data_mode = capability_projection or bundle_catalog or bundle_catalog_kernel
     if (bundle_catalog or bundle_catalog_kernel) != (bundle_cases is not None):
         raise ValueError('bundle catalog requires its separate original DATA input')
-    if bundle_catalog_kernel != (kernel_extension is not None):
+    if (bundle_catalog_kernel or app_schema_provider) != (kernel_extension is not None):
         raise ValueError('separate kernel trial requires its actual extension build')
     if app_data_mode:
         if any(path is None for path in (schema_inputs, stdlib, rpds)):
@@ -150,7 +155,11 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     elif native_input_stack:
         receipt_format = 'tobkiri.python313-native-input-stack-candidate/1'
     elif harness_native:
-        receipt_format = ('tobkiri.python313-native-harness-schema-diagnostic/1'
+        receipt_format = ('tobkiri.python313-native-harness-app-schema-provider-diagnostic/1'
+                          if app_schema_provider and schema_call_diagnostic
+                          else 'tobkiri.python313-native-harness-app-schema-provider/1'
+                          if app_schema_provider
+                          else 'tobkiri.python313-native-harness-schema-diagnostic/1'
                           if schema_call_diagnostic
                           else 'tobkiri.python313-native-harness-candidate/1')
     elif harness_setup:
@@ -186,6 +195,10 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     elif native_input_stack_import_diagnostics:
         receipt['diagnostic_only'] = True
         receipt['diagnostic_outcome_must_fail'] = True
+    elif app_schema_provider:
+        receipt.update(app_schema_provider=True, default_off=True,
+                       explicit_ci_selection=True, whole_catalog_acceptance=False,
+                       baseline_component=False, diagnostic_only=schema_call_diagnostic)
     elif schema_call_diagnostic:
         receipt.update(diagnostic_only=True, whole_catalog_acceptance=False,
                        provider_substitution=False, baseline_component=False)
@@ -206,7 +219,10 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     elif native_input_stack:
         component_names = ('harness-input-stack',)
     elif harness_native:
-        component_names = ('harness-native-schema-diagnostic' if schema_call_diagnostic
+        from harness_native.schema_provider_stage import component_name as provider_name
+        component_names = (provider_name(diagnostic=schema_call_diagnostic)
+                           if app_schema_provider
+                           else 'harness-native-schema-diagnostic' if schema_call_diagnostic
                            else 'harness-native',)
     elif harness_setup:
         component_names = ('harness-setup',)
@@ -244,8 +260,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 else component_inputs.stage_native_input_stack(repo, inputs)
                 if native_input_stack
                 else component_inputs.stage_harness_native(
-                    repo, inputs, schema_call_diagnostic=True)
-                if harness_native and schema_call_diagnostic
+                    repo, inputs, schema_call_diagnostic=schema_call_diagnostic,
+                    app_schema_provider=app_schema_provider)
+                if harness_native and (schema_call_diagnostic or app_schema_provider)
                 else component_inputs.stage_harness_native(repo, inputs)
                 if harness_native
                 else component_inputs.stage_harness_setup(repo, inputs)
@@ -256,6 +273,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 plan_receipt = harness_native_dependencies.stage(
                     inputs, plan_receipt, dependency_inputs,
                     schema_inputs, stdlib, rpds,
+                    kernel_extension=kernel_extension if app_schema_provider else None,
                 )
             snapshots[str(inputs)] = plan_receipt['files']
             control = output / 'control.json'
@@ -341,6 +359,7 @@ if __name__ == '__main__':
     mode.add_argument('--harness-setup', action='store_true')
     mode.add_argument('--harness-native', action='store_true')
     parser.add_argument('--schema-call-diagnostic', action='store_true')
+    parser.add_argument('--app-schema-provider', action='store_true')
     mode.add_argument('--native-input-stack', action='store_true')
     mode.add_argument('--native-input-stack-import-diagnostics', action='store_true')
     mode.add_argument('--native-thread-capabilities', action='store_true')

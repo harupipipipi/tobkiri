@@ -20,6 +20,7 @@ import runtime_inputs
 ENTRYPOINT = "harness_native_entry"
 METADATA = "harness-native-dependencies.json"
 DIAGNOSTIC_FORMAT = "tobkiri.harness-native-schema-diagnostic-dependencies/1"
+PROVIDER_FORMAT = "tobkiri.harness-native-app-schema-provider-dependencies/1"
 MAX_FILE = 8 * 1024 * 1024
 MAX_TOTAL = 32 * 1024 * 1024
 EXPORTS = [
@@ -192,6 +193,7 @@ def stage(
     schema_inputs: Path,
     stdlib: Path,
     rpds: Path,
+    kernel_extension: Path | None = None,
 ) -> dict:
     """Extend only a freshly staged native plan; preserve all original bytes."""
     if inventory(destination) != original["files"]:
@@ -220,14 +222,31 @@ def stage(
     diagnostic = original.get("schema_call_diagnostic", False)
     if type(diagnostic) is not bool:
         raise ValueError("schema diagnostic source selection must be explicit")
+    provider = original.get("app_schema_provider", False)
+    if type(provider) is not bool or provider != (kernel_extension is not None):
+        raise ValueError("App schema provider source requires its actual extension build")
     component_provenance = _read(destination / "provenance.json", original["files"]["provenance.json"])
     source_proof = json.loads(component_provenance)
-    if diagnostic:
+    component_sources = {
+        item["source"]: files[item["destination"]] for item in plan["sources"]
+    }
+    if provider:
+        from harness_native import schema_provider_stage
+
+        source_proof = schema_provider_stage.validate(
+            {**component_sources, "provenance.json": component_provenance}
+        )
+        if source_proof["diagnostic_only"] is not diagnostic:
+            raise ValueError("provider source diagnostic selection differs")
+        if diagnostic:
+            from harness_native.schema_diagnostic_stage import validate
+
+            validate(schema_provider_stage.unwrap(
+                {**component_sources, "provenance.json": component_provenance}
+            ))
+    elif diagnostic:
         from harness_native.schema_diagnostic_stage import validate
 
-        component_sources = {
-            item["source"]: files[item["destination"]] for item in plan["sources"]
-        }
         source_proof = validate({**component_sources, "provenance.json": component_provenance})
     elif source_proof.get("format") != "io.tobkiri.harness-native-component-source.v1":
         raise ValueError("diagnostic sources require the explicit diagnostic producer selection")
@@ -278,7 +297,16 @@ def stage(
             verified["extension"],
         ),
     )
-    add(ENTRYPOINT + ".py", _read(HERE / "harness_native/entry_wrapper.py"))
+    entry_wrapper = _read(HERE / "harness_native/entry_wrapper.py")
+    provider_receipt = None
+    if provider:
+        import harness_native_provider_inputs as provider_inputs
+
+        provider_members, provider_receipt = provider_inputs.additions(kernel_extension)
+        for name, raw in provider_members.items():
+            add(name, raw)
+        entry_wrapper = provider_inputs.derive_entry(entry_wrapper)
+    add(ENTRYPOINT + ".py", entry_wrapper)
     add(
         "harness_native_captured_loader.py",
         _read(
@@ -333,11 +361,12 @@ def stage(
         name for name in original_files if name.startswith("tobkiri_protocol/schemas/")
     ]
     proof = {
-        "format": DIAGNOSTIC_FORMAT if diagnostic else "tobkiri.harness-native-dependencies/1",
+        "format": (PROVIDER_FORMAT if provider else DIAGNOSTIC_FORMAT if diagnostic
+                   else "tobkiri.harness-native-dependencies/1"),
         "original_plan_sha256": original["plan_sha256"],
         "entrypoint": ENTRYPOINT,
         "original_entrypoint": "app",
-        "original_source_files_unchanged": not diagnostic,
+        "original_source_files_unchanged": not (diagnostic or provider),
         "original_module_count": len(modules),
         "original_schema_count": len(schema_files),
         "captured_tree_files": len(tree_files),
@@ -380,6 +409,28 @@ def stage(
             "validation_derivation": source_proof["validation_derivation"],
             "provider_substitution": False, "whole_catalog_acceptance": False,
         })
+    if provider:
+        # Explicit, labelled selection of the App-owned backend; default off.
+        proof.pop("provider_substitution", None)
+        proof.update({
+            "app_schema_provider": True, "default_off": True,
+            "explicit_ci_selection": True, "whole_catalog_acceptance": False,
+            "provider_source_sha256": hashlib.sha256(component_provenance).hexdigest(),
+            "source_index": source_proof["source_index"],
+            "validation_derivation": source_proof["validation_derivation"],
+            "other_original_members_unchanged": True,
+            "staged_source_files_unchanged": True,
+            "kernel": provider_receipt,
+            "entry_derivation": {
+                "anchor": "import rpds.rpds",
+                "addition_sha256": hashlib.sha256(provider_inputs.ENTRY_ADDITION).hexdigest(),
+                "preinit_validation": False,
+            },
+            "validation_results_prepared": False, "cache_preload": False,
+        })
+        if diagnostic:
+            proof["diagnostic_only"] = True
+            proof["checkpoint_contract"] = source_proof["checkpoint_contract"]
     metadata = (json.dumps(proof, sort_keys=True, indent=2) + "\n").encode()
     add(METADATA, metadata)
     if (
@@ -417,6 +468,8 @@ def stage(
     }
     if diagnostic:
         selected["harness_native_dependencies"]["schema_call_diagnostic"] = True
+    if provider:
+        selected["harness_native_dependencies"]["app_schema_provider"] = True
     return selected
 
 
