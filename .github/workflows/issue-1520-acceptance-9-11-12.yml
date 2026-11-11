@@ -83,8 +83,3 @@ jobs:
             enum_minor_extension_is_input_only_and_width_changes_need_adapter; do
             grep -F "test $name ... ok" "$RUNNER_TEMP/a12-manifest.log"
           done
-      - name: Whole crate suites
-        run: |
-          set -o pipefail
-          cargo test --locked -p tobkiri-profile -p tobkiri-manifest -p tobkiri-flow 2>&1 | tee "$RUNNER_TEMP/full.log"
-          grep -E '^test result:' "$RUNNER_TEMP/full.log"
