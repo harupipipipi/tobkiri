@@ -137,9 +137,6 @@ jobs:
     needs: ui-monotonic-producer
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    env:
-      RPDS_RUN: '40182231971'
-      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
     steps:
       - uses: actions/checkout@v4
         with:
@@ -159,25 +156,12 @@ jobs:
           path: ${{ runner.temp }}/python313-cli
       - name: Restore executable mode of the same-run verified producer
         run: chmod 755 "$RUNNER_TEMP/python313-cli/work/target/release/componentize-py"
-      - name: Authenticate successful genuine rpds predecessor
+      - name: Restore the archived genuine rpds predecessor from its verified private archive
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/schema-rpds-run.json"
-          python3 -B - "$RUNNER_TEMP/schema-rpds-run.json" "$RPDS_HEAD" <<'PY'
-          import json, sys
-          from pathlib import Path
-          value = json.loads(Path(sys.argv[1]).read_bytes())
-          if value['head_sha'] != sys.argv[2] or value['status'] != 'completed' or value['conclusion'] != 'success':
-              raise SystemExit('genuine rpds predecessor identity/outcome differs')
-          PY
-      - uses: actions/download-artifact@v4
-        with:
-          name: ui-rpds-inactive-component
-          repository: ${{ github.repository }}
-          run-id: ${{ env.RPDS_RUN }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/schema-rpds
+        run: >-
+          python3 -B tools/python313-producer/artifact_archive.py fetch
+          --kind rpds --destination "$RUNNER_TEMP/schema-rpds"
       - name: Restore complete original schema source and pinned validation tools
         run: |
           python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"

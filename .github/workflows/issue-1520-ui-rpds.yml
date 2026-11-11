@@ -24,9 +24,6 @@ jobs:
   actual-rpds:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    env:
-      PRODUCER_RUN: '39956025119'
-      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,26 +33,12 @@ jobs:
           python-version: '3.13'
       - name: Check bounded input and candidate contracts
         run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_rpds_*.py'
-      - name: Authenticate the unchanged saved producer
+      - name: Restore the archived successful custom producer from its verified private archive
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/rpds-producer-run.json"
-          python3 -B - "$RUNNER_TEMP/rpds-producer-run.json" "$PRODUCER_HEAD" <<'PY'
-          import json, sys
-          from pathlib import Path
-          value = json.loads(Path(sys.argv[1]).read_bytes())
-          if (value['head_sha'] != sys.argv[2] or value['status'] != 'completed'
-                  or value['conclusion'] != 'success'):
-              raise SystemExit('saved producer source/outcome differs')
-          PY
-      - uses: actions/download-artifact@v4
-        with:
-          name: python313-producer-cli
-          repository: ${{ github.repository }}
-          run-id: ${{ env.PRODUCER_RUN }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/rpds-producer
+        run: >-
+          python3 -B tools/python313-producer/artifact_archive.py fetch
+          --kind producer-cli --destination "$RUNNER_TEMP/rpds-producer"
       - name: Restore pinned source, Rust target, SDK and validation inputs
         run: |
           sudo apt-get update -qq
