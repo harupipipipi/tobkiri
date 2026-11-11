@@ -79,7 +79,7 @@ jobs:
       - name: Items 6, 7, 8 and 10 through the actual Core, Flow engine and Gate
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/core-acceptance.log" --expected-passed 16 --
+          --log "$RUNNER_TEMP/core-acceptance.log" --expected-passed 17 --
           cargo test --locked -p tobkiri-core --lib
           -- --exact --nocapture
           session::acceptance_overlay_tests::foreign_pack_inserts_wraps_replaces_and_deletes_a_role_addressed_step_through_the_real_flow
@@ -87,11 +87,12 @@ jobs:
           session::acceptance_overlay_tests::foreign_pack_overlay_also_needs_profile_and_pack_permission
           session::acceptance_overlay_tests::user_overlay_can_wrap_or_replace_a_closed_step_by_shape_name_or_by_flow_and_step_id
           session::acceptance_overlay_tests::user_overlay_keeps_the_separate_user_policy_for_its_own_calls
-          session::acceptance_overlay_tests::user_overlay_effect_reaches_the_trusted_prompt_and_the_audit_log_while_pack_calls_do_not
-          session::acceptance_overlay_tests::user_overlay_denied_at_the_trusted_prompt_never_dispatches
-          session::acceptance_overlay_tests::authority_epoch_change_after_approval_blocks_the_overlay_effect
-          session::acceptance_overlay_tests::cancellation_while_the_overlay_effect_awaits_approval_never_dispatches
-          session::acceptance_overlay_tests::approval_revoked_while_a_user_overlay_runs_blocks_the_original_step
+          session::acceptance_overlay_tests::user_overlay_effect_is_audited_and_authorized_by_the_trusted_user_policy_like_any_call
+          session::acceptance_overlay_tests::user_overlay_profile_is_not_saved_without_the_trusted_user_policy_approval
+          session::acceptance_overlay_tests::user_policy_approval_withdrawn_after_start_blocks_the_overlay_effect_and_the_original
+          session::acceptance_overlay_tests::authority_epoch_change_after_start_blocks_a_run_through_a_user_overlay
+          session::acceptance_overlay_tests::flow_owner_approval_withdrawn_after_start_blocks_the_overlay_effect
+          session::acceptance_overlay_tests::cancelling_while_the_overlay_effect_runs_never_reaches_the_original_step
           session::acceptance_overlay_tests::pack_overlay_effect_is_checked_with_the_overlay_packs_own_approval
           session::acceptance_overlay_tests::unordered_pack_overlays_fail_keep_the_head_and_accept_a_bound_explicit_order
           session::acceptance_overlay_tests::unordered_user_overlays_fail_keep_the_head_and_accept_a_user_order
