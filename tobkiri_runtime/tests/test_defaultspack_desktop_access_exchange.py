@@ -4,6 +4,9 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
 
 from ecosystem.defaultspack.backend.sandbox.desktop_access_exchange import (
     DesktopAccessExchange,
@@ -211,3 +214,32 @@ def test_api_issue_exchange_list_revoke_and_operation_scope(tmp_path) -> None:
     assert credential not in json.dumps(listed)
     assert "credential_hash" not in json.dumps(listed)
     assert revoked["data"]["revoked"] is True
+
+
+@pytest.mark.parametrize("fields", [{}, {"approved": None}, {"approved": 1},
+                                    {"approved": "true"}, {"approved": []}])
+def test_access_grant_requires_explicit_bool_without_calling_manager(fields):
+    manager = Mock()
+    result = api._desktop_access_grant(
+        SimpleNamespace(manager=manager),
+        {"seat_id": FAKE_SEAT, "request_id": "request-1", **fields},
+        {"principal_id": "owner-1"},
+    )
+    assert result["_http_status"] == 400
+    assert result["error"]["code"] == "INVALID_INPUT"
+    manager.grant_desktop_access_request.assert_not_called()
+
+
+@pytest.mark.parametrize("approved", [True, False])
+def test_access_grant_passes_explicit_owner_decision_unchanged(approved):
+    manager = Mock()
+    manager.grant_desktop_access_request.return_value = {"ok": True}
+    result = api._desktop_access_grant(
+        SimpleNamespace(manager=manager),
+        {"seat_id": FAKE_SEAT, "request_id": "request-1", "approved": approved},
+        {"principal_id": "owner-1"},
+    )
+    assert result["status"] == "ok"
+    manager.grant_desktop_access_request.assert_called_once_with(
+        FAKE_SEAT, "request-1", owner_id="owner-1", approved=approved,
+    )

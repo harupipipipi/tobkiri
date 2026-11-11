@@ -938,6 +938,8 @@ def _desktop_access_request(service: _SandboxApiService, payload: dict[str, Any]
 
 
 def _desktop_access_grant(service: _SandboxApiService, payload: dict[str, Any], context: dict[str, Any]):
+    if type(payload.get("approved")) is not bool:
+        return _api_error("approved must be an explicit boolean", "INVALID_INPUT", 400)
     seat_id = str(payload.get("seat_id") or "")
     owner_id = _desktop_principal_id(context)
     if owner_id is None:
@@ -946,7 +948,7 @@ def _desktop_access_grant(service: _SandboxApiService, payload: dict[str, Any], 
         seat_id,
         str(payload.get("request_id") or ""),
         owner_id=owner_id,
-        approved=_truthy(payload.get("approved", True)),
+        approved=payload["approved"],
     )
     if result.get("ok") is not True:
         return _api_error(str(result.get("error") or "Desktop access grant failed"), str(result.get("code") or "DESKTOP_ACCESS_GRANT_FAILED"), int(result.get("status_code") or 400))
