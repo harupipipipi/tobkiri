@@ -237,6 +237,39 @@ class SchemaCheckpointDiagnosticTests(unittest.TestCase):
             self.assertLess(len(json.dumps(row).encode()), 512)
             self.assertEqual(row["format"], diagnostic.FRAME_FORMAT)
 
+    def test_full_declared_inventory_fits_without_interrupting_validation(self):
+        frames = []
+        namespace, modules = self.helper(lambda raw: frames.append(json.loads(raw)))
+        tags = self.provenance["checkpoint_contract"]["schema_tags"]
+        with modules:
+            namespace["checkpoint"]("schema-store-entry")
+            for row in tags:
+                namespace["checkpoint"]("check-schema-start", row["name"])
+                namespace["checkpoint"]("check-schema-end", row["name"])
+        self.assertEqual(len(frames), 69 * 2 + 1)
+        self.assertEqual([row["sequence"] for row in frames], list(range(1, 140)))
+        self.assertEqual(
+            self.provenance["checkpoint_contract"]["maximum_sequence"], 139
+        )
+
+    def test_failed_schema_retries_preserve_original_errors_after_overflow(self):
+        frames = []
+        helper, modules = self.helper(lambda raw: frames.append(json.loads(raw)))
+        supplied = ValueError("original repeated schema failure")
+
+        def fail(_payload):
+            raise supplied
+
+        namespace, events, failure_class = self.validation(helper["checkpoint"], fail)
+        with modules:
+            for _ in range(150):
+                with self.assertRaises(failure_class) as caught:
+                    namespace["load_schema"]("pack")
+                self.assertIs(caught.exception.__cause__, supplied)
+        self.assertEqual(len([event for event in events if event[0] == "provider"]), 150)
+        self.assertEqual(namespace["load_schema"].cache_info().currsize, 0)
+        self.assertEqual([row["sequence"] for row in frames], list(range(1, 141)))
+
     def test_checkpoint_unknown_inputs_exhaustion_and_import_failure_do_not_fallback(self):
         frames = []
         namespace, modules = self.helper(lambda raw: frames.append(json.loads(raw)))
@@ -248,11 +281,11 @@ class SchemaCheckpointDiagnosticTests(unittest.TestCase):
             with self.assertRaises(TypeError):
                 namespace["checkpoint"]("schema-store-entry", unexpected=True)
             self.assertEqual(frames, [])
-            namespace["_sequence"] = 127
+            namespace["_sequence"] = 138
             namespace["checkpoint"]("schema-store-entry")
-            with self.assertRaisesRegex(RuntimeError, "fixed bound"):
+            for _ in range(20):
                 namespace["checkpoint"]("schema-store-entry")
-            self.assertEqual([row["sequence"] for row in frames], [128])
+            self.assertEqual([row["sequence"] for row in frames], [139, 140])
         supplied = MemoryError("controlled native import failure")
 
         def fail(_raw):

@@ -3,7 +3,8 @@ use super::*;
 use std::sync::{Mutex, MutexGuard, TryLockResult};
 use tobkiri_canon::{AllocationError, AllocationKind, AllocationRequest, CoreRef};
 
-pub(crate) const MAX_RECORDS: usize = 128;
+// One start/end per declared tag, plus the single store entry.
+pub(crate) const MAX_RECORDS: usize = SCHEMA_TAG_COUNT as usize * 2 + 1;
 pub(crate) const SCHEMA_TAG_COUNT: u8 = 69;
 pub(crate) const MAX_REPORT_JSON_BYTES: usize = 16 * 1024;
 const SNAPSHOT_ATTEMPTS: u8 = 8;
@@ -108,10 +109,7 @@ pub(super) fn marker(frame: &CoreValue) -> std::result::Result<Option<Marker>, F
         .get_key("sequence")
         .and_then(|value| value.as_i64())
         .ok_or(FrameFailure::Invalid)?;
-    if sequence > MAX_RECORDS as i64 {
-        return Err(FrameFailure::Overflow);
-    }
-    if sequence < 1 {
+    if sequence > MAX_RECORDS as i64 + 1 || sequence < 1 {
         return Err(FrameFailure::Invalid);
     }
     let stage = frame.get_key("stage").ok_or(FrameFailure::Invalid)?;
@@ -132,6 +130,10 @@ pub(super) fn marker(frame: &CoreValue) -> std::result::Result<Option<Marker>, F
         }
         _ => return Err(FrameFailure::Invalid),
     };
+    // Only the declared, fully validated overflow notification is ACKed.
+    if sequence == MAX_RECORDS as i64 + 1 {
+        return Err(FrameFailure::Overflow);
+    }
     Ok(Some(Marker {
         sequence: sequence as u8,
         stage,
@@ -302,6 +304,14 @@ impl Log {
     }
 }
 
+/// Fixed scalar failure metadata; no record DATA, fuel, or authority escapes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Status {
+    pub(crate) overflow: bool,
+    pub(crate) unavailable: bool,
+    pub(crate) prepay_attempted: bool,
+}
+
 /// The attempt gate is outside the log mutex: busy/poisoned attempts also
 /// spend one of the eight original prepaid attempts. No counter is refilled.
 pub(super) struct Trace {
@@ -318,6 +328,15 @@ impl Trace {
 
     pub(super) fn try_lock(&self) -> TryLockResult<MutexGuard<'_, Log>> {
         self.log.try_lock()
+    }
+
+    pub(super) fn status(&self) -> Option<Status> {
+        let log = self.try_lock().ok()?;
+        Some(Status {
+            overflow: log.overflow,
+            unavailable: log.unavailable,
+            prepay_attempted: log.prepay_attempted,
+        })
     }
 
     fn record(
@@ -385,6 +404,21 @@ pub(super) fn prepare<S: BootstrapInputOwner>(
     work: ControlHandle<Work<S>>,
     marker: Marker,
 ) -> Result<NativeImportOperation> {
+    prepare_event(context, work, Some(marker))
+}
+
+pub(super) fn prepare_overflow<S: BootstrapInputOwner>(
+    context: NativeImportContext<'_, State<S>>,
+    work: ControlHandle<Work<S>>,
+) -> Result<NativeImportOperation> {
+    prepare_event(context, work, None)
+}
+
+fn prepare_event<S: BootstrapInputOwner>(
+    context: NativeImportContext<'_, State<S>>,
+    work: ControlHandle<Work<S>>,
+    marker: Option<Marker>,
+) -> Result<NativeImportOperation> {
     if !context.same_invocation(&work.get().invocation)
         || work.get().phase.load(Ordering::Acquire) != CATALOG_LOAD
     {
@@ -399,15 +433,23 @@ pub(super) fn prepare<S: BootstrapInputOwner>(
         {
             return Err(NativeDataIoError::Retired);
         }
-        state
-            .ci_schema_trace
-            .record(
-                marker,
-                fuel_remaining,
-                output.invocation(),
-                output.allocation_owners().graph(),
-            )
-            .map_err(|error| output.reject_execution(error))?;
+        if let Some(marker) = marker {
+            state
+                .ci_schema_trace
+                .record(
+                    marker,
+                    fuel_remaining,
+                    output.invocation(),
+                    output.allocation_owners().graph(),
+                )
+                .map_err(|error| output.reject_execution(error))?;
+        } else {
+            state
+                .ci_schema_trace
+                .try_lock()
+                .map_err(|_| NativeDataIoError::Unavailable)?
+                .reject(FrameFailure::Overflow);
+        }
         output.append(b"{}")
     })
 }
@@ -466,10 +508,10 @@ mod tests {
     async fn ci_schema_checkpoint_frames_have_exact_shape_types_and_closed_bounds() {
         with_budget(|_, budget| {
             let valid = decode(
-                r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":128,"stage":"check-schema-end","schema_tag":68}"#,
+                r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":139,"stage":"check-schema-end","schema_tag":68}"#,
                 budget,
             ).unwrap().unwrap();
-            assert_eq!(valid.sequence, 128);
+            assert_eq!(valid.sequence, MAX_RECORDS as u8);
             assert_eq!(valid.stage.as_str(), "check-schema-end");
             assert_eq!(valid.schema_tag, Some(68));
             let store = decode(
@@ -498,12 +540,15 @@ mod tests {
                 r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":1,"stage":"check-schema-end","schema_tag":false}"#,
                 r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":1,"stage":"check-schema-end","schema_tag":0,"fuel":100}"#,
                 r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":1,"stage":"check-schema-end"}"#,
+                r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":140,"stage":"unknown","schema_tag":0}"#,
+                r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":140,"stage":"check-schema-end","schema_tag":69}"#,
+                r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":141,"stage":"check-schema-end","schema_tag":0}"#,
             ] {
                 assert_eq!(decode(invalid, budget), Err(FrameFailure::Invalid));
             }
             assert_eq!(
                 decode(
-                    r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":129,"stage":"check-schema-end","schema_tag":0}"#,
+                    r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":140,"stage":"check-schema-end","schema_tag":0}"#,
                     budget,
                 ),
                 Err(FrameFailure::Overflow)
@@ -573,8 +618,8 @@ mod tests {
                 before.charged_bytes + payload + u64::from(SNAPSHOT_ATTEMPTS) * SNAPSHOT_BYTES
             );
             let observed = snapshot(&trace).unwrap();
-            assert_eq!(observed.data().count, 128);
-            assert_eq!(observed.data().maximum_records, 128);
+            assert_eq!(observed.data().count, MAX_RECORDS as u16);
+            assert_eq!(observed.data().maximum_records, MAX_RECORDS as u16);
             assert_eq!(observed.data().schema_tag_count, 69);
             assert_eq!(observed.data().records[0].unwrap().sequence, 1);
             assert_eq!(
@@ -591,7 +636,7 @@ mod tests {
                 trace
                     .record(
                         Marker {
-                            sequence: 129,
+                            sequence: (MAX_RECORDS + 1) as u8,
                             ..event
                         },
                         Some(0),
@@ -602,7 +647,7 @@ mod tests {
             );
             let full = snapshot(&trace).unwrap();
             assert!(full.data().overflow && full.data().unavailable);
-            assert_eq!(full.data().count, 128);
+            assert_eq!(full.data().count, MAX_RECORDS as u16);
             assert_eq!(full.data().records, observed.data().records);
             for remaining in (0..5).rev() {
                 let packet = snapshot(&trace).unwrap();
@@ -692,6 +737,14 @@ mod tests {
                 assert!(log.records.is_none() && log.permits.iter().all(Option::is_none));
             }
             assert!(snapshot(&failed).is_none());
+            assert_eq!(
+                failed.status(),
+                Some(Status {
+                    overflow: false,
+                    unavailable: true,
+                    prepay_attempted: true,
+                })
+            );
             drop(exhausted);
             // Partial slot admission was freed, but failed prepayment cannot
             // retry or issue a fresh quota when original capacity returns.
@@ -702,6 +755,84 @@ mod tests {
                 before.charged_bytes
             );
         });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ci_schema_checkpoint_writer_preserves_full_rows_hash_and_funding() {
+        use sha2::{Digest as _, Sha256};
+        with_budget(|invocation, budget| {
+            let trace = Trace::new();
+            for sequence in 1..=MAX_RECORDS {
+                trace
+                    .record(
+                        Marker {
+                            sequence: sequence as u8,
+                            stage: Stage::CheckSchemaStart,
+                            schema_tag: Some(SCHEMA_TAG_COUNT - 1),
+                        },
+                        Some(u64::MAX),
+                        invocation,
+                        budget,
+                    )
+                    .unwrap();
+            }
+            let packet = snapshot(&trace).unwrap();
+            let before = invocation.capacity_snapshot().unwrap().charged_bytes;
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("trace.json");
+            let metadata = super::super::catalog_actual_ci::write_schema_trace(
+                &path,
+                Some(packet),
+                trace.status(),
+            )
+            .unwrap();
+            assert_eq!(
+                invocation.capacity_snapshot().unwrap().charged_bytes,
+                before - SNAPSHOT_BYTES
+            );
+            let bytes = std::fs::read(path).unwrap();
+            assert!(bytes.len() <= MAX_REPORT_JSON_BYTES);
+            assert_eq!(metadata["bytes"], bytes.len());
+            assert_eq!(metadata["sha256"], format!("{:x}", Sha256::digest(&bytes)));
+            let report: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(report["count"], MAX_RECORDS);
+            assert_eq!(report["records"].as_array().unwrap().len(), MAX_RECORDS);
+            for (index, row) in report["records"].as_array().unwrap().iter().enumerate() {
+                assert_eq!(row["sequence"], index + 1);
+                assert_eq!(row["stage"], "check-schema-start");
+                assert_eq!(row["schema_tag"], SCHEMA_TAG_COUNT - 1);
+                assert_eq!(row["fuel_remaining"], u64::MAX);
+            }
+            assert_eq!(report["qualification"], false);
+            assert_eq!(report["overflow"], false);
+            assert_eq!(report["unavailable"], false);
+        });
+    }
+
+    #[test]
+    fn ci_schema_checkpoint_rejection_before_first_record_has_scalar_status() {
+        let trace = Trace::new();
+        assert_eq!(
+            trace.status(),
+            Some(Status {
+                overflow: false,
+                unavailable: false,
+                prepay_attempted: false,
+            })
+        );
+        trace.try_lock().unwrap().reject(FrameFailure::Overflow);
+        assert!(snapshot(&trace).is_none());
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("unused.json");
+        let metadata =
+            super::super::catalog_actual_ci::write_schema_trace(&path, None, trace.status())
+                .unwrap();
+        assert_eq!(metadata["available"], false);
+        assert_eq!(metadata["status_available"], true);
+        assert_eq!(metadata["unavailable"], true);
+        assert_eq!(metadata["overflow"], true);
+        assert_eq!(metadata["prepay_attempted"], false);
+        assert!(!path.exists());
     }
 
     struct Source {
@@ -784,6 +915,67 @@ mod tests {
           (export "tobkiri-ui:harness-native/transport@1.0.0" (instance $transport)))"#
             .replace("@PAYLOAD@", &escaped).replace("@LENGTH@", &payload.len().to_string());
         Component::new(engine.engine(), wat::parse_str(source).unwrap()).unwrap()
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ci_schema_checkpoint_real_overflow_ack_and_parse_failure_status() {
+        static INDEX: BootstrapModuleIndex = BootstrapModuleIndex {
+            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            modules: &[crate::BootstrapModule {
+                module: "fixture",
+                relative_file: "fixture.py",
+            }],
+        };
+        for (payload, overflow) in [
+            (
+                r#"{"format":"io.tobkiri.native-schema-checkpoint.v1","sequence":140,"stage":"check-schema-start","schema_tag":0}"#,
+                true,
+            ),
+            ("{", false),
+        ] {
+            let (account, invocation) = funding();
+            let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+            let component = component(&engine, payload);
+            let source = Source {
+                root_reads: Arc::new(AtomicUsize::new(0)),
+                dropped: Arc::new(AtomicBool::new(false)),
+            };
+            let mut runtime =
+                NativeBootstrap::prepare(&engine, &component, invocation.clone(), source, &INDEX)
+                    .await
+                    .unwrap()
+                    .unwrap();
+            runtime
+                .work
+                .get()
+                .phase
+                .store(CATALOG_LOAD, Ordering::Release);
+            let input = runtime.call.clone();
+            let result = runtime.string_call_in_phase(1, &input, CATALOG_LOAD).await;
+            if overflow {
+                assert_eq!(result.unwrap().unwrap().as_bytes(), b"{}");
+                // Subsequent original work can still use the same live Store.
+                assert!(runtime.fuel_remaining().is_ok());
+            } else {
+                assert!(result.is_err());
+                drop(result);
+            }
+            assert!(runtime.ci_schema_trace().is_none());
+            assert_eq!(
+                runtime.ci_schema_status(),
+                Some(Status {
+                    overflow,
+                    unavailable: true,
+                    prepay_attempted: false,
+                })
+            );
+            drop(input);
+            runtime.finish().await.unwrap();
+            drop(invocation);
+            tobkiri_wasm::reap_allocation_owners().unwrap();
+            assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+            assert_eq!(account.snapshot().unwrap().reservations, 0);
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -902,15 +1094,10 @@ mod tests {
                     2 * SNAPSHOT_BYTES
                 );
                 assert_eq!(account.snapshot().unwrap().reservations, 2);
-                assert_eq!(first.data().maximum_records, 128);
+                assert_eq!(first.data().maximum_records, MAX_RECORDS as u16);
                 assert_eq!(last.data().count, 1);
                 assert_eq!(last._funding.allocated_bytes().unwrap(), SNAPSHOT_BYTES);
-                {
-                    let mut report = [0_u8; MAX_REPORT_JSON_BYTES];
-                    report[0] = b'0' + last.data().count as u8;
-                    assert_eq!(report[0], b'1');
-                    assert!(last.data().unavailable);
-                }
+                assert!(last.data().unavailable);
             }
             drop(first);
             drop(last);

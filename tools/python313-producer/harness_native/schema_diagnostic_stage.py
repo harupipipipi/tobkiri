@@ -102,7 +102,7 @@ def _tags(files: Mapping[str, bytes], original: bytes) -> tuple[tuple[str, str],
         raise ValueError("actual closed schema aliases/resources differ")
     tags = tuple(("alias", name) for name in sorted(aliases)) + tuple(
         ("filename", name) for name in filenames)
-    if not 0 < len(tags) <= 128:
+    if len(tags) != 69:
         raise ValueError("schema tag inventory exceeds its fixed bound")
     return tags
 
@@ -176,12 +176,13 @@ def derive(baseline: Mapping[str, bytes]) -> dict[str, bytes]:
         },
         "helper": {"path": HELPER, "template_sha256": _sha(helper_template), "sha256": _sha(helper)},
         "checkpoint_contract": {
-            "format": FRAME_FORMAT, "maximum_sequence": 128,
+            "format": FRAME_FORMAT, "maximum_sequence": 139,
             "stages": ["check-schema-start", "check-schema-end", "schema-store-entry"],
             "schema_tags": [{"tag": tag, "kind": kind, "name": name}
                             for tag, (kind, name) in enumerate(tags)],
             "tag_count": len(tags), "guest_fuel_claimed": False,
             "normal_end_only": True, "measurement_errors_ignored": False,
+            "overflow_sequence": 140, "overflow_notification_limit": 1,
         },
         "source_index": {
             "path": "source-package/harness_native_source_index.py", "sha256": _sha(index),

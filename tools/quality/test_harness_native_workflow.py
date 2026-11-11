@@ -78,7 +78,7 @@ class NativeWorkflowContracts(unittest.TestCase):
             ("Verify bounded Core fixed-import schema checkpoints", 6,
              "cargo test --locked -p tobkiri-wasm --lib --features bootstrap-ci",
              "native_fixed_import_ -- --nocapture"),
-            ("Verify bounded Host schema checkpoint state", 4,
+            ("Verify bounded Host schema checkpoint state", 7,
              "cargo test --locked -p tobkiri-harness-native --lib --features catalog-diagnostics-ci",
              "ci_schema_checkpoint_ -- --nocapture"),
             ("Observe actual catalog schema checkpoints without qualification", 1,

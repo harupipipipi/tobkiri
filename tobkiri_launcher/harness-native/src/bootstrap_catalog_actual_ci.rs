@@ -141,27 +141,34 @@ async fn original_catalog_schema_diagnostic_driver() -> Result<()> {
     // Diagnostic observation never turns the original catalog failure into
     // functional qualification, even if the measured call reaches its end.
     let outcome = run_original_catalog_component_driver(true).await;
-    drop(outcome);
+    if let Err(error) = outcome {
+        return Err(error.context("schema checkpoint diagnostic remains unqualified"));
+    }
     bail!("schema checkpoint diagnostic remains unqualified; inspect bounded evidence")
 }
 
 #[cfg(feature = "catalog-diagnostics-ci")]
-fn write_schema_trace(
+pub(super) fn write_schema_trace(
     path: &Path,
     snapshot: Option<schema_diagnostic_ci::Snapshot>,
+    status: Option<schema_diagnostic_ci::Status>,
 ) -> Result<Value> {
     use sha2::{Digest as _, Sha256};
     use std::io::{Cursor, Write as _};
     let Some(packet) = snapshot else {
-        return Ok(json!({"available":false,"qualification":false}));
+        return Ok(json!({"available":false,"qualification":false,
+            "status_available":status.is_some(),
+            "overflow":status.map(|s| s.overflow),
+            "unavailable":status.map(|s| s.unavailable),
+            "prepay_attempted":status.map(|s| s.prepay_attempted)}));
     };
     let data = packet.data();
     // Every row consists only of fixed ASCII keys/stages, u8 tags and a
-    // maximum 20-digit u64. 1000 header bytes plus 128 * 116 row bytes
+    // maximum 20-digit u64. 512 header/trailer bytes plus 139 * 112 row bytes
     // fit in the one prepaid 16KiB output. Cursor over a fixed slice cannot
     // grow, even if this bound regresses. The owned packet funds both its
     // borrowed DATA and this buffer until the file write/hash have finished.
-    const MAX_ENCODED_BYTES: usize = 1000 + schema_diagnostic_ci::MAX_RECORDS * 116;
+    const MAX_ENCODED_BYTES: usize = 512 + schema_diagnostic_ci::MAX_RECORDS * 112;
     ensure!(MAX_ENCODED_BYTES <= schema_diagnostic_ci::MAX_REPORT_JSON_BYTES);
     ensure!(usize::from(data.count) <= schema_diagnostic_ci::MAX_RECORDS);
     let mut bytes = Vec::<u8>::new();
@@ -479,6 +486,8 @@ async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Resul
         other => (other, false),
     };
     let before = invocation.capacity_snapshot();
+    #[cfg(feature = "catalog-diagnostics-ci")]
+    let schema_status = runtime.ci_schema_status();
     let cleanup = runtime.finish().await;
     let after_finish = invocation.capacity_snapshot();
     #[cfg(feature = "catalog-diagnostics-ci")]
@@ -486,6 +495,7 @@ async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Resul
         write_schema_trace(
             &fixtures_path.with_file_name("actual-catalog-schema-trace.json"),
             schema_trace.take(),
+            schema_status,
         )
     } else {
         Ok(Value::Null)

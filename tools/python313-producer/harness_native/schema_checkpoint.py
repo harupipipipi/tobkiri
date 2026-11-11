@@ -26,8 +26,11 @@ def checkpoint(stage: str, schema_name: str | None = None) -> None:
         if type(schema_name) is not str or schema_name not in _TAG_IDS:
             raise RuntimeError("schema checkpoint name is outside its closed inventory")
         tag = _TAG_IDS[schema_name]
-    if type(_sequence) is not int or not 0 <= _sequence < 128:
+    if type(_sequence) is not int or not 0 <= _sequence <= 140:
         raise RuntimeError("schema checkpoint sequence exceeds its fixed bound")
+    # Saturate after one overflow notification, including failed-schema retries.
+    if _sequence == 140:
+        return
     _sequence += 1
     from wit_world.imports.bindings import inspect
 

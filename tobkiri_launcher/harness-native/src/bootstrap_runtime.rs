@@ -345,7 +345,7 @@ fn inspect<S: BootstrapInputOwner>(
             target_arch = "aarch64"
         ))]
         {
-            let marker = {
+            let marker = (|| -> Result<_> {
                 let request = context.input().context("catalog request is missing")?;
                 let frame = CoreValue::parse_guest(
                     request.as_bytes(),
@@ -361,13 +361,21 @@ fn inspect<S: BootstrapInputOwner>(
                         depth: 0,
                         work: 128,
                     })?;
-                schema_diagnostic_ci::marker(&frame)
-            };
+                Ok(schema_diagnostic_ci::marker(&frame))
+            })()
+            .inspect_err(|_| {
+                if let Ok(mut log) = state.ci_schema_trace.try_lock() {
+                    log.reject(schema_diagnostic_ci::FrameFailure::Invalid);
+                }
+            })?;
             match marker {
                 Ok(Some(marker)) => {
                     return schema_diagnostic_ci::prepare(context, work.clone(), marker);
                 }
                 Ok(None) => {}
+                Err(schema_diagnostic_ci::FrameFailure::Overflow) => {
+                    return schema_diagnostic_ci::prepare_overflow(context, work.clone());
+                }
                 Err(failure) => {
                     state
                         .ci_schema_trace
@@ -920,6 +928,16 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     ))]
     pub(crate) fn ci_schema_trace(&self) -> Option<schema_diagnostic_ci::Snapshot> {
         schema_diagnostic_ci::snapshot(&self.work.get().ci_schema_trace)
+    }
+
+    #[cfg(all(
+        test,
+        feature = "catalog-diagnostics-ci",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    pub(crate) fn ci_schema_status(&self) -> Option<schema_diagnostic_ci::Status> {
+        self.work.get().ci_schema_trace.status()
     }
 
     /// Borrow the original DATA codec account for native frame codecs. Cloning

@@ -79,7 +79,9 @@ def bind(
                 or derived.get("other_original_members_unchanged") is not True
                 or diagnostic_contract.get("tag_count") != 69
                 or len(diagnostic_contract.get("schema_tags", [])) != 69
-                or diagnostic_contract.get("maximum_sequence") != 128
+                or diagnostic_contract.get("maximum_sequence") != 139
+                or diagnostic_contract.get("overflow_sequence") != 140
+                or diagnostic_contract.get("overflow_notification_limit") != 1
                 or derived.get("production_enabled") is not False):
             raise ValueError("explicit bounded schema diagnostic source required")
     actual = {row["source"]: row for row in plan["sources"]}
