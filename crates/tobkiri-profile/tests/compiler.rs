@@ -1788,3 +1788,250 @@ fn own_pack_overlay_retains_private_flow_compatibility() {
     assert_eq!(overlays.len(), 1);
     assert_eq!(overlays[0].owner.as_ref().unwrap(), &flow.owner);
 }
+
+// Issue #1520 acceptance 9 (R4.5): a Profile without default loop bounds fails
+// at every Profile entry, never only inside one helper.
+#[test]
+fn profile_without_default_loop_bounds_fails_parse_and_compile() {
+    let packs = vec![contracts(), provider("local.provider")];
+    // Positive control: the same fixture with full bounds parses and compiles.
+    compile(&profile(&packs), &packs).unwrap();
+    let good = serde_json::to_vec(&profile(&packs)).unwrap();
+    parse_profile(&good).unwrap();
+
+    let mutations: [(&str, fn(&mut LoopLimits)); 4] = [
+        ("max_iterations", |l| l.max_iterations = 0),
+        ("max_wall_ms", |l| l.max_wall_ms = 0),
+        ("max_cost_units", |l| l.max_cost_units = 0),
+        ("all", |l| *l = LoopLimits::default()),
+    ];
+    for (name, mutate) in mutations {
+        let mut p = profile(&packs);
+        mutate(&mut p.ceiling.loops);
+        let compiled = compile(&p, &packs);
+        assert!(
+            compiled
+                .as_ref()
+                .is_err_and(|errors| errors.iter().any(|e| e.code == "profile-limits")),
+            "zero {name} must fail compile with profile-limits: {compiled:?}"
+        );
+        assert!(
+            parse_profile(&serde_json::to_vec(&p).unwrap()).is_err(),
+            "zero {name} must fail parse_profile"
+        );
+    }
+
+    // A document that omits the loop bounds entirely, or only one of them, fails.
+    let mut value: serde_json::Value = serde_json::from_slice(&good).unwrap();
+    let ceiling = value["ceiling"].as_object_mut().unwrap();
+    let loops = ceiling.remove("loops").expect("serialized loop bounds");
+    assert!(parse_profile(&serde_json::to_vec(&value).unwrap()).is_err());
+    for key in ["max_iterations", "max_wall_ms", "max_cost_units"] {
+        let mut partial = loops.clone();
+        partial.as_object_mut().unwrap().remove(key).unwrap();
+        value["ceiling"]["loops"] = partial;
+        assert!(
+            parse_profile(&serde_json::to_vec(&value).unwrap()).is_err(),
+            "missing {key} must fail parse_profile"
+        );
+    }
+}
+
+// Flow documents cannot carry their own loop bounds; only the Profile default.
+#[test]
+fn flow_document_must_take_loop_bounds_from_the_profile_default() {
+    let mut doc = flow(vec![]);
+    parse_flow(&serde_json::to_vec(&doc).unwrap()).unwrap();
+    doc.loop_limits = "unbounded".into();
+    assert!(parse_flow(&serde_json::to_vec(&doc).unwrap()).is_err());
+}
+
+// Issue #1520 acceptance 11 (R3.3, R3.5): a typed port without a WIT shape is
+// rejected when the Profile is loaded; an explicit `untyped` declaration loads.
+#[test]
+fn typed_port_without_wit_shape_is_rejected_and_explicit_untyped_loads() {
+    let missing = reference("missing");
+    let declaration = |optional| PortDeclaration {
+        shape: missing.name.clone(),
+        version: missing.version,
+        optional,
+    };
+    for optional in [false, true] {
+        let consumer = pack(
+            "local.consumer",
+            BTreeMap::new(),
+            vec![],
+            vec![],
+            vec![declaration(optional)],
+            vec![],
+            vec![],
+        );
+        let packs = vec![contracts(), consumer];
+        has_error(compile(&profile(&packs), &packs), "untyped-port");
+        let provider = pack(
+            "local.provider",
+            BTreeMap::new(),
+            vec![],
+            vec![declaration(optional)],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let packs = vec![contracts(), provider];
+        has_error(compile(&profile(&packs), &packs), "untyped-port");
+    }
+
+    // The same absence of a WIT shape is accepted only as an explicit untyped
+    // declaration, and it never becomes an automatic binding.
+    let loose = rebuild(
+        &pack(
+            "local.loose",
+            BTreeMap::new(),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ),
+        |manifest, _| {
+            for direction in ["provides", "consumes"] {
+                manifest.ports.untyped.push(UntypedPort {
+                    name: missing.name.to_string(),
+                    direction: direction.into(),
+                });
+            }
+        },
+    );
+    let packs = vec![contracts(), loose];
+    let compiled = compile(&profile(&packs), &packs).unwrap();
+    assert!(compiled.bindings.is_empty(), "{:?}", compiled.bindings);
+}
+
+fn contracts_with_query_versions(extra: &[(u16, u16, &str)]) -> VerifiedPack {
+    let original = contracts();
+    let mut files = original.files.materialize_for_pack_build().unwrap();
+    let mut definitions = original.manifest.shapes.clone();
+    for (major, minor, parameter) in extra {
+        let path = format!("wit/query-{major}-{minor}.wit");
+        files.insert(
+            path.clone(),
+            format!(
+                "package local:contracts@{major}.{minor}.0; interface query {{ query: func(value: {parameter}) -> string; }}"
+            )
+            .into_bytes(),
+        );
+        definitions.push(ShapeDefinition {
+            name: reference("query").name,
+            version: ShapeVersion::new(*major, *minor),
+            kind: ShapeKind::Port,
+            wit: path,
+        });
+    }
+    pack(
+        "local.contracts",
+        files,
+        definitions,
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    )
+}
+fn query_port(major: u16, minor: u16, optional: bool) -> PortDeclaration {
+    let mut declaration = port("query", optional);
+    declaration.version = ShapeVersion::new(major, minor);
+    declaration
+}
+fn query_ref(major: u16, minor: u16) -> ShapeRef {
+    ShapeRef::new(reference("query").name, ShapeVersion::new(major, minor))
+}
+
+// Issue #1520 acceptance 12 (R3.3, R3.10): minor-only differences connect in
+// both directions; a different major connects only through an adapter Pack.
+#[test]
+fn minor_difference_connects_both_ways_and_major_difference_needs_an_adapter() {
+    let provider_pack = |id: &str, major, minor| {
+        pack(
+            id,
+            BTreeMap::new(),
+            vec![],
+            vec![query_port(major, minor, false)],
+            vec![],
+            vec![],
+            vec![],
+        )
+    };
+    let consumer_pack = |major, minor, optional| {
+        pack(
+            "local.consumer",
+            BTreeMap::new(),
+            vec![],
+            vec![],
+            vec![query_port(major, minor, optional)],
+            vec![],
+            vec![],
+        )
+    };
+    let contracts = contracts_with_query_versions(&[(1, 1, "string"), (2, 0, "u32")]);
+    let provider_id = PackId::parse("local.provider").unwrap();
+
+    // Newer provider, older consumer, and the reverse, both connect.
+    for (provides, consumes) in [((1, 1), (1, 0)), ((1, 0), (1, 1))] {
+        let packs = vec![
+            contracts.clone(),
+            provider_pack("local.provider", provides.0, provides.1),
+            consumer_pack(consumes.0, consumes.1, false),
+        ];
+        let compiled = compile(&profile(&packs), &packs)
+            .unwrap_or_else(|e| panic!("{provides:?} -> {consumes:?}: {e:?}"));
+        assert_eq!(
+            compiled.bindings[&query_ref(consumes.0, consumes.1)],
+            vec![provider_id.clone()]
+        );
+    }
+
+    // A different major does not connect, whichever side is newer.
+    for (provides, consumes) in [((2, 0), (1, 0)), ((1, 0), (2, 0))] {
+        let packs = vec![
+            contracts.clone(),
+            provider_pack("local.provider", provides.0, provides.1),
+            consumer_pack(consumes.0, consumes.1, false),
+        ];
+        has_error(compile(&profile(&packs), &packs), "required-port");
+        let optional = vec![
+            contracts.clone(),
+            provider_pack("local.provider", provides.0, provides.1),
+            consumer_pack(consumes.0, consumes.1, true),
+        ];
+        let compiled = compile(&profile(&optional), &optional).unwrap();
+        assert!(
+            !compiled
+                .bindings
+                .contains_key(&query_ref(consumes.0, consumes.1)),
+            "optional consumer must stay unbound across majors"
+        );
+    }
+
+    // An adapter Pack that consumes one major and provides the other connects.
+    let adapter = pack(
+        "local.adapter",
+        BTreeMap::new(),
+        vec![],
+        vec![query_port(1, 0, false)],
+        vec![query_port(2, 0, false)],
+        vec![],
+        vec![],
+    );
+    let packs = vec![
+        contracts,
+        provider_pack("local.provider", 2, 0),
+        adapter,
+        consumer_pack(1, 0, false),
+    ];
+    let compiled = compile(&profile(&packs), &packs).unwrap();
+    assert_eq!(
+        compiled.bindings[&query_ref(1, 0)],
+        vec![PackId::parse("local.adapter").unwrap()]
+    );
+    assert_eq!(compiled.bindings[&query_ref(2, 0)], vec![provider_id]);
+}

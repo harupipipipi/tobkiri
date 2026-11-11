@@ -639,3 +639,36 @@ fn input_operation_must_exist_in_the_exact_authoritative_port_view() {
     view.kind = ShapeKind::Data;
     assert!(input_function(&m, &declaration, &view).is_err());
 }
+
+// Issue #1520 acceptance 11 (R3.5): `untyped` is a closed, explicit declaration.
+#[test]
+fn explicit_untyped_ports_load_and_malformed_declarations_are_rejected() {
+    let files = BTreeMap::from([("a.txt".into(), b"x".to_vec())]);
+    let untyped = |name: &str, direction: &str| UntypedPort {
+        name: name.into(),
+        direction: direction.into(),
+    };
+    let mut m = manifest("local.loose", &files);
+    m.ports.untyped = vec![
+        untyped("local.loose.free", "provides"),
+        untyped("local.loose.free", "consumes"),
+    ];
+    let loaded = verify(&m, &files).unwrap();
+    assert_eq!(loaded.manifest.ports.untyped.len(), 2);
+    assert!(loaded.manifest.ports.provides.is_empty());
+    assert!(loaded.manifest.ports.consumes.is_empty());
+
+    for bad in [
+        vec![untyped("local.loose.free", "both")],
+        vec![untyped("", "provides")],
+        vec![untyped("   ", "consumes")],
+        vec![
+            untyped("local.loose.free", "provides"),
+            untyped("local.loose.free", "provides"),
+        ],
+    ] {
+        let mut m = manifest("local.loose", &files);
+        m.ports.untyped = bad.clone();
+        assert!(verify(&m, &files).is_err(), "{bad:?} must be rejected");
+    }
+}
