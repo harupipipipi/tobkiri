@@ -2443,6 +2443,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   採用やPython廃止の根拠にはしない。
 
 
+- 2026-11-11 作業単位03: 新たな固定属性名intern化候補（`app_schema/references.rs`
+  の22呼出し/12種類）と、その`app_schema_reference_checks.py`の追加検査は、両方とも
+  作業開始時HEAD `2c0bab21a` の内容へ戻した。既存の過去に検証されたintern化まで
+  撤去したものではない。今回の候補は実compile/native/Wasm検証を一度も通していない。
+  PyO3 0.30.1の`intern!`はinterpreterキーを持たないstatic `PyOnceLock<Py<PyString>>`
+  を使うため、「interpreter lifetime」と同一視しない。実Wasm構成でStoreごとに当該
+  module/staticが独立生成される証拠を今回確立できなかった。再開条件は実構成での所有・
+  破棄の証明、またはStore/interpreterが所有する有界metadataへの置換とcold費用の計上。
+  実descriptor lookup/call順・名前object identity・例外参照を維持し、元native比較と
+  非計測cold42/full gateを再検証する。Cは残課題で、性能効果や採用を主張しない。
+
+
 ### 2026-11-03: 実cold schema入口の確認と残る燃料上限
 
 - `0e59ab5c5`の計測専用CI41535218618はproducer185件とCore固定import6件に成功。
@@ -2463,3 +2475,69 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   正規bindingし、初期化・IOを含むwhole同一Store累積予算で検証する。
   Astra high回答に従い、genuine側へ追加計測を増やすことや、予算増加・cache先入れ・
   検査省略で代替しない。旧Python/VM削除とGUI採用は未資格のまま。
+
+
+### 2026-11-11: 作業単位03・計測診断の修正（未検証）
+
+- source: `bootstrap_catalog_actual_ci.rs` / `bootstrap_runtime.rs` /
+  `bootstrap_schema_diagnostic_ci.rs`、producerの`harness_native/schema_checkpoint.py` /
+  `schema_diagnostic_stage.py` / `harness_native_ci_inputs.py`と対応検査・workflow。
+- 実行前エラーを捨てる`drop(outcome)`を除き、実エラーのcontextを残して診断は常に失敗
+  させる。事前parse失敗もunavailableへ記録し、最初の記録前のreject/前払い失敗は
+  record DATAを出さないscalar Statusから読める。Traceの説明はTrace直上に置く。
+- 69タグ×start/end＋store入口の139記録と、1回限りのsequence140超過通知へ揃える。
+  load_schema失敗はcacheされないため、再試行による超過でGuestの本来の例外を
+  RuntimeErrorへ置換しない。Hostは検証済み超過通知をACKしoverflow/unavailableを残す。
+  Guest sequenceは140で飽和し、以降の観測を増やさない。記録・snapshot・16KiB報告の
+  前払いは元account内のまま。fuel/64MiB/絶対deadline/8 snapshot試行は増やさない。
+- 無意味な報告bufferテストを実write_schema_traceの全139行・hash・bytes・予約解放検査へ
+  置き換えた。prefix `ci_schema_checkpoint_` はsource上7関数で、workflowのexpected-passed
+  とworkflow検査も7へ一致。残るWAT中の128はmemory address、parseのwork128は既存課金で、
+  記録数128/129の古い期待値ではない。
+- 維持/除去条件: genuine validator・cache失敗・正常終了のみの記録・元の全予算と実cleanupを
+  維持。診断はqualification=falseのまま、非計測whole/cold/fullや製品採用の証拠に数えない。
+  計測の役目が終わるまで保持し、移植parityを示す前にlegacyを削除しない。
+- 状態: AST/YAML/rustfmt edition2024/diff静的確認のみ。Rust compile/test・Guest・pytest・
+  CIは未実行。git addは共有gitdirのindex.lock作成がOperation not permittedで拒否され、
+  **コミット未作成**。この節と次節のcommit欄は、オーケストレーターの通常commit後に補記する。
+
+## 026: legacyの自己申告承認・実行経路を正規の門へ戻す（未検証）
+
+- source/変更1: `core_runtime/egress_proxy.py`と`python_file_executor.py`。
+  HTTPのowner自己申告とloopbackだけの識別を既存IpcAuthManagerのPack tokenへ変更し、
+  正規executorの親でtokenを発行してからforkする。CORSのwildcardを除き、grant manager不在と
+  transport失敗はallowed=false。UDSは従来のsocket-bound identityを維持する。
+- **残課題: permissive hostのforkは親の認証辞書を含むメモリを継承する**。callbackが保持する
+  接続情報を狭めてもメモリ隔離にはならない。HTTP認証修正で敵対Pack間の隔離を認定しない。
+  解消条件は親のauthority/secretを継承しない実行所有境界（既定Wasm等）の実証と、既存UDS/
+  host policy/承認/監査のparity。既存host経路を未証明の代替で削除しない。
+- source/変更2: `blocks/chat/_compact_helpers.py` / `auto_compact.py`。
+  任意のapproved/tokenを信用せず、既存server contextまたはoperation・実引数hashに結び付く
+  一回限りtokenを検証する。会話revisionをserver側で引数へ結び、既存approval requestへ
+  実API replay情報を残す。要約・保護範囲・通常の承認UIを維持し、偽のcoding tool IDを作らない。
+- source/変更3: `domain/agent/self_improvement_live_loop.py` / `self_improvement_runtime.py`と
+  `blocks/agent/self_improvement_run.py`。
+  shell=True/direct GitOps/自作承認flagsを除去し、選択済みtrusted workspaceの正規list/getに
+  ID/root/mount revisionを束縛する。毎toolで再検査し、terminal cwdはjail内相対pathへ変換して
+  通常coding block・approval・host authorityへ渡す。開始時の承認は将来のモデルtoolへ継承しない。
+  approval_pendingを永続化して停止し、既存のexact one-shot followupへ委ねる。API再試行は
+  pendingを再利用してモデルやmutationを繰り返さず、multiも最初のpendingで止める。
+  state pathは既定/指定の両方をresolveしてworkspace外を拒否する。
+- 同sourceで発見した重複/不整合: TOOL_DEFINITIONSのトップレベルparametersは既存schema
+  adapterが読まず空schemaになっていた。adapterのinput_schema経路へ渡し、正規workspace IDを
+  各schemaへ束縛する。providerへの変換は既存domain/tool/schema_adapterへ任せ、独自変換を増やさない。
+- source/変更4: `blocks/sandbox/api.py`のdesktop access grant。
+  approvedは必須のexact boolとし、欠落/None/数値/文字列等はmanagerを呼ばず400にする。
+  正規ownerのTrue/False判断と下流の所有・承認検査を維持する。
+- source/CI: `.github/workflows/issue-1520-security-regressions.yml`。
+  手動とsoon宛PRの対象path更新で、Linux/macOSの4直接回帰とtool protocol/coding hardening/
+  terminal policyの既存回帰を実行する。contents:readのみ、credentials非保持、3 actionを
+  commit SHA固定（git ls-remoteのtag照合のみ実施）。secret/contextの注入はなし。
+  依存は既存hash付きruntime/dev exportを既存installerからCI上のみ導入する。
+- 維持/整理・除去条件: client/modelの自己承認やterminal承認で既存GUIの門を置換しない。
+  独立した新executor/approval frameworkを増やさず、通常の承認・jail・監査を通す。
+  実回帰・正常呼出し・one-shot/引数変更/拒否・fork/UDSをCIで確認してから修正成功を認定する。
+- 状態/commit: **未検証、未コミット**（上記gitdir書込拒否）。新規skipは追加していない。
+  Ruffの残るF401 7件はtest_egress_proxy.pyのHEAD由来（元8件のうちMagicMockは新検査で使用）。
+  無関係なunused import削除を戻し、ruff formatは使っていない。実テスト/製品/依存導入は
+  ローカルでもCIでも未実行。全受け入れ条件・inventory・legacy削除条件は未完のまま。
