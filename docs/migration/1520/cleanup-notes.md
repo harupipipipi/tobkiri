@@ -3223,6 +3223,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [原本・Rust CI 43498647143](https://github.com/harupipipipi/tobkiri/actions/runs/43498647143)
   を起動した。確認を受け取った後のpreview catalog、登録済みProfileの復旧、認証済み
   handover、全カタログの燃料制限とGUI検証が残る。
+- `590a7d8a6` は元のレビューが返す表示用catalogと確認文書を観測する。配布fixtureの
+  Profileは1件。catalogの他のフィールドが同じ実オブジェクトを指し、確認の浅いコピーが
+  元の値の参照を保つことを検査する。`52acfc911` で元のHostのSetup一覧まで実行し、
+  表示順、確認digestと一覧全体のdigestを記録する。
+  [表示用catalogの原本CI 43500116695](https://github.com/harupipipipi/tobkiri/actions/runs/43500116695)で
+  Linuxの原本観測が成功した。[一覧の原本CI 43500923792](https://github.com/harupipipipi/tobkiri/actions/runs/43500923792)も
+  Linuxで原本観測を通過し、Rust側の検証を継続中。
+- `b93226a1f` は元の `catalog_with_profiles` と `setup_listing` を同じStoreで呼び、確認文書を
+  参照のまま渡す。元のSetupスキーマを通った一覧をRustで受け、確認の全内容と表示状態を
+  照合する。既存のLauncher workerは元の64 MiB枠で一覧のUTF-8を確保し、Storeの終了と
+  shutdown状態の確認後に返せる。製品のGUI経路への採用と実表示は未検証。
+  前回のLinux確認試験はOS固有の永続ストレージを開けず失敗した。文書の受入検査には
+  テスト用の割当を使い、実ストレージの試験は既存のmacOS経路で継続する。
+  [Rust検証 43500681279](https://github.com/harupipipipi/tobkiri/actions/runs/43500681279)と
+  [Wasm CI 43500714040](https://github.com/harupipipipi/tobkiri/actions/runs/43500714040)を開始した。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
