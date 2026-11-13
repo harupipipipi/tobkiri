@@ -242,7 +242,7 @@ fn repr_never_escapes_writer_funding_or_capacity_failures() {
 fn generated_tables_are_pinned_sorted_and_scratch_bound_covers_hangul() {
     assert_eq!(crate::unicode15_1_data::UNICODE_VERSION, "15.1.0");
     assert_eq!(crate::unicode15_1_data::PYTHON_VERSION, "3.13.16");
-    assert!(MAX_CANONICAL_EXPANSION >= 3);
+    const { assert!(MAX_CANONICAL_EXPANSION >= 3) };
     assert!(CCC.windows(2).all(|w| w[0].0 < w[1].0));
     assert!(
         CCC.iter()

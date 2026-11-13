@@ -210,15 +210,24 @@ fn key_identity(root: &Path) -> anyhow::Result<KeyIdentity> {
     })
 }
 
-fn index_identity(root: &Path) -> anyhow::Result<Option<(u64, u64, u64, u32, u64)>> {
+#[derive(PartialEq, Eq)]
+struct IndexIdentity {
+    device: u64,
+    inode: u64,
+    links: u64,
+    mode: u32,
+    length: u64,
+}
+
+fn index_identity(root: &Path) -> anyhow::Result<Option<IndexIdentity>> {
     match fs::symlink_metadata(root.join("profiles/index.json")) {
-        Ok(meta) => Ok(Some((
-            meta.dev(),
-            meta.ino(),
-            meta.nlink(),
-            meta.mode(),
-            meta.len(),
-        ))),
+        Ok(meta) => Ok(Some(IndexIdentity {
+            device: meta.dev(),
+            inode: meta.ino(),
+            links: meta.nlink(),
+            mode: meta.mode(),
+            length: meta.len(),
+        })),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }

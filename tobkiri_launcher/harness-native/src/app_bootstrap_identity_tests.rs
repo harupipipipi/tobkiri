@@ -25,10 +25,10 @@ impl Default for Meter {
 impl UnicodeWork for Meter {
     type Error = MeterError;
     fn charge_work(&mut self, amount: u64) -> std::result::Result<(), Self::Error> {
-        if amount == 0 {
-            if let Some(error) = self.reject_check {
-                return Err(error);
-            }
+        if amount == 0
+            && let Some(error) = self.reject_check
+        {
+            return Err(error);
         }
         self.remaining = self
             .remaining
