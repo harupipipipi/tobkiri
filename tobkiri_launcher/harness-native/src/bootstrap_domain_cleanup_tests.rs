@@ -125,8 +125,7 @@ async fn cleanup_failure_retains_domain_bytes_and_the_actual_cleanup_error() -> 
     let original: &(dyn std::error::Error + 'static) = cleanup.as_ref();
     let pointer = original as *const dyn std::error::Error;
     let failure = initialization_domain_after_cleanup(domain, Err(cleanup))
-        .err()
-        .expect("cleanup failure was lost");
+        .expect_err("cleanup failure was lost");
     let outer: &(dyn std::error::Error + 'static) = failure.as_ref();
     let failure = outer
         .downcast_ref::<BootstrapDomainCleanupFailure>()

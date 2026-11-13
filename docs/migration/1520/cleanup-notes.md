@@ -3014,4 +3014,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   警告を検出した。`86f18a7f2` で検査を保ったまま直し、
   [全体CI 43421823935](https://github.com/harupipipipi/tobkiri/actions/runs/43421823935)で
   Linux foundationsとstrict Clippy、Python比較、macOSの型検査が成功した。
-  macOS実行と、未移植を検出している最終ゲートは別に追う。
+  macOSではRustワークスペース1,458件と実Python Packの順序・Tool Caller・共有モジュールの
+  再生も成功した。macOSのstrict Clippyは、テスト内の未使用import1件と
+  `.err().expect()` 2件を検出した。未使用importは `873695897` で修正済み。
+  残りは実エラーをそのまま検査する `expect_err` に揃えた。未移植を検出する最終ゲートは
+  引き続き失敗する。

@@ -792,9 +792,7 @@ fn snapshot_stays_in_scope_and_keeps_protocol_failure_separate_from_close() -> a
         reason_digest: reason.as_str().into(),
     };
     let failure = || {
-        snapshot::digest(&op, &unsafe_record, bundle)
-            .err()
-            .expect("actual canonical range failure")
+        snapshot::digest(&op, &unsafe_record, bundle).expect_err("actual canonical range failure")
     };
     let canonical = io::finish_scope::<Digest>(Err(failure()), Ok(())).unwrap_err();
     assert_eq!(
