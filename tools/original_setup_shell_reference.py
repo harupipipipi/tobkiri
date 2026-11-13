@@ -21,6 +21,8 @@ CASES = (
     "selected-shell", "missing-artifact-root", "symlink-artifact-root",
     "symlink-selected-artifact", "missing-selected-artifact",
     "symlink-at-tree-entry", "missing-at-tree-entry",
+    "entrypoint-missing-after-tree", "entrypoint-symlink-after-tree",
+    "entrypoint-bytes-after-tree",
 )
 ARTIFACT_ROOT = "ecosystem/defaultspack/platform-artifacts"
 
@@ -111,7 +113,9 @@ def _observe(
     root = runtime / ARTIFACT_ROOT
     parked = root.with_name("reference-parked-platform-artifacts")
     artifact = root / variant["relative_path"]
+    entrypoint = root / variant["entrypoint"]
     moved: tuple[Path, Path] | None = None
+    changed_entrypoint: bytes | None = None
     verifier = original.verify_platform_artifact.__code__
     pack = resolve_default_profile.__code__
     if Path(verifier.co_filename).resolve() != runtime / "tobkiri_protocol/platform_artifact.py":
@@ -136,7 +140,7 @@ def _observe(
         calls.append([operation, path.relative_to(runtime).as_posix()])
 
     def trace(frame: FrameType, event: str, value: Any) -> Any:
-        nonlocal active, moved
+        nonlocal active, moved, changed_entrypoint
         code = frame.f_code
         if event == "call":
             frame.f_trace_lines = False
@@ -170,17 +174,20 @@ def _observe(
                 return trace
             if active and code is reader:
                 return trace
-            if (
-                active and code is tree and parent is not None and parent.f_code is verifier
-                and case in {"symlink-at-tree-entry", "missing-at-tree-entry"}
-            ):
-                if moved is not None or frame.f_locals["path"] != artifact:
+            if active and code is tree and parent is not None and parent.f_code is verifier:
+                if frame.f_locals["path"] != artifact:
                     raise AssertionError("tree entry did not reuse the selected Shell")
-                directory = artifact.is_dir()
-                artifact.rename(parked)
-                moved = (artifact, parked)
-                if case == "symlink-at-tree-entry":
-                    artifact.symlink_to(Path("..") / parked.name, target_is_directory=directory)
+                if case in {"symlink-at-tree-entry", "missing-at-tree-entry"}:
+                    if moved is not None:
+                        raise AssertionError("the selected Shell was already moved")
+                    directory = artifact.is_dir()
+                    artifact.rename(parked)
+                    moved = (artifact, parked)
+                    if case == "symlink-at-tree-entry":
+                        artifact.symlink_to(
+                            Path("..") / parked.name, target_is_directory=directory,
+                        )
+                return trace
             if (
                 active and code in paths and parent is not None
                 and parent.f_code.co_filename == verifier.co_filename
@@ -189,6 +196,18 @@ def _observe(
                     raise AssertionError("original Shell used a non-strict path resolution")
                 record(paths[code], frame.f_locals["self"])
             return None
+        if event == "return" and code is tree and case.startswith("entrypoint-"):
+            if value != variant["artifact_digest"] or moved is not None:
+                raise AssertionError("entrypoint mutation preceded the original tree digest")
+            if case == "entrypoint-bytes-after-tree":
+                changed_entrypoint = entrypoint.read_bytes()
+                entrypoint.write_bytes(b"modified after the original tree digest")
+            else:
+                holding = entrypoint.with_name("reference-parked-entrypoint")
+                entrypoint.rename(holding)
+                moved = (entrypoint, holding)
+                if case == "entrypoint-symlink-after-tree":
+                    entrypoint.symlink_to(holding.name)
         if event == "return" and code is reader:
             local = frame.f_locals
             path, header = local["path"], local["header"]
@@ -234,6 +253,8 @@ def _observe(
                 if path.is_symlink():
                     path.unlink()
                 holding.rename(path)
+            if changed_entrypoint is not None:
+                entrypoint.write_bytes(changed_entrypoint)
 
     if not active or user_data.exists():
         raise AssertionError("Shell reference missed the original call or wrote user state")
@@ -285,6 +306,8 @@ def _check(
             != expected_open_sequence
         ):
             raise AssertionError((case, outcome, calls, reads))
+    elif case.startswith("entrypoint-"):
+        _check_entrypoint(case, variant, tree_files, calls, reads, outcome)
     else:
         error = outcome.get("error", {})
         if case == "missing-artifact-root":
@@ -332,6 +355,54 @@ def _check(
             )
         if outcome.get("outcome") != "error" or not expected or reads:
             raise AssertionError((case, outcome, calls, reads))
+
+
+def _check_entrypoint(
+    case: str, variant: dict, tree_files: list[str], calls: list[list[str]],
+    reads: list[dict], outcome: dict,
+) -> None:
+    entrypoint = f"{ARTIFACT_ROOT}/{variant['entrypoint']}"
+    artifact = f"{ARTIFACT_ROOT}/{variant['relative_path']}"
+    entry_checks = {
+        "entrypoint-missing-after-tree": (
+            [["resolve", entrypoint]], "packaged artifact entrypoint is missing or outside artifact",
+        ),
+        "entrypoint-symlink-after-tree": (
+            [["resolve", entrypoint], ["resolve", artifact], ["is-symlink", entrypoint]],
+            "packaged artifact entrypoint is not a regular file",
+        ),
+        "entrypoint-bytes-after-tree": (
+            [["resolve", entrypoint], ["resolve", artifact], ["is-symlink", entrypoint],
+             ["is-file", entrypoint], ["reader-open-member", entrypoint],
+             ["reader-closed", entrypoint]],
+            "packaged artifact entrypoint digest does not match",
+        ),
+    }
+    expected, reason = entry_checks[case]
+    repeated_read = case == "entrypoint-bytes-after-tree"
+    expected_reads = [*tree_files, *([variant["entrypoint"]] if repeated_read else [])]
+    error = outcome.get("error", {})
+    cause = error.get("cause") or {}
+    inner = cause.get("cause") or {}
+    if (
+        outcome.get("outcome") != "error"
+        or error.get("type") != DENIED_CLASS
+        or error.get("message") != f"verified Shell artifact rejected: {reason}"
+        or error.get("context") != {"ref": cause.get("id")}
+        or not error.get("suppressed")
+        or cause.get("type") != "tobkiri_protocol.errors.ProtocolError"
+        or cause.get("message") != reason
+        or (case == "entrypoint-missing-after-tree" and (
+            inner.get("type") != "builtins.FileNotFoundError" or inner.get("errno") != 2
+            or inner.get("filename") != "$USER_DATA/" + entrypoint
+            or cause.get("context") != {"ref": inner.get("id")}
+        ))
+        or (case != "entrypoint-missing-after-tree" and inner)
+        or calls[-len(expected):] != expected
+        or [row["path"] for row in reads] != expected_reads
+        or not all(row["stable"] and not row["header"] for row in reads)
+    ):
+        raise AssertionError((case, outcome, calls, reads))
 
 
 def observe_shell(original: Path, runtime: Path, output: Path) -> None:
