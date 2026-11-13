@@ -3176,7 +3176,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元の `ResolvedDefaultProfile` と Profile・Lock・Plan を同じStoreの参照として保持する。
   Rustは完了済みの物理Shell検証、参照のscope、4件の独立性、解放対象を照合する。
   [Wasm CI 43491915570](https://github.com/harupipipipi/tobkiri/actions/runs/43491915570)
-  でportableテストとWasm構築が成功し、macOSの実行試験を進めている。
+  はportableテストとWasm構築、macOSで実Runtime初期化・物理ソースの検証、
+  戻り値の受け入れ条件・Coreへの引き継ぎを通過した。
 - `5476f2994` の[原本CI 43492718553](https://github.com/harupipipipi/tobkiri/actions/runs/43492718553)
   はLinux/macOSの各10件のShell試験と、配布Profileの解決成功および古いApplication Pack
   digestによる拒否を通過した。成功時は元のPortが同じ戻り値を返し、Profile v5、Plan v2、
@@ -3190,7 +3191,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   projectionの権限は発行しない。将来の整理では、原本との差分が通った後に既存の
   getterとprojection用のscope・FD・応答生成の共通部分を再点検する。
   [Rust/Wasm CI 43493671067](https://github.com/harupipipipi/tobkiri/actions/runs/43493671067)
-  は実行待ち。全カタログの燃料制限と `bootstrap_confirmation` 前のHost処理が残る。
+  を実行中。全カタログの燃料制限と `bootstrap_confirmation` 前のHost処理が残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
