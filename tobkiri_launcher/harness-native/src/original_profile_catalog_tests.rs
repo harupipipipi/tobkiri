@@ -307,7 +307,7 @@ async fn pack_resolver_lock_only_rereads_the_completed_loaders_fixed_occurrence(
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn pack_resolver_checks_original_root_and_selected_shell_path_in_order() {
+async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
     for case in [
         "present",
         "missing",
@@ -317,6 +317,10 @@ async fn pack_resolver_checks_original_root_and_selected_shell_path_in_order() {
         "parent-replaced",
         "leaf-symlink",
         "leaf-missing",
+        "regular-leaf",
+        "symlink-at-tree-entry",
+        "missing-at-tree-entry",
+        "symlink-before-type",
         "nested-variant",
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         "search-only-root",
@@ -338,6 +342,8 @@ async fn pack_resolver_checks_original_root_and_selected_shell_path_in_order() {
             let leaf = artifact.join(selected_path);
             if case == "leaf-symlink" {
                 std::os::unix::fs::symlink("../different-leaf", &leaf).unwrap();
+            } else if case == "regular-leaf" {
+                fs::write(&leaf, b"Shell fixture").unwrap();
             } else if case != "leaf-missing" {
                 fs::create_dir_all(&leaf).unwrap();
             }
@@ -499,7 +505,7 @@ async fn pack_resolver_checks_original_root_and_selected_shell_path_in_order() {
                     ));
                 }
                 assert!(inspect(io, "resolve", original, json!([true])).is_err());
-                assert!(!io.pack_resolve_shell_leaf_completed());
+                assert!(!io.pack_resolve_shell_tree_entry_completed());
                 return;
             }
             let expected = if case == "sibling-link" {
@@ -575,11 +581,52 @@ async fn pack_resolver_checks_original_root_and_selected_shell_path_in_order() {
                         inspect(io, "is-symlink", selected_parent, json!([])).unwrap()["value"],
                         case == "root-symlink-after-leaf",
                     );
+                    assert!(!io.pack_resolve_shell_tree_entry_completed());
+                    assert!(inspect(io, "is-file", selected.clone(), json!([])).is_err());
+                    if matches!(case, "symlink-at-tree-entry" | "missing-at-tree-entry") {
+                        fs::rename(&leaf, artifact.join("parked-leaf")).unwrap();
+                        if case == "symlink-at-tree-entry" {
+                            std::os::unix::fs::symlink("parked-leaf", &leaf).unwrap();
+                        }
+                    }
+                    if case == "root-symlink-after-leaf" {
+                        assert!(inspect(io, "is-symlink", selected.clone(), json!([])).is_err());
+                    } else {
+                        assert_eq!(
+                            inspect(io, "is-symlink", selected.clone(), json!([])).unwrap()["value"],
+                            case == "symlink-at-tree-entry",
+                        );
+                    }
+                    if case == "symlink-before-type" {
+                        fs::rename(&leaf, artifact.join("parked-leaf")).unwrap();
+                        std::os::unix::fs::symlink("parked-leaf", &leaf).unwrap();
+                    }
+                    let file = inspect(io, "is-file", selected.clone(), json!([]));
+                    if matches!(
+                        case,
+                        "root-symlink-after-leaf" | "symlink-at-tree-entry" | "symlink-before-type"
+                    ) {
+                        assert!(file.is_err());
+                    } else {
+                        assert_eq!(file.unwrap()["value"], case == "regular-leaf");
+                    }
+                    let directory = inspect(io, "is-dir", selected.clone(), json!([]));
+                    if matches!(
+                        case,
+                        "present" | "leaf-missing" | "search-only-root" | "missing-at-tree-entry"
+                    ) {
+                        assert_eq!(
+                            directory.unwrap()["value"],
+                            matches!(case, "present" | "search-only-root"),
+                        );
+                    } else {
+                        assert!(directory.is_err());
+                    }
                 }
             }
             assert_eq!(
-                io.pack_resolve_shell_leaf_completed(),
-                matches!(case, "present" | "leaf-missing" | "search-only-root")
+                io.pack_resolve_shell_tree_entry_completed(),
+                matches!(case, "present" | "regular-leaf" | "search-only-root")
             );
             assert!(inspect(io, "is-symlink", selected, json!([])).is_err());
         });

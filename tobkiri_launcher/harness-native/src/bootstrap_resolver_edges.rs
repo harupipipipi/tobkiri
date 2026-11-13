@@ -176,10 +176,10 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
             ("bindings", bindings.clone()),
         ],
     )?;
-    run_profile_to_artifact_leaf(review, pack, scope, &request, profile_id_text).await
+    run_profile_to_artifact_read(review, pack, scope, &request, profile_id_text).await
 }
 
-async fn run_profile_to_artifact_leaf<S: BootstrapInputOwner + BootstrapReviewOwner>(
+async fn run_profile_to_artifact_read<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
@@ -224,10 +224,10 @@ async fn run_profile_to_artifact_leaf<S: BootstrapInputOwner + BootstrapReviewOw
             .unwrap_or_else(|error| error.into_inner())
             .as_ref()
             .is_some_and(
-                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_leaf_completed,
+                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_tree_entry_completed,
             )
     {
-        bail!("original resolver stopped before the selected Shell path checks completed");
+        bail!("original resolver stopped before the Shell tree entry checks completed");
     }
     Ok(BootstrapReviewFailure::NotBound(
         BootstrapReviewReachpoint::ResolvePlatformArtifactsNotBound,

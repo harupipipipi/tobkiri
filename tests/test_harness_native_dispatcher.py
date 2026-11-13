@@ -1394,7 +1394,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 steps = [["parent", ""], ["join", "platform-artifacts"]]
             elif len(calls) == 5:
                 steps = [["shell-resolved-root", ""]]
-            elif len(calls) in (6, 7):
+            elif len(calls) >= 6:
                 steps = [["shell-resolved-root", ""], ["join", "Tobkiri.app"]]
                 if len(calls) == 7:
                     steps.append(["parent", ""])
@@ -1409,7 +1409,9 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             elif operation == "read-bytes":
                 result = {"kind": "bytes", "value": base64.b64encode(raw_lock).decode()}
             else:
-                result = {"kind": "bool", "value": operation in ("is-file", "is-dir")}
+                result = {"kind": "bool", "value": (
+                    operation == "is-dir" or (operation == "is-file" and len(calls) == 2)
+                )}
             return wire.dumps({
                 "format": PREFIX + "inspection-response.v1",
                 "scope": self.scope.wire(), "result": result,
@@ -1442,13 +1444,14 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         })
         self.assertEqual(calls, [
             "is-symlink", "is-file", "read-bytes", "resolve", "is-symlink", "is-dir",
-            "is-symlink", "is-symlink",
+            "is-symlink", "is-symlink", "is-symlink", "is-file", "is-dir",
         ])
         self.assertEqual(digests, ["sha256:" + hashlib.sha256(raw_lock).hexdigest()])
         self.assertFalse(self.bridge._resolving_catalog)
         self.assertIsNone(self.bridge._resolver_artifact_root)
         self.assertIsNone(self.bridge._resolver_resolved_root)
         self.assertIsNone(self.bridge._resolver_shell_leaf)
+        self.assertIsNone(self.bridge._resolver_tree_kind)
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("resolve_profile", request)
 

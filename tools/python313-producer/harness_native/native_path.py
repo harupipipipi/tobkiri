@@ -25,7 +25,7 @@ _PREFIX = "io.tobkiri.native-inspection-"
 
 
 class _UnboundPlatformArtifacts(BaseException):
-    """Stop the fixed resolver when the selected Shell tree walk begins."""
+    """Stop at the first selected Shell tree read or enumeration."""
 
 
 def _binding(value: Any) -> str:
@@ -82,6 +82,7 @@ class PathBridge:
         self._resolver_artifact_root: NativePath | None = None
         self._resolver_resolved_root: NativePath | None = None
         self._resolver_shell_leaf: NativePath | None = None
+        self._resolver_tree_kind: bool | None = None  # True for file, False for directory.
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -111,6 +112,7 @@ class PathBridge:
         try:
             return target(*args, **kwargs)
         finally:
+            self._resolver_tree_kind = None
             self._resolver_shell_leaf = None
             self._resolver_resolved_root = None
             self._resolver_artifact_root = None
@@ -306,6 +308,9 @@ class NativePath:
         return str(self._pure)
 
     def __fspath__(self) -> str:
+        bridge = self._bridge
+        if self is bridge._resolver_shell_leaf and bridge._resolver_tree_kind is True:
+            raise _UnboundPlatformArtifacts
         return str(self._pure)
 
     def __eq__(self, other: Any) -> Any:
@@ -366,27 +371,29 @@ class NativePath:
         return self._effect("resolve", "path", [strict])
 
     def is_symlink(self) -> bool:
+        result = self._effect("is-symlink", "bool")
         bridge = self._bridge
-        if self is bridge._resolver_shell_leaf:
-            # The actual verifier repeats this call when starting the tree.
-            # Host-side admission checked the first leaf and its parent.
-            raise _UnboundPlatformArtifacts
         root = bridge._resolver_resolved_root
-        if root is not None and self._binding == root._binding:
+        if (root is not None and bridge._resolver_shell_leaf is None
+                and self._binding == root._binding):
             prefix = root._steps
             tail = self._steps[len(prefix):]
             if (self._steps[:len(prefix)] == prefix
                     and len(tail) == 1 and tail[0][0] == "join"):
-                result = self._effect("is-symlink", "bool")
                 bridge._resolver_shell_leaf = self
-                return result
-        return self._effect("is-symlink", "bool")
+        return result
 
     def is_file(self) -> bool:
-        return self._effect("is-file", "bool")
+        result = self._effect("is-file", "bool")
+        if result and self is self._bridge._resolver_shell_leaf:
+            self._bridge._resolver_tree_kind = True
+        return result
 
     def is_dir(self) -> bool:
-        return self._effect("is-dir", "bool")
+        result = self._effect("is-dir", "bool")
+        if result and self is self._bridge._resolver_shell_leaf:
+            self._bridge._resolver_tree_kind = False
+        return result
 
     def read_bytes(self) -> bytes:
         return self._effect("read-bytes", "bytes")
@@ -415,6 +422,9 @@ class NativePath:
             ), "unit")
 
     def iterdir(self) -> Iterator[NativePath]:
+        bridge = self._bridge
+        if self is bridge._resolver_shell_leaf and bridge._resolver_tree_kind is False:
+            raise _UnboundPlatformArtifacts
         # Pinned Python 3.13 Path.iterdir obtains its scandir entries at the
         # method call, before returning its generator. NativeKit must finish
         # that original enumeration here, not defer it to iterator-next.

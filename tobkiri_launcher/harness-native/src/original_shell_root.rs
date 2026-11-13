@@ -14,13 +14,19 @@ impl CatalogIo {
     ) -> anyhow::Result<CoreBuffer> {
         let selected = match self.pack_resolve {
             PackResolve::ShellLeafSymlink => Some(self.selected_shell_leaf()?),
-            PackResolve::ShellLeafParentSymlink => self.shell_leaf.clone(),
+            PackResolve::ShellLeafParentSymlink
+            | PackResolve::ShellTreeSymlink
+            | PackResolve::ShellTreeFile
+            | PackResolve::ShellTreeDirectory => self.shell_leaf.clone(),
             _ => None,
         };
         let selected_name = selected.as_ref().and_then(CoreValue::as_str);
         let valid_steps = match self.pack_resolve {
             PackResolve::ShellDirectory => exact_steps(steps, RESOLVED_STEPS),
-            PackResolve::ShellLeafSymlink => {
+            PackResolve::ShellLeafSymlink
+            | PackResolve::ShellTreeSymlink
+            | PackResolve::ShellTreeFile
+            | PackResolve::ShellTreeDirectory => {
                 let name = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
                 exact_steps(steps, &[RESOLVED_STEPS[0], ("join", name)])
             }
@@ -121,7 +127,10 @@ impl CatalogIo {
                         PackResolve::Spent
                     }
                 }
-                PackResolve::ShellLeafSymlink => {
+                PackResolve::ShellLeafSymlink
+                | PackResolve::ShellTreeSymlink
+                | PackResolve::ShellTreeFile
+                | PackResolve::ShellTreeDirectory => {
                     let name = self
                         .shell_resolved_name
                         .as_deref()
@@ -135,16 +144,42 @@ impl CatalogIo {
                     let root = open_shell_directory(op, &parent, &root_path, name, expected)?;
                     let result = optional_stat_at(op, &root, &leaf_name, || root_path.join(leaf));
                     close_parent(root)?;
-                    let symlink = result?
-                        .as_ref()
-                        .is_some_and(|stat| stat_mode(stat) == mode_bits(libc::S_IFLNK));
-                    write_bool(&mut response, symlink)?;
-                    self.shell_inputs = None;
-                    if symlink {
-                        PackResolve::Spent
-                    } else {
-                        self.shell_leaf = selected.clone();
-                        PackResolve::ShellLeafParentSymlink
+                    let mode = result?.as_ref().map(stat_mode);
+                    match stage {
+                        PackResolve::ShellLeafSymlink | PackResolve::ShellTreeSymlink => {
+                            let symlink = mode == Some(mode_bits(libc::S_IFLNK));
+                            write_bool(&mut response, symlink)?;
+                            if stage == PackResolve::ShellLeafSymlink {
+                                self.shell_inputs = None;
+                                if !symlink {
+                                    self.shell_leaf = selected.clone();
+                                }
+                            }
+                            match (symlink, stage) {
+                                (true, _) => PackResolve::Spent,
+                                (false, PackResolve::ShellLeafSymlink) => {
+                                    PackResolve::ShellLeafParentSymlink
+                                }
+                                (false, _) => PackResolve::ShellTreeFile,
+                            }
+                        }
+                        PackResolve::ShellTreeFile | PackResolve::ShellTreeDirectory => {
+                            if mode == Some(mode_bits(libc::S_IFLNK)) {
+                                // The preceding predicate saw a different entry.
+                                // Do not follow the new link during type checks.
+                                return Err(OriginalAuthorityError::unavailable().into());
+                            }
+                            let file = stage == PackResolve::ShellTreeFile;
+                            let expected = if file { libc::S_IFREG } else { libc::S_IFDIR };
+                            let found = mode == Some(mode_bits(expected));
+                            write_bool(&mut response, found)?;
+                            match (found, file) {
+                                (true, _) => PackResolve::ShellReady,
+                                (false, true) => PackResolve::ShellTreeDirectory,
+                                (false, false) => PackResolve::Spent,
+                            }
+                        }
+                        _ => unreachable!("selected Shell predicate"),
                     }
                 }
                 PackResolve::ShellLeafParentSymlink => {
@@ -163,7 +198,7 @@ impl CatalogIo {
                     if symlink {
                         PackResolve::Spent
                     } else {
-                        PackResolve::ShellReady
+                        PackResolve::ShellTreeSymlink
                     }
                 }
                 _ => return Err(OriginalAuthorityError::unavailable().into()),

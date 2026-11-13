@@ -83,6 +83,9 @@ enum PackResolve {
     ShellDirectory,
     ShellLeafSymlink,
     ShellLeafParentSymlink,
+    ShellTreeSymlink,
+    ShellTreeFile,
+    ShellTreeDirectory,
     ShellReady,
     Spent,
 }
@@ -734,7 +737,7 @@ impl CatalogIo {
         Ok(())
     }
 
-    /// Permit the original lock and Shell root sequence, then the selected leaf.
+    /// Permit the original lock and Shell path sequence up to the first tree read.
     pub(crate) fn inspect_pack_resolve<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
@@ -746,11 +749,12 @@ impl CatalogIo {
             PackResolve::CheckSymlink
             | PackResolve::ShellSymlink
             | PackResolve::ShellLeafSymlink
-            | PackResolve::ShellLeafParentSymlink => "is-symlink",
-            PackResolve::CheckFile => "is-file",
+            | PackResolve::ShellLeafParentSymlink
+            | PackResolve::ShellTreeSymlink => "is-symlink",
+            PackResolve::CheckFile | PackResolve::ShellTreeFile => "is-file",
             PackResolve::Read => "read-bytes",
             PackResolve::ShellResolve => "resolve",
-            PackResolve::ShellDirectory => "is-dir",
+            PackResolve::ShellDirectory | PackResolve::ShellTreeDirectory => "is-dir",
             _ => return Err(OriginalAuthorityError::unavailable().into()),
         };
         let cancellation = self.cancellation.clone();
@@ -782,6 +786,9 @@ impl CatalogIo {
                 | PackResolve::ShellDirectory
                 | PackResolve::ShellLeafSymlink
                 | PackResolve::ShellLeafParentSymlink
+                | PackResolve::ShellTreeSymlink
+                | PackResolve::ShellTreeFile
+                | PackResolve::ShellTreeDirectory
         ) {
             return self.inspect_shell_root(&op, &scope, &steps, budget);
         }
@@ -838,7 +845,7 @@ impl CatalogIo {
         self.pack_resolve == PackResolve::ShellResolve
     }
 
-    pub(crate) fn pack_resolve_shell_leaf_completed(&self) -> bool {
+    pub(crate) fn pack_resolve_shell_tree_entry_completed(&self) -> bool {
         self.pack_resolve == PackResolve::ShellReady
     }
 
