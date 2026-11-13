@@ -2697,6 +2697,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   テキスト差分、会話保存と次のターンへの読み戻し、生成のキャンセル、Secretの
   dispatch 4件と完了4件、Session終了を確認した。承認と入力にはCIのHostを使った。
   製品GUIのSetup、承認、モデル設定から会話までの実機検証が残る。
+- [macOS DMG CI 43379312352](https://github.com/harupipipipi/tobkiri/actions/runs/43379312352)
+  はLauncherのcold boot、DMGの生成とマウント、現行Python資源の照合を通過。
+  PackVM helperとPythonを同梱する既存配布構成での結果。
 
 ## 036: 同時に発生したpublicストアの初回承認
 
@@ -2714,6 +2717,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じ組での再書き込みは新たな承認を求めず、各Profileの実セッションが終了した。
   [CI 43381937895](https://github.com/harupipipipi/tobkiri/actions/runs/43381937895)で
   このWasm試験、従来のStore・Core試験、strict Clippyが成功。
+- `eb986e424` ではProfileの承認DBが、初回要求の既存のpending予約にwriter・owner・storeの
+  組を記録する。短いトランザクションで選んだ先行要求だけが承認を求める。
+  待機中の要求は元の期限と取消を使い、自分の予約と監査でdispatchする。
+  先行要求が承認を残さずに終わった場合、待機中の要求は承認必須で終わる。
+  [同時実行のCI 43387276899](https://github.com/harupipipipi/tobkiri/actions/runs/43387276899)で
+  別のDB接続、拒否・取消・epoch変更、旧DBからの移行を含むStore試験9件が成功。
+- 専用ウィンドウは承認シート単位に応答を受け取る。CLIの`TerminalHost`は同じ端末を
+  共有するため、期限切れの要求に対する入力が次の要求に残り得る。期限切れの承認を
+  通さないGate検証とは別に、端末側で書き込みの回答を個別要求に結び付ける検証が必要。
+  既存Profileワークスペースの三層移行も未完了。
 
 ## 037: SSE受信済みの出力を次のHTTPチャンクまで保持する処理
 
@@ -2767,13 +2780,31 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Astra highは、独自getterが渡された名前の同一性と保持を観測でき、名前の事前生成で
   割り当て失敗の順序も変わり得ると指摘した。次は既存の実イテレーターを保ち、
   組み込みの2要素tuple/listの項目取得で汎用Python dispatchを減らせるか確認する。
+- `adad87779` でexactな2要素tuple/listだけ型付きの読み出しを使った。不正な長さや
+  サブクラスは元のunpackへ渡す。イテレーター本体と保持参照は従来どおり。
+  [native比較 43385081054](https://github.com/harupipipipi/tobkiri/actions/runs/43385081054)
+  は原本64件と19組の制御比較を通過。新しいtuple/listの8ケースも含む。
+- [同じ計測CI 43385264152](https://github.com/harupipipipi/tobkiri/actions/runs/43385264152)
+  では41件目の戻りで104,668,660 fuelが残り、前回より94,411,674多かった。同じ41件の
+  評価区間は1,737,226,028 fuelで、94,366,235減った。42件目の`ui_view_v1`は評価開始を
+  記録してから停止。計測なしの[CI 43385275279](https://github.com/harupipipipi/tobkiri/actions/runs/43385275279)
+  ではcoldとfullの両方が燃料切れ。製品への採用判定は未達。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
-- `bootstrap_review_continuation.rs` はジャーナルのない初回Setupで `CatalogNotBound` を返す。
-  現在の実カタログ接続は既存ジャーナルの復旧側であり、その後も
-  `original_profile_definitions.rs` の旧Profile移行の入口で停止する。
 - 初回Setupでは、元の `bootstrap_review_catalog` がカタログ読み込み後にactive pointer、
-  snapshot、登録済みProfileを確認する。元のカタログを返す条件と、source additionsに
-  対する拒否を分け、Authorityの初期状態と後続の候補解決へつなぐ。
-  復旧側のProfile移行の比較は、この初回Setupの実行とは別に進める。
+  snapshot、登録済みProfileを確認する。
+  [原本CI 43384762882](https://github.com/harupipipipi/tobkiri/actions/runs/43384762882)は
+  pointer不在、別Profile、未登録、dangling、snapshot欠落・不一致、登録済みを
+  source additionsの有無と組み合わせ、Linux・macOSの各14ケースを通過した。
+  登録済みは同じカタログを渡してAuthority DBを開く直前まで実行した。
+- Rust側で、2回の実復旧の後に選択済みHost rootを確保し、同じStoreの実カタログと
+  bootstrap IDを元の順で使う経路を接続した。復旧は既存のジャーナルガードを保持。
+  pointer不在・別Profile・未登録時は元のカタログを保持し、追加ソース要求は既存の
+  拒否ファクトリへ渡す。登録済みでは検証済みpointerと登録レコードを保持する。
+  Authorityと候補解決の本体、実Wasmカタログを経由する全体比較、Launcherへの採用が残る。
+- 公開の復旧側は、定義ストアの旧Profile移行入口が次の境界。
+  [原本CI 43384338921](https://github.com/harupipipipi/tobkiri/actions/runs/43384338921)は
+  既存13ケースを維持し、`migrate_legacy_successors` の8ケースを両OSで実行した。
+  6ケースは整数0、2ケースは元入力または現行リビジョンのフォールバックを選び
+  `_legacy_v4_successor` の入口に達した。実変換と書き込みは次の比較対象。

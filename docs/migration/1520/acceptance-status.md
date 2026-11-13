@@ -638,14 +638,14 @@ the three oversized cases in the earlier five-component replay.
 
 ## Acceptance checklist
 
-Status after the focused CI replays (2026-11-13): items 2, 3, 4, 6, 8, 9, 11,
-12, 13 and 18 are checked (10 of 20). The aggregate
+Status after the focused CI replays (2026-11-13): items 2, 3, 4, 6, 7, 8, 9, 11,
+12, 13 and 18 are checked (11 of 20). The aggregate
 `issue-1520-rust.yml` currently fails earlier at an unrelated Python fixture
 step, so it is not the evidence; the focused workflows
 `issue-1520-acceptance-9-11-12.yml` and `issue-1520-acceptance-13-16.yml` are.
 Open points: 11 lacks the 「未確認の接続」 UI label; 12 uses synthetic WIT; 13
 has R2.10 gaps (no 「持ち主のいないデータ」 marking in Core removal, `policy-view`
-over-rejection); 14 needs concurrent first-write approval and existing-workspace migration;
+over-rejection); 14 needs CLI prompt-lifetime coverage and existing-workspace migration;
 15 needs physical Proc/PTY; 16 needs the populated vault and other storage tiers
 covered in the same publication replay.
 
@@ -721,11 +721,15 @@ approval and rejects invalid original policies and mismatched pins.
    [Core tests](../../../crates/tobkiri-core/src/acceptance_overlay_tests.rs)
    · [CI 43378298202](https://github.com/harupipipipi/tobkiri/actions/runs/43378298202)
 
-7. [ ] **Users can overlay any step.**
-   [Compiler tests](../../../crates/tobkiri-profile/tests/compiler.rs) include
-   `user_overlay_can_override_private_closed_flow` and user-overlay witnesses.
-   Complete current host/CLI configuration and execution coverage while retaining
-   the separately approved User policy and original Pack authority for `next`.
+7. [x] **Users can overlay any step.**
+   The Core replay wrapped and replaced closed steps by shape and by exact
+   Flow key and step ID, under the separately approved User policy. In the
+   ordinary CLI replay, replacing a closed save step produced the replacement
+   output and result, with no original append in SQLite or the Gate audit.
+   Declining the fresh User approval left the imported head and approvals
+   unset. A separately approved import repeated the new behavior.
+   [Core replay 43378298202](https://github.com/harupipipipi/tobkiri/actions/runs/43378298202)
+   · [CLI replay 43384339038](https://github.com/harupipipipi/tobkiri/actions/runs/43384339038)
 
 8. [x] **Neither Pack nor user overlays bypass the Gate.**
    The actual Core replay checked separate User, Flow owner and overlay Pack
@@ -806,9 +810,12 @@ approval and rejects invalid original policies and mismatched pins.
     and `three_tiers_are_isolated_per_profile_and_public_approval_is_per_writer_store_pair`
     passed. The actual Wasm replay verifies all three tiers across two Profiles,
     sequential approval for two writer Packs and two public stores, denied access,
-    and session closure. Concurrent first-write approval and migration of
-    existing Profile workspaces remain.
+    and session closure. The Store regression also exercised simultaneous
+    requests on separate connections, with distinct reservations and a single
+    first-write prompt. Migration of existing Profile workspaces and terminal
+    prompt response isolation still require evidence.
     [Wasm replay 43381937895](https://github.com/harupipipipi/tobkiri/actions/runs/43381937895)
+    · [Concurrent replay 43387276899](https://github.com/harupipipipi/tobkiri/actions/runs/43387276899)
 
 15. [ ] **Native Packs and cross-Profile storage require explicit dangerous permission.**
     [Gate permissions](../../../crates/tobkiri-gate/src/permissions.rs),
