@@ -3269,6 +3269,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   はLinuxの原本観測まで通過。[登録比較用CI 43506665301](https://github.com/harupipipipi/tobkiri/actions/runs/43506665301)
   と[Wasm CI 43506174622](https://github.com/harupipipipi/tobkiri/actions/runs/43506174622)で検証中。
   登録直前のworkspace lock → Host選択lock → 定義CASと、製品GUIでの承認・登録は未接続。
+- `9d1c3291d` と `f0c6276b0` はCIの隔離したuser-dataで、workspace lock、Host選択lock、
+  registry snapshotと独立した再取得によるCASを実行する。後継だけを履歴へ追加し、
+  再署名したcanonical JSONを同一ディレクトリ内でアトミックに置換する。
+  固定原本とindex.jsonをバイト単位で比較し、途中の編集、Host/workspaceのactiveポインター、
+  承認時のdigest不一致を拒否する。書き込みはCIのfixture用で、製品の登録には未接続。
+  `f0c6276b0` は前段階で発見したClippyの条件式も修正した。
+  [承認文書と原本の登録観測 43506665301](https://github.com/harupipipipi/tobkiri/actions/runs/43506665301)
+  はLinux/macOSで成功。新しい[登録CAS比較 43508549743](https://github.com/harupipipipi/tobkiri/actions/runs/43508549743)
+  は実行中。製品への接続後、registry読み込みとcanonical出力後の再パースを一度の所有グラフで
+  置き換えられるか調べる。確定済みの内容、履歴順序、物理ロック、保存形式の比較は維持する。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
