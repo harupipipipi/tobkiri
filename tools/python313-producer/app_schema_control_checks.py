@@ -267,7 +267,7 @@ def control_checks(provider, kernel) -> dict[str, bool]:
         compare(lambda: prefix_order(left_size, right_size))
     checks["prefix_zip_short_side_and_iterator_creation_order"] = True
 
-    def foreign_root(failure):
+    def foreign_root(failure, make_pair=None):
         events, fault = [], RuntimeError("actual foreign pair failure")
 
         class Pair:
@@ -301,6 +301,8 @@ def control_checks(provider, kernel) -> dict[str, bool]:
                         raise fault
                     raise StopIteration
                 self.index += 1
+                if make_pair is not None:
+                    return make_pair(events)
                 return Pair("type", "integer")
 
             def __length_hint__(self):
@@ -318,10 +320,37 @@ def control_checks(provider, kernel) -> dict[str, bool]:
             state["fault"] = fault
         return state
 
+    def sequence_root(container: type, size: int, subclass: bool = False) -> dict:
+        def make_pair(events: list) -> object:
+            values = ("type", "integer", None)[:size]
+            if not subclass:
+                return container(values)
+
+            class Pair(container):
+                def __iter__(self) -> object:
+                    events.append("sequence-subclass-iter")
+                    return iter(("type", "string"))
+
+                def __len__(self) -> int:
+                    raise AssertionError("unpack must use the subclass iterator")
+
+                def __getitem__(self, index: int) -> object:
+                    raise AssertionError("unpack must use the subclass iterator")
+
+            return Pair(values)
+
+        return foreign_root(None, make_pair)
+
     compare(lambda: foreign_root(None))
+    for container in (tuple, list):
+        compare(lambda: sequence_root(container, 2))
+        compare(lambda: sequence_root(container, 2, subclass=True))
     checks["foreign_root_collects_pairs_without_length_hint"] = True
     for failure in ("iter-second", "next", "unpack"):
         compare(lambda: foreign_root(failure))
+    for container in (tuple, list):
+        for size in (1, 3):
+            compare(lambda: sequence_root(container, size))
     checks["foreign_root_next_and_unpack_exception_order_and_identity"] = True
 
     def foreign_key():

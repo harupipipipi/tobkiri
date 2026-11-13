@@ -15,17 +15,25 @@ pub(super) struct Pair {
 }
 impl Pair {
     fn unpack(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let py = value.py();
-        let value = if (value.is_exact_instance_of::<PyTuple>()
-            || value.is_exact_instance_of::<PyList>())
-            && value.len()? == 2
-        {
-            value.clone()
-        } else {
-            // Keep actual UNPACK_SEQUENCE behavior for foreign pairs, including
-            // __iter__, the exhaustion probe and the genuine Python exception.
-            module_member(py, "app_schema_model", "unpack_keyword_pair")?.call1((value,))?
-        };
+        if let Ok(tuple) = value.cast_exact::<PyTuple>() {
+            if tuple.len() == 2 {
+                return Ok(Self {
+                    key: tuple.get_item(0)?.unbind(),
+                    value: tuple.get_item(1)?.unbind(),
+                });
+            }
+        } else if let Ok(list) = value.cast_exact::<PyList>() {
+            if list.len() == 2 {
+                return Ok(Self {
+                    key: list.get_item(0)?.unbind(),
+                    value: list.get_item(1)?.unbind(),
+                });
+            }
+        }
+
+        // Keep UNPACK_SEQUENCE for subclasses, foreign pairs and invalid lengths.
+        let value = module_member(value.py(), "app_schema_model", "unpack_keyword_pair")?
+            .call1((value,))?;
         Ok(Self {
             key: value.get_item(0)?.unbind(),
             value: value.get_item(1)?.unbind(),
