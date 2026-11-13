@@ -33,11 +33,48 @@ const CASES: [&str; 13] = [
 ];
 const ORIGINAL: &str = "1cf025f1eeab31a3daa2861b1f26a025c6954b6e";
 
-struct SelectedFixture {
-    root: PathBuf,
+pub(super) struct SelectedFixture {
+    pub(super) root: PathBuf,
     directory: File,
+    initially_absent: bool,
     process: u32,
     live: AtomicBool,
+}
+impl SelectedFixture {
+    pub(super) fn bind(root: PathBuf) -> anyhow::Result<Self> {
+        let initially_absent = match fs::symlink_metadata(&root) {
+            Ok(named) => {
+                ensure!(named.is_dir(), "selected fixture root must be a directory");
+                false
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+            Err(error) => return Err(error.into()),
+        };
+        let held = if initially_absent {
+            root.parent()
+                .context("absent fixture needs an existing parent")?
+        } else {
+            &root
+        };
+        ensure!(
+            held.canonicalize()? == held,
+            "fixture binding is not canonical"
+        );
+        let directory = File::open(held)?;
+        let source = Self {
+            root,
+            directory,
+            initially_absent,
+            process: std::process::id(),
+            live: AtomicBool::new(true),
+        };
+        source.check_original_owner()?;
+        Ok(source)
+    }
+
+    pub(super) fn retire(&self) {
+        self.live.store(false, Ordering::Release);
+    }
 }
 impl OriginalAuthorityOwner for SelectedFixture {
     fn with_original_user_data<R>(&self, use_root: impl FnOnce(&Path) -> R) -> Result<R> {
@@ -52,8 +89,18 @@ impl OriginalAuthorityOwner for SelectedFixture {
             .directory
             .metadata()
             .map_err(|_| OriginalAuthorityError::unavailable())?;
+        let named_path = if self.initially_absent {
+            let absent = fs::symlink_metadata(&self.root)
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+            if !absent {
+                return Err(OriginalAuthorityError::unavailable());
+            }
+            self.root.parent().expect("bound fixture parent")
+        } else {
+            &self.root
+        };
         let named =
-            fs::symlink_metadata(&self.root).map_err(|_| OriginalAuthorityError::unavailable())?;
+            fs::symlink_metadata(named_path).map_err(|_| OriginalAuthorityError::unavailable())?;
         if !named.is_dir() || (held.dev(), held.ino()) != (named.dev(), named.ino()) {
             return Err(OriginalAuthorityError::unavailable());
         }
@@ -66,7 +113,7 @@ impl crate::BootstrapReviewOwner for SelectedFixture {
     }
 }
 
-fn lock_free(root: &Path, name: &str) -> anyhow::Result<Option<bool>> {
+pub(super) fn lock_free(root: &Path, name: &str) -> anyhow::Result<Option<bool>> {
     let path = root.join("profiles").join(name);
     if !path.try_exists()? {
         return Ok(None);
@@ -83,7 +130,10 @@ fn lock_free(root: &Path, name: &str) -> anyhow::Result<Option<bool>> {
 
 /// Independent observer, matching the original fixture's finite filesystem
 /// projection. Key bytes/digests are deliberately excluded from this output.
-fn filesystem(root: &Path) -> anyhow::Result<Value> {
+pub(super) fn filesystem(root: &Path) -> anyhow::Result<Value> {
+    if !root.try_exists()? {
+        return Ok(json!({"exists":false,"files":[]}));
+    }
     let mut pending = vec![root.to_path_buf()];
     let mut rows = Vec::new();
     while let Some(path) = pending.pop() {
@@ -174,7 +224,7 @@ fn index_identity(root: &Path) -> anyhow::Result<Option<(u64, u64, u64, u32, u64
     }
 }
 
-fn original_error(error: &OriginalAuthorityError) -> Value {
+pub(super) fn original_error(error: &OriginalAuthorityError) -> Value {
     use crate::original_authority::tests;
     if let Some((stage, reason)) = tests::native_issue(error, 0) {
         return json!({"outcome":"native-integration-failure",
@@ -184,11 +234,15 @@ fn original_error(error: &OriginalAuthorityError) -> Value {
     fn os_fields(value: &mut Value) {
         match value {
             Value::Object(fields) => {
-                // The original synthetic OSError subclass has these actual
-                // null fields. No arbitrary type lookup or class substitution.
-                if fields.get("type").and_then(Value::as_str)
-                    == Some("tobkiri_protocol.secure_persistence.SecurePersistenceError")
-                {
+                // Fixed synthetic OSErrors have null fields. Keep actual
+                // errno/filename when the native carrier has a real stat error.
+                if matches!(
+                    fields.get("type").and_then(Value::as_str),
+                    Some(
+                        "tobkiri_protocol.secure_persistence.SecurePersistenceError"
+                            | "builtins.FileNotFoundError"
+                    )
+                ) {
                     fields.entry("errno").or_insert(Value::Null);
                     fields.entry("filename").or_insert(Value::Null);
                 }
@@ -301,12 +355,7 @@ async fn original_profile_definitions_reference_driver() -> anyhow::Result<()> {
                 .as_str()
                 .is_some_and(|v| Path::new(v).is_absolute())
         );
-        let source = SelectedFixture {
-            directory: File::open(&root)?,
-            root,
-            process: std::process::id(),
-            live: AtomicBool::new(true),
-        };
+        let source = SelectedFixture::bind(root)?;
         let before = filesystem(&source.root)?;
         ensure!(
             before == case["user_data_before"],
@@ -435,7 +484,7 @@ async fn original_profile_definitions_reference_driver() -> anyhow::Result<()> {
             && reached_match
             && cleanup_ok
             && capacity_ok;
-        source.live.store(false, Ordering::Release);
+        source.retire();
         drop(source);
         drop(invocation);
         drop(owner);

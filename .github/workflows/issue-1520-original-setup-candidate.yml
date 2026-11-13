@@ -11,6 +11,13 @@ name: Issue 1520 original Setup candidate selection
       - tools/original_active_profile_fixtures.py
       - tools/original_authority_reference.py
       - tools/original_publication_reference.py
+      - tools/quality/issue_1520_ci.py
+      - tobkiri_launcher/harness-native/src/original_active_profile.rs
+      - tobkiri_launcher/harness-native/src/original_authority.rs
+      - tobkiri_launcher/harness-native/src/original_authority_tests.rs
+      - tobkiri_launcher/harness-native/src/original_profile_definitions*.rs
+      - tobkiri_launcher/harness-native/src/original_profile_publication*.rs
+      - tobkiri_launcher/harness-native/src/original_setup_candidate*.rs
       - .github/workflows/issue-1520-original-setup-candidate.yml
 
 permissions:
@@ -27,7 +34,11 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 40
+    env:
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,15 +60,45 @@ jobs:
             --only-binary=:all: --require-hashes \
             -r "$RUNNER_TEMP/original-setup-candidate-requirements.txt"
       - name: Observe the original Setup candidate selection
+        env:
+          PREPARE_NATIVE_INPUTS: ${{ runner.os == 'macOS' && runner.arch == 'ARM64' }}
+        run: |
+          native=()
+          if [[ "$PREPARE_NATIVE_INPUTS" == true ]]; then
+            native+=(--native-inputs)
+          fi
+          python3 -B tools/original_setup_candidate_selection_reference.py prepare \
+            --original-root "$GITHUB_WORKSPACE/original-setup-candidate-source" \
+            --output "$RUNNER_TEMP/original-setup-candidate" "${native[@]}"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        if: ${{ runner.os == 'macOS' && runner.arch == 'ARM64' }}
+      - name: Observe the real native Host selector under the original budget
+        id: native_candidate
+        if: ${{ runner.os == 'macOS' && runner.arch == 'ARM64' }}
+        env:
+          TOBKIRI_TEST_NATIVE_HARNESS_CI: "1"
+          TOBKIRI_ORIGINAL_SETUP_CANDIDATE_INPUT: ${{ runner.temp }}/original-setup-candidate/native-input.json
         run: >-
-          python3 -B tools/original_setup_candidate_selection_reference.py
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-setup-candidate-reference.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::definitions::candidate_reference_ci::original_setup_candidate_reference_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Compare all native observations with the pinned original
+        if: ${{ !cancelled() && steps.native_candidate.outcome != 'skipped' && runner.os == 'macOS' && runner.arch == 'ARM64' }}
+        run: >-
+          python3 -B tools/original_setup_candidate_selection_reference.py compare
           --original-root "$GITHUB_WORKSPACE/original-setup-candidate-source"
           --output "$RUNNER_TEMP/original-setup-candidate"
-      - name: Retain bounded reference metadata only
+      - name: Retain bounded comparison metadata only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-setup-candidate-${{ matrix.os }}
-          path: ${{ runner.temp }}/original-setup-candidate/summary.json
+          path: |
+            ${{ runner.temp }}/original-setup-candidate/summary.json
+            ${{ runner.temp }}/original-setup-candidate/native-observations.json
+            ${{ runner.temp }}/original-setup-candidate/comparison.json
+            ${{ runner.temp }}/native-setup-candidate-reference.log*
           if-no-files-found: warn
           retention-days: 7

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+import json
 import os
 import shutil
 import sys
@@ -19,12 +20,19 @@ from original_catalog_prefix_reference import IGNORED, bind_resources, code_hash
 from original_publication_reference import filesystem
 from original_setup_review_reference import check_original
 
-FORMAT = "io.tobkiri.original-setup-candidate-selection-reference.v1"
+FORMAT = "io.tobkiri.original-setup-candidate-selection-reference.v2"
+NATIVE_INPUT = "io.tobkiri.original-setup-candidate-selection-native-input.v1"
+NATIVE_OBSERVATIONS = "io.tobkiri.original-setup-candidate-selection-native-observations.v1"
+COMPARISON = "io.tobkiri.original-setup-candidate-selection-comparison.v1"
+DENIED_CLASS = "ecosystem.defaultspack.domain.runtime_v4.service.ProfileResolutionDenied"
+LIMIT = 2 * 1024 * 1024
 PROFILE_ID = "defaults"
 BUNDLE = "ecosystem/defaultspack/v4"
 SOURCES = (
     "core_runtime/bootstrap/profile_registry.py",
+    "core_runtime/bootstrap/profile_publication.py",
     "core_runtime/active_profile_store_v4.py",
+    "core_runtime/profile_definition_store_v4.py",
     "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/secure_persistence.py",
 )
@@ -42,10 +50,16 @@ POINTER_ERRORS = {
 }
 CASES = (*DENIALS, *POINTER_ERRORS, "registered-profile")
 DEFINITION_LOCK = "profiles/.profile-definition.lock"
+PUBLICATION_LOCK = "profiles/.bootstrap-publication.lock"
+ACTIVE_LOCK = "profiles/.active-profile.lock"
 
 
 class ActiveAuthorityBoundary(BaseException):
     """Stop at the active-candidate Authority call before opening the database."""
+
+
+class ResolveCandidateBoundary(BaseException):
+    """Stop before using the returned bundled candidate for resolution."""
 
 
 def _source_hashes(runtime: Path) -> dict[str, str]:
@@ -108,6 +122,7 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
         ActiveProfileStoreIntegrityError,
     )
     from core_runtime.bootstrap import profile_capture, profile_registry
+    from core_runtime.bootstrap.profile_publication import ProfilePublicationJournal
     from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
     from core_runtime.profile_runtime_port import require_profile_runtime
     from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
@@ -120,6 +135,8 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
     port = install_defaultspack_profile_runtime()
     catalog_code = type(port).load_catalog.__code__
     selection_code = profile_registry.bootstrap_review_catalog.__code__
+    recovery_code = profile_capture._recover_bootstrap_publication.__code__
+    journal_exists_code = ProfilePublicationJournal.exists.__code__
     pointer_code = ActiveProfileStore.load.__code__
     definition_code = ProfileDefinitionStore.get_profile.__code__
     for code, name in (
@@ -128,10 +145,16 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
             "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
         ),
         (selection_code, "core_runtime/bootstrap/profile_registry.py"),
+        (recovery_code, "core_runtime/bootstrap/profile_capture.py"),
+        (journal_exists_code, "core_runtime/bootstrap/profile_publication.py"),
         (pointer_code, "core_runtime/active_profile_store_v4.py"),
         (definition_code, "core_runtime/profile_definition_store_v4.py"),
         (
             profile_capture._bootstrap_review_candidate.__code__,
+            "core_runtime/bootstrap/profile_capture.py",
+        ),
+        (
+            profile_capture.prepare_bootstrap_profile_review.__code__,
             "core_runtime/bootstrap/profile_capture.py",
         ),
     ):
@@ -139,9 +162,33 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
             raise AssertionError("Setup observation imported another runtime source")
     observed_catalogs: list[Any] = []
     calls: list[str] = []
+    recoveries: list[bool] = []
+    recovery_results: list[str] = []
+    journal_results: list[bool] = []
 
     def observe(frame: FrameType, event: str, result: Any) -> None:
         code = frame.f_code
+        if code is journal_exists_code and event == "return":
+            journal = frame.f_locals["self"]
+            if (
+                calls
+                or frame.f_back is None
+                or frame.f_back.f_code is not recovery_code
+                or journal.path != user_data / "profiles/bootstrap-publication.json"
+                or result is not False
+                or len(journal_results) + 1 != len(recoveries)
+            ):
+                raise AssertionError("original recovery did not use an absent owned journal")
+            journal_results.append(result)
+        if code is recovery_code and event == "return":
+            if (
+                calls
+                or result is not None
+                or len(recoveries) != len(recovery_results) + 1
+                or len(journal_results) != len(recoveries)
+            ):
+                raise AssertionError("original recovery did not return before selection")
+            recovery_results.append("no-journal")
         if code is catalog_code and event == "return":
             if (
                 type(result) is not BundledCatalog
@@ -155,7 +202,16 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
             calls.append("catalog-load")
         if event != "call":
             return
-        if code is selection_code:
+        if code is recovery_code:
+            args = frame.f_locals
+            if (
+                calls
+                or args["confirmation"] is not None
+                or profile_capture.runtime_user_data_root() != user_data
+            ):
+                raise AssertionError("original recovery order or scope changed")
+            recoveries.append(args["discard_superseded"])
+        elif code is selection_code:
             args = frame.f_locals
             if (
                 len(observed_catalogs) != 1
@@ -194,7 +250,21 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
         calls.append("active-authority-entry")
         raise ActiveAuthorityBoundary
 
+    def stop_resolve(*, base_dir: Path | None, review_candidate: Any) -> None:
+        if (
+            base_dir is not None
+            or type(review_candidate) is not tuple
+            or len(review_candidate) != 2
+            or len(observed_catalogs) != 1
+            or review_candidate[0] is not observed_catalogs[0]
+            or type(review_candidate[1]) is not tuple
+            or review_candidate[1]
+        ):
+            raise AssertionError("candidate did not preserve the exact bundled catalog")
+        raise ResolveCandidateBoundary
+
     authority = profile_registry.AuthorityStore
+    resolve_candidate = profile_capture._resolve_bootstrap_candidate
     before = filesystem(user_data)
     previous = sys.getprofile()
     with (
@@ -207,10 +277,11 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
             },
         ),
         patch.object(profile_registry, "AuthorityStore", stop_authority),
+        patch.object(profile_capture, "_resolve_bootstrap_candidate", stop_resolve),
     ):
         sys.setprofile(observe)
         try:
-            candidate = profile_capture._bootstrap_review_candidate(
+            profile_capture.prepare_bootstrap_profile_review(
                 include_source_additions=additions
             )
         except ActiveAuthorityBoundary:
@@ -218,33 +289,27 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
                 "outcome": "integration-boundary",
                 "stage": "active-authority-entry",
             }
-        except (ProfileResolutionDenied, ActiveProfileStoreIntegrityError) as error:
-            result = {"outcome": "error", "error": error_graph(error, user_data)}
-        else:
-            if (
-                type(candidate) is not tuple
-                or len(candidate) != 2
-                or len(observed_catalogs) != 1
-                or candidate[0] is not observed_catalogs[0]
-                or type(candidate[1]) is not tuple
-                or candidate[1]
-            ):
-                raise AssertionError(
-                    "candidate did not preserve the exact bundled catalog"
-                )
+        except ResolveCandidateBoundary:
             result = {
                 "outcome": "bundled-catalog",
                 "same_catalog": True,
                 "additional_packs": [],
             }
+        except (ProfileResolutionDenied, ActiveProfileStoreIntegrityError) as error:
+            result = {"outcome": "error", "error": error_graph(error, user_data)}
+        else:
+            raise AssertionError("original Setup passed the candidate selection boundary")
         finally:
             sys.setprofile(previous)
 
     if (
         profile_registry.AuthorityStore is not authority
         or profile_capture.AuthorityStore is not authority
+        or profile_capture._resolve_bootstrap_candidate is not resolve_candidate
         or require_profile_runtime() is not port
         or len(observed_catalogs) != 1
+        or recoveries != [True, False]
+        or recovery_results != ["no-journal", "no-journal"]
     ):
         raise AssertionError("original candidate callable or registered owner changed")
     _check_outcome(case, additions, calls, result, user_data)
@@ -258,10 +323,14 @@ def _observe(case: str, additions: bool, runtime: Path, user_data: Path) -> dict
             observed_catalogs[0].profiles[PROFILE_ID]
         ),
         "calls": calls,
+        "discard_superseded_calls": recoveries,
+        "recovery_results": recovery_results,
         "expected": result,
         "user_data_before": before,
         "user_data_after": after,
         "definition_lock_free_after": definition_lock_free,
+        "publication_lock_free_after": _lock_free(user_data / PUBLICATION_LOCK),
+        "active_lock_free_after": _lock_free(user_data / ACTIVE_LOCK),
     }
 
 
@@ -292,12 +361,14 @@ def _check_outcome(
         message = POINTER_ERRORS[case]
     else:
         # The original definition preserves its legacy public module name.
-        error_type = (
-            "ecosystem.defaultspack.domain.runtime_v4.service.ProfileResolutionDenied"
-        )
+        error_type = DENIED_CLASS
         message = DENIALS[case]
     if (error["type"], error["message"]) != (error_type, message):
         raise AssertionError((case, additions, error))
+    if error_type == DENIED_CLASS and (
+        error["suppressed"] or error["cause"] is not None or error["context"] is not None
+    ):
+        raise AssertionError("original plain denial unexpectedly has an exception chain")
     if case == "dangling-pointer":
         cause = error["cause"] or {}
         if (
@@ -327,23 +398,29 @@ def _check_effects(
         comparable = {**after, "files": [row for row in after["files"] if row != lock]}
     if before != comparable:
         raise AssertionError("candidate changed existing user state")
-    if lock is None:
+    free = _lock_free(user_data / DEFINITION_LOCK)
+    if free is not (True if lock is not None else None):
+        raise AssertionError("original definition lock was not released")
+    return free
+
+
+def _lock_free(path: Path) -> bool | None:
+    try:
+        stream = path.open("r+b")
+    except FileNotFoundError:
         return None
-    with (user_data / DEFINITION_LOCK).open("r+b") as stream:
-        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
         fcntl.flock(stream, fcntl.LOCK_UN)
     return True
 
 
-def main() -> None:
-    """Run independent fixture cases and write only bounded reference metadata."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--original-root", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    original = args.original_root.resolve(strict=True)
+def prepare(original: Path, output: Path, native_inputs: bool) -> None:
+    """Observe original cases and independently seed native inputs on request."""
     check_original(original)
-    output = args.output.resolve()
     if output.is_relative_to(original) or not sys.dont_write_bytecode:
         raise ValueError("independent fixture directory and disabled bytecode required")
     source = original / "tobkiri_runtime"
@@ -356,12 +433,26 @@ def main() -> None:
         raise ValueError("staged original sources differ")
     sys.path.insert(0, str(runtime))
 
-    cases = []
+    cases, inputs = [], []
     for case in CASES:
         for additions in (False, True):
-            user_data = output / f"{case}-{int(additions)}" / "user-data"
+            case_root = output / f"{case}-{int(additions)}"
+            user_data = case_root / "user-data"
             _seed(case, user_data, source)
-            cases.append(_observe(case, additions, runtime, user_data))
+            observed = _observe(case, additions, runtime, user_data)
+            cases.append(observed)
+            if native_inputs:
+                native_root = case_root / "native"
+                native_root.mkdir(mode=0o700, parents=True)
+                native_user_data = native_root / "user-data"
+                _seed(case, native_user_data, source)
+                if filesystem(native_user_data) != observed["user_data_before"]:
+                    raise AssertionError("independent native seed differs from original input")
+                inputs.append({
+                    "case": case,
+                    "include_source_additions": additions,
+                    "profile_id": PROFILE_ID,
+                })
     if _source_hashes(runtime) != expected or _source_hashes(source) != expected:
         raise AssertionError("original sources changed during candidate selection")
     check_original(original)
@@ -384,6 +475,168 @@ def main() -> None:
             "scope": "original packaged-resource fixture and post-load Setup candidate selection",
         },
     )
+    if native_inputs:
+        write_json(
+            output / "native-input.json",
+            {"format": NATIVE_INPUT, "original_head": ORIGINAL_HEAD, "cases": inputs},
+        )
+
+
+def _read_bounded(path: Path) -> dict:
+    with path.open("rb") as stream:
+        data = stream.read(LIMIT + 1)
+    if len(data) > LIMIT:
+        raise ValueError("candidate comparison exceeds bounded input")
+    result = json.loads(data)
+    if type(result) is not dict:
+        raise ValueError("candidate comparison requires an object")
+    return result
+
+
+def _case_map(summary: dict, format_name: str) -> dict[tuple[str, bool], dict]:
+    rows = summary["cases"]
+    wanted = {(name, additions) for name in CASES for additions in (False, True)}
+    if (
+        summary.get("format") != format_name
+        or summary.get("original_head") != ORIGINAL_HEAD
+        or summary.get("case_count") != len(wanted)
+        or type(rows) is not list
+        or len(rows) != len(wanted)
+    ):
+        raise ValueError("candidate comparison identity differs")
+    result = {}
+    for row in rows:
+        name, additions = row["case"], row["include_source_additions"]
+        if type(name) is not str or type(additions) is not bool:
+            raise ValueError("invalid candidate case key")
+        result[(name, additions)] = row
+    if result.keys() != wanted:
+        raise ValueError("candidate comparison case set differs")
+    return result
+
+
+def _expected_native(original: dict) -> dict:
+    if original["outcome"] == "bundled-catalog":
+        if original["same_catalog"] is not True or original["additional_packs"] != []:
+            raise ValueError("original bundled return contract changed")
+        return {"outcome": "bundled-catalog"}
+    if original["outcome"] == "error" and original["error"]["type"] == DENIED_CLASS:
+        return {"outcome": "denial-request", "message": original["error"]["message"]}
+    return original
+
+
+def compare(original: Path, output: Path) -> None:
+    """Compare actual native outcomes, descriptor receipts and independent disk state."""
+    check_original(original)
+    reference = _read_bounded(output / "summary.json")
+    source = original / "tobkiri_runtime"
+    if (
+        reference.get("python") != "3.13.16"
+        or reference.get("source_hashes") != _source_hashes(source)
+        or reference.get("fixture_writer_sha256")
+        != hashlib.sha256((source / "tests/test_named_profile_store_v4.py").read_bytes()).hexdigest()
+    ):
+        raise ValueError("candidate comparison requires the pinned original sources")
+    expected = _case_map(reference, FORMAT)
+    actual = _case_map(
+        _read_bounded(output / "native-observations.json"), NATIVE_OBSERVATIONS
+    )
+    results = []
+    for (case, additions), original_row in expected.items():
+        observed = actual[(case, additions)]
+        root = output / f"{case}-{int(additions)}" / "native/user-data"
+        after = filesystem(root)
+        definition_lock = _lock_free(root / DEFINITION_LOCK)
+        publication_lock = _lock_free(root / PUBLICATION_LOCK)
+        active_lock = _lock_free(root / ACTIVE_LOCK)
+        profile_matches = observed["profile_id"] == original_row["profile_id"]
+        outcome_matches = observed["selection"] == _expected_native(
+            original_row["expected"]
+        )
+        filesystem_matches = (
+            observed["user_data_before"] == original_row["user_data_before"]
+            and observed["user_data_after"] == after == original_row["user_data_after"]
+        )
+        locks_match = (
+            observed["definition_lock_free_after"] is definition_lock
+            and definition_lock is original_row["definition_lock_free_after"]
+            and observed["publication_lock_free_after"] is publication_lock
+            and publication_lock is original_row["publication_lock_free_after"]
+            and observed["active_lock_free_after"] is active_lock
+            and active_lock is original_row["active_lock_free_after"]
+            and definition_lock is not False
+            and publication_lock is None
+            and active_lock is not False
+        )
+        capacity = observed["capacity"]
+        cleanup = (
+            observed["close_succeeded"] is True
+            and observed["close_receipt"]
+            == {"open_files": 0, "open_connections": 0, "uncertain": False}
+            and observed["retained_cleanup"] is False
+            and capacity["charged_bytes"] == capacity["reservations"] == 0
+            and 0 < capacity["peak_bytes"] <= capacity["limit_bytes"] == 64 * 1024 * 1024
+            and observed["physical_owner_reopened"] is True
+            and locks_match
+        )
+        execution = (
+            observed["execution_error"] is None
+            and observed["discard_superseded_calls"]
+            == original_row["discard_superseded_calls"]
+            and observed["recovery_results"] == original_row["recovery_results"]
+            and observed["same_original_deadline"] is True
+            and observed["initial_fuel"] == observed["final_fuel"] == 2_000_000_000
+        )
+        results.append({
+            "case": case,
+            "include_source_additions": additions,
+            "input_matches": profile_matches,
+            "outcome_matches": outcome_matches,
+            "filesystem_matches": filesystem_matches,
+            "locks_match": locks_match,
+            "execution_verified": execution,
+            "cleanup_verified": cleanup,
+            "matched": (
+                profile_matches and outcome_matches and filesystem_matches
+                and execution and cleanup
+            ),
+        })
+    passed = sum(row["matched"] for row in results)
+    write_json(
+        output / "comparison.json",
+        {
+            "format": COMPARISON,
+            "original_head": ORIGINAL_HEAD,
+            "cases": results,
+            "passed": passed,
+            "failed": len(results) - passed,
+            "qualification": False,
+            "production_enabled": False,
+            "scope": "direct Host selector and typed requests under one real Store; "
+            "catalog identity only in original lane; no native catalog, getter, Guest denial "
+            "factory, candidate resolution, active Authority, AppHandle, or GUI",
+        },
+    )
+    if passed != len(results):
+        raise AssertionError("native candidate selection differs; see comparison.json")
+
+
+def main() -> None:
+    """Prepare or compare the fixed original Setup candidate fixtures in CI."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("prepare", "compare"), default="prepare", nargs="?")
+    parser.add_argument("--original-root", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--native-inputs", action="store_true")
+    args = parser.parse_args()
+    original = args.original_root.resolve(strict=True)
+    output = args.output.resolve()
+    if args.command == "compare":
+        if args.native_inputs:
+            parser.error("--native-inputs is only valid during prepare")
+        compare(original, output)
+    else:
+        prepare(original, output, args.native_inputs)
 
 
 if __name__ == "__main__":
