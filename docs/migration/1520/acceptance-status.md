@@ -898,8 +898,8 @@ Rust driver matched all 310 binding entries and their digest. The
 observed 153 distinct digests passed to the original Port.
 The [original lock replay](https://github.com/harupipipipi/tobkiri/actions/runs/43433277485)
 ran 17 cases on both OSes, including fresh bytes, symlink refusal, and a
-missing lock. The native implementation connects the corresponding lock
-read through the original Port and stops at the first Shell artifact access.
+missing lock. The first native resolver change connected the corresponding
+lock read through the original Port.
 [The actual component build and macOS checks](https://github.com/harupipipipi/tobkiri/actions/runs/43436878493)
 passed, including six physical reader cases and original Runtime.init.
 [The pinned original Shell verifier replay](https://github.com/harupipipipi/tobkiri/actions/runs/43438045179)
@@ -907,7 +907,11 @@ passed seven native and captured-input tests on Linux and macOS.
 [Original Setup with packaged Shell fixtures](https://github.com/harupipipipi/tobkiri/actions/runs/43440932967)
 also passed the selected-artifact read sequence, missing root, and replaced
 symlink cases on both platforms. The fixtures supply platform headers and a
-macOS plist. Shell artifact IO still needs the native implementation.
+macOS plist.
+The [native Shell root change](https://github.com/harupipipipi/tobkiri/actions/runs/43444308778)
+adds the strict resolve and separate symlink and directory checks. The macOS
+physical replay also refused a changed parent and a link outside the bound
+parent. Selected file and tree IO remain open.
 Normal full catalog execution under the original limits and GUI adoption
 still need evidence. These comparisons close no acceptance item.
 

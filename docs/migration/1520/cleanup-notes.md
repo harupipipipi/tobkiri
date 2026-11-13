@@ -2980,6 +2980,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   macOSではファイル名順のツリー読み込み、entrypointの再読込、Info.plist、headerの順と、
   reader終了後にFDが閉じたことを確認した。テストは合成ヘッダーを使い、確認・承認前に
   停止した。[原本CI 43440932967](https://github.com/harupipipipi/tobkiri/actions/runs/43440932967)
+- `6d96428fe` はloaderが返した実Shell rootと親ディレクトリの同一性を保持し、
+  Packによるlock再読込後、元のstrict resolve、元rootのsymlink判定、
+  解決済みrootのディレクトリ判定をこの順で実行する。現段階の解決は同じ親の
+  通常名と相対symlink一段が対象で、外へのリンク・多段リンクは実行境界で拒否する。
+  [実Wasm CI 43444308778](https://github.com/harupipipipi/tobkiri/actions/runs/43444308778)
+  でportable回帰、実構築と初期化、macOSの物理IO試験7件が成功した。
+  ここでは最初のShellファイル検査で停止する。全カタログを経由した統合実行と
+  製品のGUI起動は未確認。
 - Shellはrootの解決、ツリーのhash、entrypointのhash、macOSのplist、
   entrypoint headerの順。既存の `fd_protocol.rs` の
   予算付きread/fstatは再利用候補。Shellで使うdescriptorのopen/seek/close、元の失敗と
