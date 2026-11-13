@@ -1,13 +1,17 @@
-"""Record actual Shell IO in a pinned, staged original Setup review."""
+"""Record Shell IO and Pack resolution in a pinned original Setup review."""
 
 from __future__ import annotations
 
+import hashlib
 import inspect
+import json
 import os
 import plistlib
-from pathlib import Path
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from types import FrameType
 from typing import Any
 from unittest.mock import patch
@@ -25,10 +29,20 @@ CASES = (
     "entrypoint-bytes-after-tree",
 )
 ARTIFACT_ROOT = "ecosystem/defaultspack/platform-artifacts"
+BUNDLE = Path("ecosystem/defaultspack/v4")
+PROFILE = "defaults.profile.v5.json"
+APPLICATION = "runtime.tauri.application.default"
+PACK_STALE_PIN = "stale-application-pack-pin"
+COMPOSITION_CASES = ("packaged-profile-resolved", PACK_STALE_PIN)
+STALE_PIN = "sha256:" + "0" * 64
 
 
 class _ShellVerified(BaseException):
     """Stop after the original verifier returns, before Setup publishes anything."""
+
+
+class _PackResolved(BaseException):
+    """Stop at the successful original resolve Port return, before state creation."""
 
 
 def _package(original: Path, runtime: Path, output: Path) -> tuple[dict, list[str]]:
@@ -82,7 +96,7 @@ def _package(original: Path, runtime: Path, output: Path) -> tuple[dict, list[st
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
     (release / entrypoint).chmod(0o755)
-    bundle = runtime / "ecosystem/defaultspack/v4"
+    bundle = runtime / BUNDLE
     artifacts = runtime / ARTIFACT_ROOT
     stage_packaged_bundle(
         source_artifact=release / artifact,
@@ -103,12 +117,130 @@ def _package(original: Path, runtime: Path, output: Path) -> tuple[dict, list[st
     return variant, tree_files
 
 
+@contextmanager
+def _composition_input(case: str, runtime: Path) -> Iterator[None]:
+    if case != PACK_STALE_PIN:
+        yield
+        return
+
+    from scripts.profile_compatibility_provenance import (
+        compatibility_profile_payload,
+        validate_compatibility_profile,
+    )
+    from tobkiri_protocol.canonical import canonical_digest
+
+    bundle = runtime / BUNDLE
+    profile_path = bundle / PROFILE
+    lock_path = bundle / "bundle.lock.json"
+    manifest_path = runtime / "runtime-resource-manifest.v1.json"
+    paths = (profile_path, lock_path, manifest_path)
+    original_profile, original_lock, original_manifest = [
+        path.read_bytes() for path in paths
+    ]
+    profile = json.loads(original_profile)
+    [application] = [pack for pack in profile["packs"] if pack["pack_id"] == APPLICATION]
+    if application["artifact_digest"] is not None:
+        raise AssertionError("packaged Profile no longer requests an unresolved Application")
+    application["artifact_digest"] = STALE_PIN
+    profile["provenance"]["source_digest"] = canonical_digest(
+        compatibility_profile_payload(profile)
+    )
+    validate_compatibility_profile(profile)
+    lock = json.loads(original_lock)
+    [entry] = [entry for entry in lock["entries"] if entry["path"] == PROFILE]
+    try:
+        write_json(profile_path, profile)
+        entry["digest"] = "sha256:" + hashlib.sha256(profile_path.read_bytes()).hexdigest()
+        write_json(lock_path, lock)
+        bind_resources(runtime, packaged_artifacts=True)
+        yield
+    finally:
+        for path, raw in zip(paths, (original_profile, original_lock, original_manifest)):
+            path.write_bytes(raw)
+
+
+def _resolved_facts(result: Any, local: dict, variant: dict) -> dict:
+    from ecosystem.defaultspack.domain.profile_resolution import ResolvedDefaultProfile
+    from tobkiri_protocol.canonical import canonical_digest
+
+    names = ("profile", "lock", "plan")
+    documents = {name: getattr(result, name) for name in names}
+    if (
+        type(result) is not ResolvedDefaultProfile
+        or set(vars(result)) != set(names)
+        or any(type(value) is not dict for value in documents.values())
+        or any(value is not local[name] for name, value in documents.items())
+        or len({id(value) for value in documents.values()}) != len(names)
+    ):
+        raise AssertionError("original candidate did not retain its three resolved records")
+    profile, lock, plan = result.profile, result.lock, result.plan
+    digests = {name: canonical_digest(value) for name, value in documents.items()}
+    if (
+        profile["profile_id"] != local["profile_id"]
+        or profile["state"] != "resolved"
+        or any(profile["profile_id"] != record["profile_id"] for record in (plan, lock))
+        or plan["profile_revision"] != digests["profile"]
+        or any(plan[key] != lock[key] for key in (
+            "profile_revision", "profile_definition_digest", "catalog_revision",
+            "bundle_digest", "security_epoch", "profile_authority_snapshot_digest",
+            "requested_edges_digest", "constraints_digest", "closure_digest",
+            "provenance_digest", "plan_digest",
+        ))
+        or plan["profile_definition_digest"] != canonical_digest(local["source"])
+        or plan["catalog_revision"] != profile["catalog_revision"]
+        or plan["profile_authority_snapshot_digest"] != local["authority_snapshot_digest"]
+        or plan["security_epoch"] != local["security_epoch"]
+        or plan["shell"]["executable_artifact_digest"] != variant["entrypoint_digest"]
+        or plan["launch_contribution"]["artifact_digest"] != variant["artifact_digest"]
+        or plan["launch_contribution"]["entrypoint"] != variant["entrypoint"]
+    ):
+        raise AssertionError("original candidate digest or identity bindings changed")
+    for name, record in (("lock", lock), ("plan", plan)):
+        key = f"{name}_digest"
+        if record[key] != canonical_digest({k: v for k, v in record.items() if k != key}):
+            raise AssertionError(f"original {name} digest does not bind its document")
+    return {
+        "wrapper": {
+            "type": f"{type(result).__module__}.{type(result).__qualname__}",
+            "fields": list(vars(result)),
+            "same_pack_records": True,
+            "distinct_record_references": True,
+        },
+        "canonical_document_digests": digests,
+        "api_versions": {
+            "profile": profile["profile_api_version"],
+            "lock": lock["lock_api_version"],
+            "plan": plan["plan_api_version"],
+        },
+        "identity": {key: plan[key] for key in (
+            "profile_id", "profile_revision", "profile_definition_digest",
+            "catalog_revision", "bundle_digest", "security_epoch",
+            "profile_authority_snapshot_digest", "requested_edges_digest",
+            "constraints_digest", "closure_digest", "provenance_digest", "plan_digest",
+        )} | {"lock_digest": lock["lock_digest"]},
+        "base": plan["base"],
+        "shell": plan["shell"],
+        "application": plan["application"],
+        "launch_contribution": plan["launch_contribution"],
+        "effective_set": plan["effective_set"],
+        "record_counts": {
+            "bindings": len(plan["bindings"]),
+            "variant_pins": len(lock["variant_pins"]),
+            "requested_edges": len(profile["requested_edges"]),
+            "authority_references": len(profile["authority_references"]),
+            "content_projections": len(plan["content_projections"]),
+        },
+    }
+
+
 def _observe(
     case: str, runtime: Path, user_data: Path, variant: dict, tree_files: list[str],
 ) -> dict:
-    from core_runtime.bootstrap.profile_capture import prepare_bootstrap_profile_review
-    from ecosystem.defaultspack.domain.profile_resolution import resolve_default_profile
+    from core_runtime.bootstrap import profile_capture as capture
+    from core_runtime.profile_runtime_port import require_profile_runtime
+    from ecosystem.defaultspack.domain import profile_resolution
     from tobkiri_protocol import platform_artifact as original
+    from tobkiri_protocol.canonical import canonical_digest
 
     root = runtime / ARTIFACT_ROOT
     parked = root.with_name("reference-parked-platform-artifacts")
@@ -117,9 +249,20 @@ def _observe(
     moved: tuple[Path, Path] | None = None
     changed_entrypoint: bytes | None = None
     verifier = original.verify_platform_artifact.__code__
-    pack = resolve_default_profile.__code__
-    if Path(verifier.co_filename).resolve() != runtime / "tobkiri_protocol/platform_artifact.py":
-        raise AssertionError("Shell verifier is outside the staged original")
+    pack = profile_resolution.resolve_default_profile.__code__
+    validate = profile_resolution.validate_document.__code__
+    setup = capture._resolve_bootstrap_candidate.__code__
+    review = capture.prepare_bootstrap_profile_review.__code__
+    port = require_profile_runtime()
+    resolve_port = type(port).resolve_profile.__code__
+    if any(Path(code.co_filename).resolve() != runtime / source for code, source in (
+        (verifier, "tobkiri_protocol/platform_artifact.py"),
+        (pack, "ecosystem/defaultspack/domain/profile_resolution.py"),
+        (validate, "tobkiri_protocol/validation.py"),
+        (setup, "core_runtime/bootstrap/profile_capture.py"),
+        (resolve_port, "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py"),
+    )):
+        raise AssertionError("Setup, Pack or Shell callable is outside the staged original")
     reader = inspect.unwrap(original._regular_binary_reader).__code__
     tree = original.artifact_digest.__code__
     paths = {
@@ -133,6 +276,14 @@ def _observe(
     calls: list[list[str]] = []
     reads: list[dict] = []
     active = False
+    composition = case in COMPOSITION_CASES
+    verified = False
+    composition_calls: list[str] = []
+    resolve_inputs: dict = {}
+    facts: dict = {}
+    validated: dict[str, dict] = {}
+    result: Any = None
+    pack_error: BaseException | None = None
 
     def record(operation: str, path: Path) -> None:
         if len(calls) >= 128:
@@ -141,10 +292,75 @@ def _observe(
 
     def trace(frame: FrameType, event: str, value: Any) -> Any:
         nonlocal active, moved, changed_entrypoint
+        nonlocal verified, result, pack_error
         code = frame.f_code
+        parent = frame.f_back
         if event == "call":
             frame.f_trace_lines = False
-            parent = frame.f_back
+            if composition and code is resolve_port:
+                local = frame.f_locals
+                if (
+                    composition_calls or parent is None or parent.f_code is not setup
+                    or parent.f_back is None or parent.f_back.f_code is not review
+                    or local["self"] is not port
+                ):
+                    raise AssertionError("original Setup did not call the installed Pack Port")
+                owner = parent.f_locals
+                kwargs = local["kwargs"]
+                if (
+                    local["catalog"] is not owner["catalog"]
+                    or local["profile_id"] is not owner["profile_id"]
+                    or kwargs["approved_artifact_digests"] is not owner["verified_artifacts"]
+                    or kwargs["authority_bindings"] is not owner["authority_bindings"]
+                    or kwargs["authority_snapshot_digest"] is not owner["snapshot_digest"]
+                    or kwargs["additional_pack_ids"] is not owner["additional_pack_ids"]
+                    or kwargs["security_epoch"] != 1
+                    or kwargs["additional_pack_ids"] != ()
+                ):
+                    raise AssertionError("original Setup resolve inputs were not retained")
+                catalog = local["catalog"]
+                source = catalog.profiles[local["profile_id"]]
+                [application] = [
+                    pack for pack in source["packs"] if pack["pack_id"] == APPLICATION
+                ]
+                if application["artifact_digest"] != (
+                    STALE_PIN if case == PACK_STALE_PIN else None
+                ):
+                    raise AssertionError("original Setup saw a different Application pin")
+                resolve_inputs.update(
+                    profile_id=local["profile_id"],
+                    profile_definition_digest=canonical_digest(source),
+                    bundle_digest=owner["bundle_lock_digest"],
+                    authority_snapshot_digest=kwargs["authority_snapshot_digest"],
+                    security_epoch=kwargs["security_epoch"],
+                    additional_pack_ids=list(kwargs["additional_pack_ids"]),
+                    approved_artifact_count=len(kwargs["approved_artifact_digests"]),
+                    authority_binding_count=len(kwargs["authority_bindings"]),
+                    application_requested_pin=application["artifact_digest"],
+                    application_artifact_digest=catalog.packs[APPLICATION]["pack"]["artifact_digest"],
+                )
+                composition_calls.append("call-resolve-port")
+                return trace
+            if composition and code is pack:
+                if (
+                    composition_calls != ["call-resolve-port"]
+                    or parent is None or parent.f_code is not resolve_port
+                ):
+                    raise AssertionError("original Port did not call the pinned Pack resolver")
+                forwarded = parent.f_locals
+                local = frame.f_locals
+                if (
+                    any(local[name] is not forwarded[name]
+                        for name in ("catalog", "profile_id"))
+                    or any(local[name] is not arg for name, arg in forwarded["kwargs"].items())
+                ):
+                    raise AssertionError("original resolve Port changed Pack inputs")
+                composition_calls.append("call-resolve-pack")
+                return trace
+            if composition and code is validate and parent is not None and parent.f_code is pack:
+                if not verified:
+                    raise AssertionError("original Pack validated a result before Shell verification")
+                return trace
             if code is verifier:
                 local = frame.f_locals
                 if (
@@ -196,6 +412,41 @@ def _observe(
                     raise AssertionError("original Shell used a non-strict path resolution")
                 record(paths[code], frame.f_locals["self"])
             return None
+        if composition and code is pack and event == "exception":
+            _, pack_error, _ = value
+        if composition and code is validate and event == "return" and value is not None:
+            schema_name = frame.f_locals["schema_name"]
+            if schema_name in validated:
+                raise AssertionError("original Pack validated a result schema twice")
+            validated[schema_name] = value
+        if composition and code is pack and event == "return":
+            if value is None:
+                composition_calls.append("deny-resolve-pack")
+            else:
+                if not verified or case == PACK_STALE_PIN:
+                    raise AssertionError("original Pack resolved without the expected inputs")
+                result = value
+                facts.update(_resolved_facts(result, frame.f_locals, variant))
+                expected_records = (
+                    ("profile_v5.schema.json", result.profile),
+                    ("resolved_plan_v2.schema.json", result.plan),
+                    ("profile_lock_v5.schema.json", result.lock),
+                )
+                if list(validated) != [name for name, _ in expected_records] or any(
+                    validated[name] is not record for name, record in expected_records
+                ):
+                    raise AssertionError("original Pack did not return the validated records")
+                facts["validated_schema_order"] = list(validated)
+                composition_calls.append("return-resolve-pack")
+        if composition and code is resolve_port and event == "return":
+            if value is None and pack_error is not None:
+                composition_calls.append("deny-resolve-port")
+            else:
+                if result is None or value is not result:
+                    raise AssertionError("original Port did not return the same Pack result")
+                facts["wrapper"]["same_port_result"] = True
+                composition_calls.append("return-resolve-port")
+                raise _PackResolved
         if event == "return" and code is tree and case.startswith("entrypoint-"):
             if value != variant["artifact_digest"] or moved is not None:
                 raise AssertionError("entrypoint mutation preceded the original tree digest")
@@ -229,23 +480,34 @@ def _observe(
         if event == "return" and code is verifier and value is not None:
             if value != root / variant["relative_path"]:
                 raise AssertionError("original verifier returned a different Shell")
-            raise _ShellVerified
+            if composition:
+                composition_calls.append("return-shell-verifier")
+                verified = True
+            else:
+                raise _ShellVerified
         return trace
 
     previous = sys.gettrace()
-    with patch.dict(os.environ, {
-        "TOBKIRI_USER_DATA": str(user_data), "RUMI_USER_DATA": str(user_data),
-        "RUMI_ENVIRONMENT": "production", "RUMI_APP_DIR": "",
-    }):
+    with (
+        _composition_input(case, runtime),
+        patch.dict(os.environ, {
+            "TOBKIRI_USER_DATA": str(user_data), "RUMI_USER_DATA": str(user_data),
+            "RUMI_ENVIRONMENT": "production", "RUMI_APP_DIR": "",
+        }),
+    ):
         try:
             sys.settrace(trace)
-            prepare_bootstrap_profile_review()
+            capture.prepare_bootstrap_profile_review()
         except _ShellVerified:
             outcome = {"outcome": "verified"}
+        except _PackResolved:
+            outcome = {"outcome": "resolved", **facts}
         except Exception as error:
+            if composition and (case != PACK_STALE_PIN or error is not pack_error):
+                raise
             outcome = {"outcome": "error", "error": error_graph(error, runtime)}
         else:
-            raise AssertionError("Setup proceeded past the original Shell boundary")
+            raise AssertionError("Setup proceeded past the observed original return")
         finally:
             sys.settrace(previous)
             if moved is not None and moved[1].exists():
@@ -258,12 +520,58 @@ def _observe(
 
     if not active or user_data.exists():
         raise AssertionError("Shell reference missed the original call or wrote user state")
+    if composition:
+        _check("selected-shell", variant, tree_files, calls, reads, {"outcome": "verified"})
+        if case == PACK_STALE_PIN and validated:
+            raise AssertionError("stale Application pin reached original result validation")
+        _check_composition(case, composition_calls, resolve_inputs, outcome)
+        return {
+            "case": case,
+            "calls": composition_calls,
+            "inputs": resolve_inputs,
+            "user_data_absent_after": True,
+            "expected": outcome,
+        }
     _check(case, variant, tree_files, calls, reads, outcome)
     if case == "missing-artifact-root":
         error = outcome["error"]
         for field in ("message", "filename"):
             error[field] = error[field].replace("$USER_DATA", "$RUNTIME")
     return {"case": case, "calls": calls, "reads": reads, "expected": outcome}
+
+
+def _check_composition(case: str, calls: list[str], inputs: dict, outcome: dict) -> None:
+    start = ["call-resolve-port", "call-resolve-pack", "return-shell-verifier"]
+    if case == PACK_STALE_PIN:
+        expected = {
+            "outcome": "error",
+            "error": {
+                "id": 0,
+                "type": DENIED_CLASS,
+                "message": f"Profile Pack artifact pin for {APPLICATION} is stale or mismatched",
+                "suppressed": False,
+                "cause": None,
+                "context": None,
+            },
+        }
+        if calls != [*start, "deny-resolve-pack", "deny-resolve-port"] or outcome != expected:
+            raise AssertionError((case, calls, outcome))
+        if inputs["application_artifact_digest"] == inputs["application_requested_pin"]:
+            raise AssertionError("stale Application pin unexpectedly names the real artifact")
+    else:
+        if (
+            calls != [*start, "return-resolve-pack", "return-resolve-port"]
+            or outcome.get("outcome") != "resolved"
+            or outcome["application"]["pack_id"] != APPLICATION
+            or outcome["application"]["artifact_digest"] != inputs["application_artifact_digest"]
+            or any(outcome["identity"][key] != inputs[key] for key in (
+                "profile_id", "profile_definition_digest", "bundle_digest", "security_epoch",
+            ))
+            or outcome["identity"]["profile_authority_snapshot_digest"]
+            != inputs["authority_snapshot_digest"]
+            or outcome["record_counts"]["bindings"] != inputs["authority_binding_count"]
+        ):
+            raise AssertionError((case, calls, inputs, outcome))
 
 
 def _check(
@@ -406,14 +714,18 @@ def _check_entrypoint(
 
 
 def observe_shell(original: Path, runtime: Path, output: Path) -> None:
-    """Keep only bounded metadata from the original selected Shell verifier."""
+    """Keep bounded observations of the selected Shell and full Pack return."""
     variant, tree_files = _package(original, runtime, output)
     rows = [
         _observe(case, runtime, output / case / "user-data", variant, tree_files)
         for case in CASES
     ]
+    composition = [
+        _observe(case, runtime, output / case / "user-data", variant, tree_files)
+        for case in COMPOSITION_CASES
+    ]
     write_json(output / "shell.json", {
         "format": FORMAT, "original_head": ORIGINAL_HEAD,
-        "variant": variant, "cases": rows,
+        "variant": variant, "cases": rows, "composition_cases": composition,
         "header_fixture": True, "qualification": False, "production_enabled": False,
     })
