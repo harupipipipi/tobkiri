@@ -1,12 +1,15 @@
 //! Fixed catalog resources of the actual selected AppHandle, under Review.
 //! This is not a Path service: the private caller selects one source, and the
 //! loader can only consume its lock, each lock occurrence, pins, then artifacts.
-//! The Pack resolver can then reread that lock and inspect the retained Shell root.
+//! The Pack resolver can reread that lock and inspect the selected Shell path.
 use super::*;
 use base64::Engine as _;
 use sha2::{Digest as _, Sha256};
 use std::path::Path;
 use tobkiri_canon::{AllocationBudget, CoreBuffer, CoreBufferBuilder, CoreValue, MAX_BYTES};
+#[cfg(unix)]
+#[path = "original_shell_inputs.rs"]
+mod shell_inputs;
 #[cfg(unix)]
 #[path = "original_shell_root.rs"]
 mod shell_root;
@@ -31,6 +34,14 @@ pub(crate) struct CatalogIo {
     artifact_parent_identity: Option<Identity>,
     #[cfg(unix)]
     shell_resolved_name: Option<String>,
+    #[cfg(unix)]
+    shell_root_identity: Option<Identity>,
+    #[cfg(unix)]
+    shell_profile_id: Option<String>,
+    #[cfg(unix)]
+    shell_inputs: Option<shell_inputs::ShellInputs>,
+    #[cfg(unix)]
+    shell_leaf: Option<CoreValue>,
     binding: Option<CoreValue>,
     lock_bytes: Option<Funded<Zeroizing<Vec<u8>>>>,
     lock: Option<Funded<Document>>,
@@ -70,6 +81,8 @@ enum PackResolve {
     ShellResolve,
     ShellSymlink,
     ShellDirectory,
+    ShellLeafSymlink,
+    ShellLeafParentSymlink,
     ShellReady,
     Spent,
 }
@@ -176,6 +189,14 @@ impl CatalogIo {
             artifact_parent_identity: None,
             #[cfg(unix)]
             shell_resolved_name: None,
+            #[cfg(unix)]
+            shell_root_identity: None,
+            #[cfg(unix)]
+            shell_profile_id: None,
+            #[cfg(unix)]
+            shell_inputs: None,
+            #[cfg(unix)]
+            shell_leaf: None,
             binding: None,
             lock_bytes: None,
             lock: None,
@@ -606,6 +627,8 @@ impl CatalogIo {
                     &self.budget,
                 )?;
                 write_bytes(&mut output, &bytes.value)?;
+                #[cfg(unix)]
+                self.retain_shell_input(&op, bytes)?;
                 self.candidate = None;
                 self.entry += 1;
                 self.loader = Loader::Entries;
@@ -691,20 +714,27 @@ impl CatalogIo {
     /// Open the one Pack lock occurrence on the root and binding retained by
     /// the completed loader. The resolver's separate bundle selection cannot
     /// replace this root.
-    pub(crate) fn begin_pack_resolve(&mut self) -> Result<()> {
+    pub(crate) fn begin_pack_resolve(&mut self, profile_id: &str) -> Result<()> {
         if !cfg!(unix)
             || self.pack_resolve != PackResolve::Inactive
             || !self.completed()
             || self.binding.is_none()
             || self.selected.as_os_str().is_empty()
+            || profile_id.is_empty()
+            || profile_id.len() > 128
+            || !profile_id.is_ascii()
         {
             return Err(OriginalAuthorityError::unavailable());
+        }
+        #[cfg(unix)]
+        {
+            self.shell_profile_id = Some(profile_id.to_owned());
         }
         self.pack_resolve = PackResolve::CheckSymlink;
         Ok(())
     }
 
-    /// Permit only the original lock sequence and three Shell root observations.
+    /// Permit the original lock and Shell root sequence, then the selected leaf.
     pub(crate) fn inspect_pack_resolve<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
@@ -713,7 +743,10 @@ impl CatalogIo {
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<CoreBuffer> {
         let operation_name = match self.pack_resolve {
-            PackResolve::CheckSymlink | PackResolve::ShellSymlink => "is-symlink",
+            PackResolve::CheckSymlink
+            | PackResolve::ShellSymlink
+            | PackResolve::ShellLeafSymlink
+            | PackResolve::ShellLeafParentSymlink => "is-symlink",
             PackResolve::CheckFile => "is-file",
             PackResolve::Read => "read-bytes",
             PackResolve::ShellResolve => "resolve",
@@ -744,7 +777,11 @@ impl CatalogIo {
         }
         if matches!(
             self.pack_resolve,
-            PackResolve::ShellResolve | PackResolve::ShellSymlink | PackResolve::ShellDirectory
+            PackResolve::ShellResolve
+                | PackResolve::ShellSymlink
+                | PackResolve::ShellDirectory
+                | PackResolve::ShellLeafSymlink
+                | PackResolve::ShellLeafParentSymlink
         ) {
             return self.inspect_shell_root(&op, &scope, &steps, budget);
         }
@@ -801,7 +838,7 @@ impl CatalogIo {
         self.pack_resolve == PackResolve::ShellResolve
     }
 
-    pub(crate) fn pack_resolve_shell_root_completed(&self) -> bool {
+    pub(crate) fn pack_resolve_shell_leaf_completed(&self) -> bool {
         self.pack_resolve == PackResolve::ShellReady
     }
 

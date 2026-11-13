@@ -1,8 +1,8 @@
-//! The three original Shell root observations after the Pack lock read.
+//! The original Shell root and selected path checks after the Pack lock read.
+use super::shell_inputs::{MAX_NAME, single_leaf};
 use super::*;
 
 const RESOLVED_STEPS: &[(&str, &str)] = &[("shell-resolved-root", "")];
-const MAX_NAME: usize = 255;
 
 impl CatalogIo {
     pub(super) fn inspect_shell_root<S: crate::BootstrapReviewOwner>(
@@ -12,12 +12,25 @@ impl CatalogIo {
         steps: &tobkiri_canon::CoreArray<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<CoreBuffer> {
-        let expected_steps = if self.pack_resolve == PackResolve::ShellDirectory {
-            RESOLVED_STEPS
-        } else {
-            ARTIFACT_ROOT_STEPS
+        let selected = match self.pack_resolve {
+            PackResolve::ShellLeafSymlink => Some(self.selected_shell_leaf()?),
+            PackResolve::ShellLeafParentSymlink => self.shell_leaf.clone(),
+            _ => None,
         };
-        if !exact_steps(steps, expected_steps) {
+        let selected_name = selected.as_ref().and_then(CoreValue::as_str);
+        let valid_steps = match self.pack_resolve {
+            PackResolve::ShellDirectory => exact_steps(steps, RESOLVED_STEPS),
+            PackResolve::ShellLeafSymlink => {
+                let name = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
+                exact_steps(steps, &[RESOLVED_STEPS[0], ("join", name)])
+            }
+            PackResolve::ShellLeafParentSymlink => {
+                let name = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
+                exact_steps(steps, &[RESOLVED_STEPS[0], ("join", name), ("parent", "")])
+            }
+            _ => exact_steps(steps, ARTIFACT_ROOT_STEPS),
+        };
+        if !valid_steps {
             return Err(OriginalAuthorityError::unavailable().into());
         }
         let original = self
@@ -77,8 +90,9 @@ impl CatalogIo {
                     PackResolve::ShellSymlink
                 }
                 PackResolve::ShellSymlink => {
-                    let symlink = optional_mode(op, &parent, parent_path, original_name)?
-                        .is_some_and(|mode| mode == mode_bits(libc::S_IFLNK));
+                    let symlink = optional_stat(op, &parent, parent_path, original_name)?
+                        .as_ref()
+                        .is_some_and(|stat| stat_mode(stat) == mode_bits(libc::S_IFLNK));
                     write_bool(&mut response, symlink)?;
                     if symlink {
                         PackResolve::Spent
@@ -91,7 +105,8 @@ impl CatalogIo {
                         .shell_resolved_name
                         .as_deref()
                         .ok_or_else(OriginalAuthorityError::unavailable)?;
-                    let mode = optional_mode(op, &parent, parent_path, name)?;
+                    let stat = optional_stat(op, &parent, parent_path, name)?;
+                    let mode = stat.as_ref().map(stat_mode);
                     // A newly substituted symlink cannot extend the held
                     // occurrence into the target of that link.
                     if mode == Some(mode_bits(libc::S_IFLNK)) {
@@ -100,9 +115,56 @@ impl CatalogIo {
                     let directory = mode == Some(mode_bits(libc::S_IFDIR));
                     write_bool(&mut response, directory)?;
                     if directory {
-                        PackResolve::ShellReady
+                        self.shell_root_identity = stat.as_ref().map(stat_identity);
+                        PackResolve::ShellLeafSymlink
                     } else {
                         PackResolve::Spent
+                    }
+                }
+                PackResolve::ShellLeafSymlink => {
+                    let name = self
+                        .shell_resolved_name
+                        .as_deref()
+                        .ok_or_else(OriginalAuthorityError::unavailable)?;
+                    let leaf = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
+                    let leaf_name = checked_name(leaf)?;
+                    let expected = self
+                        .shell_root_identity
+                        .ok_or_else(OriginalAuthorityError::unavailable)?;
+                    let root = open_shell_directory(op, &parent, name, expected)?;
+                    let result = optional_stat_at(op, &root, &leaf_name, || {
+                        parent_path.join(name).join(leaf)
+                    });
+                    close_parent(root)?;
+                    let symlink = result?
+                        .as_ref()
+                        .is_some_and(|stat| stat_mode(stat) == mode_bits(libc::S_IFLNK));
+                    write_bool(&mut response, symlink)?;
+                    self.shell_inputs = None;
+                    if symlink {
+                        PackResolve::Spent
+                    } else {
+                        self.shell_leaf = selected;
+                        PackResolve::ShellLeafParentSymlink
+                    }
+                }
+                PackResolve::ShellLeafParentSymlink => {
+                    let name = self
+                        .shell_resolved_name
+                        .as_deref()
+                        .ok_or_else(OriginalAuthorityError::unavailable)?;
+                    let stat = optional_stat(op, &parent, parent_path, name)?;
+                    let symlink = stat
+                        .as_ref()
+                        .is_some_and(|stat| stat_mode(stat) == mode_bits(libc::S_IFLNK));
+                    if !symlink && stat.as_ref().map(stat_identity) != self.shell_root_identity {
+                        return Err(OriginalAuthorityError::unavailable().into());
+                    }
+                    write_bool(&mut response, symlink)?;
+                    if symlink {
+                        PackResolve::Spent
+                    } else {
+                        PackResolve::ShellReady
                     }
                 }
                 _ => return Err(OriginalAuthorityError::unavailable().into()),
@@ -161,52 +223,95 @@ fn close_parent(parent: TrackedFile) -> Result<()> {
         .map_err(|_| OriginalAuthorityError::unavailable())
 }
 
-fn checked_name(name: &str) -> Result<CString> {
-    if name.is_empty() || name.len() > MAX_NAME || name == "." || name == ".." || name.contains('/')
+fn open_shell_directory<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    parent: &TrackedFile,
+    name: &str,
+    expected: Identity,
+) -> Result<TrackedFile> {
+    let name = checked_name(name)?;
+    let descriptor = loop {
+        op.check(OriginalAuthorityStage::Source)?;
+        let descriptor = unsafe {
+            libc::openat(
+                parent.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if descriptor >= 0 {
+            break descriptor;
+        }
+        if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+    };
+    let root = TrackedFile::new(unsafe { File::from_raw_fd(descriptor) }, op.cleanup.clone());
+    if !root
+        .metadata()
+        .is_ok_and(|meta| identity(&meta) == expected)
     {
+        close_parent(root)?;
+        return Err(OriginalAuthorityError::unavailable());
+    }
+    Ok(root)
+}
+
+fn checked_name(name: &str) -> Result<CString> {
+    if !single_leaf(name) {
         return Err(OriginalAuthorityError::unavailable());
     }
     CString::new(name).map_err(|_| OriginalAuthorityError::unavailable())
 }
 
-fn leaf_mode<S: crate::BootstrapReviewOwner>(
+fn stat_mode(stat: &libc::stat) -> u32 {
+    mode_bits(stat.st_mode & libc::S_IFMT)
+}
+
+fn stat_identity(stat: &libc::stat) -> Identity {
+    Identity {
+        device: device_bits(stat.st_dev),
+        inode: stat.st_ino,
+        owner: stat.st_uid,
+        kind: stat_mode(stat),
+    }
+}
+
+fn stat_at<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
-    path: &Path,
-    name: &str,
-) -> Result<u32> {
-    let name_c = checked_name(name)?;
+    name: &CString,
+    path: impl FnOnce() -> PathBuf,
+) -> Result<libc::stat> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     loop {
         op.check(OriginalAuthorityStage::Source)?;
         if unsafe {
             libc::fstatat(
                 parent.as_raw_fd(),
-                name_c.as_ptr(),
+                name.as_ptr(),
                 stat.as_mut_ptr(),
                 libc::AT_SYMLINK_NOFOLLOW,
             )
         } == 0
         {
-            return Ok(mode_bits(
-                unsafe { stat.assume_init() }.st_mode & libc::S_IFMT,
-            ));
+            return Ok(unsafe { stat.assume_init() });
         }
         let error = std::io::Error::last_os_error();
         if error.kind() != std::io::ErrorKind::Interrupted {
-            return Err(raw_io(error, path.join(name).to_str()));
+            return Err(raw_io(error, path().to_str()));
         }
     }
 }
 
-fn optional_mode<S: crate::BootstrapReviewOwner>(
+fn optional_stat_at<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
-    path: &Path,
-    name: &str,
-) -> Result<Option<u32>> {
-    match leaf_mode(op, parent, path, name) {
-        Ok(mode) => Ok(Some(mode)),
+    name: &CString,
+    path: impl FnOnce() -> PathBuf,
+) -> Result<Option<libc::stat>> {
+    match stat_at(op, parent, name, path) {
+        Ok(stat) => Ok(Some(stat)),
         Err(error)
             if matches!(&error.cause, Some(OriginalAuthorityCause::Io(io))
                 if io.errno.is_some_and(pathlib_suppressed_stat_errno)) =>
@@ -217,16 +322,27 @@ fn optional_mode<S: crate::BootstrapReviewOwner>(
     }
 }
 
+fn optional_stat<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    parent: &TrackedFile,
+    path: &Path,
+    name: &str,
+) -> Result<Option<libc::stat>> {
+    optional_stat_at(op, parent, &checked_name(name)?, || path.join(name))
+}
+
 fn resolve_leaf<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
     path: &Path,
     original: &str,
 ) -> Result<String> {
-    if leaf_mode(op, parent, path, original)? != mode_bits(libc::S_IFLNK) {
+    let original_c = checked_name(original)?;
+    if stat_mode(&stat_at(op, parent, &original_c, || path.join(original))?)
+        != mode_bits(libc::S_IFLNK)
+    {
         return Ok(original.to_owned());
     }
-    let original_c = checked_name(original)?;
     let mut target = [0_u8; MAX_NAME + 1];
     let size = loop {
         op.check(OriginalAuthorityStage::Source)?;
@@ -255,7 +371,10 @@ fn resolve_leaf<S: crate::BootstrapReviewOwner>(
     // Resolve only an immediate sibling. Validate before any target IO and
     // refuse further links. This supports the original staged root-replaced
     // case without allowing arbitrary realpath or a child file operation.
-    if leaf_mode(op, parent, path, name)? == mode_bits(libc::S_IFLNK) {
+    if stat_mode(&stat_at(op, parent, &checked_name(name)?, || {
+        path.join(name)
+    })?) == mode_bits(libc::S_IFLNK)
+    {
         return Err(OriginalAuthorityError::unavailable());
     }
     Ok(name.to_owned())

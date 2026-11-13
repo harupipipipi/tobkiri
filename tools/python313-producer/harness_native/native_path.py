@@ -25,7 +25,7 @@ _PREFIX = "io.tobkiri.native-inspection-"
 
 
 class _UnboundPlatformArtifacts(BaseException):
-    """Stop the fixed resolver at the first selected Shell leaf check."""
+    """Stop the fixed resolver when the selected Shell tree walk begins."""
 
 
 def _binding(value: Any) -> str:
@@ -81,6 +81,7 @@ class PathBridge:
         self._resolving_catalog = False
         self._resolver_artifact_root: NativePath | None = None
         self._resolver_resolved_root: NativePath | None = None
+        self._resolver_shell_leaf: NativePath | None = None
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -110,6 +111,7 @@ class PathBridge:
         try:
             return target(*args, **kwargs)
         finally:
+            self._resolver_shell_leaf = None
             self._resolver_resolved_root = None
             self._resolver_artifact_root = None
             self._resolving_catalog = False
@@ -364,13 +366,20 @@ class NativePath:
         return self._effect("resolve", "path", [strict])
 
     def is_symlink(self) -> bool:
-        root = self._bridge._resolver_resolved_root
+        bridge = self._bridge
+        if self is bridge._resolver_shell_leaf:
+            # The actual verifier repeats this call when starting the tree.
+            # Host-side admission checked the first leaf and its parent.
+            raise _UnboundPlatformArtifacts
+        root = bridge._resolver_resolved_root
         if root is not None and self._binding == root._binding:
             prefix = root._steps
             tail = self._steps[len(prefix):]
             if (self._steps[:len(prefix)] == prefix
                     and len(tail) == 1 and tail[0][0] == "join"):
-                raise _UnboundPlatformArtifacts
+                result = self._effect("is-symlink", "bool")
+                bridge._resolver_shell_leaf = self
+                return result
         return self._effect("is-symlink", "bool")
 
     def is_file(self) -> bool:

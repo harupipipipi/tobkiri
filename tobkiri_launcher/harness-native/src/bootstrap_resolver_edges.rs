@@ -20,6 +20,7 @@ const REF_PREFIX: &str = "authority-ref:";
 pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    profile_id_text: &str,
 ) -> Result<BootstrapReviewFailure> {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
@@ -72,7 +73,7 @@ pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewO
         pack.input_budget,
     )?);
     drop((rows, request));
-    observe_bundled_dynamic_edges(review, pack, &scope, source).await
+    observe_bundled_dynamic_edges(review, pack, &scope, source, profile_id_text).await
 }
 
 async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
@@ -80,6 +81,7 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
     source: CoreValue,
+    profile_id_text: &str,
 ) -> Result<BootstrapReviewFailure> {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
@@ -174,7 +176,7 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
             ("bindings", bindings.clone()),
         ],
     )?;
-    run_profile_to_artifact_leaf(review, pack, scope, &request).await
+    run_profile_to_artifact_leaf(review, pack, scope, &request, profile_id_text).await
 }
 
 async fn run_profile_to_artifact_leaf<S: BootstrapInputOwner + BootstrapReviewOwner>(
@@ -182,6 +184,7 @@ async fn run_profile_to_artifact_leaf<S: BootstrapInputOwner + BootstrapReviewOw
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
     request: &CoreBuffer,
+    profile_id: &str,
 ) -> Result<BootstrapReviewFailure> {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
@@ -192,7 +195,7 @@ async fn run_profile_to_artifact_leaf<S: BootstrapInputOwner + BootstrapReviewOw
         .unwrap_or_else(|error| error.into_inner())
         .as_mut()
         .context("completed original catalog controller missing")?
-        .begin_pack_resolve()?;
+        .begin_pack_resolve(profile_id)?;
     match pack.observe_resolver_profile(request).await? {
         Ok(boundary) => review.actual.resolver_profile_boundary = Some(boundary),
         Err(failure) => {
@@ -221,10 +224,10 @@ async fn run_profile_to_artifact_leaf<S: BootstrapInputOwner + BootstrapReviewOw
             .unwrap_or_else(|error| error.into_inner())
             .as_ref()
             .is_some_and(
-                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_root_completed,
+                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_leaf_completed,
             )
     {
-        bail!("original resolver stopped before the actual Shell root directory check");
+        bail!("original resolver stopped before the selected Shell path checks completed");
     }
     Ok(BootstrapReviewFailure::NotBound(
         BootstrapReviewReachpoint::ResolvePlatformArtifactsNotBound,

@@ -97,7 +97,7 @@ jobs:
       - name: Check physical catalog binding and the fresh resolver reread
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-catalog-resources-unit.log" --expected-passed 5 --
+          --log "$RUNNER_TEMP/native-catalog-resources-unit.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::catalog::tests
           -- --test-threads=1 --nocapture

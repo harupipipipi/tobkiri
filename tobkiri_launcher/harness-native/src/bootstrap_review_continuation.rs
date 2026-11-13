@@ -273,10 +273,17 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     let failure = match validated_identity(review, pack, caller).await? {
         // The original validator returns the same exact string. Keep that
         // getter ref, and let the original catalog do its live mapping lookup.
-        Ok(_) => match super::catalog::resolver_source_profile(review, pack).await? {
-            Ok(()) => super::resolver_edges::bind_bundled_edges(review, pack).await?,
-            Err(error) => error,
-        },
+        Ok(identity) => {
+            let mut ascii = [0_u8; 128];
+            let profile_id = identity.ascii_identity(&mut ascii)?;
+            drop(identity);
+            match super::catalog::resolver_source_profile(review, pack).await? {
+                Ok(()) => {
+                    super::resolver_edges::bind_bundled_edges(review, pack, profile_id).await?
+                }
+                Err(error) => error,
+            }
+        }
         Err(error) => error,
     };
     Ok(Err(failure))

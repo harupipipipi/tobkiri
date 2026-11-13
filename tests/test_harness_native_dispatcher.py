@@ -1347,7 +1347,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         with self.assertRaises(InvalidReference):
             self.verified_artifacts(catalog, profile_id, source)
 
-    def test_fixed_profile_checks_shell_root_after_original_lock_digest(self) -> None:
+    def test_fixed_profile_checks_shell_path_after_original_lock_digest(self) -> None:
         # The portable caller fixture uses the actual original helpers. The
         # pinned complete Port replay and real Rust IO run in separate CI jobs.
         source_path = (ROOT / "tobkiri_runtime/ecosystem/defaultspack/domain"
@@ -1361,11 +1361,14 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
              namespace)
         artifact_source = ROOT / "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
         artifact_tree = ast.parse(artifact_source.read_bytes(), filename=str(artifact_source))
-        [verifier] = [node for node in artifact_tree.body
-                      if isinstance(node, ast.FunctionDef)
-                      and node.name == "verify_platform_artifact"]
+        artifact_functions = [
+            node for node in artifact_tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name in {"artifact_digest", "verify_platform_artifact"}
+        ]
+        self.assertEqual(len(artifact_functions), 2)
         namespace["Path"] = self.bridge.path
-        exec(compile(ast.Module(body=[verifier], type_ignores=[]),
+        exec(compile(ast.Module(body=artifact_functions, type_ignores=[]),
                      str(artifact_source), "exec"), namespace)
         catalog, profile_id, source = self.source({"requested_edges": []})
         self.static_edges(source)
@@ -1391,6 +1394,10 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 steps = [["parent", ""], ["join", "platform-artifacts"]]
             elif len(calls) == 5:
                 steps = [["shell-resolved-root", ""]]
+            elif len(calls) in (6, 7):
+                steps = [["shell-resolved-root", ""], ["join", "Tobkiri.app"]]
+                if len(calls) == 7:
+                    steps.append(["parent", ""])
             self.assertEqual(frame["target"], {
                 "binding": "fixture-root", "steps": steps,
             })
@@ -1419,7 +1426,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.assertEqual(kwargs["additional_pack_ids"], ())
             digests.append(namespace["_bundle_digest"](actual_catalog))
             namespace["verify_platform_artifact"](
-                actual_catalog.artifact_root, {"relative_path": "Tobkiri.app"},
+                actual_catalog.artifact_root,
+                {"relative_path": "Tobkiri.app", "artifact_digest": "sha256:0123"},
             )
             self.fail("fixture reached beyond the platform artifact boundary")
 
@@ -1434,11 +1442,13 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         })
         self.assertEqual(calls, [
             "is-symlink", "is-file", "read-bytes", "resolve", "is-symlink", "is-dir",
+            "is-symlink", "is-symlink",
         ])
         self.assertEqual(digests, ["sha256:" + hashlib.sha256(raw_lock).hexdigest()])
         self.assertFalse(self.bridge._resolving_catalog)
         self.assertIsNone(self.bridge._resolver_artifact_root)
         self.assertIsNone(self.bridge._resolver_resolved_root)
+        self.assertIsNone(self.bridge._resolver_shell_leaf)
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("resolve_profile", request)
 
