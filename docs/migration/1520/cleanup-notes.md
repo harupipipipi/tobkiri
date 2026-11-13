@@ -2736,9 +2736,28 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実際のschema名ごとにセットアップ、初期参照、評価開始、戻りの残燃料をホストが記録する。
   一つのStoreで元の2B燃料、64MiB、30秒を使う。最大168件で、燃料切れと物理リソースの
   解放を個別に記録する。計測費用も含む値として、次に移植する処理の判断に使う。
-- [計測CI 43382206716](https://github.com/harupipipipi/tobkiri/actions/runs/43382206716)で検証中。
-  製品採用には計測を含まないcold schema-storeと全カタログの完走が必要。
-- 初回CIは同じソースへの二重計測挿入を拒否する試験で止まった。
+- [初回CI 43382206716](https://github.com/harupipipipi/tobkiri/actions/runs/43382206716)は
+  同じソースへの二重計測挿入を拒否する試験で止まった。
   `ad87c6916` で二重挿入を拒否し、関連2ワークフローが浅いcheckoutから参照する
   固定の原本コミットも明示的に取得するようにした。
-  [計測再実行CI 43382433916](https://github.com/harupipipipi/tobkiri/actions/runs/43382433916)
+  [計測再実行CI 43382433916](https://github.com/harupipipipi/tobkiri/actions/runs/43382433916)は成功した。
+- 一度の実行で164件の計測点と41件の戻りを記録した。最後の `surface_template_v1` の
+  戻り時点では燃料が10,256,986残り、その後に燃料切れで停止した。期限内にStoreを
+  終了し、IOの後始末と確保量・予約件数が0に戻ることを確認した。ピークは25,205,940バイト。
+- 計測点間の合計は、前回の戻りから次のセットアップまで133,020,527、
+  セットアップから初期参照まで505,538、初期参照から評価開始まで4,126,769、
+  評価開始から戻りまで1,831,592,263。最大は評価開始から戻りまでの
+  `defaults_setup_v4` 128,084,701、`profile_v5` 104,120,597、
+  `pack_manifest_v4` 100,264,930。再帰的な参照と計測費用も評価区間に含まれる。
+  次の候補はこの区間で選ぶ。製品採用には計測を含まないcold schema-storeと全カタログの完走が必要。
+  [計測JSONの成果物](https://github.com/harupipipipi/tobkiri/actions/runs/43382433916/artifacts/14017416950)
+
+## 039: 初回Setupと既存の公開処理の復旧
+
+- `bootstrap_review_continuation.rs` はジャーナルのない初回Setupで `CatalogNotBound` を返す。
+  現在の実カタログ接続は既存ジャーナルの復旧側であり、その後も
+  `original_profile_definitions.rs` の旧Profile移行の入口で停止する。
+- 初回Setupでは、元の `bootstrap_review_catalog` がカタログ読み込み後にactive pointer、
+  snapshot、登録済みProfileを確認する。元のカタログを返す条件と、source additionsに
+  対する拒否を分け、Authorityの初期状態と後続の候補解決へつなぐ。
+  復旧側のProfile移行の比較は、この初回Setupの実行とは別に進める。
