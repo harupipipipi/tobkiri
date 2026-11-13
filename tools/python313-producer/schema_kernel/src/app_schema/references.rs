@@ -13,7 +13,10 @@ use pyo3::{
 use std::{
     cell::RefCell,
     rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 static CANONICAL: PyOnceLock<ResourcePolicy> = PyOnceLock::new();
@@ -21,6 +24,36 @@ static POINTERS: AtomicUsize = AtomicUsize::new(0);
 static STATIC_ANCHORS: AtomicUsize = AtomicUsize::new(0);
 static DYNAMIC_ANCHORS: AtomicUsize = AtomicUsize::new(0);
 static ADAPTERS: AtomicUsize = AtomicUsize::new(0);
+
+struct OwnedObjects {
+    values: Vec<Object>,
+    // The index contains addresses only. The same strong references keep
+    // them valid, and GC visits and releases values in their original order.
+    addresses: Arc<[usize]>,
+}
+impl OwnedObjects {
+    fn new(values: Vec<Object>) -> Self {
+        let mut addresses: Vec<_> = values.iter().map(|value| value.as_ptr().addr()).collect();
+        addresses.sort_unstable();
+        Self {
+            values,
+            addresses: addresses.into(),
+        }
+    }
+    fn contains(&self, value: &Bound<'_, PyAny>) -> bool {
+        self.addresses.binary_search(&value.as_ptr().addr()).is_ok()
+    }
+    fn clone_ref(&self, py: Python<'_>) -> Self {
+        Self {
+            values: self
+                .values
+                .iter()
+                .map(|value| value.clone_ref(py))
+                .collect(),
+            addresses: Arc::clone(&self.addresses),
+        }
+    }
+}
 
 /// Actual already-crawled builtin metadata objects, not a URI/result cache.
 /// Capture once at the trusted provider's first library load, never after each
@@ -36,8 +69,8 @@ pub(super) struct ResourcePolicy {
     dynamic_function: Object,
     maybe_function: Object,
     method_type: Object,
-    resources: Vec<Object>,
-    anchors: Vec<Object>,
+    resources: OwnedObjects,
+    anchors: OwnedObjects,
 }
 impl ResourcePolicy {
     fn inventory(registry: &Bound<'_, PyAny>) -> PyResult<(Vec<Object>, Vec<Object>)> {
@@ -80,8 +113,8 @@ impl ResourcePolicy {
             static_type: static_type.unbind(),
             dynamic_type: dynamic_type.unbind(),
             method_type: module_member(py, "types", "MethodType")?.unbind(),
-            resources,
-            anchors,
+            resources: OwnedObjects::new(resources),
+            anchors: OwnedObjects::new(anchors),
         })
     }
     pub(super) fn clone_ref(&self, py: Python<'_>) -> Self {
@@ -96,8 +129,8 @@ impl ResourcePolicy {
             dynamic_function: self.dynamic_function.clone_ref(py),
             maybe_function: self.maybe_function.clone_ref(py),
             method_type: self.method_type.clone_ref(py),
-            resources: self.resources.iter().map(|v| v.clone_ref(py)).collect(),
-            anchors: self.anchors.iter().map(|v| v.clone_ref(py)).collect(),
+            resources: self.resources.clone_ref(py),
+            anchors: self.anchors.clone_ref(py),
         }
     }
     fn visit(&self, visit: &PyVisit<'_>) -> Result<(), PyTraverseError> {
@@ -114,8 +147,8 @@ impl ResourcePolicy {
             &self.method_type,
         ]
         .into_iter()
-        .chain(self.resources.iter())
-        .chain(self.anchors.iter())
+        .chain(&self.resources.values)
+        .chain(&self.anchors.values)
         {
             visit.call(value)?;
         }
@@ -123,7 +156,7 @@ impl ResourcePolicy {
     }
     fn resource(&self, value: &Bound<'_, PyAny>) -> PyResult<bool> {
         let py = value.py();
-        Ok(self.resources.iter().any(|owned| owned.bind(py).is(value))
+        Ok(self.resources.contains(value)
             && value.get_type().is(self.resource_type.bind(py))
             && value
                 .getattr("_specification")?
@@ -216,8 +249,8 @@ fn app_reference_policy(
         }
     }
     let mut owned = canonical.clone_ref(py);
-    owned.resources = resources;
-    owned.anchors = anchors;
+    owned.resources = OwnedObjects::new(resources);
+    owned.anchors = OwnedObjects::new(anchors);
     Ok(DefaultReferencePolicy {
         specification: Some(owned.specification.clone_ref(py)),
         resolver_type: Some(owned.resolver_type.clone_ref(py)),
@@ -385,7 +418,7 @@ impl ReferenceState {
             {
                 return self.pointer(py, env, value, fragment);
             }
-        } else if policy.anchors.iter().any(|owned| owned.bind(py).is(value)) {
+        } else if policy.anchors.contains(value) {
             let resource = value.getattr("resource")?;
             if policy.resource(&resource)? {
                 if value.get_type().is(policy.static_type.bind(py))
