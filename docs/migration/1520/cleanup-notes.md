@@ -3238,6 +3238,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   テスト用の割当を使い、実ストレージの試験は既存のmacOS経路で継続する。
   [Rust検証 43500681279](https://github.com/harupipipipi/tobkiri/actions/runs/43500681279)と
   [Wasm CI 43500714040](https://github.com/harupipipipi/tobkiri/actions/runs/43500714040)を開始した。
+- 一覧の原本CI 43500923792 は原本観測後にRustの型不一致で停止した。
+  `5a1c61171` で一覧の二重Resultとテスト用割当の型を修正した。
+  `988eb416c` は非アクティブProfileの定義を選択済みrootから別のロックで読む。
+  元の同一Storeで登録文書と元の配布Profileを辞書比較するため、boolと整数のような
+  Pythonの比較規則も維持する。行なし、同一定義、tombstone、差分ありの各分岐を
+  固定原本から採取し、登録と引き継ぎファイルを保持する。
+- `37bb337ae` はジャーナルと32バイト鍵の読み取りに既存のSecureDirectoryを再利用する。
+  読み取り前と途中のサイズ上限、ファイルの同一性、バッファの消去を保持する。
+  canonical HMACを確認し、完了状態とレジストリ世代・snapshot digest・bootstrap状態を
+  照合する。UTF-8の書き込み形式を対象とし、UTF-16/32の入力は境界で停止する。
+  移行元定義のinert判定、activeの再検査、承認文書への結合と登録直前のCASは次段階。
+  [固定原本との比較 43504460895](https://github.com/harupipipipi/tobkiri/actions/runs/43504460895) と
+  [定義ストア・Clippy 43504460839](https://github.com/harupipipipi/tobkiri/actions/runs/43504460839)を起動した。
+  Linuxの固定原本観測は通過。実Rust比較と
+  [Wasm CI 43504693992](https://github.com/harupipipipi/tobkiri/actions/runs/43504693992)、
+  [同一invocationのCI 43504764640](https://github.com/harupipipipi/tobkiri/actions/runs/43504764640)は検証中。
+  今後は同一定義を比較するためのcanonical出力と再パースを減らせるか検討する。
+  同じ元オブジェクトに対する辞書比較、元の短絡順序、容量計上と例外を保つことが条件。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
