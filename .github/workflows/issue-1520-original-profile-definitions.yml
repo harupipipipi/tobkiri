@@ -6,6 +6,7 @@ name: Issue 1520 original Profile definition prefix
     branches: [codex/issue-1520-native-shared-state]
     paths:
       - tools/original_profile_definition_prefix_reference.py
+      - tools/original_profile_successor_entry_reference.py
       - .github/workflows/issue-1520-original-profile-definitions.yml
 
 permissions:
@@ -54,6 +55,7 @@ jobs:
           --original-root "$GITHUB_WORKSPACE/original-definitions-source"
           --output "$RUNNER_TEMP/original-catalog-prefix"
       - name: Run original constructor and list to the first migration boundary
+        id: definition_prefix
         run: >-
           python3 -B tools/original_profile_definition_prefix_reference.py prepare
           --original-root "$GITHUB_WORKSPACE/original-definitions-source"
@@ -101,6 +103,13 @@ jobs:
       - name: Strict native definition library validation
         if: ${{ !cancelled() }}
         run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings
+      - name: Observe the original locked successor migration through its next entry
+        if: ${{ !cancelled() && steps.definition_prefix.outcome == 'success' }}
+        run: >-
+          python3 -B tools/original_profile_successor_entry_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-definitions-source"
+          --fixtures "$RUNNER_TEMP/original-profile-definitions/summary.json"
+          --output "$RUNNER_TEMP/original-profile-successor-entry"
       - name: Retain bounded observations only
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,6 +119,7 @@ jobs:
             ${{ runner.temp }}/original-profile-definitions/summary.json
             ${{ runner.temp }}/original-profile-definitions/native-observations.json
             ${{ runner.temp }}/original-profile-definitions/comparison.json
+            ${{ runner.temp }}/original-profile-successor-entry/summary.json
             ${{ runner.temp }}/native-definitions-unit.log*
             ${{ runner.temp }}/native-definitions-json.log*
             ${{ runner.temp }}/native-definitions-reference.log*
