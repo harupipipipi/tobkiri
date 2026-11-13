@@ -61,14 +61,8 @@ struct Alternatives {
 
 enum Handler {
     Children(Children),
-    Object {
-        cursor: object::State,
-        live: bool,
-    },
-    Reference {
-        pending: Option<Box<Frame>>,
-        live: bool,
-    },
+    Object { cursor: object::State, live: bool },
+    Reference,
     AnyOf(Alternatives),
 }
 
@@ -77,7 +71,7 @@ enum Signal {
     Done,
 }
 enum Action {
-    Push(Box<Frame>),
+    Push(Frame),
     Resume,
     Yield(Object),
     Done,
@@ -139,7 +133,7 @@ impl Frame {
         instance: Bound<'_, PyAny>,
         path: Option<Bound<'_, PyAny>>,
         schema_path: Option<Bound<'_, PyAny>>,
-    ) -> Box<Frame> {
+    ) -> Self {
         let mut frame = Self::new(
             schema.unbind(),
             instance.unbind(),
@@ -148,7 +142,7 @@ impl Frame {
         );
         frame.path = path.map(Bound::unbind);
         frame.schema_path = schema_path.map(Bound::unbind);
-        Box::new(frame)
+        frame
     }
 
     fn decorate(&self, py: Python<'_>, env: &Environment, error: Object) -> PyResult<Action> {
@@ -371,29 +365,14 @@ impl Frame {
                             }
                         }
                     }
-                    Handler::Reference { pending, live } => {
-                        if *live {
-                            match signal.take() {
-                                Some(Signal::Error(error)) => {
-                                    self.handler = Some(handler);
-                                    return self.decorate(py, env, error);
-                                }
-                                Some(Signal::Done) => {
-                                    *live = false;
-                                    None
-                                }
-                                None => {
-                                    self.handler = Some(handler);
-                                    return Ok(Action::Resume);
-                                }
-                            }
-                        } else if let Some(child) = pending.take() {
-                            *live = true;
-                            Some(Action::Push(child))
-                        } else {
-                            None
+                    Handler::Reference => match signal.take() {
+                        Some(Signal::Error(error)) => {
+                            self.handler = Some(handler);
+                            return self.decorate(py, env, error);
                         }
-                    }
+                        Some(Signal::Done) => None,
+                        None => Some(Action::Resume),
+                    },
                     Handler::AnyOf(alternatives) => {
                         if alternatives.live {
                             match signal.take() {
@@ -572,10 +551,9 @@ impl Frame {
                         self.child(py, contents.bind(py).clone(), instance.clone(), None, None);
                     child.references = references;
                     child.enter_resource = false;
-                    self.handler = Some(Handler::Reference {
-                        pending: Some(child),
-                        live: false,
-                    });
+                    // The next loop step would only schedule this resolved child.
+                    self.handler = Some(Handler::Reference);
+                    return Ok(Action::Push(child));
                 }
                 "propertyNames" | "dependentSchemas" | "items" | "prefixItems" => {}
                 "type" | "const" | "enum" | "minItems" | "maxItems" | "minLength" | "maxLength"
@@ -608,7 +586,7 @@ impl Frame {
                                 references.clone(),
                                 true,
                             );
-                            Ok(Execution::new(env.clone(), frame)
+                            Ok(Execution::new(env.clone(), frame)?
                                 .first_error(py)?
                                 .is_none())
                         },
@@ -638,14 +616,19 @@ impl Frame {
 
 struct Execution {
     env: Rc<Environment>,
-    frames: Vec<Box<Frame>>,
+    // Frames own their state, and the driver keeps an index into the stack.
+    // Reserved slots and both buffers during a moving reallocation occupy
+    // guest linear memory, including while a nested execution is active.
+    frames: Vec<Frame>,
 }
 impl Execution {
-    fn new(env: Rc<Environment>, frame: Frame) -> Self {
-        Self {
-            env,
-            frames: vec![Box::new(frame)],
-        }
+    fn new(env: Rc<Environment>, frame: Frame) -> PyResult<Self> {
+        let mut frames = Vec::new();
+        frames
+            .try_reserve_exact(1)
+            .map_err(|_| PyMemoryError::new_err("native validation frame allocation"))?;
+        frames.push(frame);
+        Ok(Self { env, frames })
     }
     fn first_error(mut self, py: Python<'_>) -> PyResult<Option<Object>> {
         let mut current = 0;
@@ -672,7 +655,7 @@ impl Execution {
                 }
                 Action::Done => {
                     assert_eq!(current + 1, self.frames.len());
-                    self.frames.pop();
+                    drop(self.frames.pop());
                     if current == 0 {
                         return Ok(None);
                     }
@@ -760,7 +743,7 @@ fn app_check_schema(
         references,
         true,
     );
-    if let Some(error) = Execution::new(env, frame).first_error(py)? {
+    if let Some(error) = Execution::new(env, frame)?.first_error(py)? {
         let error = module_member(py, "jsonschema.exceptions", "SchemaError")?
             .call_method1("create_from", (error.bind(py),))?;
         // PyErr::from_value preserves an instance but its normalized restore

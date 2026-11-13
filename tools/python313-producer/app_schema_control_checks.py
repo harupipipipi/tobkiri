@@ -493,5 +493,40 @@ def control_checks(provider, kernel) -> dict[str, bool]:
     for stop_type in (StopIteration, CallbackStop):
         compare(lambda: normal_iterator_stop(stop_type))
     checks["actual_iterator_stop_subclasses_remain_normal_termination"] = True
-    assert len(checks) == 18 and all(value is True for value in checks.values())
+
+    def grown_continuations() -> dict:
+        events = []
+        definitions = {
+            f"link-{index}": {"$ref": f"#/$defs/link-{index + 1}"}
+            for index in range(8)
+        }
+        definitions["link-8"] = {
+            "type": "string", "format": "change", "const": "different",
+        }
+        # Keep several live reference parents while anyOf collects both
+        # errors from the leaf, then check that the next branch runs once.
+        meta = {
+            "$id": "https://app-control.invalid/growth",
+            "$defs": definitions,
+            "anyOf": [
+                {"$ref": "#/$defs/link-0"},
+                {"format": "later", "type": "null"},
+            ],
+        }
+        state = with_checker(meta, 0, lambda _: events.append("resumed") or True, events)
+        state["checker"].checks("later")(lambda _: events.append("sibling") or True)
+        return state
+
+    outcomes = [run(selected, grown_continuations) for selected in (original, provider)]
+    difference = first_difference(*outcomes)
+    assert difference is None, difference
+    assert outcomes[0]["events"] == ["resumed", "sibling"]
+    outcome = outcomes[0]["outcome"]
+    assert outcome["kind"] == "schema-error"
+    error = outcome["error"]
+    assert [child["validator"]["repr"] for child in error["context"]] == [
+        "'type'", "'const'", "'type'",
+    ]
+    checks["grown_reference_continuations_resume_and_preserve_error_order"] = True
+    assert len(checks) == 19 and all(value is True for value in checks.values())
     return checks
