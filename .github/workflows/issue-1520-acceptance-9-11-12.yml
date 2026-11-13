@@ -38,7 +38,7 @@ jobs:
       - name: Check the closed Core ABI and exact version admission
         run: |
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
-            --log "$RUNNER_TEMP/a2-wit.log" --expected-passed 4 -- \
+            --log "$RUNNER_TEMP/a2-wit.log" --expected-passed 5 -- \
             cargo test --locked -p tobkiri-wit --lib
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/a2-manifest.log" --expected-passed 1 -- \
