@@ -128,7 +128,6 @@ pub(crate) struct ActualCustody {
     pub(crate) resolver_getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog_input: Option<CoreBuffer>,
-    pub(crate) _active_candidate: Option<crate::original_authority::ActiveCandidate>,
     pub(crate) _successor_candidate:
         Option<crate::original_authority::definitions::SuccessorCandidate>,
     pub(crate) _resolver_authority: Option<crate::original_authority::ResolverAuthority>,

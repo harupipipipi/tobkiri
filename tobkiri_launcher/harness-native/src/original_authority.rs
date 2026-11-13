@@ -15,8 +15,7 @@ pub(crate) use io::AUTHORITY_PATH_DENIAL;
 pub(crate) use io::publication::catalog;
 pub(crate) use io::publication::definitions;
 pub(crate) use io::publication::{
-    ActiveCandidate, CandidateSelection, Prefix as PublicationPrefix, PublicationRead,
-    ResolverAuthority,
+    CandidateSelection, Prefix as PublicationPrefix, PublicationRead, ResolverAuthority,
 };
 #[path = "original_authority_json.rs"]
 mod json;

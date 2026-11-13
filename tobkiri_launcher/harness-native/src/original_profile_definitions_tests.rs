@@ -34,6 +34,14 @@ impl crate::BootstrapReviewOwner for Source {
 pub(super) fn with_source(
     run: impl FnOnce(&Source, &mut PublicationRead, &CoreCancellation, &Arc<dyn AllocationBudget>),
 ) {
+    with_setup_source(|source, read, cancellation, budget| {
+        run(source, read, cancellation, budget);
+        assert!(!source.root.join("authority").exists());
+    });
+}
+pub(super) fn with_setup_source(
+    run: impl FnOnce(&Source, &mut PublicationRead, &CoreCancellation, &Arc<dyn AllocationBudget>),
+) {
     let temporary = tempfile::tempdir().unwrap();
     let source = Source {
         root: temporary.path().canonicalize().unwrap().join("user-data"),
@@ -50,7 +58,6 @@ pub(super) fn with_source(
     let mut read = PublicationRead::new(&invocation).unwrap();
     run(&source, &mut read, &cancellation, &budget);
     assert!(read.receipt().verified());
-    assert!(!source.root.join("authority").exists());
     // Every owned diagnostic produced by the test body is gone before Read.
     drop((read, budget, store, cancellation, invocation, engine));
     tobkiri_wasm::reap_allocation_owners().unwrap();

@@ -681,6 +681,28 @@ pub(crate) const AUTHORITY_PATH_DENIAL: &str = "Authority store path is not a re
 pub(super) const CAPTURE_DENIAL_CLASS: &str =
     "core_runtime.bootstrap.profile_capture.ProfileResolutionDenied";
 
+/// Enter the actual Store on the root already selected by registered Setup.
+/// Unlike a resolver snapshot, the constructor also runs for an absent DB.
+#[cfg(unix)]
+#[cfg_attr(not(test), allow(dead_code))] // The activation factory is not yet bound.
+pub(super) fn with_registered_store<S: OriginalAuthorityOwner, T>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    body: impl FnOnce(&Store<'_, '_, S>) -> Result<T>,
+) -> Result<T> {
+    let path_bytes = root
+        .as_os_str()
+        .len()
+        .checked_mul(16)
+        .and_then(|bytes| bytes.checked_add(8192))
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
+    let _paths = op.reserve(OriginalAuthorityStage::Path, path_bytes)?;
+    let mut store = Store::open(op, root.join("authority/v4.sqlite3"))?;
+    store.enter()?;
+    let outcome = body(&store);
+    finish_scope(outcome, store.close())
+}
+
 pub(super) fn read_selected<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
@@ -1049,6 +1071,28 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
         parent.continuity()?;
         Ok(store)
     }
+    #[cfg_attr(not(test), allow(dead_code))] // The activation factory is not yet bound.
+    fn enter(&self) -> Result<()> {
+        self.check_process(OriginalAuthorityStage::Process)?;
+        if self.closed {
+            return Err(OriginalAuthorityError::new(
+                OriginalAuthorityStage::Process,
+                "authority store is closed",
+                None,
+            ));
+        }
+        Ok(())
+    }
+    fn check_process(&self, stage: OriginalAuthorityStage) -> Result<()> {
+        if std::process::id() != self.op.pid {
+            return Err(OriginalAuthorityError::new(
+                stage,
+                "authority store cannot be used after fork",
+                None,
+            ));
+        }
+        Ok(())
+    }
     fn parent(&self) -> Result<Parent> {
         let parent = Parent::open(&self.path, &self.op.cleanup)?;
         if parent.identity != self.parent {
@@ -1305,13 +1349,7 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
     }
     fn close(&mut self) -> Result<()> {
         // Source close is process-owned, not a new cancellation boundary.
-        if std::process::id() != self.op.pid {
-            return Err(OriginalAuthorityError::new(
-                OriginalAuthorityStage::Close,
-                "authority store cannot be used after fork",
-                None,
-            ));
-        }
+        self.check_process(OriginalAuthorityStage::Close)?;
         self.closed = true;
         #[cfg(test)]
         if self

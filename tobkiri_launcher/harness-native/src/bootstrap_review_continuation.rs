@@ -228,12 +228,9 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     drop(identity);
     Ok(Err(match selection {
         Ok(CandidateSelection::BundledCatalog) => return resolve_bundled(review, pack).await,
-        Ok(CandidateSelection::ActiveAuthority(candidate)) => {
-            review.actual._active_candidate = Some(candidate);
-            BootstrapReviewFailure::NotBound(
-                BootstrapReviewReachpoint::ActiveCandidateAuthorityNotBound,
-            )
-        }
+        Ok(CandidateSelection::ActiveAuthority) => BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::ActiveCandidateAuthorityNotBound,
+        ),
         Ok(CandidateSelection::Denied(message)) => {
             denied(review, pack, caller, message, BootstrapDeniedRaise::Plain).await?
         }

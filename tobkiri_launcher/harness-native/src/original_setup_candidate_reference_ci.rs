@@ -37,7 +37,7 @@ fn selection_observation(selection: &Result<CandidateSelection>) -> Value {
         Ok(CandidateSelection::Denied(message)) => {
             json!({"outcome":"denial-request","message":message})
         }
-        Ok(CandidateSelection::ActiveAuthority(_)) => {
+        Ok(CandidateSelection::ActiveAuthority) => {
             json!({"outcome":"integration-boundary","stage":"active-authority-entry"})
         }
         Err(error) => original_error(error),
