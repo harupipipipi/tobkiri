@@ -36,23 +36,8 @@ impl CatalogIo {
         {
             return Err(OriginalAuthorityError::unavailable().into());
         }
-        let root_name = self
-            .shell_resolved_name
-            .as_deref()
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let parent_path = self
-            .selected
-            .parent()
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let root_path = bounded_member(parent_path, root_name)?;
-        let root_identity = self
-            .shell_root_identity
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
         let artifact_identity = self
             .shell_artifact_identity
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let parent_identity = self
-            .artifact_parent_identity
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         let binding = self
             .binding
@@ -62,22 +47,8 @@ impl CatalogIo {
         let mut out = inspection_result(scope, budget)?;
         self.pack_resolve = PackResolve::Spent;
         op.check(OriginalAuthorityStage::Source)?;
-        charge_work(
-            budget,
-            root_path.as_os_str().len() as u64 + relative.len() as u64,
-        )?;
-        let parent = open_parent(op, parent_path)?;
-        let root = (|| {
-            if !parent
-                .metadata()
-                .is_ok_and(|meta| identity(&meta) == parent_identity)
-            {
-                return Err(OriginalAuthorityError::unavailable());
-            }
-            open_shell_directory(op, &parent, &root_path, root_name, root_identity, false)
-        })();
-        close_parent(parent)?;
-        let root = root?;
+        let (root, root_path) = self.open_selected_shell_root(op, budget)?;
+        charge_work(budget, relative.len() as u64)?;
         let mut components = relative.rsplitn(2, '/');
         let leaf = components
             .next()
@@ -234,43 +205,17 @@ impl CatalogIo {
         {
             return Err(OriginalAuthorityError::unavailable().into());
         }
-        let root_name = self
-            .shell_resolved_name
-            .as_deref()
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let parent_path = self
-            .selected
-            .parent()
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let root_identity = self
-            .shell_root_identity
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
         let artifact_identity = self
             .shell_artifact_identity
             .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let parent_identity = self
-            .artifact_parent_identity
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
         let _scratch = op.reserve(OriginalAuthorityStage::Path, PATH_BYTES * 6)?;
-        let root_path = bounded_member(parent_path, root_name)?;
+        let mut out = inspection_result(scope, budget)?;
+        let stage = std::mem::replace(&mut self.pack_resolve, PackResolve::Spent);
+        let (root, root_path) = self.open_selected_shell_root(op, budget)?;
         let artifact_path = bounded_member(&root_path, artifact)?;
         let contents_path = bounded_member(&artifact_path, "Contents")?;
         let plist_path = bounded_member(&contents_path, "Info.plist")?;
         charge_work(budget, plist_path.as_os_str().len() as u64)?;
-        let mut out = inspection_result(scope, budget)?;
-        let stage = std::mem::replace(&mut self.pack_resolve, PackResolve::Spent);
-        let parent = open_parent(op, parent_path)?;
-        let root = (|| {
-            if !parent
-                .metadata()
-                .is_ok_and(|meta| identity(&meta) == parent_identity)
-            {
-                return Err(OriginalAuthorityError::unavailable());
-            }
-            open_shell_directory(op, &parent, &root_path, root_name, root_identity, false)
-        })();
-        close_parent(parent)?;
-        let root = root?;
         let app = open_shell_directory(
             op,
             &root,
@@ -363,6 +308,39 @@ impl CatalogIo {
         let response = out.finish()?;
         self.pack_resolve = next;
         Ok(response)
+    }
+    fn open_selected_shell_root<S: crate::BootstrapReviewOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<(TrackedFile, PathBuf)> {
+        let root_name = self
+            .shell_resolved_name
+            .as_deref()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let parent_path = self
+            .selected
+            .parent()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let root_path = bounded_member(parent_path, root_name)?;
+        let root_identity = self
+            .shell_root_identity
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let parent_identity = self
+            .artifact_parent_identity
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        charge_work(budget, root_path.as_os_str().len() as u64)?;
+        let parent = open_parent(op, parent_path)?;
+        let root = if parent
+            .metadata()
+            .is_ok_and(|meta| identity(&meta) == parent_identity)
+        {
+            open_shell_directory(op, &parent, &root_path, root_name, root_identity, false)
+        } else {
+            Err(OriginalAuthorityError::unavailable())
+        };
+        close_parent(parent)?;
+        Ok((root?, root_path))
     }
 }
 

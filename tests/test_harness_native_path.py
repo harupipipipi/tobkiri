@@ -197,7 +197,7 @@ class NativePathAdapterTests(unittest.TestCase):
         self.assertIsNone(bridge._resolver_file)
         self.assertIsNone(bridge._resolver_directory)
 
-    def test_original_verify_rechecks_entrypoint_before_next_boundary(self):
+    def test_original_verify_reads_plist_and_reopens_header_after_entrypoint_digest(self):
         source = ROOT / "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
         tree = ast.parse(source.read_bytes(), filename=str(source))
         names = {"artifact_digest", "_identity", "_regular_binary_reader",
@@ -206,13 +206,19 @@ class NativePathAdapterTests(unittest.TestCase):
         functions = [node for node in tree.body
                      if isinstance(node, ast.FunctionDef) and node.name in names]
         self.assertEqual(len(functions), len(names))
-        content = b"\x7fELF\x00\x01" + bytes(12) + (62).to_bytes(2, "little")
-        entry_digest = "sha256:" + hashlib.sha256(content).hexdigest()
-        for platform, expected_digest in (("macos", entry_digest), ("linux", entry_digest),
-                                          ("linux", "sha256:wrong")):
-            with self.subTest(platform=platform, digest=expected_digest):
+        elf = b"\x7fELF\x00\x01" + bytes(12) + (62).to_bytes(2, "little")
+        macho = b"\xcf\xfa\xed\xfe" + (0x01000007).to_bytes(4, "little")
+        pe = bytearray(152)
+        pe[:2] = b"MZ"
+        pe[60:64] = (128).to_bytes(4, "little")
+        pe[128:134] = b"PE\0\0" + (0x8664).to_bytes(2, "little")
+        for platform, content, mismatch in (("macos", macho, False), ("linux", elf, False),
+                                            ("linux", elf, True), ("windows", bytes(pe), False)):
+            with self.subTest(platform=platform, mismatch=mismatch):
+                entry_digest = "sha256:" + hashlib.sha256(content).hexdigest()
                 app = platform == "macos"
-                leaf = "Tobkiri.app" if app else "Tobkiri.AppImage"
+                leaf = {"macos": "Tobkiri.app", "linux": "Tobkiri.AppImage",
+                        "windows": "tobkiri-shell.exe"}[platform]
                 entry = leaf + "/Contents/MacOS/shell" if app else leaf
                 hash_path = b"Contents/MacOS/shell" if app else b""
                 tree_digest = "sha256:" + hashlib.sha256(hash_path + b"\0" + content).hexdigest()
@@ -245,6 +251,11 @@ class NativePathAdapterTests(unittest.TestCase):
                     elif operation == "read-bytes":
                         result = blob(plistlib.dumps({"CFBundleIdentifier": "example.shell"}))
                     elif operation == "seek":
+                        offset, whence = frame["args"]
+                        if whence == 0:
+                            position = offset
+                        else:
+                            self.assertEqual((offset, whence), (0, 1))
                         result = {"kind": "int", "value": position}
                     elif operation == "read":
                         data = content[position:position + frame["args"][0]]
@@ -266,10 +277,11 @@ class NativePathAdapterTests(unittest.TestCase):
                 exec(compile(ast.fix_missing_locations(ast.Module(body=[future, *functions], type_ignores=[])),
                              str(source), "exec"), namespace)
                 variant = {"relative_path": leaf, "entrypoint": entry,
-                           "artifact_digest": tree_digest, "entrypoint_digest": expected_digest,
+                           "artifact_digest": tree_digest,
+                           "entrypoint_digest": "sha256:wrong" if mismatch else entry_digest,
                            "platform": platform, "architecture": "x86_64",
                            "bundle_identity": "example.shell"}
-                if expected_digest != entry_digest:
+                if mismatch:
                     with self.assertRaisesRegex(ValueError, "entrypoint digest does not match"):
                         bridge._resolve_catalog(namespace["verify_platform_artifact"], root, root,
                                                 root, variant)
@@ -277,17 +289,21 @@ class NativePathAdapterTests(unittest.TestCase):
                     bridge._resolve_catalog(namespace["verify_platform_artifact"], root, root,
                                             root, variant)
                 opens = [row for row in requests if row["operation"] == "open"]
-                self.assertEqual(len(opens), 2 if expected_digest != entry_digest else 3)
+                self.assertEqual(len(opens), 2 if mismatch else 3)
                 entry_steps = [["shell-resolved-root", ""], ["join", entry]]
                 self.assertEqual(opens[-1]["target"]["steps"], entry_steps)
                 fd_ops = [row for row in requests if row["target"]["steps"][:1] == [["shell-entrypoint-file", ""]]]
                 self.assertEqual(fd_ops[-1]["operation"], "close")
                 self.assertTrue(all(row["target"]["steps"][1:] == entry_steps for row in fd_ops))
                 header_ops = [row for row in requests if row["target"]["steps"][:1] == [["shell-header-file", ""]]]
-                if expected_digest == entry_digest:
+                if not mismatch:
+                    pe_tail = ["seek", "read"] if platform == "windows" else []
                     self.assertEqual([row["operation"] for row in header_ops],
-                                     ["fstat", "read", "fstat", "close"])
+                                     ["fstat", "read", *pe_tail, "fstat", "close"])
                     self.assertEqual(header_ops[1]["args"], [64])
+                    if pe_tail:
+                        self.assertEqual(header_ops[2]["args"], [128, 0])
+                        self.assertEqual(header_ops[3]["args"], [24])
                     self.assertTrue(all(row["target"]["steps"][1:] == entry_steps for row in header_ops))
                     if app:
                         self.assertEqual([row["operation"] for row in requests
