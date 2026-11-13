@@ -587,7 +587,7 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                         fs::rename(&artifact, parent.join("parked")).unwrap();
                         std::os::unix::fs::symlink("parked", &artifact).unwrap();
                     }
-                    assert!(inspect(io, "is-symlink", resolved, json!([])).is_err());
+                    assert!(inspect(io, "is-symlink", resolved.clone(), json!([])).is_err());
                     assert_eq!(
                         inspect(io, "is-symlink", selected_parent, json!([])).unwrap()["value"],
                         case == "root-symlink-after-leaf",

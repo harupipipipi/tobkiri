@@ -221,6 +221,19 @@ class CatalogPersistenceBoundaryTests(unittest.TestCase):
     def setUpClass(cls):
         cls.package = assemble(prepare.captured())
 
+    def test_original_shell_module_gets_only_its_scoped_os_view(self):
+        for with_capture in (True, False):
+            with self.subTest(with_capture=with_capture):
+                with captured(self.package, ROOT, with_capture=with_capture) as (
+                    finder, bridge, _bindings, port,
+                ):
+                    module = importlib.import_module("tobkiri_protocol.platform_artifact")
+                    self.assertIs(module.__loader__.finder, finder)
+                    expected_os = bridge.os if with_capture else sys.modules["os"]
+                    self.assertIs(module.os, expected_os)
+                    self.assertIsNot(bridge.os, sys.modules["os"])
+                    self.assertEqual(port.calls, [])
+
     def test_actual_catalog_success_and_failure_paths_keep_owner_io_and_validation(self):
         # The strict Source proof covers ALL branches, including exception
         # matching. Runtime marker refusals alone cannot prove that property.
