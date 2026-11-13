@@ -1,0 +1,64 @@
+name: Issue 1520 unchanged Pi extension replay
+
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - '.github/workflows/issue-1520-pi-replay.yml'
+      - 'crates/tobkiri-e2e/tests/pi.rs'
+      - 'packs/local.pi-adapter/**'
+      - 'packs/local.pi-example-*/**'
+      - 'sdk/js/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pi-replay:
+    runs-on: macos-15
+    timeout-minutes: 55
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-pi-replay
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the supported native owner platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$RUNNER_TEMP" | awk 'NR == 2 {print $1}')"
+          test -n "$device"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - name: Install the locked wrapper tools in CI
+        run: npm ci --prefix sdk/js
+      - name: Build verified Rust Packs and both pinned upstream wrappers
+        run: |
+          python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+          node sdk/js/wrap-pi.mjs packs/local.pi-example-hello
+          node sdk/js/wrap-pi.mjs packs/local.pi-example-protected-paths
+      - name: Replay unchanged extensions through the actual adapter and Gate
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/pi-replay.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-e2e --test pi -- --ignored --nocapture
+      - name: Retain test and build receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-1520-pi-replay
+          path: |
+            ${{ runner.temp }}/pi-replay.log*
+            packs/local.pi-example-hello/component.build.json
+            packs/local.pi-example-protected-paths/component.build.json
+          if-no-files-found: warn
