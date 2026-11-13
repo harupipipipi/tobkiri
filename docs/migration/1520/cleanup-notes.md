@@ -2880,8 +2880,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   原本との比較に孤立surrogate、サブクラスの短絡・真偽・例外を4件追加した。
   [初回比較 43451376680](https://github.com/harupipipipi/tobkiri/actions/runs/43451376680)
   は個々の比較後の総件数が29のまま停止した。`87bc0d3a3` で33件に揃えて
-  [原本比較 43451746013](https://github.com/harupipipipi/tobkiri/actions/runs/43451746013)を再実行。
-  [燃料計測 43451408267](https://github.com/harupipipipi/tobkiri/actions/runs/43451408267)で効果を確認する。
+  [原本比較 43451746013](https://github.com/harupipipipi/tobkiri/actions/runs/43451746013)が成功した。
+  [燃料計測 43451408267](https://github.com/harupipipipi/tobkiri/actions/runs/43451408267)では
+  41件の評価区間が約3,313万fuel減り、42件目の評価開始時は117,733,356 fuel
+  （前版より33,271,726増）だった。完了数は41件で、その後燃料切れ。ピークと解放は
+  前版と同じ。計測なしの[coldと全体 43451376683](https://github.com/harupipipipi/tobkiri/actions/runs/43451376683)
+  も燃料を使い切った。改善は保持するが、既存の予算で完走する条件は未達。
   無計測の[CI 43446170342](https://github.com/harupipipipi/tobkiri/actions/runs/43446170342)
   はcoldと全カタログの両方で元の燃料を使い切った。
 
