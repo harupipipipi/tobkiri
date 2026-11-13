@@ -37,6 +37,8 @@ pub(crate) struct CatalogIo {
     #[cfg(unix)]
     shell_root_identity: Option<Identity>,
     #[cfg(unix)]
+    shell_tree_directory_identity: Option<Identity>,
+    #[cfg(unix)]
     shell_profile_id: Option<String>,
     #[cfg(unix)]
     shell_inputs: Option<shell_inputs::ShellInputs>,
@@ -86,6 +88,7 @@ enum PackResolve {
     ShellTreeSymlink,
     ShellTreeFile,
     ShellTreeDirectory,
+    ShellList,
     ShellReady,
     Spent,
 }
@@ -194,6 +197,8 @@ impl CatalogIo {
             shell_resolved_name: None,
             #[cfg(unix)]
             shell_root_identity: None,
+            #[cfg(unix)]
+            shell_tree_directory_identity: None,
             #[cfg(unix)]
             shell_profile_id: None,
             #[cfg(unix)]
@@ -755,6 +760,7 @@ impl CatalogIo {
             PackResolve::Read => "read-bytes",
             PackResolve::ShellResolve => "resolve",
             PackResolve::ShellDirectory | PackResolve::ShellTreeDirectory => "is-dir",
+            PackResolve::ShellList => "iterdir",
             _ => return Err(OriginalAuthorityError::unavailable().into()),
         };
         let cancellation = self.cancellation.clone();
@@ -789,6 +795,7 @@ impl CatalogIo {
                 | PackResolve::ShellTreeSymlink
                 | PackResolve::ShellTreeFile
                 | PackResolve::ShellTreeDirectory
+                | PackResolve::ShellList
         ) {
             return self.inspect_shell_root(&op, &scope, &steps, budget);
         }
@@ -1436,7 +1443,7 @@ fn scan_directory<S: crate::BootstrapReviewOwner>(
         return Ok(None);
     };
     op.cleanup.files.fetch_add(1, Ordering::AcqRel);
-    let directory = TrackedDirectory {
+    let mut directory = TrackedDirectory {
         pointer,
         state: op.cleanup.clone(),
     };
@@ -1446,18 +1453,11 @@ fn scan_directory<S: crate::BootstrapReviewOwner>(
         let mut files = Vec::new();
         loop {
             op.check(OriginalAuthorityStage::Source)?;
-            set_errno_zero();
-            let entry = unsafe { libc::readdir(directory.pointer.as_ptr()) };
-            if entry.is_null() {
-                if std::io::Error::last_os_error().raw_os_error() != Some(0) {
-                    return Ok(None);
-                }
-                break;
-            }
-            let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) }.to_bytes();
-            if matches!(name, b"." | b"..") {
-                continue;
-            }
+            let name = match directory.next_name() {
+                Ok(Some(name)) => name.to_bytes(),
+                Ok(None) => break,
+                Err(_) => return Ok(None),
+            };
             charge_work(budget, name.len() as u64 + 1)?;
             let count = pending
                 .checked_add(dirs.len())

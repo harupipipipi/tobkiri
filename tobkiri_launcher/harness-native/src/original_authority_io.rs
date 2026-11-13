@@ -80,6 +80,17 @@ impl TrackedFile {
     fn close(mut self) -> std::io::Result<()> {
         self.close_inner()
     }
+    fn into_directory(mut self) -> std::io::Result<TrackedDirectory> {
+        let pointer = std::ptr::NonNull::new(unsafe { libc::fdopendir(self.as_raw_fd()) })
+            .ok_or_else(std::io::Error::last_os_error)?;
+        // fdopendir owns the same descriptor after success. Transfer its
+        // existing cleanup count and leave its one close to closedir.
+        self.closed = true;
+        Ok(TrackedDirectory {
+            pointer,
+            state: self.state.clone(),
+        })
+    }
     fn close_inner(&mut self) -> std::io::Result<()> {
         if self.closed {
             return Ok(());
@@ -1778,6 +1789,27 @@ impl Deref for DescriptorSnapshot {
 struct TrackedDirectory {
     pointer: std::ptr::NonNull<libc::DIR>,
     state: Arc<CleanupState>,
+}
+#[cfg(unix)]
+impl TrackedDirectory {
+    fn next_name(&mut self) -> std::io::Result<Option<&std::ffi::CStr>> {
+        loop {
+            set_errno_zero();
+            let entry = unsafe { libc::readdir(self.pointer.as_ptr()) };
+            if entry.is_null() {
+                let error = std::io::Error::last_os_error();
+                return if error.raw_os_error() == Some(0) {
+                    Ok(None)
+                } else {
+                    Err(error)
+                };
+            }
+            let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };
+            if !matches!(name.to_bytes(), b"." | b"..") {
+                return Ok(Some(name));
+            }
+        }
+    }
 }
 #[cfg(unix)]
 impl Drop for TrackedDirectory {

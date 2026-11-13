@@ -318,6 +318,8 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
         "leaf-symlink",
         "leaf-missing",
         "regular-leaf",
+        "directory-replaced-before-list",
+        "directory-missing-before-list",
         "symlink-at-tree-entry",
         "missing-at-tree-entry",
         "symlink-before-type",
@@ -517,6 +519,12 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
             assert_eq!(path["steps"], resolved);
             assert_eq!(path["value"], expected.to_str().unwrap());
             assert!(inspect(io, "is-dir", resolved.clone(), json!([])).is_err());
+            let directory_cases = [
+                "present",
+                "search-only-root",
+                "directory-replaced-before-list",
+                "directory-missing-before-list",
+            ];
             assert_eq!(
                 inspect(io, "is-symlink", original, json!([])).unwrap()["value"],
                 case == "sibling-link",
@@ -611,18 +619,49 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                         assert_eq!(file.unwrap()["value"], case == "regular-leaf");
                     }
                     let directory = inspect(io, "is-dir", selected.clone(), json!([]));
-                    if matches!(
-                        case,
-                        "present" | "leaf-missing" | "search-only-root" | "missing-at-tree-entry"
-                    ) {
-                        assert_eq!(
-                            directory.unwrap()["value"],
-                            matches!(case, "present" | "search-only-root"),
-                        );
+                    if directory_cases.contains(&case)
+                        || matches!(case, "leaf-missing" | "missing-at-tree-entry")
+                    {
+                        assert_eq!(directory.unwrap()["value"], directory_cases.contains(&case),);
                     } else {
                         assert!(directory.is_err());
                     }
                 }
+            }
+            if directory_cases.contains(&case) {
+                assert!(!io.pack_resolve_shell_tree_entry_completed());
+                assert!(inspect(io, "iterdir", resolved.clone(), json!([])).is_err());
+                for name in ["z.txt", "ä.txt", "a.txt", "Contents"] {
+                    fs::write(leaf.join(name), b"").unwrap();
+                }
+                let names: Vec<_> = fs::read_dir(&leaf)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+                    .collect();
+                if case != "present" && case != "search-only-root" {
+                    fs::rename(&leaf, artifact.join("old-leaf")).unwrap();
+                    if case == "directory-replaced-before-list" {
+                        fs::create_dir(&leaf).unwrap();
+                    }
+                }
+                let result = inspect(io, "iterdir", selected.clone(), json!([]));
+                match case {
+                    "directory-replaced-before-list" => assert!(result.is_err()),
+                    "directory-missing-before-list" => {
+                        let error = result.unwrap_err();
+                        let error = error.downcast_ref::<OriginalAuthorityError>().unwrap();
+                        assert!(
+                            matches!(&error.cause, Some(OriginalAuthorityCause::Io(error))
+                            if error.errno == Some(libc::ENOENT)
+                            && error.filename.as_deref() == leaf.to_str())
+                        );
+                    }
+                    _ => assert_eq!(
+                        result.unwrap(),
+                        json!({"kind":"shell-directory","value":names})
+                    ),
+                }
+                assert!(inspect(io, "iterdir", selected.clone(), json!([])).is_err());
             }
             assert_eq!(
                 io.pack_resolve_shell_tree_entry_completed(),

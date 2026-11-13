@@ -1408,6 +1408,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                           "value": str(artifact_root), "steps": [["shell-resolved-root", ""]]}
             elif operation == "read-bytes":
                 result = {"kind": "bytes", "value": base64.b64encode(raw_lock).decode()}
+            elif operation == "iterdir":
+                result = {"kind": "shell-directory", "value": ["z", "Contents", "a"]}
             else:
                 result = {"kind": "bool", "value": (
                     operation == "is-dir" or (operation == "is-file" and len(calls) == 2)
@@ -1445,6 +1447,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertEqual(calls, [
             "is-symlink", "is-file", "read-bytes", "resolve", "is-symlink", "is-dir",
             "is-symlink", "is-symlink", "is-symlink", "is-file", "is-dir",
+            "iterdir",
         ])
         self.assertEqual(digests, ["sha256:" + hashlib.sha256(raw_lock).hexdigest()])
         self.assertFalse(self.bridge._resolving_catalog)
@@ -1452,6 +1455,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertIsNone(self.bridge._resolver_resolved_root)
         self.assertIsNone(self.bridge._resolver_shell_leaf)
         self.assertIsNone(self.bridge._resolver_tree_kind)
+        self.assertFalse(self.bridge._resolver_listed_shell)
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("resolve_profile", request)
 

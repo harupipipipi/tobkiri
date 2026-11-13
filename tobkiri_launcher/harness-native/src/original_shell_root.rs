@@ -17,7 +17,8 @@ impl CatalogIo {
             PackResolve::ShellLeafParentSymlink
             | PackResolve::ShellTreeSymlink
             | PackResolve::ShellTreeFile
-            | PackResolve::ShellTreeDirectory => self.shell_leaf.clone(),
+            | PackResolve::ShellTreeDirectory
+            | PackResolve::ShellList => self.shell_leaf.clone(),
             _ => None,
         };
         let selected_name = selected.as_ref().and_then(CoreValue::as_str);
@@ -26,7 +27,8 @@ impl CatalogIo {
             PackResolve::ShellLeafSymlink
             | PackResolve::ShellTreeSymlink
             | PackResolve::ShellTreeFile
-            | PackResolve::ShellTreeDirectory => {
+            | PackResolve::ShellTreeDirectory
+            | PackResolve::ShellList => {
                 let name = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
                 exact_steps(steps, &[RESOLVED_STEPS[0], ("join", name)])
             }
@@ -130,7 +132,8 @@ impl CatalogIo {
                 PackResolve::ShellLeafSymlink
                 | PackResolve::ShellTreeSymlink
                 | PackResolve::ShellTreeFile
-                | PackResolve::ShellTreeDirectory => {
+                | PackResolve::ShellTreeDirectory
+                | PackResolve::ShellList => {
                     let name = self
                         .shell_resolved_name
                         .as_deref()
@@ -141,10 +144,26 @@ impl CatalogIo {
                         .shell_root_identity
                         .ok_or_else(OriginalAuthorityError::unavailable)?;
                     let root_path = parent_path.join(name);
-                    let root = open_shell_directory(op, &parent, &root_path, name, expected)?;
+                    let root =
+                        open_shell_directory(op, &parent, &root_path, name, expected, false)?;
+                    if stage == PackResolve::ShellList {
+                        let result = (|| {
+                            let expected = self
+                                .shell_tree_directory_identity
+                                .ok_or_else(OriginalAuthorityError::unavailable)?;
+                            let path = root_path.join(leaf);
+                            let leaf =
+                                open_shell_directory(op, &root, &path, leaf, expected, true)?;
+                            write_shell_directory(op, leaf, &path, &mut response, budget)
+                        })();
+                        close_parent(root)?;
+                        result?;
+                        return Ok(PackResolve::ShellReady);
+                    }
                     let result = optional_stat_at(op, &root, &leaf_name, || root_path.join(leaf));
                     close_parent(root)?;
-                    let mode = result?.as_ref().map(stat_mode);
+                    let stat = result?;
+                    let mode = stat.as_ref().map(stat_mode);
                     match stage {
                         PackResolve::ShellLeafSymlink | PackResolve::ShellTreeSymlink => {
                             let symlink = mode == Some(mode_bits(libc::S_IFLNK));
@@ -174,7 +193,12 @@ impl CatalogIo {
                             let found = mode == Some(mode_bits(expected));
                             write_bool(&mut response, found)?;
                             match (found, file) {
-                                (true, _) => PackResolve::ShellReady,
+                                (true, true) => PackResolve::ShellReady,
+                                (true, false) => {
+                                    self.shell_tree_directory_identity =
+                                        stat.as_ref().map(stat_identity);
+                                    PackResolve::ShellList
+                                }
                                 (false, true) => PackResolve::ShellTreeDirectory,
                                 (false, false) => PackResolve::Spent,
                             }
@@ -263,6 +287,7 @@ fn open_shell_directory<S: crate::BootstrapReviewOwner>(
     path: &Path,
     name: &str,
     expected: Identity,
+    enumerate: bool,
 ) -> Result<TrackedFile> {
     let name = checked_name(name)?;
     // The first leaf predicate needs directory search access. Keep the
@@ -273,6 +298,7 @@ fn open_shell_directory<S: crate::BootstrapReviewOwner>(
     let access = libc::O_PATH;
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     let access = libc::O_RDONLY;
+    let access = if enumerate { libc::O_RDONLY } else { access };
     let descriptor = loop {
         op.check(OriginalAuthorityStage::Source)?;
         let descriptor = unsafe {
@@ -286,7 +312,9 @@ fn open_shell_directory<S: crate::BootstrapReviewOwner>(
             break descriptor;
         }
         let error = std::io::Error::last_os_error();
-        if matches!(error.raw_os_error(), Some(libc::EACCES | libc::EPERM)) {
+        if matches!(error.raw_os_error(), Some(libc::EACCES | libc::EPERM))
+            || (enumerate && error.kind() == std::io::ErrorKind::NotFound)
+        {
             return Err(raw_io(error, path.to_str()));
         }
         if error.kind() != std::io::ErrorKind::Interrupted {
@@ -302,6 +330,48 @@ fn open_shell_directory<S: crate::BootstrapReviewOwner>(
         return Err(OriginalAuthorityError::unavailable());
     }
     Ok(root)
+}
+
+fn write_shell_directory<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    leaf: TrackedFile,
+    path: &Path,
+    response: &mut CoreBufferBuilder,
+    budget: &Arc<dyn AllocationBudget>,
+) -> anyhow::Result<()> {
+    let mut directory = leaf
+        .into_directory()
+        .map_err(|error| raw_io(error, path.to_str()))?;
+    let listing = (|| {
+        response.append(b"{\"kind\":\"shell-directory\",\"value\":[")?;
+        let mut separator = b"".as_slice();
+        loop {
+            op.check(OriginalAuthorityStage::Source)?;
+            let Some(name) = directory
+                .next_name()
+                .map_err(|error| raw_io(error, path.to_str()))?
+            else {
+                break;
+            };
+            let name = name.to_str().map_err(|_| {
+                OriginalAuthorityError::unsupported(
+                    OriginalAuthorityStage::Source,
+                    "non-UTF-8 Shell directory member",
+                )
+            })?;
+            charge_work(budget, name.len() as u64 + 1)?;
+            response.append(separator)?;
+            crate::bootstrap_metadata::string_parts(response, [name])?;
+            separator = b",";
+        }
+        response.append(b"]}")?;
+        Ok(())
+    })();
+    drop(directory);
+    if op.cleanup.uncertain.load(Ordering::Acquire) {
+        return Err(OriginalAuthorityError::unavailable().into());
+    }
+    listing
 }
 
 fn checked_name(name: &str) -> Result<CString> {

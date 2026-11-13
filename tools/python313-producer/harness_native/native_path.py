@@ -25,7 +25,7 @@ _PREFIX = "io.tobkiri.native-inspection-"
 
 
 class _UnboundPlatformArtifacts(BaseException):
-    """Stop at the first selected Shell tree read or enumeration."""
+    """Stop before the first unconnected Shell tree operation."""
 
 
 def _binding(value: Any) -> str:
@@ -83,6 +83,7 @@ class PathBridge:
         self._resolver_resolved_root: NativePath | None = None
         self._resolver_shell_leaf: NativePath | None = None
         self._resolver_tree_kind: bool | None = None  # True for file, False for directory.
+        self._resolver_listed_shell = False
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -93,6 +94,7 @@ class PathBridge:
         try:
             return target(selected)
         finally:
+            self._resolver_listed_shell = False
             self._catalog_root = None
 
     def _catalog_request(self, target: dict, operation: str, args: list) -> dict:
@@ -359,6 +361,9 @@ class NativePath:
         ), "path")
 
     def resolve(self, strict: bool = False) -> NativePath:
+        if self._bridge._resolver_listed_shell:
+            # An empty directory can finish hashing without visiting a member.
+            raise _UnboundPlatformArtifacts
         if strict is True and self is self._bridge._resolver_artifact_root:
             bridge = self._bridge
             row = bridge._catalog_request(self._target(), "resolve", [True])
@@ -371,6 +376,8 @@ class NativePath:
         return self._effect("resolve", "path", [strict])
 
     def is_symlink(self) -> bool:
+        if self._bridge._resolver_listed_shell:
+            raise _UnboundPlatformArtifacts
         result = self._effect("is-symlink", "bool")
         bridge = self._bridge
         root = bridge._resolver_resolved_root
@@ -424,7 +431,15 @@ class NativePath:
     def iterdir(self) -> Iterator[NativePath]:
         bridge = self._bridge
         if self is bridge._resolver_shell_leaf and bridge._resolver_tree_kind is False:
-            raise _UnboundPlatformArtifacts
+            row = bridge._catalog_request(self._target(), "iterdir", [])
+            names = row.get("value")
+            if (set(row) != {"kind", "value"} or row["kind"] != "shell-directory"
+                    or type(names) is not list or any(
+                        type(name) is not str or name in {"", ".", ".."}
+                        or "/" in name or "\0" in name for name in names)):
+                raise UnsupportedValue("invalid selected Shell directory result")
+            bridge._resolver_listed_shell = True
+            return (self / name for name in names)
         # Pinned Python 3.13 Path.iterdir obtains its scandir entries at the
         # method call, before returning its generator. NativeKit must finish
         # that original enumeration here, not defer it to iterator-next.
