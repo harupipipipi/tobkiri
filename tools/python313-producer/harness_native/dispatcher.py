@@ -364,7 +364,7 @@ class Dispatcher:
                 state.registry._mark_denied(ref, denied_message)
             if identity_origin is not None:
                 state.registry._bootstrap_identity[ref.object_id] = identity_origin
-            return wire.dumps(
+            payload = wire.dumps(
                 {
                     "format": PREFIX + "value-result.v1",
                     "scope": state.registry.scope.wire(),
@@ -372,6 +372,8 @@ class Dispatcher:
                     "owned": [format(r.object_id, "x") for r, _ in created],
                 }
             )
+            state.registry._record_resolver_return(ref, identity_origin)
+            return payload
         except BaseException:
             if ref is not None:
                 state.registry._bootstrap_identity.pop(ref.object_id, None)
@@ -398,8 +400,8 @@ class Dispatcher:
                 raise UnsupportedValue(
                     "original method failure is not represented"
                 ) from None
-            # The ordinary ABI stays opaque. Only the actual fixed raw getter
-            # may later request its separate finite builtin observation.
+            # The ordinary ABI stays opaque. Actual fixed callers can qualify
+            # their own returned exception for the separate finite observation.
             failure = MethodRaised("")
             failure.details = self._result(
                 error, identity_origin=("getter-raised" if identity else
@@ -439,6 +441,8 @@ class Dispatcher:
             kwargs[item[0]] = state.registry.borrow(state.registry.reference(item[1]))
         target = getattr(state.runtime, method)
         identity = method == "bootstrap_profile_id" and not args and not kwargs
+        if identity:
+            state.registry._begin_resolver_getter()
         caller = ({"host_resource_root": "host-root",
                    "bundled_profile_root": "bundle-root"}.get(method)
                   if not args and not kwargs else None)
@@ -506,9 +510,27 @@ class Dispatcher:
             raise
 
     def describe_value(self, payload: str) -> str:
-        """Describe reviewed DATA fields, never arbitrary reflection."""
+        """Serve closed DATA observations and fixed original Setup operations."""
         state = self._current()
         frame = self._load(payload)
+        if frame.get("format") == PREFIX + "resolver-source-lookup.v1":
+            registry = state.registry
+            if (set(frame) != {"format", "scope", "catalog", "profile_id"}
+                    or frame["scope"] != registry.scope.wire()):
+                raise InvalidFrame("invalid fixed resolver source lookup frame")
+            catalog, profile_id = registry._resolver_source_inputs(
+                registry.reference(frame["catalog"]),
+                registry.reference(frame["profile_id"]),
+            )
+            # The Host has validated this exact getter result. The pinned
+            # validate_canonical_id returns the input object unchanged.
+            value = self._apply_original(
+                lambda: catalog.profiles.get(profile_id),
+                caller="resolver-source-lookup",
+            )
+            return self._result(
+                value, identity_origin="resolver-source-lookup-returned",
+            )
         if frame.get("format") == PREFIX + "catalog-manifest-parse.v1":
             if (set(frame) != {"format", "scope", "bytes"}
                     or frame["scope"] != state.registry.scope.wire()

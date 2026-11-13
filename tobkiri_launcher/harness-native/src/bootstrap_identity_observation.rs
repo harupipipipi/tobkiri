@@ -224,6 +224,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (4, "bundle-root")
                 | (7, "catalog")
                 | (2, "manifest")
+                | (2, "resolver-source-lookup")
         ) {
             bail!("fixed original caller is unavailable");
         }
@@ -231,13 +232,14 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         if !matches!(entry, READY | REVIEW) || self.identity_pending.is_some() {
             bail!("raw getter observation is unavailable");
         }
-        let phase = match (entry, slot) {
-            (REVIEW, 3) => REVIEW_HOST_ROOT,
-            (REVIEW, 4) => REVIEW_BUNDLE_ROOT,
-            (REVIEW, 7) => CATALOG_LOAD,
-            (REVIEW, 2) => CATALOG_PARSE,
-            (READY, 1) => IDENTITY,
-            (REVIEW, 1) => REVIEW,
+        let phase = match (entry, origin) {
+            (REVIEW, "host-root") => REVIEW_HOST_ROOT,
+            (REVIEW, "bundle-root") => REVIEW_BUNDLE_ROOT,
+            (REVIEW, "catalog") => CATALOG_LOAD,
+            (REVIEW, "manifest") => CATALOG_PARSE,
+            (REVIEW, "resolver-source-lookup") => RESOLVER_SOURCE_LOOKUP,
+            (READY, "getter") => IDENTITY,
+            (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
         };
         self.work.get().source.check_live()?;
@@ -573,6 +575,16 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (Some("catalog-raised"), "catalog", true)
             | (Some("manifest-returned"), "manifest", false)
             | (Some("manifest-raised"), "manifest", true)
+            | (
+                Some("resolver-source-lookup-returned"),
+                "resolver-source-lookup",
+                false
+            )
+            | (
+                Some("resolver-source-lookup-raised"),
+                "resolver-source-lookup",
+                true
+            )
     )
 }
 

@@ -748,6 +748,185 @@ class IdentityObservationTransportTests(unittest.TestCase):
         self.assertEqual(view["exception"]["recovery_catch"], "none")
 
 
+class ResolverSourceLookupTransportTests(unittest.TestCase):
+    """Fixed resolver frame, live Python lookup and issued input provenance."""
+
+    class Catalog:
+        def __init__(self) -> None:
+            self.profiles = {}
+
+    class Runtime(IdentityRuntimeFixture):
+        def load_catalog(self, _root: NativePath) -> object:
+            return self.catalog
+
+    def setUp(self) -> None:
+        self.scope = Scope(1, 2, 3, 4)
+        self.runtime = self.Runtime()
+        self.runtime.catalog = self.Catalog()
+        self.dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
+            self.runtime,
+            (RecordType("native-path", NativePath, native_binding=True),
+             RecordType("bundled-catalog", self.Catalog, ("profiles",)),
+             RecordType("key-error", KeyError)),
+            (KeyError,),
+        ))
+        self.dispatcher.init(self.frame("init"))
+        self.registry = self.dispatcher._current().registry
+        self.bridge = PathBridge(
+            self.scope, "posix", self.inspect_catalog_root, os_flags={"O_RDONLY": 0},
+        )
+        self.root = self.registry.retain(self.bridge.bind("fixture-root", "/fixture"))
+
+    def frame(self, kind: str, **fields: object) -> str:
+        return wire.dumps({"format": PREFIX + kind + ".v1",
+                           "scope": self.scope.wire(), **fields})
+
+    def inspect_catalog_root(self, payload: str) -> str:
+        request = wire.loads(payload)
+        self.assertEqual(request["operation"], "root")
+        return wire.dumps({
+            "format": PREFIX + "inspection-response.v1",
+            "scope": self.scope.wire(),
+            "result": {"kind": "path", "binding": "fixture-root", "value": "/fixture"},
+        })
+
+    def load(self) -> dict:
+        return wire.loads(self.dispatcher.call("load_catalog", self.frame(
+            "call", args=[self.root.wire()], kwargs=[],
+        )))["root"]
+
+    def getter(self, value: object) -> dict:
+        self.runtime.value = value
+        return wire.loads(self.dispatcher.call("bootstrap_profile_id", self.frame(
+            "call", args=[], kwargs=[],
+        )))["root"]
+
+    def lookup(self, catalog: dict, profile_id: dict, **fields: object) -> dict:
+        return wire.loads(self.dispatcher.describe_value(self.frame(
+            "resolver-source-lookup", catalog=catalog, profile_id=profile_id, **fields,
+        )))
+
+    def view(self, packet: dict) -> dict:
+        return wire.loads(self.dispatcher.describe_value(self.frame(
+            "bootstrap-call-describe", root=packet["root"],
+        )))
+
+    def test_uses_second_exact_input_and_preserves_live_aliases(self) -> None:
+        first_value = "".join(["fixture", "-id"])
+        second_value = "".join(["fixture", "-id"])
+        self.assertIsNot(first_value, second_value)
+        profile = {"requested_edges": [object()]}
+        keys = []
+
+        class Profiles(dict):
+            def get(self, key: str) -> object:
+                keys.append(key)
+                return super().get(key)
+
+        profiles = Profiles({first_value: profile})
+        self.runtime.catalog.profiles = profiles
+        catalog = self.load()
+        first = self.getter(first_value)
+        with self.assertRaises(InvalidReference):
+            self.lookup(catalog, first)
+        second = self.getter(second_value)
+        with self.assertRaises(InvalidReference):
+            self.lookup(catalog, first)
+        self.assertEqual(keys, [])
+        profile_ref = self.registry.retain(profile)
+        packet = self.lookup(catalog, second)
+        self.assertEqual(packet["root"], profile_ref.wire())
+        self.assertEqual(packet["owned"], [])
+        self.assertIs(keys[0], second_value)
+        view = self.view(packet)
+        self.assertEqual(view["origin"], "resolver-source-lookup-returned")
+        self.assertEqual(view["kind"], "dict")
+        self.assertNotIn("nodes", view)
+        del profiles[first_value]
+        missing = self.lookup(catalog, second)
+        self.assertIsNone(
+            self.registry.borrow(self.registry.reference(missing["root"])),
+        )
+        self.assertEqual(self.view(missing)["kind"], "none")
+        self.assertEqual(len(keys), 2)
+
+    def test_same_getter_object_reuses_reference_and_rejects_other_refs(self) -> None:
+        catalog = self.load()
+        profile_id = self.getter("fixture-id")
+        self.assertEqual(self.getter("fixture-id"), profile_id)
+        alien_catalog = self.registry.retain(self.Catalog()).wire()
+        alien_id = self.registry.retain("".join(["fixture", "-id"])).wire()
+        for ref in (alien_id, {**profile_id, "scope": ["1", "2", "9", "4"]}):
+            with self.assertRaises(InvalidReference):
+                self.lookup(catalog, ref)
+        with self.assertRaises(InvalidReference):
+            self.lookup(alien_catalog, profile_id)
+        with self.assertRaises(InvalidFrame):
+            self.lookup(catalog, profile_id, attribute="profiles")
+        self.assertEqual(self.view(self.lookup(catalog, profile_id))["kind"], "none")
+        self.dispatcher.release_values(self.frame("values-release", refs=[profile_id]))
+        replacement = self.getter("fixture-id")
+        self.assertNotEqual(replacement, profile_id)
+        with self.assertRaises(InvalidReference):
+            self.lookup(catalog, replacement)
+
+    def test_catalog_return_with_wrong_type_is_not_a_lookup_input(self) -> None:
+        self.runtime.catalog = {"profiles": {}}
+        catalog = self.load()
+        self.getter("first-id")
+        profile_id = self.getter("fixture-id")
+        with self.assertRaises(InvalidReference):
+            self.lookup(catalog, profile_id)
+
+    def test_failed_second_getter_cannot_be_substituted_by_a_later_call(self) -> None:
+        catalog = self.load()
+        self.getter("first-id")
+        self.runtime.failure = KeyError("second getter failed")
+        with self.assertRaises(MethodRaised):
+            self.getter("failed-id")
+        self.runtime.failure = None
+        profile_id = self.getter("later-id")
+        with self.assertRaises(InvalidReference):
+            self.lookup(catalog, profile_id)
+
+    def test_second_getter_must_return_exact_string(self) -> None:
+        catalog = self.load()
+        self.getter("first-id")
+        profile_id = self.getter(12)
+        with self.assertRaises(InvalidReference):
+            self.lookup(catalog, profile_id)
+
+    def test_retirement_revokes_both_inputs(self) -> None:
+        catalog = self.load()
+        self.getter("first-id")
+        profile_id = self.getter("fixture-id")
+        self.registry.retire()
+        with self.assertRaises(InvalidReference):
+            self.lookup(catalog, profile_id)
+
+    def test_preserves_exact_original_method_exception(self) -> None:
+        original = KeyError("controlled failure")
+
+        class FailingProfiles(dict):
+            def get(self, key: str) -> object:
+                raise original
+
+        self.runtime.catalog.profiles = FailingProfiles()
+        catalog = self.load()
+        self.getter("first-id")
+        profile_id = self.getter("fixture-id")
+        with self.assertRaises(MethodRaised) as raised:
+            self.lookup(catalog, profile_id)
+        packet = wire.loads(raised.exception.details)
+        ref = self.registry.reference(packet["root"])
+        self.assertIs(self.registry.borrow(ref), original)
+        view = self.view(packet)
+        self.assertEqual(view["origin"], "resolver-source-lookup-raised")
+        self.assertEqual(view["kind"], "key-error")
+        with self.assertRaises(InvalidReference):
+            self.registry.describe_bootstrap_identity(ref)
+
+
 class DeniedFactoryTransportTests(unittest.TestCase):
     """Finite provenance/rollback ABI, not original factory or native proof."""
 

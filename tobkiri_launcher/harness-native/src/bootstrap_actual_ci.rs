@@ -145,8 +145,8 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     let describe = CoreValue::object_from(
         [
             Ok(("format", format)),
-            Ok(("scope", scope)),
-            Ok(("root", reference)),
+            Ok(("scope", scope.clone())),
+            Ok(("root", reference.clone())),
         ]
         .into_iter(),
         &budget,
@@ -182,6 +182,28 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     ensure!(
         kind.as_str() == Some("str") && text.as_str() == Some("defaults"),
         "original Profile identity changed"
+    );
+    let private = CoreValue::object_from(
+        [
+            Ok((
+                "format",
+                CoreValue::string("io.tobkiri.native-resolver-source-lookup.v1", &budget)?,
+            )),
+            Ok(("scope", scope)),
+            Ok(("catalog", reference.clone())),
+            Ok(("profile_id", reference)),
+        ]
+        .into_iter(),
+        &budget,
+    )?
+    .encode_guest(&budget)?;
+    let rejection = runtime
+        .describe_value(&private)
+        .await
+        .err()
+        .context("ordinary describe must reject the private frame at the Host")?;
+    ensure!(
+        rejection.to_string() == "source Profile lookup is outside the fixed Review reachpoint"
     );
     ensure!(
         runtime.inspection_attempts() == init_inspections,

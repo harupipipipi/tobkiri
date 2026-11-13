@@ -138,11 +138,7 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     if returned(review.actual.catalog.as_ref().expect("actual catalog"))?
         .observation()
         .get_key("kind")
-        .and_then(|value| {
-            value
-                .as_str()
-                .map(|kind| kind == "original-bundled-catalog")
-        })
+        .and_then(|value| value.as_str().map(|kind| kind == "bundled-catalog"))
         != Some(true)
     {
         bail!("actual load_catalog returned an unrepresented concrete catalog");
@@ -160,6 +156,93 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     }
     caller.check(review, pack)?;
     Ok(Ok(()))
+}
+
+pub(super) async fn resolver_source_profile<
+    S: BootstrapInputOwner + crate::BootstrapReviewOwner,
+>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+) -> Result<BootstrapReviewFailure> {
+    let caller = ReviewCaller::Resolver;
+    caller.check(review, pack)?;
+    pack.require_same_runtime()?;
+    let catalog = returned(
+        review
+            .actual
+            .catalog
+            .as_ref()
+            .context("actual catalog missing")?,
+    )?;
+    let profile_id = returned(
+        review
+            .actual
+            .resolver_getter
+            .as_ref()
+            .context("actual second Profile ID missing")?,
+    )?;
+    let input = resolver_source_lookup_call(pack, catalog, profile_id)?;
+    review.actual.resolver_source_profile = Some(
+        pack.observe_fixed_call(2, &input, "resolver-source-lookup")
+            .await?,
+    );
+    caller.check(review, pack)?;
+    if let Some(failure) = take_failure(&mut review.actual.resolver_source_profile) {
+        return handle_call_failure(review, pack, caller, failure, false).await;
+    }
+    match returned(
+        review
+            .actual
+            .resolver_source_profile
+            .as_ref()
+            .expect("actual lookup"),
+    )?
+    .builtin_kind()
+    {
+        BootstrapBuiltinKind::None => {
+            review_continuation::denied(
+                review,
+                pack,
+                caller,
+                "bundled setup Profile is missing",
+                BootstrapDeniedRaise::Plain,
+            )
+            .await
+        }
+        BootstrapBuiltinKind::Dict => Ok(BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::ResolveRequestedEdgesNotBound,
+        )),
+        _ => bail!("actual bundled Profile has an unrepresented concrete type"),
+    }
+}
+
+fn resolver_source_lookup_call<S: BootstrapInputOwner>(
+    pack: &ReviewPackBorrow<'_, S>,
+    catalog: &BootstrapIdentityValue,
+    profile_id: &BootstrapIdentityValue,
+) -> Result<CoreBuffer> {
+    let scope = CoreValue::parse_guest(pack.call.as_bytes(), pack.input_budget)?
+        .get_key("scope")
+        .context("call scope missing")?;
+    let root = |value: &BootstrapIdentityValue| -> Result<CoreValue> {
+        let packet = denied::result(
+            value.result(),
+            "io.tobkiri.native-value-result.v1",
+            &scope,
+            pack.input_budget,
+        )?;
+        let root = denied::field(&packet, "root")?;
+        denied::ownership(&packet, &root, false)?;
+        Ok(root)
+    };
+    denied::frame(
+        pack,
+        "io.tobkiri.native-resolver-source-lookup.v1",
+        [
+            ("catalog", root(catalog)?),
+            ("profile_id", root(profile_id)?),
+        ],
+    )
 }
 
 pub(super) async fn resolver_lock_digest<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(

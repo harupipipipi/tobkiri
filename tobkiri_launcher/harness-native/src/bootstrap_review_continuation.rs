@@ -271,9 +271,9 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Err(error) => return Ok(Err(original_failure(error))),
     }
     let failure = match validated_identity(review, pack, caller).await? {
-        Ok(_) => BootstrapReviewFailure::NotBound(
-            BootstrapReviewReachpoint::ResolveSourceProfileNotBound,
-        ),
+        // The original validator returns the same exact string. Keep that
+        // getter ref, and let the original catalog do its live mapping lookup.
+        Ok(_) => super::catalog::resolver_source_profile(review, pack).await?,
         Err(error) => error,
     };
     Ok(Err(failure))

@@ -37,6 +37,7 @@ const REVIEW_HOST_ROOT: u8 = 9;
 const REVIEW_BUNDLE_ROOT: u8 = 10;
 const CATALOG_LOAD: u8 = 11;
 const CATALOG_PARSE: u8 = 12;
+const RESOLVER_SOURCE_LOOKUP: u8 = 13;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -148,6 +149,7 @@ impl CiRetiredCall {
             REVIEW_BUNDLE_ROOT => "review-bundle-root",
             CATALOG_LOAD => "catalog-load",
             CATALOG_PARSE => "catalog-manifest-parse",
+            RESOLVER_SOURCE_LOOKUP => "resolver-source-lookup",
             _ => "unknown",
         }
     }
@@ -1137,17 +1139,24 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         input: &CoreBuffer,
         phase: u8,
     ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
-        if slot == 2 && phase != CATALOG_PARSE {
+        // These private frames are constructed by their own Review caller.
+        // The ordinary DATA describe API cannot select either operation.
+        if slot == 2 {
             match CoreValue::parse_guest(input.as_bytes(), self.input_budget) {
-                Ok(frame)
-                    if frame.get_key("format").and_then(|v| {
-                        v.as_str()
-                            .map(|v| v == "io.tobkiri.native-catalog-manifest-parse.v1")
-                    }) == Some(true) =>
-                {
-                    bail!("manifest parse is outside the fixed Review reachpoint")
-                }
-                Ok(_) | Err(tobkiri_canon::AllocationError::Invalid) => {}
+                Ok(frame) => match frame.get_key("format").as_ref().and_then(CoreValue::as_str) {
+                    Some("io.tobkiri.native-catalog-manifest-parse.v1")
+                        if phase != CATALOG_PARSE =>
+                    {
+                        bail!("manifest parse is outside the fixed Review reachpoint");
+                    }
+                    Some("io.tobkiri.native-resolver-source-lookup.v1")
+                        if phase != RESOLVER_SOURCE_LOOKUP =>
+                    {
+                        bail!("source Profile lookup is outside the fixed Review reachpoint");
+                    }
+                    _ => {}
+                },
+                Err(tobkiri_canon::AllocationError::Invalid) => {}
                 Err(error) => return Err(error.into()),
             }
         }

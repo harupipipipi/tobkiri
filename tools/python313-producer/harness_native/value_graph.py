@@ -152,10 +152,14 @@ class Registry:
         # per fresh factory result, referencing its existing string, not a new
         # native allowance or external table. Release/rollback/retire erase it.
         self._denied: dict[int, str] = {}
-        # Issued only by the fixed raw getter's actual call/throw. This small
-        # registry-local table uses the same guest heap and loses its entries
-        # with their original holds; it grants no native operation.
+        # Only fixed original calls publish these origins. They use the same
+        # guest heap and lose their entries with their original holds.
         self._bootstrap_identity: dict[int, str] = {}
+        # The same Python string can be returned by both getter occurrences.
+        # Track the resolver position separately from the identity of its DATA.
+        self._resolver_stage = "awaiting-catalog"
+        self._resolver_catalog: int | None = None
+        self._resolver_profile_id: int | None = None
         self._next = 1
         self._retired = False
 
@@ -307,6 +311,8 @@ class Registry:
             del self._permissions[number]
             self._denied.pop(number, None)
             self._bootstrap_identity.pop(number, None)
+            if number == self._resolver_catalog or number == self._resolver_profile_id:
+                self._clear_resolver_inputs()
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -316,6 +322,54 @@ class Registry:
         self._permissions.clear()
         self._denied.clear()
         self._bootstrap_identity.clear()
+        self._clear_resolver_inputs()
+
+    def _clear_resolver_inputs(self) -> None:
+        self._resolver_stage = "closed"
+        self._resolver_catalog = None
+        self._resolver_profile_id = None
+
+    def _begin_resolver_getter(self) -> None:
+        if self._resolver_stage == "awaiting-first-getter":
+            self._resolver_stage = "first-getter-pending"
+        elif self._resolver_stage == "awaiting-second-getter":
+            self._resolver_stage = "second-getter-pending"
+        elif self._resolver_catalog is not None:
+            self._clear_resolver_inputs()
+
+    def _record_resolver_return(self, reference: Reference, origin: str | None) -> None:
+        # Called only after successful result serialization. An interrupted
+        # or throwing getter cannot advance a pending stage to the next one.
+        if origin == "catalog-returned":
+            if self._resolver_stage == "awaiting-catalog":
+                self._resolver_catalog = reference.object_id
+                self._resolver_stage = "awaiting-first-getter"
+            else:
+                self._clear_resolver_inputs()
+        elif origin == "getter-returned":
+            if self._resolver_stage == "first-getter-pending":
+                self._resolver_stage = "awaiting-second-getter"
+            elif self._resolver_stage == "second-getter-pending":
+                self._resolver_profile_id = reference.object_id
+                self._resolver_stage = "ready"
+
+    def _resolver_source_inputs(
+        self, catalog_ref: Reference, profile_id_ref: Reference,
+    ) -> tuple[Any, str]:
+        catalog = self.borrow(catalog_ref)
+        profile_id = self.borrow(profile_id_ref)
+        record = self._records.get(type(catalog))
+        catalog_origin = self._bootstrap_identity.get(catalog_ref.object_id)
+        profile_id_origin = self._bootstrap_identity.get(profile_id_ref.object_id)
+        if (self._resolver_stage != "ready"
+                or catalog_ref.object_id != self._resolver_catalog
+                or profile_id_ref.object_id != self._resolver_profile_id
+                or catalog_origin != "catalog-returned"
+                or profile_id_origin != "getter-returned"
+                or record is None or record.cls is not type(catalog)
+                or record.kind != "bundled-catalog" or type(profile_id) is not str):
+            raise InvalidReference("reference has no fixed resolver source origin")
+        return catalog, profile_id
 
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
@@ -353,12 +407,13 @@ class Registry:
         return self._describe_fixed_call(root, {"getter-returned", "getter-raised"})
 
     def describe_bootstrap_call(self, root: Reference) -> str:
-        """Finite observation of the three reached catalog callers only."""
+        """Finite observation of fixed original Setup callers."""
         return self._describe_fixed_call(root, {
             "host-root-returned", "host-root-raised",
             "bundle-root-returned", "bundle-root-raised",
             "catalog-returned", "catalog-raised",
             "manifest-returned", "manifest-raised",
+            "resolver-source-lookup-returned", "resolver-source-lookup-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

@@ -51,7 +51,7 @@ pub enum BootstrapReviewReachpoint {
     BootstrapProfileIdNotBound,
     HostProfileCatalogNotBound,
     CatalogSourceNotBound,
-    ResolveSourceProfileNotBound,
+    ResolveRequestedEdgesNotBound,
     ActiveCandidateAuthorityNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
@@ -128,6 +128,7 @@ pub(crate) struct ActualCustody {
     pub(crate) resolver_getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog_input: Option<CoreBuffer>,
+    pub(crate) resolver_source_profile: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) _successor_candidate:
         Option<crate::original_authority::definitions::SuccessorCandidate>,
     pub(crate) _resolver_authority: Option<crate::original_authority::ResolverAuthority>,
