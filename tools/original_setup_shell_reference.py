@@ -17,7 +17,10 @@ from original_catalog_prefix_reference import bind_resources
 from original_setup_candidate_selection_reference import DENIED_CLASS
 
 FORMAT = "io.tobkiri.original-setup-shell-reference.v1"
-CASES = ("selected-shell", "missing-artifact-root", "symlink-artifact-root")
+CASES = (
+    "selected-shell", "missing-artifact-root", "symlink-artifact-root",
+    "symlink-selected-artifact", "missing-selected-artifact",
+)
 ARTIFACT_ROOT = "ecosystem/defaultspack/platform-artifacts"
 
 
@@ -106,6 +109,8 @@ def _observe(
 
     root = runtime / ARTIFACT_ROOT
     parked = root.with_name("reference-parked-platform-artifacts")
+    artifact = root / variant["relative_path"]
+    moved: tuple[Path, Path] | None = None
     verifier = original.verify_platform_artifact.__code__
     pack = resolve_default_profile.__code__
     if Path(verifier.co_filename).resolve() != runtime / "tobkiri_protocol/platform_artifact.py":
@@ -122,7 +127,6 @@ def _observe(
     calls: list[list[str]] = []
     reads: list[dict] = []
     active = False
-    root_moved = False
 
     def record(operation: str, path: Path) -> None:
         if len(calls) >= 128:
@@ -130,7 +134,7 @@ def _observe(
         calls.append([operation, path.relative_to(runtime).as_posix()])
 
     def trace(frame: FrameType, event: str, value: Any) -> Any:
-        nonlocal active, root_moved
+        nonlocal active, moved
         code = frame.f_code
         if event == "call":
             frame.f_trace_lines = False
@@ -148,11 +152,19 @@ def _observe(
                 ):
                     raise AssertionError("actual Pack did not forward its selected Shell")
                 active = True
-                if case != "selected-shell":
-                    root.rename(parked)
-                    root_moved = True
-                    if case == "symlink-artifact-root":
-                        root.symlink_to(parked.name, target_is_directory=True)
+                if case in {"missing-artifact-root", "symlink-artifact-root"}:
+                    moved = (root, parked)
+                elif case in {"missing-selected-artifact", "symlink-selected-artifact"}:
+                    moved = (artifact, parked)
+                if moved is not None:
+                    path, holding = moved
+                    directory = path.is_dir()
+                    path.rename(holding)
+                    if case.startswith("symlink-"):
+                        target = holding.relative_to(path.parent) if path == root else (
+                            Path("..") / holding.name
+                        )
+                        path.symlink_to(target, target_is_directory=directory)
                 return trace
             if active and code is reader:
                 return trace
@@ -204,10 +216,11 @@ def _observe(
             raise AssertionError("Setup proceeded past the original Shell boundary")
         finally:
             sys.settrace(previous)
-            if root_moved:
-                if root.is_symlink():
-                    root.unlink()
-                parked.rename(root)
+            if moved is not None and moved[1].exists():
+                path, holding = moved
+                if path.is_symlink():
+                    path.unlink()
+                holding.rename(path)
 
     if not active or user_data.exists():
         raise AssertionError("Shell reference missed the original call or wrote user state")
@@ -225,6 +238,9 @@ def _check(
 ) -> None:
     root_resolve = ["resolve", ARTIFACT_ROOT]
     root_symlink = ["is-symlink", ARTIFACT_ROOT]
+    root_checks = [root_resolve, root_symlink, ["is-dir", ARTIFACT_ROOT]]
+    artifact = f"{ARTIFACT_ROOT}/{variant['relative_path']}"
+    leaf_symlink = ["is-symlink", artifact]
     entrypoint = variant["entrypoint"]
     if case == "selected-shell":
         resolutions = [
@@ -248,7 +264,7 @@ def _check(
             expected_open_sequence.insert(-2, plist)
         if (
             outcome != {"outcome": "verified"}
-            or calls[:3] != [root_resolve, root_symlink, ["is-dir", ARTIFACT_ROOT]]
+            or calls[:6] != [*root_checks, leaf_symlink, root_symlink, leaf_symlink]
             or [row for row in calls if row[0] == "resolve"] != resolutions
             or [(row["path"], row["header"]) for row in reads] != expected_reads
             or not all(row["stable"] for row in reads)
@@ -268,9 +284,23 @@ def _check(
             )
         else:
             cause = error.get("cause") or {}
-            reason = "packaged artifact root must be a real directory"
+            wanted, reason = {
+                "symlink-artifact-root": (
+                    [root_resolve, root_symlink],
+                    "packaged artifact root must be a real directory",
+                ),
+                "symlink-selected-artifact": (
+                    [*root_checks, leaf_symlink],
+                    "packaged artifact path contains a symlink",
+                ),
+                "missing-selected-artifact": (
+                    [*root_checks, leaf_symlink, root_symlink,
+                     leaf_symlink, ["is-file", artifact], ["is-dir", artifact]],
+                    "packaged artifact entry is unavailable",
+                ),
+            }[case]
             expected = (
-                calls == [root_resolve, root_symlink]
+                calls == wanted
                 and error.get("type") == DENIED_CLASS
                 and error.get("message") == f"verified Shell artifact rejected: {reason}"
                 and error.get("suppressed") is True
