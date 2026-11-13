@@ -2900,7 +2900,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   場合の区切り規則を保つ。追加2組を含む153組で
   [原本比較 43459741509](https://github.com/harupipipipi/tobkiri/actions/runs/43459741509)
   が成功した。[実Wasmの燃料計測 43459824953](https://github.com/harupipipipi/tobkiri/actions/runs/43459824953)
-  で同じ上限を使って比較する。
+  では完了した41件の評価区間が1,676,097,848 fuel（14,157,271減）になった。
+  42件目の評価開始時は148,713,921 fuel（14,102,728増）で、その途中で燃料を使い切った。
+  192組を採取し、ピーク25,205,956 bytesと終了後の予約0は前版と同じ。
+  [無計測CI 43459741448](https://github.com/harupipipipi/tobkiri/actions/runs/43459741448)
+  はcoldと全カタログの両方で燃料切れ。既存の別backendを使う
+  [private Wasm CI 43459741563](https://github.com/harupipipipi/tobkiri/actions/runs/43459741563)
+  も前版と同じ燃料上限で停止した。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
