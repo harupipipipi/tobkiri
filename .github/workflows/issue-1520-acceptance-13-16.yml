@@ -75,10 +75,15 @@ jobs:
       - name: Item 14 and 15 storage tiers, per-pair approval, dangerous permissions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/store-security.log" --expected-passed 4 --
+          --log "$RUNNER_TEMP/store-security.log" --expected-passed 9 --
           cargo test --locked -p tobkiri-store --test security
           -- --exact --nocapture
           public_write_approval_is_once_per_writer_and_store_and_reads_do_not_prompt
+          concurrent_public_writes_share_one_prompt_across_profile_connections
+          concurrent_public_write_waiters_cancel_or_stop_after_denial
+          concurrent_public_write_epoch_change_closes_the_original_prompt
+          public_writer_approval_rolls_back_when_epoch_changes_at_final_dispatch
+          old_public_write_approval_survives_prompt_claim_migration
           three_tiers_are_isolated_per_profile_and_public_approval_is_per_writer_store_pair
           native_and_cross_profile_storage_need_explicit_permission_and_warn_as_dangerous
           client_approved_payload_and_dangerous_declaration_do_not_override_ceiling

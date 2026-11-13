@@ -11,14 +11,15 @@ use tobkiri_canon::{
 use tobkiri_gate::{
     AdmissionStatus, ApprovalStore, AuditEvent, CleanupAuthoritySnapshot, CleanupSnapshotAttempt,
     GateError, GrantId, IntegrityFaultCode, Outcome, PermissionEffect, PermissionSet,
-    PublicWriteApproval, Reservation, ReservationRequest, TerminalDecision, TerminalDelivery,
-    TerminalDisposition,
+    PublicWriteApproval, PublicWritePrompt, Reservation, ReservationRequest, TerminalDecision,
+    TerminalDelivery, TerminalDisposition,
 };
 
 #[path = "permission_commit.rs"]
 mod permission_commit;
 #[path = "profile_save.rs"]
 mod profile_save;
+mod public_write;
 mod storage_commit;
 pub use profile_save::{ProfileSaveOperation, ProfileSaveReceipt};
 
@@ -105,6 +106,7 @@ impl Approvals {
             )?;
         }
         initialization.execute_batch("CREATE INDEX IF NOT EXISTS live_reservations ON reservations(state,expires); CREATE INDEX IF NOT EXISTS nonce_expiry ON attestation_nonces(expires);")?;
+        public_write::initialize(&initialization)?;
         initialization.execute_batch("CREATE TABLE IF NOT EXISTS terminal_outbox(grant_id TEXT PRIMARY KEY,event_id TEXT NOT NULL UNIQUE,body BLOB NOT NULL,delivered INTEGER NOT NULL DEFAULT 0 CHECK(delivered IN(0,1)),size INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS pending_terminal_delivery ON terminal_outbox(delivered);")?;
         initialization.execute_batch("CREATE TRIGGER IF NOT EXISTS terminal_no_delete BEFORE DELETE ON terminal_outbox BEGIN SELECT RAISE(ABORT,'immutable terminal decision'); END; CREATE TRIGGER IF NOT EXISTS terminal_no_rewrite BEFORE UPDATE OF grant_id,event_id,body,size ON terminal_outbox BEGIN SELECT RAISE(ABORT,'immutable terminal decision'); END; CREATE TABLE IF NOT EXISTS user_approvals(profile_hash TEXT NOT NULL,revision TEXT NOT NULL,epoch INTEGER NOT NULL,body BLOB NOT NULL,PRIMARY KEY(profile_hash,revision,epoch));")?;
         if initialization
@@ -270,33 +272,36 @@ impl Approvals {
             )
             .optional()?)
     }
-    fn dispatch_transaction(
+    fn pending_dispatch(
         &self,
+        tx: &rusqlite::Connection,
         id: &GrantId,
         expected: Option<&Reservation>,
-        public: Option<&PublicWriteApproval>,
-    ) -> Result<(), GateError> {
-        let mut conn = self.lock_connection()?;
-        let tx = conn
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-            .map_err(persistence)?;
-        deny_new_authority(&tx)?;
-        let body: Vec<u8> = tx
+        now: u64,
+    ) -> Result<(Reservation, Option<String>), GateError> {
+        deny_new_authority(tx)?;
+        let (body, prompt, expires): (Vec<u8>, Option<String>, i64) = tx
             .query_row(
-                "SELECT body FROM reservations WHERE id=?1 AND state='pending'",
+                "SELECT body, public_write_prompt, expires FROM reservations WHERE id=?1 AND state='pending'",
                 [id.as_str()],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()
             .map_err(persistence)?
             .ok_or(GateError::Consumed)?;
-        let reservation: Reservation = decode(&body).map_err(persistence)?;
+        let reservation = if let Some(expected) = expected {
+            let reservation = validated_reservation(&self.profile, id.as_str(), &body)?;
+            if canonical(expected).map_err(persistence)? != body {
+                return Err(GateError::Denied("reservation binding mismatch".into()));
+            }
+            if u64::try_from(expires).ok() != Some(reservation.expires_unix_ms) {
+                return Err(GateError::Integrity(IntegrityFaultCode::ReservationRecord));
+            }
+            reservation
+        } else {
+            decode(&body).map_err(persistence)?
+        };
         self.local(&reservation.profile)?;
-        if let Some(expected) = expected
-            && canonical(expected).map_err(persistence)? != body
-        {
-            return Err(GateError::Denied("reservation binding mismatch".into()));
-        }
         let epoch = tx
             .query_row(
                 "SELECT epoch FROM security_epoch WHERE singleton=1",
@@ -307,29 +312,43 @@ impl Approvals {
         if epoch != reservation.epoch {
             return Err(GateError::StaleEpoch);
         }
-        if reservation.expires_unix_ms <= now_ms().map_err(persistence)? {
+        if reservation.expires_unix_ms <= now {
             return Err(GateError::Deadline);
         }
-        tx.execute(
-            "UPDATE reservations SET state='dispatched' WHERE id=?1 AND state='pending'",
-            [id.as_str()],
-        )
-        .map_err(persistence)?;
+        Ok((reservation, prompt))
+    }
+    fn dispatch_transaction(
+        &self,
+        id: &GrantId,
+        expected: Option<&Reservation>,
+        public: Option<&PublicWriteApproval>,
+    ) -> Result<(), GateError> {
+        let mut conn = self.lock_connection()?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(persistence)?;
+        let (reservation, prompt) =
+            self.pending_dispatch(&tx, id, expected, now_ms().map_err(persistence)?)?;
         if let Some(public) = public {
-            self.local(&public.profile)?;
-            if public.profile != reservation.profile
-                || reservation
-                    .principal
-                    .pack()
-                    .is_none_or(|(p, _)| p != &public.writer)
-            {
-                return Err(GateError::Denied("public writer binding mismatch".into()));
+            let key = public_write::prompt_key(&reservation, public)?;
+            if prompt.as_deref() != Some(key.as_str()) {
+                return Err(GateError::Denied(
+                    "public write prompt claim mismatch".into(),
+                ));
             }
-            tx.execute(
-                "INSERT OR IGNORE INTO public_writers(writer,owner,store) VALUES(?1,?2,?3)",
-                params![public.writer.as_str(), public.owner.as_str(), public.store],
+            public_write::approve(&tx, &public.writer, &public.owner, &public.store)?;
+        } else if prompt.is_some() {
+            return Err(GateError::ApprovalRequired);
+        }
+        let changed = tx
+            .execute(
+                "UPDATE reservations SET state='dispatched', public_write_prompt=NULL
+                 WHERE id=?1 AND state='pending' AND public_write_prompt IS ?2",
+                params![id.as_str(), prompt],
             )
             .map_err(persistence)?;
+        if changed != 1 {
+            return Err(GateError::Consumed);
         }
         tx.commit().map_err(persistence)?;
         Ok(())
@@ -357,7 +376,7 @@ impl Approvals {
         }
         // Admission already reserved this entry's complete terminal slot.
         // Terminalization must remain possible after the admission fuse closes.
-        let changed = tx.execute("UPDATE reservations SET state='finished',outcome=?2 WHERE id=?1 AND state IN('pending','dispatched','consumed')", params![decision.reservation.id.as_str(), canonical(&decision.outcome).map_err(persistence)?]).map_err(persistence)?;
+        let changed = tx.execute("UPDATE reservations SET state='finished',outcome=?2,public_write_prompt=NULL WHERE id=?1 AND state IN('pending','dispatched','consumed')", params![decision.reservation.id.as_str(), canonical(&decision.outcome).map_err(persistence)?]).map_err(persistence)?;
         if changed != 1 {
             return Err(GateError::Consumed);
         }
@@ -1065,12 +1084,27 @@ impl ApprovalStore for Approvals {
     fn dispatch(&self, id: &GrantId) -> Result<(), GateError> {
         self.dispatch_transaction(id, None, None)
     }
+    fn claim_public_write_prompt(
+        &self,
+        reservation: &Reservation,
+        approval: &PublicWriteApproval,
+    ) -> Result<PublicWritePrompt, GateError> {
+        self.checked_integrity(public_write::claim_prompt(self, reservation, approval))
+    }
+    fn check_public_write_prompt(
+        &self,
+        reservation: &Reservation,
+        leader: &GrantId,
+        approval: &PublicWriteApproval,
+    ) -> Result<bool, GateError> {
+        public_write::check_prompt(self, reservation, leader, approval)
+    }
     fn dispatch_public_write(
         &self,
         r: &Reservation,
         p: &PublicWriteApproval,
     ) -> Result<(), GateError> {
-        self.dispatch_transaction(&r.id, Some(r), Some(p))
+        self.checked_integrity(self.dispatch_transaction(&r.id, Some(r), Some(p)))
     }
     fn abandon(&self, id: &GrantId) -> Result<Option<Reservation>, GateError> {
         Ok(self.abandon_terminal(id)?.map(|v| v.decision.reservation))
@@ -1600,12 +1634,7 @@ impl ApprovalStore for Approvals {
     ) -> Result<bool, GateError> {
         self.local(profile)?;
         let conn = self.lock_connection()?;
-        conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM public_writers WHERE writer=?1 AND owner=?2 AND store=?3)",
-            params![writer.as_str(), owner.as_str(), store],
-            |r| r.get(0),
-        )
-        .map_err(persistence)
+        public_write::approved(&conn, writer, owner, store)
     }
     fn approve_public_write(
         &self,
@@ -1616,12 +1645,7 @@ impl ApprovalStore for Approvals {
     ) -> Result<(), GateError> {
         self.local(profile)?;
         let conn = self.lock_connection()?;
-        conn.execute(
-            "INSERT OR IGNORE INTO public_writers(writer,owner,store) VALUES(?1,?2,?3)",
-            params![writer.as_str(), owner.as_str(), store],
-        )
-        .map_err(persistence)?;
-        Ok(())
+        public_write::approve(&conn, writer, owner, store)
     }
     fn paired_device_key(
         &self,

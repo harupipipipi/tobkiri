@@ -21,6 +21,8 @@ pub use permission_preparation::{
 };
 use permission_preparation::{PreparedPermissionTarget, retained_permission_bytes};
 
+const PUBLIC_WRITE_POLL_MAX: std::time::Duration = std::time::Duration::from_millis(250);
+
 fn try_clone_string_precharged(value: &str) -> Result<String, tobkiri_canon::AllocationError> {
     let mut copy = String::new();
     copy.try_reserve_exact(value.len())
@@ -1864,6 +1866,49 @@ impl GateEngine {
         self.accept_approval_answer(cx, &prompt, snapshot, answer)
     }
 
+    async fn wait_for_public_write_prompt(
+        &self,
+        cx: &CallCx,
+        reservation: &Reservation,
+        approval: &PublicWriteApproval,
+        leader: &GrantId,
+    ) -> Result<(), GateError> {
+        let cancellation = self
+            .prompt
+            .cancellation_waiter(cx)
+            .map_err(|_| GateError::Unavailable)?;
+        tokio::pin!(cancellation);
+        let deadline = tokio::time::sleep_until(cx.deadline().into());
+        tokio::pin!(deadline);
+        let mut delay = std::time::Duration::from_millis(10);
+        loop {
+            cx.check_active()?;
+            if self
+                .approvals
+                .check_public_write_prompt(reservation, leader, approval)?
+            {
+                return Ok(());
+            }
+            tokio::select! {
+                result = &mut cancellation => return Err(cancellation_result(cx, result)),
+                _ = &mut deadline => return Err(GateError::Deadline),
+                _ = tokio::time::sleep(delay) => (),
+            }
+            delay = (delay * 2).min(PUBLIC_WRITE_POLL_MAX);
+        }
+    }
+
+    async fn watch_public_write_epoch(&self, cx: &CallCx) -> GateError {
+        loop {
+            tokio::time::sleep(PUBLIC_WRITE_POLL_MAX).await;
+            match self.epoch(cx.profile()) {
+                Ok(epoch) if epoch == cx.security_epoch() => (),
+                Ok(_) => return GateError::StaleEpoch,
+                Err(error) => return error,
+            }
+        }
+    }
+
     fn accept_approval_answer(
         &self,
         cx: &CallCx,
@@ -2318,7 +2363,7 @@ impl GateEngine {
                 "committed launch exceeds mediated limits".into(),
             ));
         }
-        let first_public_write = match &request {
+        let public_write = match &request {
             EffectRequest::Storage {
                 profile,
                 owner,
@@ -2330,11 +2375,43 @@ impl GateEngine {
                     .principal()
                     .pack()
                     .ok_or_else(|| GateError::Denied("storage writer must be a Pack".into()))?;
-                !self
-                    .approvals
-                    .public_write_approved(profile, writer, owner, store)?
+                Some(PublicWriteApproval {
+                    profile: profile.clone(),
+                    writer: writer.clone(),
+                    owner: owner.clone(),
+                    store: store.clone(),
+                    operation: *operation,
+                })
             }
-            _ => false,
+            _ => None,
+        };
+        let first_public_write = if let Some(approval) = &public_write {
+            cx.check_active()?;
+            if cx.interactive_approval() {
+                match self
+                    .approvals
+                    .claim_public_write_prompt(&reservation, approval)?
+                {
+                    PublicWritePrompt::Approved => false,
+                    PublicWritePrompt::Prompt => true,
+                    PublicWritePrompt::Wait(leader) => {
+                        self.wait_for_public_write_prompt(cx, &reservation, approval, &leader)
+                            .await?;
+                        false
+                    }
+                }
+            } else if self.approvals.public_write_approved(
+                &approval.profile,
+                &approval.writer,
+                &approval.owner,
+                &approval.store,
+            )? {
+                false
+            } else {
+                return Err(GateError::ApprovalRequired);
+            }
+        } else {
+            false
         };
         let per_effect = matches!(
             &request,
@@ -2355,36 +2432,26 @@ impl GateEngine {
                     ..
                 }
         );
-        let trusted_approval =
-            if first_public_write || per_effect || matches!(cx.principal(), Principal::User) {
-                Some(self.obtain_approval(cx, prompt).await?)
-            } else {
-                None
-            };
+        let trusted_approval = if first_public_write {
+            // Drop the Host prompt through its normal cancellation path before
+            // PendingReservation releases the claim after an epoch change.
+            Some(tokio::select! {
+                error = self.watch_public_write_epoch(cx) => return Err(error),
+                answer = self.obtain_approval(cx, prompt) => answer?,
+            })
+        } else if per_effect || matches!(cx.principal(), Principal::User) {
+            Some(self.obtain_approval(cx, prompt).await?)
+        } else {
+            None
+        };
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
         self.event(&reservation, "dispatch", None)?;
-        if first_public_write {
-            if let EffectRequest::Storage {
-                profile,
-                owner,
-                store,
-                ..
-            } = &request
-            {
-                let (writer, _) = cx.principal().pack().unwrap();
-                self.approvals.dispatch_public_write(
-                    &reservation,
-                    &PublicWriteApproval {
-                        profile: profile.clone(),
-                        writer: writer.clone(),
-                        owner: owner.clone(),
-                        store: store.clone(),
-                    },
-                )?;
-            }
+        if let Some(approval) = public_write.filter(|_| first_public_write) {
+            self.approvals
+                .dispatch_public_write(&reservation, &approval)?;
         } else {
             self.approvals.dispatch(&reservation.id)?;
         }
@@ -3114,6 +3181,21 @@ mod cleanup_snapshot_attempt_tests {
                     request: &ReservationRequest,
                 ) -> Result<Reservation, GateError> {
                     self.native.reserve_fresh(request)
+                }
+                fn claim_public_write_prompt(
+                    &self,
+                    _: &Reservation,
+                    _: &PublicWriteApproval,
+                ) -> Result<PublicWritePrompt, GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn check_public_write_prompt(
+                    &self,
+                    _: &Reservation,
+                    _: &GrantId,
+                    _: &PublicWriteApproval,
+                ) -> Result<bool, GateError> {
+                    Err(GateError::Unavailable)
                 }
                 fn dispatch(&self, id: &GrantId) -> Result<(), GateError> {
                     self.native.dispatch(id)

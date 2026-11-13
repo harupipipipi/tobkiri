@@ -1064,6 +1064,21 @@ mod tests {
             );
             Ok(reservation)
         }
+        fn claim_public_write_prompt(
+            &self,
+            _: &Reservation,
+            _: &PublicWriteApproval,
+        ) -> Result<PublicWritePrompt, GateError> {
+            Err(GateError::Unavailable)
+        }
+        fn check_public_write_prompt(
+            &self,
+            _: &Reservation,
+            _: &GrantId,
+            _: &PublicWriteApproval,
+        ) -> Result<bool, GateError> {
+            Err(GateError::Unavailable)
+        }
         fn dispatch(&self, id: &GrantId) -> Result<(), GateError> {
             let mut state = self.rows.lock().unwrap();
             let row = state.rows.get_mut(id).ok_or(GateError::Unavailable)?;

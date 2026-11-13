@@ -597,6 +597,7 @@ impl ReservationRequest {
         })
     }
 }
+/// The exact Public storage write effect and its persistent consent scope.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicWriteApproval {
@@ -604,6 +605,16 @@ pub struct PublicWriteApproval {
     pub writer: PackId,
     pub owner: PackId,
     pub store: String,
+    pub operation: StoreOperation,
+}
+/// Outcome of trying to claim the first prompt for a public store writer.
+pub enum PublicWritePrompt {
+    /// The writer already has durable consent for this store.
+    Approved,
+    /// This reservation must obtain and commit the first approval.
+    Prompt,
+    /// Another reservation is responsible for obtaining the first approval.
+    Wait(GrantId),
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
@@ -822,6 +833,20 @@ pub trait ApprovalStore: Send + Sync {
     fn reserve_fresh(&self, _request: &ReservationRequest) -> Result<Reservation, GateError> {
         Err(GateError::Unavailable)
     }
+    /// Atomically check pair consent or select one pending reservation to prompt.
+    fn claim_public_write_prompt(
+        &self,
+        reservation: &Reservation,
+        approval: &PublicWriteApproval,
+    ) -> Result<PublicWritePrompt, GateError>;
+    /// Read consent while waiting for the original claim. Return ApprovalRequired
+    /// if the claim has ended without consent.
+    fn check_public_write_prompt(
+        &self,
+        reservation: &Reservation,
+        leader: &GrantId,
+        approval: &PublicWriteApproval,
+    ) -> Result<bool, GateError>;
     fn dispatch(&self, id: &GrantId) -> Result<(), GateError>;
     fn dispatch_public_write(
         &self,

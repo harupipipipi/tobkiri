@@ -1,10 +1,13 @@
 use async_trait::async_trait;
 use ed25519_dalek::{Signer, SigningKey};
 use std::{
+    future::{Future, poll_fn},
+    pin::{Pin, pin},
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
+    task::Poll,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tobkiri_canon::{
@@ -159,18 +162,21 @@ impl Fixture {
         }
     }
     fn cx(&self, principal: Principal) -> CallCx {
-        let control = self.gate.control();
+        self.session_cx(&self.gate, principal, "req_test")
+    }
+    fn session_cx(&self, gate: &GateEngine, principal: Principal, request: &str) -> CallCx {
+        let control = gate.control();
         CallCx::try_root_with_control(
             self.profile.clone(),
             principal,
-            RequestId::parse("req_test").unwrap(),
+            RequestId::parse(request).unwrap(),
             CancellationToken::new_with_control(control).unwrap(),
             Instant::now() + Duration::from_secs(30),
             limits(),
             control.clone(),
         )
         .unwrap()
-        .with_security_epoch(self.gate.epoch(&self.profile).unwrap())
+        .with_security_epoch(gate.epoch(&self.profile).unwrap())
     }
     async fn pack(&self, id: &str, permissions: PermissionSet) -> CallCx {
         let pack = PackId::parse(id).unwrap();
@@ -366,6 +372,299 @@ async fn public_write_approval_is_once_per_writer_and_store_and_reads_do_not_pro
     .unwrap();
     assert_eq!(f.prompt.calls.load(Ordering::SeqCst), baseline + 2);
     f.audit.verify().unwrap();
+}
+
+struct HeldPublicWritePrompt {
+    calls: AtomicUsize,
+    answer: Mutex<Option<tokio::sync::oneshot::Receiver<ApprovalAnswer>>>,
+}
+
+impl HeldPublicWritePrompt {
+    fn new() -> (Arc<Self>, tokio::sync::oneshot::Sender<ApprovalAnswer>) {
+        let (answer, receiver) = tokio::sync::oneshot::channel();
+        (
+            Arc::new(Self {
+                calls: AtomicUsize::new(0),
+                answer: Mutex::new(Some(receiver)),
+            }),
+            answer,
+        )
+    }
+}
+
+#[async_trait]
+impl TrustedPrompt for HeldPublicWritePrompt {
+    async fn prompt_approval(&self, prompt: ApprovalPrompt) -> ApprovalAnswer {
+        assert!(matches!(
+            prompt.effect,
+            EffectRequest::Storage {
+                tier: StoreTier::Public,
+                operation: StoreOperation::Write,
+                ..
+            }
+        ));
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let receiver = self.answer.lock().unwrap().take().unwrap();
+        receiver.await.unwrap()
+    }
+}
+
+fn public_writer_session(
+    f: &Fixture,
+    principal: &Principal,
+    prompt: Arc<dyn TrustedPrompt>,
+) -> GateEngine {
+    // Each Gate opens its own connection to this exact physical Profile.
+    let gate = GateEngine::new(
+        Arc::new(Approvals::open(&f.root, &f.profile).unwrap()),
+        Arc::new(AuditLog::open(&f.root, &f.profile, AuditQuota::default()).unwrap()),
+        prompt,
+        MediatorChain::default(),
+    );
+    let (pack, hash) = principal.pack().unwrap();
+    gate.register_pack(
+        &f.profile,
+        pack,
+        hash,
+        PackPolicy {
+            declaration: permissions(),
+            ceiling: permissions(),
+            pack_limits: permissions(),
+        },
+    )
+    .unwrap();
+    gate
+}
+
+fn public_write_effect(profile: &ProfileId, store: &str) -> EffectRequest {
+    EffectRequest::Storage {
+        profile: profile.clone(),
+        owner: PackId::parse("local.owner").unwrap(),
+        store: store.into(),
+        tier: StoreTier::Public,
+        operation: StoreOperation::Write,
+    }
+}
+
+async fn assert_pending<F: Future>(mut future: Pin<&mut F>) {
+    assert!(poll_fn(|cx| Poll::Ready(future.as_mut().poll(cx).is_pending())).await);
+}
+
+#[tokio::test]
+async fn concurrent_public_writes_share_one_prompt_across_profile_connections() {
+    let f = Fixture::new();
+    let writer = f.pack("local.writer", permissions()).await;
+    let (first_prompt, answer) = HeldPublicWritePrompt::new();
+    let second_prompt = Arc::new(Prompt::new());
+    let first = public_writer_session(&f, writer.principal(), first_prompt.clone());
+    let second = public_writer_session(&f, writer.principal(), second_prompt.clone());
+    let first_cx = f.session_cx(&first, writer.principal().clone(), "req_first");
+    let second_cx = f.session_cx(&second, writer.principal().clone(), "req_second");
+    let effect = public_write_effect(&f.profile, "shared");
+    let first_args = Digest::hash(b"first write");
+    let second_args = Digest::hash(b"second write");
+    let mut first_grant = pin!(first.authorize(&first_cx, effect.clone(), first_args.clone()));
+    assert_pending(first_grant.as_mut()).await;
+    assert_eq!(first_prompt.calls.load(Ordering::SeqCst), 1);
+    let mut second_grant = pin!(second.authorize(&second_cx, effect.clone(), second_args.clone()));
+    assert_pending(second_grant.as_mut()).await;
+    assert_eq!(second_prompt.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(f.approvals.pending().unwrap().len(), 2);
+
+    // A different store may prompt while this pair is still awaiting consent.
+    let other_effect = public_write_effect(&f.profile, "other");
+    let other_args = Digest::hash(b"other write");
+    let other = second
+        .authorize(&second_cx, other_effect.clone(), other_args.clone())
+        .await
+        .unwrap()
+        .consume(&second_cx, &other_effect, &other_args)
+        .unwrap();
+    second
+        .record_outcome(other.id().clone(), Outcome::Succeeded)
+        .await
+        .unwrap();
+
+    answer.send(ApprovalAnswer::Approve).unwrap();
+    let (first_grant, second_grant) = tokio::join!(first_grant, second_grant);
+    let first_permit = first_grant
+        .unwrap()
+        .consume(&first_cx, &effect, &first_args)
+        .unwrap();
+    let second_permit = second_grant
+        .unwrap()
+        .consume(&second_cx, &effect, &second_args)
+        .unwrap();
+    assert_ne!(first_permit.id(), second_permit.id());
+    assert!(first_permit.trusted_approval().is_some());
+    assert!(second_permit.trusted_approval().is_none());
+    for (gate, permit) in [(&first, &first_permit), (&second, &second_permit)] {
+        gate.record_outcome(permit.id().clone(), Outcome::Succeeded)
+            .await
+            .unwrap();
+    }
+    assert_eq!(first_prompt.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(second_prompt.calls.load(Ordering::SeqCst), 1);
+    assert!(f.approvals.pending().unwrap().is_empty());
+    let digest = AuditLog::read_digest(0, 100).unwrap();
+    let audit_grant = second
+        .authorize(&second_cx, EffectRequest::AuditRead, digest)
+        .await
+        .unwrap();
+    let records = f.audit.read(&second_cx, 0, 100, audit_grant).unwrap();
+    for (cx, permit, args) in [
+        (&first_cx, &first_permit, &first_args),
+        (&second_cx, &second_permit, &second_args),
+    ] {
+        assert!(records.iter().any(|row| {
+            let event = &row.event;
+            if event.request != *cx.request() || event.kind != "dispatch" {
+                return false;
+            }
+            let CanonValue::Obj(fields) = &event.payload else {
+                return false;
+            };
+            fields.get("grant") == Some(&CanonValue::Str(permit.id().to_string()))
+                && fields.get("args_digest") == Some(&CanonValue::Str(args.to_string()))
+        }));
+    }
+    f.audit.verify().unwrap();
+}
+
+#[tokio::test]
+async fn concurrent_public_write_waiters_cancel_or_stop_after_denial() {
+    let f = Fixture::new();
+    let writer = f.pack("local.writer", permissions()).await;
+    let (first_prompt, answer) = HeldPublicWritePrompt::new();
+    let second_prompt = Arc::new(Prompt::new());
+    let first = public_writer_session(&f, writer.principal(), first_prompt.clone());
+    let second = public_writer_session(&f, writer.principal(), second_prompt.clone());
+    let first_cx = f.session_cx(&first, writer.principal().clone(), "req_first");
+    let cancelled_cx = f.session_cx(&second, writer.principal().clone(), "req_cancelled");
+    let second_cx = f.session_cx(&second, writer.principal().clone(), "req_second");
+    let effect = public_write_effect(&f.profile, "shared");
+    let args = Digest::hash(b"write");
+    let mut first_grant = pin!(first.authorize(&first_cx, effect.clone(), args.clone()));
+    assert_pending(first_grant.as_mut()).await;
+    let mut cancelled = pin!(second.authorize(&cancelled_cx, effect.clone(), args.clone()));
+    assert_pending(cancelled.as_mut()).await;
+    cancelled_cx.cancel().cancel();
+    assert!(matches!(cancelled.await, Err(GateError::Cancelled)));
+    assert_eq!(f.approvals.pending().unwrap().len(), 1);
+
+    let mut second_grant = pin!(second.authorize(&second_cx, effect.clone(), args.clone()));
+    assert_pending(second_grant.as_mut()).await;
+    answer.send(ApprovalAnswer::Deny).unwrap();
+    let (first_grant, second_grant) = tokio::join!(first_grant, second_grant);
+    assert!(matches!(first_grant, Err(GateError::Denied(_))));
+    assert!(matches!(second_grant, Err(GateError::ApprovalRequired)));
+    assert_eq!(first_prompt.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(second_prompt.calls.load(Ordering::SeqCst), 0);
+    assert!(f.approvals.pending().unwrap().is_empty());
+
+    let retry = f.session_cx(&second, writer.principal().clone(), "req_retry");
+    drop(second.authorize(&retry, effect, args).await.unwrap());
+    assert_eq!(second_prompt.calls.load(Ordering::SeqCst), 1);
+    f.audit.verify().unwrap();
+}
+
+#[tokio::test]
+async fn concurrent_public_write_epoch_change_closes_the_original_prompt() {
+    let f = Fixture::new();
+    let writer = f.pack("local.writer", permissions()).await;
+    let (first_prompt, answer) = HeldPublicWritePrompt::new();
+    let second_prompt = Arc::new(Prompt::new());
+    let first = public_writer_session(&f, writer.principal(), first_prompt.clone());
+    let second = public_writer_session(&f, writer.principal(), second_prompt.clone());
+    let first_cx = f.session_cx(&first, writer.principal().clone(), "req_first");
+    let second_cx = f.session_cx(&second, writer.principal().clone(), "req_second");
+    let effect = public_write_effect(&f.profile, "shared");
+    let args = Digest::hash(b"write");
+    let mut first_grant = pin!(first.authorize(&first_cx, effect.clone(), args.clone()));
+    assert_pending(first_grant.as_mut()).await;
+    let mut second_grant = pin!(second.authorize(&second_cx, effect.clone(), args.clone()));
+    assert_pending(second_grant.as_mut()).await;
+    f.approvals.advance_security_epoch(&f.profile).unwrap();
+    let overlapping_cx = f.session_cx(&second, writer.principal().clone(), "req_new_epoch");
+    let mut overlapping = pin!(second.authorize(&overlapping_cx, effect.clone(), args.clone()));
+    assert_pending(overlapping.as_mut()).await;
+
+    let (first_grant, second_grant, overlapping) =
+        tokio::join!(first_grant, second_grant, overlapping);
+    assert!(matches!(first_grant, Err(GateError::StaleEpoch)));
+    assert!(matches!(second_grant, Err(GateError::StaleEpoch)));
+    assert!(matches!(overlapping, Err(GateError::ApprovalRequired)));
+    assert!(answer.send(ApprovalAnswer::Approve).is_err());
+    assert_eq!(first_prompt.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(second_prompt.calls.load(Ordering::SeqCst), 0);
+    assert!(f.approvals.pending().unwrap().is_empty());
+
+    let retry = f.session_cx(&second, writer.principal().clone(), "req_retry");
+    drop(second.authorize(&retry, effect, args).await.unwrap());
+    assert_eq!(second_prompt.calls.load(Ordering::SeqCst), 1);
+    f.audit.verify().unwrap();
+}
+
+#[tokio::test]
+async fn old_public_write_approval_survives_prompt_claim_migration() {
+    let f = Fixture::new();
+    let writer = f.pack("local.writer", permissions()).await;
+    let approved = public_write_effect(&f.profile, "previously-approved");
+    let args = Digest::hash(b"write");
+    drop(
+        f.gate
+            .authorize(&writer, approved.clone(), args.clone())
+            .await
+            .unwrap(),
+    );
+    let Fixture {
+        _temp,
+        root,
+        profile,
+        approvals,
+        audit,
+        prompt,
+        gate,
+    } = f;
+    drop((approvals, gate));
+
+    // Restore the prior reservation schema while keeping real durable consent.
+    let old = rusqlite::Connection::open(
+        root.path()
+            .join(format!("profiles/{profile}/approvals.sqlite")),
+    )
+    .unwrap();
+    old.execute_batch(
+        "DROP INDEX pending_public_write_prompt;
+         ALTER TABLE reservations DROP COLUMN public_write_prompt;",
+    )
+    .unwrap();
+    drop(old);
+
+    let approvals = Arc::new(Approvals::open(&root, &profile).unwrap());
+    let gate = Arc::new(GateEngine::new(
+        approvals.clone(),
+        audit.clone(),
+        prompt.clone(),
+        MediatorChain::default(),
+    ));
+    let migrated = Fixture {
+        _temp,
+        root,
+        profile,
+        approvals,
+        audit,
+        prompt,
+        gate,
+    };
+    let gate = public_writer_session(&migrated, writer.principal(), migrated.prompt.clone());
+    let cx = migrated.session_cx(&gate, writer.principal().clone(), "req_migrated");
+    let baseline = prompt_calls(&migrated);
+    drop(gate.authorize(&cx, approved, args.clone()).await.unwrap());
+    assert_eq!(prompt_calls(&migrated), baseline);
+    let unapproved = public_write_effect(&migrated.profile, "new");
+    drop(gate.authorize(&cx, unapproved, args).await.unwrap());
+    assert_eq!(prompt_calls(&migrated), baseline + 1);
 }
 
 async fn put_value(f: &Fixture, handle: &StoreHandle, cx: &CallCx, key: &str, value: &[u8]) {
