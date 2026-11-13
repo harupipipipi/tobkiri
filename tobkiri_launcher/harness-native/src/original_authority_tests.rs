@@ -444,7 +444,31 @@ fn original_reference_driver() -> anyhow::Result<()> {
 
 #[test]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn cancelled_absent_operation_does_not_create_authority_state() -> anyhow::Result<()> {
+fn absent_database_preserves_cancellation_and_competing_creation() -> anyhow::Result<()> {
+    struct CompetingInitializer<'a>(&'a Source);
+    impl OriginalAuthorityOwner for CompetingInitializer<'_> {
+        fn with_original_user_data<R>(&self, operation: impl FnOnce(&Path) -> R) -> Result<R> {
+            self.0.with_original_user_data(operation)
+        }
+        fn check_original_owner(&self) -> Result<()> {
+            use std::os::unix::fs::OpenOptionsExt;
+
+            self.0.check_original_owner()?;
+            let database = self.0.root.join("authority/v4.sqlite3");
+            // The first check after key publication is in the key read, after
+            // path preparation saw the DB absent and before its exclusive open.
+            if database.with_extension("key").is_file() && !database.exists() {
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(database)
+                    .expect("competing initializer creates the empty database");
+            }
+            Ok(())
+        }
+    }
+
     let temporary = tempfile::tempdir()?;
     let root = temporary.path().canonicalize()?;
     let user_data = root.join("selected");
@@ -470,6 +494,65 @@ fn cancelled_absent_operation_does_not_create_authority_state() -> anyhow::Resul
     assert!(read.cleanup_verified());
     drop(read);
     assert!(!user_data.join("authority").exists());
+    assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
+
+    let competitor = CompetingInitializer(&source);
+    let cancellation = CoreCancellation::new_with_control(invocation.control())?;
+    let op = Operation {
+        owner: &competitor,
+        invocation: &invocation,
+        cancellation: &cancellation,
+        deadline: invocation.deadline()?,
+        pid: std::process::id(),
+        cleanup: Arc::new(io::CleanupState::new(
+            invocation
+                .control()
+                .reserve(tobkiri_gate::ControlKind::Context, 4096)?,
+        )),
+        fixture: None,
+    };
+    let error = io::with_registered_store::<_, ()>(&op, &user_data, |_| {
+        panic!("competing creation reached the registered authority body")
+    })
+    .unwrap_err();
+    assert_eq!(error.stage, OriginalAuthorityStage::Path);
+    assert_eq!(
+        graph(&error, &mut 0),
+        json!({
+            "id": 0,
+            "type": "core_runtime.authority.store_contracts.AuthorityStoreError",
+            "message": "authority database path is unsafe",
+            "suppressed": true,
+            "cause": {
+                "id": 1,
+                "type": "core_runtime.secure_sqlite_path.SecurePathError",
+                "message": "ancestor is unsafe",
+                "suppressed": true,
+                "cause": {
+                    "id": 2,
+                    "type": "builtins.FileExistsError",
+                    "message": format!("[Errno {}] File exists: 'v4.sqlite3'", libc::EEXIST),
+                    "suppressed": false,
+                    "cause": null,
+                    "context": null,
+                    "errno": libc::EEXIST,
+                    "filename": "v4.sqlite3"
+                },
+                "context": {"ref": 2}
+            },
+            "context": {"ref": 1}
+        })
+    );
+    assert_eq!(
+        std::fs::metadata(user_data.join("authority/v4.sqlite3"))?.len(),
+        0
+    );
+    assert!(
+        !user_data
+            .join("authority/.v4.sqlite3.lifecycle.lock")
+            .exists()
+    );
+    assert!(op.cleanup.verified());
     assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
     Ok(())
 }

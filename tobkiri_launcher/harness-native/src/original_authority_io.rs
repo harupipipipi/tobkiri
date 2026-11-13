@@ -498,7 +498,12 @@ impl Parent {
         Ok(Some(opened))
     }
     fn create(&self, name: &str) -> Result<Identity> {
-        let file = self.open_file(name, libc::O_RDWR | libc::O_CREAT | libc::O_EXCL, 0o600)?;
+        self.validate_created_file(name, self.open_new_file(name)?)
+    }
+    fn open_new_file(&self, name: &str) -> Result<TrackedFile> {
+        self.open_file(name, libc::O_RDWR | libc::O_CREAT | libc::O_EXCL, 0o600)
+    }
+    fn validate_created_file(&self, name: &str, file: TrackedFile) -> Result<Identity> {
         let id = regular(&file.metadata().map_err(|e| {
             io_error(
                 OriginalAuthorityStage::Path,
@@ -958,7 +963,32 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
         let parent = Parent::selected(&path, parent_id, &op.cleanup)?;
         let db = match database_id {
             Some(id) => id,
-            None => parent.create("v4.sqlite3")?,
+            None => {
+                let name = "v4.sqlite3";
+                let file = parent.open_new_file(name).map_err(|error| match error {
+                    OriginalAuthorityError {
+                        cause: Some(OriginalAuthorityCause::Io(source)),
+                        ..
+                    } if source.errno == Some(libc::EEXIST) => {
+                        // POSIX secure_parent wraps the exclusive open's OSError
+                        // while unwinding the yield, before _ensure_database_file
+                        // can match a raw FileExistsError.
+                        OriginalAuthorityError::new(
+                            OriginalAuthorityStage::Path,
+                            "authority database path is unsafe",
+                            Some(OriginalAuthorityCause::Python {
+                                class: "core_runtime.secure_sqlite_path.SecurePathError",
+                                message: "ancestor is unsafe".into(),
+                                cause: Some(Box::new(OriginalAuthorityCause::Io(source))),
+                                context: None,
+                                suppressed: true,
+                            }),
+                        )
+                    }
+                    error => error,
+                })?;
+                parent.validate_created_file(name, file)?
+            }
         };
         parent.continuity()?;
         drop(parent);
