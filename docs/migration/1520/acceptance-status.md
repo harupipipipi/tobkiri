@@ -648,6 +648,18 @@ has R2.10 gaps (no 「持ち主のいないデータ」 marking in Core removal,
 over-rejection); 14 needs guest/runtime replay and existing-workspace migration;
 15 needs physical Proc/PTY; 16 needs real store writes and a CLI round trip.
 
+On the integration branch, [CI 43374564400](https://github.com/harupipipipi/tobkiri/actions/runs/43374564400)
+(`fd78392dd`) passed four compiler tests, two Flow engine tests, one Store
+prompt test and 17 actual Core tests, plus strict Clippy. These use verified
+Wasm and data Packs with a recording trusted Host. They show that open-role
+and User overlays execute through the Gate, denied or cancelled effects do not
+continue to the original step, and conflicts keep the previous head. The
+repair cases exercise a bound offer and explicit candidate application; they
+do not execute an AI generator or verify the native approval window.
+[CI 43374564506](https://github.com/harupipipipi/tobkiri/actions/runs/43374564506)
+also reran the focused Profile/manifest/Flow checks for items 9, 11 and 12 on
+that source.
+
 1. [ ] **CI rejects Pack IDs and Pack-owned shape names in core and hosts.**
    [Checker](../../../tools/quality/issue_1520_gate.py),
    [negative fixtures](../../../tools/quality/test_issue_1520_gate.py), and
