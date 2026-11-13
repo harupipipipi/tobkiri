@@ -9,6 +9,8 @@ on:
       - 'crates/tobkiri-manifest/**'
       - 'crates/tobkiri-flow/**'
       - 'crates/tobkiri-gate/**'
+      - 'crates/tobkiri-wit/**'
+      - 'crates/tobkiri-canon/**'
       - 'Cargo.lock'
   workflow_dispatch:
 
@@ -33,6 +35,20 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Check the closed Core ABI and exact version admission
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/a2-wit.log" --expected-passed 4 -- \
+            cargo test --locked -p tobkiri-wit --lib
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/a2-manifest.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-manifest --test contracts -- --exact \
+              only_exact_known_core_versions_resolve_aliases_and_permission_imports
+      - name: Replay the frozen Python codec and seal vectors
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/a20-vectors.log" --expected-passed 12 --
+          cargo test --locked -p tobkiri-canon --test vectors --test extra_seals
       - name: Acceptance 9 - Profile without default loop bounds fails (R4.5)
         run: |
           set -o pipefail
@@ -84,3 +100,14 @@ jobs:
             enum_minor_extension_is_input_only_and_width_changes_need_adapter; do
             grep -F "test $name ... ok" "$RUNNER_TEMP/a12-manifest.log"
           done
+      - name: Retain ABI and frozen-vector test receipts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-1520-core-abi-and-python-vectors
+          path: |
+            ${{ runner.temp }}/a2-*.log
+            ${{ runner.temp }}/a2-*.receipt.json
+            ${{ runner.temp }}/a20-*.log
+            ${{ runner.temp }}/a20-*.receipt.json
+          if-no-files-found: warn
