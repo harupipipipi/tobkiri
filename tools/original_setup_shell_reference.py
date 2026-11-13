@@ -20,6 +20,7 @@ FORMAT = "io.tobkiri.original-setup-shell-reference.v1"
 CASES = (
     "selected-shell", "missing-artifact-root", "symlink-artifact-root",
     "symlink-selected-artifact", "missing-selected-artifact",
+    "symlink-at-tree-entry", "missing-at-tree-entry",
 )
 ARTIFACT_ROOT = "ecosystem/defaultspack/platform-artifacts"
 
@@ -116,6 +117,7 @@ def _observe(
     if Path(verifier.co_filename).resolve() != runtime / "tobkiri_protocol/platform_artifact.py":
         raise AssertionError("Shell verifier is outside the staged original")
     reader = inspect.unwrap(original._regular_binary_reader).__code__
+    tree = original.artifact_digest.__code__
     paths = {
         Path.resolve.__code__: "resolve",
         Path.is_symlink.__code__: "is-symlink",
@@ -168,6 +170,17 @@ def _observe(
                 return trace
             if active and code is reader:
                 return trace
+            if (
+                active and code is tree and parent is not None and parent.f_code is verifier
+                and case in {"symlink-at-tree-entry", "missing-at-tree-entry"}
+            ):
+                if moved is not None or frame.f_locals["path"] != artifact:
+                    raise AssertionError("tree entry did not reuse the selected Shell")
+                directory = artifact.is_dir()
+                artifact.rename(parked)
+                moved = (artifact, parked)
+                if case == "symlink-at-tree-entry":
+                    artifact.symlink_to(Path("..") / parked.name, target_is_directory=directory)
             if (
                 active and code in paths and parent is not None
                 and parent.f_code.co_filename == verifier.co_filename
@@ -294,6 +307,15 @@ def _check(
                     "packaged artifact path contains a symlink",
                 ),
                 "missing-selected-artifact": (
+                    [*root_checks, leaf_symlink, root_symlink,
+                     leaf_symlink, ["is-file", artifact], ["is-dir", artifact]],
+                    "packaged artifact entry is unavailable",
+                ),
+                "symlink-at-tree-entry": (
+                    [*root_checks, leaf_symlink, root_symlink, leaf_symlink],
+                    "packaged artifact tree contains a symlink",
+                ),
+                "missing-at-tree-entry": (
                     [*root_checks, leaf_symlink, root_symlink,
                      leaf_symlink, ["is-file", artifact], ["is-dir", artifact]],
                     "packaged artifact entry is unavailable",
