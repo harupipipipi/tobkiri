@@ -475,7 +475,7 @@ class Dispatcher:
                                              caller + "-returned" if caller else None))
 
     def _resolve_bundled_profile(self, state: _State, frame: dict[str, Any]) -> str:
-        from .native_path import NativePath, _UnboundPlatformArtifacts
+        from .native_path import NativePath, _ShellArtifactVerified, _UnboundPlatformArtifacts
 
         registry = state.registry
         if (set(frame) != {"format", "scope", "catalog", "profile_id", "source_profile",
@@ -514,6 +514,11 @@ class Dispatcher:
                 ),
                 caller="resolver-profile",
             )
+        except _ShellArtifactVerified:
+            return wire.dumps({
+                "format": PREFIX + "resolver-shell-artifact-verified.v1",
+                "scope": registry.scope.wire(),
+            })
         except _UnboundPlatformArtifacts:
             return wire.dumps({
                 "format": PREFIX + "resolver-platform-artifacts-unbound.v1",

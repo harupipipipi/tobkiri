@@ -29,6 +29,10 @@ class _UnboundPlatformArtifacts(BaseException):
     """Stop before the first unconnected Shell tree operation."""
 
 
+class _ShellArtifactVerified(BaseException):
+    """The original Shell verifier returned after closing its header."""
+
+
 def _binding(value: Any) -> str:
     if type(value) is not str or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value):
         raise UnsupportedValue("invalid issued native binding")
@@ -88,6 +92,7 @@ class PathBridge:
         self._resolver_directory: NativePath | None = None
         self._resolver_entrypoint: NativePath | None = None
         self._resolver_entrypoint_closed = False
+        self._resolver_header_closed = False
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -119,6 +124,7 @@ class PathBridge:
         finally:
             self._resolver_entrypoint = None
             self._resolver_entrypoint_closed = False
+            self._resolver_header_closed = False
             self._resolver_digest_started = False
             self._resolver_file = None
             self._resolver_directory = None
@@ -406,8 +412,6 @@ class NativePath:
         return self._effect("resolve", "path", [strict])
 
     def is_symlink(self) -> bool:
-        if self._bridge._resolver_entrypoint_closed:
-            raise _UnboundPlatformArtifacts
         result = self._effect("is-symlink", "bool")
         bridge = self._bridge
         root = bridge._resolver_resolved_root
@@ -491,10 +495,11 @@ class NativePath:
 class _Descriptor:
     def __init__(self, bridge: PathBridge, binding: str, *,
                  shell_steps: tuple[tuple[str, str], ...] | None = None,
-                 entrypoint: bool = False) -> None:
+                 entrypoint: bool = False, header: bool = False) -> None:
         self.bridge, self.binding, self.closed = bridge, binding, False
         self.shell_steps = shell_steps
         self.entrypoint = entrypoint
+        self.header = header
 
 
 class NativeOS:
@@ -520,7 +525,8 @@ class NativeOS:
     def open(self, path: NativePath, flags: int) -> _Descriptor:
         if type(path) is not NativePath or path._bridge is not self._bridge:
             raise UnsupportedValue("native open requires its actual Path context")
-        if self._bridge._resolver_entrypoint_closed:
+        header = self._bridge._resolver_entrypoint_closed and path is self._bridge._resolver_entrypoint
+        if self._bridge._resolver_entrypoint_closed and (not header or self._bridge._resolver_header_closed):
             raise _UnboundPlatformArtifacts
         row = self._bridge._request(path._target(), "open", [flags])
         if set(row) != {"kind", "binding"} or row["kind"] != "fd":
@@ -533,14 +539,14 @@ class NativeOS:
             raise UnsupportedValue("invalid selected Shell descriptor binding")
         return _Descriptor(self._bridge, binding,
                            shell_steps=path._steps if shell_file or entrypoint else None,
-                           entrypoint=entrypoint)
+                           entrypoint=entrypoint, header=header)
 
     def _call(self, fd: _Descriptor, operation: str, kind: str,
               args: list | None = None) -> Any:
         if (type(fd) is not _Descriptor or fd.bridge is not self._bridge or fd.closed):
             raise UnsupportedValue("closed or foreign native descriptor")
         return self._bridge._value(self._bridge._request(
-            {"binding": fd.binding, "steps": ([["shell-entrypoint-file" if fd.entrypoint else "shell-file", ""], *map(list, fd.shell_steps)]
+            {"binding": fd.binding, "steps": ([["shell-header-file" if fd.header else "shell-entrypoint-file" if fd.entrypoint else "shell-file", ""], *map(list, fd.shell_steps)]
                                              if fd.shell_steps is not None else [])},
             operation, args or [],
         ), kind)
@@ -560,7 +566,7 @@ class NativeOS:
             raise UnsupportedValue("native fdopen input is not represented")
         raw = _ShellRawReader(self, fd)
         try:
-            return io.BufferedReader(raw)
+            return raw if fd.header else io.BufferedReader(raw)
         except BaseException:
             raw.close()
             raise
@@ -571,7 +577,9 @@ class NativeOS:
         finally:
             if type(fd) is _Descriptor and fd.bridge is self._bridge:
                 fd.closed = True
-                if fd.entrypoint:
+                if fd.header:
+                    self._bridge._resolver_header_closed = True
+                elif fd.entrypoint:
                     self._bridge._resolver_entrypoint_closed = True
 
 

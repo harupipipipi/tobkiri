@@ -63,6 +63,12 @@ pub(crate) struct CatalogIo {
     shell_entrypoint: Option<CoreValue>,
     #[cfg(unix)]
     shell_entrypoint_resolution: Option<shell_entrypoint::ResolvedEntrypoint>,
+    #[cfg(unix)]
+    shell_macos: bool,
+    #[cfg(unix)]
+    shell_plist_parent: Option<Identity>,
+    #[cfg(unix)]
+    shell_plist_file: Option<Identity>,
     binding: Option<CoreValue>,
     lock_bytes: Option<Funded<Zeroizing<Vec<u8>>>>,
     lock: Option<Funded<Document>>,
@@ -119,7 +125,13 @@ enum PackResolve {
     ShellEntrySymlink,
     ShellEntryFile,
     ShellEntryOpen,
-    ShellEntryDigestReady,
+    ShellPlistSymlink,
+    ShellPlistFile,
+    ShellPlistRead,
+    ShellHeaderOpen,
+    ShellHeaderSeek,
+    ShellHeaderTail,
+    ShellArtifactReady,
     Spent,
 }
 
@@ -245,6 +257,12 @@ impl CatalogIo {
             shell_entrypoint: None,
             #[cfg(unix)]
             shell_entrypoint_resolution: None,
+            #[cfg(unix)]
+            shell_macos: false,
+            #[cfg(unix)]
+            shell_plist_parent: None,
+            #[cfg(unix)]
+            shell_plist_file: None,
             binding: None,
             lock_bytes: None,
             lock: None,
@@ -814,17 +832,21 @@ impl CatalogIo {
             | PackResolve::ShellLeafSymlink
             | PackResolve::ShellLeafParentSymlink
             | PackResolve::ShellTreeSymlink
+            | PackResolve::ShellPlistSymlink
             | PackResolve::ShellEntrySymlink => "is-symlink",
-            PackResolve::CheckFile | PackResolve::ShellTreeFile | PackResolve::ShellEntryFile => {
-                "is-file"
-            }
-            PackResolve::Read => "read-bytes",
+            PackResolve::CheckFile
+            | PackResolve::ShellTreeFile
+            | PackResolve::ShellEntryFile
+            | PackResolve::ShellPlistFile => "is-file",
+            PackResolve::Read | PackResolve::ShellPlistRead => "read-bytes",
             PackResolve::ShellResolve
             | PackResolve::ShellEntryResolve
             | PackResolve::ShellEntryArtifactResolve => "resolve",
             PackResolve::ShellDirectory | PackResolve::ShellTreeDirectory => "is-dir",
             PackResolve::ShellList => "iterdir",
-            PackResolve::ShellFileOpen | PackResolve::ShellEntryOpen => "open",
+            PackResolve::ShellFileOpen
+            | PackResolve::ShellEntryOpen
+            | PackResolve::ShellHeaderOpen => "open",
             _ => return Err(OriginalAuthorityError::unavailable().into()),
         };
         let valid_args = match self.pack_resolve {
@@ -832,7 +854,9 @@ impl CatalogIo {
             | PackResolve::ShellEntryResolve
             | PackResolve::ShellEntryArtifactResolve => strict(&args),
             #[cfg(unix)]
-            PackResolve::ShellFileOpen | PackResolve::ShellEntryOpen => {
+            PackResolve::ShellFileOpen
+            | PackResolve::ShellEntryOpen
+            | PackResolve::ShellHeaderOpen => {
                 args.len() == 1
                     && args.get(0).and_then(|value| value.as_i64())
                         == Some(i64::from(libc::O_RDONLY | libc::O_NOFOLLOW))
@@ -850,8 +874,18 @@ impl CatalogIo {
                 | PackResolve::ShellEntrySymlink
                 | PackResolve::ShellEntryFile
                 | PackResolve::ShellEntryOpen
+                | PackResolve::ShellHeaderOpen
         ) {
             return self.inspect_shell_entrypoint(&op, &scope, &steps, budget);
+        }
+        #[cfg(unix)]
+        if matches!(
+            self.pack_resolve,
+            PackResolve::ShellPlistSymlink
+                | PackResolve::ShellPlistFile
+                | PackResolve::ShellPlistRead
+        ) {
+            return self.inspect_shell_plist(&op, &scope, &steps, budget);
         }
         if matches!(
             self.pack_resolve,
@@ -921,8 +955,8 @@ impl CatalogIo {
         self.pack_resolve == PackResolve::ShellResolve
     }
 
-    pub(crate) fn pack_resolve_shell_entrypoint_completed(&self) -> bool {
-        self.pack_resolve == PackResolve::ShellEntryDigestReady
+    pub(crate) fn pack_resolve_shell_artifact_completed(&self) -> bool {
+        self.pack_resolve == PackResolve::ShellArtifactReady
     }
 
     #[cfg(all(test, unix))]
@@ -1603,7 +1637,7 @@ fn read_file<S: crate::BootstrapReviewOwner>(
                 "non-regular catalog resource",
             ));
         }
-        read_resource(op, &mut file, metadata.len(), budget)
+        read_resource(op, &mut file, metadata.len(), 32 * 1024 * 1024, budget)
     })();
     let close = file.close().map_err(|error| raw_io(error, None));
     finish_scope(read, close)
@@ -1613,17 +1647,17 @@ fn read_resource<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     file: &mut TrackedFile,
     size: u64,
+    limit: usize,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
-    const LIMIT: usize = 32 * 1024 * 1024;
     let size = usize::try_from(size)
         .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
-    if size > LIMIT {
+    if size > limit {
         return Err(OriginalAuthorityError::capacity(
             OriginalAuthorityStage::Source,
         ));
     }
-    let initial = size.saturating_add(1).clamp(1, LIMIT);
+    let initial = size.saturating_add(1).clamp(1, limit);
     let capacity = op.reserve(OriginalAuthorityStage::Source, initial)?;
     let mut bytes = Zeroizing::new(Vec::new());
     bytes
@@ -1651,13 +1685,13 @@ fn read_resource<S: crate::BootstrapReviewOwner>(
         let needed = bytes
             .len()
             .checked_add(count)
-            .filter(|n| *n <= LIMIT)
+            .filter(|n| *n <= limit)
             .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
         if needed > bytes.capacity() {
             let next = bytes
                 .capacity()
                 .checked_mul(2)
-                .map(|n| n.max(needed).min(LIMIT))
+                .map(|n| n.max(needed).min(limit))
                 .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
             capacity
                 .resize(bytes.capacity().checked_add(next).ok_or_else(|| {

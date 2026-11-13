@@ -1,25 +1,38 @@
 //! The regular Shell leaf's original digest reads under the fixed catalog call.
 use super::*;
 use crate::fd_stat::{MAX_STAT_JSON_BYTES, encode_stat};
-use std::io::Seek as _;
+use std::io::{Seek as _, SeekFrom};
 
 const CHUNK_BYTES: usize = 1024 * 1024;
 
 pub(super) enum ShellFile {
     Tree(TrackedFile),
     Entrypoint(TrackedFile),
+    Header {
+        file: TrackedFile,
+        size: u64,
+        pe_offset: u64,
+    },
 }
 
 impl ShellFile {
+    pub(super) fn header(file: TrackedFile) -> Self {
+        Self::Header {
+            file,
+            size: 0,
+            pe_offset: 0,
+        }
+    }
+
     fn into_file(self) -> TrackedFile {
         match self {
-            Self::Tree(file) | Self::Entrypoint(file) => file,
+            Self::Tree(file) | Self::Entrypoint(file) | Self::Header { file, .. } => file,
         }
     }
 
     fn file_mut(&mut self) -> &mut TrackedFile {
         match self {
-            Self::Tree(file) | Self::Entrypoint(file) => file,
+            Self::Tree(file) | Self::Entrypoint(file) | Self::Header { file, .. } => file,
         }
     }
 }
@@ -87,18 +100,20 @@ impl CatalogIo {
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<CoreBuffer> {
         let entrypoint = matches!(self.shell_file, Some(ShellFile::Entrypoint(_)));
-        let valid = if entrypoint {
+        let header = matches!(self.shell_file, Some(ShellFile::Header { .. }));
+        let valid = if entrypoint || header {
+            let tag = if header {
+                "shell-header-file"
+            } else {
+                "shell-entrypoint-file"
+            };
             self.shell_entrypoint
                 .as_ref()
                 .and_then(CoreValue::as_str)
                 .is_some_and(|path| {
                     exact_steps(
                         steps,
-                        &[
-                            ("shell-entrypoint-file", ""),
-                            ("shell-resolved-root", ""),
-                            ("join", path),
-                        ],
+                        &[(tag, ""), ("shell-resolved-root", ""), ("join", path)],
                     )
                 })
         } else {
@@ -126,19 +141,45 @@ impl CatalogIo {
             op.check(OriginalAuthorityStage::Source)?;
             let response = out.finish()?;
             if stage == PackResolve::ShellFileClose {
-                self.pack_resolve = if entrypoint {
-                    PackResolve::ShellEntryDigestReady
+                self.pack_resolve = if header {
+                    PackResolve::ShellArtifactReady
+                } else if entrypoint {
+                    if self.shell_macos {
+                        PackResolve::ShellPlistSymlink
+                    } else {
+                        PackResolve::ShellHeaderOpen
+                    }
                 } else {
                     self.shell_tree.advance()
                 };
             }
             return Ok(response);
         }
-        let file = self
+        let retained = self
             .shell_file
             .as_mut()
-            .ok_or_else(OriginalAuthorityError::unavailable)?
-            .file_mut();
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        if let ShellFile::Header {
+            file,
+            size,
+            pe_offset,
+        } = retained
+        {
+            let next = inspect_header(
+                op,
+                (&mut self.pack_resolve, file, size, pe_offset),
+                operation.as_str(),
+                args,
+                &mut out,
+                budget,
+            )?;
+            op.check(OriginalAuthorityStage::Source)?;
+            out.append(b"}")?;
+            let response = out.finish()?;
+            self.pack_resolve = next;
+            return Ok(response);
+        }
+        let file = retained.file_mut();
         let next = match (stage, operation.as_str(), args.len()) {
             (PackResolve::ShellFileTell, Some("seek"), 2)
                 if args.get(0).and_then(|value| value.as_i64()) == Some(0)
@@ -211,4 +252,93 @@ impl CatalogIo {
         self.pack_resolve = next;
         Ok(response)
     }
+}
+
+fn inspect_header<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    state: (&mut PackResolve, &mut TrackedFile, &mut u64, &mut u64),
+    operation: Option<&str>,
+    args: &tobkiri_canon::CoreArray<'_>,
+    out: &mut CoreBufferBuilder,
+    budget: &Arc<dyn AllocationBudget>,
+) -> anyhow::Result<PackResolve> {
+    let (stage, file, size, pe_offset) = state;
+    const PREFIX: usize = 64;
+    const PE_HEADER: usize = 24;
+    Ok(match (*stage, operation, args.len()) {
+        (PackResolve::ShellFileStat | PackResolve::ShellFileEnd, Some("fstat"), 0) => {
+            let first = *stage == PackResolve::ShellFileStat;
+            *stage = PackResolve::Spent;
+            let metadata = file.metadata().map_err(|error| raw_io(error, None))?;
+            let mut stat = [0_u8; MAX_STAT_JSON_BYTES];
+            let length = encode_stat(&metadata, &mut stat)
+                .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
+            out.append(&stat[..length])?;
+            if first {
+                *size = metadata.len();
+                PackResolve::ShellFileRead
+            } else {
+                PackResolve::ShellFileClose
+            }
+        }
+        (PackResolve::ShellHeaderSeek, Some("seek"), 2)
+            if args
+                .get(0)
+                .and_then(|v| v.as_i64())
+                .and_then(|n| u64::try_from(n).ok())
+                == Some(*pe_offset)
+                && args.get(1).and_then(|v| v.as_i64()) == Some(i64::from(libc::SEEK_SET)) =>
+        {
+            *stage = PackResolve::Spent;
+            let offset = file
+                .seek(SeekFrom::Start(*pe_offset))
+                .map_err(|error| raw_io(error, None))?;
+            if offset != *pe_offset {
+                return Err(OriginalAuthorityError::unavailable().into());
+            }
+            out.append(b"{\"kind\":\"int\",\"value\":")?;
+            out.append(offset.to_string().as_bytes())?;
+            out.append(b"}")?;
+            PackResolve::ShellHeaderTail
+        }
+        (PackResolve::ShellFileRead | PackResolve::ShellHeaderTail, Some("read"), 1) => {
+            let prefix = *stage == PackResolve::ShellFileRead;
+            let required = if prefix { PREFIX } else { PE_HEADER };
+            if args.get(0).and_then(|v| v.as_i64()) != Some(required as i64) {
+                return Err(OriginalAuthorityError::unavailable().into());
+            }
+            *stage = PackResolve::Spent;
+            let mut bytes = [0_u8; PREFIX];
+            let mut count = 0;
+            while count < required {
+                op.check(OriginalAuthorityStage::Source)?;
+                charge_work(budget, 1)?;
+                match file.read(&mut bytes[count..required]) {
+                    Ok(0) => break,
+                    Ok(n) => count += n,
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(raw_io(error, None).into()),
+                }
+            }
+            write_bytes(out, &bytes[..count])?;
+            if prefix && bytes[..count].starts_with(b"MZ") {
+                if count != PREFIX {
+                    return Ok(PackResolve::Spent);
+                }
+                let offset = u64::from(u32::from_le_bytes(
+                    bytes[60..64].try_into().expect("four offset bytes"),
+                ));
+                if offset < PREFIX as u64 || offset + PE_HEADER as u64 > *size {
+                    return Ok(PackResolve::Spent);
+                }
+                *pe_offset = offset;
+                PackResolve::ShellHeaderSeek
+            } else if !prefix && (count != PE_HEADER || !bytes.starts_with(b"PE\0\0")) {
+                PackResolve::Spent
+            } else {
+                PackResolve::ShellFileEnd
+            }
+        }
+        _ => return Err(OriginalAuthorityError::unavailable().into()),
+    })
 }

@@ -183,7 +183,7 @@ impl CatalogIo {
                     write_bool(&mut out, true)?;
                     Ok(PackResolve::ShellEntryOpen)
                 }
-                PackResolve::ShellEntryOpen => {
+                PackResolve::ShellEntryOpen | PackResolve::ShellHeaderOpen => {
                     let resolved = resolved.ok_or_else(OriginalAuthorityError::unavailable)?;
                     let file = open_shell_file(
                         op,
@@ -193,13 +193,170 @@ impl CatalogIo {
                         resolved.identity,
                     )?;
                     write_descriptor(&mut out, binding, budget)?;
-                    self.shell_file = Some(ShellFile::Entrypoint(file));
-                    Ok(PackResolve::ShellFileTell)
+                    if stage == PackResolve::ShellHeaderOpen {
+                        self.shell_file = Some(ShellFile::header(file));
+                        Ok(PackResolve::ShellFileStat)
+                    } else {
+                        self.shell_file = Some(ShellFile::Entrypoint(file));
+                        Ok(PackResolve::ShellFileTell)
+                    }
                 }
                 _ => Err(OriginalAuthorityError::unavailable().into()),
             }
         })();
         close_parent(directory)?;
+        let next = result?;
+        op.check(OriginalAuthorityStage::Source)?;
+        out.append(b"}")?;
+        let response = out.finish()?;
+        self.pack_resolve = next;
+        Ok(response)
+    }
+
+    pub(super) fn inspect_shell_plist<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        scope: &CoreValue,
+        steps: &tobkiri_canon::CoreArray<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> anyhow::Result<CoreBuffer> {
+        let artifact = admitted(&self.shell_leaf)?;
+        if !self.shell_macos
+            || !exact_steps(
+                steps,
+                &[
+                    ROOT_STEP,
+                    ("join", artifact),
+                    ("join", "Contents"),
+                    ("join", "Info.plist"),
+                ],
+            )
+        {
+            return Err(OriginalAuthorityError::unavailable().into());
+        }
+        let root_name = self
+            .shell_resolved_name
+            .as_deref()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let parent_path = self
+            .selected
+            .parent()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let root_identity = self
+            .shell_root_identity
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let artifact_identity = self
+            .shell_artifact_identity
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let parent_identity = self
+            .artifact_parent_identity
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let _scratch = op.reserve(OriginalAuthorityStage::Path, PATH_BYTES * 6)?;
+        let root_path = bounded_member(parent_path, root_name)?;
+        let artifact_path = bounded_member(&root_path, artifact)?;
+        let contents_path = bounded_member(&artifact_path, "Contents")?;
+        let plist_path = bounded_member(&contents_path, "Info.plist")?;
+        charge_work(budget, plist_path.as_os_str().len() as u64)?;
+        let mut out = inspection_result(scope, budget)?;
+        let stage = std::mem::replace(&mut self.pack_resolve, PackResolve::Spent);
+        let parent = open_parent(op, parent_path)?;
+        let root = (|| {
+            if !parent
+                .metadata()
+                .is_ok_and(|meta| identity(&meta) == parent_identity)
+            {
+                return Err(OriginalAuthorityError::unavailable());
+            }
+            open_shell_directory(op, &parent, &root_path, root_name, root_identity, false)
+        })();
+        close_parent(parent)?;
+        let root = root?;
+        let app = open_shell_directory(
+            op,
+            &root,
+            &artifact_path,
+            artifact,
+            artifact_identity,
+            false,
+        );
+        close_parent(root)?;
+        let app = app?;
+        let contents = (|| {
+            let name = checked_name("Contents")?;
+            let stat = optional_stat_at(op, &app, &name, || contents_path.clone())?;
+            let Some(stat) = stat else { return Ok(None) };
+            if stat_mode(&stat) == mode_bits(libc::S_IFLNK) {
+                return Err(OriginalAuthorityError::unavailable());
+            }
+            if stat_mode(&stat) != mode_bits(libc::S_IFDIR) {
+                return Ok(None);
+            }
+            let actual = stat_identity(&stat);
+            if self.shell_plist_parent.is_some_and(|prior| prior != actual) {
+                return Err(OriginalAuthorityError::unavailable());
+            }
+            let file = open_shell_directory(op, &app, &contents_path, "Contents", actual, false)?;
+            self.shell_plist_parent = Some(actual);
+            Ok(Some(file))
+        })();
+        close_parent(app)?;
+        let contents = contents?;
+        let result = (|| -> anyhow::Result<PackResolve> {
+            if stage == PackResolve::ShellPlistRead {
+                let parent = contents
+                    .as_ref()
+                    .ok_or_else(OriginalAuthorityError::unavailable)?;
+                let expected = self
+                    .shell_plist_file
+                    .ok_or_else(OriginalAuthorityError::unavailable)?;
+                let mut file = open_shell_file(
+                    op,
+                    parent,
+                    &contents_path,
+                    &checked_name("Info.plist")?,
+                    expected,
+                )?;
+                let read = (|| {
+                    let size = file.metadata().map_err(|error| raw_io(error, None))?.len();
+                    // Base64 and the inspection envelope must fit the existing 4 MiB frame.
+                    let bytes =
+                        read_resource(op, &mut file, size, (MAX_BYTES - 4096) / 4 * 3, budget)?;
+                    Ok::<_, anyhow::Error>(bytes)
+                })();
+                close_parent(file)?;
+                write_bytes(&mut out, &read?.value)?;
+                return Ok(PackResolve::ShellHeaderOpen);
+            }
+            let stat = if let Some(parent) = &contents {
+                optional_stat_at(op, parent, &checked_name("Info.plist")?, || plist_path)?
+            } else {
+                None
+            };
+            let mode = stat.as_ref().map(stat_mode);
+            if stage == PackResolve::ShellPlistSymlink {
+                let link = mode == Some(mode_bits(libc::S_IFLNK));
+                write_bool(&mut out, link)?;
+                return Ok(if link {
+                    PackResolve::Spent
+                } else {
+                    PackResolve::ShellPlistFile
+                });
+            }
+            if mode == Some(mode_bits(libc::S_IFLNK)) {
+                return Err(OriginalAuthorityError::unavailable().into());
+            }
+            let regular = mode == Some(mode_bits(libc::S_IFREG));
+            write_bool(&mut out, regular)?;
+            if regular {
+                self.shell_plist_file = stat.as_ref().map(stat_identity);
+                Ok(PackResolve::ShellPlistRead)
+            } else {
+                Ok(PackResolve::Spent)
+            }
+        })();
+        if let Some(contents) = contents {
+            close_parent(contents)?;
+        }
         let next = result?;
         op.check(OriginalAuthorityStage::Source)?;
         out.append(b"}")?;

@@ -348,6 +348,11 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                 "Tobkiri.app"
             };
             let leaf = artifact.join(selected_path);
+            let platform = if case == "regular-leaf" {
+                "linux"
+            } else {
+                "macos"
+            };
             let entry_relative = if case == "regular-leaf" {
                 selected_path.to_owned()
             } else {
@@ -366,7 +371,7 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                     "profile",
                     json!({"profile_id":"fixture-profile","shell":{
                         "provider_id":"fixture-shell","pack_id":"fixture-pack","contract_id":"fixture-contract",
-                        "platform":"macos","architecture":"arm64"
+                        "platform":platform,"architecture":"arm64"
                     }}),
                 ),
                 (
@@ -376,7 +381,7 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                         "provider_id":"fixture-shell","pack_id":"fixture-pack","contract_id":"fixture-contract",
                         "availability":"verified","launch":{"variants":[
                             {"platform":"macos","architecture":"x86_64","relative_path":"Different.app"},
-                            {"platform":"macos","architecture":"arm64","relative_path":selected_path,"entrypoint":entry_relative}
+                            {"platform":platform,"architecture":"arm64","relative_path":selected_path,"entrypoint":entry_relative}
                         ]}
                     }),
                 ),
@@ -866,7 +871,15 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                 assert!(inspect(io, "resolve", entry, json!([true])).is_err());
                 return;
             }
-            let payload = b"fresh bytes after tree close";
+            let mut pe = [0_u8; 152];
+            pe[..2].copy_from_slice(b"MZ");
+            pe[60..64].copy_from_slice(&128_u32.to_le_bytes());
+            pe[128..132].copy_from_slice(b"PE\0\0");
+            let payload = if case == "regular-leaf" {
+                pe.as_slice()
+            } else {
+                b"fresh bytes after tree close"
+            };
             let expected_path = if case == "entrypoint-symlink" {
                 let target = entry_path.with_file_name("Prior.plist");
                 fs::rename(&entry_path, &target).unwrap();
@@ -911,7 +924,7 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
             inspect(
                 io,
                 "open",
-                entry,
+                entry.clone(),
                 json!([libc::O_RDONLY | libc::O_NOFOLLOW]),
             )
             .unwrap();
@@ -931,7 +944,61 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
             );
             assert_eq!(inspect(io, "fstat", fd.clone(), json!([])).unwrap(), before);
             inspect(io, "close", fd, json!([])).unwrap();
-            assert!(io.pack_resolve_shell_entrypoint_completed());
+            assert!(!io.pack_resolve_shell_artifact_completed());
+            let flags = json!([libc::O_RDONLY | libc::O_NOFOLLOW]);
+            if platform == "macos" {
+                let plist = json!([
+                    ["shell-resolved-root", ""],
+                    ["join", selected_path],
+                    ["join", "Contents"],
+                    ["join", "Info.plist"]
+                ]);
+                assert!(inspect(io, "open", entry.clone(), flags.clone()).is_err());
+                assert!(inspect(io, "read-bytes", plist.clone(), json!([])).is_err());
+                assert_eq!(
+                    inspect(io, "is-symlink", plist.clone(), json!([])).unwrap()["value"],
+                    false
+                );
+                assert_eq!(
+                    inspect(io, "is-file", plist.clone(), json!([])).unwrap()["value"],
+                    true
+                );
+                assert_eq!(
+                    inspect(io, "read-bytes", plist, json!([])).unwrap()["value"],
+                    base64::engine::general_purpose::STANDARD.encode(payload)
+                );
+            }
+            inspect(io, "open", entry.clone(), flags).unwrap();
+            let mut header = shell_fd_steps(&entry);
+            header[0][0] = json!("shell-header-file");
+            let mut wrong = header.clone();
+            wrong[0][0] = json!("shell-entrypoint-file");
+            assert!(inspect(io, "close", wrong, json!([])).is_err());
+            let before = inspect(io, "fstat", header.clone(), json!([])).unwrap();
+            assert!(inspect(io, "read", header.clone(), json!([65])).is_err());
+            let prefix = inspect(io, "read", header.clone(), json!([64])).unwrap();
+            assert_eq!(
+                prefix["value"],
+                base64::engine::general_purpose::STANDARD.encode(&payload[..payload.len().min(64)])
+            );
+            if case == "regular-leaf" {
+                assert!(inspect(io, "seek", header.clone(), json!([64, libc::SEEK_SET])).is_err());
+                assert!(inspect(io, "seek", header.clone(), json!([128, libc::SEEK_CUR])).is_err());
+                assert_eq!(
+                    inspect(io, "seek", header.clone(), json!([128, libc::SEEK_SET])).unwrap()["value"],
+                    128
+                );
+                assert_eq!(
+                    inspect(io, "read", header.clone(), json!([24])).unwrap()["value"],
+                    base64::engine::general_purpose::STANDARD.encode(&payload[128..])
+                );
+            }
+            assert_eq!(
+                inspect(io, "fstat", header.clone(), json!([])).unwrap(),
+                before
+            );
+            inspect(io, "close", header, json!([])).unwrap();
+            assert!(io.pack_resolve_shell_artifact_completed());
             assert!(cleanup.receipt().verified());
         });
     }

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import hashlib
 import stat
 import json
+import plistlib
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import sys
 import unittest
@@ -16,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "tools/python313-producer"),
                 str(ROOT / "packs/local.ai-tool-bridge-ordered-python")]
 
-from harness_native.native_path import PathBridge, _UnboundPlatformArtifacts  # noqa: E402
+from harness_native.native_path import PathBridge  # noqa: E402
 from harness_native.value_graph import Scope, UnsupportedValue  # noqa: E402
 import ordered_json_v2 as wire  # noqa: E402
 
@@ -205,7 +206,7 @@ class NativePathAdapterTests(unittest.TestCase):
         functions = [node for node in tree.body
                      if isinstance(node, ast.FunctionDef) and node.name in names]
         self.assertEqual(len(functions), len(names))
-        content = b"abc"
+        content = b"\x7fELF\x00\x01" + bytes(12) + (62).to_bytes(2, "little")
         entry_digest = "sha256:" + hashlib.sha256(content).hexdigest()
         for platform, expected_digest in (("macos", entry_digest), ("linux", entry_digest),
                                           ("linux", "sha256:wrong")):
@@ -230,7 +231,7 @@ class NativePathAdapterTests(unittest.TestCase):
                     elif operation == "is-symlink":
                         result = {"kind": "bool", "value": False}
                     elif operation == "is-file":
-                        result = {"kind": "bool", "value": steps[-1][1] in {"shell", entry}}
+                        result = {"kind": "bool", "value": steps[-1][1] in {"shell", entry, "Info.plist"}}
                     elif operation == "is-dir":
                         result = {"kind": "bool", "value": True}
                     elif operation == "iterdir":
@@ -240,7 +241,9 @@ class NativePathAdapterTests(unittest.TestCase):
                         position = 0
                         result = {"kind": "fd", "binding": "root"}
                     elif operation == "fstat":
-                        result = STAT
+                        result = {**STAT, "st_size": len(content)}
+                    elif operation == "read-bytes":
+                        result = blob(plistlib.dumps({"CFBundleIdentifier": "example.shell"}))
                     elif operation == "seek":
                         result = {"kind": "int", "value": position}
                     elif operation == "read":
@@ -264,20 +267,34 @@ class NativePathAdapterTests(unittest.TestCase):
                              str(source), "exec"), namespace)
                 variant = {"relative_path": leaf, "entrypoint": entry,
                            "artifact_digest": tree_digest, "entrypoint_digest": expected_digest,
-                           "platform": platform, "architecture": "x86_64"}
-                exception = ValueError if expected_digest != entry_digest else _UnboundPlatformArtifacts
-                with self.assertRaises(exception) as caught:
+                           "platform": platform, "architecture": "x86_64",
+                           "bundle_identity": "example.shell"}
+                if expected_digest != entry_digest:
+                    with self.assertRaisesRegex(ValueError, "entrypoint digest does not match"):
+                        bridge._resolve_catalog(namespace["verify_platform_artifact"], root, root,
+                                                root, variant)
+                else:
                     bridge._resolve_catalog(namespace["verify_platform_artifact"], root, root,
                                             root, variant)
-                if exception is ValueError:
-                    self.assertIn("entrypoint digest does not match", str(caught.exception))
                 opens = [row for row in requests if row["operation"] == "open"]
-                self.assertEqual(len(opens), 2)
+                self.assertEqual(len(opens), 2 if expected_digest != entry_digest else 3)
                 entry_steps = [["shell-resolved-root", ""], ["join", entry]]
                 self.assertEqual(opens[-1]["target"]["steps"], entry_steps)
                 fd_ops = [row for row in requests if row["target"]["steps"][:1] == [["shell-entrypoint-file", ""]]]
                 self.assertEqual(fd_ops[-1]["operation"], "close")
                 self.assertTrue(all(row["target"]["steps"][1:] == entry_steps for row in fd_ops))
+                header_ops = [row for row in requests if row["target"]["steps"][:1] == [["shell-header-file", ""]]]
+                if expected_digest == entry_digest:
+                    self.assertEqual([row["operation"] for row in header_ops],
+                                     ["fstat", "read", "fstat", "close"])
+                    self.assertEqual(header_ops[1]["args"], [64])
+                    self.assertTrue(all(row["target"]["steps"][1:] == entry_steps for row in header_ops))
+                    if app:
+                        self.assertEqual([row["operation"] for row in requests
+                                          if row["target"]["steps"][-1:] == [["join", "Info.plist"]]],
+                                         ["is-symlink", "is-file", "read-bytes"])
+                else:
+                    self.assertEqual(header_ops, [])
                 self.assertEqual(requests[-1]["operation"], "close")
 
     def test_fixed_catalog_codec_preserves_old_binding_and_clears_after_throw(self):

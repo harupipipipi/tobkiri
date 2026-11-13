@@ -228,8 +228,9 @@ impl CatalogIo {
                                 self.shell_inputs = None;
                                 if !symlink {
                                     self.shell_leaf = selected.clone();
-                                    self.shell_entrypoint =
-                                        selection.and_then(|value| value.entrypoint);
+                                    let selection = selection.expect("selected artifact");
+                                    self.shell_entrypoint = selection.entrypoint;
+                                    self.shell_macos = selection.macos;
                                 }
                             }
                             match (symlink, stage) {

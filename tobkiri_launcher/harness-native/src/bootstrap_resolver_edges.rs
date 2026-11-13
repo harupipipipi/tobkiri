@@ -13,7 +13,7 @@ pub(super) const VERIFIED_ARTIFACTS_REQUEST: &str =
 const STATIC_RESPONSE: &str = "io.tobkiri.native-resolver-static-edges-result.v1";
 const DYNAMIC_RESPONSE: &str = "io.tobkiri.native-resolver-dynamic-edges-result.v1";
 const RESOLVE_REQUEST: &str = "io.tobkiri.native-resolver-profile.v1";
-const PLATFORM_ARTIFACTS_UNBOUND: &str = "io.tobkiri.native-resolver-platform-artifacts-unbound.v1";
+const SHELL_ARTIFACT_VERIFIED: &str = "io.tobkiri.native-resolver-shell-artifact-verified.v1";
 const SCHEMA: &str = "io.tobkiri.profile-authority-edge.v1";
 const REF_PREFIX: &str = "authority-ref:";
 
@@ -214,7 +214,7 @@ async fn run_profile_to_artifact_read<S: BootstrapInputOwner + BootstrapReviewOw
         pack.input_budget,
     )?;
     denied::exact(&boundary, &["format", "scope"])?;
-    if denied::field(&boundary, "format")?.as_str() != Some(PLATFORM_ARTIFACTS_UNBOUND)
+    if denied::field(&boundary, "format")?.as_str() != Some(SHELL_ARTIFACT_VERIFIED)
         || !denied::same_scope(&denied::field(&boundary, "scope")?, scope)
         || !pack
             .work
@@ -224,13 +224,13 @@ async fn run_profile_to_artifact_read<S: BootstrapInputOwner + BootstrapReviewOw
             .unwrap_or_else(|error| error.into_inner())
             .as_ref()
             .is_some_and(
-                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_entrypoint_completed,
+                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_artifact_completed,
             )
     {
-        bail!("original resolver stopped before the Shell entrypoint read completed");
+        bail!("original resolver did not finish verifying the selected Shell");
     }
     Ok(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::ResolvePlatformArtifactsNotBound,
+        BootstrapReviewReachpoint::ResolvePackCompositionNotBound,
     ))
 }
 

@@ -14,7 +14,7 @@ import sys
 from types import ModuleType
 from typing import Any
 
-from .native_path import NativePath, PathBridge
+from .native_path import NativePath, PathBridge, _ShellArtifactVerified
 from .persistence_view import VIEW as _PERSISTENCE_VIEW
 from .value_graph import UnsupportedValue
 
@@ -22,6 +22,8 @@ _SERVICE = "ecosystem.defaultspack.domain.runtime_v4.service"
 _SERVICE_SOURCE = "ecosystem/defaultspack/domain/runtime_v4/service.py"
 _ARTIFACT = "tobkiri_protocol.platform_artifact"
 _ARTIFACT_SOURCE = "tobkiri_protocol/platform_artifact.py"
+_RESOLUTION = "ecosystem.defaultspack.domain.profile_resolution"
+_RESOLUTION_SOURCE = "ecosystem/defaultspack/domain/profile_resolution.py"
 _PERSISTENCE = "tobkiri_protocol.secure_persistence"
 _PERSISTENCE_EXPORTS = ("SecureDirectory", "SecurePersistenceError")
 
@@ -61,7 +63,7 @@ class _PathlibView(ModuleType):
 
 
 class _ModuleLoader:
-    def __init__(self, spec: Any, bridge: PathBridge, anchor: NativePath,
+    def __init__(self, spec: Any, bridge: PathBridge, anchor: NativePath | None,
                  source_owner=None, catalog_capture=None):
         # This is the actual finder's existing spec/source DATA. It never
         # selects a host resource; the NativeAnchor is independently supplied.
@@ -94,7 +96,8 @@ class _ModuleLoader:
         execute = getattr(self.original, "exec_module", None)
         if not callable(execute):
             raise UnsupportedValue("original module loader cannot execute its code")
-        view = _PathlibView(self.bridge, self.origin, self.anchor)
+        view = (None if self.anchor is None else
+                _PathlibView(self.bridge, self.origin, self.anchor))
         original_import = builtins.__import__
 
         def owns_import(name: str, source: str, namespace: Any) -> bool:
@@ -129,6 +132,28 @@ class _ModuleLoader:
                 if fromlist or not owns_import(_ARTIFACT, _ARTIFACT_SOURCE, globals):
                     raise UnsupportedValue("artifact source owner is not bound")
                 return self.bridge.os
+            if (level == 0 and name == _ARTIFACT
+                    and self.spec.name == _RESOLUTION and self.catalog_capture is not None):
+                if (type(fromlist) is not tuple or fromlist != ("verify_platform_artifact",)
+                        or not owns_import(_RESOLUTION, _RESOLUTION_SOURCE, globals)):
+                    raise UnsupportedValue("resolver verifier source owner is not bound")
+                original = original_import(name, globals, locals, fromlist, level)
+                verifier = getattr(original, "verify_platform_artifact", None)
+                if not callable(verifier):
+                    raise UnsupportedValue("original verifier is not bound")
+                facade = ModuleType(name)
+
+                def verify_platform_artifact(*args, **kwargs):
+                    result = verifier(*args, **kwargs)
+                    if self.bridge._resolving_catalog:
+                        if (not self.bridge._resolver_header_closed
+                                or result is not self.bridge._resolver_shell_leaf):
+                            raise UnsupportedValue("original verifier result or header is not bound")
+                        raise _ShellArtifactVerified
+                    return result
+
+                facade.verify_platform_artifact = verify_platform_artifact
+                return facade
             if level == 0 and name == _PERSISTENCE:
                 if (type(fromlist) is not tuple or fromlist != _PERSISTENCE_EXPORTS
                         or self.bridge._catalog_root is None
@@ -138,6 +163,8 @@ class _ModuleLoader:
                 # globals. No persistence module is imported or registered.
                 return _PERSISTENCE_VIEW
             if level == 0 and name == "pathlib":
+                if view is None:
+                    raise UnsupportedValue("source-only module has no pathlib binding")
                 return view
             if level == 0 and name.startswith("pathlib."):
                 raise UnsupportedValue("native pathlib submodule is not represented")
@@ -192,7 +219,8 @@ class ModulePathBindings:
         self._catalog_capture = _catalog_capture
 
     def install(self) -> None:
-        if self.installed or any(name in sys.modules for name in self.anchors):
+        if (self.installed or any(name in sys.modules for name in self.anchors)
+                or (self._catalog_capture is not None and _RESOLUTION in sys.modules)):
             raise UnsupportedValue("original module already imported before native binding")
         self.finders = tuple(sys.meta_path)
         sys.meta_path.insert(0, self)
@@ -211,7 +239,7 @@ class ModulePathBindings:
 
     def find_spec(self, fullname, path=None, target=None):
         anchor = self.anchors.get(fullname)
-        if anchor is None:
+        if anchor is None and not (fullname == _RESOLUTION and self._catalog_capture is not None):
             return None
         for finder in self.finders:
             find = getattr(finder, "find_spec", None)
@@ -223,7 +251,7 @@ class ModulePathBindings:
             if spec.loader is None:
                 raise UnsupportedValue("original bound module has no code loader")
             capture = self._catalog_capture
-            if fullname in {_SERVICE, _ARTIFACT} and capture is not None and (
+            if fullname in {_SERVICE, _ARTIFACT, _RESOLUTION} and capture is not None and (
                 finder is not capture[0] or type(finder) is not capture[1]
                 or type(spec.loader) is not capture[2]
                 or finder.tree is not capture[3]

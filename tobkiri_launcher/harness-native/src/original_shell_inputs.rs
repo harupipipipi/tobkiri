@@ -17,6 +17,7 @@ pub(super) struct ShellInputs(Funded<Vec<Entry>>);
 pub(super) struct SelectedShell {
     pub(super) artifact: CoreValue,
     pub(super) entrypoint: Option<CoreValue>,
+    pub(super) macos: bool,
 }
 
 pub(super) const MAX_NAME: usize = 255;
@@ -131,6 +132,7 @@ impl CatalogIo {
         Ok(SelectedShell {
             artifact: CoreValue::string(name, &self.budget)?,
             entrypoint,
+            macos: text_is(&variant, "platform", "macos"),
         })
     }
 }

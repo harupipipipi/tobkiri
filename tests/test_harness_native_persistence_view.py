@@ -40,7 +40,7 @@ from harness_native.dispatcher import (  # noqa: E402
     AlreadyInitialized, Dispatcher, OriginalRuntime, PREFIX,
 )
 from harness_native.native_module_loader import ModulePathBindings  # noqa: E402
-from harness_native.native_path import PathBridge  # noqa: E402
+from harness_native.native_path import PathBridge, _ShellArtifactVerified  # noqa: E402
 from harness_native.persistence_view import SecurePersistenceError  # noqa: E402
 from harness_native.source_package import assemble  # noqa: E402
 from harness_native.value_graph import Registry, Scope, UnsupportedValue  # noqa: E402
@@ -517,6 +517,44 @@ class CatalogCaptureCompositionTests(unittest.TestCase):
                 dispatcher.init("not another initialization")
         finally:
             sys.meta_path[:] = [f for f in previous if f is not finder]
+
+    def test_sealed_resolver_wraps_only_successful_bound_verifier(self):
+        package = assemble(prepare.captured())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "bundle"
+            write_bundle(root, "success")
+            with captured(package, root) as (_, bridge, _, __):
+                artifact = importlib.import_module("tobkiri_protocol.platform_artifact")
+                leaf = bridge.bind("catalog_root", str(root)) / "shell"
+                error = ValueError("original verifier failure")
+                outcome = [leaf]
+
+                def original(*args, **kwargs):
+                    if isinstance(outcome[0], Exception):
+                        raise outcome[0]
+                    return outcome[0]
+
+                with patch.object(artifact, "verify_platform_artifact", original):
+                    resolution = importlib.import_module(
+                        "ecosystem.defaultspack.domain.profile_resolution")
+                    verify = resolution.verify_platform_artifact
+                    self.assertIs(verify(), leaf)
+                    bridge._resolving_catalog = True
+                    bridge._resolver_shell_leaf = leaf
+                    bridge._resolver_header_closed = True
+                    with self.assertRaises(_ShellArtifactVerified):
+                        verify()
+                    outcome[0] = error
+                    with self.assertRaises(ValueError) as caught:
+                        verify()
+                    self.assertIs(caught.exception, error)
+                    outcome[0] = bridge.path(leaf)
+                    with self.assertRaises(UnsupportedValue):
+                        verify()
+                    bridge._resolver_header_closed = False
+                    outcome[0] = leaf
+                    with self.assertRaises(UnsupportedValue):
+                        verify()
 
     def test_import_failure_keeps_original_error_and_releases_only_binding_borrow(self):
         package = assemble(prepare.captured())
