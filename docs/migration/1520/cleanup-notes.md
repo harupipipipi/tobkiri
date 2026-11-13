@@ -3172,6 +3172,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [物理IO・Clippy 43486940947](https://github.com/harupipipipi/tobkiri/actions/runs/43486940947)
   は両OSの物理IO各7件とstrict Clippyが成功。カタログ全体から同じStoreでShellを通る
   確認と製品採用は残る。
+- `7f982e39f` は元のShell検証が返した対象を保持し、Pack解決の続きへ渡す。
+  元の `ResolvedDefaultProfile` と Profile・Lock・Plan を同じStoreの参照として保持する。
+  Rustは完了済みの物理Shell検証、参照のscope、4件の独立性、解放対象を照合する。
+  [Wasm CI 43491915570](https://github.com/harupipipipi/tobkiri/actions/runs/43491915570)
+  でportableテストとWasm構築が成功し、macOSの実行試験を進めている。
+- `5476f2994` の[原本CI 43492718553](https://github.com/harupipipipi/tobkiri/actions/runs/43492718553)
+  はLinux/macOSの各10件のShell試験と、配布Profileの解決成功および古いApplication Pack
+  digestによる拒否を通過した。成功時は元のPortが同じ戻り値を返し、Profile v5、Plan v2、
+  Lock v5を順に検証した実オブジェクトと完全なcanonical digestを記録した。
+  両OSでbinding 310件、variant pin 123件、projection 0件。拒否時は同じ例外が外側へ
+  伝播し、両ケースともユーザーデータが作成されていない。
+- `45b0001ca` はprojectionが空でも実行される `profile_content_projection.py` の
+  `Path(__file__).resolve()` を既存のRustメタデータ処理へ接続した。元のShell検証後の
+  固定呼び出しで、封印済みローダーが指定した一つのソースだけを解決する。元のパス
+  解決、スキーマ検証、digest計算の順序はそのまま。一般のファイル読み取りや追加
+  projectionの権限は発行しない。将来の整理では、原本との差分が通った後に既存の
+  getterとprojection用のscope・FD・応答生成の共通部分を再点検する。
+  [Rust/Wasm CI 43493671067](https://github.com/harupipipipi/tobkiri/actions/runs/43493671067)
+  は実行待ち。全カタログの燃料制限と `bootstrap_confirmation` 前のHost処理が残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
