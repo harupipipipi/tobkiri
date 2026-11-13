@@ -38,10 +38,13 @@ fn revalidate<S: OriginalAuthorityOwner>(
     }
     let mut registry =
         inactive_registry_from_snapshot(op, snapshot, profile_id, budget)?.ok_or_else(stale)?;
+    registry.serialize_definition(op, budget)?;
     let existing = CoreValue::parse_guest(registry.definition(), budget).map_err(capacity)?;
+    drop(registry.serialized_definition.take());
     if python_equal(&existing, source, budget)? {
         return Err(stale());
     }
+    drop(existing);
     let actual =
         candidate_selection::inactive_handover_at(op, root, profile_id, &mut registry, budget)?
             .ok_or_else(stale)?;

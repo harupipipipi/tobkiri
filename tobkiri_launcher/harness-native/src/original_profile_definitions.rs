@@ -263,6 +263,8 @@ pub(crate) struct InactiveBootstrapRegistry {
     definition: definitions_model::InactiveDefinition,
     #[cfg(unix)]
     snapshot: definitions_model::State,
+    #[cfg(unix)]
+    serialized_definition: Option<Funded<Vec<u8>>>,
 }
 
 #[cfg(unix)]
@@ -275,10 +277,33 @@ impl InactiveBootstrapRegistry {
     pub(crate) fn definition(&self) -> &[u8] {
         #[cfg(unix)]
         {
-            &self.definition.bytes
+            self.serialized_definition
+                .as_ref()
+                .expect("review serialized definition")
+                .as_slice()
         }
         #[cfg(not(unix))]
         unreachable!("inactive registry snapshot requires native persistence")
+    }
+
+    pub(crate) fn release_serialized_definition(&mut self) {
+        #[cfg(unix)]
+        drop(self.serialized_definition.take());
+    }
+
+    #[cfg(unix)]
+    fn serialize_definition<S: OriginalAuthorityOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<()> {
+        self.serialized_definition = Some(definitions_model::inactive_definition_bytes(
+            op,
+            &mut self.snapshot,
+            &self.definition,
+            budget,
+        )?);
+        Ok(())
     }
 
     #[cfg(unix)]
@@ -326,21 +351,29 @@ pub(super) fn inactive_bootstrap_registry<S: OriginalAuthorityOwner>(
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<InactiveBootstrapRegistry>> {
     let store = Store::new(op, root)?;
-    inactive_registry_from_snapshot(op, store.snapshot(op, budget)?, profile_id, budget)
+    let registry =
+        inactive_registry_from_snapshot(op, store.snapshot(op, budget)?, profile_id, budget)?;
+    registry
+        .map(|mut registry| {
+            registry.serialize_definition(op, budget)?;
+            Ok(registry)
+        })
+        .transpose()
 }
 
 #[cfg(unix)]
 fn inactive_registry_from_snapshot<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
-    mut snapshot: definitions_model::State,
+    snapshot: definitions_model::State,
     profile_id: &str,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<InactiveBootstrapRegistry>> {
     Ok(
-        definitions_model::inactive_definition(op, &mut snapshot, profile_id, budget)?.map(
+        definitions_model::inactive_definition(op, &snapshot, profile_id, budget)?.map(
             |definition| InactiveBootstrapRegistry {
                 definition,
                 snapshot,
+                serialized_definition: None,
             },
         ),
     )

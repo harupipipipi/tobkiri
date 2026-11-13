@@ -156,6 +156,7 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
             ),
         ],
     )?;
+    registry.release_serialized_definition();
     let outcome = pack
         .observe_fixed_projection(&request, "bootstrap-inactive-equality")
         .await?;

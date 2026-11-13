@@ -625,16 +625,15 @@ pub(super) fn canonical_id<S: OriginalAuthorityOwner>(
 pub(super) struct InactiveDefinition {
     pub(super) profile: usize,
     revision: usize,
-    pub(super) bytes: Funded<Vec<u8>>,
 }
 
 pub(super) fn inactive_definition<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
-    state: &mut State,
+    state: &State,
     profile_id: &str,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<InactiveDefinition>> {
-    let doc = &mut state.doc;
+    let doc = &state.doc;
     let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
     let mut selected = None;
     for &entry in entries {
@@ -668,7 +667,6 @@ pub(super) fn inactive_definition<S: OriginalAuthorityOwner>(
     Ok(Some(InactiveDefinition {
         profile,
         revision: revision_id,
-        bytes: canonical_at(doc, profile, None, op, budget)?,
     }))
 }
 
@@ -817,7 +815,8 @@ pub(super) fn project_inactive_predecessor<S: OriginalAuthorityOwner>(
 ) -> Result<CoreValue> {
     let doc = &mut state.doc;
     let profile = definition.profile;
-    let definition_digest = Digest::hash(&definition.bytes);
+    // The immutable revision is the exact digest checked by validate_entry
+    // against this selected live definition when this snapshot was loaded.
     let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
     let mut meter = Meter { op, budget };
     let string = |doc: &Document, id, meter: &mut Meter<'_, '_, S>| -> Result<CoreValue> {
@@ -875,8 +874,8 @@ pub(super) fn project_inactive_predecessor<S: OriginalAuthorityOwner>(
     };
     let digest_value = |digest: &Digest| CoreValue::string(digest.as_str(), budget);
     let fields: [(&str, std::result::Result<CoreValue, AllocationError>); 13] = [
-        ("profile_revision", Ok(revision)),
-        ("definition_digest", digest_value(&definition_digest)),
+        ("profile_revision", Ok(revision.share())),
+        ("definition_digest", Ok(revision)),
         ("store_generation", Ok(generation)),
         ("snapshot_digest", digest_value(&digests.snapshot)),
         ("handover_digest", digest_value(&digests.journal)),
@@ -900,6 +899,15 @@ pub(super) fn project_inactive_predecessor<S: OriginalAuthorityOwner>(
         budget,
     )
     .map_err(capacity)
+}
+
+pub(super) fn inactive_definition_bytes<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &mut State,
+    definition: &InactiveDefinition,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Funded<Vec<u8>>> {
+    canonical_at(&mut state.doc, definition.profile, None, op, budget)
 }
 
 pub(super) fn get<S: OriginalAuthorityOwner>(

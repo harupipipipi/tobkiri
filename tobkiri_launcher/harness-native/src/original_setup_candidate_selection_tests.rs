@@ -630,6 +630,7 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
                     let mut registry = result.unwrap().unwrap();
                     let selected: serde_json::Value =
                         serde_json::from_slice(registry.definition()).unwrap();
+                    registry.release_serialized_definition();
                     // The fixed guest comparison is covered separately, including
                     // Python bool/int equality. The pinned fixture uses exact types.
                     assert_eq!(selected == packaged, case == "exact-mapping-equal");
