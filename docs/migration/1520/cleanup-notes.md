@@ -3143,14 +3143,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ツリーと同じファイルを使うAppImageでもFDを開き直し、前後のstatとdigest比較は
   元のWasm側で実行する。同じFDプロトコルを共用し、ツリー用とentrypoint用を区別する。
   plistとヘッダーの最初の読み取りが次の境界。
-  [物理IO・Clippy 43481161858](https://github.com/harupipipipi/tobkiri/actions/runs/43481161858)
-  で検証中。[初回Wasm CI 43481172131](https://github.com/harupipipipi/tobkiri/actions/runs/43481172131)
+  [初回の物理IO・Clippy 43481161858](https://github.com/harupipipipi/tobkiri/actions/runs/43481161858)
+  は両OSで物理IO 7件を通過した。
+  [初回Wasm CI 43481172131](https://github.com/harupipipipi/tobkiri/actions/runs/43481172131)
   はLinux用の試験fixtureが原本のヘッダー関数を読み込まず停止した。
   `c5392ab6b` と `3b29b4de8` で単体AppImageの経路と原本の関数を揃えた。
   [再検証 43481460283](https://github.com/harupipipipi/tobkiri/actions/runs/43481460283)
-  の実Wasm構築とportable 215件は成功した。Linuxの物理IO 7件も通過し、
-  strict Clippyの型の複雑さの指摘は `294244199` で親の格納先を借りる形に直した。
-  [物理IO・Clippyの再検証 43482610397](https://github.com/harupipipipi/tobkiri/actions/runs/43482610397)。
+  は実Wasm構築、portable 215件、macOSの実Runtime.init・物理IO 7件・Coreへの
+  引き継ぎを通過した。strict Clippyの型の複雑さの指摘は `294244199` で親の
+  格納先を借りる形に直した。
+  [物理IO・Clippyの再検証 43482610397](https://github.com/harupipipipi/tobkiri/actions/runs/43482610397)
+  も両OSで物理IO 7件とstrict Clippyを通過した。全カタログを通した製品Setupは未確認。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
