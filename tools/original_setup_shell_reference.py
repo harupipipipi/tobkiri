@@ -34,6 +34,8 @@ PROFILE = "defaults.profile.v5.json"
 APPLICATION = "runtime.tauri.application.default"
 PACK_STALE_PIN = "stale-application-pack-pin"
 COMPOSITION_CASES = ("packaged-profile-resolved", PACK_STALE_PIN)
+PREDECESSOR_CASES = ("fresh-pack-pin-predecessor", "corrupt-pack-pin-predecessor")
+CORRUPT_POINTER = b"{\n"
 STALE_PIN = "sha256:" + "0" * 64
 
 
@@ -43,6 +45,10 @@ class _ShellVerified(BaseException):
 
 class _PackResolved(BaseException):
     """Stop at the successful original resolve Port return, before state creation."""
+
+
+class _BeforeInactivePredecessor(BaseException):
+    """Stop before the next helper executes its first instruction."""
 
 
 def _package(original: Path, runtime: Path, output: Path) -> tuple[dict, list[str]]:
@@ -233,6 +239,201 @@ def _resolved_facts(result: Any, local: dict, variant: dict) -> dict:
     }
 
 
+class _PredecessorObservation:
+    """Trace the actual Host reads after successful Pack resolution."""
+
+    def __init__(self, runtime: Path, user_data: Path, *, corrupt: bool) -> None:
+        from core_runtime import active_profile_store_v4 as active
+        from core_runtime import profile_definition_store_v4 as definition
+        from core_runtime.bootstrap import profile_capture as capture
+
+        self.user_data = user_data
+        self.corrupt = corrupt
+        self.pointer_path = user_data / "profiles" / "active.json"
+        self.lock_path = user_data / "profiles" / ".profile-definition.lock"
+        self.binding = capture._bootstrap_pack_pin_predecessor_binding.__code__
+        self.setup = capture._resolve_bootstrap_candidate.__code__
+        self.inactive = capture.inactive_bootstrap_predecessor.__code__
+        self.snapshot = definition.ProfileDefinitionStore.snapshot.__code__
+        self.get_profile = definition.ProfileDefinitionStore.get_profile.__code__
+        self.lock = inspect.unwrap(active.exclusive_profile_lock).__code__
+        self.load = active.ActiveProfileStore.load.__code__
+        self.integrity_error = active.ActiveProfileStoreIntegrityError
+        for source, codes in (
+            ("bootstrap/profile_capture.py", (self.binding, self.setup)),
+            ("bootstrap/profile_predecessor.py", (self.inactive,)),
+            ("profile_definition_store_v4.py", (self.snapshot, self.get_profile)),
+            ("active_profile_store_v4.py", (self.lock, self.load)),
+        ):
+            if any(Path(code.co_filename).resolve() != runtime / "core_runtime" / source
+                   for code in codes):
+                raise AssertionError("predecessor callable is outside the staged original")
+        self.calls: list[str] = []
+        self.lock_frames: list[FrameType] = []
+        self.snapshots: list[dict] = []
+        self.store: Any = None
+        self.error: BaseException | None = None
+        self.frame: FrameType | None = None
+
+    def trace(self, frame: FrameType, event: str, value: Any, resolved: Any) -> bool:
+        code, parent = frame.f_code, frame.f_back
+        if code is self.binding and event == "call":
+            if (
+                self.calls or parent is None or parent.f_code is not self.setup
+                or resolved is None or parent.f_locals["resolved"] is not resolved
+                or frame.f_locals["user_data"] != self.user_data or self.user_data.exists()
+                or any(frame.f_locals[key] is not parent.f_locals[key]
+                       for key in ("runtime", "catalog", "profile_id"))
+            ):
+                raise AssertionError("original Setup did not enter predecessor with the resolved Pack")
+            self.frame = frame
+            self.calls.append("call-pack-pin-predecessor")
+            frame.f_trace_lines = True
+            return True
+        if code is self.inactive and event == "call":
+            if (
+                parent is None or parent.f_code is not self.setup
+                or self.calls[-1:] != ["return-pack-pin-predecessor-none"]
+                or parent.f_locals["pin_predecessor"] is not None
+            ):
+                raise AssertionError("original Setup passed an unobserved Pack pin predecessor")
+            self.calls.append("before-inactive-predecessor")
+            raise _BeforeInactivePredecessor
+        if self.frame is None or code not in (
+            self.binding, self.snapshot, self.get_profile, self.lock, self.load,
+        ):
+            return False
+        if len(self.calls) > 16:
+            raise AssertionError("original predecessor observation exceeds its bound")
+        local = frame.f_locals
+        if code is self.snapshot and event == "call":
+            if parent is self.frame:
+                self.store = local["self"]
+                if self.store is not parent.f_locals["definitions"]:
+                    raise AssertionError("predecessor did not snapshot its registry store")
+                self.calls.append("call-registry-snapshot")
+            elif parent is not None and parent.f_code is self.get_profile:
+                if local["self"] is not self.store or parent.f_back is not self.frame:
+                    raise AssertionError("registry lookup did not take its own snapshot")
+                self.calls.append("call-lookup-snapshot")
+            else:
+                raise AssertionError("unexpected snapshot in original predecessor")
+        elif code is self.lock and event == "return":
+            # A generator reports a return at its yield, then again after its cleanup.
+            held = frame not in self.lock_frames
+            if (
+                local["directory"] is not self.store._directory
+                or local["directory"].root / local["relative_path"] != self.lock_path
+                or local["acquired"] is not True
+                or local["process_lock"]._is_owned() != held
+            ):
+                raise AssertionError("original snapshot did not acquire and release the registry lock")
+            if held:
+                self.lock_frames.append(frame)
+                self.calls.append("acquire-registry-lock")
+            else:
+                self.calls.append("release-registry-lock")
+        elif code is self.snapshot and event == "return":
+            if (
+                value["generation"] != 0 or value["profiles"]
+                or self.snapshots and (value is self.snapshots[0] or value != self.snapshots[0])
+            ):
+                raise AssertionError("original snapshots did not independently observe an empty registry")
+            self.calls.append("return-lookup-snapshot" if self.snapshots else "return-registry-snapshot")
+            self.snapshots.append(value)
+        elif code is self.get_profile and event == "call":
+            if (
+                parent is not self.frame or local["self"] is not self.store
+                or local["profile_id"] != parent.f_locals["profile_id"]
+                or local["include_tombstone"] is not False
+            ):
+                raise AssertionError("predecessor did not look up its Profile in the same registry")
+            self.calls.append("call-registry-get-profile")
+        elif code is self.get_profile and event == "return":
+            if value is not None:
+                raise AssertionError("original lookup did not return an absent definition")
+            self.calls.append("return-registry-get-profile-none")
+        elif code is self.load and event == "call":
+            if (
+                parent is not self.frame or local["self"].path != self.pointer_path
+                or local["verify_snapshot"] is not True
+                or parent.f_locals["registered"] is not None or self.pointer_path.exists()
+            ):
+                raise AssertionError("predecessor did not request the actual verified active pointer")
+            self.calls.append("call-active-pointer-load-verified")
+            if self.corrupt:
+                # Candidate selection must see the fresh state; only this read sees the bad JSON.
+                with self.pointer_path.open("xb") as stream:
+                    stream.write(CORRUPT_POINTER)
+        elif code is self.load and event == "exception":
+            if type(value[1]) is self.integrity_error:
+                self.error = value[1]
+                self.calls.append("deny-active-pointer-load")
+        elif code is self.load and event == "return" and self.error is None:
+            if value is not None:
+                raise AssertionError("original fresh pointer load did not return None")
+            self.calls.append("return-active-pointer-none")
+        elif code is self.binding and event == "line" and "source" in local:
+            if "lookup-catalog-source" not in self.calls:
+                if (
+                    self.corrupt or local["pointer"] is not None or local["source"] is None
+                    or local["source"] is not local["catalog"].profiles[local["profile_id"]]
+                ):
+                    raise AssertionError("predecessor did not look up the live catalog source")
+                self.calls.append("lookup-catalog-source")
+        elif code is self.binding and event == "exception" and value[1] is self.error:
+            self.calls.append("deny-pack-pin-predecessor")
+        elif code is self.binding and event == "return":
+            if self.error is None:
+                if value is not None:
+                    raise AssertionError("original fresh predecessor did not return None")
+                self.calls.append("return-pack-pin-predecessor-none")
+            self.frame = None
+        return True
+
+    def check(self, outcome: dict) -> list[str]:
+        expected = [
+            "call-pack-pin-predecessor", "call-registry-snapshot", "acquire-registry-lock",
+            "release-registry-lock", "return-registry-snapshot", "call-registry-get-profile",
+            "call-lookup-snapshot", "acquire-registry-lock", "release-registry-lock",
+            "return-lookup-snapshot", "return-registry-get-profile-none",
+            "call-active-pointer-load-verified",
+        ]
+        if self.corrupt:
+            expected.extend(("deny-active-pointer-load", "deny-pack-pin-predecessor"))
+            error = outcome["error"]
+            canonical = error["cause"]
+            decode = canonical["cause"]
+            message = "Expecting property name enclosed in double quotes: line 2 column 1 (char 2)"
+            if (
+                error["type"] != "core_runtime.active_profile_store_v4.ActiveProfileStoreIntegrityError"
+                or error["message"] != "active Profile pointer is unavailable"
+                or canonical["type"] != "tobkiri_protocol.errors.CanonicalizationError"
+                or canonical["message"] != f"invalid JSON: {message}"
+                or decode["type"] != "json.decoder.JSONDecodeError"
+                or decode["message"] != message
+                or self.pointer_path.read_bytes() != CORRUPT_POINTER
+            ):
+                raise AssertionError("unexpected original corrupt pointer error or file")
+        else:
+            expected.extend((
+                "return-active-pointer-none", "lookup-catalog-source",
+                "return-pack-pin-predecessor-none", "before-inactive-predecessor",
+            ))
+            if outcome != {"outcome": "no-predecessor"}:
+                raise AssertionError("unexpected original fresh predecessor outcome")
+        if self.calls != expected or len(self.lock_frames) != 2:
+            raise AssertionError(("original predecessor call order changed", self.calls))
+        paths = sorted(self.pointer_path.parent.iterdir())
+        if (
+            list(self.user_data.iterdir()) != [self.pointer_path.parent]
+            or paths != [self.lock_path, *([self.pointer_path] if self.corrupt else [])]
+            or any(path.is_symlink() or not path.is_file() for path in paths)
+        ):
+            raise AssertionError("original predecessor produced unexpected state")
+        return [path.relative_to(self.user_data).as_posix() for path in paths]
+
+
 def _observe(
     case: str, runtime: Path, user_data: Path, variant: dict, tree_files: list[str],
 ) -> dict:
@@ -276,7 +477,11 @@ def _observe(
     calls: list[list[str]] = []
     reads: list[dict] = []
     active = False
-    composition = case in COMPOSITION_CASES
+    predecessor = (
+        _PredecessorObservation(runtime, user_data, corrupt=case == PREDECESSOR_CASES[1])
+        if case in PREDECESSOR_CASES else None
+    )
+    composition = case in COMPOSITION_CASES or predecessor is not None
     verified = False
     composition_calls: list[str] = []
     resolve_inputs: dict = {}
@@ -297,6 +502,9 @@ def _observe(
         parent = frame.f_back
         if event == "call":
             frame.f_trace_lines = False
+        if predecessor is not None and predecessor.trace(frame, event, value, result):
+            return trace
+        if event == "call":
             if composition and code is resolve_port:
                 local = frame.f_locals
                 if (
@@ -446,7 +654,8 @@ def _observe(
                     raise AssertionError("original Port did not return the same Pack result")
                 facts["wrapper"]["same_port_result"] = True
                 composition_calls.append("return-resolve-port")
-                raise _PackResolved
+                if predecessor is None:
+                    raise _PackResolved
         if event == "return" and code is tree and case.startswith("entrypoint-"):
             if value != variant["artifact_digest"] or moved is not None:
                 raise AssertionError("entrypoint mutation preceded the original tree digest")
@@ -502,8 +711,13 @@ def _observe(
             outcome = {"outcome": "verified"}
         except _PackResolved:
             outcome = {"outcome": "resolved", **facts}
+        except _BeforeInactivePredecessor:
+            outcome = {"outcome": "no-predecessor"}
         except Exception as error:
-            if composition and (case != PACK_STALE_PIN or error is not pack_error):
+            if predecessor is not None:
+                if error is not predecessor.error:
+                    raise
+            elif composition and (case != PACK_STALE_PIN or error is not pack_error):
                 raise
             outcome = {"outcome": "error", "error": error_graph(error, runtime)}
         else:
@@ -518,6 +732,18 @@ def _observe(
             if changed_entrypoint is not None:
                 entrypoint.write_bytes(changed_entrypoint)
 
+    if predecessor is not None:
+        resolved = {"outcome": "resolved", **facts}
+        _check("selected-shell", variant, tree_files, calls, reads, {"outcome": "verified"})
+        _check_composition(case, composition_calls, resolve_inputs, resolved)
+        return {
+            "case": case,
+            "calls": predecessor.calls,
+            "composition_calls": composition_calls,
+            "inputs": resolve_inputs,
+            "files_after": predecessor.check(outcome),
+            "expected": outcome,
+        }
     if not active or user_data.exists():
         raise AssertionError("Shell reference missed the original call or wrote user state")
     if composition:
@@ -714,7 +940,7 @@ def _check_entrypoint(
 
 
 def observe_shell(original: Path, runtime: Path, output: Path) -> None:
-    """Keep bounded observations of the selected Shell and full Pack return."""
+    """Observe the selected Shell, full Pack return, and first predecessor reads."""
     variant, tree_files = _package(original, runtime, output)
     rows = [
         _observe(case, runtime, output / case / "user-data", variant, tree_files)
@@ -724,8 +950,13 @@ def observe_shell(original: Path, runtime: Path, output: Path) -> None:
         _observe(case, runtime, output / case / "user-data", variant, tree_files)
         for case in COMPOSITION_CASES
     ]
+    predecessors = [
+        _observe(case, runtime, output / case / "user-data", variant, tree_files)
+        for case in PREDECESSOR_CASES
+    ]
     write_json(output / "shell.json", {
         "format": FORMAT, "original_head": ORIGINAL_HEAD,
         "variant": variant, "cases": rows, "composition_cases": composition,
+        "predecessor_cases": predecessors,
         "header_fixture": True, "qualification": False, "production_enabled": False,
     })
