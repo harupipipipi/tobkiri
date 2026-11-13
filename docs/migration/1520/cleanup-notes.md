@@ -3064,8 +3064,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `e538cdbce` で定義の種類を判定するコードを共通化した。
   [初回の比較CI 43458563648](https://github.com/harupipipipi/tobkiri/actions/runs/43458563648)
   でRustの借用エラーが出たため、`da796f51f` で保持中のleaf参照を共有するよう修正した。
-  [再検証 43460009226](https://github.com/harupipipipi/tobkiri/actions/runs/43460009226)と
-  [実Wasm 43460009366](https://github.com/harupipipipi/tobkiri/actions/runs/43460009366)は実行中。
+  [再検証 43460009226](https://github.com/harupipipipi/tobkiri/actions/runs/43460009226)で
+  LinuxとmacOSの原本比較、Linuxの310参照のRust照合が成功した。
+  [物理IO CI 43460078329](https://github.com/harupipipipi/tobkiri/actions/runs/43460078329)は
+  両OSで7試験を通過。検索権限だけのroot、選択leafの欠落とsymlink、rootの置換、
+  元の定義ファイルの変更後に同じleafを使うこと、各操作後のFD解放を確認した。
+  [実Wasm 43460009366](https://github.com/harupipipipi/tobkiri/actions/runs/43460009366)は
+  構築を通過し、macOSの実初期化を検証中。
   現在の同梱variantが使う1階層のファイル名を対象とし、schema上有効な複数階層の
   variantは未移植。複数階層では途中の各親を原本と同じ順で検査する必要がある。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の

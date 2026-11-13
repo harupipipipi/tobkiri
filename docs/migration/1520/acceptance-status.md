@@ -911,7 +911,11 @@ macOS plist.
 The [native Shell root change](https://github.com/harupipipipi/tobkiri/actions/runs/43444308778)
 adds the strict resolve and separate symlink and directory checks. The macOS
 physical replay also refused a changed parent and a link outside the bound
-parent. Selected file and tree IO remain open.
+parent. The selected Shell path and its parent now have separate ordered
+symlink checks. The [physical catalog checks](https://github.com/harupipipipi/tobkiri/actions/runs/43460078329)
+passed on Linux and macOS, including the case with search permission only.
+They cover the direct filenames used by the bundled variants. Nested
+artifact paths, tree enumeration, streaming digest and headers remain open.
 Normal full catalog execution under the original limits and GUI adoption
 still need evidence. These comparisons close no acceptance item.
 
