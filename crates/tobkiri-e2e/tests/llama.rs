@@ -232,10 +232,9 @@ async fn real_1b_input_flow_wasm_stream_persist_and_cancel() -> Result<()> {
             .error_for_status()?
             .json()
             .await?;
-        if slots
-            .as_array()
-            .is_some_and(|slots| slots.iter().all(|slot| slot["is_processing"] == false))
-        {
+        if slots.as_array().is_some_and(|slots| {
+            !slots.is_empty() && slots.iter().all(|slot| slot["is_processing"] == false)
+        }) {
             break;
         }
         anyhow::ensure!(
@@ -246,6 +245,7 @@ async fn real_1b_input_flow_wasm_stream_persist_and_cancel() -> Result<()> {
     }
     assert_no_plaintext(&fixture.data_root(), &secret)?;
     assert_secret_dispatch_receipts(&fixture, 2)?;
+    session.close().await?;
     // Receipts contain only model identity and counts, never request credentials.
     println!(
         "real-1b receipt: model=gemma3-1b-local plan_digest={} streamed_deltas={} cancelled=true persisted=true secret_dispatches=4 secret_outcomes=4",

@@ -1,0 +1,150 @@
+name: Issue 1520 actual Gemma 3 1B through Harness
+
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - '.github/workflows/issue-1520-actual-1b.yml'
+      - 'crates/tobkiri-e2e/tests/llama.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actual-1b:
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-actual-1b
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the supported native owner platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          for root in "$RUNNER_TEMP" "$GITHUB_WORKSPACE/.."; do
+            device="$(df -P "$root" | awk 'NR == 2 {print $1}')"
+            diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          done
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - name: Build current verified Wasm Packs
+        run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+      - name: Fetch the pinned upstream server and model on the runner
+        shell: bash
+        run: |
+          umask 077
+          work="$RUNNER_TEMP/tobkiri-1b"
+          mkdir "$work"
+          curl --fail --silent --show-error --location --retry 2 --max-time 300 \
+            https://github.com/ggml-org/llama.cpp/releases/download/b11146/llama-b11146-bin-macos-arm64.tar.gz \
+            -o "$work/server.tar.gz"
+          curl --fail --silent --show-error --location --retry 2 --max-time 300 \
+            https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/f9c28bcd85737ffc5aef028638d3341d49869c27/gemma-3-1b-it-Q4_K_M.gguf \
+            -o "$work/model.gguf"
+          cd "$work"
+          shasum -a 256 -c <<'SHA'
+          1ad3f9eff80edb9dbef4259ad564d1720612ef7eea48fa4afed0e54f5f3d5711  server.tar.gz
+          8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135  model.gguf
+          SHA
+          test "$(stat -f '%z' model.gguf)" = 806058240
+          mkdir server
+          tar -xzf server.tar.gz -C server
+      - name: Run the authenticated loopback model through the actual Wasm Flow
+        shell: bash
+        run: |
+          umask 077
+          work="$RUNNER_TEMP/tobkiri-1b"
+          keychain="$work/tobkiri-ci.keychain-db"
+          previous_keychain="$(security default-keychain -d user | sed -E 's/^[[:space:]]*"([^"]+)"[[:space:]]*$/\1/')"
+          test -n "$previous_keychain"
+          server_pid=
+          cleanup() {
+            status=$?
+            if [[ -n "$server_pid" ]]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            security default-keychain -d user -s "$previous_keychain" || status=1
+            if [[ -f "$keychain" ]]; then
+              security delete-keychain "$keychain" || status=1
+            fi
+            rm -f "$work/api-key"
+            exit "$status"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          keychain_password="$(openssl rand -hex 32)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings "$keychain"
+          security default-keychain -d user -s "$keychain"
+          unset keychain_password
+          openssl rand -hex 32 > "$work/api-key"
+
+          server="$work/server/llama-b11146/llama-server"
+          test -x "$server"
+          "$server" --model "$work/model.gguf" --offline --host 127.0.0.1 --port 18080 \
+            --api-key-file "$work/api-key" --ctx-size 4096 --parallel 1 --threads 4 \
+            --batch-size 512 --ubatch-size 128 --n-gpu-layers 0 --jinja --alias gemma3-1b-local \
+            --no-webui --slots --log-verbosity 2 --log-colors off > "$work/server.log" 2>&1 &
+          server_pid=$!
+          ready=false
+          for attempt in {1..90}; do
+            kill -0 "$server_pid"
+            if curl --fail --silent --max-time 2 http://127.0.0.1:18080/health > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+          python3 -B - "$work/api-key" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          token = Path(sys.argv[1]).read_text().strip()
+          origin = "http://127.0.0.1:18080"
+          try:
+              with urlopen(origin + "/v1/models", timeout=5):
+                  raise AssertionError("llama.cpp accepted an unauthenticated model request")
+          except HTTPError as error:
+              if error.code != 401:
+                  raise
+
+          def request(path):
+              with urlopen(Request(origin + path, headers={
+                  "Authorization": "Bearer " + token,
+              }), timeout=5) as response:
+                  return json.load(response)
+
+          assert any(model["id"] == "gemma3-1b-local" for model in request("/v1/models")["data"])
+          slots = request("/slots")
+          assert isinstance(slots, list) and slots and all(not slot["is_processing"] for slot in slots)
+          print("Pinned llama.cpp b11146: authenticated Gemma 3 1B alias and idle slot verified")
+          PY
+          TOBKIRI_TEST_LLAMA=1 TOBKIRI_TEST_LLAMA_KEY_FILE="$work/api-key" \
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/actual-1b.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test llama -- --ignored --exact --nocapture \
+              real_1b_input_flow_wasm_stream_persist_and_cancel
+      - name: Retain test receipt
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-1520-actual-1b
+          path: |
+            ${{ runner.temp }}/actual-1b.log
+            ${{ runner.temp }}/actual-1b.receipt.json
+          if-no-files-found: warn
