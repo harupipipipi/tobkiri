@@ -1,7 +1,7 @@
 //! Independently pinned V2 evidence. No Python source or guest is executed here.
 use super::{
     consumer::BridgeAbi,
-    evidence::{self, Inputs, bounded_read, digest, environment_hash, no_links, strict_json},
+    evidence::{self, Inputs, digest, environment_hash, no_links, strict_json},
 };
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
