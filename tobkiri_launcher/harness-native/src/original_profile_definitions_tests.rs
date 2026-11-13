@@ -172,6 +172,65 @@ async fn registry_definition_lock_is_distinct_inside_the_actual_publication_lock
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn registry_recovery_rereads_successors_with_the_publication_lock_held() {
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let profiles = source.root.join("profiles");
+        let directory = Directory::capture(&op, &profiles, true).unwrap();
+        let mut publication = PublicationLock::acquire(&op, &directory).unwrap();
+        let definition_lock = profiles.join(".profile-definition.lock");
+
+        let store = first_list(&op, &source.root, budget).unwrap().unwrap();
+        assert!(lock_free(&definition_lock));
+        assert!(matches!(
+            store.select_successor(&op, budget).unwrap(),
+            DefinitionRecovery::RepairLegacyDisplayNames
+        ));
+
+        // Another definition writer can publish after the first list releases
+        // its lock. The migration must see this later index on the same Store.
+        let mut profile = entry("opaque", 0);
+        profile["legacy_ids"] = json!(["original"]);
+        let mut value = state(vec![profile]);
+        value["legacy"] = json!({
+            "source_document": {"profiles": {"original": {"legacy_only": true}}},
+            "source_path": " exact original "
+        });
+        let bytes = sealed(value);
+        write_index(source, &bytes);
+        let DefinitionRecovery::SuccessorBuilder(candidate) =
+            store.select_successor(&op, budget).unwrap()
+        else {
+            panic!("the later index must reach the successor builder");
+        };
+        assert!(
+            candidate
+                ._state
+                .doc
+                .string_is(candidate._profile_id, "opaque")
+        );
+        assert!(
+            candidate
+                ._state
+                .doc
+                .get(candidate._item, "legacy_only")
+                .is_some()
+        );
+        assert_eq!(
+            candidate._item_origin,
+            definitions_model::SuccessorItemOrigin::LegacySource
+        );
+        assert_eq!(candidate._source_path.as_str(), " exact original ");
+        assert_eq!(fs::read(profiles.join(INDEX)).unwrap(), bytes);
+        assert!(lock_free(&definition_lock));
+        assert!(!lock_free(&profiles.join(LOCK)));
+        drop(candidate);
+        publication.close().unwrap();
+        assert!(lock_free(&profiles.join(LOCK)));
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn registry_list_validates_history_sorts_and_keeps_legacy_bootstrap_upgrade_in_memory() {
     with_source(|source, read, cancel, budget| {
         let mut value = state(vec![

@@ -277,7 +277,7 @@ fn payload(
     Ok(())
 }
 
-/// Called only on the immediate typed result of native definitions::run.
+/// Called only on the immediate typed result of native definition recovery.
 /// Unknown/uncaught types remain the prior raw error or UNQUALIFIED denied
 /// request. This is no general class-name-to-exception or authority API.
 pub(super) fn project(

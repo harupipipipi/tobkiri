@@ -1,4 +1,4 @@
-//! The fixed Host registry snapshot shared by recovery's list and Setup lookup.
+//! The fixed Host registry scopes shared by recovery and Setup lookup.
 use super::*;
 use tobkiri_canon::AllocationBudget;
 
@@ -22,20 +22,41 @@ const INDEX: &str = "index.json";
 const INTEGRITY: &str =
     "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreIntegrityError";
 
+pub(crate) enum DefinitionRecovery {
+    ImportLegacy,
+    SuccessorBuilder(SuccessorCandidate),
+    RepairLegacyDisplayNames,
+}
+
+/// Funded DATA for the unbound successor builder on the same review.
+/// A future builder must execute inside the definition lock.
+pub(crate) struct SuccessorCandidate {
+    #[cfg(unix)]
+    _state: definitions_model::State,
+    #[cfg(unix)]
+    _item: usize,
+    #[cfg(unix)]
+    _profile_id: usize,
+    #[cfg(unix)]
+    _item_origin: definitions_model::SuccessorItemOrigin,
+    #[cfg(unix)]
+    _source_path: definitions_model::SuccessorSourcePath,
+}
+
+#[cfg(all(test, unix))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DefinitionPrefix {
+enum DefinitionPrefix {
     ImportLegacyNotBound,
     MigrateLegacySuccessorsNotBound,
 }
 
 /// Borrow Read's existing invocation, close ledger and prepaid diagnostics.
 /// The caller drops owned errors before Read; no new account/source is owned.
-pub(crate) fn run<S: crate::BootstrapReviewOwner>(
-    read: &PublicationRead,
-    owner: &S,
-    cancellation: &CoreCancellation,
-    budget: &Arc<dyn AllocationBudget>,
-) -> Result<DefinitionPrefix> {
+fn review_operation<'a, S: crate::BootstrapReviewOwner>(
+    read: &'a PublicationRead,
+    owner: &'a S,
+    cancellation: &'a CoreCancellation,
+) -> Result<Operation<'a, S>> {
     let op = Operation {
         owner,
         invocation: &read.invocation,
@@ -50,8 +71,38 @@ pub(crate) fn run<S: crate::BootstrapReviewOwner>(
         fixture: None,
     };
     op.check(OriginalAuthorityStage::Source)?;
+    Ok(op)
+}
+
+/// Borrow Read's existing invocation across the two definition-lock scopes.
+pub(crate) fn recover<S: crate::BootstrapReviewOwner>(
+    read: &PublicationRead,
+    owner: &S,
+    cancellation: &CoreCancellation,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<DefinitionRecovery> {
+    let op = review_operation(read, owner, cancellation)?;
     owner
-        .with_original_review_user_data(|root| prefix(&op, root, budget))?
+        .with_original_review_user_data(|root| recover_at(&op, root, budget))?
+        .map_err(recovery_error)
+}
+
+// Retain the original constructor/list comparison's stopping point.
+#[cfg(all(test, unix))]
+fn run<S: crate::BootstrapReviewOwner>(
+    read: &PublicationRead,
+    owner: &S,
+    cancellation: &CoreCancellation,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<DefinitionPrefix> {
+    let op = review_operation(read, owner, cancellation)?;
+    owner
+        .with_original_review_user_data(|root| {
+            Ok(match first_list(&op, root, budget)? {
+                None => DefinitionPrefix::ImportLegacyNotBound,
+                Some(_) => DefinitionPrefix::MigrateLegacySuccessorsNotBound,
+            })
+        })?
         .map_err(recovery_error)
 }
 
@@ -79,11 +130,23 @@ fn missing(error: &OriginalAuthorityError) -> bool {
 }
 
 #[cfg(unix)]
-fn prefix<S: crate::BootstrapReviewOwner>(
+fn recover_at<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     requested: &Path,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<DefinitionPrefix> {
+) -> Result<DefinitionRecovery> {
+    match first_list(op, requested, budget)? {
+        Some(store) => store.select_successor(op, budget),
+        None => Ok(DefinitionRecovery::ImportLegacy),
+    }
+}
+
+#[cfg(unix)]
+fn first_list<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    requested: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<Store>> {
     let store = Store::new(op, requested)?;
     let mut state = store.snapshot(op, budget)?;
     let listed = definitions_model::list(op, &mut state, budget)?;
@@ -98,10 +161,10 @@ fn prefix<S: crate::BootstrapReviewOwner>(
             .join("settings/startup_profiles.json")
             .is_file()
         {
-            return Ok(DefinitionPrefix::ImportLegacyNotBound);
+            return Ok(None);
         }
     }
-    Ok(DefinitionPrefix::MigrateLegacySuccessorsNotBound)
+    Ok(Some(store))
 }
 
 #[cfg(unix)]
@@ -182,35 +245,89 @@ impl Store {
         op: &Operation<'_, S>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<definitions_model::State> {
-        let directory = &self.directory;
-        let mut lock =
-            PublicationLock::acquire_named(op, directory, publication_io::LockName::Definition)?;
-        let state = (|| {
-            let read = (|| {
-                if !directory.exists(op, INDEX)? {
-                    return Ok(None);
-                }
-                directory.read(op, INDEX).map(Some)
-            })();
-            let bytes = match read {
-                Err(error) if missing(&error) => None,
-                other => other.map_err(unreadable)?,
-            };
-            definitions_model::load(op, bytes.as_ref().map(|b| b.value.as_slice()), budget)
-        })();
+        let mut lock = self.lock(op)?;
+        let state = self.read_state(op, budget);
         // Both original consumers convert rows after the lock's post-yield
         // validation and physical unlock/close.
-        finish_snapshot(op, directory, &mut lock, state)
+        finish_snapshot(op, &self.directory, &mut lock, state)
+    }
+
+    fn lock<S: OriginalAuthorityOwner>(&self, op: &Operation<'_, S>) -> Result<PublicationLock> {
+        PublicationLock::acquire_named(op, &self.directory, publication_io::LockName::Definition)
+    }
+
+    fn read_state<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<definitions_model::State> {
+        let read = (|| {
+            if !self.directory.exists(op, INDEX)? {
+                return Ok(None);
+            }
+            self.directory.read(op, INDEX).map(Some)
+        })();
+        let bytes = match read {
+            Err(error) if missing(&error) => None,
+            other => other.map_err(unreadable)?,
+        };
+        definitions_model::load(op, bytes.as_ref().map(|b| b.value.as_slice()), budget)
+    }
+
+    fn select_successor<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<DefinitionRecovery> {
+        use definitions_model::SuccessorSelection;
+        let mut lock = self.lock(op)?;
+        let selected = (|| {
+            let state = self.read_state(op, budget)?;
+            let selected = definitions_model::select_successor(op, &state, budget)?;
+            Ok((state, selected))
+        })();
+        match selected {
+            Ok((_, SuccessorSelection::Exhausted)) => finish_snapshot(
+                op,
+                &self.directory,
+                &mut lock,
+                Ok(DefinitionRecovery::RepairLegacyDisplayNames),
+            ),
+            Ok((
+                state,
+                SuccessorSelection::BuilderEntry {
+                    item,
+                    profile_id,
+                    item_origin,
+                    source_path,
+                },
+            )) => {
+                // Like an exception at the helper entry, the boundary closes
+                // the physical lock without its normal post-yield validation.
+                let candidate = SuccessorCandidate {
+                    _state: state,
+                    _item: item,
+                    _profile_id: profile_id,
+                    _item_origin: item_origin,
+                    _source_path: source_path,
+                };
+                finish_scope(
+                    Ok(DefinitionRecovery::SuccessorBuilder(candidate)),
+                    lock.close(),
+                )
+            }
+            Err(error) => finish_scope(Err(error), lock.close()),
+        }
     }
 }
 
 #[cfg(unix)]
-fn finish_snapshot<S: OriginalAuthorityOwner>(
+fn finish_snapshot<S: OriginalAuthorityOwner, T>(
     op: &Operation<'_, S>,
     directory: &Directory,
     lock: &mut publication_io::PublicationLock,
-    state: Result<definitions_model::State>,
-) -> Result<definitions_model::State> {
+    state: Result<T>,
+) -> Result<T> {
     let state = match state {
         Ok(state) => directory
             .validate_file(
@@ -225,11 +342,11 @@ fn finish_snapshot<S: OriginalAuthorityOwner>(
 }
 
 #[cfg(not(unix))]
-fn prefix<S: crate::BootstrapReviewOwner>(
+fn recover_at<S: crate::BootstrapReviewOwner>(
     _: &Operation<'_, S>,
     _: &Path,
     _: &Arc<dyn AllocationBudget>,
-) -> Result<DefinitionPrefix> {
+) -> Result<DefinitionRecovery> {
     Err(OriginalAuthorityError::unsupported(
         OriginalAuthorityStage::Source,
         "Windows Profile definition persistence/ACL",

@@ -11,6 +11,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/bootstrap_review*.rs
       - tobkiri_launcher/harness-native/src/original_active_profile.rs
       - tobkiri_launcher/harness-native/src/original_profile_definitions*.rs
+      - tobkiri_launcher/harness-native/src/original_profile_successor_selection*.rs
       - tobkiri_launcher/harness-native/src/original_profile_publication.rs
       - tobkiri_launcher/harness-native/src/original_setup_candidate_selection*.rs
       - .github/workflows/issue-1520-original-profile-definitions.yml
@@ -80,7 +81,7 @@ jobs:
       - name: Verify native definition constructors and held journal lock mechanics
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-definitions-unit.log" --expected-passed 6 --
+          --log "$RUNNER_TEMP/native-definitions-unit.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::tests
           -- --test-threads=1 --nocapture
@@ -90,6 +91,13 @@ jobs:
           --log "$RUNNER_TEMP/native-setup-candidate-unit.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::candidate_selection_tests
+          -- --test-threads=1 --nocapture
+      - name: Check exact legacy successor arguments and capacity
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-successor-selection-unit.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::definitions::definitions_model::successor_selection::tests
           -- --test-threads=1 --nocapture
       - name: Execute the direct native interval against all original fixtures
         id: native_definitions
@@ -137,6 +145,7 @@ jobs:
             ${{ runner.temp }}/native-definitions-json.log*
             ${{ runner.temp }}/native-definitions-reference.log*
             ${{ runner.temp }}/native-setup-candidate-unit.log*
+            ${{ runner.temp }}/native-successor-selection-unit.log*
             ${{ runner.temp }}/original-catalog-prefix/summary.json
           if-no-files-found: warn
           retention-days: 7

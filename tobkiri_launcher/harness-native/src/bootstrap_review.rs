@@ -55,7 +55,8 @@ pub enum BootstrapReviewReachpoint {
     ActiveCandidateAuthorityNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
-    MigrateLegacySuccessorsNotBound,
+    LegacySuccessorBuilderNotBound,
+    RepairLegacyDisplayNamesNotBound,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,
@@ -129,6 +130,8 @@ pub(crate) struct ActualCustody {
     pub(crate) manifest: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) manifest_input: Option<CoreBuffer>,
     pub(crate) _active_candidate: Option<crate::original_authority::ActiveCandidate>,
+    pub(crate) _successor_candidate:
+        Option<crate::original_authority::definitions::SuccessorCandidate>,
 }
 impl Review {
     pub(crate) fn new(

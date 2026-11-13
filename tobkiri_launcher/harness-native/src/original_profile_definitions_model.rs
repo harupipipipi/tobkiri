@@ -2,12 +2,54 @@
 //! fixed list views replace Python's redundant deepcopy/record conversions.
 use super::*;
 use crate::unicode15_1::{self, UnicodeError, UnicodeWork};
+use tobkiri_canon::CoreBuffer;
+
+#[path = "original_profile_successor_selection.rs"]
+mod successor_selection;
+pub(super) use successor_selection::select_successor;
 
 const SCHEMA: &str = "io.tobkiri.profile-definition-store.v1";
 pub(super) struct State {
     pub(super) doc: Funded<Document>,
     _scratch: NativeSetupReservation,
 }
+
+/// Read-only DATA for the first reachable successor call in physical registry order.
+pub(super) enum SuccessorSelection {
+    Exhausted,
+    BuilderEntry {
+        // Indices into the same validated State, without copying its documents.
+        item: usize,
+        profile_id: usize,
+        item_origin: SuccessorItemOrigin,
+        source_path: SuccessorSourcePath,
+    },
+}
+
+/// Which actual registry object Python would pass as `item`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SuccessorItemOrigin {
+    LegacySource,
+    CurrentRevision,
+}
+
+/// Python's independently selected source path, retaining the rendered bytes' funding.
+pub(super) struct SuccessorSourcePath {
+    _rendered: Option<CoreBuffer>,
+}
+#[cfg(test)]
+impl SuccessorSourcePath {
+    pub(super) fn as_str(&self) -> &str {
+        self._rendered
+            .as_ref()
+            .map_or("legacy/startup_profiles.json", |bytes| {
+                bytes
+                    .as_str()
+                    .expect("strict registry str renders as UTF-8")
+            })
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct StoredProfile {
     // profile_id, profile_revision, profile, parent_revision, legacy_ids.

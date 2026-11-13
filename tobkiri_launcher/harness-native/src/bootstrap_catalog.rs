@@ -4,6 +4,7 @@
 use super::*;
 use crate::bootstrap_review::{Review, original_failure};
 use crate::original_authority::catalog::{BindingFailure, CatalogIo};
+use crate::original_authority::definitions::{self, DefinitionRecovery};
 use crate::{BootstrapReviewFailure, BootstrapReviewReachpoint};
 use review_continuation::ReviewCaller;
 use std::path::PathBuf;
@@ -380,18 +381,24 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
             BootstrapReviewReachpoint::ProfileDefinitionStoreNotBound,
         )));
     }
-    let prefix = crate::original_authority::definitions::run(
+    let definitions = definitions::recover(
         &review.read,
         &pack.work.get().source,
         pack.cancellation,
         pack.input_budget,
     );
-    match prefix {
-        Ok(prefix) => Ok(Err(BootstrapReviewFailure::NotBound(match prefix {
-            crate::original_authority::definitions::DefinitionPrefix::ImportLegacyNotBound =>
-                BootstrapReviewReachpoint::ImportLegacyCollectionNotBound,
-            crate::original_authority::definitions::DefinitionPrefix::MigrateLegacySuccessorsNotBound =>
-                BootstrapReviewReachpoint::MigrateLegacySuccessorsNotBound,
+    match definitions {
+        Ok(outcome) => Ok(Err(BootstrapReviewFailure::NotBound(match outcome {
+            DefinitionRecovery::ImportLegacy => {
+                BootstrapReviewReachpoint::ImportLegacyCollectionNotBound
+            }
+            DefinitionRecovery::SuccessorBuilder(candidate) => {
+                review.actual._successor_candidate = Some(candidate);
+                BootstrapReviewReachpoint::LegacySuccessorBuilderNotBound
+            }
+            DefinitionRecovery::RepairLegacyDisplayNames => {
+                BootstrapReviewReachpoint::RepairLegacyDisplayNamesNotBound
+            }
         }))),
         Err(error) => {
             match recovery_cause::project(&error, &pack.work.get().invocation, pack.input_budget)? {
@@ -401,9 +408,13 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
                     // fixed source raise text was checked by this projector.
                     drop(error);
                     Ok(Err(review_continuation::denied(
-                        review, pack, caller, recovery_cause::MESSAGE,
+                        review,
+                        pack,
+                        caller,
+                        recovery_cause::MESSAGE,
                         BootstrapDeniedRaise::ExplicitFrom(cause),
-                    ).await?))
+                    )
+                    .await?))
                 }
                 // Still an explicitly UNQUALIFIED typed factory request (or
                 // an uncaught raw registry error), never a fallback factory.

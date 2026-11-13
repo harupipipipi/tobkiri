@@ -228,8 +228,9 @@ async fn actual_native_unsafe_definition_lock_projects_active_and_secure_causes(
         fs::create_dir_all(&profiles).unwrap();
         fs::write(profiles.join("actual.lock"), b"").unwrap();
         symlink("actual.lock", profiles.join(".profile-definition.lock")).unwrap();
-        let error =
-            crate::original_authority::definitions::run(read, source, cancel, budget).unwrap_err();
+        let error = crate::original_authority::definitions::recover(read, source, cancel, budget)
+            .err()
+            .unwrap();
         let graph = project(&error, invocation, budget).unwrap().unwrap();
         assert_eq!(
             graph.root().kind(),
