@@ -58,11 +58,20 @@ impl TrustedPrompt for TerminalHost {
         if written.is_err() {
             return ApprovalAnswer::Unavailable;
         }
-        match self.read_line().await {
-            Ok(answer) if answer.trim() == "approve" => ApprovalAnswer::Approve,
-            Ok(_) => ApprovalAnswer::Deny,
-            Err(_) => ApprovalAnswer::Unavailable,
-        }
+        approval_answer(&prompt, self.read_line().await)
+    }
+}
+
+fn approval_command(prompt: &ApprovalPrompt) -> String {
+    format!("approve {}", prompt.reservation)
+}
+
+fn approval_answer(prompt: &ApprovalPrompt, input: Result<String, HostError>) -> ApprovalAnswer {
+    // The terminal can still carry input for a prior, cancelled review.
+    match input {
+        Ok(answer) if answer.trim() == approval_command(prompt) => ApprovalAnswer::Approve,
+        Ok(_) => ApprovalAnswer::Deny,
+        Err(_) => ApprovalAnswer::Unavailable,
     }
 }
 
@@ -82,8 +91,9 @@ fn render_approval(prompt: &ApprovalPrompt) -> Result<String, HostError> {
         .map_err(|_| HostError("approval principal cannot be rendered".into()))?;
     let summary = serde_json::to_string(&prompt.summary)
         .map_err(|_| HostError("approval summary cannot be rendered".into()))?;
+    let command = approval_command(prompt);
     Ok(format!(
-        "\n{title}\n{warning}Profile: {}\nPrincipal: {principal}\nRisk: {:?}\nReservation: {}\nRequest: {}\nSecurity epoch: {}\nArguments digest: {}\nEffect:\n{}\nSummary: {summary}\nType approve to approve this request; anything else denies it: ",
+        "\n{title}\n{warning}Profile: {}\nPrincipal: {principal}\nRisk: {:?}\nReservation: {}\nRequest: {}\nSecurity epoch: {}\nArguments digest: {}\nEffect:\n{}\nSummary: {summary}\nTo approve this request, enter:\n{command}\nAnything else denies this request: ",
         prompt.profile,
         prompt.risk,
         prompt.reservation,
@@ -859,6 +869,42 @@ mod approval_tests {
     use super::*;
     fn approval_prompt(effect: serde_json::Value, risk: &str) -> ApprovalPrompt {
         serde_json::from_value(serde_json::json!({"reservation":"grant_fixture","profile":"prof_fixture","principal":{"kind":"user"},"request":"req_fixture","effect":effect,"args_digest":tobkiri_core::Digest::hash(b"arguments"),"security_epoch":7,"risk":risk,"summary":"trusted review"})).unwrap()
+    }
+    #[test]
+    fn approval_answer_requires_the_current_reservation() {
+        let mut prompt = approval_prompt(
+            serde_json::json!({"kind":"native","pack":"local.fixture"}),
+            "dangerous",
+        );
+        let current = format!("grant_{}", "a".repeat(64));
+        let other = format!("grant_{}", "b".repeat(64));
+        prompt.reservation = serde_json::from_value(serde_json::json!(&current)).unwrap();
+        let command = format!("approve {current}");
+        assert!(
+            render_approval(&prompt)
+                .unwrap()
+                .contains(&format!("\nTo approve this request, enter:\n{command}\n"))
+        );
+        for input in [
+            "approve".to_owned(),
+            "deny".to_owned(),
+            format!("approve {other}"),
+            format!("approve {}", &current[..current.len() - 1]),
+            format!("{command} extra"),
+        ] {
+            assert!(matches!(
+                approval_answer(&prompt, Ok(input)),
+                ApprovalAnswer::Deny
+            ));
+        }
+        assert!(matches!(
+            approval_answer(&prompt, Ok(command)),
+            ApprovalAnswer::Approve
+        ));
+        assert!(matches!(
+            approval_answer(&prompt, Err(HostError("terminal input closed".into()))),
+            ApprovalAnswer::Unavailable
+        ));
     }
     #[test]
     fn dangerous_review_contains_warning_complete_effect_and_context() {

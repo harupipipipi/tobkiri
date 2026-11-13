@@ -21,8 +21,10 @@ import time
 from typing import Any
 
 
-APPROVAL = b"Type approve to approve this request; anything else denies it: "
+APPROVAL = b"Anything else denies this request: "
+APPROVAL_COMMAND = "\nTo approve this request, enter:\n"
 PROFILE_ID = re.compile(r"prof_[0-9A-Z]{26}")
+RESERVATION_ID = re.compile(r"grant_[0-9a-f]{64}")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 FLOW_PACK = "local.echo-chat"
 STORE_SHAPE = "local.echo-chat.conversation-store@1.0"
@@ -100,43 +102,50 @@ class Terminal:
         os.close(self.master)
 
 
-def review_prompt(terminal: Terminal) -> tuple[str, dict[str, Any], str]:
+def review_prompt(terminal: Terminal) -> tuple[str, dict[str, Any], str, str]:
     """Read one Normal approval request presented to the User."""
-    text = terminal.expect(APPROVAL)
+    text, command = terminal.expect(APPROVAL).removesuffix("\n").rsplit(
+        APPROVAL_COMMAND, 1,
+    )
     assert "\nTobkiri approval\n" in text and "\nRisk: Normal\n" in text, text
     assert '\nPrincipal: {"kind":"user"}\n' in text, text
     identity = text.split("\nProfile: ", 1)[1].splitlines()[0]
     assert PROFILE_ID.fullmatch(identity), text
+    reservation = text.split("\nReservation: ", 1)[1].splitlines()[0]
+    assert RESERVATION_ID.fullmatch(reservation), text
+    assert command == f"approve {reservation}", text
     preview = text.split("\nEffect:\n", 1)[1].split("\nSummary: ", 1)[0]
-    return identity, json.loads(preview), text
+    return identity, json.loads(preview), text, command
 
 
-def review_pack(terminal: Terminal, remaining: dict[str, str]) -> str:
+def review_pack(terminal: Terminal, remaining: dict[str, str]) -> tuple[str, str]:
     """Require a review for the exact hash of one remaining Pack."""
-    identity, effect, text = review_prompt(terminal)
+    identity, effect, text, command = review_prompt(terminal)
     assert effect == {
         "kind": "permissions", "pack": effect["pack"],
         "hash": remaining.pop(effect["pack"]),
     }, text
-    return identity
+    return identity, command
 
 
-def approve_packs(terminal: Terminal, pins: dict[str, str]) -> str:
+def approve_packs(terminal: Terminal, pins: dict[str, str]) -> tuple[str, str]:
     """Approve each expected Pack once for the same fresh Profile."""
     remaining = pins.copy()
     identities = set()
+    last_command = ""
     while remaining:
-        identities.add(review_pack(terminal, remaining))
-        terminal.send("approve")
+        identity, last_command = review_pack(terminal, remaining)
+        identities.add(identity)
+        terminal.send(last_command)
     assert len(identities) == 1, identities
-    return identities.pop()
+    return identities.pop(), last_command
 
 
 def review_user(
     terminal: Terminal, profile: str, policy: dict[str, Any],
-) -> tuple[str, str, int]:
+) -> tuple[tuple[str, str, int], str]:
     """Require the exact Profile, revision, epoch and policy in the User review."""
-    identity, effect, text = review_prompt(terminal)
+    identity, effect, text, command = review_prompt(terminal)
     assert identity == profile, text
     assert set(effect) == {"kind", "profile_hash", "revision", "epoch"}, text
     assert effect["kind"] == "user-permissions", text
@@ -149,7 +158,7 @@ def review_user(
     assert json.loads(json.loads(summary)) == policy, text
     arguments = json_digest([profile_hash, revision, epoch, policy])
     assert f"\nArguments digest: {arguments}\n" in text, text
-    return profile_hash, revision, epoch
+    return (profile_hash, revision, epoch), command
 
 
 def json_digest(value: Any) -> str:
@@ -170,10 +179,10 @@ def approve(
     """Complete the ordinary CLI approvals and check any committed User policy."""
     user_approval = None
     with Terminal(command) as terminal:
-        identity = approve_packs(terminal, pins)
+        identity, _ = approve_packs(terminal, pins)
         if user_policy is not None:
-            user_approval = review_user(terminal, identity, user_policy)
-            terminal.send("approve")
+            user_approval, command = review_user(terminal, identity, user_policy)
+            terminal.send(command)
         output = terminal.finish(success=True)
         # The approval prompt has no trailing newline and the PTY has echo
         # disabled, so the printed ID starts immediately after that prompt.
@@ -288,9 +297,10 @@ def overlay_roundtrip(
         "profile", "import", str(publication), "--name", "CLI overlay import",
     ]
     with Terminal(command) as terminal:
-        refused = approve_packs(terminal, pins)
-        review_user(terminal, refused, policy)
-        terminal.send("deny")
+        refused, previous_command = approve_packs(terminal, pins)
+        _, user_command = review_user(terminal, refused, policy)
+        assert previous_command != user_command
+        terminal.send(previous_command)
         assert "user declined" in terminal.finish(success=False)
     refused_path = root / "profiles" / refused
     assert not (refused_path / "head").exists()
@@ -302,7 +312,8 @@ def overlay_roundtrip(
     assert len({source, refused, imported}) == 3
     check_overlay_turn(cli, root, imported, "cli-overlay-import-input", pins[FLOW_PACK])
     assert publish(cli, imported, root.parent / "overlay-reexport.json") == published
-    print("CLI User overlay replay: replace closed save, deny, import, run, re-export")
+    print("CLI User overlay replay: replace closed save, reject stale response, "
+          "import, run, re-export")
 
 
 def check_overlay_turn(
@@ -376,7 +387,7 @@ def main(binary: str) -> None:
 
         command = cli + ["profile", "import", str(publication), "--name", "CLI import"]
         with Terminal(command) as terminal:
-            refused = review_pack(terminal, pins.copy())
+            refused, _ = review_pack(terminal, pins.copy())
             terminal.send("deny")
             assert "user declined" in terminal.finish(success=False)
         assert refused != source
