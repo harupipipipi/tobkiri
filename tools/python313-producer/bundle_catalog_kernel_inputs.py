@@ -38,6 +38,8 @@ def _replace_one(raw: bytes, anchor: bytes, replacement: bytes) -> bytes:
 
 
 def _observe_provider(provider: bytes) -> bytes:
+    if b'import app_schema_phases as _phases\n' in provider:
+        raise ValueError('exact original App schema phase provider required')
     provider = _replace_one(provider, b'from app_schema_model import DefinitionModel\n',
                             b'from app_schema_model import DefinitionModel\n'
                             b'import app_schema_phases as _phases\n')
@@ -53,6 +55,8 @@ def _observe_provider(provider: bytes) -> bytes:
 
 
 def _observe_cold_call(export: bytes) -> bytes:
+    if b'import app_schema_phases as _phases\n' in export:
+        raise ValueError('exact original App schema phase export required')
     export = _replace_one(export, b'import wit_world.exports\n',
                           b'import wit_world.exports\n'
                           b'import app_schema_phases as _phases\n')
