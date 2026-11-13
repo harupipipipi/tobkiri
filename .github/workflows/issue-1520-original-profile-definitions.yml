@@ -13,6 +13,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_authority_io.rs
       - tobkiri_launcher/harness-native/src/original_profile_definitions*.rs
       - tobkiri_launcher/harness-native/src/original_profile_catalog*.rs
+      - tobkiri_launcher/harness-native/src/original_shell_*.rs
       - tobkiri_launcher/harness-native/src/original_profile_successor_selection*.rs
       - tobkiri_launcher/harness-native/src/original_profile_publication.rs
       - tobkiri_launcher/harness-native/src/original_setup_candidate_selection*.rs
