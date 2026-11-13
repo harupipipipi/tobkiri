@@ -239,6 +239,19 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         }
     }
 
+    pub(super) async fn observe_resolver_profile_lock(
+        &mut self,
+        input: &CoreBuffer,
+    ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
+        match self
+            .fixed_call(RESOLVE_PROFILE_SLOT, input, "resolver-profile")
+            .await?
+        {
+            FixedCallOutput::Projection(boundary) => Ok(Ok(boundary)),
+            FixedCallOutput::Identity(outcome) => Ok(Err(outcome)),
+        }
+    }
+
     async fn fixed_call(
         &mut self,
         slot: usize,
@@ -256,6 +269,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "resolver-static-edges")
                 | (2, "resolver-dynamic-edges")
                 | (2, "resolver-verified-artifacts")
+                | (RESOLVE_PROFILE_SLOT, "resolver-profile")
         ) {
             bail!("fixed original caller is unavailable");
         }
@@ -272,6 +286,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "resolver-static-edges") => RESOLVER_STATIC_EDGES,
             (REVIEW, "resolver-dynamic-edges") => RESOLVER_DYNAMIC_EDGES,
             (REVIEW, "resolver-verified-artifacts") => RESOLVER_VERIFIED_ARTIFACTS,
+            (REVIEW, "resolver-profile") => RESOLVE_PROFILE_LOCK,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -330,8 +345,10 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             }
         }
         let pending = self.identity_pending.as_ref().expect("admitted getter");
-        if matches!(phase, RESOLVER_STATIC_EDGES | RESOLVER_DYNAMIC_EDGES)
-            && pending.result.is_some()
+        if matches!(
+            phase,
+            RESOLVER_STATIC_EDGES | RESOLVER_DYNAMIC_EDGES | RESOLVE_PROFILE_LOCK
+        ) && pending.result.is_some()
         {
             let pending = self.identity_pending.take().expect("admitted edge call");
             return Ok(FixedCallOutput::Projection(
@@ -651,6 +668,7 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
                 "resolver-verified-artifacts",
                 true
             )
+            | (Some("resolver-profile-raised"), "resolver-profile", true)
     )
 }
 

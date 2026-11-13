@@ -164,6 +164,149 @@ async fn resolver_hashes_the_second_physical_lock_after_a_new_bundle_selection()
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn pack_resolver_lock_only_rereads_the_completed_loaders_fixed_occurrence() {
+    for case in ["reread", "symlink", "missing", "read-error"] {
+        with_source(false, |source, invocation, budget, io, cleanup| {
+            let bundle = source.root.join("ecosystem/defaultspack/v4");
+            fs::create_dir_all(&bundle).unwrap();
+            let path = bundle.join("bundle.lock.json");
+            fs::write(&path, br#"{"entries":[]}"#).unwrap();
+            io.select_packaged(&bundle).unwrap();
+            io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+                .unwrap();
+            let lock = json!([["join", "bundle.lock.json"]]);
+            let inspect = |io: &mut CatalogIo, operation: &str, steps: Value, args: Value| {
+                io.inspect_pack_resolve_lock(
+                    source,
+                    invocation,
+                    &packet(invocation, budget, operation, steps, args),
+                    budget,
+                )
+            };
+            let result = |io: &mut CatalogIo, operation: &str| {
+                let output = inspect(io, operation, lock.clone(), json!([])).unwrap();
+                assert!(cleanup.receipt().verified());
+                serde_json::from_slice::<Value>(output.as_bytes()).unwrap()["result"].clone()
+            };
+            assert!(io.begin_pack_resolve_lock().is_err());
+            assert!(inspect(io, "is-symlink", lock.clone(), json!([])).is_err());
+            for (operation, steps, args) in [
+                (
+                    "root",
+                    json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+                    json!([]),
+                ),
+                ("is-symlink", json!([]), json!([])),
+                ("resolve", json!([]), json!([true])),
+                ("is-symlink", lock.clone(), json!([])),
+                ("read-bytes", lock.clone(), json!([])),
+                (
+                    "is-dir",
+                    json!([["parent", ""], ["join", "platform-artifacts"]]),
+                    json!([]),
+                ),
+            ] {
+                call(io, source, invocation, budget, operation, steps, args);
+            }
+            assert!(io.completed());
+            assert!(io.select_packaged(&source.root).is_err());
+            if case == "reread" {
+                fs::write(&path, b"new resolver bytes").unwrap();
+            } else if matches!(case, "symlink" | "missing") {
+                let moved = bundle.join("old-lock.json");
+                fs::rename(&path, &moved).unwrap();
+                if case == "symlink" {
+                    std::os::unix::fs::symlink(&moved, &path).unwrap();
+                }
+            }
+            io.begin_pack_resolve_lock().unwrap();
+            assert!(io.begin_pack_resolve_lock().is_err());
+            assert!(inspect(io, "read-bytes", lock.clone(), json!([])).is_err());
+            assert!(inspect(io, "is-symlink", lock.clone(), json!([false])).is_err());
+            let request = packet(invocation, budget, "is-symlink", lock.clone(), json!([]));
+            let request: Value =
+                serde_json::from_slice(request.encode_guest(budget).unwrap().as_bytes()).unwrap();
+            for (field, replacement) in [
+                ("scope", json!(["0", "0", "1", "1"])),
+                (
+                    "target",
+                    json!({"binding": "different_loader", "steps": lock.clone()}),
+                ),
+            ] {
+                let mut forged = request.clone();
+                forged[field] = replacement;
+                let forged =
+                    CoreValue::parse_guest(&serde_json::to_vec(&forged).unwrap(), budget).unwrap();
+                assert!(
+                    io.inspect_pack_resolve_lock(source, invocation, &forged, budget)
+                        .is_err()
+                );
+            }
+            assert!(
+                inspect(io, "is-symlink", json!([["join", "other.json"]]), json!([]),).is_err()
+            );
+            assert!(
+                inspect(
+                    io,
+                    "is-symlink",
+                    json!([["join", "./bundle.lock.json"]]),
+                    json!([]),
+                )
+                .is_err()
+            );
+            assert!(
+                inspect(
+                    io,
+                    "is-symlink",
+                    json!([["join", "."], ["join", "bundle.lock.json"]]),
+                    json!([]),
+                )
+                .is_err()
+            );
+            assert_eq!(result(io, "is-symlink")["value"], case == "symlink");
+            assert!(inspect(io, "is-symlink", lock.clone(), json!([])).is_err());
+            if case == "symlink" {
+                assert!(inspect(io, "is-file", lock.clone(), json!([])).is_err());
+            } else {
+                assert_eq!(result(io, "is-file")["value"], case != "missing");
+            }
+            assert!(inspect(io, "is-file", lock.clone(), json!([])).is_err());
+            assert!(!io.pack_resolve_lock_completed());
+            if case == "reread" {
+                assert_eq!(
+                    result(io, "read-bytes")["value"],
+                    "bmV3IHJlc29sdmVyIGJ5dGVz"
+                );
+            } else if case == "read-error" {
+                let moved = bundle.join("old-lock.json");
+                fs::rename(&path, &moved).unwrap();
+                let error = inspect(io, "read-bytes", lock.clone(), json!([])).unwrap_err();
+                let error = error.downcast_ref::<OriginalAuthorityError>().unwrap();
+                assert!(matches!(
+                    &error.cause,
+                    Some(OriginalAuthorityCause::Io(error))
+                        if error.errno == Some(libc::ENOENT)
+                            && error.filename.as_deref() == io.selected.join("bundle.lock.json").to_str()
+                ));
+                assert_eq!(
+                    io.error_graph(error, budget)
+                        .unwrap()
+                        .code()
+                        .as_str()
+                        .unwrap(),
+                    "file-not-found-error",
+                );
+                fs::rename(moved, &path).unwrap();
+            }
+            assert!(inspect(io, "read-bytes", lock.clone(), json!([])).is_err());
+            assert!(io.begin_pack_resolve_lock().is_err());
+            assert_eq!(io.pack_resolve_lock_completed(), case == "reread");
+            assert!(cleanup.receipt().verified());
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
     with_source(false, |source, invocation, budget, io, _| {
         let bundle = source.root.join("ecosystem/defaultspack/v4");

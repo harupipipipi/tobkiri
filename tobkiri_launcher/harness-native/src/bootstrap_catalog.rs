@@ -22,11 +22,13 @@ pub(super) type Dispatch<S> = fn(
     &mut CatalogIo,
     &CoreValue,
     &Arc<dyn AllocationBudget>,
+    u8,
 ) -> Result<CoreBuffer>;
 
 pub(super) fn inspect<S: BootstrapInputOwner>(
     context: NativeImportContext<'_, State<S>>,
     work: ControlHandle<Work<S>>,
+    phase: u8,
 ) -> Result<NativeImportOperation> {
     let dispatch = *work
         .get()
@@ -41,7 +43,7 @@ pub(super) fn inspect<S: BootstrapInputOwner>(
     let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
     context.inspect_retaining(custody, move |output| {
         let state = work.get();
-        if state.phase.load(Ordering::Acquire) != CATALOG_LOAD
+        if state.phase.load(Ordering::Acquire) != phase
             || !state.invocation.same_invocation(output.invocation())
         {
             return Err(NativeDataIoError::Retired);
@@ -59,8 +61,13 @@ pub(super) fn inspect<S: BootstrapInputOwner>(
             io,
             &request,
             output.allocation_owners().graph(),
+            phase,
         )
         .map_err(|_| output.reject_execution(NativeDataIoError::Unavailable))?;
+        state.source.check_live()?;
+        if state.phase.load(Ordering::Acquire) != phase {
+            return Err(NativeDataIoError::Retired);
+        }
         output
             .charge_work(u64::try_from(response.len()).map_err(|_| NativeDataIoError::Capacity)?)?;
         output.append(response.as_bytes())
@@ -73,8 +80,14 @@ fn dispatch<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     io: &mut CatalogIo,
     request: &CoreValue,
     budget: &Arc<dyn AllocationBudget>,
+    phase: u8,
 ) -> Result<CoreBuffer> {
-    match io.inspect(owner, invocation, request, budget) {
+    let result = match phase {
+        CATALOG_LOAD => io.inspect(owner, invocation, request, budget),
+        RESOLVE_PROFILE_LOCK => io.inspect_pack_resolve_lock(owner, invocation, request, budget),
+        _ => bail!("catalog call phase is unavailable"),
+    };
+    match result {
         Ok(value) => Ok(value),
         Err(error) => {
             let Some(original) = error.downcast_ref::<crate::OriginalAuthorityError>() else {

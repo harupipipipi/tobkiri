@@ -1,6 +1,7 @@
 //! Fixed catalog resources of the actual selected AppHandle, under Review.
 //! This is not a Path service: the private caller selects one source, and the
 //! loader can only consume its lock, each lock occurrence, pins, then artifacts.
+//! The Pack resolver can then consume a separate occurrence of that same lock.
 use super::*;
 use base64::Engine as _;
 use sha2::{Digest as _, Sha256};
@@ -11,6 +12,7 @@ use tobkiri_canon::{AllocationBudget, CoreBuffer, CoreBufferBuilder, CoreValue, 
 mod tests;
 
 pub(crate) struct CatalogIo {
+    invocation: NativeSetupInvocation,
     source: PathBuf,
     runtime: PathBuf,
     selected: PathBuf,
@@ -19,6 +21,7 @@ pub(crate) struct CatalogIo {
     _capacity: NativeSetupReservation,
     development: bool,
     loader: Loader,
+    pack_resolve_lock: PackResolveLock,
     binding: Option<CoreValue>,
     lock_bytes: Option<Funded<Zeroizing<Vec<u8>>>>,
     lock: Option<Funded<Document>>,
@@ -46,6 +49,23 @@ enum Loader {
     ArtifactResolve,
     Done,
     Rejected,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PackResolveLock {
+    Inactive,
+    CheckSymlink,
+    CheckFile,
+    Read,
+    Done,
+    Spent,
+}
+
+struct CatalogRequest {
+    scope: CoreValue,
+    steps: CoreValue,
+    operation: CoreValue,
+    args: CoreValue,
 }
 
 #[derive(Debug)]
@@ -127,6 +147,7 @@ impl CatalogIo {
         }
         owner.check_original_owner()?;
         Ok(Self {
+            invocation: invocation.clone(),
             source,
             runtime: runtime.to_path_buf(),
             selected: PathBuf::new(),
@@ -135,6 +156,7 @@ impl CatalogIo {
             _capacity: capacity,
             development: false,
             loader: Loader::Root,
+            pack_resolve_lock: PackResolveLock::Inactive,
             binding: None,
             lock_bytes: None,
             lock: None,
@@ -156,6 +178,9 @@ impl CatalogIo {
         invocation: &'a NativeSetupInvocation,
         cancellation: &'a CoreCancellation,
     ) -> Result<Operation<'a, S>> {
+        if !self.invocation.same_invocation(invocation) {
+            return Err(OriginalAuthorityError::unavailable());
+        }
         let op = Operation {
             owner,
             invocation,
@@ -186,6 +211,9 @@ impl CatalogIo {
         owner: &S,
         invocation: &NativeSetupInvocation,
     ) -> Result<bool> {
+        if self.binding.is_some() {
+            return Err(OriginalAuthorityError::unavailable());
+        }
         let cancellation = self.cancellation.clone();
         let op = self.operation(owner, invocation, &cancellation)?;
         if !self.development_environment {
@@ -232,7 +260,7 @@ impl CatalogIo {
         Ok(false)
     }
     pub(crate) fn select_packaged(&mut self, root: &Path) -> Result<()> {
-        if self.development || root.as_os_str().len() > 8192 {
+        if self.binding.is_some() || self.development || root.as_os_str().len() > 8192 {
             return Err(OriginalAuthorityError::unavailable());
         }
         self.selected = root.to_path_buf();
@@ -268,18 +296,15 @@ impl CatalogIo {
         op.check(OriginalAuthorityStage::Source)?;
         Ok(digest)
     }
-    pub(crate) fn inspect<S: crate::BootstrapReviewOwner>(
-        &mut self,
-        owner: &S,
+    fn parse_request(
+        &self,
         invocation: &NativeSetupInvocation,
         request: &CoreValue,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> anyhow::Result<CoreBuffer> {
+    ) -> anyhow::Result<CatalogRequest> {
         if !Arc::ptr_eq(&self.budget, budget) {
             return Err(OriginalAuthorityError::unavailable().into());
         }
-        let cancellation = self.cancellation.clone();
-        let op = self.operation(owner, invocation, &cancellation)?;
         crate::source_metadata::exact(request, &["format", "scope", "target", "operation", "args"])
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         if request.get_key("format").and_then(|v| {
@@ -305,33 +330,57 @@ impl CatalogIo {
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         crate::source_metadata::exact(&target, &["binding", "steps"])
             .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let binding = self
+            .binding
+            .as_ref()
+            .and_then(CoreValue::as_str)
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
         if target
             .get_key("binding")
-            .and_then(|v| v.as_str().map(str::to_owned))
-            != self
-                .binding
-                .as_ref()
-                .and_then(|v| v.as_str().map(str::to_owned))
+            .is_none_or(|value| value.as_str() != Some(binding))
         {
             return Err(OriginalAuthorityError::unavailable().into());
         }
         let steps = target
             .get_key("steps")
             .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let operation = request
+            .get_key("operation")
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let args = request
+            .get_key("args")
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        Ok(CatalogRequest {
+            scope,
+            steps,
+            operation,
+            args,
+        })
+    }
+
+    pub(crate) fn inspect<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        invocation: &NativeSetupInvocation,
+        request: &CoreValue,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> anyhow::Result<CoreBuffer> {
+        let cancellation = self.cancellation.clone();
+        let op = self.operation(owner, invocation, &cancellation)?;
+        let CatalogRequest {
+            scope,
+            steps,
+            operation,
+            args,
+        } = self.parse_request(invocation, request, budget)?;
         let steps_array = steps
             .array()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         if steps_array.len() > 256 {
             return Err(OriginalAuthorityError::unavailable().into());
         }
-        let operation = request
-            .get_key("operation")
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
         let operation = operation
             .as_str()
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let args = request
-            .get_key("args")
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         let args = args
             .array()
@@ -382,10 +431,7 @@ impl CatalogIo {
                 }
             }
         }
-        let mut output = CoreBuffer::builder(budget, MAX_BYTES);
-        output.append(b"{\"format\":\"io.tobkiri.native-inspection-response.v1\",\"scope\":")?;
-        output.append(scope.encode_guest(budget)?.as_bytes())?;
-        output.append(b",\"result\":")?;
+        let mut output = inspection_result(&scope, budget)?;
         let valid = match self.loader {
             Loader::Root if operation == "root" && args.is_empty() => {
                 let parents = if self.initial_bundle { 2 } else { 4 };
@@ -617,6 +663,117 @@ impl CatalogIo {
         output.append(b"}")?;
         Ok(output.finish()?)
     }
+
+    /// Open the one Pack lock occurrence on the root and binding retained by
+    /// the completed loader. The resolver's separate bundle selection cannot
+    /// replace this root.
+    pub(crate) fn begin_pack_resolve_lock(&mut self) -> Result<()> {
+        if !cfg!(unix)
+            || self.pack_resolve_lock != PackResolveLock::Inactive
+            || !self.completed()
+            || self.binding.is_none()
+            || self.selected.as_os_str().is_empty()
+        {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        self.pack_resolve_lock = PackResolveLock::CheckSymlink;
+        Ok(())
+    }
+
+    /// Permit only the original Pack resolver's short-circuit lock sequence.
+    pub(crate) fn inspect_pack_resolve_lock<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        invocation: &NativeSetupInvocation,
+        request: &CoreValue,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> anyhow::Result<CoreBuffer> {
+        let operation_name = match self.pack_resolve_lock {
+            PackResolveLock::CheckSymlink => "is-symlink",
+            PackResolveLock::CheckFile => "is-file",
+            PackResolveLock::Read => "read-bytes",
+            _ => return Err(OriginalAuthorityError::unavailable().into()),
+        };
+        let cancellation = self.cancellation.clone();
+        let op = self.operation(owner, invocation, &cancellation)?;
+        let CatalogRequest {
+            scope,
+            steps,
+            operation,
+            args,
+        } = self.parse_request(invocation, request, budget)?;
+        let steps = steps
+            .array()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        if operation.as_str() != Some(operation_name)
+            || !args.array().is_some_and(|args| args.is_empty())
+            || steps.len() != 1
+        {
+            return Err(OriginalAuthorityError::unavailable().into());
+        }
+        let step = steps
+            .get(0)
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let step = step
+            .array()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let name = "bundle.lock.json";
+        if step.len() != 2
+            || !step
+                .get(0)
+                .is_some_and(|part| part.as_str() == Some("join"))
+            || !step.get(1).is_some_and(|part| part.as_str() == Some(name))
+        {
+            return Err(OriginalAuthorityError::unavailable().into());
+        }
+        charge_work(budget, name.len() as u64 + 1)?;
+        if self.selected.as_os_str().len() > 8192 - name.len() - 1 {
+            return Err(OriginalAuthorityError::capacity(OriginalAuthorityStage::Path).into());
+        }
+        let path = self.selected.join(name);
+        let mut output = inspection_result(&scope, budget)?;
+        op.check(OriginalAuthorityStage::Source)?;
+        // Once a physical attempt begins, any failure (including encoding or
+        // the final live check) leaves this occurrence spent.
+        let current = std::mem::replace(&mut self.pack_resolve_lock, PackResolveLock::Spent);
+        let next = match current {
+            PackResolveLock::CheckSymlink => {
+                let is_symlink = pack_lock_stat(&path, false)?;
+                write_bool(&mut output, is_symlink)?;
+                if is_symlink {
+                    PackResolveLock::Spent
+                } else {
+                    PackResolveLock::CheckFile
+                }
+            }
+            PackResolveLock::CheckFile => {
+                let is_file = pack_lock_stat(&path, true)?;
+                write_bool(&mut output, is_file)?;
+                if is_file {
+                    PackResolveLock::Read
+                } else {
+                    PackResolveLock::Spent
+                }
+            }
+            PackResolveLock::Read => {
+                let bytes = read_file(&op, &path, budget)?;
+                write_bytes(&mut output, &bytes.value)?;
+                PackResolveLock::Done
+            }
+            _ => return Err(OriginalAuthorityError::unavailable().into()),
+        };
+        op.check(OriginalAuthorityStage::Source)?;
+        output.append(b"}")?;
+        let response = output.finish()?;
+        self.pack_resolve_lock = next;
+        Ok(response)
+    }
+
+    /// True after the fixed stat sequence and one physically closed read.
+    pub(crate) fn pack_resolve_lock_completed(&self) -> bool {
+        self.pack_resolve_lock == PackResolveLock::Done
+    }
+
     fn ensure_lock<S: crate::BootstrapReviewOwner>(&mut self, op: &Operation<'_, S>) -> Result<()> {
         if self.lock.is_none() {
             let bytes = self
@@ -772,7 +929,15 @@ impl CatalogIo {
             libc::EISDIR => "is-a-directory-error",
             libc::EEXIST => "file-exists-error",
             libc::EINTR => "interrupted-error",
-            libc::EAGAIN => "blocking-io-error",
+            libc::EAGAIN | libc::EALREADY | libc::EINPROGRESS => "blocking-io-error",
+            e if e == libc::EWOULDBLOCK => "blocking-io-error",
+            libc::ETIMEDOUT => "timeout-error",
+            libc::EPIPE | libc::ESHUTDOWN => "broken-pipe-error",
+            libc::ECONNABORTED => "connection-aborted-error",
+            libc::ECONNREFUSED => "connection-refused-error",
+            libc::ECONNRESET => "connection-reset-error",
+            libc::ESRCH => "process-lookup-error",
+            libc::ECHILD => "child-process-error",
             _ => "os-error",
         };
         // libc's actual errno display is the same source used by CPython's
@@ -1044,6 +1209,45 @@ impl CatalogIo {
 
 fn strict(args: &tobkiri_canon::CoreArray<'_>) -> bool {
     args.len() == 1 && args.get(0).and_then(|v| v.as_bool()) == Some(true)
+}
+fn inspection_result(
+    scope: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> anyhow::Result<CoreBufferBuilder> {
+    let mut output = CoreBuffer::builder(budget, MAX_BYTES);
+    output.append(b"{\"format\":\"io.tobkiri.native-inspection-response.v1\",\"scope\":")?;
+    output.append(scope.encode_guest(budget)?.as_bytes())?;
+    output.append(b",\"result\":")?;
+    Ok(output)
+}
+#[cfg(unix)]
+fn pack_lock_stat(path: &Path, follow: bool) -> Result<bool> {
+    let stat = if follow {
+        fs::metadata(path)
+    } else {
+        fs::symlink_metadata(path)
+    };
+    match stat {
+        Ok(metadata) => Ok(if follow {
+            metadata.is_file()
+        } else {
+            metadata.file_type().is_symlink()
+        }),
+        // CPython 3.13.16 pathlib suppresses only these stat errors.
+        Err(error)
+            if matches!(
+                error.raw_os_error(),
+                Some(libc::ENOENT | libc::ENOTDIR | libc::EBADF | libc::ELOOP)
+            ) =>
+        {
+            Ok(false)
+        }
+        Err(error) => Err(raw_io(error, path.to_str())),
+    }
+}
+#[cfg(not(unix))]
+fn pack_lock_stat(_: &Path, _: bool) -> Result<bool> {
+    Err(OriginalAuthorityError::unavailable())
 }
 fn write_bool(
     out: &mut CoreBufferBuilder,

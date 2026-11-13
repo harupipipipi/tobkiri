@@ -51,6 +51,12 @@ impl ResolverAuthority {
     pub(crate) fn snapshot_digest(&self) -> &Digest {
         &self.snapshot_digest
     }
+    pub(crate) fn security_epoch(&self) -> &super::super::OriginalAuthorityEpoch {
+        match &self._material {
+            OriginalAuthorityMaterial::Genesis { epoch, .. }
+            | OriginalAuthorityMaterial::Existing { epoch, .. } => epoch,
+        }
+    }
 }
 
 #[cfg(all(test, unix))]

@@ -41,6 +41,8 @@ const RESOLVER_SOURCE_LOOKUP: u8 = 13;
 const RESOLVER_STATIC_EDGES: u8 = 14;
 const RESOLVER_DYNAMIC_EDGES: u8 = 15;
 const RESOLVER_VERIFIED_ARTIFACTS: u8 = 16;
+const RESOLVE_PROFILE_LOCK: u8 = 17;
+const RESOLVE_PROFILE_SLOT: usize = 8;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -158,6 +160,7 @@ impl CiRetiredCall {
             RESOLVER_STATIC_EDGES => "resolver-static-edges",
             RESOLVER_DYNAMIC_EDGES => "resolver-dynamic-edges",
             RESOLVER_VERIFIED_ARTIFACTS => "resolver-verified-artifacts",
+            RESOLVE_PROFILE_LOCK => "resolve-profile-lock",
             _ => "unknown",
         }
     }
@@ -396,7 +399,10 @@ fn inspect<S: BootstrapInputOwner>(
                 }
             }
         }
-        return catalog::inspect(context, work.clone());
+        return catalog::inspect(context, work.clone(), phase);
+    }
+    if phase == RESOLVE_PROFILE_LOCK {
+        return catalog::inspect(context, work.clone(), phase);
     }
     if !context.same_invocation(&state.invocation)
         || !matches!(
@@ -709,6 +715,10 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             },
             NativeDataBinding {
                 export: NativeDataExport::new(Some(RUNTIME), "load-catalog"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "resolve-profile"),
                 result: Some(contract(NativeDataSuccessType::String)),
             },
         ];

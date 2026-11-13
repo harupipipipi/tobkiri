@@ -12,6 +12,8 @@ pub(super) const VERIFIED_ARTIFACTS_REQUEST: &str =
     "io.tobkiri.native-resolver-verified-artifacts.v1";
 const STATIC_RESPONSE: &str = "io.tobkiri.native-resolver-static-edges-result.v1";
 const DYNAMIC_RESPONSE: &str = "io.tobkiri.native-resolver-dynamic-edges-result.v1";
+const RESOLVE_REQUEST: &str = "io.tobkiri.native-resolver-profile.v1";
+const PLATFORM_ARTIFACTS_UNBOUND: &str = "io.tobkiri.native-resolver-platform-artifacts-unbound.v1";
 const SCHEMA: &str = "io.tobkiri.profile-authority-edge.v1";
 const REF_PREFIX: &str = "authority-ref:";
 
@@ -64,7 +66,7 @@ pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewO
         .as_ref()
         .context("actual resolver Authority snapshot missing")?
         .snapshot_digest();
-    review.actual._resolver_bindings = Some(derive_bindings(
+    review.actual.resolver_bindings = Some(derive_bindings(
         &denied::field(&rows, "rows")?,
         snapshot,
         pack.input_budget,
@@ -118,7 +120,7 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
     // The actual Pack returned an empty tuple for the fresh bundled candidate.
     // The original loop makes no updates to the retained authority bindings.
     drop((rows, request));
-    let request = denied::frame(pack, VERIFIED_ARTIFACTS_REQUEST, references)?;
+    let request = denied::frame(pack, VERIFIED_ARTIFACTS_REQUEST, references.clone())?;
     review.actual.resolver_verified_artifacts = Some(
         pack.observe_fixed_call(2, &request, "resolver-verified-artifacts")
             .await?,
@@ -137,8 +139,93 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
     if artifacts.builtin_kind() != BootstrapBuiltinKind::Set {
         bail!("original verified Profile artifacts did not return a set");
     }
+    let artifacts = catalog::result_root(pack, artifacts, scope)?;
+    let [
+        (catalog_name, catalog),
+        (profile_name, profile_id),
+        (source_name, source),
+    ] = references;
+    let authority = review
+        .actual
+        .resolver_authority
+        .as_ref()
+        .context("actual resolver Authority snapshot missing")?;
+    let bindings = review
+        .actual
+        .resolver_bindings
+        .as_ref()
+        .context("actual resolver bindings missing")?;
+    let request = denied::frame(
+        pack,
+        RESOLVE_REQUEST,
+        [
+            (catalog_name, catalog),
+            (profile_name, profile_id),
+            (source_name, source),
+            ("verified_artifacts", artifacts),
+            (
+                "snapshot",
+                CoreValue::string(authority.snapshot_digest().as_str(), pack.input_budget)?,
+            ),
+            (
+                "epoch",
+                CoreValue::string(authority.security_epoch().decimal(), pack.input_budget)?,
+            ),
+            ("bindings", bindings.clone()),
+        ],
+    )?;
+    run_profile_to_artifact_root(review, pack, scope, &request).await
+}
+
+async fn run_profile_to_artifact_root<S: BootstrapInputOwner + BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    scope: &CoreValue,
+    request: &CoreBuffer,
+) -> Result<BootstrapReviewFailure> {
+    let caller = ReviewCaller::Resolver;
+    caller.check(review, pack)?;
+    pack.work
+        .get()
+        .catalog
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_mut()
+        .context("completed original catalog controller missing")?
+        .begin_pack_resolve_lock()?;
+    match pack.observe_resolver_profile_lock(request).await? {
+        Ok(boundary) => review.actual.resolver_profile_boundary = Some(boundary),
+        Err(failure) => {
+            caller.check(review, pack)?;
+            return catalog::handle_call_failure(review, pack, caller, failure, false).await;
+        }
+    }
+    caller.check(review, pack)?;
+    let boundary = CoreValue::parse_guest(
+        review
+            .actual
+            .resolver_profile_boundary
+            .as_ref()
+            .expect("actual resolver artifact boundary")
+            .as_bytes(),
+        pack.input_budget,
+    )?;
+    denied::exact(&boundary, &["format", "scope"])?;
+    if denied::field(&boundary, "format")?.as_str() != Some(PLATFORM_ARTIFACTS_UNBOUND)
+        || !denied::same_scope(&denied::field(&boundary, "scope")?, scope)
+        || !pack
+            .work
+            .get()
+            .catalog
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .is_some_and(crate::original_authority::catalog::CatalogIo::pack_resolve_lock_completed)
+    {
+        bail!("original resolver did not reach its Shell artifact after the actual lock read");
+    }
     Ok(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::ResolveProfileNotBound,
+        BootstrapReviewReachpoint::ResolvePlatformArtifactsNotBound,
     ))
 }
 

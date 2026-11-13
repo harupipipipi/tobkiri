@@ -337,8 +337,12 @@ class Dispatcher:
         )
 
     def _frame(self, payload: str, kind: str, fields: set[str]) -> dict[str, Any]:
+        return self._checked_frame(self._load(payload), kind, fields)
+
+    def _checked_frame(
+        self, frame: dict[str, Any], kind: str, fields: set[str],
+    ) -> dict[str, Any]:
         state = self._current()
-        frame = self._load(payload)
         if (
             set(frame) != {"format", "scope"} | fields
             or frame["format"] != PREFIX + kind + ".v1"
@@ -420,7 +424,10 @@ class Dispatcher:
         state = self._current()
         if method not in METHODS:
             raise InvalidFrame("method is not a fixed original export")
-        frame = self._frame(payload, "call", {"args", "kwargs"})
+        frame = self._load(payload)
+        if method == "resolve_profile" and frame.get("format") == PREFIX + "resolver-profile.v1":
+            return self._resolve_bundled_profile(state, frame)
+        self._checked_frame(frame, "call", {"args", "kwargs"})
         if type(frame["args"]) is not list or type(frame["kwargs"]) is not list:
             raise InvalidFrame("invalid original call arguments")
         if _catalog_diagnostic is not None:
@@ -466,6 +473,53 @@ class Dispatcher:
         return self._result(value, denied_message=message,
                             identity_origin=("getter-returned" if identity else
                                              caller + "-returned" if caller else None))
+
+    def _resolve_bundled_profile(self, state: _State, frame: dict[str, Any]) -> str:
+        from .native_path import NativePath, _UnboundPlatformArtifacts
+
+        registry = state.registry
+        if (set(frame) != {"format", "scope", "catalog", "profile_id", "source_profile",
+                           "verified_artifacts", "snapshot", "epoch", "bindings"}
+                or frame["scope"] != registry.scope.wire()):
+            raise InvalidFrame("invalid fixed bundled resolve frame")
+        snapshot, epoch, rows = frame["snapshot"], frame["epoch"], frame["bindings"]
+        if (type(snapshot) is not str or not re.fullmatch(r"sha256:[0-9a-f]{64}", snapshot)
+                or type(epoch) is not str or len(epoch) > 4300
+                or not re.fullmatch(r"[1-9][0-9]*", epoch) or type(rows) is not list):
+            raise InvalidFrame("invalid actual resolver authority arguments")
+        bindings = {}
+        for row in rows:
+            if (type(row) is not list or len(row) != 2
+                    or type(row[0]) is not str or row[0] in bindings
+                    or type(row[1]) is not str
+                    or not re.fullmatch(r"authority-ref:[0-9a-f]{64}", row[1])):
+                raise InvalidFrame("invalid actual resolver authority binding")
+            bindings[row[0]] = row[1]
+        catalog, profile_id, approved = registry._begin_resolver_profile(
+            registry.reference(frame["catalog"]),
+            registry.reference(frame["profile_id"]),
+            registry.reference(frame["source_profile"]),
+            registry.reference(frame["verified_artifacts"]),
+        )
+        root = catalog.root
+        if type(root) is not NativePath:
+            raise UnsupportedValue("actual resolver catalog root is outside the fixed ABI")
+        try:
+            value = self._apply_original(
+                lambda: root._bridge._resolve_catalog(
+                    state.runtime.resolve_profile, root, catalog.artifact_root,
+                    catalog, profile_id, approved_artifact_digests=approved,
+                    authority_snapshot_digest=snapshot, authority_bindings=bindings,
+                    security_epoch=int(epoch), additional_pack_ids=(),
+                ),
+                caller="resolver-profile",
+            )
+        except _UnboundPlatformArtifacts:
+            return wire.dumps({
+                "format": PREFIX + "resolver-platform-artifacts-unbound.v1",
+                "scope": registry.scope.wire(),
+            })
+        return self._result(value)
 
     def import_values(self, payload: str) -> str:
         """Import only builtin DATA and existing issued references."""

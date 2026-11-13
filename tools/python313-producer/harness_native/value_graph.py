@@ -166,6 +166,7 @@ class Registry:
         self._resolver_catalog: int | None = None
         self._resolver_profile_id: int | None = None
         self._resolver_source: int | None = None
+        self._resolver_verified_artifacts: int | None = None
         self._resolver_dynamic_stage = "awaiting-static"
         self._next = 1
         self._retired = False
@@ -322,6 +323,8 @@ class Registry:
                 self._clear_resolver_inputs()
             elif number == self._resolver_source:
                 self._clear_resolver_source()
+            elif number == self._resolver_verified_artifacts:
+                self._resolver_verified_artifacts = None
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -341,6 +344,7 @@ class Registry:
 
     def _clear_resolver_source(self) -> None:
         self._resolver_source = None
+        self._resolver_verified_artifacts = None
         self._resolver_dynamic_stage = "awaiting-static"
 
     def _begin_resolver_getter(self) -> None:
@@ -369,6 +373,9 @@ class Registry:
         elif origin == "resolver-source-lookup-returned":
             if self._resolver_stage == "ready" and type(self.borrow(reference)) is dict:
                 self._resolver_source = reference.object_id
+        elif origin == "resolver-verified-artifacts-returned":
+            if self._resolver_dynamic_stage == "artifact-capture-started":
+                self._resolver_verified_artifacts = reference.object_id
 
     def _resolver_retained_inputs(
         self, catalog_ref: Reference, profile_id_ref: Reference,
@@ -506,6 +513,21 @@ class Registry:
         self._resolver_dynamic_stage = "artifact-capture-started"
         return catalog_value
 
+    def _begin_resolver_profile(
+        self, catalog: Reference, profile_id: Reference, source: Reference,
+        artifacts: Reference,
+    ) -> tuple[Any, str, set[str]]:
+        catalog_value, profile_value = self._resolver_retained_inputs(catalog, profile_id)
+        self._current_resolver_source(source)
+        approved = self.borrow(artifacts, set)
+        if (self._resolver_dynamic_stage != "artifact-capture-started"
+                or artifacts.object_id != self._resolver_verified_artifacts
+                or self._bootstrap_identity.get(artifacts.object_id)
+                != "resolver-verified-artifacts-returned"):
+            raise InvalidReference("reference has no completed artifact capture")
+        self._resolver_dynamic_stage = "profile-resolution-started"
+        return catalog_value, profile_value, approved
+
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
         # Python len/iteration preserve lone surrogate codepoints. Never encode,
@@ -551,6 +573,7 @@ class Registry:
             "resolver-source-lookup-returned", "resolver-source-lookup-raised",
             "resolver-static-edges-raised", "resolver-dynamic-edges-raised",
             "resolver-verified-artifacts-returned", "resolver-verified-artifacts-raised",
+            "resolver-profile-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

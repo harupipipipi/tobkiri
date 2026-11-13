@@ -24,6 +24,10 @@ from .value_graph import Scope, UnsupportedValue
 _PREFIX = "io.tobkiri.native-inspection-"
 
 
+class _UnboundPlatformArtifacts(BaseException):
+    """Stop the fixed resolver at the retained Shell artifact root's first access."""
+
+
 def _binding(value: Any) -> str:
     if type(value) is not str or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value):
         raise UnsupportedValue("invalid issued native binding")
@@ -74,9 +78,12 @@ class PathBridge:
         # fixed REVIEW caller selects/adopts the real controller independently;
         # changing this guest field cannot enable any native operation.
         self._catalog_root: NativePath | None = None
+        self._resolving_catalog = False
+        self._resolver_artifact_root: NativePath | None = None
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
-        if self._catalog_root is not None or root._bridge is not self:
+        if (self._catalog_root is not None or self._resolving_catalog
+                or root._bridge is not self):
             raise UnsupportedValue("nested or foreign catalog call")
         selected = self._value(self._catalog_request(root._target(), "root", []), "path", catalog=True)
         self._catalog_root = selected
@@ -87,6 +94,23 @@ class PathBridge:
 
     def _catalog_request(self, target: dict, operation: str, args: list) -> dict:
         return self._request(target, operation, args, catalog=True)
+
+    def _resolve_catalog(
+        self, target: Callable, root: NativePath, artifact_root: NativePath | None,
+        *args: Any, **kwargs: Any,
+    ) -> Any:
+        if (root._bridge is not self or root._binding is None
+                or (artifact_root is not None and (
+                    type(artifact_root) is not NativePath or artifact_root._bridge is not self))
+                or self._catalog_root is not None or self._resolving_catalog):
+            raise UnsupportedValue("nested or foreign resolver catalog call")
+        self._resolving_catalog = True
+        self._resolver_artifact_root = artifact_root
+        try:
+            return target(*args, **kwargs)
+        finally:
+            self._resolver_artifact_root = None
+            self._resolving_catalog = False
 
     def bind(self, binding: str, lexical: str) -> NativePath:
         """Wrap an already admitted native target and its exact disclosed value."""
@@ -142,7 +166,8 @@ class PathBridge:
         # explicitly returned closed domain DATA channel may be decoded below.
         response = self._inspect(wire.dumps({
             "format": ("io.tobkiri.native-catalog-request.v1" if catalog or
-                       self._catalog_root is not None else _PREFIX + "request.v1"),
+                       self._catalog_root is not None or self._resolving_catalog
+                       else _PREFIX + "request.v1"),
             "scope": self.scope.wire(),
             "target": target, "operation": operation, "args": args,
         }))
@@ -325,6 +350,8 @@ class NativePath:
         ), "path")
 
     def resolve(self, strict: bool = False) -> NativePath:
+        if strict is True and self is self._bridge._resolver_artifact_root:
+            raise _UnboundPlatformArtifacts
         return self._effect("resolve", "path", [strict])
 
     def is_symlink(self) -> bool:

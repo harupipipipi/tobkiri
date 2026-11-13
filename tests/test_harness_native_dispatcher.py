@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -755,6 +756,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         def __init__(self) -> None:
             self.profiles = {}
             self.packs = {}
+            self.root = None
+            self.artifact_root = None
 
     class Runtime(IdentityRuntimeFixture):
         def __init__(self) -> None:
@@ -763,6 +766,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.dynamic_result: object = ()
 
         def load_catalog(self, _root: NativePath) -> object:
+            self.catalog.root = _root
             return self.catalog
 
         def dynamic_profile_edges(
@@ -1341,6 +1345,79 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertEqual(self.view(packet)["origin"], "resolver-verified-artifacts-raised")
         with self.assertRaises(InvalidReference):
             self.verified_artifacts(catalog, profile_id, source)
+
+    def test_fixed_profile_calls_original_lock_digest_before_artifact_boundary(self) -> None:
+        # The portable caller fixture uses the actual original helper. The
+        # pinned complete Port replay and real Rust IO run in separate CI jobs.
+        source_path = (ROOT / "tobkiri_runtime/ecosystem/defaultspack/domain"
+                       / "profile_resolution.py")
+        original = ast.parse(source_path.read_bytes(), filename=str(source_path))
+        functions = [node for node in original.body if isinstance(node, ast.FunctionDef)
+                     and node.name in {"_bundle_digest", "_sha256_bytes"}]
+        self.assertEqual(len(functions), 2)
+        namespace = {"hashlib": hashlib}
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(source_path), "exec"),
+             namespace)
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        self.static_edges(source)
+        self.dynamic_edges(catalog, profile_id, source)
+        artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
+        approved = self.registry.borrow(self.registry.reference(artifacts))
+        root = self.runtime.catalog.root
+        artifact_root = self.bridge.bind("fixture-root", "/fixture/platform-artifacts")
+        self.runtime.catalog.artifact_root = artifact_root
+        raw_lock = b"new actual lock bytes\n"
+        calls = []
+        digests = []
+        snapshot = "sha256:" + "1" * 64
+        epoch = "9" * 100
+        rows = [["z", "authority-ref:" + "2" * 64], ["a", "authority-ref:" + "3" * 64]]
+
+        def inspect(payload: str) -> str:
+            frame = wire.loads(payload)
+            self.assertEqual(frame["format"], PREFIX + "catalog-request.v1")
+            self.assertEqual(frame["target"], {
+                "binding": "fixture-root", "steps": [["join", "bundle.lock.json"]],
+            })
+            operation = frame["operation"]
+            calls.append(operation)
+            result = (
+                {"kind": "bytes", "value": base64.b64encode(raw_lock).decode()}
+                if operation == "read-bytes" else {"kind": "bool", "value": operation == "is-file"}
+            )
+            return wire.dumps({
+                "format": PREFIX + "inspection-response.v1",
+                "scope": self.scope.wire(), "result": result,
+            })
+
+        def resolve(actual_catalog: object, actual_id: str, **kwargs: object) -> None:
+            self.assertIs(actual_catalog, self.runtime.catalog)
+            self.assertIs(actual_catalog.root, root)
+            self.assertIs(actual_id, self.runtime.value)
+            self.assertIs(kwargs["approved_artifact_digests"], approved)
+            self.assertEqual(kwargs["authority_snapshot_digest"], snapshot)
+            self.assertEqual(list(kwargs["authority_bindings"].items()), list(map(tuple, rows)))
+            self.assertEqual(kwargs["security_epoch"], int(epoch))
+            self.assertEqual(kwargs["additional_pack_ids"], ())
+            digests.append(namespace["_bundle_digest"](actual_catalog))
+            artifact_root.resolve(strict=True)
+            self.fail("fixture reached beyond the platform artifact boundary")
+
+        self.bridge._inspect = inspect
+        self.runtime.resolve_profile = resolve
+        request = self.frame("resolver-profile", catalog=catalog, profile_id=profile_id,
+                             source_profile=source, verified_artifacts=artifacts,
+                             snapshot=snapshot, epoch=epoch, bindings=rows)
+        self.assertEqual(wire.loads(self.dispatcher.call("resolve_profile", request)), {
+            "format": PREFIX + "resolver-platform-artifacts-unbound.v1",
+            "scope": self.scope.wire(),
+        })
+        self.assertEqual(calls, ["is-symlink", "is-file", "read-bytes"])
+        self.assertEqual(digests, ["sha256:" + hashlib.sha256(raw_lock).hexdigest()])
+        self.assertFalse(self.bridge._resolving_catalog)
+        self.assertIsNone(self.bridge._resolver_artifact_root)
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("resolve_profile", request)
 
 
 class DeniedFactoryTransportTests(unittest.TestCase):
