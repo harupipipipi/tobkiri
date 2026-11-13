@@ -2896,6 +2896,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   41件で停止した。ピーク25,205,956 bytes、終了後の確保量・予約は0。
   同じ実装の[無計測CI 43453892634](https://github.com/harupipipipi/tobkiri/actions/runs/43453892634)
   でもcoldと全カタログが元の燃料上限で停止した。
+- `ee935d758` はURIのparamsを最終バッファに直接書き、空のpathにparamsだけがある
+  場合の区切り規則を保つ。追加2組を含む153組で
+  [原本比較 43459741509](https://github.com/harupipipipi/tobkiri/actions/runs/43459741509)
+  が成功した。[実Wasmの燃料計測 43459824953](https://github.com/harupipipipi/tobkiri/actions/runs/43459824953)
+  で同じ上限を使って比較する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3045,8 +3050,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   予算付きread/fstatは再利用候補。Shellで使うdescriptorのopen/seek/close、元の失敗と
   実パスの所有権を原本と照合してから、許可されたIOをRustへ移す。loaderが返した
   canonical rootを保持し、解決済みのパス文字列だけから権限を作らない。
-  選択されたShellのpath検査は、loaderが渡した元のProfileとShell定義のバイトと
-  2回目の検証済みProfile IDからvariantを選び、同じ親とrootの識別を用いて行う。
+  `c9cfbc1f9` はloaderが渡したProfileとShell定義のバイトと2回目の検証済み
+  Profile IDからvariantを選び、そのleafと親のsymlink検査を接続した。
+  rootの同一性はresolverのディレクトリ判定から検査終了まで保持する。
+  `ba1b5db18` でmacOSの `O_SEARCH` とLinuxの `O_PATH` を使い、
+  ディレクトリを列挙する権限がない場合も原本と同じleaf検査を行う。
+  `e538cdbce` で定義の種類を判定するコードを共通化した。
+  [初回の比較CI 43458563648](https://github.com/harupipipipi/tobkiri/actions/runs/43458563648)
+  でRustの借用エラーが出たため、`da796f51f` で保持中のleaf参照を共有するよう修正した。
+  [再検証 43460009226](https://github.com/harupipipipi/tobkiri/actions/runs/43460009226)と
+  [実Wasm 43460009366](https://github.com/harupipipipi/tobkiri/actions/runs/43460009366)は実行中。
   現在の同梱variantが使う1階層のファイル名を対象とし、schema上有効な複数階層の
   variantは未移植。複数階層では途中の各親を原本と同じ順で検査する必要がある。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
