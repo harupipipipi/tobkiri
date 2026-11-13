@@ -13,6 +13,7 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
     from jsonschema import Draft202012Validator as original, FormatChecker, exceptions
     from jsonschema import validators
     from referencing import Resource
+    from referencing import _core as reference_core
     from referencing.jsonschema import DRAFT202012
     from schema_kernel_observation import first_difference, meta_nodes, observe
 
@@ -89,9 +90,12 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
 
         object.__setattr__(registry, "_retrieve", retrieve)
         saved_pointer = Resource.pointer
+        saved_defrag = reference_core.urldefrag
         try:
             if "pointer_override" in state:
                 Resource.pointer = state["pointer_override"](saved_pointer, events)
+            if "defrag_override" in state:
+                reference_core.urldefrag = state["defrag_override"](saved_defrag, events)
             try:
                 selected.check_schema(actual, format_checker=state.get("checker"))
             except exceptions.SchemaError as error:
@@ -121,6 +125,7 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
                 try:
                     Resource.pointer = saved_pointer
                 finally:
+                    reference_core.urldefrag = saved_defrag
                     selected.META_SCHEMA = saved_meta
 
     def compare(name, make):
@@ -258,6 +263,52 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
                 "expected_requests": [external_uri], "error_schema": target,
             }
         compare("reference_lookup_empty_fragment", empty_fragment)
+
+        def fragment_override(kind):
+            def make():
+                class Flag:
+                    def __bool__(self):
+                        events.append("result truth")
+                        if kind == "raises":
+                            raise ValueError("fixture startswith truth error")
+                        return kind == "pointer"
+
+                class Fragment(str):
+                    def startswith(self, text):
+                        events.append({"startswith": text})
+                        return Flag()
+
+                    def __bool__(self):
+                        events.append("fragment truth")
+                        return False
+
+                def override(original_defrag, _events):
+                    def defrag(value):
+                        uri, fragment = original_defrag(value)
+                        if uri != external_uri:
+                            return uri, fragment
+                        if kind == "surrogate":
+                            return uri, "/$defs/\ud800"
+                        return uri, Fragment("/$defs/target")
+                    return defrag
+
+                events = []
+                target = {"type": "integer"}
+                contents = {"type": "integer", "$defs": {
+                    "\ud800" if kind == "surrogate" else "target": target,
+                }}
+                return {
+                    "meta": {"$id": root_uri, "$ref": external_uri + "#override"},
+                    "actual": "bad",
+                    "external": {external_uri: contents},
+                    "expected_requests": [external_uri],
+                    "events": events,
+                    "defrag_override": override,
+                }
+            return make
+
+        for kind in ("surrogate", "pointer", "empty", "raises"):
+            compare("reference_lookup_fragment_" + kind, fragment_override(kind))
 
         def missing_resource():
             return {"meta": {"$id": root_uri, "$ref": external_uri},

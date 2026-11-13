@@ -5,6 +5,7 @@ use super::{uri, Environment, FuelBucket, Object};
 use crate::keywords::{builtin, module_member};
 use pyo3::{
     exceptions::{PyLookupError, PyUnicodeEncodeError},
+    ffi,
     gc::{PyTraverseError, PyVisit},
     prelude::*,
     sync::PyOnceLock,
@@ -602,8 +603,9 @@ impl ReferenceState {
                 return Err(converted);
             }
         };
-        let pointer = fragment.call_method1("startswith", ("/",))?.is_truthy()?;
-        if pointer || fragment.is_truthy()? {
+        let kind = fragment_kind(&fragment)?;
+        if !matches!(kind, Fragment::Empty) {
+            let pointer = matches!(kind, Fragment::Pointer);
             let bucket = if pointer {
                 FuelBucket::Pointer
             } else {
@@ -664,6 +666,44 @@ impl ReferenceState {
             .boundary(py, env)?
             .call_method1("in_subresource", (resource,))?;
         Self::from_boundary(&resolver, env)
+    }
+}
+
+/// Classify exact strings by code point, including strings with surrogates.
+/// Other objects retain the two original, ordered Python truth tests.
+enum Fragment {
+    Empty,
+    Pointer,
+    Anchor,
+}
+
+fn fragment_kind(fragment: &Bound<'_, PyAny>) -> PyResult<Fragment> {
+    if fragment.is_exact_instance_of::<PyString>() {
+        // SAFETY: The live bound object is an exact Python Unicode string.
+        let len = unsafe { ffi::PyUnicode_GetLength(fragment.as_ptr()) };
+        if len < 0 {
+            return Err(PyErr::fetch(fragment.py()));
+        }
+        if len == 0 {
+            return Ok(Fragment::Empty);
+        }
+        // SAFETY: Index zero is within the checked Unicode length.
+        let first = unsafe { ffi::PyUnicode_ReadChar(fragment.as_ptr(), 0) };
+        if first == u32::MAX {
+            return Err(PyErr::fetch(fragment.py()));
+        }
+        return Ok(if first == u32::from(b'/') {
+            Fragment::Pointer
+        } else {
+            Fragment::Anchor
+        });
+    }
+    if fragment.call_method1("startswith", ("/",))?.is_truthy()? {
+        Ok(Fragment::Pointer)
+    } else if fragment.is_truthy()? {
+        Ok(Fragment::Anchor)
+    } else {
+        Ok(Fragment::Empty)
     }
 }
 
