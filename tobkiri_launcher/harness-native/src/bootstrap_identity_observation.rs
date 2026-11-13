@@ -255,6 +255,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "resolver-source-lookup")
                 | (2, "resolver-static-edges")
                 | (2, "resolver-dynamic-edges")
+                | (2, "resolver-verified-artifacts")
         ) {
             bail!("fixed original caller is unavailable");
         }
@@ -270,6 +271,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "resolver-source-lookup") => RESOLVER_SOURCE_LOOKUP,
             (REVIEW, "resolver-static-edges") => RESOLVER_STATIC_EDGES,
             (REVIEW, "resolver-dynamic-edges") => RESOLVER_DYNAMIC_EDGES,
+            (REVIEW, "resolver-verified-artifacts") => RESOLVER_VERIFIED_ARTIFACTS,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -637,6 +639,16 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (
                 Some("resolver-dynamic-edges-raised"),
                 "resolver-dynamic-edges",
+                true
+            )
+            | (
+                Some("resolver-verified-artifacts-returned"),
+                "resolver-verified-artifacts",
+                false
+            )
+            | (
+                Some("resolver-verified-artifacts-raised"),
+                "resolver-verified-artifacts",
                 true
             )
     )

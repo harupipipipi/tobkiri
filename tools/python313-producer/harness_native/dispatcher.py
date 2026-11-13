@@ -563,6 +563,27 @@ class Dispatcher:
             return registry._describe_resolver_dynamic_edges(
                 catalog_ref, profile_id_ref, source_ref, value,
             )
+        if frame.get("format") == PREFIX + "resolver-verified-artifacts.v1":
+            registry = state.registry
+            if (set(frame) != {"format", "scope", "catalog", "profile_id",
+                               "source_profile"}
+                    or frame["scope"] != registry.scope.wire()):
+                raise InvalidFrame("invalid fixed resolver artifact frame")
+            catalog = registry._begin_resolver_verified_artifacts(
+                registry.reference(frame["catalog"]),
+                registry.reference(frame["profile_id"]),
+                registry.reference(frame["source_profile"]),
+            )
+            # The original builds a real set in catalog iteration order, before
+            # calling the Port. It remains live for that call's membership checks.
+            value = self._apply_original(
+                lambda: {str(manifest["pack"]["artifact_digest"])
+                         for manifest in catalog.packs.values()},
+                caller="resolver-verified-artifacts",
+            )
+            return self._result(
+                value, identity_origin="resolver-verified-artifacts-returned",
+            )
         if frame.get("format") == PREFIX + "catalog-manifest-parse.v1":
             if (set(frame) != {"format", "scope", "bytes"}
                     or frame["scope"] != state.registry.scope.wire()

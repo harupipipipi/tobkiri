@@ -754,6 +754,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
     class Catalog:
         def __init__(self) -> None:
             self.profiles = {}
+            self.packs = {}
 
     class Runtime(IdentityRuntimeFixture):
         def __init__(self) -> None:
@@ -834,6 +835,12 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         return wire.loads(self.dispatcher.describe_value(self.frame(
             "resolver-dynamic-edges", catalog=catalog, profile_id=profile_id,
             source_profile=source_profile, **fields,
+        )))
+
+    def verified_artifacts(self, catalog: dict, profile_id: dict, source: dict) -> dict:
+        return wire.loads(self.dispatcher.describe_value(self.frame(
+            "resolver-verified-artifacts", catalog=catalog, profile_id=profile_id,
+            source_profile=source,
         )))
 
     def source(self, profile: dict) -> tuple[dict, dict, dict]:
@@ -1284,6 +1291,56 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 with self.assertRaises(InvalidReference):
                     self.dynamic_edges(catalog, profile_id, source)
                 self.assertEqual(len(self.runtime.dynamic_calls), call_count)
+
+    def test_verified_artifacts_retain_the_live_set_after_dynamic_edges(self) -> None:
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        self.static_edges(source)
+        with self.assertRaises(InvalidReference):
+            self.verified_artifacts(catalog, profile_id, source)
+        self.dynamic_edges(catalog, profile_id, source)
+        self.runtime.catalog.packs.update({
+            "one": {"pack": {"artifact_digest": "sha256:one"}},
+            "two": {"pack": {"artifact_digest": "sha256:one"}},
+            "three": {"pack": {"artifact_digest": "sha256:two"}},
+        })
+        packet = self.verified_artifacts(catalog, profile_id, source)
+        root = self.registry.reference(packet["root"])
+        result = self.registry.borrow(root)
+        self.assertIs(type(result), set)
+        self.assertEqual(result, {"sha256:one", "sha256:two"})
+        view = self.view(packet)
+        self.assertEqual(view["origin"], "resolver-verified-artifacts-returned")
+        self.assertEqual(view["registered_builtin_kind"], "set")
+        self.assertEqual(view["owned"], [])
+        self.runtime.catalog.packs["four"] = {"pack": {"artifact_digest": "sha256:later"}}
+        self.assertNotIn("sha256:later", result)
+        with self.assertRaises(InvalidReference):
+            self.verified_artifacts(catalog, profile_id, source)
+
+    def test_verified_artifacts_do_not_run_after_dynamic_failure(self) -> None:
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        self.static_edges(source)
+        self.runtime.dynamic_result = (object(),)
+        with self.assertRaises(UnsupportedValue):
+            self.dynamic_edges(catalog, profile_id, source)
+        with self.assertRaises(InvalidReference):
+            self.verified_artifacts(catalog, profile_id, source)
+
+    def test_verified_artifacts_preserve_the_actual_lookup_error(self) -> None:
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        self.static_edges(source)
+        self.dynamic_edges(catalog, profile_id, source)
+        self.runtime.catalog.packs["missing"] = {"pack": {}}
+        with self.assertRaises(MethodRaised) as raised:
+            self.verified_artifacts(catalog, profile_id, source)
+        packet = wire.loads(raised.exception.details)
+        root = self.registry.reference(packet["root"])
+        original = self.registry.borrow(root)
+        self.assertIs(type(original), KeyError)
+        self.assertEqual(original.args, ("artifact_digest",))
+        self.assertEqual(self.view(packet)["origin"], "resolver-verified-artifacts-raised")
+        with self.assertRaises(InvalidReference):
+            self.verified_artifacts(catalog, profile_id, source)
 
 
 class DeniedFactoryTransportTests(unittest.TestCase):

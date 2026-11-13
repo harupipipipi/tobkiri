@@ -514,7 +514,9 @@ pub(super) fn returned(value: &BootstrapIdentityOutcome) -> Result<&BootstrapIde
     }
 }
 // Move the actual opaque carrier, never reconstruct it from a kind/message.
-fn take_failure(value: &mut Option<BootstrapIdentityOutcome>) -> Option<BootstrapIdentityOutcome> {
+pub(super) fn take_failure(
+    value: &mut Option<BootstrapIdentityOutcome>,
+) -> Option<BootstrapIdentityOutcome> {
     if matches!(value, Some(BootstrapIdentityOutcome::Returned(_))) {
         None
     } else {

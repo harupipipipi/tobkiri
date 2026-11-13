@@ -483,7 +483,7 @@ class Registry:
         if type(value) is not tuple or len(value) != 0:
             raise UnsupportedValue("original dynamic edges are outside the fresh Setup ABI")
         try:
-            return wire.dumps({
+            payload = wire.dumps({
                 "format": _DYNAMIC_EDGES_RESULT,
                 "scope": self.scope.wire(),
                 "catalog": catalog.wire(),
@@ -493,6 +493,18 @@ class Registry:
             })
         except wire.OrderedJSONError:
             raise UnsupportedValue("original dynamic edges cannot be encoded") from None
+        self._resolver_dynamic_stage = "dynamic-returned"
+        return payload
+
+    def _begin_resolver_verified_artifacts(
+        self, catalog: Reference, profile_id: Reference, source: Reference,
+    ) -> Any:
+        catalog_value, _ = self._resolver_retained_inputs(catalog, profile_id)
+        self._current_resolver_source(source)
+        if self._resolver_dynamic_stage != "dynamic-returned":
+            raise InvalidReference("reference has no completed dynamic edge observation")
+        self._resolver_dynamic_stage = "artifact-capture-started"
+        return catalog_value
 
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
@@ -538,6 +550,7 @@ class Registry:
             "manifest-returned", "manifest-raised",
             "resolver-source-lookup-returned", "resolver-source-lookup-raised",
             "resolver-static-edges-raised", "resolver-dynamic-edges-raised",
+            "resolver-verified-artifacts-returned", "resolver-verified-artifacts-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

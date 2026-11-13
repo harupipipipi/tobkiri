@@ -8,6 +8,8 @@ use tobkiri_canon::{AllocationKind, AllocationRequest, Digest};
 
 pub(super) const STATIC_REQUEST: &str = "io.tobkiri.native-resolver-static-edges.v1";
 pub(super) const DYNAMIC_REQUEST: &str = "io.tobkiri.native-resolver-dynamic-edges.v1";
+pub(super) const VERIFIED_ARTIFACTS_REQUEST: &str =
+    "io.tobkiri.native-resolver-verified-artifacts.v1";
 const STATIC_RESPONSE: &str = "io.tobkiri.native-resolver-static-edges-result.v1";
 const DYNAMIC_RESPONSE: &str = "io.tobkiri.native-resolver-dynamic-edges-result.v1";
 const SCHEMA: &str = "io.tobkiri.profile-authority-edge.v1";
@@ -115,8 +117,28 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
     validate_bundled_dynamic_rows(&rows, scope, &references)?;
     // The actual Pack returned an empty tuple for the fresh bundled candidate.
     // The original loop makes no updates to the retained authority bindings.
+    drop((rows, request));
+    let request = denied::frame(pack, VERIFIED_ARTIFACTS_REQUEST, references)?;
+    review.actual.resolver_verified_artifacts = Some(
+        pack.observe_fixed_call(2, &request, "resolver-verified-artifacts")
+            .await?,
+    );
+    caller.check(review, pack)?;
+    if let Some(failure) = catalog::take_failure(&mut review.actual.resolver_verified_artifacts) {
+        return catalog::handle_call_failure(review, pack, caller, failure, false).await;
+    }
+    let artifacts = catalog::returned(
+        review
+            .actual
+            .resolver_verified_artifacts
+            .as_ref()
+            .expect("actual verified artifact set"),
+    )?;
+    if artifacts.builtin_kind() != BootstrapBuiltinKind::Set {
+        bail!("original verified Profile artifacts did not return a set");
+    }
     Ok(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::ResolveVerifiedArtifactsNotBound,
+        BootstrapReviewReachpoint::ResolveProfileNotBound,
     ))
 }
 

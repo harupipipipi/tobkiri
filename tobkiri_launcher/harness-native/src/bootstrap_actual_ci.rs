@@ -238,10 +238,10 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
                 "format",
                 CoreValue::string(resolver_edges::DYNAMIC_REQUEST, &budget)?,
             )),
-            Ok(("scope", scope)),
+            Ok(("scope", scope.clone())),
             Ok(("catalog", reference.clone())),
             Ok(("profile_id", reference.clone())),
-            Ok(("source_profile", reference)),
+            Ok(("source_profile", reference.clone())),
         ]
         .into_iter(),
         &budget,
@@ -254,6 +254,30 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         .context("ordinary describe must reject the dynamic edges frame at the Host")?;
     ensure!(
         rejection.to_string() == "dynamic Profile edges are outside the fixed Review reachpoint"
+    );
+    let artifacts = CoreValue::object_from(
+        [
+            Ok((
+                "format",
+                CoreValue::string(resolver_edges::VERIFIED_ARTIFACTS_REQUEST, &budget)?,
+            )),
+            Ok(("scope", scope)),
+            Ok(("catalog", reference.clone())),
+            Ok(("profile_id", reference.clone())),
+            Ok(("source_profile", reference)),
+        ]
+        .into_iter(),
+        &budget,
+    )?
+    .encode_guest(&budget)?;
+    let rejection = runtime
+        .describe_value(&artifacts)
+        .await
+        .err()
+        .context("ordinary describe must reject the verified artifacts frame at the Host")?;
+    ensure!(
+        rejection.to_string()
+            == "verified Profile artifacts are outside the fixed Review reachpoint"
     );
     ensure!(
         runtime.inspection_attempts() == init_inspections,

@@ -40,6 +40,7 @@ const CATALOG_PARSE: u8 = 12;
 const RESOLVER_SOURCE_LOOKUP: u8 = 13;
 const RESOLVER_STATIC_EDGES: u8 = 14;
 const RESOLVER_DYNAMIC_EDGES: u8 = 15;
+const RESOLVER_VERIFIED_ARTIFACTS: u8 = 16;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -156,6 +157,7 @@ impl CiRetiredCall {
             RESOLVER_SOURCE_LOOKUP => "resolver-source-lookup",
             RESOLVER_STATIC_EDGES => "resolver-static-edges",
             RESOLVER_DYNAMIC_EDGES => "resolver-dynamic-edges",
+            RESOLVER_VERIFIED_ARTIFACTS => "resolver-verified-artifacts",
             _ => "unknown",
         }
     }
@@ -1165,6 +1167,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                     }
                     Some(resolver_edges::DYNAMIC_REQUEST) if phase != RESOLVER_DYNAMIC_EDGES => {
                         bail!("dynamic Profile edges are outside the fixed Review reachpoint");
+                    }
+                    Some(resolver_edges::VERIFIED_ARTIFACTS_REQUEST)
+                        if phase != RESOLVER_VERIFIED_ARTIFACTS =>
+                    {
+                        bail!("verified Profile artifacts are outside the fixed Review reachpoint");
                     }
                     _ => {}
                 },
