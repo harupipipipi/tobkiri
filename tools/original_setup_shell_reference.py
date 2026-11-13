@@ -35,6 +35,7 @@ APPLICATION = "runtime.tauri.application.default"
 PACK_STALE_PIN = "stale-application-pack-pin"
 COMPOSITION_CASES = ("packaged-profile-resolved", PACK_STALE_PIN)
 PREDECESSOR_CASES = ("fresh-pack-pin-predecessor", "corrupt-pack-pin-predecessor")
+CONFIRMATION_CASE = "fresh-bootstrap-confirmation"
 CORRUPT_POINTER = b"{\n"
 STALE_PIN = "sha256:" + "0" * 64
 
@@ -49,6 +50,10 @@ class _PackResolved(BaseException):
 
 class _BeforeInactivePredecessor(BaseException):
     """Stop before the next helper executes its first instruction."""
+
+
+class _BootstrapConfirmationReturned(BaseException):
+    """Stop at the original confirmation return before the caller resumes."""
 
 
 def _package(original: Path, runtime: Path, output: Path) -> tuple[dict, list[str]]:
@@ -242,13 +247,16 @@ def _resolved_facts(result: Any, local: dict, variant: dict) -> dict:
 class _PredecessorObservation:
     """Trace the actual Host reads after successful Pack resolution."""
 
-    def __init__(self, runtime: Path, user_data: Path, *, corrupt: bool) -> None:
+    def __init__(
+        self, runtime: Path, user_data: Path, *, corrupt: bool, continue_review: bool,
+    ) -> None:
         from core_runtime import active_profile_store_v4 as active
         from core_runtime import profile_definition_store_v4 as definition
         from core_runtime.bootstrap import profile_capture as capture
 
         self.user_data = user_data
         self.corrupt = corrupt
+        self.continue_review = continue_review
         self.pointer_path = user_data / "profiles" / "active.json"
         self.lock_path = user_data / "profiles" / ".profile-definition.lock"
         self.binding = capture._bootstrap_pack_pin_predecessor_binding.__code__
@@ -297,6 +305,8 @@ class _PredecessorObservation:
                 or parent.f_locals["pin_predecessor"] is not None
             ):
                 raise AssertionError("original Setup passed an unobserved Pack pin predecessor")
+            if self.continue_review:
+                return False
             self.calls.append("before-inactive-predecessor")
             raise _BeforeInactivePredecessor
         if self.frame is None or code not in (
@@ -418,10 +428,12 @@ class _PredecessorObservation:
         else:
             expected.extend((
                 "return-active-pointer-none", "lookup-catalog-source",
-                "return-pack-pin-predecessor-none", "before-inactive-predecessor",
+                "return-pack-pin-predecessor-none",
             ))
-            if outcome != {"outcome": "no-predecessor"}:
-                raise AssertionError("unexpected original fresh predecessor outcome")
+            if not self.continue_review:
+                expected.append("before-inactive-predecessor")
+                if outcome != {"outcome": "no-predecessor"}:
+                    raise AssertionError("unexpected fresh predecessor outcome")
         if self.calls != expected or len(self.lock_frames) != 2:
             raise AssertionError(("original predecessor call order changed", self.calls))
         paths = sorted(self.pointer_path.parent.iterdir())
@@ -432,6 +444,226 @@ class _PredecessorObservation:
         ):
             raise AssertionError("original predecessor produced unexpected state")
         return [path.relative_to(self.user_data).as_posix() for path in paths]
+
+
+class _ConfirmationObservation:
+    """Observe the fresh inactive lookup and the installed Pack confirmation."""
+
+    def __init__(self, runtime: Path, user_data: Path, port: Any) -> None:
+        from core_runtime.bootstrap import profile_capture as capture
+        from core_runtime.bootstrap import profile_predecessor as predecessor
+        from tobkiri_protocol.canonical import canonical_digest
+
+        self.user_data = user_data
+        self.port = port
+        self.setup = capture._resolve_bootstrap_candidate.__code__
+        self.inactive = predecessor.inactive_bootstrap_predecessor.__code__
+        self.confirm = type(port).bootstrap_confirmation.__code__
+        self.build = type(port)._confirmation.__code__
+        self.digest = canonical_digest
+        self.forbidden = {
+            predecessor.ProfileDefinitionStore.__init__.__code__,
+            predecessor.ProfileDefinitionStore.snapshot.__code__,
+            predecessor.read_handover_journal.__code__,
+            capture.AuthorityStore.__init__.__code__,
+            capture._publish_host_active_pointer.__code__,
+            type(port).activation_store.__code__,
+        }
+        pack_path = "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py"
+        for code, source in (
+            (self.inactive, "core_runtime/bootstrap/profile_predecessor.py"),
+            (self.confirm, pack_path),
+            (self.build, pack_path),
+            (self.digest.__code__, "tobkiri_protocol/canonical.py"),
+        ):
+            if Path(code.co_filename).resolve() != runtime / source:
+                raise AssertionError("confirmation callable is outside staged original")
+        self.path_codes = {
+            Path.exists.__code__: "exists",
+            Path.is_symlink.__code__: "is-symlink",
+        }
+        self.calls: list[str] = []
+        self.path_checks: list[list[str | bool]] = []
+        self.expected_paths: list[str] = []
+        self.inactive_frame: FrameType | None = None
+        self.base_confirmation: dict | None = None
+        self.digest_payload: dict | None = None
+        self.digest_payload_keys: list[str] = []
+        self.digest_result: str | None = None
+        self.argument_identity: dict[str, bool] = {}
+        self.expected: dict = {}
+
+    def trace(self, frame: FrameType, event: str, value: Any, resolved: Any) -> bool:
+        code, parent = frame.f_code, frame.f_back
+        if self.calls and event == "call" and code in self.forbidden:
+            raise AssertionError("fresh confirmation reached unrelated state")
+        if code is self.inactive and event == "call":
+            local = frame.f_locals
+            if (
+                self.calls or parent is None or parent.f_code is not self.setup
+                or local["user_data"] is not parent.f_locals["user_data"]
+                or local["user_data"] != self.user_data
+                or local["source"] is not parent.f_locals["source_profile"]
+                or local["snapshot"] is not None
+            ):
+                raise AssertionError("original inactive predecessor inputs changed")
+            profile_id = parent.f_locals["profile_id"]
+            self.expected_paths = [
+                "profiles/active.json",
+                f"workspaces/{profile_id}/activation/active.json",
+                "profiles/index.json",
+            ]
+            self.inactive_frame = frame
+            self.calls.append("call-inactive-predecessor")
+            return True
+        if self.inactive_frame is not None and code in self.path_codes:
+            if parent is self.inactive_frame or (
+                parent is not None and parent.f_code.co_name == "<genexpr>"
+                and parent.f_back is self.inactive_frame
+            ):
+                if event == "return":
+                    if type(value) is not bool or len(self.path_checks) >= 6:
+                        raise AssertionError("unexpected inactive path check")
+                    path = frame.f_locals["self"].relative_to(self.user_data).as_posix()
+                    self.path_checks.append([self.path_codes[code], path, value])
+                return True
+        if code is self.inactive and event == "return":
+            checks = [
+                [operation, path, False] for path in self.expected_paths
+                for operation in ("exists", "is-symlink")
+            ]
+            if value is not None or self.path_checks != checks:
+                raise AssertionError(("inactive checks changed", self.path_checks))
+            self.inactive_frame = None
+            self.calls.append("return-inactive-predecessor-none")
+            return True
+        if code is self.confirm and event == "call":
+            local = frame.f_locals
+            if (
+                self.calls != [
+                    "call-inactive-predecessor", "return-inactive-predecessor-none",
+                ]
+                or parent is None or parent.f_code is not self.setup or resolved is None
+            ):
+                raise AssertionError("original Setup confirmation call order changed")
+            owner = parent.f_locals
+            args = owner["confirmation_args"]
+            self.argument_identity = {
+                "same_port": local["self"] is self.port is owner["runtime"],
+                "same_resolved": local["resolved"] is resolved is owner["resolved"],
+                "same_profile_id": local["profile_id"] is owner["profile_id"],
+                "same_authority_snapshot_digest": (
+                    local["authority_snapshot_digest"] is owner["snapshot_digest"]
+                ),
+                "same_security_epoch": (
+                    local["security_epoch"] is owner["security_epoch"]
+                ),
+                "explicit_null_definition_predecessor": (
+                    "definition_predecessor" in args
+                    and local["definition_predecessor"] is None
+                    and owner["definition_predecessor"] is None
+                ),
+                "omitted_pack_pin_predecessor": (
+                    "pack_pin_predecessor" not in args
+                    and local["pack_pin_predecessor"] is owner["pin_predecessor"]
+                    and owner["pin_predecessor"] is None
+                ),
+            }
+            if not all(self.argument_identity.values()) or any(
+                local[key] is not arg for key, arg in args.items()
+            ):
+                raise AssertionError("original confirmation arguments changed")
+            self.calls.append("call-bootstrap-confirmation")
+            return True
+        if code is self.build and parent is not None and parent.f_code is self.confirm:
+            if event == "call":
+                if self.calls[-1:] != ["call-bootstrap-confirmation"] or any(
+                    frame.f_locals[key] is not parent.f_locals[key] for key in (
+                        "self", "resolved", "profile_id", "authority_snapshot_digest",
+                        "security_epoch",
+                    )
+                ):
+                    raise AssertionError("confirmation builder arguments changed")
+                self.calls.append("call-confirmation-builder")
+            elif event == "return":
+                self.base_confirmation = value
+                self.calls.append("return-confirmation-builder")
+            return True
+        if code is self.digest.__code__ and parent is not None and parent.f_code in (
+            self.build, self.confirm,
+        ):
+            if event == "call":
+                if parent.f_code is not self.build or self.digest_payload is not None:
+                    raise AssertionError("fresh confirmation performed a second digest")
+                payload = frame.f_locals["value"]
+                if (
+                    type(payload) is not dict
+                    or payload is not parent.f_locals["confirmation"]
+                ):
+                    raise AssertionError("original digest did not receive confirmation")
+                self.digest_payload = payload
+                self.digest_payload_keys = list(payload)
+                self.calls.append("call-confirmation-digest")
+            elif event == "return":
+                self.digest_result = value
+                self.calls.append("return-confirmation-digest")
+            return True
+        if code is self.confirm and event == "return":
+            self._record_confirmation(value, resolved, frame.f_locals)
+            self.calls.append("return-bootstrap-confirmation")
+            raise _BootstrapConfirmationReturned
+        return False
+
+    def _record_confirmation(self, value: Any, resolved: Any, local: dict) -> None:
+        plan = resolved.plan
+        fields = {
+            "confirmation_api_version": "io.tobkiri.defaults-confirmation.v1",
+            "operation_id": "defaults.activate",
+            "profile_id": local["profile_id"],
+            "catalog_revision": resolved.profile["catalog_revision"],
+            "profile_revision": plan["profile_revision"],
+            "plan_digest": plan["plan_digest"],
+            "authority_snapshot_digest": local["authority_snapshot_digest"],
+            "security_epoch": local["security_epoch"],
+            "base": plan["base"],
+            "shell": plan["shell"],
+            "bindings": plan["bindings"],
+        }
+        digest = self.digest(fields)
+        keys = [*fields, "confirmation_digest"]
+        if (
+            type(value) is not dict or list(value) != keys
+            or value != {**fields, "confirmation_digest": digest}
+            or self.base_confirmation is not self.digest_payload
+            or self.digest_payload_keys != list(fields)
+            or value is self.base_confirmation
+            or self.digest_result != digest
+            or any(value[key] is fields[key] for key in ("base", "shell", "bindings"))
+            or any(
+                result is source
+                for result, source in zip(value["bindings"], plan["bindings"])
+            )
+        ):
+            raise AssertionError("original confirmation document changed")
+        # The full ordered bindings are bound by both canonical digests.
+        self.expected = {
+            "outcome": "confirmed",
+            "keys": keys,
+            "confirmation": {
+                key: item for key, item in value.items() if key != "bindings"
+            },
+            "bindings_count": len(value["bindings"]),
+            "bindings_digest": self.digest(value["bindings"]),
+        }
+
+    def check(self) -> None:
+        if self.calls != [
+            "call-inactive-predecessor", "return-inactive-predecessor-none",
+            "call-bootstrap-confirmation", "call-confirmation-builder",
+            "call-confirmation-digest", "return-confirmation-digest",
+            "return-confirmation-builder", "return-bootstrap-confirmation",
+        ] or not self.expected:
+            raise AssertionError(("confirmation call order changed", self.calls))
 
 
 def _observe(
@@ -477,9 +709,16 @@ def _observe(
     calls: list[list[str]] = []
     reads: list[dict] = []
     active = False
+    confirmation = (
+        _ConfirmationObservation(runtime, user_data, port)
+        if case == CONFIRMATION_CASE else None
+    )
     predecessor = (
-        _PredecessorObservation(runtime, user_data, corrupt=case == PREDECESSOR_CASES[1])
-        if case in PREDECESSOR_CASES else None
+        _PredecessorObservation(
+            runtime, user_data, corrupt=case == PREDECESSOR_CASES[1],
+            continue_review=confirmation is not None,
+        )
+        if case in PREDECESSOR_CASES or confirmation is not None else None
     )
     composition = case in COMPOSITION_CASES or predecessor is not None
     verified = False
@@ -503,6 +742,8 @@ def _observe(
         if event == "call":
             frame.f_trace_lines = False
         if predecessor is not None and predecessor.trace(frame, event, value, result):
+            return trace
+        if confirmation is not None and confirmation.trace(frame, event, value, result):
             return trace
         if event == "call":
             if composition and code is resolve_port:
@@ -713,6 +954,9 @@ def _observe(
             outcome = {"outcome": "resolved", **facts}
         except _BeforeInactivePredecessor:
             outcome = {"outcome": "no-predecessor"}
+        except _BootstrapConfirmationReturned:
+            assert confirmation is not None
+            outcome = confirmation.expected
         except Exception as error:
             if predecessor is not None:
                 if error is not predecessor.error:
@@ -736,7 +980,7 @@ def _observe(
         resolved = {"outcome": "resolved", **facts}
         _check("selected-shell", variant, tree_files, calls, reads, {"outcome": "verified"})
         _check_composition(case, composition_calls, resolve_inputs, resolved)
-        return {
+        row = {
             "case": case,
             "calls": predecessor.calls,
             "composition_calls": composition_calls,
@@ -744,6 +988,15 @@ def _observe(
             "files_after": predecessor.check(outcome),
             "expected": outcome,
         }
+        if confirmation is not None:
+            confirmation.check()
+            row.update(
+                calls=[*predecessor.calls, *confirmation.calls],
+                path_checks=confirmation.path_checks,
+                resolved_identity=facts["identity"],
+                argument_identity=confirmation.argument_identity,
+            )
+        return row
     if not active or user_data.exists():
         raise AssertionError("Shell reference missed the original call or wrote user state")
     if composition:
@@ -940,7 +1193,7 @@ def _check_entrypoint(
 
 
 def observe_shell(original: Path, runtime: Path, output: Path) -> None:
-    """Observe the selected Shell, full Pack return, and first predecessor reads."""
+    """Observe Shell IO and Pack resolution through the fresh confirmation return."""
     variant, tree_files = _package(original, runtime, output)
     rows = [
         _observe(case, runtime, output / case / "user-data", variant, tree_files)
@@ -954,9 +1207,14 @@ def observe_shell(original: Path, runtime: Path, output: Path) -> None:
         _observe(case, runtime, output / case / "user-data", variant, tree_files)
         for case in PREDECESSOR_CASES
     ]
+    confirmation = _observe(
+        CONFIRMATION_CASE, runtime, output / CONFIRMATION_CASE / "user-data",
+        variant, tree_files,
+    )
     write_json(output / "shell.json", {
         "format": FORMAT, "original_head": ORIGINAL_HEAD,
         "variant": variant, "cases": rows, "composition_cases": composition,
         "predecessor_cases": predecessors,
+        "confirmation_cases": [confirmation],
         "header_fixture": True, "qualification": False, "production_enabled": False,
     })
