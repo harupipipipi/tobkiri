@@ -1,8 +1,8 @@
 """Observe pinned original Setup through the bundled source Profile lookup.
 
 The CI-only fixture changes disk or environment at the real caller boundary.
-Original Setup, Pack, catalog, and Authority code runs through the second ID
-validation and, for the two lookup cases, observes the real catalog result.
+Original Setup, Pack, catalog, and Authority code runs through the second ID.
+Additional cases observe the live catalog result and the static edge bindings.
 """
 
 from __future__ import annotations
@@ -37,7 +37,11 @@ AUTHORITY = Path("authority/v4.sqlite3")
 GUARD = AUTHORITY.with_name(".v4.sqlite3.lifecycle.lock")
 EPOCH_REASON = "original setup resolver prefix fixture"
 MISSING_PROFILE_ID = "missing-fixture-profile"
-LOOKUP_CASES = ("source-profile-present", "source-profile-missing")
+REQUESTED_BINDINGS_CASE = "source-profile-requested-bindings"
+LOOKUP_CASES = ("source-profile-present", "source-profile-missing", REQUESTED_BINDINGS_CASE)
+REQUESTED_EDGE_FIELDS = (
+    "caller_function_id", "target_provider_id", "contract_id", "operation_id",
+)
 CASES = (
     "packaged-genesis",
     "second-user-data-existing-authority",
@@ -78,7 +82,7 @@ def _source_hashes(runtime: Path) -> dict[str, str]:
     }
 
 
-def _lookup_lines(path: Path) -> tuple[int, int]:
+def _resolver_lines(path: Path) -> tuple[int, int, int]:
     tree = ast.parse(path.read_bytes(), filename=str(path))
     resolver = next(
         node
@@ -99,7 +103,14 @@ def _lookup_lines(path: Path) -> tuple[int, int]:
     guard = resolver.body[index + 1]
     if not isinstance(guard, ast.If) or ast.unparse(guard.test) != "source_profile is None":
         raise AssertionError("original Profile lookup guard changed")
-    return resolver.body[index].lineno, guard.lineno
+    [dynamic_edges] = [
+        node.lineno
+        for node in resolver.body[index + 2:]
+        if isinstance(node, ast.For)
+        and ast.unparse(node.iter)
+        == "runtime.dynamic_profile_edges(catalog, profile_id, additional_pack_ids)"
+    ]
+    return resolver.body[index].lineno, guard.lineno, dynamic_edges
 
 
 def _state(roots: dict[str, Path]) -> dict[str, dict]:
@@ -174,7 +185,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     capture_path = runtime / "core_runtime/bootstrap/profile_capture.py"
     if Path(resolver.co_filename).resolve() != capture_path:
         raise AssertionError("resolver was not imported from the staged original")
-    lookup, lookup_guard = _lookup_lines(capture_path)
+    lookup, lookup_guard, dynamic_edges = _resolver_lines(capture_path)
     root_get = capture._user_data_root.__code__
     recovery = capture._recover_bootstrap_publication.__code__
     journal_exists = ProfilePublicationJournal.exists.__code__
@@ -315,7 +326,9 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 facts["source_profile"] = {"type": "NoneType"}
                 log.append("source-profile-missing")
                 return trace  # Allow the original guard and denial factory to run.
-            if case != "source-profile-present" or type(profile) is not dict:
+            if case not in {"source-profile-present", REQUESTED_BINDINGS_CASE} or (
+                type(profile) is not dict
+            ):
                 raise AssertionError("unexpected original source Profile result")
             if profile is not captured[0].profiles[local["profile_id"]]:
                 raise AssertionError("original lookup did not retain its source alias")
@@ -325,6 +338,26 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 "definition_digest": canonical_digest(profile),
             }
             log.append("source-profile-found")
+            if case == REQUESTED_BINDINGS_CASE:
+                return trace
+            raise _SourceProfileBoundary
+        if event == "line" and code is resolver and frame.f_lineno == dynamic_edges:
+            if case != REQUESTED_BINDINGS_CASE:
+                raise AssertionError("unexpected entry into the static binding observation")
+            local = frame.f_locals
+            bindings = local["authority_bindings"]
+            edges = local["source_profile"]["requested_edges"]
+            if type(bindings) is not dict or type(edges) is not list:
+                raise AssertionError("original requested-edge values changed their type")
+            facts["requested_bindings"] = {
+                "source_edge_count": len(edges),
+                "source_edge_keys": [
+                    "|".join(str(edge[field]) for field in REQUESTED_EDGE_FIELDS)
+                    for edge in edges
+                ],
+                "ordered_bindings": [[key, value] for key, value in bindings.items()],
+            }
+            log.append("static-edges-bound")
             raise _SourceProfileBoundary
         if event != "return" or value is None and code is not context_close:
             return trace
@@ -396,11 +429,10 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
             sys.settrace(trace)
             capture.prepare_bootstrap_profile_review()
         except _SourceProfileBoundary:
-            outcome = {
-                "outcome": "source-profile-found"
-                if case == "source-profile-present"
-                else "before-source-profile-lookup"
-            }
+            outcome = {"outcome": {
+                "source-profile-present": "source-profile-found",
+                REQUESTED_BINDINGS_CASE: "static-edges-bound",
+            }.get(case, "before-source-profile-lookup")}
         except Exception as error:
             outcome = {"outcome": "error", "error": error_graph(error, runtime)}
             if case == "source-profile-missing":
@@ -512,11 +544,13 @@ def _check(
         resolver += ["genesis-snapshot"]
     success = not (directory or corrupt or manifest_error or unbound or missing_lock)
     lookup_missing = case == "source-profile-missing"
-    lookup_present = case == "source-profile-present"
+    lookup_present = case in {"source-profile-present", REQUESTED_BINDINGS_CASE}
     if success:
         resolver += [*profile_id, "before-source-profile-lookup"]
     if lookup_present:
         resolver.append("source-profile-found")
+    if case == REQUESTED_BINDINGS_CASE:
+        resolver.append("static-edges-bound")
     if lookup_missing:
         resolver.append("source-profile-missing")
     expected_ids = ["defaults"]
@@ -637,10 +671,15 @@ def _check(
             }:
                 raise AssertionError((case, outcome, facts))
         elif lookup_present:
-            if outcome != {"outcome": "source-profile-found"} or not facts[
-                "source_profile"
-            ]["catalog_alias"]:
+            wanted = (
+                "static-edges-bound"
+                if case == REQUESTED_BINDINGS_CASE
+                else "source-profile-found"
+            )
+            if outcome != {"outcome": wanted} or not facts["source_profile"]["catalog_alias"]:
                 raise AssertionError((case, outcome, facts))
+            if case == REQUESTED_BINDINGS_CASE:
+                _check_static_bindings(facts["requested_bindings"], snapshot)
         elif outcome != {"outcome": "before-source-profile-lookup"}:
             raise AssertionError((case, outcome, facts))
         return
@@ -692,6 +731,25 @@ def _check(
         raise AssertionError((case, outcome))
 
 
+def _check_static_bindings(observed: dict, snapshot: str) -> None:
+    keys = observed["source_edge_keys"]
+    if len(keys) != 310 or observed["source_edge_count"] != len(keys):
+        raise AssertionError("pinned original Profile requested-edge count changed")
+    expected = []
+    for key in dict.fromkeys(keys):
+        document = {
+            "edge": key,
+            "profile_authority_snapshot_digest": snapshot,
+            "schema": "io.tobkiri.profile-authority-edge.v1",
+        }
+        preimage = json.dumps(
+            document, sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+        ).encode("utf-8")
+        expected.append([key, "authority-ref:" + hashlib.sha256(preimage).hexdigest()])
+    if observed["ordered_bindings"] != expected:
+        raise AssertionError("actual static authority bindings changed their order or bytes")
+
+
 def prepare(original: Path, output: Path) -> None:
     """Stage the pinned original once and retain only bounded observation metadata."""
     check_original(original)
@@ -731,8 +789,8 @@ def prepare(original: Path, output: Path) -> None:
             "qualification": False,
             "production_enabled": False,
             "scope": "fresh bundled candidate and original resolver prefix through "
-            "second canonical Profile ID; two cases observe the actual source alias "
-            "or its denial before requested-edge binding",
+            "second canonical Profile ID; additional cases observe the source alias, "
+            "its denial, or static requested-edge bindings before dynamic edges",
         },
     )
 
