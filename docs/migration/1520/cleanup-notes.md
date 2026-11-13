@@ -2873,6 +2873,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既に戻したRegistry全体のsnapshotを再導入せず、実Registry呼び出しと例外を保ったまま
   無駄な実処理を減らせる箇所を選ぶ。計測なしの同じ予算で完走を別途確認する。
   [参照解決の計測JSON](https://github.com/harupipipipi/tobkiri/actions/runs/43449073611/artifacts/14049338372)
+- Astra highへの設計照会に沿い、`e5cf7067a` は参照先のfragmentが組み込みstrのときだけ、
+  PythonのUnicode長と先頭コードポイントで空・pointer・anchorを選ぶ。UTF-8変換を
+  介さず、元のfragmentオブジェクトをそのまま後続へ渡す。サブクラスのstartswith、
+  戻り値の真偽、fragmentの真偽は元の順と短絡を保つ。Registryと取得結果は変更しない。
+  原本との比較に孤立surrogate、サブクラスの短絡・真偽・例外を4件追加した。
+  [初回比較 43451376680](https://github.com/harupipipipi/tobkiri/actions/runs/43451376680)
+  は個々の比較後の総件数が29のまま停止した。`87bc0d3a3` で33件に揃えて
+  [原本比較 43451746013](https://github.com/harupipipipi/tobkiri/actions/runs/43451746013)を再実行。
+  [燃料計測 43451408267](https://github.com/harupipipipi/tobkiri/actions/runs/43451408267)で効果を確認する。
   無計測の[CI 43446170342](https://github.com/harupipipipi/tobkiri/actions/runs/43446170342)
   はcoldと全カタログの両方で元の燃料を使い切った。
 
