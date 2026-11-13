@@ -531,6 +531,17 @@ class Dispatcher:
             return self._result(
                 value, identity_origin="resolver-source-lookup-returned",
             )
+        if frame.get("format") == PREFIX + "resolver-static-edges.v1":
+            registry = state.registry
+            if (set(frame) != {"format", "scope", "source_profile"}
+                    or frame["scope"] != registry.scope.wire()):
+                raise InvalidFrame("invalid fixed resolver static edge frame")
+            root = registry.reference(frame["source_profile"])
+            source = registry._resolver_static_source(root)
+            return self._apply_original(
+                lambda: registry._describe_resolver_static_edges(root, source),
+                caller="resolver-static-edges",
+            )
         if frame.get("format") == PREFIX + "catalog-manifest-parse.v1":
             if (set(frame) != {"format", "scope", "bytes"}
                     or frame["scope"] != state.registry.scope.wire()

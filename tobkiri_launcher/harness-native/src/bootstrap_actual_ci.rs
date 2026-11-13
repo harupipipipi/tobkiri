@@ -205,6 +205,33 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     ensure!(
         rejection.to_string() == "source Profile lookup is outside the fixed Review reachpoint"
     );
+    let static_edges = CoreValue::object_from(
+        [
+            Ok((
+                "format",
+                CoreValue::string("io.tobkiri.native-resolver-static-edges.v1", &budget)?,
+            )),
+            Ok((
+                "scope",
+                value.get_key("scope").context("actual scope missing")?,
+            )),
+            Ok((
+                "source_profile",
+                value.get_key("root").context("actual root missing")?,
+            )),
+        ]
+        .into_iter(),
+        &budget,
+    )?
+    .encode_guest(&budget)?;
+    let rejection = runtime
+        .describe_value(&static_edges)
+        .await
+        .err()
+        .context("ordinary describe must reject the static edges frame at the Host")?;
+    ensure!(
+        rejection.to_string() == "static Profile edges are outside the fixed Review reachpoint"
+    );
     ensure!(
         runtime.inspection_attempts() == init_inspections,
         "pure original method attempted native IO"

@@ -5,7 +5,7 @@ use crate::{
     OriginalAuthorityAdmission, OriginalAuthorityCause, OriginalAuthorityCleanup,
     OriginalAuthorityCloseReceipt, OriginalAuthorityError, OriginalAuthorityOwner,
 };
-use tobkiri_canon::CoreBuffer;
+use tobkiri_canon::{CoreBuffer, CoreValue};
 use tobkiri_gate::NativeSetupInvocation;
 
 /// Borrowed original Kernel launch inputs at the fixed catalog reachpoint.
@@ -51,7 +51,7 @@ pub enum BootstrapReviewReachpoint {
     BootstrapProfileIdNotBound,
     HostProfileCatalogNotBound,
     CatalogSourceNotBound,
-    ResolveRequestedEdgesNotBound,
+    ResolveDynamicEdgesNotBound,
     ActiveCandidateAuthorityNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
@@ -129,9 +129,11 @@ pub(crate) struct ActualCustody {
     pub(crate) catalog: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog_input: Option<CoreBuffer>,
     pub(crate) resolver_source_profile: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) resolver_static_rows: Option<CoreBuffer>,
+    pub(crate) _resolver_static_bindings: Option<CoreValue>,
     pub(crate) _successor_candidate:
         Option<crate::original_authority::definitions::SuccessorCandidate>,
-    pub(crate) _resolver_authority: Option<crate::original_authority::ResolverAuthority>,
+    pub(crate) resolver_authority: Option<crate::original_authority::ResolverAuthority>,
 }
 
 #[derive(Default)]

@@ -19,6 +19,10 @@ import ordered_json_v2 as wire
 _INPUT = "io.tobkiri.native-value-input.v1"
 _VIEW = "io.tobkiri.native-value-view.v1"
 _IDENTITY_VIEW = "io.tobkiri.native-bootstrap-identity-view.v1"
+_STATIC_EDGES_RESULT = "io.tobkiri.native-resolver-static-edges-result.v1"
+_EDGE_FIELDS = ("caller_function_id", "target_provider_id", "contract_id", "operation_id")
+_NONITERABLE_JSON = (type(None), bool, int, float)
+_NONOBJECT_JSON = (*_NONITERABLE_JSON, str, list)
 _U64 = (1 << 64) - 1
 _U32 = (1 << 32) - 1
 _HEX = re.compile(r"^(?:0|[1-9a-f][0-9a-f]*)$")
@@ -160,6 +164,7 @@ class Registry:
         self._resolver_stage = "awaiting-catalog"
         self._resolver_catalog: int | None = None
         self._resolver_profile_id: int | None = None
+        self._resolver_source: int | None = None
         self._next = 1
         self._retired = False
 
@@ -313,6 +318,8 @@ class Registry:
             self._bootstrap_identity.pop(number, None)
             if number == self._resolver_catalog or number == self._resolver_profile_id:
                 self._clear_resolver_inputs()
+            elif number == self._resolver_source:
+                self._resolver_source = None
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -328,6 +335,7 @@ class Registry:
         self._resolver_stage = "closed"
         self._resolver_catalog = None
         self._resolver_profile_id = None
+        self._resolver_source = None
 
     def _begin_resolver_getter(self) -> None:
         if self._resolver_stage == "awaiting-first-getter":
@@ -352,6 +360,9 @@ class Registry:
             elif self._resolver_stage == "second-getter-pending":
                 self._resolver_profile_id = reference.object_id
                 self._resolver_stage = "ready"
+        elif origin == "resolver-source-lookup-returned":
+            if self._resolver_stage == "ready" and type(self.borrow(reference)) is dict:
+                self._resolver_source = reference.object_id
 
     def _resolver_source_inputs(
         self, catalog_ref: Reference, profile_id_ref: Reference,
@@ -369,7 +380,65 @@ class Registry:
                 or record is None or record.cls is not type(catalog)
                 or record.kind != "bundled-catalog" or type(profile_id) is not str):
             raise InvalidReference("reference has no fixed resolver source origin")
+        # Replacing an authorized lookup revokes the prior source even if the
+        # actual lookup throws, returns None, or cannot serialize its result.
+        self._resolver_source = None
         return catalog, profile_id
+
+    def _resolver_static_source(self, root: Reference) -> dict[str, Any]:
+        source = self.borrow(root, dict)
+        catalog, profile_id = self._resolver_catalog, self._resolver_profile_id
+        if (self._resolver_stage != "ready" or root.object_id != self._resolver_source
+                or self._bootstrap_identity.get(root.object_id)
+                != "resolver-source-lookup-returned"
+                or catalog is None or self._bootstrap_identity.get(catalog)
+                != "catalog-returned"
+                or profile_id is None or self._bootstrap_identity.get(profile_id)
+                != "getter-returned"):
+            raise InvalidReference("reference has no current resolver static edge origin")
+        return source
+
+    def _describe_resolver_static_edges(
+        self, root: Reference, source: dict[str, Any],
+    ) -> str:
+        # The pinned caller subscripts the actual source and then each edge.
+        # Preserve errors from the exact builtin operations without invoking
+        # hooks on types that cannot occur in a strictly loaded JSON profile.
+        edges = source["requested_edges"]
+        if type(edges) is not list:
+            if any(type(edges) is kind for kind in _NONITERABLE_JSON):
+                iter(edges)  # Actual TypeError for a noniterable JSON scalar.
+            raise UnsupportedValue("original requested edges are outside the fixed ABI")
+        response = bytearray(wire.dumps({
+            "format": _STATIC_EDGES_RESULT, "scope": self.scope.wire(),
+            "source_profile": root.wire(),
+        }).encode("utf-8"))
+        response[-1:] = b',"rows":['
+        # Encode one row at a time, using the existing frame byte limit. The
+        # observation owns no refs and never materializes a second edge graph.
+        for index, edge in enumerate(edges):
+            if type(edge) is not dict:
+                if any(type(edge) is kind for kind in _NONOBJECT_JSON):
+                    edge[_EDGE_FIELDS[0]]  # Actual TypeError for a builtin non-object row.
+                raise UnsupportedValue("original requested edge is outside the fixed ABI")
+            row = []
+            for field in _EDGE_FIELDS:
+                value = edge[field]
+                if type(value) is not str:
+                    raise UnsupportedValue("original edge field is outside the fixed ABI")
+                row.append(value)
+            try:
+                encoded = wire.dumps(row).encode("utf-8")
+            except wire.OrderedJSONError:
+                raise UnsupportedValue("original edge row cannot be encoded") from None
+            separator = bool(index)
+            if len(response) + len(encoded) + separator + 2 > wire.MAX_BYTES:
+                raise UnsupportedValue("original edge result exceeds the transport frame")
+            if separator:
+                response.extend(b",")
+            response.extend(encoded)
+        response.extend(b"]}")
+        return response.decode("utf-8")
 
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
@@ -414,6 +483,7 @@ class Registry:
             "catalog-returned", "catalog-raised",
             "manifest-returned", "manifest-raised",
             "resolver-source-lookup-returned", "resolver-source-lookup-raised",
+            "resolver-static-edges-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

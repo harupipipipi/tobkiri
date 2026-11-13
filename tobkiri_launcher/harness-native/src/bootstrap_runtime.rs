@@ -38,6 +38,7 @@ const REVIEW_BUNDLE_ROOT: u8 = 10;
 const CATALOG_LOAD: u8 = 11;
 const CATALOG_PARSE: u8 = 12;
 const RESOLVER_SOURCE_LOOKUP: u8 = 13;
+const RESOLVER_STATIC_EDGES: u8 = 14;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -55,6 +56,8 @@ pub use identity_observation::{
 };
 #[path = "bootstrap_catalog.rs"]
 mod catalog;
+#[path = "bootstrap_resolver_edges.rs"]
+mod resolver_edges;
 #[path = "bootstrap_review_continuation.rs"]
 mod review_continuation;
 #[cfg(all(
@@ -150,6 +153,7 @@ impl CiRetiredCall {
             CATALOG_LOAD => "catalog-load",
             CATALOG_PARSE => "catalog-manifest-parse",
             RESOLVER_SOURCE_LOOKUP => "resolver-source-lookup",
+            RESOLVER_STATIC_EDGES => "resolver-static-edges",
             _ => "unknown",
         }
     }
@@ -1153,6 +1157,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                         if phase != RESOLVER_SOURCE_LOOKUP =>
                     {
                         bail!("source Profile lookup is outside the fixed Review reachpoint");
+                    }
+                    Some("io.tobkiri.native-resolver-static-edges.v1")
+                        if phase != RESOLVER_STATIC_EDGES =>
+                    {
+                        bail!("static Profile edges are outside the fixed Review reachpoint");
                     }
                     _ => {}
                 },

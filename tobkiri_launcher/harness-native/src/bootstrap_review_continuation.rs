@@ -257,7 +257,7 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         bundle_lock,
     );
     match snapshot {
-        Ok(Some(snapshot)) => review.actual._resolver_authority = Some(snapshot),
+        Ok(Some(snapshot)) => review.actual.resolver_authority = Some(snapshot),
         Ok(None) => {
             return Ok(Err(denied(
                 review,
@@ -273,7 +273,10 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     let failure = match validated_identity(review, pack, caller).await? {
         // The original validator returns the same exact string. Keep that
         // getter ref, and let the original catalog do its live mapping lookup.
-        Ok(_) => super::catalog::resolver_source_profile(review, pack).await?,
+        Ok(_) => match super::catalog::resolver_source_profile(review, pack).await? {
+            Ok(()) => super::resolver_edges::bind_static(review, pack).await?,
+            Err(error) => error,
+        },
         Err(error) => error,
     };
     Ok(Err(failure))

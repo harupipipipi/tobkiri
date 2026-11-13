@@ -351,6 +351,10 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 raise AssertionError("original requested-edge values changed their type")
             facts["requested_bindings"] = {
                 "source_edge_count": len(edges),
+                "source_edge_fields": [
+                    [str(edge[field]) for field in REQUESTED_EDGE_FIELDS]
+                    for edge in edges
+                ],
                 "source_edge_keys": [
                     "|".join(str(edge[field]) for field in REQUESTED_EDGE_FIELDS)
                     for edge in edges
@@ -733,7 +737,14 @@ def _check(
 
 def _check_static_bindings(observed: dict, snapshot: str) -> None:
     keys = observed["source_edge_keys"]
-    if len(keys) != 310 or observed["source_edge_count"] != len(keys):
+    fields = observed["source_edge_fields"]
+    if (
+        len(keys) != 310
+        or observed["source_edge_count"] != len(keys)
+        or len(fields) != len(keys)
+        or any(len(row) != 4 for row in fields)
+        or keys != ["|".join(row) for row in fields]
+    ):
         raise AssertionError("pinned original Profile requested-edge count changed")
     expected = []
     for key in dict.fromkeys(keys):

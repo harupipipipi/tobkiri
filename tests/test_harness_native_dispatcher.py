@@ -749,7 +749,7 @@ class IdentityObservationTransportTests(unittest.TestCase):
 
 
 class ResolverSourceLookupTransportTests(unittest.TestCase):
-    """Fixed resolver frame, live Python lookup and issued input provenance."""
+    """Fixed resolver observations, live Python lookup and issued provenance."""
 
     class Catalog:
         def __init__(self) -> None:
@@ -767,8 +767,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.runtime,
             (RecordType("native-path", NativePath, native_binding=True),
              RecordType("bundled-catalog", self.Catalog, ("profiles",)),
-             RecordType("key-error", KeyError)),
-            (KeyError,),
+             RecordType("key-error", KeyError), RecordType("type-error", TypeError)),
+            (KeyError, TypeError),
         ))
         self.dispatcher.init(self.frame("init"))
         self.registry = self.dispatcher._current().registry
@@ -810,6 +810,18 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         return wire.loads(self.dispatcher.describe_value(self.frame(
             "bootstrap-call-describe", root=packet["root"],
         )))
+
+    def static_edges(self, source_profile: dict, **fields: object) -> dict:
+        return wire.loads(self.dispatcher.describe_value(self.frame(
+            "resolver-static-edges", source_profile=source_profile, **fields,
+        )))
+
+    def source(self, profile: dict) -> tuple[dict, dict, dict]:
+        self.runtime.catalog.profiles["fixture-id"] = profile
+        catalog = self.load()
+        self.getter("first-id")
+        profile_id = self.getter("fixture-id")
+        return catalog, profile_id, self.lookup(catalog, profile_id)["root"]
 
     def test_uses_second_exact_input_and_preserves_live_aliases(self) -> None:
         first_value = "".join(["fixture", "-id"])
@@ -925,6 +937,144 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertEqual(view["kind"], "key-error")
         with self.assertRaises(InvalidReference):
             self.registry.describe_bootstrap_identity(ref)
+
+    def test_static_edges_keep_row_order_duplicates_and_real_aliases(self) -> None:
+        edge = {"operation_id": "read", "contract_id": "contract.v1",
+                "target_provider_id": "provider", "caller_function_id": "caller",
+                "untouched": object()}
+        second = {**edge, "operation_id": "write"}
+        edges = [second, edge, second]
+        profile = {"requested_edges": edges, "untouched": object()}
+        alias = self.registry.retain(profile).wire()
+        alien = self.registry.retain(dict(profile)).wire()
+        with self.assertRaises(InvalidReference):
+            self.static_edges(alias)
+        catalog, profile_id, source = self.source(profile)
+        self.assertEqual(alias, source)
+        before = dict(self.registry._objects)
+        with self.assertRaises(InvalidReference):
+            self.static_edges(alien)
+        with self.assertRaises(InvalidReference):
+            self.static_edges({**source, "scope": ["1", "2", "9", "4"]})
+        with self.assertRaises(InvalidFrame):
+            self.static_edges(source, field="untouched")
+        self.assertEqual(self.static_edges(source), {
+            "format": PREFIX + "resolver-static-edges-result.v1",
+            "scope": self.scope.wire(), "source_profile": alias,
+            "rows": [["caller", "provider", "contract.v1", operation]
+                     for operation in ("write", "read", "write")],
+        })
+        self.assertEqual(set(self.registry._objects), set(before))
+        for number, original in before.items():
+            self.assertIs(self.registry._objects[number], original)
+        self.assertIs(self.runtime.catalog.profiles["fixture-id"], profile)
+        self.assertIs(profile["requested_edges"], edges)
+        self.assertIs(edges[0], second)
+        self.assertIs(self.registry.borrow(self.registry.reference(catalog)),
+                      self.runtime.catalog)
+        self.assertIs(self.registry.borrow(self.registry.reference(profile_id)),
+                      self.runtime.value)
+
+    def test_static_edges_reject_replaced_and_released_sources(self) -> None:
+        profile = {"requested_edges": []}
+        catalog, profile_id, source = self.source(profile)
+        self.assertEqual(self.static_edges(source)["rows"], [])
+        replacement_profile = {"requested_edges": []}
+        self.runtime.catalog.profiles["fixture-id"] = replacement_profile
+        replacement = self.lookup(catalog, profile_id)["root"]
+        with self.assertRaises(InvalidReference):
+            self.static_edges(source)
+        self.assertEqual(self.static_edges(replacement)["rows"], [])
+        self.dispatcher.release_values(self.frame("values-release", refs=[replacement]))
+        with self.assertRaises(InvalidReference):
+            self.static_edges(replacement)
+        reissued = self.registry.retain(replacement_profile).wire()
+        self.assertNotEqual(reissued, replacement)
+        with self.assertRaises(InvalidReference):
+            self.static_edges(reissued)
+        latest = self.lookup(catalog, profile_id)["root"]
+        self.assertEqual(latest, reissued)
+        self.dispatcher.release_values(self.frame("values-release", refs=[profile_id]))
+        with self.assertRaises(InvalidReference):
+            self.static_edges(latest)
+
+    def test_static_edges_enforce_the_transport_utf8_byte_limit(self) -> None:
+        edge = {"caller_function_id": "é\"\\\n", "target_provider_id": "provider",
+                "contract_id": "contract.v1", "operation_id": "read"}
+        _, _, source = self.source({"requested_edges": [edge, edge]})
+        request = self.frame("resolver-static-edges", source_profile=source)
+        response = self.dispatcher.describe_value(request)
+        expected = [[*edge.values()], [*edge.values()]]
+        self.assertEqual(wire.loads(response)["rows"], expected)
+        size = len(response.encode("utf-8"))
+        with patch.object(wire, "MAX_BYTES", size):
+            self.assertEqual(self.dispatcher.describe_value(request), response)
+        with patch.object(wire, "MAX_BYTES", size - 1):
+            with self.assertRaises(UnsupportedValue):
+                self.dispatcher.describe_value(request)
+
+    def test_throwing_replacement_revokes_static_source(self) -> None:
+        catalog, profile_id, source = self.source({"requested_edges": []})
+
+        class FailingProfiles(dict):
+            def get(self, key: str) -> object:
+                raise KeyError(key)
+
+        self.runtime.catalog.profiles = FailingProfiles()
+        with self.assertRaises(MethodRaised):
+            self.lookup(catalog, profile_id)
+        with self.assertRaises(InvalidReference):
+            self.static_edges(source)
+
+    def test_static_edges_keep_actual_key_and_type_failures(self) -> None:
+        profile = {}
+        _, _, source = self.source(profile)
+        for field, edges, expected in (
+            (None, None, KeyError),
+            ("requested_edges", [{}], KeyError),
+            ("requested_edges", None, TypeError),
+            ("requested_edges", [None], TypeError),
+        ):
+            with self.subTest(field=field, edges=edges):
+                if field is not None:
+                    profile[field] = edges
+                with self.assertRaises(MethodRaised) as raised:
+                    self.static_edges(source)
+                packet = wire.loads(raised.exception.details)
+                root = self.registry.reference(packet["root"])
+                original = self.registry.borrow(root)
+                self.assertIs(type(original), expected)
+                if expected is KeyError:
+                    self.assertEqual(original.args, (
+                        "requested_edges" if field is None else "caller_function_id",
+                    ))
+                self.assertNotIn(str(original), str(raised.exception))
+                self.assertEqual(self.view(packet)["origin"], "resolver-static-edges-raised")
+                with self.assertRaises(InvalidReference):
+                    self.registry.describe_bootstrap_identity(root)
+
+    def test_static_edges_refuse_outside_abi_without_hooks(self) -> None:
+        class ForeignList(list):
+            def __iter__(self):
+                raise AssertionError("foreign list iteration")
+
+        class ForeignDict(dict):
+            def __getitem__(self, key):
+                raise AssertionError("foreign row indexing")
+
+        class ForeignString(str):
+            def __str__(self):
+                raise AssertionError("foreign field coercion")
+
+        profile = {"requested_edges": []}
+        _, _, source = self.source(profile)
+        for edges in (ForeignList(), [ForeignDict()],
+                      [{"caller_function_id": ForeignString("caller")}],
+                      [{"caller_function_id": 42}]):
+            with self.subTest(value_type=type(edges)):
+                profile["requested_edges"] = edges
+                with self.assertRaises(UnsupportedValue):
+                    self.static_edges(source)
 
 
 class DeniedFactoryTransportTests(unittest.TestCase):

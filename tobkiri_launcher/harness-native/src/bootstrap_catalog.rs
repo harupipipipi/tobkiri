@@ -163,7 +163,7 @@ pub(super) async fn resolver_source_profile<
 >(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> Result<BootstrapReviewFailure> {
+) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
@@ -188,7 +188,10 @@ pub(super) async fn resolver_source_profile<
     );
     caller.check(review, pack)?;
     if let Some(failure) = take_failure(&mut review.actual.resolver_source_profile) {
-        return handle_call_failure(review, pack, caller, failure, false).await;
+        return Ok(Err(handle_call_failure(
+            review, pack, caller, failure, false,
+        )
+        .await?));
     }
     match returned(
         review
@@ -199,19 +202,15 @@ pub(super) async fn resolver_source_profile<
     )?
     .builtin_kind()
     {
-        BootstrapBuiltinKind::None => {
-            review_continuation::denied(
-                review,
-                pack,
-                caller,
-                "bundled setup Profile is missing",
-                BootstrapDeniedRaise::Plain,
-            )
-            .await
-        }
-        BootstrapBuiltinKind::Dict => Ok(BootstrapReviewFailure::NotBound(
-            BootstrapReviewReachpoint::ResolveRequestedEdgesNotBound,
-        )),
+        BootstrapBuiltinKind::None => Ok(Err(review_continuation::denied(
+            review,
+            pack,
+            caller,
+            "bundled setup Profile is missing",
+            BootstrapDeniedRaise::Plain,
+        )
+        .await?)),
+        BootstrapBuiltinKind::Dict => Ok(Ok(())),
         _ => bail!("actual bundled Profile has an unrepresented concrete type"),
     }
 }
@@ -221,28 +220,39 @@ fn resolver_source_lookup_call<S: BootstrapInputOwner>(
     catalog: &BootstrapIdentityValue,
     profile_id: &BootstrapIdentityValue,
 ) -> Result<CoreBuffer> {
-    let scope = CoreValue::parse_guest(pack.call.as_bytes(), pack.input_budget)?
-        .get_key("scope")
-        .context("call scope missing")?;
-    let root = |value: &BootstrapIdentityValue| -> Result<CoreValue> {
-        let packet = denied::result(
-            value.result(),
-            "io.tobkiri.native-value-result.v1",
-            &scope,
-            pack.input_budget,
-        )?;
-        let root = denied::field(&packet, "root")?;
-        denied::ownership(&packet, &root, false)?;
-        Ok(root)
-    };
+    let scope = actual_call_scope(pack)?;
     denied::frame(
         pack,
         "io.tobkiri.native-resolver-source-lookup.v1",
         [
-            ("catalog", root(catalog)?),
-            ("profile_id", root(profile_id)?),
+            ("catalog", result_root(pack, catalog, &scope)?),
+            ("profile_id", result_root(pack, profile_id, &scope)?),
         ],
     )
+}
+
+pub(super) fn actual_call_scope<S: BootstrapInputOwner>(
+    pack: &ReviewPackBorrow<'_, S>,
+) -> Result<CoreValue> {
+    CoreValue::parse_guest(pack.call.as_bytes(), pack.input_budget)?
+        .get_key("scope")
+        .context("call scope missing")
+}
+
+pub(super) fn result_root<S: BootstrapInputOwner>(
+    pack: &ReviewPackBorrow<'_, S>,
+    value: &BootstrapIdentityValue,
+    scope: &CoreValue,
+) -> Result<CoreValue> {
+    let packet = denied::result(
+        value.result(),
+        "io.tobkiri.native-value-result.v1",
+        scope,
+        pack.input_budget,
+    )?;
+    let root = denied::field(&packet, "root")?;
+    denied::ownership(&packet, &root, false)?;
+    Ok(root)
 }
 
 pub(super) async fn resolver_lock_digest<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
@@ -497,7 +507,7 @@ fn parent(resolved: &CoreBuffer, count: usize) -> Result<PathBuf> {
     }
     Ok(result)
 }
-fn returned(value: &BootstrapIdentityOutcome) -> Result<&BootstrapIdentityValue> {
+pub(super) fn returned(value: &BootstrapIdentityOutcome) -> Result<&BootstrapIdentityValue> {
     match value {
         BootstrapIdentityOutcome::Returned(value) => Ok(value),
         _ => bail!("actual fixed call did not return"),
@@ -511,7 +521,7 @@ fn take_failure(value: &mut Option<BootstrapIdentityOutcome>) -> Option<Bootstra
         value.take()
     }
 }
-async fn handle_call_failure<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+pub(super) async fn handle_call_failure<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,

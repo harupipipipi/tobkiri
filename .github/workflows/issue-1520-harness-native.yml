@@ -229,6 +229,14 @@ jobs:
           --log "$RUNNER_TEMP/harness-native-catalog-reader.log" --expected-passed 5 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           original_authority::io::publication::catalog::tests:: -- --test-threads=1 --nocapture
+      - name: Verify requested-edge order and original canonical reference bytes
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-resolver-edges.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::resolver_edges::tests::original_static_edge_bindings_keep_python_order_duplicates_and_canonical_bytes
+          -- --exact --test-threads=1 --nocapture
       - name: Checkout pinned original factory and identity references
         if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'catalog-schema-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         uses: actions/checkout@v4
@@ -490,6 +498,7 @@ jobs:
             ${{ runner.temp }}/harness-native-catalog-prefix.log*
             ${{ runner.temp }}/harness-native-catalog-funding.log*
             ${{ runner.temp }}/harness-native-catalog-reader.log*
+            ${{ runner.temp }}/harness-native-resolver-edges.log*
             ${{ runner.temp }}/original-catalog-prefix/summary.json
             ${{ runner.temp }}/original-catalog-prefix/actual-catalog-observations.json
             ${{ runner.temp }}/original-catalog-prefix/actual-catalog-schema-trace.json

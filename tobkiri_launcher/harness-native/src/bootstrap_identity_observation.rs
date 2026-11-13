@@ -187,6 +187,11 @@ pub(super) struct IdentityCallCustody {
     #[cfg(debug_assertions)]
     view_rejected: bool,
 }
+
+enum FixedCallOutput {
+    Identity(BootstrapIdentityOutcome),
+    StaticRows(CoreBuffer),
+}
 impl IdentityCallCustody {
     #[cfg(debug_assertions)]
     pub(super) fn view_rejected(&self) -> bool {
@@ -217,6 +222,28 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         input: &CoreBuffer,
         origin: &'static str,
     ) -> Result<BootstrapIdentityOutcome> {
+        match self.fixed_call(slot, input, origin).await? {
+            FixedCallOutput::Identity(outcome) => Ok(outcome),
+            FixedCallOutput::StaticRows(_) => bail!("unexpected static edge projection"),
+        }
+    }
+
+    pub(super) async fn observe_resolver_static_rows(
+        &mut self,
+        input: &CoreBuffer,
+    ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
+        match self.fixed_call(2, input, "resolver-static-edges").await? {
+            FixedCallOutput::StaticRows(rows) => Ok(Ok(rows)),
+            FixedCallOutput::Identity(outcome) => Ok(Err(outcome)),
+        }
+    }
+
+    async fn fixed_call(
+        &mut self,
+        slot: usize,
+        input: &CoreBuffer,
+        origin: &'static str,
+    ) -> Result<FixedCallOutput> {
         if !matches!(
             (slot, origin),
             (1, "getter")
@@ -225,6 +252,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (7, "catalog")
                 | (2, "manifest")
                 | (2, "resolver-source-lookup")
+                | (2, "resolver-static-edges")
         ) {
             bail!("fixed original caller is unavailable");
         }
@@ -238,6 +266,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "catalog") => CATALOG_LOAD,
             (REVIEW, "manifest") => CATALOG_PARSE,
             (REVIEW, "resolver-source-lookup") => RESOLVER_SOURCE_LOOKUP,
+            (REVIEW, "resolver-static-edges") => RESOLVER_STATIC_EDGES,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -280,7 +309,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         slot: usize,
         input: &CoreBuffer,
         origin: &'static str,
-    ) -> Result<BootstrapIdentityOutcome> {
+    ) -> Result<FixedCallOutput> {
         match self.string_call_in_phase(slot, input, phase).await? {
             Ok(value) => {
                 self.identity_pending
@@ -296,12 +325,20 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             }
         }
         let pending = self.identity_pending.as_ref().expect("admitted getter");
+        if origin == "resolver-static-edges" && pending.result.is_some() {
+            let mut pending = self.identity_pending.take().expect("admitted static edges");
+            return Ok(FixedCallOutput::StaticRows(
+                pending.result.take().expect("completed static edges"),
+            ));
+        }
         if pending
             .getter
             .as_ref()
             .is_some_and(|error| error.code().as_bytes() != b"method-raised")
         {
-            return Ok(self.identity_refused(BootstrapIdentityStage::Getter, origin));
+            return Ok(FixedCallOutput::Identity(
+                self.identity_refused(BootstrapIdentityStage::Getter, origin),
+            ));
         }
         let raised = pending.getter.is_some();
         let bytes = match &pending.getter {
@@ -347,7 +384,9 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                     .as_mut()
                     .expect("admitted getter")
                     .describe_error = Some(error);
-                return Ok(self.identity_refused(BootstrapIdentityStage::Describe, origin));
+                return Ok(FixedCallOutput::Identity(
+                    self.identity_refused(BootstrapIdentityStage::Describe, origin),
+                ));
             }
         }
         let pending = self.identity_pending.as_ref().expect("admitted getter");
@@ -374,7 +413,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         };
         let pending = self.identity_pending.take().expect("observed getter");
         let view = pending.view.expect("actual identity view");
-        Ok(if raised {
+        Ok(FixedCallOutput::Identity(if raised {
             BootstrapIdentityOutcome::GetterRaised(BootstrapGetterError {
                 error: pending.getter.expect("actual getter exception"),
                 view,
@@ -390,7 +429,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 observation,
                 builtin,
             })
-        })
+        }))
     }
 
     fn identity_refused(
@@ -583,6 +622,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (
                 Some("resolver-source-lookup-raised"),
                 "resolver-source-lookup",
+                true
+            )
+            | (
+                Some("resolver-static-edges-raised"),
+                "resolver-static-edges",
                 true
             )
     )

@@ -44,8 +44,13 @@ impl<S> RegisteredActivationScope<'_, '_, '_, S> {
 /// Native snapshot DATA held by this review after the original Authority closes.
 pub(crate) struct ResolverAuthority {
     _material: OriginalAuthorityMaterial,
-    _snapshot_digest: Digest,
+    snapshot_digest: Digest,
     _bundle_lock_digest: Digest,
+}
+impl ResolverAuthority {
+    pub(crate) fn snapshot_digest(&self) -> &Digest {
+        &self.snapshot_digest
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -53,7 +58,7 @@ impl ResolverAuthority {
     pub(super) fn observation(&self) -> (&OriginalAuthorityMaterial, &Digest, &Digest) {
         (
             &self._material,
-            &self._snapshot_digest,
+            &self.snapshot_digest,
             &self._bundle_lock_digest,
         )
     }
@@ -329,7 +334,7 @@ impl PublicationRead {
         match super::super::read_selected(&op, root, Some(bundle_lock_digest.as_str())) {
             Ok(read) => Ok(Some(ResolverAuthority {
                 _material: read.material,
-                _snapshot_digest: read.snapshot_digest.expect("requested Authority snapshot"),
+                snapshot_digest: read.snapshot_digest.expect("requested Authority snapshot"),
                 _bundle_lock_digest: bundle_lock_digest,
             })),
             Err(error)
