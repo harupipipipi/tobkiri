@@ -3191,7 +3191,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   projectionの権限は発行しない。将来の整理では、原本との差分が通った後に既存の
   getterとprojection用のscope・FD・応答生成の共通部分を再点検する。
   [Rust/Wasm CI 43493671067](https://github.com/harupipipipi/tobkiri/actions/runs/43493671067)
-  はportableテストとWasm構築が成功し、macOS実行を継続中。
+  はportableテスト、Wasm構築、macOSの実Runtime初期化・物理検証・Core引き継ぎを通過。
 - `8003603fa` の[原本CI 43495702562](https://github.com/harupipipipi/tobkiri/actions/runs/43495702562)
   は、配布Profile解決後のPack pin predecessorに、新規状態と壊れたactive.jsonの2件を
   追加した。macOSで同じ定義ストアが独立したロックで二度snapshotを取得すること、
