@@ -7,6 +7,7 @@ use pyo3::{
     prelude::*,
     sync::PyOnceLock,
     types::{PyBool, PyDict, PyFloat, PyInt, PyIterator, PyList, PyModule, PyString, PyTuple},
+    PyTypeInfo,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -151,31 +152,44 @@ impl TypePolicy {
 }
 
 fn fixed_type(value: &Bound<'_, PyAny>, kind: &str) -> Option<bool> {
-    let boolean = value.is_exact_instance_of::<PyBool>();
-    let integer = value.is_exact_instance_of::<PyInt>();
-    let float = value.is_exact_instance_of::<PyFloat>();
-    let string = value.is_exact_instance_of::<PyString>();
-    let array = value.is_exact_instance_of::<PyList>();
-    let object = value.is_exact_instance_of::<PyDict>();
-    if !(boolean || integer || float || string || array || object || value.is_none()) {
-        return None;
-    }
-    Some(match kind {
+    // Read the live type once. Use the same exact builtin pointers as PyO3's
+    // exact instance checks, without retaining a Python handle or calling __class__.
+    let actual = value.get_type_ptr();
+    let py = value.py();
+    let is_type = |expected| std::ptr::eq(actual, expected);
+    let matches = match kind {
         "null" => value.is_none(),
-        "boolean" => boolean,
-        "string" => string,
-        "array" => array,
-        "object" => object,
-        "number" => integer || float,
+        "boolean" => is_type(PyBool::type_object_raw(py)),
+        "string" => is_type(PyString::type_object_raw(py)),
+        "array" => is_type(PyList::type_object_raw(py)),
+        "object" => is_type(PyDict::type_object_raw(py)),
+        "number" => is_type(PyInt::type_object_raw(py)) || is_type(PyFloat::type_object_raw(py)),
         "integer" => {
-            integer
-                || (float && {
-                    let number = value.extract::<f64>().ok()?;
-                    number.is_finite() && number.fract() == 0.0
-                })
+            if is_type(PyInt::type_object_raw(py)) {
+                return Some(true);
+            }
+            if is_type(PyFloat::type_object_raw(py)) {
+                let number = value.extract::<f64>().ok()?;
+                return Some(number.is_finite() && number.fract() == 0.0);
+            }
+            false
         }
         _ => return None,
-    })
+    };
+    if matches {
+        return Some(true);
+    }
+
+    // Only known exact primitives can be rejected here. The real checker can
+    // accept subclasses or consult a foreign object's __class__.
+    (is_type(PyDict::type_object_raw(py))
+        || is_type(PyString::type_object_raw(py))
+        || is_type(PyList::type_object_raw(py))
+        || is_type(PyBool::type_object_raw(py))
+        || is_type(PyInt::type_object_raw(py))
+        || is_type(PyFloat::type_object_raw(py))
+        || value.is_none())
+    .then_some(false)
 }
 
 enum Number {

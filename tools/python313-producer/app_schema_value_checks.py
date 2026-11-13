@@ -248,6 +248,29 @@ def value_checks(provider, kernel) -> dict[str, bool]:
     compare(observed_kind, ("python_type_checks",))
     checks["nonexact_type_kind_preserves_actual_hash_callback"] = True
 
+    def foreign_value() -> dict[str, object]:
+        events = []
+
+        class Value:
+            @property
+            def __class__(self) -> type:
+                events.append("value-class")
+                return str
+
+            def __repr__(self) -> str:
+                return "ForeignValue()"
+
+        return {"meta": {"type": "string"}, "actual": Value(), "events": events}
+
+    expected, _ = run(original, foreign_value)
+    actual, delta = run(provider, foreign_value)
+    assert expected["outcome"] == {"kind": "valid"}
+    assert expected["events"] == ["value-class"]
+    difference = first_difference(expected, actual)
+    assert difference is None, difference
+    assert delta["native_type_checks"] == 0 and delta["python_type_checks"] == 1
+    checks["foreign_value_type_preserves_actual_class_callback"] = True
+
     for kind in ("unknown-app-type", "\ud800"):
         compare(lambda: {"meta": {"type": kind}, "actual": 0},
                 ("python_type_checks",))
@@ -501,5 +524,5 @@ def value_checks(provider, kernel) -> dict[str, bool]:
         reentered.append(observed)
     assert first_difference(*reentered) is None
     checks["reentrant_type_callback_preserves_exception_and_releases_input"] = True
-    assert len(checks) == 16 and all(value is True for value in checks.values())
+    assert len(checks) == 17 and all(value is True for value in checks.values())
     return checks
