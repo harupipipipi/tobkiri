@@ -638,8 +638,8 @@ the three oversized cases in the earlier five-component replay.
 
 ## Acceptance checklist
 
-Status after the focused CI replays (2026-11-13): items 3, 9, 11, 12, 13 and 18
-are checked (6 of 20). The aggregate
+Status after the focused CI replays (2026-11-13): items 2, 3, 6, 8, 9, 11, 12,
+13 and 18 are checked (9 of 20). The aggregate
 `issue-1520-rust.yml` currently fails earlier at an unrelated Python fixture
 step, so it is not the evidence; the focused workflows
 `issue-1520-acceptance-9-11-12.yml` and `issue-1520-acceptance-13-16.yml` are.
@@ -669,6 +669,11 @@ Core UI port checks. The same physical input produced different outputs after a
 reviewed Flow edit while retaining conversation history. The local API is a
 test fixture; this run does not establish native WebView or llama.cpp 1B parity.
 
+The R8.5 import fix passed 20 tests and strict Clippy. The actual Core tests
+checked that narrowing a published ceiling also bounds each Pack's fresh
+approval and rejects invalid original policies and mismatched pins.
+[CI 43378298205](https://github.com/harupipipipi/tobkiri/actions/runs/43378298205)
+
 1. [ ] **CI rejects Pack IDs and Pack-owned shape names in core and hosts.**
    [Checker](../../../tools/quality/issue_1520_gate.py),
    [negative fixtures](../../../tools/quality/test_issue_1520_gate.py), and
@@ -676,11 +681,11 @@ test fixture; this run does not establish native WebView or llama.cpp 1B parity.
    foundation gate passes without weakening production checks; the final host
    scan still includes substantial legacy Pack knowledge.
 
-2. [ ] **Core-defined shapes are restricted to R1.2.**
-   [WIT registry and tests](../../../crates/tobkiri-wit/src/lib.rs) enforce the
-   exact 17 interfaces and minimal world; [manifest tests](../../../crates/tobkiri-manifest/tests/contracts.rs)
-   reject unknown Core versions/imports. Record a current exact-ABI replay;
-   existence of a WIT declaration does not prove its physical backend works.
+2. [x] **Core-defined shapes are restricted to R1.2.**
+   The committed WIT packages expose the same 17 generic interfaces.
+   Five WIT tests and the exact-version manifest admission test passed.
+   [WIT registry](../../../crates/tobkiri-wit/src/lib.rs)
+   · [CI 43379294915](https://github.com/harupipipipi/tobkiri/actions/runs/43379294915)
 
 3. [x] **A non-Defaults Pack set can chat.**
    The macOS run rebuilt and admitted the independent Echo Packs. The real
@@ -702,12 +707,12 @@ test fixture; this run does not establish native WebView or llama.cpp 1B parity.
    exercise the new entry path. Legacy fixed routes and old engines remain;
    native Send/save and all migrated input surfaces need current end-to-end proof.
 
-6. [ ] **Foreign Packs insert, replace, or delete by shape only where allowed.**
-   [Profile compiler tests](../../../crates/tobkiri-profile/tests/compiler.rs)
-   cover open roles, published Flow shapes, and permissions;
-   [Flow tests](../../../crates/tobkiri-flow/tests/engine.rs) exercise `next`.
-   Re-execute all three overlay modes and closed-target denial through actual
-   current components, not only compiler fixtures.
+6. [x] **Foreign Packs insert, replace, or delete by shape only where allowed.**
+   The Core replay used verified Wasm and data Packs to run insert, wrap,
+   replace and delete. It checked the Flow result and original-step dispatches,
+   and refused closed targets, direct foreign step IDs and missing permissions.
+   [Core tests](../../../crates/tobkiri-core/src/acceptance_overlay_tests.rs)
+   · [CI 43378298202](https://github.com/harupipipipi/tobkiri/actions/runs/43378298202)
 
 7. [ ] **Users can overlay any step.**
    [Compiler tests](../../../crates/tobkiri-profile/tests/compiler.rs) include
@@ -715,12 +720,12 @@ test fixture; this run does not establish native WebView or llama.cpp 1B parity.
    Complete current host/CLI configuration and execution coverage while retaining
    the separately approved User policy and original Pack authority for `next`.
 
-8. [ ] **Neither Pack nor user overlays bypass the Gate.**
-   [Authority tests](../../../crates/tobkiri-store/tests/authority.rs) include
-   `user_overlay_direct_effect_always_reaches_trusted_prompt`;
-   [compiler tests](../../../crates/tobkiri-profile/tests/compiler.rs) retain
-   separate original authorities. Current runtime denial, cancellation, and
-   epoch-change replays are required; overlay composition alone is insufficient.
+8. [x] **Neither Pack nor user overlays bypass the Gate.**
+   The actual Core replay checked separate User, Flow owner and overlay Pack
+   approvals. Revoked approval, a changed epoch and cancellation blocked the
+   run, with audit checks confirming the original step was never dispatched.
+   [Core tests](../../../crates/tobkiri-core/src/acceptance_overlay_tests.rs)
+   · [CI 43378298202](https://github.com/harupipipipi/tobkiri/actions/runs/43378298202)
 
 9. [x] **Profiles without default loop bounds fail validation.**
    [Compiler tests](../../../crates/tobkiri-profile/tests/compiler.rs) include
@@ -850,9 +855,11 @@ test fixture; this run does not establish native WebView or llama.cpp 1B parity.
     [Vector tests](../../../crates/tobkiri-canon/tests/vectors.rs),
     [additional seal families](../../../crates/tobkiri-canon/tests/extra_seals.rs),
     and [canonical evidence](../../../crates/tobkiri-canon/evidence/global-contracts-canonical-20261015.json)
-    establish substantial source-bound coverage. Only one legacy inventory unit
-    is closed; remaining persisted recipes/signature differences need explicit
-    mappings and current replay. Never rewrite frozen expected bytes to fit Rust.
+    cover the codec, seal and digest formats. All 12 tests passed in the current
+    replay, including the test that records deliberate weak Ed25519 key
+    rejection where Python accepted it. Remaining persisted recipes and
+    signature differences need explicit mappings.
+    [CI 43379294915](https://github.com/harupipipipi/tobkiri/actions/runs/43379294915)
 
 ## Next bounded slices
 
