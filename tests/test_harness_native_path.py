@@ -205,11 +205,15 @@ class NativePathAdapterTests(unittest.TestCase):
                      if isinstance(node, ast.FunctionDef) and node.name in names]
         self.assertEqual(len(functions), len(names))
         content = b"abc"
-        tree_digest = "sha256:" + hashlib.sha256(b"Contents/MacOS/shell\0" + content).hexdigest()
         entry_digest = "sha256:" + hashlib.sha256(content).hexdigest()
         for platform, expected_digest in (("macos", entry_digest), ("linux", entry_digest),
                                           ("linux", "sha256:wrong")):
             with self.subTest(platform=platform, digest=expected_digest):
+                app = platform == "macos"
+                leaf = "Tobkiri.app" if app else "Tobkiri.AppImage"
+                entry = leaf + "/Contents/MacOS/shell" if app else leaf
+                hash_path = b"Contents/MacOS/shell" if app else b""
+                tree_digest = "sha256:" + hashlib.sha256(hash_path + b"\0" + content).hexdigest()
                 requests, position = [], 0
                 def inspect(payload):
                     nonlocal position
@@ -225,7 +229,7 @@ class NativePathAdapterTests(unittest.TestCase):
                     elif operation == "is-symlink":
                         result = {"kind": "bool", "value": False}
                     elif operation == "is-file":
-                        result = {"kind": "bool", "value": steps[-1][1] in {"shell", "Tobkiri.app/Contents/MacOS/shell"}}
+                        result = {"kind": "bool", "value": steps[-1][1] in {"shell", entry}}
                     elif operation == "is-dir":
                         result = {"kind": "bool", "value": True}
                     elif operation == "iterdir":
@@ -257,7 +261,7 @@ class NativePathAdapterTests(unittest.TestCase):
                 future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
                 exec(compile(ast.fix_missing_locations(ast.Module(body=[future, *functions], type_ignores=[])),
                              str(source), "exec"), namespace)
-                variant = {"relative_path": "Tobkiri.app", "entrypoint": "Tobkiri.app/Contents/MacOS/shell",
+                variant = {"relative_path": leaf, "entrypoint": entry,
                            "artifact_digest": tree_digest, "entrypoint_digest": expected_digest,
                            "platform": platform, "architecture": "x86_64"}
                 exception = ValueError if expected_digest != entry_digest else _UnboundPlatformArtifacts
@@ -268,7 +272,7 @@ class NativePathAdapterTests(unittest.TestCase):
                     self.assertIn("entrypoint digest does not match", str(caught.exception))
                 opens = [row for row in requests if row["operation"] == "open"]
                 self.assertEqual(len(opens), 2)
-                entry_steps = [["shell-resolved-root", ""], ["join", "Tobkiri.app/Contents/MacOS/shell"]]
+                entry_steps = [["shell-resolved-root", ""], ["join", entry]]
                 self.assertEqual(opens[-1]["target"]["steps"], entry_steps)
                 fd_ops = [row for row in requests if row["target"]["steps"][:1] == [["shell-entrypoint-file", ""]]]
                 self.assertEqual(fd_ops[-1]["operation"], "close")
