@@ -135,7 +135,7 @@ fn original_static_edge_reference_driver() -> Result<()> {
     anyhow::ensure!(
         reference["format"] == "io.tobkiri.original-setup-resolver-prefix-reference.v1"
             && reference["original_head"] == "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
-            && reference["case_count"] == 14
+            && reference["case_count"] == 17
             && reference["native_comparison"] == false
             && reference["qualification"] == false
     );

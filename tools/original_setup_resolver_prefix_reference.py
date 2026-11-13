@@ -1,4 +1,4 @@
-"""Observe pinned original Setup through the verified artifacts passed to its Port.
+"""Observe pinned original Setup through the Pack resolver's first lock read.
 
 The CI-only fixture changes disk or environment at the real caller boundary.
 Original Setup, Pack, catalog, and Authority code runs through the second ID.
@@ -40,7 +40,11 @@ MISSING_PROFILE_ID = "missing-fixture-profile"
 REQUESTED_BINDINGS_CASE = "source-profile-requested-bindings"
 DYNAMIC_EDGES_CASE = "fresh-bundled-dynamic-edges"
 VERIFIED_ARTIFACTS_CASE = "fresh-bundled-verified-artifacts"
-DYNAMIC_CASES = (DYNAMIC_EDGES_CASE, VERIFIED_ARTIFACTS_CASE)
+PACK_LOCK_CASES = (
+    "pack-lock-reread", "pack-lock-symlink", "pack-lock-missing",
+)
+RESOLVE_CASES = (VERIFIED_ARTIFACTS_CASE, *PACK_LOCK_CASES)
+DYNAMIC_CASES = (DYNAMIC_EDGES_CASE, *RESOLVE_CASES)
 BINDING_CASES = (REQUESTED_BINDINGS_CASE, *DYNAMIC_CASES)
 LOOKUP_CASES = ("source-profile-present", "source-profile-missing", *BINDING_CASES)
 REQUESTED_EDGE_FIELDS = (
@@ -190,6 +194,10 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
         install_defaultspack_profile_runtime,
     )
+    from ecosystem.defaultspack.domain.profile_resolution import (
+        _bundle_digest,
+        resolve_default_profile,
+    )
     from tobkiri_protocol.bundle_catalog import BundledCatalog
     from tobkiri_protocol.canonical import canonical_digest
 
@@ -213,9 +221,13 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     candidate_select = bootstrap_review_catalog.__code__
     dynamic_port = type(port).dynamic_profile_edges.__code__
     resolve_port = type(port).resolve_profile.__code__
+    resolve_pack = resolve_default_profile.__code__
+    pack_lock_digest = _bundle_digest.__code__
     dynamic_source = runtime / "ecosystem/defaultspack/domain/profile_resolution.py"
     id_get = capture._bootstrap_profile_id.__code__
     read_bytes = Path.read_bytes.__code__
+    is_symlink = Path.is_symlink.__code__
+    is_file = Path.is_file.__code__
     authority_init = AuthorityStore.__init__.__code__
     context_close = AuthorityStore.close.__code__
     record_read = inspect.unwrap(AuthorityStore.security_epoch_record.fget).__code__
@@ -239,6 +251,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     phase = "capture"
     captured: Any = None
     dynamic_result: Any = None
+    resolve_inputs: dict[str, Any] | None = None
     before_dynamic_bindings: Any = None
     before_dynamic_rows: list[tuple[str, str]] = []
     facts: dict[str, Any] = {
@@ -256,6 +269,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
         resolver: "candidate-resolver",
         bundle_verify: "packaged-verification",
         catalog_load: "catalog-load",
+        pack_lock_digest: "pack-resolver",
     }
     expected_root = (
         roots["second"]
@@ -275,7 +289,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     )
 
     def trace(frame: FrameType, event: str, value: Any) -> Any:
-        nonlocal phase, captured, dynamic_result, before_dynamic_bindings
+        nonlocal phase, captured, dynamic_result, resolve_inputs, before_dynamic_bindings
         code = frame.f_code
         parent = frame.f_back.f_code if frame.f_back else None
         dynamic_pack = (
@@ -321,7 +335,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 digests = kwargs["approved_artifact_digests"]
                 bindings = kwargs["authority_bindings"]
                 if (
-                    case != VERIFIED_ARTIFACTS_CASE
+                    case not in RESOLVE_CASES
                     or parent is not resolver
                     or local["self"] is not port
                     or before_dynamic_bindings is None
@@ -343,13 +357,53 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                     "digests": sorted(digests),
                 }
                 log.append("before-resolve-port-body")
-                raise _SourceProfileBoundary
+                if case == VERIFIED_ARTIFACTS_CASE:
+                    raise _SourceProfileBoundary
+                resolve_inputs = kwargs
+                path = captured[0].root / LOCK
+                if path != packaged / LOCK:
+                    raise AssertionError("fixture must change only the exact loaded root")
+                if case == "pack-lock-reread":
+                    path.write_bytes(original_lock + b"\n")
+                else:
+                    path.unlink()
+                    if case == "pack-lock-symlink":
+                        path.symlink_to(MANIFEST)
+                return trace
+            if code is resolve_pack:
+                local = frame.f_locals
+                if (
+                    case not in PACK_LOCK_CASES
+                    or parent is not resolve_port
+                    or resolve_inputs is None
+                    or local["catalog"] is not captured[0]
+                    or local["profile_id"] is not facts["profile_ids"][-1]
+                    or any(local[key] is not original for key, original in resolve_inputs.items())
+                ):
+                    raise AssertionError("actual Pack resolver did not receive its original inputs")
+                log.append("call-resolve-pack")
+                return trace
+            if code is pack_lock_digest:
+                if (
+                    case not in PACK_LOCK_CASES
+                    or parent is not resolve_pack
+                    or frame.f_locals["catalog"] is not captured[0]
+                ):
+                    raise AssertionError("unexpected actual Pack bundle digest call")
+                log.append("call-pack-lock-digest")
+                return trace
+            if parent is pack_lock_digest and code in (is_symlink, is_file):
+                if frame.f_locals["self"] != captured[0].root / LOCK:
+                    raise AssertionError("Pack resolver tested another path")
+                log.append("pack-lock-is-symlink" if code is is_symlink else "pack-lock-is-file")
+                return trace
             if code is read_bytes:
                 path = frame.f_locals["self"]
                 if path.name != LOCK or parent not in (
                     bundle_verify,
                     catalog_load,
                     resolver,
+                    pack_lock_digest,
                 ):
                     return None
                 log.append(f"read-lock:{caller_labels[parent]}")
@@ -463,7 +517,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 ),
             )
             log.append("before-verified-artifacts")
-            if case == VERIFIED_ARTIFACTS_CASE:
+            if case in RESOLVE_CASES:
                 return trace
             raise _SourceProfileBoundary
         if event == "return" and (code is dynamic_port or dynamic_pack):
@@ -482,6 +536,12 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
             else:
                 raise AssertionError("original Port replaced the actual Pack result")
             return trace
+        if event == "return" and code is pack_lock_digest and value is not None:
+            if case != "pack-lock-reread" or value != _digest(original_lock + b"\n"):
+                raise AssertionError("Pack resolver did not hash the new lock bytes")
+            facts["pack_bundle_digest"] = value
+            log.append("return-pack-lock-digest")
+            raise _SourceProfileBoundary
         if event != "return" or value is None and code is not context_close:
             return trace
         if code is acquire:
@@ -557,6 +617,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 REQUESTED_BINDINGS_CASE: "static-edges-bound",
                 DYNAMIC_EDGES_CASE: "before-verified-artifacts",
                 VERIFIED_ARTIFACTS_CASE: "before-resolve-port-body",
+                "pack-lock-reread": "pack-lock-digest-returned",
             }.get(case, "before-source-profile-lookup")}
         except Exception as error:
             outcome = {"outcome": "error", "error": error_graph(error, runtime)}
@@ -570,6 +631,11 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
             sys.settrace(previous_trace)
             if case in {"second-lock-unbound", "second-lock-rebound"}:
                 (packaged / LOCK).write_bytes(original_lock)
+            if case in PACK_LOCK_CASES:
+                path = packaged / LOCK
+                if path.is_symlink():
+                    path.unlink()
+                path.write_bytes(original_lock)
             if case in {"second-manifest-invalid-json", "second-lock-rebound"}:
                 (runtime / MANIFEST).write_bytes(original_manifest)
     after = _state(roots)
@@ -684,8 +750,14 @@ def _check(
             "return-dynamic-port",
             "before-verified-artifacts",
         ))
-    if case == VERIFIED_ARTIFACTS_CASE:
+    if case in RESOLVE_CASES:
         resolver.append("before-resolve-port-body")
+    if case in PACK_LOCK_CASES:
+        resolver.extend(("call-resolve-pack", "call-pack-lock-digest", "pack-lock-is-symlink"))
+        if case != "pack-lock-symlink":
+            resolver.append("pack-lock-is-file")
+        if case == "pack-lock-reread":
+            resolver.extend(("read-lock:pack-resolver", "return-pack-lock-digest"))
     if lookup_missing:
         resolver.append("source-profile-missing")
     expected_ids = ["defaults"]
@@ -760,6 +832,13 @@ def _check(
         }
         for caller in second_reads
     ]
+    if case == "pack-lock-reread":
+        expected_reads.append({
+            "caller": "pack-resolver",
+            "path": (BUNDLE / LOCK).as_posix(),
+            "bytes": len(original_lock) + 1,
+            "digest": _digest(original_lock + b"\n"),
+        })
     if facts["lock_reads"] != expected_reads:
         raise AssertionError((case, facts["lock_reads"]))
     if success:
@@ -790,7 +869,20 @@ def _check(
             )
         ):
             raise AssertionError((case, outcome, facts))
-        if lookup_missing:
+        if case in {"pack-lock-symlink", "pack-lock-missing"}:
+            if outcome != {
+                "outcome": "error",
+                "error": {
+                    "id": 0,
+                    "type": DENIED_CLASS,
+                    "message": "bundle lock is unavailable",
+                    "suppressed": False,
+                    "cause": None,
+                    "context": None,
+                },
+            }:
+                raise AssertionError((case, outcome, facts))
+        elif lookup_missing:
             message = "bundled setup Profile is missing"
             if facts["source_profile"] != {"type": "NoneType"} or outcome != {
                 "outcome": "error",
@@ -810,6 +902,7 @@ def _check(
                 REQUESTED_BINDINGS_CASE: "static-edges-bound",
                 DYNAMIC_EDGES_CASE: "before-verified-artifacts",
                 VERIFIED_ARTIFACTS_CASE: "before-resolve-port-body",
+                "pack-lock-reread": "pack-lock-digest-returned",
             }.get(case, "source-profile-found")
             if outcome != {"outcome": wanted} or not facts["source_profile"]["catalog_alias"]:
                 raise AssertionError((case, outcome, facts))
@@ -824,7 +917,7 @@ def _check(
                     or dynamic["binding_count"] != 310
                 ):
                     raise AssertionError((case, outcome, facts))
-            if case == VERIFIED_ARTIFACTS_CASE:
+            if case in RESOLVE_CASES:
                 artifacts = facts["verified_artifacts"]
                 if (
                     artifacts["pack_count"] != 153
@@ -955,7 +1048,7 @@ def prepare(original: Path, output: Path) -> None:
             "scope": "fresh bundled candidate and original resolver prefix through "
             "second canonical Profile ID; additional cases observe the source alias, "
             "its denial, ordered bindings, the fresh dynamic Pack call, and the "
-            "verified artifacts passed to the original resolve Port",
+            "verified artifacts passed to the original resolve Port, and the Pack lock",
         },
     )
 
