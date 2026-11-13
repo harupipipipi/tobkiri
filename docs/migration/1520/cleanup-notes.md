@@ -2664,7 +2664,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Profile・hash・権限の種類を端末上で確認してから応答し、作成・実Echo・公開・
   取り込み拒否とhead非公開・別IDへの再承認・実Echo・再公開を追う。両Profileの
   private SQLiteに保存した会話を検査する。GUIの承認や実キーチェーンはこのテストの範囲外。
-  [CI 43377553320](https://github.com/harupipipipi/tobkiri/actions/runs/43377553320)で検証中。
+  [初回CI 43377553320](https://github.com/harupipipipi/tobkiri/actions/runs/43377553320)は
+  CLIのProfile作成と6件の承認を通過したが、改行のない承認表示に続くIDをテストが正しく読めなかった。
+  `942d5f99d` で読み取りを修正し、[CI 43378931498](https://github.com/harupipipipi/tobkiri/actions/runs/43378931498)で再検証。
 
 ## 034: Profile取り込みで上限だけを変更したときのPack上限
 
@@ -2675,4 +2677,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   宣言や必須ポートの欠落は拒否する。重複するファイルルートや秘密名で解釈が曖昧な上限は、
   上限を変更する取り込みで拒否する。User宣言の保存形式は維持し、実効権限は従来どおり上限と交差する。
 - 検証: 個別上限を狭めた取り込みと新規承認、上限拡大・曖昧な上限・不正な公開元の拒否を
-  Coreテストで確認する。製品GUIや元の承認手順に変更はない。
+  [CI 43378298205](https://github.com/harupipipipi/tobkiri/actions/runs/43378298205)の実Coreテストで確認。
+
+## 035: 固定した1Bモデルの現行ソース再検証
+
+- `8ecb7185d` で既存の実モデルテストをmacOS CIへ接続した。llama.cpp b11146と
+  Gemma 3 1Bの配布物はrunner上でSHA-256を照合する。loopbackの認証とモデルaliasを確認し、
+  一時Keychainを用いて実CoreからWasm Providerを呼ぶ。テストは会話の永続化、
+  キャンセル後のサーバー停止、秘密を露出しない監査、Sessionの終了を確認する。
+- [実モデルCI 43378931644](https://github.com/harupipipipi/tobkiri/actions/runs/43378931644)と
+  [現行ソースのDMG CI 43379312352](https://github.com/harupipipipi/tobkiri/actions/runs/43379312352)
+  を開始した。製品GUIのSetup、承認、モデル設定から会話までの実機検証が別に残る。
