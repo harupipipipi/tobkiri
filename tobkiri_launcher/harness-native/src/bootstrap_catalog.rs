@@ -1,10 +1,11 @@
-//! Fixed host_profile_catalog prefix, inside the original Review journal.
+//! Fixed catalog loading shared by recovery and fresh Setup candidate selection.
 //! Root selection and resource verification are Host operations. Pack catalog
 //! policy stays in the same original Runtime receiver and its actual loader.
 use super::*;
 use crate::bootstrap_review::{Review, original_failure};
 use crate::original_authority::catalog::{BindingFailure, CatalogIo};
 use crate::{BootstrapReviewFailure, BootstrapReviewReachpoint};
+use review_continuation::ReviewCaller;
 use std::path::PathBuf;
 
 #[path = "bootstrap_recovery_error.rs"]
@@ -98,11 +99,12 @@ fn dispatch<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     }
 }
 
-pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
-    review.read.check_continuation_thread()?;
+    caller: ReviewCaller,
+) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
+    caller.check(review, pack)?;
     pack.require_same_runtime()?;
     if pack
         .work
@@ -117,9 +119,12 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     }
     let call = pack.call.clone();
     review.actual.host_root = Some(pack.observe_fixed_call(3, &call, "host-root").await?);
-    review.read.check_continuation_thread()?;
+    caller.check(review, pack)?;
     if let Some(failure) = take_failure(&mut review.actual.host_root) {
-        return handle_call_failure(review, pack, failure, false).await;
+        return Ok(Err(handle_call_failure(
+            review, pack, caller, failure, false,
+        )
+        .await?));
     }
     let resolution = pack
         .work
@@ -179,13 +184,14 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     let development = match development {
         Ok(value) => value,
         Err(error) => {
-            return binding_failure(
+            return Ok(Err(binding_failure(
                 review,
                 pack,
+                caller,
                 BindingFailure::Original(error),
-                "Profile publication recovery failed closed",
+                false,
             )
-            .await;
+            .await?));
         }
     };
     let (root, binding) = if development {
@@ -195,9 +201,12 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         )
     } else {
         review.actual.bundle_root = Some(pack.observe_fixed_call(4, &call, "bundle-root").await?);
-        review.read.check_continuation_thread()?;
+        caller.check(review, pack)?;
         if let Some(failure) = take_failure(&mut review.actual.bundle_root) {
-            return handle_call_failure(review, pack, failure, false).await;
+            return Ok(Err(handle_call_failure(
+                review, pack, caller, failure, false,
+            )
+            .await?));
         }
         let resolution = pack
             .work
@@ -243,13 +252,9 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     let manifest = match manifest {
         Ok(value) => value,
         Err(error) => {
-            return binding_failure(
-                review,
-                pack,
-                error,
-                "packaged runtime resource manifest is invalid",
-            )
-            .await;
+            return Ok(Err(
+                binding_failure(review, pack, caller, error, true).await?
+            ));
         }
     };
     if manifest {
@@ -271,9 +276,12 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         };
         review.actual.manifest_input = Some(input.clone());
         review.actual.manifest = Some(pack.observe_fixed_call(2, &input, "manifest").await?);
-        review.read.check_continuation_thread()?;
+        caller.check(review, pack)?;
         if let Some(failure) = take_failure(&mut review.actual.manifest) {
-            return handle_call_failure(review, pack, failure, true).await;
+            return Ok(Err(handle_call_failure(
+                review, pack, caller, failure, true,
+            )
+            .await?));
         }
         let verification = {
             let current = pack
@@ -295,13 +303,9 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             )
         };
         if let Err(error) = verification {
-            return binding_failure(
-                review,
-                pack,
-                error,
-                "Profile publication recovery failed closed",
-            )
-            .await;
+            return Ok(Err(
+                binding_failure(review, pack, caller, error, false).await?
+            ));
         }
         pack.work
             .get()
@@ -327,9 +331,12 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         .expect("fixed loader input")
         .clone();
     review.actual.catalog = Some(pack.observe_fixed_call(7, &input, "catalog").await?);
-    review.read.check_continuation_thread()?;
+    caller.check(review, pack)?;
     if let Some(failure) = take_failure(&mut review.actual.catalog) {
-        return handle_call_failure(review, pack, failure, false).await;
+        return Ok(Err(handle_call_failure(
+            review, pack, caller, failure, false,
+        )
+        .await?));
     }
     if returned(review.actual.catalog.as_ref().expect("actual catalog"))?
         .observation()
@@ -350,10 +357,18 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     {
         bail!("actual loader returned before its reached resource occurrences completed");
     }
-    review
-        .read
-        .check_continuation_thread()
-        .map_err(anyhow::Error::from)?;
+    caller.check(review, pack)?;
+    Ok(Ok(()))
+}
+
+pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+    let caller = ReviewCaller::Recovery;
+    if let Err(error) = load(review, pack, caller).await? {
+        return Ok(Err(error));
+    }
     // Repeat the actual selected user-data lookup at its original post-load
     // reachpoint. No constructor, exists, migration or Authority is advanced.
     if review.catalog_prefix {
@@ -385,10 +400,10 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
                     // prepaid Read through retirement/factory awaits. The
                     // fixed source raise text was checked by this projector.
                     drop(error);
-                    review_continuation::denied(
-                        review, pack, recovery_cause::MESSAGE,
+                    Ok(Err(review_continuation::denied(
+                        review, pack, caller, recovery_cause::MESSAGE,
                         BootstrapDeniedRaise::ExplicitFrom(cause),
-                    ).await
+                    ).await?))
                 }
                 // Still an explicitly UNQUALIFIED typed factory request (or
                 // an uncaught raw registry error), never a fallback factory.
@@ -424,12 +439,13 @@ fn take_failure(value: &mut Option<BootstrapIdentityOutcome>) -> Option<Bootstra
         value.take()
     }
 }
-async fn handle_call_failure<S: BootstrapInputOwner>(
+async fn handle_call_failure<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
     value: BootstrapIdentityOutcome,
     manifest: bool,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+) -> Result<BootstrapReviewFailure> {
     match value {
         BootstrapIdentityOutcome::GetterRaised(error) => {
             let json = error
@@ -437,25 +453,32 @@ async fn handle_call_failure<S: BootstrapInputOwner>(
                 .get_key("kind")
                 .and_then(|v| v.as_str().map(|s| s == "json-decode-error"))
                 == Some(true);
-            let message = if manifest && json {
-                "packaged runtime resource manifest is invalid"
-            } else {
-                "Profile publication recovery failed closed"
-            };
-            if error.recovery_catch() != BootstrapRecoveryCatch::None {
+            if manifest && json {
                 review_continuation::denied(
                     review,
                     pack,
-                    message,
+                    caller,
+                    "packaged runtime resource manifest is invalid",
+                    BootstrapDeniedRaise::OpaqueGetter(error),
+                )
+                .await
+            } else if matches!(caller, ReviewCaller::Recovery)
+                && error.recovery_catch() != BootstrapRecoveryCatch::None
+            {
+                review_continuation::denied(
+                    review,
+                    pack,
+                    caller,
+                    recovery_cause::MESSAGE,
                     BootstrapDeniedRaise::OpaqueGetter(error),
                 )
                 .await
             } else {
-                Ok(Err(BootstrapReviewFailure::GetterRaised(error)))
+                Ok(BootstrapReviewFailure::GetterRaised(error))
             }
         }
         BootstrapIdentityOutcome::Refused(error) => {
-            Ok(Err(BootstrapReviewFailure::ObservationRefused(error)))
+            Ok(BootstrapReviewFailure::ObservationRefused(error))
         }
         BootstrapIdentityOutcome::Returned(_) => {
             bail!("returned fixed call was classified as a failure")
@@ -507,23 +530,37 @@ fn manifest_call<S: BootstrapInputOwner>(
     out.append(b"\"}")?;
     Ok(out.finish()?)
 }
-async fn binding_failure<S: BootstrapInputOwner>(
+async fn binding_failure<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
     error: BindingFailure,
-    message: &'static str,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+    manifest_read: bool,
+) -> Result<BootstrapReviewFailure> {
     match error {
         BindingFailure::Denied(message) => {
-            review_continuation::denied(review, pack, message, BootstrapDeniedRaise::Plain).await
-        }
-        BindingFailure::Original(error) if error.class == crate::bootstrap_review::DENIED => {
-            review_continuation::denied(review, pack, &error.message, BootstrapDeniedRaise::Plain)
+            review_continuation::denied(review, pack, caller, message, BootstrapDeniedRaise::Plain)
                 .await
         }
+        BindingFailure::Original(error) if error.class == crate::bootstrap_review::DENIED => {
+            review_continuation::denied(
+                review,
+                pack,
+                caller,
+                &error.message,
+                BootstrapDeniedRaise::Plain,
+            )
+            .await
+        }
         BindingFailure::Original(error)
-            if matches!(&error.cause, Some(crate::OriginalAuthorityCause::Io(_))) =>
+            if (manifest_read || matches!(caller, ReviewCaller::Recovery))
+                && matches!(&error.cause, Some(crate::OriginalAuthorityCause::Io(_))) =>
         {
+            let message = if manifest_read {
+                "packaged runtime resource manifest is invalid"
+            } else {
+                recovery_cause::MESSAGE
+            };
             let graph = pack
                 .work
                 .get()
@@ -536,11 +573,12 @@ async fn binding_failure<S: BootstrapInputOwner>(
             review_continuation::denied(
                 review,
                 pack,
+                caller,
                 message,
                 BootstrapDeniedRaise::ExplicitFrom(graph),
             )
             .await
         }
-        BindingFailure::Original(error) => Ok(Err(original_failure(error))),
+        BindingFailure::Original(error) => Ok(original_failure(error)),
     }
 }

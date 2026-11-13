@@ -1,9 +1,9 @@
-//! The original nonstale recovery body, under its SAME pending journal guard.
-//! This fixed Host-only continuation stops at host_profile_catalog's entry.
+//! Original recovery and fresh Setup candidate callers on the same Pack Store.
+//! Only recovery retains the original pending journal guard.
 use super::*;
 use crate::app_bootstrap_identity::{BootstrapIdentityInput, validate_bootstrap_identity};
 use crate::bootstrap_review::{Review, original_failure};
-use crate::original_authority::PublicationPrefix;
+use crate::original_authority::{CandidateSelection, PublicationPrefix};
 use crate::unicode15_1::UnicodeWork as _;
 use crate::{BootstrapReviewFailure, BootstrapReviewReachpoint, NativeErrorGraph, NativeErrorKind};
 use tobkiri_canon::{AllocationError, AllocationKind, AllocationRequest};
@@ -85,6 +85,34 @@ impl Scratch {
             _capacity: capacity,
         })
     }
+
+    fn ascii_identity<'a>(&self, ascii: &'a mut [u8; 128]) -> Result<&'a str> {
+        for (out, point) in ascii.iter_mut().zip(&self.points) {
+            *out = u8::try_from(*point)?;
+        }
+        Ok(std::str::from_utf8(&ascii[..self.points.len()])?)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ReviewCaller {
+    Recovery,
+    Candidate,
+}
+
+impl ReviewCaller {
+    pub(super) fn check<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+        self,
+        review: &Review,
+        pack: &ReviewPackBorrow<'_, S>,
+    ) -> std::result::Result<(), crate::OriginalAuthorityError> {
+        match self {
+            Self::Recovery => review.read.check_continuation_thread(),
+            Self::Candidate => review
+                .read
+                .check_candidate_root(&pack.work.get().source, pack.cancellation),
+        }
+    }
 }
 
 pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
@@ -113,22 +141,108 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             }
         }
     }
-    Ok(Err(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::CatalogNotBound,
-    )))
+    fresh_candidate(review, pack).await
 }
 
 async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
 ) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
-    if let Err(error) = review.read.check_continuation_thread() {
+    let caller = ReviewCaller::Recovery;
+    let identity = match validated_identity(review, pack, caller).await? {
+        Ok(identity) => identity,
+        Err(error) => return Ok(Err(error)),
+    };
+    match review.read.candidate_matches_identity(&identity.points) {
+        Err(error) => return Ok(Err(original_failure(error))),
+        Ok(false) => {
+            return Ok(Err(denied(
+                review,
+                pack,
+                caller,
+                "Profile publication identity changed",
+                BootstrapDeniedRaise::Plain,
+            )
+            .await?));
+        }
+        Ok(true) => {}
+    }
+    // App policy has already proved this very sequence is canonical ASCII.
+    let mut ascii = [0_u8; 128];
+    let profile_id = identity.ascii_identity(&mut ascii)?;
+    if let Err(error) =
+        review
+            .read
+            .construct_workspace(&pack.work.get().source, pack.cancellation, profile_id)
+    {
+        return Ok(Err(original_failure(error)));
+    }
+    pack.require_same_runtime()?;
+    if review.identity_prefix {
+        return Ok(Err(BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::HostProfileCatalogNotBound,
+        )));
+    }
+    super::catalog::run_recovery(review, pack).await
+}
+
+async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+    // The original candidate enters the exact Host user-data scope before
+    // evaluating the root, the actual App loader, then the bootstrap getter.
+    if let Err(error) = review
+        .read
+        .acquire_candidate_root(&pack.work.get().source, pack.cancellation)
+    {
+        return Ok(Err(original_failure(error)));
+    }
+    let caller = ReviewCaller::Candidate;
+    if let Err(error) = super::catalog::load(review, pack, caller).await? {
+        return Ok(Err(error));
+    }
+    let identity = match validated_identity(review, pack, caller).await? {
+        Ok(identity) => identity,
+        Err(error) => return Ok(Err(error)),
+    };
+    let mut ascii = [0_u8; 128];
+    let selection = review.read.candidate_selection(
+        &pack.work.get().source,
+        pack.cancellation,
+        identity.ascii_identity(&mut ascii)?,
+        review.include_source_additions,
+        pack.input_budget,
+    );
+    Ok(Err(match selection {
+        Ok(CandidateSelection::BundledCatalog) => BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::ResolveBootstrapCandidateNotBound,
+        ),
+        Ok(CandidateSelection::ActiveAuthority(candidate)) => {
+            review.actual._active_candidate = Some(candidate);
+            BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::ActiveCandidateAuthorityNotBound,
+            )
+        }
+        Ok(CandidateSelection::Denied(message)) => {
+            denied(review, pack, caller, message, BootstrapDeniedRaise::Plain).await?
+        }
+        Err(error) => original_failure(error),
+    }))
+}
+
+async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
+) -> Result<std::result::Result<Scratch, BootstrapReviewFailure>> {
+    if let Err(error) = caller.check(review, pack) {
         return Ok(Err(original_failure(error)));
     }
     // Store the actual outputs OUTSIDE this child future immediately, before
     // any fallible validation/processing or another await.
     review.actual.getter = Some(pack.observe_bootstrap_profile_id().await?);
-    if let Err(error) = review.read.check_continuation_thread() {
+    if let Err(error) = caller.check(review, pack) {
         return Ok(Err(original_failure(error)));
     }
     match review.actual.getter.as_ref().expect("actual raw getter") {
@@ -139,7 +253,9 @@ async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             return Ok(Err(BootstrapReviewFailure::ObservationRefused(error)));
         }
         BootstrapIdentityOutcome::GetterRaised(error) => {
-            if error.recovery_catch() == BootstrapRecoveryCatch::None {
+            if matches!(caller, ReviewCaller::Candidate)
+                || error.recovery_catch() == BootstrapRecoveryCatch::None
+            {
                 let Some(BootstrapIdentityOutcome::GetterRaised(error)) =
                     review.actual.getter.take()
                 else {
@@ -153,13 +269,14 @@ async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             else {
                 unreachable!()
             };
-            return denied(
+            return Ok(Err(denied(
                 review,
                 pack,
+                caller,
                 "Profile publication recovery failed closed",
                 BootstrapDeniedRaise::OpaqueGetter(error),
             )
-            .await;
+            .await?));
         }
         BootstrapIdentityOutcome::Returned(_) => {}
     }
@@ -188,71 +305,38 @@ async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     let identity = match validated {
         Err(error) => {
             let cause = protocol_graph(&error.message, pack.input_budget)?;
-            return denied(
+            return Ok(Err(denied(
                 review,
                 pack,
+                caller,
                 "application bootstrap Profile identity is not canonical",
                 BootstrapDeniedRaise::ExplicitFrom(cause),
             )
-            .await;
+            .await?));
         }
         Ok(identity) => identity,
     };
     meter
         .charge_work(u64::try_from(identity.len())?)
         .map_err(anyhow::Error::from)?;
-    match review.read.candidate_matches_identity(identity) {
-        Err(error) => return Ok(Err(original_failure(error))),
-        Ok(false) => {
-            return denied(
-                review,
-                pack,
-                "Profile publication identity changed",
-                BootstrapDeniedRaise::Plain,
-            )
-            .await;
-        }
-        Ok(true) => {}
-    }
-    // App policy has already proved this very sequence is canonical ASCII.
-    // This is a bounded, funded pure Path spelling, never a normalization IO.
-    let mut ascii = [0_u8; 128];
-    for (out, point) in ascii.iter_mut().zip(identity) {
-        *out = u8::try_from(*point)?;
-    }
-    let profile_id = std::str::from_utf8(&ascii[..identity.len()])?;
-    if let Err(error) =
-        review
-            .read
-            .construct_workspace(&pack.work.get().source, pack.cancellation, profile_id)
-    {
-        return Ok(Err(original_failure(error)));
-    }
-    pack.require_same_runtime()?;
-    if review.identity_prefix {
-        return Ok(Err(BootstrapReviewFailure::NotBound(
-            BootstrapReviewReachpoint::HostProfileCatalogNotBound,
-        )));
-    }
-    super::catalog::run(review, pack).await
+    Ok(Ok(scratch))
 }
 
-pub(super) async fn denied<S: BootstrapInputOwner>(
+pub(super) async fn denied<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
     message: &str,
     cause: BootstrapDeniedRaise,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+) -> Result<BootstrapReviewFailure> {
     match pack.denied(message, cause).await? {
         Ok(value) => review.actual.denied = Some(value),
         Err(error) => review.actual.factory_failure = Some(error),
     }
-    if review.read.check_continuation_thread().is_err() {
-        bail!("publication factory continuation changed logical worker thread");
-    }
+    caller.check(review, pack)?;
     // No fallible operation/await after transferring these real carriers to
     // the returned typed error. They remain caller-held through actual finish.
-    Ok(Err(if let Some(denied) = review.actual.denied.take() {
+    Ok(if let Some(denied) = review.actual.denied.take() {
         BootstrapReviewFailure::ActualDenied {
             denied,
             getter: review.actual.getter.take(),
@@ -266,7 +350,7 @@ pub(super) async fn denied<S: BootstrapInputOwner>(
                 .expect("actual factory failure"),
             getter: review.actual.getter.take(),
         }
-    }))
+    })
 }
 
 fn protocol_graph(

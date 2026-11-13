@@ -13,7 +13,9 @@ mod crypto;
 mod io;
 pub(crate) use io::publication::catalog;
 pub(crate) use io::publication::definitions;
-pub(crate) use io::publication::{Prefix as PublicationPrefix, PublicationRead};
+pub(crate) use io::publication::{
+    ActiveCandidate, CandidateSelection, Prefix as PublicationPrefix, PublicationRead,
+};
 #[path = "original_authority_json.rs"]
 mod json;
 #[path = "original_authority_lease.rs"]

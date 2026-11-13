@@ -1,8 +1,10 @@
-//! Fixed Host registry constructor/first list, within the held publication.
-//! No registry snapshot or currentness witness is returned past this boundary.
+//! The fixed Host registry snapshot shared by recovery's list and Setup lookup.
 use super::*;
 use tobkiri_canon::AllocationBudget;
 
+#[cfg(all(test, unix))]
+#[path = "original_setup_candidate_selection_tests.rs"]
+mod candidate_selection_tests;
 #[cfg(unix)]
 #[path = "original_profile_definitions_model.rs"]
 mod definitions_model;
@@ -79,57 +81,8 @@ fn prefix<S: crate::BootstrapReviewOwner>(
     requested: &Path,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<DefinitionPrefix> {
-    // This constructor's real mkdir/chmod effects belong here. The separate
-    // absent-registry predecessor read-only defect is not a skip condition.
-    let _paths = op.reserve(
-        OriginalAuthorityStage::Path,
-        requested
-            .as_os_str()
-            .len()
-            .saturating_mul(16)
-            .saturating_add(16384),
-    )?;
-    if requested.is_symlink() {
-        return Err(integrity("Profile store root must not be a symlink"));
-    }
-    let requested = std::path::absolute(requested).map_err(|error| raw_io(error, None))?;
-    let (user_data, profiles) = if requested.file_name().is_some_and(|name| name == "profiles") {
-        (
-            requested
-                .parent()
-                .expect("absolute profiles parent")
-                .to_path_buf(),
-            requested,
-        )
-    } else {
-        let profiles = requested.join("profiles");
-        (requested, profiles)
-    };
-    if profiles.is_symlink() {
-        return Err(integrity("Profile store directory must not be a symlink"));
-    }
-    let directory = Directory::capture(op, &profiles, true)?;
-    let mut lock = publication_io::PublicationLock::acquire_named(
-        op,
-        &directory,
-        publication_io::LockName::Definition,
-    )?;
-    let state = (|| {
-        let read = (|| {
-            if !directory.exists(op, INDEX)? {
-                return Ok(None);
-            }
-            directory.read(op, INDEX).map(Some)
-        })();
-        let bytes = match read {
-            Err(error) if missing(&error) => None,
-            other => other.map_err(unreadable)?,
-        };
-        definitions_model::load(op, bytes.as_ref().map(|b| b.value.as_slice()), budget)
-    })();
-    // _locked yields only snapshot/_read_state. Conversion and sorting in
-    // list_profiles occur AFTER its normal post-yield check/unlock/close.
-    let mut state = finish_snapshot(op, &directory, &mut lock, state)?;
+    let store = Store::new(op, requested)?;
+    let mut state = store.snapshot(op, budget)?;
     let listed = definitions_model::list(op, &mut state, budget)?;
     let empty = listed.is_empty();
     drop(listed);
@@ -137,11 +90,115 @@ fn prefix<S: crate::BootstrapReviewOwner>(
     // Original short circuit: a nonempty list does not inspect this path.
     if empty {
         op.check(OriginalAuthorityStage::Source)?;
-        if user_data.join("settings/startup_profiles.json").is_file() {
+        if store
+            .user_data
+            .join("settings/startup_profiles.json")
+            .is_file()
+        {
             return Ok(DefinitionPrefix::ImportLegacyNotBound);
         }
     }
     Ok(DefinitionPrefix::MigrateLegacySuccessorsNotBound)
+}
+
+#[cfg(unix)]
+pub(super) struct RegisteredProfile {
+    _state: definitions_model::State,
+    _profile: definitions_model::StoredProfile,
+}
+
+#[cfg(unix)]
+pub(super) fn get_profile<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    profile_id: &Text,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<RegisteredProfile>> {
+    let store = Store::new(op, root)?;
+    definitions_model::canonical_id(profile_id, op, budget)?;
+    let mut state = store.snapshot(op, budget)?;
+    Ok(
+        definitions_model::get(op, &mut state, profile_id, budget)?.map(|profile| {
+            RegisteredProfile {
+                _state: state,
+                _profile: profile,
+            }
+        }),
+    )
+}
+
+#[cfg(unix)]
+struct Store {
+    user_data: PathBuf,
+    directory: Directory,
+    _paths: NativeSetupReservation,
+}
+
+#[cfg(unix)]
+impl Store {
+    fn new<S: OriginalAuthorityOwner>(op: &Operation<'_, S>, requested: &Path) -> Result<Self> {
+        let paths = op.reserve(
+            OriginalAuthorityStage::Path,
+            requested
+                .as_os_str()
+                .len()
+                .saturating_mul(16)
+                .saturating_add(16384),
+        )?;
+        if requested.is_symlink() {
+            return Err(integrity("Profile store root must not be a symlink"));
+        }
+        let requested = std::path::absolute(requested).map_err(|error| raw_io(error, None))?;
+        let (user_data, profiles) = if requested.file_name().is_some_and(|name| name == "profiles")
+        {
+            (
+                requested
+                    .parent()
+                    .expect("absolute profiles parent")
+                    .to_path_buf(),
+                requested,
+            )
+        } else {
+            let profiles = requested.join("profiles");
+            (requested, profiles)
+        };
+        if profiles.is_symlink() {
+            return Err(integrity("Profile store directory must not be a symlink"));
+        }
+        // The constructor's original mkdir/chmod effects precede the snapshot.
+        let directory = Directory::capture(op, &profiles, true)?;
+        Ok(Self {
+            user_data,
+            directory,
+            _paths: paths,
+        })
+    }
+
+    fn snapshot<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<definitions_model::State> {
+        let directory = &self.directory;
+        let mut lock =
+            PublicationLock::acquire_named(op, directory, publication_io::LockName::Definition)?;
+        let state = (|| {
+            let read = (|| {
+                if !directory.exists(op, INDEX)? {
+                    return Ok(None);
+                }
+                directory.read(op, INDEX).map(Some)
+            })();
+            let bytes = match read {
+                Err(error) if missing(&error) => None,
+                other => other.map_err(unreadable)?,
+            };
+            definitions_model::load(op, bytes.as_ref().map(|b| b.value.as_slice()), budget)
+        })();
+        // Both original consumers convert rows after the lock's post-yield
+        // validation and physical unlock/close.
+        finish_snapshot(op, directory, &mut lock, state)
+    }
 }
 
 #[cfg(unix)]

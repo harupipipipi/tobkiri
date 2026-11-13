@@ -15,8 +15,8 @@ impl NativeSetupLease for Portable {
         Digest::hash(b"registry-test-only-not-source-authority")
     }
 }
-struct Source {
-    root: PathBuf,
+pub(super) struct Source {
+    pub(super) root: PathBuf,
 }
 impl OriginalAuthorityOwner for Source {
     fn with_original_user_data<R>(&self, f: impl FnOnce(&Path) -> R) -> Result<R> {
@@ -31,8 +31,8 @@ impl crate::BootstrapReviewOwner for Source {
         Ok(f(&self.root))
     }
 }
-fn with_source(
-    run: impl FnOnce(&Source, &PublicationRead, &CoreCancellation, &Arc<dyn AllocationBudget>),
+pub(super) fn with_source(
+    run: impl FnOnce(&Source, &mut PublicationRead, &CoreCancellation, &Arc<dyn AllocationBudget>),
 ) {
     let temporary = tempfile::tempdir().unwrap();
     let source = Source {
@@ -47,8 +47,8 @@ fn with_source(
     let store = engine.native_setup_store(invocation.clone(), ()).unwrap();
     let cancellation = store.cancellation().clone();
     let budget = store.allocation_owners().graph().clone();
-    let read = PublicationRead::new(&invocation).unwrap();
-    run(&source, &read, &cancellation, &budget);
+    let mut read = PublicationRead::new(&invocation).unwrap();
+    run(&source, &mut read, &cancellation, &budget);
     assert!(read.receipt().verified());
     assert!(!source.root.join("authority").exists());
     // Every owned diagnostic produced by the test body is gone before Read.
@@ -72,7 +72,7 @@ fn operation<'a>(
         fixture: None,
     }
 }
-fn digest(value: &Value) -> String {
+pub(super) fn digest(value: &Value) -> String {
     let data = serde_json::to_vec(value).unwrap();
     let value = tobkiri_canon::parse(&data, tobkiri_canon::Variant::StrictV1).unwrap();
     tobkiri_canon::digest(&value, tobkiri_canon::Variant::StrictV1)
@@ -80,7 +80,7 @@ fn digest(value: &Value) -> String {
         .as_str()
         .to_owned()
 }
-fn entry(id: &str, order: i64) -> Value {
+pub(super) fn entry(id: &str, order: i64) -> Value {
     let profile = json!({"profile_id":id,"display_name":id});
     let revision = digest(&profile);
     json!({"profile_id":id,"order":order,"tombstone":false,"current_revision":revision,
@@ -88,23 +88,23 @@ fn entry(id: &str, order: i64) -> Value {
             "created_at":10,"updated_at":10,"tombstone":false}],
         "created_at":10,"updated_at":10,"legacy_ids":[]})
 }
-fn state(profiles: Vec<Value>) -> Value {
+pub(super) fn state(profiles: Vec<Value>) -> Value {
     json!({"schema":"io.tobkiri.profile-definition-store.v1","generation":1,"updated_at":10,
         "profiles":profiles,"legacy":{},"bootstrap":{"state":"not_required","template_profile_revision":null}})
 }
-fn sealed(mut state: Value) -> Vec<u8> {
+pub(super) fn sealed(mut state: Value) -> Vec<u8> {
     state.as_object_mut().unwrap().remove("store_digest");
     let hash = digest(&state);
     state["store_digest"] = json!(hash);
     serde_json::to_vec(&state).unwrap()
 }
-fn write_index(source: &Source, bytes: &[u8]) {
+pub(super) fn write_index(source: &Source, bytes: &[u8]) {
     let profiles = source.root.join("profiles");
     fs::create_dir_all(&profiles).unwrap();
     fs::write(profiles.join(INDEX), bytes).unwrap();
     fs::set_permissions(profiles.join(INDEX), fs::Permissions::from_mode(0o600)).unwrap();
 }
-fn lock_free(path: &Path) -> bool {
+pub(super) fn lock_free(path: &Path) -> bool {
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -247,11 +247,31 @@ async fn registry_tombstones_keep_the_prior_document_and_check_parent_before_dig
             "created_at":11,"updated_at":11,"tombstone":true}));
         profile["current_revision"] = json!(tombstone);
         profile["tombstone"] = json!(true);
-        let bytes = sealed(state(vec![profile.clone()]));
+        let beta = entry("beta", 2);
+        let bytes = sealed(state(vec![profile.clone(), beta.clone()]));
         let op = operation(read, source, cancel);
+        write_index(source, &bytes);
+        assert!(
+            get_profile(&op, &source.root, &Text::from_str("alpha"), budget)
+                .unwrap()
+                .is_none()
+        );
+        let selected = get_profile(&op, &source.root, &Text::from_str("beta"), budget)
+            .unwrap()
+            .expect("exact current profile");
+        let doc = &selected._state.doc;
+        let [id, revision, document, _, _] = selected._profile.references;
+        assert!(doc.string_is(id, "beta"));
+        assert!(doc.string_is(revision, beta["current_revision"].as_str().unwrap()));
+        assert!(doc.string_is(doc.get(document, "display_name").unwrap(), "beta"));
+        assert!(lock_free(
+            &source.root.join("profiles/.profile-definition.lock")
+        ));
+        drop(selected);
+
         let mut model = definitions_model::load(&op, Some(&bytes), budget).unwrap();
         let rows = definitions_model::list(&op, &mut model, budget).unwrap();
-        assert_eq!(rows.value.len(), 1);
+        assert_eq!(rows.value.len(), 2);
         assert!(rows.value[0].scalars.1);
         let payload = rows.value[0].references[2];
         assert!(

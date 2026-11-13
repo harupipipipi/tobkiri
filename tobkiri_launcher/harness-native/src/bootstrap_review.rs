@@ -48,10 +48,11 @@ pub struct BootstrapReviewOptions {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BootstrapReviewReachpoint {
-    CatalogNotBound,
     BootstrapProfileIdNotBound,
     HostProfileCatalogNotBound,
     CatalogSourceNotBound,
+    ResolveBootstrapCandidateNotBound,
+    ActiveCandidateAuthorityNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
     MigrateLegacySuccessorsNotBound,
@@ -109,7 +110,8 @@ pub(crate) struct Review {
     pub(crate) read: PublicationRead,
     // Funded DATA only; the original outer input stays inside the owning job.
     _denial_diagnostic: Option<CoreBuffer>,
-    _flags: (bool, bool, bool),
+    _flags: (bool, bool),
+    pub(crate) include_source_additions: bool,
     pub(crate) attempted: bool,
     pub(crate) actual: ActualCustody,
     pub(crate) identity_prefix: bool,
@@ -126,6 +128,7 @@ pub(crate) struct ActualCustody {
     pub(crate) catalog_input: Option<CoreBuffer>,
     pub(crate) manifest: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) manifest_input: Option<CoreBuffer>,
+    pub(crate) _active_candidate: Option<crate::original_authority::ActiveCandidate>,
 }
 impl Review {
     pub(crate) fn new(
@@ -139,11 +142,8 @@ impl Review {
         Ok(Self {
             read: PublicationRead::new(invocation)?,
             _denial_diagnostic: diagnostic,
-            _flags: (
-                options.include_source_additions,
-                options.active,
-                options.activation_denied,
-            ),
+            _flags: (options.active, options.activation_denied),
+            include_source_additions: options.include_source_additions,
             attempted: false,
             actual: ActualCustody::default(),
             identity_prefix: false,

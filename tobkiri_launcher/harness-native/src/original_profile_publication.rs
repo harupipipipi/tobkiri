@@ -17,10 +17,13 @@ use model::{Pointer, validate_pointer};
 #[cfg(unix)]
 #[path = "original_active_profile.rs"]
 mod active_profile;
+#[path = "original_setup_candidate_selection.rs"]
+mod candidate_selection;
 #[path = "original_profile_catalog_io.rs"]
 pub(crate) mod catalog;
 #[path = "original_profile_definitions.rs"]
 pub(crate) mod definitions;
+pub(crate) use candidate_selection::{ActiveCandidate, CandidateSelection};
 
 const JOURNAL: &str = "bootstrap-publication.json";
 const LOCK: &str = ".bootstrap-publication.lock";
@@ -41,6 +44,7 @@ pub(crate) struct PublicationRead {
     invocation: NativeSetupInvocation,
     cleanup: Arc<CleanupState>,
     calls: u8,
+    fresh: candidate_selection::FreshSetup,
     _capacity: NativeSetupReservation,
     #[cfg(unix)]
     pending: Option<PendingRecoveryScope>,
@@ -67,6 +71,7 @@ impl PublicationRead {
             invocation: invocation.clone(),
             cleanup: Arc::new(CleanupState::new(control)),
             calls: 0,
+            fresh: candidate_selection::FreshSetup::default(),
             _capacity: capacity,
             #[cfg(unix)]
             pending: None,
@@ -130,7 +135,7 @@ impl PublicationRead {
         op.check(OriginalAuthorityStage::Source)?;
         // Retirement is applied after the actual body/close by the owning job.
         // Do not replace a prior original failure with a later shutdown flag.
-        owner
+        let result = owner
             .with_original_review_user_data(|root| {
                 prefix(
                     &op,
@@ -143,7 +148,16 @@ impl PublicationRead {
                     remove_intent_after_lock,
                 )
             })?
-            .map_err(recovery_error)
+            .map_err(recovery_error);
+        if retain_continuation
+            && matches!(
+                result,
+                Ok(Prefix::NoJournal | Prefix::NoIntent | Prefix::RecoveredNone)
+            )
+        {
+            self.fresh.record_recovery(cancellation);
+        }
+        result
     }
     #[cfg(test)]
     pub(crate) fn remove_intent_after_lock_for_fixture(&mut self) {
@@ -209,34 +223,7 @@ impl PublicationRead {
                 .pending
                 .as_mut()
                 .expect("held publication continuation");
-            let bytes = pending
-                .root
-                .as_os_str()
-                .len()
-                .checked_add(identity.len())
-                .and_then(|bytes| bytes.checked_add(32))
-                .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
-            let capacity = op.reserve(OriginalAuthorityStage::Path, bytes.saturating_add(8192))?;
-            // Exactly the original pure Path joins. No exists, resolve,
-            // canonicalize, directory creation, catalog or Authority IO.
-            // Prepay/check the actual one owned buffer before pushing; do not
-            // leave two transient PathBuf join allocations outside funding.
-            let mut workspace = PathBuf::new();
-            workspace
-                .try_reserve_exact(bytes)
-                .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
-            if workspace.capacity() != bytes {
-                return Err(OriginalAuthorityError::capacity(
-                    OriginalAuthorityStage::Path,
-                ));
-            }
-            workspace.push(pending.root.as_path());
-            workspace.push("workspaces");
-            workspace.push(identity);
-            pending._workspace = Some(Funded {
-                value: workspace,
-                _capacity: capacity,
-            });
+            pending._workspace = Some(workspace_path(&op, &pending.root, identity)?);
             Ok(())
         }
         #[cfg(not(unix))]
@@ -248,6 +235,7 @@ impl PublicationRead {
     /// Called after actual Store retirement and native IO Join. Exceptional
     /// exits skip Python's post-yield validation; actual unlock/close always run.
     pub(crate) fn close_continuation(&mut self) -> Result<()> {
+        self.fresh = candidate_selection::FreshSetup::default();
         #[cfg(unix)]
         if let Some(mut pending) = self.pending.take() {
             let thread = pending.check_thread();
@@ -256,6 +244,38 @@ impl PublicationRead {
         }
         Ok(())
     }
+}
+
+#[cfg(unix)]
+fn workspace_path<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    profile_id: &str,
+) -> Result<Funded<PathBuf>> {
+    let bytes = root
+        .as_os_str()
+        .len()
+        .checked_add(profile_id.len())
+        .and_then(|bytes| bytes.checked_add(32))
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
+    let capacity = op.reserve(OriginalAuthorityStage::Path, bytes.saturating_add(8192))?;
+    // Exactly the original lexical joins, prepaid in one owned buffer.
+    let mut workspace = PathBuf::new();
+    workspace
+        .try_reserve_exact(bytes)
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
+    if workspace.capacity() != bytes {
+        return Err(OriginalAuthorityError::capacity(
+            OriginalAuthorityStage::Path,
+        ));
+    }
+    workspace.push(root);
+    workspace.push("workspaces");
+    workspace.push(profile_id);
+    Ok(Funded {
+        value: workspace,
+        _capacity: capacity,
+    })
 }
 
 fn raw(class: &'static str, message: impl Into<String>) -> OriginalAuthorityError {

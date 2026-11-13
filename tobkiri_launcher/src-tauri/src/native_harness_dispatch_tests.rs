@@ -712,7 +712,7 @@ fn outcome(operation: OriginalOperation, scenario: Scenario) -> serde_json::Valu
 }
 
 #[test]
-fn finite_review_enters_the_original_no_journal_prefix_on_its_same_store() {
+fn finite_review_requires_the_original_catalog_source_after_no_journal() {
     let running = launch(
         OriginalOperation::ReviewListing(Default::default()),
         Scenario::Normal,
@@ -728,7 +728,7 @@ fn finite_review_enters_the_original_no_journal_prefix_on_its_same_store() {
             stage: Stage::Review,
             source: SourceRecord::Integration(
                 crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
-                    tobkiri_harness_native::BootstrapReviewReachpoint::CatalogNotBound
+                    tobkiri_harness_native::BootstrapReviewReachpoint::CatalogSourceNotBound
                 )
             ),
         })
@@ -1236,7 +1236,7 @@ fn review_pointer(case: ReviewPointerCase) {
                 tobkiri_harness_native::BootstrapReviewReachpoint::CatalogSourceNotBound)) })) => {}
         (ReviewPointerCase::Stale, Err(DetachedFailure::Execution { stage: Stage::Review,
             source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
-                tobkiri_harness_native::BootstrapReviewReachpoint::CatalogNotBound)) })) => {}
+                tobkiri_harness_native::BootstrapReviewReachpoint::CatalogSourceNotBound)) })) => {}
         (ReviewPointerCase::MissingSnapshot, Err(DetachedFailure::Execution { stage: Stage::Review,
             source: SourceRecord::Review(crate::native_worker_failure::ReviewSourceRecord::ResolutionDenied { message, cause }) })) => {
             assert_eq!(message, "Profile publication recovery failed closed");

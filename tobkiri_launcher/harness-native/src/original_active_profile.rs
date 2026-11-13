@@ -1,4 +1,4 @@
-//! The fixed old ActiveProfileStore read reached inside publication recovery.
+//! The fixed old ActiveProfileStore read shared by recovery and fresh Setup.
 //! Snapshot integrity is candidate DATA, never an Authority or approval check.
 use super::*;
 use crate::original_authority::lease::model_text;
@@ -7,6 +7,15 @@ use model::{Pointer, equal_atom, pointer_error, validate_pointer};
 pub(super) struct LoadedPointer {
     pub(super) doc: Funded<Document>,
     pub(super) pointer: Pointer,
+}
+
+impl LoadedPointer {
+    pub(super) fn profile_id(&self) -> &Text {
+        match self.doc.node(self.pointer.field("profile_id")) {
+            Node::String(value) => value,
+            _ => unreachable!("verified active Profile ID"),
+        }
+    }
 }
 
 fn missing(error: &OriginalAuthorityError) -> bool {

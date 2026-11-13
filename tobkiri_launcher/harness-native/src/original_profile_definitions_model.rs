@@ -497,7 +497,7 @@ fn unicode_error(error: UnicodeError<OriginalAuthorityError>) -> OriginalAuthori
         ),
     }
 }
-fn canonical_id<S: OriginalAuthorityOwner>(
+pub(super) fn canonical_id<S: OriginalAuthorityOwner>(
     id: &Text,
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
@@ -568,6 +568,70 @@ fn canonical_id<S: OriginalAuthorityOwner>(
     ))
 }
 
+pub(super) fn get<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &mut State,
+    profile_id: &Text,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<StoredProfile>> {
+    let doc = &mut state.doc;
+    let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
+    let mut matching = None;
+    for &entry in entries {
+        charge(op, budget, 1 + profile_id.0.len() as u64)?;
+        if text(doc, field(doc, entry, "profile_id")) == Some(profile_id) {
+            matching = Some(entry);
+            break;
+        }
+    }
+    let Some(entry) = matching else {
+        return Ok(None);
+    };
+    if boolean(doc, field(doc, entry, "tombstone")).expect("validated bool") {
+        return Ok(None);
+    }
+    Ok(Some(stored_from_entry(doc, entry)))
+}
+
+fn stored_from_entry(doc: &mut Document, entry: usize) -> StoredProfile {
+    let revisions = array(doc, field(doc, entry, "revisions")).expect("validated history");
+    let latest = *revisions.last().expect("nonempty");
+    let profile = field(doc, latest, "profile");
+    let profile = if matches!(doc.node(profile), Node::Scalar(CanonValue::Null)) {
+        revisions[..revisions.len() - 1]
+            .iter()
+            .rev()
+            .find_map(|&id| {
+                let profile = field(doc, id, "profile");
+                doc.entries(profile).map(|_| profile)
+            })
+    } else {
+        Some(profile)
+    };
+    let profile = profile.unwrap_or_else(|| {
+        let profile_id = field(doc, entry, "profile_id");
+        push(
+            doc,
+            Node::Object(vec![(Text::from_str("profile_id"), profile_id)]),
+        )
+    });
+    StoredProfile {
+        references: [
+            field(doc, entry, "profile_id"),
+            field(doc, entry, "current_revision"),
+            profile,
+            field(doc, latest, "parent_revision"),
+            field(doc, entry, "legacy_ids"),
+        ],
+        scalars: (
+            integer(doc, field(doc, entry, "order")),
+            boolean(doc, field(doc, entry, "tombstone")).expect("validated bool"),
+            integer(doc, field(doc, entry, "created_at")),
+            integer(doc, field(doc, entry, "updated_at")),
+        ),
+    }
+}
+
 pub(super) fn list<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &mut State,
@@ -589,42 +653,7 @@ pub(super) fn list<S: OriginalAuthorityOwner>(
         .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
     for entry in entries {
         charge(op, budget, 1)?;
-        let revisions = array(doc, field(doc, entry, "revisions")).expect("validated history");
-        let latest = *revisions.last().expect("nonempty");
-        let profile = field(doc, latest, "profile");
-        let profile = if matches!(doc.node(profile), Node::Scalar(CanonValue::Null)) {
-            revisions[..revisions.len() - 1]
-                .iter()
-                .rev()
-                .find_map(|&id| {
-                    let profile = field(doc, id, "profile");
-                    doc.entries(profile).map(|_| profile)
-                })
-        } else {
-            Some(profile)
-        };
-        let profile = profile.unwrap_or_else(|| {
-            let profile_id = field(doc, entry, "profile_id");
-            push(
-                doc,
-                Node::Object(vec![(Text::from_str("profile_id"), profile_id)]),
-            )
-        });
-        rows.push(StoredProfile {
-            references: [
-                field(doc, entry, "profile_id"),
-                field(doc, entry, "current_revision"),
-                profile,
-                field(doc, latest, "parent_revision"),
-                field(doc, entry, "legacy_ids"),
-            ],
-            scalars: (
-                integer(doc, field(doc, entry, "order")),
-                boolean(doc, field(doc, entry, "tombstone")).expect("validated bool"),
-                integer(doc, field(doc, entry, "created_at")),
-                integer(doc, field(doc, entry, "updated_at")),
-            ),
-        });
+        rows.push(stored_from_entry(doc, entry));
     }
     // Stable bottom-up merge sort allows each reached comparison to fail
     // funding/cancellation before comparison, without an infallible callback.
