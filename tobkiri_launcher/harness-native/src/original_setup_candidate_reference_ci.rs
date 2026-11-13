@@ -7,7 +7,7 @@ use super::{
 };
 use anyhow::{Context, ensure};
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, fs::File, io::Read as _};
+use std::{collections::BTreeSet, fs::File};
 use tobkiri_core::RuntimeOwner;
 use tobkiri_gate::NATIVE_SETUP_MEMORY_BYTES;
 

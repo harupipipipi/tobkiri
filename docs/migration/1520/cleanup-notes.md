@@ -2729,8 +2729,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   別のDB接続、拒否・取消・epoch変更、旧DBからの移行を含むStore試験9件が成功。
 - 専用ウィンドウは承認シート単位に応答を受け取る。CLIの`TerminalHost`は同じ端末を
   共有するため、期限切れの要求に対する入力が次の要求に残り得る。期限切れの承認を
-  通さないGate検証とは別に、端末側で書き込みの回答を個別要求に結び付ける検証が必要。
-  既存Profileワークスペースの三層移行も未完了。
+  通さないGate検証とは別に、`86472deaa` でCLIの承認を表示中の予約IDに結び付けた。
+  [実CLIのCI 43411791141](https://github.com/harupipipipi/tobkiri/actions/runs/43411791141)は
+  実際の旧Pack承認の回答を後続のUser承認に送っても記録されず、表示中の予約への回答でのみ
+  進むことを確認した。専用ウィンドウと通常の起動操作に変更はない。
+  実public書き込み時の端末期限切れと既存Profileワークスペースの三層移行は別に確認する。
 
 ## 037: SSE受信済みの出力を次のHTTPチャンクまで保持する処理
 
@@ -2803,6 +2806,43 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   25,205,940バイトで、終了・reap後は0。無計測の
   [cold・全体CI 43388500873](https://github.com/harupipipipi/tobkiri/actions/runs/43388500873)
   も両OSで燃料切れ。元の予算での完走条件は継続する。
+- `2c868fdf1` は既存のResource/Anchorの実参照を同じ順序で保持し、所有判定の
+  線形走査だけをソート済みアドレスの検索に置換した。外部取得されたオブジェクトの
+  昇格やlookup結果のキャッシュは行わず、descriptorと実Registryの呼び出しを保つ。
+  [native比較 43408273432](https://github.com/harupipipipi/tobkiri/actions/runs/43408273432)は成功。
+  [計測CI 43408308307](https://github.com/harupipipipi/tobkiri/actions/runs/43408308307)では
+  41件目の戻りに109,723,594 fuelが残り、前版より513,642増えた。評価区間の合計は
+  1,732,192,164 fuel。42件目は93,337,581で評価開始後に停止し、
+  [無計測CI 43408311686](https://github.com/harupipipipi/tobkiri/actions/runs/43408311686)
+  でもcold・全体ともに燃料切れ。数値は計測区間の比較で、製品採用は引き続き未達。
+- Astra highはCursorの `PyIter_NextItem` 呼び出し前の一時参照を検討した。
+  CPythonの組み込みdict項目iteratorも前の要素の解放中にユーザーコードを実行し得る。
+  そのコードからiteratorの参照数を観測できるため、今回の変更から外した。
+  [CPython 3.13.16](https://github.com/python/cpython/blob/v3.13.16/Objects/dictobject.c#L5584-L5627)
+  · [PyO3 0.30.1](https://github.com/PyO3/pyo3/blob/v0.30.1/src/types/iterator.rs#L99-L119)
+- `cfb4344e8` は元の `TYPE_CHECKER` とintern済みPyStringを保持したまま、`object`、
+  `array`、`string`、`number` の4種だけRustの固定名を再利用する。Astra highへの確認と
+  原本と照らす18番目の値プローブを追加し、
+  [native比較 43412870936](https://github.com/harupipipipi/tobkiri/actions/runs/43412870936)が成功した。
+  [計測CI 43412913855](https://github.com/harupipipipi/tobkiri/actions/runs/43412913855)では
+  41件目の戻りに111,647,175 fuelが残り、前版より1,923,581増えた。評価区間は合計
+  1,730,185,784 fuel（2,006,380減）。42件目は95,257,120で評価を始め、その途中で停止した。
+  ピーク25,205,940バイト、終了後0。元の上限を使う
+  [無計測CI 43412917884](https://github.com/harupipipipi/tobkiri/actions/runs/43412917884)も
+  cold・全体の両方が燃料切れ。計測上の短縮は採用証拠に数えない。
+- Astra highの回答に沿い、`11af1dce0` はFrameが同じschemaを保持している間、
+  `start` が作ったkeyword cursorの有無を使って再開時の組み込みbool判定を減らした。
+  `bool` は継承不能で、他のクラスへの置換が起きても同じFrameのschemaがboolには
+  変わらない。実際に非boolのクラスをcallbackで切り替え、その後の実エラー・参照・順序を
+  原本と比べるケースを追加した。
+  [原本比較 43420777040](https://github.com/harupipipipi/tobkiri/actions/runs/43420777040)は成功。
+  [計測 43420799485](https://github.com/harupipipipi/tobkiri/actions/runs/43420799485)の41件目は
+  110,504,689 fuelで前版より1,142,486減り、同じ評価区間は1,176,306多く消費した。
+  42件目は94,118,156 fuelで開始後に停止し、
+  [無計測 43420799288](https://github.com/harupipipipi/tobkiri/actions/runs/43420799288)も
+  cold・全体の両方が燃料切れ。`3d03c3a76` で速かった経路へ戻し、追加テストは
+  残した。[原本比較 43421951611](https://github.com/harupipipipi/tobkiri/actions/runs/43421951611)が
+  成功。次は個別の処理の費用をCI専用計測で絞る。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -2852,6 +2892,38 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ディレクトリの拒否、開発・配布Bundleの新しい物理バイトを確認した。
   実Wasmカタログを経由する全体の比較と
   選択済みProfileのAuthority/Activation、後続のPack解決・確認画面は残る。
+- [登録済みSetupの原本CI 43410805436](https://github.com/harupipipipi/tobkiri/actions/runs/43410805436)
+  は、DBなし・壊れたepoch・v1移行・ディレクトリ・dangling・キー欠落と追加ソース有無を
+  組み合わせた12ケースを両OSで実行した。実Authorityの `__enter__` を通り、元のactivation
+  factory入口までを観測した。`c57f289b4` のRustは、確保済みの候補とrootを保持して同じ
+  Authorityを開き、workspace/activationの引数をスコープ内で渡す。DB不在時にキーの
+  作成が止まる問題は `c6fa90779` で直し、
+  [Rust側のCI 43416966566](https://github.com/harupipipipi/tobkiri/actions/runs/43416966566)で
+  両OSのfocused試験とstrict Clippyが成功した。実activation factoryへの接続は残る。
+  同時DB作成で実際に `O_EXCL` が `EEXIST` を返す場合、元のPOSIX実装の
+  `secure_parent` が先に例外を包むため、DBファイルの再試行へは進まない。
+  `447d4fbea` でRustも元の拒否と実OSエラーへのcause/contextを保持する。競合後に
+  既存DBを開かず、元の順序で止まる。実ファイルを作る回帰ケースを既存macOS試験に追加。
+  [原本CI 43421538226](https://github.com/harupipipipi/tobkiri/actions/runs/43421538226)は
+  追加ソースあり・なしを含む14ケースのLinux側が成功し、macOS側と
+  [Rust側 43421778809](https://github.com/harupipipipi/tobkiri/actions/runs/43421778809)は検証中。
+- `f883e1715` の[原本CI 43419146914](https://github.com/harupipipipi/tobkiri/actions/runs/43419146914)
+  は以前の9ケースに2ケースを足し、実 `catalog.profiles.get(profile_id)` の戻りが同じ辞書
+  オブジェクトであることと、2回目の実IDだけが不在の場合の元の拒否をLinux・macOSで確認した。
+  `b4263dfaf` は同じStoreのカタログと2回目のgetterを参照し、実lookup結果を保持する。
+  既存の例外ファクトリを使い、一般のDATA操作から専用lookupを選べないようにした。
+  [実componentのCI 43419680264](https://github.com/harupipipipi/tobkiri/actions/runs/43419680264)は
+  Python側194件と実Wasm生成、macOSの実getterと一般DATA経由の専用操作拒否が成功。
+  同CIのカタログ読み出し試験は実行した5件がすべて通過したが、件数照合が4件で停止した。
+  2回目の物理ロックを追加で確認する実行済み試験を含め、期待件数を5件に揃えた。
+  正常カタログ、requested edgesの解決、Launcher採用は未確認。
+- `b981dbd34` の[原本CI 43422442527](https://github.com/harupipipipi/tobkiri/actions/runs/43422442527)
+  では、実catalogから得た元の310辺について、既存のSetupが作るauthority referenceと
+  挿入順をdynamic edgesの直前で観測する。Linuxで成功、macOS側は待機中。
+  Rust側へ移す際は同じsource参照とAuthority snapshotを使い、承認やgrantの発行にはしない。
+- 将来の整理候補: `value_graph.py` の `_bootstrap_identity` とHostの `BootstrapIdentity*` は
+  元の固定getterだけでなくcatalog・manifest・lookupも扱う。全固定呼出しの比較が通った後、
+  wireのタグ、実参照、同じStoreでの保持を保ったまま名前と共有責務を揃える。
 
 ## 040: 公開Profileへ混入しない既存データ
 
@@ -2865,8 +2937,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   別に確認する。元のストアと暗号化済みvaultも照合する。
   [初回CI 43406959874](https://github.com/harupipipipi/tobkiri/actions/runs/43406959874)
   は試験の `ApprovalStore` のimport先が誤っており、実行前のコンパイルで停止した。
-  `717ac4ed0` で正規のGate traitをimportし、
-  [再実行CI 43408497109](https://github.com/harupipipipi/tobkiri/actions/runs/43408497109)で確認する。
+  `717ac4ed0` で正規のGate traitをimportし、`457c1973a` で試験用WATの括弧、
+  `70290aa6e` で取り込みのUser承認が照合するStrictV1引数のdigestを直した。
+  [CI 43412262677](https://github.com/harupipipipi/tobkiri/actions/runs/43412262677)は次に
+  Core管理領域の上限で停止。`413237d7e` はclose済みSessionを必要な範囲で解放し、
+  失敗した操作名を記録する。`09c379110` はrustfmt、`17ac67b2a` は既存の `anyhow::Error`
+  に直接contextを足す修正。上限を維持した
+  [CI 43418877488](https://github.com/harupipipipi/tobkiri/actions/runs/43418877488)は
+  実Wasmでの公開・取り込み・書き戻しに進み、二つの書き手が同じpublicキーを上書きする
+  最終確認で、テストの期待値が誤っていた。`92373039b` で最初の書き込み直後に別Packが
+  同じ値を読めることを加え、二番目の書き込み後は両Packで最新値を確認する。
+  [再実行CI 43420621105](https://github.com/harupipipipi/tobkiri/actions/runs/43420621105)が
+  macOSで成功し、承認項目16を確認済みにした。OSキーチェーンを使うvault、既存承認、
+  Profileの3段の値、承認後の共有ストアを同じ試験で照合した。
 
 ## 041: 保存済みコンポーネントが参照する旧Profile
 
@@ -2881,3 +2964,30 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rustは旧文書2件の再読込だけを同じ場所に向け、他のソースと実行本体は現在のcheckoutを使う。
   固定のreceipt、バイナリのハッシュ、展開・実行上限は既存の条件で検証する。
   現行Profileと配布物は別途検証し、旧成果物の再生を現行Profileの互換性に数えない。
+- `e447c605a` の[全体CI 43408890320](https://github.com/harupipipipi/tobkiri/actions/runs/43408890320)
+  で旧Wasmの保持・展開試験8件とGateway試験21件が通過した。次のBootstrap試験は、
+  個別起動時に `tobkiri_protocol` がimportできず停止した。`4d5139111` で他の試験と
+  同様にcheckout内のruntimeを明示し、
+  [全体CI 43409309579](https://github.com/harupipipipi/tobkiri/actions/runs/43409309579)で
+  Bootstrap試験は通過した。次のソース試験には既存のcatalogモード2件が期待集合に
+  入っていなかった。`c7b55fb30` で2件を追加し、すべてが同じ排他groupに属することを
+  引き続き厳密に確認する。
+  最終の移行削除ゲートは別途、未移植の棚卸しを検出している。
+- `7b291dc0f` では全体CIが実行したSetup Store 16件を個別に確認し、期待件数を16に更新した。
+  `6761811cf` はCoreの管理を明示の上限付きcounterへ揃え、
+  [Launcher CI 43409912357](https://github.com/harupipipipi/tobkiri/actions/runs/43409912357)で
+  実Tauriのコンパイルとportable検証を通過した。
+- `98bb10ab6` はProject関連で変わったsource closureを現行の元Pythonで再実行した。
+  [再生成CI 43413658285](https://github.com/harupipipipi/tobkiri/actions/runs/43413658285)の
+  固定CPython 3.13.9で、Provider Registryの30ケース/85操作と設定の23ケースの入出力が
+  前回の原本と一致した。全221ファイルの参照ハッシュとsourceを照合し、変わった時計値と
+  参照ハッシュを保存した。同じCIの独立した旧Profile解決は現行の2つのcatalog JSONが
+  固定原本と異なり停止しており、この再生成でその比較が通ったとは数えない。
+- [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
+  foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
+  `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と
+  実リースの処理は変更していない。
+  [再実行CI 43419679993](https://github.com/harupipipipi/tobkiri/actions/runs/43419679993)で
+  Gate試験は成功。続く全体のstrict Clippyで、Harness試験の型・定数検査・条件式の
+  警告を検出した。`86f18a7f2` で検査を保ったまま直し、
+  [全体CI 43421823935](https://github.com/harupipipipi/tobkiri/actions/runs/43421823935)で再検証中。

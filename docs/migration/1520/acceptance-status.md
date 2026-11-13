@@ -639,15 +639,15 @@ the three oversized cases in the earlier five-component replay.
 ## Acceptance checklist
 
 Status after the focused CI replays (2026-11-13): items 2, 3, 4, 6, 7, 8, 9, 11,
-12, 13 and 18 are checked (11 of 20). The aggregate
-`issue-1520-rust.yml` currently fails earlier at an unrelated Python fixture
-step, so it is not the evidence; the focused workflows
-`issue-1520-acceptance-9-11-12.yml` and `issue-1520-acceptance-13-16.yml` are.
+12, 13, 16 and 18 are checked (12 of 20). The aggregate
+`issue-1520-rust.yml` is still open: the migration-completion job reports
+unported inventory, and the newest foundations and platform replay is pending.
+Individual items are supported by their linked focused execution evidence.
 Open points: 11 lacks the 「未確認の接続」 UI label; 12 uses synthetic WIT; 13
 has R2.10 gaps (no 「持ち主のいないデータ」 marking in Core removal, `policy-view`
-over-rejection); 14 needs CLI prompt-lifetime coverage and existing-workspace migration;
-15 needs physical Proc/PTY; 16 needs the populated vault and other storage tiers
-covered in the same publication replay.
+over-rejection); 14 needs public-write prompt expiry at the CLI and
+existing-workspace migration;
+15 needs physical Proc/PTY.
 
 On the integration branch, [CI 43374564400](https://github.com/harupipipipi/tobkiri/actions/runs/43374564400)
 (`fd78392dd`) passed four compiler tests, two Flow engine tests, one Store
@@ -812,10 +812,13 @@ approval and rejects invalid original policies and mismatched pins.
     sequential approval for two writer Packs and two public stores, denied access,
     and session closure. The Store regression also exercised simultaneous
     requests on separate connections, with distinct reservations and a single
-    first-write prompt. Migration of existing Profile workspaces and terminal
-    prompt response isolation still require evidence.
+    first-write prompt. The CLI replays a stale Pack response during a User
+    prompt and rejects it without committing either approval for the new
+    request. This covers request binding in the CLI; a public-write expiry on
+    the terminal and migration of existing Profile workspaces remain open.
     [Wasm replay 43381937895](https://github.com/harupipipipi/tobkiri/actions/runs/43381937895)
     · [Concurrent replay 43387276899](https://github.com/harupipipipi/tobkiri/actions/runs/43387276899)
+    · [CLI reservation replay 43411791141](https://github.com/harupipipipi/tobkiri/actions/runs/43411791141)
 
 15. [ ] **Native Packs and cross-Profile storage require explicit dangerous permission.**
     [Gate permissions](../../../crates/tobkiri-gate/src/permissions.rs),
@@ -831,17 +834,21 @@ approval and rejects invalid original policies and mismatched pins.
     Proc/PTY is still [Unavailable](../../../crates/tobkiri-wasm/src/effects.rs),
     so an approved native Pack cannot actually run.
 
-16. [ ] **Published Profiles exclude approvals, data, and secrets.**
+16. [x] **Published Profiles exclude approvals, data, and secrets.**
     [Published allowlist](../../../crates/tobkiri-profile/src/lib.rs),
     [serialization tests](../../../crates/tobkiri-profile/tests/compiler.rs), and
     [fresh import approval tests](../../../crates/tobkiri-core/src/core_tests.rs).
     [run 42941462516](https://github.com/harupipipipi/tobkiri/actions/runs/42941462516): profile `published_allowlist_excludes_local_identity_and_rejects_authority_fields`,
     Core `published_profile_excludes_populated_approvals_data_secrets_and_user_global_storage`
     and `published_user_policy_import_requires_fresh_profile_scoped_approval` passed.
-    The real CLI export/import replay also verifies populated private SQLite
-    history stays with the source Profile. A publication replay covering an
-    actual populated vault and all storage tiers remains.
-    [CLI replay 43378931498](https://github.com/harupipipipi/tobkiri/actions/runs/43378931498)
+    The macOS replay used real Wasm stores for all three tiers, an explicitly
+    approved user-global store and a Secret vault backed by the OS keychain.
+    The published Profile omitted these values and the original approvals.
+    Import created a new identity and prompted for fresh Pack and User approvals.
+    The source retained its values, vault and approvals. An approved global
+    read after import confirms sharing stays outside the published document.
+    [Actual Wasm and OS replay 43420621105](https://github.com/harupipipipi/tobkiri/actions/runs/43420621105)
+    · [Actual CLI replay 43378931498](https://github.com/harupipipipi/tobkiri/actions/runs/43378931498)
 
 17. [ ] **Pack UI is isolated and can access data only through gated ports.**
     [Core UI E2E](../../../crates/tobkiri-e2e/tests/ui.rs),
