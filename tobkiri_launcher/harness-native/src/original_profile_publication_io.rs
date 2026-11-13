@@ -828,18 +828,34 @@ pub(super) enum LockName {
     Definition,
     #[cfg(test)]
     HostSelection,
+    #[cfg(test)]
+    Workspace([u8; 42]),
 }
 // Only these fixed lexical callers are admitted. The existing owner check
 // still refuses reentry of the SAME lock; it does not implement arbitrary
 // Python RLock recursion. Publication -> Definition is a different full name.
 #[cfg(unix)]
 impl LockName {
-    pub(super) fn text(self) -> &'static str {
+    #[cfg(test)]
+    pub(super) fn workspace(profile_id: &str) -> Self {
+        let digest = Digest::hash(profile_id.as_bytes());
+        let mut name = *b".activation-000000000000000000000000.lock\0";
+        name[12..36].copy_from_slice(&digest.as_str().as_bytes()[7..31]);
+        Self::Workspace(name)
+    }
+    pub(super) fn text(&self) -> &str {
+        self.c_str().to_str().expect("fixed lock name")
+    }
+    fn c_str(&self) -> &CStr {
         match self {
-            Self::Publication => LOCK,
-            Self::Definition => ".profile-definition.lock",
+            Self::Publication => c".bootstrap-publication.lock",
+            Self::Definition => c".profile-definition.lock",
             #[cfg(test)]
-            Self::HostSelection => ".active-profile.lock",
+            Self::HostSelection => c".active-profile.lock",
+            #[cfg(test)]
+            Self::Workspace(name) => {
+                CStr::from_bytes_with_nul(name).expect("fixed workspace lock name")
+            }
         }
     }
     fn deadline(self, operation: Instant) -> Instant {
@@ -851,6 +867,45 @@ impl LockName {
     }
     fn has_fixed_timeout(self) -> bool {
         !matches!(self, Self::Publication)
+    }
+    fn is_workspace(self) -> bool {
+        #[cfg(test)]
+        {
+            matches!(self, Self::Workspace(_))
+        }
+        #[cfg(not(test))]
+        false
+    }
+
+    fn unavailable(self, error: OriginalAuthorityError) -> OriginalAuthorityError {
+        if self.is_workspace() {
+            caused(
+                raw(
+                    "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied",
+                    "activation process lock is unavailable",
+                ),
+                error,
+            )
+        } else {
+            caused(
+                raw(
+                    "core_runtime.active_profile_store_v4.ActiveProfileStoreError",
+                    "active Profile lock is unavailable",
+                ),
+                error,
+            )
+        }
+    }
+
+    fn os_timeout(self) -> OriginalAuthorityError {
+        if self.is_workspace() {
+            raw(
+                "ecosystem.defaultspack.domain._profile_runtime_records.ActivationLockTimeout",
+                "activation process lock deadline exceeded",
+            )
+        } else {
+            lock_timeout()
+        }
     }
 }
 #[cfg(unix)]
@@ -881,7 +936,11 @@ impl PublicationLock {
         name: LockName,
     ) -> Result<Self> {
         let path = directory.root.join(name.text());
-        let local = process_lock(op, &path, name)?;
+        let local = if name.is_workspace() {
+            None
+        } else {
+            Some(process_lock(op, &path, name)?)
+        };
         let files = directory.open(op)?;
         let result = (|| {
             let parent = files.last().expect("directory chain");
@@ -894,19 +953,8 @@ impl PublicationLock {
                 } else {
                     0
                 };
-            let descriptor = unsafe {
-                libc::openat(
-                    parent.as_raw_fd(),
-                    match name {
-                        LockName::Publication => c".bootstrap-publication.lock".as_ptr(),
-                        LockName::Definition => c".profile-definition.lock".as_ptr(),
-                        #[cfg(test)]
-                        LockName::HostSelection => c".active-profile.lock".as_ptr(),
-                    },
-                    flags,
-                    0o600,
-                )
-            };
+            let descriptor =
+                unsafe { libc::openat(parent.as_raw_fd(), name.c_str().as_ptr(), flags, 0o600) };
             if descriptor < 0 {
                 return Err(raw_io(std::io::Error::last_os_error(), Some(name.text())));
             }
@@ -936,19 +984,11 @@ impl PublicationLock {
             }
             Ok(file)
         })();
-        let file = close_files(files, result).map_err(|error| {
-            caused(
-                raw(
-                    "core_runtime.active_profile_store_v4.ActiveProfileStoreError",
-                    "active Profile lock is unavailable",
-                ),
-                error,
-            )
-        })?;
+        let file = close_files(files, result).map_err(|error| name.unavailable(error))?;
         let mut guard = Self {
             file: Some(file),
             locked: false,
-            local: Some(local),
+            local,
         };
         // Python starts the OS wait after its distinct process-lock wait.
         let deadline = name.deadline(op.deadline);
@@ -969,16 +1009,10 @@ impl PublicationLock {
                 if !error.raw_os_error().is_some_and(|errno| {
                     [libc::EACCES, libc::EAGAIN, libc::EDEADLK].contains(&errno)
                 }) {
-                    return Err(caused(
-                        raw(
-                            "core_runtime.active_profile_store_v4.ActiveProfileStoreError",
-                            "active Profile lock is unavailable",
-                        ),
-                        raw_io(error, None),
-                    ));
+                    return Err(name.unavailable(raw_io(error, None)));
                 }
                 if name.has_fixed_timeout() && Instant::now() >= deadline {
-                    return Err(caused(lock_timeout(), raw_io(error, None)));
+                    return Err(caused(name.os_timeout(), raw_io(error, None)));
                 }
                 std::thread::park_timeout(
                     Duration::from_millis(10)

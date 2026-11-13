@@ -800,7 +800,7 @@ pub(super) fn require_inert_definition<S: OriginalAuthorityOwner>(
         }
     }
     if !get("mode").is_some_and(|id| doc.string_is(id, "interactive"))
-        || !get("shell").is_some_and(|id| doc.entries(id).is_some())
+        || get("shell").is_none_or(|id| doc.entries(id).is_none())
     {
         return Err(conflict());
     }

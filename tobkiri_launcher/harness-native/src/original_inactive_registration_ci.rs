@@ -119,6 +119,41 @@ struct ReviewedRegistration<'a> {
     now: i64,
 }
 
+fn with_inactive_workspace<S: OriginalAuthorityOwner, T>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    profile_id: &str,
+    register: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    let _paths = op.reserve(
+        OriginalAuthorityStage::Path,
+        root.as_os_str()
+            .len()
+            .saturating_mul(4)
+            .saturating_add(profile_id.len())
+            .saturating_add(8192),
+    )?;
+    let directory = Directory::capture(
+        op,
+        &root.join("workspaces").join(profile_id).join("activation"),
+        false,
+    )?;
+    let name = publication_io::LockName::workspace(profile_id);
+    let mut lock = PublicationLock::acquire_named(op, &directory, name)?;
+    let result = (|| {
+        if directory.exists(op, "active.json")? {
+            return Err(raw(
+                "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied",
+                "inactive bootstrap predecessor has an active workspace",
+            ));
+        }
+        let result = register()?;
+        directory.validate_file(op, name.text(), lock.file.as_ref().expect("workspace lock"))?;
+        Ok(result)
+    })();
+    finish_scope(result, lock.close())
+}
+
 fn with_registration<S: OriginalAuthorityOwner, T>(
     op: &Operation<'_, S>,
     root: &Path,
@@ -231,12 +266,20 @@ async fn original_inactive_registration_driver() {
         "registry-edited",
         "host-active",
         "workspace-active",
+        "workspace-regular-pointer",
+        "workspace-dangling-pointer",
         "late-registry-edit",
         "wrong-approval-digest",
     ] {
         with_source(|owner, read, cancel, budget| {
             let op = operation(read, owner, cancel);
-            let pinned_case = if matches!(case, "late-registry-edit" | "wrong-approval-digest") {
+            let pinned_case = if matches!(
+                case,
+                "late-registry-edit"
+                    | "wrong-approval-digest"
+                    | "workspace-regular-pointer"
+                    | "workspace-dangling-pointer"
+            ) {
                 "append"
             } else {
                 case
@@ -256,18 +299,28 @@ async fn original_inactive_registration_driver() {
             let document = CoreValue::parse_guest(&packaged, budget).unwrap();
             let profile = document.get_key("profile_id").unwrap();
             let profile_id = profile.as_str().unwrap();
+            let workspace = root.join("workspaces").join(profile_id).join("activation");
+            let guarded = matches!(
+                case,
+                "append" | "workspace-regular-pointer" | "workspace-dangling-pointer"
+            );
+            if guarded {
+                fs::create_dir_all(&workspace).unwrap();
+            }
             let active = match case {
                 "host-active" => Some(profiles.join("active.json")),
-                "workspace-active" => Some(
-                    root.join("workspaces")
-                        .join(profile_id)
-                        .join("activation/active.json"),
-                ),
+                "workspace-active" | "workspace-regular-pointer" | "workspace-dangling-pointer" => {
+                    Some(workspace.join("active.json"))
+                }
                 _ => None,
             };
             if let Some(path) = &active {
                 fs::create_dir_all(path.parent().unwrap()).unwrap();
-                symlink("missing-fixture-pointer", path).unwrap();
+                if case == "workspace-regular-pointer" {
+                    fs::write(path, b"{}\n").unwrap();
+                } else {
+                    symlink("missing-fixture-pointer", path).unwrap();
+                }
             }
             let predecessor = CoreValue::parse_guest(
                 &serde_json::to_vec(&reviewed["expected"]["predecessor"]).unwrap(),
@@ -291,35 +344,46 @@ async fn original_inactive_registration_driver() {
             let before = fs::read(&index).unwrap();
             let before_state: Value = serde_json::from_slice(&before).unwrap();
             assert_eq!(row["previous_snapshot_digest"], digest(&before_state));
-            let result = with_registration(
-                &op,
-                root,
-                &review,
-                budget,
-                || {
-                    let host_lock = profiles.join(".active-profile.lock");
-                    assert!(!lock_free(&host_lock));
-                    let definition_lock = profiles.join(".profile-definition.lock");
-                    assert!(lock_free(&definition_lock));
-                    if case == "late-registry-edit" {
-                        let path = input
-                            .join("register-input-registry-edited/user-data/profiles/index.json");
-                        let store = Store::new(&op, root).unwrap();
-                        let mut lock = store.lock(&op).unwrap();
-                        store
-                            .directory
-                            .replace_definition(&op, &fs::read(path).unwrap())
-                            .unwrap();
-                        lock.close().unwrap();
-                    }
-                },
-                |store, output| {
-                    assert_eq!(case, "append");
-                    assert!(!lock_free(&profiles.join(".active-profile.lock")));
-                    assert!(!lock_free(&profiles.join(".profile-definition.lock")));
-                    store.directory.replace_definition(&op, output.as_bytes())
-                },
-            );
+            let workspace_name = publication_io::LockName::workspace(profile_id);
+            let workspace_lock = workspace.join(workspace_name.text());
+            let register = || {
+                with_registration(
+                    &op,
+                    root,
+                    &review,
+                    budget,
+                    || {
+                        let host_lock = profiles.join(".active-profile.lock");
+                        assert!(!lock_free(&host_lock));
+                        let definition_lock = profiles.join(".profile-definition.lock");
+                        assert!(lock_free(&definition_lock));
+                        if case == "late-registry-edit" {
+                            let path = input.join(
+                                "register-input-registry-edited/user-data/profiles/index.json",
+                            );
+                            let store = Store::new(&op, root).unwrap();
+                            let mut lock = store.lock(&op).unwrap();
+                            store
+                                .directory
+                                .replace_definition(&op, &fs::read(path).unwrap())
+                                .unwrap();
+                            lock.close().unwrap();
+                        }
+                    },
+                    |store, output| {
+                        assert_eq!(case, "append");
+                        assert!(!lock_free(&workspace_lock));
+                        assert!(!lock_free(&profiles.join(".active-profile.lock")));
+                        assert!(!lock_free(&profiles.join(".profile-definition.lock")));
+                        store.directory.replace_definition(&op, output.as_bytes())
+                    },
+                )
+            };
+            let result = if guarded {
+                with_inactive_workspace(&op, root, profile_id, register)
+            } else {
+                register()
+            };
             let after = fs::read(&index).unwrap();
             match case {
                 "append" => {
@@ -365,6 +429,15 @@ async fn original_inactive_registration_driver() {
                     );
                     assert_eq!(after, before);
                 }
+                "workspace-regular-pointer" | "workspace-dangling-pointer" => {
+                    let message = if case == "workspace-regular-pointer" {
+                        "inactive bootstrap predecessor has an active workspace"
+                    } else {
+                        "persistence entry is symlinked"
+                    };
+                    assert_eq!(result.unwrap_err().message, message);
+                    assert_eq!(after, before);
+                }
                 _ => {
                     assert_eq!(
                         row["expected"],
@@ -373,12 +446,22 @@ async fn original_inactive_registration_driver() {
                     assert_eq!(after, before);
                 }
             }
-            assert!(lock_free(&profiles.join(".active-profile.lock")));
-            assert!(lock_free(&profiles.join(".profile-definition.lock")));
-            assert_eq!(
-                fs::read_dir(&profiles).unwrap().count(),
-                3 + usize::from(case == "host-active")
-            );
+            if guarded {
+                assert!(lock_free(&workspace_lock));
+            }
+            if matches!(
+                case,
+                "workspace-regular-pointer" | "workspace-dangling-pointer"
+            ) {
+                assert_eq!(fs::read_dir(&profiles).unwrap().count(), 1);
+            } else {
+                assert!(lock_free(&profiles.join(".active-profile.lock")));
+                assert!(lock_free(&profiles.join(".profile-definition.lock")));
+                assert_eq!(
+                    fs::read_dir(&profiles).unwrap().count(),
+                    3 + usize::from(case == "host-active")
+                );
+            }
         });
     }
 }
