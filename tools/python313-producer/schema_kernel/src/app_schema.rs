@@ -216,9 +216,7 @@ impl Frame {
         if !self.started {
             self.start(py, env)?;
         }
-        // After successful start only an exact, immutable bool has no
-        // keyword cursor. The Frame keeps the same schema handle on resume.
-        if self.cursor.is_none() {
+        if self.schema.bind(py).is_instance_of::<PyBool>() {
             if self.false_yielded || self.schema.bind(py).is_truthy()? {
                 return Ok(Action::Done);
             }
