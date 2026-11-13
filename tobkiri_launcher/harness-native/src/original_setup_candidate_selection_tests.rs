@@ -331,7 +331,9 @@ async fn predecessor_rechecks_registry_and_pointer_in_the_resolver_scope() {
             }
             match case {
                 "corrupt-pointer" => {
-                    let error = result.err().expect("actual malformed active pointer");
+                    let Err(error) = result else {
+                        panic!("the malformed active pointer was accepted");
+                    };
                     assert_eq!(
                         error.class,
                         "core_runtime.active_profile_store_v4.ActiveProfileStoreIntegrityError"
@@ -343,9 +345,9 @@ async fn predecessor_rechecks_registry_and_pointer_in_the_resolver_scope() {
                     );
                 }
                 "corrupt-registry" => {
-                    let error = result
-                        .err()
-                        .expect("definition read must fail before pointer read");
+                    let Err(error) = result else {
+                        panic!("the malformed definition was accepted");
+                    };
                     assert_eq!(
                         error.class,
                         "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreIntegrityError"
