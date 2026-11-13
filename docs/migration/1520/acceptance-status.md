@@ -659,6 +659,15 @@ do not execute an AI generator or verify the native approval window.
 [CI 43374564506](https://github.com/harupipipipi/tobkiri/actions/runs/43374564506)
 also reran the focused Profile/manifest/Flow checks for items 9, 11 and 12 on
 that source.
+[CI 43374564477](https://github.com/harupipipipi/tobkiri/actions/runs/43374564477)
+passed all 19 focused authority, storage, compiler and Core checks for items
+13–16, plus strict Clippy. This does not fill the physical runtime or CLI gaps
+listed below.
+[CI 43375008696](https://github.com/harupipipipi/tobkiri/actions/runs/43375008696)
+passed four actual Wasm chat tests, one local SSE provider replay and two
+Core UI port checks. The same physical input produced different outputs after a
+reviewed Flow edit while retaining conversation history. The local API is a
+test fixture; this run does not establish native WebView or llama.cpp 1B parity.
 
 1. [ ] **CI rejects Pack IDs and Pack-owned shape names in core and hosts.**
    [Checker](../../../tools/quality/issue_1520_gate.py),

@@ -2609,7 +2609,31 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Flowだけを変更する。実Packを再検証し、変更後のhashを通常の門でレビューして、
   元のProfile headに対して保存する。異なるplan digestと実出力、会話の継続を確認する。
 - [CI 43375008696](https://github.com/harupipipipi/tobkiri/actions/runs/43375008696)
-  実行中。ローカルはrustfmt/YAML/差分確認のみ。ローカルAPIは既存テストのSSE fixtureで、
+  成功。Flow編集を含むチャット4件、Wasm ProviderとローカルAPI1件、CoreのUIポート2件が通過。
+  ローカルはrustfmt/YAML/差分確認のみ。ローカルAPIは既存テストのSSE fixtureで、
   llama.cpp 1B、DMGのGUI、すべての入力経路の移行には別の証拠が必要。
 - `fd78392dd` は受け入れ13–16の厳格lintを型aliasで直し、6–8/10のCIを統合ブランチへ
   接続した。テスト条件・件数は変更していない。
+
+## 030: App schemaの検証フレームごとのBox確保
+
+- `a623125ae` は `schema_kernel/src/app_schema.rs` の検証継続を `Vec<Frame>` に置き、
+  参照先を解決した直後に既存と同じ子を積む。実lookup、親へ返すエラー、子の破棄と
+  親の再開順を維持する。ルートと拡張時の確保失敗は通常の確保エラーなら
+  `MemoryError` として扱う。実Guestのメモリ制限は維持する。
+- 拡張で旧領域と新領域が一時的に重なり、入れ子の検証中も外側の領域は残る。
+  割当回数を減らす変更だが、燃料・ピークメモリ・Wasmスタックの改善は未確認。
+  追加差分テストは11段の参照と、兄弟枝のコールバックおよびエラーの順序を比較する。
+- 変更前の[明示App backend CI 43374609255](https://github.com/harupipipipi/tobkiri/actions/runs/43374609255)
+  は未計測のcold42と全カタログがどちらも元の2B燃料を使い切った。
+  変更後は[ネイティブ差分CI 43376752724](https://github.com/harupipipipi/tobkiri/actions/runs/43376752724)と
+  [明示App backend CI 43376758941](https://github.com/harupipipipi/tobkiri/actions/runs/43376758941)で確認中。
+  両方の実Wasmゲートと、同一Store上の初期化・IO・後始末を含む実経路が通るまで採用しない。
+
+## 031: Pi再生用の生成WITをクリーンなCIでも揃える
+
+- [初回CI 43375443695](https://github.com/harupipipipi/tobkiri/actions/runs/43375443695)
+  はGit管理外の `wit/deps` がなく、Piラッパーのcomponent化前に停止した。
+  `9bfa525bc` は管理下のCore・Pi adapter WITをCIで配置する。固定した上流拡張の
+  ソースとhash検証は維持。共通ラッパーの依存準備をまとめる場合も、呼び出し側のWITを
+  意図せず置換しないこと。[再実行CI 43376752668](https://github.com/harupipipipi/tobkiri/actions/runs/43376752668)で確認中。
