@@ -3111,9 +3111,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元モジュールの限定OS importを含む。Rust側は
   [物理IO・Clippy 43471279499](https://github.com/harupipipipi/tobkiri/actions/runs/43471279499)
   のLinuxでファイルopen時の借用エラーを検出し、`0a58ff9b7` で保持済みの同一性を
-  openerに直接渡した。[物理IO・Clippyの再検証 43473201935](https://github.com/harupipipipi/tobkiri/actions/runs/43473201935)、
-  [実Wasmの再検証 43473207079](https://github.com/harupipipipi/tobkiri/actions/runs/43473207079)
-  を起動した。製品への採用、GUIでの会話、VM廃止の受け入れには数えない。
+  openerに直接渡した。[物理IO・Clippyの再検証 43473201935](https://github.com/harupipipipi/tobkiri/actions/runs/43473201935)
+  でLinuxとmacOSの物理IO 7件ずつが通過。open後のファイル置換でも保持した
+  FDのバイトと前後のstatが一致し、close後の確保量と予約が0になることを確認した。
+  両OSのstrict Clippyも成功。[実Wasmの再検証 43473207079](https://github.com/harupipipipi/tobkiri/actions/runs/43473207079)
+  は構築・portable 213件、macOSでのRuntime.initと物理IO 7件、Coreによるownerの
+  引き継ぎを通過した。実Wasmの全カタログを経由するShell検証、製品への採用、
+  GUIでの会話、VM廃止は未確認。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
