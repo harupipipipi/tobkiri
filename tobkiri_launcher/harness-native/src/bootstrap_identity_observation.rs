@@ -239,7 +239,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         }
     }
 
-    pub(super) async fn observe_resolver_profile_lock(
+    pub(super) async fn observe_resolver_profile(
         &mut self,
         input: &CoreBuffer,
     ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
@@ -286,7 +286,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "resolver-static-edges") => RESOLVER_STATIC_EDGES,
             (REVIEW, "resolver-dynamic-edges") => RESOLVER_DYNAMIC_EDGES,
             (REVIEW, "resolver-verified-artifacts") => RESOLVER_VERIFIED_ARTIFACTS,
-            (REVIEW, "resolver-profile") => RESOLVE_PROFILE_LOCK,
+            (REVIEW, "resolver-profile") => RESOLVE_PROFILE,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -347,7 +347,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         let pending = self.identity_pending.as_ref().expect("admitted getter");
         if matches!(
             phase,
-            RESOLVER_STATIC_EDGES | RESOLVER_DYNAMIC_EDGES | RESOLVE_PROFILE_LOCK
+            RESOLVER_STATIC_EDGES | RESOLVER_DYNAMIC_EDGES | RESOLVE_PROFILE
         ) && pending.result.is_some()
         {
             let pending = self.identity_pending.take().expect("admitted edge call");

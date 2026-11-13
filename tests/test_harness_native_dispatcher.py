@@ -1347,8 +1347,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         with self.assertRaises(InvalidReference):
             self.verified_artifacts(catalog, profile_id, source)
 
-    def test_fixed_profile_calls_original_lock_digest_before_artifact_boundary(self) -> None:
-        # The portable caller fixture uses the actual original helper. The
+    def test_fixed_profile_checks_shell_root_after_original_lock_digest(self) -> None:
+        # The portable caller fixture uses the actual original helpers. The
         # pinned complete Port replay and real Rust IO run in separate CI jobs.
         source_path = (ROOT / "tobkiri_runtime/ecosystem/defaultspack/domain"
                        / "profile_resolution.py")
@@ -1359,13 +1359,21 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         namespace = {"hashlib": hashlib}
         exec(compile(ast.Module(body=functions, type_ignores=[]), str(source_path), "exec"),
              namespace)
+        artifact_source = ROOT / "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
+        artifact_tree = ast.parse(artifact_source.read_bytes(), filename=str(artifact_source))
+        [verifier] = [node for node in artifact_tree.body
+                      if isinstance(node, ast.FunctionDef)
+                      and node.name == "verify_platform_artifact"]
+        namespace["Path"] = self.bridge.path
+        exec(compile(ast.Module(body=[verifier], type_ignores=[]),
+                     str(artifact_source), "exec"), namespace)
         catalog, profile_id, source = self.source({"requested_edges": []})
         self.static_edges(source)
         self.dynamic_edges(catalog, profile_id, source)
         artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
         approved = self.registry.borrow(self.registry.reference(artifacts))
         root = self.runtime.catalog.root
-        artifact_root = self.bridge.bind("fixture-root", "/fixture/platform-artifacts")
+        artifact_root = root.parent / "platform-artifacts"
         self.runtime.catalog.artifact_root = artifact_root
         raw_lock = b"new actual lock bytes\n"
         calls = []
@@ -1377,15 +1385,24 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         def inspect(payload: str) -> str:
             frame = wire.loads(payload)
             self.assertEqual(frame["format"], PREFIX + "catalog-request.v1")
-            self.assertEqual(frame["target"], {
-                "binding": "fixture-root", "steps": [["join", "bundle.lock.json"]],
-            })
             operation = frame["operation"]
+            steps = [["join", "bundle.lock.json"]]
+            if len(calls) in (3, 4):
+                steps = [["parent", ""], ["join", "platform-artifacts"]]
+            elif len(calls) == 5:
+                steps = [["shell-resolved-root", ""]]
+            self.assertEqual(frame["target"], {
+                "binding": "fixture-root", "steps": steps,
+            })
             calls.append(operation)
-            result = (
-                {"kind": "bytes", "value": base64.b64encode(raw_lock).decode()}
-                if operation == "read-bytes" else {"kind": "bool", "value": operation == "is-file"}
-            )
+            if operation == "resolve":
+                self.assertEqual(frame["args"], [True])
+                result = {"kind": "path", "binding": "fixture-root",
+                          "value": str(artifact_root), "steps": [["shell-resolved-root", ""]]}
+            elif operation == "read-bytes":
+                result = {"kind": "bytes", "value": base64.b64encode(raw_lock).decode()}
+            else:
+                result = {"kind": "bool", "value": operation in ("is-file", "is-dir")}
             return wire.dumps({
                 "format": PREFIX + "inspection-response.v1",
                 "scope": self.scope.wire(), "result": result,
@@ -1401,7 +1418,9 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.assertEqual(kwargs["security_epoch"], int(epoch))
             self.assertEqual(kwargs["additional_pack_ids"], ())
             digests.append(namespace["_bundle_digest"](actual_catalog))
-            artifact_root.resolve(strict=True)
+            namespace["verify_platform_artifact"](
+                actual_catalog.artifact_root, {"relative_path": "Tobkiri.app"},
+            )
             self.fail("fixture reached beyond the platform artifact boundary")
 
         self.bridge._inspect = inspect
@@ -1413,10 +1432,13 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             "format": PREFIX + "resolver-platform-artifacts-unbound.v1",
             "scope": self.scope.wire(),
         })
-        self.assertEqual(calls, ["is-symlink", "is-file", "read-bytes"])
+        self.assertEqual(calls, [
+            "is-symlink", "is-file", "read-bytes", "resolve", "is-symlink", "is-dir",
+        ])
         self.assertEqual(digests, ["sha256:" + hashlib.sha256(raw_lock).hexdigest()])
         self.assertFalse(self.bridge._resolving_catalog)
         self.assertIsNone(self.bridge._resolver_artifact_root)
+        self.assertIsNone(self.bridge._resolver_resolved_root)
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("resolve_profile", request)
 

@@ -1,12 +1,15 @@
 //! Fixed catalog resources of the actual selected AppHandle, under Review.
 //! This is not a Path service: the private caller selects one source, and the
 //! loader can only consume its lock, each lock occurrence, pins, then artifacts.
-//! The Pack resolver can then consume a separate occurrence of that same lock.
+//! The Pack resolver can then reread that lock and inspect the retained Shell root.
 use super::*;
 use base64::Engine as _;
 use sha2::{Digest as _, Sha256};
 use std::path::Path;
 use tobkiri_canon::{AllocationBudget, CoreBuffer, CoreBufferBuilder, CoreValue, MAX_BYTES};
+#[cfg(unix)]
+#[path = "original_shell_root.rs"]
+mod shell_root;
 #[cfg(all(test, unix))]
 #[path = "original_profile_catalog_tests.rs"]
 mod tests;
@@ -21,7 +24,13 @@ pub(crate) struct CatalogIo {
     _capacity: NativeSetupReservation,
     development: bool,
     loader: Loader,
-    pack_resolve_lock: PackResolveLock,
+    pack_resolve: PackResolve,
+    #[cfg(unix)]
+    artifact_root: Option<PathBuf>,
+    #[cfg(unix)]
+    artifact_parent_identity: Option<Identity>,
+    #[cfg(unix)]
+    shell_resolved_name: Option<String>,
     binding: Option<CoreValue>,
     lock_bytes: Option<Funded<Zeroizing<Vec<u8>>>>,
     lock: Option<Funded<Document>>,
@@ -52,12 +61,16 @@ enum Loader {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum PackResolveLock {
+#[cfg_attr(not(unix), allow(dead_code))]
+enum PackResolve {
     Inactive,
     CheckSymlink,
     CheckFile,
     Read,
-    Done,
+    ShellResolve,
+    ShellSymlink,
+    ShellDirectory,
+    ShellReady,
     Spent,
 }
 
@@ -156,7 +169,13 @@ impl CatalogIo {
             _capacity: capacity,
             development: false,
             loader: Loader::Root,
-            pack_resolve_lock: PackResolveLock::Inactive,
+            pack_resolve: PackResolve::Inactive,
+            #[cfg(unix)]
+            artifact_root: None,
+            #[cfg(unix)]
+            artifact_parent_identity: None,
+            #[cfg(unix)]
+            shell_resolved_name: None,
             binding: None,
             lock_bytes: None,
             lock: None,
@@ -636,12 +655,7 @@ impl CatalogIo {
             Loader::ArtifactResolve
                 if operation == "resolve"
                     && strict(&args)
-                    && path
-                        == self
-                            .selected
-                            .parent()
-                            .ok_or_else(OriginalAuthorityError::unavailable)?
-                            .join("platform-artifacts") =>
+                    && exact_steps(&steps_array, ARTIFACT_ROOT_STEPS) =>
             {
                 let resolved = fs::canonicalize(&path).map_err(|e| raw_io(e, path.to_str()))?;
                 write_path(
@@ -651,6 +665,16 @@ impl CatalogIo {
                     Some(&steps),
                     budget,
                 )?;
+                #[cfg(unix)]
+                {
+                    self.artifact_parent_identity = shell_root::artifact_parent_identity(
+                        &op,
+                        &self.selected,
+                        &resolved,
+                        budget,
+                    )?;
+                    self.artifact_root = Some(resolved);
+                }
                 self.loader = Loader::Done;
                 true
             }
@@ -667,31 +691,33 @@ impl CatalogIo {
     /// Open the one Pack lock occurrence on the root and binding retained by
     /// the completed loader. The resolver's separate bundle selection cannot
     /// replace this root.
-    pub(crate) fn begin_pack_resolve_lock(&mut self) -> Result<()> {
+    pub(crate) fn begin_pack_resolve(&mut self) -> Result<()> {
         if !cfg!(unix)
-            || self.pack_resolve_lock != PackResolveLock::Inactive
+            || self.pack_resolve != PackResolve::Inactive
             || !self.completed()
             || self.binding.is_none()
             || self.selected.as_os_str().is_empty()
         {
             return Err(OriginalAuthorityError::unavailable());
         }
-        self.pack_resolve_lock = PackResolveLock::CheckSymlink;
+        self.pack_resolve = PackResolve::CheckSymlink;
         Ok(())
     }
 
-    /// Permit only the original Pack resolver's short-circuit lock sequence.
-    pub(crate) fn inspect_pack_resolve_lock<S: crate::BootstrapReviewOwner>(
+    /// Permit only the original lock sequence and three Shell root observations.
+    pub(crate) fn inspect_pack_resolve<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
         invocation: &NativeSetupInvocation,
         request: &CoreValue,
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<CoreBuffer> {
-        let operation_name = match self.pack_resolve_lock {
-            PackResolveLock::CheckSymlink => "is-symlink",
-            PackResolveLock::CheckFile => "is-file",
-            PackResolveLock::Read => "read-bytes",
+        let operation_name = match self.pack_resolve {
+            PackResolve::CheckSymlink | PackResolve::ShellSymlink => "is-symlink",
+            PackResolve::CheckFile => "is-file",
+            PackResolve::Read => "read-bytes",
+            PackResolve::ShellResolve => "resolve",
+            PackResolve::ShellDirectory => "is-dir",
             _ => return Err(OriginalAuthorityError::unavailable().into()),
         };
         let cancellation = self.cancellation.clone();
@@ -705,25 +731,25 @@ impl CatalogIo {
         let steps = steps
             .array()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
-        if operation.as_str() != Some(operation_name)
-            || !args.array().is_some_and(|args| args.is_empty())
-            || steps.len() != 1
-        {
-            return Err(OriginalAuthorityError::unavailable().into());
-        }
-        let step = steps
-            .get(0)
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let step = step
+        let args = args
             .array()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let valid_args = if self.pack_resolve == PackResolve::ShellResolve {
+            strict(&args)
+        } else {
+            args.is_empty()
+        };
+        if operation.as_str() != Some(operation_name) || !valid_args {
+            return Err(OriginalAuthorityError::unavailable().into());
+        }
+        if matches!(
+            self.pack_resolve,
+            PackResolve::ShellResolve | PackResolve::ShellSymlink | PackResolve::ShellDirectory
+        ) {
+            return self.inspect_shell_root(&op, &scope, &steps, budget);
+        }
         let name = "bundle.lock.json";
-        if step.len() != 2
-            || !step
-                .get(0)
-                .is_some_and(|part| part.as_str() == Some("join"))
-            || !step.get(1).is_some_and(|part| part.as_str() == Some(name))
-        {
+        if !exact_steps(&steps, &[("join", name)]) {
             return Err(OriginalAuthorityError::unavailable().into());
         }
         charge_work(budget, name.len() as u64 + 1)?;
@@ -735,43 +761,59 @@ impl CatalogIo {
         op.check(OriginalAuthorityStage::Source)?;
         // Once a physical attempt begins, any failure (including encoding or
         // the final live check) leaves this occurrence spent.
-        let current = std::mem::replace(&mut self.pack_resolve_lock, PackResolveLock::Spent);
+        let current = std::mem::replace(&mut self.pack_resolve, PackResolve::Spent);
         let next = match current {
-            PackResolveLock::CheckSymlink => {
+            PackResolve::CheckSymlink => {
                 let is_symlink = pack_lock_stat(&path, false)?;
                 write_bool(&mut output, is_symlink)?;
                 if is_symlink {
-                    PackResolveLock::Spent
+                    PackResolve::Spent
                 } else {
-                    PackResolveLock::CheckFile
+                    PackResolve::CheckFile
                 }
             }
-            PackResolveLock::CheckFile => {
+            PackResolve::CheckFile => {
                 let is_file = pack_lock_stat(&path, true)?;
                 write_bool(&mut output, is_file)?;
                 if is_file {
-                    PackResolveLock::Read
+                    PackResolve::Read
                 } else {
-                    PackResolveLock::Spent
+                    PackResolve::Spent
                 }
             }
-            PackResolveLock::Read => {
+            PackResolve::Read => {
                 let bytes = read_file(&op, &path, budget)?;
                 write_bytes(&mut output, &bytes.value)?;
-                PackResolveLock::Done
+                PackResolve::ShellResolve
             }
             _ => return Err(OriginalAuthorityError::unavailable().into()),
         };
         op.check(OriginalAuthorityStage::Source)?;
         output.append(b"}")?;
         let response = output.finish()?;
-        self.pack_resolve_lock = next;
+        self.pack_resolve = next;
         Ok(response)
     }
 
     /// True after the fixed stat sequence and one physically closed read.
+    #[cfg(all(test, unix))]
     pub(crate) fn pack_resolve_lock_completed(&self) -> bool {
-        self.pack_resolve_lock == PackResolveLock::Done
+        self.pack_resolve == PackResolve::ShellResolve
+    }
+
+    pub(crate) fn pack_resolve_shell_root_completed(&self) -> bool {
+        self.pack_resolve == PackResolve::ShellReady
+    }
+
+    #[cfg(not(unix))]
+    fn inspect_shell_root<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        _: &Operation<'_, S>,
+        _: &CoreValue,
+        _: &tobkiri_canon::CoreArray<'_>,
+        _: &Arc<dyn AllocationBudget>,
+    ) -> anyhow::Result<CoreBuffer> {
+        Err(OriginalAuthorityError::unavailable().into())
     }
 
     fn ensure_lock<S: crate::BootstrapReviewOwner>(&mut self, op: &Operation<'_, S>) -> Result<()> {
@@ -1207,8 +1249,20 @@ impl CatalogIo {
     }
 }
 
+const ARTIFACT_ROOT_STEPS: &[(&str, &str)] = &[("parent", ""), ("join", "platform-artifacts")];
+
 fn strict(args: &tobkiri_canon::CoreArray<'_>) -> bool {
     args.len() == 1 && args.get(0).and_then(|v| v.as_bool()) == Some(true)
+}
+fn exact_steps(steps: &tobkiri_canon::CoreArray<'_>, expected: &[(&str, &str)]) -> bool {
+    steps.len() == expected.len()
+        && steps.iter().zip(expected).all(|(step, (kind, name))| {
+            step.array().is_some_and(|step| {
+                step.len() == 2
+                    && step.get(0).is_some_and(|part| part.as_str() == Some(*kind))
+                    && step.get(1).is_some_and(|part| part.as_str() == Some(*name))
+            })
+        })
 }
 fn inspection_result(
     scope: &CoreValue,
@@ -1219,6 +1273,14 @@ fn inspection_result(
     output.append(scope.encode_guest(budget)?.as_bytes())?;
     output.append(b",\"result\":")?;
     Ok(output)
+}
+#[cfg(unix)]
+fn pathlib_suppressed_stat_errno(errno: i32) -> bool {
+    // CPython 3.13.16 pathlib suppresses only these stat errors.
+    matches!(
+        errno,
+        libc::ENOENT | libc::ENOTDIR | libc::EBADF | libc::ELOOP
+    )
 }
 #[cfg(unix)]
 fn pack_lock_stat(path: &Path, follow: bool) -> Result<bool> {
@@ -1233,12 +1295,10 @@ fn pack_lock_stat(path: &Path, follow: bool) -> Result<bool> {
         } else {
             metadata.file_type().is_symlink()
         }),
-        // CPython 3.13.16 pathlib suppresses only these stat errors.
         Err(error)
-            if matches!(
-                error.raw_os_error(),
-                Some(libc::ENOENT | libc::ENOTDIR | libc::EBADF | libc::ELOOP)
-            ) =>
+            if error
+                .raw_os_error()
+                .is_some_and(pathlib_suppressed_stat_errno) =>
         {
             Ok(false)
         }

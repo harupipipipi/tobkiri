@@ -84,7 +84,7 @@ fn dispatch<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 ) -> Result<CoreBuffer> {
     let result = match phase {
         CATALOG_LOAD => io.inspect(owner, invocation, request, budget),
-        RESOLVE_PROFILE_LOCK => io.inspect_pack_resolve_lock(owner, invocation, request, budget),
+        RESOLVE_PROFILE => io.inspect_pack_resolve(owner, invocation, request, budget),
         _ => bail!("catalog call phase is unavailable"),
     };
     match result {

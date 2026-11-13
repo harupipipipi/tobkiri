@@ -174,10 +174,10 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
             ("bindings", bindings.clone()),
         ],
     )?;
-    run_profile_to_artifact_root(review, pack, scope, &request).await
+    run_profile_to_artifact_leaf(review, pack, scope, &request).await
 }
 
-async fn run_profile_to_artifact_root<S: BootstrapInputOwner + BootstrapReviewOwner>(
+async fn run_profile_to_artifact_leaf<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
@@ -192,8 +192,8 @@ async fn run_profile_to_artifact_root<S: BootstrapInputOwner + BootstrapReviewOw
         .unwrap_or_else(|error| error.into_inner())
         .as_mut()
         .context("completed original catalog controller missing")?
-        .begin_pack_resolve_lock()?;
-    match pack.observe_resolver_profile_lock(request).await? {
+        .begin_pack_resolve()?;
+    match pack.observe_resolver_profile(request).await? {
         Ok(boundary) => review.actual.resolver_profile_boundary = Some(boundary),
         Err(failure) => {
             caller.check(review, pack)?;
@@ -220,9 +220,11 @@ async fn run_profile_to_artifact_root<S: BootstrapInputOwner + BootstrapReviewOw
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .as_ref()
-            .is_some_and(crate::original_authority::catalog::CatalogIo::pack_resolve_lock_completed)
+            .is_some_and(
+                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_root_completed,
+            )
     {
-        bail!("original resolver did not reach its Shell artifact after the actual lock read");
+        bail!("original resolver stopped before the actual Shell root directory check");
     }
     Ok(BootstrapReviewFailure::NotBound(
         BootstrapReviewReachpoint::ResolvePlatformArtifactsNotBound,

@@ -176,7 +176,7 @@ async fn pack_resolver_lock_only_rereads_the_completed_loaders_fixed_occurrence(
                 .unwrap();
             let lock = json!([["join", "bundle.lock.json"]]);
             let inspect = |io: &mut CatalogIo, operation: &str, steps: Value, args: Value| {
-                io.inspect_pack_resolve_lock(
+                io.inspect_pack_resolve(
                     source,
                     invocation,
                     &packet(invocation, budget, operation, steps, args),
@@ -188,7 +188,7 @@ async fn pack_resolver_lock_only_rereads_the_completed_loaders_fixed_occurrence(
                 assert!(cleanup.receipt().verified());
                 serde_json::from_slice::<Value>(output.as_bytes()).unwrap()["result"].clone()
             };
-            assert!(io.begin_pack_resolve_lock().is_err());
+            assert!(io.begin_pack_resolve().is_err());
             assert!(inspect(io, "is-symlink", lock.clone(), json!([])).is_err());
             for (operation, steps, args) in [
                 (
@@ -219,8 +219,8 @@ async fn pack_resolver_lock_only_rereads_the_completed_loaders_fixed_occurrence(
                     std::os::unix::fs::symlink(&moved, &path).unwrap();
                 }
             }
-            io.begin_pack_resolve_lock().unwrap();
-            assert!(io.begin_pack_resolve_lock().is_err());
+            io.begin_pack_resolve().unwrap();
+            assert!(io.begin_pack_resolve().is_err());
             assert!(inspect(io, "read-bytes", lock.clone(), json!([])).is_err());
             assert!(inspect(io, "is-symlink", lock.clone(), json!([false])).is_err());
             let request = packet(invocation, budget, "is-symlink", lock.clone(), json!([]));
@@ -238,7 +238,7 @@ async fn pack_resolver_lock_only_rereads_the_completed_loaders_fixed_occurrence(
                 let forged =
                     CoreValue::parse_guest(&serde_json::to_vec(&forged).unwrap(), budget).unwrap();
                 assert!(
-                    io.inspect_pack_resolve_lock(source, invocation, &forged, budget)
+                    io.inspect_pack_resolve(source, invocation, &forged, budget)
                         .is_err()
                 );
             }
@@ -299,9 +299,144 @@ async fn pack_resolver_lock_only_rereads_the_completed_loaders_fixed_occurrence(
                 fs::rename(moved, &path).unwrap();
             }
             assert!(inspect(io, "read-bytes", lock.clone(), json!([])).is_err());
-            assert!(io.begin_pack_resolve_lock().is_err());
+            assert!(io.begin_pack_resolve().is_err());
             assert_eq!(io.pack_resolve_lock_completed(), case == "reread");
             assert!(cleanup.receipt().verified());
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pack_resolver_shell_root_uses_original_and_resolved_paths_in_order() {
+    for case in [
+        "present",
+        "missing",
+        "sibling-link",
+        "outside-link",
+        "file",
+        "parent-replaced",
+    ] {
+        with_source(false, |source, invocation, budget, io, cleanup| {
+            let parent = source.root.join("ecosystem/defaultspack");
+            let bundle = parent.join("v4");
+            fs::create_dir_all(&bundle).unwrap();
+            let parent = parent.canonicalize().unwrap();
+            let artifact = parent.join("platform-artifacts");
+            fs::create_dir(&artifact).unwrap();
+            fs::write(bundle.join("bundle.lock.json"), br#"{"entries":[]}"#).unwrap();
+            io.select_packaged(&bundle).unwrap();
+            io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+                .unwrap();
+            let original = json!([["parent", ""], ["join", "platform-artifacts"]]);
+            let resolved = json!([["shell-resolved-root", ""]]);
+            let lock = json!([["join", "bundle.lock.json"]]);
+            let sequence = [
+                ("is-symlink", lock.clone(), json!([])),
+                ("is-file", lock.clone(), json!([])),
+                ("read-bytes", lock.clone(), json!([])),
+            ];
+            for (operation, steps, args) in [
+                (
+                    "root",
+                    json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+                    json!([]),
+                ),
+                ("is-symlink", json!([]), json!([])),
+                ("resolve", json!([]), json!([true])),
+                ("is-symlink", lock.clone(), json!([])),
+                ("read-bytes", lock, json!([])),
+                ("is-dir", original.clone(), json!([])),
+                ("resolve", original.clone(), json!([true])),
+            ] {
+                call(io, source, invocation, budget, operation, steps, args);
+            }
+            let inspect = |io: &mut CatalogIo, operation: &str, steps: Value, args: Value| {
+                io.inspect_pack_resolve(
+                    source,
+                    invocation,
+                    &packet(invocation, budget, operation, steps, args),
+                    budget,
+                )
+                .map(|value| {
+                    assert!(cleanup.receipt().verified());
+                    serde_json::from_slice::<Value>(value.as_bytes()).unwrap()["result"].clone()
+                })
+            };
+            if case != "present" {
+                fs::rename(&artifact, parent.join("parked")).unwrap();
+                match case {
+                    "sibling-link" => std::os::unix::fs::symlink("parked", &artifact).unwrap(),
+                    "outside-link" => {
+                        std::os::unix::fs::symlink("../out-of-scope", &artifact).unwrap()
+                    }
+                    "file" => fs::write(&artifact, b"replaced directory").unwrap(),
+                    _ => {}
+                }
+            }
+            io.begin_pack_resolve().unwrap();
+            assert!(inspect(io, "resolve", original.clone(), json!([true])).is_err());
+            for (operation, steps, args) in sequence {
+                inspect(io, operation, steps, args).unwrap();
+            }
+            if case == "parent-replaced" {
+                fs::rename(&parent, parent.with_file_name("replaced-parent")).unwrap();
+                fs::create_dir_all(&artifact).unwrap();
+            }
+            assert!(inspect(io, "resolve", original.clone(), json!([false])).is_err());
+            assert!(inspect(io, "resolve", resolved.clone(), json!([true])).is_err());
+            assert!(inspect(io, "is-symlink", original.clone(), json!([])).is_err());
+            let path = inspect(io, "resolve", original.clone(), json!([true]));
+            if matches!(case, "missing" | "outside-link" | "parent-replaced") {
+                let error = path.unwrap_err();
+                let error = error.downcast_ref::<OriginalAuthorityError>().unwrap();
+                if case == "missing" {
+                    assert!(
+                        matches!(&error.cause, Some(OriginalAuthorityCause::Io(error))
+                        if error.errno == Some(libc::ENOENT)
+                        && error.filename.as_deref() == artifact.to_str())
+                    );
+                } else {
+                    assert!(matches!(
+                        &error.cause,
+                        Some(OriginalAuthorityCause::SourceUnavailable)
+                    ));
+                }
+                assert!(inspect(io, "resolve", original, json!([true])).is_err());
+                assert!(!io.pack_resolve_shell_root_completed());
+                return;
+            }
+            let expected = if case == "sibling-link" {
+                parent.join("parked")
+            } else {
+                artifact
+            };
+            let path = path.unwrap();
+            assert_eq!(path["steps"], resolved);
+            assert_eq!(path["value"], expected.to_str().unwrap());
+            assert!(inspect(io, "is-dir", resolved.clone(), json!([])).is_err());
+            assert_eq!(
+                inspect(io, "is-symlink", original, json!([])).unwrap()["value"],
+                case == "sibling-link",
+            );
+            if case == "sibling-link" {
+                assert!(inspect(io, "is-dir", resolved, json!([])).is_err());
+            } else {
+                assert_eq!(
+                    inspect(io, "is-dir", resolved.clone(), json!([])).unwrap()["value"],
+                    case == "present",
+                );
+                assert!(inspect(io, "is-dir", resolved, json!([])).is_err());
+            }
+            assert_eq!(io.pack_resolve_shell_root_completed(), case == "present");
+            assert!(
+                inspect(
+                    io,
+                    "is-symlink",
+                    json!([["shell-resolved-root", ""], ["join", "Tobkiri.app"]]),
+                    json!([])
+                )
+                .is_err()
+            );
         });
     }
 }

@@ -25,7 +25,7 @@ _PREFIX = "io.tobkiri.native-inspection-"
 
 
 class _UnboundPlatformArtifacts(BaseException):
-    """Stop the fixed resolver at the retained Shell artifact root's first access."""
+    """Stop the fixed resolver at the first selected Shell leaf check."""
 
 
 def _binding(value: Any) -> str:
@@ -80,6 +80,7 @@ class PathBridge:
         self._catalog_root: NativePath | None = None
         self._resolving_catalog = False
         self._resolver_artifact_root: NativePath | None = None
+        self._resolver_resolved_root: NativePath | None = None
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -109,6 +110,7 @@ class PathBridge:
         try:
             return target(*args, **kwargs)
         finally:
+            self._resolver_resolved_root = None
             self._resolver_artifact_root = None
             self._resolving_catalog = False
 
@@ -351,10 +353,24 @@ class NativePath:
 
     def resolve(self, strict: bool = False) -> NativePath:
         if strict is True and self is self._bridge._resolver_artifact_root:
-            raise _UnboundPlatformArtifacts
+            bridge = self._bridge
+            row = bridge._catalog_request(self._target(), "resolve", [True])
+            if (row.get("binding") != self._binding
+                    or row.get("steps") != [["shell-resolved-root", ""]]):
+                raise UnsupportedValue("invalid resolved Shell root")
+            resolved = bridge._value(row, "path", catalog=True)
+            bridge._resolver_resolved_root = resolved
+            return resolved
         return self._effect("resolve", "path", [strict])
 
     def is_symlink(self) -> bool:
+        root = self._bridge._resolver_resolved_root
+        if root is not None and self._binding == root._binding:
+            prefix = root._steps
+            tail = self._steps[len(prefix):]
+            if (self._steps[:len(prefix)] == prefix
+                    and len(tail) == 1 and tail[0][0] == "join"):
+                raise _UnboundPlatformArtifacts
         return self._effect("is-symlink", "bool")
 
     def is_file(self) -> bool:

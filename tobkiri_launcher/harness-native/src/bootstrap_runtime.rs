@@ -41,7 +41,7 @@ const RESOLVER_SOURCE_LOOKUP: u8 = 13;
 const RESOLVER_STATIC_EDGES: u8 = 14;
 const RESOLVER_DYNAMIC_EDGES: u8 = 15;
 const RESOLVER_VERIFIED_ARTIFACTS: u8 = 16;
-const RESOLVE_PROFILE_LOCK: u8 = 17;
+const RESOLVE_PROFILE: u8 = 17;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
@@ -160,7 +160,7 @@ impl CiRetiredCall {
             RESOLVER_STATIC_EDGES => "resolver-static-edges",
             RESOLVER_DYNAMIC_EDGES => "resolver-dynamic-edges",
             RESOLVER_VERIFIED_ARTIFACTS => "resolver-verified-artifacts",
-            RESOLVE_PROFILE_LOCK => "resolve-profile-lock",
+            RESOLVE_PROFILE => "resolve-profile",
             _ => "unknown",
         }
     }
@@ -401,7 +401,7 @@ fn inspect<S: BootstrapInputOwner>(
         }
         return catalog::inspect(context, work.clone(), phase);
     }
-    if phase == RESOLVE_PROFILE_LOCK {
+    if phase == RESOLVE_PROFILE {
         return catalog::inspect(context, work.clone(), phase);
     }
     if !context.same_invocation(&state.invocation)
