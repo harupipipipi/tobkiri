@@ -151,7 +151,8 @@ fn policy_component(
         (export "init" (func $init)) (export "bootstrap-profile-id" (func $text))
         (export "host-resource-root" (func $text))
         (export "bundled-profile-root" (func $text)) (export "denied" (func $text))
-        (export "load-catalog" (func $text)) (export "resolve-profile" (func $text)))
+        (export "load-catalog" (func $text)) (export "resolve-profile" (func $text))
+        (export "bootstrap-confirmation" (func $text)))
       (instance $transport
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "describe-value" (func $text)) (export "import-values" (func $text)))

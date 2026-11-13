@@ -7,6 +7,10 @@ use tobkiri_canon::Digest;
 
 pub(super) const SOURCE_REQUEST: &str = "io.tobkiri.native-bootstrap-predecessor-source.v1";
 const SOURCE_RESPONSE: &str = "io.tobkiri.native-bootstrap-predecessor-source-result.v1";
+pub(super) const INACTIVE_REQUEST: &str = "io.tobkiri.native-bootstrap-inactive-source.v1";
+const INACTIVE_RESPONSE: &str = "io.tobkiri.native-bootstrap-inactive-source-result.v1";
+#[path = "bootstrap_confirmation.rs"]
+mod confirmation;
 
 pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
@@ -72,16 +76,67 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         .predecessor_inputs
         .as_ref()
         .expect("actual predecessor inputs");
-    Ok(BootstrapReviewFailure::NotBound(
-        if digest
+    if digest
+        .as_ref()
+        .is_some_and(|digest| inputs.matches_source_digest(digest))
+    {
+        return Ok(BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::BootstrapPredecessorActivationNotBound,
+        ));
+    }
+    drop((value, response, request));
+    inactive(review, pack, scope, profile_id).await
+}
+
+async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    scope: &CoreValue,
+    profile_id: &str,
+) -> Result<BootstrapReviewFailure> {
+    let caller = ReviewCaller::Resolver;
+    let source = catalog::returned(
+        review
+            .actual
+            .resolver_source_profile
             .as_ref()
-            .is_some_and(|digest| inputs.matches_source_digest(digest))
-        {
-            BootstrapReviewReachpoint::BootstrapPredecessorActivationNotBound
-        } else {
-            BootstrapReviewReachpoint::InactiveBootstrapPredecessorNotBound
-        },
-    ))
+            .context("actual source Profile missing")?,
+    )?;
+    let request = denied::frame(
+        pack,
+        INACTIVE_REQUEST,
+        [("source", catalog::result_root(pack, source, scope)?)],
+    )?;
+    let outcome = pack
+        .observe_fixed_projection(&request, "bootstrap-inactive-source")
+        .await?;
+    caller.check(review, pack)?;
+    let response = match outcome {
+        Ok(response) => response,
+        Err(error) => {
+            return catalog::handle_call_failure(review, pack, caller, error, false).await;
+        }
+    };
+    let value = CoreValue::parse_guest(response.as_bytes(), pack.input_budget)?;
+    denied::exact(&value, &["format", "scope", "profile_id"])?;
+    if denied::field(&value, "format")?.as_str() != Some(INACTIVE_RESPONSE)
+        || !denied::same_scope(&denied::field(&value, "scope")?, scope)
+        || denied::field(&value, "profile_id")?.as_str() != Some(profile_id)
+    {
+        bail!("inactive predecessor source differs from the validated catalog identity");
+    }
+    drop((value, response, request));
+    match review.read.inactive_predecessor_has_registry(
+        &pack.work.get().source,
+        pack.cancellation,
+        profile_id,
+    ) {
+        Ok(false) => confirmation::run(review, pack, scope, profile_id).await,
+        Ok(true) => Ok(BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::InactiveBootstrapRegistryNotBound,
+        )),
+        Err(error) => Ok(original_failure(error)),
+    }
 }
 
 fn source_digest(

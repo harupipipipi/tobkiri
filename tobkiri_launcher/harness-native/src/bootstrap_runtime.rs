@@ -45,7 +45,10 @@ const RESOLVER_DYNAMIC_EDGES: u8 = 15;
 const RESOLVER_VERIFIED_ARTIFACTS: u8 = 16;
 const RESOLVE_PROFILE: u8 = 17;
 const BOOTSTRAP_PREDECESSOR_SOURCE: u8 = 18;
+const BOOTSTRAP_INACTIVE_SOURCE: u8 = 19;
+const BOOTSTRAP_CONFIRMATION: u8 = 20;
 const RESOLVE_PROFILE_SLOT: usize = 8;
+const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
 const SOURCE_UNUSED: u8 = 0;
 const SOURCE_ENTERED: u8 = 1;
 const SOURCE_COMPLETED: u8 = 2;
@@ -170,6 +173,8 @@ impl CiRetiredCall {
             RESOLVER_VERIFIED_ARTIFACTS => "resolver-verified-artifacts",
             RESOLVE_PROFILE => "resolve-profile",
             BOOTSTRAP_PREDECESSOR_SOURCE => "bootstrap-predecessor-source",
+            BOOTSTRAP_INACTIVE_SOURCE => "bootstrap-inactive-source",
+            BOOTSTRAP_CONFIRMATION => "bootstrap-confirmation",
             _ => "unknown",
         }
     }
@@ -778,6 +783,10 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 export: NativeDataExport::new(Some(RUNTIME), "resolve-profile"),
                 result: Some(contract(NativeDataSuccessType::String)),
             },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "bootstrap-confirmation"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
         ];
         work.get().init_trace.phase(1);
         let program = match store.prepare_data_program(component, &bindings).await {
@@ -1243,11 +1252,17 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                     Some(predecessor::SOURCE_REQUEST) if phase != BOOTSTRAP_PREDECESSOR_SOURCE => {
                         bail!("predecessor source lookup is outside the fixed Review reachpoint");
                     }
+                    Some(predecessor::INACTIVE_REQUEST) if phase != BOOTSTRAP_INACTIVE_SOURCE => {
+                        bail!("inactive predecessor source is outside the fixed Review reachpoint");
+                    }
                     _ => {}
                 },
                 Err(tobkiri_canon::AllocationError::Invalid) => {}
                 Err(error) => return Err(error.into()),
             }
+        }
+        if slot == BOOTSTRAP_CONFIRMATION_SLOT && phase != BOOTSTRAP_CONFIRMATION {
+            bail!("bootstrap confirmation is outside the fixed Review reachpoint");
         }
         if self.work.get().phase.load(Ordering::Acquire) != phase {
             bail!("native bootstrap is not initialized");

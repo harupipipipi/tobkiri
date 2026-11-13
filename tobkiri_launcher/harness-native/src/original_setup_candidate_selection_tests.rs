@@ -365,6 +365,17 @@ async fn predecessor_rechecks_registry_and_pointer_in_the_resolver_scope() {
                         case == "registered"
                     );
                     assert!(!inputs.matches_source_digest(&Digest::hash(b"different definition")));
+                    if case == "fresh" {
+                        assert!(
+                            !read
+                                .inactive_predecessor_has_registry(source, cancel, "defaults")
+                                .unwrap()
+                        );
+                        assert!(
+                            read.inactive_predecessor_has_registry(source, cancel, "defaults")
+                                .is_err()
+                        );
+                    }
                 }
             }
             assert!(lock_free(&profiles.join(".profile-definition.lock")));
@@ -375,6 +386,44 @@ async fn predecessor_rechecks_registry_and_pointer_in_the_resolver_scope() {
             assert!(
                 read.bootstrap_predecessor_inputs(source, cancel, "defaults", budget)
                     .is_err()
+            );
+            assert!(read.receipt().verified());
+            read.close_continuation().unwrap();
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inactive_predecessor_treats_dangling_active_and_index_paths_as_present() {
+    for (active, index, expected) in [(true, true, false), (false, true, true)] {
+        with_source(|source, read, cancel, budget| {
+            for discard in [true, false] {
+                read.enter_recovery(source, cancel, discard).unwrap();
+            }
+            read.acquire_candidate_root(source, cancel).unwrap();
+            assert!(matches!(
+                read.candidate_selection(source, cancel, "defaults", false, budget)
+                    .unwrap(),
+                CandidateSelection::BundledCatalog
+            ));
+            read.acquire_resolver_root(source, cancel).unwrap();
+            read.resolver_authority_snapshot(source, cancel, Digest::hash(b"bundle lock"))
+                .unwrap()
+                .unwrap();
+            read.bootstrap_predecessor_inputs(source, cancel, "defaults", budget)
+                .unwrap();
+            if active {
+                let directory = source.root.join("workspaces/defaults/activation");
+                fs::create_dir_all(&directory).unwrap();
+                symlink("missing", directory.join("active.json")).unwrap();
+            }
+            if index {
+                symlink("missing", source.root.join("profiles/index.json")).unwrap();
+            }
+            assert_eq!(
+                read.inactive_predecessor_has_registry(source, cancel, "defaults")
+                    .unwrap(),
+                expected
             );
             assert!(read.receipt().verified());
             read.close_continuation().unwrap();

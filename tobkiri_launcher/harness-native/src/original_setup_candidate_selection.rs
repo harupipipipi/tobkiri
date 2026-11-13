@@ -84,6 +84,7 @@ enum Progress {
     Resolving,
     SnapshotStarted,
     PredecessorStarted,
+    InactivePredecessorStarted,
 }
 
 #[derive(Default)]
@@ -309,7 +310,10 @@ impl PublicationRead {
     ) -> Result<()> {
         if !matches!(
             self.fresh.progress,
-            Progress::Resolving | Progress::SnapshotStarted | Progress::PredecessorStarted
+            Progress::Resolving
+                | Progress::SnapshotStarted
+                | Progress::PredecessorStarted
+                | Progress::InactivePredecessorStarted
         ) {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Guard,
@@ -386,6 +390,45 @@ impl PublicationRead {
         }
     }
 
+    /// Recheck the original paths after the Pack pin predecessor returned None.
+    pub(crate) fn inactive_predecessor_has_registry<S: OriginalAuthorityOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        profile_id: &str,
+    ) -> Result<bool> {
+        self.check_resolver_root(owner, cancellation)?;
+        if self.fresh.progress != Progress::PredecessorStarted || !self.cleanup.verified() {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Guard,
+                "inactive predecessor is outside the resolved candidate",
+            ));
+        }
+        self.fresh.progress = Progress::InactivePredecessorStarted;
+        let op = self.candidate_operation(owner, cancellation)?;
+        let root = self.fresh.resolver_root.as_ref().expect("resolver root");
+        let _paths = op.reserve(
+            OriginalAuthorityStage::Path,
+            root.as_os_str()
+                .len()
+                .saturating_mul(4)
+                .saturating_add(profile_id.len())
+                .saturating_add(8192),
+        )?;
+        let active_paths = [
+            root.join("profiles/active.json"),
+            root.join("workspaces")
+                .join(profile_id)
+                .join("activation/active.json"),
+        ];
+        for path in active_paths {
+            if predecessor_path_present(&op, &path)? {
+                return Ok(false);
+            }
+        }
+        predecessor_path_present(&op, &root.join("profiles/index.json"))
+    }
+
     fn candidate_operation<'a, S: OriginalAuthorityOwner>(
         &'a self,
         owner: &'a S,
@@ -411,6 +454,16 @@ impl PublicationRead {
             fixture: None,
         })
     }
+}
+
+fn predecessor_path_present<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    path: &Path,
+) -> Result<bool> {
+    op.check(OriginalAuthorityStage::Source)?;
+    let present = path.exists() || path.is_symlink();
+    op.check(OriginalAuthorityStage::Source)?;
+    Ok(present)
 }
 
 fn read_root<S: crate::BootstrapReviewOwner>(op: &Operation<'_, S>) -> Result<Funded<PathBuf>> {

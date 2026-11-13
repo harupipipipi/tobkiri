@@ -167,6 +167,8 @@ class Registry:
         self._resolver_profile_id: int | None = None
         self._resolver_source: int | None = None
         self._resolver_verified_artifacts: int | None = None
+        self._resolved_profile: int | None = None
+        self._resolver_authority: tuple[str, str, int] | None = None
         self._resolver_dynamic_stage = "awaiting-static"
         self._next = 1
         self._retired = False
@@ -325,6 +327,9 @@ class Registry:
                 self._clear_resolver_source()
             elif number == self._resolver_verified_artifacts:
                 self._resolver_verified_artifacts = None
+            elif number == self._resolved_profile:
+                self._resolved_profile = None
+                self._resolver_authority = None
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -345,6 +350,8 @@ class Registry:
     def _clear_resolver_source(self) -> None:
         self._resolver_source = None
         self._resolver_verified_artifacts = None
+        self._resolved_profile = None
+        self._resolver_authority = None
         self._resolver_dynamic_stage = "awaiting-static"
 
     def _begin_resolver_getter(self) -> None:
@@ -537,6 +544,27 @@ class Registry:
         self._resolver_dynamic_stage = "bootstrap-predecessor-started"
         return inputs
 
+    def _finish_bootstrap_predecessor(self, source: Reference) -> dict[str, Any]:
+        value = self._current_resolver_source(source)
+        if self._resolver_dynamic_stage != "bootstrap-predecessor-returned":
+            raise InvalidReference("reference has no completed predecessor lookup")
+        self._resolver_dynamic_stage = "inactive-predecessor-started"
+        return value
+
+    def _begin_bootstrap_confirmation(
+        self, resolved: Reference, profile_id: Reference, snapshot: str, epoch: str,
+    ) -> tuple[Any, str, str, int]:
+        value = self.borrow(resolved)
+        identity = self.borrow(profile_id, str)
+        authority = self._resolver_authority
+        if (self._resolver_dynamic_stage != "inactive-predecessor-returned"
+                or resolved.object_id != self._resolved_profile
+                or profile_id.object_id != self._resolver_profile_id
+                or authority is None or authority[:2] != (snapshot, epoch)):
+            raise InvalidReference("references have no completed inactive predecessor check")
+        self._resolver_dynamic_stage = "bootstrap-confirmation-started"
+        return value, identity, authority[0], authority[2]
+
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
         # Python len/iteration preserve lone surrogate codepoints. Never encode,
@@ -584,6 +612,7 @@ class Registry:
             "resolver-verified-artifacts-returned", "resolver-verified-artifacts-raised",
             "resolver-profile-raised",
             "bootstrap-predecessor-source-raised",
+            "bootstrap-inactive-source-raised", "bootstrap-confirmation-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

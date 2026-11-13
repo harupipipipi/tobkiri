@@ -1384,7 +1384,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertFalse(self.bridge._resolving_catalog)
 
     def test_predecessor_reads_live_catalog_once_after_the_resolver(self) -> None:
-        catalog, profile_id, source = self.source({"requested_edges": []})
+        catalog, profile_id, source = self.source({"requested_edges": [], "profile_id": "fixture-id"})
         self.static_edges(source)
         self.dynamic_edges(catalog, profile_id, source)
         artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
@@ -1394,18 +1394,22 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.dispatcher.describe_value(lookup)
         leaf = self.bridge.bind("fixture-root", "/fixture/shell")
 
+        resolved = self.Resolved({}, {}, {})
+        captured = {}
+
         def resolve(*args, **kwargs):
+            captured.update(kwargs)
             self.bridge._resolver_shell_leaf = leaf
             self.bridge._resolver_header_closed = True
             self.bridge._resolver_verified_artifact = leaf
-            return self.Resolved({}, {}, {})
+            return resolved
 
         self.runtime.resolve_profile = resolve
-        self.dispatcher.call("resolve_profile", self.frame(
+        packet = wire.loads(self.dispatcher.call("resolve_profile", self.frame(
             "resolver-profile", catalog=catalog, profile_id=profile_id,
             source_profile=source, verified_artifacts=artifacts,
             snapshot="sha256:" + "1" * 64, epoch="1", bindings=[],
-        ))
+        )))
         calls = []
 
         class LiveProfiles(dict):
@@ -1423,6 +1427,39 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         with self.assertRaises(InvalidReference):
             self.dispatcher.describe_value(lookup)
         self.assertEqual(len(calls), 1)
+        call = self.frame("bootstrap-fresh-confirmation", resolved=packet["resolved"],
+                          profile_id=profile_id, snapshot="sha256:" + "1" * 64, epoch="1")
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("bootstrap_confirmation", call)
+        observed = wire.loads(self.dispatcher.describe_value(self.frame(
+            "bootstrap-inactive-source", source=source,
+        )))
+        self.assertEqual(observed["profile_id"], "fixture-id")
+        foreign = wire.loads(call)
+        foreign["epoch"] = "2"
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("bootstrap_confirmation", wire.dumps(foreign))
+
+        nested = []
+        returned = {"bindings": nested}
+
+        def confirm(**kwargs):
+            self.assertIs(kwargs["resolved"], resolved)
+            self.assertIs(kwargs["profile_id"], calls[0])
+            self.assertIs(kwargs["authority_snapshot_digest"], captured["authority_snapshot_digest"])
+            self.assertIs(kwargs["security_epoch"], captured["security_epoch"])
+            self.assertIsNone(kwargs["definition_predecessor"])
+            self.assertNotIn("pack_pin_predecessor", kwargs)
+            return returned
+
+        self.runtime.bootstrap_confirmation = confirm
+        packet = wire.loads(self.dispatcher.call("bootstrap_confirmation", call))
+        actual = self.registry.borrow(self.registry.reference(packet["root"]))
+        self.assertIsNot(actual, returned)
+        self.assertIs(actual["bindings"], nested)
+        self.assertEqual(packet["confirmation"], returned)
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("bootstrap_confirmation", call)
 
     def test_fixed_profile_checks_shell_path_after_original_lock_digest(self) -> None:
         # The portable caller fixture uses the actual original helpers. The

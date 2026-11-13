@@ -285,9 +285,9 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
                 "format",
                 CoreValue::string(predecessor::SOURCE_REQUEST, &budget)?,
             )),
-            Ok(("scope", scope)),
+            Ok(("scope", scope.clone())),
             Ok(("catalog", reference.clone())),
-            Ok(("profile_id", reference)),
+            Ok(("profile_id", reference.clone())),
             Ok(("needs_digest", CoreValue::bool(false, &budget)?)),
         ]
         .into_iter(),
@@ -301,6 +301,28 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         .context("ordinary describe must reject the predecessor lookup at the Host")?;
     ensure!(
         rejection.to_string() == "predecessor source lookup is outside the fixed Review reachpoint"
+    );
+    let inactive_source = CoreValue::object_from(
+        [
+            Ok((
+                "format",
+                CoreValue::string(predecessor::INACTIVE_REQUEST, &budget)?,
+            )),
+            Ok(("scope", scope)),
+            Ok(("source", reference)),
+        ]
+        .into_iter(),
+        &budget,
+    )?
+    .encode_guest(&budget)?;
+    let rejection = runtime
+        .describe_value(&inactive_source)
+        .await
+        .err()
+        .context("ordinary describe must reject the inactive predecessor lookup at the Host")?;
+    ensure!(
+        rejection.to_string()
+            == "inactive predecessor source is outside the fixed Review reachpoint"
     );
     ensure!(
         runtime.inspection_attempts() == init_inspections,

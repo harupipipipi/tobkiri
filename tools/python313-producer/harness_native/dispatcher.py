@@ -428,6 +428,8 @@ class Dispatcher:
         frame = self._load(payload)
         if method == "resolve_profile" and frame.get("format") == PREFIX + "resolver-profile.v1":
             return self._resolve_bundled_profile(state, frame)
+        if method == "bootstrap_confirmation" and frame.get("format") == PREFIX + "bootstrap-fresh-confirmation.v1":
+            return self._bootstrap_fresh_confirmation(state, frame)
         self._checked_frame(frame, "call", {"args", "kwargs"})
         if type(frame["args"]) is not list or type(frame["kwargs"]) is not list:
             raise InvalidFrame("invalid original call arguments")
@@ -523,27 +525,31 @@ class Dispatcher:
             created: list[tuple[Reference, int]] = []
             try:
                 refs = [registry._retain(item, created=created)[0] for item in values]
-                return wire.dumps({
+                packet = wire.dumps({
                     "format": PREFIX + "resolver-profile-result.v1",
                     "scope": registry.scope.wire(),
                     **dict(zip(("resolved", "profile", "lock", "plan"),
                                (ref.wire() for ref in refs))),
                     "owned": [format(ref.object_id, "x") for ref, _ in created],
                 })
+                registry._resolved_profile = refs[0].object_id
+                return packet
             except BaseException:
                 registry._rollback(created)
                 raise
 
         try:
+            security_epoch = int(epoch)
             payload = self._apply_original(
                 lambda: root._bridge._resolve_catalog(
                     resolve_and_publish, root, catalog.artifact_root,
                     catalog, profile_id, approved_artifact_digests=approved,
                     authority_snapshot_digest=snapshot, authority_bindings=bindings,
-                    security_epoch=int(epoch), additional_pack_ids=(),
+                    security_epoch=security_epoch, additional_pack_ids=(),
                 ),
                 caller="resolver-profile",
             )
+            registry._resolver_authority = (snapshot, epoch, security_epoch)
             registry._resolver_dynamic_stage = "profile-resolution-returned"
             return payload
         except _UnboundPlatformArtifacts:
@@ -615,8 +621,55 @@ class Dispatcher:
             return None
 
         digest = self._apply_original(lookup, caller="bootstrap-predecessor-source")
-        return wire.dumps({"format": PREFIX + "bootstrap-predecessor-source-result.v1",
-                           "scope": registry.scope.wire(), "digest": digest})
+        packet = wire.dumps({"format": PREFIX + "bootstrap-predecessor-source-result.v1",
+                             "scope": registry.scope.wire(), "digest": digest})
+        registry._resolver_dynamic_stage = "bootstrap-predecessor-returned"
+        return packet
+
+    def _bootstrap_inactive_source(self, state: _State, frame: dict[str, Any]) -> str:
+        registry = state.registry
+        if (set(frame) != {"format", "scope", "source"}
+                or frame["scope"] != registry.scope.wire()):
+            raise InvalidFrame("invalid fixed inactive predecessor source frame")
+        source = registry._finish_bootstrap_predecessor(registry.reference(frame["source"]))
+        profile_id = self._apply_original(lambda: str(source["profile_id"]),
+                                          caller="bootstrap-inactive-source")
+        packet = wire.dumps({"format": PREFIX + "bootstrap-inactive-source-result.v1",
+                             "scope": registry.scope.wire(), "profile_id": profile_id})
+        registry._resolver_dynamic_stage = "inactive-predecessor-returned"
+        return packet
+
+    def _bootstrap_fresh_confirmation(self, state: _State, frame: dict[str, Any]) -> str:
+        registry = state.registry
+        if (set(frame) != {"format", "scope", "resolved", "profile_id", "snapshot", "epoch"}
+                or frame["scope"] != registry.scope.wire()):
+            raise InvalidFrame("invalid fixed bootstrap confirmation frame")
+        snapshot, epoch = frame["snapshot"], frame["epoch"]
+        if type(snapshot) is not str or type(epoch) is not str:
+            raise InvalidFrame("invalid fixed bootstrap confirmation authority arguments")
+        resolved, profile_id, snapshot, security_epoch = registry._begin_bootstrap_confirmation(
+            registry.reference(frame["resolved"]), registry.reference(frame["profile_id"]),
+            snapshot, epoch,
+        )
+
+        def confirm():
+            # The original outer caller makes this same shallow copy.
+            return dict(state.runtime.bootstrap_confirmation(
+                resolved=resolved, profile_id=profile_id, authority_snapshot_digest=snapshot,
+                security_epoch=security_epoch, definition_predecessor=None,
+            ))
+
+        confirmation = self._apply_original(confirm, caller="bootstrap-confirmation")
+        created: list[tuple[Reference, int]] = []
+        try:
+            root, _ = registry._retain(confirmation, created=created)
+            return wire.dumps({"format": PREFIX + "bootstrap-fresh-confirmation-result.v1",
+                               "scope": registry.scope.wire(), "root": root.wire(),
+                               "owned": [format(ref.object_id, "x") for ref, _ in created],
+                               "confirmation": confirmation})
+        except BaseException:
+            registry._rollback(created)
+            raise
 
     def describe_value(self, payload: str) -> str:
         """Serve closed DATA observations and fixed original Setup operations."""
@@ -624,6 +677,8 @@ class Dispatcher:
         frame = self._load(payload)
         if frame.get("format") == PREFIX + "bootstrap-predecessor-source.v1":
             return self._bootstrap_predecessor_source(state, frame)
+        if frame.get("format") == PREFIX + "bootstrap-inactive-source.v1":
+            return self._bootstrap_inactive_source(state, frame)
         if frame.get("format") == PREFIX + "resolver-source-lookup.v1":
             registry = state.registry
             if (set(frame) != {"format", "scope", "catalog", "profile_id"}

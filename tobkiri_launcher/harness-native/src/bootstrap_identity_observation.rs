@@ -252,6 +252,19 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         }
     }
 
+    pub(super) async fn observe_bootstrap_confirmation(
+        &mut self,
+        input: &CoreBuffer,
+    ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
+        match self
+            .fixed_call(BOOTSTRAP_CONFIRMATION_SLOT, input, "bootstrap-confirmation")
+            .await?
+        {
+            FixedCallOutput::Projection(value) => Ok(Ok(value)),
+            FixedCallOutput::Identity(outcome) => Ok(Err(outcome)),
+        }
+    }
+
     async fn fixed_call(
         &mut self,
         slot: usize,
@@ -270,6 +283,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "resolver-dynamic-edges")
                 | (2, "resolver-verified-artifacts")
                 | (2, "bootstrap-predecessor-source")
+                | (2, "bootstrap-inactive-source")
+                | (BOOTSTRAP_CONFIRMATION_SLOT, "bootstrap-confirmation")
                 | (RESOLVE_PROFILE_SLOT, "resolver-profile")
         ) {
             bail!("fixed original caller is unavailable");
@@ -289,6 +304,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "resolver-verified-artifacts") => RESOLVER_VERIFIED_ARTIFACTS,
             (REVIEW, "resolver-profile") => RESOLVE_PROFILE,
             (REVIEW, "bootstrap-predecessor-source") => BOOTSTRAP_PREDECESSOR_SOURCE,
+            (REVIEW, "bootstrap-inactive-source") => BOOTSTRAP_INACTIVE_SOURCE,
+            (REVIEW, "bootstrap-confirmation") => BOOTSTRAP_CONFIRMATION,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -353,6 +370,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | RESOLVER_DYNAMIC_EDGES
                 | RESOLVE_PROFILE
                 | BOOTSTRAP_PREDECESSOR_SOURCE
+                | BOOTSTRAP_INACTIVE_SOURCE
+                | BOOTSTRAP_CONFIRMATION
         ) && pending.result.is_some()
         {
             let pending = self.identity_pending.take().expect("admitted edge call");
@@ -677,6 +696,16 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (
                 Some("bootstrap-predecessor-source-raised"),
                 "bootstrap-predecessor-source",
+                true
+            )
+            | (
+                Some("bootstrap-inactive-source-raised"),
+                "bootstrap-inactive-source",
+                true
+            )
+            | (
+                Some("bootstrap-confirmation-raised"),
+                "bootstrap-confirmation",
                 true
             )
     )
