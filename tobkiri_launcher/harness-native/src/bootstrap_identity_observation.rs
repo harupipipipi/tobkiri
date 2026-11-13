@@ -269,6 +269,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "resolver-static-edges")
                 | (2, "resolver-dynamic-edges")
                 | (2, "resolver-verified-artifacts")
+                | (2, "bootstrap-predecessor-source")
                 | (RESOLVE_PROFILE_SLOT, "resolver-profile")
         ) {
             bail!("fixed original caller is unavailable");
@@ -287,6 +288,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "resolver-dynamic-edges") => RESOLVER_DYNAMIC_EDGES,
             (REVIEW, "resolver-verified-artifacts") => RESOLVER_VERIFIED_ARTIFACTS,
             (REVIEW, "resolver-profile") => RESOLVE_PROFILE,
+            (REVIEW, "bootstrap-predecessor-source") => BOOTSTRAP_PREDECESSOR_SOURCE,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -347,7 +349,10 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         let pending = self.identity_pending.as_ref().expect("admitted getter");
         if matches!(
             phase,
-            RESOLVER_STATIC_EDGES | RESOLVER_DYNAMIC_EDGES | RESOLVE_PROFILE
+            RESOLVER_STATIC_EDGES
+                | RESOLVER_DYNAMIC_EDGES
+                | RESOLVE_PROFILE
+                | BOOTSTRAP_PREDECESSOR_SOURCE
         ) && pending.result.is_some()
         {
             let pending = self.identity_pending.take().expect("admitted edge call");
@@ -669,6 +674,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
                 true
             )
             | (Some("resolver-profile-raised"), "resolver-profile", true)
+            | (
+                Some("bootstrap-predecessor-source-raised"),
+                "bootstrap-predecessor-source",
+                true
+            )
     )
 }
 

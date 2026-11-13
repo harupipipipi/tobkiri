@@ -252,6 +252,86 @@ fn seed_candidate(source: &Source, registered: bool) {
     }
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn predecessor_rechecks_registry_and_pointer_in_the_resolver_scope() {
+    for case in ["fresh", "corrupt-pointer", "corrupt-registry", "registered"] {
+        with_source(|source, read, cancel, budget| {
+            read.enter_recovery(source, cancel, true).unwrap();
+            read.enter_recovery(source, cancel, false).unwrap();
+            read.acquire_candidate_root(source, cancel).unwrap();
+            assert!(matches!(
+                read.candidate_selection(source, cancel, "defaults", false, budget)
+                    .unwrap(),
+                CandidateSelection::BundledCatalog
+            ));
+            read.acquire_resolver_root(source, cancel).unwrap();
+            read.resolver_authority_snapshot(source, cancel, Digest::hash(b"bundle lock"))
+                .unwrap()
+                .unwrap();
+            let profiles = source.root.join("profiles");
+            if case == "registered" {
+                seed_candidate(source, true);
+            } else if case != "fresh" {
+                fs::create_dir_all(&profiles).unwrap();
+                let pointer = profiles.join("active.json");
+                fs::write(&pointer, b"{\n").unwrap();
+                fs::set_permissions(&pointer, fs::Permissions::from_mode(0o600)).unwrap();
+                if case == "corrupt-registry" {
+                    write_index(source, b"{\n");
+                }
+            }
+            let result = read.bootstrap_predecessor_inputs(source, cancel, "defaults", budget);
+            match case {
+                "corrupt-pointer" => {
+                    let error = result.err().expect("actual malformed active pointer");
+                    assert_eq!(
+                        error.class,
+                        "core_runtime.active_profile_store_v4.ActiveProfileStoreIntegrityError"
+                    );
+                    assert_eq!(error.message, "active Profile pointer is unavailable");
+                    assert!(error.suppressed);
+                    assert!(
+                        matches!(error.cause, Some(OriginalAuthorityCause::Python { class: "tobkiri_protocol.errors.CanonicalizationError", cause: Some(cause), .. }) if matches!(*cause, OriginalAuthorityCause::Python { class: "json.decoder.JSONDecodeError", .. }))
+                    );
+                }
+                "corrupt-registry" => {
+                    let error = result
+                        .err()
+                        .expect("definition read must fail before pointer read");
+                    assert_eq!(
+                        error.class,
+                        "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreIntegrityError"
+                    );
+                }
+                _ => {
+                    let inputs = result.unwrap();
+                    let source_digest =
+                        Digest::parse(entry("defaults", 0)["current_revision"].as_str().unwrap())
+                            .unwrap();
+                    assert_eq!(inputs.needs_source_digest("defaults"), case == "registered");
+                    assert!(!inputs.needs_source_digest("other"));
+                    assert_eq!(
+                        inputs.matches_source_digest(&source_digest),
+                        case == "registered"
+                    );
+                    assert!(!inputs.matches_source_digest(&Digest::hash(b"different definition")));
+                }
+            }
+            assert!(lock_free(&profiles.join(".profile-definition.lock")));
+            if matches!(case, "fresh" | "corrupt-pointer") {
+                assert!(!profiles.join("index.json").exists());
+            }
+            assert!(!profiles.join(LOCK).exists());
+            assert!(
+                read.bootstrap_predecessor_inputs(source, cancel, "defaults", budget)
+                    .is_err()
+            );
+            assert!(read.receipt().verified());
+            read.close_continuation().unwrap();
+        });
+    }
+}
+
 const DATABASE: &str = "authority/v4.sqlite3";
 const GUARD: &str = "authority/.v4.sqlite3.lifecycle.lock";
 const KEY: &str = "authority/v4.key";

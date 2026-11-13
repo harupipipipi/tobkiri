@@ -169,8 +169,8 @@ fn first_list<S: OriginalAuthorityOwner>(
 
 #[cfg(unix)]
 pub(super) struct RegisteredProfile {
-    _state: definitions_model::State,
-    _profile: definitions_model::StoredProfile,
+    state: definitions_model::State,
+    profile: definitions_model::StoredProfile,
 }
 
 #[cfg(unix)]
@@ -181,16 +181,77 @@ pub(super) fn get_profile<S: OriginalAuthorityOwner>(
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<RegisteredProfile>> {
     let store = Store::new(op, root)?;
-    definitions_model::canonical_id(profile_id, op, budget)?;
-    let mut state = store.snapshot(op, budget)?;
-    Ok(
-        definitions_model::get(op, &mut state, profile_id, budget)?.map(|profile| {
-            RegisteredProfile {
-                _state: state,
-                _profile: profile,
-            }
-        }),
-    )
+    store.get_profile(op, profile_id, budget)
+}
+
+/// The actual registry and pointer reads retained by the fixed Setup call.
+pub(crate) struct BootstrapPredecessorInputs {
+    #[cfg(unix)]
+    _snapshot: definitions_model::State,
+    #[cfg(unix)]
+    registered: Option<RegisteredProfile>,
+    #[cfg(unix)]
+    pointer: Option<active_profile::LoadedPointer>,
+}
+
+impl BootstrapPredecessorInputs {
+    pub(crate) fn needs_source_digest(&self, profile_id: &str) -> bool {
+        #[cfg(unix)]
+        {
+            self.registered.is_some()
+                && self
+                    .pointer
+                    .as_ref()
+                    .is_some_and(|p| p.profile_id().is(profile_id))
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = profile_id;
+            false
+        }
+    }
+
+    pub(crate) fn matches_source_digest(&self, digest: &Digest) -> bool {
+        #[cfg(unix)]
+        {
+            self.registered.as_ref().is_some_and(|entry| {
+                entry
+                    .state
+                    .doc
+                    .string_is(entry.profile.references[1], digest.as_str())
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = digest;
+            false
+        }
+    }
+}
+
+#[cfg(unix)]
+pub(super) fn bootstrap_predecessor_inputs<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    profile_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<BootstrapPredecessorInputs> {
+    let store = Store::new(op, root)?;
+    let snapshot = store.snapshot(op, budget)?;
+    let _id = op.reserve(
+        OriginalAuthorityStage::Source,
+        profile_id
+            .len()
+            .saturating_mul(std::mem::size_of::<u32>())
+            .max(1),
+    )?;
+    let registered = store.get_profile(op, &Text::from_str(profile_id), budget)?;
+    let pointer = active_profile::load(op, root)?;
+    Ok(BootstrapPredecessorInputs {
+        _snapshot: snapshot,
+        registered,
+        pointer,
+    })
 }
 
 #[cfg(unix)]
@@ -250,6 +311,18 @@ impl Store {
         // Both original consumers convert rows after the lock's post-yield
         // validation and physical unlock/close.
         finish_snapshot(op, &self.directory, &mut lock, state)
+    }
+
+    fn get_profile<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        profile_id: &Text,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<RegisteredProfile>> {
+        definitions_model::canonical_id(profile_id, op, budget)?;
+        let mut state = self.snapshot(op, budget)?;
+        Ok(definitions_model::get(op, &mut state, profile_id, budget)?
+            .map(|profile| RegisteredProfile { state, profile }))
     }
 
     fn lock<S: OriginalAuthorityOwner>(&self, op: &Operation<'_, S>) -> Result<PublicationLock> {

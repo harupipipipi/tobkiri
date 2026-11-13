@@ -325,8 +325,8 @@ async fn registry_tombstones_keep_the_prior_document_and_check_parent_before_dig
         let selected = get_profile(&op, &source.root, &Text::from_str("beta"), budget)
             .unwrap()
             .expect("exact current profile");
-        let doc = &selected._state.doc;
-        let [id, revision, document, _, _] = selected._profile.references;
+        let doc = &selected.state.doc;
+        let [id, revision, document, _, _] = selected.profile.references;
         assert!(doc.string_is(id, "beta"));
         assert!(doc.string_is(revision, beta["current_revision"].as_str().unwrap()));
         assert!(doc.string_is(doc.get(document, "display_name").unwrap(), "beta"));

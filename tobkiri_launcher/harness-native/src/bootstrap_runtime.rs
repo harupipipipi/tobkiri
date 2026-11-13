@@ -44,6 +44,7 @@ const RESOLVER_STATIC_EDGES: u8 = 14;
 const RESOLVER_DYNAMIC_EDGES: u8 = 15;
 const RESOLVER_VERIFIED_ARTIFACTS: u8 = 16;
 const RESOLVE_PROFILE: u8 = 17;
+const BOOTSTRAP_PREDECESSOR_SOURCE: u8 = 18;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const SOURCE_UNUSED: u8 = 0;
 const SOURCE_ENTERED: u8 = 1;
@@ -65,6 +66,8 @@ pub use identity_observation::{
 };
 #[path = "bootstrap_catalog.rs"]
 mod catalog;
+#[path = "bootstrap_predecessor.rs"]
+mod predecessor;
 #[path = "bootstrap_resolver_edges.rs"]
 mod resolver_edges;
 #[path = "bootstrap_review_continuation.rs"]
@@ -166,6 +169,7 @@ impl CiRetiredCall {
             RESOLVER_DYNAMIC_EDGES => "resolver-dynamic-edges",
             RESOLVER_VERIFIED_ARTIFACTS => "resolver-verified-artifacts",
             RESOLVE_PROFILE => "resolve-profile",
+            BOOTSTRAP_PREDECESSOR_SOURCE => "bootstrap-predecessor-source",
             _ => "unknown",
         }
     }
@@ -1235,6 +1239,9 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                         if phase != RESOLVER_VERIFIED_ARTIFACTS =>
                     {
                         bail!("verified Profile artifacts are outside the fixed Review reachpoint");
+                    }
+                    Some(predecessor::SOURCE_REQUEST) if phase != BOOTSTRAP_PREDECESSOR_SOURCE => {
+                        bail!("predecessor source lookup is outside the fixed Review reachpoint");
                     }
                     _ => {}
                 },

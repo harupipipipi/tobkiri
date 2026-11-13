@@ -1383,6 +1383,47 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertIsNone(self.bridge._resolver_verified_artifact)
         self.assertFalse(self.bridge._resolving_catalog)
 
+    def test_predecessor_reads_live_catalog_once_after_the_resolver(self) -> None:
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        self.static_edges(source)
+        self.dynamic_edges(catalog, profile_id, source)
+        artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
+        lookup = self.frame("bootstrap-predecessor-source", catalog=catalog,
+                            profile_id=profile_id, needs_digest=False)
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.describe_value(lookup)
+        leaf = self.bridge.bind("fixture-root", "/fixture/shell")
+
+        def resolve(*args, **kwargs):
+            self.bridge._resolver_shell_leaf = leaf
+            self.bridge._resolver_header_closed = True
+            self.bridge._resolver_verified_artifact = leaf
+            return self.Resolved({}, {}, {})
+
+        self.runtime.resolve_profile = resolve
+        self.dispatcher.call("resolve_profile", self.frame(
+            "resolver-profile", catalog=catalog, profile_id=profile_id,
+            source_profile=source, verified_artifacts=artifacts,
+            snapshot="sha256:" + "1" * 64, epoch="1", bindings=[],
+        ))
+        calls = []
+
+        class LiveProfiles(dict):
+            def get(self, key):
+                calls.append(key)
+                return {"changed_after_resolve": object()}
+
+        self.runtime.catalog.profiles = LiveProfiles()
+        self.assertEqual(wire.loads(self.dispatcher.describe_value(lookup)), {
+            "format": PREFIX + "bootstrap-predecessor-source-result.v1",
+            "scope": self.scope.wire(), "digest": None,
+        })
+        self.assertEqual(len(calls), 1)
+        self.assertIs(calls[0], self.registry.borrow(self.registry.reference(profile_id)))
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.describe_value(lookup)
+        self.assertEqual(len(calls), 1)
+
     def test_fixed_profile_checks_shell_path_after_original_lock_digest(self) -> None:
         # The portable caller fixture uses the actual original helpers. The
         # pinned complete Port replay and real Rust IO run in separate CI jobs.

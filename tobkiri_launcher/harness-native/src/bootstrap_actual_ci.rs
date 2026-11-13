@@ -261,10 +261,10 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
                 "format",
                 CoreValue::string(resolver_edges::VERIFIED_ARTIFACTS_REQUEST, &budget)?,
             )),
-            Ok(("scope", scope)),
+            Ok(("scope", scope.clone())),
             Ok(("catalog", reference.clone())),
             Ok(("profile_id", reference.clone())),
-            Ok(("source_profile", reference)),
+            Ok(("source_profile", reference.clone())),
         ]
         .into_iter(),
         &budget,
@@ -278,6 +278,29 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     ensure!(
         rejection.to_string()
             == "verified Profile artifacts are outside the fixed Review reachpoint"
+    );
+    let predecessor_lookup = CoreValue::object_from(
+        [
+            Ok((
+                "format",
+                CoreValue::string(predecessor::SOURCE_REQUEST, &budget)?,
+            )),
+            Ok(("scope", scope)),
+            Ok(("catalog", reference.clone())),
+            Ok(("profile_id", reference)),
+            Ok(("needs_digest", CoreValue::bool(false, &budget)?)),
+        ]
+        .into_iter(),
+        &budget,
+    )?
+    .encode_guest(&budget)?;
+    let rejection = runtime
+        .describe_value(&predecessor_lookup)
+        .await
+        .err()
+        .context("ordinary describe must reject the predecessor lookup at the Host")?;
+    ensure!(
+        rejection.to_string() == "predecessor source lookup is outside the fixed Review reachpoint"
     );
     ensure!(
         runtime.inspection_attempts() == init_inspections,

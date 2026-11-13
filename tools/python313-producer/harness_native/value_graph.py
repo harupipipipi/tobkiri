@@ -528,6 +528,15 @@ class Registry:
         self._resolver_dynamic_stage = "profile-resolution-started"
         return catalog_value, profile_value, approved
 
+    def _begin_bootstrap_predecessor(
+        self, catalog: Reference, profile_id: Reference,
+    ) -> tuple[Any, str]:
+        inputs = self._resolver_retained_inputs(catalog, profile_id)
+        if self._resolver_dynamic_stage != "profile-resolution-returned":
+            raise InvalidReference("reference has no completed Profile resolution")
+        self._resolver_dynamic_stage = "bootstrap-predecessor-started"
+        return inputs
+
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
         # Python len/iteration preserve lone surrogate codepoints. Never encode,
@@ -574,6 +583,7 @@ class Registry:
             "resolver-static-edges-raised", "resolver-dynamic-edges-raised",
             "resolver-verified-artifacts-returned", "resolver-verified-artifacts-raised",
             "resolver-profile-raised",
+            "bootstrap-predecessor-source-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

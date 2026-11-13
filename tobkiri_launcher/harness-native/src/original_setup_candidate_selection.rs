@@ -83,6 +83,7 @@ enum Progress {
     RegisteredAuthorityStarted,
     Resolving,
     SnapshotStarted,
+    PredecessorStarted,
 }
 
 #[derive(Default)]
@@ -308,7 +309,7 @@ impl PublicationRead {
     ) -> Result<()> {
         if !matches!(
             self.fresh.progress,
-            Progress::Resolving | Progress::SnapshotStarted
+            Progress::Resolving | Progress::SnapshotStarted | Progress::PredecessorStarted
         ) {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Guard,
@@ -350,6 +351,38 @@ impl PublicationRead {
                 Ok(None)
             }
             Err(error) => Err(error),
+        }
+    }
+
+    /// The post-resolve call reuses the already selected resolver user-data root.
+    pub(crate) fn bootstrap_predecessor_inputs<S: OriginalAuthorityOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        profile_id: &str,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<definitions::BootstrapPredecessorInputs> {
+        self.check_resolver_root(owner, cancellation)?;
+        if self.fresh.progress != Progress::SnapshotStarted {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Guard,
+                "Setup predecessor is outside the resolved candidate",
+            ));
+        }
+        self.fresh.progress = Progress::PredecessorStarted;
+        #[cfg(unix)]
+        {
+            let root = self.fresh.resolver_root.as_ref().expect("resolver root");
+            let op = self.candidate_operation(owner, cancellation)?;
+            definitions::bootstrap_predecessor_inputs(&op, root, profile_id, budget)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (profile_id, budget);
+            Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Source,
+                "Windows Setup predecessor persistence/ACL",
+            ))
         }
     }
 

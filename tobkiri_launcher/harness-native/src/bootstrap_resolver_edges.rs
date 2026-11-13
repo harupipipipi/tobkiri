@@ -2,7 +2,7 @@
 //! candidate DATA; only the later original resolution can consume them.
 use super::*;
 use crate::bootstrap_review::Review;
-use crate::{BootstrapReviewFailure, BootstrapReviewOwner, BootstrapReviewReachpoint};
+use crate::{BootstrapReviewFailure, BootstrapReviewOwner};
 use review_continuation::ReviewCaller;
 use tobkiri_canon::{AllocationKind, AllocationRequest, Digest};
 
@@ -228,9 +228,8 @@ async fn resolve_profile<S: BootstrapInputOwner + BootstrapReviewOwner>(
     if pack.work.get().source_occurrence.load(Ordering::Acquire) != SOURCE_COMPLETED {
         bail!("original resolver did not complete projection source resolution");
     }
-    Ok(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::BootstrapPredecessorNotBound,
-    ))
+    drop(result);
+    predecessor::run(review, pack, scope, profile_id).await
 }
 
 fn validate_resolved_profile(

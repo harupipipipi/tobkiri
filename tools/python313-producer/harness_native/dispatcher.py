@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import re
 from typing import Any, Callable
@@ -534,7 +535,7 @@ class Dispatcher:
                 raise
 
         try:
-            return self._apply_original(
+            payload = self._apply_original(
                 lambda: root._bridge._resolve_catalog(
                     resolve_and_publish, root, catalog.artifact_root,
                     catalog, profile_id, approved_artifact_digests=approved,
@@ -543,6 +544,8 @@ class Dispatcher:
                 ),
                 caller="resolver-profile",
             )
+            registry._resolver_dynamic_stage = "profile-resolution-returned"
+            return payload
         except _UnboundPlatformArtifacts:
             return wire.dumps({
                 "format": PREFIX + "resolver-platform-artifacts-unbound.v1",
@@ -591,10 +594,36 @@ class Dispatcher:
             state.registry._rollback(created)
             raise
 
+    def _bootstrap_predecessor_source(self, state: _State, frame: dict[str, Any]) -> str:
+        registry = state.registry
+        if (set(frame) != {"format", "scope", "catalog", "profile_id", "needs_digest"}
+                or frame["scope"] != registry.scope.wire()
+                or type(frame["needs_digest"]) is not bool):
+            raise InvalidFrame("invalid fixed bootstrap predecessor source frame")
+        catalog, profile_id = registry._begin_bootstrap_predecessor(
+            registry.reference(frame["catalog"]), registry.reference(frame["profile_id"]),
+        )
+
+        def lookup():
+            source = catalog.profiles.get(profile_id)
+            # The lookup precedes the original conditional. Digest calculation
+            # happens only if the native registry and pointer predicates passed.
+            if frame["needs_digest"] and isinstance(source, Mapping):
+                from tobkiri_protocol.canonical import canonical_digest
+
+                return canonical_digest(source)
+            return None
+
+        digest = self._apply_original(lookup, caller="bootstrap-predecessor-source")
+        return wire.dumps({"format": PREFIX + "bootstrap-predecessor-source-result.v1",
+                           "scope": registry.scope.wire(), "digest": digest})
+
     def describe_value(self, payload: str) -> str:
         """Serve closed DATA observations and fixed original Setup operations."""
         state = self._current()
         frame = self._load(payload)
+        if frame.get("format") == PREFIX + "bootstrap-predecessor-source.v1":
+            return self._bootstrap_predecessor_source(state, frame)
         if frame.get("format") == PREFIX + "resolver-source-lookup.v1":
             registry = state.registry
             if (set(frame) != {"format", "scope", "catalog", "profile_id"}
