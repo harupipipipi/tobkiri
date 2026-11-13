@@ -24,6 +24,8 @@ _ARTIFACT = "tobkiri_protocol.platform_artifact"
 _ARTIFACT_SOURCE = "tobkiri_protocol/platform_artifact.py"
 _RESOLUTION = "ecosystem.defaultspack.domain.profile_resolution"
 _RESOLUTION_SOURCE = "ecosystem/defaultspack/domain/profile_resolution.py"
+_CONTENT_PROJECTION = "core_runtime.profile_content_projection"
+_CONTENT_PROJECTION_SOURCE = "core_runtime/profile_content_projection.py"
 _PERSISTENCE = "tobkiri_protocol.secure_persistence"
 _PERSISTENCE_EXPORTS = ("SecureDirectory", "SecurePersistenceError")
 
@@ -126,7 +128,10 @@ class _ModuleLoader:
                 and self.origin == owner.root + "/" + source
             )
 
+        resolver_source = False
+
         def scoped_import(name, globals=None, locals=None, fromlist=(), level=0):
+            nonlocal resolver_source
             if (level == 0 and name == "os" and self.spec.name == _ARTIFACT
                     and self.catalog_capture is not None):
                 if fromlist or not owns_import(_ARTIFACT, _ARTIFACT_SOURCE, globals):
@@ -166,6 +171,14 @@ class _ModuleLoader:
             if level == 0 and name == "pathlib":
                 if view is None:
                     raise UnsupportedValue("source-only module has no pathlib binding")
+                if self.spec.name == _CONTENT_PROJECTION and self.bridge._resolving_catalog:
+                    if (fromlist != ("Path",) or self.bridge._resolver_source_anchor is not None
+                            or self.bridge._resolver_verified_artifact is None
+                            or not owns_import(
+                                _CONTENT_PROJECTION, _CONTENT_PROJECTION_SOURCE, globals)):
+                        raise UnsupportedValue("resolver projection source owner is not bound")
+                    self.bridge._resolver_source_anchor = self.anchor
+                    resolver_source = True
                 return view
             if level == 0 and name.startswith("pathlib."):
                 raise UnsupportedValue("native pathlib submodule is not represented")
@@ -180,7 +193,11 @@ class _ModuleLoader:
         # that known origin to the already supplied anchor, without OS fallback.
         module.__loader__ = self.original
         self.spec.loader = self.original
-        execute(module)
+        try:
+            execute(module)
+        finally:
+            if resolver_source:
+                self.bridge._resolver_source_anchor = None
         if (attributes.get("__spec__") is not self.spec
                 or attributes.get("__loader__") is not self.original
                 or self.spec.loader is not self.original
@@ -252,7 +269,9 @@ class ModulePathBindings:
             if spec.loader is None:
                 raise UnsupportedValue("original bound module has no code loader")
             capture = self._catalog_capture
-            if fullname in {_SERVICE, _ARTIFACT, _RESOLUTION} and capture is not None and (
+            if fullname in {
+                _SERVICE, _ARTIFACT, _RESOLUTION, _CONTENT_PROJECTION,
+            } and capture is not None and (
                 finder is not capture[0] or type(finder) is not capture[1]
                 or type(spec.loader) is not capture[2]
                 or finder.tree is not capture[3]

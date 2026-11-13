@@ -22,6 +22,14 @@ pub static ORIGINAL_PROFILE_SOURCE_METADATA: ModuleMetadataPolicy = ModuleMetada
     relative_file: "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
 };
 
+pub(super) static ORIGINAL_PROJECTION_SOURCE_METADATA: ModuleMetadataPolicy =
+    ModuleMetadataPolicy {
+        module: "core_runtime.profile_content_projection",
+        relative_file: "core_runtime/profile_content_projection.py",
+    };
+
+pub(super) const REQUEST: &str = "io.tobkiri.native-inspection-request.v1";
+
 pub(super) fn selected(
     frame: &CoreValue,
     invocation: &NativeSetupInvocation,
@@ -29,7 +37,7 @@ pub(super) fn selected(
     policy: &'static ModuleMetadataPolicy,
 ) -> Option<&'static BootstrapModule> {
     exact(frame, &["format", "scope", "target", "operation", "args"])?;
-    if frame.get_key("format")?.as_str() != Some("io.tobkiri.native-inspection-request.v1")
+    if frame.get_key("format")?.as_str() != Some(REQUEST)
         || frame.get_key("operation")?.as_str() != Some("resolve")
     {
         return None;

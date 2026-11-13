@@ -40,6 +40,26 @@ pub(super) fn inspect<S: BootstrapInputOwner>(
         .context("catalog request is missing")?
         .clone();
     let request = CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())?;
+    if phase == RESOLVE_PROFILE
+        && request.get_key("format").and_then(|value| {
+            value
+                .as_str()
+                .map(|format| format == crate::source_metadata::REQUEST)
+        }) == Some(true)
+    {
+        let state = work.get();
+        state
+            .metadata_policy
+            .context("original module metadata policy is unavailable")?;
+        let module = crate::source_metadata::selected(
+            &request,
+            &state.invocation,
+            state.index,
+            &crate::source_metadata::ORIGINAL_PROJECTION_SOURCE_METADATA,
+        )
+        .context("metadata request is outside the original projection source operation")?;
+        return inspect_source_metadata(context, work, phase, module);
+    }
     let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
     context.inspect_retaining(custody, move |output| {
         let state = work.get();

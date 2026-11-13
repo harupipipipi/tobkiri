@@ -292,11 +292,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             _ => bail!("fixed original caller is outside review"),
         };
         self.work.get().source.check_live()?;
-        if matches!(slot, 3 | 4) {
+        if matches!(slot, 3 | 4) || phase == RESOLVE_PROFILE {
             self.work
                 .get()
                 .source_occurrence
-                .store(0, Ordering::Release);
+                .store(SOURCE_UNUSED, Ordering::Release);
         }
         *self.identity_pending = Some(IdentityCallCustody {
             result: None,

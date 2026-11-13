@@ -23,6 +23,7 @@ import ordered_json_v2 as wire
 from .value_graph import Scope, UnsupportedValue
 
 _PREFIX = "io.tobkiri.native-inspection-"
+_CATALOG_REQUEST = "io.tobkiri.native-catalog-request.v1"
 
 
 class _UnboundPlatformArtifacts(BaseException):
@@ -90,6 +91,7 @@ class PathBridge:
         self._resolver_entrypoint_closed = False
         self._resolver_header_closed = False
         self._resolver_verified_artifact: NativePath | None = None
+        self._resolver_source_anchor: NativePath | None = None
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -103,7 +105,8 @@ class PathBridge:
             self._catalog_root = None
 
     def _catalog_request(self, target: dict, operation: str, args: list) -> dict:
-        return self._request(target, operation, args, catalog=True)
+        return self._request(target, operation, args,
+                             format_id=_CATALOG_REQUEST)
 
     def _resolve_catalog(
         self, target: Callable, root: NativePath, artifact_root: NativePath | None,
@@ -119,6 +122,7 @@ class PathBridge:
         try:
             return target(*args, **kwargs)
         finally:
+            self._resolver_source_anchor = None
             self._resolver_verified_artifact = None
             self._resolver_entrypoint = None
             self._resolver_entrypoint_closed = False
@@ -187,13 +191,14 @@ class PathBridge:
         return Path
 
     def _request(self, target: dict[str, Any], operation: str, args: list,
-                 *, catalog: bool = False) -> dict:
+                 *, format_id: str | None = None) -> dict:
         # Do not catch native resource/cancellation/panic failures. Only the
         # explicitly returned closed domain DATA channel may be decoded below.
         response = self._inspect(wire.dumps({
-            "format": ("io.tobkiri.native-catalog-request.v1" if catalog or
-                       self._catalog_root is not None or self._resolving_catalog
-                       else _PREFIX + "request.v1"),
+            "format": format_id or (
+                _CATALOG_REQUEST if self._catalog_root is not None or self._resolving_catalog
+                else _PREFIX + "request.v1"
+            ),
             "scope": self.scope.wire(),
             "target": target, "operation": operation, "args": args,
         }))
@@ -383,6 +388,12 @@ class NativePath:
 
     def resolve(self, strict: bool = False) -> NativePath:
         bridge = self._bridge
+        anchor = bridge._resolver_source_anchor
+        if (anchor is not None and strict is False and not self._steps
+                and self._binding == anchor._binding and self._pure == anchor._pure):
+            result = bridge._request(self._target(), "resolve", [False],
+                                     format_id=_PREFIX + "request.v1")
+            return bridge._value(result, "path")
         if bridge._resolver_digest_started:
             root = bridge._resolver_resolved_root
             if (strict is not True or root is None or self._binding != root._binding

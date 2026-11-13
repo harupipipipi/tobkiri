@@ -49,6 +49,7 @@ import ordered_json_v2 as wire  # noqa: E402
 
 SERVICE = "ecosystem.defaultspack.domain.runtime_v4.service"
 SECURE = "tobkiri_protocol.secure_persistence"
+CONTENT_PROJECTION = "core_runtime.profile_content_projection"
 ORIGIN = "/captured-catalog-persistence-fixture"
 PREFIXES = ("core_runtime", "ecosystem", "tobkiri_protocol", "tobkiri_host")
 
@@ -558,6 +559,60 @@ class CatalogCaptureCompositionTests(unittest.TestCase):
                     outcome[0] = leaf
                     with self.assertRaises(UnsupportedValue):
                         verify()
+
+    def test_projection_resolves_only_its_bound_source_after_shell(self):
+        package = assemble(prepare.captured())
+        with captured(package, ROOT) as (finder, bridge, bindings, _):
+            source = bindings.anchors[CONTENT_PROJECTION]
+            calls = []
+            failure = UnsupportedValue("projection metadata was refused")
+
+            def resolve(payload):
+                self.assertIs(bridge._resolver_source_anchor, source)
+                calls.append(wire.loads(payload))
+                if len(calls) == 1:
+                    raise failure
+                return wire.dumps({
+                    "format": "io.tobkiri.native-inspection-response.v1",
+                    "scope": bridge.scope.wire(),
+                    "result": {"kind": "path", "binding": "resolved_module_1",
+                               "value": "/physical/runtime/core_runtime/profile_content_projection.py"},
+                })
+
+            def load_projection():
+                return importlib.import_module(CONTENT_PROJECTION)
+
+            bridge._inspect = resolve
+            bridge._resolving_catalog = True
+            bridge._resolver_digest_started = True
+            try:
+                with self.assertRaisesRegex(UnsupportedValue, "source owner is not bound"):
+                    load_projection()
+                self.assertNotIn(CONTENT_PROJECTION, sys.modules)
+                self.assertIsNone(bridge._resolver_source_anchor)
+                self.assertEqual(calls, [])
+                leaf = bridge.bind("catalog_root", "/shell")
+                bridge._resolver_verified_artifact = leaf
+                with self.assertRaises(UnsupportedValue) as caught:
+                    load_projection()
+                self.assertIs(caught.exception, failure)
+                self.assertNotIn(CONTENT_PROJECTION, sys.modules)
+                self.assertIsNone(bridge._resolver_source_anchor)
+                module = load_projection()
+                self.assertIs(module.__loader__.finder, finder)
+                self.assertEqual(str(module.RUNTIME_ROOT), "/physical/runtime")
+                self.assertEqual(str(module.PROJECTION_ROOT), "/physical/runtime/profile_projections")
+                self.assertEqual(module.selected_projection_roots([]), ())
+                self.assertIsNone(bridge._resolver_source_anchor)
+                self.assertEqual(calls, [{
+                    "format": "io.tobkiri.native-inspection-request.v1",
+                    "scope": bridge.scope.wire(),
+                    "target": source._target(), "operation": "resolve", "args": [False],
+                }] * 2)
+            finally:
+                bridge._resolver_verified_artifact = None
+                bridge._resolver_digest_started = False
+                bridge._resolving_catalog = False
 
     def test_import_failure_keeps_original_error_and_releases_only_binding_borrow(self):
         package = assemble(prepare.captured())

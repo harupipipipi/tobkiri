@@ -225,6 +225,9 @@ async fn resolve_profile<S: BootstrapInputOwner + BootstrapReviewOwner>(
         pack.input_budget,
     )?;
     validate_resolved_profile(&result, scope, shell_completed)?;
+    if pack.work.get().source_occurrence.load(Ordering::Acquire) != SOURCE_COMPLETED {
+        bail!("original resolver did not complete projection source resolution");
+    }
     Ok(BootstrapReviewFailure::NotBound(
         BootstrapReviewReachpoint::BootstrapPredecessorNotBound,
     ))

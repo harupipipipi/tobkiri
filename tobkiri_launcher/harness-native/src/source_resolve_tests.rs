@@ -157,6 +157,13 @@ async fn original_module_policy_requires_actual_scope_exact_name_path_and_operat
             relative_file: "different.py",
         }],
     };
+    static PROJECTION: BootstrapModuleIndex = BootstrapModuleIndex {
+        sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        modules: &[BootstrapModule {
+            module: "core_runtime.profile_content_projection",
+            relative_file: "core_runtime/profile_content_projection.py",
+        }],
+    };
     let data = tempfile::tempdir()?;
     let owner = RuntimeOwner::open(data.path().canonicalize()?.join("policy-runtime"))?;
     let invocation = owner.begin_native_setup()?;
@@ -168,17 +175,17 @@ async fn original_module_policy_requires_actual_scope_exact_name_path_and_operat
     let parse = |frame: &serde_json::Value| {
         CoreValue::parse_guest(&serde_json::to_vec(frame).unwrap(), budget)
     };
-    let selected = |frame: &CoreValue, index| {
-        crate::source_metadata::selected(
-            frame,
-            &invocation,
-            index,
-            &ORIGINAL_PROFILE_SOURCE_METADATA,
-        )
-        .is_some()
+    let selected = |frame: &CoreValue, index, policy| {
+        crate::source_metadata::selected(frame, &invocation, index, policy).is_some()
     };
-    ensure!(selected(&parse(&frame)?, &RIGHT));
-    ensure!(!selected(&parse(&frame)?, &WRONG_PATH));
+    let getter = &ORIGINAL_PROFILE_SOURCE_METADATA;
+    let projection = &crate::source_metadata::ORIGINAL_PROJECTION_SOURCE_METADATA;
+    let request = parse(&frame)?;
+    ensure!(selected(&request, &RIGHT, getter));
+    ensure!(selected(&request, &PROJECTION, projection));
+    ensure!(!selected(&request, &WRONG_PATH, getter));
+    ensure!(!selected(&request, &PROJECTION, getter));
+    ensure!(!selected(&request, &RIGHT, projection));
     for changed in [
         {
             let mut f = frame.clone();
@@ -211,10 +218,9 @@ async fn original_module_policy_requires_actual_scope_exact_name_path_and_operat
             f
         },
     ] {
-        ensure!(
-            !selected(&parse(&changed)?, &RIGHT),
-            "forged metadata request admitted"
-        );
+        let changed = parse(&changed)?;
+        ensure!(!selected(&changed, &RIGHT, getter));
+        ensure!(!selected(&changed, &PROJECTION, projection));
     }
     Ok(())
 }

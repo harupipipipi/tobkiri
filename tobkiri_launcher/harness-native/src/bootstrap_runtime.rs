@@ -4,7 +4,9 @@
 //! description and fixed denied factory are exposed, with the two opaque root getters
 //! only when composition explicitly admits their fixed module operation.
 //! Initialization permits bounded failure observations, never filesystem IO.
-use crate::bootstrap_metadata::{self, BootstrapInputOwner, BootstrapModuleIndex, Scope};
+use crate::bootstrap_metadata::{
+    self, BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, Scope,
+};
 use crate::init_trace::{InitTrace, InitializationRejection, checkpoint_sequence};
 use anyhow::{Context, Result, bail};
 use std::sync::{
@@ -43,6 +45,9 @@ const RESOLVER_DYNAMIC_EDGES: u8 = 15;
 const RESOLVER_VERIFIED_ARTIFACTS: u8 = 16;
 const RESOLVE_PROFILE: u8 = 17;
 const RESOLVE_PROFILE_SLOT: usize = 8;
+const SOURCE_UNUSED: u8 = 0;
+const SOURCE_ENTERED: u8 = 1;
+const SOURCE_COMPLETED: u8 = 2;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -422,7 +427,12 @@ fn inspect<S: BootstrapInputOwner>(
         .context("original module metadata policy is unavailable")?;
     if state
         .source_occurrence
-        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+        .compare_exchange(
+            SOURCE_UNUSED,
+            SOURCE_ENTERED,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
         .is_err()
     {
         bail!("original getter metadata occurrence was already consumed");
@@ -433,6 +443,15 @@ fn inspect<S: BootstrapInputOwner>(
     let frame = CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())?;
     let module = crate::source_metadata::selected(&frame, &state.invocation, state.index, policy)
         .context("metadata request is outside the original source operation")?;
+    inspect_source_metadata(context, work, phase, module)
+}
+
+fn inspect_source_metadata<S: BootstrapInputOwner>(
+    context: NativeImportContext<'_, State<S>>,
+    work: ControlHandle<Work<S>>,
+    phase: u8,
+    module: &'static BootstrapModule,
+) -> Result<NativeImportOperation> {
     let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
     context.inspect_retaining(custody, move |output| {
         let state = work.get();
@@ -442,6 +461,29 @@ fn inspect<S: BootstrapInputOwner>(
             return Err(NativeDataIoError::Retired);
         }
         state.source.check_live()?;
+        if phase == RESOLVE_PROFILE {
+            use crate::original_authority::catalog::CatalogIo;
+
+            let shell_verified = state
+                .catalog
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .as_ref()
+                .is_some_and(CatalogIo::pack_resolve_shell_artifact_completed);
+            if !shell_verified
+                || state
+                    .source_occurrence
+                    .compare_exchange(
+                        SOURCE_UNUSED,
+                        SOURCE_ENTERED,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    )
+                    .is_err()
+            {
+                return Err(output.reject_execution(NativeDataIoError::Unavailable));
+            }
+        }
         let resolved = state
             .source
             .with_roots(|roots| crate::source_metadata::resolve(output, roots.runtime, module))??;
@@ -501,12 +543,23 @@ fn inspect<S: BootstrapInputOwner>(
                     .map_err(|_| NativeDataIoError::Capacity)?,
                 });
         }
-        let first = if matches!(phase, HOST_ROOT | REVIEW_HOST_ROOT) {
-            &state.first_host_resolution
-        } else {
-            &state.first_bundle_resolution
-        };
-        let _ = first.set(resolved);
+        match phase {
+            HOST_ROOT | REVIEW_HOST_ROOT => {
+                let _ = state.first_host_resolution.set(resolved);
+            }
+            BUNDLE_ROOT | REVIEW_BUNDLE_ROOT => {
+                let _ = state.first_bundle_resolution.set(resolved);
+            }
+            RESOLVE_PROFILE => {
+                if state.phase.load(Ordering::Acquire) != phase {
+                    return Err(NativeDataIoError::Retired);
+                }
+                state
+                    .source_occurrence
+                    .store(SOURCE_COMPLETED, Ordering::Release);
+            }
+            _ => return Err(NativeDataIoError::Retired),
+        }
         if state.phase.load(Ordering::Acquire) != phase {
             return Err(NativeDataIoError::Retired);
         }
@@ -630,7 +683,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 inspections: AtomicU64::new(0),
                 index,
                 metadata_policy,
-                source_occurrence: AtomicU8::new(0),
+                source_occurrence: AtomicU8::new(SOURCE_UNUSED),
                 result_identity: AtomicU64::new(1),
                 first_host_resolution: OnceLock::new(),
                 first_bundle_resolution: OnceLock::new(),
@@ -851,7 +904,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         self.work
             .get()
             .source_occurrence
-            .store(0, Ordering::Release);
+            .store(SOURCE_UNUSED, Ordering::Release);
         self.work.get().phase.store(phase, Ordering::Release);
         let input = self.call.clone();
         let result = self.string_call_in_phase(slot, &input, phase).await;
