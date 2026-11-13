@@ -2501,7 +2501,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   CIは未実行。git addは共有gitdirのindex.lock作成がOperation not permittedで拒否され、
   **コミット未作成**。この節と次節のcommit欄は、オーケストレーターの通常commit後に補記する。
 
-## 026: legacyの自己申告承認・実行経路を正規の門へ戻す（未検証）
+## 026: legacyの自己申告承認・実行経路を正規の門へ戻す
 
 - source/変更1: `core_runtime/egress_proxy.py`と`python_file_executor.py`。
   HTTPのowner自己申告とloopbackだけの識別を既存IpcAuthManagerのPack tokenへ変更し、
@@ -2537,10 +2537,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 維持/整理・除去条件: client/modelの自己承認やterminal承認で既存GUIの門を置換しない。
   独立した新executor/approval frameworkを増やさず、通常の承認・jail・監査を通す。
   実回帰・正常呼出し・one-shot/引数変更/拒否・fork/UDSをCIで確認してから修正成功を認定する。
-- 状態/commit: **未検証、未コミット**（上記gitdir書込拒否）。新規skipは追加していない。
-  Ruffの残るF401 7件はtest_egress_proxy.pyのHEAD由来（元8件のうちMagicMockは新検査で使用）。
-  無関係なunused import削除を戻し、ruff formatは使っていない。実テスト/製品/依存導入は
-  ローカルでもCIでも未実行。全受け入れ条件・inventory・legacy削除条件は未完のまま。
+- 状態: `dde2a5669`、`8bb42c832`、`9d4ae0f82`、`3eb31e69d`、`83313bb9f` を統合済み。
+  [CI 42929622892](https://github.com/harupipipipi/tobkiri/actions/runs/42929622892)
+  （`cc048deec`）はLinux/macOS各216件成功。現行GUI・親メモリの隔離・Rust移植の証拠ではない。
+  未使用importの一括整理やlegacy削除はこの検証に含まない。
+
 
 ## 027: rpds predecessor artifact の期限切れと再構築 component の再固定
 
@@ -2599,3 +2600,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   判断までは挙動を変えない。
 - 削除条件: 上記2点の決定と実装・テストが揃うまで、受け入れ項目13の周辺（R2.10 全体）を閉じたと
   扱わない。
+
+## 029: 実Flow差し替えと独立したチャット検証
+
+- 既存の別PackチャットとUIポートのテストは、全体CIの古い入力fixtureが失敗すると証拠を
+  取りにくかった。`5a8f47747` でmacOSの実所有経路を使う独立CIを追加した。
+- `crates/tobkiri-e2e/tests/chat.rs` は同じ物理入力を2回使い、間にprivate fixtureの
+  Flowだけを変更する。実Packを再検証し、変更後のhashを通常の門でレビューして、
+  元のProfile headに対して保存する。異なるplan digestと実出力、会話の継続を確認する。
+- [CI 43375008696](https://github.com/harupipipipi/tobkiri/actions/runs/43375008696)
+  実行中。ローカルはrustfmt/YAML/差分確認のみ。ローカルAPIは既存テストのSSE fixtureで、
+  llama.cpp 1B、DMGのGUI、すべての入力経路の移行には別の証拠が必要。
+- `fd78392dd` は受け入れ13–16の厳格lintを型aliasで直し、6–8/10のCIを統合ブランチへ
+  接続した。テスト条件・件数は変更していない。
