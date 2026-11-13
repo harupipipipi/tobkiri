@@ -116,7 +116,9 @@ def approve(command: list[str], pins: dict[str, str]) -> str:
             identities.add(review(terminal, remaining))
             terminal.send("approve")
         output = terminal.finish(success=True)
-    identity = output.splitlines()[-1]
+        # The approval prompt has no trailing newline and the PTY has echo
+        # disabled, so the printed ID starts immediately after that prompt.
+        identity = output.rsplit(APPROVAL.decode(), 1)[1].strip()
     assert identities == {identity}, output
     return identity
 
