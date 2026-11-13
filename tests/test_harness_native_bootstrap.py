@@ -14,7 +14,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "tools/python313-producer"),
-               str(ROOT / "packs/local.ai-tool-bridge-ordered-python")]
+               str(ROOT / "packs/local.ai-tool-bridge-ordered-python"),
+               str(ROOT / "tobkiri_runtime")]
 
 from harness_native import bootstrap  # noqa: E402
 from harness_native.dispatcher import Dispatcher, OriginalRuntime, PREFIX  # noqa: E402
