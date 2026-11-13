@@ -557,5 +557,37 @@ def control_checks(provider, kernel) -> dict[str, bool]:
         "'type'", "'const'", "'type'",
     ]
     checks["grown_reference_continuations_resume_and_preserve_error_order"] = True
-    assert len(checks) == 19 and all(value is True for value in checks.values())
+
+    def schema_class_change_during_resume() -> dict:
+        events = []
+
+        class Before(dict):
+            pass
+
+        class After(dict):
+            pass
+
+        branch = Before(allOf=[{"format": "change"}], type="integer")
+
+        def change(value) -> bool:
+            events.append(type(branch).__name__)
+            branch.__class__ = After
+            events.append(type(branch).__name__)
+            return True
+
+        return with_checker(
+            {"allOf": [branch]}, "value", change, events,
+            refs={"branch": branch}, error_schema=branch,
+        )
+
+    outcomes = [
+        run(selected, schema_class_change_during_resume)
+        for selected in (original, provider)
+    ]
+    difference = first_difference(*outcomes)
+    assert difference is None, difference
+    assert outcomes[0]["events"] == ["Before", "After"]
+    assert outcomes[0]["outcome"]["kind"] == "schema-error"
+    checks["retained_non_bool_schema_resumes_after_actual_class_change"] = True
+    assert len(checks) == 20 and all(value is True for value in checks.values())
     return checks
