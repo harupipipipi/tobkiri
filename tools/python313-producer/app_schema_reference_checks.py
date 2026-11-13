@@ -472,5 +472,5 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
             finally:
                 selected.META_SCHEMA = saved_meta
 
-    assert len(checks) == 29 and all(value is True for value in checks.values())
+    assert len(checks) == 33 and all(value is True for value in checks.values())
     return checks
