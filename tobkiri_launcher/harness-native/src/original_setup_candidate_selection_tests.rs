@@ -9,6 +9,7 @@ use super::{
 };
 use rusqlite::{Connection, OpenFlags};
 use serde_json::json;
+use std::io::Read;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -254,6 +255,23 @@ fn seed_candidate(source: &Source, registered: bool) {
 
 #[tokio::test(flavor = "current_thread")]
 async fn predecessor_rechecks_registry_and_pointer_in_the_resolver_scope() {
+    let reference =
+        std::env::var_os("TOBKIRI_ORIGINAL_BOOTSTRAP_PREDECESSOR_REFERENCE").map(|path| {
+            let file = std::fs::File::open(path).unwrap();
+            let mut bytes = Vec::new();
+            file.take(512 * 1024 + 1).read_to_end(&mut bytes).unwrap();
+            assert!(bytes.len() <= 512 * 1024);
+            let reference: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(
+                reference["format"],
+                "io.tobkiri.original-setup-shell-reference.v1"
+            );
+            assert_eq!(
+                reference["original_head"],
+                "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
+            );
+            reference
+        });
     for case in ["fresh", "corrupt-pointer", "corrupt-registry", "registered"] {
         with_source(|source, read, cancel, budget| {
             read.enter_recovery(source, cancel, true).unwrap();
@@ -281,6 +299,36 @@ async fn predecessor_rechecks_registry_and_pointer_in_the_resolver_scope() {
                 }
             }
             let result = read.bootstrap_predecessor_inputs(source, cancel, "defaults", budget);
+            if let (Some(reference), Some(name)) = (
+                reference.as_ref(),
+                match case {
+                    "fresh" => Some("fresh-pack-pin-predecessor"),
+                    "corrupt-pointer" => Some("corrupt-pack-pin-predecessor"),
+                    _ => None,
+                },
+            ) {
+                let rows = reference["predecessor_cases"].as_array().unwrap();
+                assert_eq!(rows.len(), 2);
+                let row = rows.iter().find(|row| row["case"] == name).unwrap();
+                let actual = match &result {
+                    Ok(inputs) => {
+                        assert!(!inputs.needs_source_digest("defaults"));
+                        json!({"outcome": "no-predecessor"})
+                    }
+                    Err(error) => super::reference_ci::original_error(error),
+                };
+                let mut files: Vec<_> = fs::read_dir(&profiles)
+                    .unwrap()
+                    .map(|entry| {
+                        let entry = entry.unwrap();
+                        assert!(entry.file_type().unwrap().is_file());
+                        format!("profiles/{}", entry.file_name().into_string().unwrap())
+                    })
+                    .collect();
+                files.sort();
+                assert_eq!(row["expected"], actual);
+                assert_eq!(row["files_after"], json!(files));
+            }
             match case {
                 "corrupt-pointer" => {
                     let error = result.err().expect("actual malformed active pointer");
