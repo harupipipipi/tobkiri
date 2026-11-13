@@ -51,11 +51,15 @@ def code_hashes(runtime: Path) -> dict[str, str]:
             for name in SOURCES}
 
 
-def bind_resources(runtime: Path) -> None:
+def bind_resources(runtime: Path, *, packaged_artifacts: bool = False) -> None:
     """Seed actual fixture bytes, not an observation or permission grant."""
     bundle = runtime / "ecosystem/defaultspack/v4"
     artifacts = bundle.parent / "platform-artifacts"
-    artifacts.mkdir(exist_ok=False)
+    if packaged_artifacts:
+        if artifacts.is_symlink() or not artifacts.is_dir():
+            raise ValueError("physical packaged fixture artifact directory required")
+    else:
+        artifacts.mkdir(exist_ok=False)
     entries = []
     for directory in (bundle, artifacts):
         for path in sorted(directory.rglob("*")):

@@ -27,6 +27,7 @@ from original_catalog_prefix_reference import IGNORED, bind_resources, code_hash
 from original_publication_reference import filesystem
 from original_setup_candidate_selection_reference import DENIED_CLASS, _lock_free
 from original_setup_review_reference import check_original
+from original_setup_shell_reference import observe_shell
 
 FORMAT = "io.tobkiri.original-setup-resolver-prefix-reference.v1"
 BUNDLE = Path("ecosystem/defaultspack/v4")
@@ -69,6 +70,8 @@ EXTRA_SOURCES = (
     "core_runtime/env_compat.py",
     "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/ids.py",
+    "tobkiri_protocol/platform_artifact.py",
+    "scripts/generate_packaged_defaultspack_v4_bundle.py",
 )
 
 
@@ -1030,6 +1033,10 @@ def prepare(original: Path, output: Path) -> None:
             "second": output / case / "next-user-data",
         }
         results.append(_observe(case, runtime, roots))
+    # The prior cases use the exact pinned source bundle. Only after those
+    # observations, generate the packaged Shell fixture in the same CI tree.
+    (runtime / BUNDLE.parent / "platform-artifacts").rmdir()
+    observe_shell(original, runtime, output)
     if _source_hashes(runtime) != expected or _source_hashes(source) != expected:
         raise AssertionError("original sources changed during resolver observation")
     check_original(original)
