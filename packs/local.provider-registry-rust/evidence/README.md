@@ -3,7 +3,7 @@
 `original-python/` contains the unchanged synthetic observations produced by
 `tools/quality/python_provider_registry_compat/generate.py` with CPython 3.13.9.
 The receipt SHA-256 is
-`e87762d4647d05ad8800c337c2352a272c767d252cb7ad4c4906760fc5590b37`.
+`4f7e5d6e0f1cf047c7e5e55e62eaa12fd6feb944ac15ca963302082bb45a1272`.
 Its 221 input/result/state sidecars are authenticated before replay, together
 with the receipt's complete 346-file original source closure. The fixture
 contains no user Profile, API keys, private conversation or copied source tree.
@@ -46,9 +46,9 @@ directories fail the explicit consumer. A future source change requires new
 original-source observations and reviewed pins; Rust output must not replace
 the original expectations.
 
-The current receipt was regenerated from the unchanged original generator on
-2026-10-25 after the captured-input platform artifact refactor. All thirty
-inputs are byte-identical; generated timestamps and their authenticated state
-sidecars reflect the new observation clock. The prior
-`native-comparison-20261023.json` remains historical evidence for its original
-receipt and source head; current native replay must pass separately in CI.
+The [2026-11-13 CI generation](https://github.com/harupipipipi/tobkiri/actions/runs/43413658285)
+used the unchanged original generator after the saved Project context updates.
+All thirty input files and the 23 configuration cases match the prior capture.
+The changed Registry observations reflect the new clock and source hashes. The
+prior receipts and comparison remain tied to their original source. Current
+native replay runs separately in CI.

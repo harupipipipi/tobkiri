@@ -313,8 +313,8 @@
     },
     {
       "path": "tobkiri_runtime/core_runtime/bootstrap/production_v4.py",
-      "bytes": 208456,
-      "sha256": "8579ecceceb62a9df2c62a03c716405954364d7cad64726272f7d05e87d48259",
+      "bytes": 216375,
+      "sha256": "0c32d9f805f92e9ff905a5989d1b0916bf94f6350534a67c891e9a72ed9373b4",
       "role": "runtime-import-closure"
     },
     {
@@ -367,8 +367,8 @@
     },
     {
       "path": "tobkiri_runtime/core_runtime/bootstrap/saved_bridge.py",
-      "bytes": 46477,
-      "sha256": "b83244d0af6a203848ab39e4a2882fef5cdf00165fb5be945c78fdef308e45f8",
+      "bytes": 52589,
+      "sha256": "eb8ab8d938b49b5841773cbe13056e46c0c7e8f477917f949c2e1f18adbd9609",
       "role": "runtime-import-closure"
     },
     {
@@ -667,8 +667,8 @@
     },
     {
       "path": "tobkiri_runtime/core_runtime/host_provider_backend_v4.py",
-      "bytes": 15864,
-      "sha256": "772b7e06c6a622b0fa63caaf2398645f58833d5a35c83956331503bc861940c7",
+      "bytes": 16477,
+      "sha256": "fe15dfe96f5a47e33dd098766705bee10c8b3c3cf34c813f112856f4927dafa8",
       "role": "runtime-import-closure"
     },
     {
@@ -1807,8 +1807,8 @@
     },
     {
       "path": "tobkiri_runtime/tobkiri_host/saved_workspace_context.py",
-      "bytes": 15513,
-      "sha256": "c910225b2dfe1430c99415e79206b3bde531db2f9cc2f0a543c0176bc3c16a3e",
+      "bytes": 15533,
+      "sha256": "3896a80dbc32e2c1bcaf92462562efa9e355df1f05e8ddd5b6cdb8d486235662",
       "role": "runtime-import-closure"
     },
     {
@@ -1885,8 +1885,8 @@
     },
     {
       "path": "tobkiri_runtime/tobkiri_protocol/conversation_context.py",
-      "bytes": 8764,
-      "sha256": "89389300cac92baf077b4f6061a2527700d78b1cdd702b57995ed43d6db22f34",
+      "bytes": 8897,
+      "sha256": "3cbdaee075e892faac0f0a33bf9c089a1cae71b3e42245fc90bab38c175de7df",
       "role": "runtime-import-closure"
     },
     {
@@ -1999,8 +1999,8 @@
     },
     {
       "path": "tobkiri_runtime/tobkiri_protocol/saved_conversation.py",
-      "bytes": 20197,
-      "sha256": "60c913fd19deff210fe7e8b362b8e70d0d3f0571044e495084a238a8bcdd1a45",
+      "bytes": 24477,
+      "sha256": "879619e3edf9d1f2f4e13a047e1a3ce4a6ca2a2db2507f3b1e986c7797db5057",
       "role": "runtime-import-closure"
     },
     {
@@ -2011,8 +2011,8 @@
     },
     {
       "path": "tobkiri_runtime/tobkiri_protocol/saved_messages.py",
-      "bytes": 8175,
-      "sha256": "911f74c1d25e3e2cdcc8f693d0cd19a8a425c227523834691e790a41212ea996",
+      "bytes": 8978,
+      "sha256": "4451077df4fc2ef7862a32b7fc1af3a2cceb128dbc6bf4e559fa2ae618579f9c",
       "role": "runtime-import-closure"
     },
     {
@@ -2047,8 +2047,8 @@
     },
     {
       "path": "tobkiri_runtime/tobkiri_protocol/validation.py",
-      "bytes": 21024,
-      "sha256": "91b382f8c2494da7368c56b6bd55a6200d29e1db797a76dd501f3fcdd6f5c9bb",
+      "bytes": 23147,
+      "sha256": "9e344d5bbcfded92adb34be7ae7872391cf1c82d01c210c9ea1e9159e360e2e9",
       "role": "runtime-import-closure"
     },
     {
