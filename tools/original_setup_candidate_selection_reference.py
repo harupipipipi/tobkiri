@@ -291,8 +291,9 @@ def _check_outcome(
         )
         message = POINTER_ERRORS[case]
     else:
+        # The original definition preserves its legacy public module name.
         error_type = (
-            "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied"
+            "ecosystem.defaultspack.domain.runtime_v4.service.ProfileResolutionDenied"
         )
         message = DENIALS[case]
     if (error["type"], error["message"]) != (error_type, message):
