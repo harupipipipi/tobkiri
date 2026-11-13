@@ -52,10 +52,6 @@ class _BeforeInactivePredecessor(BaseException):
     """Stop before the next helper executes its first instruction."""
 
 
-class _BootstrapConfirmationReturned(BaseException):
-    """Stop at the original confirmation return before the caller resumes."""
-
-
 def _package(original: Path, runtime: Path, output: Path) -> tuple[dict, list[str]]:
     # Reuse the pinned conformance helper's sealed source provenance. The
     # packaged generator and product modules are imported from the staged tree.
@@ -490,6 +486,7 @@ class _ConfirmationObservation:
         self.digest_payload: dict | None = None
         self.digest_payload_keys: list[str] = []
         self.digest_result: str | None = None
+        self.returned: dict | None = None
         self.argument_identity: dict[str, bool] = {}
         self.expected: dict = {}
 
@@ -610,8 +607,9 @@ class _ConfirmationObservation:
             return True
         if code is self.confirm and event == "return":
             self._record_confirmation(value, resolved, frame.f_locals)
+            self.returned = value
             self.calls.append("return-bootstrap-confirmation")
-            raise _BootstrapConfirmationReturned
+            return True
         return False
 
     def _record_confirmation(self, value: Any, resolved: Any, local: dict) -> None:
@@ -666,6 +664,233 @@ class _ConfirmationObservation:
             raise AssertionError(("confirmation call order changed", self.calls))
 
 
+class _PreviewCatalogObservation:
+    """Follow the real Host return through the Pack's preview catalog projection."""
+
+    def __init__(self, runtime: Path, user_data: Path, port: Any) -> None:
+        from core_runtime.bootstrap import profile_capture as capture
+        from tobkiri_protocol.bundle_catalog import BundledCatalog
+        from tobkiri_protocol.canonical import canonical_digest
+
+        self.port = port
+        self.catalog_type = BundledCatalog
+        self.digest = canonical_digest
+        self.setup = capture._resolve_bootstrap_candidate.__code__
+        self.review = capture.prepare_bootstrap_profile_review.__code__
+        self.project = type(port).catalog_with_profiles.__code__
+        for code, source in (
+            (self.setup, "core_runtime/bootstrap/profile_capture.py"),
+            (self.review, "core_runtime/bootstrap/profile_capture.py"),
+            (self.project,
+             "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py"),
+        ):
+            if Path(code.co_filename).resolve() != runtime / source:
+                raise AssertionError("preview callable is outside the staged original")
+        self.lock_path = user_data / "profiles" / ".profile-definition.lock"
+        self.calls: list[str] = []
+        self.candidate_catalog: Any = None
+        self.source_mapping: Any = None
+        self.source_profiles: dict = {}
+        self.source_digest: str | None = None
+        self.projection_input: dict = {}
+        self.resolution_result: tuple[Any, dict] | None = None
+        self.preview_catalog: Any = None
+        self.returned: tuple[Any, dict] | None = None
+        self.lock_before: os.stat_result | None = None
+        self.identity: dict[str, Any] = {}
+
+    def trace(
+        self, frame: FrameType, event: str, value: Any, resolved: Any,
+        confirmation: _ConfirmationObservation,
+    ) -> bool:
+        code, parent = frame.f_code, frame.f_back
+        if code is self.review and event == "call":
+            if (
+                self.calls or frame.f_locals["base_dir"] is not None
+                or frame.f_locals["include_source_additions"] is not False
+            ):
+                raise AssertionError("original preview review received unexpected inputs")
+            return True
+        if parent is not None and parent.f_code is self.review:
+            if code is self.setup:
+                if event == "call":
+                    local = frame.f_locals
+                    if (
+                        self.calls
+                        or local["review_candidate"] is not parent.f_locals["candidate"]
+                        or local["base_dir"] is not parent.f_locals["base_dir"]
+                    ):
+                        raise AssertionError("original review changed its captured candidate")
+                elif event == "return":
+                    self._observe_resolution(value, frame.f_locals, resolved, confirmation)
+                return True
+            if code is self.project:
+                if event == "call":
+                    self._observe_projection_input(frame.f_locals, parent.f_locals)
+                elif event == "return":
+                    self._observe_projection_output(value)
+                return True
+        if code is self.review and event == "return":
+            self._observe_review_return(value, frame.f_locals)
+            return True
+        return False
+
+    def _observe_resolution(
+        self, value: Any, local: dict, resolved: Any,
+        confirmation: _ConfirmationObservation,
+    ) -> None:
+        confirmation.check()
+        if (
+            self.calls or type(value) is not tuple or len(value) != 2
+            or resolved is None or value[0] is not resolved
+            or confirmation.returned is None
+        ):
+            raise AssertionError("preview did not receive the actual Setup resolution")
+        copied, original = value[1], confirmation.returned
+        if (
+            type(copied) is not dict or copied is original
+            or list(copied) != list(original)
+            or any(copied[key] is not item for key, item in original.items())
+        ):
+            raise AssertionError("Setup did not shallow-copy its Pack confirmation")
+        self.resolution_result = value
+        self.candidate_catalog = local["catalog"]
+        self.source_mapping = self.candidate_catalog.profiles
+        self.source_profiles = dict(self.source_mapping)
+        self.source_digest = self.digest(self.source_mapping)
+        self.lock_before = self.lock_path.lstat()
+        self.identity.update(
+            confirmation_distinct_from_pack_return=True,
+            confirmation_same_value_references=list(copied),
+        )
+        self.calls.append("return-resolve-bootstrap-candidate")
+
+    def _observe_projection_input(self, local: dict, owner: dict) -> None:
+        if self.calls != ["return-resolve-bootstrap-candidate"]:
+            raise AssertionError("original preview projected before Setup resolution")
+        assert self.resolution_result is not None
+        resolved, confirmation = self.resolution_result
+        catalog, profiles = local["catalog"], local["profiles"]
+        profile = resolved.profile
+        profile_id = profile["profile_id"]
+        if (
+            local["self"] is not self.port
+            or type(catalog) is not self.catalog_type
+            or catalog is not self.candidate_catalog
+            or catalog is not owner["candidate"][0] or catalog is not owner["catalog"]
+            or owner["resolved"] is not resolved
+            or owner["confirmation"] is not confirmation
+            or catalog.profiles is not self.source_mapping
+            or type(profiles) is not dict or profiles is self.source_mapping
+            or profile_id not in self.source_profiles
+            or profiles[profile_id] is not profile
+            or self.source_profiles[profile_id] is profile
+            or list(profiles) != list(self.source_profiles)
+            or any(
+                profiles[key] is not item for key, item in self.source_profiles.items()
+                if key != profile_id
+            )
+        ):
+            raise AssertionError("original Setup did not project its exact candidate")
+        self.projection_input = profiles
+        self.identity.update(
+            same_port=True,
+            same_candidate_catalog=True,
+            projection_input_distinct_from_source_profiles=True,
+            projection_input_uses_resolved_profile=True,
+            retained_other_profile_ids=[key for key in profiles if key != profile_id],
+        )
+        self.calls.append("call-catalog-with-profiles")
+
+    def _observe_projection_output(self, value: Any) -> None:
+        catalog = self.candidate_catalog
+        shared = (
+            "root", "packs", "bases", "shells", "artifact_root", "executable_catalogs",
+        )
+        if (
+            self.calls != ["return-resolve-bootstrap-candidate", "call-catalog-with-profiles"]
+            or type(value) is not self.catalog_type or value is catalog
+            or set(vars(value)) != {*shared, "profiles"}
+            or any(getattr(value, name) is not getattr(catalog, name) for name in shared)
+            or type(value.profiles) is not dict
+            or value.profiles is catalog.profiles
+            or value.profiles is self.projection_input
+            or list(value.profiles) != list(self.projection_input)
+            or any(
+                value.profiles[key] is not item for key, item in self.projection_input.items()
+            )
+        ):
+            raise AssertionError("original Pack projection changed catalog aliases or order")
+        self.preview_catalog = value
+        self.identity.update(
+            preview_catalog_distinct_from_candidate=True,
+            preview_catalog_shared_fields=list(shared),
+            preview_profiles_distinct_from_source_and_input=True,
+            preview_profiles_same_value_references=list(value.profiles),
+        )
+        self.calls.append("return-catalog-with-profiles")
+
+    def _observe_review_return(self, value: Any, local: dict) -> None:
+        assert self.resolution_result is not None
+        if (
+            self.calls[-1:] != ["return-catalog-with-profiles"]
+            or type(value) is not tuple or len(value) != 2
+            or value[0] is not self.preview_catalog or value[0] is not local["preview_catalog"]
+            or value[1] is not self.resolution_result[1]
+            or value[1] is not local["confirmation"]
+        ):
+            raise AssertionError("original review did not return the observed objects")
+        self.returned = value
+        self.identity.update(
+            review_returns_same_preview_catalog=True,
+            review_returns_same_host_confirmation=True,
+        )
+        self.calls.append("return-prepare-bootstrap-profile-review")
+
+    def check(self, returned: Any, files_after: list[str]) -> dict:
+        assert self.resolution_result is not None
+        resolved, confirmation = self.resolution_result
+        catalog, preview = self.candidate_catalog, self.preview_catalog
+        source_digest = self.digest(catalog.profiles)
+        lock_after = self.lock_path.lstat()
+        assert self.lock_before is not None
+        lock_fields = (
+            "st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns",
+        )
+        if (
+            returned is not self.returned or self.returned is None
+            or files_after != ["profiles/.profile-definition.lock"]
+            or any(getattr(self.lock_before, key) != getattr(lock_after, key)
+                   for key in lock_fields)
+            or catalog.profiles is not self.source_mapping
+            or source_digest != self.source_digest
+            or list(catalog.profiles) != list(self.source_profiles)
+            or any(
+                catalog.profiles[key] is not item for key, item in self.source_profiles.items()
+            )
+        ):
+            raise AssertionError("original preview changed source catalog or persisted state")
+        profile_id = resolved.profile["profile_id"]
+        return {
+            "case": "fresh-bootstrap-preview-catalog",
+            "calls": ["return-bootstrap-confirmation", *self.calls],
+            "files_after": files_after,
+            "existing_lock_unchanged_by_projection": True,
+            "identity": self.identity,
+            "expected": {
+                "outcome": "previewed",
+                "profile_id": profile_id,
+                "source_profile_keys": list(catalog.profiles),
+                "projection_input_profile_keys": list(self.projection_input),
+                "preview_profile_keys": list(preview.profiles),
+                "source_profiles_digest": source_digest,
+                "preview_profiles_digest": self.digest(preview.profiles),
+                "resolved_profile_digest": self.digest(preview.profiles[profile_id]),
+                "confirmation_digest": confirmation["confirmation_digest"],
+            },
+        }
+
+
 def _observe(
     case: str, runtime: Path, user_data: Path, variant: dict, tree_files: list[str],
 ) -> dict:
@@ -713,6 +938,10 @@ def _observe(
         _ConfirmationObservation(runtime, user_data, port)
         if case == CONFIRMATION_CASE else None
     )
+    preview = (
+        _PreviewCatalogObservation(runtime, user_data, port)
+        if confirmation is not None else None
+    )
     predecessor = (
         _PredecessorObservation(
             runtime, user_data, corrupt=case == PREDECESSOR_CASES[1],
@@ -728,6 +957,7 @@ def _observe(
     validated: dict[str, dict] = {}
     result: Any = None
     pack_error: BaseException | None = None
+    review_result: Any = None
 
     def record(operation: str, path: Path) -> None:
         if len(calls) >= 128:
@@ -744,6 +974,10 @@ def _observe(
         if predecessor is not None and predecessor.trace(frame, event, value, result):
             return trace
         if confirmation is not None and confirmation.trace(frame, event, value, result):
+            return trace
+        if preview is not None and confirmation is not None and preview.trace(
+            frame, event, value, result, confirmation,
+        ):
             return trace
         if event == "call":
             if composition and code is resolve_port:
@@ -947,16 +1181,13 @@ def _observe(
     ):
         try:
             sys.settrace(trace)
-            capture.prepare_bootstrap_profile_review()
+            review_result = capture.prepare_bootstrap_profile_review()
         except _ShellVerified:
             outcome = {"outcome": "verified"}
         except _PackResolved:
             outcome = {"outcome": "resolved", **facts}
         except _BeforeInactivePredecessor:
             outcome = {"outcome": "no-predecessor"}
-        except _BootstrapConfirmationReturned:
-            assert confirmation is not None
-            outcome = confirmation.expected
         except Exception as error:
             if predecessor is not None:
                 if error is not predecessor.error:
@@ -965,7 +1196,9 @@ def _observe(
                 raise
             outcome = {"outcome": "error", "error": error_graph(error, runtime)}
         else:
-            raise AssertionError("Setup proceeded past the observed original return")
+            if confirmation is None:
+                raise AssertionError("Setup proceeded past the observed original return")
+            outcome = confirmation.expected
         finally:
             sys.settrace(previous)
             if moved is not None and moved[1].exists():
@@ -990,11 +1223,13 @@ def _observe(
         }
         if confirmation is not None:
             confirmation.check()
+            assert preview is not None
             row.update(
                 calls=[*predecessor.calls, *confirmation.calls],
                 path_checks=confirmation.path_checks,
                 resolved_identity=facts["identity"],
                 argument_identity=confirmation.argument_identity,
+                preview_catalog_case=preview.check(review_result, row["files_after"]),
             )
         return row
     if not active or user_data.exists():
@@ -1193,7 +1428,7 @@ def _check_entrypoint(
 
 
 def observe_shell(original: Path, runtime: Path, output: Path) -> None:
-    """Observe Shell IO and Pack resolution through the fresh confirmation return."""
+    """Observe Shell IO and Pack resolution through the fresh review return."""
     variant, tree_files = _package(original, runtime, output)
     rows = [
         _observe(case, runtime, output / case / "user-data", variant, tree_files)
@@ -1211,10 +1446,12 @@ def observe_shell(original: Path, runtime: Path, output: Path) -> None:
         CONFIRMATION_CASE, runtime, output / CONFIRMATION_CASE / "user-data",
         variant, tree_files,
     )
+    preview = confirmation.pop("preview_catalog_case")
     write_json(output / "shell.json", {
         "format": FORMAT, "original_head": ORIGINAL_HEAD,
         "variant": variant, "cases": rows, "composition_cases": composition,
         "predecessor_cases": predecessors,
         "confirmation_cases": [confirmation],
+        "preview_catalog_cases": [preview],
         "header_fixture": True, "qualification": False, "production_enabled": False,
     })
