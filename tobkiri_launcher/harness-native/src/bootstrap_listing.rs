@@ -232,7 +232,8 @@ mod tests {
 
     #[test]
     fn preview_and_listing_require_the_same_reviewed_confirmation() -> Result<()> {
-        let budget: &Arc<dyn AllocationBudget> = &Arc::new(TestBudget);
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let budget = &budget;
         let parse = |value: &Value| -> Result<CoreValue> {
             Ok(CoreValue::parse_guest(&serde_json::to_vec(value)?, budget)?)
         };

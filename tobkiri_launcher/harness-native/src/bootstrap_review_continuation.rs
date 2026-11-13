@@ -278,9 +278,7 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             let profile_id = identity.ascii_identity(&mut ascii)?;
             drop(identity);
             match super::catalog::resolver_source_profile(review, pack).await? {
-                Ok(()) => {
-                    super::resolver_edges::bind_bundled_edges(review, pack, profile_id).await?
-                }
+                Ok(()) => super::resolver_edges::bind_bundled_edges(review, pack, profile_id).await,
                 Err(error) => Ok(Err(error)),
             }
         }

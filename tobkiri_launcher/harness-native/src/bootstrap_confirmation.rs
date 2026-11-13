@@ -192,7 +192,8 @@ mod tests {
     fn fresh_confirmation_validates_scope_fields_and_full_digest() -> Result<()> {
         // This test exercises DATA admission only. The macOS component lane
         // owns the actual OS-backed Store and retirement checks.
-        let budget: &Arc<dyn AllocationBudget> = &Arc::new(TestBudget);
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let budget = &budget;
         let scope = CoreValue::parse_guest(br#"["1","2","3","4"]"#, budget)?;
         let snapshot = Digest::hash(b"snapshot");
         let plan = Digest::hash(b"plan");
