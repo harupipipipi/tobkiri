@@ -343,12 +343,11 @@ fn join_native(base: &str, reference: &str) -> Joined {
         ));
     }
     let absolute = reference.path.starts_with('/');
-    let base_dir = if absolute {
-        None
-    } else if base.path.ends_with('/') {
-        Some(base.path)
-    } else {
-        base.path.rsplit_once('/').map(|(directory, _)| directory)
+    let base_dir = match base.path.rsplit_once('/') {
+        _ if absolute => None,
+        _ if base.path.is_empty() || base.path.ends_with('/') => Some(base.path),
+        Some((directory, _)) => Some(directory),
+        None => None,
     };
     let segments = base_dir
         .into_iter()
