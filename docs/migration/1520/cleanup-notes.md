@@ -2848,8 +2848,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   各処理につき257回間隔・最大4組を記録する。完了した評価の処理回数と、実処理のない
   計測1組も保存する。燃料切れで片方だけの点は別に記録する。サンプル外の処理、
   計測コスト、未完了の評価を含めた厳密な関数別内訳には使えない。
-  元の2B燃料・64MiB・30秒で[CI 43446184694](https://github.com/harupipipipi/tobkiri/actions/runs/43446184694)
-  を実行中。
+  [初回CI 43446184694](https://github.com/harupipipipi/tobkiri/actions/runs/43446184694)
+  でWasmを構築できたが、Host試験のSHA-256参照がbuild依存のためコンパイルに失敗した。
+  `b145a3b98` で既存のcanonical Digestに揃え、元の2B燃料・64MiB・30秒で
+  [CI 43447245150](https://github.com/harupipipipi/tobkiri/actions/runs/43447245150)を再実行中。
+  無計測の[CI 43446170342](https://github.com/harupipipipi/tobkiri/actions/runs/43446170342)
+  はcoldと全カタログの両方で元の燃料を使い切った。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
