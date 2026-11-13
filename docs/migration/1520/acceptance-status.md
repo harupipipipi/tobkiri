@@ -891,10 +891,15 @@ The [fresh bundled resolver replay at `ba57e9694`](https://github.com/harupipipi
 ran 13 pinned original cases on Linux and macOS. It called the real Port and
 Pack with the same catalog, Profile ID and empty additions, and retained the
 same ordered authority bindings after the empty tuple returned. The Linux
-Rust driver matched all 310 binding entries and their digest. The fresh
-bundled native continuation reaches the verified-artifact boundary in source.
+Rust driver matched all 310 binding entries and their digest. The
+[artifact input comparison](https://github.com/harupipipipi/tobkiri/actions/runs/43432113300)
+observed 153 distinct digests passed to the original Port.
+The [original lock replay](https://github.com/harupipipipi/tobkiri/actions/runs/43433277485)
+ran 17 cases on both OSes, including fresh bytes, symlink refusal, and a
+missing lock. The native implementation connects the corresponding lock
+read through the original Port and stops at the first Shell artifact access.
 Normal full catalog execution under the original limits and GUI adoption
-still need evidence. This comparison closes no acceptance item.
+still need evidence. These comparisons close no acceptance item.
 
 1. On one frozen current source tree, build required guest fixtures and run the
    deterministic compiler/Flow/Store/Core/CLI/E2E suites with actual test bodies,

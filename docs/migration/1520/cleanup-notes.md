@@ -2939,20 +2939,30 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   はLinux・macOSで13ケース成功。Packへの実引数・空の戻り・同じ辞書の保持を観測し、
   Linuxでは動的ループ後の310参照をRustで計算した静的参照の順序とハッシュに照合した。
   [同じ実装の実component CI 43427427053](https://github.com/harupipipipi/tobkiri/actions/runs/43427427053)
-  はゲストの回帰7件を含むソース試験と実Wasm構築に成功。macOSのHostでの検査を進めている。
+  はゲストの回帰7件を含む207件、実Wasm構築、macOSの実初期化とHostでの参照照合に成功。
   追加Packを持つ既存Profileと現行同梱カタログの全実行は別途実装と確認が必要。
 - `1b45d23c5` で元の集合内包を実カタログのPack一覧に対して実行し、Pythonの組み込み
   setとその参照を同じStoreに保持する。ここで扱う値は、元のPackが次の解決で使う
   artifact digestの集合。権限承認やShell実行ファイルの検証はこの段階に含まれない。
-  [原本CI 43432113300](https://github.com/harupipipipi/tobkiri/actions/runs/43432113300)の
-  Linuxで、解決Port入口へ実際に渡る153件のdigestと引数の同一性を観測した。
+  [原本CI 43432113300](https://github.com/harupipipipi/tobkiri/actions/runs/43432113300)は
+  Linux・macOSで14ケースが成功し、解決Port入口へ渡る153件のdigestと引数の同一性を観測した。
   [実component CI 43432128116](https://github.com/harupipipipi/tobkiri/actions/runs/43432128116)
-  で新しい3回帰と通常DATA経由の呼び出し拒否を検証する。
-- 後続の `resolve_profile` は元のカタログのlockをその場で再読込し、Shellの実artifactを
-  検証する。先行するsnapshot用のdigestやcatalogを読んだ時のファイルを再利用する案は保留。
-  Sol mediumが原本で、`catalog.root / "bundle.lock.json"` を `is_symlink`、`is_file`、
-  `read_bytes` の順で調べることを確認した。Shellはrootの解決、ツリーのhash、
-  entrypointのhash、macOSのplist、entrypoint headerの順。既存の `fd_protocol.rs` の
+  で新しい3回帰、通常DATA経由の呼び出し拒否、実Wasm構築と初期化も成功した。
+- `3280f65df` の[原本CI 43433277485](https://github.com/harupipipipi/tobkiri/actions/runs/43433277485)
+  は、元の解決Portに入った後でlockを変更・symlinkへ置換・削除する3ケースを含む17件を
+  両OSで実行した。元のPackが実カタログrootの `bundle.lock.json` を `is_symlink`、
+  `is_file`、`read_bytes` の順で調べ、新しいバイトのSHA-256か元の拒否を返した。
+- `9184b0ff2` で実Portを呼ぶ経路に、同じカタログrootのlockを一度だけ調べる
+  Rust IOを接続した。元のsetとProfile IDを保持し、Rustで作った順序付き権限参照と
+  Authorityのsnapshot・epochを渡す。先行するlockの内容を使い回さず、確認済みの
+  実ファイルを閉じてから値を返す。Shellのartifactへ進む場合は最初の参照で停止する。
+  [初回CI 43436559868](https://github.com/harupipipipi/tobkiri/actions/runs/43436559868)
+  は、追加したfixtureが元からある異種カタログ試験に属性を設定しようとして停止した。
+  `d74cb238f` で実fixtureの型の場合にだけ属性を設定し、元の拒否試験を維持した。
+  [再実行CI 43436878493](https://github.com/harupipipipi/tobkiri/actions/runs/43436878493)
+  で回帰とWasm構築を検証する。正常な全カタログを通る実Wasmの一連の実行は未確認。
+- Shellはrootの解決、ツリーのhash、entrypointのhash、macOSのplist、
+  entrypoint headerの順。既存の `fd_protocol.rs` の
   予算付きread/fstatは再利用候補。Shellで使うdescriptorのopen/seek/close、元の失敗と
   実パスの所有権を原本と照合してから、許可されたIOをRustへ移す。
 - 将来の整理候補: `value_graph.py` の `_bootstrap_identity` とHostの `BootstrapIdentity*` は
@@ -3029,5 +3039,6 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   macOSではRustワークスペース1,458件と実Python Packの順序・Tool Caller・共有モジュールの
   再生も成功した。macOSのstrict Clippyは、テスト内の未使用import1件と
   `.err().expect()` 2件を検出した。未使用importは `873695897` で修正済み。
-  残りは実エラーをそのまま検査する `expect_err` に揃えた。未移植を検出する最終ゲートは
-  引き続き失敗する。
+  `2e785d2c4` で残りを実エラーを検査する `expect_err` に揃えた。
+  [再実行CI 43429417116](https://github.com/harupipipipi/tobkiri/actions/runs/43429417116)
+  はLinux、macOS、厳格lint、Python Packの再生が成功し、最終ゲートで未移植を検出した。
