@@ -84,7 +84,19 @@ enum Progress {
     Resolving,
     SnapshotStarted,
     PredecessorStarted,
+    #[cfg(unix)]
     InactivePredecessorStarted,
+}
+
+impl Progress {
+    fn resolver_is_live(&self) -> bool {
+        match self {
+            Self::Resolving | Self::SnapshotStarted | Self::PredecessorStarted => true,
+            #[cfg(unix)]
+            Self::InactivePredecessorStarted => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -308,13 +320,7 @@ impl PublicationRead {
         owner: &S,
         cancellation: &CoreCancellation,
     ) -> Result<()> {
-        if !matches!(
-            self.fresh.progress,
-            Progress::Resolving
-                | Progress::SnapshotStarted
-                | Progress::PredecessorStarted
-                | Progress::InactivePredecessorStarted
-        ) {
+        if !self.fresh.progress.resolver_is_live() {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Guard,
                 "Setup resolver root is not ready",
@@ -391,6 +397,7 @@ impl PublicationRead {
     }
 
     /// Recheck the original paths after the Pack pin predecessor returned None.
+    #[cfg(unix)]
     pub(crate) fn inactive_predecessor_has_registry<S: OriginalAuthorityOwner>(
         &mut self,
         owner: &S,
@@ -429,6 +436,19 @@ impl PublicationRead {
         predecessor_path_present(&op, &root.join("profiles/index.json"))
     }
 
+    #[cfg(not(unix))]
+    pub(crate) fn inactive_predecessor_has_registry<S: OriginalAuthorityOwner>(
+        &mut self,
+        _owner: &S,
+        _cancellation: &CoreCancellation,
+        _profile_id: &str,
+    ) -> Result<bool> {
+        Err(OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Source,
+            "Windows inactive Setup predecessor persistence/ACL",
+        ))
+    }
+
     fn candidate_operation<'a, S: OriginalAuthorityOwner>(
         &'a self,
         owner: &'a S,
@@ -456,14 +476,32 @@ impl PublicationRead {
     }
 }
 
+#[cfg(unix)]
 fn predecessor_path_present<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     path: &Path,
 ) -> Result<bool> {
-    op.check(OriginalAuthorityStage::Source)?;
-    let present = path.exists() || path.is_symlink();
-    op.check(OriginalAuthorityStage::Source)?;
-    Ok(present)
+    let inspect = |read: fn(&Path) -> std::io::Result<fs::Metadata>| {
+        op.check(OriginalAuthorityStage::Source)?;
+        let metadata = read(path);
+        op.check(OriginalAuthorityStage::Source)?;
+        match metadata {
+            Ok(value) => Ok(Some(value)),
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(libc::ENOENT | libc::ENOTDIR | libc::EBADF | libc::ELOOP)
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(raw_io(error, path.to_str())),
+        }
+    };
+    if inspect(|path| fs::metadata(path))?.is_some() {
+        return Ok(true);
+    }
+    Ok(inspect(|path| fs::symlink_metadata(path))?.is_some_and(|value| value.is_symlink()))
 }
 
 fn read_root<S: crate::BootstrapReviewOwner>(op: &Operation<'_, S>) -> Result<Funded<PathBuf>> {
