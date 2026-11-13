@@ -2851,7 +2851,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [初回CI 43446184694](https://github.com/harupipipipi/tobkiri/actions/runs/43446184694)
   でWasmを構築できたが、Host試験のSHA-256参照がbuild依存のためコンパイルに失敗した。
   `b145a3b98` で既存のcanonical Digestに揃え、元の2B燃料・64MiB・30秒で
-  [CI 43447245150](https://github.com/harupipipipi/tobkiri/actions/runs/43447245150)を再実行中。
+  [CI 43447245150](https://github.com/harupipipipi/tobkiri/actions/runs/43447245150)の
+  計測プロトコル試験と実Wasmの計測が成功した。41件を完了し、
+  42件目 `ui_view_v1` の評価開始時に69,561,817 fuelが残り、その後使い切った。
+  サンプル391組、ピーク25,205,956バイト、終了後の確保と予約は0。
+  完了分では参照lookupが15,646回で、そのうちサンプルを得られたschemaに14,876回、
+  実計測は61組。各schemaの空マーカー（16,217–18,371 fuel）を引いて回数で外挿すると
+  約10.2億fuelで、他の3分類より大きかった。次はlookup内のURI、Registry、
+  pointer/anchorの区間を比較する。外挿値は計測対象内の推定であり、
+  評価全体の厳密な費用でも製品採用の証拠でもない。
+  [計測JSON](https://github.com/harupipipipi/tobkiri/actions/runs/43447245150/artifacts/14047749799)
+- `85332e5fa` は同じ枠内の計測点を参照解決の内側へ移す。元のURI処理、Registryの
+  `get_or_retrieve`、pointer分岐、anchor分岐に重ならない4区間を置き、
+  外部resolverの経路と未計測の処理は集計の範囲外とする。
+  [CI 43449073611](https://github.com/harupipipipi/tobkiri/actions/runs/43449073611)
   無計測の[CI 43446170342](https://github.com/harupipipipi/tobkiri/actions/runs/43446170342)
   はcoldと全カタログの両方で元の燃料を使い切った。
 
