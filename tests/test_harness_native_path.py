@@ -259,7 +259,7 @@ class NativePathAdapterTests(unittest.TestCase):
                 bridge = PathBridge(self.scope, "posix", inspect, os_flags={"O_RDONLY": 0})
                 root = bridge.bind("root", "/artifacts")
                 facade = bridge.module_path("module.py", root)
-                namespace = {"hashlib": hashlib, "stat": stat, "os": bridge.os,
+                namespace = {"hashlib": hashlib, "stat": stat, "os": bridge.os, "plistlib": plistlib,
                              "contextmanager": contextmanager, "Path": facade,
                              "CapturedPath": type("CapturedPath", (), {}), "ProtocolError": ValueError}
                 future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
