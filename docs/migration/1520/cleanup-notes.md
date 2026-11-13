@@ -2905,8 +2905,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `447d4fbea` でRustも元の拒否と実OSエラーへのcause/contextを保持する。競合後に
   既存DBを開かず、元の順序で止まる。実ファイルを作る回帰ケースを既存macOS試験に追加。
   [原本CI 43421538226](https://github.com/harupipipipi/tobkiri/actions/runs/43421538226)は
-  追加ソースあり・なしを含む14ケースのLinux側が成功し、macOS側と
-  [Rust側 43421778809](https://github.com/harupipipipi/tobkiri/actions/runs/43421778809)は検証中。
+  追加ソースあり・なしを含む14ケースが両OSで成功した。
+  [Rust側 43421778809](https://github.com/harupipipipi/tobkiri/actions/runs/43421778809)も
+  両OSで成功し、macOSで実競合後の例外、ファイル、物理解放を確認した。
 - `f883e1715` の[原本CI 43419146914](https://github.com/harupipipipi/tobkiri/actions/runs/43419146914)
   は以前の9ケースに2ケースを足し、実 `catalog.profiles.get(profile_id)` の戻りが同じ辞書
   オブジェクトであることと、2回目の実IDだけが不在の場合の元の拒否をLinux・macOSで確認した。
@@ -2919,8 +2920,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   正常カタログ、requested edgesの解決、Launcher採用は未確認。
 - `b981dbd34` の[原本CI 43422442527](https://github.com/harupipipipi/tobkiri/actions/runs/43422442527)
   では、実catalogから得た元の310辺について、既存のSetupが作るauthority referenceと
-  挿入順をdynamic edgesの直前で観測する。Linuxで成功、macOS側は待機中。
-  Rust側へ移す際は同じsource参照とAuthority snapshotを使い、承認やgrantの発行にはしない。
+  挿入順をdynamic edgesの直前で観測し、LinuxとmacOSで成功した。
+  `3acb96345` は元のカタログ参照を保ったまま、各辺の4フィールドだけを同じStoreから
+  読み、実Authority snapshotを使ってRustが参照のハッシュを計算する。重複キーは最初の
+  位置を保持し、一般DATA操作からこの読み出しを選べない。元の枠内で一時領域と計算を
+  賄い、結果は確認中の候補に保持する。承認・grantは発行せず、動的辺の手前で止まる。
+  [原本310件との比較 43425325740](https://github.com/harupipipipi/tobkiri/actions/runs/43425325740)
+  と[実componentの検証 43425328249](https://github.com/harupipipipi/tobkiri/actions/runs/43425328249)
+  を開始。現行312辺を含む正常カタログでの統合実行は未確認。
 - 将来の整理候補: `value_graph.py` の `_bootstrap_identity` とHostの `BootstrapIdentity*` は
   元の固定getterだけでなくcatalog・manifest・lookupも扱う。全固定呼出しの比較が通った後、
   wireのタグ、実参照、同じStoreでの保持を保ったまま名前と共有責務を揃える。
@@ -2990,4 +2997,6 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [再実行CI 43419679993](https://github.com/harupipipipi/tobkiri/actions/runs/43419679993)で
   Gate試験は成功。続く全体のstrict Clippyで、Harness試験の型・定数検査・条件式の
   警告を検出した。`86f18a7f2` で検査を保ったまま直し、
-  [全体CI 43421823935](https://github.com/harupipipipi/tobkiri/actions/runs/43421823935)で再検証中。
+  [全体CI 43421823935](https://github.com/harupipipipi/tobkiri/actions/runs/43421823935)で
+  Linux foundationsとstrict Clippy、Python比較、macOSの型検査が成功した。
+  macOS実行と、未移植を検出している最終ゲートは別に追う。
