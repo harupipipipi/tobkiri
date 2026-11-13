@@ -1,7 +1,6 @@
 //! Fixed, non-nested fuel intervals within an original App schema evaluation.
 use anyhow::{Context, Result, ensure};
 use serde::{Serialize, Serializer, ser::SerializeSeq};
-use sha2::Digest as _;
 
 const BUCKETS: [&str; 5] = ["descend", "keyword", "lookup", "scalar", "marker"];
 const MEASURED_BUCKETS: usize = BUCKETS.len() - 1;
@@ -19,8 +18,9 @@ struct Point {
     begin: u64,
 }
 fn first_ordinal(schema: &str, bucket: usize) -> u32 {
-    let bytes = sha2::Sha256::digest(schema.as_bytes());
-    let seed = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let digest = super::Digest::hash(schema.as_bytes());
+    let prefix = u32::from_str_radix(&digest.hex()[..8], 16).expect("canonical digest");
+    let seed = u32::from_le_bytes(prefix.to_be_bytes());
     (seed % STRIDE + OFFSETS[bucket]) % STRIDE + 1
 }
 
