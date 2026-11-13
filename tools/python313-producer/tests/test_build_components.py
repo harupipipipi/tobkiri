@@ -36,6 +36,24 @@ class ComponentBuildTests(unittest.TestCase):
                     build_components.run(None, Path('/producer'), Path('/validation'),
                                          Path('/destination'), **options)
 
+    def test_schema_phases_reject_ordinary_generic_and_split_builds(self):
+        with patch.object(build_components.sys, 'platform', 'linux'), patch.dict(
+            os.environ, {'GITHUB_ACTIONS': 'true'},
+        ):
+            for options in (
+                {'app_schema_phases': True},
+                {'bundle_catalog_kernel': True, 'app_schema_phases': True},
+                {'bundle_catalog_kernel': True, 'app_schema_backend': True,
+                 'app_schema_phases': 1},
+                {'bundle_catalog_kernel': True, 'app_schema_backend': True,
+                 'app_schema_progress': True, 'app_schema_phases': True},
+            ):
+                with self.subTest(options=options), self.assertRaisesRegex(
+                    ValueError, 'schema phases are a separate explicitly selected',
+                ):
+                    build_components.run(None, Path('/producer'), Path('/validation'),
+                                         Path('/destination'), **options)
+
     def test_native_thread_capabilities_plan_pins_exact_diagnostic_world(self):
         repo = component_inputs.HERE.parents[1]
         with tempfile.TemporaryDirectory() as directory:

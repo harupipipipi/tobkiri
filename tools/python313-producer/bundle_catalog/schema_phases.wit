@@ -1,0 +1,5 @@
+package tobkiri-native:app-schema-phases@1.0.0;
+
+interface bindings {
+    checkpoint: func(payload: string) -> string;
+}

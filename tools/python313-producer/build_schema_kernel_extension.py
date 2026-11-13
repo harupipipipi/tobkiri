@@ -19,10 +19,16 @@ import runtime_inputs
 
 
 def run(source: Path, vendor: Path, archives: Path, rust: Path,
-        sdk: Path, destination: Path, app_backend: bool = False) -> None:
+        sdk: Path, destination: Path, app_backend: bool = False,
+        schema_phases: bool = False) -> None:
     """Verify the original compiler/source closure and compile offline once."""
     if type(app_backend) is not bool or sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('kernel extension compilation requires Linux CI')
+    if type(schema_phases) is not bool or (schema_phases and not app_backend):
+        raise ValueError('schema phases require the explicit App backend')
+    requested_features = ['app-schema-backend'] if app_backend else []
+    if schema_phases:
+        requested_features.append('app-schema-phases')
     for path in (source, vendor, archives, rust, sdk, destination.parent):
         build_rpds.physical(path)
     if os.path.lexists(destination):
@@ -50,11 +56,11 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
     (config/'cargo.toml').write_text(build_rpds.CARGO_CONFIG)
     recipe = destination/'build.sh'
     code = build_rpds.RECIPE.replace('cd /rpds\n', 'cd /kernel\n')
-    if app_backend:
+    if requested_features:
         anchor = '--features pyo3/abi3-py313'
         if code.count(anchor) != 1:
             raise ValueError('exact compiler feature anchor required')
-        code = code.replace(anchor, anchor+',app-schema-backend')
+        code = code.replace(anchor, ','.join([anchor, *requested_features]))
     recipe.write_text(code)
     fixed = {str(path): fingerprint(path) for path in (
         recipe, config/'pyo3-config.txt', config/'cargo.toml')}
@@ -62,7 +68,7 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
               'source_head': os.environ.get('GITHUB_SHA'), 'source_files': source_files,
               'registry': registry, 'outcome': 'failure', 'guest_executed': False,
               'production_enabled': False, 'configuration': fixed,
-              'features': ['app-schema-backend'] if app_backend else []}
+              'features': requested_features}
     try:
         command = sandbox_command(None, work, recipe, (
             (source, '/kernel'), (vendor, '/vendor'), (rust/'toolchain', '/rust'),
@@ -80,7 +86,7 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
                     if row.get('reason') == 'build-finished'] != [True]):
             raise ValueError('one successful actual kernel cdylib required')
         features = artifacts[0].get('features', [])
-        if set(features) != ({'default', 'app-schema-backend'} if app_backend else {'default'}):
+        if set(features) != {'default', *requested_features}:
             raise ValueError('actual Wasm compiler features differ')
         report['compiled_features'] = features
         name = artifacts[0]['filenames'][0]
@@ -109,6 +115,7 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app-backend', action='store_true')
+    parser.add_argument('--schema-phases', action='store_true')
     for name in ('source', 'vendor', 'archives', 'rust', 'sdk', 'destination'):
         parser.add_argument('--'+name, type=Path, required=True)
     run(**vars(parser.parse_args()))

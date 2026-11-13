@@ -10,8 +10,28 @@ use tobkiri_wasm::{
 };
 use wasmtime::component::Component;
 
+#[cfg(feature = "bootstrap-ci")]
+#[path = "bundle_catalog_kernel_ci/schema_phases.rs"]
+mod schema_phases;
 #[path = "bundle_catalog_kernel_ci/schema_progress.rs"]
 mod schema_progress;
+
+const COLD_SCHEMA_STORE_PAYLOAD: &[u8] = b"tobkiri.cold-original-schema-store/1";
+const CATALOG_EXPORT: NativeDataBinding<'static> = NativeDataBinding {
+    export: NativeDataExport {
+        interface: Some("tobkiri-ui:capability-projection/projection@1.0.0"),
+        function: "project",
+    },
+    result: Some(NativeDataResultContract {
+        success: NativeDataSuccessType::String,
+        error: NativeDataErrorContract {
+            code_field: "code",
+            message_field: "message",
+            details_field: None,
+            cases: &["invalid-request", "projection-failed"],
+        },
+    }),
+};
 
 struct AllocationOnlyFixture;
 impl NativeSetupLease for AllocationOnlyFixture {
@@ -118,24 +138,7 @@ async fn compare_one_shot(schema_store: bool) -> Result<()> {
         let owners = store.allocation_owners().clone();
         report["stage"] = json!("prepare");
         let mut program = store
-            .prepare_data_program(
-                &component,
-                &[NativeDataBinding {
-                    export: NativeDataExport::new(
-                        Some("tobkiri-ui:capability-projection/projection@1.0.0"),
-                        "project",
-                    ),
-                    result: Some(NativeDataResultContract {
-                        success: NativeDataSuccessType::String,
-                        error: NativeDataErrorContract {
-                            code_field: "code",
-                            message_field: "message",
-                            details_field: None,
-                            cases: &["invalid-request", "projection-failed"],
-                        },
-                    }),
-                }],
-            )
+            .prepare_data_program(&component, &[CATALOG_EXPORT])
             .await?;
         report["fuel_after_prepare"] = json!(program.fuel_remaining()?);
         report["stage"] = json!(if schema_store {
@@ -144,7 +147,7 @@ async fn compare_one_shot(schema_store: bool) -> Result<()> {
             "invoke-full-original-catalog"
         });
         let payload = if schema_store {
-            b"tobkiri.cold-original-schema-store/1".as_slice()
+            COLD_SCHEMA_STORE_PAYLOAD
         } else {
             b"tobkiri.embedded-bundle-read/1".as_slice()
         };

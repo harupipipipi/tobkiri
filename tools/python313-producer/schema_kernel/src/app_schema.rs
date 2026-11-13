@@ -701,6 +701,66 @@ fn app_check_schema(
     value_policy: Option<&Bound<'_, DefaultValuePolicy>>,
     type_owner: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<()> {
+    check_schema(
+        py,
+        schema,
+        meta,
+        registry,
+        policy,
+        type_checker,
+        format_checker,
+        value_policy,
+        type_owner,
+        |_| Ok(()),
+    )
+}
+
+#[cfg(feature = "app-schema-phases")]
+#[pyfunction]
+#[pyo3(signature = (schema, meta, registry, policy, type_checker, format_checker, phase, *, value_policy=None, type_owner=None))]
+fn app_check_schema_with_phases(
+    py: Python<'_>,
+    schema: &Bound<'_, PyAny>,
+    meta: &Bound<'_, PyAny>,
+    registry: &Bound<'_, PyAny>,
+    policy: &Bound<'_, DefaultReferencePolicy>,
+    type_checker: &Bound<'_, PyAny>,
+    format_checker: &Bound<'_, PyAny>,
+    phase: &Bound<'_, PyAny>,
+    value_policy: Option<&Bound<'_, DefaultValuePolicy>>,
+    type_owner: Option<&Bound<'_, PyAny>>,
+) -> PyResult<()> {
+    phase.call1(("setup",))?;
+    let result = check_schema(
+        py,
+        schema,
+        meta,
+        registry,
+        policy,
+        type_checker,
+        format_checker,
+        value_policy,
+        type_owner,
+        |point| phase.call1((point,)).map(|_| ()),
+    );
+    // Keep the original result, including the actual exception instance. The
+    // observer can refuse this diagnostic, but does not interpret the result.
+    phase.call1(("return",))?;
+    result
+}
+
+fn check_schema(
+    py: Python<'_>,
+    schema: &Bound<'_, PyAny>,
+    meta: &Bound<'_, PyAny>,
+    registry: &Bound<'_, PyAny>,
+    policy: &Bound<'_, DefaultReferencePolicy>,
+    type_checker: &Bound<'_, PyAny>,
+    format_checker: &Bound<'_, PyAny>,
+    value_policy: Option<&Bound<'_, DefaultValuePolicy>>,
+    type_owner: Option<&Bound<'_, PyAny>>,
+    mut phase: impl FnMut(&'static str) -> PyResult<()>,
+) -> PyResult<()> {
     let (specification, resolver_type, resource_policy) = {
         let policy = policy.borrow();
         let specification = policy
@@ -725,6 +785,7 @@ fn app_check_schema(
     // a custom type check that reenters this operation.
     let value_policy = TypePolicy::new(py, type_checker, value_policy, type_owner)?;
     ENTRIES.fetch_add(1, Ordering::Relaxed);
+    phase("initial-reference")?;
     let resource = specification
         .bind(py)
         .call_method1("create_resource", (meta,))?;
@@ -743,6 +804,7 @@ fn app_check_schema(
         references,
         true,
     );
+    phase("evaluation")?;
     if let Some(error) = Execution::new(env, frame)?.first_error(py)? {
         let error = module_member(py, "jsonschema.exceptions", "SchemaError")?
             .call_method1("create_from", (error.bind(py),))?;
@@ -779,6 +841,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     uri::register(module)?;
     value::register(module)?;
     module.add_function(wrap_pyfunction!(app_check_schema, module)?)?;
+    #[cfg(feature = "app-schema-phases")]
+    module.add_function(wrap_pyfunction!(app_check_schema_with_phases, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_entry_count, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_frame_count, module)?)?;
     Ok(())

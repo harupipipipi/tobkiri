@@ -62,14 +62,16 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
           stdlib: Path, rpds: Path, *, native: bool, bundle_cases: Path,
           diagnostic_reread: bool = False,
           kernel_extension: Path | None = None, app_schema_backend: bool = False,
-          app_schema_progress: bool = False) -> dict:
+          app_schema_progress: bool = False, app_schema_phases: bool = False) -> dict:
     """Stage actual source bytes, schemas, and dependencies for one world."""
     if (repo.resolve() != repo or destination.exists()
             or type(native) is not bool or type(diagnostic_reread) is not bool
             or type(app_schema_backend) is not bool
             or (app_schema_backend and kernel_extension is None)
             or type(app_schema_progress) is not bool
-            or (app_schema_progress and not app_schema_backend)
+            or type(app_schema_phases) is not bool
+            or (app_schema_progress and app_schema_phases)
+            or ((app_schema_progress or app_schema_phases) and not app_schema_backend)
             or (diagnostic_reread and not native)
             or (kernel_extension is not None and (not native or diagnostic_reread))):
         raise ValueError("new physical source stage and explicit world required")
@@ -133,7 +135,7 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
         from bundle_catalog_kernel_inputs import derive
         entry, export, kernel_bytes, kernel_derivation = derive(
             files, entry, export, kernel_extension, app_backend=app_schema_backend,
-            schema_progress=app_schema_progress)
+            schema_progress=app_schema_progress, schema_phases=app_schema_phases)
     packed = compress_sources(files)
     captured = Finder(
         packed,
@@ -168,7 +170,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
     if kernel_derivation is not None:
         from bundle_catalog_kernel_inputs import component_name as kernel_component_name
         component_name = kernel_component_name(app_backend=app_schema_backend,
-                                              schema_progress=app_schema_progress)
+                                              schema_progress=app_schema_progress,
+                                              schema_phases=app_schema_phases)
     source_receipt = {
         "format": "tobkiri.bundle-catalog-source/1",
         "component_name": component_name,
@@ -197,6 +200,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
         source_receipt["source_storage"] = change + "per-file zlib/identity, no expansion cache"
         if app_schema_progress:
             source_receipt["source_storage"] += "; separate split-call diagnostic export"
+        if app_schema_phases:
+            source_receipt["source_storage"] += "; separate cold schema phase diagnostic"
     add("bundle-catalog-source.json", (
         json.dumps(source_receipt, sort_keys=True, indent=2) + "\n"
     ).encode())
@@ -207,6 +212,18 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
         HERE / "bundle_catalog/native.wit" if native
         else repo / PACK / "wit/pack.wit"
     )
+    allowed_imports = [] if native else CORE_IMPORTS
+    if app_schema_phases:
+        from bundle_catalog_kernel_inputs import PHASE_IMPORT
+        world = b"world capability-projection {\n"
+        if staged_files["wit/pack.wit"].count(world) != 1:
+            raise ValueError("exact original native world required")
+        staged_files["wit/pack.wit"] = staged_files["wit/pack.wit"].replace(
+            world, world + f"  import {PHASE_IMPORT};\n".encode())
+        staged_files["wit/deps/app-schema-phases/bindings.wit"] = _read_source(
+            HERE / "bundle_catalog/schema_phases.wit"
+        )
+        allowed_imports = [PHASE_IMPORT]
     if not native:
         staged_files["wit/deps/tobkiri-core/core.wit"] = _read_source(
             repo / "crates/tobkiri-wit/wit/core/core.wit"
@@ -222,7 +239,7 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
         "wit": "wit/pack.wit",
         "world": "capability-projection" if native else "pack",
         "stub_wasi": True,
-        "allowed_imports": [] if native else CORE_IMPORTS,
+        "allowed_imports": allowed_imports,
         "outer_exports": [NATIVE_EXPORT] if native else [
             "tobkiri:core/lifecycle@1.0.0", PACK_EXPORT
         ],
@@ -269,7 +286,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
 def verify_component(proof: dict, source: dict, *, native: bool,
                      diagnostic_reread: bool = False,
                      kernel_derived: bool = False, app_schema_backend: bool = False,
-                     app_schema_progress: bool = False) -> None:
+                     app_schema_progress: bool = False,
+                     app_schema_phases: bool = False) -> None:
     """Require the exact closed source manifest and typed component boundary."""
     expected = [
         {**item, "bytes": source["files"][item["source"]]["bytes"]}
@@ -288,13 +306,25 @@ def verify_component(proof: dict, source: dict, *, native: bool,
         if not native or diagnostic_reread:
             raise ValueError("separate native-only kernel derivation required")
         expected_name = kernel_component_name(app_backend=app_schema_backend,
-                                              schema_progress=app_schema_progress)
+                                              schema_progress=app_schema_progress,
+                                              schema_phases=app_schema_phases)
     if type(app_schema_backend) is not bool or (app_schema_backend and not kernel_derived):
         raise ValueError("explicit App backend derivation required")
     if (type(app_schema_progress) is not bool or (app_schema_progress and not app_schema_backend)
             or source.get('bundle_catalog', {}).get('kernel_derivation', {}).get(
                 'schema_progress_diagnostic', False) != app_schema_progress):
         raise ValueError('actual schema progress source mode differs')
+    derivation = source.get('bundle_catalog', {}).get('kernel_derivation', {})
+    if (type(app_schema_phases) is not bool
+            or derivation.get('schema_phase_diagnostic', False) is not app_schema_phases):
+        raise ValueError('actual schema phase source mode differs')
+    if app_schema_phases:
+        from bundle_catalog_kernel_inputs import PHASE_IMPORT
+        if (not app_schema_backend or app_schema_progress
+                or derivation.get('phase_import') != PHASE_IMPORT
+                or derivation.get('features') != ['app-schema-backend', 'app-schema-phases']):
+            raise ValueError('actual schema phase boundary differs')
+        imports = [PHASE_IMPORT]
     if kernel_derived and source.get("bundle_catalog", {}).get("kernel_derivation", {}).get("app_schema_backend", False) != app_schema_backend:
         raise ValueError("actual App backend source mode differs")
     if type(kernel_derived) is not bool:

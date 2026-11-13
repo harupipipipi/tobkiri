@@ -408,7 +408,10 @@ def packages(source: Path) -> list[dict]:
         or manifest["package"].get("publish") is not False
         or manifest.get("workspace") != {}
         or manifest["lib"] != {"name": EXTENSION, "crate-type": ["cdylib"]}
-        or manifest.get("features") != {"default": [], "app-schema-backend": []}
+        or manifest.get("features") != {
+            "default": [], "app-schema-backend": [],
+            "app-schema-phases": ["app-schema-backend"],
+        }
         or dependencies != {"pyo3": {
             "version": "=0.30.1", "default-features": False,
             "features": ["macros", "abi3-py313"],

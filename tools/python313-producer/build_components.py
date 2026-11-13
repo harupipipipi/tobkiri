@@ -29,6 +29,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         bundle_catalog_kernel: bool = False,
         app_schema_backend: bool = False,
         app_schema_progress: bool = False,
+        app_schema_phases: bool = False,
         kernel_extension: Path | None = None,
         bundle_cases: Path | None = None,
         schema_inputs: Path | None = None, stdlib: Path | None = None,
@@ -52,6 +53,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         raise ValueError('App backend is a distinct explicitly selected kernel scope')
     if type(app_schema_progress) is not bool or (app_schema_progress and not app_schema_backend):
         raise ValueError('schema progress is a separate explicitly selected App diagnostic')
+    if (type(app_schema_phases) is not bool
+            or (app_schema_phases and (not app_schema_backend or app_schema_progress))):
+        raise ValueError('schema phases are a separate explicitly selected App diagnostic')
     if (type(schema_call_diagnostic) is not bool
             or (schema_call_diagnostic and (not harness_native
                 or any(path is None for path in (schema_inputs, stdlib, rpds))))):
@@ -131,7 +135,10 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     recipe = destination / 'componentize.sh'
     recipe.write_text('set -eu\n/usr/bin/python3 -I -B /driver.py\n')
     identities[str(recipe)] = fingerprint(recipe)
-    if bundle_catalog_kernel:
+    if app_schema_phases:
+        from bundle_catalog_kernel_inputs import PHASE_RECEIPT
+        receipt_format = PHASE_RECEIPT
+    elif bundle_catalog_kernel:
         receipt_format = ('tobkiri.app-schema-progress-native-diagnostic/1' if app_schema_progress else
                           'tobkiri.app-frame-bundle-catalog-native-candidate/1' if app_schema_backend
                           else 'tobkiri.rust-bundle-catalog-native-candidate/1')
@@ -176,6 +183,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         if app_schema_progress:
             receipt.update(diagnostic_only=True, split_schema_calls=True,
                            whole_catalog_acceptance=False)
+        if app_schema_phases:
+            receipt.update(diagnostic_only=True, split_schema_calls=False,
+                           whole_catalog_acceptance=False, cold_schema_acceptance=False)
     elif native_thread_capabilities:
         receipt.update(
             diagnostic_only=True,
@@ -193,7 +203,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     if bundle_catalog_kernel:
         from bundle_catalog_kernel_inputs import component_name
         component_names = (component_name(app_backend=app_schema_backend,
-                                          schema_progress=app_schema_progress),)
+                                          schema_progress=app_schema_progress,
+                                          schema_phases=app_schema_phases),)
     elif bundle_catalog:
         component_names = ('harness-bundle-catalog-native', 'harness-bundle-catalog',
                            'harness-bundle-catalog-reread-native')
@@ -227,7 +238,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                     native=bundle_native, bundle_cases=bundle_cases,
                     diagnostic_reread=bundle_diagnostic,
                     kernel_extension=kernel_extension, app_schema_backend=app_schema_backend,
-                    app_schema_progress=app_schema_progress,
+                    app_schema_progress=app_schema_progress, app_schema_phases=app_schema_phases,
                 )
                 if bundle_catalog or bundle_catalog_kernel
                 else capability_projection_inputs.stage(
@@ -301,7 +312,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                     proof, plan_receipt, native=bundle_native,
                     diagnostic_reread=bundle_diagnostic,
                     kernel_derived=bundle_catalog_kernel, app_schema_backend=app_schema_backend,
-                    app_schema_progress=app_schema_progress,
+                    app_schema_progress=app_schema_progress, app_schema_phases=app_schema_phases,
                 )
             elif capability_projection:
                 capability_projection_inputs.verify_component(
@@ -349,6 +360,7 @@ if __name__ == '__main__':
     mode.add_argument('--bundle-catalog-kernel', action='store_true')
     parser.add_argument('--app-schema-backend', action='store_true')
     parser.add_argument('--app-schema-progress', action='store_true')
+    parser.add_argument('--app-schema-phases', action='store_true')
     parser.add_argument('--kernel-extension', type=Path)
     parser.add_argument('--bundle-cases', type=Path)
     for name in ('schema-inputs', 'stdlib', 'rpds'):

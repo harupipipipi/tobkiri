@@ -1,5 +1,6 @@
 """Actual source capture and inert dependency staging; no runtime or Wasm runs."""
 
+import ast
 import copy
 import hashlib
 import json
@@ -10,6 +11,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bundle_catalog_inputs as inputs
+import bundle_catalog_kernel_inputs as kernel_inputs
 from bundle_catalog_resources import verify_members
 from test_bundle_catalog_resources import fixture
 
@@ -17,6 +19,32 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class BundleInputsTests(unittest.TestCase):
+    def test_cold_phase_derivation_preserves_the_original_store_call_and_output(self):
+        source = (inputs.HERE / 'bundle_catalog/native.py').read_bytes()
+        derived = kernel_inputs._observe_cold_call(source)
+
+        def cold_branch(raw: bytes) -> ast.If:
+            return next(node for node in ast.walk(ast.parse(raw))
+                        if isinstance(node, ast.If)
+                        and isinstance(node.test, ast.Compare)
+                        and ast.literal_eval(node.test.comparators[0])
+                        == 'tobkiri.cold-original-schema-store/1')
+
+        before, after = cold_branch(source), cold_branch(derived)
+        self.assertEqual(ast.dump(before.test), ast.dump(after.test))
+        self.assertEqual(ast.dump(before.body[0]), ast.dump(after.body[0]))
+        self.assertEqual(ast.unparse(after.body[1]), '_phases.begin_cold_schema_store()')
+        guarded_call = after.body[2]
+        self.assertIsInstance(guarded_call, ast.Try)
+        self.assertEqual([ast.dump(node) for node in guarded_call.body],
+                         [ast.dump(before.body[1])])
+        self.assertEqual(ast.unparse(guarded_call.finalbody),
+                         '_phases.end_cold_schema_store()')
+        self.assertEqual([ast.dump(node) for node in before.body[2:]],
+                         [ast.dump(node) for node in after.body[3:]])
+        with self.assertRaisesRegex(ValueError, 'exact original App schema phase'):
+            kernel_inputs._observe_cold_call(derived)
+
     def test_full_genuine_schema_resources_and_original_module_bodies(self):
         files, modules, _ = inputs.runtime_sources(ROOT, roots=inputs.ROOTS)
         self.assertIn("tobkiri_protocol.validation", modules)
