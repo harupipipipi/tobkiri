@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import os
+import shutil
 import stat
 import sys
 from collections.abc import Mapping
@@ -528,6 +529,9 @@ def observe_inactive_registry(
             row["setup_review"] = _observe_setup_review(root, expected["predecessor"])
             if _inventory(root, files) != before:
                 raise AssertionError("original Setup review changed the import")
+            row["registration_cases"] = _observe_registration(
+                runtime, root, inputs, source, expected["predecessor"],
+            )
         rows.append(row)
     if hashes(runtime) != source_hashes or hashes(original_runtime) != source_hashes:
         raise AssertionError("inactive registry sources changed during observation")
@@ -575,3 +579,94 @@ def _observe_setup_review(root: Path, predecessor: dict[str, Any]) -> dict[str, 
         "confirmation": confirmation,
         "listing_digest": canonical_digest(listing),
     }
+
+
+def _observe_registration(
+    runtime: Path,
+    seed: Path,
+    inputs: Path,
+    source: Mapping[str, Any],
+    predecessor: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Observe the registration function inside the original Host selection lock."""
+    from core_runtime.bootstrap.profile_registry import register_bootstrap_definition
+    from core_runtime.profile_definition_store_v4 import (
+        ProfileDefinitionStore,
+        ProfileDefinitionStoreConflict,
+    )
+    from tobkiri_protocol.canonical import canonical_digest
+
+    original = runtime / "core_runtime/bootstrap/profile_registry.py"
+    if Path(register_bootstrap_definition.__code__.co_filename).resolve() != original:
+        raise AssertionError("registration callable is outside the staged original")
+    cases = []
+    for case in ("append", "registry-edited", "host-active", "workspace-active"):
+        root = inputs / f"register-{case}" / "user-data"
+        shutil.copytree(seed, root)
+        store = ProfileDefinitionStore(root)
+        profile_id = source["profile_id"]
+        active = None
+        if case == "registry-edited":
+            store.update_profile(profile_id, display_name="Concurrent edit")
+        elif case in {"host-active", "workspace-active"}:
+            active = root / (
+                "profiles/active.json" if case == "host-active"
+                else f"workspaces/{profile_id}/activation/active.json"
+            )
+            active.parent.mkdir(parents=True, exist_ok=True)
+            active.symlink_to("missing-fixture-pointer")
+        journal_before = (root / JOURNAL).read_bytes()
+        before = store.snapshot()
+        try:
+            register_bootstrap_definition(
+                root,
+                source,
+                approved_predecessor_digest=predecessor["definition_digest"],
+                approved_inactive_predecessor=predecessor,
+            )
+        except ProfileDefinitionStoreConflict as error:
+            message = (
+                "imported bootstrap registry changed after completed handover"
+                if case == "registry-edited"
+                else "inactive bootstrap predecessor has an active Profile"
+            )
+            if case == "append" or str(error) != message or store.snapshot() != before:
+                raise AssertionError("original registration conflict differs") from error
+            expected = {"outcome": "error", "error": error_graph(error, root)}
+        else:
+            after = store.snapshot()
+            existing = store.get_profile(profile_id)
+            [previous_entry] = before["profiles"]
+            [current_entry] = after["profiles"]
+            history = current_entry["revisions"]
+            if (
+                case != "append"
+                or after["generation"] != before["generation"] + 1
+                or existing is None
+                or existing.profile != source
+                or existing.parent_revision != predecessor["profile_revision"]
+                or existing.profile_revision != canonical_digest(source)
+                or history[:-1] != previous_entry["revisions"]
+                or len(history) != len(previous_entry["revisions"]) + 1
+            ):
+                raise AssertionError("original registration did not append one successor")
+            expected = {
+                "outcome": "appended",
+                "generation": after["generation"],
+                "parent_revision": existing.parent_revision,
+                "profile_revision": existing.profile_revision,
+                "history_length": len(history),
+            }
+        if (
+            _lock_free(root / "profiles/.active-profile.lock") is not True
+            or _lock_free(root / LOCK) is not True
+            or (root / JOURNAL).read_bytes() != journal_before
+            or (active is not None and not active.is_symlink())
+        ):
+            raise AssertionError("original registration changed lock or handover state")
+        cases.append({
+            "case": case,
+            "previous_snapshot_digest": canonical_digest(before),
+            "expected": expected,
+        })
+    return cases
