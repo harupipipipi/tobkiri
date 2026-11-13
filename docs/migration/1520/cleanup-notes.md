@@ -2978,6 +2978,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   予算付きread/fstatは再利用候補。Shellで使うdescriptorのopen/seek/close、元の失敗と
   実パスの所有権を原本と照合してから、許可されたIOをRustへ移す。loaderが返した
   canonical rootを保持し、解決済みのパス文字列だけから権限を作らない。
+- 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
+  `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
+  パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
+  実FDから分割して読み、前後の同一性とcloseを確認する。まず元の動作を保つ有限の
+  ファイル操作を接続する。両経路の呼び出し順・拒否・バイトが比較できたら、
+  ファイル読み取りとハッシュの共通化で重複を減らせるか確認する。
 - 将来の整理候補: `value_graph.py` の `_bootstrap_identity` とHostの `BootstrapIdentity*` は
   元の固定getterだけでなくcatalog・manifest・lookupも扱う。全固定呼出しの比較が通った後、
   wireのタグ、実参照、同じStoreでの保持を保ったまま名前と共有責務を揃える。
