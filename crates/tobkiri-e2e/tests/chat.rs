@@ -120,3 +120,45 @@ async fn harness_mock_stream_uses_the_flow_in_order() -> Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn editing_a_verified_flow_changes_the_actual_chat_turn() -> Result<()> {
+    let mut fixture = Fixture::new("echo", None)?;
+    let (core, session) = fixture.start().await?;
+    let before = fixture.turn(&session, "Same physical input").await?;
+    assert_eq!(deltas(&before).concat(), "Echo: Same physical input");
+    session.close().await?;
+    drop(session);
+
+    let (_, head) = core.profile(&fixture.profile.id)?;
+    let relative = "flows/turn.flow.json";
+    let mut flow: serde_json::Value = serde_json::from_slice(&std::fs::read(
+        repo().join("packs/local.echo-chat").join(relative),
+    )?)?;
+    let steps = flow["steps"].as_array_mut().expect("Flow steps");
+    let prompt = steps
+        .iter_mut()
+        .find(|step| step["id"] == "prompt")
+        .expect("prompt step");
+    assert_eq!(prompt["call"]["args"]["input"], "$input");
+    prompt["call"]["args"]["input"] = serde_json::json!({
+        "conversation": "$input.conversation",
+        "text": "From the reviewed Flow definition",
+    });
+    fixture.replace_pack_json("local.echo-chat", relative, &flow)?;
+
+    // A new verified Pack hash needs a fresh review through the ordinary Gate.
+    fixture.host.review_pack_permissions(&fixture.profile)?;
+    core.save_profile(fixture.profile.clone(), Some(head))
+        .await?;
+    let session = core.start(&fixture.profile.id).await?;
+    let after = fixture.turn(&session, "Same physical input").await?;
+    assert_eq!(
+        deltas(&after).concat(),
+        "Echo: From the reviewed Flow definition"
+    );
+    assert_ne!(before[0].plan_digest, after[0].plan_digest);
+    assert_eq!(loaded_message_count(&after), Some(2));
+    session.close().await?;
+    Ok(())
+}

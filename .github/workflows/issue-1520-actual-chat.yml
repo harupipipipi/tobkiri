@@ -1,0 +1,65 @@
+name: Issue 1520 actual chat Flow and Pack UI
+
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - '.github/workflows/issue-1520-actual-chat.yml'
+      - 'crates/tobkiri-e2e/tests/chat.rs'
+      - 'crates/tobkiri-e2e/tests/network.rs'
+      - 'crates/tobkiri-e2e/tests/ui.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actual-chat:
+    runs-on: macos-15
+    timeout-minutes: 55
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-actual-chat
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the supported native owner platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$RUNNER_TEMP" | awk 'NR == 2 {print $1}')"
+          test -n "$device"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - name: Build current verified Wasm Packs
+        run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+      - name: Chat with a different Pack set and verify actual Flow edits
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/actual-chat.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-e2e --test chat
+      - name: Stream through the verified Wasm provider and local test API
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/actual-network.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test network
+      - name: Check the Pack UI port and stream boundary inside Core
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/actual-ui-ports.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-e2e --test ui
+      - name: Retain test receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-1520-actual-chat
+          path: |
+            ${{ runner.temp }}/actual-chat.log*
+            ${{ runner.temp }}/actual-network.log*
+            ${{ runner.temp }}/actual-ui-ports.log*
+          if-no-files-found: warn
