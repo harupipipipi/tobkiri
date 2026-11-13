@@ -568,13 +568,16 @@ class Registry:
 
     def _begin_bootstrap_confirmation(
         self, resolved: Reference, profile_id: Reference, snapshot: str, epoch: str,
+        *, has_predecessor: bool,
     ) -> tuple[Any, str, str, int]:
         value = self.borrow(resolved)
         identity = self.borrow(profile_id, str)
         authority = self._resolver_authority
         if (self._resolver_dynamic_stage not in {
                     "inactive-predecessor-returned", "inactive-equality-returned",
+                    "inactive-unequal-returned",
                 }
+                or (has_predecessor and self._resolver_dynamic_stage != "inactive-unequal-returned")
                 or resolved.object_id != self._resolved_profile
                 or profile_id.object_id != self._resolver_profile_id
                 or authority is None or authority[:2] != (snapshot, epoch)):

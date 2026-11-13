@@ -1384,6 +1384,12 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertFalse(self.bridge._resolving_catalog)
 
     def test_predecessor_reads_live_catalog_once_after_the_resolver(self) -> None:
+        for equal in (True, False):
+            with self.subTest(equal=equal):
+                self.setUp()
+                self.check_predecessor_review(equal)
+
+    def check_predecessor_review(self, equal: bool) -> None:
         catalog, profile_id, source = self.source({
             "requested_edges": [], "profile_id": "fixture-id", "fixture_flag": True,
         })
@@ -1430,10 +1436,11 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.dispatcher.describe_value(lookup)
         self.assertEqual(len(calls), 1)
         call = self.frame("bootstrap-fresh-confirmation", resolved=packet["resolved"],
-                          profile_id=profile_id, snapshot="sha256:" + "1" * 64, epoch="1")
+                          profile_id=profile_id, snapshot="sha256:" + "1" * 64, epoch="1",
+                          definition_predecessor=None)
         compare = self.frame(
             "bootstrap-inactive-equality", source=source,
-            existing={"fixture_flag": 1, "profile_id": "fixture-id", "requested_edges": []},
+            existing={"fixture_flag": int(equal), "profile_id": "fixture-id", "requested_edges": []},
         )
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("bootstrap_confirmation", call)
@@ -1443,9 +1450,22 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             "bootstrap-inactive-source", source=source,
         )))
         self.assertEqual(observed["profile_id"], "fixture-id")
+        predecessor = {
+            "profile_revision": "revision", "definition_digest": "definition",
+            "store_generation": 2, "snapshot_digest": "snapshot",
+            "handover_digest": "handover", "display_name": "Imported",
+            "pack_ids": ["pack.second", "pack.first"], "base_pack_id": "pack.base",
+            "shell_pack_id": "pack.shell", "shell_provider_id": "provider",
+            "shell_artifact_digest": None, "shell_executable_artifact_digest": None,
+            "shell_definition_revision": None,
+        }
+        bound_call = wire.loads(call)
+        bound_call["definition_predecessor"] = predecessor
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("bootstrap_confirmation", wire.dumps(bound_call))
         self.assertEqual(wire.loads(self.dispatcher.describe_value(compare)), {
             "format": PREFIX + "bootstrap-inactive-equality-result.v1",
-            "scope": self.scope.wire(), "equal": True,
+            "scope": self.scope.wire(), "equal": equal,
         })
         with self.assertRaises(InvalidReference):
             self.dispatcher.describe_value(compare)
@@ -1453,6 +1473,11 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         foreign["epoch"] = "2"
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("bootstrap_confirmation", wire.dumps(foreign))
+        if equal:
+            with self.assertRaises(InvalidReference):
+                self.dispatcher.call("bootstrap_confirmation", wire.dumps(bound_call))
+        else:
+            call = wire.dumps(bound_call)
 
         nested = []
         returned = {"bindings": nested}
@@ -1462,7 +1487,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.assertIs(kwargs["profile_id"], calls[0])
             self.assertIs(kwargs["authority_snapshot_digest"], captured["authority_snapshot_digest"])
             self.assertIs(kwargs["security_epoch"], captured["security_epoch"])
-            self.assertIsNone(kwargs["definition_predecessor"])
+            self.assertEqual(kwargs["definition_predecessor"], None if equal else predecessor)
             self.assertNotIn("pack_pin_predecessor", kwargs)
             return returned
 

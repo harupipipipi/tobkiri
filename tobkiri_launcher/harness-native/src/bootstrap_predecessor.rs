@@ -141,7 +141,7 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         profile_id,
         pack.input_budget,
     ) {
-        Ok(None) => return confirmation::run(review, pack, scope, profile_id).await,
+        Ok(None) => return confirmation::run(review, pack, scope, profile_id, None).await,
         Ok(Some(registry)) => registry,
         Err(error) => return Ok(Err(original_failure(error))),
     };
@@ -180,24 +180,29 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         .as_bool()
         .context("inactive predecessor equality response is not boolean")?;
     drop((value, response, request));
-    if !equal {
+    let definition_predecessor = if equal {
+        None
+    } else {
         match review.read.check_inactive_predecessor_handover(
             &pack.work.get().source,
             pack.cancellation,
+            profile_id,
             &mut registry,
             pack.input_budget,
         ) {
-            Ok(None) => {}
-            Ok(Some(_)) => {
-                return Ok(Err(BootstrapReviewFailure::NotBound(
-                    BootstrapReviewReachpoint::InactiveBootstrapHandoverDefinitionNotBound,
-                )));
-            }
+            Ok(predecessor) => predecessor,
             Err(error) => return Ok(Err(original_failure(error))),
         }
-    }
+    };
     drop(registry);
-    confirmation::run(review, pack, scope, profile_id).await
+    confirmation::run(
+        review,
+        pack,
+        scope,
+        profile_id,
+        definition_predecessor.as_ref(),
+    )
+    .await
 }
 
 fn source_digest(

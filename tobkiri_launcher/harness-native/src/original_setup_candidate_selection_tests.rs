@@ -465,6 +465,8 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
         "key-too-large",
         "handover-bad-authentication",
         "handover-stale-snapshot",
+        "handover-non-inert",
+        "handover-became-active",
     ] {
         with_source(|source, read, cancel, budget| {
             for discard in [true, false] {
@@ -530,6 +532,24 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
                 if !matches!(case, "missing-row" | "exact-mapping-equal" | "tombstone") {
                     packaged["display_name"] = json!("packaged version differs");
                 }
+                if matches!(case, "authenticated-handover" | "handover-became-active") {
+                    let profile = &mut index["revisions"][0]["profile"];
+                    profile["state"] = json!("needs_resolution");
+                    profile["authority_references"] = json!([]);
+                    profile["requested_edges"] = json!([]);
+                    profile["mode"] = json!("interactive");
+                    profile["packs"] =
+                        json!([{"pack_id": "fixture.second"}, {"pack_id": "fixture.first"}]);
+                    profile["base"] = json!({"pack_id": "fixture.base"});
+                    profile["shell"] = json!({
+                        "pack_id": "fixture.shell", "provider_id": "fixture.provider",
+                        "artifact_digest": null, "executable_artifact_digest": null,
+                        "definition_revision": null,
+                    });
+                    let revision = digest(profile);
+                    index["current_revision"] = json!(revision);
+                    index["revisions"][0]["profile_revision"] = json!(revision);
+                }
                 let snapshot = sealed(state(vec![index]));
                 write_index(source, &snapshot);
                 if case == "witness-without-journal" {
@@ -544,6 +564,8 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
                         | "key-too-large"
                         | "handover-bad-authentication"
                         | "handover-stale-snapshot"
+                        | "handover-non-inert"
+                        | "handover-became-active"
                 ) {
                     let snapshot_digest = if case == "handover-stale-snapshot" {
                         Digest::hash(b"stale snapshot").as_str().to_owned()
@@ -614,9 +636,14 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
                     if case == "exact-mapping-equal" {
                         expected
                     } else {
+                        let active = profiles.join("active.json");
+                        if case == "handover-became-active" {
+                            symlink("missing", &active).unwrap();
+                        }
                         let result = read.check_inactive_predecessor_handover(
                             source,
                             cancel,
+                            "defaults",
                             &mut registry,
                             budget,
                         );
@@ -624,6 +651,7 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
                             read.check_inactive_predecessor_handover(
                                 source,
                                 cancel,
+                                "defaults",
                                 &mut registry,
                                 budget,
                             )
@@ -634,10 +662,20 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
                                 assert!(result.unwrap().is_none());
                                 expected
                             }
-                            "authenticated-handover" => json!({
-                                "outcome": "authenticated",
-                                "handover_digest": result.unwrap().unwrap().as_str(),
-                            }),
+                            "authenticated-handover" => {
+                                let predecessor =
+                                    result.unwrap().unwrap().encode_guest(budget).unwrap();
+                                let predecessor: serde_json::Value =
+                                    serde_json::from_slice(predecessor.as_bytes()).unwrap();
+                                if original.is_none() {
+                                    assert_eq!(
+                                        predecessor["pack_ids"],
+                                        json!(["fixture.second", "fixture.first"])
+                                    );
+                                    assert!(predecessor["shell_definition_revision"].is_null());
+                                }
+                                json!({"outcome": "returned", "predecessor": predecessor})
+                            }
                             _ => {
                                 let message = match case {
                                     "witness-without-journal" => {
@@ -652,6 +690,16 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
                                     "handover-stale-snapshot" => {
                                         "imported bootstrap registry changed after completed handover"
                                     }
+                                    "handover-non-inert" => {
+                                        "bootstrap import is not inert definition data"
+                                    }
+                                    "handover-became-active" => {
+                                        assert_eq!(
+                                            fs::read_link(active).unwrap(),
+                                            Path::new("missing")
+                                        );
+                                        "inactive bootstrap predecessor has an active Profile"
+                                    }
                                     _ => unreachable!(),
                                 };
                                 let error = result.unwrap_err();
@@ -664,17 +712,7 @@ async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence()
             };
             if let Some((row, _, _)) = original.as_ref() {
                 assert!(row["files_unchanged"].as_bool().unwrap());
-                if case == "authenticated-handover" {
-                    assert_eq!(
-                        actual,
-                        json!({
-                            "outcome": "authenticated",
-                            "handover_digest": row["expected"]["predecessor"]["handover_digest"],
-                        })
-                    );
-                } else {
-                    assert_eq!(row["expected"], actual);
-                }
+                assert_eq!(row["expected"], actual);
             }
             assert_eq!(read_files(), before);
             assert!(lock_free(&profiles.join(".profile-definition.lock")));

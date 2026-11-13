@@ -467,9 +467,10 @@ impl PublicationRead {
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
+        profile_id: &str,
         registry: &mut definitions::InactiveBootstrapRegistry,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<Option<Digest>> {
+    ) -> Result<Option<tobkiri_canon::CoreValue>> {
         #[cfg(unix)]
         {
             self.check_resolver_root(owner, cancellation)?;
@@ -488,6 +489,7 @@ impl PublicationRead {
                 root.as_os_str()
                     .len()
                     .saturating_mul(4)
+                    .saturating_add(profile_id.len())
                     .saturating_add(8192),
             )?;
             if predecessor_stat(&op, root, |path| fs::metadata(path))?.is_none() {
@@ -496,8 +498,20 @@ impl PublicationRead {
             use development_handover::{JOURNAL, KEY};
             if predecessor_path_present(&op, &root.join(JOURNAL))? {
                 let journal = development_handover::read(&op, root, budget)?;
-                registry.check_handover(&op, &journal.payload, budget)?;
-                return Ok(Some(journal.digest));
+                let snapshot = registry.check_handover(&op, &journal.payload, budget)?;
+                if inactive_has_active_profile(&op, root, profile_id)? {
+                    return Err(raw(
+                        "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict",
+                        "inactive bootstrap predecessor has an active Profile",
+                    ));
+                }
+                let digests = definitions::InactiveHandoverDigests {
+                    snapshot,
+                    journal: journal.digest,
+                };
+                return registry
+                    .project_handover(&op, &digests, profile_id, budget)
+                    .map(Some);
             }
             for witness in [
                 root.join(KEY),
@@ -515,7 +529,7 @@ impl PublicationRead {
         }
         #[cfg(not(unix))]
         {
-            let _ = (owner, cancellation, registry, budget);
+            let _ = (owner, cancellation, profile_id, registry, budget);
             Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Source,
                 "Windows inactive Setup handover persistence/ACL",

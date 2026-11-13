@@ -257,16 +257,22 @@ pub(super) fn bootstrap_predecessor_inputs<S: OriginalAuthorityOwner>(
 /// The current inactive definition from a separately locked registry snapshot.
 pub(crate) struct InactiveBootstrapRegistry {
     #[cfg(unix)]
-    definition: Funded<Vec<u8>>,
+    definition: definitions_model::InactiveDefinition,
     #[cfg(unix)]
     snapshot: definitions_model::State,
+}
+
+#[cfg(unix)]
+pub(super) struct InactiveHandoverDigests {
+    pub(super) snapshot: Digest,
+    pub(super) journal: Digest,
 }
 
 impl InactiveBootstrapRegistry {
     pub(crate) fn definition(&self) -> &[u8] {
         #[cfg(unix)]
         {
-            &self.definition
+            &self.definition.bytes
         }
         #[cfg(not(unix))]
         unreachable!("inactive registry snapshot requires native persistence")
@@ -278,8 +284,34 @@ impl InactiveBootstrapRegistry {
         op: &Operation<'_, S>,
         journal: &Document,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<()> {
-        definitions_model::check_inactive_handover(op, &mut self.snapshot, journal, budget)
+    ) -> Result<Digest> {
+        let digest =
+            definitions_model::check_inactive_handover(op, &mut self.snapshot, journal, budget)?;
+        definitions_model::require_inert_definition(
+            op,
+            &self.snapshot,
+            self.definition.profile,
+            budget,
+        )?;
+        Ok(digest)
+    }
+
+    #[cfg(unix)]
+    pub(super) fn project_handover<S: OriginalAuthorityOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        digests: &InactiveHandoverDigests,
+        profile_id: &str,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<tobkiri_canon::CoreValue> {
+        definitions_model::project_inactive_predecessor(
+            op,
+            &mut self.snapshot,
+            &self.definition,
+            digests,
+            profile_id,
+            budget,
+        )
     }
 }
 

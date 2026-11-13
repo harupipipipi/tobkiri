@@ -660,27 +660,40 @@ class Dispatcher:
             "scope": registry.scope.wire(),
             "equal": equal,
         })
-        registry._resolver_dynamic_stage = "inactive-equality-returned"
+        registry._resolver_dynamic_stage = (
+            "inactive-equality-returned" if equal else "inactive-unequal-returned"
+        )
         return packet
 
     def _bootstrap_fresh_confirmation(self, state: _State, frame: dict[str, Any]) -> str:
         registry = state.registry
-        if (set(frame) != {"format", "scope", "resolved", "profile_id", "snapshot", "epoch"}
+        if (set(frame) != {
+                    "format", "scope", "resolved", "profile_id", "snapshot", "epoch",
+                    "definition_predecessor",
+                }
                 or frame["scope"] != registry.scope.wire()):
             raise InvalidFrame("invalid fixed bootstrap confirmation frame")
         snapshot, epoch = frame["snapshot"], frame["epoch"]
         if type(snapshot) is not str or type(epoch) is not str:
             raise InvalidFrame("invalid fixed bootstrap confirmation authority arguments")
+        predecessor = frame["definition_predecessor"]
+        if predecessor is not None and (type(predecessor) is not dict or set(predecessor) != {
+                "profile_revision", "definition_digest", "store_generation", "snapshot_digest",
+                "handover_digest", "display_name", "pack_ids", "base_pack_id", "shell_pack_id",
+                "shell_provider_id", "shell_artifact_digest", "shell_executable_artifact_digest",
+                "shell_definition_revision",
+        }):
+            raise InvalidFrame("invalid fixed bootstrap predecessor definition")
         resolved, profile_id, snapshot, security_epoch = registry._begin_bootstrap_confirmation(
             registry.reference(frame["resolved"]), registry.reference(frame["profile_id"]),
-            snapshot, epoch,
+            snapshot, epoch, has_predecessor=predecessor is not None,
         )
 
         def confirm():
             # The original outer caller makes this same shallow copy.
             return dict(state.runtime.bootstrap_confirmation(
                 resolved=resolved, profile_id=profile_id, authority_snapshot_digest=snapshot,
-                security_epoch=security_epoch, definition_predecessor=None,
+                security_epoch=security_epoch, definition_predecessor=predecessor,
             ))
 
         confirmation = self._apply_original(confirm, caller="bootstrap-confirmation")

@@ -169,7 +169,7 @@ fn legacy_source_profile<S: OriginalAuthorityOwner>(
     Ok(None)
 }
 
-fn python_str<S: OriginalAuthorityOwner>(
+pub(super) fn python_str<S: OriginalAuthorityOwner>(
     doc: &Document,
     id: usize,
     meter: &mut Meter<'_, '_, S>,

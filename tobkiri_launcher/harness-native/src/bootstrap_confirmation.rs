@@ -9,6 +9,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
     profile_id: &str,
+    predecessor: Option<&CoreValue>,
 ) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
@@ -47,6 +48,13 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
                 "epoch",
                 CoreValue::string(authority.security_epoch().decimal(), pack.input_budget)?,
             ),
+            (
+                "definition_predecessor",
+                match predecessor {
+                    Some(value) => value.share(),
+                    None => CoreValue::null(pack.input_budget)?,
+                },
+            ),
         ],
     )?;
     drop(resolved);
@@ -82,6 +90,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         profile_id,
         authority.snapshot_digest(),
         authority.security_epoch().decimal(),
+        predecessor,
         pack.input_budget,
     )?;
     let confirmation = denied::field(&value, "root")?;
@@ -95,6 +104,7 @@ fn validate_confirmation(
     profile_id: &str,
     snapshot: &Digest,
     epoch: &str,
+    predecessor: Option<&CoreValue>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<()> {
     denied::exact(value, &["format", "scope", "root", "owned", "confirmation"])?;
@@ -106,7 +116,7 @@ fn validate_confirmation(
     let root = denied::field(value, "root")?;
     denied::reference(&root, scope)?;
     denied::ownership(value, &root, true)?;
-    const KEYS: [&str; 11] = [
+    const KEYS: [&str; 12] = [
         "confirmation_api_version",
         "operation_id",
         "profile_id",
@@ -118,13 +128,24 @@ fn validate_confirmation(
         "base",
         "shell",
         "bindings",
+        "definition_predecessor",
     ];
+    let keys = if predecessor.is_some() {
+        &KEYS[..]
+    } else {
+        &KEYS[..KEYS.len() - 1]
+    };
     let confirmation = denied::field(value, "confirmation")?;
     if confirmation
         .object()
-        .is_none_or(|object| object.len() != KEYS.len() + 1)
+        .is_none_or(|object| object.len() != keys.len() + 1)
     {
         bail!("bootstrap confirmation fields differ");
+    }
+    if let Some(predecessor) = predecessor
+        && !denied::field(&confirmation, "definition_predecessor")?.eq_guest(predecessor, budget)?
+    {
+        bail!("bootstrap confirmation definition predecessor differs");
     }
     for (key, expected) in [
         (
@@ -160,7 +181,7 @@ fn validate_confirmation(
     }
     let expected = denied::field(&confirmation, "confirmation_digest")?;
     let body = CoreValue::object_shared(
-        KEYS.into_iter().map(|key| {
+        keys.iter().copied().map(|key| {
             confirmation
                 .get_key(key)
                 .map(|value| (key, value))
@@ -212,11 +233,19 @@ mod tests {
             "root": {"scope": ["1","2","3","4"], "object": "a"},
             "owned": ["a"], "confirmation": confirmation,
         });
-        let validate = |packet: &Value| {
+        let validate = |packet: &Value, predecessor| {
             let value = CoreValue::parse_guest(&serde_json::to_vec(packet)?, budget)?;
-            validate_confirmation(&value, &scope, "defaults", &snapshot, "1", budget)
+            validate_confirmation(
+                &value,
+                &scope,
+                "defaults",
+                &snapshot,
+                "1",
+                predecessor,
+                budget,
+            )
         };
-        validate(&packet)?;
+        validate(&packet, None)?;
         for (path, invalid) in [
             ("/scope/3", json!("5")),
             ("/owned", json!([])),
@@ -226,8 +255,34 @@ mod tests {
         ] {
             let mut changed = packet.clone();
             *changed.pointer_mut(path).context("test path missing")? = invalid;
-            assert!(validate(&changed).is_err(), "{path}");
+            assert!(validate(&changed, None).is_err(), "{path}");
         }
+        let mut handover = packet;
+        let mut add_predecessor = |predecessor: Value| -> Result<()> {
+            let confirmation = &mut handover["confirmation"];
+            confirmation
+                .as_object_mut()
+                .unwrap()
+                .remove("confirmation_digest");
+            confirmation["definition_predecessor"] = predecessor;
+            let body = CoreValue::parse_guest(&serde_json::to_vec(confirmation)?, budget)?;
+            confirmation["confirmation_digest"] = json!(body.digest_guest(budget)?.as_str());
+            Ok(())
+        };
+        let binding = json!({"pack_ids": ["one", "two"], "store_generation": 2});
+        let expected = CoreValue::parse_guest(&serde_json::to_vec(&binding)?, budget)?;
+        add_predecessor(binding)?;
+        validate(&handover, Some(&expected))?;
+        assert!(validate(&handover, None).is_err());
+        let confirmation = &mut handover["confirmation"];
+        confirmation
+            .as_object_mut()
+            .unwrap()
+            .remove("confirmation_digest");
+        confirmation["definition_predecessor"]["pack_ids"] = json!(["two", "one"]);
+        let body = CoreValue::parse_guest(&serde_json::to_vec(confirmation)?, budget)?;
+        confirmation["confirmation_digest"] = json!(body.digest_guest(budget)?.as_str());
+        assert!(validate(&handover, Some(&expected)).is_err());
         Ok(())
     }
 }

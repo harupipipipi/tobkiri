@@ -2,7 +2,7 @@
 //! fixed list views replace Python's redundant deepcopy/record conversions.
 use super::*;
 use crate::unicode15_1::{self, UnicodeError, UnicodeWork};
-use tobkiri_canon::CoreBuffer;
+use tobkiri_canon::{AllocationError, CoreBuffer, CoreValue};
 
 #[path = "original_profile_successor_selection.rs"]
 mod successor_selection;
@@ -621,12 +621,18 @@ pub(super) fn canonical_id<S: OriginalAuthorityOwner>(
     ))
 }
 
+pub(super) struct InactiveDefinition {
+    pub(super) profile: usize,
+    revision: usize,
+    pub(super) bytes: Funded<Vec<u8>>,
+}
+
 pub(super) fn inactive_definition<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &mut State,
     profile_id: &str,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<Option<Funded<Vec<u8>>>> {
+) -> Result<Option<InactiveDefinition>> {
     let doc = &mut state.doc;
     let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
     let mut selected = None;
@@ -642,7 +648,8 @@ pub(super) fn inactive_definition<S: OriginalAuthorityOwner>(
     if boolean(doc, field(doc, entry, "tombstone")).expect("validated bool") {
         return Err(raw(CONFLICT, "imported bootstrap Profile is tombstoned"));
     }
-    let revision = text(doc, field(doc, entry, "current_revision")).expect("validated revision");
+    let revision_id = field(doc, entry, "current_revision");
+    let revision = text(doc, revision_id).expect("validated revision");
     let history = array(doc, field(doc, entry, "revisions")).expect("validated history");
     let mut current = None;
     for &version in history {
@@ -657,7 +664,11 @@ pub(super) fn inactive_definition<S: OriginalAuthorityOwner>(
         .filter(|&id| boolean(doc, field(doc, id, "tombstone")) == Some(false))
         .ok_or_else(|| raw(CONFLICT, "imported bootstrap revision is unavailable"))?;
     let profile = field(doc, current, "profile");
-    canonical_at(doc, profile, None, op, budget).map(Some)
+    Ok(Some(InactiveDefinition {
+        profile,
+        revision: revision_id,
+        bytes: canonical_at(doc, profile, None, op, budget)?,
+    }))
 }
 
 pub(super) fn check_inactive_handover<S: OriginalAuthorityOwner>(
@@ -665,7 +676,7 @@ pub(super) fn check_inactive_handover<S: OriginalAuthorityOwner>(
     state: &mut State,
     journal: &Document,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<()> {
+) -> Result<Digest> {
     let changed = || {
         raw(
             CONFLICT,
@@ -704,7 +715,190 @@ pub(super) fn check_inactive_handover<S: OriginalAuthorityOwner>(
     {
         return Err(changed());
     }
+    Ok(snapshot)
+}
+
+pub(super) fn require_inert_definition<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &State,
+    profile: usize,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    let doc = &state.doc;
+    let conflict = || raw(CONFLICT, "bootstrap import is not inert definition data");
+    let get = |name| doc.get(profile, name);
+    let is_null = |id| matches!(doc.node(id), Node::Scalar(CanonValue::Null));
+    if !get("state").is_some_and(|id| doc.string_is(id, "needs_resolution"))
+        || !get("catalog_revision").is_none_or(is_null)
+        || !get("authority_references")
+            .and_then(|id| array(doc, id))
+            .is_some_and(<[usize]>::is_empty)
+        || !get("profile_authority_snapshot_digest").is_none_or(is_null)
+        || get("content_projections").is_some()
+    {
+        return Err(conflict());
+    }
+    let edges = subscript(doc, profile, "requested_edges")?;
+    const REFERENCE: &str = "authority_reference";
+    let contains_reference = |value: &Text| {
+        value
+            .0
+            .windows(REFERENCE.len())
+            .any(|part| part.iter().copied().eq(REFERENCE.chars().map(u32::from)))
+    };
+    match doc.node(edges) {
+        Node::Array(edges) => {
+            for &edge in edges {
+                let size = match doc.node(edge) {
+                    Node::Object(fields) => fields.len(),
+                    Node::Array(items) => items.len(),
+                    Node::String(value) => value.0.len(),
+                    Node::Scalar(_) => 0,
+                };
+                charge(
+                    op,
+                    budget,
+                    1 + (size as u64).saturating_mul(REFERENCE.len() as u64 + 1),
+                )?;
+                let has_reference = match doc.node(edge) {
+                    Node::Object(_) => doc.get(edge, REFERENCE).is_some(),
+                    Node::Array(values) => values.iter().any(|&id| doc.string_is(id, REFERENCE)),
+                    Node::String(value) => contains_reference(value),
+                    node => {
+                        return Err(raw(
+                            "builtins.TypeError",
+                            format!("argument of type '{}' is not iterable", model::kind(node)),
+                        ));
+                    }
+                };
+                if has_reference {
+                    return Err(conflict());
+                }
+            }
+        }
+        // Iterating an object or string yields strings. A single character
+        // cannot match, but an object key can contain the exact substring.
+        Node::Object(fields) => {
+            for (name, _) in fields {
+                charge(
+                    op,
+                    budget,
+                    1 + (name.0.len() as u64).saturating_mul(REFERENCE.len() as u64 + 1),
+                )?;
+                if contains_reference(name) {
+                    return Err(conflict());
+                }
+            }
+        }
+        Node::String(value) => charge(op, budget, value.0.len() as u64)?,
+        node => {
+            return Err(raw(
+                "builtins.TypeError",
+                format!("'{}' object is not iterable", model::kind(node)),
+            ));
+        }
+    }
+    if !get("mode").is_some_and(|id| doc.string_is(id, "interactive"))
+        || !get("shell").is_some_and(|id| doc.entries(id).is_some())
+    {
+        return Err(conflict());
+    }
     Ok(())
+}
+
+pub(super) fn project_inactive_predecessor<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &mut State,
+    definition: &InactiveDefinition,
+    digests: &super::InactiveHandoverDigests,
+    profile_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    let doc = &mut state.doc;
+    let profile = definition.profile;
+    let definition_digest = Digest::hash(&definition.bytes);
+    let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
+    let mut meter = Meter { op, budget };
+    let string = |doc: &Document, id, meter: &mut Meter<'_, '_, S>| -> Result<CoreValue> {
+        let bytes = successor_selection::python_str(doc, id, meter)?;
+        CoreValue::string_from_utf8(&bytes, budget).map_err(capacity)
+    };
+    let revision = string(doc, definition.revision, &mut meter)?;
+    let generation = CoreValue::int(integer(doc, field(doc, doc.root, "generation")), budget)
+        .map_err(capacity)?;
+    let display_name = match doc
+        .get(profile, "display_name")
+        .filter(|&id| truthy(doc.node(id)))
+    {
+        Some(id) => string(doc, id, &mut meter)?,
+        None => CoreValue::string(profile_id, budget).map_err(capacity)?,
+    };
+    let packs = subscript(doc, profile, "packs")?;
+    let packs = match doc.node(packs) {
+        Node::Array(packs) => packs.as_slice(),
+        Node::Object(fields) if fields.is_empty() => &[],
+        Node::String(value) if value.0.is_empty() => &[],
+        Node::Object(_) | Node::String(_) => {
+            return Err(raw(
+                "builtins.TypeError",
+                "string indices must be integers, not 'str'",
+            ));
+        }
+        node => {
+            return Err(raw(
+                "builtins.TypeError",
+                format!("'{}' object is not iterable", model::kind(node)),
+            ));
+        }
+    };
+    let mut pack_ids = CoreValue::array_builder(budget, packs.len()).map_err(capacity)?;
+    for &pack in packs {
+        charge(
+            op,
+            budget,
+            1 + doc.entries(pack).map_or(0, |fields| fields.len()) as u64,
+        )?;
+        pack_ids
+            .push(string(doc, subscript(doc, pack, "pack_id")?, &mut meter)?)
+            .map_err(capacity)?;
+    }
+    let base = subscript(doc, profile, "base")?;
+    let base_pack_id = string(doc, subscript(doc, base, "pack_id")?, &mut meter)?;
+    let shell = subscript(doc, profile, "shell")?;
+    let shell_pack_id = string(doc, subscript(doc, shell, "pack_id")?, &mut meter)?;
+    let shell_provider_id = string(doc, subscript(doc, shell, "provider_id")?, &mut meter)?;
+    let mut shell_value = |key| -> Result<CoreValue> {
+        let id = subscript(doc, shell, key)?;
+        let bytes = canonical_at(doc, id, None, op, budget)?;
+        CoreValue::parse_guest(&bytes, budget).map_err(capacity)
+    };
+    let digest_value = |digest: &Digest| CoreValue::string(digest.as_str(), budget);
+    let fields: [(&str, std::result::Result<CoreValue, AllocationError>); 13] = [
+        ("profile_revision", Ok(revision)),
+        ("definition_digest", digest_value(&definition_digest)),
+        ("store_generation", Ok(generation)),
+        ("snapshot_digest", digest_value(&digests.snapshot)),
+        ("handover_digest", digest_value(&digests.journal)),
+        ("display_name", Ok(display_name)),
+        ("pack_ids", pack_ids.finish()),
+        ("base_pack_id", Ok(base_pack_id)),
+        ("shell_pack_id", Ok(shell_pack_id)),
+        ("shell_provider_id", Ok(shell_provider_id)),
+        ("shell_artifact_digest", Ok(shell_value("artifact_digest")?)),
+        (
+            "shell_executable_artifact_digest",
+            Ok(shell_value("executable_artifact_digest")?),
+        ),
+        (
+            "shell_definition_revision",
+            Ok(shell_value("definition_revision")?),
+        ),
+    ];
+    CoreValue::object_shared(
+        fields.into_iter().map(|(name, value)| Ok((name, value?))),
+        budget,
+    )
+    .map_err(capacity)
 }
 
 pub(super) fn get<S: OriginalAuthorityOwner>(
