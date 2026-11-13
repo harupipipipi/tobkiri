@@ -243,7 +243,7 @@ fn checkpoint(context: NativeImportContext<'_, State>) -> Result<NativeImportOpe
         .context("missing App schema phase")?
         .as_str()?;
     ensure!(
-        payload.len() <= "sample-count:descend:4294967295:".len() + NAME_BYTES,
+        payload.len() <= "sample-count:registry:4294967295:".len() + NAME_BYTES,
         "oversized App schema phase"
     );
     let (point, tail) = payload
@@ -354,7 +354,7 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
     );
     let trace = HeldTrace::try_new_precharged(state, trace_funds)?;
     let mut report = json!({
-        "format":"tobkiri.app-schema-cold-store-phases/2", "component_sha256":identity.as_str(),
+        "format":"tobkiri.app-schema-cold-store-phases/3", "component_sha256":identity.as_str(),
         "operation":"cold-schema-store", "diagnostic_only":true,
         "qualification":false, "production_enabled":false, "whole_catalog_acceptance":false,
         "cold_schema_acceptance":false, "stores":1, "budget_resets":0, "export_calls_started":0,

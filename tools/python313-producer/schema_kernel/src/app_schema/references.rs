@@ -1,7 +1,7 @@
 //! App-owned reference state and explicit Python resolution boundaries.
 //! Derived from referencing 0.37.0, referencing/_core.py and jsonschema.py
 //! (MIT; see crate-root COPYING.jsonschema). Builtin ownership is metadata, not authority.
-use super::{uri, Environment, Object};
+use super::{uri, Environment, FuelBucket, Object};
 use crate::keywords::{builtin, module_member};
 use pyo3::{
     exceptions::{PyLookupError, PyUnicodeEncodeError},
@@ -577,8 +577,13 @@ impl ReferenceState {
                 Self::from_boundary(&resolved.getattr("resolver")?, env)?,
             ));
         };
-        let (uri, fragment) = uri::resolve(py, base_uri.bind(py), reference)?;
-        let retrieved = match registry.bind(py).call_method1("get_or_retrieve", (&uri,)) {
+        let (uri, fragment) = env.measure(py, FuelBucket::Uri, || {
+            uri::resolve(py, base_uri.bind(py), reference)
+        })?;
+        let retrieved = env.measure(py, FuelBucket::Registry, || {
+            registry.bind(py).call_method1("get_or_retrieve", (&uri,))
+        });
+        let retrieved = match retrieved {
             Ok(value) => value,
             Err(error) => {
                 let missing = module_member(py, "referencing.exceptions", "NoSuchResource")?;
@@ -599,15 +604,22 @@ impl ReferenceState {
         };
         let pointer = fragment.call_method1("startswith", ("/",))?.is_truthy()?;
         if pointer || fragment.is_truthy()? {
-            let selected = if pointer {
-                retrieved
+            let bucket = if pointer {
+                FuelBucket::Pointer
             } else {
-                retrieved
-                    .getattr("registry")?
-                    .call_method1("anchor", (&uri, &fragment))?
+                FuelBucket::Anchor
             };
-            let state = self.evolved(py, uri, selected.getattr("registry")?)?;
-            return state.fragment(py, env, &selected.getattr("value")?, &fragment, pointer);
+            return env.measure(py, bucket, || {
+                let selected = if pointer {
+                    retrieved
+                } else {
+                    retrieved
+                        .getattr("registry")?
+                        .call_method1("anchor", (&uri, &fragment))?
+                };
+                let state = self.evolved(py, uri, selected.getattr("registry")?)?;
+                state.fragment(py, env, &selected.getattr("value")?, &fragment, pointer)
+            });
         }
         let state = self.evolved(py, uri, retrieved.getattr("registry")?)?;
         Ok((

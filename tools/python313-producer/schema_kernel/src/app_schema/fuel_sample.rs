@@ -3,7 +3,7 @@ use super::FuelBucket;
 use pyo3::prelude::*;
 use std::cell::Cell;
 
-const BUCKETS: [&str; 4] = ["descend", "keyword", "lookup", "scalar"];
+const BUCKETS: [&str; 4] = ["uri", "registry", "pointer", "anchor"];
 const STRIDE: u32 = 257;
 const MAX_PER_SCHEMA: u32 = 4;
 const OFFSET: [u32; 4] = [0, 53, 107, 161];

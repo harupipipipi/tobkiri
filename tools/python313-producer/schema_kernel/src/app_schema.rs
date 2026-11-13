@@ -34,10 +34,10 @@ mod fuel_sample;
 
 #[derive(Clone, Copy)]
 enum FuelBucket {
-    Descend,
-    Keyword,
-    Lookup,
-    Scalar,
+    Uri,
+    Registry,
+    Pointer,
+    Anchor,
 }
 
 struct Environment {
@@ -148,9 +148,7 @@ impl Frame {
             return Ok(());
         }
         if self.enter_resource {
-            self.references = env.measure(py, FuelBucket::Descend, || {
-                self.references.descend(py, env, schema)
-            })?;
+            self.references = self.references.descend(py, env, schema)?;
         }
         self.cursor = Some(Keywords::new(schema, self.root)?);
         Ok(())
@@ -469,10 +467,7 @@ impl Frame {
                     return Ok(action);
                 }
             }
-            let next = env.measure(py, FuelBucket::Keyword, || {
-                self.cursor.as_mut().expect("started META frame").next(py)
-            })?;
-            let Some(selected) = next else {
+            let Some(selected) = self.cursor.as_mut().expect("started META frame").next(py)? else {
                 return Ok(Action::Done);
             };
             let name = selected.name.clone();
@@ -564,11 +559,7 @@ impl Frame {
                     }))
                 }
                 "$ref" | "$dynamicRef" => {
-                    // Keep the child execution outside the sampled lookup.
-                    let resolved = env.measure(py, FuelBucket::Lookup, || {
-                        self.references.lookup(py, env, &value)
-                    });
-                    let (contents, references) = match resolved {
+                    let (contents, references) = match self.references.lookup(py, env, &value) {
                         Ok(resolved) => resolved,
                         Err(error) => {
                             let unresolvable =
@@ -600,17 +591,14 @@ impl Frame {
                 "type" | "const" | "enum" | "minItems" | "maxItems" | "minLength" | "maxLength"
                 | "minProperties" | "maxProperties" | "minimum" | "maximum"
                 | "exclusiveMinimum" | "exclusiveMaximum" => {
-                    let error = env.measure(py, FuelBucket::Scalar, || {
-                        value::scalar_constraint(
-                            py,
-                            &env.value_policy,
-                            &name,
-                            &value,
-                            instance,
-                            schema,
-                        )
-                    })?;
-                    if let Some(error) = error {
+                    if let Some(error) = value::scalar_constraint(
+                        py,
+                        &env.value_policy,
+                        &name,
+                        &value,
+                        instance,
+                        schema,
+                    )? {
                         return self.decorate(py, env, error.unbind());
                     }
                 }

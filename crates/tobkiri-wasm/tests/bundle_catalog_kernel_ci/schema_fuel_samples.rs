@@ -2,7 +2,7 @@
 use anyhow::{Context, Result, ensure};
 use serde::{Serialize, Serializer, ser::SerializeSeq};
 
-const BUCKETS: [&str; 5] = ["descend", "keyword", "lookup", "scalar", "marker"];
+const BUCKETS: [&str; 5] = ["uri", "registry", "pointer", "anchor", "marker"];
 const MEASURED_BUCKETS: usize = BUCKETS.len() - 1;
 const MARKER: usize = MEASURED_BUCKETS;
 const STRIDE: u32 = 257;
@@ -259,7 +259,7 @@ fn operation_samples_require_ordered_pairs_and_all_completed_counts() -> Result<
     let first = first_ordinal(name, 0);
     assert!(
         samples
-            .record(0, name, "sample-begin", "descend", first, 90)
+            .record(0, name, "sample-begin", BUCKETS[0], first, 90)
             .is_err()
     );
     samples.record(0, name, "sample-begin", "marker", 1, 100)?;
@@ -267,20 +267,20 @@ fn operation_samples_require_ordered_pairs_and_all_completed_counts() -> Result<
     samples.record(0, name, "sample-end", "marker", 1, 95)?;
     assert!(
         samples
-            .record(0, name, "sample-count", "keyword", 0, 90)
+            .record(0, name, "sample-count", BUCKETS[1], 0, 90)
             .is_err()
     );
     assert!(
         samples
-            .record(0, name, "sample-count", "descend", first, 90)
+            .record(0, name, "sample-count", BUCKETS[0], first, 90)
             .is_err()
     );
-    samples.record(0, name, "sample-begin", "descend", first, 90)?;
+    samples.record(0, name, "sample-begin", BUCKETS[0], first, 90)?;
     assert!(samples.phase_start().is_err());
-    samples.record(0, name, "sample-end", "descend", first, 80)?;
+    samples.record(0, name, "sample-end", BUCKETS[0], first, 80)?;
     assert!(
         samples
-            .record(0, name, "sample-begin", "descend", first, 75)
+            .record(0, name, "sample-begin", BUCKETS[0], first, 75)
             .is_err()
     );
     for (index, bucket) in BUCKETS[..MEASURED_BUCKETS].iter().enumerate() {

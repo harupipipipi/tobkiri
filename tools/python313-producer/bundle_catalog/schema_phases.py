@@ -50,7 +50,7 @@ def mark(point: str, bucket: str | None = None, ordinal: int = 0) -> None:
     if bucket is None and point in ('setup', 'initial-reference', 'evaluation', 'return'):
         checkpoint(f'{point}:{_schema_name}')
     elif (point in ('sample-begin', 'sample-end', 'sample-count')
-          and bucket in ('descend', 'keyword', 'lookup', 'scalar', 'marker')
+          and bucket in ('uri', 'registry', 'pointer', 'anchor', 'marker')
           and type(ordinal) is int and 0 <= ordinal < 2**32):
         checkpoint(f'{point}:{bucket}:{ordinal}:{_schema_name}')
     else:
