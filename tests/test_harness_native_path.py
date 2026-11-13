@@ -200,7 +200,8 @@ class NativePathAdapterTests(unittest.TestCase):
         source = ROOT / "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
         tree = ast.parse(source.read_bytes(), filename=str(source))
         names = {"artifact_digest", "_identity", "_regular_binary_reader",
-                 "_stable_update_digest", "verify_platform_artifact"}
+                 "_stable_update_digest", "verify_platform_artifact",
+                 "_verify_binary_architecture", "_read_bounded_header"}
         functions = [node for node in tree.body
                      if isinstance(node, ast.FunctionDef) and node.name in names]
         self.assertEqual(len(functions), len(names))
