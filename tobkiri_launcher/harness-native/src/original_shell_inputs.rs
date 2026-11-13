@@ -31,26 +31,17 @@ impl CatalogIo {
         bytes: Funded<Zeroizing<Vec<u8>>>,
     ) -> Result<()> {
         let (lock, entries) = self.entries()?;
-        let kind = entries
+        let entry = *entries
             .get(self.entry)
-            .and_then(|&entry| lock.get(entry, "kind"))
             .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let kind = if lock.string_is(kind, "profile") {
-            Kind::Profile
-        } else if lock.string_is(kind, "shell") {
-            Kind::Shell
-        } else {
+        let Some(kind) = shell_input_kind(lock, entry) else {
             return Ok(());
         };
         if self.shell_inputs.is_none() {
             charge_work(&self.budget, (entries.len() as u64).saturating_mul(16))?;
             let maximum = entries
                 .iter()
-                .filter(|&&entry| {
-                    lock.get(entry, "kind").is_some_and(|kind| {
-                        lock.string_is(kind, "profile") || lock.string_is(kind, "shell")
-                    })
-                })
+                .filter(|&&entry| shell_input_kind(lock, entry).is_some())
                 .count();
             let exhausted = || OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
             let allocation = maximum
@@ -124,6 +115,17 @@ impl CatalogIo {
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         // Keep only the selected name beyond this physical observation.
         Ok(CoreValue::string(name, &self.budget)?)
+    }
+}
+
+fn shell_input_kind(lock: &Document, entry: usize) -> Option<Kind> {
+    let kind = lock.get(entry, "kind")?;
+    if lock.string_is(kind, "profile") {
+        Some(Kind::Profile)
+    } else if lock.string_is(kind, "shell") {
+        Some(Kind::Shell)
+    } else {
+        None
     }
 }
 
