@@ -2864,7 +2864,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `85332e5fa` は同じ枠内の計測点を参照解決の内側へ移す。元のURI処理、Registryの
   `get_or_retrieve`、pointer分岐、anchor分岐に重ならない4区間を置き、
   外部resolverの経路と未計測の処理は集計の範囲外とする。
-  [CI 43449073611](https://github.com/harupipipipi/tobkiri/actions/runs/43449073611)
+  [CI 43449073611](https://github.com/harupipipipi/tobkiri/actions/runs/43449073611)が成功。
+  189組を記録し、41件完了、42件目の評価開始時に84,461,630 fuel、その後0で停止した。
+  終了後の確保・予約は0。完了分について、各schemaの空マーカー費を引いて回数で
+  外挿した値はRegistry約2.72億（63組、標本のあるschemaが14,913/15,646回をカバー）、
+  URI約2.05億（63組、15,166/15,646回）、pointer約1.03億（10組、735/1,967回）、
+  anchor約0.54億（5組、337/1,674回）。後者2区間はカバー率が低く順位を確定できない。
+  既に戻したRegistry全体のsnapshotを再導入せず、実Registry呼び出しと例外を保ったまま
+  無駄な実処理を減らせる箇所を選ぶ。計測なしの同じ予算で完走を別途確認する。
+  [参照解決の計測JSON](https://github.com/harupipipipi/tobkiri/actions/runs/43449073611/artifacts/14049338372)
   無計測の[CI 43446170342](https://github.com/harupipipipi/tobkiri/actions/runs/43446170342)
   はcoldと全カタログの両方で元の燃料を使い切った。
 
