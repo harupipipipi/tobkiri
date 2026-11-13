@@ -55,6 +55,9 @@ jobs:
           python3 -B tools/original_setup_resolver_prefix_reference.py \
             --original-root "$GITHUB_WORKSPACE/original-setup-resolver-prefix-source" \
             --output "$RUNNER_TEMP/original-setup-resolver-prefix"
+      - name: Verify pinned original Shell artifact and captured input cases
+        working-directory: original-setup-resolver-prefix-source
+        run: python3 -B -m unittest discover -s tests -p test_captured_setup_inputs.py -v
       - uses: dtolnay/rust-toolchain@1.94.0
         if: matrix.os == 'ubuntu-22.04'
       - name: Compare the funded Rust bindings before and after the original dynamic call
