@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -94,6 +94,20 @@ enum SaveApprovalMode {
     Individual,
     NativeReview,
 }
+
+fn has_duplicate_permission_keys(permissions: &PermissionSet) -> bool {
+    let mut roots = BTreeSet::new();
+    let mut secrets = BTreeSet::new();
+    permissions
+        .fs
+        .iter()
+        .any(|entry| !roots.insert(&entry.root))
+        || permissions
+            .secrets
+            .iter()
+            .any(|entry| !secrets.insert(&entry.name))
+}
+
 #[async_trait::async_trait]
 impl TrustedPrompt for Prompt {
     async fn prompt_approval(&self, prompt: ApprovalPrompt) -> ApprovalAnswer {
@@ -818,6 +832,8 @@ impl Core {
     }
     /// Import with a fresh identity and fresh authority. The chosen ceiling must
     /// be a subset of the published ceiling before any approval can occur.
+    /// Explicit Pack limits are bounded by the chosen ceiling after validating
+    /// the original published Profile.
     pub async fn import_profile(
         &self,
         bytes: &[u8],
@@ -827,11 +843,34 @@ impl Core {
         let document = published(bytes)?;
         let id = ProfileId::new(format!("prof_{}", ulid::Ulid::new()))?;
         let mut profile = document.to_profile(id.clone(), name);
-        if let Some(ceiling) = narrowing {
+        if let Some(ceiling) = narrowing.filter(|ceiling| ceiling != &profile.ceiling) {
             if !ceiling.is_subset_of(&profile.ceiling) {
                 return Err(CoreError::Invalid(
                     "import cannot widen the published permission ceiling".into(),
                 ));
+            }
+            // Intersection uses the first matching root or secret name, while
+            // the subset check accepts any match. Require unambiguous ceilings.
+            if [&profile.ceiling, &ceiling]
+                .into_iter()
+                .any(has_duplicate_permission_keys)
+            {
+                return Err(CoreError::Invalid(
+                    "import narrowing requires unique filesystem roots and secret names in both ceilings"
+                        .into(),
+                ));
+            }
+            {
+                // Validate the original policy operands and release their source
+                // catalog before the ordinary save checks the narrowed candidate.
+                let packs = load_packs(&profile, &self.control)?;
+                compile(&profile, &packs).map_err(CoreError::Conflicts)?;
+            }
+            for limits in profile.pack_limits.values_mut() {
+                if !limits.is_subset_of(&ceiling) {
+                    // Keep the Gate's first-match lookup of original Pack limits.
+                    *limits = ceiling.intersect(limits);
+                }
             }
             profile.ceiling = ceiling;
         }

@@ -83,7 +83,7 @@ jobs:
       - name: Items 13, 15 and 16 through the actual Core
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/core-acceptance.log" --expected-passed 6 --
+          --log "$RUNNER_TEMP/core-acceptance.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-core --lib
           -- --nocapture
           tests::acceptance_update_removal::

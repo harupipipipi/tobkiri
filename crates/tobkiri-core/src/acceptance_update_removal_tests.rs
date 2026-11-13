@@ -4,7 +4,7 @@
 use super::*;
 use std::path::Path;
 use tobkiri_canon::ids::PackHash;
-use tobkiri_gate::Risk;
+use tobkiri_gate::{FsPermission, Risk};
 use tobkiri_manifest::{
     FileEntry, PackManifest, PortDeclaration, Ports, RuntimeSpec, ShapeDefinition, ShapeKind,
 };
@@ -319,6 +319,29 @@ async fn removing_a_provider_of_another_packs_required_port_fails_and_keeps_data
     assert_eq!(crate::profiles::strict_bytes(&stored).unwrap(), before);
     assert_eq!(core.profile_save_precondition(&profile.id).unwrap(), state);
     assert_eq!(host.prompts.lock().unwrap().len(), prompts);
+
+    let mut without_provider = profile.published();
+    without_provider.packs.retain(|pin| pin.id != provider);
+    without_provider.pack_limits.remove(&provider);
+    let mut narrowed = without_provider.ceiling.clone();
+    narrowed.loops.max_iterations -= 1;
+    match core
+        .import_profile(
+            &crate::profiles::strict_bytes(&without_provider).unwrap(),
+            "Missing provider".into(),
+            Some(narrowed),
+        )
+        .await
+    {
+        Err(CoreError::Conflicts(conflicts)) => assert!(
+            conflicts
+                .iter()
+                .any(|conflict| conflict.code == "required-port")
+        ),
+        other => panic!("narrowed import must report the missing required port: {other:?}"),
+    }
+    assert_eq!(host.prompts.lock().unwrap().len(), prompts);
+
     assert!(
         core.remove_pack(&profile.id, &PackId::parse("local.absent").unwrap())
             .await
@@ -448,6 +471,103 @@ impl tobkiri_store::VaultKeyProvider for FixedKeys {
 }
 
 #[tokio::test]
+async fn published_profile_import_narrows_pack_limits_and_approves_bounded_authority() {
+    let (core, host, profile, _dir) = fixture();
+    core.save_profile(profile.clone(), None).await.unwrap();
+    let export = core.export_profile(&profile.id).unwrap();
+    let prompts_before = host.prompts.lock().unwrap().len();
+
+    let mut widening = profile.ceiling.clone();
+    widening.loops.max_iterations += 1;
+    assert!(matches!(
+        core.import_profile(&export, "Widened".into(), Some(widening)).await,
+        Err(CoreError::Invalid(message)) if message.contains("cannot widen")
+    ));
+
+    let mut narrowing = profile.ceiling.clone();
+    narrowing.loops.max_iterations -= 1;
+    narrowing.ports.clear();
+    let mut ambiguous = profile.published();
+    let writable = FsPermission {
+        root: "fixture-root".into(),
+        read: true,
+        write: true,
+    };
+    ambiguous.ceiling.fs = vec![
+        FsPermission {
+            write: false,
+            ..writable.clone()
+        },
+        writable.clone(),
+    ];
+    let declaration = ambiguous.user_permissions.as_mut().unwrap();
+    declaration.fs.push(writable.clone());
+    assert!(!declaration.intersect(&ambiguous.ceiling).fs[0].write);
+    let mut ambiguous_choice = narrowing.clone();
+    ambiguous_choice.fs.push(writable);
+    assert!(ambiguous_choice.is_subset_of(&ambiguous.ceiling));
+    assert!(matches!(
+        core.import_profile(
+            &crate::profiles::strict_bytes(&ambiguous).unwrap(),
+            "Ambiguous ceiling".into(),
+            Some(ambiguous_choice),
+        ).await,
+        Err(CoreError::Invalid(message)) if message.contains("unique filesystem roots")
+    ));
+    assert_eq!(host.prompts.lock().unwrap().len(), prompts_before);
+
+    let imported = core
+        .import_profile(&export, "Narrowed".into(), Some(narrowing.clone()))
+        .await
+        .unwrap();
+    assert_ne!(imported, profile.id);
+    let (stored, head) = core.profile(&imported).unwrap();
+    let pin = &profile.packs[0];
+    assert_eq!(stored.ceiling, narrowing);
+    assert_eq!(stored.pack_limits[&pin.id], narrowing);
+    assert_eq!(stored.user_permissions, profile.user_permissions);
+    assert_eq!(stored.packs[0].sha256, pin.sha256);
+
+    let prompts = host.prompts.lock().unwrap();
+    let [pack_prompt, user_prompt] = &prompts[prompts_before..] else {
+        panic!("narrowed import must ask for fresh Pack and User approvals");
+    };
+    assert_eq!(pack_prompt.profile, imported);
+    assert_eq!(
+        pack_prompt.effect,
+        EffectRequest::Permissions {
+            pack: pin.id.clone(),
+            hash: pin.sha256.clone(),
+        }
+    );
+    assert_eq!(delta(pack_prompt), narrowing);
+    assert_eq!(user_prompt.profile, imported);
+    let EffectRequest::UserPermissions {
+        profile_hash,
+        revision,
+        epoch,
+    } = &user_prompt.effect
+    else {
+        panic!("narrowed import must ask for revision-bound User authority");
+    };
+    assert_eq!(profile_hash, &head);
+    assert_eq!(delta(user_prompt), narrowing);
+    let approvals = Approvals::open(&core.profiles.root, &imported).unwrap();
+    assert_eq!(
+        approvals
+            .permissions(&imported, &pin.id, &pin.sha256)
+            .unwrap(),
+        Some(narrowing.clone())
+    );
+    assert_eq!(
+        approvals
+            .user_permissions(&imported, &head, revision, *epoch)
+            .unwrap(),
+        Some(narrowing)
+    );
+}
+
+#[tokio::test]
 async fn published_profile_excludes_populated_approvals_data_secrets_and_user_global_storage() {
     let (core, host, profile, _dir) = fixture();
     core.save_profile(profile.clone(), None).await.unwrap();
@@ -544,6 +664,49 @@ async fn published_profile_excludes_populated_approvals_data_secrets_and_user_gl
             "published Profile accepted {field}"
         );
     }
+    let mut narrowed = profile.ceiling.clone();
+    narrowed.ports.clear();
+    let mut invalid_limit = profile.published();
+    invalid_limit
+        .pack_limits
+        .values_mut()
+        .next()
+        .unwrap()
+        .loops
+        .max_iterations += 1;
+    let mut invalid_view = profile.published();
+    invalid_view
+        .ceiling
+        .ports
+        .insert("local.missing.port@1.0".into());
+    for (invalid, expected) in [
+        (invalid_limit, "permission-widening"),
+        (invalid_view, "policy-view"),
+    ] {
+        match core
+            .import_profile(
+                &crate::profiles::strict_bytes(&invalid).unwrap(),
+                "Invalid policy".into(),
+                Some(narrowed.clone()),
+            )
+            .await
+        {
+            Err(CoreError::Conflicts(conflicts)) => {
+                assert!(conflicts.iter().any(|conflict| conflict.code == expected))
+            }
+            other => panic!("narrowing must preserve the {expected} conflict: {other:?}"),
+        }
+    }
+    let mut wrong_pin = profile.published();
+    wrong_pin.packs[0].sha256 = PackHash::new(Digest::hash(b"wrong imported Pack"));
+    assert!(matches!(
+        core.import_profile(
+            &crate::profiles::strict_bytes(&wrong_pin).unwrap(),
+            "Wrong Pack pin".into(),
+            Some(narrowed),
+        ).await,
+        Err(CoreError::Invalid(message)) if message.contains("Pack bytes do not match")
+    ));
     assert_eq!(pack_prompts(&host).len(), prompts_before);
 
     // A genuine import gets a fresh identity, fresh approval, and none of the
