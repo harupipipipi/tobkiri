@@ -143,7 +143,7 @@ impl CatalogIo {
                     if symlink {
                         PackResolve::Spent
                     } else {
-                        self.shell_leaf = selected;
+                        self.shell_leaf = selected.clone();
                         PackResolve::ShellLeafParentSymlink
                     }
                 }
