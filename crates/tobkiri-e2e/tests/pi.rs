@@ -1,7 +1,7 @@
 //! Optional runtime proof for the two pinned, unchanged upstream Pi examples.
 //! These tests do not claim the complete Harness tool-loop/FS acceptance.
 mod support;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use support::*;
 use tobkiri_canon::ids::{OpName, ShapeRef};
 use tobkiri_core::{Core, Session};
@@ -106,6 +106,7 @@ async fn original_hello_runs_through_wrapper_adapter_and_gate() -> Result<()> {
             &serde_json::json!({"content":[{"type":"text","text":"Hello, Tobkiri!"}],"details":{"greeted":"Tobkiri"}})
         )?
     );
+    session.close().await?;
     println!(
         "Pi wasm runtime receipt: example=hello wrapper+adapter=true original_sha_pinned=true"
     );
@@ -116,8 +117,9 @@ async fn original_hello_runs_through_wrapper_adapter_and_gate() -> Result<()> {
 #[ignore = "requires separately built componentize-js Pi example components"]
 async fn original_protected_paths_guard_runs_through_wrapper_adapter_and_gate() -> Result<()> {
     let shape = "local.harness-agent.tool-call-guard@1.0";
-    let (_temporary, _core, session) =
+    let (fixture, _core, session) =
         start_example("local.pi-example-protected-paths", shape, "on-tool-call").await?;
+    *fixture.host.notifications.lock().unwrap() = Some(Vec::new());
     for (name, path, block) in [
         ("write", ".env", true),
         ("edit", ".git/config", true),
@@ -133,7 +135,8 @@ async fn original_protected_paths_guard_runs_through_wrapper_adapter_and_gate() 
                 OpName::parse("on-tool-call")?,
                 &args,
             )
-            .await?;
+            .await
+            .with_context(|| format!("upstream guard case {name}/{path}"))?;
         assert_eq!(
             parse_output(&actual)?,
             canon(
@@ -141,9 +144,33 @@ async fn original_protected_paths_guard_runs_through_wrapper_adapter_and_gate() 
             )?,
             "upstream guard case {name}/{path}"
         );
+        let notifications = {
+            let mut host = fixture.host.notifications.lock().unwrap();
+            std::mem::take(host.as_mut().unwrap())
+        };
+        if block {
+            assert_eq!(
+                notifications.len(),
+                1,
+                "one gated warning for {name}/{path}"
+            );
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(notifications[0].as_bytes())?,
+                serde_json::json!({
+                    "text": format!("Blocked write to protected path: {path}"),
+                    "level": "warning",
+                })
+            );
+        } else {
+            assert!(
+                notifications.is_empty(),
+                "unexpected warning for {name}/{path}"
+            );
+        }
     }
+    session.close().await?;
     println!(
-        "Pi wasm runtime receipt: example=protected-paths cases=5 wrapper+adapter=true scope=guard-decision-only"
+        "Pi wasm runtime receipt: example=protected-paths cases=5 wrapper+adapter=true gated-notifications=true"
     );
     Ok(())
 }

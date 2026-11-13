@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/issue-1520-pi-replay.yml'
       - 'crates/tobkiri-e2e/tests/pi.rs'
+      - 'crates/tobkiri-e2e/tests/support/mod.rs'
       - 'packs/local.pi-adapter/**'
       - 'packs/local.pi-example-*/**'
       - 'packs/shapes/pi-adapter.wit'

@@ -274,6 +274,7 @@ pub async fn native_result(
 pub struct Host {
     pub lines: Mutex<VecDeque<String>>,
     pub output: Mutex<Vec<CoreBuffer>>,
+    pub notifications: Mutex<Option<Vec<CoreBuffer>>>,
     pub approvals: Mutex<Vec<String>>,
     reviewed_packs: Mutex<BTreeSet<(PackId, PackHash)>>,
     pub utility_ports: Mutex<BTreeSet<(String, String)>>,
@@ -411,6 +412,19 @@ pub fn physical_temp() -> Result<tempfile::TempDir> {
 #[async_trait]
 impl HostIo for Host {
     fn display(&self, _: &str, _: &CanonValue) {}
+    fn display_budgeted(&self, surface: &str, content: &CoreBuffer) -> Result<(), HostError> {
+        let mut notifications = self.notifications.lock().unwrap();
+        if surface == "notification"
+            && let Some(notifications) = notifications.as_mut()
+        {
+            content
+                .as_str()
+                .map_err(|error| HostError(error.to_string()))?;
+            notifications.push(content.share());
+            return Ok(());
+        }
+        Err(HostError("budgeted display unavailable".into()))
+    }
     async fn terminal_read_line_budgeted(
         &self,
         _: &str,
