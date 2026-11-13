@@ -29,10 +29,6 @@ class _UnboundPlatformArtifacts(BaseException):
     """Stop before the first unconnected Shell tree operation."""
 
 
-class _ShellArtifactVerified(BaseException):
-    """The original Shell verifier returned after closing its header."""
-
-
 def _binding(value: Any) -> str:
     if type(value) is not str or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value):
         raise UnsupportedValue("invalid issued native binding")
@@ -93,6 +89,7 @@ class PathBridge:
         self._resolver_entrypoint: NativePath | None = None
         self._resolver_entrypoint_closed = False
         self._resolver_header_closed = False
+        self._resolver_verified_artifact: NativePath | None = None
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -122,6 +119,7 @@ class PathBridge:
         try:
             return target(*args, **kwargs)
         finally:
+            self._resolver_verified_artifact = None
             self._resolver_entrypoint = None
             self._resolver_entrypoint_closed = False
             self._resolver_header_closed = False

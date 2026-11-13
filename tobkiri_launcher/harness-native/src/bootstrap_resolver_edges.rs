@@ -13,7 +13,8 @@ pub(super) const VERIFIED_ARTIFACTS_REQUEST: &str =
 const STATIC_RESPONSE: &str = "io.tobkiri.native-resolver-static-edges-result.v1";
 const DYNAMIC_RESPONSE: &str = "io.tobkiri.native-resolver-dynamic-edges-result.v1";
 const RESOLVE_REQUEST: &str = "io.tobkiri.native-resolver-profile.v1";
-const SHELL_ARTIFACT_VERIFIED: &str = "io.tobkiri.native-resolver-shell-artifact-verified.v1";
+const RESOLVE_RESPONSE: &str = "io.tobkiri.native-resolver-profile-result.v1";
+const RESOLVED_FIELDS: [&str; 4] = ["resolved", "profile", "lock", "plan"];
 const SCHEMA: &str = "io.tobkiri.profile-authority-edge.v1";
 const REF_PREFIX: &str = "authority-ref:";
 
@@ -176,10 +177,10 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
             ("bindings", bindings.clone()),
         ],
     )?;
-    run_profile_to_artifact_read(review, pack, scope, &request, profile_id_text).await
+    resolve_profile(review, pack, scope, &request, profile_id_text).await
 }
 
-async fn run_profile_to_artifact_read<S: BootstrapInputOwner + BootstrapReviewOwner>(
+async fn resolve_profile<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
@@ -197,41 +198,83 @@ async fn run_profile_to_artifact_read<S: BootstrapInputOwner + BootstrapReviewOw
         .context("completed original catalog controller missing")?
         .begin_pack_resolve(profile_id)?;
     match pack.observe_resolver_profile(request).await? {
-        Ok(boundary) => review.actual.resolver_profile_boundary = Some(boundary),
+        Ok(result) => review.actual.resolver_profile_result = Some(result),
         Err(failure) => {
             caller.check(review, pack)?;
             return catalog::handle_call_failure(review, pack, caller, failure, false).await;
         }
     }
     caller.check(review, pack)?;
-    let boundary = CoreValue::parse_guest(
+    let shell_completed = pack
+        .work
+        .get()
+        .catalog
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .is_some_and(
+            crate::original_authority::catalog::CatalogIo::pack_resolve_shell_artifact_completed,
+        );
+    let result = CoreValue::parse_guest(
         review
             .actual
-            .resolver_profile_boundary
+            .resolver_profile_result
             .as_ref()
-            .expect("actual resolver artifact boundary")
+            .expect("actual resolved Profile result")
             .as_bytes(),
         pack.input_budget,
     )?;
-    denied::exact(&boundary, &["format", "scope"])?;
-    if denied::field(&boundary, "format")?.as_str() != Some(SHELL_ARTIFACT_VERIFIED)
-        || !denied::same_scope(&denied::field(&boundary, "scope")?, scope)
-        || !pack
-            .work
-            .get()
-            .catalog
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .as_ref()
-            .is_some_and(
-                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_artifact_completed,
-            )
-    {
+    validate_resolved_profile(&result, scope, shell_completed)?;
+    Ok(BootstrapReviewFailure::NotBound(
+        BootstrapReviewReachpoint::BootstrapPredecessorNotBound,
+    ))
+}
+
+fn validate_resolved_profile(
+    result: &CoreValue,
+    scope: &CoreValue,
+    shell_completed: bool,
+) -> Result<()> {
+    if !shell_completed {
         bail!("original resolver did not finish verifying the selected Shell");
     }
-    Ok(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::ResolvePackCompositionNotBound,
-    ))
+    denied::exact(
+        result,
+        &[
+            "format", "scope", "resolved", "profile", "lock", "plan", "owned",
+        ],
+    )?;
+    if denied::field(result, "format")?.as_str() != Some(RESOLVE_RESPONSE)
+        || !denied::same_scope(&denied::field(result, "scope")?, scope)
+    {
+        bail!("resolved Profile result scope or format differs");
+    }
+    let mut object_ids: [Option<CoreValue>; RESOLVED_FIELDS.len()] =
+        [const { None }; RESOLVED_FIELDS.len()];
+    for (index, name) in RESOLVED_FIELDS.into_iter().enumerate() {
+        let reference = denied::field(result, name)?;
+        denied::reference(&reference, scope)?;
+        let id = denied::field(&reference, "object")?;
+        if object_ids[..index]
+            .iter()
+            .flatten()
+            .any(|existing| existing.as_str() == id.as_str())
+        {
+            bail!("resolved Profile fields alias each other");
+        }
+        object_ids[index] = Some(id);
+    }
+    let owned = denied::field(result, "owned")?;
+    let owned = owned
+        .array()
+        .context("resolved Profile ownership is not an array")?;
+    let mut remaining = object_ids.iter().flatten();
+    for id in owned.iter() {
+        if !remaining.any(|issued| issued.as_str() == id.as_str()) {
+            bail!("resolved Profile ownership differs from the issued references");
+        }
+    }
+    Ok(())
 }
 
 fn validate_bundled_dynamic_rows(

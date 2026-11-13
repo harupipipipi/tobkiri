@@ -118,6 +118,56 @@ fn fresh_bundled_dynamic_edges_require_empty_rows_and_all_original_refs() -> Res
 }
 
 #[test]
+fn resolved_profile_requires_completed_shell_and_distinct_scoped_references() -> Result<()> {
+    let meter = Arc::new(Meter::default());
+    let budget: Arc<dyn AllocationBudget> = meter.clone();
+    let accepted = serde_json::json!({
+        "format": RESOLVE_RESPONSE,
+        "scope": ["1", "2", "3", "4"],
+        "resolved": {"scope": ["1", "2", "3", "4"], "object": "a"},
+        "profile": {"scope": ["1", "2", "3", "4"], "object": "b"},
+        "lock": {"scope": ["1", "2", "3", "4"], "object": "c"},
+        "plan": {"scope": ["1", "2", "3", "4"], "object": "d"},
+        "owned": ["a", "b", "c", "d"],
+    });
+    let response = CoreValue::parse_guest(&serde_json::to_vec(&accepted)?, &budget)?;
+    let scope = denied::field(&response, "scope")?;
+    validate_resolved_profile(&response, &scope, true)?;
+    assert!(validate_resolved_profile(&response, &scope, false).is_err());
+    for (pointer, invalid) in [
+        ("/format", serde_json::json!(STATIC_RESPONSE)),
+        ("/scope/3", serde_json::json!("5")),
+        ("/lock/scope/0", serde_json::json!("0")),
+        ("/plan/object", serde_json::json!("b")),
+        ("/resolved/object", serde_json::json!("0a")),
+        ("/profile", serde_json::json!({"data": "unscoped"})),
+        ("/owned", serde_json::json!(["a", "c", "b"])),
+        ("/owned", serde_json::json!(["a", "a"])),
+        ("/owned", serde_json::json!(["e"])),
+        ("/owned", serde_json::json!(["a", null])),
+    ] {
+        let mut candidate = accepted.clone();
+        *candidate
+            .pointer_mut(pointer)
+            .context("fixture pointer missing")? = invalid;
+        let candidate = CoreValue::parse_guest(&serde_json::to_vec(&candidate)?, &budget)?;
+        assert!(
+            validate_resolved_profile(&candidate, &scope, true).is_err(),
+            "{pointer}"
+        );
+    }
+    for owned in [serde_json::json!([]), serde_json::json!(["b", "d"])] {
+        let mut candidate = accepted.clone();
+        candidate["owned"] = owned;
+        let candidate = CoreValue::parse_guest(&serde_json::to_vec(&candidate)?, &budget)?;
+        validate_resolved_profile(&candidate, &scope, true)?;
+    }
+    drop((response, scope));
+    assert_eq!(meter.live.load(Ordering::Relaxed), 0);
+    Ok(())
+}
+
+#[test]
 #[ignore = "requires a fresh CI execution of the pinned original Setup"]
 fn original_static_edge_reference_driver() -> Result<()> {
     anyhow::ensure!(std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"));

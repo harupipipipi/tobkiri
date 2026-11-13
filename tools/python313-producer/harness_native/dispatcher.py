@@ -475,7 +475,7 @@ class Dispatcher:
                                              caller + "-returned" if caller else None))
 
     def _resolve_bundled_profile(self, state: _State, frame: dict[str, Any]) -> str:
-        from .native_path import NativePath, _ShellArtifactVerified, _UnboundPlatformArtifacts
+        from .native_path import NativePath, _UnboundPlatformArtifacts
 
         registry = state.registry
         if (set(frame) != {"format", "scope", "catalog", "profile_id", "source_profile",
@@ -504,27 +504,50 @@ class Dispatcher:
         root = catalog.root
         if type(root) is not NativePath:
             raise UnsupportedValue("actual resolver catalog root is outside the fixed ABI")
+
+        def resolve_and_publish(*args, **kwargs):
+            value = state.runtime.resolve_profile(*args, **kwargs)
+            bridge = root._bridge
+            record = registry._records.get(type(value))
+            if (record is None or record.kind != "resolved-default-profile"
+                    or not bridge._resolver_header_closed
+                    or type(bridge._resolver_verified_artifact) is not NativePath
+                    or bridge._resolver_verified_artifact._bridge is not bridge
+                    or bridge._resolver_verified_artifact is not bridge._resolver_shell_leaf):
+                raise UnsupportedValue("original resolved profile or Shell witness is not bound")
+            values = (value, value.profile, value.lock, value.plan)
+            if (any(type(item) is not dict for item in values[1:])
+                    or len({id(item) for item in values}) != len(values)):
+                raise UnsupportedValue("original resolved profile documents are not bound")
+            created: list[tuple[Reference, int]] = []
+            try:
+                refs = [registry._retain(item, created=created)[0] for item in values]
+                return wire.dumps({
+                    "format": PREFIX + "resolver-profile-result.v1",
+                    "scope": registry.scope.wire(),
+                    **dict(zip(("resolved", "profile", "lock", "plan"),
+                               (ref.wire() for ref in refs))),
+                    "owned": [format(ref.object_id, "x") for ref, _ in created],
+                })
+            except BaseException:
+                registry._rollback(created)
+                raise
+
         try:
-            value = self._apply_original(
+            return self._apply_original(
                 lambda: root._bridge._resolve_catalog(
-                    state.runtime.resolve_profile, root, catalog.artifact_root,
+                    resolve_and_publish, root, catalog.artifact_root,
                     catalog, profile_id, approved_artifact_digests=approved,
                     authority_snapshot_digest=snapshot, authority_bindings=bindings,
                     security_epoch=int(epoch), additional_pack_ids=(),
                 ),
                 caller="resolver-profile",
             )
-        except _ShellArtifactVerified:
-            return wire.dumps({
-                "format": PREFIX + "resolver-shell-artifact-verified.v1",
-                "scope": registry.scope.wire(),
-            })
         except _UnboundPlatformArtifacts:
             return wire.dumps({
                 "format": PREFIX + "resolver-platform-artifacts-unbound.v1",
                 "scope": registry.scope.wire(),
             })
-        return self._result(value)
 
     def import_values(self, payload: str) -> str:
         """Import only builtin DATA and existing issued references."""

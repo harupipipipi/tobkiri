@@ -752,6 +752,10 @@ class IdentityObservationTransportTests(unittest.TestCase):
 class ResolverSourceLookupTransportTests(unittest.TestCase):
     """Fixed resolver observations, live Python lookup and issued provenance."""
 
+    class Resolved:
+        def __init__(self, profile, lock, plan):
+            self.profile, self.lock, self.plan = profile, lock, plan
+
     class Catalog:
         def __init__(self) -> None:
             self.profiles = {}
@@ -785,6 +789,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.runtime,
             (RecordType("native-path", NativePath, native_binding=True),
              RecordType("bundled-catalog", self.Catalog, ("profiles",)),
+             RecordType("resolved-default-profile", self.Resolved, ("profile", "lock", "plan")),
              RecordType("key-error", KeyError), RecordType("type-error", TypeError)),
             (KeyError, TypeError),
         ))
@@ -1346,6 +1351,37 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertEqual(self.view(packet)["origin"], "resolver-verified-artifacts-raised")
         with self.assertRaises(InvalidReference):
             self.verified_artifacts(catalog, profile_id, source)
+
+    def test_fixed_profile_publishes_actual_resolved_objects(self) -> None:
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        self.static_edges(source)
+        self.dynamic_edges(catalog, profile_id, source)
+        artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
+        result = self.Resolved({}, {}, {})
+        existing = self.registry.retain(result.profile)
+        leaf = self.bridge.bind("fixture-root", "/fixture/shell")
+
+        def resolve(*args, **kwargs):
+            self.assertTrue(self.bridge._resolving_catalog)
+            self.bridge._resolver_shell_leaf = leaf
+            self.bridge._resolver_header_closed = True
+            self.bridge._resolver_verified_artifact = leaf
+            return result
+
+        self.runtime.resolve_profile = resolve
+        request = self.frame("resolver-profile", catalog=catalog, profile_id=profile_id,
+                             source_profile=source, verified_artifacts=artifacts,
+                             snapshot="sha256:" + "1" * 64, epoch="1", bindings=[])
+        packet = wire.loads(self.dispatcher.call("resolve_profile", request))
+        self.assertEqual(packet["format"], PREFIX + "resolver-profile-result.v1")
+        self.assertEqual(packet["scope"], self.scope.wire())
+        for name, value in (("resolved", result), ("profile", result.profile),
+                            ("lock", result.lock), ("plan", result.plan)):
+            self.assertIs(self.registry.borrow(self.registry.reference(packet[name])), value)
+        self.assertEqual(packet["profile"], existing.wire())
+        self.assertEqual(len(packet["owned"]), 3)
+        self.assertIsNone(self.bridge._resolver_verified_artifact)
+        self.assertFalse(self.bridge._resolving_catalog)
 
     def test_fixed_profile_checks_shell_path_after_original_lock_digest(self) -> None:
         # The portable caller fixture uses the actual original helpers. The

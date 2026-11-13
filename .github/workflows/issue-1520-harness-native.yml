@@ -229,11 +229,11 @@ jobs:
           --log "$RUNNER_TEMP/harness-native-catalog-reader.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           original_authority::io::publication::catalog::tests:: -- --test-threads=1 --nocapture
-      - name: Verify ordered edge bindings and admission of the bundled dynamic result
+      - name: Verify ordered bindings and admission of original resolver results
         if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/harness-native-resolver-edges.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/harness-native-resolver-edges.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::resolver_edges::tests::
           -- --test-threads=1 --nocapture

@@ -14,7 +14,7 @@ import sys
 from types import ModuleType
 from typing import Any
 
-from .native_path import NativePath, PathBridge, _ShellArtifactVerified
+from .native_path import NativePath, PathBridge
 from .persistence_view import VIEW as _PERSISTENCE_VIEW
 from .value_graph import UnsupportedValue
 
@@ -146,10 +146,11 @@ class _ModuleLoader:
                 def verify_platform_artifact(*args, **kwargs):
                     result = verifier(*args, **kwargs)
                     if self.bridge._resolving_catalog:
-                        if (not self.bridge._resolver_header_closed
+                        if (self.bridge._resolver_verified_artifact is not None
+                                or not self.bridge._resolver_header_closed
                                 or result is not self.bridge._resolver_shell_leaf):
                             raise UnsupportedValue("original verifier result or header is not bound")
-                        raise _ShellArtifactVerified
+                        self.bridge._resolver_verified_artifact = result
                     return result
 
                 facade.verify_platform_artifact = verify_platform_artifact

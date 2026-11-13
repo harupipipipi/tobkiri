@@ -40,7 +40,7 @@ from harness_native.dispatcher import (  # noqa: E402
     AlreadyInitialized, Dispatcher, OriginalRuntime, PREFIX,
 )
 from harness_native.native_module_loader import ModulePathBindings  # noqa: E402
-from harness_native.native_path import PathBridge, _ShellArtifactVerified  # noqa: E402
+from harness_native.native_path import PathBridge  # noqa: E402
 from harness_native.persistence_view import SecurePersistenceError  # noqa: E402
 from harness_native.source_package import assemble  # noqa: E402
 from harness_native.value_graph import Registry, Scope, UnsupportedValue  # noqa: E402
@@ -542,8 +542,11 @@ class CatalogCaptureCompositionTests(unittest.TestCase):
                     bridge._resolving_catalog = True
                     bridge._resolver_shell_leaf = leaf
                     bridge._resolver_header_closed = True
-                    with self.assertRaises(_ShellArtifactVerified):
+                    self.assertIs(verify(), leaf)
+                    self.assertIs(bridge._resolver_verified_artifact, leaf)
+                    with self.assertRaises(UnsupportedValue):
                         verify()
+                    bridge._resolver_verified_artifact = None
                     outcome[0] = error
                     with self.assertRaises(ValueError) as caught:
                         verify()
