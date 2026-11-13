@@ -470,6 +470,74 @@ def value_checks(provider, kernel) -> dict[str, bool]:
         assert first_difference(getter_failure(False, stage), getter_failure(True, stage)) is None
     checks["type_owner_getter_name_order_and_exception_identity"] = True
 
+    def literal_kind(native, keyword, limit, kind, actual, fault_on):
+        events, fault = [], RuntimeError("actual literal type-check failure")
+        meta = {keyword: limit}
+        source_kind = sys.intern(kind)
+        source_keyword = getattr(_keywords, keyword)
+        default = original.TYPE_CHECKER
+
+        class Checker:
+            def is_type(self, value, observed_kind):
+                events.append(("checker", value is actual, observed_kind is source_kind))
+                assert value is actual and observed_kind is source_kind
+                if fault_on == "checker":
+                    raise fault
+                return default.is_type(value, observed_kind)
+
+        checker = Checker()
+
+        class Owner:
+            schema = meta
+            _validators = [(source_keyword, keyword, limit)]
+
+            def __getattribute__(self, name):
+                if name == "TYPE_CHECKER":
+                    events.append(("getter", name is source_type_name))
+                    if fault_on == "getter":
+                        raise fault
+                    return checker
+                return object.__getattribute__(self, name)
+
+            def is_type(self, value, name):
+                return original.is_type(self, value, name)
+
+        owner = Owner()
+        error_graph = None
+        try:
+            if native:
+                kernel.app_check_schema(
+                    actual, meta, provider._REGISTRY, reference_policy, default, None,
+                    value_policy=value_policy, type_owner=owner,
+                )
+            else:
+                assert next(original.iter_errors(owner, actual), None) is None
+        except RuntimeError as error:
+            assert error is fault
+            error_graph = failure_graph(error, fault)
+        assert (error_graph is None) == (fault_on is None)
+        expected = [("getter", True)]
+        if fault_on != "getter":
+            expected.append(("checker", True, True))
+            if keyword == "maxProperties" and fault_on is None:
+                expected += expected
+        assert events == expected, (keyword, events)
+        return {"events": events, "error": error_graph}
+
+    for keyword, limit, kind, actual in (
+        ("maxProperties", 1, "object", {}),
+        ("minItems", 0, "array", []),
+        ("minLength", 0, "string", ""),
+        ("minimum", 0, "number", 1),
+    ):
+        compare(lambda: {"meta": {keyword: limit}, "actual": actual},
+                ("native_type_checks",))
+        for fault_on in (None, "getter", "checker"):
+            inputs = (keyword, limit, kind, actual, fault_on)
+            assert first_difference(literal_kind(False, *inputs),
+                                    literal_kind(True, *inputs)) is None
+    checks["fixed_kind_keeps_live_getter_and_original_literal_identity"] = True
+
     def undefined_type():
         actual, events = {}, []
         undefined = exceptions.UndefinedTypeCheck("integer")
@@ -524,5 +592,5 @@ def value_checks(provider, kernel) -> dict[str, bool]:
         reentered.append(observed)
     assert first_difference(*reentered) is None
     checks["reentrant_type_callback_preserves_exception_and_releases_input"] = True
-    assert len(checks) == 17 and all(value is True for value in checks.values())
+    assert len(checks) == 18 and all(value is True for value in checks.values())
     return checks

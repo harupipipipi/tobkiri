@@ -2,7 +2,7 @@
 //! Derived from jsonschema 4.26.0 _keywords.py/_utils.py (COPYING.jsonschema).
 use super::{
     cursor::{Cursor, Entry, Pair},
-    value::TypePolicy,
+    value::{LiteralKind, TypePolicy},
     Object,
 };
 use crate::keywords::module_member;
@@ -85,7 +85,7 @@ pub(super) fn start<'py>(
     instance: &Bound<'py, PyAny>,
     schema: &Bound<'py, PyAny>,
 ) -> PyResult<Start> {
-    if !policy.check(py, instance, pyo3::intern!(py, "object").as_any(), schema)? {
+    if !policy.check_literal(py, instance, LiteralKind::object(py), schema)? {
         return Ok(Start::Skip);
     }
     Ok(match keyword {
@@ -101,7 +101,7 @@ pub(super) fn start<'py>(
             // Classification is complete before the aP type check. A callback
             // there can mutate live inputs/schema without changing this set.
             let extras = extras(py, instance, schema)?;
-            if policy.check(py, value, pyo3::intern!(py, "object").as_any(), schema)? {
+            if policy.check_literal(py, value, LiteralKind::object(py), schema)? {
                 Start::Cursor(State::Additional(Cursor::values(extras.as_any())?))
             } else if !value.is_truthy()? && extras.is_truthy()? {
                 let error = module_member(py, "app_schema_model", "additional_properties_error")?

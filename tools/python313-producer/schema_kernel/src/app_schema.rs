@@ -27,7 +27,7 @@ mod uri;
 mod value;
 use cursor::{Cursor, Entry, Keyword as Selected, Keywords, Pair};
 use references::{DefaultReferencePolicy, ReferenceState, ResourcePolicy};
-use value::{DefaultValuePolicy, Node, TypePolicy};
+use value::{DefaultValuePolicy, LiteralKind, Node, TypePolicy};
 
 struct Environment {
     specification: Object,
@@ -473,14 +473,18 @@ impl Frame {
                         }
                     }
                 }
-                "propertyNames" if json_type(env, instance, "object", schema)? => {
+                "propertyNames" if json_type(env, instance, LiteralKind::object(py), schema)? => {
                     children(ChildKind::PropertyNames, Cursor::values(instance)?)
                 }
-                "dependentSchemas" if json_type(env, instance, "object", schema)? => children(
-                    ChildKind::DependentSchemas,
-                    Cursor::pairs(&value.call_method0("items")?)?,
-                ),
-                "items" if json_type(env, instance, "array", schema)? => {
+                "dependentSchemas"
+                    if json_type(env, instance, LiteralKind::object(py), schema)? =>
+                {
+                    children(
+                        ChildKind::DependentSchemas,
+                        Cursor::pairs(&value.call_method0("items")?)?,
+                    )
+                }
+                "items" if json_type(env, instance, LiteralKind::array(py), schema)? => {
                     let prefix = schema
                         .call_method1("get", ("prefixItems", PyList::empty(py)))?
                         .len()?;
@@ -514,7 +518,7 @@ impl Frame {
                         children(ChildKind::Items, Cursor::range(prefix, total));
                     }
                 }
-                "prefixItems" if json_type(env, instance, "array", schema)? => {
+                "prefixItems" if json_type(env, instance, LiteralKind::array(py), schema)? => {
                     children(ChildKind::PrefixItems, Cursor::prefix(instance, &value)?)
                 }
                 "allOf" => children(ChildKind::AllOf, Cursor::enumerated(&value)?),
@@ -670,19 +674,11 @@ impl Execution {
 fn json_type(
     env: &Environment,
     value: &Bound<'_, PyAny>,
-    kind: &str,
+    kind: LiteralKind<'_>,
     schema: &Bound<'_, PyAny>,
 ) -> PyResult<bool> {
-    let py = value.py();
-    match kind {
-        "object" => env
-            .value_policy
-            .check(py, value, pyo3::intern!(py, "object").as_any(), schema),
-        "array" => env
-            .value_policy
-            .check(py, value, pyo3::intern!(py, "array").as_any(), schema),
-        _ => unreachable!("structural App type"),
-    }
+    env.value_policy
+        .check_literal(value.py(), value, kind, schema)
 }
 
 /// Inputs are the live selected provider's META, resource registry and callbacks.

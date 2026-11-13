@@ -79,6 +79,45 @@ pub(super) struct TypePolicy {
     boundary: Object,
     owner: Option<Object>,
 }
+
+/// A fixed Rust dispatch name paired with the actual Python literal passed to
+/// a foreign checker. These are only constructed by the four source rules.
+#[derive(Clone, Copy)]
+pub(super) struct LiteralKind<'py> {
+    value: &'py Bound<'py, PyString>,
+    name: &'static str,
+}
+
+impl<'py> LiteralKind<'py> {
+    pub(super) fn object(py: Python<'py>) -> Self {
+        Self {
+            value: pyo3::intern!(py, "object"),
+            name: "object",
+        }
+    }
+
+    pub(super) fn array(py: Python<'py>) -> Self {
+        Self {
+            value: pyo3::intern!(py, "array"),
+            name: "array",
+        }
+    }
+
+    fn string(py: Python<'py>) -> Self {
+        Self {
+            value: pyo3::intern!(py, "string"),
+            name: "string",
+        }
+    }
+
+    fn number(py: Python<'py>) -> Self {
+        Self {
+            value: pyo3::intern!(py, "number"),
+            name: "number",
+        }
+    }
+}
+
 impl TypePolicy {
     pub(super) fn new(
         py: Python<'_>,
@@ -126,21 +165,46 @@ impl TypePolicy {
         kind: &Bound<'_, PyAny>,
         schema: &Bound<'_, PyAny>,
     ) -> PyResult<bool> {
+        self.check_kind(py, value, kind, None, schema)
+    }
+
+    pub(super) fn check_literal(
+        &self,
+        py: Python<'_>,
+        value: &Bound<'_, PyAny>,
+        kind: LiteralKind<'_>,
+        schema: &Bound<'_, PyAny>,
+    ) -> PyResult<bool> {
+        self.check_kind(py, value, kind.value.as_any(), Some(kind.name), schema)
+    }
+
+    fn check_kind(
+        &self,
+        py: Python<'_>,
+        value: &Bound<'_, PyAny>,
+        kind: &Bound<'_, PyAny>,
+        literal: Option<&'static str>,
+        schema: &Bound<'_, PyAny>,
+    ) -> PyResult<bool> {
         let checker = self.current_checker(py)?;
         if self
             .fixed
             .as_ref()
             .is_some_and(|fixed| checker.is(fixed.bind(py)))
-            && kind.is_exact_instance_of::<PyString>()
         {
             // A surrogate-containing or otherwise unsupported type name must
             // reach the actual Python lookup/error operation, not fail while
             // merely selecting a native scalar rule.
-            if let Ok(name) = kind.cast::<PyString>()?.to_str() {
-                if let Some(result) = fixed_type(value, name) {
-                    NATIVE_TYPES.fetch_add(1, Ordering::Relaxed);
-                    return Ok(result);
+            let name = match literal {
+                Some(name) => Some(name),
+                None if kind.is_exact_instance_of::<PyString>() => {
+                    kind.cast::<PyString>()?.to_str().ok()
                 }
+                None => None,
+            };
+            if let Some(result) = name.and_then(|name| fixed_type(value, name)) {
+                NATIVE_TYPES.fetch_add(1, Ordering::Relaxed);
+                return Ok(result);
             }
         }
         PYTHON_TYPES.fetch_add(1, Ordering::Relaxed);
@@ -241,7 +305,7 @@ pub(super) fn numeric_bound<'py>(
     instance: &Bound<'py, PyAny>,
     schema: &Bound<'py, PyAny>,
 ) -> PyResult<Option<Bound<'py, PyAny>>> {
-    if !policy.check(py, instance, pyo3::intern!(py, "number").as_any(), schema)? {
+    if !policy.check_literal(py, instance, LiteralKind::number(py), schema)? {
         return Ok(None);
     }
     let failed = if let Some(result) = native_comparison(keyword, instance, value) {
@@ -378,14 +442,14 @@ fn length_rule<'py>(
     schema: &Bound<'py, PyAny>,
 ) -> PyResult<Option<Bound<'py, PyAny>>> {
     let kind = match keyword {
-        "minItems" | "maxItems" => pyo3::intern!(py, "array"),
-        "minLength" | "maxLength" => pyo3::intern!(py, "string"),
-        _ => pyo3::intern!(py, "object"),
+        "minItems" | "maxItems" => LiteralKind::array(py),
+        "minLength" | "maxLength" => LiteralKind::string(py),
+        _ => LiteralKind::object(py),
     };
-    if !policy.check(py, instance, kind.as_any(), schema)? {
+    if !policy.check_literal(py, instance, kind, schema)? {
         return Ok(None);
     }
-    if keyword == "maxProperties" && !policy.check(py, instance, kind.as_any(), schema)? {
+    if keyword == "maxProperties" && !policy.check_literal(py, instance, kind, schema)? {
         return Ok(None); // This second selected type check is in the source.
     }
     let length = instance.len()?; // Actual protocol, once per constraint visit.
