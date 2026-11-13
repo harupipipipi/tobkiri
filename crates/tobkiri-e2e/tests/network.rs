@@ -7,11 +7,16 @@ use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     },
     thread,
     time::{Duration, Instant},
 };
 use support::*;
+use tobkiri_core::{NativeInputRouteStatus, NativeInputStatus};
+use tobkiri_flow::RunEventKind;
+
+const FIRST_DELTA: &str = "Hello";
 
 #[derive(Clone, Copy, Default)]
 struct RequestDiagnostics {
@@ -80,7 +85,7 @@ struct Server {
     thread: Option<thread::JoinHandle<()>>,
 }
 impl Server {
-    fn new() -> Result<Self> {
+    fn new(resume_first_response: mpsc::Receiver<()>) -> Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", 0))?;
         let origin = format!("http://{}", listener.local_addr()?);
         let stop = Arc::new(AtomicBool::new(false));
@@ -91,7 +96,7 @@ impl Server {
         let trace = diagnostics.clone();
         let started = Instant::now();
         let handle = thread::spawn(move || {
-            for stream in listener.incoming() {
+            'connections: for stream in listener.incoming() {
                 if flag.load(Ordering::SeqCst) {
                     break;
                 }
@@ -225,22 +230,35 @@ impl Server {
                     record(metadata);
                     continue;
                 }
-                let mut sse = String::new();
-                for delta in ["Hello", " ", "猫", " is", " streamed", "."] {
-                    sse.push_str(&format!(
+                let delta_frame = |delta: &str| {
+                    format!(
                         "data: {}\r\n\r\n",
                         serde_json::json!({"choices":[{"delta":{"content":delta}}]})
-                    ));
+                    )
+                };
+                let first_frame = delta_frame(FIRST_DELTA);
+                let mut sse = String::new();
+                for delta in [" ", "猫", " is", " streamed"] {
+                    sse.push_str(&delta_frame(delta));
                 }
-                sse.push_str(&format!("data: {}\n\n",serde_json::json!({"choices":[],"usage":{"prompt_tokens":prompt_tokens,"completion_tokens":6}})));
+                sse.push_str(&format!(
+                    "data: {}\n\n",
+                    serde_json::json!({
+                        "choices": [{"delta": {"content": "."}}],
+                        "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": 6},
+                    })
+                ));
                 sse.push_str("data: [DONE]\n\n");
-                // Deliberately split UTF-8 and SSE frame boundaries in HTTP chunks.
-                for chunk in sse.as_bytes().chunks(3) {
+                // Keep the first frame whole and split later UTF-8 and SSE boundaries.
+                let chunks =
+                    std::iter::once(first_frame.as_bytes()).chain(sse.as_bytes().chunks(3));
+                for (chunk_index, chunk) in chunks.enumerate() {
+                    let prefix = format!("{:x}\r\n", chunk.len());
                     if metadata
                         .write_result(
                             "chunk-prefix-write",
-                            3,
-                            write!(stream, "{:x}\r\n", chunk.len()),
+                            prefix.len(),
+                            stream.write_all(prefix.as_bytes()),
                         )
                         .and_then(|_| {
                             metadata.write_result(
@@ -259,6 +277,20 @@ impl Server {
                         .is_err()
                     {
                         break;
+                    }
+                    if request_index == 0
+                        && chunk_index == 0
+                        && let Err(error) =
+                            resume_first_response.recv_timeout(Duration::from_secs(20))
+                    {
+                        let kind = match error {
+                            mpsc::RecvTimeoutError::Timeout => io::ErrorKind::TimedOut,
+                            mpsc::RecvTimeoutError::Disconnected => io::ErrorKind::BrokenPipe,
+                        };
+                        metadata.error("wait-for-first-flow-delta", Some(kind));
+                        metadata.send_end_us = Some(started.elapsed().as_micros());
+                        record(metadata);
+                        continue 'connections;
                     }
                 }
                 let _ = metadata.write_result(
@@ -326,17 +358,74 @@ impl Drop for Server {
 
 #[tokio::test]
 async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() -> Result<()> {
-    let server = Server::new()?;
+    let (resume_first_response, wait_for_delta) = mpsc::channel();
+    let server = Server::new(wait_for_delta)?;
+    let mut resume_first_response = Some(resume_first_response);
     let fixture = Fixture::new("harness-live", Some(&server.origin))?;
     let (_, session) = fixture.start().await?;
-    let events = fixture
-        .turn(&session, "Use the declared local external provider")
-        .await
-        .context("network: first turn")?;
+    fixture
+        .host
+        .lines
+        .lock()
+        .unwrap()
+        .push_back("Use the declared local external provider".into());
+    let input = within_session(
+        &session,
+        "network: physical Input read",
+        session.read_input(
+            fixture.input.clone(),
+            fixture.shape.clone(),
+            fixture.input_operation.clone(),
+        ),
+    )
+    .await?;
+    let mut run = within_session(
+        &session,
+        "network: NativeInput admission",
+        session.submit_native_input(input),
+    )
+    .await?;
+    assert_eq!(run.routes().len(), 1);
+    let plan_digest = run.routes()[0].target.plan_digest.clone();
+    let mut events = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    while let Some(tagged) =
+        next_native_event(&mut run, "network: first turn progress", deadline).await?
+    {
+        assert_eq!(tagged.route_index, 0);
+        assert_eq!(tagged.event.plan_digest, plan_digest);
+        if let Some(delta) = delta_text(&tagged.event)
+            && let Some(resume) = resume_first_response.take()
+        {
+            assert_eq!(delta, FIRST_DELTA);
+            resume.send(()).context("first SSE response gate closed")?;
+        }
+        events.push(tagged.event);
+    }
+    anyhow::ensure!(
+        resume_first_response.is_none(),
+        "the Flow must emit the first delta before the server sends more: {:?}",
+        failure_events(&events)
+    );
+    assert_native_completion(
+        &native_completion(&mut run, "network: first turn completion").await?,
+        NativeInputStatus::Succeeded,
+        &[NativeInputRouteStatus::Succeeded],
+    )?;
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event.kind, RunEventKind::Completed { .. }))
+    );
     assert_eq!(
         deltas(&events),
-        vec!["Hello", " ", "猫", " is", " streamed", "."]
+        vec![FIRST_DELTA, " ", "猫", " is", " streamed", "."]
     );
+    assert!(events.iter().any(|event| {
+        matches!(&event.kind, RunEventKind::Emitted { value, .. }
+            if value.get_key("kind").is_some_and(|kind| kind.as_str() == Some("usage"))
+                && value.get_key("completion-tokens").and_then(|tokens| tokens.as_i64()) == Some(6))
+    }));
     assert_eq!(fixture.host.output_text()?.trim(), "Hello 猫 is streamed.");
     {
         let requests = server.requests.lock().unwrap();
@@ -354,7 +443,7 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
     assert_eq!(loaded_message_count(&second), Some(2));
     assert_eq!(
         deltas(&second),
-        vec!["Hello", " ", "猫", " is", " streamed", "."]
+        vec![FIRST_DELTA, " ", "猫", " is", " streamed", "."]
     );
     let requests = server.requests.lock().unwrap();
     assert_eq!(

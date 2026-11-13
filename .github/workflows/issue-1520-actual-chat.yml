@@ -7,6 +7,7 @@ on:
       - '.github/workflows/issue-1520-actual-chat.yml'
       - 'crates/tobkiri-e2e/tests/chat.rs'
       - 'crates/tobkiri-e2e/tests/network.rs'
+      - 'packs/local.openai-compat-provider/src/**'
       - 'crates/tobkiri-e2e/tests/ui.rs'
       - 'crates/tobkiri-cli/**'
       - 'tools/quality/issue_1520_cli_roundtrip.py'

@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/issue-1520-actual-1b.yml'
       - 'crates/tobkiri-e2e/tests/llama.rs'
+      - 'packs/local.openai-compat-provider/src/**'
   workflow_dispatch:
 
 permissions:

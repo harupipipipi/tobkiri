@@ -16,6 +16,7 @@ struct ActiveStream {
     response: network::Response,
     decoder: Decoder,
     text: String,
+    pending_usage: Option<String>,
     done: bool,
 }
 
@@ -67,7 +68,13 @@ impl Provider for Pack {
             if !is_sse { return Err(error(ErrorCode::Invalid,"provider response is not SSE")); }
             state.next_id = state.next_id.checked_add(1).ok_or_else(|| error(ErrorCode::LimitExceeded,"stream handle exhaustion"))?;
             let id = state.next_id;
-            state.streams.insert(id,ActiveStream {response,decoder:Decoder::default(),text:String::new(),done:false});
+            state.streams.insert(id, ActiveStream {
+                response,
+                decoder: Decoder::default(),
+                text: String::new(),
+                pending_usage: None,
+                done: false,
+            });
             Ok(StreamHandle {id})
         })
     }
@@ -80,8 +87,10 @@ impl stream_source::Guest for Pack {
         let result = STATE.with_borrow_mut(|state| {
             let stream = state.streams.get_mut(&local_id).ok_or_else(|| error(ErrorCode::NotFound,"stream not found"))?;
             if stream.done { state.streams.remove(&local_id); return Ok(vec![]); }
+            let max = max as usize;
             let mut events = Vec::new();
-            while events.len() < max as usize {
+            events.extend(stream.pending_usage.take());
+            while events.len() < max {
                 if flow::is_cancelled() { state.streams.remove(&local_id); return Err(error(ErrorCode::Cancelled,"run cancelled")); }
                 if let Some(frame) = stream.decoder.next_frame() {
                     if frame == "[DONE]" {
@@ -96,9 +105,23 @@ impl stream_source::Guest for Pack {
                         if !text.is_empty() { stream.text.push_str(text); events.push(tobkiri_guest_sdk::delta_event(text)); }
                     }
                     if let Some(usage) = value.get("usage").filter(|usage|usage.is_object()) {
-                        events.push(serde_json::json!({"kind":"usage","text":null,"prompt-tokens":usage.get("prompt_tokens").and_then(|value|value.as_u64()).unwrap_or(0),"completion-tokens":usage.get("completion_tokens").and_then(|value|value.as_u64()).unwrap_or(0)}).to_string());
+                        let event = serde_json::json!({
+                            "kind": "usage", "text": null,
+                            "prompt-tokens": usage.get("prompt_tokens").and_then(|value| value.as_u64()).unwrap_or(0),
+                            "completion-tokens": usage.get("completion_tokens").and_then(|value| value.as_u64()).unwrap_or(0),
+                        })
+                        .to_string();
+                        if events.len() == max {
+                            stream.pending_usage = Some(event);
+                        } else {
+                            events.push(event);
+                        }
                     }
                     continue;
+                }
+                // Publish decoded events before waiting for more network data.
+                if !events.is_empty() {
+                    break;
                 }
                 match stream.response.read(8192)? {
                     Some(chunk) => stream.decoder.feed(&chunk).map_err(|message|error(ErrorCode::Invalid,message))?,
