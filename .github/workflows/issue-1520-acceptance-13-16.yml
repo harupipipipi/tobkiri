@@ -14,6 +14,8 @@ on:
       - 'crates/tobkiri-gate/**'
       - 'crates/tobkiri-profile/**'
       - 'crates/tobkiri-store/**'
+      - 'crates/tobkiri-e2e/tests/storage_tiers.rs'
+      - 'crates/tobkiri-e2e/tests/storage_tiers/**'
   workflow_dispatch:
 
 permissions:
@@ -92,6 +94,11 @@ jobs:
         run: >-
           cargo clippy --locked -p tobkiri-gate -p tobkiri-store -p tobkiri-core
           -p tobkiri-profile --all-targets --no-deps -- -D warnings
+      - name: Exercise actual Wasm storage across two Profiles
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/storage-tiers-wasm.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test storage_tiers
       - name: Retain executed-test receipts
         if: always()
         uses: actions/upload-artifact@v4
@@ -103,4 +110,5 @@ jobs:
             ${{ runner.temp }}/store-authority.log*
             ${{ runner.temp }}/store-security.log*
             ${{ runner.temp }}/core-acceptance.log*
+            ${{ runner.temp }}/storage-tiers-wasm.log*
           if-no-files-found: warn
