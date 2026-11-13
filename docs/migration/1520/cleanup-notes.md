@@ -3089,6 +3089,26 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   物理IO 7件とCoreによるowner引き継ぎも成功した。両OSの原本と310参照の
   [再比較 43463494534](https://github.com/harupipipipi/tobkiri/actions/runs/43463494534)
   も成功した。ファイルの内容、ツリー列挙、署名、起動の検証は残る。
+- `faea02dd7` は選択済みShellディレクトリを同じ物理ディレクトリから列挙し、
+  元のPack側で名前順に並べる。既存カタログと列挙・FD解放の処理を共用する。
+  最初の子の検査までが次の境界。UTF-8で表せない名前は現段階では拒否する。
+  [初回Wasm CI 43469000639](https://github.com/harupipipipi/tobkiri/actions/runs/43469000639)
+  でResolver終了後に列挙状態が残った。終了時にクリアする `32dc813b5` を送り、
+  [再検証 43469616491](https://github.com/harupipipipi/tobkiri/actions/runs/43469616491)
+  のportableと実Wasm構築が成功した。
+  [初回物理IO CI 43468738747](https://github.com/harupipipipi/tobkiri/actions/runs/43468738747)
+  は試験で `resolved` の所有権を移してしまいコンパイルで停止した。試験を
+  `86c3edbd6` で修正した。
+- `ebb161e5b` は選択済みShellが通常ファイルの場合のopen、前後のfstat、
+  最大1 MiBずつの読み取り、closeをRustの同じFDへつなぐ。元のPackは読み取り前後の
+  メタデータとサイズを比較し、同じdigestを計算する。次のentrypoint解決と
+  ディレクトリ内の子は未接続。既存 `fd_stat.rs` の出力処理とcaptured sourceの
+  所有者検査を共用した。ABIの異なる既存 `fd_read.rs` と読み取り・base64を
+  共用できるかは、物理IO・エラー・予算の比較後に検討する。
+  [物理IO・Clippy 43471279499](https://github.com/harupipipipi/tobkiri/actions/runs/43471279499)
+  と [実Wasm 43471331247](https://github.com/harupipipipi/tobkiri/actions/runs/43471331247)
+  で検証中。後者は原本の関数を使うdigestの試験と、元モジュールの限定OS importを
+  確認する。製品への採用、GUIでの会話、VM廃止の受け入れには数えない。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
