@@ -23,6 +23,9 @@ mod candidate_selection;
 pub(crate) mod catalog;
 #[path = "original_profile_definitions.rs"]
 pub(crate) mod definitions;
+#[cfg(unix)]
+#[path = "original_development_handover.rs"]
+mod development_handover;
 pub(crate) use candidate_selection::{CandidateSelection, ResolverAuthority};
 
 const JOURNAL: &str = "bootstrap-publication.json";

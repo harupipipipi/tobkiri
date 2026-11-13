@@ -7,6 +7,16 @@ pub(super) fn read_stream<S: OriginalAuthorityOwner>(
     file: &mut TrackedFile,
     chunk: usize,
 ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
+    read_stream_limited(op, file, chunk, None)
+}
+
+#[cfg(unix)]
+fn read_stream_limited<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    file: &mut TrackedFile,
+    chunk: usize,
+    limit: Option<usize>,
+) -> Result<Funded<Zeroizing<Vec<u8>>>> {
     let _scratch_capacity = op.reserve(OriginalAuthorityStage::Source, chunk)?;
     let mut scratch = Zeroizing::new(Vec::new());
     scratch
@@ -26,10 +36,11 @@ pub(super) fn read_stream<S: OriginalAuthorityOwner>(
         let length = old
             .checked_add(chunk)
             .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
+        let allocation = limit.map_or(length, |limit| length.min(limit));
         // Prepay the largest possible next result BEFORE IO. Read into the
         // separately prepaid scratch, so EOF cannot cause a needless key copy.
         capacity
-            .resize((bytes.capacity() + length) as u64)
+            .resize((bytes.capacity() + allocation).max(1) as u64)
             .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
         let count = file
             .read(&mut scratch)
@@ -41,6 +52,9 @@ pub(super) fn read_stream<S: OriginalAuthorityOwner>(
             break;
         }
         let needed = old + count;
+        if limit.is_some_and(|limit| needed > limit) {
+            return Err(secure_error("persistence entry exceeds read limit"));
+        }
         if needed > bytes.capacity() {
             let mut next = Zeroizing::new(Vec::new());
             next.try_reserve_exact(needed)
@@ -367,6 +381,22 @@ impl Directory {
         op: &Operation<'_, S>,
         relative: &Path,
     ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
+        self.read_relative_with_limit(op, relative, None)
+    }
+    pub(super) fn read_bounded<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        name: &str,
+        max_bytes: usize,
+    ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
+        self.read_relative_with_limit(op, Path::new(name), Some(max_bytes))
+    }
+    fn read_relative_with_limit<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        relative: &Path,
+        limit: Option<usize>,
+    ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
         let parent = self.parent(op, relative)?;
         let result = (|| {
             let name = parent
@@ -375,6 +405,9 @@ impl Directory {
                 .map_err(|_| OriginalAuthorityError::unavailable())?;
             let directory = parent.files.last().expect("directory chain");
             let before = Self::stat(directory, name, true)?.expect("required file");
+            if limit.is_some_and(|limit| before.fingerprint.4 > limit as u64) {
+                return Err(secure_error("persistence entry exceeds read limit"));
+            }
             let text = CString::new(name).map_err(|_| OriginalAuthorityError::unavailable())?;
             let descriptor = unsafe {
                 libc::openat(
@@ -394,7 +427,7 @@ impl Directory {
                 {
                     return Err(secure_error("persistence entry changed before read"));
                 }
-                let bytes = read_stream(op, &mut file, 1024 * 1024)?;
+                let bytes = read_stream_limited(op, &mut file, 1024 * 1024, limit)?;
                 let after = file.metadata().map_err(|error| raw_io(error, None))?;
                 let named = Self::stat(directory, name, true)?.expect("required file");
                 if read_fingerprint(&after) != read_fingerprint(&opened)

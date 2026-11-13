@@ -144,10 +144,60 @@ pub(super) fn decode_strict<S: OriginalAuthorityOwner>(
     Ok(doc)
 }
 
-/// Only the fixed catalog caller, after its actual same-Store json.loads,
-/// uses this accounting path. Syntax/value decoding is the SAME decoder;
-/// neither legacy Authority nor strict journal callers use this estimate.
+/// Reuse the metered non-strict decoder after the actual catalog json.loads.
 pub(super) fn decode_catalog_manifest<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+) -> Result<Funded<Document>> {
+    decode_metered_legacy(input, op, budget)
+}
+
+/// A handover journal uses json.loads before canonicalizing its signed payload.
+#[cfg(unix)]
+pub(super) fn decode_handover_journal<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+) -> Result<Funded<Document>> {
+    let input = input.strip_prefix(b"\xef\xbb\xbf").unwrap_or(input);
+    if matches!(input.first(), Some(0 | 0xfe | 0xff)) || input.get(1).is_some_and(|byte| *byte == 0)
+    {
+        return Err(OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Audit,
+            "original handover journal byte encoding",
+        ));
+    }
+    decode_metered_legacy(input, op, budget).map_err(|mut error| {
+        if let Some(OriginalAuthorityCause::Python { class, .. }) = error.cause.as_ref()
+            && matches!(
+                *class,
+                "json.decoder.JSONDecodeError" | "builtins.UnicodeDecodeError"
+            )
+            && let Some(OriginalAuthorityCause::Python {
+                class,
+                message,
+                cause,
+                context,
+                suppressed,
+            }) = error.cause.take()
+        {
+            let mut original = raw_error(class, message);
+            original.cause = cause.map(|cause| *cause);
+            original.suppressed = suppressed;
+            if let Some(context) = context
+                && let OriginalAuthorityCause::Python { class, message, .. } = *context
+            {
+                original.context = Some(Box::new(raw_error(class, message)));
+            }
+            original
+        } else {
+            error
+        }
+    })
+}
+
+fn decode_metered_legacy<S: OriginalAuthorityOwner>(
     input: &[u8],
     op: &Operation<'_, S>,
     budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
@@ -1133,7 +1183,10 @@ fn strict_text(text: &Text) -> Result<()> {
     Ok(())
 }
 
-fn validate_strict<S: OriginalAuthorityOwner>(doc: &Document, op: &Operation<'_, S>) -> Result<()> {
+pub(super) fn validate_strict<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    op: &Operation<'_, S>,
+) -> Result<()> {
     enum Check<'a> {
         Value(usize, usize),
         Key(&'a Text, usize),

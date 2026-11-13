@@ -259,7 +259,7 @@ pub(crate) struct InactiveBootstrapRegistry {
     #[cfg(unix)]
     definition: Funded<Vec<u8>>,
     #[cfg(unix)]
-    _snapshot: definitions_model::State,
+    snapshot: definitions_model::State,
 }
 
 impl InactiveBootstrapRegistry {
@@ -270,6 +270,16 @@ impl InactiveBootstrapRegistry {
         }
         #[cfg(not(unix))]
         unreachable!("inactive registry snapshot requires native persistence")
+    }
+
+    #[cfg(unix)]
+    pub(super) fn check_handover<S: OriginalAuthorityOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        journal: &Document,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<()> {
+        definitions_model::check_inactive_handover(op, &mut self.snapshot, journal, budget)
     }
 }
 
@@ -286,7 +296,7 @@ pub(super) fn inactive_bootstrap_registry<S: OriginalAuthorityOwner>(
         definitions_model::inactive_definition(op, &mut snapshot, profile_id, budget)?.map(
             |definition| InactiveBootstrapRegistry {
                 definition,
-                _snapshot: snapshot,
+                snapshot,
             },
         ),
     )

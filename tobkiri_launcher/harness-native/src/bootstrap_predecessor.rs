@@ -135,7 +135,7 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         bail!("inactive predecessor source differs from the validated catalog identity");
     }
     drop((value, response, request));
-    let registry = match review.read.inactive_predecessor_registry(
+    let mut registry = match review.read.inactive_predecessor_registry(
         &pack.work.get().source,
         pack.cancellation,
         profile_id,
@@ -181,14 +181,16 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         .context("inactive predecessor equality response is not boolean")?;
     drop((value, response, request));
     if !equal {
-        match review
-            .read
-            .inactive_predecessor_has_journal(&pack.work.get().source, pack.cancellation)
-        {
-            Ok(false) => {}
-            Ok(true) => {
+        match review.read.check_inactive_predecessor_handover(
+            &pack.work.get().source,
+            pack.cancellation,
+            &mut registry,
+            pack.input_budget,
+        ) {
+            Ok(None) => {}
+            Ok(Some(_)) => {
                 return Ok(Err(BootstrapReviewFailure::NotBound(
-                    BootstrapReviewReachpoint::InactiveBootstrapHandoverNotBound,
+                    BootstrapReviewReachpoint::InactiveBootstrapHandoverDefinitionNotBound,
                 )));
             }
             Err(error) => return Ok(Err(original_failure(error))),

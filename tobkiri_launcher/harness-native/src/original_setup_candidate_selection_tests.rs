@@ -432,7 +432,7 @@ async fn inactive_predecessor_treats_dangling_active_and_index_paths_as_present(
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn inactive_predecessor_reads_the_original_registry_and_probes_the_fence() {
+async fn inactive_predecessor_reads_the_original_registry_and_checks_the_fence() {
     const JOURNAL: &str = "development-host-handover.json";
     const KEY: &str = "development-host-handover.key";
     let reference = std::env::var_os("TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE")
@@ -449,7 +449,7 @@ async fn inactive_predecessor_reads_the_original_registry_and_probes_the_fence()
                 "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
             );
             let inputs = path.with_file_name("inactive-registry-inputs");
-            let definition =
+            let definition: serde_json::Value =
                 serde_json::from_slice(&fs::read(inputs.join("source-profile.json")).unwrap())
                     .unwrap();
             (observation, inputs, definition)
@@ -461,6 +461,10 @@ async fn inactive_predecessor_reads_the_original_registry_and_probes_the_fence()
         "different-row-no-handover",
         "authenticated-handover",
         "witness-without-journal",
+        "handover-too-large",
+        "key-too-large",
+        "handover-bad-authentication",
+        "handover-stale-snapshot",
     ] {
         with_source(|source, read, cancel, budget| {
             for discard in [true, false] {
@@ -523,25 +527,60 @@ async fn inactive_predecessor_reads_the_original_registry_and_probes_the_fence()
                         "created_at":10,"updated_at":10,"tombstone":true
                     }));
                 }
-                if matches!(
-                    case,
-                    "different-row-no-handover"
-                        | "authenticated-handover"
-                        | "witness-without-journal"
-                ) {
+                if !matches!(case, "missing-row" | "exact-mapping-equal" | "tombstone") {
                     packaged["display_name"] = json!("packaged version differs");
                 }
-                write_index(source, &sealed(state(vec![index])));
-                let witness = match case {
-                    "authenticated-handover" => Some(JOURNAL),
-                    "witness-without-journal" => Some(KEY),
-                    _ => None,
-                };
-                if let Some(name) = witness {
-                    // Only probe presence here. The original fixture uses real
-                    // authenticated bytes in the CI comparison.
-                    fs::write(source.root.join(name), b"test witness").unwrap();
-                    files.push(name);
+                let snapshot = sealed(state(vec![index]));
+                write_index(source, &snapshot);
+                if case == "witness-without-journal" {
+                    fs::write(source.root.join(KEY), b"test witness").unwrap();
+                    files.push(KEY);
+                } else if case == "handover-too-large" {
+                    fs::write(source.root.join(JOURNAL), vec![b' '; 128 * 1024 + 1]).unwrap();
+                    files.push(JOURNAL);
+                } else if matches!(
+                    case,
+                    "authenticated-handover"
+                        | "key-too-large"
+                        | "handover-bad-authentication"
+                        | "handover-stale-snapshot"
+                ) {
+                    let snapshot_digest = if case == "handover-stale-snapshot" {
+                        Digest::hash(b"stale snapshot").as_str().to_owned()
+                    } else {
+                        digest(&serde_json::from_slice(&snapshot).unwrap())
+                    };
+                    let key = [7; 32];
+                    let mut payload = json!({
+                        "schema":"io.tobkiri.development-host-handover-journal.v1",
+                        "stage":"completed","destination_profile_generation":1,
+                        "destination_profile_snapshot_digest":snapshot_digest
+                    });
+                    let canonical = tobkiri_canon::parse(
+                        &serde_json::to_vec(&payload).unwrap(),
+                        tobkiri_canon::Variant::StrictV1,
+                    )
+                    .unwrap();
+                    let signature =
+                        tobkiri_canon::seal(&canonical, tobkiri_canon::Variant::StrictV1, &key)
+                            .unwrap();
+                    payload["authentication"] = if case == "handover-bad-authentication" {
+                        json!("0".repeat(64))
+                    } else {
+                        json!(signature)
+                    };
+                    let stored_key = if case == "key-too-large" {
+                        vec![7; 33]
+                    } else {
+                        key.to_vec()
+                    };
+                    fs::write(source.root.join(KEY), stored_key).unwrap();
+                    fs::write(
+                        source.root.join(JOURNAL),
+                        serde_json::to_vec(&payload).unwrap(),
+                    )
+                    .unwrap();
+                    files.extend([KEY, JOURNAL]);
                 }
             }
             let read_files = || {
@@ -566,53 +605,73 @@ async fn inactive_predecessor_reads_the_original_registry_and_probes_the_fence()
                     super::reference_ci::original_error(&error)
                 }
                 _ => {
-                    let registry = result.unwrap().unwrap();
+                    let mut registry = result.unwrap().unwrap();
                     let selected: serde_json::Value =
                         serde_json::from_slice(registry.definition()).unwrap();
                     // The fixed guest comparison is covered separately, including
                     // Python bool/int equality. The pinned fixture uses exact types.
                     assert_eq!(selected == packaged, case == "exact-mapping-equal");
-                    match case {
-                        "exact-mapping-equal" => expected,
-                        "different-row-no-handover" => {
-                            assert!(
-                                !read
-                                    .inactive_predecessor_has_journal(source, cancel)
-                                    .unwrap()
-                            );
-                            assert!(
-                                read.inactive_predecessor_has_journal(source, cancel)
-                                    .is_err()
-                            );
-                            expected
+                    if case == "exact-mapping-equal" {
+                        expected
+                    } else {
+                        let result = read.check_inactive_predecessor_handover(
+                            source,
+                            cancel,
+                            &mut registry,
+                            budget,
+                        );
+                        assert!(
+                            read.check_inactive_predecessor_handover(
+                                source,
+                                cancel,
+                                &mut registry,
+                                budget,
+                            )
+                            .is_err()
+                        );
+                        match case {
+                            "different-row-no-handover" => {
+                                assert!(result.unwrap().is_none());
+                                expected
+                            }
+                            "authenticated-handover" => json!({
+                                "outcome": "authenticated",
+                                "handover_digest": result.unwrap().unwrap().as_str(),
+                            }),
+                            _ => {
+                                let message = match case {
+                                    "witness-without-journal" => {
+                                        "Development Host handover requires its authenticated recovery journal"
+                                    }
+                                    "handover-too-large" | "key-too-large" => {
+                                        "persistence entry exceeds read limit"
+                                    }
+                                    "handover-bad-authentication" => {
+                                        "Development Host handover journal authentication failed"
+                                    }
+                                    "handover-stale-snapshot" => {
+                                        "imported bootstrap registry changed after completed handover"
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                let error = result.unwrap_err();
+                                assert_eq!(error.message, message);
+                                super::reference_ci::original_error(&error)
+                            }
                         }
-                        "authenticated-handover" => {
-                            assert!(
-                                read.inactive_predecessor_has_journal(source, cancel)
-                                    .unwrap()
-                            );
-                            json!({"outcome": "journal-present"})
-                        }
-                        "witness-without-journal" => {
-                            let error = read
-                                .inactive_predecessor_has_journal(source, cancel)
-                                .unwrap_err();
-                            assert_eq!(error.class, "builtins.ValueError");
-                            assert_eq!(
-                                error.message,
-                                "Development Host handover requires its authenticated recovery journal"
-                            );
-                            super::reference_ci::original_error(&error)
-                        }
-                        _ => unreachable!(),
                     }
                 }
             };
             if let Some((row, _, _)) = original.as_ref() {
                 assert!(row["files_unchanged"].as_bool().unwrap());
                 if case == "authenticated-handover" {
-                    assert!(row["expected"]["predecessor"].is_object());
-                    assert_eq!(actual, json!({"outcome": "journal-present"}));
+                    assert_eq!(
+                        actual,
+                        json!({
+                            "outcome": "authenticated",
+                            "handover_digest": row["expected"]["predecessor"]["handover_digest"],
+                        })
+                    );
                 } else {
                     assert_eq!(row["expected"], actual);
                 }

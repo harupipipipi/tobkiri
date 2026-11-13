@@ -428,16 +428,8 @@ impl PublicationRead {
                 .saturating_add(profile_id.len())
                 .saturating_add(8192),
         )?;
-        let active_paths = [
-            root.join("profiles/active.json"),
-            root.join("workspaces")
-                .join(profile_id)
-                .join("activation/active.json"),
-        ];
-        for path in active_paths {
-            if predecessor_path_present(&op, &path)? {
-                return Ok(false);
-            }
+        if inactive_has_active_profile(&op, root, profile_id)? {
+            return Ok(false);
         }
         predecessor_path_present(&op, &root.join("profiles/index.json"))
     }
@@ -470,12 +462,14 @@ impl PublicationRead {
         }
     }
 
-    /// Probe the journal and witnesses only after an unequal definition.
-    pub(crate) fn inactive_predecessor_has_journal<S: OriginalAuthorityOwner>(
+    /// Authenticate handover and check its destination after an unequal definition.
+    pub(crate) fn check_inactive_predecessor_handover<S: OriginalAuthorityOwner>(
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
-    ) -> Result<bool> {
+        registry: &mut definitions::InactiveBootstrapRegistry,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Digest>> {
         #[cfg(unix)]
         {
             self.check_resolver_root(owner, cancellation)?;
@@ -497,14 +491,16 @@ impl PublicationRead {
                     .saturating_add(8192),
             )?;
             if predecessor_stat(&op, root, |path| fs::metadata(path))?.is_none() {
-                return Ok(false);
+                return Ok(None);
             }
-            const JOURNAL: &str = "development-host-handover.json";
+            use development_handover::{JOURNAL, KEY};
             if predecessor_path_present(&op, &root.join(JOURNAL))? {
-                return Ok(true);
+                let journal = development_handover::read(&op, root, budget)?;
+                registry.check_handover(&op, &journal.payload, budget)?;
+                return Ok(Some(journal.digest));
             }
             for witness in [
-                root.join("development-host-handover.key"),
+                root.join(KEY),
                 root.join("development-host-staging"),
                 root.join("packvm-vz").join(JOURNAL),
             ] {
@@ -515,11 +511,11 @@ impl PublicationRead {
                     ));
                 }
             }
-            Ok(false)
+            Ok(None)
         }
         #[cfg(not(unix))]
         {
-            let _ = (owner, cancellation);
+            let _ = (owner, cancellation, registry, budget);
             Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Source,
                 "Windows inactive Setup handover persistence/ACL",
@@ -552,6 +548,25 @@ impl PublicationRead {
             fixture: None,
         })
     }
+}
+
+#[cfg(unix)]
+fn inactive_has_active_profile<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    profile_id: &str,
+) -> Result<bool> {
+    for path in [
+        root.join("profiles/active.json"),
+        root.join("workspaces")
+            .join(profile_id)
+            .join("activation/active.json"),
+    ] {
+        if predecessor_path_present(op, &path)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(unix)]

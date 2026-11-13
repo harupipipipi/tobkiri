@@ -9,6 +9,7 @@ mod successor_selection;
 pub(super) use successor_selection::select_successor;
 
 const SCHEMA: &str = "io.tobkiri.profile-definition-store.v1";
+const CONFLICT: &str = "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict";
 pub(super) struct State {
     pub(super) doc: Funded<Document>,
     _scratch: NativeSetupReservation,
@@ -626,8 +627,6 @@ pub(super) fn inactive_definition<S: OriginalAuthorityOwner>(
     profile_id: &str,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<Funded<Vec<u8>>>> {
-    const CONFLICT: &str =
-        "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict";
     let doc = &mut state.doc;
     let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
     let mut selected = None;
@@ -659,6 +658,53 @@ pub(super) fn inactive_definition<S: OriginalAuthorityOwner>(
         .ok_or_else(|| raw(CONFLICT, "imported bootstrap revision is unavailable"))?;
     let profile = field(doc, current, "profile");
     canonical_at(doc, profile, None, op, budget).map(Some)
+}
+
+pub(super) fn check_inactive_handover<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &mut State,
+    journal: &Document,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    let changed = || {
+        raw(
+            CONFLICT,
+            "imported bootstrap registry changed after completed handover",
+        )
+    };
+    let doc = &mut state.doc;
+    let root = doc.root;
+    let generation = integer(doc, field(doc, root, "generation"));
+    if !journal
+        .get(journal.root, "stage")
+        .is_some_and(|stage| journal.string_is(stage, "completed"))
+    {
+        return Err(changed());
+    }
+    let expected_generation = journal
+        .get(journal.root, "destination_profile_generation")
+        .and_then(|id| match journal.node(id) {
+            Node::Scalar(CanonValue::Int(value)) => Some(*value),
+            Node::Scalar(CanonValue::Bool(value)) => Some(i64::from(*value)),
+            _ => None,
+        });
+    if expected_generation != Some(generation) {
+        return Err(changed());
+    }
+    let snapshot = digest_at(doc, root, None, op, budget)?;
+    let bootstrap = field(doc, root, "bootstrap");
+    if !journal
+        .get(journal.root, "destination_profile_snapshot_digest")
+        .is_some_and(|digest| journal.string_is(digest, snapshot.as_str()))
+        || !doc.string_is(field(doc, bootstrap, "state"), "not_required")
+        || !matches!(
+            doc.node(field(doc, bootstrap, "template_profile_revision")),
+            Node::Scalar(CanonValue::Null)
+        )
+    {
+        return Err(changed());
+    }
+    Ok(())
 }
 
 pub(super) fn get<S: OriginalAuthorityOwner>(

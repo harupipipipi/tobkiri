@@ -18,6 +18,7 @@ name: Issue 1520 original Setup resolver prefix
       - tobkiri_launcher/harness-native/src/bootstrap_predecessor.rs
       - tobkiri_launcher/harness-native/src/bootstrap_confirmation.rs
       - tobkiri_launcher/harness-native/src/bootstrap_listing.rs
+      - tobkiri_launcher/harness-native/src/original_development_handover.rs
       - tobkiri_launcher/harness-native/src/original_setup_candidate_selection_tests.rs
       - .github/workflows/issue-1520-original-setup-resolver-prefix.yml
 
@@ -90,7 +91,7 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::candidate_selection_tests::predecessor_rechecks_registry_and_pointer_in_the_resolver_scope
           -- --exact --test-threads=1 --nocapture
-      - name: Compare the inactive registry and journal probe with the pinned original
+      - name: Compare the inactive registry and journal authentication with the pinned original
         if: matrix.os == 'ubuntu-22.04'
         env:
           TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE: ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.json
@@ -98,7 +99,7 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/original-setup-resolver-prefix/inactive-registry.log" --expected-passed 1 --
           cargo test --locked -p tobkiri-harness-native --lib
-          original_authority::io::publication::definitions::candidate_selection_tests::inactive_predecessor_reads_the_original_registry_and_probes_the_fence
+          original_authority::io::publication::definitions::candidate_selection_tests::inactive_predecessor_reads_the_original_registry_and_checks_the_fence
           -- --exact --test-threads=1 --nocapture
       - name: Check native admission of the complete confirmation document
         if: matrix.os == 'ubuntu-22.04'
