@@ -8,6 +8,8 @@ on:
       - 'crates/tobkiri-e2e/tests/pi.rs'
       - 'packs/local.pi-adapter/**'
       - 'packs/local.pi-example-*/**'
+      - 'packs/shapes/pi-adapter.wit'
+      - 'crates/tobkiri-wit/wit/core/core.wit'
       - 'sdk/js/**'
   workflow_dispatch:
 
@@ -45,8 +47,13 @@ jobs:
       - name: Build verified Rust Packs and both pinned upstream wrappers
         run: |
           python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
-          node sdk/js/wrap-pi.mjs packs/local.pi-example-hello
-          node sdk/js/wrap-pi.mjs packs/local.pi-example-protected-paths
+          for pack in packs/local.pi-example-hello packs/local.pi-example-protected-paths; do
+            # Positional wrapping consumes the generated dependencies, which Git ignores.
+            mkdir -p "$pack/wit/deps"
+            cp crates/tobkiri-wit/wit/core/core.wit "$pack/wit/deps/core.wit"
+            cp packs/shapes/pi-adapter.wit "$pack/wit/deps/pi-adapter.wit"
+            node sdk/js/wrap-pi.mjs "$pack"
+          done
       - name: Replay unchanged extensions through the actual adapter and Gate
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
