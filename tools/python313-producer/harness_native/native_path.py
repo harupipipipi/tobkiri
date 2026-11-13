@@ -94,7 +94,6 @@ class PathBridge:
         try:
             return target(selected)
         finally:
-            self._resolver_listed_shell = False
             self._catalog_root = None
 
     def _catalog_request(self, target: dict, operation: str, args: list) -> dict:
@@ -114,6 +113,7 @@ class PathBridge:
         try:
             return target(*args, **kwargs)
         finally:
+            self._resolver_listed_shell = False
             self._resolver_tree_kind = None
             self._resolver_shell_leaf = None
             self._resolver_resolved_root = None
