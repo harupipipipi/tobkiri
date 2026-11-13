@@ -24,6 +24,7 @@ from unittest.mock import patch
 
 from original_authority_reference import ORIGINAL_HEAD, error_graph, write_json
 from original_catalog_prefix_reference import IGNORED, bind_resources, code_hashes
+from original_inactive_registry_reference import observe_inactive_registry
 from original_publication_reference import filesystem
 from original_setup_candidate_selection_reference import DENIED_CLASS, _lock_free
 from original_setup_review_reference import check_original
@@ -1037,6 +1038,7 @@ def prepare(original: Path, output: Path) -> None:
     # observations, generate the packaged Shell fixture in the same CI tree.
     (runtime / BUNDLE.parent / "platform-artifacts").rmdir()
     observe_shell(original, runtime, output)
+    observe_inactive_registry(original, runtime, runtime / BUNDLE, output)
     if _source_hashes(runtime) != expected or _source_hashes(source) != expected:
         raise AssertionError("original sources changed during resolver observation")
     check_original(original)

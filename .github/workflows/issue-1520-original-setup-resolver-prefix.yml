@@ -9,6 +9,7 @@ name: Issue 1520 original Setup resolver prefix
       - tools/original_setup_candidate_selection_reference.py
       - tools/original_setup_review_reference.py
       - tools/original_setup_shell_reference.py
+      - tools/original_inactive_registry_reference.py
       - tools/original_catalog_prefix_reference.py
       - tools/original_active_profile_fixtures.py
       - tools/original_authority_reference.py
@@ -89,6 +90,16 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::candidate_selection_tests::predecessor_rechecks_registry_and_pointer_in_the_resolver_scope
           -- --exact --test-threads=1 --nocapture
+      - name: Compare the inactive registry and journal probe with the pinned original
+        if: matrix.os == 'ubuntu-22.04'
+        env:
+          TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE: ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-setup-resolver-prefix/inactive-registry.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::definitions::candidate_selection_tests::inactive_predecessor_reads_the_original_registry_and_probes_the_fence
+          -- --exact --test-threads=1 --nocapture
       - name: Check native admission of the complete confirmation document
         if: matrix.os == 'ubuntu-22.04'
         run: >-
@@ -113,8 +124,10 @@ jobs:
           path: |
             ${{ runner.temp }}/original-setup-resolver-prefix/summary.json
             ${{ runner.temp }}/original-setup-resolver-prefix/shell.json
+            ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.json
             ${{ runner.temp }}/original-setup-resolver-prefix/static-edges.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/predecessor.log*
+            ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/confirmation.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/listing.log*
           if-no-files-found: warn

@@ -254,6 +254,44 @@ pub(super) fn bootstrap_predecessor_inputs<S: OriginalAuthorityOwner>(
     })
 }
 
+/// The current inactive definition from a separately locked registry snapshot.
+pub(crate) struct InactiveBootstrapRegistry {
+    #[cfg(unix)]
+    definition: Funded<Vec<u8>>,
+    #[cfg(unix)]
+    _snapshot: definitions_model::State,
+}
+
+impl InactiveBootstrapRegistry {
+    pub(crate) fn definition(&self) -> &[u8] {
+        #[cfg(unix)]
+        {
+            &self.definition
+        }
+        #[cfg(not(unix))]
+        unreachable!("inactive registry snapshot requires native persistence")
+    }
+}
+
+#[cfg(unix)]
+pub(super) fn inactive_bootstrap_registry<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    profile_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<InactiveBootstrapRegistry>> {
+    let store = Store::new(op, root)?;
+    let mut snapshot = store.snapshot(op, budget)?;
+    Ok(
+        definitions_model::inactive_definition(op, &mut snapshot, profile_id, budget)?.map(
+            |definition| InactiveBootstrapRegistry {
+                definition,
+                _snapshot: snapshot,
+            },
+        ),
+    )
+}
+
 #[cfg(unix)]
 struct Store {
     user_data: PathBuf,

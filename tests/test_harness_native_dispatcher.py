@@ -1384,7 +1384,9 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertFalse(self.bridge._resolving_catalog)
 
     def test_predecessor_reads_live_catalog_once_after_the_resolver(self) -> None:
-        catalog, profile_id, source = self.source({"requested_edges": [], "profile_id": "fixture-id"})
+        catalog, profile_id, source = self.source({
+            "requested_edges": [], "profile_id": "fixture-id", "fixture_flag": True,
+        })
         self.static_edges(source)
         self.dynamic_edges(catalog, profile_id, source)
         artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
@@ -1429,12 +1431,24 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         call = self.frame("bootstrap-fresh-confirmation", resolved=packet["resolved"],
                           profile_id=profile_id, snapshot="sha256:" + "1" * 64, epoch="1")
+        compare = self.frame(
+            "bootstrap-inactive-equality", source=source,
+            existing={"fixture_flag": 1, "profile_id": "fixture-id", "requested_edges": []},
+        )
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("bootstrap_confirmation", call)
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.describe_value(compare)
         observed = wire.loads(self.dispatcher.describe_value(self.frame(
             "bootstrap-inactive-source", source=source,
         )))
         self.assertEqual(observed["profile_id"], "fixture-id")
+        self.assertEqual(wire.loads(self.dispatcher.describe_value(compare)), {
+            "format": PREFIX + "bootstrap-inactive-equality-result.v1",
+            "scope": self.scope.wire(), "equal": True,
+        })
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.describe_value(compare)
         foreign = wire.loads(call)
         foreign["epoch"] = "2"
         with self.assertRaises(InvalidReference):

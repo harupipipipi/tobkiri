@@ -289,6 +289,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "resolver-verified-artifacts")
                 | (2, "bootstrap-predecessor-source")
                 | (2, "bootstrap-inactive-source")
+                | (2, "bootstrap-inactive-equality")
                 | (BOOTSTRAP_CONFIRMATION_SLOT, "bootstrap-confirmation")
                 | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-preview")
                 | (BOOTSTRAP_LISTING_SLOT, "bootstrap-listing")
@@ -312,6 +313,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "resolver-profile") => RESOLVE_PROFILE,
             (REVIEW, "bootstrap-predecessor-source") => BOOTSTRAP_PREDECESSOR_SOURCE,
             (REVIEW, "bootstrap-inactive-source") => BOOTSTRAP_INACTIVE_SOURCE,
+            (REVIEW, "bootstrap-inactive-equality") => BOOTSTRAP_INACTIVE_EQUALITY,
             (REVIEW, "bootstrap-confirmation") => BOOTSTRAP_CONFIRMATION,
             (REVIEW, "bootstrap-preview") => BOOTSTRAP_PREVIEW,
             (REVIEW, "bootstrap-listing") => BOOTSTRAP_LISTING,
@@ -380,6 +382,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | RESOLVE_PROFILE
                 | BOOTSTRAP_PREDECESSOR_SOURCE
                 | BOOTSTRAP_INACTIVE_SOURCE
+                | BOOTSTRAP_INACTIVE_EQUALITY
                 | BOOTSTRAP_CONFIRMATION
                 | BOOTSTRAP_PREVIEW
                 | BOOTSTRAP_LISTING
@@ -712,6 +715,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (
                 Some("bootstrap-inactive-source-raised"),
                 "bootstrap-inactive-source",
+                true
+            )
+            | (
+                Some("bootstrap-inactive-equality-raised"),
+                "bootstrap-inactive-equality",
                 true
             )
             | (

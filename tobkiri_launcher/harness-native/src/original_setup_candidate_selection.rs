@@ -86,6 +86,10 @@ enum Progress {
     PredecessorStarted,
     #[cfg(unix)]
     InactivePredecessorStarted,
+    #[cfg(unix)]
+    InactiveRegistryStarted,
+    #[cfg(unix)]
+    InactiveJournalStarted,
 }
 
 impl Progress {
@@ -93,7 +97,9 @@ impl Progress {
         match self {
             Self::Resolving | Self::SnapshotStarted | Self::PredecessorStarted => true,
             #[cfg(unix)]
-            Self::InactivePredecessorStarted => true,
+            Self::InactivePredecessorStarted
+            | Self::InactiveRegistryStarted
+            | Self::InactiveJournalStarted => true,
             _ => false,
         }
     }
@@ -436,17 +442,89 @@ impl PublicationRead {
         predecessor_path_present(&op, &root.join("profiles/index.json"))
     }
 
-    #[cfg(not(unix))]
-    pub(crate) fn inactive_predecessor_has_registry<S: OriginalAuthorityOwner>(
+    /// Open the registry at the same root after the original path predicates.
+    pub(crate) fn inactive_predecessor_registry<S: OriginalAuthorityOwner>(
         &mut self,
-        _owner: &S,
-        _cancellation: &CoreCancellation,
-        _profile_id: &str,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        profile_id: &str,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<definitions::InactiveBootstrapRegistry>> {
+        #[cfg(unix)]
+        {
+            if !self.inactive_predecessor_has_registry(owner, cancellation, profile_id)? {
+                return Ok(None);
+            }
+            self.fresh.progress = Progress::InactiveRegistryStarted;
+            let op = self.candidate_operation(owner, cancellation)?;
+            let root = self.fresh.resolver_root.as_ref().expect("resolver root");
+            definitions::inactive_bootstrap_registry(&op, root, profile_id, budget)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (owner, cancellation, profile_id, budget);
+            Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Source,
+                "Windows inactive Setup predecessor persistence/ACL",
+            ))
+        }
+    }
+
+    /// Probe the journal and witnesses only after an unequal definition.
+    pub(crate) fn inactive_predecessor_has_journal<S: OriginalAuthorityOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
     ) -> Result<bool> {
-        Err(OriginalAuthorityError::unsupported(
-            OriginalAuthorityStage::Source,
-            "Windows inactive Setup predecessor persistence/ACL",
-        ))
+        #[cfg(unix)]
+        {
+            self.check_resolver_root(owner, cancellation)?;
+            if self.fresh.progress != Progress::InactiveRegistryStarted || !self.cleanup.verified()
+            {
+                return Err(OriginalAuthorityError::unsupported(
+                    OriginalAuthorityStage::Guard,
+                    "inactive handover is outside the resolved candidate",
+                ));
+            }
+            self.fresh.progress = Progress::InactiveJournalStarted;
+            let op = self.candidate_operation(owner, cancellation)?;
+            let root = self.fresh.resolver_root.as_ref().expect("resolver root");
+            let _paths = op.reserve(
+                OriginalAuthorityStage::Path,
+                root.as_os_str()
+                    .len()
+                    .saturating_mul(4)
+                    .saturating_add(8192),
+            )?;
+            if predecessor_stat(&op, root, |path| fs::metadata(path))?.is_none() {
+                return Ok(false);
+            }
+            const JOURNAL: &str = "development-host-handover.json";
+            if predecessor_path_present(&op, &root.join(JOURNAL))? {
+                return Ok(true);
+            }
+            for witness in [
+                root.join("development-host-handover.key"),
+                root.join("development-host-staging"),
+                root.join("packvm-vz").join(JOURNAL),
+            ] {
+                if predecessor_path_present(&op, &witness)? {
+                    return Err(raw(
+                        "builtins.ValueError",
+                        "Development Host handover requires its authenticated recovery journal",
+                    ));
+                }
+            }
+            Ok(false)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (owner, cancellation);
+            Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Source,
+                "Windows inactive Setup handover persistence/ACL",
+            ))
+        }
     }
 
     fn candidate_operation<'a, S: OriginalAuthorityOwner>(
@@ -481,27 +559,36 @@ fn predecessor_path_present<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     path: &Path,
 ) -> Result<bool> {
-    let inspect = |read: fn(&Path) -> std::io::Result<fs::Metadata>| {
-        op.check(OriginalAuthorityStage::Source)?;
-        let metadata = read(path);
-        op.check(OriginalAuthorityStage::Source)?;
-        match metadata {
-            Ok(value) => Ok(Some(value)),
-            Err(error)
-                if matches!(
-                    error.raw_os_error(),
-                    Some(libc::ENOENT | libc::ENOTDIR | libc::EBADF | libc::ELOOP)
-                ) =>
-            {
-                Ok(None)
-            }
-            Err(error) => Err(raw_io(error, path.to_str())),
-        }
-    };
-    if inspect(|path| fs::metadata(path))?.is_some() {
+    if predecessor_stat(op, path, |path| fs::metadata(path))?.is_some() {
         return Ok(true);
     }
-    Ok(inspect(|path| fs::symlink_metadata(path))?.is_some_and(|value| value.is_symlink()))
+    Ok(
+        predecessor_stat(op, path, |path| fs::symlink_metadata(path))?
+            .is_some_and(|value| value.is_symlink()),
+    )
+}
+
+#[cfg(unix)]
+fn predecessor_stat<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    path: &Path,
+    read: fn(&Path) -> std::io::Result<fs::Metadata>,
+) -> Result<Option<fs::Metadata>> {
+    op.check(OriginalAuthorityStage::Source)?;
+    let metadata = read(path);
+    op.check(OriginalAuthorityStage::Source)?;
+    match metadata {
+        Ok(value) => Ok(Some(value)),
+        Err(error)
+            if matches!(
+                error.raw_os_error(),
+                Some(libc::ENOENT | libc::ENOTDIR | libc::EBADF | libc::ELOOP)
+            ) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(raw_io(error, path.to_str())),
+    }
 }
 
 fn read_root<S: crate::BootstrapReviewOwner>(op: &Operation<'_, S>) -> Result<Funded<PathBuf>> {

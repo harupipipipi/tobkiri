@@ -643,6 +643,26 @@ class Dispatcher:
         registry._resolver_dynamic_stage = "inactive-predecessor-returned"
         return packet
 
+    def _bootstrap_inactive_equality(self, state: _State, frame: dict[str, Any]) -> str:
+        registry = state.registry
+        if (set(frame) != {"format", "scope", "source", "existing"}
+                or frame["scope"] != registry.scope.wire()
+                or type(frame["existing"]) is not dict):
+            raise InvalidFrame("invalid fixed inactive predecessor equality frame")
+        source = registry._begin_inactive_equality(registry.reference(frame["source"]))
+        existing = frame["existing"]
+        equal = self._apply_original(
+            lambda: dict(existing) == dict(source),
+            caller="bootstrap-inactive-equality",
+        )
+        packet = wire.dumps({
+            "format": PREFIX + "bootstrap-inactive-equality-result.v1",
+            "scope": registry.scope.wire(),
+            "equal": equal,
+        })
+        registry._resolver_dynamic_stage = "inactive-equality-returned"
+        return packet
+
     def _bootstrap_fresh_confirmation(self, state: _State, frame: dict[str, Any]) -> str:
         registry = state.registry
         if (set(frame) != {"format", "scope", "resolved", "profile_id", "snapshot", "epoch"}
@@ -743,6 +763,8 @@ class Dispatcher:
             return self._bootstrap_predecessor_source(state, frame)
         if frame.get("format") == PREFIX + "bootstrap-inactive-source.v1":
             return self._bootstrap_inactive_source(state, frame)
+        if frame.get("format") == PREFIX + "bootstrap-inactive-equality.v1":
+            return self._bootstrap_inactive_equality(state, frame)
         if frame.get("format") == PREFIX + "resolver-source-lookup.v1":
             registry = state.registry
             if (set(frame) != {"format", "scope", "catalog", "profile_id"}

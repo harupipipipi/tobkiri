@@ -431,6 +431,203 @@ async fn inactive_predecessor_treats_dangling_active_and_index_paths_as_present(
     }
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn inactive_predecessor_reads_the_original_registry_and_probes_the_fence() {
+    const JOURNAL: &str = "development-host-handover.json";
+    const KEY: &str = "development-host-handover.key";
+    let reference = std::env::var_os("TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE")
+        .map(PathBuf::from)
+        .map(|path| {
+            let observation: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(
+                observation["format"],
+                "io.tobkiri.original-inactive-registry-reference.v1"
+            );
+            assert_eq!(
+                observation["original_head"],
+                "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
+            );
+            let inputs = path.with_file_name("inactive-registry-inputs");
+            let definition =
+                serde_json::from_slice(&fs::read(inputs.join("source-profile.json")).unwrap())
+                    .unwrap();
+            (observation, inputs, definition)
+        });
+    for case in [
+        "missing-row",
+        "exact-mapping-equal",
+        "tombstone",
+        "different-row-no-handover",
+        "authenticated-handover",
+        "witness-without-journal",
+    ] {
+        with_source(|source, read, cancel, budget| {
+            for discard in [true, false] {
+                read.enter_recovery(source, cancel, discard).unwrap();
+            }
+            read.acquire_candidate_root(source, cancel).unwrap();
+            assert!(matches!(
+                read.candidate_selection(source, cancel, "defaults", false, budget)
+                    .unwrap(),
+                CandidateSelection::BundledCatalog
+            ));
+            read.acquire_resolver_root(source, cancel).unwrap();
+            read.resolver_authority_snapshot(source, cancel, Digest::hash(b"bundle lock"))
+                .unwrap()
+                .unwrap();
+            read.bootstrap_predecessor_inputs(source, cancel, "defaults", budget)
+                .unwrap();
+            let profiles = source.root.join("profiles");
+            let mut index = entry("defaults", 0);
+            let mut packaged = index["revisions"][0]["profile"].clone();
+            let original = reference
+                .as_ref()
+                .and_then(|(observation, inputs, definition)| {
+                    observation["cases"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|row| row["case"] == case)
+                        .map(|row| (row, inputs.join(case).join("user-data"), definition))
+                });
+            let mut files = vec!["profiles/.profile-definition.lock", "profiles/index.json"];
+            if let Some((row, input, definition)) = original.as_ref() {
+                packaged = (**definition).clone();
+                files = row["files_after"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|name| name.as_str().unwrap())
+                    .collect();
+                for file in &files {
+                    // Use this invocation's lock file created by the preceding read.
+                    if *file != "profiles/.profile-definition.lock" {
+                        fs::copy(input.join(file), source.root.join(file)).unwrap();
+                    }
+                }
+            } else {
+                if case == "missing-row" {
+                    index = entry("unrelated", 0);
+                }
+                if case == "tombstone" {
+                    let prior = index["current_revision"].clone();
+                    let revision = digest(&json!({
+                        "schema":"io.tobkiri.profile-tombstone.v1",
+                        "profile_id":"defaults","parent_revision":prior
+                    }));
+                    index["tombstone"] = json!(true);
+                    index["current_revision"] = json!(revision);
+                    index["revisions"].as_array_mut().unwrap().push(json!({
+                        "profile_revision":revision,"parent_revision":prior,"profile":null,
+                        "created_at":10,"updated_at":10,"tombstone":true
+                    }));
+                }
+                if matches!(
+                    case,
+                    "different-row-no-handover"
+                        | "authenticated-handover"
+                        | "witness-without-journal"
+                ) {
+                    packaged["display_name"] = json!("packaged version differs");
+                }
+                write_index(source, &sealed(state(vec![index])));
+                let witness = match case {
+                    "authenticated-handover" => Some(JOURNAL),
+                    "witness-without-journal" => Some(KEY),
+                    _ => None,
+                };
+                if let Some(name) = witness {
+                    // Only probe presence here. The original fixture uses real
+                    // authenticated bytes in the CI comparison.
+                    fs::write(source.root.join(name), b"test witness").unwrap();
+                    files.push(name);
+                }
+            }
+            let read_files = || {
+                files
+                    .iter()
+                    .map(|file| fs::read(source.root.join(file)).unwrap())
+                    .collect::<Vec<_>>()
+            };
+            let before = read_files();
+            let result = read.inactive_predecessor_registry(source, cancel, "defaults", budget);
+            let expected = json!({"outcome":"returned", "predecessor":null});
+            let actual = match case {
+                "missing-row" => {
+                    assert!(result.unwrap().is_none());
+                    expected
+                }
+                "tombstone" => {
+                    let Err(error) = result else {
+                        panic!("inactive tombstone was admitted");
+                    };
+                    assert_eq!(error.message, "imported bootstrap Profile is tombstoned");
+                    super::reference_ci::original_error(&error)
+                }
+                _ => {
+                    let registry = result.unwrap().unwrap();
+                    let selected: serde_json::Value =
+                        serde_json::from_slice(registry.definition()).unwrap();
+                    // The fixed guest comparison is covered separately, including
+                    // Python bool/int equality. The pinned fixture uses exact types.
+                    assert_eq!(selected == packaged, case == "exact-mapping-equal");
+                    match case {
+                        "exact-mapping-equal" => expected,
+                        "different-row-no-handover" => {
+                            assert!(
+                                !read
+                                    .inactive_predecessor_has_journal(source, cancel)
+                                    .unwrap()
+                            );
+                            assert!(
+                                read.inactive_predecessor_has_journal(source, cancel)
+                                    .is_err()
+                            );
+                            expected
+                        }
+                        "authenticated-handover" => {
+                            assert!(
+                                read.inactive_predecessor_has_journal(source, cancel)
+                                    .unwrap()
+                            );
+                            json!({"outcome": "journal-present"})
+                        }
+                        "witness-without-journal" => {
+                            let error = read
+                                .inactive_predecessor_has_journal(source, cancel)
+                                .unwrap_err();
+                            assert_eq!(error.class, "builtins.ValueError");
+                            assert_eq!(
+                                error.message,
+                                "Development Host handover requires its authenticated recovery journal"
+                            );
+                            super::reference_ci::original_error(&error)
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            };
+            if let Some((row, _, _)) = original.as_ref() {
+                assert!(row["files_unchanged"].as_bool().unwrap());
+                if case == "authenticated-handover" {
+                    assert!(row["expected"]["predecessor"].is_object());
+                    assert_eq!(actual, json!({"outcome": "journal-present"}));
+                } else {
+                    assert_eq!(row["expected"], actual);
+                }
+            }
+            assert_eq!(read_files(), before);
+            assert!(lock_free(&profiles.join(".profile-definition.lock")));
+            assert!(
+                read.inactive_predecessor_registry(source, cancel, "defaults", budget)
+                    .is_err()
+            );
+            read.close_continuation().unwrap();
+        });
+    }
+}
+
 const DATABASE: &str = "authority/v4.sqlite3";
 const GUARD: &str = "authority/.v4.sqlite3.lifecycle.lock";
 const KEY: &str = "authority/v4.key";

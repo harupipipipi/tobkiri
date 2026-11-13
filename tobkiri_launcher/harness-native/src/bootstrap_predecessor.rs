@@ -9,6 +9,8 @@ pub(super) const SOURCE_REQUEST: &str = "io.tobkiri.native-bootstrap-predecessor
 const SOURCE_RESPONSE: &str = "io.tobkiri.native-bootstrap-predecessor-source-result.v1";
 pub(super) const INACTIVE_REQUEST: &str = "io.tobkiri.native-bootstrap-inactive-source.v1";
 const INACTIVE_RESPONSE: &str = "io.tobkiri.native-bootstrap-inactive-source-result.v1";
+pub(super) const EQUALITY_REQUEST: &str = "io.tobkiri.native-bootstrap-inactive-equality.v1";
+const EQUALITY_RESPONSE: &str = "io.tobkiri.native-bootstrap-inactive-equality-result.v1";
 #[path = "bootstrap_confirmation.rs"]
 mod confirmation;
 
@@ -87,6 +89,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
             BootstrapReviewReachpoint::BootstrapPredecessorActivationNotBound,
         )));
     }
+    drop(review.actual.predecessor_inputs.take());
     drop((value, response, request));
     inactive(review, pack, scope, profile_id).await
 }
@@ -132,17 +135,67 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         bail!("inactive predecessor source differs from the validated catalog identity");
     }
     drop((value, response, request));
-    match review.read.inactive_predecessor_has_registry(
+    let registry = match review.read.inactive_predecessor_registry(
         &pack.work.get().source,
         pack.cancellation,
         profile_id,
+        pack.input_budget,
     ) {
-        Ok(false) => confirmation::run(review, pack, scope, profile_id).await,
-        Ok(true) => Ok(Err(BootstrapReviewFailure::NotBound(
-            BootstrapReviewReachpoint::InactiveBootstrapRegistryNotBound,
-        ))),
-        Err(error) => Ok(Err(original_failure(error))),
+        Ok(None) => return confirmation::run(review, pack, scope, profile_id).await,
+        Ok(Some(registry)) => registry,
+        Err(error) => return Ok(Err(original_failure(error))),
+    };
+    let request = denied::frame(
+        pack,
+        EQUALITY_REQUEST,
+        [
+            ("source", catalog::result_root(pack, source, scope)?),
+            (
+                "existing",
+                CoreValue::parse_guest(registry.definition(), pack.input_budget)?,
+            ),
+        ],
+    )?;
+    let outcome = pack
+        .observe_fixed_projection(&request, "bootstrap-inactive-equality")
+        .await?;
+    caller.check(review, pack)?;
+    let response = match outcome {
+        Ok(response) => response,
+        Err(error) => {
+            return Ok(Err(catalog::handle_call_failure(
+                review, pack, caller, error, false,
+            )
+            .await?));
+        }
+    };
+    let value = CoreValue::parse_guest(response.as_bytes(), pack.input_budget)?;
+    denied::exact(&value, &["format", "scope", "equal"])?;
+    if denied::field(&value, "format")?.as_str() != Some(EQUALITY_RESPONSE)
+        || !denied::same_scope(&denied::field(&value, "scope")?, scope)
+    {
+        bail!("inactive predecessor equality response format or scope differs");
     }
+    let equal = denied::field(&value, "equal")?
+        .as_bool()
+        .context("inactive predecessor equality response is not boolean")?;
+    drop((value, response, request));
+    if !equal {
+        match review
+            .read
+            .inactive_predecessor_has_journal(&pack.work.get().source, pack.cancellation)
+        {
+            Ok(false) => {}
+            Ok(true) => {
+                return Ok(Err(BootstrapReviewFailure::NotBound(
+                    BootstrapReviewReachpoint::InactiveBootstrapHandoverNotBound,
+                )));
+            }
+            Err(error) => return Ok(Err(original_failure(error))),
+        }
+    }
+    drop(registry);
+    confirmation::run(review, pack, scope, profile_id).await
 }
 
 fn source_digest(

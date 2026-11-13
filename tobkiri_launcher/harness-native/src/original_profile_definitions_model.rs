@@ -200,6 +200,16 @@ fn digest_at<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Digest> {
+    canonical_at(doc, id, omit, op, budget).map(|bytes| Digest::hash(&bytes))
+}
+
+fn canonical_at<S: OriginalAuthorityOwner>(
+    doc: &mut Document,
+    id: usize,
+    omit: Option<&str>,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Funded<Vec<u8>>> {
     // Existing canonical writer and allocation bound stay unchanged. Prepay
     // a conservative scan/sort bound at each actually reached digest call.
     let levels = usize::BITS - doc.node_count().max(1).leading_zeros();
@@ -228,7 +238,7 @@ fn digest_at<S: OriginalAuthorityOwner>(
                 "canonical JSON exceeds size limit",
             ));
         }
-        Ok(Digest::hash(&bytes))
+        Ok(bytes)
     });
     doc.root = original;
     if let Some((at, pair)) = removed {
@@ -608,6 +618,47 @@ pub(super) fn canonical_id<S: OriginalAuthorityOwner>(
         integrity(message.clone()),
         raw("tobkiri_protocol.errors.ProtocolError", message),
     ))
+}
+
+pub(super) fn inactive_definition<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &mut State,
+    profile_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<Funded<Vec<u8>>>> {
+    const CONFLICT: &str =
+        "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict";
+    let doc = &mut state.doc;
+    let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
+    let mut selected = None;
+    for &entry in entries {
+        charge(op, budget, 1 + profile_id.len() as u64)?;
+        if doc.string_is(field(doc, entry, "profile_id"), profile_id) {
+            selected = Some(entry);
+        }
+    }
+    let Some(entry) = selected else {
+        return Ok(None);
+    };
+    if boolean(doc, field(doc, entry, "tombstone")).expect("validated bool") {
+        return Err(raw(CONFLICT, "imported bootstrap Profile is tombstoned"));
+    }
+    let revision = text(doc, field(doc, entry, "current_revision")).expect("validated revision");
+    let history = array(doc, field(doc, entry, "revisions")).expect("validated history");
+    let mut current = None;
+    for &version in history {
+        charge(op, budget, 1 + revision.0.len() as u64)?;
+        if text(doc, field(doc, version, "profile_revision")) == Some(revision)
+            && current.replace(version).is_some()
+        {
+            return Err(raw(CONFLICT, "imported bootstrap revision is unavailable"));
+        }
+    }
+    let current = current
+        .filter(|&id| boolean(doc, field(doc, id, "tombstone")) == Some(false))
+        .ok_or_else(|| raw(CONFLICT, "imported bootstrap revision is unavailable"))?;
+    let profile = field(doc, current, "profile");
+    canonical_at(doc, profile, None, op, budget).map(Some)
 }
 
 pub(super) fn get<S: OriginalAuthorityOwner>(

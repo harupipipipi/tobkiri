@@ -52,7 +52,7 @@ pub enum BootstrapReviewReachpoint {
     HostProfileCatalogNotBound,
     CatalogSourceNotBound,
     BootstrapPredecessorActivationNotBound,
-    InactiveBootstrapRegistryNotBound,
+    InactiveBootstrapHandoverNotBound,
     ActiveCandidateAuthorityNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,

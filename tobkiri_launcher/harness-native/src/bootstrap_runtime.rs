@@ -49,6 +49,7 @@ const BOOTSTRAP_INACTIVE_SOURCE: u8 = 19;
 const BOOTSTRAP_CONFIRMATION: u8 = 20;
 const BOOTSTRAP_PREVIEW: u8 = 21;
 const BOOTSTRAP_LISTING: u8 = 22;
+const BOOTSTRAP_INACTIVE_EQUALITY: u8 = 23;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
 const BOOTSTRAP_PREVIEW_SLOT: usize = 10;
@@ -180,6 +181,7 @@ impl CiRetiredCall {
             RESOLVE_PROFILE => "resolve-profile",
             BOOTSTRAP_PREDECESSOR_SOURCE => "bootstrap-predecessor-source",
             BOOTSTRAP_INACTIVE_SOURCE => "bootstrap-inactive-source",
+            BOOTSTRAP_INACTIVE_EQUALITY => "bootstrap-inactive-equality",
             BOOTSTRAP_CONFIRMATION => "bootstrap-confirmation",
             BOOTSTRAP_PREVIEW => "bootstrap-preview",
             BOOTSTRAP_LISTING => "bootstrap-listing",
@@ -1271,6 +1273,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                     }
                     Some(predecessor::INACTIVE_REQUEST) if phase != BOOTSTRAP_INACTIVE_SOURCE => {
                         bail!("inactive predecessor source is outside the fixed Review reachpoint");
+                    }
+                    Some(predecessor::EQUALITY_REQUEST) if phase != BOOTSTRAP_INACTIVE_EQUALITY => {
+                        bail!(
+                            "inactive definition equality is outside the fixed Review reachpoint"
+                        );
                     }
                     _ => {}
                 },
