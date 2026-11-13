@@ -9,6 +9,9 @@ use tobkiri_wasm::{
     NativeImportOperation, NativeImportState,
 };
 
+#[path = "schema_fuel_samples.rs"]
+mod fuel_samples;
+
 const INTERFACE: &str = "tobkiri-native:app-schema-phases/bindings@1.0.0";
 const SCHEMAS: usize = 42;
 const NAME_BYTES: usize = 128;
@@ -88,6 +91,7 @@ struct Trace {
     len: usize,
     returned: usize,
     fuel_after_prepare: Option<u64>,
+    samples: fuel_samples::Samples,
 }
 
 impl Trace {
@@ -98,6 +102,7 @@ impl Trace {
             len: 0,
             returned: 0,
             fuel_after_prepare: None,
+            samples: fuel_samples::Samples::new(),
         }
     }
 
@@ -135,6 +140,18 @@ impl Trace {
             .map_or(prepared, |row| row.fuel_remaining)
             .checked_sub(fuel_remaining)
             .context("App schema phase fuel increased")?;
+        if phase == Phase::Setup {
+            self.samples.phase_start()?;
+        }
+        if phase == Phase::Return && previous.is_some_and(|row| row.phase == Phase::Evaluation) {
+            self.samples.verify_return()?;
+            if let Some(latest) = self.samples.latest_fuel() {
+                ensure!(
+                    fuel_remaining <= latest,
+                    "return fuel increased after operation sample"
+                );
+            }
+        }
         self.rows[self.len] = Some(Row {
             schema,
             phase,
@@ -146,6 +163,31 @@ impl Trace {
             self.returned += 1;
         }
         Ok(())
+    }
+
+    fn record_sample(
+        &mut self,
+        name: &str,
+        event: &str,
+        bucket: &str,
+        ordinal: u32,
+        fuel: u64,
+    ) -> Result<()> {
+        let current = self
+            .last()
+            .context("operation sample before first schema")?;
+        ensure!(
+            current.phase == Phase::Evaluation
+                && self.names[current.schema].as_str() == name
+                && fuel <= current.fuel_remaining
+                && self
+                    .samples
+                    .latest_fuel()
+                    .is_none_or(|previous| fuel <= previous),
+            "operation sample outside its current evaluation"
+        );
+        self.samples
+            .record(current.schema, name, event, bucket, ordinal, fuel)
     }
 }
 
@@ -201,20 +243,36 @@ fn checkpoint(context: NativeImportContext<'_, State>) -> Result<NativeImportOpe
         .context("missing App schema phase")?
         .as_str()?;
     ensure!(
-        payload.len() <= "initial-reference:".len() + NAME_BYTES,
+        payload.len() <= "sample-count:descend:4294967295:".len() + NAME_BYTES,
         "oversized App schema phase"
     );
-    let (phase, name) = payload
+    let (point, tail) = payload
         .split_once(':')
         .context("invalid App schema phase")?;
     // Observe in the fixed import factory, using the fuel captured before any
     // host parsing or worker admission. Do not retain caller-owned input.
-    state
+    let mut trace = state
         .trace
         .get()
         .try_lock()
-        .map_err(|_| NativeDataIoError::Unavailable)?
-        .record(name, Phase::parse(phase)?, fuel)?;
+        .map_err(|_| NativeDataIoError::Unavailable)?;
+    if matches!(point, "sample-begin" | "sample-end" | "sample-count") {
+        let mut parts = tail.splitn(3, ':');
+        let bucket = parts.next().context("sample bucket missing")?;
+        let text = parts.next().context("sample ordinal missing")?;
+        let name = parts.next().context("sample schema missing")?;
+        ensure!(
+            text.len() <= 10
+                && !text.is_empty()
+                && text.bytes().all(|byte| byte.is_ascii_digit())
+                && (text.len() == 1 || !text.starts_with('0')),
+            "non-canonical sample ordinal"
+        );
+        trace.record_sample(name, point, bucket, text.parse()?, fuel)?;
+    } else {
+        trace.record(tail, Phase::parse(point)?, fuel)?;
+    }
+    drop(trace);
     // This binding can only acknowledge a marker. It never exposes fuel or IO.
     context.inspect(|output| output.append(b"{}"))
 }
@@ -296,7 +354,7 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
     );
     let trace = HeldTrace::try_new_precharged(state, trace_funds)?;
     let mut report = json!({
-        "format":"tobkiri.app-schema-cold-store-phases/1", "component_sha256":identity.as_str(),
+        "format":"tobkiri.app-schema-cold-store-phases/2", "component_sha256":identity.as_str(),
         "operation":"cold-schema-store", "diagnostic_only":true,
         "qualification":false, "production_enabled":false, "whole_catalog_acceptance":false,
         "cold_schema_acceptance":false, "stores":1, "budget_resets":0, "export_calls_started":0,
@@ -304,6 +362,8 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
         "fuel_sampling":"fixed-import-entry", "includes_diagnostic_overhead":true,
         "phase_deltas_are_boundary_intervals":true, "per_function_fuel_attribution":false,
         "phase_capacity":MAX_ROWS, "stage":"prepare",
+        "operation_sample_capacity":fuel_samples::MAX_SAMPLES,
+        "operation_sample_method":"schema-seeded stride 257, maximum four per operation and schema",
     });
     let mut io: Option<NativeDataIo> = None;
     let started = Instant::now();
@@ -427,6 +487,7 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
     report["phase_rows"] = json!(trace.len);
     report["native_returns_observed"] = json!(trace.returned);
     report["fuel_after_last_checkpoint"] = json!(tail_fuel);
+    report["operation_sample_pairs"] = json!(trace.samples.count());
     report["io_cleanup_success"] = json!(io_cleanup);
     report["allocation_reap_success"] = json!(reaped);
     report["peak_charged_bytes"] = json!(snapshot.map(|s| s.peak_charged_bytes));
@@ -437,6 +498,9 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
         #[serde(flatten)]
         summary: &'a Value,
         checkpoints: Checkpoints<'a>,
+        operation_samples: fuel_samples::Rows<'a>,
+        completed_operation_counts: fuel_samples::Counts<'a>,
+        unfinished_operation_sample: Option<fuel_samples::Row<'a>>,
     }
     let file = OpenOptions::new()
         .write(true)
@@ -447,6 +511,9 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
         &Receipt {
             summary: &report,
             checkpoints: Checkpoints(&trace),
+            operation_samples: fuel_samples::Rows(&trace),
+            completed_operation_counts: fuel_samples::Counts(&trace),
+            unfinished_operation_sample: trace.samples.unmatched(&trace.names),
         },
     )?;
     outcome?;

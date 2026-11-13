@@ -49,7 +49,8 @@ def _observe_provider(provider: bytes) -> bytes:
     observed = b'''        if _phases.observing():
             return kernel.app_check_schema_with_phases(
                 schema, meta, cls._REGISTRY, _REFERENCE_POLICY, cls.TYPE_CHECKER,
-                checker, _phases.mark, value_policy=_VALUE_POLICY, type_owner=cls)
+                checker, _phases.mark, _phases.seed(),
+                value_policy=_VALUE_POLICY, type_owner=cls)
 '''
     return _replace_one(provider, call, observed + call)
 

@@ -1,5 +1,6 @@
 """Private markers for the actual, unsplit App cold schema-store operation."""
 
+from hashlib import sha256
 from wit_world.imports.bindings import checkpoint
 
 _observing = False
@@ -35,9 +36,22 @@ def observing() -> bool:
     return _observing
 
 
-def mark(point: str) -> None:
-    """Send one fixed phase and actual schema name; the response is only an ACK."""
-    if (not _observing or _schema_name is None
-            or point not in ('setup', 'initial-reference', 'evaluation', 'return')):
+def seed() -> int:
+    """Select a repeatable sampling offset for the actual bound schema."""
+    if not _observing or _schema_name is None:
+        raise RuntimeError('missing cold schema name for sample seed')
+    return int.from_bytes(sha256(_schema_name.encode()).digest()[:4], 'little')
+
+
+def mark(point: str, bucket: str | None = None, ordinal: int = 0) -> None:
+    """Send one fixed phase or sample and actual schema name."""
+    if not _observing or _schema_name is None:
         raise RuntimeError('unknown cold schema phase or missing schema name')
-    checkpoint(f'{point}:{_schema_name}')
+    if bucket is None and point in ('setup', 'initial-reference', 'evaluation', 'return'):
+        checkpoint(f'{point}:{_schema_name}')
+    elif (point in ('sample-begin', 'sample-end', 'sample-count')
+          and bucket in ('descend', 'keyword', 'lookup', 'scalar', 'marker')
+          and type(ordinal) is int and 0 <= ordinal < 2**32):
+        checkpoint(f'{point}:{bucket}:{ordinal}:{_schema_name}')
+    else:
+        raise RuntimeError('unknown cold schema sample')

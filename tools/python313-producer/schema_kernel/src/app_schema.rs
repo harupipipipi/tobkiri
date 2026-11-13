@@ -29,12 +29,40 @@ use cursor::{Cursor, Entry, Keyword as Selected, Keywords, Pair};
 use references::{DefaultReferencePolicy, ReferenceState, ResourcePolicy};
 use value::{DefaultValuePolicy, LiteralKind, Node, TypePolicy};
 
+#[cfg(feature = "app-schema-phases")]
+mod fuel_sample;
+
+#[derive(Clone, Copy)]
+enum FuelBucket {
+    Descend,
+    Keyword,
+    Lookup,
+    Scalar,
+}
+
 struct Environment {
     specification: Object,
     resolver_type: Object,
     checker: Object,
     value_policy: TypePolicy,
     resource_policy: ResourcePolicy,
+    #[cfg(feature = "app-schema-phases")]
+    fuel_sample: fuel_sample::Sampler,
+}
+
+impl Environment {
+    #[inline(always)]
+    fn measure<T>(
+        &self,
+        #[allow(unused_variables)] py: Python<'_>,
+        #[allow(unused_variables)] bucket: FuelBucket,
+        operation: impl FnOnce() -> PyResult<T>,
+    ) -> PyResult<T> {
+        #[cfg(feature = "app-schema-phases")]
+        return self.fuel_sample.measure(py, bucket, operation);
+        #[cfg(not(feature = "app-schema-phases"))]
+        operation()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -120,7 +148,9 @@ impl Frame {
             return Ok(());
         }
         if self.enter_resource {
-            self.references = self.references.descend(py, env, schema)?;
+            self.references = env.measure(py, FuelBucket::Descend, || {
+                self.references.descend(py, env, schema)
+            })?;
         }
         self.cursor = Some(Keywords::new(schema, self.root)?);
         Ok(())
@@ -439,7 +469,10 @@ impl Frame {
                     return Ok(action);
                 }
             }
-            let Some(selected) = self.cursor.as_mut().expect("started META frame").next(py)? else {
+            let next = env.measure(py, FuelBucket::Keyword, || {
+                self.cursor.as_mut().expect("started META frame").next(py)
+            })?;
+            let Some(selected) = next else {
                 return Ok(Action::Done);
             };
             let name = selected.name.clone();
@@ -531,7 +564,11 @@ impl Frame {
                     }))
                 }
                 "$ref" | "$dynamicRef" => {
-                    let (contents, references) = match self.references.lookup(py, env, &value) {
+                    // Keep the child execution outside the sampled lookup.
+                    let resolved = env.measure(py, FuelBucket::Lookup, || {
+                        self.references.lookup(py, env, &value)
+                    });
+                    let (contents, references) = match resolved {
                         Ok(resolved) => resolved,
                         Err(error) => {
                             let unresolvable =
@@ -563,14 +600,17 @@ impl Frame {
                 "type" | "const" | "enum" | "minItems" | "maxItems" | "minLength" | "maxLength"
                 | "minProperties" | "maxProperties" | "minimum" | "maximum"
                 | "exclusiveMinimum" | "exclusiveMaximum" => {
-                    if let Some(error) = value::scalar_constraint(
-                        py,
-                        &env.value_policy,
-                        &name,
-                        &value,
-                        instance,
-                        schema,
-                    )? {
+                    let error = env.measure(py, FuelBucket::Scalar, || {
+                        value::scalar_constraint(
+                            py,
+                            &env.value_policy,
+                            &name,
+                            &value,
+                            instance,
+                            schema,
+                        )
+                    })?;
+                    if let Some(error) = error {
                         return self.decorate(py, env, error.unbind());
                     }
                 }
@@ -707,13 +747,15 @@ fn app_check_schema(
         format_checker,
         value_policy,
         type_owner,
+        #[cfg(feature = "app-schema-phases")]
+        None,
         |_| Ok(()),
     )
 }
 
 #[cfg(feature = "app-schema-phases")]
 #[pyfunction]
-#[pyo3(signature = (schema, meta, registry, policy, type_checker, format_checker, phase, *, value_policy=None, type_owner=None))]
+#[pyo3(signature = (schema, meta, registry, policy, type_checker, format_checker, phase, seed, *, value_policy=None, type_owner=None))]
 fn app_check_schema_with_phases(
     py: Python<'_>,
     schema: &Bound<'_, PyAny>,
@@ -723,6 +765,7 @@ fn app_check_schema_with_phases(
     type_checker: &Bound<'_, PyAny>,
     format_checker: &Bound<'_, PyAny>,
     phase: &Bound<'_, PyAny>,
+    seed: u32,
     value_policy: Option<&Bound<'_, DefaultValuePolicy>>,
     type_owner: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<()> {
@@ -737,6 +780,7 @@ fn app_check_schema_with_phases(
         format_checker,
         value_policy,
         type_owner,
+        Some((phase, seed)),
         |point| phase.call1((point,)).map(|_| ()),
     );
     // Keep the original result, including the actual exception instance. The
@@ -755,6 +799,7 @@ fn check_schema(
     format_checker: &Bound<'_, PyAny>,
     value_policy: Option<&Bound<'_, DefaultValuePolicy>>,
     type_owner: Option<&Bound<'_, PyAny>>,
+    #[cfg(feature = "app-schema-phases")] observer: Option<(&Bound<'_, PyAny>, u32)>,
     mut phase: impl FnMut(&'static str) -> PyResult<()>,
 ) -> PyResult<()> {
     let (specification, resolver_type, resource_policy) = {
@@ -792,6 +837,8 @@ fn check_schema(
         checker: format_checker.clone().unbind(),
         value_policy,
         resource_policy,
+        #[cfg(feature = "app-schema-phases")]
+        fuel_sample: fuel_sample::Sampler::new(observer),
     });
     let references = ReferenceState::from_boundary(&resolver, &env)?;
     let frame = Frame::new(
@@ -801,7 +848,14 @@ fn check_schema(
         true,
     );
     phase("evaluation")?;
-    if let Some(error) = Execution::new(env, frame)?.first_error(py)? {
+    #[cfg(feature = "app-schema-phases")]
+    env.fuel_sample.calibrate(py)?;
+    #[cfg(feature = "app-schema-phases")]
+    let measured = env.clone();
+    let evaluated = Execution::new(env, frame)?.first_error(py);
+    #[cfg(feature = "app-schema-phases")]
+    measured.fuel_sample.counts(py)?;
+    if let Some(error) = evaluated? {
         let error = module_member(py, "jsonschema.exceptions", "SchemaError")?
             .call_method1("create_from", (error.bind(py),))?;
         // PyErr::from_value preserves an instance but its normalized restore

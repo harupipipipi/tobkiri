@@ -254,6 +254,10 @@ jobs:
       - name: Observe phase fuel at host imports from one actual cold App schema-store call
         if: ${{ !cancelled() && inputs.schema_phases && steps.bind_artifact.conclusion == 'success' }}
         run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/app-schema-operation-sample-protocol.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-wasm --features bootstrap-ci --test bundle_catalog_kernel_ci \
+            schema_phases::fuel_samples::operation_samples_require_ordered_pairs_and_all_completed_counts -- --exact --nocapture
           cargo test --locked -p tobkiri-wasm --features bootstrap-ci --test bundle_catalog_kernel_ci \
             schema_phases::actual_app_schema_cold_store_phases -- --ignored --exact --nocapture
           test -s "$RUNNER_TEMP/app-schema-phases-observation.json"
