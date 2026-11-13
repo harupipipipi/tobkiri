@@ -766,7 +766,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.dynamic_result: object = ()
 
         def load_catalog(self, _root: NativePath) -> object:
-            self.catalog.root = _root
+            if type(self.catalog) is ResolverSourceLookupTransportTests.Catalog:
+                self.catalog.root = _root
             return self.catalog
 
         def dynamic_profile_edges(
