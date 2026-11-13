@@ -17,16 +17,16 @@ use tobkiri_canon::{
 };
 use tobkiri_core::{Core, CoreConfig, Session};
 use tobkiri_gate::{
-    ApprovalAnswer, ApprovalPrompt, EffectRequest, HostError, HostIo, LoopLimits, PermissionSet,
-    Principal, ResourceLimits, Risk, StoragePermissions, StoreOperation, StoreTier, TrustedPrompt,
-    UiEmbed,
+    ApprovalAnswer, ApprovalPrompt, ApprovalStore, EffectRequest, HostError, HostIo, LoopLimits,
+    PermissionSet, Principal, ResourceLimits, Risk, StoragePermissions, StoreOperation, StoreTier,
+    TrustedPrompt, UiEmbed,
 };
 use tobkiri_manifest::{
     FileEntry, PackManifest, PortDeclaration, Ports, RuntimeSpec, ShapeDefinition, ShapeKind,
     StoreDefinition, VerifiedPack,
 };
 use tobkiri_profile::{PackPin, Profile, Startup};
-use tobkiri_store::{ApprovalStore, Approvals, DataRoot, UserGlobalStore};
+use tobkiri_store::{Approvals, DataRoot, UserGlobalStore};
 
 const OWNER: &str = "local.storage-tier-owner";
 const WRITER: &str = "local.storage-tier-writer";
