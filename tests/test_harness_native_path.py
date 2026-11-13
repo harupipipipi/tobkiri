@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "tools/python313-producer"),
                 str(ROOT / "packs/local.ai-tool-bridge-ordered-python")]
 
-from harness_native.native_path import PathBridge  # noqa: E402
+from harness_native.native_path import PathBridge, _UnboundPlatformArtifacts  # noqa: E402
 from harness_native.value_graph import Scope, UnsupportedValue  # noqa: E402
 import ordered_json_v2 as wire  # noqa: E402
 
@@ -111,12 +111,92 @@ class NativePathAdapterTests(unittest.TestCase):
         for frame in requests:
             steps = ([["shell-resolved-root", ""], ["join", "shell"]]
                      if frame["operation"] in {"is-symlink", "is-file", "open"}
-                     else [["shell-file", ""]])
+                     else [["shell-file", ""], ["shell-resolved-root", ""], ["join", "shell"]])
             self.assertEqual(frame["target"], {"binding": "root", "steps": steps})
         self.assertEqual(next(row["args"] for row in requests if row["operation"] == "open"), [4])
         self.assertEqual([row["operation"] for row in requests].count("fstat"), 2)
         self.assertEqual(requests[-1]["operation"], "close")
-        self.assertTrue(bridge._resolver_file_closed)
+        self.assertTrue(bridge._resolver_digest_started)
+
+    def test_original_shell_tree_digest_visits_multiple_descendants(self):
+        source = ROOT / "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
+        tree = ast.parse(source.read_bytes(), filename=str(source))
+        names = {"artifact_digest", "_identity", "_regular_binary_reader", "_stable_update_digest"}
+        functions = [node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name in names]
+        contents = {("dir", "a"): b"alpha", ("z",): b"zeta"}
+        requests = []
+        active = None
+        position = 0
+
+        def inspect(payload):
+            nonlocal active, position
+            frame = wire.loads(payload)
+            requests.append(frame)
+            operation = frame["operation"]
+            steps = frame["target"]["steps"]
+            relative = tuple(step[1] for step in steps[2:]) if steps[0] != ["shell-file", ""] else ()
+            if operation == "is-symlink":
+                result = {"kind": "bool", "value": False}
+            elif operation == "is-file":
+                result = {"kind": "bool", "value": relative in contents}
+            elif operation == "is-dir":
+                result = {"kind": "bool", "value": relative in {(), ("dir",)}}
+            elif operation == "iterdir":
+                result = {"kind": "shell-directory", "value": ["z", "dir"] if not relative else ["a"]}
+            elif operation == "open":
+                active, position = relative, 0
+                result = {"kind": "fd", "binding": "root"}
+            elif operation == "fstat":
+                result = {**STAT, "st_size": len(contents[active])}
+            elif operation == "seek":
+                result = {"kind": "int", "value": position}
+            elif operation == "read":
+                data = contents[active][position:position + frame["args"][0]]
+                position += len(data)
+                result = blob(data)
+            elif operation == "close":
+                result = {"kind": "unit"}
+            else:
+                self.fail(operation)
+            return wire.dumps({"format": "io.tobkiri.native-inspection-response.v1",
+                               "scope": self.scope.wire(), "result": result})
+
+        bridge = PathBridge(self.scope, "posix", inspect,
+                            os_flags={"O_RDONLY": 0, "O_NOFOLLOW": 4})
+        root = bridge.bind("root", "/artifacts")
+        root._steps = (("shell-resolved-root", ""),)
+        namespace = {"hashlib": hashlib, "stat": stat, "os": bridge.os,
+                     "contextmanager": contextmanager, "CapturedPath": type("CapturedPath", (), {}),
+                     "ProtocolError": ValueError}
+        future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[future, *functions], type_ignores=[])),
+                     str(source), "exec"), namespace)
+
+        def run():
+            bridge._resolver_resolved_root = root
+            selected = root / "shell"
+            digest = namespace["artifact_digest"](selected)
+            self.assertEqual(digest, "sha256:" + hashlib.sha256(b"dir/a\0alphaz\0zeta").hexdigest())
+            with self.assertRaises(_UnboundPlatformArtifacts):
+                (root / "entrypoint").resolve(strict=True)
+
+        bridge._resolve_catalog(run, root, root)
+        opened = [row["target"]["steps"] for row in requests if row["operation"] == "open"]
+        self.assertEqual(opened, [
+            [["shell-resolved-root", ""], ["join", "shell"], ["join", "dir"], ["join", "a"]],
+            [["shell-resolved-root", ""], ["join", "shell"], ["join", "z"]],
+        ])
+        fd_targets = [row["target"]["steps"] for row in requests
+                      if row["operation"] in {"fstat", "seek", "read", "close"}]
+        self.assertTrue(fd_targets)
+        self.assertTrue(all(steps[0] == ["shell-file", ""] and steps[1:] in opened
+                            for steps in fd_targets))
+        self.assertEqual({tuple(tuple(step) for step in steps[1:]) for steps in fd_targets},
+                         {tuple(tuple(step) for step in steps) for steps in opened})
+        self.assertFalse(bridge._resolver_digest_started)
+        self.assertIsNone(bridge._resolver_file)
+        self.assertIsNone(bridge._resolver_directory)
 
     def test_fixed_catalog_codec_preserves_old_binding_and_clears_after_throw(self):
         scope = Scope(1, 2, 3, 4)

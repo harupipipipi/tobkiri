@@ -1,6 +1,7 @@
 //! The original Shell root and selected path checks after the Pack lock read.
 use super::shell_file::open_shell_file;
 use super::shell_inputs::{MAX_NAME, single_leaf};
+use super::shell_tree::{MAX_TREE_DEPTH, ShellTree, step_name};
 use super::*;
 
 const RESOLVED_STEPS: &[(&str, &str)] = &[("shell-resolved-root", "")];
@@ -26,14 +27,17 @@ impl CatalogIo {
         let selected_name = selected.as_ref().and_then(CoreValue::as_str);
         let valid_steps = match self.pack_resolve {
             PackResolve::ShellDirectory => exact_steps(steps, RESOLVED_STEPS),
-            PackResolve::ShellLeafSymlink
-            | PackResolve::ShellTreeSymlink
+            PackResolve::ShellLeafSymlink => {
+                let name = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
+                exact_steps(steps, &[RESOLVED_STEPS[0], ("join", name)])
+            }
+            PackResolve::ShellTreeSymlink
             | PackResolve::ShellTreeFile
             | PackResolve::ShellTreeDirectory
             | PackResolve::ShellList
             | PackResolve::ShellFileOpen => {
                 let name = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
-                exact_steps(steps, &[RESOLVED_STEPS[0], ("join", name)])
+                self.shell_tree.matches(name, steps, false)
             }
             PackResolve::ShellLeafParentSymlink => {
                 let name = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
@@ -66,6 +70,8 @@ impl CatalogIo {
             .artifact_parent_identity
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         let mut response = inspection_result(scope, budget)?;
+        let _path_scratch =
+            op.reserve(OriginalAuthorityStage::Path, libc::PATH_MAX as usize * 4)?;
         let stage = std::mem::replace(&mut self.pack_resolve, PackResolve::Spent);
         op.check(OriginalAuthorityStage::Source)?;
         charge_work(
@@ -142,14 +148,21 @@ impl CatalogIo {
                         .shell_resolved_name
                         .as_deref()
                         .ok_or_else(OriginalAuthorityError::unavailable)?;
-                    let leaf = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
-                    let leaf_name = checked_name(leaf)?;
                     let expected = self
                         .shell_root_identity
                         .ok_or_else(OriginalAuthorityError::unavailable)?;
-                    let root_path = parent_path.join(name);
+                    let root_path = bounded_member(parent_path, name)?;
                     let root =
                         open_shell_directory(op, &parent, &root_path, name, expected, false)?;
+                    let (root, root_path) =
+                        walk_shell_tree(op, root, root_path, &self.shell_tree, steps, budget)?;
+                    let member = step_name(steps, steps.len() - 1)
+                        .ok_or_else(OriginalAuthorityError::unavailable)?;
+                    let member = member
+                        .as_str()
+                        .ok_or_else(OriginalAuthorityError::unavailable)?;
+                    let leaf_name = checked_name(member)?;
+                    let member_path = bounded_member(&root_path, member)?;
                     if stage == PackResolve::ShellFileOpen {
                         let result = self
                             .shell_tree_identity
@@ -171,19 +184,36 @@ impl CatalogIo {
                     }
                     if stage == PackResolve::ShellList {
                         let result = (|| {
+                            if steps.len() > MAX_TREE_DEPTH + 1 {
+                                return Err(OriginalAuthorityError::capacity(
+                                    OriginalAuthorityStage::Path,
+                                )
+                                .into());
+                            }
                             let expected = self
                                 .shell_tree_identity
                                 .ok_or_else(OriginalAuthorityError::unavailable)?;
-                            let path = root_path.join(leaf);
-                            let leaf =
-                                open_shell_directory(op, &root, &path, leaf, expected, true)?;
-                            write_shell_directory(op, leaf, &path, &mut response, budget)
+                            let leaf = open_shell_directory(
+                                op,
+                                &root,
+                                &member_path,
+                                member,
+                                expected,
+                                true,
+                            )?;
+                            self.shell_tree.list(
+                                op,
+                                leaf,
+                                &member_path,
+                                expected,
+                                &mut response,
+                                budget,
+                            )
                         })();
                         close_parent(root)?;
-                        result?;
-                        return Ok(PackResolve::ShellReady);
+                        return result;
                     }
-                    let result = optional_stat_at(op, &root, &leaf_name, || root_path.join(leaf));
+                    let result = optional_stat_at(op, &root, &leaf_name, || member_path);
                     close_parent(root)?;
                     let stat = result?;
                     let mode = stat.as_ref().map(stat_mode);
@@ -357,46 +387,43 @@ fn open_shell_directory<S: crate::BootstrapReviewOwner>(
     Ok(root)
 }
 
-fn write_shell_directory<S: crate::BootstrapReviewOwner>(
+fn walk_shell_tree<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
-    leaf: TrackedFile,
-    path: &Path,
-    response: &mut CoreBufferBuilder,
+    mut directory: TrackedFile,
+    mut path: PathBuf,
+    tree: &ShellTree,
+    steps: &tobkiri_canon::CoreArray<'_>,
     budget: &Arc<dyn AllocationBudget>,
-) -> anyhow::Result<()> {
-    let mut directory = leaf
-        .into_directory()
-        .map_err(|error| raw_io(error, path.to_str()))?;
-    let listing = (|| {
-        response.append(b"{\"kind\":\"shell-directory\",\"value\":[")?;
-        let mut separator = b"".as_slice();
-        loop {
-            op.check(OriginalAuthorityStage::Source)?;
-            let Some(name) = directory
-                .next_name()
-                .map_err(|error| raw_io(error, path.to_str()))?
-            else {
-                break;
-            };
-            let name = name.to_str().map_err(|_| {
-                OriginalAuthorityError::unsupported(
-                    OriginalAuthorityStage::Source,
-                    "non-UTF-8 Shell directory member",
-                )
-            })?;
-            charge_work(budget, name.len() as u64 + 1)?;
-            response.append(separator)?;
-            crate::bootstrap_metadata::string_parts(response, [name])?;
-            separator = b",";
-        }
-        response.append(b"]}")?;
-        Ok(())
-    })();
-    drop(directory);
-    if op.cleanup.uncertain.load(Ordering::Acquire) {
-        return Err(OriginalAuthorityError::unavailable().into());
+) -> anyhow::Result<(TrackedFile, PathBuf)> {
+    let mut ancestors = [None; MAX_TREE_DEPTH];
+    for (index, identity) in tree.ancestors().enumerate() {
+        *ancestors
+            .get_mut(index)
+            .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))? =
+            Some(identity);
     }
-    listing
+    for (index, expected) in ancestors.into_iter().rev().flatten().enumerate() {
+        let step = step_name(steps, index + 1).ok_or_else(OriginalAuthorityError::unavailable)?;
+        let name = step
+            .as_str()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let child = bounded_member(&path, name)?;
+        charge_work(budget, child.as_os_str().len() as u64)?;
+        let next = open_shell_directory(op, &directory, &child, name, expected, false);
+        close_parent(directory)?;
+        directory = next?;
+        path = child;
+    }
+    Ok((directory, path))
+}
+
+fn bounded_member(parent: &Path, name: &str) -> Result<PathBuf> {
+    if parent.as_os_str().len() + 1 + name.len() >= libc::PATH_MAX as usize {
+        return Err(OriginalAuthorityError::capacity(
+            OriginalAuthorityStage::Path,
+        ));
+    }
+    Ok(parent.join(name))
 }
 
 fn checked_name(name: &str) -> Result<CString> {

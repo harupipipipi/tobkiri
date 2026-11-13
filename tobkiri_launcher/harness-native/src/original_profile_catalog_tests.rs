@@ -320,6 +320,9 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
         "regular-leaf",
         "directory-replaced-before-list",
         "directory-missing-before-list",
+        "listed-directory-replaced",
+        "listed-child-missing",
+        "listed-child-symlink",
         "symlink-at-tree-entry",
         "missing-at-tree-entry",
         "symlink-before-type",
@@ -510,7 +513,7 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                     ));
                 }
                 assert!(inspect(io, "resolve", original, json!([true])).is_err());
-                assert!(!io.pack_resolve_shell_tree_entry_completed());
+                assert!(!io.pack_resolve_shell_tree_completed());
                 return;
             }
             let expected = if case == "sibling-link" {
@@ -527,6 +530,9 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                 "search-only-root",
                 "directory-replaced-before-list",
                 "directory-missing-before-list",
+                "listed-directory-replaced",
+                "listed-child-missing",
+                "listed-child-symlink",
             ];
             assert_eq!(
                 inspect(io, "is-symlink", original, json!([])).unwrap()["value"],
@@ -592,7 +598,7 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                         inspect(io, "is-symlink", selected_parent, json!([])).unwrap()["value"],
                         case == "root-symlink-after-leaf",
                     );
-                    assert!(!io.pack_resolve_shell_tree_entry_completed());
+                    assert!(!io.pack_resolve_shell_tree_completed());
                     assert!(inspect(io, "is-file", selected.clone(), json!([])).is_err());
                     if matches!(case, "symlink-at-tree-entry" | "missing-at-tree-entry") {
                         fs::rename(&leaf, artifact.join("parked-leaf")).unwrap();
@@ -632,16 +638,21 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                 }
             }
             if directory_cases.contains(&case) {
-                assert!(!io.pack_resolve_shell_tree_entry_completed());
+                assert!(!io.pack_resolve_shell_tree_completed());
                 assert!(inspect(io, "iterdir", resolved.clone(), json!([])).is_err());
-                for name in ["z.txt", "ä.txt", "a.txt", "Contents"] {
-                    fs::write(leaf.join(name), b"").unwrap();
+                for name in ["z.txt", "ä.txt", "a.txt"] {
+                    fs::write(leaf.join(name), name.as_bytes()).unwrap();
                 }
+                fs::create_dir_all(leaf.join("Contents/Empty")).unwrap();
+                fs::write(leaf.join("Contents/Info.plist"), b"plist bytes").unwrap();
                 let names: Vec<_> = fs::read_dir(&leaf)
                     .unwrap()
                     .map(|entry| entry.unwrap().file_name().into_string().unwrap())
                     .collect();
-                if case != "present" && case != "search-only-root" {
+                if matches!(
+                    case,
+                    "directory-replaced-before-list" | "directory-missing-before-list"
+                ) {
                     fs::rename(&leaf, artifact.join("old-leaf")).unwrap();
                     if case == "directory-replaced-before-list" {
                         fs::create_dir(&leaf).unwrap();
@@ -665,11 +676,106 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                     ),
                 }
                 assert!(inspect(io, "iterdir", selected.clone(), json!([])).is_err());
+                let nested = |parts: &[&str]| {
+                    let mut steps = selected.as_array().unwrap().clone();
+                    steps.extend(parts.iter().map(|part| json!(["join", part])));
+                    Value::Array(steps)
+                };
+                let contents = nested(&["Contents"]);
+                let flag = |io: &mut CatalogIo, operation: &str, target: Value| {
+                    inspect(io, operation, target, json!([])).unwrap()["value"]
+                        .as_bool()
+                        .unwrap()
+                };
+                if matches!(
+                    case,
+                    "present"
+                        | "search-only-root"
+                        | "listed-directory-replaced"
+                        | "listed-child-missing"
+                        | "listed-child-symlink"
+                ) {
+                    assert!(!io.pack_resolve_shell_tree_completed());
+                    assert!(inspect(io, "is-symlink", nested(&["a.txt"]), json!([])).is_err());
+                    assert!(inspect(io, "is-symlink", nested(&["unlisted"]), json!([])).is_err());
+                    assert!(
+                        inspect(
+                            io,
+                            "is-symlink",
+                            nested(&["Contents", "Info.plist"]),
+                            json!([])
+                        )
+                        .is_err()
+                    );
+                    assert!(!flag(io, "is-symlink", contents.clone()));
+                    assert!(!flag(io, "is-file", contents.clone()));
+                    assert!(flag(io, "is-dir", contents.clone()));
+                    let listed = inspect(io, "iterdir", contents.clone(), json!([])).unwrap();
+                    assert_eq!(listed["value"].as_array().unwrap().len(), 2);
+                    let empty = nested(&["Contents", "Empty"]);
+                    if case == "listed-directory-replaced" {
+                        fs::rename(leaf.join("Contents"), leaf.join("Prior")).unwrap();
+                        fs::create_dir_all(leaf.join("Contents/Empty")).unwrap();
+                        assert!(inspect(io, "is-symlink", empty, json!([])).is_err());
+                    } else if case == "listed-child-missing" {
+                        fs::remove_dir(leaf.join("Contents/Empty")).unwrap();
+                        assert!(!flag(io, "is-symlink", empty.clone()));
+                        assert!(!flag(io, "is-file", empty.clone()));
+                        assert!(!flag(io, "is-dir", empty));
+                    } else if case == "listed-child-symlink" {
+                        fs::remove_dir(leaf.join("Contents/Empty")).unwrap();
+                        std::os::unix::fs::symlink("Info.plist", leaf.join("Contents/Empty"))
+                            .unwrap();
+                        assert!(flag(io, "is-symlink", empty));
+                    } else {
+                        assert!(!flag(io, "is-symlink", empty.clone()));
+                        assert!(!flag(io, "is-file", empty.clone()));
+                        assert!(flag(io, "is-dir", empty.clone()));
+                        assert_eq!(
+                            inspect(io, "iterdir", empty, json!([])).unwrap()["value"],
+                            json!([])
+                        );
+                        let mut prior_fd = None;
+                        for (parts, bytes) in [
+                            (&["Contents", "Info.plist"][..], b"plist bytes".as_slice()),
+                            (&["a.txt"][..], b"a.txt".as_slice()),
+                            (&["z.txt"][..], b"z.txt".as_slice()),
+                            (&["ä.txt"][..], "ä.txt".as_bytes()),
+                        ] {
+                            let path = nested(parts);
+                            assert!(!flag(io, "is-symlink", path.clone()));
+                            assert!(flag(io, "is-file", path.clone()));
+                            let fd = shell_fd_steps(&path);
+                            inspect(io, "open", path, json!([libc::O_RDONLY | libc::O_NOFOLLOW]))
+                                .unwrap();
+                            if let Some(previous) = prior_fd {
+                                assert!(inspect(io, "close", previous, json!([])).is_err());
+                            }
+                            inspect(io, "seek", fd.clone(), json!([0, libc::SEEK_CUR])).unwrap();
+                            let before = inspect(io, "fstat", fd.clone(), json!([])).unwrap();
+                            let read = inspect(io, "read", fd.clone(), json!([8192])).unwrap();
+                            assert_eq!(
+                                read["value"],
+                                base64::engine::general_purpose::STANDARD.encode(bytes)
+                            );
+                            assert_eq!(
+                                inspect(io, "read", fd.clone(), json!([8192])).unwrap()["value"],
+                                ""
+                            );
+                            assert_eq!(
+                                inspect(io, "fstat", fd.clone(), json!([])).unwrap(),
+                                before
+                            );
+                            inspect(io, "close", fd.clone(), json!([])).unwrap();
+                            prior_fd = Some(fd);
+                        }
+                    }
+                }
             }
             if case == "regular-leaf" {
-                let fd = json!([["shell-file", ""]]);
+                let fd = shell_fd_steps(&selected);
                 let flags = json!([libc::O_RDONLY | libc::O_NOFOLLOW]);
-                assert!(!io.pack_resolve_shell_tree_entry_completed());
+                assert!(!io.pack_resolve_shell_tree_completed());
                 assert!(inspect(io, "open", fd.clone(), flags.clone()).is_err());
                 assert!(inspect(io, "open", selected.clone(), json!([libc::O_WRONLY])).is_err());
                 let result = inspect(io, "open", selected.clone(), flags.clone()).unwrap();
@@ -707,12 +813,18 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                 assert!(cleanup.receipt().verified());
             }
             assert_eq!(
-                io.pack_resolve_shell_tree_entry_completed(),
+                io.pack_resolve_shell_tree_completed(),
                 matches!(case, "present" | "regular-leaf" | "search-only-root")
             );
             assert!(inspect(io, "is-symlink", selected, json!([])).is_err());
         });
     }
+}
+
+fn shell_fd_steps(path: &Value) -> Value {
+    let mut steps = vec![json!(["shell-file", ""])];
+    steps.extend_from_slice(path.as_array().unwrap());
+    Value::Array(steps)
 }
 
 #[tokio::test(flavor = "current_thread")]

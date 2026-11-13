@@ -83,9 +83,9 @@ class PathBridge:
         self._resolver_artifact_root: NativePath | None = None
         self._resolver_resolved_root: NativePath | None = None
         self._resolver_shell_leaf: NativePath | None = None
-        self._resolver_tree_kind: bool | None = None  # True for file, False for directory.
-        self._resolver_listed_shell = False
-        self._resolver_file_closed = False
+        self._resolver_digest_started = False
+        self._resolver_file: NativePath | None = None
+        self._resolver_directory: NativePath | None = None
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -115,13 +115,20 @@ class PathBridge:
         try:
             return target(*args, **kwargs)
         finally:
-            self._resolver_listed_shell = False
-            self._resolver_file_closed = False
-            self._resolver_tree_kind = None
+            self._resolver_digest_started = False
+            self._resolver_file = None
+            self._resolver_directory = None
             self._resolver_shell_leaf = None
             self._resolver_resolved_root = None
             self._resolver_artifact_root = None
             self._resolving_catalog = False
+
+    def _shell_tree_path(self, path: NativePath) -> bool:
+        leaf = self._resolver_shell_leaf
+        return (self._resolving_catalog and leaf is not None
+                and path._bridge is self and path._binding == leaf._binding
+                and path._steps[:len(leaf._steps)] == leaf._steps
+                and all(step[0] == "join" for step in path._steps[len(leaf._steps):]))
 
     def bind(self, binding: str, lexical: str) -> NativePath:
         """Wrap an already admitted native target and its exact disclosed value."""
@@ -316,7 +323,7 @@ class NativePath:
 
     def __fspath__(self) -> str:
         bridge = self._bridge
-        if self is bridge._resolver_shell_leaf and bridge._resolver_tree_kind is True:
+        if self is bridge._resolver_file and bridge._shell_tree_path(self):
             raise _UnboundPlatformArtifacts
         return str(self._pure)
 
@@ -366,7 +373,7 @@ class NativePath:
         ), "path")
 
     def resolve(self, strict: bool = False) -> NativePath:
-        if self._bridge._resolver_listed_shell or self._bridge._resolver_file_closed:
+        if self._bridge._resolver_digest_started:
             # The next entrypoint resolve is still outside the connected IO.
             raise _UnboundPlatformArtifacts
         if strict is True and self is self._bridge._resolver_artifact_root:
@@ -381,8 +388,6 @@ class NativePath:
         return self._effect("resolve", "path", [strict])
 
     def is_symlink(self) -> bool:
-        if self._bridge._resolver_listed_shell:
-            raise _UnboundPlatformArtifacts
         result = self._effect("is-symlink", "bool")
         bridge = self._bridge
         root = bridge._resolver_resolved_root
@@ -397,14 +402,18 @@ class NativePath:
 
     def is_file(self) -> bool:
         result = self._effect("is-file", "bool")
-        if result and self is self._bridge._resolver_shell_leaf:
-            self._bridge._resolver_tree_kind = True
+        bridge = self._bridge
+        if bridge._shell_tree_path(self):
+            if self is bridge._resolver_shell_leaf:
+                bridge._resolver_digest_started = True
+            bridge._resolver_file = self if result else None
         return result
 
     def is_dir(self) -> bool:
         result = self._effect("is-dir", "bool")
-        if result and self is self._bridge._resolver_shell_leaf:
-            self._bridge._resolver_tree_kind = False
+        bridge = self._bridge
+        if bridge._shell_tree_path(self):
+            bridge._resolver_directory = self if result else None
         return result
 
     def read_bytes(self) -> bytes:
@@ -435,7 +444,7 @@ class NativePath:
 
     def iterdir(self) -> Iterator[NativePath]:
         bridge = self._bridge
-        if self is bridge._resolver_shell_leaf and bridge._resolver_tree_kind is False:
+        if self is bridge._resolver_directory and bridge._shell_tree_path(self):
             row = bridge._catalog_request(self._target(), "iterdir", [])
             names = row.get("value")
             if (set(row) != {"kind", "value"} or row["kind"] != "shell-directory"
@@ -443,7 +452,6 @@ class NativePath:
                         type(name) is not str or name in {"", ".", ".."}
                         or "/" in name or "\0" in name for name in names)):
                 raise UnsupportedValue("invalid selected Shell directory result")
-            bridge._resolver_listed_shell = True
             return (self / name for name in names)
         # Pinned Python 3.13 Path.iterdir obtains its scandir entries at the
         # method call, before returning its generator. NativeKit must finish
@@ -461,9 +469,10 @@ class NativePath:
 
 
 class _Descriptor:
-    def __init__(self, bridge: PathBridge, binding: str, *, shell_file: bool = False) -> None:
+    def __init__(self, bridge: PathBridge, binding: str, *,
+                 shell_steps: tuple[tuple[str, str], ...] | None = None) -> None:
         self.bridge, self.binding, self.closed = bridge, binding, False
-        self.shell_file = shell_file
+        self.shell_steps = shell_steps
 
 
 class NativeOS:
@@ -480,8 +489,8 @@ class NativeOS:
         raise UnsupportedValue("native OS observation is not represented")
 
     def fspath(self, path: NativePath) -> NativePath:
-        if (type(path) is NativePath and path is self._bridge._resolver_shell_leaf
-                and self._bridge._resolver_tree_kind is True):
+        if (type(path) is NativePath and path is self._bridge._resolver_file
+                and self._bridge._shell_tree_path(path)):
             return path
         raise UnsupportedValue("native fspath input is not represented")
 
@@ -492,18 +501,19 @@ class NativeOS:
         if set(row) != {"kind", "binding"} or row["kind"] != "fd":
             raise UnsupportedValue("invalid native descriptor result")
         binding = _binding(row["binding"])
-        shell_file = (path is self._bridge._resolver_shell_leaf
-                      and self._bridge._resolver_tree_kind is True)
+        shell_file = (path is self._bridge._resolver_file
+                      and self._bridge._shell_tree_path(path))
         if shell_file and binding != path._binding:
             raise UnsupportedValue("invalid selected Shell descriptor binding")
-        return _Descriptor(self._bridge, binding, shell_file=shell_file)
+        return _Descriptor(self._bridge, binding, shell_steps=path._steps if shell_file else None)
 
     def _call(self, fd: _Descriptor, operation: str, kind: str,
               args: list | None = None) -> Any:
         if (type(fd) is not _Descriptor or fd.bridge is not self._bridge or fd.closed):
             raise UnsupportedValue("closed or foreign native descriptor")
         return self._bridge._value(self._bridge._request(
-            {"binding": fd.binding, "steps": [["shell-file", ""]] if fd.shell_file else []},
+            {"binding": fd.binding, "steps": ([["shell-file", ""], *map(list, fd.shell_steps)]
+                                             if fd.shell_steps is not None else [])},
             operation, args or [],
         ), kind)
 
@@ -518,7 +528,7 @@ class NativeOS:
 
     def fdopen(self, fd: _Descriptor, mode: str) -> io.BufferedReader:
         if (type(fd) is not _Descriptor or fd.bridge is not self._bridge
-                or fd.closed or not fd.shell_file or mode != "rb"):
+                or fd.closed or fd.shell_steps is None or mode != "rb"):
             raise UnsupportedValue("native fdopen input is not represented")
         raw = _ShellRawReader(self, fd)
         try:
@@ -530,8 +540,6 @@ class NativeOS:
     def close(self, fd: _Descriptor) -> None:
         try:
             self._call(fd, "close", "unit")
-            if fd.shell_file:
-                self._bridge._resolver_file_closed = True
         finally:
             if type(fd) is _Descriptor and fd.bridge is self._bridge:
                 fd.closed = True

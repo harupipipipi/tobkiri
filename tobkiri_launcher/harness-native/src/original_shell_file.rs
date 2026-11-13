@@ -3,7 +3,6 @@ use super::*;
 use crate::fd_stat::{MAX_STAT_JSON_BYTES, encode_stat};
 use std::io::Seek as _;
 
-const FILE_STEPS: &[(&str, &str)] = &[("shell-file", "")];
 const CHUNK_BYTES: usize = 1024 * 1024;
 
 pub(super) fn open_shell_file<S: crate::BootstrapReviewOwner>(
@@ -57,7 +56,12 @@ impl CatalogIo {
         args: &tobkiri_canon::CoreArray<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<CoreBuffer> {
-        if !exact_steps(steps, FILE_STEPS) {
+        let selected = self
+            .shell_leaf
+            .as_ref()
+            .and_then(CoreValue::as_str)
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        if !self.shell_tree.matches(selected, steps, true) {
             return Err(OriginalAuthorityError::unavailable().into());
         }
         let mut out = inspection_result(scope, budget)?;
@@ -75,7 +79,7 @@ impl CatalogIo {
             op.check(OriginalAuthorityStage::Source)?;
             let response = out.finish()?;
             if stage == PackResolve::ShellFileClose {
-                self.pack_resolve = PackResolve::ShellReady;
+                self.pack_resolve = self.shell_tree.advance();
             }
             return Ok(response);
         }

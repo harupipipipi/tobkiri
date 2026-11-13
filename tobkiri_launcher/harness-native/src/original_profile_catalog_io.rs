@@ -16,6 +16,9 @@ mod shell_inputs;
 #[cfg(unix)]
 #[path = "original_shell_root.rs"]
 mod shell_root;
+#[cfg(unix)]
+#[path = "original_shell_tree.rs"]
+mod shell_tree;
 #[cfg(all(test, unix))]
 #[path = "original_profile_catalog_tests.rs"]
 mod tests;
@@ -41,6 +44,8 @@ pub(crate) struct CatalogIo {
     shell_root_identity: Option<Identity>,
     #[cfg(unix)]
     shell_tree_identity: Option<Identity>,
+    #[cfg(unix)]
+    shell_tree: shell_tree::ShellTree,
     #[cfg(unix)]
     shell_file: Option<TrackedFile>,
     #[cfg(unix)]
@@ -210,6 +215,8 @@ impl CatalogIo {
             shell_root_identity: None,
             #[cfg(unix)]
             shell_tree_identity: None,
+            #[cfg(unix)]
+            shell_tree: shell_tree::ShellTree::default(),
             #[cfg(unix)]
             shell_file: None,
             #[cfg(unix)]
@@ -876,7 +883,7 @@ impl CatalogIo {
         self.pack_resolve == PackResolve::ShellResolve
     }
 
-    pub(crate) fn pack_resolve_shell_tree_entry_completed(&self) -> bool {
+    pub(crate) fn pack_resolve_shell_tree_completed(&self) -> bool {
         self.pack_resolve == PackResolve::ShellReady
     }
 

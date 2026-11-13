@@ -1409,7 +1409,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             elif operation == "read-bytes":
                 result = {"kind": "bytes", "value": base64.b64encode(raw_lock).decode()}
             elif operation == "iterdir":
-                result = {"kind": "shell-directory", "value": ["z", "Contents", "a"]}
+                result = {"kind": "shell-directory", "value": []}
             else:
                 result = {"kind": "bool", "value": (
                     operation == "is-dir" or (operation == "is-file" and len(calls) == 2)
@@ -1431,7 +1431,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             digests.append(namespace["_bundle_digest"](actual_catalog))
             namespace["verify_platform_artifact"](
                 actual_catalog.artifact_root,
-                {"relative_path": "Tobkiri.app", "artifact_digest": "sha256:0123"},
+                {"relative_path": "Tobkiri.app", "artifact_digest": "sha256:" + hashlib.sha256(b"").hexdigest(),
+                 "entrypoint": "Tobkiri.app/executable"},
             )
             self.fail("fixture reached beyond the platform artifact boundary")
 
@@ -1454,8 +1455,9 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertIsNone(self.bridge._resolver_artifact_root)
         self.assertIsNone(self.bridge._resolver_resolved_root)
         self.assertIsNone(self.bridge._resolver_shell_leaf)
-        self.assertIsNone(self.bridge._resolver_tree_kind)
-        self.assertFalse(self.bridge._resolver_listed_shell)
+        self.assertFalse(self.bridge._resolver_digest_started)
+        self.assertIsNone(self.bridge._resolver_file)
+        self.assertIsNone(self.bridge._resolver_directory)
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("resolve_profile", request)
 
