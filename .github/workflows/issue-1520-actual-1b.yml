@@ -111,6 +111,7 @@ jobs:
           import json
           from pathlib import Path
           import sys
+          from time import monotonic, sleep
           from urllib.error import HTTPError
           from urllib.request import Request, urlopen
 
@@ -133,6 +134,52 @@ jobs:
           slots = request("/slots")
           assert isinstance(slots, list) and slots and all(not slot["is_processing"] for slot in slots)
           print("Pinned llama.cpp b11146: authenticated Gemma 3 1B alias and idle slot verified")
+
+          # Time the same streaming API independently before the Harness test.
+          # Use a different prompt and disable prompt caching for this request.
+          payload = json.dumps({
+              "model": "gemma3-1b-local",
+              "messages": [{"role": "user", "content": "Name a color."}],
+              "stream": True, "max_tokens": 8, "temperature": 0,
+              "cache_prompt": False,
+          }).encode()
+          stream_request = Request(origin + "/v1/chat/completions", data=payload, headers={
+              "Authorization": "Bearer " + token,
+              "Content-Type": "application/json",
+              "Accept": "text/event-stream",
+          })
+          start = monotonic()
+          first = None
+          done = False
+          try:
+              with urlopen(stream_request, timeout=40) as response:
+                  assert response.headers.get_content_type() == "text/event-stream"
+                  for line in response:
+                      if monotonic() - start > 45:
+                          raise TimeoutError
+                      if not line.startswith(b"data:"):
+                          continue
+                      data = line.removeprefix(b"data:").strip()
+                      if data == b"[DONE]":
+                          done = True
+                          break
+                      for choice in json.loads(data).get("choices", []):
+                          if first is None and choice.get("delta", {}).get("content"):
+                              first = monotonic() - start
+          except TimeoutError:
+              print("Direct model stream: timed out")
+          else:
+              print(f"Direct model stream: first_text_seconds={first} "
+                    f"total_seconds={monotonic() - start:.3f} done={done}")
+          for _ in range(30):
+              slots = request("/slots")
+              if isinstance(slots, list) and slots and all(
+                  not slot["is_processing"] for slot in slots
+              ):
+                  break
+              sleep(1)
+          else:
+              raise AssertionError("direct diagnostic did not leave the model idle")
           PY
           TOBKIRI_TEST_LLAMA=1 TOBKIRI_TEST_LLAMA_KEY_FILE="$work/api-key" \
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
