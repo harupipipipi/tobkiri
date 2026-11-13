@@ -3256,6 +3256,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [同一invocationのCI 43504764640](https://github.com/harupipipipi/tobkiri/actions/runs/43504764640)は検証中。
   今後は同一定義を比較するためのcanonical出力と再パースを減らせるか検討する。
   同じ元オブジェクトに対する辞書比較、元の短絡順序、容量計上と例外を保つことが条件。
+- `89d72b2b3` は引き継ぎ元の定義が未解決かつAuthorityを持たないことを検証し、active
+  ポインター2箇所を再検査してから、引き継ぎ元の13項目を元の承認文書に渡す。
+  既存のPython文字列表現とcanonical出力を再利用し、Pack順序とShellの値を保持する。
+  Rustが承認文書の引き継ぎ項目と全体digestを検証し、同じ文書がSetup一覧へ渡る。
+  再digestしたPack順序改変、認証済みでもinert条件を満たさない定義、途中で現れた
+  activeポインターを拒否するテストを追加した。
+- `9a1f9e56e` は固定原本のSetup一覧まで実行して移行時の承認文書を採取する。
+  `4ef8e2df6` は元の登録関数で、正常な後継revision追加と、定義更新・Host側／workspace側
+  のactiveポインター出現時の拒否を採取する。
+  [原本比較CI 43506425229](https://github.com/harupipipipi/tobkiri/actions/runs/43506425229)
+  はLinuxの原本観測まで通過。[登録比較用CI 43506665301](https://github.com/harupipipipi/tobkiri/actions/runs/43506665301)
+  と[Wasm CI 43506174622](https://github.com/harupipipipi/tobkiri/actions/runs/43506174622)で検証中。
+  登録直前のworkspace lock → Host選択lock → 定義CASと、製品GUIでの承認・登録は未接続。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
