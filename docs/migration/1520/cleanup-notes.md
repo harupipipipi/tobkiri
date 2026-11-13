@@ -2627,7 +2627,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 変更前の[明示App backend CI 43374609255](https://github.com/harupipipipi/tobkiri/actions/runs/43374609255)
   は未計測のcold42と全カタログがどちらも元の2B燃料を使い切った。
   変更後の[ネイティブ差分CI 43376752724](https://github.com/harupipipipi/tobkiri/actions/runs/43376752724)は
-  追加の継続テストを含め成功。[明示App backend CI 43376758941](https://github.com/harupipipipi/tobkiri/actions/runs/43376758941)は確認中。
+  追加の継続テストを含め成功。[明示App backend CI 43376758941](https://github.com/harupipipipi/tobkiri/actions/runs/43376758941)は
+  cold42と全カタログが変更後も2B燃料を使い切った。予算内完走の改善は確認できず、採用しない。
   両方の実Wasmゲートと、同一Store上の初期化・IO・後始末を含む実経路が通るまで採用しない。
 
 ## 031: Pi再生用の生成WITをクリーンなCIでも揃える
@@ -2636,7 +2637,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   はGit管理外の `wit/deps` がなく、Piラッパーのcomponent化前に停止した。
   `9bfa525bc` は管理下のCore・Pi adapter WITをCIで配置する。固定した上流拡張の
   ソースとhash検証は維持。共通ラッパーの依存準備をまとめる場合も、呼び出し側のWITを
-  意図せず置換しないこと。[再実行CI 43376752668](https://github.com/harupipipipi/tobkiri/actions/runs/43376752668)で確認中。
+  意図せず置換しないこと。[再実行CI 43376752668](https://github.com/harupipipipi/tobkiri/actions/runs/43376752668)
+  では両方のWasmがビルドされ、未改変helloは通過。protected-pathsは最初の警告を返す経路で
+  `provider reported unavailable`。テストHostには予算付き通知の受け口がなかったため、
+  `afa85d72b` でテストだけに許可済み `notification` の受け口を追加し、実警告の文面と件数も確認する。
+  [CI 43377714365](https://github.com/harupipipipi/tobkiri/actions/runs/43377714365)で検証中。
 
 ## 032: PR #1521の監査再送とLauncherの依存ロック
 
@@ -2649,3 +2654,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [PRのInstaller CI](https://github.com/harupipipipi/tobkiri/actions/runs/41353172907/job/124987546127)と
   [統合祖先のInstaller CI](https://github.com/harupipipipi/tobkiri/actions/runs/41279048043/job/124767015757)で
   `--locked` 検証とDMGのマウント検証が成功。いずれも製品経路全体の置換を証明するものではない。
+
+## 033: CLI公開に実行結果と承認の証拠を足す
+
+- `ea75c1d99` はCIの隔離PTYと一時データrootで通常のCLIを起動する。固定Packの
+  Profile・hash・権限の種類を端末上で確認してから応答し、作成・実Echo・公開・
+  取り込み拒否とhead非公開・別IDへの再承認・実Echo・再公開を追う。両Profileの
+  private SQLiteに保存した会話を検査する。GUIの承認や実キーチェーンはこのテストの範囲外。
+  [CI 43377553320](https://github.com/harupipipipi/tobkiri/actions/runs/43377553320)で検証中。
