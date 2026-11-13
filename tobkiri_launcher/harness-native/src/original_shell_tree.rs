@@ -71,7 +71,7 @@ impl ShellTree {
             }
             self.listing = listing.parent.take();
         }
-        PackResolve::ShellReady
+        PackResolve::ShellEntryResolve
     }
 
     // Fill a bounded stack with the verified directory identities from leaf

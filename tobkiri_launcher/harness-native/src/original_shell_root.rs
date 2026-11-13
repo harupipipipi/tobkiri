@@ -1,5 +1,5 @@
 //! The original Shell root and selected path checks after the Pack lock read.
-use super::shell_file::open_shell_file;
+use super::shell_file::{ShellFile, open_shell_file, write_descriptor};
 use super::shell_inputs::{MAX_NAME, single_leaf};
 use super::shell_tree::{MAX_TREE_DEPTH, ShellTree, step_name};
 use super::*;
@@ -14,8 +14,13 @@ impl CatalogIo {
         steps: &tobkiri_canon::CoreArray<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<CoreBuffer> {
+        let selection = if self.pack_resolve == PackResolve::ShellLeafSymlink {
+            Some(self.selected_shell()?)
+        } else {
+            None
+        };
         let selected = match self.pack_resolve {
-            PackResolve::ShellLeafSymlink => Some(self.selected_shell_leaf()?),
+            PackResolve::ShellLeafSymlink => selection.as_ref().map(|value| value.artifact.clone()),
             PackResolve::ShellLeafParentSymlink
             | PackResolve::ShellTreeSymlink
             | PackResolve::ShellTreeFile
@@ -176,10 +181,8 @@ impl CatalogIo {
                             .binding
                             .as_ref()
                             .ok_or_else(OriginalAuthorityError::unavailable)?;
-                        response.append(b"{\"kind\":\"fd\",\"binding\":")?;
-                        response.append(binding.encode_guest(budget)?.as_bytes())?;
-                        response.append(b"}")?;
-                        self.shell_file = Some(file);
+                        write_descriptor(&mut response, binding, budget)?;
+                        self.shell_file = Some(ShellFile::Tree(file));
                         return Ok(PackResolve::ShellFileTell);
                     }
                     if stage == PackResolve::ShellList {
@@ -225,6 +228,8 @@ impl CatalogIo {
                                 self.shell_inputs = None;
                                 if !symlink {
                                     self.shell_leaf = selected.clone();
+                                    self.shell_entrypoint =
+                                        selection.and_then(|value| value.entrypoint);
                                 }
                             }
                             match (symlink, stage) {
@@ -248,6 +253,9 @@ impl CatalogIo {
                             match (found, file) {
                                 (true, _) => {
                                     self.shell_tree_identity = stat.as_ref().map(stat_identity);
+                                    if steps.len() == 2 {
+                                        self.shell_artifact_identity = self.shell_tree_identity;
+                                    }
                                     if file {
                                         PackResolve::ShellFileOpen
                                     } else {
@@ -317,7 +325,7 @@ pub(super) fn artifact_parent_identity<S: crate::BootstrapReviewOwner>(
     Ok(Some(id?))
 }
 
-fn open_parent<S: crate::BootstrapReviewOwner>(
+pub(super) fn open_parent<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     path: &Path,
 ) -> Result<TrackedFile> {
@@ -330,13 +338,13 @@ fn open_parent<S: crate::BootstrapReviewOwner>(
     Ok(parent)
 }
 
-fn close_parent(parent: TrackedFile) -> Result<()> {
+pub(super) fn close_parent(parent: TrackedFile) -> Result<()> {
     parent
         .close()
         .map_err(|_| OriginalAuthorityError::unavailable())
 }
 
-fn open_shell_directory<S: crate::BootstrapReviewOwner>(
+pub(super) fn open_shell_directory<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
     path: &Path,
@@ -417,7 +425,7 @@ fn walk_shell_tree<S: crate::BootstrapReviewOwner>(
     Ok((directory, path))
 }
 
-fn bounded_member(parent: &Path, name: &str) -> Result<PathBuf> {
+pub(super) fn bounded_member(parent: &Path, name: &str) -> Result<PathBuf> {
     if parent.as_os_str().len() + 1 + name.len() >= libc::PATH_MAX as usize {
         return Err(OriginalAuthorityError::capacity(
             OriginalAuthorityStage::Path,
@@ -426,18 +434,18 @@ fn bounded_member(parent: &Path, name: &str) -> Result<PathBuf> {
     Ok(parent.join(name))
 }
 
-fn checked_name(name: &str) -> Result<CString> {
+pub(super) fn checked_name(name: &str) -> Result<CString> {
     if !single_leaf(name) {
         return Err(OriginalAuthorityError::unavailable());
     }
     CString::new(name).map_err(|_| OriginalAuthorityError::unavailable())
 }
 
-fn stat_mode(stat: &libc::stat) -> u32 {
+pub(super) fn stat_mode(stat: &libc::stat) -> u32 {
     mode_bits(stat.st_mode & libc::S_IFMT)
 }
 
-fn stat_identity(stat: &libc::stat) -> Identity {
+pub(super) fn stat_identity(stat: &libc::stat) -> Identity {
     Identity {
         device: device_bits(stat.st_dev),
         inode: stat.st_ino,
@@ -446,7 +454,7 @@ fn stat_identity(stat: &libc::stat) -> Identity {
     }
 }
 
-fn stat_at<S: crate::BootstrapReviewOwner>(
+pub(super) fn stat_at<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
     name: &CString,
@@ -473,7 +481,7 @@ fn stat_at<S: crate::BootstrapReviewOwner>(
     }
 }
 
-fn optional_stat_at<S: crate::BootstrapReviewOwner>(
+pub(super) fn optional_stat_at<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
     name: &CString,
@@ -500,17 +508,26 @@ fn optional_stat<S: crate::BootstrapReviewOwner>(
     optional_stat_at(op, parent, &checked_name(name)?, || path.join(name))
 }
 
-fn resolve_leaf<S: crate::BootstrapReviewOwner>(
+pub(super) fn resolve_leaf<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
     path: &Path,
     original: &str,
 ) -> Result<String> {
+    let (name, _, _) = resolve_leaf_stat(op, parent, path, original)?;
+    Ok(name)
+}
+
+pub(super) fn resolve_leaf_stat<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    parent: &TrackedFile,
+    path: &Path,
+    original: &str,
+) -> Result<(String, Identity, bool)> {
     let original_c = checked_name(original)?;
-    if stat_mode(&stat_at(op, parent, &original_c, || path.join(original))?)
-        != mode_bits(libc::S_IFLNK)
-    {
-        return Ok(original.to_owned());
+    let initial = stat_at(op, parent, &original_c, || path.join(original))?;
+    if stat_mode(&initial) != mode_bits(libc::S_IFLNK) {
+        return Ok((original.to_owned(), stat_identity(&initial), false));
     }
     let mut target = [0_u8; MAX_NAME + 1];
     let size = loop {
@@ -540,11 +557,9 @@ fn resolve_leaf<S: crate::BootstrapReviewOwner>(
     // Resolve only an immediate sibling. Validate before any target IO and
     // refuse further links. This supports the original staged root-replaced
     // case without allowing arbitrary realpath or a child file operation.
-    if stat_mode(&stat_at(op, parent, &checked_name(name)?, || {
-        path.join(name)
-    })?) == mode_bits(libc::S_IFLNK)
-    {
+    let target = stat_at(op, parent, &checked_name(name)?, || path.join(name))?;
+    if stat_mode(&target) == mode_bits(libc::S_IFLNK) {
         return Err(OriginalAuthorityError::unavailable());
     }
-    Ok(name.to_owned())
+    Ok((name.to_owned(), stat_identity(&target), true))
 }

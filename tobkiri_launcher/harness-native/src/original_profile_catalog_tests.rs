@@ -318,6 +318,9 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
         "leaf-symlink",
         "leaf-missing",
         "regular-leaf",
+        "entrypoint-missing",
+        "entrypoint-symlink",
+        "entrypoint-parent-replaced",
         "directory-replaced-before-list",
         "directory-missing-before-list",
         "listed-directory-replaced",
@@ -345,6 +348,11 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                 "Tobkiri.app"
             };
             let leaf = artifact.join(selected_path);
+            let entry_relative = if case == "regular-leaf" {
+                selected_path.to_owned()
+            } else {
+                format!("{selected_path}/Contents/Info.plist")
+            };
             if case == "leaf-symlink" {
                 std::os::unix::fs::symlink("../different-leaf", &leaf).unwrap();
             } else if case == "regular-leaf" {
@@ -368,7 +376,7 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                         "provider_id":"fixture-shell","pack_id":"fixture-pack","contract_id":"fixture-contract",
                         "availability":"verified","launch":{"variants":[
                             {"platform":"macos","architecture":"x86_64","relative_path":"Different.app"},
-                            {"platform":"macos","architecture":"arm64","relative_path":selected_path}
+                            {"platform":"macos","architecture":"arm64","relative_path":selected_path,"entrypoint":entry_relative}
                         ]}
                     }),
                 ),
@@ -533,6 +541,9 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                 "listed-directory-replaced",
                 "listed-child-missing",
                 "listed-child-symlink",
+                "entrypoint-missing",
+                "entrypoint-symlink",
+                "entrypoint-parent-replaced",
             ];
             assert_eq!(
                 inspect(io, "is-symlink", original, json!([])).unwrap()["value"],
@@ -694,6 +705,9 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                         | "listed-directory-replaced"
                         | "listed-child-missing"
                         | "listed-child-symlink"
+                        | "entrypoint-missing"
+                        | "entrypoint-symlink"
+                        | "entrypoint-parent-replaced"
                 ) {
                     assert!(!io.pack_resolve_shell_tree_completed());
                     assert!(inspect(io, "is-symlink", nested(&["a.txt"]), json!([])).is_err());
@@ -814,9 +828,111 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
             }
             assert_eq!(
                 io.pack_resolve_shell_tree_completed(),
-                matches!(case, "present" | "regular-leaf" | "search-only-root")
+                matches!(
+                    case,
+                    "present"
+                        | "regular-leaf"
+                        | "search-only-root"
+                        | "entrypoint-missing"
+                        | "entrypoint-symlink"
+                        | "entrypoint-parent-replaced"
+                )
             );
-            assert!(inspect(io, "is-symlink", selected, json!([])).is_err());
+            assert!(inspect(io, "is-symlink", selected.clone(), json!([])).is_err());
+            if !io.pack_resolve_shell_tree_completed() {
+                return;
+            }
+            let entry = json!([["shell-resolved-root", ""], ["join", entry_relative]]);
+            let entry_path = artifact.join(&entry_relative);
+            assert!(inspect(io, "resolve", entry.clone(), json!([false])).is_err());
+            assert!(
+                inspect(
+                    io,
+                    "resolve",
+                    json!([["shell-resolved-root", ""], ["join", "other"]]),
+                    json!([true])
+                )
+                .is_err()
+            );
+            if case == "entrypoint-missing" {
+                fs::remove_file(&entry_path).unwrap();
+                let error = inspect(io, "resolve", entry.clone(), json!([true])).unwrap_err();
+                let original = error.downcast_ref::<OriginalAuthorityError>().unwrap();
+                assert!(
+                    matches!(&original.cause, Some(OriginalAuthorityCause::Io(error))
+                    if error.errno == Some(libc::ENOENT)
+                    && error.filename.as_deref() == entry_path.to_str())
+                );
+                assert!(inspect(io, "resolve", entry, json!([true])).is_err());
+                return;
+            }
+            let payload = b"fresh bytes after tree close";
+            let expected_path = if case == "entrypoint-symlink" {
+                let target = entry_path.with_file_name("Prior.plist");
+                fs::rename(&entry_path, &target).unwrap();
+                std::os::unix::fs::symlink("Prior.plist", &entry_path).unwrap();
+                target
+            } else {
+                if case == "regular-leaf" {
+                    fs::rename(artifact.join("old-leaf"), &entry_path).unwrap();
+                }
+                fs::write(&entry_path, payload).unwrap();
+                entry_path.clone()
+            };
+            let resolved_entry = inspect(io, "resolve", entry.clone(), json!([true])).unwrap();
+            assert_eq!(resolved_entry["value"], expected_path.to_str().unwrap());
+            assert_eq!(resolved_entry["steps"], entry);
+            assert!(inspect(io, "is-symlink", entry.clone(), json!([])).is_err());
+            let resolved_artifact =
+                inspect(io, "resolve", selected.clone(), json!([true])).unwrap();
+            assert_eq!(resolved_artifact["value"], leaf.to_str().unwrap());
+            assert_eq!(resolved_artifact["steps"], selected);
+            if case == "entrypoint-parent-replaced" {
+                fs::rename(leaf.join("Contents"), leaf.join("Prior")).unwrap();
+                fs::create_dir(leaf.join("Contents")).unwrap();
+                fs::write(&entry_path, payload).unwrap();
+                assert!(inspect(io, "is-symlink", entry, json!([])).is_err());
+                return;
+            }
+            assert_eq!(
+                inspect(io, "is-symlink", entry.clone(), json!([])).unwrap()["value"],
+                case == "entrypoint-symlink"
+            );
+            if case == "entrypoint-symlink" {
+                assert!(inspect(io, "is-file", entry, json!([])).is_err());
+                return;
+            }
+            assert_eq!(
+                inspect(io, "is-file", entry.clone(), json!([])).unwrap()["value"],
+                true
+            );
+            let mut fd = shell_fd_steps(&entry);
+            fd[0][0] = json!("shell-entrypoint-file");
+            inspect(
+                io,
+                "open",
+                entry,
+                json!([libc::O_RDONLY | libc::O_NOFOLLOW]),
+            )
+            .unwrap();
+            let mut tree_fd = fd.clone();
+            tree_fd[0][0] = json!("shell-file");
+            assert!(inspect(io, "close", tree_fd, json!([])).is_err());
+            inspect(io, "seek", fd.clone(), json!([0, libc::SEEK_CUR])).unwrap();
+            let before = inspect(io, "fstat", fd.clone(), json!([])).unwrap();
+            let read = inspect(io, "read", fd.clone(), json!([8192])).unwrap();
+            assert_eq!(
+                read["value"],
+                base64::engine::general_purpose::STANDARD.encode(payload)
+            );
+            assert_eq!(
+                inspect(io, "read", fd.clone(), json!([8192])).unwrap()["value"],
+                ""
+            );
+            assert_eq!(inspect(io, "fstat", fd.clone(), json!([])).unwrap(), before);
+            inspect(io, "close", fd, json!([])).unwrap();
+            assert!(io.pack_resolve_shell_entrypoint_completed());
+            assert!(cleanup.receipt().verified());
         });
     }
 }

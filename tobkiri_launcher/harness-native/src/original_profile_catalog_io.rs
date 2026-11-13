@@ -8,6 +8,9 @@ use sha2::{Digest as _, Sha256};
 use std::path::Path;
 use tobkiri_canon::{AllocationBudget, CoreBuffer, CoreBufferBuilder, CoreValue, MAX_BYTES};
 #[cfg(unix)]
+#[path = "original_shell_entrypoint.rs"]
+mod shell_entrypoint;
+#[cfg(unix)]
 #[path = "original_shell_file.rs"]
 mod shell_file;
 #[cfg(unix)]
@@ -45,15 +48,21 @@ pub(crate) struct CatalogIo {
     #[cfg(unix)]
     shell_tree_identity: Option<Identity>,
     #[cfg(unix)]
+    shell_artifact_identity: Option<Identity>,
+    #[cfg(unix)]
     shell_tree: shell_tree::ShellTree,
     #[cfg(unix)]
-    shell_file: Option<TrackedFile>,
+    shell_file: Option<shell_file::ShellFile>,
     #[cfg(unix)]
     shell_profile_id: Option<String>,
     #[cfg(unix)]
     shell_inputs: Option<shell_inputs::ShellInputs>,
     #[cfg(unix)]
     shell_leaf: Option<CoreValue>,
+    #[cfg(unix)]
+    shell_entrypoint: Option<CoreValue>,
+    #[cfg(unix)]
+    shell_entrypoint_resolution: Option<shell_entrypoint::ResolvedEntrypoint>,
     binding: Option<CoreValue>,
     lock_bytes: Option<Funded<Zeroizing<Vec<u8>>>>,
     lock: Option<Funded<Document>>,
@@ -105,7 +114,12 @@ enum PackResolve {
     ShellFileRead,
     ShellFileEnd,
     ShellFileClose,
-    ShellReady,
+    ShellEntryResolve,
+    ShellEntryArtifactResolve,
+    ShellEntrySymlink,
+    ShellEntryFile,
+    ShellEntryOpen,
+    ShellEntryDigestReady,
     Spent,
 }
 
@@ -216,6 +230,8 @@ impl CatalogIo {
             #[cfg(unix)]
             shell_tree_identity: None,
             #[cfg(unix)]
+            shell_artifact_identity: None,
+            #[cfg(unix)]
             shell_tree: shell_tree::ShellTree::default(),
             #[cfg(unix)]
             shell_file: None,
@@ -225,6 +241,10 @@ impl CatalogIo {
             shell_inputs: None,
             #[cfg(unix)]
             shell_leaf: None,
+            #[cfg(unix)]
+            shell_entrypoint: None,
+            #[cfg(unix)]
+            shell_entrypoint_resolution: None,
             binding: None,
             lock_bytes: None,
             lock: None,
@@ -793,19 +813,26 @@ impl CatalogIo {
             | PackResolve::ShellSymlink
             | PackResolve::ShellLeafSymlink
             | PackResolve::ShellLeafParentSymlink
-            | PackResolve::ShellTreeSymlink => "is-symlink",
-            PackResolve::CheckFile | PackResolve::ShellTreeFile => "is-file",
+            | PackResolve::ShellTreeSymlink
+            | PackResolve::ShellEntrySymlink => "is-symlink",
+            PackResolve::CheckFile | PackResolve::ShellTreeFile | PackResolve::ShellEntryFile => {
+                "is-file"
+            }
             PackResolve::Read => "read-bytes",
-            PackResolve::ShellResolve => "resolve",
+            PackResolve::ShellResolve
+            | PackResolve::ShellEntryResolve
+            | PackResolve::ShellEntryArtifactResolve => "resolve",
             PackResolve::ShellDirectory | PackResolve::ShellTreeDirectory => "is-dir",
             PackResolve::ShellList => "iterdir",
-            PackResolve::ShellFileOpen => "open",
+            PackResolve::ShellFileOpen | PackResolve::ShellEntryOpen => "open",
             _ => return Err(OriginalAuthorityError::unavailable().into()),
         };
         let valid_args = match self.pack_resolve {
-            PackResolve::ShellResolve => strict(&args),
+            PackResolve::ShellResolve
+            | PackResolve::ShellEntryResolve
+            | PackResolve::ShellEntryArtifactResolve => strict(&args),
             #[cfg(unix)]
-            PackResolve::ShellFileOpen => {
+            PackResolve::ShellFileOpen | PackResolve::ShellEntryOpen => {
                 args.len() == 1
                     && args.get(0).and_then(|value| value.as_i64())
                         == Some(i64::from(libc::O_RDONLY | libc::O_NOFOLLOW))
@@ -814,6 +841,17 @@ impl CatalogIo {
         };
         if operation.as_str() != Some(operation_name) || !valid_args {
             return Err(OriginalAuthorityError::unavailable().into());
+        }
+        #[cfg(unix)]
+        if matches!(
+            self.pack_resolve,
+            PackResolve::ShellEntryResolve
+                | PackResolve::ShellEntryArtifactResolve
+                | PackResolve::ShellEntrySymlink
+                | PackResolve::ShellEntryFile
+                | PackResolve::ShellEntryOpen
+        ) {
+            return self.inspect_shell_entrypoint(&op, &scope, &steps, budget);
         }
         if matches!(
             self.pack_resolve,
@@ -883,8 +921,13 @@ impl CatalogIo {
         self.pack_resolve == PackResolve::ShellResolve
     }
 
-    pub(crate) fn pack_resolve_shell_tree_completed(&self) -> bool {
-        self.pack_resolve == PackResolve::ShellReady
+    pub(crate) fn pack_resolve_shell_entrypoint_completed(&self) -> bool {
+        self.pack_resolve == PackResolve::ShellEntryDigestReady
+    }
+
+    #[cfg(all(test, unix))]
+    fn pack_resolve_shell_tree_completed(&self) -> bool {
+        self.pack_resolve == PackResolve::ShellEntryResolve
     }
 
     #[cfg(not(unix))]

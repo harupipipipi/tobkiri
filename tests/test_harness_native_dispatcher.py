@@ -37,7 +37,7 @@ from harness_native.value_graph import (  # noqa: E402
     Scope,
     UnsupportedValue,
 )
-from harness_native.native_path import NativePath, PathBridge  # noqa: E402
+from harness_native.native_path import NativePath, PathBridge, _UnboundPlatformArtifacts  # noqa: E402
 import ordered_json_v2 as wire  # noqa: E402
 import prepare_harness_native as prepare  # noqa: E402
 
@@ -1389,6 +1389,11 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             frame = wire.loads(payload)
             self.assertEqual(frame["format"], PREFIX + "catalog-request.v1")
             operation = frame["operation"]
+            # This fixture connects the tree only; the full entrypoint fixture
+            # lives in test_harness_native_path.
+            if len(calls) == 12:
+                self.assertEqual(operation, "resolve")
+                raise _UnboundPlatformArtifacts
             steps = [["join", "bundle.lock.json"]]
             if len(calls) in (3, 4):
                 steps = [["parent", ""], ["join", "platform-artifacts"]]

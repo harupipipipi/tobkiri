@@ -178,8 +178,6 @@ class NativePathAdapterTests(unittest.TestCase):
             selected = root / "shell"
             digest = namespace["artifact_digest"](selected)
             self.assertEqual(digest, "sha256:" + hashlib.sha256(b"dir/a\0alphaz\0zeta").hexdigest())
-            with self.assertRaises(_UnboundPlatformArtifacts):
-                (root / "entrypoint").resolve(strict=True)
 
         bridge._resolve_catalog(run, root, root)
         opened = [row["target"]["steps"] for row in requests if row["operation"] == "open"]
@@ -197,6 +195,85 @@ class NativePathAdapterTests(unittest.TestCase):
         self.assertFalse(bridge._resolver_digest_started)
         self.assertIsNone(bridge._resolver_file)
         self.assertIsNone(bridge._resolver_directory)
+
+    def test_original_verify_rechecks_entrypoint_before_next_boundary(self):
+        source = ROOT / "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
+        tree = ast.parse(source.read_bytes(), filename=str(source))
+        names = {"artifact_digest", "_identity", "_regular_binary_reader",
+                 "_stable_update_digest", "verify_platform_artifact"}
+        functions = [node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name in names]
+        self.assertEqual(len(functions), len(names))
+        content = b"abc"
+        tree_digest = "sha256:" + hashlib.sha256(b"Contents/MacOS/shell\0" + content).hexdigest()
+        entry_digest = "sha256:" + hashlib.sha256(content).hexdigest()
+        for platform, expected_digest in (("macos", entry_digest), ("linux", entry_digest),
+                                          ("linux", "sha256:wrong")):
+            with self.subTest(platform=platform, digest=expected_digest):
+                requests, position = [], 0
+                def inspect(payload):
+                    nonlocal position
+                    frame = wire.loads(payload)
+                    requests.append(frame)
+                    operation, steps = frame["operation"], frame["target"]["steps"]
+                    if operation == "resolve":
+                        if not steps:
+                            result = {**path("root", "/artifacts"), "steps": [["shell-resolved-root", ""]]}
+                        else:
+                            relative = steps[-1][1]
+                            result = {**path("root", "/artifacts/" + relative), "steps": steps}
+                    elif operation == "is-symlink":
+                        result = {"kind": "bool", "value": False}
+                    elif operation == "is-file":
+                        result = {"kind": "bool", "value": steps[-1][1] in {"shell", "Tobkiri.app/Contents/MacOS/shell"}}
+                    elif operation == "is-dir":
+                        result = {"kind": "bool", "value": True}
+                    elif operation == "iterdir":
+                        names_by_tail = {"Tobkiri.app": ["Contents"], "Contents": ["MacOS"], "MacOS": ["shell"]}
+                        result = {"kind": "shell-directory", "value": names_by_tail[steps[-1][1]]}
+                    elif operation == "open":
+                        position = 0
+                        result = {"kind": "fd", "binding": "root"}
+                    elif operation == "fstat":
+                        result = STAT
+                    elif operation == "seek":
+                        result = {"kind": "int", "value": position}
+                    elif operation == "read":
+                        data = content[position:position + frame["args"][0]]
+                        position += len(data)
+                        result = blob(data)
+                    elif operation == "close":
+                        result = {"kind": "unit"}
+                    else:
+                        self.fail(operation)
+                    return wire.dumps({"format": "io.tobkiri.native-inspection-response.v1",
+                                       "scope": self.scope.wire(), "result": result})
+                bridge = PathBridge(self.scope, "posix", inspect, os_flags={"O_RDONLY": 0})
+                root = bridge.bind("root", "/artifacts")
+                facade = bridge.module_path("module.py", root)
+                namespace = {"hashlib": hashlib, "stat": stat, "os": bridge.os,
+                             "contextmanager": contextmanager, "Path": facade,
+                             "CapturedPath": type("CapturedPath", (), {}), "ProtocolError": ValueError}
+                future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
+                exec(compile(ast.fix_missing_locations(ast.Module(body=[future, *functions], type_ignores=[])),
+                             str(source), "exec"), namespace)
+                variant = {"relative_path": "Tobkiri.app", "entrypoint": "Tobkiri.app/Contents/MacOS/shell",
+                           "artifact_digest": tree_digest, "entrypoint_digest": expected_digest,
+                           "platform": platform, "architecture": "x86_64"}
+                exception = ValueError if expected_digest != entry_digest else _UnboundPlatformArtifacts
+                with self.assertRaises(exception) as caught:
+                    bridge._resolve_catalog(namespace["verify_platform_artifact"], root, root,
+                                            root, variant)
+                if exception is ValueError:
+                    self.assertIn("entrypoint digest does not match", str(caught.exception))
+                opens = [row for row in requests if row["operation"] == "open"]
+                self.assertEqual(len(opens), 2)
+                entry_steps = [["shell-resolved-root", ""], ["join", "Tobkiri.app/Contents/MacOS/shell"]]
+                self.assertEqual(opens[-1]["target"]["steps"], entry_steps)
+                fd_ops = [row for row in requests if row["target"]["steps"][:1] == [["shell-entrypoint-file", ""]]]
+                self.assertEqual(fd_ops[-1]["operation"], "close")
+                self.assertTrue(all(row["target"]["steps"][1:] == entry_steps for row in fd_ops))
+                self.assertEqual(requests[-1]["operation"], "close")
 
     def test_fixed_catalog_codec_preserves_old_binding_and_clears_after_throw(self):
         scope = Scope(1, 2, 3, 4)

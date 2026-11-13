@@ -5,6 +5,36 @@ use std::io::Seek as _;
 
 const CHUNK_BYTES: usize = 1024 * 1024;
 
+pub(super) enum ShellFile {
+    Tree(TrackedFile),
+    Entrypoint(TrackedFile),
+}
+
+impl ShellFile {
+    fn into_file(self) -> TrackedFile {
+        match self {
+            Self::Tree(file) | Self::Entrypoint(file) => file,
+        }
+    }
+
+    fn file_mut(&mut self) -> &mut TrackedFile {
+        match self {
+            Self::Tree(file) | Self::Entrypoint(file) => file,
+        }
+    }
+}
+
+pub(super) fn write_descriptor(
+    out: &mut CoreBufferBuilder,
+    binding: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> anyhow::Result<()> {
+    out.append(b"{\"kind\":\"fd\",\"binding\":")?;
+    out.append(binding.encode_guest(budget)?.as_bytes())?;
+    out.append(b"}")?;
+    Ok(())
+}
+
 pub(super) fn open_shell_file<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     root: &TrackedFile,
@@ -56,12 +86,28 @@ impl CatalogIo {
         args: &tobkiri_canon::CoreArray<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<CoreBuffer> {
-        let selected = self
-            .shell_leaf
-            .as_ref()
-            .and_then(CoreValue::as_str)
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        if !self.shell_tree.matches(selected, steps, true) {
+        let entrypoint = matches!(self.shell_file, Some(ShellFile::Entrypoint(_)));
+        let valid = if entrypoint {
+            self.shell_entrypoint
+                .as_ref()
+                .and_then(CoreValue::as_str)
+                .is_some_and(|path| {
+                    exact_steps(
+                        steps,
+                        &[
+                            ("shell-entrypoint-file", ""),
+                            ("shell-resolved-root", ""),
+                            ("join", path),
+                        ],
+                    )
+                })
+        } else {
+            self.shell_leaf
+                .as_ref()
+                .and_then(CoreValue::as_str)
+                .is_some_and(|leaf| self.shell_tree.matches(leaf, steps, true))
+        };
+        if !valid {
             return Err(OriginalAuthorityError::unavailable().into());
         }
         let mut out = inspection_result(scope, budget)?;
@@ -73,20 +119,26 @@ impl CatalogIo {
             self.shell_file
                 .take()
                 .ok_or_else(OriginalAuthorityError::unavailable)?
+                .into_file()
                 .close()
                 .map_err(|_| OriginalAuthorityError::unavailable())?;
             out.append(b"{\"kind\":\"unit\"}}")?;
             op.check(OriginalAuthorityStage::Source)?;
             let response = out.finish()?;
             if stage == PackResolve::ShellFileClose {
-                self.pack_resolve = self.shell_tree.advance();
+                self.pack_resolve = if entrypoint {
+                    PackResolve::ShellEntryDigestReady
+                } else {
+                    self.shell_tree.advance()
+                };
             }
             return Ok(response);
         }
         let file = self
             .shell_file
             .as_mut()
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
+            .ok_or_else(OriginalAuthorityError::unavailable)?
+            .file_mut();
         let next = match (stage, operation.as_str(), args.len()) {
             (PackResolve::ShellFileTell, Some("seek"), 2)
                 if args.get(0).and_then(|value| value.as_i64()) == Some(0)

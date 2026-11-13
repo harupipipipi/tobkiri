@@ -14,6 +14,11 @@ struct Entry {
 
 pub(super) struct ShellInputs(Funded<Vec<Entry>>);
 
+pub(super) struct SelectedShell {
+    pub(super) artifact: CoreValue,
+    pub(super) entrypoint: Option<CoreValue>,
+}
+
 pub(super) const MAX_NAME: usize = 255;
 
 pub(super) fn single_leaf(name: &str) -> bool {
@@ -68,7 +73,7 @@ impl CatalogIo {
         Ok(())
     }
 
-    pub(super) fn selected_shell_leaf(&self) -> anyhow::Result<CoreValue> {
+    pub(super) fn selected_shell(&self) -> anyhow::Result<SelectedShell> {
         let inputs = self
             .shell_inputs
             .as_ref()
@@ -113,9 +118,25 @@ impl CatalogIo {
             .as_str()
             .filter(|name| single_leaf(name))
             .ok_or_else(OriginalAuthorityError::unavailable)?;
-        // Keep only the selected name beyond this physical observation.
-        Ok(CoreValue::string(name, &self.budget)?)
+        // Retain only the two selected names from the authenticated catalog.
+        // The root selection still handles a missing entrypoint as before;
+        // the later physical resolve requires an admitted value.
+        let entrypoint = variant.get_key("entrypoint");
+        let entrypoint = entrypoint
+            .as_ref()
+            .and_then(CoreValue::as_str)
+            .filter(|entry| entrypoint_path(entry))
+            .map(|entry| CoreValue::string(entry, &self.budget))
+            .transpose()?;
+        Ok(SelectedShell {
+            artifact: CoreValue::string(name, &self.budget)?,
+            entrypoint,
+        })
     }
+}
+
+fn entrypoint_path(name: &str) -> bool {
+    name.len() < libc::PATH_MAX as usize && name.split('/').all(single_leaf)
 }
 
 fn shell_input_kind(lock: &Document, entry: usize) -> Option<Kind> {

@@ -224,10 +224,10 @@ async fn run_profile_to_artifact_read<S: BootstrapInputOwner + BootstrapReviewOw
             .unwrap_or_else(|error| error.into_inner())
             .as_ref()
             .is_some_and(
-                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_tree_completed,
+                crate::original_authority::catalog::CatalogIo::pack_resolve_shell_entrypoint_completed,
             )
     {
-        bail!("original resolver stopped before the Shell tree walk completed");
+        bail!("original resolver stopped before the Shell entrypoint read completed");
     }
     Ok(BootstrapReviewFailure::NotBound(
         BootstrapReviewReachpoint::ResolvePlatformArtifactsNotBound,

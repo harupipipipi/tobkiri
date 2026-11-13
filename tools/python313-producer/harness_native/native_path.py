@@ -86,6 +86,8 @@ class PathBridge:
         self._resolver_digest_started = False
         self._resolver_file: NativePath | None = None
         self._resolver_directory: NativePath | None = None
+        self._resolver_entrypoint: NativePath | None = None
+        self._resolver_entrypoint_closed = False
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -115,6 +117,8 @@ class PathBridge:
         try:
             return target(*args, **kwargs)
         finally:
+            self._resolver_entrypoint = None
+            self._resolver_entrypoint_closed = False
             self._resolver_digest_started = False
             self._resolver_file = None
             self._resolver_directory = None
@@ -323,7 +327,8 @@ class NativePath:
 
     def __fspath__(self) -> str:
         bridge = self._bridge
-        if self is bridge._resolver_file and bridge._shell_tree_path(self):
+        if ((self is bridge._resolver_file and bridge._shell_tree_path(self))
+                or self is bridge._resolver_entrypoint):
             raise _UnboundPlatformArtifacts
         return str(self._pure)
 
@@ -373,9 +378,22 @@ class NativePath:
         ), "path")
 
     def resolve(self, strict: bool = False) -> NativePath:
-        if self._bridge._resolver_digest_started:
-            # The next entrypoint resolve is still outside the connected IO.
-            raise _UnboundPlatformArtifacts
+        bridge = self._bridge
+        if bridge._resolver_digest_started:
+            root = bridge._resolver_resolved_root
+            if (strict is not True or root is None or self._binding != root._binding
+                    or self._steps[:len(root._steps)] != root._steps
+                    or len(self._steps) != len(root._steps) + 1
+                    or self._steps[-1][0] != "join"):
+                raise _UnboundPlatformArtifacts
+            if bridge._resolver_entrypoint is None:
+                bridge._resolver_entrypoint = self
+            elif self is not bridge._resolver_shell_leaf:
+                raise _UnboundPlatformArtifacts
+            row = bridge._catalog_request(self._target(), "resolve", [True])
+            if row.get("binding") != self._binding or row.get("steps") != [list(s) for s in self._steps]:
+                raise UnsupportedValue("invalid resolved Shell path")
+            return bridge._value(row, "path", catalog=True)
         if strict is True and self is self._bridge._resolver_artifact_root:
             bridge = self._bridge
             row = bridge._catalog_request(self._target(), "resolve", [True])
@@ -388,6 +406,8 @@ class NativePath:
         return self._effect("resolve", "path", [strict])
 
     def is_symlink(self) -> bool:
+        if self._bridge._resolver_entrypoint_closed:
+            raise _UnboundPlatformArtifacts
         result = self._effect("is-symlink", "bool")
         bridge = self._bridge
         root = bridge._resolver_resolved_root
@@ -470,9 +490,11 @@ class NativePath:
 
 class _Descriptor:
     def __init__(self, bridge: PathBridge, binding: str, *,
-                 shell_steps: tuple[tuple[str, str], ...] | None = None) -> None:
+                 shell_steps: tuple[tuple[str, str], ...] | None = None,
+                 entrypoint: bool = False) -> None:
         self.bridge, self.binding, self.closed = bridge, binding, False
         self.shell_steps = shell_steps
+        self.entrypoint = entrypoint
 
 
 class NativeOS:
@@ -489,30 +511,36 @@ class NativeOS:
         raise UnsupportedValue("native OS observation is not represented")
 
     def fspath(self, path: NativePath) -> NativePath:
-        if (type(path) is NativePath and path is self._bridge._resolver_file
-                and self._bridge._shell_tree_path(path)):
+        if (type(path) is NativePath and
+                ((path is self._bridge._resolver_file and self._bridge._shell_tree_path(path))
+                 or path is self._bridge._resolver_entrypoint)):
             return path
         raise UnsupportedValue("native fspath input is not represented")
 
     def open(self, path: NativePath, flags: int) -> _Descriptor:
         if type(path) is not NativePath or path._bridge is not self._bridge:
             raise UnsupportedValue("native open requires its actual Path context")
+        if self._bridge._resolver_entrypoint_closed:
+            raise _UnboundPlatformArtifacts
         row = self._bridge._request(path._target(), "open", [flags])
         if set(row) != {"kind", "binding"} or row["kind"] != "fd":
             raise UnsupportedValue("invalid native descriptor result")
         binding = _binding(row["binding"])
         shell_file = (path is self._bridge._resolver_file
                       and self._bridge._shell_tree_path(path))
-        if shell_file and binding != path._binding:
+        entrypoint = path is self._bridge._resolver_entrypoint
+        if (shell_file or entrypoint) and binding != path._binding:
             raise UnsupportedValue("invalid selected Shell descriptor binding")
-        return _Descriptor(self._bridge, binding, shell_steps=path._steps if shell_file else None)
+        return _Descriptor(self._bridge, binding,
+                           shell_steps=path._steps if shell_file or entrypoint else None,
+                           entrypoint=entrypoint)
 
     def _call(self, fd: _Descriptor, operation: str, kind: str,
               args: list | None = None) -> Any:
         if (type(fd) is not _Descriptor or fd.bridge is not self._bridge or fd.closed):
             raise UnsupportedValue("closed or foreign native descriptor")
         return self._bridge._value(self._bridge._request(
-            {"binding": fd.binding, "steps": ([["shell-file", ""], *map(list, fd.shell_steps)]
+            {"binding": fd.binding, "steps": ([["shell-entrypoint-file" if fd.entrypoint else "shell-file", ""], *map(list, fd.shell_steps)]
                                              if fd.shell_steps is not None else [])},
             operation, args or [],
         ), kind)
@@ -543,6 +571,8 @@ class NativeOS:
         finally:
             if type(fd) is _Descriptor and fd.bridge is self._bridge:
                 fd.closed = True
+                if fd.entrypoint:
+                    self._bridge._resolver_entrypoint_closed = True
 
 
 class _ShellRawReader(io.RawIOBase):
