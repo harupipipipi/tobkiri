@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import math
@@ -44,6 +45,7 @@ FORMAT = "io.tobkiri.original-setup-active-authority-reference.v1"
 DB = Path("authority/v4.sqlite3")
 KEY = DB.with_suffix(".key")
 GUARD = DB.with_name(".v4.sqlite3.lifecycle.lock")
+COLLISION = "database-created-after-key"
 CASES = (
     "absent",
     "existing-invalid-reason",
@@ -51,9 +53,10 @@ CASES = (
     "database-directory",
     "dangling-database",
     "missing-key",
+    COLLISION,
 )
 PATH_ERRORS = {"database-directory", "dangling-database"}
-ERRORS = {*PATH_ERRORS, "missing-key"}
+ERRORS = {*PATH_ERRORS, "missing-key", COLLISION}
 HISTORICAL_SOURCES = (
     "tests/__init__.py",
     "tests/test_authority_v4_lifecycle.py",
@@ -80,7 +83,7 @@ def _seed_authority(case: str, user_data: Path, fixture_root: Path) -> None:
     from core_runtime.authority.v4 import AuthorityStore
 
     path = user_data / DB
-    if case == "absent":
+    if case in {"absent", COLLISION}:
         return
     path.parent.mkdir(mode=0o700)
     if case == "database-directory":
@@ -114,7 +117,13 @@ def _seed_authority(case: str, user_data: Path, fixture_root: Path) -> None:
             (user_data / KEY).unlink()
 
 
-def _observe(runtime: Path, user_data: Path, additions: bool) -> tuple[dict, list[str]]:
+def _observe(
+    runtime: Path,
+    user_data: Path,
+    additions: bool,
+    *,
+    competing_database: bool,
+) -> tuple[dict, list[str]]:
     from core_runtime.active_profile_store_v4 import ActiveProfileStore
     from core_runtime.authority.v4_store import AuthorityStore, AuthorityStoreError
     from core_runtime.bootstrap import profile_capture, profile_registry
@@ -133,6 +142,7 @@ def _observe(runtime: Path, user_data: Path, additions: bool) -> tuple[dict, lis
     recovery_code = profile_capture._recover_bootstrap_publication.__code__
     caller_code = profile_capture.prepare_bootstrap_profile_review.__code__
     init_code = AuthorityStore.__init__.__code__
+    database_code = AuthorityStore._ensure_database_file.__code__
     enter_code = AuthorityStore.__enter__.__code__
     exit_code = AuthorityStore.__exit__.__code__
     close_code = AuthorityStore.close.__code__
@@ -214,6 +224,19 @@ def _observe(runtime: Path, user_data: Path, additions: bool) -> tuple[dict, lis
             return
         if code in later:
             raise AssertionError("Setup ran beyond the expected Authority boundary")
+        if code is database_code and competing_database:
+            store = frame.f_locals["self"]
+            if (
+                store is not constructed
+                or store._database_identity is not None
+                or not (user_data / KEY).is_file()
+                or (user_data / GUARD).exists()
+            ):
+                raise AssertionError("expected a prepared DB path and a newly published key")
+            fd = os.open(user_data / DB, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(fd)
+            trace.append("competing-database-created")
+            return
         if code not in calls:
             return
         args = frame.f_locals
@@ -405,6 +428,8 @@ def _check_outcome(case: str, result: dict, trace: list[str]) -> None:
                 "authority-close",
             )
         )
+    elif case == COLLISION:
+        expected_trace.append("competing-database-created")
     if trace != expected_trace:
         raise AssertionError((case, trace))
     if case not in ERRORS:
@@ -414,11 +439,11 @@ def _check_outcome(case: str, result: dict, trace: list[str]) -> None:
     if result["outcome"] != "error":
         raise AssertionError("invalid Authority did not fail during construction")
     graph = result["error"]
-    expected_message = (
-        "authority state path is unsafe"
-        if case in PATH_ERRORS
-        else "authority encryption key is missing for an existing database"
-    )
+    expected_message = {
+        **dict.fromkeys(PATH_ERRORS, "authority state path is unsafe"),
+        "missing-key": "authority encryption key is missing for an existing database",
+        COLLISION: "authority database path is unsafe",
+    }[case]
     if (
         graph["type"] != "core_runtime.authority.store_contracts.AuthorityStoreError"
         or graph["message"] != expected_message
@@ -436,6 +461,29 @@ def _check_outcome(case: str, result: dict, trace: list[str]) -> None:
             or not graph["suppressed"]
         ):
             raise AssertionError((case, graph))
+    elif case == COLLISION:
+        cause = graph["cause"]
+        if (
+            cause is None
+            or cause["type"] != "core_runtime.secure_sqlite_path.SecurePathError"
+        ):
+            raise AssertionError((case, graph))
+        exists = cause["cause"]
+        if (
+            cause["message"] != "ancestor is unsafe"
+            or not cause["suppressed"]
+            or exists is None
+            or exists["type"] != "builtins.FileExistsError"
+            or exists["errno"] != errno.EEXIST
+            or exists["filename"] != DB.name
+            or exists["cause"] is not None
+            or exists["context"] is not None
+            or exists["suppressed"]
+            or cause["context"] != {"ref": exists["id"]}
+            or graph["context"] != {"ref": cause["id"]}
+            or not graph["suppressed"]
+        ):
+            raise AssertionError((case, graph))
     elif (
         graph["cause"] is not None
         or graph["context"] is not None
@@ -447,6 +495,11 @@ def _check_outcome(case: str, result: dict, trace: list[str]) -> None:
 def _check_effects(case: str, before: dict, after: dict) -> None:
     if "inspection_error" in before or "inspection_error" in after:
         raise AssertionError("failed to read the independent SQLite inspection copy")
+    if case == COLLISION:
+        actual = {Path(row["path"]): row["mode"] for row in after["files"]}
+        if before["files"] or actual != {DB.parent: 0o700, DB: 0o600, KEY: 0o600}:
+            raise AssertionError((case, before, after))
+        return
     if case in ERRORS or case == "existing-invalid-reason":
         if logical_state(before) != logical_state(after):
             raise AssertionError(
@@ -516,9 +569,24 @@ def _case(case: str, additions: bool, source: Path, runtime: Path, root: Path) -
     before = database_state(user_data, root / "inspect-before", Fernet)
     key_path = user_data / KEY
     prior_key = key_path.read_bytes() if key_path.is_file() else None
-    result, trace = _observe(runtime, user_data, additions)
+    result, trace = _observe(runtime, user_data, additions, competing_database=case == COLLISION)
     _check_outcome(case, result, trace)
-    after = database_state(user_data, root / "inspect-after", Fernet)
+    if case == COLLISION:
+        # Inspect the actual empty file without opening it as SQLite.
+        if (user_data / DB).stat().st_size != 0:
+            raise AssertionError("original Setup changed the competing file")
+        paths = [user_data / DB.parent, *sorted((user_data / DB.parent).iterdir())]
+        after = {
+            "files": [
+                {
+                    "path": path.relative_to(user_data).as_posix(),
+                    "mode": path.lstat().st_mode & 0o777,
+                }
+                for path in paths
+            ],
+        }
+    else:
+        after = database_state(user_data, root / "inspect-after", Fernet)
     _check_effects(case, before, after)
     if profile_state != _non_authority_state(user_data) or (
         prior_key is not None and key_path.read_bytes() != prior_key
