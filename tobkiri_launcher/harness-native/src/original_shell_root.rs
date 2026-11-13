@@ -18,7 +18,8 @@ impl CatalogIo {
             | PackResolve::ShellTreeSymlink
             | PackResolve::ShellTreeFile
             | PackResolve::ShellTreeDirectory
-            | PackResolve::ShellList => self.shell_leaf.clone(),
+            | PackResolve::ShellList
+            | PackResolve::ShellFileOpen => self.shell_leaf.clone(),
             _ => None,
         };
         let selected_name = selected.as_ref().and_then(CoreValue::as_str);
@@ -28,7 +29,8 @@ impl CatalogIo {
             | PackResolve::ShellTreeSymlink
             | PackResolve::ShellTreeFile
             | PackResolve::ShellTreeDirectory
-            | PackResolve::ShellList => {
+            | PackResolve::ShellList
+            | PackResolve::ShellFileOpen => {
                 let name = selected_name.ok_or_else(OriginalAuthorityError::unavailable)?;
                 exact_steps(steps, &[RESOLVED_STEPS[0], ("join", name)])
             }
@@ -133,7 +135,8 @@ impl CatalogIo {
                 | PackResolve::ShellTreeSymlink
                 | PackResolve::ShellTreeFile
                 | PackResolve::ShellTreeDirectory
-                | PackResolve::ShellList => {
+                | PackResolve::ShellList
+                | PackResolve::ShellFileOpen => {
                     let name = self
                         .shell_resolved_name
                         .as_deref()
@@ -146,10 +149,24 @@ impl CatalogIo {
                     let root_path = parent_path.join(name);
                     let root =
                         open_shell_directory(op, &parent, &root_path, name, expected, false)?;
+                    if stage == PackResolve::ShellFileOpen {
+                        let result = self.open_shell_file(op, &root, &root_path, &leaf_name);
+                        close_parent(root)?;
+                        let file = result?;
+                        let binding = self
+                            .binding
+                            .as_ref()
+                            .ok_or_else(OriginalAuthorityError::unavailable)?;
+                        response.append(b"{\"kind\":\"fd\",\"binding\":")?;
+                        response.append(binding.encode_guest(budget)?.as_bytes())?;
+                        response.append(b"}")?;
+                        self.shell_file = Some(file);
+                        return Ok(PackResolve::ShellFileTell);
+                    }
                     if stage == PackResolve::ShellList {
                         let result = (|| {
                             let expected = self
-                                .shell_tree_directory_identity
+                                .shell_tree_identity
                                 .ok_or_else(OriginalAuthorityError::unavailable)?;
                             let path = root_path.join(leaf);
                             let leaf =
@@ -193,11 +210,13 @@ impl CatalogIo {
                             let found = mode == Some(mode_bits(expected));
                             write_bool(&mut response, found)?;
                             match (found, file) {
-                                (true, true) => PackResolve::ShellReady,
-                                (true, false) => {
-                                    self.shell_tree_directory_identity =
-                                        stat.as_ref().map(stat_identity);
-                                    PackResolve::ShellList
+                                (true, _) => {
+                                    self.shell_tree_identity = stat.as_ref().map(stat_identity);
+                                    if file {
+                                        PackResolve::ShellFileOpen
+                                    } else {
+                                        PackResolve::ShellList
+                                    }
                                 }
                                 (false, true) => PackResolve::ShellTreeDirectory,
                                 (false, false) => PackResolve::Spent,

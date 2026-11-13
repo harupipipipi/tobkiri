@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import binascii
 from dataclasses import dataclass
+import io
 from pathlib import PurePosixPath, PureWindowsPath
 import re
 from typing import Any, Callable, Iterator
@@ -84,6 +85,7 @@ class PathBridge:
         self._resolver_shell_leaf: NativePath | None = None
         self._resolver_tree_kind: bool | None = None  # True for file, False for directory.
         self._resolver_listed_shell = False
+        self._resolver_file_closed = False
 
     def _load_catalog(self, target: Callable, root: NativePath) -> Any:
         if (self._catalog_root is not None or self._resolving_catalog
@@ -114,6 +116,7 @@ class PathBridge:
             return target(*args, **kwargs)
         finally:
             self._resolver_listed_shell = False
+            self._resolver_file_closed = False
             self._resolver_tree_kind = None
             self._resolver_shell_leaf = None
             self._resolver_resolved_root = None
@@ -230,6 +233,8 @@ class PathBridge:
             return _Stat(*(row[name] for name in fields))
         if set(row) != {"kind", "value"}:
             raise UnsupportedValue("invalid native scalar result")
+        if kind == "int" and type(row["value"]) is int:
+            return row["value"]
         if kind == "bool" and type(row["value"]) is bool:
             return row["value"]
         if kind == "bytes" and type(row["value"]) is str:
@@ -361,8 +366,8 @@ class NativePath:
         ), "path")
 
     def resolve(self, strict: bool = False) -> NativePath:
-        if self._bridge._resolver_listed_shell:
-            # An empty directory can finish hashing without visiting a member.
+        if self._bridge._resolver_listed_shell or self._bridge._resolver_file_closed:
+            # The next entrypoint resolve is still outside the connected IO.
             raise _UnboundPlatformArtifacts
         if strict is True and self is self._bridge._resolver_artifact_root:
             bridge = self._bridge
@@ -456,8 +461,9 @@ class NativePath:
 
 
 class _Descriptor:
-    def __init__(self, bridge: PathBridge, binding: str) -> None:
+    def __init__(self, bridge: PathBridge, binding: str, *, shell_file: bool = False) -> None:
         self.bridge, self.binding, self.closed = bridge, binding, False
+        self.shell_file = shell_file
 
 
 class NativeOS:
@@ -473,20 +479,32 @@ class NativeOS:
             raise AttributeError(name)
         raise UnsupportedValue("native OS observation is not represented")
 
+    def fspath(self, path: NativePath) -> NativePath:
+        if (type(path) is NativePath and path is self._bridge._resolver_shell_leaf
+                and self._bridge._resolver_tree_kind is True):
+            return path
+        raise UnsupportedValue("native fspath input is not represented")
+
     def open(self, path: NativePath, flags: int) -> _Descriptor:
         if type(path) is not NativePath or path._bridge is not self._bridge:
             raise UnsupportedValue("native open requires its actual Path context")
         row = self._bridge._request(path._target(), "open", [flags])
         if set(row) != {"kind", "binding"} or row["kind"] != "fd":
             raise UnsupportedValue("invalid native descriptor result")
-        return _Descriptor(self._bridge, _binding(row["binding"]))
+        binding = _binding(row["binding"])
+        shell_file = (path is self._bridge._resolver_shell_leaf
+                      and self._bridge._resolver_tree_kind is True)
+        if shell_file and binding != path._binding:
+            raise UnsupportedValue("invalid selected Shell descriptor binding")
+        return _Descriptor(self._bridge, binding, shell_file=shell_file)
 
     def _call(self, fd: _Descriptor, operation: str, kind: str,
               args: list | None = None) -> Any:
         if (type(fd) is not _Descriptor or fd.bridge is not self._bridge or fd.closed):
             raise UnsupportedValue("closed or foreign native descriptor")
         return self._bridge._value(self._bridge._request(
-            {"binding": fd.binding, "steps": []}, operation, args or [],
+            {"binding": fd.binding, "steps": [["shell-file", ""]] if fd.shell_file else []},
+            operation, args or [],
         ), kind)
 
     def fstat(self, fd: _Descriptor) -> _Stat:
@@ -495,9 +513,59 @@ class NativeOS:
     def read(self, fd: _Descriptor, size: int) -> bytes:
         return self._call(fd, "read", "bytes", [size])
 
+    def lseek(self, fd: _Descriptor, offset: int, whence: int) -> int:
+        return self._call(fd, "seek", "int", [offset, whence])
+
+    def fdopen(self, fd: _Descriptor, mode: str) -> io.BufferedReader:
+        if (type(fd) is not _Descriptor or fd.bridge is not self._bridge
+                or fd.closed or not fd.shell_file or mode != "rb"):
+            raise UnsupportedValue("native fdopen input is not represented")
+        raw = _ShellRawReader(self, fd)
+        try:
+            return io.BufferedReader(raw)
+        except BaseException:
+            raw.close()
+            raise
+
     def close(self, fd: _Descriptor) -> None:
         try:
             self._call(fd, "close", "unit")
+            if fd.shell_file:
+                self._bridge._resolver_file_closed = True
         finally:
             if type(fd) is _Descriptor and fd.bridge is self._bridge:
                 fd.closed = True
+
+
+class _ShellRawReader(io.RawIOBase):
+    """Buffered reader over the admitted descriptor, with no OS fallback."""
+
+    def __init__(self, native_os: NativeOS, fd: _Descriptor) -> None:
+        super().__init__()
+        self._os, self._fd = native_os, fd
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def fileno(self) -> _Descriptor:
+        return self._fd
+
+    def readinto(self, buffer: Any) -> int:
+        data = self._os.read(self._fd, len(buffer))
+        if len(data) > len(buffer):
+            raise UnsupportedValue("native read exceeds requested size")
+        buffer[:len(data)] = data
+        return len(data)
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        return self._os.lseek(self._fd, offset, whence)
+
+    def close(self) -> None:
+        if not self.closed:
+            try:
+                self._os.close(self._fd)
+            finally:
+                super().close()

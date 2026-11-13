@@ -460,7 +460,10 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                     budget,
                 )
                 .map(|value| {
-                    assert!(cleanup.receipt().verified());
+                    let receipt = cleanup.receipt();
+                    assert_eq!(receipt.open_files, usize::from(io.shell_file.is_some()));
+                    assert_eq!(receipt.open_connections, 0);
+                    assert!(!receipt.uncertain);
                     serde_json::from_slice::<Value>(value.as_bytes()).unwrap()["result"].clone()
                 })
             };
@@ -662,6 +665,46 @@ async fn pack_resolver_checks_selected_shell_path_then_tree_type() {
                     ),
                 }
                 assert!(inspect(io, "iterdir", selected.clone(), json!([])).is_err());
+            }
+            if case == "regular-leaf" {
+                let fd = json!([["shell-file", ""]]);
+                let flags = json!([libc::O_RDONLY | libc::O_NOFOLLOW]);
+                assert!(!io.pack_resolve_shell_tree_entry_completed());
+                assert!(inspect(io, "open", fd.clone(), flags.clone()).is_err());
+                assert!(inspect(io, "open", selected.clone(), json!([libc::O_WRONLY])).is_err());
+                let result = inspect(io, "open", selected.clone(), flags.clone()).unwrap();
+                assert_eq!(result["kind"], "fd");
+                assert!(inspect(io, "open", selected.clone(), flags).is_err());
+                assert!(inspect(io, "fstat", fd.clone(), json!([])).is_err());
+                assert!(inspect(io, "seek", fd.clone(), json!([1, libc::SEEK_CUR])).is_err());
+                assert_eq!(
+                    inspect(io, "seek", fd.clone(), json!([0, libc::SEEK_CUR])).unwrap(),
+                    json!({"kind":"int","value":0})
+                );
+                let before = inspect(io, "fstat", fd.clone(), json!([])).unwrap();
+                assert_eq!(before["st_size"], fs::metadata(&leaf).unwrap().len());
+                assert!(inspect(io, "read", fd.clone(), json!([1_048_577])).is_err());
+                let bytes = fs::read(&leaf).unwrap();
+                // A rename followed by replacement must leave the held file's
+                // contents, identity and eventual close on the original inode.
+                fs::rename(&leaf, artifact.join("old-leaf")).unwrap();
+                fs::write(&leaf, b"replacement").unwrap();
+                assert_eq!(
+                    inspect(io, "read", fd.clone(), json!([1_048_576])).unwrap(),
+                    json!({"kind":"bytes","value":base64::engine::general_purpose::STANDARD.encode(bytes)})
+                );
+                assert_eq!(
+                    inspect(io, "read", fd.clone(), json!([8192])).unwrap(),
+                    json!({"kind":"bytes","value":""})
+                );
+                let after = inspect(io, "fstat", fd.clone(), json!([])).unwrap();
+                assert_eq!(before, after);
+                assert_eq!(
+                    inspect(io, "close", fd.clone(), json!([])).unwrap(),
+                    json!({"kind":"unit"})
+                );
+                assert!(inspect(io, "close", fd, json!([])).is_err());
+                assert!(cleanup.receipt().verified());
             }
             assert_eq!(
                 io.pack_resolve_shell_tree_entry_completed(),

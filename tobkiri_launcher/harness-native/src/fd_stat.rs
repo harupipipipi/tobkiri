@@ -1,7 +1,7 @@
 //! Bounded Unix FD stat output through the original native inspection DATA writer.
 
 use std::{
-    fs::File,
+    fs::{File, Metadata},
     io::{self, Cursor, Write},
     os::unix::fs::MetadataExt,
 };
@@ -15,7 +15,7 @@ mod writer_tests;
 // bounds cover u32 mode, three u64 fields, and a signed i128 nanosecond value.
 const STAT_JSON_LITERAL_BYTES: usize =
     b"{\"kind\":\"stat\",\"st_mode\":,\"st_dev\":,\"st_ino\":,\"st_size\":,\"st_mtime_ns\":}".len();
-const MAX_STAT_JSON_BYTES: usize = STAT_JSON_LITERAL_BYTES + 10 + 20 + 20 + 20 + 40;
+pub(crate) const MAX_STAT_JSON_BYTES: usize = STAT_JSON_LITERAL_BYTES + 10 + 20 + 20 + 20 + 40;
 const _: () = assert!(MAX_STAT_JSON_BYTES < 256);
 
 /// Append `prefix + stat JSON object + suffix` for the caller's original file.
@@ -60,30 +60,11 @@ pub fn write_fd_stat(
             Err(error) => return Err(error),
         };
 
-        let mtime_ns = i128::from(metadata.mtime()) * 1_000_000_000
-            + i128::from(metadata.mtime_nsec());
         let json_start = prefix.len();
-        let mut writer = Cursor::new(&mut tail[json_start..]);
-        let formatted = write!(
-            writer,
-            "{{\"kind\":\"stat\",\"st_mode\":{},\"st_dev\":{},\"st_ino\":{},\"st_size\":{},\"st_mtime_ns\":{}}}",
-            metadata.mode(),
-            metadata.dev(),
-            metadata.ino(),
-            metadata.size(),
-            mtime_ns,
-        );
-        let json_len = match usize::try_from(writer.position()) {
-            Ok(json_len) => json_len,
-            Err(_) => {
-                format_bound_failure = true;
-                return Ok(0);
-            }
-        };
-        if formatted.is_err() || json_len > MAX_STAT_JSON_BYTES {
+        let Some(json_len) = encode_stat(&metadata, &mut tail[json_start..]) else {
             format_bound_failure = true;
             return Ok(0);
-        }
+        };
 
         let Some(frame_len) = prefix
             .len()
@@ -117,6 +98,24 @@ pub fn write_fd_stat(
         return force_capacity(output);
     }
     result.map(|frame_result| frame_result.map(|_| ()))
+}
+
+pub(crate) fn encode_stat(metadata: &Metadata, output: &mut [u8]) -> Option<usize> {
+    let mtime_ns = i128::from(metadata.mtime()) * 1_000_000_000 + i128::from(metadata.mtime_nsec());
+    let mut writer = Cursor::new(output);
+    write!(
+        writer,
+        "{{\"kind\":\"stat\",\"st_mode\":{},\"st_dev\":{},\"st_ino\":{},\"st_size\":{},\"st_mtime_ns\":{}}}",
+        metadata.mode(),
+        metadata.dev(),
+        metadata.ino(),
+        metadata.size(),
+        mtime_ns,
+    )
+    .ok()?;
+    usize::try_from(writer.position())
+        .ok()
+        .filter(|length| *length <= MAX_STAT_JSON_BYTES)
 }
 
 fn force_capacity(

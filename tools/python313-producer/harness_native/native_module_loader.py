@@ -20,6 +20,8 @@ from .value_graph import UnsupportedValue
 
 _SERVICE = "ecosystem.defaultspack.domain.runtime_v4.service"
 _SERVICE_SOURCE = "ecosystem/defaultspack/domain/runtime_v4/service.py"
+_ARTIFACT = "tobkiri_protocol.platform_artifact"
+_ARTIFACT_SOURCE = "tobkiri_protocol/platform_artifact.py"
 _PERSISTENCE = "tobkiri_protocol.secure_persistence"
 _PERSISTENCE_EXPORTS = ("SecureDirectory", "SecurePersistenceError")
 
@@ -95,38 +97,42 @@ class _ModuleLoader:
         view = _PathlibView(self.bridge, self.origin, self.anchor)
         original_import = builtins.__import__
 
+        def owns_import(name: str, source: str, namespace: Any) -> bool:
+            owner, capture = self.source_owner, self.catalog_capture
+            return (
+                capture is not None and owner is not None
+                and owner is capture[0] and type(owner) is capture[1]
+                and type(self.original) is capture[2] and self.source_tree is capture[3]
+                and self.spec.name == name and namespace is attributes
+                and sys.modules.get(name) is module
+                and attributes.get("__spec__") is self.spec
+                and attributes.get("__loader__") is self.original
+                and self.spec.loader is self.original
+                and type(attributes.get("__file__")) is str
+                and attributes["__file__"] == self.origin
+                and type(self.spec.origin) is str and self.spec.origin == self.origin
+                and any(f is owner for f in sys.meta_path)
+                and getattr(owner, "sealed", False) is True
+                and getattr(self.original, "finder", None) is owner
+                and self.source_tree is not None
+                and getattr(owner, "tree", None) is self.source_tree
+                and getattr(self.original, "_source_tree", None) is self.source_tree
+                and getattr(self.original, "source", None) == source
+                and getattr(self.original, "name", None) == name
+                and type(getattr(owner, "root", None)) is str
+                and self.origin == owner.root + "/" + source
+            )
+
         def scoped_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if (level == 0 and name == "os" and self.spec.name == _ARTIFACT
+                    and self.catalog_capture is not None):
+                if fromlist or not owns_import(_ARTIFACT, _ARTIFACT_SOURCE, globals):
+                    raise UnsupportedValue("artifact source owner is not bound")
+                return self.bridge.os
             if level == 0 and name == _PERSISTENCE:
-                owner = self.source_owner
-                capture = self.catalog_capture
-                if (
-                    capture is None
-                    or owner is not capture[0] or type(owner) is not capture[1]
-                    or type(self.original) is not capture[2]
-                    or self.source_tree is not capture[3]
-                    or self.spec.name != _SERVICE
-                    or type(fromlist) is not tuple or fromlist != _PERSISTENCE_EXPORTS
-                    or globals is not attributes
-                    or sys.modules.get(_SERVICE) is not module
-                    or attributes.get("__spec__") is not self.spec
-                    or attributes.get("__loader__") is not self.original
-                    or self.spec.loader is not self.original
-                    or type(attributes.get("__file__")) is not str
-                    or attributes.get("__file__") != self.origin
-                    or type(self.spec.origin) is not str
-                    or self.spec.origin != self.origin
-                    or self.bridge._catalog_root is None
-                    or owner is None or not any(f is owner for f in sys.meta_path)
-                    or getattr(owner, "sealed", False) is not True
-                    or getattr(self.original, "finder", None) is not owner
-                    or self.source_tree is None
-                    or getattr(owner, "tree", None) is not self.source_tree
-                    or getattr(self.original, "_source_tree", None) is not self.source_tree
-                    or getattr(self.original, "source", None) != _SERVICE_SOURCE
-                    or getattr(self.original, "name", None) != _SERVICE
-                    or type(getattr(owner, "root", None)) is not str
-                    or self.origin != getattr(owner, "root", "") + "/" + _SERVICE_SOURCE
-                ):
+                if (type(fromlist) is not tuple or fromlist != _PERSISTENCE_EXPORTS
+                        or self.bridge._catalog_root is None
+                        or not owns_import(_SERVICE, _SERVICE_SOURCE, globals)):
                     raise UnsupportedValue("catalog Host dependency owner is not bound")
                 # The guarded original import executes in this actual owner's
                 # globals. No persistence module is imported or registered.
@@ -217,7 +223,7 @@ class ModulePathBindings:
             if spec.loader is None:
                 raise UnsupportedValue("original bound module has no code loader")
             capture = self._catalog_capture
-            if fullname == _SERVICE and capture is not None and (
+            if fullname in {_SERVICE, _ARTIFACT} and capture is not None and (
                 finder is not capture[0] or type(finder) is not capture[1]
                 or type(spec.loader) is not capture[2]
                 or finder.tree is not capture[3]

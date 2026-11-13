@@ -8,6 +8,9 @@ use sha2::{Digest as _, Sha256};
 use std::path::Path;
 use tobkiri_canon::{AllocationBudget, CoreBuffer, CoreBufferBuilder, CoreValue, MAX_BYTES};
 #[cfg(unix)]
+#[path = "original_shell_file.rs"]
+mod shell_file;
+#[cfg(unix)]
 #[path = "original_shell_inputs.rs"]
 mod shell_inputs;
 #[cfg(unix)]
@@ -37,7 +40,9 @@ pub(crate) struct CatalogIo {
     #[cfg(unix)]
     shell_root_identity: Option<Identity>,
     #[cfg(unix)]
-    shell_tree_directory_identity: Option<Identity>,
+    shell_tree_identity: Option<Identity>,
+    #[cfg(unix)]
+    shell_file: Option<TrackedFile>,
     #[cfg(unix)]
     shell_profile_id: Option<String>,
     #[cfg(unix)]
@@ -89,6 +94,12 @@ enum PackResolve {
     ShellTreeFile,
     ShellTreeDirectory,
     ShellList,
+    ShellFileOpen,
+    ShellFileTell,
+    ShellFileStat,
+    ShellFileRead,
+    ShellFileEnd,
+    ShellFileClose,
     ShellReady,
     Spent,
 }
@@ -198,7 +209,9 @@ impl CatalogIo {
             #[cfg(unix)]
             shell_root_identity: None,
             #[cfg(unix)]
-            shell_tree_directory_identity: None,
+            shell_tree_identity: None,
+            #[cfg(unix)]
+            shell_file: None,
             #[cfg(unix)]
             shell_profile_id: None,
             #[cfg(unix)]
@@ -742,7 +755,7 @@ impl CatalogIo {
         Ok(())
     }
 
-    /// Permit the original lock and Shell path sequence up to the first tree read.
+    /// Permit the original lock and the connected prefix of Shell inspection.
     pub(crate) fn inspect_pack_resolve<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
@@ -750,19 +763,6 @@ impl CatalogIo {
         request: &CoreValue,
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<CoreBuffer> {
-        let operation_name = match self.pack_resolve {
-            PackResolve::CheckSymlink
-            | PackResolve::ShellSymlink
-            | PackResolve::ShellLeafSymlink
-            | PackResolve::ShellLeafParentSymlink
-            | PackResolve::ShellTreeSymlink => "is-symlink",
-            PackResolve::CheckFile | PackResolve::ShellTreeFile => "is-file",
-            PackResolve::Read => "read-bytes",
-            PackResolve::ShellResolve => "resolve",
-            PackResolve::ShellDirectory | PackResolve::ShellTreeDirectory => "is-dir",
-            PackResolve::ShellList => "iterdir",
-            _ => return Err(OriginalAuthorityError::unavailable().into()),
-        };
         let cancellation = self.cancellation.clone();
         let op = self.operation(owner, invocation, &cancellation)?;
         let CatalogRequest {
@@ -777,10 +777,33 @@ impl CatalogIo {
         let args = args
             .array()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let valid_args = if self.pack_resolve == PackResolve::ShellResolve {
-            strict(&args)
-        } else {
-            args.is_empty()
+        #[cfg(unix)]
+        if self.shell_file.is_some() {
+            return self.inspect_shell_file(&op, &scope, &steps, &operation, &args, budget);
+        }
+        let operation_name = match self.pack_resolve {
+            PackResolve::CheckSymlink
+            | PackResolve::ShellSymlink
+            | PackResolve::ShellLeafSymlink
+            | PackResolve::ShellLeafParentSymlink
+            | PackResolve::ShellTreeSymlink => "is-symlink",
+            PackResolve::CheckFile | PackResolve::ShellTreeFile => "is-file",
+            PackResolve::Read => "read-bytes",
+            PackResolve::ShellResolve => "resolve",
+            PackResolve::ShellDirectory | PackResolve::ShellTreeDirectory => "is-dir",
+            PackResolve::ShellList => "iterdir",
+            PackResolve::ShellFileOpen => "open",
+            _ => return Err(OriginalAuthorityError::unavailable().into()),
+        };
+        let valid_args = match self.pack_resolve {
+            PackResolve::ShellResolve => strict(&args),
+            #[cfg(unix)]
+            PackResolve::ShellFileOpen => {
+                args.len() == 1
+                    && args.get(0).and_then(|value| value.as_i64())
+                        == Some(i64::from(libc::O_RDONLY | libc::O_NOFOLLOW))
+            }
+            _ => args.is_empty(),
         };
         if operation.as_str() != Some(operation_name) || !valid_args {
             return Err(OriginalAuthorityError::unavailable().into());
@@ -796,6 +819,7 @@ impl CatalogIo {
                 | PackResolve::ShellTreeFile
                 | PackResolve::ShellTreeDirectory
                 | PackResolve::ShellList
+                | PackResolve::ShellFileOpen
         ) {
             return self.inspect_shell_root(&op, &scope, &steps, budget);
         }

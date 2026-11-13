@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import base64
+from contextlib import contextmanager
+import hashlib
+import stat
 import json
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import sys
@@ -50,6 +54,70 @@ class ScriptedPort:
 
 
 class NativePathAdapterTests(unittest.TestCase):
+    def test_original_shell_file_digest_uses_retained_descriptor(self):
+        source = ROOT / "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
+        tree = ast.parse(source.read_bytes(), filename=str(source))
+        names = {"artifact_digest", "_identity", "_regular_binary_reader", "_stable_update_digest"}
+        functions = [node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name in names]
+        self.assertEqual(len(functions), len(names))
+        requests = []
+        content = b"abc"
+        position = 0
+
+        def inspect(payload):
+            nonlocal position
+            frame = wire.loads(payload)
+            requests.append(frame)
+            operation = frame["operation"]
+            if operation == "is-symlink":
+                result = {"kind": "bool", "value": False}
+            elif operation == "is-file":
+                result = {"kind": "bool", "value": True}
+            elif operation == "open":
+                result = {"kind": "fd", "binding": "root"}
+            elif operation == "fstat":
+                result = STAT
+            elif operation == "seek":
+                self.assertEqual(frame["args"], [0, 1])
+                result = {"kind": "int", "value": position}
+            elif operation == "read":
+                size = frame["args"][0]
+                data = content[position:position + size]
+                position += len(data)
+                result = blob(data)
+            elif operation == "close":
+                result = {"kind": "unit"}
+            else:
+                self.fail(operation)
+            return wire.dumps({"format": "io.tobkiri.native-inspection-response.v1",
+                               "scope": self.scope.wire(), "result": result})
+
+        bridge = PathBridge(self.scope, "posix", inspect,
+                            os_flags={"O_RDONLY": 0, "O_NOFOLLOW": 4})
+        root = bridge.bind("root", "/artifacts")
+        root._steps = (("shell-resolved-root", ""),)
+        bridge._resolving_catalog = True
+        bridge._resolver_resolved_root = root
+        selected = root / "shell"
+        namespace = {"hashlib": hashlib, "stat": stat, "os": bridge.os,
+                     "contextmanager": contextmanager, "CapturedPath": type("CapturedPath", (), {}),
+                     "ProtocolError": ValueError}
+        future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[future, *functions], type_ignores=[])),
+                     str(source), "exec"), namespace)
+        digest = namespace["artifact_digest"](selected)
+        self.assertEqual(digest, "sha256:" + hashlib.sha256(b"\0" + content).hexdigest())
+        for frame in requests:
+            steps = ([["shell-resolved-root", ""], ["join", "shell"]]
+                     if frame["operation"] in {"is-symlink", "is-file", "open"}
+                     else [["shell-file", ""]])
+            self.assertEqual(frame["target"], {"binding": "root", "steps": steps})
+        self.assertEqual(next(row["args"] for row in requests if row["operation"] == "open"), [4])
+        self.assertEqual([row["operation"] for row in requests].count("fstat"), 2)
+        self.assertEqual(requests[-1]["operation"], "close")
+        self.assertTrue(bridge._resolver_file_closed)
+
     def test_fixed_catalog_codec_preserves_old_binding_and_clears_after_throw(self):
         scope = Scope(1, 2, 3, 4)
         port = ScriptedPort(scope, [
