@@ -2789,6 +2789,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   評価区間は1,737,226,028 fuelで、94,366,235減った。42件目の`ui_view_v1`は評価開始を
   記録してから停止。計測なしの[CI 43385275279](https://github.com/harupipipipi/tobkiri/actions/runs/43385275279)
   ではcoldとfullの両方が燃料切れ。製品への採用判定は未達。
+- `d35334cc9` は型を一度読み、組み込み型の照合で再利用する。組み込み以外では
+  元のチェッカーを呼び、独自の `__class__` を観測する。追加ケースを含む
+  [native比較 43388487147](https://github.com/harupipipipi/tobkiri/actions/runs/43388487147)
+  が成功した。[同じ計測CI 43388500074](https://github.com/harupipipipi/tobkiri/actions/runs/43388500074)
+  では41件目の戻りに109,209,952 fuelが残った。組み込み2要素ペアの版から4,541,292増加し、
+  同じ41件の評価区間は1,732,623,258 fuelで4,602,770減った。42件目の
+  `ui_view_v1` は92,825,063 fuelで評価に入り、その途中で燃料切れ。確保量のピークは
+  25,205,940バイトで、終了・reap後は0。無計測の
+  [cold・全体CI 43388500873](https://github.com/harupipipipi/tobkiri/actions/runs/43388500873)
+  も両OSで燃料切れ。元の予算での完走条件は継続する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -2803,8 +2813,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   pointer不在・別Profile・未登録時は元のカタログを保持し、追加ソース要求は既存の
   拒否ファクトリへ渡す。登録済みでは検証済みpointerと登録レコードを保持する。
   Authorityと候補解決の本体、実Wasmカタログを経由する全体比較、Launcherへの採用が残る。
+  [定義・復旧CI 43387276864](https://github.com/harupipipipi/tobkiri/actions/runs/43387276864)
+  はfocused Rust試験3件をLinux/macOSで通過した。
+- `41cc226a8` の[初回Setupの比較CI 43389420830](https://github.com/harupipipipi/tobkiri/actions/runs/43389420830)
+  は元の外側呼び出しで再生成した14ケースすべてとmacOS上の実Rust Host選択を照合した。
+  2回の復旧、選択結果、例外のcause/context、ファイル状態、物理ロックの解放、終了後の
+  確保量と予約0を比較。元のカタログは原本側で実行し、Rust側は同じStore上でHost区間を
+  直接試験した。実Wasm loader・拒否factoryと結合したSetupの全体は引き続き未検証。
 - 公開の復旧側は、定義ストアの旧Profile移行入口が次の境界。
   [原本CI 43384338921](https://github.com/harupipipipi/tobkiri/actions/runs/43384338921)は
   既存13ケースを維持し、`migrate_legacy_successors` の8ケースを両OSで実行した。
   6ケースは整数0、2ケースは元入力または現行リビジョンのフォールバックを選び
   `_legacy_v4_successor` の入口に達した。実変換と書き込みは次の比較対象。
+- `1a0d1ff72` は同じ定義ストアを一覧の後で再ロックし、最新のindexを読み直す。
+  格納順、元の `legacy_ids[0]`、現在版へのフォールバック、source pathの独立した
+  文字列化を保つ。候補は元の状態の参照として保持し、写しの作成を避ける。
+  全行をスキップしたときはロックを再検証する。ヘルパー入口や例外では定義ロックを閉じ、
+  外側の公開ジャーナルは既存の終了処理が閉じる。実ヘルパーと書き込みは未接続。
+  [検証CI 43390782062](https://github.com/harupipipipi/tobkiri/actions/runs/43390782062)で
+  同じストアの再読込、引数選択、元の13件・8件を確認する。
