@@ -2889,11 +2889,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `f17c9f3c0` はURI結合で小文字のschemeを借用し、baseと参照のpathを順に走査して
   一時配列を一つにする。[初回比較 43453273374](https://github.com/harupipipipi/tobkiri/actions/runs/43453273374)
   で空のbase pathの先頭セグメントを落とす回帰を検出。`5bee80a6d` で保持し、
-  追加6組を含む[原本比較](https://github.com/harupipipipi/tobkiri/actions/runs/43453892426)
-  は成功した。
-  [燃料計測](https://github.com/harupipipipi/tobkiri/actions/runs/43453925199)は実行中。
-  無計測の[CI 43446170342](https://github.com/harupipipipi/tobkiri/actions/runs/43446170342)
-  はcoldと全カタログの両方で元の燃料を使い切った。
+  追加6組を含む[原本比較 43453892426](https://github.com/harupipipipi/tobkiri/actions/runs/43453892426)
+  はURI全151組で成功した。[燃料計測 43453925199](https://github.com/harupipipipi/tobkiri/actions/runs/43453925199)
+  の41件の評価区間は1,690,255,119 fuelで、fragment修正後から16,895,148減った。
+  42件目の評価開始は134,611,193 fuel（16,877,837増）。192組の採取後に燃料を使い切り、
+  41件で停止した。ピーク25,205,956 bytes、終了後の確保量・予約は0。
+  同じ実装の[無計測CI 43453892634](https://github.com/harupipipipi/tobkiri/actions/runs/43453892634)
+  でもcoldと全カタログが元の燃料上限で停止した。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3027,7 +3029,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `ea3b39bdc` は選択されたShellをverifier入口でsymlinkに置換する場合と、
   一時的に欠落させる場合を原本に追加した。正常時はrootを確認した後、
   選択leaf→root→ツリー開始時のleafの順でsymlinkを調べる。symlinkは最初のleafで拒否し、
-  欠落はツリーのfile/dir検査で拒否する。両OSで実Packの例外チェーンまで確認した。
+  欠落はツリーのfile/dir検査で拒否する。両OSで実Packの例外チェーンまで確認し、
+  Linuxでは既存310参照の順序とdigestも照合した。
   [原本CI 43453556968](https://github.com/harupipipipi/tobkiri/actions/runs/43453556968)
 - `6d96428fe` はloaderが返した実Shell rootと親ディレクトリの同一性を保持し、
   Packによるlock再読込後、元のstrict resolve、元rootのsymlink判定、
@@ -3042,6 +3045,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   予算付きread/fstatは再利用候補。Shellで使うdescriptorのopen/seek/close、元の失敗と
   実パスの所有権を原本と照合してから、許可されたIOをRustへ移す。loaderが返した
   canonical rootを保持し、解決済みのパス文字列だけから権限を作らない。
+  選択されたShellのpath検査は、loaderが渡した元のProfileとShell定義のバイトと
+  2回目の検証済みProfile IDからvariantを選び、同じ親とrootの識別を用いて行う。
+  現在の同梱variantが使う1階層のファイル名を対象とし、schema上有効な複数階層の
+  variantは未移植。複数階層では途中の各親を原本と同じ順で検査する必要がある。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
