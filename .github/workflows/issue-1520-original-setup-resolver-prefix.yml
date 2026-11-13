@@ -19,6 +19,7 @@ name: Issue 1520 original Setup resolver prefix
       - tobkiri_launcher/harness-native/src/bootstrap_confirmation.rs
       - tobkiri_launcher/harness-native/src/bootstrap_listing.rs
       - tobkiri_launcher/harness-native/src/original_development_handover.rs
+      - tobkiri_launcher/harness-native/src/original_inactive_registration_ci.rs
       - tobkiri_launcher/harness-native/src/original_setup_candidate_selection_tests.rs
       - .github/workflows/issue-1520-original-setup-resolver-prefix.yml
 
@@ -111,6 +112,16 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           bootstrap_runtime::predecessor::confirmation::tests::fresh_confirmation_validates_scope_fields_and_full_digest
           -- --exact --test-threads=1 --nocapture
+      - name: Compare native registration CAS with the pinned original
+        if: matrix.os == 'ubuntu-22.04'
+        env:
+          TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE: ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-setup-resolver-prefix/registration.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::definitions::inactive_registration_ci::original_inactive_registration_driver
+          -- --ignored --exact --test-threads=1 --nocapture
       - name: Check native admission of the linked preview and listing
         if: matrix.os == 'ubuntu-22.04'
         run: >-
@@ -132,6 +143,7 @@ jobs:
             ${{ runner.temp }}/original-setup-resolver-prefix/predecessor.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/confirmation.log*
+            ${{ runner.temp }}/original-setup-resolver-prefix/registration.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/listing.log*
           if-no-files-found: warn
           retention-days: 7

@@ -484,48 +484,7 @@ impl PublicationRead {
             self.fresh.progress = Progress::InactiveJournalStarted;
             let op = self.candidate_operation(owner, cancellation)?;
             let root = self.fresh.resolver_root.as_ref().expect("resolver root");
-            let _paths = op.reserve(
-                OriginalAuthorityStage::Path,
-                root.as_os_str()
-                    .len()
-                    .saturating_mul(4)
-                    .saturating_add(profile_id.len())
-                    .saturating_add(8192),
-            )?;
-            if predecessor_stat(&op, root, |path| fs::metadata(path))?.is_none() {
-                return Ok(None);
-            }
-            use development_handover::{JOURNAL, KEY};
-            if predecessor_path_present(&op, &root.join(JOURNAL))? {
-                let journal = development_handover::read(&op, root, budget)?;
-                let snapshot = registry.check_handover(&op, &journal.payload, budget)?;
-                if inactive_has_active_profile(&op, root, profile_id)? {
-                    return Err(raw(
-                        "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict",
-                        "inactive bootstrap predecessor has an active Profile",
-                    ));
-                }
-                let digests = definitions::InactiveHandoverDigests {
-                    snapshot,
-                    journal: journal.digest,
-                };
-                return registry
-                    .project_handover(&op, &digests, profile_id, budget)
-                    .map(Some);
-            }
-            for witness in [
-                root.join(KEY),
-                root.join("development-host-staging"),
-                root.join("packvm-vz").join(JOURNAL),
-            ] {
-                if predecessor_path_present(&op, &witness)? {
-                    return Err(raw(
-                        "builtins.ValueError",
-                        "Development Host handover requires its authenticated recovery journal",
-                    ));
-                }
-            }
-            Ok(None)
+            inactive_handover_at(&op, root, profile_id, registry, budget)
         }
         #[cfg(not(unix))]
         {
@@ -565,7 +524,64 @@ impl PublicationRead {
 }
 
 #[cfg(unix)]
-fn inactive_has_active_profile<S: OriginalAuthorityOwner>(
+pub(super) fn inactive_handover_at<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    profile_id: &str,
+    registry: &mut definitions::InactiveBootstrapRegistry,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<tobkiri_canon::CoreValue>> {
+    let _paths = op.reserve(
+        OriginalAuthorityStage::Path,
+        root.as_os_str()
+            .len()
+            .saturating_mul(4)
+            .saturating_add(profile_id.len())
+            .saturating_add(8192),
+    )?;
+    if predecessor_stat(op, root, |path| fs::metadata(path))?.is_none() {
+        return Ok(None);
+    }
+    use development_handover::{JOURNAL, KEY};
+    if predecessor_path_present(op, &root.join(JOURNAL))? {
+        let journal = development_handover::read(op, root, budget)?;
+        let snapshot = registry.check_handover(op, &journal.payload, budget)?;
+        if inactive_has_active_profile(op, root, profile_id)? {
+            return Err(active_predecessor_conflict());
+        }
+        let digests = definitions::InactiveHandoverDigests {
+            snapshot,
+            journal: journal.digest,
+        };
+        return registry
+            .project_handover(op, &digests, profile_id, budget)
+            .map(Some);
+    }
+    for witness in [
+        root.join(KEY),
+        root.join("development-host-staging"),
+        root.join("packvm-vz").join(JOURNAL),
+    ] {
+        if predecessor_path_present(op, &witness)? {
+            return Err(raw(
+                "builtins.ValueError",
+                "Development Host handover requires its authenticated recovery journal",
+            ));
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(unix)]
+pub(super) fn active_predecessor_conflict() -> OriginalAuthorityError {
+    raw(
+        "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict",
+        "inactive bootstrap predecessor has an active Profile",
+    )
+}
+
+#[cfg(unix)]
+pub(super) fn inactive_has_active_profile<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
     profile_id: &str,
@@ -584,7 +600,7 @@ fn inactive_has_active_profile<S: OriginalAuthorityOwner>(
 }
 
 #[cfg(unix)]
-fn predecessor_path_present<S: OriginalAuthorityOwner>(
+pub(super) fn predecessor_path_present<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     path: &Path,
 ) -> Result<bool> {

@@ -391,6 +391,102 @@ impl Directory {
     ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
         self.read_relative_with_limit(op, Path::new(name), Some(max_bytes))
     }
+
+    /// Fixed definition-store replacement for the original registration comparison.
+    #[cfg(test)]
+    pub(super) fn replace_definition<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        bytes: &[u8],
+    ) -> Result<()> {
+        use std::io::Write;
+        const INDEX: &str = "index.json";
+        let parent = self.parent(op, Path::new(INDEX))?;
+        let result = (|| {
+            let directory = parent.files.last().expect("directory chain");
+            let fd = directory.as_raw_fd();
+            let prior = Self::stat(directory, INDEX, false)?;
+            let _name_capacity = op.reserve(OriginalAuthorityStage::Path, 512)?;
+            let mut nonce = [0_u8; 16];
+            getrandom::fill(&mut nonce).map_err(|_| OriginalAuthorityError::unavailable())?;
+            let mut temporary = format!(".{INDEX}.{}.", op.pid);
+            for byte in nonce {
+                use std::fmt::Write;
+                write!(&mut temporary, "{byte:02x}").expect("write to string");
+            }
+            temporary.push_str(".tmp");
+            let name = CString::new(temporary.as_str()).expect("fixed temporary name");
+            let descriptor = unsafe {
+                libc::openat(
+                    fd,
+                    name.as_ptr(),
+                    libc::O_WRONLY
+                        | libc::O_CREAT
+                        | libc::O_EXCL
+                        | libc::O_NOFOLLOW
+                        | libc::O_CLOEXEC,
+                    0o600,
+                )
+            };
+            if descriptor < 0 {
+                return Err(raw_io(std::io::Error::last_os_error(), Some(&temporary)));
+            }
+            let mut file =
+                TrackedFile::new(unsafe { File::from_raw_fd(descriptor) }, op.cleanup.clone());
+            let mut published = false;
+            let result = (|| {
+                for chunk in bytes.chunks(64 * 1024) {
+                    op.check(OriginalAuthorityStage::Source)?;
+                    file.write_all(chunk).map_err(|error| raw_io(error, None))?;
+                }
+                if unsafe { libc::fchmod(descriptor, 0o600) } != 0
+                    || unsafe { libc::fsync(descriptor) } != 0
+                {
+                    return Err(raw_io(std::io::Error::last_os_error(), None));
+                }
+                let opened = file.metadata().map_err(|error| raw_io(error, None))?;
+                let named = Self::stat(directory, &temporary, true)?.expect("required temporary");
+                if fingerprint(&opened) != named.fingerprint {
+                    return Err(secure_error("persistence temporary changed"));
+                }
+                let current = Self::stat(directory, INDEX, false)?;
+                if prior.as_ref().map(|stat| stat.fingerprint)
+                    != current.map(|stat| stat.fingerprint)
+                {
+                    return Err(secure_error(
+                        "persistence destination changed before publication",
+                    ));
+                }
+                op.check(OriginalAuthorityStage::Guard)?;
+                if unsafe { libc::renameat(fd, name.as_ptr(), fd, c"index.json".as_ptr()) } != 0 {
+                    return Err(raw_io(std::io::Error::last_os_error(), Some(INDEX)));
+                }
+                published = true;
+                let after = Self::stat(directory, INDEX, true)?.expect("required registry");
+                if after.fingerprint != fingerprint(&opened) {
+                    return Err(secure_error(
+                        "persistence destination changed during publication",
+                    ));
+                }
+                if unsafe { libc::fsync(fd) } != 0 {
+                    return Err(raw_io(std::io::Error::last_os_error(), None));
+                }
+                Ok(())
+            })();
+            let result = finish_scope(result, file.close().map_err(|error| raw_io(error, None)));
+            if published || unsafe { libc::unlinkat(fd, name.as_ptr(), 0) } == 0 {
+                return result;
+            }
+            let cleanup = std::io::Error::last_os_error();
+            if cleanup.kind() == std::io::ErrorKind::NotFound {
+                result
+            } else {
+                finish_scope(result, Err(raw_io(cleanup, Some(&temporary))))
+            }
+        })();
+        parent.finish(result)
+    }
+
     fn read_relative_with_limit<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -708,7 +804,7 @@ fn process_lock<S: OriginalAuthorityOwner>(
                 "nested publication recovery continuation",
             ));
         }
-        if matches!(name, LockName::Definition) && Instant::now() >= deadline {
+        if name.has_fixed_timeout() && Instant::now() >= deadline {
             return Err(lock_timeout());
         }
         owner = local
@@ -730,6 +826,8 @@ fn process_lock<S: OriginalAuthorityOwner>(
 pub(super) enum LockName {
     Publication,
     Definition,
+    #[cfg(test)]
+    HostSelection,
 }
 // Only these fixed lexical callers are admitted. The existing owner check
 // still refuses reentry of the SAME lock; it does not implement arbitrary
@@ -740,13 +838,19 @@ impl LockName {
         match self {
             Self::Publication => LOCK,
             Self::Definition => ".profile-definition.lock",
+            #[cfg(test)]
+            Self::HostSelection => ".active-profile.lock",
         }
     }
     fn deadline(self, operation: Instant) -> Instant {
-        match self {
-            Self::Publication => operation,
-            Self::Definition => operation.min(Instant::now() + Duration::from_secs(5)),
+        if self.has_fixed_timeout() {
+            operation.min(Instant::now() + Duration::from_secs(5))
+        } else {
+            operation
         }
+    }
+    fn has_fixed_timeout(self) -> bool {
+        !matches!(self, Self::Publication)
     }
 }
 #[cfg(unix)]
@@ -796,6 +900,8 @@ impl PublicationLock {
                     match name {
                         LockName::Publication => c".bootstrap-publication.lock".as_ptr(),
                         LockName::Definition => c".profile-definition.lock".as_ptr(),
+                        #[cfg(test)]
+                        LockName::HostSelection => c".active-profile.lock".as_ptr(),
                     },
                     flags,
                     0o600,
@@ -871,7 +977,7 @@ impl PublicationLock {
                         raw_io(error, None),
                     ));
                 }
-                if matches!(name, LockName::Definition) && Instant::now() >= deadline {
+                if name.has_fixed_timeout() && Instant::now() >= deadline {
                     return Err(caused(lock_timeout(), raw_io(error, None)));
                 }
                 std::thread::park_timeout(
@@ -882,7 +988,7 @@ impl PublicationLock {
             directory.validate_file(op, name.text(), guard.file.as_ref().expect("profile lock"))
         })();
         if let Err(error) = acquired {
-            return if matches!(name, LockName::Definition) {
+            return if name.has_fixed_timeout() {
                 finish_scope(Err(error), guard.close())
             } else {
                 // Preserve the historical publication caller's error/Drop

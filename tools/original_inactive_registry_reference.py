@@ -43,6 +43,7 @@ LOCK = "profiles/.profile-definition.lock"
 INDEX = "profiles/index.json"
 JOURNAL = "development-host-handover.json"
 KEY = "development-host-handover.key"
+REGISTRATION_TIME = 1_700_000_123
 
 
 def _inventory(root: Path, names: list[str]) -> dict[str, tuple]:
@@ -617,13 +618,18 @@ def _observe_registration(
             active.symlink_to("missing-fixture-pointer")
         journal_before = (root / JOURNAL).read_bytes()
         before = store.snapshot()
+        # Keep the exact input bytes in the runner fixture, including the
+        # concurrent edit. The real registration below uses a separate copy.
+        initial = inputs / f"register-input-{case}" / "user-data"
+        shutil.copytree(root, initial, symlinks=True)
         try:
-            register_bootstrap_definition(
-                root,
-                source,
-                approved_predecessor_digest=predecessor["definition_digest"],
-                approved_inactive_predecessor=predecessor,
-            )
+            with patch.object(ProfileDefinitionStore, "_now", return_value=REGISTRATION_TIME):
+                register_bootstrap_definition(
+                    root,
+                    source,
+                    approved_predecessor_digest=predecessor["definition_digest"],
+                    approved_inactive_predecessor=predecessor,
+                )
         except ProfileDefinitionStoreConflict as error:
             message = (
                 "imported bootstrap registry changed after completed handover"
@@ -656,6 +662,7 @@ def _observe_registration(
                 "parent_revision": existing.parent_revision,
                 "profile_revision": existing.profile_revision,
                 "history_length": len(history),
+                "snapshot_digest": canonical_digest(after),
             }
         if (
             _lock_free(root / "profiles/.active-profile.lock") is not True
@@ -666,6 +673,7 @@ def _observe_registration(
             raise AssertionError("original registration changed lock or handover state")
         cases.append({
             "case": case,
+            "registration_time": REGISTRATION_TIME,
             "previous_snapshot_digest": canonical_digest(before),
             "expected": expected,
         })

@@ -9,7 +9,8 @@ mod successor_selection;
 pub(super) use successor_selection::select_successor;
 
 const SCHEMA: &str = "io.tobkiri.profile-definition-store.v1";
-const CONFLICT: &str = "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict";
+pub(super) const CONFLICT: &str =
+    "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict";
 pub(super) struct State {
     pub(super) doc: Funded<Document>,
     _scratch: NativeSetupReservation,
@@ -924,6 +925,210 @@ pub(super) fn get<S: OriginalAuthorityOwner>(
         return Ok(None);
     }
     Ok(Some(stored_from_entry(doc, entry)))
+}
+
+/// Validate the generation and current revision again under the update lock.
+#[cfg(test)]
+pub(super) fn require_registration_cas<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &mut State,
+    profile_id: &str,
+    generation: i64,
+    revision: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<usize> {
+    let doc = &state.doc;
+    if integer(doc, field(doc, doc.root, "generation")) != generation {
+        return Err(raw(CONFLICT, "Profile store generation is stale"));
+    }
+    let _id = op.reserve(
+        OriginalAuthorityStage::Source,
+        profile_id.len().saturating_mul(4),
+    )?;
+    let profile_id = Text::from_str(profile_id);
+    canonical_id(&profile_id, op, budget)?;
+    let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
+    let mut selected = None;
+    for &entry in entries {
+        charge(op, budget, 1 + profile_id.0.len() as u64)?;
+        if text(doc, field(doc, entry, "profile_id")) == Some(&profile_id) {
+            selected = Some(entry);
+            break;
+        }
+    }
+    let current = selected
+        .filter(|&id| boolean(doc, field(doc, id, "tombstone")) == Some(false))
+        .ok_or_else(|| {
+            raw(
+                "core_runtime.profile_definition_store_v4.ProfileDefinitionNotFound",
+                json::repr_text(&profile_id),
+            )
+        })?;
+    if !doc.string_is(field(doc, current, "current_revision"), revision) {
+        return Err(raw(CONFLICT, "Profile revision is stale"));
+    }
+    Ok(current)
+}
+
+#[cfg(test)]
+pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &State,
+    entry: usize,
+    source: &CoreValue,
+    now: i64,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer> {
+    let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
+    let source_id = source
+        .get_key("profile_id")
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    if source_id.as_str().is_none_or(|id| {
+        !state
+            .doc
+            .string_is(field(&state.doc, entry, "profile_id"), id)
+    }) {
+        return Err(integrity("Profile revision ID does not match its entry"));
+    }
+    if source.get_key("display_name").is_some_and(|name| {
+        name.as_str().is_none_or(|name| {
+            name.trim_matches(|ch: char| ch.is_whitespace() || matches!(ch, '\u{1c}'..='\u{1f}'))
+                .is_empty()
+        })
+    }) {
+        return Err(integrity("Profile display_name must be a non-empty string"));
+    }
+    let timestamp = CoreValue::int(now, budget).map_err(capacity)?;
+    let revision = source.digest_guest(budget).map_err(capacity)?;
+    let revision = CoreValue::string(revision.as_str(), budget).map_err(capacity)?;
+    let doc = &state.doc;
+    // One funded copy of the validated snapshot admits shared links to all
+    // existing rows. The source, new revision and changed counters are the
+    // only new content; the immutable history remains in physical order.
+    let bytes = json::canonical(doc, None, op)?;
+    let snapshot = CoreValue::parse_guest(&bytes, budget).map_err(capacity)?;
+    drop(bytes);
+    let profiles = snapshot.get_key("profiles").expect("validated profiles");
+    let profiles = profiles.array().expect("validated profiles");
+    let entry_position = array(doc, field(doc, doc.root, "profiles"))
+        .expect("validated profiles")
+        .iter()
+        .position(|&id| id == entry)
+        .expect("selected registry entry");
+    let row = profiles
+        .get(entry_position)
+        .expect("selected registry entry");
+    let parent = row.get_key("current_revision").expect("validated revision");
+    let successor = CoreValue::object_shared(
+        [
+            ("profile_revision", revision.share()),
+            ("parent_revision", parent),
+            ("profile", source.share()),
+            ("created_at", timestamp.share()),
+            ("updated_at", timestamp.share()),
+            (
+                "tombstone",
+                CoreValue::bool(false, budget).map_err(capacity)?,
+            ),
+        ]
+        .into_iter()
+        .map(Ok),
+        budget,
+    )
+    .map_err(capacity)?;
+    let old_history = row.get_key("revisions").expect("validated revisions");
+    let old_history = old_history.array().expect("validated revisions");
+    let mut history = CoreValue::array_builder(budget, old_history.len() + 1).map_err(capacity)?;
+    for revision in old_history.iter() {
+        history.push(revision).map_err(capacity)?;
+    }
+    history.push(successor).map_err(capacity)?;
+    let history = history.finish().map_err(capacity)?;
+    let row = CoreValue::object_shared(
+        row.object()
+            .expect("validated row")
+            .iter()
+            .map(|(key, value)| {
+                Ok((
+                    key,
+                    match key {
+                        "revisions" => history.share(),
+                        "current_revision" => revision.share(),
+                        "updated_at" => timestamp.share(),
+                        _ => value,
+                    },
+                ))
+            }),
+        budget,
+    )
+    .map_err(capacity)?;
+    let profiles = CoreValue::array_shared(
+        profiles.iter().enumerate().map(|(index, value)| {
+            Ok(if index == entry_position {
+                row.share()
+            } else {
+                value
+            })
+        }),
+        budget,
+    )
+    .map_err(capacity)?;
+    let generation = snapshot
+        .get_key("generation")
+        .and_then(|generation| generation.as_i64())
+        .expect("validated generation");
+    let generation = CoreValue::int(generation + 1, budget).map_err(capacity)?;
+    let bootstrap = CoreValue::parse_guest(
+        br#"{"state":"not_required","template_profile_revision":null}"#,
+        budget,
+    )
+    .map_err(capacity)?;
+    let snapshot = snapshot.object().expect("validated registry");
+    let keys = [
+        "schema",
+        "generation",
+        "updated_at",
+        "profiles",
+        "legacy",
+        "bootstrap",
+    ];
+    let payload = CoreValue::object_shared(
+        keys.into_iter().map(|key| {
+            Ok((
+                key,
+                match key {
+                    "generation" => generation.share(),
+                    "updated_at" => timestamp.share(),
+                    "profiles" => profiles.share(),
+                    "bootstrap" => bootstrap.share(),
+                    _ => snapshot.get(key).expect("validated registry field"),
+                },
+            ))
+        }),
+        budget,
+    )
+    .map_err(capacity)?;
+    let digest = payload.digest_guest(budget).map_err(capacity)?;
+    let digest = CoreValue::string(digest.as_str(), budget).map_err(capacity)?;
+    let published = CoreValue::object_shared(
+        snapshot.iter().map(|(key, _)| {
+            Ok((
+                key,
+                if key == "store_digest" {
+                    digest.share()
+                } else {
+                    payload.get_key(key).expect("validated registry field")
+                },
+            ))
+        }),
+        budget,
+    )
+    .map_err(capacity)?;
+    let json = published.encode_guest(budget).map_err(capacity)?;
+    let mut line = CoreBuffer::builder(budget, json.len() + 1);
+    line.append(json.as_bytes()).map_err(capacity)?;
+    line.append(b"\n").map_err(capacity)?;
+    line.finish().map_err(capacity)
 }
 
 fn stored_from_entry(doc: &mut Document, entry: usize) -> StoredProfile {

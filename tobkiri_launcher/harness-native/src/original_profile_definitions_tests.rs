@@ -64,7 +64,7 @@ pub(super) fn with_setup_source(
     let remaining = account.snapshot().unwrap();
     assert_eq!((remaining.charged_bytes, remaining.reservations), (0, 0));
 }
-fn operation<'a>(
+pub(super) fn operation<'a>(
     read: &'a PublicationRead,
     source: &'a Source,
     cancel: &'a CoreCancellation,

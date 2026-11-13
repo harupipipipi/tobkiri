@@ -12,6 +12,9 @@ mod candidate_selection_tests;
 #[path = "original_profile_definitions_model.rs"]
 mod definitions_model;
 #[cfg(all(test, unix))]
+#[path = "original_inactive_registration_ci.rs"]
+mod inactive_registration_ci;
+#[cfg(all(test, unix))]
 #[path = "original_profile_definitions_reference_ci.rs"]
 mod reference_ci;
 #[cfg(all(test, unix))]
@@ -323,7 +326,16 @@ pub(super) fn inactive_bootstrap_registry<S: OriginalAuthorityOwner>(
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<InactiveBootstrapRegistry>> {
     let store = Store::new(op, root)?;
-    let mut snapshot = store.snapshot(op, budget)?;
+    inactive_registry_from_snapshot(op, store.snapshot(op, budget)?, profile_id, budget)
+}
+
+#[cfg(unix)]
+fn inactive_registry_from_snapshot<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    mut snapshot: definitions_model::State,
+    profile_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<InactiveBootstrapRegistry>> {
     Ok(
         definitions_model::inactive_definition(op, &mut snapshot, profile_id, budget)?.map(
             |definition| InactiveBootstrapRegistry {
