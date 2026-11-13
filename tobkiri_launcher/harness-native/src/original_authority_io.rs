@@ -848,19 +848,32 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
                         None,
                     ));
                 }
-                let parent = Parent::selected(&path, parent_id, &op.cleanup)?;
-                if parent
-                    .stat("v4.sqlite3", true)?
-                    .is_some_and(|metadata| metadata.len() > 0)
-                {
-                    return Err(OriginalAuthorityError::new(
-                        OriginalAuthorityStage::Key,
-                        "authority encryption key is missing for an existing database",
-                        None,
-                    ));
+                // Check the size only if path preparation saw a DB. On
+                // genesis the original publishes the key before creating it.
+                if database_id.is_some() {
+                    let database_has_data = Parent::selected(&path, parent_id, &op.cleanup)
+                        .and_then(|parent| {
+                            let has_data = parent
+                                .stat("v4.sqlite3", true)?
+                                .is_some_and(|metadata| metadata.len() > 0);
+                            parent.continuity()?;
+                            Ok(has_data)
+                        })
+                        .map_err(|error| {
+                            state_error(
+                                error,
+                                OriginalAuthorityStage::Path,
+                                "authority database path is unsafe",
+                            )
+                        })?;
+                    if database_has_data {
+                        return Err(OriginalAuthorityError::new(
+                            OriginalAuthorityStage::Key,
+                            "authority encryption key is missing for an existing database",
+                            None,
+                        ));
+                    }
                 }
-                parent.continuity()?;
-                drop(parent);
                 let keys = crypto::Keys::generate(op)?;
                 let mut random = [0; 8];
                 crypto::random(&mut random, OriginalAuthorityStage::Key)?;
