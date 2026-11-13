@@ -2626,8 +2626,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   追加差分テストは11段の参照と、兄弟枝のコールバックおよびエラーの順序を比較する。
 - 変更前の[明示App backend CI 43374609255](https://github.com/harupipipipi/tobkiri/actions/runs/43374609255)
   は未計測のcold42と全カタログがどちらも元の2B燃料を使い切った。
-  変更後は[ネイティブ差分CI 43376752724](https://github.com/harupipipipi/tobkiri/actions/runs/43376752724)と
-  [明示App backend CI 43376758941](https://github.com/harupipipipi/tobkiri/actions/runs/43376758941)で確認中。
+  変更後の[ネイティブ差分CI 43376752724](https://github.com/harupipipipi/tobkiri/actions/runs/43376752724)は
+  追加の継続テストを含め成功。[明示App backend CI 43376758941](https://github.com/harupipipipi/tobkiri/actions/runs/43376758941)は確認中。
   両方の実Wasmゲートと、同一Store上の初期化・IO・後始末を含む実経路が通るまで採用しない。
 
 ## 031: Pi再生用の生成WITをクリーンなCIでも揃える
@@ -2637,3 +2637,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `9bfa525bc` は管理下のCore・Pi adapter WITをCIで配置する。固定した上流拡張の
   ソースとhash検証は維持。共通ラッパーの依存準備をまとめる場合も、呼び出し側のWITを
   意図せず置換しないこと。[再実行CI 43376752668](https://github.com/harupipipipi/tobkiri/actions/runs/43376752668)で確認中。
+
+## 032: PR #1521の監査再送とLauncherの依存ロック
+
+- PR先端 `8be3110a` の[PR CI](https://github.com/harupipipipi/tobkiri/actions/runs/41353172887/job/124987819046)と
+  [push CI](https://github.com/harupipipipi/tobkiri/actions/runs/41353165780/job/124987778099)の
+  macOS両ジョブで、指摘対象の実component監査エラー2件が復旧後の `Session.close()` まで成功。
+  各ジョブの `provider_proxy` は33件成功。統合ブランチの `82e403756` で対象テストと
+  `handle_metadata.rs` のファイル内容は同一だが、そのコミットでの再実行は未確認。
+- 独立したLauncherのCargo.lockはPR先端・統合祖先 `7cdb66411`・`82e403756` で同一。
+  [PRのInstaller CI](https://github.com/harupipipipi/tobkiri/actions/runs/41353172907/job/124987546127)と
+  [統合祖先のInstaller CI](https://github.com/harupipipipi/tobkiri/actions/runs/41279048043/job/124767015757)で
+  `--locked` 検証とDMGのマウント検証が成功。いずれも製品経路全体の置換を証明するものではない。

@@ -8,6 +8,8 @@ on:
       - 'crates/tobkiri-e2e/tests/chat.rs'
       - 'crates/tobkiri-e2e/tests/network.rs'
       - 'crates/tobkiri-e2e/tests/ui.rs'
+      - 'crates/tobkiri-cli/**'
+      - 'tools/quality/issue_1520_cli_roundtrip.py'
   workflow_dispatch:
 
 permissions:
@@ -53,6 +55,12 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/actual-ui-ports.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-e2e --test ui
+      - name: Create, run, publish and import a Profile through the actual CLI
+        shell: bash
+        run: |
+          cargo build --locked -p tobkiri-cli --bin tobkiri
+          python3 -B tools/quality/issue_1520_cli_roundtrip.py \
+            "$CARGO_TARGET_DIR/debug/tobkiri" | tee "$RUNNER_TEMP/actual-cli-publication.log"
       - name: Retain test receipts
         if: always()
         uses: actions/upload-artifact@v4
@@ -62,4 +70,5 @@ jobs:
             ${{ runner.temp }}/actual-chat.log*
             ${{ runner.temp }}/actual-network.log*
             ${{ runner.temp }}/actual-ui-ports.log*
+            ${{ runner.temp }}/actual-cli-publication.log
           if-no-files-found: warn
