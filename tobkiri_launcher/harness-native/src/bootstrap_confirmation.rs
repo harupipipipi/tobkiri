@@ -283,6 +283,55 @@ mod tests {
         let body = CoreValue::parse_guest(&serde_json::to_vec(confirmation)?, budget)?;
         confirmation["confirmation_digest"] = json!(body.digest_guest(budget)?.as_str());
         assert!(validate(&handover, Some(&expected)).is_err());
+        if let Some(path) = std::env::var_os("TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE") {
+            let source = std::fs::read(path)?;
+            anyhow::ensure!(
+                source.len() <= MAX_BYTES,
+                "original review fixture too large"
+            );
+            let fixture: Value = serde_json::from_slice(&source)?;
+            let case = fixture["cases"]
+                .as_array()
+                .context("original cases missing")?
+                .iter()
+                .find(|row| row["case"] == "authenticated-handover")
+                .context("authenticated original case missing")?;
+            let setup_review = &case["setup_review"];
+            assert_eq!(setup_review["state"], "review_required");
+            let confirmation = &setup_review["confirmation"];
+            let epoch = confirmation["security_epoch"]
+                .as_u64()
+                .context("original review epoch missing")?
+                .to_string();
+            let snapshot = Digest::parse(
+                confirmation["authority_snapshot_digest"]
+                    .as_str()
+                    .context("original review Authority digest missing")?,
+            )?;
+            let predecessor = CoreValue::parse_guest(
+                &serde_json::to_vec(&case["expected"]["predecessor"])?,
+                budget,
+            )?;
+            let packet = CoreValue::parse_guest(
+                &serde_json::to_vec(&json!({
+                    "format": CONFIRM_RESPONSE, "scope": ["1","2","3","4"],
+                    "root": {"scope": ["1","2","3","4"], "object": "a"},
+                    "owned": ["a"], "confirmation": confirmation,
+                }))?,
+                budget,
+            )?;
+            validate_confirmation(
+                &packet,
+                &scope,
+                setup_review["profile_id"]
+                    .as_str()
+                    .context("original review Profile ID missing")?,
+                &snapshot,
+                &epoch,
+                Some(&predecessor),
+                budget,
+            )?;
+        }
         Ok(())
     }
 }

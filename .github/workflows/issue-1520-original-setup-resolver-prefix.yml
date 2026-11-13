@@ -103,6 +103,8 @@ jobs:
           -- --exact --test-threads=1 --nocapture
       - name: Check native admission of the complete confirmation document
         if: matrix.os == 'ubuntu-22.04'
+        env:
+          TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE: ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/original-setup-resolver-prefix/confirmation.log" --expected-passed 1 --

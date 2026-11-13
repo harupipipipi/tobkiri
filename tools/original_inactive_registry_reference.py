@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import os
 import stat
 import sys
 from collections.abc import Mapping
 from pathlib import Path
 from types import FrameType
 from typing import Any
+from unittest.mock import patch
 
 from original_authority_reference import ORIGINAL_HEAD, error_graph, write_json
 from original_setup_candidate_selection_reference import _lock_free
@@ -514,16 +516,19 @@ def observe_inactive_registry(
             raise AssertionError(
                 (case, "original inactive lookup changed fixture files")
             )
-        rows.append(
-            {
-                "case": case,
-                "calls": observed.calls,
-                "path_checks": observed.path_checks,
-                "files_after": files,
-                "files_unchanged": True,
-                "expected": expected,
-            }
-        )
+        row = {
+            "case": case,
+            "calls": observed.calls,
+            "path_checks": observed.path_checks,
+            "files_after": files,
+            "files_unchanged": True,
+            "expected": expected,
+        }
+        if case == "authenticated-handover":
+            row["setup_review"] = _observe_setup_review(root, expected["predecessor"])
+            if _inventory(root, files) != before:
+                raise AssertionError("original Setup review changed the import")
+        rows.append(row)
     if hashes(runtime) != source_hashes or hashes(original_runtime) != source_hashes:
         raise AssertionError("inactive registry sources changed during observation")
     write_json(
@@ -537,3 +542,36 @@ def observe_inactive_registry(
             "production_enabled": False,
         },
     )
+
+
+def _observe_setup_review(root: Path, predecessor: dict[str, Any]) -> dict[str, Any]:
+    from core_runtime.api.setup_handlers import SetupHandlersMixin
+    from tobkiri_protocol.canonical import canonical_digest
+
+    with patch.dict(os.environ, {
+        "TOBKIRI_USER_DATA": str(root),
+        "RUMI_USER_DATA": str(root),
+        "RUMI_ENVIRONMENT": "production",
+        "RUMI_APP_DIR": "",
+    }):
+        listing = SetupHandlersMixin._setup_listing()
+    profile = listing["recommended_default_profile"]
+    confirmation = profile["confirmation"]
+    digest = confirmation["confirmation_digest"]
+    if (
+        listing["state"] != "review_required"
+        or listing["denial_diagnostic"] is not None
+        or confirmation["definition_predecessor"] != predecessor
+        or "pack_pin_predecessor" in confirmation
+        or digest != canonical_digest({
+            key: item for key, item in confirmation.items()
+            if key != "confirmation_digest"
+        })
+    ):
+        raise AssertionError("original Setup did not bind the authenticated import")
+    return {
+        "state": listing["state"],
+        "profile_id": profile["profile_id"],
+        "confirmation": confirmation,
+        "listing_digest": canonical_digest(listing),
+    }
