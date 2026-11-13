@@ -638,15 +638,16 @@ the three oversized cases in the earlier five-component replay.
 
 ## Acceptance checklist
 
-Status after the focused CI replays (2026-11-13): items 2, 3, 6, 8, 9, 11, 12,
-13 and 18 are checked (9 of 20). The aggregate
+Status after the focused CI replays (2026-11-13): items 2, 3, 4, 6, 8, 9, 11,
+12, 13 and 18 are checked (10 of 20). The aggregate
 `issue-1520-rust.yml` currently fails earlier at an unrelated Python fixture
 step, so it is not the evidence; the focused workflows
 `issue-1520-acceptance-9-11-12.yml` and `issue-1520-acceptance-13-16.yml` are.
 Open points: 11 lacks the 「未確認の接続」 UI label; 12 uses synthetic WIT; 13
 has R2.10 gaps (no 「持ち主のいないデータ」 marking in Core removal, `policy-view`
 over-rejection); 14 needs guest/runtime replay and existing-workspace migration;
-15 needs physical Proc/PTY; 16 needs real store writes and a CLI round trip.
+15 needs physical Proc/PTY; 16 needs the populated vault and other storage tiers
+covered in the same publication replay.
 
 On the integration branch, [CI 43374564400](https://github.com/harupipipipi/tobkiri/actions/runs/43374564400)
 (`fd78392dd`) passed four compiler tests, two Flow engine tests, one Store
@@ -693,12 +694,13 @@ approval and rejects invalid original policies and mismatched pins.
    loaded the first after reopening Core. [Chat E2E](../../../crates/tobkiri-e2e/tests/chat.rs)
    · [CI 43375008696](https://github.com/harupipipipi/tobkiri/actions/runs/43375008696)
 
-4. [ ] **CLI alone creates, starts, publishes, and imports Profiles.**
-   [Commands](../../../crates/tobkiri-cli/src/commands.rs),
-   [input tests](../../../crates/tobkiri-cli/src/profile_input_tests.rs), and
-   [Core import tests](../../../crates/tobkiri-core/src/core_tests.rs) exist.
-   A current real CLI round trip with ordinary approvals and clean shutdown is
-   still needed; parser/library tests are not that operational proof.
+4. [x] **CLI alone creates, starts, publishes, and imports Profiles.**
+   On macOS the real CLI created and ran an Echo Profile, published it, refused
+   an import without committing its head, then imported with fresh approval.
+   Both Profiles ran a real Flow and kept separate SQLite conversations.
+   The imported Profile produced an identical re-export.
+   [Replay](../../../tools/quality/issue_1520_cli_roundtrip.py)
+   · [CI 43378931498](https://github.com/harupipipipi/tobkiri/actions/runs/43378931498)
 
 5. [ ] **All input, including chat, traverses Flow; editing Flow changes behavior.**
    [Native input E2E](../../../crates/tobkiri-e2e/tests/native_input.rs),
@@ -797,9 +799,8 @@ approval and rejects invalid original policies and mismatched pins.
     [native quota tests](../../../crates/tobkiri-store/tests/native_quota.rs).
     [run 42941462516](https://github.com/harupipipipi/tobkiri/actions/runs/42941462516): store `public_write_approval_is_once_per_writer_and_store_and_reads_do_not_prompt`
     and `three_tiers_are_isolated_per_profile_and_public_approval_is_per_writer_store_pair`
-    passed. Left unchecked: these run at the store layer only, the tier data was
-    checked with marker files rather than real store writes, and guest/runtime
-    reproduction plus migration of existing Profile workspaces remain.
+    passed. The store-layer replay writes real key/value data in all three
+    tiers. Wasm guest replay and migration of existing Profile workspaces remain.
 
 15. [ ] **Native Packs and cross-Profile storage require explicit dangerous permission.**
     [Gate permissions](../../../crates/tobkiri-gate/src/permissions.rs),
@@ -822,9 +823,10 @@ approval and rejects invalid original policies and mismatched pins.
     [run 42941462516](https://github.com/harupipipipi/tobkiri/actions/runs/42941462516): profile `published_allowlist_excludes_local_identity_and_rejects_authority_fields`,
     Core `published_profile_excludes_populated_approvals_data_secrets_and_user_global_storage`
     and `published_user_policy_import_requires_fresh_profile_scoped_approval` passed.
-    Left unchecked: tier data and user-global storage were populated with marker
-    files, not real store writes, and no current CLI export/import round trip
-    against populated stores and vaults has run.
+    The real CLI export/import replay also verifies populated private SQLite
+    history stays with the source Profile. A publication replay covering an
+    actual populated vault and all storage tiers remains.
+    [CLI replay 43378931498](https://github.com/harupipipipi/tobkiri/actions/runs/43378931498)
 
 17. [ ] **Pack UI is isolated and can access data only through gated ports.**
     [Core UI E2E](../../../crates/tobkiri-e2e/tests/ui.rs),

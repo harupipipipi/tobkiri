@@ -2666,7 +2666,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   private SQLiteに保存した会話を検査する。GUIの承認や実キーチェーンはこのテストの範囲外。
   [初回CI 43377553320](https://github.com/harupipipipi/tobkiri/actions/runs/43377553320)は
   CLIのProfile作成と6件の承認を通過したが、改行のない承認表示に続くIDをテストが正しく読めなかった。
-  `942d5f99d` で読み取りを修正し、[CI 43378931498](https://github.com/harupipipipi/tobkiri/actions/runs/43378931498)で再検証。
+  `942d5f99d` で読み取りを修正。[CI 43378931498](https://github.com/harupipipipi/tobkiri/actions/runs/43378931498)は
+  作成から再公開まで成功し、両Profileの実会話とprivate SQLiteの分離を確認した。
 
 ## 034: Profile取り込みで上限だけを変更したときのPack上限
 
@@ -2687,4 +2688,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   キャンセル後のサーバー停止、秘密を露出しない監査、Sessionの終了を確認する。
 - [実モデルCI 43378931644](https://github.com/harupipipipi/tobkiri/actions/runs/43378931644)と
   [現行ソースのDMG CI 43379312352](https://github.com/harupipipipi/tobkiri/actions/runs/43379312352)
-  を開始した。製品GUIのSetup、承認、モデル設定から会話までの実機検証が別に残る。
+  を開始した。実モデル初回は認証とモデルaliasを確認し、Harnessが生成へ到達した後、
+  30秒以内にストリーム進捗を受信できず終了した。`9b1e4aa58` は同じ認証付きAPIの直接SSE応答時間を
+  先に計測し、サーバー待機に戻ってから既存のHarnessテストを実行する。
+  [再実行CI 43380059173](https://github.com/harupipipipi/tobkiri/actions/runs/43380059173)
+  製品GUIのSetup、承認、モデル設定から会話までの実機検証が残る。
