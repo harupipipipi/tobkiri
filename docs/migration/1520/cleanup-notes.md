@@ -2926,8 +2926,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   位置を保持し、一般DATA操作からこの読み出しを選べない。元の枠内で一時領域と計算を
   賄い、結果は確認中の候補に保持する。承認・grantは発行せず、動的辺の手前で止まる。
   [原本310件との比較 43425325740](https://github.com/harupipipipi/tobkiri/actions/runs/43425325740)
-  と[実componentの検証 43425328249](https://github.com/harupipipipi/tobkiri/actions/runs/43425328249)
-  を開始。現行312辺を含む正常カタログでの統合実行は未確認。
+  は両OSで元のSetupを実行し、Linuxで310件のRust側の結果と一致した。
+  [実componentの検証 43425328249](https://github.com/harupipipipi/tobkiri/actions/runs/43425328249)
+  も実行中。現行312辺を含む正常カタログでの統合実行は未確認。
+- `ba57e9694` は初回の同梱候補で静的な参照を作った後、同じStoreの実カタログと
+  2回目のProfile IDで元のPackのdynamic edgesを呼ぶ。元の初回候補に従い追加Pack IDは
+  空のtuple。Packがカタログを再参照し、実際の戻りが空の組み込みtupleであることを
+  確認してから、保持中の参照をそのまま次の段階へ渡す。参照の破棄やlookupの置換で
+  呼び出し資格も失効する。権限、承認、WIT、上限の追加は不要。
+  [原本CI 43427416962](https://github.com/harupipipipi/tobkiri/actions/runs/43427416962)
+  はLinux・macOSで13ケース成功。Packへの実引数・空の戻り・同じ辞書の保持を観測し、
+  Linuxでは動的ループ後の310参照をRustで計算した静的参照の順序とハッシュに照合した。
+  [同じ実装の実component CI 43427427053](https://github.com/harupipipipi/tobkiri/actions/runs/43427427053)
+  はゲストの回帰7件、Hostの読み取り拒否、実Wasm構築を検証する。検証済みartifact集合の
+  構築、追加Packを持つ既存Profile、現行同梱カタログの全実行は別途実装と確認が必要。
+- 後続の `resolve_profile` は元のカタログのlockをその場で再読込し、Shellの実artifactを
+  検証する。先行するsnapshot用のdigestやcatalogを読んだ時のファイルを再利用する案は保留。
+  実パスと再読込の順序・失敗・所有者を原本と比較した後、許可されたIOだけをRustへ移す。
 - 将来の整理候補: `value_graph.py` の `_bootstrap_identity` とHostの `BootstrapIdentity*` は
   元の固定getterだけでなくcatalog・manifest・lookupも扱う。全固定呼出しの比較が通った後、
   wireのタグ、実参照、同じStoreでの保持を保ったまま名前と共有責務を揃える。

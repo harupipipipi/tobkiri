@@ -887,6 +887,15 @@ approval and rejects invalid original policies and mismatched pins.
 
 ## Next bounded slices
 
+The [fresh bundled resolver replay at `ba57e9694`](https://github.com/harupipipipi/tobkiri/actions/runs/43427416962)
+ran 13 pinned original cases on Linux and macOS. It called the real Port and
+Pack with the same catalog, Profile ID and empty additions, and retained the
+same ordered authority bindings after the empty tuple returned. The Linux
+Rust driver matched all 310 binding entries and their digest. The fresh
+bundled native continuation reaches the verified-artifact boundary in source.
+Normal full catalog execution under the original limits and GUI adoption
+still need evidence. This comparison closes no acceptance item.
+
 1. On one frozen current source tree, build required guest fixtures and run the
    deterministic compiler/Flow/Store/Core/CLI/E2E suites with actual test bodies,
    then strict workspace Clippy and the normal clean-candidate checks.
