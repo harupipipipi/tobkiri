@@ -3084,7 +3084,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   列挙直前で停止する。判定の間に新しいsymlinkへ変わった場合は追跡を拒否する。
   [物理IOと原本CI 43463494533](https://github.com/harupipipipi/tobkiri/actions/runs/43463494533)、
   [実Wasm CI 43463522873](https://github.com/harupipipipi/tobkiri/actions/runs/43463522873)
-  で検証中。ファイルの内容、ツリー列挙、署名、起動はこの段階で検証しない。
+  の物理IOをLinux・macOSで通過。通常のfileとdirectory、欠落、ツリー入口でのsymlink、
+  type判定直前のsymlink置換を確認した。両OSの原本と310参照の
+  [再比較 43463494534](https://github.com/harupipipipi/tobkiri/actions/runs/43463494534)
+  も成功した。ファイルの内容、ツリー列挙、署名、起動の検証は残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
