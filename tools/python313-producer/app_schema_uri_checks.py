@@ -224,6 +224,8 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
         ("https://host/a//b", "../leaf///."),
         ("HtTp://host/a/b", "/x//../y///"),
         ("https://host/a/b", "child/../;param"),
+        ("https://host/a;p?q", ";next"),
+        ("http:opaque;p?q", "?next"),
     ):
         compare(simple(base, ref), "boundary" if base.startswith("git:") else hash_mode(base, ref))
     checks["scheme_tables_case_inheritance_authority_and_empty_netloc_rules"] = True
@@ -673,6 +675,6 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
     assert all(after[name] >= before[name] for name in fields)
     checks["fresh_default_provider_reaches_meaningful_native_join_defrag_work"] = True
 
-    # 151 symmetric pairs plus the independent-owner isolation comparison.
-    assert comparisons == 151 and len(checks) == 17 and all(checks.values())
+    # 153 symmetric pairs plus the independent-owner isolation comparison.
+    assert comparisons == 153 and len(checks) == 17 and all(checks.values())
     return checks

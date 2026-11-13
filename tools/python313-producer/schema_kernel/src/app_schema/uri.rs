@@ -239,12 +239,12 @@ fn unparse(
     query: &str,
     fragment: &str,
 ) -> String {
-    let path = if params.is_empty() {
-        Cow::Borrowed(path)
-    } else {
-        Cow::Owned(format!("{path};{params}"))
-    };
-    let mut value = String::new();
+    // urlunparse passes path and params as one string to urlunsplit. The
+    // separator makes an otherwise empty path nonempty for that decision.
+    let path_empty = path.is_empty() && params.is_empty();
+    let mut value = String::with_capacity(
+        scheme.len() + netloc.len() + path.len() + params.len() + query.len() + fragment.len() + 7,
+    );
     if !scheme.is_empty() {
         value.push_str(scheme);
         value.push(':');
@@ -252,15 +252,19 @@ fn unparse(
     if !netloc.is_empty() {
         value.push_str("//");
         value.push_str(netloc);
-        if !path.is_empty() && !path.starts_with('/') {
+        if !path_empty && !path.starts_with('/') {
             value.push('/');
         }
     } else if path.starts_with("//")
-        || (!scheme.is_empty() && uses_netloc(scheme) && (path.is_empty() || path.starts_with('/')))
+        || (!scheme.is_empty() && uses_netloc(scheme) && (path_empty || path.starts_with('/')))
     {
         value.push_str("//");
     }
-    value.push_str(&path);
+    value.push_str(path);
+    if !params.is_empty() {
+        value.push(';');
+        value.push_str(params);
+    }
     if !query.is_empty() {
         value.push('?');
         value.push_str(query);
