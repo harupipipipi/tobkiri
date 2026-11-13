@@ -1,4 +1,5 @@
 //! The original Shell root and selected path checks after the Pack lock read.
+use super::shell_file::open_shell_file;
 use super::shell_inputs::{MAX_NAME, single_leaf};
 use super::*;
 
@@ -150,7 +151,12 @@ impl CatalogIo {
                     let root =
                         open_shell_directory(op, &parent, &root_path, name, expected, false)?;
                     if stage == PackResolve::ShellFileOpen {
-                        let result = self.open_shell_file(op, &root, &root_path, &leaf_name);
+                        let result = self
+                            .shell_tree_identity
+                            .ok_or_else(OriginalAuthorityError::unavailable)
+                            .and_then(|identity| {
+                                open_shell_file(op, &root, &root_path, &leaf_name, identity)
+                            });
                         close_parent(root)?;
                         let file = result?;
                         let binding = self

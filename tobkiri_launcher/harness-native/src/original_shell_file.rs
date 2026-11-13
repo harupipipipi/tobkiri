@@ -6,51 +6,48 @@ use std::io::Seek as _;
 const FILE_STEPS: &[(&str, &str)] = &[("shell-file", "")];
 const CHUNK_BYTES: usize = 1024 * 1024;
 
-impl CatalogIo {
-    pub(super) fn open_shell_file<S: crate::BootstrapReviewOwner>(
-        &self,
-        op: &Operation<'_, S>,
-        root: &TrackedFile,
-        root_path: &Path,
-        name: &std::ffi::CStr,
-    ) -> Result<TrackedFile> {
-        let expected = self
-            .shell_tree_identity
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let descriptor = loop {
-            op.check(OriginalAuthorityStage::Source)?;
-            let descriptor = unsafe {
-                libc::openat(
-                    root.as_raw_fd(),
-                    name.as_ptr(),
-                    libc::O_RDONLY
-                        | libc::O_NOFOLLOW
-                        | libc::O_CLOEXEC
-                        | libc::O_NONBLOCK
-                        | libc::O_NOCTTY,
-                )
-            };
-            if descriptor >= 0 {
-                break descriptor;
-            }
-            let error = std::io::Error::last_os_error();
-            if error.kind() != std::io::ErrorKind::Interrupted {
-                let path = root_path.join(std::ffi::OsStr::from_bytes(name.to_bytes()));
-                return Err(raw_io(error, path.to_str()));
-            }
+pub(super) fn open_shell_file<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    root: &TrackedFile,
+    root_path: &Path,
+    name: &std::ffi::CStr,
+    expected: Identity,
+) -> Result<TrackedFile> {
+    let descriptor = loop {
+        op.check(OriginalAuthorityStage::Source)?;
+        let descriptor = unsafe {
+            libc::openat(
+                root.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY
+                    | libc::O_NOFOLLOW
+                    | libc::O_CLOEXEC
+                    | libc::O_NONBLOCK
+                    | libc::O_NOCTTY,
+            )
         };
-        let file = TrackedFile::new(unsafe { File::from_raw_fd(descriptor) }, op.cleanup.clone());
-        if !file
-            .metadata()
-            .is_ok_and(|meta| identity(&meta) == expected)
-        {
-            file.close()
-                .map_err(|_| OriginalAuthorityError::unavailable())?;
-            return Err(OriginalAuthorityError::unavailable());
+        if descriptor >= 0 {
+            break descriptor;
         }
-        Ok(file)
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            let path = root_path.join(std::ffi::OsStr::from_bytes(name.to_bytes()));
+            return Err(raw_io(error, path.to_str()));
+        }
+    };
+    let file = TrackedFile::new(unsafe { File::from_raw_fd(descriptor) }, op.cleanup.clone());
+    if !file
+        .metadata()
+        .is_ok_and(|meta| identity(&meta) == expected)
+    {
+        file.close()
+            .map_err(|_| OriginalAuthorityError::unavailable())?;
+        return Err(OriginalAuthorityError::unavailable());
     }
+    Ok(file)
+}
 
+impl CatalogIo {
     pub(super) fn inspect_shell_file<S: crate::BootstrapReviewOwner>(
         &mut self,
         op: &Operation<'_, S>,
