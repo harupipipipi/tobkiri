@@ -3,8 +3,11 @@
 Current migration scope is recorded in [acceptance status](acceptance-status.md)
 and the [inventory](../../../migration/inventory.json): 840 rows, including all
 839 original units and the separated private record helper. One canonical unit
-is closed and 839 rows remain TODO. The complete issue, original GUI flow,
-1B/provider/API requirement and native Python/VM retirement remain incomplete.
+is closed and 839 rows remain TODO. The complete issue, the original GUI flow
+through model chat, and native Python/VM retirement remain incomplete. The
+[actual model replay](https://github.com/harupipipipi/tobkiri/actions/runs/43382542071)
+verified Gemma 3 1B over the authenticated llama.cpp loopback API through the
+Wasm Flow with a trusted CI Host.
 See [the native component boundary](native-harness-path-bridge.md) and
 [PR #1521](https://github.com/harupipipipi/tobkiri/pull/1521) for later source and
 CI evidence; source presence and provisional targets do not prove parity.

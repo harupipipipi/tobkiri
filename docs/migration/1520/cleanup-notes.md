@@ -3070,7 +3070,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   両OSで7試験を通過。検索権限だけのroot、選択leafの欠落とsymlink、rootの置換、
   元の定義ファイルの変更後に同じleafを使うこと、各操作後のFD解放を確認した。
   [実Wasm 43460009366](https://github.com/harupipipipi/tobkiri/actions/runs/43460009366)は
-  構築を通過し、macOSの実初期化を検証中。
+  portable 211件と実構築、macOSの実Runtime.init、物理IO 7件、Coreが引き継ぐ
+  ownerの検証を通過した。
   現在の同梱variantが使う1階層のファイル名を対象とし、schema上有効な複数階層の
   variantは未移植。複数階層では途中の各親を原本と同じ順で検査する必要がある。
 - `9155e4707` は最初のleafと親の検査が終わったあと、元の `artifact_digest` に
