@@ -189,9 +189,9 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
                 "format",
                 CoreValue::string("io.tobkiri.native-resolver-source-lookup.v1", &budget)?,
             )),
-            Ok(("scope", scope)),
+            Ok(("scope", scope.clone())),
             Ok(("catalog", reference.clone())),
-            Ok(("profile_id", reference)),
+            Ok(("profile_id", reference.clone())),
         ]
         .into_iter(),
         &budget,
@@ -209,7 +209,7 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         [
             Ok((
                 "format",
-                CoreValue::string("io.tobkiri.native-resolver-static-edges.v1", &budget)?,
+                CoreValue::string(resolver_edges::STATIC_REQUEST, &budget)?,
             )),
             Ok((
                 "scope",
@@ -231,6 +231,29 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         .context("ordinary describe must reject the static edges frame at the Host")?;
     ensure!(
         rejection.to_string() == "static Profile edges are outside the fixed Review reachpoint"
+    );
+    let dynamic_edges = CoreValue::object_from(
+        [
+            Ok((
+                "format",
+                CoreValue::string(resolver_edges::DYNAMIC_REQUEST, &budget)?,
+            )),
+            Ok(("scope", scope)),
+            Ok(("catalog", reference.clone())),
+            Ok(("profile_id", reference.clone())),
+            Ok(("source_profile", reference)),
+        ]
+        .into_iter(),
+        &budget,
+    )?
+    .encode_guest(&budget)?;
+    let rejection = runtime
+        .describe_value(&dynamic_edges)
+        .await
+        .err()
+        .context("ordinary describe must reject the dynamic edges frame at the Host")?;
+    ensure!(
+        rejection.to_string() == "dynamic Profile edges are outside the fixed Review reachpoint"
     );
     ensure!(
         runtime.inspection_attempts() == init_inspections,

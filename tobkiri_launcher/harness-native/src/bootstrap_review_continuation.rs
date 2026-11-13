@@ -274,7 +274,7 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         // The original validator returns the same exact string. Keep that
         // getter ref, and let the original catalog do its live mapping lookup.
         Ok(_) => match super::catalog::resolver_source_profile(review, pack).await? {
-            Ok(()) => super::resolver_edges::bind_static(review, pack).await?,
+            Ok(()) => super::resolver_edges::bind_bundled_edges(review, pack).await?,
             Err(error) => error,
         },
         Err(error) => error,

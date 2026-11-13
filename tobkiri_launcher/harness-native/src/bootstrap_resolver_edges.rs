@@ -1,4 +1,4 @@
-//! Static edge references in the original Setup resolver. These are retained
+//! Edge references in the original fresh bundled Setup resolver. These are retained
 //! candidate DATA; only the later original resolution can consume them.
 use super::*;
 use crate::bootstrap_review::Review;
@@ -6,12 +6,14 @@ use crate::{BootstrapReviewFailure, BootstrapReviewOwner, BootstrapReviewReachpo
 use review_continuation::ReviewCaller;
 use tobkiri_canon::{AllocationKind, AllocationRequest, Digest};
 
-const REQUEST: &str = "io.tobkiri.native-resolver-static-edges.v1";
-const RESPONSE: &str = "io.tobkiri.native-resolver-static-edges-result.v1";
+pub(super) const STATIC_REQUEST: &str = "io.tobkiri.native-resolver-static-edges.v1";
+pub(super) const DYNAMIC_REQUEST: &str = "io.tobkiri.native-resolver-dynamic-edges.v1";
+const STATIC_RESPONSE: &str = "io.tobkiri.native-resolver-static-edges-result.v1";
+const DYNAMIC_RESPONSE: &str = "io.tobkiri.native-resolver-dynamic-edges-result.v1";
 const SCHEMA: &str = "io.tobkiri.profile-authority-edge.v1";
 const REF_PREFIX: &str = "authority-ref:";
 
-pub(super) async fn bind_static<S: BootstrapInputOwner + BootstrapReviewOwner>(
+pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
 ) -> Result<BootstrapReviewFailure> {
@@ -27,8 +29,11 @@ pub(super) async fn bind_static<S: BootstrapInputOwner + BootstrapReviewOwner>(
             .context("actual source Profile missing")?,
     )?;
     let source = catalog::result_root(pack, source, &scope)?;
-    let request = denied::frame(pack, REQUEST, [("source_profile", source.clone())])?;
-    match pack.observe_resolver_static_rows(&request).await? {
+    let request = denied::frame(pack, STATIC_REQUEST, [("source_profile", source.clone())])?;
+    match pack
+        .observe_fixed_projection(&request, "resolver-static-edges")
+        .await?
+    {
         Ok(rows) => review.actual.resolver_static_rows = Some(rows),
         Err(outcome) => {
             return catalog::handle_call_failure(review, pack, caller, outcome, false).await;
@@ -45,7 +50,7 @@ pub(super) async fn bind_static<S: BootstrapInputOwner + BootstrapReviewOwner>(
         pack.input_budget,
     )?;
     denied::exact(&rows, &["format", "scope", "source_profile", "rows"])?;
-    if denied::field(&rows, "format")?.as_str() != Some(RESPONSE)
+    if denied::field(&rows, "format")?.as_str() != Some(STATIC_RESPONSE)
         || !denied::same_scope(&denied::field(&rows, "scope")?, &scope)
         || !denied::same_reference(&denied::field(&rows, "source_profile")?, &source)?
     {
@@ -57,15 +62,97 @@ pub(super) async fn bind_static<S: BootstrapInputOwner + BootstrapReviewOwner>(
         .as_ref()
         .context("actual resolver Authority snapshot missing")?
         .snapshot_digest();
-    review.actual._resolver_static_bindings = Some(derive_bindings(
+    review.actual._resolver_bindings = Some(derive_bindings(
         &denied::field(&rows, "rows")?,
         snapshot,
         pack.input_budget,
     )?);
+    drop((rows, request));
+    observe_bundled_dynamic_edges(review, pack, &scope, source).await
+}
+
+async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    scope: &CoreValue,
+    source: CoreValue,
+) -> Result<BootstrapReviewFailure> {
+    let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
+    let actual = &review.actual;
+    let catalog = catalog::returned(actual.catalog.as_ref().context("actual catalog missing")?)?;
+    let profile_id = catalog::returned(
+        actual
+            .resolver_getter
+            .as_ref()
+            .context("actual second Profile ID missing")?,
+    )?;
+    let references = [
+        ("catalog", catalog::result_root(pack, catalog, scope)?),
+        ("profile_id", catalog::result_root(pack, profile_id, scope)?),
+        ("source_profile", source),
+    ];
+    let request = denied::frame(pack, DYNAMIC_REQUEST, references.clone())?;
+    match pack
+        .observe_fixed_projection(&request, "resolver-dynamic-edges")
+        .await?
+    {
+        Ok(rows) => review.actual.resolver_dynamic_rows = Some(rows),
+        Err(outcome) => {
+            return catalog::handle_call_failure(review, pack, caller, outcome, false).await;
+        }
+    }
+    caller.check(review, pack)?;
+    let rows = CoreValue::parse_guest(
+        review
+            .actual
+            .resolver_dynamic_rows
+            .as_ref()
+            .expect("actual dynamic edge rows")
+            .as_bytes(),
+        pack.input_budget,
+    )?;
+    validate_bundled_dynamic_rows(&rows, scope, &references)?;
+    // The actual Pack returned an empty tuple for the fresh bundled candidate.
+    // The original loop makes no updates to the retained authority bindings.
     Ok(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::ResolveDynamicEdgesNotBound,
+        BootstrapReviewReachpoint::ResolveVerifiedArtifactsNotBound,
     ))
+}
+
+fn validate_bundled_dynamic_rows(
+    value: &CoreValue,
+    scope: &CoreValue,
+    references: &[(&str, CoreValue); 3],
+) -> Result<()> {
+    denied::exact(
+        value,
+        &[
+            "format",
+            "scope",
+            "catalog",
+            "profile_id",
+            "source_profile",
+            "rows",
+        ],
+    )?;
+    if denied::field(value, "format")?.as_str() != Some(DYNAMIC_RESPONSE)
+        || !denied::same_scope(&denied::field(value, "scope")?, scope)
+    {
+        bail!("dynamic edge result scope or format differs");
+    }
+    for (name, reference) in references {
+        if !denied::same_reference(&denied::field(value, name)?, reference)? {
+            bail!("dynamic edges differ from their original resolver inputs");
+        }
+    }
+    if denied::field(value, "rows")?
+        .array()
+        .is_none_or(|rows| !rows.is_empty())
+    {
+        bail!("fresh bundled Setup returned unbound dynamic edges");
+    }
+    Ok(())
 }
 
 // The ordered rows retain their key/value data through the same graph budget.

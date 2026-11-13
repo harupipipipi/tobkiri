@@ -39,6 +39,7 @@ const CATALOG_LOAD: u8 = 11;
 const CATALOG_PARSE: u8 = 12;
 const RESOLVER_SOURCE_LOOKUP: u8 = 13;
 const RESOLVER_STATIC_EDGES: u8 = 14;
+const RESOLVER_DYNAMIC_EDGES: u8 = 15;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -154,6 +155,7 @@ impl CiRetiredCall {
             CATALOG_PARSE => "catalog-manifest-parse",
             RESOLVER_SOURCE_LOOKUP => "resolver-source-lookup",
             RESOLVER_STATIC_EDGES => "resolver-static-edges",
+            RESOLVER_DYNAMIC_EDGES => "resolver-dynamic-edges",
             _ => "unknown",
         }
     }
@@ -1144,7 +1146,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         phase: u8,
     ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
         // These private frames are constructed by their own Review caller.
-        // The ordinary DATA describe API cannot select either operation.
+        // The ordinary DATA describe API cannot select these operations.
         if slot == 2 {
             match CoreValue::parse_guest(input.as_bytes(), self.input_budget) {
                 Ok(frame) => match frame.get_key("format").as_ref().and_then(CoreValue::as_str) {
@@ -1158,10 +1160,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                     {
                         bail!("source Profile lookup is outside the fixed Review reachpoint");
                     }
-                    Some("io.tobkiri.native-resolver-static-edges.v1")
-                        if phase != RESOLVER_STATIC_EDGES =>
-                    {
+                    Some(resolver_edges::STATIC_REQUEST) if phase != RESOLVER_STATIC_EDGES => {
                         bail!("static Profile edges are outside the fixed Review reachpoint");
+                    }
+                    Some(resolver_edges::DYNAMIC_REQUEST) if phase != RESOLVER_DYNAMIC_EDGES => {
+                        bail!("dynamic Profile edges are outside the fixed Review reachpoint");
                     }
                     _ => {}
                 },

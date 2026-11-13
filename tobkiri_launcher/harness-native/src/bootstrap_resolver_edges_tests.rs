@@ -77,6 +77,47 @@ fn original_static_edge_bindings_keep_python_order_duplicates_and_canonical_byte
 }
 
 #[test]
+fn fresh_bundled_dynamic_edges_require_empty_rows_and_all_original_refs() -> Result<()> {
+    let budget: Arc<dyn AllocationBudget> = Arc::new(Meter::default());
+    let accepted = serde_json::json!({
+        "format": DYNAMIC_RESPONSE,
+        "scope": ["1", "2", "3", "4"],
+        "catalog": {"scope": ["1", "2", "3", "4"], "object": "a"},
+        "profile_id": {"scope": ["1", "2", "3", "4"], "object": "b"},
+        "source_profile": {"scope": ["1", "2", "3", "4"], "object": "c"},
+        "rows": [],
+    });
+    let value = CoreValue::parse_guest(&serde_json::to_vec(&accepted)?, &budget)?;
+    let scope = denied::field(&value, "scope")?;
+    let refs = [
+        ("catalog", denied::field(&value, "catalog")?),
+        ("profile_id", denied::field(&value, "profile_id")?),
+        ("source_profile", denied::field(&value, "source_profile")?),
+    ];
+    validate_bundled_dynamic_rows(&value, &scope, &refs)?;
+    for (pointer, invalid) in [
+        ("/format", serde_json::json!(STATIC_RESPONSE)),
+        ("/scope/3", serde_json::json!("5")),
+        ("/catalog/object", serde_json::json!("b")),
+        ("/profile_id/object", serde_json::json!("a")),
+        ("/source_profile/scope/3", serde_json::json!("5")),
+        ("/rows", serde_json::json!({})),
+        (
+            "/rows",
+            serde_json::json!([["c", "p", "contract.v1", "op"]]),
+        ),
+    ] {
+        let mut candidate = accepted.clone();
+        *candidate
+            .pointer_mut(pointer)
+            .context("fixture pointer missing")? = invalid;
+        let candidate = CoreValue::parse_guest(&serde_json::to_vec(&candidate)?, &budget)?;
+        assert!(validate_bundled_dynamic_rows(&candidate, &scope, &refs).is_err());
+    }
+    Ok(())
+}
+
+#[test]
 #[ignore = "requires a fresh CI execution of the pinned original Setup"]
 fn original_static_edge_reference_driver() -> Result<()> {
     anyhow::ensure!(std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"));
@@ -94,7 +135,7 @@ fn original_static_edge_reference_driver() -> Result<()> {
     anyhow::ensure!(
         reference["format"] == "io.tobkiri.original-setup-resolver-prefix-reference.v1"
             && reference["original_head"] == "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
-            && reference["case_count"] == 12
+            && reference["case_count"] == 13
             && reference["native_comparison"] == false
             && reference["qualification"] == false
     );
@@ -136,6 +177,24 @@ fn original_static_edge_reference_driver() -> Result<()> {
             == 310
     );
     anyhow::ensure!(bindings.eq_guest(&expected, &budget)?);
+    let mut dynamic_cases = cases
+        .iter()
+        .filter(|case| case["case"] == "fresh-bundled-dynamic-edges");
+    let dynamic = dynamic_cases
+        .next()
+        .context("original dynamic Pack call missing")?;
+    let facts = &dynamic["facts"];
+    let observed = &facts["dynamic_edges"];
+    anyhow::ensure!(
+        dynamic_cases.next().is_none()
+            && dynamic["expected"]["outcome"] == "before-verified-artifacts"
+            && facts["authority_snapshot_digest"] == snapshot.as_str()
+            && observed["additional_pack_count"] == 0
+            && observed["returned_type"] == "tuple"
+            && observed["returned_edge_count"] == 0
+            && observed["binding_count"] == 310
+            && observed["ordered_bindings_digest"] == bindings.digest_guest(&budget)?.as_str()
+    );
     drop((rows, bindings, expected));
     anyhow::ensure!(meter.live.load(Ordering::Relaxed) == 0);
     Ok(())

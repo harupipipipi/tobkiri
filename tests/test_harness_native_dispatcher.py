@@ -756,8 +756,20 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.profiles = {}
 
     class Runtime(IdentityRuntimeFixture):
+        def __init__(self) -> None:
+            super().__init__()
+            self.dynamic_calls: list[tuple[object, str, tuple[str, ...]]] = []
+            self.dynamic_result: object = ()
+
         def load_catalog(self, _root: NativePath) -> object:
             return self.catalog
+
+        def dynamic_profile_edges(
+            self, catalog: object, profile_id: str, pack_ids: tuple[str, ...],
+        ) -> object:
+            self.dynamic_calls.append((catalog, profile_id, pack_ids))
+            catalog.profiles.get(profile_id)
+            return self.dynamic_result
 
     def setUp(self) -> None:
         self.scope = Scope(1, 2, 3, 4)
@@ -814,6 +826,14 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
     def static_edges(self, source_profile: dict, **fields: object) -> dict:
         return wire.loads(self.dispatcher.describe_value(self.frame(
             "resolver-static-edges", source_profile=source_profile, **fields,
+        )))
+
+    def dynamic_edges(
+        self, catalog: dict, profile_id: dict, source_profile: dict, **fields: object,
+    ) -> dict:
+        return wire.loads(self.dispatcher.describe_value(self.frame(
+            "resolver-dynamic-edges", catalog=catalog, profile_id=profile_id,
+            source_profile=source_profile, **fields,
         )))
 
     def source(self, profile: dict) -> tuple[dict, dict, dict]:
@@ -1075,6 +1095,195 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 profile["requested_edges"] = edges
                 with self.assertRaises(UnsupportedValue):
                     self.static_edges(source)
+
+    def test_dynamic_edges_call_live_second_lookup_once_after_static_rows(self) -> None:
+        keys = []
+
+        class Profiles(dict):
+            def get(self, key: str) -> object:
+                value = super().get(key)
+                keys.append((key, value))
+                return value
+
+        profile = {"requested_edges": []}
+        catalog_obj = self.runtime.catalog
+        catalog_obj.profiles = Profiles({"fixture-id": profile})
+        catalog = self.load()
+        first_value = "".join(["fixture", "-id"])
+        second_value = "".join(["fixture-", "id"])
+        self.assertIsNot(first_value, second_value)
+        self.getter(first_value)
+        profile_id = self.getter(second_value)
+        source = self.lookup(catalog, profile_id)["root"]
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, source)
+        self.assertEqual(self.runtime.dynamic_calls, [])
+        self.assertEqual(self.static_edges(source)["rows"], [])
+        replacement = {"requested_edges": []}
+        catalog_obj.profiles[second_value] = replacement
+        self.assertEqual(self.dynamic_edges(catalog, profile_id, source), {
+            "format": PREFIX + "resolver-dynamic-edges-result.v1",
+            "scope": self.scope.wire(), "catalog": catalog,
+            "profile_id": profile_id, "source_profile": source, "rows": [],
+        })
+        self.assertEqual(len(keys), 2)
+        self.assertIs(keys[0][0], second_value)
+        self.assertIs(keys[0][1], profile)
+        self.assertIs(keys[1][0], second_value)
+        self.assertIs(keys[1][1], replacement)
+        actual_catalog, actual_profile_id, packs = self.runtime.dynamic_calls[0]
+        self.assertIs(actual_catalog, catalog_obj)
+        self.assertIs(actual_profile_id, second_value)
+        self.assertIs(type(packs), tuple)
+        self.assertEqual(packs, ())
+        self.assertIs(self.registry.borrow(self.registry.reference(source)), profile)
+        self.assertEqual(self.static_edges(source)["rows"], [])
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, source)
+        self.assertEqual(len(self.runtime.dynamic_calls), 1)
+
+    def test_dynamic_edges_reject_extra_fields_and_unrelated_references(self) -> None:
+        profile = {"requested_edges": []}
+        self.runtime.catalog.profiles["fixture-id"] = profile
+        catalog = self.load()
+        first = self.getter("".join(["fixture", "-id"]))
+        profile_id = self.getter("".join(["fixture-", "id"]))
+        source = self.lookup(catalog, profile_id)["root"]
+        self.static_edges(source)
+        with self.assertRaises(InvalidFrame):
+            self.dynamic_edges(catalog, profile_id, source, additional_pack_ids=["extra"])
+        with self.assertRaises(InvalidFrame):
+            self.dispatcher.describe_value(self.frame(
+                "resolver-dynamic-edges", catalog=catalog, profile_id=profile_id,
+            ))
+        for args in (
+            (self.registry.retain(self.Catalog()).wire(), profile_id, source),
+            (catalog, first, source),
+            (catalog, profile_id, self.registry.retain(dict(profile)).wire()),
+            (catalog, profile_id, {**source, "scope": ["1", "2", "9", "4"]}),
+        ):
+            with self.subTest(args=args), self.assertRaises(InvalidReference):
+                self.dynamic_edges(*args)
+        self.assertEqual(self.runtime.dynamic_calls, [])
+        self.assertEqual(self.dynamic_edges(catalog, profile_id, source)["rows"], [])
+
+    def test_dynamic_edges_need_successfully_serialized_static_rows(self) -> None:
+        profile = {}
+        catalog, profile_id, source = self.source(profile)
+        with self.assertRaises(MethodRaised):
+            self.static_edges(source)
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, source)
+        profile["requested_edges"] = []
+        request = self.frame("resolver-static-edges", source_profile=source)
+        response = self.dispatcher.describe_value(request)
+        # The empty rows array also counts toward the UTF-8 bound.
+        with patch.object(wire, "MAX_BYTES", len(response) - 1):
+            with self.assertRaises(UnsupportedValue):
+                self.dispatcher.describe_value(request)
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, source)
+        self.assertEqual(self.runtime.dynamic_calls, [])
+        self.assertEqual(self.static_edges(source)["rows"], [])
+        self.assertEqual(self.dynamic_edges(catalog, profile_id, source)["rows"], [])
+
+    def test_dynamic_edges_clear_static_observation_when_lookup_replaces_source(
+        self,
+    ) -> None:
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        self.static_edges(source)
+        self.assertEqual(self.lookup(catalog, profile_id)["root"], source)
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, source)
+        self.static_edges(source)
+        self.runtime.catalog.profiles["fixture-id"] = {"requested_edges": []}
+        replacement = self.lookup(catalog, profile_id)["root"]
+        self.static_edges(replacement)
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, source)
+
+        class FailingProfiles(dict):
+            def get(self, key: str) -> object:
+                raise KeyError(key)
+
+        self.runtime.catalog.profiles = FailingProfiles()
+        with self.assertRaises(MethodRaised):
+            self.lookup(catalog, profile_id)
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, replacement)
+        self.assertEqual(self.runtime.dynamic_calls, [])
+
+    def test_dynamic_edges_revoke_eligibility_on_release_reissue_or_retire(self) -> None:
+        profile = {"requested_edges": []}
+        catalog, profile_id, source = self.source(profile)
+        self.static_edges(source)
+        self.dispatcher.release_values(self.frame("values-release", refs=[source]))
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, source)
+        reissued = self.registry.retain(profile).wire()
+        self.assertNotEqual(reissued, source)
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, reissued)
+        self.assertEqual(self.lookup(catalog, profile_id)["root"], reissued)
+        self.static_edges(reissued)
+        self.registry.retire()
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, reissued)
+        self.assertEqual(self.runtime.dynamic_calls, [])
+
+    def test_dynamic_edges_keep_the_actual_opaque_exception_and_consume_the_call(
+        self,
+    ) -> None:
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        self.static_edges(source)
+        original = KeyError("actual dynamic failure")
+        cause = TypeError("actual cause")
+
+        class FailingProfiles(dict):
+            def get(self, key: str) -> object:
+                raise original from cause
+
+        self.runtime.catalog.profiles = FailingProfiles()
+        with self.assertRaises(MethodRaised) as raised:
+            self.dynamic_edges(catalog, profile_id, source)
+        self.assertNotIn("actual dynamic failure", str(raised.exception))
+        packet = wire.loads(raised.exception.details)
+        root = self.registry.reference(packet["root"])
+        self.assertIs(self.registry.borrow(root), original)
+        view = self.view(packet)
+        self.assertEqual(view["origin"], "resolver-dynamic-edges-raised")
+        self.assertEqual(view["kind"], "key-error")
+        cause_ref = self.registry.reference(view["exception"]["cause"])
+        self.assertIs(self.registry.borrow(cause_ref), cause)
+        with self.assertRaises(InvalidReference):
+            self.registry.describe_bootstrap_identity(root)
+        self.static_edges(source)
+        with self.assertRaises(InvalidReference):
+            self.dynamic_edges(catalog, profile_id, source)
+        self.assertEqual(len(self.runtime.dynamic_calls), 1)
+
+    def test_dynamic_edges_refuse_unexpected_returns_without_running_hooks(self) -> None:
+        class ForeignTuple(tuple):
+            def __iter__(self):
+                raise AssertionError("foreign result iteration")
+
+            def __len__(self):
+                raise AssertionError("foreign result length")
+
+            def __eq__(self, other):
+                raise AssertionError("foreign result comparison")
+
+        catalog, profile_id, source = self.source({"requested_edges": []})
+        for call_count, value in enumerate((ForeignTuple(), (object(),), [], None), 1):
+            with self.subTest(value_type=type(value)):
+                self.assertEqual(self.lookup(catalog, profile_id)["root"], source)
+                self.static_edges(source)
+                self.runtime.dynamic_result = value
+                with self.assertRaises(UnsupportedValue):
+                    self.dynamic_edges(catalog, profile_id, source)
+                with self.assertRaises(InvalidReference):
+                    self.dynamic_edges(catalog, profile_id, source)
+                self.assertEqual(len(self.runtime.dynamic_calls), call_count)
 
 
 class DeniedFactoryTransportTests(unittest.TestCase):

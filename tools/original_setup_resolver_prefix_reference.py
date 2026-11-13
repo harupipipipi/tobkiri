@@ -1,8 +1,8 @@
-"""Observe pinned original Setup through the bundled source Profile lookup.
+"""Observe pinned original Setup through the bundled dynamic edge call.
 
 The CI-only fixture changes disk or environment at the real caller boundary.
 Original Setup, Pack, catalog, and Authority code runs through the second ID.
-Additional cases observe the live catalog result and the static edge bindings.
+Additional cases observe the live catalog, static bindings, and Pack call.
 """
 
 from __future__ import annotations
@@ -38,7 +38,9 @@ GUARD = AUTHORITY.with_name(".v4.sqlite3.lifecycle.lock")
 EPOCH_REASON = "original setup resolver prefix fixture"
 MISSING_PROFILE_ID = "missing-fixture-profile"
 REQUESTED_BINDINGS_CASE = "source-profile-requested-bindings"
-LOOKUP_CASES = ("source-profile-present", "source-profile-missing", REQUESTED_BINDINGS_CASE)
+DYNAMIC_EDGES_CASE = "fresh-bundled-dynamic-edges"
+BINDING_CASES = (REQUESTED_BINDINGS_CASE, DYNAMIC_EDGES_CASE)
+LOOKUP_CASES = ("source-profile-present", "source-profile-missing", *BINDING_CASES)
 REQUESTED_EDGE_FIELDS = (
     "caller_function_id", "target_provider_id", "contract_id", "operation_id",
 )
@@ -82,7 +84,7 @@ def _source_hashes(runtime: Path) -> dict[str, str]:
     }
 
 
-def _resolver_lines(path: Path) -> tuple[int, int, int]:
+def _resolver_lines(path: Path) -> tuple[int, int, int, range]:
     tree = ast.parse(path.read_bytes(), filename=str(path))
     resolver = next(
         node
@@ -103,14 +105,28 @@ def _resolver_lines(path: Path) -> tuple[int, int, int]:
     guard = resolver.body[index + 1]
     if not isinstance(guard, ast.If) or ast.unparse(guard.test) != "source_profile is None":
         raise AssertionError("original Profile lookup guard changed")
-    [dynamic_edges] = [
-        node.lineno
-        for node in resolver.body[index + 2:]
-        if isinstance(node, ast.For)
+    [dynamic_index] = [
+        i
+        for i, node in enumerate(resolver.body)
+        if i > index + 1
+        and isinstance(node, ast.For)
         and ast.unparse(node.iter)
         == "runtime.dynamic_profile_edges(catalog, profile_id, additional_pack_ids)"
     ]
-    return resolver.body[index].lineno, guard.lineno, dynamic_edges
+    artifacts = resolver.body[dynamic_index + 1]
+    if not (
+        isinstance(artifacts, ast.Assign)
+        and [ast.unparse(target) for target in artifacts.targets] == ["verified_artifacts"]
+        and isinstance(artifacts.value, ast.SetComp)
+        and artifacts.end_lineno is not None
+    ):
+        raise AssertionError("original verified-artifact boundary changed")
+    return (
+        resolver.body[index].lineno,
+        guard.lineno,
+        resolver.body[dynamic_index].lineno,
+        range(artifacts.lineno, artifacts.end_lineno + 1),
+    )
 
 
 def _state(roots: dict[str, Path]) -> dict[str, dict]:
@@ -185,7 +201,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     capture_path = runtime / "core_runtime/bootstrap/profile_capture.py"
     if Path(resolver.co_filename).resolve() != capture_path:
         raise AssertionError("resolver was not imported from the staged original")
-    lookup, lookup_guard, dynamic_edges = _resolver_lines(capture_path)
+    lookup, lookup_guard, dynamic_edges, verified_artifacts = _resolver_lines(capture_path)
     root_get = capture._user_data_root.__code__
     recovery = capture._recover_bootstrap_publication.__code__
     journal_exists = ProfilePublicationJournal.exists.__code__
@@ -193,6 +209,8 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     bundle_verify = capture._verify_installed_bundle_binding.__code__
     catalog_load = BundledCatalog.load.__func__.__code__
     candidate_select = bootstrap_review_catalog.__code__
+    dynamic_port = type(port).dynamic_profile_edges.__code__
+    dynamic_source = runtime / "ecosystem/defaultspack/domain/profile_resolution.py"
     id_get = capture._bootstrap_profile_id.__code__
     read_bytes = Path.read_bytes.__code__
     authority_init = AuthorityStore.__init__.__code__
@@ -217,6 +235,9 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     events: dict[str, list[str]] = {"capture": [], "resolver": []}
     phase = "capture"
     captured: Any = None
+    dynamic_result: Any = None
+    before_dynamic_bindings: Any = None
+    before_dynamic_rows: list[tuple[str, str]] = []
     facts: dict[str, Any] = {
         "user_data_roots": [],
         "bundle_roots": [],
@@ -251,9 +272,13 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     )
 
     def trace(frame: FrameType, event: str, value: Any) -> Any:
-        nonlocal phase, captured
+        nonlocal phase, captured, dynamic_result, before_dynamic_bindings
         code = frame.f_code
         parent = frame.f_back.f_code if frame.f_back else None
+        dynamic_pack = (
+            code.co_name == "dynamic_profile_edges"
+            and code.co_filename == str(dynamic_source)
+        )
         log = events[phase]
         if event == "call":
             frame.f_trace_lines = code is resolver
@@ -268,6 +293,23 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                     raise AssertionError("Setup did not forward its actual candidate")
                 phase = "resolver"
                 _change_at_entry(case, runtime, roots["second"], original_lock)
+                return trace
+            if code is dynamic_port or dynamic_pack:
+                through_port = code is dynamic_port
+                ids_name = "pack_ids" if through_port else "additional_pack_ids"
+                local = frame.f_locals
+                if (
+                    case != DYNAMIC_EDGES_CASE
+                    or phase != "resolver"
+                    or before_dynamic_bindings is None
+                    or parent is not (resolver if through_port else dynamic_port)
+                    or local["catalog"] is not captured[0]
+                    or local["profile_id"] is not facts["profile_ids"][-1]
+                    or local[ids_name] is not captured[1]
+                    or (through_port and local["self"] is not port)
+                ):
+                    raise AssertionError("original dynamic call replaced its inputs")
+                log.append("call-dynamic-port" if through_port else "call-dynamic-pack")
                 return trace
             if code is read_bytes:
                 path = frame.f_locals["self"]
@@ -326,7 +368,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 facts["source_profile"] = {"type": "NoneType"}
                 log.append("source-profile-missing")
                 return trace  # Allow the original guard and denial factory to run.
-            if case not in {"source-profile-present", REQUESTED_BINDINGS_CASE} or (
+            if case not in ("source-profile-present", *BINDING_CASES) or (
                 type(profile) is not dict
             ):
                 raise AssertionError("unexpected original source Profile result")
@@ -338,17 +380,22 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 "definition_digest": canonical_digest(profile),
             }
             log.append("source-profile-found")
-            if case == REQUESTED_BINDINGS_CASE:
+            if case in BINDING_CASES:
                 return trace
             raise _SourceProfileBoundary
         if event == "line" and code is resolver and frame.f_lineno == dynamic_edges:
-            if case != REQUESTED_BINDINGS_CASE:
+            if case not in BINDING_CASES:
                 raise AssertionError("unexpected entry into the static binding observation")
             local = frame.f_locals
             bindings = local["authority_bindings"]
             edges = local["source_profile"]["requested_edges"]
             if type(bindings) is not dict or type(edges) is not list:
                 raise AssertionError("original requested-edge values changed their type")
+            log.append("static-edges-bound")
+            if case == DYNAMIC_EDGES_CASE:
+                before_dynamic_bindings = bindings
+                before_dynamic_rows.extend(bindings.items())
+                return trace
             facts["requested_bindings"] = {
                 "source_edge_count": len(edges),
                 "source_edge_fields": [
@@ -361,8 +408,40 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 ],
                 "ordered_bindings": [[key, value] for key, value in bindings.items()],
             }
-            log.append("static-edges-bound")
             raise _SourceProfileBoundary
+        if event == "line" and code is resolver and frame.f_lineno in verified_artifacts:
+            bindings = frame.f_locals["authority_bindings"]
+            if (
+                case != DYNAMIC_EDGES_CASE
+                or "dynamic_edges" not in facts
+                or bindings is not before_dynamic_bindings
+                or list(bindings.items()) != before_dynamic_rows
+            ):
+                raise AssertionError("unexpected bindings after the original dynamic loop")
+            facts["dynamic_edges"].update(
+                binding_count=len(bindings),
+                ordered_bindings_digest=canonical_digest(
+                    [list(row) for row in before_dynamic_rows]
+                ),
+            )
+            log.append("before-verified-artifacts")
+            raise _SourceProfileBoundary
+        if event == "return" and (code is dynamic_port or dynamic_pack):
+            if type(value) is not tuple or value:
+                raise AssertionError("fresh bundled Pack did not return an empty tuple")
+            if dynamic_pack:
+                dynamic_result = value
+                log.append("return-dynamic-pack")
+            elif value is dynamic_result:
+                facts["dynamic_edges"] = {
+                    "additional_pack_count": len(captured[1]),
+                    "returned_type": type(value).__name__,
+                    "returned_edge_count": len(value),
+                }
+                log.append("return-dynamic-port")
+            else:
+                raise AssertionError("original Port replaced the actual Pack result")
+            return trace
         if event != "return" or value is None and code is not context_close:
             return trace
         if code is acquire:
@@ -436,6 +515,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
             outcome = {"outcome": {
                 "source-profile-present": "source-profile-found",
                 REQUESTED_BINDINGS_CASE: "static-edges-bound",
+                DYNAMIC_EDGES_CASE: "before-verified-artifacts",
             }.get(case, "before-source-profile-lookup")}
         except Exception as error:
             outcome = {"outcome": "error", "error": error_graph(error, runtime)}
@@ -548,13 +628,21 @@ def _check(
         resolver += ["genesis-snapshot"]
     success = not (directory or corrupt or manifest_error or unbound or missing_lock)
     lookup_missing = case == "source-profile-missing"
-    lookup_present = case in {"source-profile-present", REQUESTED_BINDINGS_CASE}
+    lookup_present = case in ("source-profile-present", *BINDING_CASES)
     if success:
         resolver += [*profile_id, "before-source-profile-lookup"]
     if lookup_present:
         resolver.append("source-profile-found")
-    if case == REQUESTED_BINDINGS_CASE:
+    if case in BINDING_CASES:
         resolver.append("static-edges-bound")
+    if case == DYNAMIC_EDGES_CASE:
+        resolver.extend((
+            "call-dynamic-port",
+            "call-dynamic-pack",
+            "return-dynamic-pack",
+            "return-dynamic-port",
+            "before-verified-artifacts",
+        ))
     if lookup_missing:
         resolver.append("source-profile-missing")
     expected_ids = ["defaults"]
@@ -675,15 +763,23 @@ def _check(
             }:
                 raise AssertionError((case, outcome, facts))
         elif lookup_present:
-            wanted = (
-                "static-edges-bound"
-                if case == REQUESTED_BINDINGS_CASE
-                else "source-profile-found"
-            )
+            wanted = {
+                REQUESTED_BINDINGS_CASE: "static-edges-bound",
+                DYNAMIC_EDGES_CASE: "before-verified-artifacts",
+            }.get(case, "source-profile-found")
             if outcome != {"outcome": wanted} or not facts["source_profile"]["catalog_alias"]:
                 raise AssertionError((case, outcome, facts))
             if case == REQUESTED_BINDINGS_CASE:
                 _check_static_bindings(facts["requested_bindings"], snapshot)
+            if case == DYNAMIC_EDGES_CASE:
+                dynamic = facts["dynamic_edges"]
+                if (
+                    dynamic["additional_pack_count"] != 0
+                    or dynamic["returned_type"] != "tuple"
+                    or dynamic["returned_edge_count"] != 0
+                    or dynamic["binding_count"] != 310
+                ):
+                    raise AssertionError((case, outcome, facts))
         elif outcome != {"outcome": "before-source-profile-lookup"}:
             raise AssertionError((case, outcome, facts))
         return
@@ -801,7 +897,7 @@ def prepare(original: Path, output: Path) -> None:
             "production_enabled": False,
             "scope": "fresh bundled candidate and original resolver prefix through "
             "second canonical Profile ID; additional cases observe the source alias, "
-            "its denial, or static requested-edge bindings before dynamic edges",
+            "its denial, ordered bindings, and the actual fresh bundled dynamic Pack call",
         },
     )
 

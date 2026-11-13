@@ -50,14 +50,14 @@ jobs:
           python3 -m pip install --disable-pip-version-check --ignore-installed \
             --only-binary=:all: --require-hashes \
             -r "$RUNNER_TEMP/original-setup-resolver-prefix-requirements.txt"
-      - name: Observe the original resolver through its static requested edges
+      - name: Observe the original resolver through its fresh bundled dynamic edge call
         run: |
           python3 -B tools/original_setup_resolver_prefix_reference.py \
             --original-root "$GITHUB_WORKSPACE/original-setup-resolver-prefix-source" \
             --output "$RUNNER_TEMP/original-setup-resolver-prefix"
       - uses: dtolnay/rust-toolchain@1.94.0
         if: matrix.os == 'ubuntu-22.04'
-      - name: Compare the funded Rust derivation against all original requested edges
+      - name: Compare the funded Rust bindings before and after the original dynamic call
         if: matrix.os == 'ubuntu-22.04'
         env:
           CARGO_BUILD_JOBS: '1'

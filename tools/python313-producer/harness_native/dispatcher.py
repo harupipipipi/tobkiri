@@ -542,6 +542,27 @@ class Dispatcher:
                 lambda: registry._describe_resolver_static_edges(root, source),
                 caller="resolver-static-edges",
             )
+        if frame.get("format") == PREFIX + "resolver-dynamic-edges.v1":
+            registry = state.registry
+            if (set(frame) != {"format", "scope", "catalog", "profile_id",
+                               "source_profile"}
+                    or frame["scope"] != registry.scope.wire()):
+                raise InvalidFrame("invalid fixed resolver dynamic edge frame")
+            catalog_ref = registry.reference(frame["catalog"])
+            profile_id_ref = registry.reference(frame["profile_id"])
+            source_ref = registry.reference(frame["source_profile"])
+            catalog, profile_id = registry._begin_resolver_dynamic_edges(
+                catalog_ref, profile_id_ref, source_ref,
+            )
+            # Fresh bundled Setup passes an empty tuple. Still make the real
+            # call: the Pack repeats its live profile lookup before returning.
+            value = self._apply_original(
+                lambda: state.runtime.dynamic_profile_edges(catalog, profile_id, ()),
+                caller="resolver-dynamic-edges",
+            )
+            return registry._describe_resolver_dynamic_edges(
+                catalog_ref, profile_id_ref, source_ref, value,
+            )
         if frame.get("format") == PREFIX + "catalog-manifest-parse.v1":
             if (set(frame) != {"format", "scope", "bytes"}
                     or frame["scope"] != state.registry.scope.wire()

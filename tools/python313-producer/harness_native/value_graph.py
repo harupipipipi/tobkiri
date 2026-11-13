@@ -20,6 +20,7 @@ _INPUT = "io.tobkiri.native-value-input.v1"
 _VIEW = "io.tobkiri.native-value-view.v1"
 _IDENTITY_VIEW = "io.tobkiri.native-bootstrap-identity-view.v1"
 _STATIC_EDGES_RESULT = "io.tobkiri.native-resolver-static-edges-result.v1"
+_DYNAMIC_EDGES_RESULT = "io.tobkiri.native-resolver-dynamic-edges-result.v1"
 _EDGE_FIELDS = ("caller_function_id", "target_provider_id", "contract_id", "operation_id")
 _NONITERABLE_JSON = (type(None), bool, int, float)
 _NONOBJECT_JSON = (*_NONITERABLE_JSON, str, list)
@@ -165,6 +166,7 @@ class Registry:
         self._resolver_catalog: int | None = None
         self._resolver_profile_id: int | None = None
         self._resolver_source: int | None = None
+        self._resolver_dynamic_stage = "awaiting-static"
         self._next = 1
         self._retired = False
 
@@ -319,7 +321,7 @@ class Registry:
             if number == self._resolver_catalog or number == self._resolver_profile_id:
                 self._clear_resolver_inputs()
             elif number == self._resolver_source:
-                self._resolver_source = None
+                self._clear_resolver_source()
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -335,7 +337,11 @@ class Registry:
         self._resolver_stage = "closed"
         self._resolver_catalog = None
         self._resolver_profile_id = None
+        self._clear_resolver_source()
+
+    def _clear_resolver_source(self) -> None:
         self._resolver_source = None
+        self._resolver_dynamic_stage = "awaiting-static"
 
     def _begin_resolver_getter(self) -> None:
         if self._resolver_stage == "awaiting-first-getter":
@@ -364,7 +370,7 @@ class Registry:
             if self._resolver_stage == "ready" and type(self.borrow(reference)) is dict:
                 self._resolver_source = reference.object_id
 
-    def _resolver_source_inputs(
+    def _resolver_retained_inputs(
         self, catalog_ref: Reference, profile_id_ref: Reference,
     ) -> tuple[Any, str]:
         catalog = self.borrow(catalog_ref)
@@ -380,17 +386,29 @@ class Registry:
                 or record is None or record.cls is not type(catalog)
                 or record.kind != "bundled-catalog" or type(profile_id) is not str):
             raise InvalidReference("reference has no fixed resolver source origin")
-        # Replacing an authorized lookup revokes the prior source even if the
-        # actual lookup throws, returns None, or cannot serialize its result.
-        self._resolver_source = None
         return catalog, profile_id
 
-    def _resolver_static_source(self, root: Reference) -> dict[str, Any]:
+    def _resolver_source_inputs(
+        self, catalog_ref: Reference, profile_id_ref: Reference,
+    ) -> tuple[Any, str]:
+        inputs = self._resolver_retained_inputs(catalog_ref, profile_id_ref)
+        # Replacing an authorized lookup revokes the prior source even if the
+        # actual lookup throws, returns None, or cannot serialize its result.
+        self._clear_resolver_source()
+        return inputs
+
+    def _current_resolver_source(self, root: Reference) -> dict[str, Any]:
         source = self.borrow(root, dict)
-        catalog, profile_id = self._resolver_catalog, self._resolver_profile_id
-        if (self._resolver_stage != "ready" or root.object_id != self._resolver_source
+        if (root.object_id != self._resolver_source
                 or self._bootstrap_identity.get(root.object_id)
-                != "resolver-source-lookup-returned"
+                != "resolver-source-lookup-returned"):
+            raise InvalidReference("reference has no current resolver source origin")
+        return source
+
+    def _resolver_static_source(self, root: Reference) -> dict[str, Any]:
+        source = self._current_resolver_source(root)
+        catalog, profile_id = self._resolver_catalog, self._resolver_profile_id
+        if (self._resolver_stage != "ready"
                 or catalog is None or self._bootstrap_identity.get(catalog)
                 != "catalog-returned"
                 or profile_id is None or self._bootstrap_identity.get(profile_id)
@@ -401,6 +419,10 @@ class Registry:
     def _describe_resolver_static_edges(
         self, root: Reference, source: dict[str, Any],
     ) -> str:
+        # A new static observation can invalidate an earlier successful one.
+        # Repeating it after the dynamic call does not authorize another call.
+        if self._resolver_dynamic_stage == "ready":
+            self._resolver_dynamic_stage = "awaiting-static"
         # The pinned caller subscripts the actual source and then each edge.
         # Preserve errors from the exact builtin operations without invoking
         # hooks on types that cannot occur in a strictly loaded JSON profile.
@@ -437,8 +459,40 @@ class Registry:
             if separator:
                 response.extend(b",")
             response.extend(encoded)
+        if len(response) + 2 > wire.MAX_BYTES:
+            raise UnsupportedValue("original edge result exceeds the transport frame")
         response.extend(b"]}")
-        return response.decode("utf-8")
+        payload = response.decode("utf-8")
+        if self._resolver_dynamic_stage == "awaiting-static":
+            self._resolver_dynamic_stage = "ready"
+        return payload
+
+    def _begin_resolver_dynamic_edges(
+        self, catalog: Reference, profile_id: Reference, source: Reference,
+    ) -> tuple[Any, str]:
+        inputs = self._resolver_retained_inputs(catalog, profile_id)
+        self._current_resolver_source(source)
+        if self._resolver_dynamic_stage != "ready":
+            raise InvalidReference("reference has no completed static edge observation")
+        self._resolver_dynamic_stage = "consumed"
+        return inputs
+
+    def _describe_resolver_dynamic_edges(
+        self, catalog: Reference, profile_id: Reference, source: Reference, value: Any,
+    ) -> str:
+        if type(value) is not tuple or len(value) != 0:
+            raise UnsupportedValue("original dynamic edges are outside the fresh Setup ABI")
+        try:
+            return wire.dumps({
+                "format": _DYNAMIC_EDGES_RESULT,
+                "scope": self.scope.wire(),
+                "catalog": catalog.wire(),
+                "profile_id": profile_id.wire(),
+                "source_profile": source.wire(),
+                "rows": [],
+            })
+        except wire.OrderedJSONError:
+            raise UnsupportedValue("original dynamic edges cannot be encoded") from None
 
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
@@ -483,7 +537,7 @@ class Registry:
             "catalog-returned", "catalog-raised",
             "manifest-returned", "manifest-raised",
             "resolver-source-lookup-returned", "resolver-source-lookup-raised",
-            "resolver-static-edges-raised",
+            "resolver-static-edges-raised", "resolver-dynamic-edges-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

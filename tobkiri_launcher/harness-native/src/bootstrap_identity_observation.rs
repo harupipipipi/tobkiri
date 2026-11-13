@@ -190,7 +190,7 @@ pub(super) struct IdentityCallCustody {
 
 enum FixedCallOutput {
     Identity(BootstrapIdentityOutcome),
-    StaticRows(CoreBuffer),
+    Projection(CoreBuffer),
 }
 impl IdentityCallCustody {
     #[cfg(debug_assertions)]
@@ -224,16 +224,17 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
     ) -> Result<BootstrapIdentityOutcome> {
         match self.fixed_call(slot, input, origin).await? {
             FixedCallOutput::Identity(outcome) => Ok(outcome),
-            FixedCallOutput::StaticRows(_) => bail!("unexpected static edge projection"),
+            FixedCallOutput::Projection(_) => bail!("unexpected fixed call projection"),
         }
     }
 
-    pub(super) async fn observe_resolver_static_rows(
+    pub(super) async fn observe_fixed_projection(
         &mut self,
         input: &CoreBuffer,
+        origin: &'static str,
     ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
-        match self.fixed_call(2, input, "resolver-static-edges").await? {
-            FixedCallOutput::StaticRows(rows) => Ok(Ok(rows)),
+        match self.fixed_call(2, input, origin).await? {
+            FixedCallOutput::Projection(rows) => Ok(Ok(rows)),
             FixedCallOutput::Identity(outcome) => Ok(Err(outcome)),
         }
     }
@@ -253,6 +254,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "manifest")
                 | (2, "resolver-source-lookup")
                 | (2, "resolver-static-edges")
+                | (2, "resolver-dynamic-edges")
         ) {
             bail!("fixed original caller is unavailable");
         }
@@ -267,6 +269,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "manifest") => CATALOG_PARSE,
             (REVIEW, "resolver-source-lookup") => RESOLVER_SOURCE_LOOKUP,
             (REVIEW, "resolver-static-edges") => RESOLVER_STATIC_EDGES,
+            (REVIEW, "resolver-dynamic-edges") => RESOLVER_DYNAMIC_EDGES,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -325,10 +328,12 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             }
         }
         let pending = self.identity_pending.as_ref().expect("admitted getter");
-        if origin == "resolver-static-edges" && pending.result.is_some() {
-            let mut pending = self.identity_pending.take().expect("admitted static edges");
-            return Ok(FixedCallOutput::StaticRows(
-                pending.result.take().expect("completed static edges"),
+        if matches!(phase, RESOLVER_STATIC_EDGES | RESOLVER_DYNAMIC_EDGES)
+            && pending.result.is_some()
+        {
+            let pending = self.identity_pending.take().expect("admitted edge call");
+            return Ok(FixedCallOutput::Projection(
+                pending.result.expect("completed edge call"),
             ));
         }
         if pending
@@ -627,6 +632,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (
                 Some("resolver-static-edges-raised"),
                 "resolver-static-edges",
+                true
+            )
+            | (
+                Some("resolver-dynamic-edges-raised"),
+                "resolver-dynamic-edges",
                 true
             )
     )
