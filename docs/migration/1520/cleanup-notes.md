@@ -3073,6 +3073,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   構築を通過し、macOSの実初期化を検証中。
   現在の同梱variantが使う1階層のファイル名を対象とし、schema上有効な複数階層の
   variantは未移植。複数階層では途中の各親を原本と同じ順で検査する必要がある。
+- `9155e4707` は最初のleafと親の検査が終わったあと、元の `artifact_digest` に
+  入る時点で選択leafを置換または欠落させる。原本は再度symlinkを確認し、symlinkなら
+  ツリー用の例外を返す。欠落ではfile、directoryの両判定を実行してから拒否する。
+  [原本CI 43462289407](https://github.com/harupipipipi/tobkiri/actions/runs/43462289407)
+  は両OSの原本とLinuxの310参照の照合に成功した。
+- `988466564` は元のツリー入口のsymlink、file、directoryの判定を、同じrootの
+  同一性と選択leafを使って順に実行する。fileなら元のreadの直前、directoryなら
+  列挙直前で停止する。判定の間に新しいsymlinkへ変わった場合は追跡を拒否する。
+  [物理IOと原本CI 43463494533](https://github.com/harupipipipi/tobkiri/actions/runs/43463494533)、
+  [実Wasm CI 43463522873](https://github.com/harupipipipi/tobkiri/actions/runs/43463522873)
+  で検証中。ファイルの内容、ツリー列挙、署名、起動はこの段階で検証しない。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
