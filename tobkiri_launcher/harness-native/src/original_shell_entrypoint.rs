@@ -85,12 +85,12 @@ impl CatalogIo {
         let directories = components.next();
         let first = stage == PackResolve::ShellEntryResolve;
         let depth = directories.map_or(0, |parents| parents.split('/').count());
-        let recorded = if first {
+        let mut recorded = if first {
             Some(reserve_parents(op, depth)?)
         } else {
             None
         };
-        let (directory, path, recorded) = walk_parents(
+        let (directory, path) = walk_parents(
             op,
             (root, root_path),
             directories,
@@ -98,7 +98,7 @@ impl CatalogIo {
             self.shell_entrypoint_resolution
                 .as_ref()
                 .map(|entry| entry.parents.value.as_slice()),
-            recorded,
+            recorded.as_mut(),
             budget,
         )?;
         let absolute = bounded_member(&path, leaf)?;
@@ -244,9 +244,9 @@ fn walk_parents<S: crate::BootstrapReviewOwner>(
     directories: Option<&str>,
     artifact: Identity,
     expected: Option<&[Identity]>,
-    mut recorded: Option<Funded<Vec<Identity>>>,
+    mut recorded: Option<&mut Funded<Vec<Identity>>>,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<(TrackedFile, PathBuf, Option<Funded<Vec<Identity>>>)> {
+) -> Result<(TrackedFile, PathBuf)> {
     let (mut directory, mut path) = root;
     for (index, name) in directories
         .into_iter()
@@ -282,7 +282,7 @@ fn walk_parents<S: crate::BootstrapReviewOwner>(
         directory = next?;
         path = child;
     }
-    Ok((directory, path, recorded))
+    Ok((directory, path))
 }
 
 fn write_resolved(
