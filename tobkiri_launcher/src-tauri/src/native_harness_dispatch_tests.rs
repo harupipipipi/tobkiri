@@ -537,7 +537,9 @@ fn component(
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "init" (func $init)) (export "bootstrap-profile-id" (func $profile))
         (export "host-resource-root" (func $host)) (export "bundled-profile-root" (func $bundle))
-        (export "denied" (func $denied)) (export "load-catalog" (func $bundle)))
+        (export "denied" (func $denied)) (export "load-catalog" (func $bundle))
+        (export "resolve-profile" (func $bundle))
+        (export "bootstrap-confirmation" (func $bundle)))
       (instance $transport
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "describe-value" (func $describe)) (export "import-values" (func $import)))

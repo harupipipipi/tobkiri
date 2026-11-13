@@ -3207,7 +3207,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [原本比較CI 43496444761](https://github.com/harupipipipi/tobkiri/actions/runs/43496444761)、
   [物理読み取りCI 43496130105](https://github.com/harupipipipi/tobkiri/actions/runs/43496130105)、
   [Wasm CI 43496182926](https://github.com/harupipipipi/tobkiri/actions/runs/43496182926)
-  を開始した。全カタログの燃料制限と、承認画面へ渡す候補の生成が残る。
+  を開始した。原本CI 43495702562はLinux/macOSで成功し、原本比較CI 43496444761は
+  Linux上で新規・破損時の例外グラフと残存ファイルの実Rust比較も通過した。
+- `8be436a83` は元の新規Setupで、activeポインター2件とindexの検査、元のPackが
+  確認文書を返すまでを観測する。解決済みオブジェクトとAuthority引数の同一性、
+  確認文書のキー順と全体digest、順序付きbindingsの件数とdigestを記録する。
+  [原本CI 43498267826](https://github.com/harupipipipi/tobkiri/actions/runs/43498267826)
+  で検証中。
+- `2adf48f3d` は引き継ぎがない場合のパス確認と、同じStoreの元の `bootstrap_confirmation`
+  を接続した。元の `ResolvedDefaultProfile`、ID、Authority引数を再利用し、確認文書と
+  その参照を保持する。Rustはscope、識別子、全体digestを照合する。`b6fd06d97` で
+  Unixの実stat/lstatの順序と例外伝播を揃えた。元のパス判定をRustで重複実装する箇所は、
+  両側の確認が揃った段階で共通化を検討する。
+  [Rust/Wasm CI 43498676115](https://github.com/harupipipipi/tobkiri/actions/runs/43498676115)と
+  [原本・Rust CI 43498647143](https://github.com/harupipipipi/tobkiri/actions/runs/43498647143)
+  を起動した。確認を受け取った後のpreview catalog、登録済みProfileの復旧、認証済み
+  handover、全カタログの燃料制限とGUI検証が残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
