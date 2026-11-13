@@ -2928,7 +2928,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [原本310件との比較 43425325740](https://github.com/harupipipipi/tobkiri/actions/runs/43425325740)
   は両OSで元のSetupを実行し、Linuxで310件のRust側の結果と一致した。
   [実componentの検証 43425328249](https://github.com/harupipipipi/tobkiri/actions/runs/43425328249)
-  も実行中。現行312辺を含む正常カタログでの統合実行は未確認。
+  も成功し、macOSの実初期化、static参照の順序とbyteを確認した。
+  現行312辺を含む正常カタログでの統合実行は未確認。
 - `ba57e9694` は初回の同梱候補で静的な参照を作った後、同じStoreの実カタログと
   2回目のProfile IDで元のPackのdynamic edgesを呼ぶ。元の初回候補に従い追加Pack IDは
   空のtuple。Packがカタログを再参照し、実際の戻りが空の組み込みtupleであることを
@@ -2938,11 +2939,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   はLinux・macOSで13ケース成功。Packへの実引数・空の戻り・同じ辞書の保持を観測し、
   Linuxでは動的ループ後の310参照をRustで計算した静的参照の順序とハッシュに照合した。
   [同じ実装の実component CI 43427427053](https://github.com/harupipipipi/tobkiri/actions/runs/43427427053)
-  はゲストの回帰7件、Hostの読み取り拒否、実Wasm構築を検証する。検証済みartifact集合の
-  構築、追加Packを持つ既存Profile、現行同梱カタログの全実行は別途実装と確認が必要。
+  はゲストの回帰7件を含むソース試験と実Wasm構築に成功。macOSのHostでの検査を進めている。
+  追加Packを持つ既存Profileと現行同梱カタログの全実行は別途実装と確認が必要。
+- `1b45d23c5` で元の集合内包を実カタログのPack一覧に対して実行し、Pythonの組み込み
+  setとその参照を同じStoreに保持する。ここで扱う値は、元のPackが次の解決で使う
+  artifact digestの集合。権限承認やShell実行ファイルの検証はこの段階に含まれない。
+  [原本CI 43432113300](https://github.com/harupipipipi/tobkiri/actions/runs/43432113300)の
+  Linuxで、解決Port入口へ実際に渡る153件のdigestと引数の同一性を観測した。
+  [実component CI 43432128116](https://github.com/harupipipipi/tobkiri/actions/runs/43432128116)
+  で新しい3回帰と通常DATA経由の呼び出し拒否を検証する。
 - 後続の `resolve_profile` は元のカタログのlockをその場で再読込し、Shellの実artifactを
   検証する。先行するsnapshot用のdigestやcatalogを読んだ時のファイルを再利用する案は保留。
-  実パスと再読込の順序・失敗・所有者を原本と比較した後、許可されたIOだけをRustへ移す。
+  Sol mediumが原本で、`catalog.root / "bundle.lock.json"` を `is_symlink`、`is_file`、
+  `read_bytes` の順で調べることを確認した。Shellはrootの解決、ツリーのhash、
+  entrypointのhash、macOSのplist、entrypoint headerの順。既存の `fd_protocol.rs` の
+  予算付きread/fstatは再利用候補。Shellで使うdescriptorのopen/seek/close、元の失敗と
+  実パスの所有権を原本と照合してから、許可されたIOをRustへ移す。
 - 将来の整理候補: `value_graph.py` の `_bootstrap_identity` とHostの `BootstrapIdentity*` は
   元の固定getterだけでなくcatalog・manifest・lookupも扱う。全固定呼出しの比較が通った後、
   wireのタグ、実参照、同じStoreでの保持を保ったまま名前と共有責務を揃える。
