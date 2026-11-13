@@ -94,7 +94,7 @@
       i32.const 36 i32.load local.tee $handle i32.const 256 i32.const 6 i32.const 272 i32.const 1 i32.const 64 call $put
       local.get $handle call $drop
       i32.const 64 i32.load8_u if i32.const 512 i32.const 68 i32.load8_u i32.add return end
-      i32.const 0))
+      i32.const 0)
     (func (export "read-global-marker") (result i32)
       (local $handle i32)
       i32.const 300 i32.const 12 i32.const 32 call $open-user-global
