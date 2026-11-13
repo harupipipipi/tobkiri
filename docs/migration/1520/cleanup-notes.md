@@ -2704,6 +2704,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   調停し、待機中の取り消しやepoch変更を扱う必要がある。先行要求の承認記録後も、
   後続要求は自身の引数・権限・監査を通常どおり検証する。Wasmからの順次の三層
   実行と既存ワークスペースの移行も引き続き別途確認する。
+- `fdbfa5bd2` で同じデータrootの二つのProfileに検証済みWasm Packを配置する試験を追加した。
+  所有Packのprivateとread-onlyへの実書き込み、外部Packのアクセス拒否、
+  二つの書き手と二つのpublicストアへの順次承認、Profile間の値と承認の分離を確認する。
+  [CI 43381937895](https://github.com/harupipipipi/tobkiri/actions/runs/43381937895)で検証中。
 
 ## 037: SSE受信済みの出力を次のHTTPチャンクまで保持する処理
 
