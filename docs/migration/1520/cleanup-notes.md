@@ -3134,8 +3134,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [原本CI 43477617349](https://github.com/harupipipipi/tobkiri/actions/runs/43477617349)
   はLinux・macOSで成功。欠落時はstrict resolveでFileNotFoundError、symlink化では
   解決後の元entrypoint判定、内容変更では再読込後のdigest比較で拒否した。
-  Rustのentrypoint・plist・ヘッダー検証は今後の対象。
+  plistとヘッダーの読み取りは今後の対象。
   `f47b5bfee` はShell実装のみの変更でも物理IO CIを実行する。
+- `be3e437a4` は確保済みのShell定義からentrypointを選び、ツリーの後に
+  entrypointとartifactを元の順でstrict resolveする。直下のシンボリックリンクは
+  同じ親内の一段をメタデータで解決し、元パスのsymlink判定で拒否する。中間
+  ディレクトリを検査して同一性を保持し、次の判定とopenで再確認する。
+  ツリーと同じファイルを使うAppImageでもFDを開き直し、前後のstatとdigest比較は
+  元のWasm側で実行する。同じFDプロトコルを共用し、ツリー用とentrypoint用を区別する。
+  plistとヘッダーの最初の読み取りが次の境界。
+  [物理IO・Clippy 43481161858](https://github.com/harupipipipi/tobkiri/actions/runs/43481161858)
+  で検証中。[初回Wasm CI 43481172131](https://github.com/harupipipipi/tobkiri/actions/runs/43481172131)
+  はLinux用の試験fixtureが原本のヘッダー関数を読み込まず停止した。
+  `c5392ab6b` と `3b29b4de8` で単体AppImageの経路と原本の関数を揃えた。
+  [再検証 43481460283](https://github.com/harupipipipi/tobkiri/actions/runs/43481460283)
+  の実Wasm構築とportable 215件は成功した。Linuxの物理IO 7件も通過し、
+  strict Clippyの型の複雑さの指摘は `294244199` で親の格納先を借りる形に直した。
+  [物理IO・Clippyの再検証 43482610397](https://github.com/harupipipipi/tobkiri/actions/runs/43482610397)。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
