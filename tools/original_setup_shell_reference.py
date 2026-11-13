@@ -958,6 +958,7 @@ def _observe(
     result: Any = None
     pack_error: BaseException | None = None
     review_result: Any = None
+    listing_result: Any = None
 
     def record(operation: str, path: Path) -> None:
         if len(calls) >= 128:
@@ -1181,7 +1182,13 @@ def _observe(
     ):
         try:
             sys.settrace(trace)
-            review_result = capture.prepare_bootstrap_profile_review()
+            if preview is None:
+                review_result = capture.prepare_bootstrap_profile_review()
+            else:
+                from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+                listing_result = SetupHandlersMixin._setup_listing()
+                review_result = preview.returned
         except _ShellVerified:
             outcome = {"outcome": "verified"}
         except _PackResolved:
@@ -1230,6 +1237,7 @@ def _observe(
                 resolved_identity=facts["identity"],
                 argument_identity=confirmation.argument_identity,
                 preview_catalog_case=preview.check(review_result, row["files_after"]),
+                listing_case=_check_listing(listing_result, review_result, canonical_digest),
             )
         return row
     if not active or user_data.exists():
@@ -1252,6 +1260,30 @@ def _observe(
         for field in ("message", "filename"):
             error[field] = error[field].replace("$USER_DATA", "$RUNTIME")
     return {"case": case, "calls": calls, "reads": reads, "expected": outcome}
+
+
+def _check_listing(listing: Any, review_result: Any, digest: Any) -> dict:
+    _, confirmation = review_result
+    profile = listing["recommended_default_profile"]
+    if (
+        type(listing) is not dict
+        or listing["setup_api_version"] != "io.tobkiri.setup-state.v4"
+        or listing["state"] != "review_required"
+        or listing["denial_diagnostic"] is not None
+        or profile["confirmation"] != confirmation
+        or profile["pack_ids"] != [pack["pack_id"] for pack in listing["packs"]]
+        or listing["packs"] != profile["packs"]
+    ):
+        raise AssertionError("original Setup handler changed the reviewed presentation")
+    return {
+        "case": "fresh-bootstrap-setup-listing",
+        "listing_digest": digest(listing),
+        "confirmation_digest": confirmation["confirmation_digest"],
+        "state": listing["state"],
+        "profile_id": profile["profile_id"],
+        "profile_name": profile["name"],
+        "pack_count": len(profile["pack_ids"]),
+    }
 
 
 def _check_composition(case: str, calls: list[str], inputs: dict, outcome: dict) -> None:
@@ -1447,11 +1479,13 @@ def observe_shell(original: Path, runtime: Path, output: Path) -> None:
         variant, tree_files,
     )
     preview = confirmation.pop("preview_catalog_case")
+    listing = confirmation.pop("listing_case")
     write_json(output / "shell.json", {
         "format": FORMAT, "original_head": ORIGINAL_HEAD,
         "variant": variant, "cases": rows, "composition_cases": composition,
         "predecessor_cases": predecessors,
         "confirmation_cases": [confirmation],
         "preview_catalog_cases": [preview],
+        "listing_cases": [listing],
         "header_fixture": True, "qualification": False, "production_enabled": False,
     })
