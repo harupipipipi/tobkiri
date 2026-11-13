@@ -3165,9 +3165,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既存フレームとbase64の上限内に収めた。
   [初回Wasm CI 43486476877](https://github.com/harupipipipi/tobkiri/actions/runs/43486476877)
   でfixtureの `plistlib` 未設定を検出し、`1aef1dcb7` で修正した。
-  [実Wasm 43486950528](https://github.com/harupipipipi/tobkiri/actions/runs/43486950528)と
+  [再検証 43486570483](https://github.com/harupipipipi/tobkiri/actions/runs/43486570483)
+  でportable 216件、実Wasm構築、macOSの実初期化・物理IO・Core引き継ぎを通過。
+  `1962dcca4` の [実Wasm 43486950528](https://github.com/harupipipipi/tobkiri/actions/runs/43486950528)
+  も構築、portable 216件、macOSの実初期化・物理IO 7件・Core引き継ぎを通過した。
   [物理IO・Clippy 43486940947](https://github.com/harupipipipi/tobkiri/actions/runs/43486940947)
-  で再検証する。カタログ全体から同じStoreでShellを通る確認と製品採用は残る。
+  は両OSの物理IO各7件とstrict Clippyが成功。カタログ全体から同じStoreでShellを通る
+  確認と製品採用は残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
