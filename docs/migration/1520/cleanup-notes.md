@@ -2960,11 +2960,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   は、追加したfixtureが元からある異種カタログ試験に属性を設定しようとして停止した。
   `d74cb238f` で実fixtureの型の場合にだけ属性を設定し、元の拒否試験を維持した。
   [再実行CI 43436878493](https://github.com/harupipipipi/tobkiri/actions/runs/43436878493)
-  で回帰とWasm構築を検証する。正常な全カタログを通る実Wasmの一連の実行は未確認。
+  はportable 211件、実Wasm構築、macOSの物理IO試験6件と実初期化・Hostの所有権確認に
+  成功した。正常な全カタログを通る実Wasmの一連の実行は未確認。
+- `d68e3a8ad` の[原本CI 43438045179](https://github.com/harupipipipi/tobkiri/actions/runs/43438045179)
+  は、既存17ケースと、原本の実ファイルとcaptured入力のShell試験7件をLinux/macOSで実行し、
+  Linuxでは従来の310参照も照合した。Shell試験は配布時の実行ファイルではなく、
+  検証に使う最小のELF、PE、Mach-OヘッダーとInfo.plistを含む。
+- `ff35a5ebf` では同じ原本のpackaging generatorでLinuxのAppImageとmacOSの
+  `Tobkiri.app` の検証用fixtureを生成し、元のSetupが選んだvariantと同じrootを
+  実Packへ渡した。通常の検証、root欠落の生のFileNotFoundError、rootがsymlinkに
+  変わったときの元のProtocolErrorとProfileResolutionDeniedを両OSで観測した。
+  macOSではファイル名順のツリー読み込み、entrypointの再読込、Info.plist、headerの順と、
+  reader終了後にFDが閉じたことを確認した。テストは合成ヘッダーを使い、確認・承認前に
+  停止した。[原本CI 43440932967](https://github.com/harupipipipi/tobkiri/actions/runs/43440932967)
 - Shellはrootの解決、ツリーのhash、entrypointのhash、macOSのplist、
   entrypoint headerの順。既存の `fd_protocol.rs` の
   予算付きread/fstatは再利用候補。Shellで使うdescriptorのopen/seek/close、元の失敗と
-  実パスの所有権を原本と照合してから、許可されたIOをRustへ移す。
+  実パスの所有権を原本と照合してから、許可されたIOをRustへ移す。loaderが返した
+  canonical rootを保持し、解決済みのパス文字列だけから権限を作らない。
 - 将来の整理候補: `value_graph.py` の `_bootstrap_identity` とHostの `BootstrapIdentity*` は
   元の固定getterだけでなくcatalog・manifest・lookupも扱う。全固定呼出しの比較が通った後、
   wireのタグ、実参照、同じStoreでの保持を保ったまま名前と共有責務を揃える。

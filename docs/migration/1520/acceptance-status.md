@@ -639,9 +639,11 @@ the three oversized cases in the earlier five-component replay.
 ## Acceptance checklist
 
 Status after the focused CI replays (2026-11-13): items 2, 3, 4, 6, 7, 8, 9, 11,
-12, 13, 16 and 18 are checked (12 of 20). The aggregate
-`issue-1520-rust.yml` is still open: the migration-completion job reports
-unported inventory, and the newest foundations and platform replay is pending.
+12, 13, 16 and 18 are checked (12 of 20).
+[The aggregate at `2e785d2c4`](https://github.com/harupipipipi/tobkiri/actions/runs/43429417116)
+passed foundations, official Python comparison, native capture typecheck and
+the supported macOS runtime replay including strict Clippy. The
+migration-completion job still reports unported inventory.
 Individual items are supported by their linked focused execution evidence.
 Open points: 11 lacks the 「未確認の接続」 UI label; 12 uses synthetic WIT; 13
 has R2.10 gaps (no 「持ち主のいないデータ」 marking in Core removal, `policy-view`
@@ -898,6 +900,14 @@ The [original lock replay](https://github.com/harupipipipi/tobkiri/actions/runs/
 ran 17 cases on both OSes, including fresh bytes, symlink refusal, and a
 missing lock. The native implementation connects the corresponding lock
 read through the original Port and stops at the first Shell artifact access.
+[The actual component build and macOS checks](https://github.com/harupipipipi/tobkiri/actions/runs/43436878493)
+passed, including six physical reader cases and original Runtime.init.
+[The pinned original Shell verifier replay](https://github.com/harupipipipi/tobkiri/actions/runs/43438045179)
+passed seven native and captured-input tests on Linux and macOS.
+[Original Setup with packaged Shell fixtures](https://github.com/harupipipipi/tobkiri/actions/runs/43440932967)
+also passed the selected-artifact read sequence, missing root, and replaced
+symlink cases on both platforms. The fixtures supply platform headers and a
+macOS plist. Shell artifact IO still needs the native implementation.
 Normal full catalog execution under the original limits and GUI adoption
 still need evidence. These comparisons close no acceptance item.
 
