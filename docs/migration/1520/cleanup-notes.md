@@ -3118,6 +3118,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   は構築・portable 213件、macOSでのRuntime.initと物理IO 7件、Coreによるownerの
   引き継ぎを通過した。実Wasmの全カタログを経由するShell検証、製品への採用、
   GUIでの会話、VM廃止は未確認。
+- `b14a2fd73` は同じディレクトリ列挙とファイルFDを使い、選択済みShellの下を
+  原本と同じ名前順・深さ優先で走査する。Wasmには物理列挙順で名前を返し、
+  Rustは同じ列挙結果を名前順に保持して次の一件を照合する。祖先の置換を拒否し、
+  空ディレクトリと正常に閉じたファイルの後に進む。各FDは当該ファイルのパスと
+  照合する。UTF-8の名前、128ディレクトリ段、OSの `PATH_MAX` 内が現在の範囲。
+  Packが元のdigestと比較し、次のentrypoint解決で停止する。
+  [物理IO・Clippy 43477187457](https://github.com/harupipipipi/tobkiri/actions/runs/43477187457)
+  でLinux・macOSの物理IO各7件とstrict Clippyが通過した。
+  [実Wasm 43477196433](https://github.com/harupipipipi/tobkiri/actions/runs/43477196433)
+  は構築、portable 214件、macOSのRuntime.init・物理IO・Core引き継ぎを通過した。
+- `94287c291` は元のdigestが一致した直後にentrypointが欠落・symlink化・内容変更
+  する三つのケースを、独立した原本で実行する。通常ファイルではツリー用FDと
+  entrypoint用FDを別に開く。内容変更では二度目のdigest比較で元の例外が出る。
+  [原本CI 43477617349](https://github.com/harupipipipi/tobkiri/actions/runs/43477617349)
+  はLinux・macOSで成功。欠落時はstrict resolveでFileNotFoundError、symlink化では
+  解決後の元entrypoint判定、内容変更では再読込後のdigest比較で拒否した。
+  Rustのentrypoint・plist・ヘッダー検証は今後の対象。
+  `f47b5bfee` はShell実装のみの変更でも物理IO CIを実行する。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
