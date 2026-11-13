@@ -1,5 +1,7 @@
 //! The original publication SecureDirectory/lock/read closure.
 use super::*;
+#[cfg(unix)]
+use std::ffi::CStr;
 
 #[cfg(unix)]
 pub(super) fn read_stream<S: OriginalAuthorityOwner>(
