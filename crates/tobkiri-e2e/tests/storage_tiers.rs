@@ -1061,15 +1061,20 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
         source_replay.check(&writer, GLOBAL, GlobalRead, 41).await?;
         source_replay.check(&writer, PUBLIC, Write(19), 0).await?;
         source_replay
+            .check(&second_writer, PUBLIC, Read, 19)
+            .await?;
+        source_replay
             .check(&writer, OTHER_PUBLIC, Write(20), 0)
             .await?;
+        // Both writers use the same key in the same public store. Their
+        // distinct approvals control writes; the value is shared.
         source_replay
             .check(&second_writer, PUBLIC, Write(21), 0)
             .await?;
         for (pack, store, value) in [
             (&owner, PRIVATE, 11),
             (&writer, READ_ONLY, 12),
-            (&writer, PUBLIC, 19),
+            (&writer, PUBLIC, 21),
             (&writer, OTHER_PUBLIC, 20),
             (&second_writer, PUBLIC, 21),
         ] {
