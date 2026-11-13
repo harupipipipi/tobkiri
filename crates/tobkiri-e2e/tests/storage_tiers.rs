@@ -605,7 +605,10 @@ impl Replay<'_> {
             Operation::GlobalRead => READ_GLOBAL,
             Operation::GlobalWrite(_) => WRITE_GLOBAL,
         };
-        let stage = format!("{}: {} {stage_operation} {store}", self.profile, pack.pin.id);
+        let stage = format!(
+            "{}: {} {stage_operation} {store}",
+            self.profile, pack.pin.id
+        );
         let (op, args, prompts) = match operation {
             Operation::Read => (
                 READ,
