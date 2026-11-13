@@ -40,7 +40,7 @@ fn read_relative(repo: &Path, path: &str) -> Result<Vec<u8>> {
                 .all(|part| matches!(part, Component::Normal(_))),
         "source binding is not a confined relative path"
     );
-    bounded_read(repo, path, 16 * 1024 * 1024)
+    evidence::frozen_source(repo, path)
 }
 
 fn capture_bindings(

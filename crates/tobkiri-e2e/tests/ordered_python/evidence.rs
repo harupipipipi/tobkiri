@@ -51,6 +51,25 @@ pub(super) fn bounded_read(root: &Path, relative: &str, limit: usize) -> Result<
     )?)
 }
 
+/// Only the two Profile documents can come from the pinned historical source.
+/// Callers still validate their bytes against the unchanged frozen records.
+pub(super) fn frozen_source(repo: &Path, relative: &str) -> Result<Vec<u8>> {
+    if matches!(
+        relative,
+        "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+            | "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+    ) && let Some(root) = std::env::var_os("TOBKIRI_TEST_PRESERVED_PROFILE_SOURCE")
+    {
+        let root = PathBuf::from(root);
+        ensure!(
+            root.is_absolute(),
+            "absolute frozen Profile source required"
+        );
+        return bounded_read(&root, relative, 16 * 1024 * 1024);
+    }
+    bounded_read(repo, relative, 16 * 1024 * 1024)
+}
+
 pub(super) fn strict_json(bytes: &[u8]) -> Result<Value> {
     // All evidence is finite JSON metadata; ordered request/response strings
     // remain opaque. This also rejects duplicate metadata keys.
@@ -138,7 +157,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<Value> {
                     .all(|part| matches!(part, std::path::Component::Normal(_))),
                 "non-relative source provenance"
             );
-            let bytes = bounded_read(repo, relative, 16 * 1024 * 1024)?;
+            let bytes = frozen_source(repo, relative)?;
             ensure!(
                 record["sha256"] == digest(&bytes) && record["bytes"] == bytes.len(),
                 "original source changed since extraction"

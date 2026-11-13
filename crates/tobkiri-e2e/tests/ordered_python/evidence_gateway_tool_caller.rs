@@ -254,7 +254,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<(Value, BTreeMap<String, Value>)>
     let mut captured = BTreeMap::new();
     for binding in bindings {
         let path = binding["path"].as_str().context("source path missing")?;
-        let bytes = bounded_read(repo, path, 16 * 1024 * 1024)?;
+        let bytes = evidence::frozen_source(repo, path)?;
         ensure!(
             *binding == record(path, &bytes) && captured.insert(path.to_owned(), bytes).is_none(),
             "changed or duplicated source: {path}"
@@ -326,7 +326,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<(Value, BTreeMap<String, Value>)>
     }
     for (path, bytes) in captured {
         ensure!(
-            bounded_read(repo, &path, 16 * 1024 * 1024)? == bytes,
+            evidence::frozen_source(repo, &path)? == bytes,
             "source changed while captured"
         );
     }

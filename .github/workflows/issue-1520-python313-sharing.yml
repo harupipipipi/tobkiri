@@ -7,6 +7,7 @@ on:
       - '.github/workflows/issue-1520-python313-sharing.yml'
       - 'tools/python313-producer/verify_original_components.py'
       - 'tools/quality/test_python313_sharing.py'
+      - 'tools/quality/stage_1520_preserved_source.py'
   workflow_dispatch:
 
 permissions:
@@ -29,9 +30,14 @@ jobs:
         with:
           python-version: '3.13'
       - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Stage immutable Profile inputs for the preserved Gateway graph
+        run: |
+          git fetch --no-tags --depth=1 origin 42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8
+          python3 -B tools/quality/stage_1520_preserved_source.py \
+            --output "$RUNNER_TEMP/issue-1520-preserved-source"
       - name: Check artifact provenance and source-sharing boundaries
         run: |
-          python3 -B tools/quality/test_python313_sharing.py
+          python3 -B "$RUNNER_TEMP/issue-1520-preserved-source/tools/quality/test_python313_sharing.py"
           python3 -B tools/component-unbundle/test_measure.py
           python3 -B tools/component-unbundle/test_materialize.py
       - name: Build the existing bounded component inspection worker
@@ -48,6 +54,7 @@ jobs:
           --root "$RUNNER_TEMP/original-components"
           > "$RUNNER_TEMP/original-components-verification.json"
       - name: Restore the two authenticated original bridge and caller artifacts
+        working-directory: ${{ runner.temp }}/issue-1520-preserved-source
         run: >-
           python3 -B scripts/wasm/stage_preserved_gateway_tool_caller.py
           --output "$RUNNER_TEMP/original-two"

@@ -2700,6 +2700,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - [macOS DMG CI 43379312352](https://github.com/harupipipipi/tobkiri/actions/runs/43379312352)
   はLauncherのcold boot、DMGの生成とマウント、現行Python資源の照合を通過。
   PackVM helperとPythonを同梱する既存配布構成での結果。
+- [macOS DMG CI 43388499835](https://github.com/harupipipipi/tobkiri/actions/runs/43388499835)
+  は `584aed439` でLauncher本体661件、build script 123件、資源18件、
+  cold boot、DMG生成とマウントを通過。CI専用成果物14023372359は282,135,307バイト。
+  マウント後もPythonを照合する既存パッケージの検証で、移行後のGUI全体は未検証。
 
 ## 036: 同時に発生したpublicストアの初回承認
 
@@ -2839,3 +2843,41 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   物理バイトが変わるとAuthorityのsnapshot digestが変わる。DBあり・なし、壊れたDBと
   ディレクトリ、壊れたmanifest、開発Bundleの選択とロック欠落を確認した。
   Authorityの終了後、2回目のID取得から元のProfileを検索する直前までが対象。
+- `17406e959` は同じ実StoreでBundle選択とmanifest照合を再実行し、物理ロックを
+  改めて読み込んでAuthorityのsnapshotを計算する。原本のAuthorityを閉じてから
+  PackのIDをもう一度取得し、取得済みのカタログと実戻り値をレビュー終了まで保持する。
+  従来のローダー資源処理を共用し、最初のロックバイトの再利用を避ける。
+  [Rust側のCI 43406607339](https://github.com/harupipipipi/tobkiri/actions/runs/43406607339)
+  はLinux/macOSで成功。2回目のユーザーデータ選択、DB不在時のsnapshotと書き込みなし、
+  ディレクトリの拒否、開発・配布Bundleの新しい物理バイトを確認した。
+  実Wasmカタログを経由する全体の比較と
+  選択済みProfileのAuthority/Activation、後続のPack解決・確認画面は残る。
+
+## 040: 公開Profileへ混入しない既存データ
+
+- `crates/tobkiri-e2e/tests/storage_tiers.rs` に、既存の実Wasm経路で3段の値と承認を
+  作ったProfileを公開する回帰試験を追加した。`0f79c68af` はユーザー全体のストレージを
+  明示のdangerous承認で書き込み、通常の `Core::set_secret` でOSキーチェーンを使うvaultを
+  作る。公開形式は従来の構造上の許可リストを使い、取り込みは通常の門で新規承認する。
+- 公開した文書と取り込んだProfileを確認し、元の3段の値、別のProfile用のvault、
+  承認記録が持ち込まれないことを検証する。明示承認後にアクセスできるユーザー全体の
+  ストレージは同一データrootで共有されるため、公開文書の除外と、共有ストアを読む権限を
+  別に確認する。元のストアと暗号化済みvaultも照合する。
+  [初回CI 43406959874](https://github.com/harupipipipi/tobkiri/actions/runs/43406959874)
+  は試験の `ApprovalStore` のimport先が誤っており、実行前のコンパイルで停止した。
+  `717ac4ed0` で正規のGate traitをimportし、
+  [再実行CI 43408497109](https://github.com/harupipipipi/tobkiri/actions/runs/43408497109)で確認する。
+
+## 041: 保存済みコンポーネントが参照する旧Profile
+
+- [全体CI 43407299708](https://github.com/harupipipipi/tobkiri/actions/runs/43407299708)の
+  foundationsは、旧Python Packの保持用コンポーネントを準備する際に
+  `inventory.json` の原本照合で停止した。原本との差は
+  `defaults.profile.v5.json` と `defaults.profile.intent.v1.json` の二つ。
+  `eb5dabff0` のProject用の権限辺と `5ae2b0265` の生成元の更新によるもので、
+  Tool Bridgeが参照する4本の辺、Gatewayのコード、Core WIT、SDKのハッシュは一致した。
+- 保存済み実行物は `42dfc6e02` の二つのProfile文書と結び付いている。CIは現在の
+  検証ツールと二つの旧文書を別ディレクトリに配置して既存の照合を実行する。
+  Rustは旧文書2件の再読込だけを同じ場所に向け、他のソースと実行本体は現在のcheckoutを使う。
+  固定のreceipt、バイナリのハッシュ、展開・実行上限は既存の条件で検証する。
+  現行Profileと配布物は別途検証し、旧成果物の再生を現行Profileの互換性に数えない。

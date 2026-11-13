@@ -11,6 +11,7 @@ on:
       - 'tools/python313-producer/verify_original_components.py'
       - 'tools/python313-producer/tests/test_build_components.py'
       - 'tools/quality/test_python313_sharing.py'
+      - 'tools/quality/stage_1520_preserved_source.py'
   workflow_dispatch:
 
 permissions:
@@ -33,10 +34,15 @@ jobs:
         with:
           python-version: '3.13'
       - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Stage immutable Profile inputs for the five preserved components
+        run: |
+          git fetch --no-tags --depth=1 origin 42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8
+          python3 -B tools/quality/stage_1520_preserved_source.py \
+            --output "$RUNNER_TEMP/issue-1520-preserved-source"
       - name: Check original source and artifact boundaries
         run: |
           python3 -B -m unittest discover -s tools/python313-producer/tests
-          python3 -B tools/quality/test_python313_sharing.py
+          python3 -B "$RUNNER_TEMP/issue-1520-preserved-source/tools/quality/test_python313_sharing.py"
       - name: Restore the archived successful custom producer from its verified private archive
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,6 +58,7 @@ jobs:
           python3 -B tools/python313-producer/fetch_validation_tools.py \
             --destination "$RUNNER_TEMP/original-validation"
       - name: Rebuild all five original Packs with the same producer
+        working-directory: ${{ runner.temp }}/issue-1520-preserved-source
         run: >-
           python3 -B tools/python313-producer/build_components.py
           --all-five
@@ -72,7 +79,7 @@ jobs:
               for file in ('component.wasm', 'component.build.json'):
                   shutil.copy2(source / name / 'work' / file, target / file)
           PY
-          python3 -B tools/python313-producer/verify_original_components.py \
+          python3 -B "$RUNNER_TEMP/issue-1520-preserved-source/tools/python313-producer/verify_original_components.py" \
             --all-five --root "$RUNNER_TEMP/original-five-artifacts" \
             > "$RUNNER_TEMP/original-five-verification.json"
       - name: Build the existing bounded inspection worker

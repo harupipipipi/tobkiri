@@ -49,9 +49,16 @@ jobs:
           python3 -B tools/component-unbundle/test_materialize.py
           cargo fmt --manifest-path tools/component-unbundle/Cargo.toml -- --check
           cargo test --locked --manifest-path tools/component-unbundle/Cargo.toml
+      - name: Stage immutable Profile inputs for the preserved transport tests
+        run: |
+          git fetch --no-tags --depth=1 origin 42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8
+          python3 -B tools/quality/stage_1520_preserved_source.py \
+            --output "$RUNNER_TEMP/issue-1520-preserved-source"
       - name: Preserved ordered Python component transport regression
+        working-directory: ${{ runner.temp }}/issue-1520-preserved-source
         run: python3 -B -m unittest discover -s tests -p test_stage_preserved_ordered_python.py
       - name: Preserved Gateway tool-caller transport regression
+        working-directory: ${{ runner.temp }}/issue-1520-preserved-source
         run: python3 -B -m unittest discover -s tests -p test_preserved_gateway_tool_caller.py
       - name: Original Harness Setup source and DATA projection regressions
         run: |
@@ -294,6 +301,12 @@ jobs:
         with:
           targets: wasm32-wasip2
           components: rustfmt, clippy
+      - name: Stage immutable Profile inputs for native replay
+        run: |
+          git fetch --no-tags --depth=1 origin 42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8
+          preserved="$RUNNER_TEMP/issue-1520-preserved-source"
+          python3 -B tools/quality/stage_1520_preserved_source.py --output "$preserved"
+          printf 'TOBKIRI_TEST_PRESERVED_PROFILE_SOURCE=%s\n' "$preserved" >> "$GITHUB_ENV"
       - name: Build typed Wasm test guests
         run: cargo build --manifest-path crates/test-guests/Cargo.toml --workspace --locked --target wasm32-wasip2
       - name: Build and bind real Pack fixtures
@@ -450,6 +463,7 @@ jobs:
       - name: Authenticate the preserved custom Python 3.13 component
         id: stage_ordered_python
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        working-directory: ${{ runner.temp }}/issue-1520-preserved-source
         shell: bash
         run: |
           python3 -B scripts/wasm/stage_preserved_ordered_python.py \
@@ -491,6 +505,7 @@ jobs:
       - name: Authenticate the preserved Gateway tool-caller graph
         id: stage_gateway_tool_caller
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        working-directory: ${{ runner.temp }}/issue-1520-preserved-source
         shell: bash
         run: |
           set -euo pipefail
