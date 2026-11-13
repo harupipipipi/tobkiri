@@ -3085,7 +3085,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [物理IOと原本CI 43463494533](https://github.com/harupipipipi/tobkiri/actions/runs/43463494533)、
   [実Wasm CI 43463522873](https://github.com/harupipipipi/tobkiri/actions/runs/43463522873)
   の物理IOをLinux・macOSで通過。通常のfileとdirectory、欠落、ツリー入口でのsymlink、
-  type判定直前のsymlink置換を確認した。両OSの原本と310参照の
+  type判定直前のsymlink置換を確認した。実Wasm CIはportable 211件、macOSの実初期化、
+  物理IO 7件とCoreによるowner引き継ぎも成功した。両OSの原本と310参照の
   [再比較 43463494534](https://github.com/harupipipipi/tobkiri/actions/runs/43463494534)
   も成功した。ファイルの内容、ツリー列挙、署名、起動の検証は残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
