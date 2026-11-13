@@ -77,6 +77,19 @@ struct ImportApprovals {
     observed_user: Vec<FreshUserApproval>,
 }
 
+fn user_approval_digest(
+    profile_hash: &Digest,
+    revision: &Digest,
+    epoch: u64,
+    permissions: &PermissionSet,
+) -> Result<Digest> {
+    let value = serde_json::to_value((profile_hash, revision, epoch, permissions))?;
+    Ok(tobkiri_canon::digest(
+        &support::canon(&value)?,
+        Variant::StrictV1,
+    )?)
+}
+
 #[derive(Default)]
 struct StorageHost {
     admission: Host,
@@ -99,9 +112,7 @@ impl TrustedPrompt for StorageHost {
                         profile_hash,
                         revision,
                         epoch,
-                    } => serde_json::to_vec(&(profile_hash, revision, epoch, expected))
-                        .ok()
-                        .map(|bytes| Digest::hash(&bytes)),
+                    } => user_approval_digest(profile_hash, revision, *epoch, expected).ok(),
                     _ => None,
                 };
                 let approved = imports.observed_user.is_empty()
@@ -247,9 +258,8 @@ impl StorageHost {
                         revision,
                         epoch: 1,
                     } if expected_user_permissions.as_ref().is_some_and(|permissions| {
-                        serde_json::to_vec(&(profile_hash, revision, 1, permissions))
-                            .ok()
-                            .is_some_and(|bytes| Digest::hash(&bytes) == observed.args_digest)
+                        user_approval_digest(profile_hash, revision, 1, permissions)
+                            .is_ok_and(|digest| digest == observed.args_digest)
                     })
                 ),
             "import did not obtain the exact fresh dangerous User approval"
@@ -698,8 +708,12 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
         CoreConfig::for_test_data_root(data_path.clone()),
         host.clone(),
     )?;
-    core.save_profile(a.clone(), None).await?;
-    core.save_profile(b.clone(), None).await?;
+    core.save_profile(a.clone(), None)
+        .await
+        .context("save source storage Profile")?;
+    core.save_profile(b.clone(), None)
+        .await
+        .context("save isolated storage Profile")?;
     let data_root = DataRoot::open(&data_path)?;
     const DEVICE: &str = "publication-fixture-device";
     {
@@ -789,7 +803,8 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
 
     let secret = b"synthetic-publication-secret-value";
     core.set_secret(&a.id, "publication-fixture-secret", secret)
-        .await?;
+        .await
+        .context("write the fixture Secret through the OS vault")?;
     let source_vault = data_root.read_profile_file(&a.id, "secrets.vault", 4 * 1024 * 1024)?;
     ensure!(
         !source_vault
@@ -853,7 +868,8 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
     host.expect_import_approval(&a.id, user_permissions)?;
     let imported = core
         .import_profile(&export, "Imported storage Profile".into(), None)
-        .await?;
+        .await
+        .context("import the published storage Profile with fresh approvals")?;
     ensure!(
         imported != a.id,
         "import reused the source Profile identity"
