@@ -127,9 +127,13 @@ async fn real_1b_input_flow_wasm_stream_persist_and_cancel() -> Result<()> {
         .await
         .context("instantiate live components")?;
     let events = fixture
-        .turn(
+        .turn_with_progress_deadlines(
             &session,
             "Write one sentence of at least twelve words about a quiet forest.",
+            Duration::from_secs(30),
+            // CPU inference on the hosted runner can stream promptly while
+            // taking longer to finish. Core retains its own original deadline.
+            Duration::from_secs(240),
         )
         .await?;
     let text = deltas(&events);

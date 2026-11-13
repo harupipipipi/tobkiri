@@ -651,6 +651,22 @@ impl Fixture {
         Ok((core, session))
     }
     pub async fn turn(&self, session: &Session, text: &str) -> Result<Vec<RunEvent>> {
+        self.turn_with_progress_deadlines(
+            session,
+            text,
+            Duration::from_secs(30),
+            Duration::from_secs(30),
+        )
+        .await
+    }
+
+    pub async fn turn_with_progress_deadlines(
+        &self,
+        session: &Session,
+        text: &str,
+        first_text: Duration,
+        completion: Duration,
+    ) -> Result<Vec<RunEvent>> {
         self.host.lines.lock().unwrap().push_back(text.into());
         let input = within_session(
             session,
@@ -676,7 +692,9 @@ impl Fixture {
         );
         let plan_digest = run.routes()[0].target.plan_digest.clone();
         let mut events = Vec::new();
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let started = tokio::time::Instant::now();
+        let mut deadline = started + first_text;
+        let mut saw_text = false;
         while let Some(tagged) = next_native_event(&mut run, "turn: Flow progress", deadline)
             .await
             .with_context(|| {
@@ -689,6 +707,10 @@ impl Fixture {
         {
             assert_eq!(tagged.route_index, 0, "event left the frozen route");
             assert_eq!(tagged.event.plan_digest, plan_digest);
+            if !saw_text && delta_text(&tagged.event).is_some() {
+                saw_text = true;
+                deadline = started + completion;
+            }
             events.push(tagged.event);
         }
         let completion = native_completion(&mut run, "turn: NativeInput completion")
