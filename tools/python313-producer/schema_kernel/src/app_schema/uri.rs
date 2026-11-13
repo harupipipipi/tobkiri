@@ -103,7 +103,15 @@ fn resolve_admitted(base: &str, reference: &str) -> bool {
         return true;
     }
     let end = scheme_end(base).expect("raw scheme established by argument admission");
-    uses_relative(&base[..end].to_ascii_lowercase())
+    uses_relative(&lowercase_scheme(&base[..end]))
+}
+
+fn lowercase_scheme(scheme: &str) -> Cow<'_, str> {
+    if scheme.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        Cow::Owned(scheme.to_ascii_lowercase())
+    } else {
+        Cow::Borrowed(scheme)
+    }
 }
 
 fn uses_netloc(scheme: &str) -> bool {
@@ -188,7 +196,7 @@ struct Parts<'a> {
 /// bracket/IP validation nor Unicode NFKC validation is replaced here.
 fn parse<'a>(mut value: &'a str, default_scheme: &'a str) -> Parts<'a> {
     let scheme = if let Some(end) = scheme_end(value) {
-        let scheme = Cow::Owned(value[..end].to_ascii_lowercase());
+        let scheme = lowercase_scheme(&value[..end]);
         value = &value[end + 1..];
         scheme
     } else {
@@ -334,26 +342,33 @@ fn join_native(base: &str, reference: &str) -> Joined {
             reference.fragment,
         ));
     }
-    let mut base_parts: Vec<_> = base.path.split('/').collect();
-    if base_parts.last() != Some(&"") {
-        base_parts.pop();
-    }
-    let segments: Vec<_> = if reference.path.starts_with('/') {
-        reference.path.split('/').collect()
+    let absolute = reference.path.starts_with('/');
+    let base_dir = if absolute {
+        None
+    } else if base.path.ends_with('/') {
+        Some(base.path)
     } else {
-        base_parts.extend(reference.path.split('/'));
-        let last = base_parts.len() - 1;
-        base_parts
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, value)| {
-                (index == 0 || index == last || !value.is_empty()).then_some(value)
-            })
-            .collect()
+        base.path.rsplit_once('/').map(|(directory, _)| directory)
     };
-    let mut resolved = Vec::with_capacity(segments.len());
-    for segment in &segments {
-        match *segment {
+    let segments = base_dir
+        .into_iter()
+        .flat_map(|directory| directory.split('/'))
+        .chain(reference.path.split('/'));
+    let mut segments = segments.peekable();
+    let mut resolved = Vec::with_capacity(8);
+    let mut first = true;
+    let mut terminal_dot = false;
+    while let Some(segment) = segments.next() {
+        let last = segments.peek().is_none();
+        // The original preserves absolute-path empty segments. On a relative
+        // join only the first and last empty segments survive its filter.
+        let keep = absolute || first || last || !segment.is_empty();
+        first = false;
+        if !keep {
+            continue;
+        }
+        terminal_dot = last && matches!(segment, "." | "..");
+        match segment {
             ".." => {
                 resolved.pop();
             }
@@ -361,10 +376,7 @@ fn join_native(base: &str, reference: &str) -> Joined {
             value => resolved.push(value),
         }
     }
-    if segments
-        .last()
-        .is_some_and(|value| matches!(*value, "." | ".."))
-    {
+    if terminal_dot {
         resolved.push("");
     }
     let path = resolved.join("/");
