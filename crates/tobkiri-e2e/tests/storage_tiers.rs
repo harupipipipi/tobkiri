@@ -598,6 +598,14 @@ impl Replay<'_> {
         operation: Operation,
         expected: i64,
     ) -> Result<()> {
+        let stage_operation = match operation {
+            Operation::Read => READ,
+            Operation::Write(_) => WRITE,
+            Operation::FirstPublicWrite(_) => "first-public-write",
+            Operation::GlobalRead => READ_GLOBAL,
+            Operation::GlobalWrite(_) => WRITE_GLOBAL,
+        };
+        let stage = format!("{}: {} {stage_operation} {store}", self.profile, pack.pin.id);
         let (op, args, prompts) = match operation {
             Operation::Read => (
                 READ,
@@ -650,7 +658,8 @@ impl Replay<'_> {
             Operation::GlobalRead => (
                 READ_GLOBAL,
                 CanonValue::Obj(BTreeMap::new()),
-                global_prompts(self.profile, pack, StoreOperation::Read, None)?,
+                global_prompts(self.profile, pack, StoreOperation::Read, None)
+                    .with_context(|| format!("{stage}: build global read approvals"))?,
             ),
             Operation::GlobalWrite(value) => (
                 WRITE_GLOBAL,
@@ -658,12 +667,16 @@ impl Replay<'_> {
                     "value".into(),
                     CanonValue::Int(value.into()),
                 )])),
-                global_prompts(self.profile, pack, StoreOperation::Write, Some(value))?,
+                global_prompts(self.profile, pack, StoreOperation::Write, Some(value))
+                    .with_context(|| format!("{stage}: build global write approvals"))?,
             ),
         };
-        let stage = format!("{}: {} {op} {store}", self.profile, pack.pin.id);
-        let op = op.parse()?;
-        self.host.expect_storage(prompts)?;
+        let op = op
+            .parse()
+            .with_context(|| format!("{stage}: parse guest operation"))?;
+        self.host
+            .expect_storage(prompts)
+            .with_context(|| format!("{stage}: prepare expected storage approvals"))?;
         let output = within_session(
             self.session,
             &stage,
@@ -720,13 +733,22 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
         let approvals = Approvals::open(&data_root, &a.id)?;
         approvals.pair_device(&a.id, DEVICE, [0x5a; 32])?;
     }
-    let sa = core.start(&a.id).await?;
-    let sb = match core.start(&b.id).await {
+    let sa = core
+        .start(&a.id)
+        .await
+        .with_context(|| format!("start source Profile {}", a.id))?;
+    let sb = match core
+        .start(&b.id)
+        .await
+        .with_context(|| format!("start isolated Profile {}", b.id))
+    {
         Ok(session) => session,
         Err(error) => {
-            let close = sa.close().await;
+            let close = sa.close().await.with_context(|| {
+                format!("close source Profile {} after isolated start failure", a.id)
+            });
             return Err(anyhow::Error::new(error).context(format!(
-                "second Profile start failed; first Session close: {close:?}"
+                "isolated Profile start failed; source Session close: {close:?}"
             )));
         }
     };
@@ -793,11 +815,26 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
         Ok::<(), anyhow::Error>(())
     }
     .await;
-    let (ca, cb) = tokio::join!(sa.close(), sb.close());
+    let (ca, cb) = tokio::join!(
+        async {
+            sa.close()
+                .await
+                .with_context(|| format!("close source Profile {} after storage replay", a.id))
+        },
+        async {
+            sb.close()
+                .await
+                .with_context(|| format!("close isolated Profile {} after storage replay", b.id))
+        },
+    );
     ensure!(
         ca.is_ok() && cb.is_ok(),
-        "storage checks: {checked:?}; Session closes: {ca:?}; {cb:?}"
+        "storage checks: {checked:?}; source Session close: {ca:?}; isolated Session close: {cb:?}"
     );
+    // Closing drains work; dropping the Sessions releases their retained
+    // Wasm catalogs and authority registrations before later Profile starts.
+    drop(sa);
+    drop(sb);
     checked?;
     host.verify_storage()?;
 
@@ -900,7 +937,10 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
         "imported Profile received a source approval record"
     );
 
-    let imported_session = core.start(&imported).await?;
+    let imported_session = core
+        .start(&imported)
+        .await
+        .with_context(|| format!("start imported Profile {imported}"))?;
     let imported_checked = async {
         let (imported_document, imported_head) = core.profile(&imported)?;
         let imported_approvals = Approvals::open(&data_root, &imported)?;
@@ -956,14 +996,21 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
         Ok::<(), anyhow::Error>(())
     }
     .await;
-    let imported_close = imported_session.close().await;
+    let imported_close = imported_session
+        .close()
+        .await
+        .with_context(|| format!("close imported Profile {imported} after storage replay"));
     ensure!(
         imported_close.is_ok(),
-        "imported checks: {imported_checked:?}; Session close: {imported_close:?}"
+        "imported checks: {imported_checked:?}; imported Session close: {imported_close:?}"
     );
     imported_checked?;
+    drop(imported_session);
 
-    let source_session = core.start(&a.id).await?;
+    let source_session = core
+        .start(&a.id)
+        .await
+        .with_context(|| format!("restart source Profile {} for persistence checks", a.id))?;
     let source_checked = async {
         let (source_document, source_head) = core.profile(&a.id)?;
         let source_approvals = Approvals::open(&data_root, &a.id)?;
@@ -1029,12 +1076,16 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
         Ok::<(), anyhow::Error>(())
     }
     .await;
-    let source_close = source_session.close().await;
+    let source_close = source_session
+        .close()
+        .await
+        .with_context(|| format!("close source Profile {} after persistence checks", a.id));
     ensure!(
         source_close.is_ok(),
-        "source checks: {source_checked:?}; Session close: {source_close:?}"
+        "source checks: {source_checked:?}; source Session close: {source_close:?}"
     );
     source_checked?;
+    drop(source_session);
     ensure!(
         data_root.read_profile_file(&a.id, "secrets.vault", 4 * 1024 * 1024)? == source_vault,
         "publication changed the source vault"
