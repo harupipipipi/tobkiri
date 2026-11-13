@@ -49,7 +49,7 @@ jobs:
           python3 -m pip install --disable-pip-version-check --ignore-installed \
             --only-binary=:all: --require-hashes \
             -r "$RUNNER_TEMP/original-setup-resolver-prefix-requirements.txt"
-      - name: Observe the original resolver through the second Profile ID
+      - name: Observe the original resolver through the source Profile lookup
         run: |
           python3 -B tools/original_setup_resolver_prefix_reference.py \
             --original-root "$GITHUB_WORKSPACE/original-setup-resolver-prefix-source" \

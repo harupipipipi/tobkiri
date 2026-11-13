@@ -1,8 +1,8 @@
-"""Observe pinned original Setup from its captured candidate to the Profile lookup.
+"""Observe pinned original Setup through the bundled source Profile lookup.
 
 The CI-only fixture changes disk or environment at the real caller boundary.
 Original Setup, Pack, catalog, and Authority code runs through the second ID
-validation; a trace sentinel stops before evaluating catalog.profiles.get.
+validation and, for the two lookup cases, observes the real catalog result.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import os
 import shutil
 import sys
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from types import FrameType
 from typing import Any
@@ -35,6 +36,8 @@ LOCK = "bundle.lock.json"
 AUTHORITY = Path("authority/v4.sqlite3")
 GUARD = AUTHORITY.with_name(".v4.sqlite3.lifecycle.lock")
 EPOCH_REASON = "original setup resolver prefix fixture"
+MISSING_PROFILE_ID = "missing-fixture-profile"
+LOOKUP_CASES = ("source-profile-present", "source-profile-missing")
 CASES = (
     "packaged-genesis",
     "second-user-data-existing-authority",
@@ -45,6 +48,7 @@ CASES = (
     "second-lock-rebound",
     "second-development-root-missing-lock",
     "second-development-root",
+    *LOOKUP_CASES,
 )
 EXTRA_SOURCES = (
     "core_runtime/authority/v4_store.py",
@@ -57,7 +61,7 @@ EXTRA_SOURCES = (
 
 
 class _SourceProfileBoundary(BaseException):
-    """Stop on the original source Profile lookup line before it runs."""
+    """Stop at the exact original source Profile boundary for this case."""
 
 
 def _digest(payload: bytes) -> str:
@@ -74,7 +78,7 @@ def _source_hashes(runtime: Path) -> dict[str, str]:
     }
 
 
-def _lookup_line(path: Path) -> int:
+def _lookup_lines(path: Path) -> tuple[int, int]:
     tree = ast.parse(path.read_bytes(), filename=str(path))
     resolver = next(
         node
@@ -82,9 +86,9 @@ def _lookup_line(path: Path) -> int:
         if isinstance(node, ast.FunctionDef)
         and node.name == "_resolve_bootstrap_candidate"
     )
-    [line] = [
-        node.lineno
-        for node in resolver.body
+    [index] = [
+        index
+        for index, node in enumerate(resolver.body)
         if isinstance(node, ast.Assign)
         and any(
             isinstance(name, ast.Name) and name.id == "source_profile"
@@ -92,7 +96,10 @@ def _lookup_line(path: Path) -> int:
         )
         and ast.unparse(node.value) == "catalog.profiles.get(profile_id)"
     ]
-    return line
+    guard = resolver.body[index + 1]
+    if not isinstance(guard, ast.If) or ast.unparse(guard.test) != "source_profile is None":
+        raise AssertionError("original Profile lookup guard changed")
+    return resolver.body[index].lineno, guard.lineno
 
 
 def _state(roots: dict[str, Path]) -> dict[str, dict]:
@@ -167,7 +174,7 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     capture_path = runtime / "core_runtime/bootstrap/profile_capture.py"
     if Path(resolver.co_filename).resolve() != capture_path:
         raise AssertionError("resolver was not imported from the staged original")
-    lookup = _lookup_line(capture_path)
+    lookup, lookup_guard = _lookup_lines(capture_path)
     root_get = capture._user_data_root.__code__
     recovery = capture._recover_bootstrap_publication.__code__
     journal_exists = ProfilePublicationJournal.exists.__code__
@@ -219,6 +226,17 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
         roots["second"]
         if case == "second-user-data-existing-authority"
         else roots["first"]
+    )
+    original_id_getter = type(port).bootstrap_profile_id
+
+    def missing_second_id(instance: Any) -> str:
+        value = original_id_getter(instance)
+        return MISSING_PROFILE_ID if phase == "resolver" else value
+
+    missing_id_fixture = (
+        patch.object(type(port), "bootstrap_profile_id", missing_second_id)
+        if case == "source-profile-missing"
+        else nullcontext()
     )
 
     def trace(frame: FrameType, event: str, value: Any) -> Any:
@@ -279,12 +297,34 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
                 or local["additional_pack_ids"] is not captured[1]
             ):
                 raise AssertionError("resolver replaced its captured candidate data")
+            if local["profile_id"] is not facts["profile_ids"][-1]:
+                raise AssertionError("resolver replaced its actual second Profile ID")
             facts.update(
                 bundle_lock_digest=local["bundle_lock_digest"],
                 security_epoch=local["security_epoch"],
                 authority_snapshot_digest=local["snapshot_digest"],
             )
             log.append("before-source-profile-lookup")
+            if case in LOOKUP_CASES:
+                return trace
+            raise _SourceProfileBoundary
+        if event == "line" and code is resolver and frame.f_lineno == lookup_guard:
+            local = frame.f_locals
+            profile = local["source_profile"]
+            if case == "source-profile-missing" and profile is None:
+                facts["source_profile"] = {"type": "NoneType"}
+                log.append("source-profile-missing")
+                return trace  # Allow the original guard and denial factory to run.
+            if case != "source-profile-present" or type(profile) is not dict:
+                raise AssertionError("unexpected original source Profile result")
+            if profile is not captured[0].profiles[local["profile_id"]]:
+                raise AssertionError("original lookup did not retain its source alias")
+            facts["source_profile"] = {
+                "type": "dict",
+                "catalog_alias": True,
+                "definition_digest": canonical_digest(profile),
+            }
+            log.append("source-profile-found")
             raise _SourceProfileBoundary
         if event != "return" or value is None and code is not context_close:
             return trace
@@ -340,22 +380,31 @@ def _observe(case: str, runtime: Path, roots: dict[str, Path]) -> dict:
     _seed(case, roots, AuthorityStore)
     before = _state(roots)
     previous_trace = sys.gettrace()
-    with patch.dict(
-        os.environ,
-        {
-            "TOBKIRI_USER_DATA": str(roots["first"]),
-            "RUMI_USER_DATA": str(roots["first"]),
-            "RUMI_ENVIRONMENT": "production",
-            "RUMI_APP_DIR": "",
-        },
+    with (
+        missing_id_fixture,
+        patch.dict(
+            os.environ,
+            {
+                "TOBKIRI_USER_DATA": str(roots["first"]),
+                "RUMI_USER_DATA": str(roots["first"]),
+                "RUMI_ENVIRONMENT": "production",
+                "RUMI_APP_DIR": "",
+            },
+        ),
     ):
         try:
             sys.settrace(trace)
             capture.prepare_bootstrap_profile_review()
         except _SourceProfileBoundary:
-            outcome = {"outcome": "before-source-profile-lookup"}
+            outcome = {
+                "outcome": "source-profile-found"
+                if case == "source-profile-present"
+                else "before-source-profile-lookup"
+            }
         except Exception as error:
             outcome = {"outcome": "error", "error": error_graph(error, runtime)}
+            if case == "source-profile-missing":
+                outcome["error"]["args"] = list(error.args)
             # This is a runtime resource path, not the Authority/user-data root.
             outcome["error"] = _rename_runtime_path(outcome["error"])
         else:
@@ -462,8 +511,17 @@ def _check(
     elif not (directory or manifest_error or unbound or missing_lock):
         resolver += ["genesis-snapshot"]
     success = not (directory or corrupt or manifest_error or unbound or missing_lock)
+    lookup_missing = case == "source-profile-missing"
+    lookup_present = case == "source-profile-present"
     if success:
         resolver += [*profile_id, "before-source-profile-lookup"]
+    if lookup_present:
+        resolver.append("source-profile-found")
+    if lookup_missing:
+        resolver.append("source-profile-missing")
+    expected_ids = ["defaults"]
+    if success:
+        expected_ids.append(MISSING_PROFILE_ID if lookup_missing else "defaults")
     selected_bundle = DEV_BUNDLE if development else BUNDLE
     selected_roots = [BUNDLE.as_posix()]
     if not (manifest_error or unbound):
@@ -472,7 +530,7 @@ def _check(
         events != {"capture": capture, "resolver": resolver}
         or facts["recovery_discard_superseded"] != [True, False]
         or facts["publication_journal_exists"] != [False, False]
-        or facts["profile_ids"] != ["defaults"] * (2 if success else 1)
+        or facts["profile_ids"] != expected_ids
         or facts["user_data_roots"]
         != ["first"] * 3 + ["second" if existing else "first"]
         or facts["bundle_roots"] != selected_roots
@@ -548,8 +606,7 @@ def _check(
             }
         )
         if (
-            outcome["outcome"] != "before-source-profile-lookup"
-            or facts["bundle_lock_digest"] != final_digest
+            facts["bundle_lock_digest"] != final_digest
             or facts["security_epoch"] != epoch
             or facts["authority_snapshot_digest"] != snapshot
             or existing
@@ -563,6 +620,28 @@ def _check(
                 }
             )
         ):
+            raise AssertionError((case, outcome, facts))
+        if lookup_missing:
+            message = "bundled setup Profile is missing"
+            if facts["source_profile"] != {"type": "NoneType"} or outcome != {
+                "outcome": "error",
+                "error": {
+                    "id": 0,
+                    "type": DENIED_CLASS,
+                    "message": message,
+                    "suppressed": False,
+                    "cause": None,
+                    "context": None,
+                    "args": [message],
+                },
+            }:
+                raise AssertionError((case, outcome, facts))
+        elif lookup_present:
+            if outcome != {"outcome": "source-profile-found"} or not facts[
+                "source_profile"
+            ]["catalog_alias"]:
+                raise AssertionError((case, outcome, facts))
+        elif outcome != {"outcome": "before-source-profile-lookup"}:
             raise AssertionError((case, outcome, facts))
         return
     expected_type, message, cause = {
@@ -652,7 +731,8 @@ def prepare(original: Path, output: Path) -> None:
             "qualification": False,
             "production_enabled": False,
             "scope": "fresh bundled candidate and original resolver prefix through "
-            "second canonical Profile ID; stop before source Profile lookup",
+            "second canonical Profile ID; two cases observe the actual source alias "
+            "or its denial before requested-edge binding",
         },
     )
 
