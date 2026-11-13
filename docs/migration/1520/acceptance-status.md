@@ -645,7 +645,7 @@ step, so it is not the evidence; the focused workflows
 `issue-1520-acceptance-9-11-12.yml` and `issue-1520-acceptance-13-16.yml` are.
 Open points: 11 lacks the 「未確認の接続」 UI label; 12 uses synthetic WIT; 13
 has R2.10 gaps (no 「持ち主のいないデータ」 marking in Core removal, `policy-view`
-over-rejection); 14 needs guest/runtime replay and existing-workspace migration;
+over-rejection); 14 needs concurrent first-write approval and existing-workspace migration;
 15 needs physical Proc/PTY; 16 needs the populated vault and other storage tiers
 covered in the same publication replay.
 
@@ -668,7 +668,12 @@ listed below.
 passed four actual Wasm chat tests, one local SSE provider replay and two
 Core UI port checks. The same physical input produced different outputs after a
 reviewed Flow edit while retaining conversation history. The local API is a
-test fixture; this run does not establish native WebView or llama.cpp 1B parity.
+test fixture. In a separate macOS CI run, llama.cpp served actual Gemma 3 1B
+on an authenticated loopback API. The verified Wasm Flow streamed 37 text
+deltas, saved and reloaded the conversation, and cancelled a second generation.
+The test verified four completed Secret operations and closed the session.
+The Launcher Setup, approval window, and settings through chat still require
+an end-to-end GUI run. [Actual model run 43382542071](https://github.com/harupipipipi/tobkiri/actions/runs/43382542071)
 
 The R8.5 import fix passed 20 tests and strict Clippy. The actual Core tests
 checked that narrowing a published ceiling also bounds each Pack's fresh
@@ -799,8 +804,11 @@ approval and rejects invalid original policies and mismatched pins.
     [native quota tests](../../../crates/tobkiri-store/tests/native_quota.rs).
     [run 42941462516](https://github.com/harupipipipi/tobkiri/actions/runs/42941462516): store `public_write_approval_is_once_per_writer_and_store_and_reads_do_not_prompt`
     and `three_tiers_are_isolated_per_profile_and_public_approval_is_per_writer_store_pair`
-    passed. The store-layer replay writes real key/value data in all three
-    tiers. Wasm guest replay and migration of existing Profile workspaces remain.
+    passed. The actual Wasm replay verifies all three tiers across two Profiles,
+    sequential approval for two writer Packs and two public stores, denied access,
+    and session closure. Concurrent first-write approval and migration of
+    existing Profile workspaces remain.
+    [Wasm replay 43381937895](https://github.com/harupipipipi/tobkiri/actions/runs/43381937895)
 
 15. [ ] **Native Packs and cross-Profile storage require explicit dangerous permission.**
     [Gate permissions](../../../crates/tobkiri-gate/src/permissions.rs),

@@ -2692,6 +2692,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   30秒以内にストリーム進捗を受信できず終了した。`9b1e4aa58` は同じ認証付きAPIの直接SSE応答時間を
   先に計測し、サーバー待機に戻ってから既存のHarnessテストを実行する。
   [再実行CI 43380059173](https://github.com/harupipipipi/tobkiri/actions/runs/43380059173)
+- `869ececce` の[実モデルCI 43382542071](https://github.com/harupipipipi/tobkiri/actions/runs/43382542071)
+  は成功。macOS runnerの認証付きloopback API、Gemma 3 1B、実Wasm Flowで37件の
+  テキスト差分、会話保存と次のターンへの読み戻し、生成のキャンセル、Secretの
+  dispatch 4件と完了4件、Session終了を確認した。承認と入力にはCIのHostを使った。
   製品GUIのSetup、承認、モデル設定から会話までの実機検証が残る。
 
 ## 036: 同時に発生したpublicストアの初回承認
@@ -2702,12 +2706,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実データを書き込んで組ごとの記録を検証するが、同時の初回要求は扱わない。
 - Sessionごとに別のGateが作られる。対処時は、同じ物理Profileを開くSession間で
   調停し、待機中の取り消しやepoch変更を扱う必要がある。先行要求の承認記録後も、
-  後続要求は自身の引数・権限・監査を通常どおり検証する。Wasmからの順次の三層
-  実行と既存ワークスペースの移行も引き続き別途確認する。
+  後続要求は自身の引数・権限・監査を通常どおり検証する。既存ワークスペースの
+  移行も引き続き確認する。
 - `fdbfa5bd2` で同じデータrootの二つのProfileに検証済みWasm Packを配置する試験を追加した。
   所有Packのprivateとread-onlyへの実書き込み、外部Packのアクセス拒否、
   二つの書き手と二つのpublicストアへの順次承認、Profile間の値と承認の分離を確認する。
-  [CI 43381937895](https://github.com/harupipipipi/tobkiri/actions/runs/43381937895)で検証中。
+  同じ組での再書き込みは新たな承認を求めず、各Profileの実セッションが終了した。
+  [CI 43381937895](https://github.com/harupipipipi/tobkiri/actions/runs/43381937895)で
+  このWasm試験、従来のStore・Core試験、strict Clippyが成功。
 
 ## 037: SSE受信済みの出力を次のHTTPチャンクまで保持する処理
 
@@ -2718,17 +2724,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   読む。バッチ上限、EOF、エラー、キャンセル、Gateを通る通信は既存契約に従う。
   最初のSSE出力を送ったあと、実Flowが受け取るまで後続チャンクを保留する回帰試験を
   追加した。本文差分と使用量が同時に来て上限に達する場合は、使用量を次のバッチに繰り越す。
-  [回帰CI 43381617628](https://github.com/harupipipipi/tobkiri/actions/runs/43381617628)と
-  [実モデルCI 43381617774](https://github.com/harupipipipi/tobkiri/actions/runs/43381617774)で検証中。
+  [回帰CI 43381617628](https://github.com/harupipipipi/tobkiri/actions/runs/43381617628)は
+  chat 4件・network 1件・UI 2件とCLIを通過した。
 - [CI 43380059173](https://github.com/harupipipipi/tobkiri/actions/runs/43380059173)は、
   同じ認証付きサーバーへの直接SSE要求で初回文字列4.05秒、8トークンの終了12.96秒を観測した。
   続くHarnessの要求は生成ステップで30秒間出力がなく、テストが実行を取り消した。
   直接計測とHarnessは別のプロンプトを使うため、応答完了時間の比較には使わない。
 - 修正後の回帰CIでは、後続チャンクの送信前に実Flowが先頭を受信した。
-  実Gemmaは30秒間に17件のストリームイベントを発行し、全応答の完了前にテストが取り消した。
+  [実モデルCI 43381617774](https://github.com/harupipipipi/tobkiri/actions/runs/43381617774)
+  は30秒間に17件のストリームイベントを観測し、全応答の完了前にテストが取り消した。
   `869ececce` ではCIの観測期限を最初の文字列30秒、応答全体240秒に分けた。
   Coreの実行上限と、後続ターンでのキャンセル・保存・監査の確認は従来どおり。
   [再検証CI 43382542071](https://github.com/harupipipipi/tobkiri/actions/runs/43382542071)
+  が成功した。実行範囲と未検証のGUI経路は035に記載。
 
 ## 038: App schemaの処理段階ごとの燃料計測
 
@@ -2751,6 +2759,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `pack_manifest_v4` 100,264,930。再帰的な参照と計測費用も評価区間に含まれる。
   次の候補はこの区間で選ぶ。製品採用には計測を含まないcold schema-storeと全カタログの完走が必要。
   [計測JSONの成果物](https://github.com/harupipipipi/tobkiri/actions/runs/43382433916/artifacts/14017416950)
+- 同じソースの無計測の[全体比較CI 43382424984](https://github.com/harupipipipi/tobkiri/actions/runs/43382424984)
+  はLinuxとmacOSで埋め込み原本の照合まで成功し、cold schema-storeの本体で燃料が尽きた。
+  [一般schema比較CI 43382424888](https://github.com/harupipipipi/tobkiri/actions/runs/43382424888)
+  もcoldとfullの両方が元の上限で停止した。
+- 原本由来の参照メソッドは頻出だが、属性名のPyStringを広く再利用する案は保留。
+  Astra highは、独自getterが渡された名前の同一性と保持を観測でき、名前の事前生成で
+  割り当て失敗の順序も変わり得ると指摘した。次は既存の実イテレーターを保ち、
+  組み込みの2要素tuple/listの項目取得で汎用Python dispatchを減らせるか確認する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
