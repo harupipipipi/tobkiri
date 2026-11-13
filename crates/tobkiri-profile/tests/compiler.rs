@@ -1799,7 +1799,8 @@ fn profile_without_default_loop_bounds_fails_parse_and_compile() {
     let good = serde_json::to_vec(&profile(&packs)).unwrap();
     parse_profile(&good).unwrap();
 
-    let mutations: [(&str, fn(&mut LoopLimits)); 4] = [
+    type LoopLimitMutation = (&'static str, fn(&mut LoopLimits));
+    let mutations: [LoopLimitMutation; 4] = [
         ("max_iterations", |l| l.max_iterations = 0),
         ("max_wall_ms", |l| l.max_wall_ms = 0),
         ("max_cost_units", |l| l.max_cost_units = 0),

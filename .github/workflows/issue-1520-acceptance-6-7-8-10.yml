@@ -8,7 +8,7 @@ name: Issue 1520 acceptance 6-7-8-10 evidence
 # Profile compiler, Flow engine and Gate; none is a compiler-only fixture.
 on:
   push:
-    branches: [claude/issue-1520-accept-6-7-8-10]
+    branches: [codex/issue-1520-native-shared-state]
     paths:
       - '.github/workflows/issue-1520-acceptance-6-7-8-10.yml'
       - 'Cargo.lock'
