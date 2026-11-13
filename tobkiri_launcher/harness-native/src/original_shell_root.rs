@@ -131,10 +131,9 @@ impl CatalogIo {
                     let expected = self
                         .shell_root_identity
                         .ok_or_else(OriginalAuthorityError::unavailable)?;
-                    let root = open_shell_directory(op, &parent, name, expected)?;
-                    let result = optional_stat_at(op, &root, &leaf_name, || {
-                        parent_path.join(name).join(leaf)
-                    });
+                    let root_path = parent_path.join(name);
+                    let root = open_shell_directory(op, &parent, &root_path, name, expected)?;
+                    let result = optional_stat_at(op, &root, &leaf_name, || root_path.join(leaf));
                     close_parent(root)?;
                     let symlink = result?
                         .as_ref()
@@ -226,23 +225,36 @@ fn close_parent(parent: TrackedFile) -> Result<()> {
 fn open_shell_directory<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
+    path: &Path,
     name: &str,
     expected: Identity,
 ) -> Result<TrackedFile> {
     let name = checked_name(name)?;
+    // The first leaf predicate needs directory search access. Keep the
+    // descriptor relative and avoid requiring permission to enumerate it.
+    #[cfg(target_os = "macos")]
+    let access = libc::O_SEARCH;
+    #[cfg(target_os = "linux")]
+    let access = libc::O_PATH;
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    let access = libc::O_RDONLY;
     let descriptor = loop {
         op.check(OriginalAuthorityStage::Source)?;
         let descriptor = unsafe {
             libc::openat(
                 parent.as_raw_fd(),
                 name.as_ptr(),
-                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                access | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
             )
         };
         if descriptor >= 0 {
             break descriptor;
         }
-        if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+        let error = std::io::Error::last_os_error();
+        if matches!(error.raw_os_error(), Some(libc::EACCES | libc::EPERM)) {
+            return Err(raw_io(error, path.to_str()));
+        }
+        if error.kind() != std::io::ErrorKind::Interrupted {
             return Err(OriginalAuthorityError::unavailable());
         }
     };

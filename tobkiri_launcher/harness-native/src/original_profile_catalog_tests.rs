@@ -318,6 +318,8 @@ async fn pack_resolver_checks_original_root_and_selected_shell_path_in_order() {
         "leaf-symlink",
         "leaf-missing",
         "nested-variant",
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        "search-only-root",
         "root-replaced-before-leaf",
         "root-symlink-after-leaf",
     ] {
@@ -551,10 +553,16 @@ async fn pack_resolver_checks_original_root_and_selected_shell_path_in_order() {
                 // Mutating a source document after the loader returned does not
                 // change the authorized occurrence or trigger another read.
                 fs::write(bundle.join("shell.json"), br#"{}"#).unwrap();
-                assert_eq!(
-                    inspect(io, "is-symlink", selected.clone(), json!([])).unwrap()["value"],
-                    case == "leaf-symlink",
-                );
+                let permissions = fs::metadata(&artifact).unwrap().permissions();
+                if case == "search-only-root" {
+                    fs::set_permissions(&artifact, fs::Permissions::from_mode(0o111)).unwrap();
+                    assert!(fs::symlink_metadata(&leaf).is_ok());
+                }
+                let result = inspect(io, "is-symlink", selected.clone(), json!([]));
+                if case == "search-only-root" {
+                    fs::set_permissions(&artifact, permissions).unwrap();
+                }
+                assert_eq!(result.unwrap()["value"], case == "leaf-symlink");
                 if case == "leaf-symlink" {
                     assert!(inspect(io, "is-symlink", selected_parent, json!([])).is_err());
                 } else {
@@ -571,7 +579,7 @@ async fn pack_resolver_checks_original_root_and_selected_shell_path_in_order() {
             }
             assert_eq!(
                 io.pack_resolve_shell_leaf_completed(),
-                matches!(case, "present" | "leaf-missing")
+                matches!(case, "present" | "leaf-missing" | "search-only-root")
             );
             assert!(inspect(io, "is-symlink", selected, json!([])).is_err());
         });
