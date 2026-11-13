@@ -2643,7 +2643,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   では両方のWasmがビルドされ、未改変helloは通過。protected-pathsは最初の警告を返す経路で
   `provider reported unavailable`。テストHostには予算付き通知の受け口がなかったため、
   `afa85d72b` でテストだけに許可済み `notification` の受け口を追加し、実警告の文面と件数も確認する。
-  [CI 43377714365](https://github.com/harupipipipi/tobkiri/actions/runs/43377714365)で検証中。
+  [CI 43377714365](https://github.com/harupipipipi/tobkiri/actions/runs/43377714365)で2件成功。
+  helloの実ツール結果、protected-pathsの5判定と3通知を確認した。
 
 ## 032: PR #1521の監査再送とLauncherの依存ロック
 

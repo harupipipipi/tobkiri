@@ -638,8 +638,8 @@ the three oversized cases in the earlier five-component replay.
 
 ## Acceptance checklist
 
-Status after the focused CI replays (2026-11-11): items 9, 11, 12 and 13 are
-checked (4 of 20); the other 16 remain unchecked. The aggregate
+Status after the focused CI replays (2026-11-13): items 3, 9, 11, 12, 13 and 18
+are checked (6 of 20). The aggregate
 `issue-1520-rust.yml` currently fails earlier at an unrelated Python fixture
 step, so it is not the evidence; the focused workflows
 `issue-1520-acceptance-9-11-12.yml` and `issue-1520-acceptance-13-16.yml` are.
@@ -682,11 +682,11 @@ test fixture; this run does not establish native WebView or llama.cpp 1B parity.
    reject unknown Core versions/imports. Record a current exact-ABI replay;
    existence of a WIT declaration does not prove its physical backend works.
 
-3. [ ] **A non-Defaults Pack set can chat.**
-   [Chat E2E](../../../crates/tobkiri-e2e/tests/chat.rs) includes
-   `entirely_different_pack_set_chats_and_persists_after_core_restart` using Echo
-   Packs. Rebuild/admit current components and execute the current Core path;
-   historical component receipts do not certify later runtime edits.
+3. [x] **A non-Defaults Pack set can chat.**
+   The macOS run rebuilt and admitted the independent Echo Packs. The real
+   input, Flow, provider and store produced two turns, and the second turn
+   loaded the first after reopening Core. [Chat E2E](../../../crates/tobkiri-e2e/tests/chat.rs)
+   · [CI 43375008696](https://github.com/harupipipipi/tobkiri/actions/runs/43375008696)
 
 4. [ ] **CLI alone creates, starts, publishes, and imports Profiles.**
    [Commands](../../../crates/tobkiri-cli/src/commands.rs),
@@ -829,18 +829,19 @@ test fixture; this run does not establish native WebView or llama.cpp 1B parity.
     ordinary Send, persistence, and truthful Stop/Quit remain unaccepted; source
     checks, Node tests, and Core stream tests cannot substitute for that run.
 
-18. [ ] **At least one unchanged pi extension runs through an adapter Pack.**
-    [Pi E2E](../../../crates/tobkiri-e2e/tests/pi.rs) has two explicitly ignored
-    tests requiring separately built components; [compatibility scope](../../../packs/local.pi-adapter/COMPAT.md)
-    identifies unchanged upstream sources. Rebuild and explicitly execute the
-    wrapper/adapter/Gate path. Guard decisions alone do not establish protected
-    file effects or complete Harness tool-loop integration.
+18. [x] **At least one unchanged pi extension runs through an adapter Pack.**
+    CI built both wrappers from pinned, unchanged sources and ran both
+    through the actual adapter and Gate. The hello tool returned its greeting.
+    Protected-paths produced five expected decisions and three gated warnings.
+    The latter replay covers the guard decision and warning effects.
+    [Pi E2E](../../../crates/tobkiri-e2e/tests/pi.rs)
+    · [CI 43377714365](https://github.com/harupipipipi/tobkiri/actions/runs/43377714365)
 
 19. [ ] **Python runtime and PackVM are removed; distributions contain no Python.**
     This is **blocked**, not closeable by changing inventory labels.
     [Legacy runtime](../../../tobkiri_runtime/core_runtime),
     [Launcher Python support](../../../tobkiri_launcher/src-tauri/src/python_env.rs),
-    and legacy mechanisms remain. All 836 open units need replacement parity or
+    and legacy mechanisms remain. All 839 open rows need replacement parity or
     authorized retirement; then run the [deletion gate](../../../migration/inventory.py)
     and inspect actual distribution contents. Development-only compilers do not
     justify shipping a Python product runtime.
