@@ -3154,6 +3154,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   格納先を借りる形に直した。
   [物理IO・Clippyの再検証 43482610397](https://github.com/harupipipipi/tobkiri/actions/runs/43482610397)
   も両OSで物理IO 7件とstrict Clippyを通過した。全カタログを通した製品Setupは未確認。
+- `ad560de80` は元のmacOS検証が要求する `Contents/Info.plist` を固定順で
+  再検査し、保持済みShell内のFDから読む。内容のplist解析とbundle ID比較は元の
+  Pack関数が行う。entrypointヘッダー専用の新しいFDは前後のstat、先頭64バイト、
+  PEの場合は実ヘッダーで指定された一つの位置へのseekと24バイトだけを許可する。
+  検証関数が対象のShellを実際に返し、RustでヘッダーFDを閉じた後にのみ、次の
+  Pack構成の入口に到達する。元のSetupが指定するコード署名フラグはfalse。
+  `1962dcca4` でplist・entrypointが同じルート再取得を使い、Mach-O・ELF・PEの
+  元関数をfixtureで実行する。既存の予算付きreadを利用し、plistの転送は4 MiBの
+  既存フレームとbase64の上限内に収めた。
+  [初回Wasm CI 43486476877](https://github.com/harupipipipi/tobkiri/actions/runs/43486476877)
+  でfixtureの `plistlib` 未設定を検出し、`1aef1dcb7` で修正した。
+  [実Wasm 43486950528](https://github.com/harupipipipi/tobkiri/actions/runs/43486950528)と
+  [物理IO・Clippy 43486940947](https://github.com/harupipipipi/tobkiri/actions/runs/43486940947)
+  で再検証する。カタログ全体から同じStoreでShellを通る確認と製品採用は残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
