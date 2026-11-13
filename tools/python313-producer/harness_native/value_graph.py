@@ -171,6 +171,9 @@ class Registry:
         self._resolver_authority: tuple[str, str, int] | None = None
         self._bootstrap_confirmation: int | None = None
         self._bootstrap_preview_catalog: int | None = None
+        self._bootstrap_activation_started = False
+        self._bootstrap_activation_body: dict[str, Any] | None = None
+        self._bootstrap_activation_listing: Any = None
         self._resolver_dynamic_stage = "awaiting-static"
         self._next = 1
         self._retired = False
@@ -334,8 +337,10 @@ class Registry:
                 self._resolver_authority = None
             elif number == self._bootstrap_confirmation:
                 self._bootstrap_confirmation = None
+                self._bootstrap_activation_listing = None
             elif number == self._bootstrap_preview_catalog:
                 self._bootstrap_preview_catalog = None
+                self._bootstrap_activation_listing = None
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -345,6 +350,7 @@ class Registry:
         self._permissions.clear()
         self._denied.clear()
         self._bootstrap_identity.clear()
+        self._bootstrap_activation_body = None
         self._clear_resolver_inputs()
 
     def _clear_resolver_inputs(self) -> None:
@@ -360,6 +366,7 @@ class Registry:
         self._resolver_authority = None
         self._bootstrap_confirmation = None
         self._bootstrap_preview_catalog = None
+        self._bootstrap_activation_listing = None
         self._resolver_dynamic_stage = "awaiting-static"
 
     def _begin_resolver_getter(self) -> None:
@@ -611,6 +618,25 @@ class Registry:
         self._resolver_dynamic_stage = "bootstrap-listing-started"
         return preview, document
 
+    def _begin_activation_preflight(self) -> None:
+        self._live()
+        if self._bootstrap_activation_started or self._resolver_stage != "awaiting-catalog":
+            raise InvalidReference("bootstrap activation preflight is outside its original call")
+        self._bootstrap_activation_started = True
+
+    def _take_activation_match(self) -> tuple[dict[str, Any], Any]:
+        self._live()
+        if (self._resolver_dynamic_stage != "bootstrap-listing-returned"
+                or self._bootstrap_activation_body is None
+                or self._bootstrap_activation_listing is None):
+            raise InvalidReference("bootstrap activation has no completed listing")
+        body = self._bootstrap_activation_body
+        listing = self._bootstrap_activation_listing
+        self._bootstrap_activation_body = None
+        self._bootstrap_activation_listing = None
+        self._resolver_dynamic_stage = "bootstrap-activation-match-started"
+        return body, listing
+
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
         # Python len/iteration preserve lone surrogate codepoints. Never encode,
@@ -661,6 +687,7 @@ class Registry:
             "bootstrap-inactive-source-raised", "bootstrap-inactive-equality-raised",
             "bootstrap-confirmation-raised",
             "bootstrap-preview-raised", "bootstrap-listing-raised",
+            "bootstrap-activation-preflight-raised", "bootstrap-activation-match-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

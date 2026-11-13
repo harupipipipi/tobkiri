@@ -540,7 +540,8 @@ fn component(
         (export "denied" (func $denied)) (export "load-catalog" (func $bundle))
         (export "resolve-profile" (func $bundle))
         (export "bootstrap-confirmation" (func $bundle))
-        (export "catalog-with-profiles" (func $bundle)) (export "setup-listing" (func $bundle)))
+        (export "catalog-with-profiles" (func $bundle)) (export "setup-listing" (func $bundle))
+        (export "setup-activation-decision" (func $bundle)))
       (instance $transport
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "describe-value" (func $describe)) (export "import-values" (func $import)))

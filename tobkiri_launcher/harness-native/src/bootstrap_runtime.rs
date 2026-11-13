@@ -50,10 +50,13 @@ const BOOTSTRAP_CONFIRMATION: u8 = 20;
 const BOOTSTRAP_PREVIEW: u8 = 21;
 const BOOTSTRAP_LISTING: u8 = 22;
 const BOOTSTRAP_INACTIVE_EQUALITY: u8 = 23;
+const BOOTSTRAP_ACTIVATION_PREFLIGHT: u8 = 24;
+const BOOTSTRAP_ACTIVATION_MATCH: u8 = 25;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
 const BOOTSTRAP_PREVIEW_SLOT: usize = 10;
 const BOOTSTRAP_LISTING_SLOT: usize = 11;
+const BOOTSTRAP_ACTIVATION_DECISION_SLOT: usize = 12;
 const SOURCE_UNUSED: u8 = 0;
 const SOURCE_ENTERED: u8 = 1;
 const SOURCE_COMPLETED: u8 = 2;
@@ -61,8 +64,11 @@ const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
 
+#[path = "bootstrap_activation_decision.rs"]
+mod activation_decision;
 #[path = "bootstrap_denied.rs"]
 mod denied;
+pub use activation_decision::BootstrapActivationDecision;
 pub use denied::{
     BootstrapDenied, BootstrapDeniedFailure, BootstrapDeniedRaise, BootstrapDeniedStage,
 };
@@ -185,6 +191,8 @@ impl CiRetiredCall {
             BOOTSTRAP_CONFIRMATION => "bootstrap-confirmation",
             BOOTSTRAP_PREVIEW => "bootstrap-preview",
             BOOTSTRAP_LISTING => "bootstrap-listing",
+            BOOTSTRAP_ACTIVATION_PREFLIGHT => "bootstrap-activation-preflight",
+            BOOTSTRAP_ACTIVATION_MATCH => "bootstrap-activation-match",
             _ => "unknown",
         }
     }
@@ -805,6 +813,10 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 export: NativeDataExport::new(Some(RUNTIME), "setup-listing"),
                 result: Some(contract(NativeDataSuccessType::String)),
             },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "setup-activation-decision"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
         ];
         work.get().init_trace.phase(1);
         let program = match store.prepare_data_program(component, &bindings).await {
@@ -1061,7 +1073,40 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        self.setup_review_inner(options, false, false).await
+        match self.setup_review_inner(options, false, false, None).await? {
+            Ok(SetupOutput::Listing(listing)) => Ok(Ok(listing)),
+            Ok(SetupOutput::Decision(_)) => bail!("unexpected Setup decision"),
+            Err(error) => Ok(Err(error)),
+        }
+    }
+
+    /// Run both original activation decision calls around a fresh Setup review.
+    /// The result is DATA. A Host must still establish actual approval and
+    /// revalidate the candidate under the original publication locks.
+    pub async fn setup_activation_decision(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+        request: &[u8],
+    ) -> Result<std::result::Result<BootstrapActivationDecision, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
+        if self.work.get().phase.load(Ordering::Acquire) != READY || request.len() > MAX_BYTES {
+            bail!("native bootstrap activation input is unavailable or exceeds the envelope");
+        }
+        self.work.get().source.check_live()?;
+        let body = CoreValue::parse_guest(request, &self.input_budget)?;
+        if body.object().is_none() {
+            bail!("bootstrap activation body must be a mapping");
+        }
+        match self
+            .setup_review_inner(options, false, false, Some(body))
+            .await?
+        {
+            Ok(SetupOutput::Decision(decision)) => Ok(Ok(decision)),
+            Ok(SetupOutput::Listing(_)) => bail!("unexpected Setup listing"),
+            Err(error) => Ok(Err(error)),
+        }
     }
 
     /// Historical same-guard identity boundary only; not the product candidate.
@@ -1073,7 +1118,11 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        self.setup_review_inner(options, true, false).await
+        match self.setup_review_inner(options, true, false, None).await? {
+            Ok(SetupOutput::Listing(listing)) => Ok(Ok(listing)),
+            Ok(SetupOutput::Decision(_)) => bail!("unexpected Setup decision"),
+            Err(error) => Ok(Err(error)),
+        }
     }
 
     /// Historical constructor-entry catalog proof, before registry adoption.
@@ -1085,7 +1134,11 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        self.setup_review_inner(options, false, true).await
+        match self.setup_review_inner(options, false, true, None).await? {
+            Ok(SetupOutput::Listing(listing)) => Ok(Ok(listing)),
+            Ok(SetupOutput::Decision(_)) => bail!("unexpected Setup decision"),
+            Err(error) => Ok(Err(error)),
+        }
     }
 
     async fn setup_review_inner(
@@ -1093,7 +1146,8 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         options: &crate::BootstrapReviewOptions,
         identity_prefix: bool,
         catalog_prefix: bool,
-    ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
+        body: Option<CoreValue>,
+    ) -> Result<std::result::Result<SetupOutput, crate::BootstrapReviewFailure>>
     where
         S: crate::BootstrapReviewOwner,
     {
@@ -1156,8 +1210,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 call_pending,
                 defer_pending_drop: true,
             };
-            match review_continuation::run(review.as_mut().expect("admitted review"), &mut pack)
-                .await
+            match run_setup_review(review.as_mut().expect("admitted review"), &mut pack, body).await
             {
                 Err(error) => Err(pack.retire_failure(error).await),
                 outcome => outcome,
@@ -1235,6 +1288,49 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     }
 }
 
+enum SetupOutput {
+    Listing(CoreBuffer),
+    Decision(BootstrapActivationDecision),
+}
+
+async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut crate::bootstrap_review::Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    body: Option<CoreValue>,
+) -> Result<std::result::Result<SetupOutput, crate::BootstrapReviewFailure>> {
+    use activation_decision::Decision;
+    let decide = body.is_some();
+    if let Some(body) = body {
+        match activation_decision::run(pack, Some(&body), None).await? {
+            Ok(Decision::Continue) => {}
+            Ok(Decision::Rejected(response)) => {
+                return Ok(Ok(SetupOutput::Decision(
+                    BootstrapActivationDecision::Rejected(response),
+                )));
+            }
+            Ok(Decision::Matched(_)) => bail!("activation preflight returned a match"),
+            Err(error) => return Ok(Err(error)),
+        }
+    }
+    let listing = match review_continuation::run(review, pack).await? {
+        Ok(listing) => listing,
+        Err(error) => return Ok(Err(error)),
+    };
+    if !decide {
+        return Ok(Ok(SetupOutput::Listing(listing)));
+    }
+    match activation_decision::run(pack, None, Some(&listing)).await? {
+        Ok(Decision::Continue) => bail!("activation match requested another listing"),
+        Ok(Decision::Rejected(response)) => Ok(Ok(SetupOutput::Decision(
+            BootstrapActivationDecision::Rejected(response),
+        ))),
+        Ok(Decision::Matched(confirmation)) => Ok(Ok(SetupOutput::Decision(
+            BootstrapActivationDecision::Matched(confirmation),
+        ))),
+        Err(error) => Ok(Err(error)),
+    }
+}
+
 impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
     async fn string_call_in_phase(
         &mut self,
@@ -1287,12 +1383,19 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         }
         if matches!(
             slot,
-            BOOTSTRAP_CONFIRMATION_SLOT | BOOTSTRAP_PREVIEW_SLOT | BOOTSTRAP_LISTING_SLOT
+            BOOTSTRAP_CONFIRMATION_SLOT
+                | BOOTSTRAP_PREVIEW_SLOT
+                | BOOTSTRAP_LISTING_SLOT
+                | BOOTSTRAP_ACTIVATION_DECISION_SLOT
         ) && !matches!(
             (slot, phase),
             (BOOTSTRAP_CONFIRMATION_SLOT, BOOTSTRAP_CONFIRMATION)
                 | (BOOTSTRAP_PREVIEW_SLOT, BOOTSTRAP_PREVIEW)
                 | (BOOTSTRAP_LISTING_SLOT, BOOTSTRAP_LISTING)
+                | (
+                    BOOTSTRAP_ACTIVATION_DECISION_SLOT,
+                    BOOTSTRAP_ACTIVATION_PREFLIGHT | BOOTSTRAP_ACTIVATION_MATCH
+                )
         ) {
             bail!("bootstrap presentation is outside the fixed Review reachpoint");
         }

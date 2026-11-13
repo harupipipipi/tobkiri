@@ -236,6 +236,9 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         let slot = match origin {
             "bootstrap-preview" => BOOTSTRAP_PREVIEW_SLOT,
             "bootstrap-listing" => BOOTSTRAP_LISTING_SLOT,
+            "bootstrap-activation-preflight" | "bootstrap-activation-match" => {
+                BOOTSTRAP_ACTIVATION_DECISION_SLOT
+            }
             _ => 2,
         };
         match self.fixed_call(slot, input, origin).await? {
@@ -293,6 +296,10 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (BOOTSTRAP_CONFIRMATION_SLOT, "bootstrap-confirmation")
                 | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-preview")
                 | (BOOTSTRAP_LISTING_SLOT, "bootstrap-listing")
+                | (
+                    BOOTSTRAP_ACTIVATION_DECISION_SLOT,
+                    "bootstrap-activation-preflight" | "bootstrap-activation-match"
+                )
                 | (RESOLVE_PROFILE_SLOT, "resolver-profile")
         ) {
             bail!("fixed original caller is unavailable");
@@ -317,6 +324,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "bootstrap-confirmation") => BOOTSTRAP_CONFIRMATION,
             (REVIEW, "bootstrap-preview") => BOOTSTRAP_PREVIEW,
             (REVIEW, "bootstrap-listing") => BOOTSTRAP_LISTING,
+            (REVIEW, "bootstrap-activation-preflight") => BOOTSTRAP_ACTIVATION_PREFLIGHT,
+            (REVIEW, "bootstrap-activation-match") => BOOTSTRAP_ACTIVATION_MATCH,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -386,6 +395,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | BOOTSTRAP_CONFIRMATION
                 | BOOTSTRAP_PREVIEW
                 | BOOTSTRAP_LISTING
+                | BOOTSTRAP_ACTIVATION_PREFLIGHT
+                | BOOTSTRAP_ACTIVATION_MATCH
         ) && pending.result.is_some()
         {
             let pending = self.identity_pending.take().expect("admitted edge call");
@@ -729,6 +740,16 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             )
             | (Some("bootstrap-preview-raised"), "bootstrap-preview", true)
             | (Some("bootstrap-listing-raised"), "bootstrap-listing", true)
+            | (
+                Some("bootstrap-activation-preflight-raised"),
+                "bootstrap-activation-preflight",
+                true
+            )
+            | (
+                Some("bootstrap-activation-match-raised"),
+                "bootstrap-activation-match",
+                true
+            )
     )
 }
 

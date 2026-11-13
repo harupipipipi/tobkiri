@@ -45,6 +45,28 @@ impl BootstrapInputOwner for SelectedRuntime {
     }
 }
 
+impl crate::OriginalAuthorityOwner for SelectedRuntime {
+    fn with_original_user_data<R>(
+        &self,
+        _operation: impl FnOnce(&std::path::Path) -> R,
+    ) -> Result<R, crate::OriginalAuthorityError> {
+        Err(crate::OriginalAuthorityError::unavailable())
+    }
+    fn check_original_owner(&self) -> Result<(), crate::OriginalAuthorityError> {
+        self.check_live()
+            .map_err(|_| crate::OriginalAuthorityError::unavailable())
+    }
+}
+
+impl crate::BootstrapReviewOwner for SelectedRuntime {
+    fn with_original_review_user_data<R>(
+        &self,
+        _operation: impl FnOnce(&std::path::Path) -> R,
+    ) -> Result<R, crate::OriginalAuthorityError> {
+        panic!("activation preflight touched the original review user-data root")
+    }
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn actual_original_component_initializes_and_returns_original_profile_id() -> Result<()> {
     ensure!(
@@ -391,6 +413,33 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
             && fuel_remaining < 2_000_000_000
             && elapsed < tobkiri_gate::NATIVE_SETUP_WALL,
         "original shared execution limits were not observed"
+    );
+    let decision = runtime.setup_activation_decision(
+        &crate::BootstrapReviewOptions::default(),
+        br#"{"setup_api_version":"io.tobkiri.setup-state.v4","operation_id":"defaults.activate","confirmed":1,"confirmation":{}}"#,
+    ).await?;
+    let Ok(BootstrapActivationDecision::Rejected(response)) = decision else {
+        bail!("original preflight did not reject a non-boolean confirmation flag");
+    };
+    let response = CoreValue::parse_guest(response.as_bytes(), &budget)?;
+    ensure!(
+        response
+            .get_key("state")
+            .as_ref()
+            .and_then(CoreValue::as_str)
+            == Some("confirmation_required")
+    );
+    ensure!(
+        response
+            .get_key("status_code")
+            .and_then(|value| value.as_i64())
+            == Some(409)
+    );
+    ensure!(
+        response
+            .get_key("write_set")
+            .and_then(|value| value.array().map(|items| items.is_empty()))
+            == Some(true)
     );
     runtime.finish().await?;
     println!(

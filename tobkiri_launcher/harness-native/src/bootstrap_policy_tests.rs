@@ -153,7 +153,8 @@ fn policy_component(
         (export "bundled-profile-root" (func $text)) (export "denied" (func $text))
         (export "load-catalog" (func $text)) (export "resolve-profile" (func $text))
         (export "bootstrap-confirmation" (func $text))
-        (export "catalog-with-profiles" (func $text)) (export "setup-listing" (func $text)))
+        (export "catalog-with-profiles" (func $text)) (export "setup-listing" (func $text))
+        (export "setup-activation-decision" (func $text)))
       (instance $transport
         (export "error-code" (type $code)) (export "error" (type $error))
         (export "describe-value" (func $text)) (export "import-values" (func $text)))

@@ -756,6 +756,10 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         def __init__(self, profile, lock, plan):
             self.profile, self.lock, self.plan = profile, lock, plan
 
+    class Decision:
+        def __init__(self, *, confirmation=None, response=None):
+            self.confirmation, self.response = confirmation, response
+
     class Catalog:
         def __init__(self) -> None:
             self.profiles = {}
@@ -790,6 +794,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             (RecordType("native-path", NativePath, native_binding=True),
              RecordType("bundled-catalog", self.Catalog, ("profiles",)),
              RecordType("resolved-default-profile", self.Resolved, ("profile", "lock", "plan")),
+             RecordType("setup-activation-decision", self.Decision, ("confirmation", "response")),
              RecordType("key-error", KeyError), RecordType("type-error", TypeError)),
             (KeyError, TypeError),
         ))
@@ -1390,6 +1395,31 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 self.check_predecessor_review(equal)
 
     def check_predecessor_review(self, equal: bool) -> None:
+        activation_calls = []
+        listings = []
+        body = {"confirmation": {"bindings": []}}
+        preflight = self.frame("bootstrap-activation-preflight", body=body)
+        match = self.frame("bootstrap-activation-match")
+
+        def decision(body_arg, listing):
+            activation_calls.append((body_arg, listing))
+            if listing is None:
+                return self.Decision(confirmation=dict(body_arg["confirmation"]))
+            self.assertIs(body_arg, activation_calls[0][0])
+            self.assertIs(listing, listings[0])
+            if not equal:
+                return self.Decision(response={"state": "review_required", "write_set": []})
+            return self.Decision(confirmation=dict(body_arg["confirmation"]))
+
+        self.runtime.setup_activation_decision = decision
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("setup_activation_decision", match)
+        self.assertEqual(wire.loads(self.dispatcher.call("setup_activation_decision", preflight)), {
+            "format": PREFIX + "bootstrap-activation-preflight-result.v1",
+            "scope": self.scope.wire(), "outcome": "continue", "value": None,
+        })
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("setup_activation_decision", preflight)
         catalog, profile_id, source = self.source({
             "requested_edges": [], "profile_id": "fixture-id", "fixture_flag": True,
         })
@@ -1528,7 +1558,9 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.assertIs(confirmation, actual)
             self.assertEqual(kwargs, {"active": False, "activation_denied": True,
                                       "denial_diagnostic": "test refusal"})
-            return {"recommended_default_profile": {"confirmation": dict(confirmation)}}
+            result = {"recommended_default_profile": {"confirmation": dict(confirmation)}}
+            listings.append(result)
+            return result
 
         self.runtime.setup_listing = setup_listing
         listing_call = self.frame("bootstrap-setup-listing", catalog=preview["root"],
@@ -1543,6 +1575,19 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                          returned)
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("setup_listing", listing_call)
+        with self.assertRaises(InvalidFrame):
+            self.dispatcher.call("setup_activation_decision", self.frame(
+                "bootstrap-activation-match", body={"replacement": True},
+            ))
+        expected = returned if equal else {"state": "review_required", "write_set": []}
+        self.assertEqual(wire.loads(self.dispatcher.call("setup_activation_decision", match)), {
+            "format": PREFIX + "bootstrap-activation-match-result.v1",
+            "scope": self.scope.wire(), "outcome": "matched" if equal else "rejected",
+            "value": expected,
+        })
+        self.assertEqual(len(activation_calls), 2)
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("setup_activation_decision", match)
 
     def test_fixed_profile_checks_shell_path_after_original_lock_digest(self) -> None:
         # The portable caller fixture uses the actual original helpers. The

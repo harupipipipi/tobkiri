@@ -434,6 +434,11 @@ class Dispatcher:
             return self._bootstrap_preview_catalog(state, frame)
         if method == "setup_listing" and frame.get("format") == PREFIX + "bootstrap-setup-listing.v1":
             return self._bootstrap_setup_listing(state, frame)
+        if method == "setup_activation_decision":
+            if frame.get("format") == PREFIX + "bootstrap-activation-preflight.v1":
+                return self._bootstrap_activation_decision(state, frame, preflight=True)
+            if frame.get("format") == PREFIX + "bootstrap-activation-match.v1":
+                return self._bootstrap_activation_decision(state, frame, preflight=False)
         self._checked_frame(frame, "call", {"args", "kwargs"})
         if type(frame["args"]) is not list or type(frame["kwargs"]) is not list:
             raise InvalidFrame("invalid original call arguments")
@@ -758,15 +763,59 @@ class Dispatcher:
         )
 
         def listing():
-            return dict(state.runtime.setup_listing(
+            original = state.runtime.setup_listing(
                 catalog, confirmation, active=frame["active"],
                 activation_denied=frame["activation_denied"],
                 denial_diagnostic=frame["denial_diagnostic"],
-            ))
+            )
+            return original, dict(original)
 
-        value = self._apply_original(listing, caller="bootstrap-listing")
-        return wire.dumps({"format": PREFIX + "bootstrap-setup-listing-result.v1",
-                           "scope": registry.scope.wire(), "listing": value})
+        original, value = self._apply_original(listing, caller="bootstrap-listing")
+        packet = wire.dumps({"format": PREFIX + "bootstrap-setup-listing-result.v1",
+                             "scope": registry.scope.wire(), "listing": value})
+        if registry._bootstrap_activation_body is not None:
+            registry._bootstrap_activation_listing = original
+        registry._resolver_dynamic_stage = "bootstrap-listing-returned"
+        return packet
+
+    def _bootstrap_activation_decision(
+        self, state: _State, frame: dict[str, Any], *, preflight: bool,
+    ) -> str:
+        registry = state.registry
+        keys = {"format", "scope", "body"} if preflight else {"format", "scope"}
+        if set(frame) != keys or frame["scope"] != registry.scope.wire():
+            raise InvalidFrame("invalid fixed bootstrap activation decision frame")
+        if preflight:
+            body = frame["body"]
+            if type(body) is not dict:
+                raise InvalidFrame("bootstrap activation body must be a mapping")
+            registry._begin_activation_preflight()
+            listing = None
+            caller = "bootstrap-activation-preflight"
+        else:
+            body, listing = registry._take_activation_match()
+            caller = "bootstrap-activation-match"
+
+        def decide():
+            decision = state.runtime.setup_activation_decision(body, listing)
+            if registry._kind(decision) != "setup-activation-decision":
+                raise UnsupportedValue("original setup activation decision type differs")
+            if decision.response is not None:
+                return "rejected", dict(decision.response)
+            if decision.confirmation is None:
+                raise UnsupportedValue("original setup decision has no activation input")
+            if preflight:
+                return "continue", None
+            return "matched", dict(decision.confirmation)
+
+        outcome, value = self._apply_original(decide, caller=caller)
+        packet = wire.dumps({
+            "format": PREFIX + caller + "-result.v1",
+            "scope": registry.scope.wire(), "outcome": outcome, "value": value,
+        })
+        if preflight and outcome == "continue":
+            registry._bootstrap_activation_body = body
+        return packet
 
     def describe_value(self, payload: str) -> str:
         """Serve closed DATA observations and fixed original Setup operations."""
