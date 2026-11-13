@@ -2886,6 +2886,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   （前版より33,271,726増）だった。完了数は41件で、その後燃料切れ。ピークと解放は
   前版と同じ。計測なしの[coldと全体 43451376683](https://github.com/harupipipipi/tobkiri/actions/runs/43451376683)
   も燃料を使い切った。改善は保持するが、既存の予算で完走する条件は未達。
+- `f17c9f3c0` はURI結合で小文字のschemeを借用し、baseと参照のpathを順に走査して
+  一時配列を一つにする。[初回比較 43453273374](https://github.com/harupipipipi/tobkiri/actions/runs/43453273374)
+  で空のbase pathの先頭セグメントを落とす回帰を検出。`5bee80a6d` で保持し、
+  追加6組を含む[原本比較](https://github.com/harupipipipi/tobkiri/actions/runs/43453892426)
+  は成功した。
+  [燃料計測](https://github.com/harupipipipi/tobkiri/actions/runs/43453925199)は実行中。
   無計測の[CI 43446170342](https://github.com/harupipipipi/tobkiri/actions/runs/43446170342)
   はcoldと全カタログの両方で元の燃料を使い切った。
 
@@ -3018,6 +3024,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   macOSではファイル名順のツリー読み込み、entrypointの再読込、Info.plist、headerの順と、
   reader終了後にFDが閉じたことを確認した。テストは合成ヘッダーを使い、確認・承認前に
   停止した。[原本CI 43440932967](https://github.com/harupipipipi/tobkiri/actions/runs/43440932967)
+- `ea3b39bdc` は選択されたShellをverifier入口でsymlinkに置換する場合と、
+  一時的に欠落させる場合を原本に追加した。正常時はrootを確認した後、
+  選択leaf→root→ツリー開始時のleafの順でsymlinkを調べる。symlinkは最初のleafで拒否し、
+  欠落はツリーのfile/dir検査で拒否する。両OSで実Packの例外チェーンまで確認した。
+  [原本CI 43453556968](https://github.com/harupipipipi/tobkiri/actions/runs/43453556968)
 - `6d96428fe` はloaderが返した実Shell rootと親ディレクトリの同一性を保持し、
   Packによるlock再読込後、元のstrict resolve、元rootのsymlink判定、
   解決済みrootのディレクトリ判定をこの順で実行する。現段階の解決は同じ親の

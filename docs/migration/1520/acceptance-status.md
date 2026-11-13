@@ -640,7 +640,7 @@ the three oversized cases in the earlier five-component replay.
 
 Status after the focused CI replays (2026-11-13): items 2, 3, 4, 6, 7, 8, 9, 11,
 12, 13, 16 and 18 are checked (12 of 20).
-[The aggregate at `2e785d2c4`](https://github.com/harupipipipi/tobkiri/actions/runs/43429417116)
+[The aggregate at `b145a3b98`](https://github.com/harupipipipi/tobkiri/actions/runs/43447636799)
 passed foundations, official Python comparison, native capture typecheck and
 the supported macOS runtime replay including strict Clippy. The
 migration-completion job still reports unported inventory.
