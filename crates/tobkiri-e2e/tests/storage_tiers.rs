@@ -750,7 +750,7 @@ async fn wasm_publication_excludes_secret_approvals_and_profile_storage() -> Res
             let close = sa.close().await.with_context(|| {
                 format!("close source Profile {} after isolated start failure", a.id)
             });
-            return Err(anyhow::Error::new(error).context(format!(
+            return Err(error.context(format!(
                 "isolated Profile start failed; source Session close: {close:?}"
             )));
         }

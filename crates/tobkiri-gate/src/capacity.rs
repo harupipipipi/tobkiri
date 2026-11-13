@@ -987,23 +987,29 @@ mod tests {
         let worker_owner = owner.clone();
         let worker_barrier = barrier.clone();
         let worker = std::thread::spawn(move || {
-            worker_barrier.wait();
-            for _ in 0..1000 {
-                if let Ok(next) = worker_ledger.reserve(
+            let reserve = || {
+                worker_ledger.reserve(
                     worker_owner.clone(),
                     provenance("next"),
                     CapacityKind::Runtime,
                     1,
                     META + 1,
-                ) {
-                    return next;
-                }
-                std::thread::yield_now();
+                )
+            };
+            let while_held = reserve();
+            worker_barrier.wait();
+            let racing = reserve();
+            worker_barrier.wait();
+            assert!(matches!(while_held, Err(GateError::Limit(_))));
+            match racing {
+                Ok(next) => next,
+                Err(GateError::Limit(_)) => reserve().expect("admit after final release"),
+                Err(error) => panic!("unexpected error during final release: {error}"),
             }
-            panic!("admission did not recover after actual final release");
         });
         barrier.wait();
         drop(lease);
+        barrier.wait();
         let next = worker.join().unwrap();
         assert_eq!(ledger.snapshot(&owner).unwrap().charged_bytes, META + 1);
         drop(bindings);
