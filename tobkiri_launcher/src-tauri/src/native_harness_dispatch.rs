@@ -196,6 +196,27 @@ struct Observation {
     description: CoreBuffer,
 }
 pub(super) struct Observations([Option<Observation>; 3]);
+pub(super) enum DispatchOutput {
+    Observations(Observations),
+    ReviewListing(CoreBuffer),
+}
+
+impl DispatchOutput {
+    pub(super) fn detach(&self, detachment: &mut Detachment) -> Outcome {
+        match self {
+            Self::Observations(observations) => observations.detach(detachment),
+            Self::ReviewListing(listing) => {
+                let listing = detachment.description(listing)?;
+                // Keep the existing bounded DATA detachment. The consumer
+                // can parse the listing after worker cleanup and publication.
+                let mut output = serde_json::Map::new();
+                output.insert("listing".to_owned(), serde_json::Value::String(listing));
+                Ok(serde_json::Value::Object(output))
+            }
+        }
+    }
+}
+
 impl Observations {
     pub(super) fn detach(&self, detachment: &mut Detachment) -> Outcome {
         let mut values = Vec::with_capacity(3);
@@ -249,7 +270,7 @@ pub(super) async fn execute<
 >(
     runner: &mut NativeBootstrap<S>,
     operation: AdmittedOperation,
-) -> std::result::Result<Observations, Failed> {
+) -> std::result::Result<DispatchOutput, Failed> {
     let getters = match operation {
         #[cfg(test)]
         AdmittedOperation::VerifyReview(probe) => {
@@ -317,15 +338,13 @@ pub(super) async fn execute<
             });
         }
         AdmittedOperation::ReviewListing(options) => {
-            let result = runner.setup_review_listing(&options).await;
+            let failure = match runner.setup_review_listing(&options).await {
+                Ok(Ok(listing)) => return Ok(DispatchOutput::ReviewListing(listing)),
+                Ok(Err(error)) => Failure::Review(error),
+                Err(error) => Failure::Native(error),
+            };
             return Err(Failed {
-                failure: match result {
-                    Ok(Err(error)) => Failure::Review(error),
-                    Err(error) => Failure::Native(error),
-                    // The current native prefix cannot produce a listing. Refuse
-                    // an accidental success instead of publishing partial DATA.
-                    Ok(Ok(_)) => Failure::Integration(IntegrationFailure::InvalidValueResult),
-                },
+                failure,
                 _completed: Observations([None, None, None]),
             });
         }
@@ -350,7 +369,7 @@ pub(super) async fn execute<
             }
         }
     }
-    Ok(output)
+    Ok(DispatchOutput::Observations(output))
 }
 
 #[cfg(test)]

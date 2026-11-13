@@ -47,8 +47,12 @@ const RESOLVE_PROFILE: u8 = 17;
 const BOOTSTRAP_PREDECESSOR_SOURCE: u8 = 18;
 const BOOTSTRAP_INACTIVE_SOURCE: u8 = 19;
 const BOOTSTRAP_CONFIRMATION: u8 = 20;
+const BOOTSTRAP_PREVIEW: u8 = 21;
+const BOOTSTRAP_LISTING: u8 = 22;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
+const BOOTSTRAP_PREVIEW_SLOT: usize = 10;
+const BOOTSTRAP_LISTING_SLOT: usize = 11;
 const SOURCE_UNUSED: u8 = 0;
 const SOURCE_ENTERED: u8 = 1;
 const SOURCE_COMPLETED: u8 = 2;
@@ -69,6 +73,8 @@ pub use identity_observation::{
 };
 #[path = "bootstrap_catalog.rs"]
 mod catalog;
+#[path = "bootstrap_listing.rs"]
+mod listing;
 #[path = "bootstrap_predecessor.rs"]
 mod predecessor;
 #[path = "bootstrap_resolver_edges.rs"]
@@ -175,6 +181,8 @@ impl CiRetiredCall {
             BOOTSTRAP_PREDECESSOR_SOURCE => "bootstrap-predecessor-source",
             BOOTSTRAP_INACTIVE_SOURCE => "bootstrap-inactive-source",
             BOOTSTRAP_CONFIRMATION => "bootstrap-confirmation",
+            BOOTSTRAP_PREVIEW => "bootstrap-preview",
+            BOOTSTRAP_LISTING => "bootstrap-listing",
             _ => "unknown",
         }
     }
@@ -787,6 +795,14 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 export: NativeDataExport::new(Some(RUNTIME), "bootstrap-confirmation"),
                 result: Some(contract(NativeDataSuccessType::String)),
             },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "catalog-with-profiles"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "setup-listing"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
         ];
         work.get().init_trace.phase(1);
         let program = match store.prepare_data_program(component, &bindings).await {
@@ -1032,8 +1048,9 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         &self.input_budget
     }
 
-    /// Enter the actual original review continuation on this same Store. The
-    /// current prefix always refuses its next unbound reachpoint explicitly.
+    /// Enter the actual original review continuation on this same Store.
+    /// Supported fresh candidates return the original validated listing DATA.
+    /// Unconnected branches refuse at their next original reachpoint.
     /// No guest inspection import or independent begin/prefetch is involved.
     pub async fn setup_review_listing(
         &mut self,
@@ -1261,8 +1278,16 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 Err(error) => return Err(error.into()),
             }
         }
-        if slot == BOOTSTRAP_CONFIRMATION_SLOT && phase != BOOTSTRAP_CONFIRMATION {
-            bail!("bootstrap confirmation is outside the fixed Review reachpoint");
+        if matches!(
+            slot,
+            BOOTSTRAP_CONFIRMATION_SLOT | BOOTSTRAP_PREVIEW_SLOT | BOOTSTRAP_LISTING_SLOT
+        ) && !matches!(
+            (slot, phase),
+            (BOOTSTRAP_CONFIRMATION_SLOT, BOOTSTRAP_CONFIRMATION)
+                | (BOOTSTRAP_PREVIEW_SLOT, BOOTSTRAP_PREVIEW)
+                | (BOOTSTRAP_LISTING_SLOT, BOOTSTRAP_LISTING)
+        ) {
+            bail!("bootstrap presentation is outside the fixed Review reachpoint");
         }
         if self.work.get().phase.load(Ordering::Acquire) != phase {
             bail!("native bootstrap is not initialized");

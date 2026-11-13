@@ -9,7 +9,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
     profile_id: &str,
-) -> Result<BootstrapReviewFailure> {
+) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     let resolved = CoreValue::parse_guest(
@@ -55,7 +55,10 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     let response = match outcome {
         Ok(response) => response,
         Err(error) => {
-            return catalog::handle_call_failure(review, pack, caller, error, false).await;
+            return Ok(Err(catalog::handle_call_failure(
+                review, pack, caller, error, false,
+            )
+            .await?));
         }
     };
     review.actual.bootstrap_confirmation = Some(response);
@@ -81,9 +84,9 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         authority.security_epoch().decimal(),
         pack.input_budget,
     )?;
-    Ok(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::BootstrapPreviewCatalogNotBound,
-    ))
+    let confirmation = denied::field(&value, "root")?;
+    drop(value);
+    listing::run(review, pack, scope, &confirmation).await
 }
 
 fn validate_confirmation(
@@ -175,16 +178,21 @@ fn validate_confirmation(
 mod tests {
     use super::*;
     use serde_json::{Value, json};
-    use tobkiri_core::RuntimeOwner;
+    use tobkiri_canon::{AllocationError, AllocationRequest};
+
+    struct TestBudget;
+    impl AllocationBudget for TestBudget {
+        fn reserve(&self, _: AllocationRequest) -> Result<(), AllocationError> {
+            Ok(())
+        }
+        fn release(&self, _: u64) {}
+    }
 
     #[test]
     fn fresh_confirmation_validates_scope_fields_and_full_digest() -> Result<()> {
-        let root = tempfile::tempdir()?;
-        let owner = RuntimeOwner::open(root.path().canonicalize()?.join("confirmation-test"))?;
-        let invocation = owner.begin_native_setup()?;
-        let engine = WasmEngine::new_with_control(owner.control())?;
-        let store = engine.native_setup_store(invocation, ())?;
-        let budget = store.allocation_owners().graph();
+        // This test exercises DATA admission only. The macOS component lane
+        // owns the actual OS-backed Store and retirement checks.
+        let budget: &Arc<dyn AllocationBudget> = &Arc::new(TestBudget);
         let scope = CoreValue::parse_guest(br#"["1","2","3","4"]"#, budget)?;
         let snapshot = Digest::hash(b"snapshot");
         let plan = Digest::hash(b"plan");

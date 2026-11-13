@@ -1461,6 +1461,50 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("bootstrap_confirmation", call)
 
+        original_catalog = self.runtime.catalog
+        original_catalog.profiles = {"other": {}, "fixture-id": {}}
+        resolved.profile["profile_id"] = "fixture-id"
+        preview_catalog = self.Catalog()
+
+        def make_preview(catalog, profiles):
+            self.assertIs(catalog, original_catalog)
+            self.assertEqual(list(profiles), list(catalog.profiles))
+            self.assertIs(profiles["other"], catalog.profiles["other"])
+            self.assertIs(profiles["fixture-id"], resolved.profile)
+            self.assertIsNot(profiles, catalog.profiles)
+            preview_catalog.profiles = dict(profiles)
+            return preview_catalog
+
+        self.runtime.catalog_with_profiles = make_preview
+        preview = wire.loads(self.dispatcher.call("catalog_with_profiles", self.frame(
+            "bootstrap-preview-catalog", catalog=catalog,
+            resolved=self.registry.retain(resolved).wire(), confirmation=packet["root"],
+        )))
+        self.assertIs(self.registry.borrow(self.registry.reference(preview["root"])),
+                      preview_catalog)
+        self.assertEqual(preview["confirmation"], packet["root"])
+
+        def setup_listing(catalog, confirmation, **kwargs):
+            self.assertIs(catalog, preview_catalog)
+            self.assertIs(confirmation, actual)
+            self.assertEqual(kwargs, {"active": False, "activation_denied": True,
+                                      "denial_diagnostic": "test refusal"})
+            return {"recommended_default_profile": {"confirmation": dict(confirmation)}}
+
+        self.runtime.setup_listing = setup_listing
+        listing_call = self.frame("bootstrap-setup-listing", catalog=preview["root"],
+                                  confirmation=packet["root"], active=False,
+                                  activation_denied=True, denial_diagnostic="test refusal")
+        foreign_listing = wire.loads(listing_call)
+        foreign_listing["catalog"] = catalog
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("setup_listing", wire.dumps(foreign_listing))
+        listing = wire.loads(self.dispatcher.call("setup_listing", listing_call))
+        self.assertEqual(listing["listing"]["recommended_default_profile"]["confirmation"],
+                         returned)
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("setup_listing", listing_call)
+
     def test_fixed_profile_checks_shell_path_after_original_lock_digest(self) -> None:
         # The portable caller fixture uses the actual original helpers. The
         # pinned complete Port replay and real Rust IO run in separate CI jobs.

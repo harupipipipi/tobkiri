@@ -17,7 +17,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
     profile_id: &str,
-) -> Result<BootstrapReviewFailure> {
+) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
@@ -28,7 +28,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         pack.input_budget,
     ) {
         Ok(inputs) => inputs,
-        Err(error) => return Ok(original_failure(error)),
+        Err(error) => return Ok(Err(original_failure(error))),
     };
     let needs_digest = inputs.needs_source_digest(profile_id);
     review.actual.predecessor_inputs = Some(inputs);
@@ -66,7 +66,10 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     let response = match outcome {
         Ok(response) => response,
         Err(error) => {
-            return catalog::handle_call_failure(review, pack, caller, error, false).await;
+            return Ok(Err(catalog::handle_call_failure(
+                review, pack, caller, error, false,
+            )
+            .await?));
         }
     };
     let value = CoreValue::parse_guest(response.as_bytes(), pack.input_budget)?;
@@ -80,9 +83,9 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         .as_ref()
         .is_some_and(|digest| inputs.matches_source_digest(digest))
     {
-        return Ok(BootstrapReviewFailure::NotBound(
+        return Ok(Err(BootstrapReviewFailure::NotBound(
             BootstrapReviewReachpoint::BootstrapPredecessorActivationNotBound,
-        ));
+        )));
     }
     drop((value, response, request));
     inactive(review, pack, scope, profile_id).await
@@ -93,7 +96,7 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
     profile_id: &str,
-) -> Result<BootstrapReviewFailure> {
+) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     let source = catalog::returned(
         review
@@ -114,7 +117,10 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
     let response = match outcome {
         Ok(response) => response,
         Err(error) => {
-            return catalog::handle_call_failure(review, pack, caller, error, false).await;
+            return Ok(Err(catalog::handle_call_failure(
+                review, pack, caller, error, false,
+            )
+            .await?));
         }
     };
     let value = CoreValue::parse_guest(response.as_bytes(), pack.input_budget)?;
@@ -132,10 +138,10 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         profile_id,
     ) {
         Ok(false) => confirmation::run(review, pack, scope, profile_id).await,
-        Ok(true) => Ok(BootstrapReviewFailure::NotBound(
+        Ok(true) => Ok(Err(BootstrapReviewFailure::NotBound(
             BootstrapReviewReachpoint::InactiveBootstrapRegistryNotBound,
-        )),
-        Err(error) => Ok(original_failure(error)),
+        ))),
+        Err(error) => Ok(Err(original_failure(error))),
     }
 }
 

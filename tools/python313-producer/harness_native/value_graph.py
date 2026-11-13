@@ -169,6 +169,8 @@ class Registry:
         self._resolver_verified_artifacts: int | None = None
         self._resolved_profile: int | None = None
         self._resolver_authority: tuple[str, str, int] | None = None
+        self._bootstrap_confirmation: int | None = None
+        self._bootstrap_preview_catalog: int | None = None
         self._resolver_dynamic_stage = "awaiting-static"
         self._next = 1
         self._retired = False
@@ -330,6 +332,10 @@ class Registry:
             elif number == self._resolved_profile:
                 self._resolved_profile = None
                 self._resolver_authority = None
+            elif number == self._bootstrap_confirmation:
+                self._bootstrap_confirmation = None
+            elif number == self._bootstrap_preview_catalog:
+                self._bootstrap_preview_catalog = None
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -352,6 +358,8 @@ class Registry:
         self._resolver_verified_artifacts = None
         self._resolved_profile = None
         self._resolver_authority = None
+        self._bootstrap_confirmation = None
+        self._bootstrap_preview_catalog = None
         self._resolver_dynamic_stage = "awaiting-static"
 
     def _begin_resolver_getter(self) -> None:
@@ -565,6 +573,32 @@ class Registry:
         self._resolver_dynamic_stage = "bootstrap-confirmation-started"
         return value, identity, authority[0], authority[2]
 
+    def _begin_bootstrap_preview(
+        self, catalog: Reference, resolved: Reference, confirmation: Reference,
+    ) -> tuple[Any, Any]:
+        original = self.borrow(catalog)
+        candidate = self.borrow(resolved)
+        self.borrow(confirmation, dict)
+        if (self._resolver_dynamic_stage != "bootstrap-confirmation-returned"
+                or catalog.object_id != self._resolver_catalog
+                or resolved.object_id != self._resolved_profile
+                or confirmation.object_id != self._bootstrap_confirmation):
+            raise InvalidReference("references have no completed bootstrap confirmation")
+        self._resolver_dynamic_stage = "bootstrap-preview-started"
+        return original, candidate
+
+    def _begin_bootstrap_listing(
+        self, catalog: Reference, confirmation: Reference,
+    ) -> tuple[Any, dict[str, Any]]:
+        preview = self.borrow(catalog)
+        document = self.borrow(confirmation, dict)
+        if (self._resolver_dynamic_stage != "bootstrap-preview-returned"
+                or catalog.object_id != self._bootstrap_preview_catalog
+                or confirmation.object_id != self._bootstrap_confirmation):
+            raise InvalidReference("references have no completed bootstrap preview")
+        self._resolver_dynamic_stage = "bootstrap-listing-started"
+        return preview, document
+
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
         # Python len/iteration preserve lone surrogate codepoints. Never encode,
@@ -613,6 +647,7 @@ class Registry:
             "resolver-profile-raised",
             "bootstrap-predecessor-source-raised",
             "bootstrap-inactive-source-raised", "bootstrap-confirmation-raised",
+            "bootstrap-preview-raised", "bootstrap-listing-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

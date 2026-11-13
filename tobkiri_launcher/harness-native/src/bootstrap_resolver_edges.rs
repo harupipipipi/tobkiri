@@ -1,8 +1,8 @@
 //! Edge references in the original fresh bundled Setup resolver. These are retained
 //! candidate DATA; only the later original resolution can consume them.
 use super::*;
+use crate::BootstrapReviewOwner;
 use crate::bootstrap_review::Review;
-use crate::{BootstrapReviewFailure, BootstrapReviewOwner};
 use review_continuation::ReviewCaller;
 use tobkiri_canon::{AllocationKind, AllocationRequest, Digest};
 
@@ -22,7 +22,7 @@ pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewO
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     profile_id_text: &str,
-) -> Result<BootstrapReviewFailure> {
+) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
@@ -42,7 +42,10 @@ pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewO
     {
         Ok(rows) => review.actual.resolver_static_rows = Some(rows),
         Err(outcome) => {
-            return catalog::handle_call_failure(review, pack, caller, outcome, false).await;
+            return Ok(Err(catalog::handle_call_failure(
+                review, pack, caller, outcome, false,
+            )
+            .await?));
         }
     }
     caller.check(review, pack)?;
@@ -83,7 +86,7 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
     scope: &CoreValue,
     source: CoreValue,
     profile_id_text: &str,
-) -> Result<BootstrapReviewFailure> {
+) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     let actual = &review.actual;
@@ -106,7 +109,10 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
     {
         Ok(rows) => review.actual.resolver_dynamic_rows = Some(rows),
         Err(outcome) => {
-            return catalog::handle_call_failure(review, pack, caller, outcome, false).await;
+            return Ok(Err(catalog::handle_call_failure(
+                review, pack, caller, outcome, false,
+            )
+            .await?));
         }
     }
     caller.check(review, pack)?;
@@ -130,7 +136,10 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
     );
     caller.check(review, pack)?;
     if let Some(failure) = catalog::take_failure(&mut review.actual.resolver_verified_artifacts) {
-        return catalog::handle_call_failure(review, pack, caller, failure, false).await;
+        return Ok(Err(catalog::handle_call_failure(
+            review, pack, caller, failure, false,
+        )
+        .await?));
     }
     let artifacts = catalog::returned(
         review
@@ -186,7 +195,7 @@ async fn resolve_profile<S: BootstrapInputOwner + BootstrapReviewOwner>(
     scope: &CoreValue,
     request: &CoreBuffer,
     profile_id: &str,
-) -> Result<BootstrapReviewFailure> {
+) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     pack.work
@@ -201,7 +210,10 @@ async fn resolve_profile<S: BootstrapInputOwner + BootstrapReviewOwner>(
         Ok(result) => review.actual.resolver_profile_result = Some(result),
         Err(failure) => {
             caller.check(review, pack)?;
-            return catalog::handle_call_failure(review, pack, caller, failure, false).await;
+            return Ok(Err(catalog::handle_call_failure(
+                review, pack, caller, failure, false,
+            )
+            .await?));
         }
     }
     caller.check(review, pack)?;

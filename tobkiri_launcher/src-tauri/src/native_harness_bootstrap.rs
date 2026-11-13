@@ -437,7 +437,7 @@ async fn run_original_job(
 
 // The result and its optional test signal have a single destruction order.
 struct DispatchResult {
-    result: std::result::Result<dispatch::Observations, dispatch::Failed>,
+    result: std::result::Result<dispatch::DispatchOutput, dispatch::Failed>,
     // Field order makes this signal follow destruction of the actual result,
     // including every owned cause/context, rather than merely marking a branch.
     #[cfg(test)]

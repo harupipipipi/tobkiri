@@ -430,6 +430,10 @@ class Dispatcher:
             return self._resolve_bundled_profile(state, frame)
         if method == "bootstrap_confirmation" and frame.get("format") == PREFIX + "bootstrap-fresh-confirmation.v1":
             return self._bootstrap_fresh_confirmation(state, frame)
+        if method == "catalog_with_profiles" and frame.get("format") == PREFIX + "bootstrap-preview-catalog.v1":
+            return self._bootstrap_preview_catalog(state, frame)
+        if method == "setup_listing" and frame.get("format") == PREFIX + "bootstrap-setup-listing.v1":
+            return self._bootstrap_setup_listing(state, frame)
         self._checked_frame(frame, "call", {"args", "kwargs"})
         if type(frame["args"]) is not list or type(frame["kwargs"]) is not list:
             raise InvalidFrame("invalid original call arguments")
@@ -663,13 +667,73 @@ class Dispatcher:
         created: list[tuple[Reference, int]] = []
         try:
             root, _ = registry._retain(confirmation, created=created)
-            return wire.dumps({"format": PREFIX + "bootstrap-fresh-confirmation-result.v1",
+            packet = wire.dumps({"format": PREFIX + "bootstrap-fresh-confirmation-result.v1",
                                "scope": registry.scope.wire(), "root": root.wire(),
                                "owned": [format(ref.object_id, "x") for ref, _ in created],
                                "confirmation": confirmation})
+            registry._bootstrap_confirmation = root.object_id
+            registry._resolver_dynamic_stage = "bootstrap-confirmation-returned"
+            return packet
         except BaseException:
             registry._rollback(created)
             raise
+
+    def _bootstrap_preview_catalog(self, state: _State, frame: dict[str, Any]) -> str:
+        registry = state.registry
+        if (set(frame) != {"format", "scope", "catalog", "resolved", "confirmation"}
+                or frame["scope"] != registry.scope.wire()):
+            raise InvalidFrame("invalid fixed bootstrap preview frame")
+        confirmation = registry.reference(frame["confirmation"])
+        catalog, resolved = registry._begin_bootstrap_preview(
+            registry.reference(frame["catalog"]), registry.reference(frame["resolved"]),
+            confirmation,
+        )
+
+        def preview():
+            return state.runtime.catalog_with_profiles(
+                catalog, {**catalog.profiles, resolved.profile["profile_id"]: resolved.profile},
+            )
+
+        value = self._apply_original(preview, caller="bootstrap-preview")
+        if type(value) is not type(catalog) or value is catalog:
+            raise UnsupportedValue("original bootstrap preview catalog is not bound")
+        created: list[tuple[Reference, int]] = []
+        try:
+            root, _ = registry._retain(value, created=created)
+            packet = wire.dumps({"format": PREFIX + "bootstrap-preview-catalog-result.v1",
+                                 "scope": registry.scope.wire(), "root": root.wire(),
+                                 "owned": [format(ref.object_id, "x") for ref, _ in created],
+                                 "confirmation": confirmation.wire()})
+            registry._bootstrap_preview_catalog = root.object_id
+            registry._resolver_dynamic_stage = "bootstrap-preview-returned"
+            return packet
+        except BaseException:
+            registry._rollback(created)
+            raise
+
+    def _bootstrap_setup_listing(self, state: _State, frame: dict[str, Any]) -> str:
+        registry = state.registry
+        if (set(frame) != {"format", "scope", "catalog", "confirmation", "active",
+                          "activation_denied", "denial_diagnostic"}
+                or frame["scope"] != registry.scope.wire()
+                or type(frame["active"]) is not bool
+                or type(frame["activation_denied"]) is not bool
+                or type(frame["denial_diagnostic"]) not in {str, type(None)}):
+            raise InvalidFrame("invalid fixed bootstrap listing frame")
+        catalog, confirmation = registry._begin_bootstrap_listing(
+            registry.reference(frame["catalog"]), registry.reference(frame["confirmation"]),
+        )
+
+        def listing():
+            return dict(state.runtime.setup_listing(
+                catalog, confirmation, active=frame["active"],
+                activation_denied=frame["activation_denied"],
+                denial_diagnostic=frame["denial_diagnostic"],
+            ))
+
+        value = self._apply_original(listing, caller="bootstrap-listing")
+        return wire.dumps({"format": PREFIX + "bootstrap-setup-listing-result.v1",
+                           "scope": registry.scope.wire(), "listing": value})
 
     def describe_value(self, payload: str) -> str:
         """Serve closed DATA observations and fixed original Setup operations."""

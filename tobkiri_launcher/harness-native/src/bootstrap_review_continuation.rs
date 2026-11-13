@@ -270,7 +270,7 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         }
         Err(error) => return Ok(Err(original_failure(error))),
     }
-    let failure = match validated_identity(review, pack, caller).await? {
+    match validated_identity(review, pack, caller).await? {
         // The original validator returns the same exact string. Keep that
         // getter ref, and let the original catalog do its live mapping lookup.
         Ok(identity) => {
@@ -281,12 +281,11 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
                 Ok(()) => {
                     super::resolver_edges::bind_bundled_edges(review, pack, profile_id).await?
                 }
-                Err(error) => error,
+                Err(error) => Ok(Err(error)),
             }
         }
-        Err(error) => error,
-    };
-    Ok(Err(failure))
+        Err(error) => Ok(Err(error)),
+    }
 }
 
 async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(

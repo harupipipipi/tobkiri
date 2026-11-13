@@ -233,7 +233,12 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         input: &CoreBuffer,
         origin: &'static str,
     ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
-        match self.fixed_call(2, input, origin).await? {
+        let slot = match origin {
+            "bootstrap-preview" => BOOTSTRAP_PREVIEW_SLOT,
+            "bootstrap-listing" => BOOTSTRAP_LISTING_SLOT,
+            _ => 2,
+        };
+        match self.fixed_call(slot, input, origin).await? {
             FixedCallOutput::Projection(rows) => Ok(Ok(rows)),
             FixedCallOutput::Identity(outcome) => Ok(Err(outcome)),
         }
@@ -285,6 +290,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "bootstrap-predecessor-source")
                 | (2, "bootstrap-inactive-source")
                 | (BOOTSTRAP_CONFIRMATION_SLOT, "bootstrap-confirmation")
+                | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-preview")
+                | (BOOTSTRAP_LISTING_SLOT, "bootstrap-listing")
                 | (RESOLVE_PROFILE_SLOT, "resolver-profile")
         ) {
             bail!("fixed original caller is unavailable");
@@ -306,6 +313,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "bootstrap-predecessor-source") => BOOTSTRAP_PREDECESSOR_SOURCE,
             (REVIEW, "bootstrap-inactive-source") => BOOTSTRAP_INACTIVE_SOURCE,
             (REVIEW, "bootstrap-confirmation") => BOOTSTRAP_CONFIRMATION,
+            (REVIEW, "bootstrap-preview") => BOOTSTRAP_PREVIEW,
+            (REVIEW, "bootstrap-listing") => BOOTSTRAP_LISTING,
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
@@ -372,6 +381,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | BOOTSTRAP_PREDECESSOR_SOURCE
                 | BOOTSTRAP_INACTIVE_SOURCE
                 | BOOTSTRAP_CONFIRMATION
+                | BOOTSTRAP_PREVIEW
+                | BOOTSTRAP_LISTING
         ) && pending.result.is_some()
         {
             let pending = self.identity_pending.take().expect("admitted edge call");
@@ -708,6 +719,8 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
                 "bootstrap-confirmation",
                 true
             )
+            | (Some("bootstrap-preview-raised"), "bootstrap-preview", true)
+            | (Some("bootstrap-listing-raised"), "bootstrap-listing", true)
     )
 }
 

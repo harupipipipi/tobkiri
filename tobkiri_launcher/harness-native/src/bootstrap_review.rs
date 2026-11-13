@@ -53,7 +53,6 @@ pub enum BootstrapReviewReachpoint {
     CatalogSourceNotBound,
     BootstrapPredecessorActivationNotBound,
     InactiveBootstrapRegistryNotBound,
-    BootstrapPreviewCatalogNotBound,
     ActiveCandidateAuthorityNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
@@ -112,8 +111,9 @@ pub(crate) const DENIED: &str = "tobkiri.native.OriginalProfileResolutionDenied"
 pub(crate) struct Review {
     pub(crate) read: PublicationRead,
     // Funded DATA only; the original outer input stays inside the owning job.
-    _denial_diagnostic: Option<CoreBuffer>,
-    _flags: (bool, bool),
+    pub(crate) denial_diagnostic: Option<CoreBuffer>,
+    pub(crate) active: bool,
+    pub(crate) activation_denied: bool,
     pub(crate) include_source_additions: bool,
     pub(crate) attempted: bool,
     pub(crate) actual: ActualCustody,
@@ -139,6 +139,8 @@ pub(crate) struct ActualCustody {
     pub(crate) predecessor_inputs:
         Option<crate::original_authority::definitions::BootstrapPredecessorInputs>,
     pub(crate) bootstrap_confirmation: Option<CoreBuffer>,
+    pub(crate) bootstrap_preview: Option<CoreBuffer>,
+    pub(crate) bootstrap_listing: Option<CoreBuffer>,
     pub(crate) _successor_candidate:
         Option<crate::original_authority::definitions::SuccessorCandidate>,
     pub(crate) resolver_authority: Option<crate::original_authority::ResolverAuthority>,
@@ -162,8 +164,9 @@ impl Review {
         // an unrelated execution-error variant on this constructor path.
         Ok(Self {
             read: PublicationRead::new(invocation)?,
-            _denial_diagnostic: diagnostic,
-            _flags: (options.active, options.activation_denied),
+            denial_diagnostic: diagnostic,
+            active: options.active,
+            activation_denied: options.activation_denied,
             include_source_additions: options.include_source_additions,
             attempted: false,
             actual: ActualCustody::default(),
