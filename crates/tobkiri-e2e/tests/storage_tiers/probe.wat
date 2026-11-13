@@ -19,12 +19,14 @@
     (type $put-result (result (error $error)))
     (export "open" (func (param "name" string) (result $open-result)))
     (export "open-foreign" (func (param "owner-pack" string) (param "name" string) (result $open-result)))
+    (export "open-user-global" (func (param "name" string) (result $open-result)))
     (export "[method]store.kv-get" (func (param "self" $borrow-store) (param "key" string) (result $get-result)))
     (export "[method]store.kv-put" (func (param "self" $borrow-store) (param "key" string) (param "value" $bytes) (result $put-result)))))
   (import "tobkiri:core/storage@1.2.0" (instance $storage-import (type $storage)))
   (alias export $storage-import "store" (type $store))
   (alias export $storage-import "open" (func $open))
   (alias export $storage-import "open-foreign" (func $open-foreign))
+  (alias export $storage-import "open-user-global" (func $open-user-global))
   (alias export $storage-import "[method]store.kv-get" (func $get))
   (alias export $storage-import "[method]store.kv-put" (func $put))
   (core module $allocator
@@ -44,6 +46,7 @@
   (alias core export $mem "realloc" (core func $realloc))
   (core func $lower-open (canon lower (func $open) (memory $memory) (realloc $realloc)))
   (core func $lower-foreign (canon lower (func $open-foreign) (memory $memory) (realloc $realloc)))
+  (core func $lower-user-global (canon lower (func $open-user-global) (memory $memory) (realloc $realloc)))
   (core func $lower-get (canon lower (func $get) (memory $memory) (realloc $realloc)))
   (core func $lower-put (canon lower (func $put) (memory $memory) (realloc $realloc)))
   (core func $drop-store (canon resource.drop $store))
@@ -51,11 +54,13 @@
     (import "host" "memory" (memory 1 1))
     (import "host" "open" (func $open (param i32 i32 i32)))
     (import "host" "open-foreign" (func $open-foreign (param i32 i32 i32 i32 i32)))
+    (import "host" "open-user-global" (func $open-user-global (param i32 i32 i32)))
     (import "host" "get" (func $get (param i32 i32 i32 i32)))
     (import "host" "put" (func $put (param i32 i32 i32 i32 i32 i32)))
     (import "host" "drop" (func $drop (param i32)))
     (data (i32.const 128) "@OWNER@")
     (data (i32.const 256) "marker")
+    (data (i32.const 300) "shared-notes")
     (func (export "init") (param i32 i32) (result i32)
       i32.const 16 i32.const 0 i32.store8 i32.const 16)
     (func (export "shutdown"))
@@ -90,11 +95,31 @@
       local.get $handle call $drop
       i32.const 64 i32.load8_u if i32.const 512 i32.const 68 i32.load8_u i32.add return end
       i32.const 0))
+    (func (export "read-global-marker") (result i32)
+      (local $handle i32)
+      i32.const 300 i32.const 12 i32.const 32 call $open-user-global
+      i32.const 32 i32.load8_u if i32.const 256 i32.const 36 i32.load8_u i32.add return end
+      i32.const 36 i32.load local.tee $handle i32.const 256 i32.const 6 i32.const 64 call $get
+      local.get $handle call $drop
+      i32.const 64 i32.load8_u if i32.const 512 i32.const 68 i32.load8_u i32.add return end
+      i32.const 68 i32.load8_u i32.eqz if i32.const 0 return end
+      i32.const 76 i32.load i32.const 1 i32.ne if i32.const 768 return end
+      i32.const 72 i32.load i32.load8_u)
+    (func (export "write-global-marker") (param $value i32) (result i32)
+      (local $handle i32)
+      i32.const 300 i32.const 12 i32.const 32 call $open-user-global
+      i32.const 32 i32.load8_u if i32.const 256 i32.const 36 i32.load8_u i32.add return end
+      i32.const 272 local.get $value i32.store8
+      i32.const 36 i32.load local.tee $handle i32.const 256 i32.const 6 i32.const 272 i32.const 1 i32.const 64 call $put
+      local.get $handle call $drop
+      i32.const 64 i32.load8_u if i32.const 512 i32.const 68 i32.load8_u i32.add return end
+      i32.const 0))
   (core instance $body (instantiate $probe
     (with "host" (instance
       (export "memory" (memory $memory))
       (export "open" (func $lower-open))
       (export "open-foreign" (func $lower-foreign))
+      (export "open-user-global" (func $lower-user-global))
       (export "get" (func $lower-get))
       (export "put" (func $lower-put))
       (export "drop" (func $drop-store))))))
@@ -102,6 +127,8 @@
   (alias core export $body "shutdown" (core func $shutdown))
   (alias core export $body "read-marker" (core func $read))
   (alias core export $body "write-marker" (core func $write))
+  (alias core export $body "read-global-marker" (core func $read-global))
+  (alias core export $body "write-global-marker" (core func $write-global))
   (func $init-value (param "config" string) (result $unit-result)
     (canon lift (core func $init) (memory $memory) (realloc $realloc)))
   (func $shutdown-value (canon lift (core func $shutdown)))
@@ -109,9 +136,17 @@
     (canon lift (core func $read) (memory $memory) (realloc $realloc)))
   (func $write-value (param "store" string) (param "value" u8) (result u32)
     (canon lift (core func $write) (memory $memory) (realloc $realloc)))
+  (func $read-global-value (result u32)
+    (canon lift (core func $read-global) (memory $memory) (realloc $realloc)))
+  (func $write-global-value (param "value" u8) (result u32)
+    (canon lift (core func $write-global) (memory $memory) (realloc $realloc)))
   (instance $types (export "error-code" (type $code)) (export "error" (type $error)))
   (export "tobkiri:core/types@1.2.0" (instance $types))
   (instance $lifecycle (export "init" (func $init-value)) (export "shutdown" (func $shutdown-value)))
   (export "tobkiri:core/lifecycle@1.2.0" (instance $lifecycle))
-  (instance $api (export "read-marker" (func $read-value)) (export "write-marker" (func $write-value)))
+  (instance $api
+    (export "read-marker" (func $read-value))
+    (export "write-marker" (func $write-value))
+    (export "read-global-marker" (func $read-global-value))
+    (export "write-global-marker" (func $write-global-value)))
   (export "local:@PACK@/probe@1.0.0" (instance $api)))

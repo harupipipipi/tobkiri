@@ -99,11 +99,33 @@ jobs:
         run: >-
           cargo clippy --locked -p tobkiri-gate -p tobkiri-store -p tobkiri-core
           -p tobkiri-profile --all-targets --no-deps -- -D warnings
-      - name: Exercise actual Wasm storage across two Profiles
-        run: >-
-          python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/storage-tiers-wasm.log" --expected-passed 1 --
-          cargo test --locked -p tobkiri-e2e --test storage_tiers
+      - name: Exercise actual Wasm storage and publication with an OS-backed vault
+        shell: bash
+        run: |
+          umask 077
+          keychain="$RUNNER_TEMP/tobkiri-publication-ci.keychain-db"
+          previous_keychain="$(security default-keychain -d user | sed -E 's/^[[:space:]]*"([^"]+)"[[:space:]]*$/\1/')"
+          test -n "$previous_keychain"
+          cleanup() {
+            status=$?
+            security default-keychain -d user -s "$previous_keychain" || status=1
+            if [[ -f "$keychain" ]]; then
+              security delete-keychain "$keychain" || status=1
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          keychain_password="$(openssl rand -hex 32)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings "$keychain"
+          security default-keychain -d user -s "$keychain"
+          unset keychain_password
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/storage-tiers-wasm.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test storage_tiers
       - name: Retain executed-test receipts
         if: always()
         uses: actions/upload-artifact@v4
