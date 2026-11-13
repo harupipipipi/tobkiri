@@ -3095,7 +3095,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [初回Wasm CI 43469000639](https://github.com/harupipipipi/tobkiri/actions/runs/43469000639)
   でResolver終了後に列挙状態が残った。終了時にクリアする `32dc813b5` を送り、
   [再検証 43469616491](https://github.com/harupipipipi/tobkiri/actions/runs/43469616491)
-  のportableと実Wasm構築が成功した。
+  のportableと実Wasm構築が成功した。macOSのHost試験は次のRustテストの
+  コンパイルエラーで停止した。
   [初回物理IO CI 43468738747](https://github.com/harupipipipi/tobkiri/actions/runs/43468738747)
   は試験で `resolved` の所有権を移してしまいコンパイルで停止した。試験を
   `86c3edbd6` で修正した。
@@ -3105,10 +3106,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ディレクトリ内の子は未接続。既存 `fd_stat.rs` の出力処理とcaptured sourceの
   所有者検査を共用した。ABIの異なる既存 `fd_read.rs` と読み取り・base64を
   共用できるかは、物理IO・エラー・予算の比較後に検討する。
+  [実Wasm CI 43471331247](https://github.com/harupipipipi/tobkiri/actions/runs/43471331247)
+  のportable 213件と実Wasm構築が成功した。原本の関数を使うdigestの試験と、
+  元モジュールの限定OS importを含む。Rust側は
   [物理IO・Clippy 43471279499](https://github.com/harupipipipi/tobkiri/actions/runs/43471279499)
-  と [実Wasm 43471331247](https://github.com/harupipipipi/tobkiri/actions/runs/43471331247)
-  で検証中。後者は原本の関数を使うdigestの試験と、元モジュールの限定OS importを
-  確認する。製品への採用、GUIでの会話、VM廃止の受け入れには数えない。
+  のLinuxでファイルopen時の借用エラーを検出し、`0a58ff9b7` で保持済みの同一性を
+  openerに直接渡した。[物理IO・Clippyの再検証 43473201935](https://github.com/harupipipipi/tobkiri/actions/runs/43473201935)、
+  [実Wasmの再検証 43473207079](https://github.com/harupipipipi/tobkiri/actions/runs/43473207079)
+  を起動した。製品への採用、GUIでの会話、VM廃止の受け入れには数えない。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
