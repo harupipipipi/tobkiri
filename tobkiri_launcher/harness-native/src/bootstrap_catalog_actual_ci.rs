@@ -452,7 +452,9 @@ async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Resul
             .context("same runner review required")?
             .actual;
         ensure!(
-            actual.host_root.is_some() && actual.bundle_root.is_some() && actual.catalog.is_some(),
+            actual.catalog_roots.host.is_some()
+                && actual.catalog_roots.packaged.is_some()
+                && actual.catalog.is_some(),
             "real same-Store roots and loader result must be retained"
         );
         let fuel_after = runtime.fuel_remaining()?;

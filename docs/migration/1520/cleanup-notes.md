@@ -2831,4 +2831,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   全行をスキップしたときはロックを再検証する。ヘルパー入口や例外では定義ロックを閉じ、
   外側の公開ジャーナルは既存の終了処理が閉じる。実ヘルパーと書き込みは未接続。
   [検証CI 43390782062](https://github.com/harupipipipi/tobkiri/actions/runs/43390782062)で
-  同じストアの再読込、引数選択、元の13件・8件を確認する。
+  同じストアの再読込と引数選択、従来の原本13件・8件を確認した。LinuxとmacOSで
+  新規テストとstrict Clippyが成功し、従来の13件はmacOS上の実比較も通過した。
+- [原本のResolver CI 43392317777](https://github.com/harupipipipi/tobkiri/actions/runs/43392317777)
+  は元のSetupから9ケースをLinux/macOSで実行した。選択後にユーザーデータとBundleを
+  再選択し、パッケージ資源の照合と解決用のロック再読込を別々に行う。内容が同じJSONでも
+  物理バイトが変わるとAuthorityのsnapshot digestが変わる。DBあり・なし、壊れたDBと
+  ディレクトリ、壊れたmanifest、開発Bundleの選択とロック欠落を確認した。
+  Authorityの終了後、2回目のID取得から元のProfileを検索する直前までが対象。

@@ -2,7 +2,7 @@
 //! Root selection and resource verification are Host operations. Pack catalog
 //! policy stays in the same original Runtime receiver and its actual loader.
 use super::*;
-use crate::bootstrap_review::{Review, original_failure};
+use crate::bootstrap_review::{BundleCalls, Review, original_failure};
 use crate::original_authority::catalog::{BindingFailure, CatalogIo};
 use crate::original_authority::definitions::{self, DefinitionRecovery};
 use crate::{BootstrapReviewFailure, BootstrapReviewReachpoint};
@@ -105,6 +105,89 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
 ) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
+    let (mut io, binding) = match select_bundle(review, pack, caller).await? {
+        Ok(selected) => selected,
+        Err(error) => return Ok(Err(error)),
+    };
+    io.bind_loader(CoreValue::string(binding.as_str()?, pack.input_budget)?)?;
+    *pack
+        .work
+        .get()
+        .catalog
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(io);
+    pack.work
+        .get()
+        .catalog_dispatch
+        .set(dispatch::<S>)
+        .map_err(|_| anyhow::anyhow!("catalog caller already bound"))?;
+    let input = review
+        .actual
+        .catalog_input
+        .as_ref()
+        .expect("fixed loader input")
+        .clone();
+    review.actual.catalog = Some(pack.observe_fixed_call(7, &input, "catalog").await?);
+    caller.check(review, pack)?;
+    if let Some(failure) = take_failure(&mut review.actual.catalog) {
+        return Ok(Err(handle_call_failure(
+            review, pack, caller, failure, false,
+        )
+        .await?));
+    }
+    if returned(review.actual.catalog.as_ref().expect("actual catalog"))?
+        .observation()
+        .get_key("kind")
+        .and_then(|value| {
+            value
+                .as_str()
+                .map(|kind| kind == "original-bundled-catalog")
+        })
+        != Some(true)
+    {
+        bail!("actual load_catalog returned an unrepresented concrete catalog");
+    }
+    if !pack
+        .work
+        .get()
+        .catalog
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .is_some_and(CatalogIo::completed)
+    {
+        bail!("actual loader returned before its reached resource occurrences completed");
+    }
+    caller.check(review, pack)?;
+    Ok(Ok(()))
+}
+
+pub(super) async fn resolver_lock_digest<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+) -> Result<std::result::Result<tobkiri_canon::Digest, BootstrapReviewFailure>> {
+    let (io, _) = match select_bundle(review, pack, ReviewCaller::Resolver).await? {
+        Ok(selected) => selected,
+        Err(error) => return Ok(Err(error)),
+    };
+    pack.require_same_runtime()?;
+    Ok(io
+        .resolver_lock_digest(&pack.work.get().source, &pack.work.get().invocation)
+        .map_err(original_failure))
+}
+
+fn bundle_calls(review: &mut Review, caller: ReviewCaller) -> &mut BundleCalls {
+    match caller {
+        ReviewCaller::Recovery | ReviewCaller::Candidate => &mut review.actual.catalog_roots,
+        ReviewCaller::Resolver => &mut review.actual.resolver_roots,
+    }
+}
+
+async fn select_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
+) -> Result<std::result::Result<(CatalogIo, CoreBuffer), BootstrapReviewFailure>> {
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
     if pack
@@ -119,9 +202,9 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         )));
     }
     let call = pack.call.clone();
-    review.actual.host_root = Some(pack.observe_fixed_call(3, &call, "host-root").await?);
+    bundle_calls(review, caller).host = Some(pack.observe_fixed_call(3, &call, "host-root").await?);
     caller.check(review, pack)?;
-    if let Some(failure) = take_failure(&mut review.actual.host_root) {
+    if let Some(failure) = take_failure(&mut bundle_calls(review, caller).host) {
         return Ok(Err(handle_call_failure(
             review, pack, caller, failure, false,
         )
@@ -155,33 +238,11 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         &runtime,
         pack.input_budget,
     );
-    let io = match io {
+    let mut io = match io {
         Ok(io) => io,
         Err(error) => return Ok(Err(original_failure(error))),
     };
-    *pack
-        .work
-        .get()
-        .catalog
-        .lock()
-        .unwrap_or_else(|error| error.into_inner()) = Some(io);
-    pack.work
-        .get()
-        .catalog_dispatch
-        .set(dispatch::<S>)
-        .map_err(|_| anyhow::anyhow!("catalog caller already bound"))?;
-    let development = {
-        let mut current = pack
-            .work
-            .get()
-            .catalog
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        current
-            .as_mut()
-            .expect("admitted source")
-            .select_development(&pack.work.get().source, &pack.work.get().invocation)
-    };
+    let development = io.select_development(&pack.work.get().source, &pack.work.get().invocation);
     let development = match development {
         Ok(value) => value,
         Err(error) => {
@@ -189,21 +250,20 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
                 review,
                 pack,
                 caller,
+                &mut io,
                 BindingFailure::Original(error),
                 false,
             )
             .await?));
         }
     };
-    let (root, binding) = if development {
-        (
-            returned(review.actual.host_root.as_ref().expect("host root"))?.result(),
-            resolution.binding,
-        )
+    let binding = if development {
+        resolution.binding
     } else {
-        review.actual.bundle_root = Some(pack.observe_fixed_call(4, &call, "bundle-root").await?);
+        bundle_calls(review, caller).packaged =
+            Some(pack.observe_fixed_call(4, &call, "bundle-root").await?);
         caller.check(review, pack)?;
-        if let Some(failure) = take_failure(&mut review.actual.bundle_root) {
+        if let Some(failure) = take_failure(&mut bundle_calls(review, caller).packaged) {
             return Ok(Err(handle_call_failure(
                 review, pack, caller, failure, false,
             )
@@ -218,148 +278,66 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             .take()
             .context("actual current bundle root metadata missing")?;
         let bundle = parent(&resolution.resolved, 2)?.join("v4");
-        let selected = pack
-            .work
-            .get()
-            .catalog
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .as_mut()
-            .expect("catalog source")
-            .select_packaged(&bundle);
-        if let Err(error) = selected {
+        if let Err(error) = io.select_packaged(&bundle) {
             return Ok(Err(original_failure(error)));
         }
-        (
-            returned(review.actual.bundle_root.as_ref().expect("bundle root"))?.result(),
-            resolution.binding,
-        )
+        resolution.binding
     };
-    // Borrow/copy only the opaque root reference before any other await. The
-    // real returned buffers remain in Review.actual through finish.
-    review.actual.catalog_input = Some(loader_call(pack, root)?);
-    let manifest = {
-        let mut current = pack
-            .work
-            .get()
-            .catalog
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        current
-            .as_mut()
-            .expect("catalog source")
-            .prepare_manifest(&pack.work.get().source, &pack.work.get().invocation)
-    };
+    // The first loader prepares its argument at this boundary. The resolver
+    // reaches the same root check without a second catalog load.
+    if !matches!(caller, ReviewCaller::Resolver) {
+        let roots = bundle_calls(review, caller);
+        let root = roots
+            .packaged
+            .as_ref()
+            .or(roots.host.as_ref())
+            .expect("selected root");
+        review.actual.catalog_input = Some(loader_call(pack, returned(root)?.result())?);
+    }
+    let manifest = io.prepare_manifest(&pack.work.get().source, &pack.work.get().invocation);
     let manifest = match manifest {
         Ok(value) => value,
         Err(error) => {
-            return Ok(Err(
-                binding_failure(review, pack, caller, error, true).await?
-            ));
+            return Ok(Err(binding_failure(
+                review, pack, caller, &mut io, error, true,
+            )
+            .await?));
         }
     };
     if manifest {
-        let input = {
-            let current = pack
-                .work
-                .get()
-                .catalog
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            manifest_call(
-                pack,
-                current
-                    .as_ref()
-                    .expect("catalog source")
-                    .manifest_slice()
-                    .context("reached manifest missing")?,
-            )?
-        };
-        review.actual.manifest_input = Some(input.clone());
-        review.actual.manifest = Some(pack.observe_fixed_call(2, &input, "manifest").await?);
+        let input = manifest_call(
+            pack,
+            io.manifest_slice().context("reached manifest missing")?,
+        )?;
+        bundle_calls(review, caller)._manifest_input = Some(input.clone());
+        bundle_calls(review, caller).manifest =
+            Some(pack.observe_fixed_call(2, &input, "manifest").await?);
         caller.check(review, pack)?;
-        if let Some(failure) = take_failure(&mut review.actual.manifest) {
+        if let Some(failure) = take_failure(&mut bundle_calls(review, caller).manifest) {
             return Ok(Err(handle_call_failure(
                 review, pack, caller, failure, true,
             )
             .await?));
         }
-        let verification = {
-            let current = pack
-                .work
-                .get()
-                .catalog
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            current.as_ref().expect("catalog source").verify_prepared(
-                &pack.work.get().source,
-                &pack.work.get().invocation,
-                returned(
-                    review
-                        .actual
-                        .manifest
-                        .as_ref()
-                        .expect("actual manifest parse"),
-                )?,
-            )
-        };
+        let verification = io.verify_prepared(
+            &pack.work.get().source,
+            &pack.work.get().invocation,
+            returned(
+                bundle_calls(review, caller)
+                    .manifest
+                    .as_ref()
+                    .expect("actual manifest parse"),
+            )?,
+        );
         if let Err(error) = verification {
-            return Ok(Err(
-                binding_failure(review, pack, caller, error, false).await?
-            ));
+            return Ok(Err(binding_failure(
+                review, pack, caller, &mut io, error, false,
+            )
+            .await?));
         }
-        pack.work
-            .get()
-            .catalog
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .as_mut()
-            .expect("catalog source")
-            .clear_manifest();
+        io.clear_manifest();
     }
-    pack.work
-        .get()
-        .catalog
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .as_mut()
-        .expect("catalog source")
-        .bind_loader(CoreValue::string(binding.as_str()?, pack.input_budget)?)?;
-    let input = review
-        .actual
-        .catalog_input
-        .as_ref()
-        .expect("fixed loader input")
-        .clone();
-    review.actual.catalog = Some(pack.observe_fixed_call(7, &input, "catalog").await?);
-    caller.check(review, pack)?;
-    if let Some(failure) = take_failure(&mut review.actual.catalog) {
-        return Ok(Err(handle_call_failure(
-            review, pack, caller, failure, false,
-        )
-        .await?));
-    }
-    if returned(review.actual.catalog.as_ref().expect("actual catalog"))?
-        .observation()
-        .get_key("kind")
-        .and_then(|v| v.as_str().map(|s| s == "bundled-catalog"))
-        != Some(true)
-    {
-        bail!("actual load_catalog returned an unrepresented concrete catalog");
-    }
-    if !pack
-        .work
-        .get()
-        .catalog
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .as_ref()
-        .is_some_and(CatalogIo::completed)
-    {
-        bail!("actual loader returned before its reached resource occurrences completed");
-    }
-    caller.check(review, pack)?;
-    Ok(Ok(()))
+    Ok(Ok((io, binding)))
 }
 
 pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
@@ -545,6 +523,7 @@ async fn binding_failure<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
+    io: &mut CatalogIo,
     error: BindingFailure,
     manifest_read: bool,
 ) -> Result<BootstrapReviewFailure> {
@@ -572,15 +551,7 @@ async fn binding_failure<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             } else {
                 recovery_cause::MESSAGE
             };
-            let graph = pack
-                .work
-                .get()
-                .catalog
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .as_mut()
-                .context("actual catalog source missing")?
-                .error_graph(&error, pack.input_budget)?;
+            let graph = io.error_graph(&error, pack.input_budget)?;
             review_continuation::denied(
                 review,
                 pack,

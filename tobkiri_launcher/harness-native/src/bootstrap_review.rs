@@ -51,7 +51,7 @@ pub enum BootstrapReviewReachpoint {
     BootstrapProfileIdNotBound,
     HostProfileCatalogNotBound,
     CatalogSourceNotBound,
-    ResolveBootstrapCandidateNotBound,
+    ResolveSourceProfileNotBound,
     ActiveCandidateAuthorityNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
@@ -123,15 +123,23 @@ pub(crate) struct ActualCustody {
     pub(crate) getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) denied: Option<crate::BootstrapDenied>,
     pub(crate) factory_failure: Option<crate::BootstrapDeniedFailure>,
-    pub(crate) host_root: Option<crate::BootstrapIdentityOutcome>,
-    pub(crate) bundle_root: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) catalog_roots: BundleCalls,
+    pub(crate) resolver_roots: BundleCalls,
+    pub(crate) resolver_getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog_input: Option<CoreBuffer>,
-    pub(crate) manifest: Option<crate::BootstrapIdentityOutcome>,
-    pub(crate) manifest_input: Option<CoreBuffer>,
     pub(crate) _active_candidate: Option<crate::original_authority::ActiveCandidate>,
     pub(crate) _successor_candidate:
         Option<crate::original_authority::definitions::SuccessorCandidate>,
+    pub(crate) _resolver_authority: Option<crate::original_authority::ResolverAuthority>,
+}
+
+#[derive(Default)]
+pub(crate) struct BundleCalls {
+    pub(crate) host: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) packaged: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) manifest: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) _manifest_input: Option<CoreBuffer>,
 }
 impl Review {
     pub(crate) fn new(

@@ -386,8 +386,8 @@ async fn observe_case(
         .map(|review| {
             let actual = &review.actual;
             (
-                actual.host_root.is_some(),
-                actual.bundle_root.is_some(),
+                actual.catalog_roots.host.is_some(),
+                actual.catalog_roots.packaged.is_some(),
                 actual.catalog.is_some(),
             )
         })

@@ -23,7 +23,7 @@ mod candidate_selection;
 pub(crate) mod catalog;
 #[path = "original_profile_definitions.rs"]
 pub(crate) mod definitions;
-pub(crate) use candidate_selection::{ActiveCandidate, CandidateSelection};
+pub(crate) use candidate_selection::{ActiveCandidate, CandidateSelection, ResolverAuthority};
 
 const JOURNAL: &str = "bootstrap-publication.json";
 const LOCK: &str = ".bootstrap-publication.lock";

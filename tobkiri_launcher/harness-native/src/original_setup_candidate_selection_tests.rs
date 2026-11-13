@@ -5,6 +5,7 @@ use super::{
 };
 use serde_json::json;
 use std::os::unix::fs::{PermissionsExt, symlink};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[tokio::test(flavor = "current_thread")]
 async fn both_recoveries_precede_selection_and_absent_root_stays_absent() {
@@ -44,6 +45,88 @@ async fn both_recoveries_precede_selection_and_absent_root_stays_absent() {
             assert!(!source.root.exists());
             read.close_continuation().unwrap();
             assert!(read.check_candidate_root(source, cancel).is_err());
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn bundled_resolver_reselects_user_data_and_does_not_create_genesis_state() {
+    struct Owner<'a> {
+        first: &'a Path,
+        next: &'a Path,
+        calls: AtomicUsize,
+    }
+    impl OriginalAuthorityOwner for Owner<'_> {
+        fn with_original_user_data<R>(&self, operation: impl FnOnce(&Path) -> R) -> Result<R> {
+            Ok(operation(self.first))
+        }
+        fn check_original_owner(&self) -> Result<()> {
+            Ok(())
+        }
+    }
+    impl crate::BootstrapReviewOwner for Owner<'_> {
+        fn with_original_review_user_data<R>(
+            &self,
+            operation: impl FnOnce(&Path) -> R,
+        ) -> Result<R> {
+            let calls = self.calls.fetch_add(1, Ordering::Relaxed);
+            Ok(operation(if calls < 3 { self.first } else { self.next }))
+        }
+    }
+
+    for authority_directory in [false, true] {
+        with_source(|source, read, cancel, budget| {
+            let later = source.root.with_file_name("later-user-data");
+            if authority_directory {
+                fs::create_dir_all(later.join("authority/v4.sqlite3")).unwrap();
+            }
+            let owner = Owner {
+                first: &source.root,
+                next: &later,
+                calls: AtomicUsize::new(0),
+            };
+            read.enter_recovery(&owner, cancel, true).unwrap();
+            read.enter_recovery(&owner, cancel, false).unwrap();
+            read.acquire_candidate_root(&owner, cancel).unwrap();
+            assert!(read.acquire_resolver_root(&owner, cancel).is_err());
+            assert!(matches!(
+                read.candidate_selection(&owner, cancel, "defaults", false, budget)
+                    .unwrap(),
+                CandidateSelection::BundledCatalog
+            ));
+            read.acquire_resolver_root(&owner, cancel).unwrap();
+            assert_eq!(owner.calls.load(Ordering::Relaxed), 4);
+            let bundle = Digest::hash(b"second physical lock");
+            let actual = read
+                .resolver_authority_snapshot(&owner, cancel, bundle.clone())
+                .unwrap();
+            if authority_directory {
+                assert!(actual.is_none());
+            } else {
+                let actual = actual.unwrap();
+                let (material, snapshot_digest, bundle_lock_digest) = actual.observation();
+                assert!(
+                    matches!(material, OriginalAuthorityMaterial::Genesis { epoch, .. } if epoch.decimal() == "1")
+                );
+                assert_eq!(*bundle_lock_digest, bundle);
+                let expected = json!({
+                    "schema":"io.tobkiri.profile-authority-snapshot.v1",
+                    "security_epoch":1,
+                    "security_epoch_reason_digest":Digest::hash(br#"{"reason":"genesis"}"#).as_str(),
+                    "bundle_lock_digest":bundle.as_str(),
+                    "grant_import":"none",
+                });
+                assert_eq!(snapshot_digest.as_str(), digest(&expected));
+                assert!(!later.exists());
+            }
+            assert!(!source.root.exists());
+            assert!(read.receipt().verified());
+            assert!(
+                read.resolver_authority_snapshot(&owner, cancel, bundle)
+                    .is_err()
+            );
+            read.close_continuation().unwrap();
+            assert!(read.check_resolver_root(&owner, cancel).is_err());
         });
     }
 }

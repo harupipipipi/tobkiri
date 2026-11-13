@@ -123,6 +123,47 @@ fn call(
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn resolver_hashes_the_second_physical_lock_after_a_new_bundle_selection() {
+    for development in [false, true] {
+        with_source(development, |source, invocation, _, io, cleanup| {
+            let bundle = if development {
+                let root = source.root.join("bundled/dev-defaults");
+                fs::create_dir_all(root.join("platform-artifacts")).unwrap();
+                root.join("v4")
+            } else {
+                source.root.join("ecosystem/defaultspack/v4")
+            };
+            fs::create_dir_all(&bundle).unwrap();
+            if development {
+                assert!(io.select_development(source, invocation).unwrap());
+            } else {
+                assert!(!io.select_development(source, invocation).unwrap());
+                io.select_packaged(&bundle).unwrap();
+            }
+            let path = bundle.join("bundle.lock.json");
+            assert!(matches!(
+                io.resolver_lock_digest(source, invocation).unwrap_err().cause,
+                Some(OriginalAuthorityCause::Io(error))
+                    if error.errno == Some(libc::ENOENT) && error.filename.as_deref() == path.to_str()
+            ));
+            let first = br#"{"entries":[]}"#;
+            fs::write(&path, first).unwrap();
+            assert_eq!(
+                io.resolver_lock_digest(source, invocation).unwrap(),
+                Digest::hash(first)
+            );
+            let second = b"{\"entries\":[]}\n";
+            fs::write(&path, second).unwrap();
+            assert_eq!(
+                io.resolver_lock_digest(source, invocation).unwrap(),
+                Digest::hash(second)
+            );
+            assert!(cleanup.receipt().verified());
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
     with_source(false, |source, invocation, budget, io, _| {
         let bundle = source.root.join("ecosystem/defaultspack/v4");

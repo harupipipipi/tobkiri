@@ -98,6 +98,7 @@ impl Scratch {
 pub(super) enum ReviewCaller {
     Recovery,
     Candidate,
+    Resolver,
 }
 
 impl ReviewCaller {
@@ -111,6 +112,16 @@ impl ReviewCaller {
             Self::Candidate => review
                 .read
                 .check_candidate_root(&pack.work.get().source, pack.cancellation),
+            Self::Resolver => review
+                .read
+                .check_resolver_root(&pack.work.get().source, pack.cancellation),
+        }
+    }
+
+    fn getter(self, review: &mut Review) -> &mut Option<BootstrapIdentityOutcome> {
+        match self {
+            Self::Recovery | Self::Candidate => &mut review.actual.getter,
+            Self::Resolver => &mut review.actual.resolver_getter,
         }
     }
 }
@@ -214,10 +225,9 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         review.include_source_additions,
         pack.input_budget,
     );
+    drop(identity);
     Ok(Err(match selection {
-        Ok(CandidateSelection::BundledCatalog) => BootstrapReviewFailure::NotBound(
-            BootstrapReviewReachpoint::ResolveBootstrapCandidateNotBound,
-        ),
+        Ok(CandidateSelection::BundledCatalog) => return resolve_bundled(review, pack).await,
         Ok(CandidateSelection::ActiveAuthority(candidate)) => {
             review.actual._active_candidate = Some(candidate);
             BootstrapReviewFailure::NotBound(
@@ -231,6 +241,47 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     }))
 }
 
+async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+    let source = &pack.work.get().source;
+    if let Err(error) = review.read.acquire_resolver_root(source, pack.cancellation) {
+        return Ok(Err(original_failure(error)));
+    }
+    let bundle_lock = match super::catalog::resolver_lock_digest(review, pack).await? {
+        Ok(digest) => digest,
+        Err(error) => return Ok(Err(error)),
+    };
+    let caller = ReviewCaller::Resolver;
+    let snapshot = review.read.resolver_authority_snapshot(
+        &pack.work.get().source,
+        pack.cancellation,
+        bundle_lock,
+    );
+    match snapshot {
+        Ok(Some(snapshot)) => review.actual._resolver_authority = Some(snapshot),
+        Ok(None) => {
+            return Ok(Err(denied(
+                review,
+                pack,
+                caller,
+                crate::original_authority::AUTHORITY_PATH_DENIAL,
+                BootstrapDeniedRaise::Plain,
+            )
+            .await?));
+        }
+        Err(error) => return Ok(Err(original_failure(error))),
+    }
+    let failure = match validated_identity(review, pack, caller).await? {
+        Ok(_) => BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::ResolveSourceProfileNotBound,
+        ),
+        Err(error) => error,
+    };
+    Ok(Err(failure))
+}
+
 async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
@@ -241,32 +292,30 @@ async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner
     }
     // Store the actual outputs OUTSIDE this child future immediately, before
     // any fallible validation/processing or another await.
-    review.actual.getter = Some(pack.observe_bootstrap_profile_id().await?);
+    *caller.getter(review) = Some(pack.observe_bootstrap_profile_id().await?);
     if let Err(error) = caller.check(review, pack) {
         return Ok(Err(original_failure(error)));
     }
-    match review.actual.getter.as_ref().expect("actual raw getter") {
+    let getter = caller.getter(review);
+    match getter.as_ref().expect("actual raw getter") {
         BootstrapIdentityOutcome::Refused(_) => {
-            let Some(BootstrapIdentityOutcome::Refused(error)) = review.actual.getter.take() else {
+            let Some(BootstrapIdentityOutcome::Refused(error)) = getter.take() else {
                 unreachable!()
             };
             return Ok(Err(BootstrapReviewFailure::ObservationRefused(error)));
         }
         BootstrapIdentityOutcome::GetterRaised(error) => {
-            if matches!(caller, ReviewCaller::Candidate)
+            if !matches!(caller, ReviewCaller::Recovery)
                 || error.recovery_catch() == BootstrapRecoveryCatch::None
             {
-                let Some(BootstrapIdentityOutcome::GetterRaised(error)) =
-                    review.actual.getter.take()
-                else {
+                let Some(BootstrapIdentityOutcome::GetterRaised(error)) = getter.take() else {
                     unreachable!()
                 };
                 return Ok(Err(BootstrapReviewFailure::GetterRaised(error)));
             }
             // The raw getter precedes the canonical try. Only the original
             // recovery catch wraps its ACTUAL opaque ValueError/OSError here.
-            let Some(BootstrapIdentityOutcome::GetterRaised(error)) = review.actual.getter.take()
-            else {
+            let Some(BootstrapIdentityOutcome::GetterRaised(error)) = getter.take() else {
                 unreachable!()
             };
             return Ok(Err(denied(
@@ -280,8 +329,7 @@ async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner
         }
         BootstrapIdentityOutcome::Returned(_) => {}
     }
-    let BootstrapIdentityOutcome::Returned(value) =
-        review.actual.getter.as_ref().expect("actual raw getter")
+    let BootstrapIdentityOutcome::Returned(value) = getter.as_ref().expect("actual raw getter")
     else {
         unreachable!()
     };
@@ -339,7 +387,7 @@ pub(super) async fn denied<S: BootstrapInputOwner + crate::BootstrapReviewOwner>
     Ok(if let Some(denied) = review.actual.denied.take() {
         BootstrapReviewFailure::ActualDenied {
             denied,
-            getter: review.actual.getter.take(),
+            getter: caller.getter(review).take(),
         }
     } else {
         BootstrapReviewFailure::ActualFactoryFailure {
@@ -348,7 +396,7 @@ pub(super) async fn denied<S: BootstrapInputOwner + crate::BootstrapReviewOwner>
                 .factory_failure
                 .take()
                 .expect("actual factory failure"),
-            getter: review.actual.getter.take(),
+            getter: caller.getter(review).take(),
         }
     })
 }

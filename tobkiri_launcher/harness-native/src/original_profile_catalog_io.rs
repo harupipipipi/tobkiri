@@ -249,6 +249,25 @@ impl CatalogIo {
         self.binding = Some(binding);
         Ok(())
     }
+
+    /// The resolver hashes a separate physical read after its bundle selection.
+    /// The previous loader's bytes and the manifest's inventory are unrelated.
+    pub(crate) fn resolver_lock_digest<S: crate::BootstrapReviewOwner>(
+        &self,
+        owner: &S,
+        invocation: &NativeSetupInvocation,
+    ) -> Result<Digest> {
+        let op = self.operation(owner, invocation, &self.cancellation)?;
+        if self.selected.as_os_str().is_empty() || self.binding.is_some() {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        let path = self.selected.join("bundle.lock.json");
+        let bytes = read_file(&op, &path, &self.budget)?;
+        charge_work(&self.budget, bytes.value.len() as u64)?;
+        let digest = Digest::hash(&bytes.value);
+        op.check(OriginalAuthorityStage::Source)?;
+        Ok(digest)
+    }
     pub(crate) fn inspect<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,

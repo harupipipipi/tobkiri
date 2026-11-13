@@ -677,6 +677,10 @@ pub(super) fn finish_scope<T>(outcome: Result<T>, closed: Result<()>) -> Result<
         }
     }
 }
+pub(crate) const AUTHORITY_PATH_DENIAL: &str = "Authority store path is not a regular file";
+pub(super) const CAPTURE_DENIAL_CLASS: &str =
+    "core_runtime.bootstrap.profile_capture.ProfileResolutionDenied";
+
 pub(super) fn read_selected<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
@@ -689,8 +693,8 @@ pub(super) fn read_selected<S: OriginalAuthorityOwner>(
         if path.exists() {
             return Err(OriginalAuthorityError {
                 stage: OriginalAuthorityStage::Source,
-                class: "core_runtime.bootstrap.profile_capture.ProfileResolutionDenied",
-                message: "Authority store path is not a regular file".into(),
+                class: CAPTURE_DENIAL_CLASS,
+                message: AUTHORITY_PATH_DENIAL.into(),
                 cause: None,
                 context: None,
                 suppressed: false,
