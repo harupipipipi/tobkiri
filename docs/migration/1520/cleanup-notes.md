@@ -3191,7 +3191,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   projectionの権限は発行しない。将来の整理では、原本との差分が通った後に既存の
   getterとprojection用のscope・FD・応答生成の共通部分を再点検する。
   [Rust/Wasm CI 43493671067](https://github.com/harupipipipi/tobkiri/actions/runs/43493671067)
-  を実行中。全カタログの燃料制限と `bootstrap_confirmation` 前のHost処理が残る。
+  はportableテストとWasm構築が成功し、macOS実行を継続中。
+- `8003603fa` の[原本CI 43495702562](https://github.com/harupipipipi/tobkiri/actions/runs/43495702562)
+  は、配布Profile解決後のPack pin predecessorに、新規状態と壊れたactive.jsonの2件を
+  追加した。macOSで同じ定義ストアが独立したロックで二度snapshotを取得すること、
+  定義が未登録でも `verify_snapshot=True` でポインターを読むことを確認した。
+  新規状態はその後カタログを引いて `None` を返し、定義ロックファイルだけが残る。
+  壊れたポインターはJSON→canonical→active storeの例外を保持し、カタログを引く前に止まる。
+- `42ebccf9e` は同じ選択済みuser-data rootのRust処理にこの順序を接続した。既存の定義
+  snapshotとActiveProfileStoreの検証を再利用し、定義ストアは一度だけ構築する。
+  カタログは同じStore上で改めて引く。定義とポインターが一致する場合だけ元のcanonical
+  digestを計算する。新規状態の次は `inactive_bootstrap_predecessor`、一致する登録済み
+  状態の次はAuthorityとactivationの読込。追加した読み取りは承認や状態公開を行わない。
+  `e5a406d65` で固定原本とRustの例外グラフおよび残存ファイルを照合する試験を追加。
+  [原本比較CI 43496444761](https://github.com/harupipipipi/tobkiri/actions/runs/43496444761)、
+  [物理読み取りCI 43496130105](https://github.com/harupipipipi/tobkiri/actions/runs/43496130105)、
+  [Wasm CI 43496182926](https://github.com/harupipipipi/tobkiri/actions/runs/43496182926)
+  を開始した。全カタログの燃料制限と、承認画面へ渡す候補の生成が残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
