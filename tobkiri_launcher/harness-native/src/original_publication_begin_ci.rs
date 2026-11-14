@@ -19,8 +19,7 @@ fn capacity(_: AllocationError) -> OriginalAuthorityError {
 
 fn begin<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
-    directory: &Directory,
-    profiles: &Path,
+    scope: &RecoveryScope,
     candidate: &BootstrapActivationCandidate,
     read_published_source: impl FnOnce() -> Result<(CoreValue, Digest)>,
     budget: &Arc<dyn AllocationBudget>,
@@ -35,6 +34,8 @@ fn begin<S: OriginalAuthorityOwner>(
             "bootstrap target changed after confirmation",
         ));
     }
+    scope.validate(op)?;
+    let directory = &scope.directory;
     let target = Target {
         confirmation: candidate.confirmation(),
         definition: &definition,
@@ -46,7 +47,7 @@ fn begin<S: OriginalAuthorityOwner>(
             "Profile publication already has an unfinished intent",
         ));
     }
-    let key_path = profiles.join(KEY);
+    let key_path = directory.publication_key_path();
     let mut generated = Zeroizing::new([0_u8; 64]);
     let existing = if directory.exists(op, KEY)? {
         Some(signing_key(op, &key_path)?)
@@ -255,16 +256,15 @@ async fn original_publication_intent_bytes_match() {
         let profiles = root.join("profiles");
         let candidate = load_candidate(budget);
         let key = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let result = with_confirmed_predecessor(&op, root, budget, |predecessor| {
+        let result = with_confirmed_predecessor(&op, root, budget, |scope, predecessor| {
             assert!(predecessor.is_none());
-            let dir = Directory::capture(&op, &profiles, false)?;
+            let dir = &scope.directory;
             assert!(!lock_free(&profiles.join(LOCK)));
             fs::write(profiles.join(KEY), key).unwrap();
             fs::set_permissions(profiles.join(KEY), fs::Permissions::from_mode(0o600)).unwrap();
             let encoded = begin(
                 &op,
-                &dir,
-                &profiles,
+                scope,
                 &candidate,
                 || {
                     assert!(!lock_free(&profiles.join(LOCK)));
@@ -302,21 +302,12 @@ async fn original_publication_intent_bytes_match() {
         let root = &source.root;
         let profiles = root.join("profiles");
         let candidate = load_candidate(budget);
-        with_confirmed_predecessor(&op, root, budget, |predecessor| {
+        with_confirmed_predecessor(&op, root, budget, |scope, predecessor| {
             assert!(predecessor.is_none());
-            let dir = Directory::capture(&op, &profiles, false)?;
+            let dir = &scope.directory;
             let key = profiles.join(KEY);
             let journal = profiles.join(JOURNAL);
-            let begin = || {
-                begin(
-                    &op,
-                    &dir,
-                    &profiles,
-                    &candidate,
-                    || reread("matched", budget),
-                    budget,
-                )
-            };
+            let begin = || begin(&op, scope, &candidate, || reread("matched", budget), budget);
             symlink("absent-key-target", &key).unwrap();
             assert!(begin().is_err());
             assert!(key.is_symlink());
@@ -353,13 +344,11 @@ async fn original_publication_intent_bytes_match() {
             let root = &source.root;
             let profiles = root.join("profiles");
             let candidate = load_candidate(budget);
-            let error = with_confirmed_predecessor(&op, root, budget, |predecessor| {
+            let error = with_confirmed_predecessor(&op, root, budget, |scope, predecessor| {
                 assert!(predecessor.is_none());
-                let dir = Directory::capture(&op, &profiles, false)?;
                 begin(
                     &op,
-                    &dir,
-                    &profiles,
+                    scope,
                     &candidate,
                     || {
                         assert!(!lock_free(&profiles.join(LOCK)));
@@ -388,6 +377,34 @@ async fn original_publication_intent_bytes_match() {
             assert!(lock_free(&profiles.join(LOCK)));
         });
     }
+
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let root = &source.root;
+        let profiles = root.join("profiles");
+        let candidate = load_candidate(budget);
+        let moved = root.join("moved-profiles");
+        let error = with_confirmed_predecessor(&op, root, budget, |scope, predecessor| {
+            assert!(predecessor.is_none());
+            begin(
+                &op,
+                scope,
+                &candidate,
+                || {
+                    let published = reread("matched", budget)?;
+                    fs::rename(&profiles, &moved).unwrap();
+                    fs::create_dir(&profiles).unwrap();
+                    Ok(published)
+                },
+                budget,
+            )
+        })
+        .unwrap_err();
+        assert_eq!(error.message, "persistence ancestor identity changed");
+        assert!(!profiles.join(KEY).exists() && !profiles.join(JOURNAL).exists());
+        assert!(!moved.join(KEY).exists() && !moved.join(JOURNAL).exists());
+        assert!(lock_free(&moved.join(LOCK)));
+    });
 }
 
 fn oracle_digest(row: &serde_json::Value) -> &str {

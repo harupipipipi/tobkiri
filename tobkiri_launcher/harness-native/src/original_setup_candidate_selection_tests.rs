@@ -102,7 +102,7 @@ async fn confirmed_publication_checks_handover_before_lock_and_holds_it_without_
                 return;
             }
             let op = operation(read, source, cancel);
-            let result = with_confirmed_predecessor(&op, root, budget, |current| {
+            let result = with_confirmed_predecessor(&op, root, budget, |_, current| {
                 assert!(matches!(case, "no-handover" | "completed-handover"));
                 assert!(current.is_none());
                 assert!(!lock_free(&lock));

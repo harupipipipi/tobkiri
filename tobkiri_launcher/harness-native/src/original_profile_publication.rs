@@ -559,7 +559,7 @@ fn with_confirmed_predecessor<S: OriginalAuthorityOwner, T>(
     op: &Operation<'_, S>,
     root: &Path,
     budget: &Arc<dyn tobkiri_canon::AllocationBudget>,
-    inspect: impl FnOnce(Option<&active_profile::LoadedPointer>) -> Result<T>,
+    inspect: impl FnOnce(&RecoveryScope, Option<&active_profile::LoadedPointer>) -> Result<T>,
 ) -> Result<T> {
     if let Some(handover) = development_handover::read_optional(op, root, budget)?
         && !handover
@@ -608,7 +608,7 @@ fn with_confirmed_predecessor<S: OriginalAuthorityOwner, T>(
             }
         }
         let current = active_profile::load(op, root)?;
-        inspect(current.as_ref())
+        inspect(&scope, current.as_ref())
     })();
     let result = if result.is_ok() {
         finish_scope(result, scope.validate(op))

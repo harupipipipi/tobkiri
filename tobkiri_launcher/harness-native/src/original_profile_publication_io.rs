@@ -161,6 +161,13 @@ pub(super) struct Directory {
     chain: Vec<FileIdentity>,
     _capacity: NativeSetupReservation,
 }
+
+#[cfg(all(test, unix))]
+impl Directory {
+    pub(super) fn publication_key_path(&self) -> PathBuf {
+        self.root.join(KEY)
+    }
+}
 #[cfg(unix)]
 impl Directory {
     pub(super) fn capture<S: OriginalAuthorityOwner>(
