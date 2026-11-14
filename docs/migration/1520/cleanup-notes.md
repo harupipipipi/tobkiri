@@ -3465,13 +3465,27 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [初回43563002676](https://github.com/harupipipipi/tobkiri/actions/runs/43563002676)は既存の
   テスト用入力に生成レシートがなかったため停止した。フィクスチャ修正後はローカル6件が通過し、
   [通常版43563363525](https://github.com/harupipipipi/tobkiri/actions/runs/43563363525)と
-  [診断版43563365702](https://github.com/harupipipipi/tobkiri/actions/runs/43563365702)を実行中。
+  [診断版43563365702](https://github.com/harupipipipi/tobkiri/actions/runs/43563365702)は
+  生成に成功したが、macOS側が生成元のmode付き記録とサイズ・ハッシュだけの結果を
+  比較して停止した。`ed4cae946` はアーカイブ転送をまたぐ2ファイルをサイズと
+  SHA-256で照合する。生成元の検証は引き続きmodeも含む。実アーカイブ2件を使う
+  binder単体の再現で双方が通り、通常版だけがLauncher用レシートを出力した。
+  [通常版の再実行43564055821](https://github.com/harupipipipi/tobkiri/actions/runs/43564055821)でも
+  macOS側の入力照合が通過した。
 - `415322a55` は別途固定したLauncher用レシートを受け取り、照合したWasmを配布資産内の
   `native-setup/component.wasm` に配置する。Wasmハッシュとモジュール索引を同時にRustへ固定し、
   元ワーカーが同じFDから読み直してコンパイル前に照合する。開発版もビルドで封印した配置先を使う。
-  [ビルドと配置の回帰43563344564](https://github.com/harupipipipi/tobkiri/actions/runs/43563344564)で
-  変更・リンク・不正索引を拒否することを検証する。
+  [ビルドと配置の回帰43563344564](https://github.com/harupipipipi/tobkiri/actions/runs/43563344564)では
+  AppKitの試験と、フィクスチャの変更・リンク・不正索引の拒否が通過した。
+  `bab923a47` は通常版を作った同じCIで、binderが記録したレシートのハッシュを
+  元Launcherのデバッグビルドへ渡す。ステージの封印とTauri側のコピーを検証する
+  [配置CI 43564606334](https://github.com/harupipipipi/tobkiri/actions/runs/43564606334)を開始した。
   既定DMGへの固定レシート供給と、既存Setupルートからの開始、確認操作の接続は残る。
+- `/panel/setup` は認証後のSPA内遷移なので、全ページのロード通知をSetup開始の
+  根拠にはできない。現状の表示枠は確認チェックと有効化ボタンも含む。読み取り専用表示を
+  載せる前に、親画面の候補切替・同じURLへの再マウントを判別し、確認に使う候補を
+  同じ世代と実表示へ結び付ける。元の復旧は古いジャーナルを削除できるため、
+  新規状態で事前実行するならRust側の所有・ロックの境界で新規性を確認する。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
