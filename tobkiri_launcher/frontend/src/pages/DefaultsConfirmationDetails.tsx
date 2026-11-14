@@ -1,4 +1,4 @@
-import type {DefaultsConfirmation} from '@/src/lib/defaultsSetup';
+import type {DefaultsConfirmation} from '@/src/lib/defaultsSetupContract';
 
 export function DefaultsConfirmationDetails({confirmation}: {readonly confirmation: DefaultsConfirmation}) {
   return <details className="rounded-lg border border-border bg-bg-main p-4">

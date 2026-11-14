@@ -7,6 +7,7 @@ import {renderToString} from 'react-dom/server';
 import {MemoryRouter, Route, Routes} from 'react-router';
 import {parseDefaultsSetupState} from '../lib/defaultsSetup';
 import {DefaultsReview} from './DefaultsReview';
+import {NativeSetupReview} from './NativeSetupReview';
 
 const setupSource = readFileSync(resolve(import.meta.dirname, 'Setup.tsx'), 'utf8');
 const appSource = readFileSync(resolve(import.meta.dirname, '..', 'App.tsx'), 'utf8');
@@ -144,6 +145,27 @@ test('review displays the exact Host confirmation and every operation binding', 
   assert.match(html, /Confirmed operation bindings/);
   assert.match(html, /disabled=""/);
   assert.doesNotMatch(html, /<details[^>]*\sopen(?:\s|>)/);
+});
+
+test('isolated setup review validates the listing and exposes no activation actions', () => {
+  const listing = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json',
+    import.meta.url,
+  ), 'utf8'));
+  const html = renderToString(<NativeSetupReview listing={listing} />);
+  const confirmation = listing.recommended_default_profile.confirmation;
+  assert.ok(html.includes(confirmation.confirmation_digest));
+  assert.match(html, /Confirmed operation bindings/);
+  assert.match(html, /<input[^>]*type="checkbox"[^>]*disabled=""/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>Activate Tobkiri Harness<\/button>/);
+
+  listing.state = 'activation_denied';
+  listing.denial_diagnostic = '<script>invalid review</script>';
+  const denied = renderToString(<NativeSetupReview listing={listing} />);
+  assert.ok(denied.includes('&lt;script&gt;invalid review&lt;/script&gt;'));
+  assert.doesNotMatch(denied, /<script|Copy activation denial|Verify activation/);
+  listing.recommended_default_profile.confirmation.confirmation_digest = 'unbound';
+  assert.throws(() => renderToString(<NativeSetupReview listing={listing} />), /confirmation_digest.*invalid/i);
 });
 
 test('the current GUI has no dependency on retired setup-pack routing', () => {

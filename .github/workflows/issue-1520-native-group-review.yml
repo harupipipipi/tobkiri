@@ -10,6 +10,11 @@ on:
       - 'tobkiri_launcher/core-host/src/native_contract.rs'
       - 'tobkiri_launcher/core-host/src/runtime.rs'
       - 'tobkiri_launcher/src-tauri/src/core_host.rs'
+      - 'tobkiri_launcher/frontend/src/lib/defaultsSetup*.ts'
+      - 'tobkiri_launcher/frontend/src/pages/Defaults*Review*.tsx'
+      - 'tobkiri_launcher/frontend/src/pages/DefaultsConfirmationDetails.tsx'
+      - 'tobkiri_launcher/frontend/src/pages/NativeSetupReview.tsx'
+      - 'tobkiri_launcher/frontend/src/pages/Setup.test.tsx'
       - '.github/workflows/issue-1520-native-group-review.yml'
   workflow_dispatch:
 permissions:
@@ -57,4 +62,11 @@ jobs:
         run: |
           npm ci
           npm run build:core-host
+      - name: Verify shared Setup presentation and legacy transport compatibility
+        working-directory: tobkiri_launcher/frontend
+        run: >-
+          node --import tsx --test
+          src/lib/defaultsSetup.test.ts src/pages/Setup.test.tsx
+          src/pages/DefaultsReview.successor.test.tsx
+          src/pages/DefaultsReview.packVersions.test.tsx
       - run: cargo check --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml --features core-host

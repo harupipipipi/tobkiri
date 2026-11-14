@@ -2,7 +2,7 @@ import {AlertCircle, Clock3, ShieldAlert} from 'lucide-react';
 
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
-import type {DefaultsSetupState} from '@/src/lib/defaultsSetup';
+import type {DefaultsSetupState} from '@/src/lib/defaultsSetupContract';
 import {DefaultsConfirmationDetails} from './DefaultsConfirmationDetails';
 
 type Props = {
@@ -14,9 +14,10 @@ type Props = {
   readonly reconfirmationRequired?: boolean;
   readonly activationAllowed?: boolean;
   readonly activationBlockedMessage?: string;
+  readonly readOnly?: boolean;
   readonly onRecover?: () => void;
-  readonly onReviewedChange: (reviewed: boolean) => void;
-  readonly onActivate: () => void;
+  readonly onReviewedChange?: (reviewed: boolean) => void;
+  readonly onActivate?: () => void;
 };
 
 export function DefaultsReview({
@@ -28,13 +29,15 @@ export function DefaultsReview({
   reconfirmationRequired = false,
   activationAllowed = true,
   activationBlockedMessage = 'Select “Include new bundled Profile Packs and operation bindings” above to review a complete successor before activation.',
+  readOnly = false,
   onRecover = () => undefined,
   onReviewedChange,
   onActivate,
 }: Props) {
   const canActivate = setup?.state === 'review_required'
     && !activationCommitted
-    && activationAllowed;
+    && activationAllowed && !readOnly
+    && onReviewedChange !== undefined && onActivate !== undefined;
   const predecessor = setup?.recommended_default_profile.confirmation.definition_predecessor;
   const packPinPredecessor = setup?.recommended_default_profile.confirmation.pack_pin_predecessor;
   const targetPacks = setup?.recommended_default_profile.pack_ids ?? [];
@@ -50,7 +53,7 @@ export function DefaultsReview({
         ? 'The Host has withheld the verified dispatch map. Review the exact Harness v4 transaction below to restore local operations.'
         : 'Review the finite local composition. Activation occurs only after this exact confirmation.'}
     </p>
-    {activationCommitted && setup?.state !== 'active' && <div role="alert" className="mt-6 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
+    {!readOnly && activationCommitted && setup?.state !== 'active' && <div role="alert" className="mt-6 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
       <Clock3 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" data-error-icon="activation-verification-required" />
       <div className="min-w-0 flex-1">
         <p className="font-medium">Activation was submitted; verification is required.</p>
@@ -63,7 +66,7 @@ export function DefaultsReview({
     {setup?.state === 'activation_denied' && <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
       <ShieldAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="activation-denied" />
       <p className="min-w-0 flex-1 break-words">{setup.denial_diagnostic}</p>
-      <CopyErrorButton label="Copy activation denial" text={setup.denial_diagnostic} />
+      {!readOnly && <CopyErrorButton label="Copy activation denial" text={setup.denial_diagnostic} />}
     </div>}
     {setup && <div className="mt-6 space-y-3 text-sm">
       <Identity label="Base" value={setup.recommended_default_profile.base_pack} />
@@ -104,15 +107,15 @@ export function DefaultsReview({
           type="checkbox"
           checked={reviewed}
           disabled={!canActivate || activating}
-          onChange={(event) => onReviewedChange(event.target.checked)}
+          onChange={canActivate ? (event) => onReviewedChange?.(event.target.checked) : undefined}
           className="mt-1 size-4 shrink-0"
           aria-describedby="defaults-review-confirmation"
         />
         <span id="defaults-review-confirmation">I confirm this exact catalog/profile revision, provider operations, Authority snapshot, and SecurityEpoch.{predecessor && ' I also confirm the displayed imported predecessor and its immutable successor, including the Pack selection changes.'}{packPinPredecessor && ' I also confirm these saved Pack versions against the displayed current activation.'}</span>
       </label>
-      <Button size="lg" className="w-full" disabled={!reviewed || activating || !canActivate} loading={activating} onClick={onActivate}>Activate Tobkiri Harness</Button>
+      <Button size="lg" className="w-full" disabled={!reviewed || activating || !canActivate} loading={activating} onClick={canActivate ? onActivate : undefined}>Activate Tobkiri Harness</Button>
     </div>}
-    {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500"><AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="setup" /><p className="min-w-0 flex-1 break-words">{error}</p><CopyErrorButton label="Copy setup error" text={error} /></div>}
+    {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500"><AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="setup" /><p className="min-w-0 flex-1 break-words">{error}</p>{!readOnly && <CopyErrorButton label="Copy setup error" text={error} />}</div>}
   </section>;
 }
 
