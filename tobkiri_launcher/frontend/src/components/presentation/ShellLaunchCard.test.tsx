@@ -345,3 +345,26 @@ test('recoverable macOS PackVM state guides the user without blocking launch', a
     dom.window.close();
   }
 });
+
+test('Japanese labels preserve the native Shell launch action', async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  useAppStore.setState({profile: {...previousState.profile, language: 'ja'}});
+  try {
+    await renderCard(root);
+    const launch = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Research Aを起動',
+    );
+    assert.ok(launch);
+    assert.equal(launch.disabled, false);
+    assert.match(container.textContent ?? '', /Shell確認済み/);
+    await act(async () => launch.click());
+    assert.deepEqual((dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls, [
+      'get_presentation_catalog', 'launch_selected_presentation',
+    ]);
+  } finally {
+    act(() => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});

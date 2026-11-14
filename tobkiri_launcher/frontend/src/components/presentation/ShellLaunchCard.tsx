@@ -14,6 +14,7 @@ import {
   openExternalUrl,
 } from '@/src/lib/desktopHost';
 import type {ApiPresentationState} from '@/src/lib/apiTypes';
+import {translate, useT} from '@/src/lib/i18n';
 import {packVmLaunchBlockedReason, WINDOWS_PACKVM_ISSUE_URL} from '@/src/lib/packVmLaunchReadiness';
 import {launchDisabledReason} from '@/src/lib/presentation';
 import {panelRoutes} from '@/src/lib/routes';
@@ -23,7 +24,7 @@ function formatError(error: unknown): string {
   if (typeof error === 'string' && error.trim()) return error;
   return error instanceof Error && error.message.trim()
     ? error.message
-    : 'Tobkiri could not verify the selected Profile launch surface.';
+    : translate('shell_launch.error');
 }
 
 export function ShellLaunchCard({
@@ -41,6 +42,7 @@ export function ShellLaunchCard({
   activationHref?: string;
   onChooseShell?: () => void;
 }) {
+  const t = useT();
   const addToast = useAppStore((state) => state.addToast);
   const packVmDoctor = useAppStore((state) => state.packVmDoctor);
   const refreshPackVMDoctor = useAppStore((state) => state.refreshPackVMDoctor);
@@ -90,18 +92,18 @@ export function ShellLaunchCard({
   const macPackVmNeedsProvision = packVmDoctor?.ready === false
     && packVmDoctor.platform === 'macos-arm64';
   const blockedReason = !active
-    ? 'Activate this Profile before launching its Shell.'
+    ? t('shell_launch.activate_before')
     : !desktopShell
-    ? 'Profile launch is available in Tobkiri Launcher.'
+    ? t('shell_launch.launcher_only')
     : !runtimeReady
-    ? 'The selected Shell becomes available after Tobkiri runtime readiness.'
+    ? t('shell_launch.runtime_not_ready')
     : !presentation?.selection
-      ? 'No verified Shell selection is active.'
+      ? t('shell_launch.no_verified_selection')
       : packVmBlockedReason
         ? packVmBlockedReason
       : materialization
         ? launchDisabledReason(materialization)
-        : 'The selected Shell materialization is unavailable.';
+        : t('shell_launch.materialization_unavailable');
 
   const launch = async () => {
     if (blockedReason || launching || launchingRef.current) return;
@@ -110,7 +112,7 @@ export function ShellLaunchCard({
     setError(null);
     try {
       const result = await launchSelectedPresentation();
-      addToast(result.message || `${profileDisplayName ?? 'Profile'} opened in the selected Shell.`, 'success');
+      addToast(result.message || t('shell_launch.opened', {name: profileDisplayName ?? t('shell_launch.profile')}), 'success');
     } catch (launchError) {
       setError(formatError(launchError));
     } finally {
@@ -125,31 +127,31 @@ export function ShellLaunchCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
             <Monitor className="h-4 w-4 text-accent" aria-hidden="true" />
-            <CardTitle id={`shell-launch-title-${profileId ?? 'default'}`}>{profileDisplayName ?? 'Tobkiri Harness'} launch</CardTitle>
+            <CardTitle id={`shell-launch-title-${profileId ?? 'default'}`}>{t('shell_launch.title', {name: profileDisplayName ?? t('shell_launch.harness')})}</CardTitle>
           </div>
           <Badge variant={blockedReason ? 'warning' : 'success'}>
-            {blockedReason ? 'Unavailable' : 'Shell verified'}
+            {t(blockedReason ? 'shell_launch.unavailable' : 'shell_launch.verified')}
           </Badge>
         </div>
         <p className="text-sm leading-relaxed text-text-muted">
           {active
-            ? 'Launch this active execution Profile through its verified Tobkiri Shell binding. The handoff remains bound to the Profile revision, activation, and Plan identity.'
-            : 'This Profile is browse-only until it completes the same resolve, review, Authority approval, and activation ceremony as every other Profile.'}
+            ? t('shell_launch.active_description')
+            : t('shell_launch.inactive_description')}
         </p>
       </CardHeader>
       <CardContent>
         {loading ? (
           <p className="flex items-center gap-2 text-sm text-text-muted" role="status" aria-busy="true">
             <TobkiriLoadingMark />
-            Loading the selected Shell…
+            {t('shell_launch.loading')}
           </p>
         ) : error ? (
           <div className="flex flex-wrap items-center gap-3" role="alert">
             <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0 text-destructive" />
             <p className="flex-1 text-sm text-destructive">{error}</p>
-            <CopyErrorButton label="Copy Shell launch error" text={error} />
+            <CopyErrorButton label={t('shell_launch.copy_error')} text={error} />
             <Button variant="outline" size="sm" onClick={() => void loadSurfaceState()}>
-              Retry
+              {t('shell_launch.retry')}
             </Button>
           </div>
         ) : (
@@ -157,26 +159,26 @@ export function ShellLaunchCard({
             <div className="min-w-0 space-y-1 text-sm">
               <p className="flex items-center gap-2 text-text-main">
                 <Monitor className="h-4 w-4 shrink-0 text-text-muted" />
-                <span className="truncate">{selectedShell?.display_name ?? 'No Shell selected'}</span>
+                <span className="truncate">{selectedShell?.display_name ?? t('shell_launch.no_shell')}</span>
               </p>
               <p className="flex items-center gap-2 text-xs text-text-muted">
                 <Route className="h-3.5 w-3.5 shrink-0" />
-                <span>{blockedReason ?? 'The selected Shell binding is verified.'}</span>
+                <span>{blockedReason ?? t('shell_launch.binding_verified')}</span>
               </p>
               {macPackVmNeedsProvision && (
-                <p className="text-xs text-text-muted">PackVM is not attested yet. Launch may prepare it; use Packs if preparation cannot complete.</p>
+                <p className="text-xs text-text-muted">{t('shell_launch.packvm_needs_provision')}</p>
               )}
               {(packVmBlockedReason || macPackVmNeedsProvision) && presentation?.selection && (
                 <p className="flex flex-wrap gap-2 text-xs">
-                  <Link className="underline" to={panelRoutes.packs}>Open Packs</Link>
+                  <Link className="underline" to={panelRoutes.packs}>{t('shell_launch.open_packs')}</Link>
                   {windowsPackVmUnavailable && (
                     <button
                       className="underline"
                       onClick={() => void openExternalUrl(WINDOWS_PACKVM_ISSUE_URL).catch(() => {
-                        addToast('The Windows support issue could not be opened.', 'error');
+                        addToast(t('shell_launch.issue_open_failed'), 'error');
                       })}
                       type="button"
-                    >Windows support issue #1494</button>
+                    >{t('shell_launch.windows_issue')}</button>
                   )}
                 </p>
               )}
@@ -188,16 +190,16 @@ export function ShellLaunchCard({
                 loading={launching}
                 onClick={() => needsSelection && onChooseShell ? onChooseShell() : void launch()}
                 aria-busy={launching}
-                aria-label={`${needsSelection && onChooseShell ? 'Choose Shell for' : 'Launch'} ${profileDisplayName ?? 'Tobkiri Harness'}`}
+                aria-label={t(needsSelection && onChooseShell ? 'shell_launch.choose_for' : 'shell_launch.launch', {name: profileDisplayName ?? t('shell_launch.harness')})}
               >
-                {launching ? 'Opening…' : needsSelection && onChooseShell ? 'Choose Shell' : `Launch ${profileDisplayName ?? 'Tobkiri Harness'}`}
+                {launching ? t('shell_launch.opening') : needsSelection && onChooseShell ? t('shell_launch.choose') : t('shell_launch.launch', {name: profileDisplayName ?? t('shell_launch.harness')})}
               </Button>
               {!active && activationHref ? (
                 <Link
                   className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-bg-main px-4 py-2 text-sm font-medium text-text-main transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] focus-visible:ring-offset-2"
                   to={activationHref}
                 >
-                  Activate first
+                  {t('shell_launch.activate_first')}
                 </Link>
               ) : null}
             </div>

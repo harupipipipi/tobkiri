@@ -32,6 +32,7 @@ on:
       - 'tobkiri_launcher/frontend/src/pages/Settings.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Settings.test.tsx'
       - 'tobkiri_launcher/frontend/src/lib/i18n.ts'
+      - 'tobkiri_launcher/frontend/src/components/presentation/ShellLaunchCard*.tsx'
       - 'tobkiri_launcher/frontend/src/setup-review.*'
       - 'tobkiri_launcher/frontend/setup-review/**'
       - 'tobkiri_launcher/frontend/scripts/package-setup-review.mjs'
@@ -86,7 +87,7 @@ jobs:
         run: |
           npm ci
           npm run build:core-host
-      - name: Verify Setup and Settings presentation and legacy transport compatibility
+      - name: Verify Setup, Settings and Shell launch presentation
         working-directory: tobkiri_launcher/frontend
         run: >-
           node --import tsx --test
@@ -95,6 +96,7 @@ jobs:
           src/pages/DefaultsReview.successor.test.tsx
           src/pages/DefaultsReview.packVersions.test.tsx
           src/pages/Settings.test.tsx
+          src/components/presentation/ShellLaunchCard.test.tsx
       - name: Build the isolated Setup review assets
         working-directory: tobkiri_launcher/frontend
         run: npm run build:setup-review
