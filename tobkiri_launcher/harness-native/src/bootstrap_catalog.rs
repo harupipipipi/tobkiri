@@ -508,13 +508,9 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
             BootstrapReviewReachpoint::RepairLegacyDisplayNamesNotBound
         }
         #[cfg(unix)]
-        Ok(DefinitionRecovery::BootstrapState(
-            definitions::RegistryBootstrapState::TemplateAvailable
-            | definitions::RegistryBootstrapState::NotRequired,
-        )) => BootstrapReviewReachpoint::HostProfileDefinitionListNotBound,
-        #[cfg(unix)]
-        Ok(DefinitionRecovery::BootstrapState(definitions::RegistryBootstrapState::Empty)) => {
-            bail!("empty Profile registry is missing its retained Store");
+        Ok(DefinitionRecovery::ProfileDefinitions(profiles)) => {
+            review.actual._recovery_profile_definitions = Some(profiles);
+            BootstrapReviewReachpoint::AdmittedPackCatalogNotBound
         }
         #[cfg(unix)]
         Ok(DefinitionRecovery::BootstrapTemplate(store)) => {
@@ -585,19 +581,21 @@ async fn bootstrap_template<S: BootstrapInputOwner + crate::BootstrapReviewOwner
     let template =
         bootstrap_template_data(&data, &scope, &catalog, &profile_id, key, pack.input_budget)?;
     drop((data, input, scope, catalog, profile_id));
-    if let Err(error) = definitions::complete_bootstrap_template(
+    let profiles = definitions::complete_bootstrap_template(
         &review.read,
         &pack.work.get().source,
         pack.cancellation,
         pack.input_budget,
         store,
         &template,
-    ) {
-        drop(template);
-        return Ok(Err(registry_failure(review, pack, caller, error).await?));
-    }
+    );
+    drop(template);
+    review.actual._recovery_profile_definitions = Some(match profiles {
+        Ok(profiles) => profiles,
+        Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
+    });
     Ok(Err(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::HostProfileDefinitionListNotBound,
+        BootstrapReviewReachpoint::AdmittedPackCatalogNotBound,
     )))
 }
 

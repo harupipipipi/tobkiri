@@ -42,7 +42,7 @@ pub(crate) enum DefinitionRecovery {
     #[cfg(unix)]
     BootstrapTemplate(BootstrapTemplateStore),
     #[cfg(unix)]
-    BootstrapState(RegistryBootstrapState),
+    ProfileDefinitions(CoreValue),
 }
 
 /// The on-disk registry and original invocation retained during catalog lookup.
@@ -132,7 +132,7 @@ pub(crate) fn complete_bootstrap_template<S: crate::BootstrapReviewOwner>(
     budget: &Arc<dyn AllocationBudget>,
     pending: BootstrapTemplateStore,
     template: &CoreValue,
-) -> Result<()> {
+) -> Result<CoreValue> {
     if !pending.invocation.same_invocation(&read.invocation)
         || !Arc::ptr_eq(&pending.cleanup, &read.cleanup)
         || !pending.cancellation.same_node(cancellation)
@@ -142,10 +142,13 @@ pub(crate) fn complete_bootstrap_template<S: crate::BootstrapReviewOwner>(
         return Err(OriginalAuthorityError::unavailable());
     }
     let op = review_operation(read, owner, cancellation)?;
-    pending
-        .store
-        .bootstrap_defaults(&op, template, budget, registry_time)
-        .map_err(recovery_error)
+    (|| {
+        pending
+            .store
+            .bootstrap_defaults(&op, template, budget, registry_time)?;
+        pending.store.catalog_profiles(&op, budget)
+    })()
+    .map_err(recovery_error)
 }
 
 // Retain the original constructor/list comparison's stopping point.
@@ -218,7 +221,9 @@ fn recover_at<S: crate::BootstrapReviewOwner>(
                         pid: op.pid,
                     },
                 )),
-                state => Ok(DefinitionRecovery::BootstrapState(state)),
+                _ => Ok(DefinitionRecovery::ProfileDefinitions(
+                    store.catalog_profiles(op, budget)?,
+                )),
             }
         }
         next => Ok(next),
@@ -526,6 +531,15 @@ impl Store {
     ) -> Result<RegistryBootstrapState> {
         let state = self.snapshot(op, budget)?;
         definitions_model::bootstrap_state(op, &state, budget)
+    }
+
+    fn catalog_profiles<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<CoreValue> {
+        let mut state = self.snapshot(op, budget)?;
+        definitions_model::catalog_profiles(op, &mut state, budget)
     }
 
     fn bootstrap_defaults<S: OriginalAuthorityOwner>(

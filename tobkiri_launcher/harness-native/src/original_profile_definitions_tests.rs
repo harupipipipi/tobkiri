@@ -847,7 +847,8 @@ async fn registry_retired_pack_migration_runs_in_original_recovery_order() {
         let mut publication = PublicationLock::acquire(&op, &store.directory).unwrap();
         assert!(matches!(
             recover(read, source, cancel, budget).unwrap(),
-            DefinitionRecovery::BootstrapState(RegistryBootstrapState::NotRequired)
+            DefinitionRecovery::ProfileDefinitions(ref profiles)
+                if profiles.array().is_some_and(|rows| rows.is_empty())
         ));
         let path = source.root.join("profiles").join(INDEX);
         let actual: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
@@ -923,6 +924,51 @@ async fn registry_bootstrap_state_is_a_fresh_locked_read_without_writes() {
     });
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn registry_catalog_uses_live_order_and_only_the_original_presence_filter() {
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let resolved = |id: &str, order| {
+            let mut row = entry(id, order);
+            let mut profile: Value = serde_json::from_slice(BOOTSTRAP_TEMPLATE).unwrap();
+            profile["profile_id"] = json!(id);
+            let revision = digest(&profile);
+            row["current_revision"] = json!(revision);
+            row["revisions"][0]["profile_revision"] = json!(revision);
+            row["revisions"][0]["profile"] = profile;
+            row
+        };
+        let later = resolved("later", 3);
+        let first = resolved("first", 1);
+        let same_order = resolved("second", 1);
+        let rows = vec![
+            later.clone(),
+            entry("opaque-import", 0),
+            same_order.clone(),
+            first.clone(),
+            bootstrap_tombstone("retired"),
+        ];
+        let path = source.root.join("profiles").join(INDEX);
+        let bytes = sealed(state(rows));
+        write_index(source, &bytes);
+        let actual = store.catalog_profiles(&op, budget).unwrap();
+        let expected = json!([
+            ["first", first["revisions"][0]["profile"]],
+            ["second", same_order["revisions"][0]["profile"]],
+            ["later", later["revisions"][0]["profile"]],
+        ]);
+        let expected =
+            CoreValue::parse_guest(&serde_json::to_vec(&expected).unwrap(), budget).unwrap();
+        assert!(actual.eq_guest(&expected, budget).unwrap());
+        assert_eq!(fs::read(path).unwrap(), bytes);
+        assert!(lock_free(
+            &source.root.join("profiles/.profile-definition.lock")
+        ));
+        assert_eq!(read.receipt().open_files, 0);
+    });
+}
+
 fn bootstrap_empty_state(profiles: Vec<Value>) -> Value {
     let mut empty = state(profiles);
     empty["bootstrap"]["state"] = json!("empty");
@@ -944,8 +990,7 @@ fn bootstrap_tombstone(id: &str) -> Value {
 }
 
 const BOOTSTRAP_TEMPLATE: &[u8] =
-    "{\"profile_id\":\"defaults\",\"display_name\":\"  ハーネス  \",\"packs\":[\"one\",\"two\"]}"
-        .as_bytes();
+    "{\"profile_id\":\"defaults\",\"display_name\":\"  ハーネス  \",\"packs\":[\"one\",\"two\"],\"profile_api_version\":\"4\",\"mode\":null,\"base\":null,\"shell\":null,\"requested_edges\":null,\"authority_references\":null,\"profile_authority_snapshot_digest\":null,\"provenance\":null}".as_bytes();
 
 #[tokio::test(flavor = "current_thread")]
 async fn registry_bootstrap_appends_first_revision_and_replays_without_a_write() {
@@ -1039,11 +1084,22 @@ async fn registry_bootstrap_resumes_the_same_store_with_the_definition_lock_rele
         else {
             panic!("denied continuation changed the registry");
         };
-        complete_bootstrap_template(read, source, cancel, budget, store, &template).unwrap();
+        let completed =
+            complete_bootstrap_template(read, source, cancel, budget, store, &template).unwrap();
+        assert!(
+            completed
+                .get_index(0)
+                .unwrap()
+                .get_index(1)
+                .unwrap()
+                .eq_guest(&template, budget)
+                .unwrap()
+        );
         assert!(lock_free(&lock));
         assert!(matches!(
             recover(read, source, cancel, budget).unwrap(),
-            DefinitionRecovery::BootstrapState(RegistryBootstrapState::TemplateAvailable)
+            DefinitionRecovery::ProfileDefinitions(ref profiles)
+                if profiles.eq_guest(&completed, budget).unwrap()
         ));
     });
 }

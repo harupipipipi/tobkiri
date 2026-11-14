@@ -1260,6 +1260,15 @@ pub(super) fn list<S: OriginalAuthorityOwner>(
     state: &mut State,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Funded<Vec<StoredProfile>>> {
+    list_selected(op, state, budget, true)
+}
+
+fn list_selected<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &mut State,
+    budget: &Arc<dyn AllocationBudget>,
+    include_tombstones: bool,
+) -> Result<Funded<Vec<StoredProfile>>> {
     let doc = &mut state.doc;
     let entries =
         indexes(array(doc, field(doc, doc.root, "profiles")).expect("validated profiles"))?;
@@ -1276,6 +1285,9 @@ pub(super) fn list<S: OriginalAuthorityOwner>(
         .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
     for entry in entries {
         charge(op, budget, 1)?;
+        if !include_tombstones && boolean(doc, field(doc, entry, "tombstone")) == Some(true) {
+            continue;
+        }
         rows.push(stored_from_entry(doc, entry));
     }
     // Stable bottom-up merge sort allows each reached comparison to fail
@@ -1325,4 +1337,59 @@ pub(super) fn list<S: OriginalAuthorityOwner>(
         value: rows,
         _capacity: capacity,
     })
+}
+
+/// Preserve the list order from the stored Profile records until the App
+/// assembles its dictionary. This does not grant any resolution authority.
+pub(super) fn catalog_profiles<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &mut State,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    const REQUIRED: [&str; 10] = [
+        "profile_api_version",
+        "profile_id",
+        "mode",
+        "base",
+        "shell",
+        "packs",
+        "requested_edges",
+        "authority_references",
+        "profile_authority_snapshot_digest",
+        "provenance",
+    ];
+    let rows = list_selected(op, state, budget, false)?;
+    let mut profiles = CoreValue::array_builder(budget, rows.len()).map_err(catalog_capacity)?;
+    for row in rows.iter() {
+        let profile = row.references[2];
+        let mut found_all = true;
+        for key in REQUIRED {
+            if successor_selection::lookup(&state.doc, profile, key, &mut Meter { op, budget })?
+                .is_none()
+            {
+                found_all = false;
+                break;
+            }
+        }
+        if !found_all {
+            continue;
+        }
+        let id = text(&state.doc, row.references[0]).expect("validated registered ID");
+        let mut key = [0_u8; 128];
+        for (byte, codepoint) in key.iter_mut().zip(&id.0) {
+            *byte = u8::try_from(*codepoint).expect("validated ASCII registered ID");
+        }
+        let key = std::str::from_utf8(&key[..id.0.len()]).expect("validated ASCII registered ID");
+        let key = CoreValue::string(key, budget).map_err(catalog_capacity)?;
+        let bytes = canonical_at(&mut state.doc, profile, None, op, budget)?;
+        let profile = CoreValue::parse_guest(&bytes, budget).map_err(catalog_capacity)?;
+        let row = CoreValue::array_shared([Ok(key), Ok(profile)].into_iter(), budget)
+            .map_err(catalog_capacity)?;
+        profiles.push(row).map_err(catalog_capacity)?;
+    }
+    profiles.finish().map_err(catalog_capacity)
+}
+
+fn catalog_capacity(_: AllocationError) -> OriginalAuthorityError {
+    OriginalAuthorityError::capacity(OriginalAuthorityStage::Source)
 }

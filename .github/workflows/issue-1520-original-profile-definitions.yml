@@ -100,7 +100,7 @@ jobs:
           TOBKIRI_BOOTSTRAP_TEMPLATE_FIXTURE: ${{ runner.temp }}/original-profile-bootstrap-template
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-definitions-unit.log" --expected-passed 17 --
+          --log "$RUNNER_TEMP/native-definitions-unit.log" --expected-passed 18 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::tests
           -- --test-threads=1 --nocapture
