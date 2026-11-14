@@ -449,7 +449,7 @@ async fn run_original_catalog_component_driver(
                 "qualification":false}));
         }
         let expected = if recovery {
-            BootstrapReviewReachpoint::RecoveryActiveReservationNotBound
+            BootstrapReviewReachpoint::RecoveryJournalClearNotBound
         } else {
             BootstrapReviewReachpoint::ProfileDefinitionStoreNotBound
         };
@@ -479,10 +479,11 @@ async fn run_original_catalog_component_driver(
                     && rows.len() == 1
                     && id.as_str() == Some("recovery-test-profile")
                     && observation["authority_constructor_entries"] == 1
-                    && observation["next_stage"] == "active-reservation-entry"
+                    && observation["next_stage"] == "journal-clear-entry"
                     && profiles.digest_guest(runtime.data_budget())?.as_str()
                         == observation["profile_rows_digest"].as_str().context("original Profile digest required")?
-                    && user_data.join("authority/v4.sqlite3").is_file(),
+                    && user_data.join("authority/v4.sqlite3").is_file()
+                    && user_data.join("profiles/bootstrap-publication.json").is_file(),
                 "the same Runtime must retain the recovered catalog and open the registered Authority database",
             );
         }
@@ -491,7 +492,7 @@ async fn run_original_catalog_component_driver(
         ensure!(cleanup_probe.is_some() && !lock_is_free(&user_data)?);
         observed = Some(
             json!({"outcome":"integration-boundary",
-            "stage":if recovery {"recovery-active-reservation-entry"} else {"profile-definition-store-entry"},
+            "stage":if recovery {"recovery-journal-clear-entry"} else {"profile-definition-store-entry"},
             "fuel_before":fuel_before,"fuel_after":fuel_after,"budget_resets":0,
             "inspection_attempts_before_review":inspections_before_review,
             "inspection_attempts_after_review":runtime.inspection_attempts(),
@@ -544,21 +545,25 @@ async fn run_original_catalog_component_driver(
     let reaped = tobkiri_wasm::reap_allocation_owners()?;
     let after_reap = invocation.capacity_snapshot()?;
     let output = json!({"format":"io.tobkiri.actual-catalog-prefix-observations.v1",
-        "name":"packaged-valid","observation":observed,"execution_matched_branch":execution.is_ok(),
-        "post_review_copy_only":post_review_copy,
-        "native_outer_diagnostic_dropped_before_finish":native_outer_diagnostic_dropped_before_finish,
-        "execution_error":execution.as_ref().err().map(ToString::to_string),
-        "finish_ok":cleanup.is_ok(),"cleanup_probe_present":probe_present,
-        "cleanup_probe_verified_after_finish":verified,
-        "cleanup_verified":cleanup.is_ok() && verified == Some(true),
-        "journal_lock_released_after_finish":lock_released,
-        "source_destructor_reached":dropped.load(Ordering::Acquire),
-        "capacity":{"before_finish":{"bytes":before.charged_bytes,"reservations":before.reservations},
-        "after_finish":{"bytes":after_finish.charged_bytes,"reservations":after_finish.reservations},
-        "after_data":{"bytes":after_data.charged_bytes,"reservations":after_data.reservations},
-        "reaped":reaped,"after_reap":{"bytes":after_reap.charged_bytes,"reservations":after_reap.reservations}},
-        "qualification":false,"production_enabled":false,
-        "scope":"one actual catalog operation with controlled CI resource owner and empty artifact directory; no constructor, migration, Authority, actual installed executable, GUI or full9 native qualification"});
+    "name":"packaged-valid","observation":observed,"execution_matched_branch":execution.is_ok(),
+    "post_review_copy_only":post_review_copy,
+    "native_outer_diagnostic_dropped_before_finish":native_outer_diagnostic_dropped_before_finish,
+    "execution_error":execution.as_ref().err().map(ToString::to_string),
+    "finish_ok":cleanup.is_ok(),"cleanup_probe_present":probe_present,
+    "cleanup_probe_verified_after_finish":verified,
+    "cleanup_verified":cleanup.is_ok() && verified == Some(true),
+    "journal_lock_released_after_finish":lock_released,
+    "source_destructor_reached":dropped.load(Ordering::Acquire),
+    "capacity":{"before_finish":{"bytes":before.charged_bytes,"reservations":before.reservations},
+    "after_finish":{"bytes":after_finish.charged_bytes,"reservations":after_finish.reservations},
+    "after_data":{"bytes":after_data.charged_bytes,"reservations":after_data.reservations},
+    "reaped":reaped,"after_reap":{"bytes":after_reap.charged_bytes,"reservations":after_reap.reservations}},
+    "qualification":false,"production_enabled":false,
+    "scope":if recovery {
+        "actual catalog and empty Authority reservation read through the journal-clear entry with controlled CI resource owner"
+    } else {
+        "actual catalog through Profile Definition Store entry with controlled CI resource owner and empty artifact directory"
+    }});
     #[cfg(feature = "catalog-diagnostics-ci")]
     let output = {
         let mut output = output;

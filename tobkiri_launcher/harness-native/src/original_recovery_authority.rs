@@ -1,11 +1,14 @@
 //! The AuthorityStore context at the original nonstale publication caller.
 use super::*;
+#[path = "original_recovery_active_reservation.rs"]
+mod active_reservation;
 
-/// The first unreached operation within the original AuthorityStore context.
+/// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
     ActivationStore,
-    ActiveReservation,
+    JournalClear,
+    MatchedReservation,
 }
 
 impl PublicationRead {
@@ -49,17 +52,22 @@ impl PublicationRead {
             // allowed to create state. Never acquire a replacement lock/root.
             op.check(OriginalAuthorityStage::Guard)?;
             pending.scope.validate(&op)?;
-            with_registered_store(&op, &pending.root, |_| {
+            with_registered_store(&op, &pending.root, |store| {
                 // Path.exists follows links, treats files as existing too, and
                 // suppresses only the original finite set of stat errors.
                 let exists = candidate_selection::predecessor_stat(&op, workspace, |path| {
                     fs::metadata(path)
                 })?
                 .is_some();
-                Ok(if exists {
-                    RecoveryAuthorityReached::ActivationStore
-                } else {
-                    RecoveryAuthorityReached::ActiveReservation
+                if exists {
+                    return Ok(RecoveryAuthorityReached::ActivationStore);
+                }
+                active_reservation::read(&op, store, &pending.intent).map(|matched| {
+                    if matched {
+                        RecoveryAuthorityReached::MatchedReservation
+                    } else {
+                        RecoveryAuthorityReached::JournalClear
+                    }
                 })
             })
         })()
@@ -80,32 +88,52 @@ impl PublicationRead {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::original_authority::definitions::tests::{Source, lock_free, with_setup_source};
+    use crate::original_authority::definitions::tests::{
+        Source, lock_free, operation, with_setup_source,
+    };
     use hmac::{Hmac, Mac};
+    use rusqlite::params;
     use sha2::Sha256;
     use std::os::unix::fs::symlink;
 
     const PROFILE_ID: &str = "recovery-profile";
+    const ACTIVATION_ID: &str = "activation:recovery";
     const DATABASE: &str = "authority/v4.sqlite3";
     const GUARD: &str = "authority/.v4.sqlite3.lifecycle.lock";
     const LOCK_PATH: &str = "profiles/.bootstrap-publication.lock";
 
     fn enter(source: &Source, read: &mut PublicationRead, cancellation: &CoreCancellation) {
+        enter_candidate(
+            source,
+            read,
+            cancellation,
+            r#"{"activation_id": "activation:recovery", "profile_id": "recovery-profile"}"#,
+        );
+    }
+
+    fn enter_candidate(
+        source: &Source,
+        read: &mut PublicationRead,
+        cancellation: &CoreCancellation,
+        candidate: &str,
+    ) {
         let profiles = source.root.join("profiles");
         fs::create_dir_all(&profiles).unwrap();
         let key = [b'k'; 32];
         fs::write(profiles.join(KEY), key).unwrap();
         fs::set_permissions(profiles.join(KEY), fs::Permissions::from_mode(0o600)).unwrap();
-        let payload = br#"{"candidate": {"profile_id": "recovery-profile"}, "confirmation_digest": null, "predecessor": null, "schema": "io.tobkiri.profile-publication-intent.v1"}"#;
+        let payload = format!(
+            r#"{{"candidate": {candidate}, "confirmation_digest": null, "predecessor": null, "schema": "io.tobkiri.profile-publication-intent.v1"}}"#
+        );
         let mut mac = Hmac::<Sha256>::new_from_slice(&key).unwrap();
-        mac.update(payload);
+        mac.update(payload.as_bytes());
         let signature = Digest::from_sha256(mac.finalize().into_bytes().into());
         let journal = profiles.join(JOURNAL);
         fs::write(
             &journal,
             format!(
                 r#"{{"payload":{},"hmac":"{}"}}"#,
-                std::str::from_utf8(payload).unwrap(),
+                payload,
                 &signature.as_str()[7..],
             ),
         )
@@ -120,14 +148,43 @@ mod tests {
         assert!(!lock_free(&source.root.join(LOCK_PATH)));
     }
 
+    fn initialize(source: &Source, read: &PublicationRead, cancellation: &CoreCancellation) {
+        let op = operation(read, source, cancellation);
+        with_registered_store(&op, &source.root, |_| Ok(())).unwrap();
+        assert!(lock_free(&source.root.join(GUARD)));
+    }
+
+    fn insert(db: &Connection, token: i64, activation_id: &str, state: &str) {
+        db.execute(
+            "INSERT INTO activation_reservations (
+                 reservation_id, activation_id, profile_id, plan_digest,
+                 profile_authority_digest, security_epoch, fencing_token,
+                 state, created_at, updated_at
+             ) VALUES (?, ?, 'other-profile', 'plan', 'authority', 2, ?, ?, 1.0, 2.0)",
+            params![format!("reservation:{token}"), activation_id, token, state],
+        )
+        .unwrap();
+    }
+
+    fn verify_custody(source: &Source, read: &mut PublicationRead) {
+        assert!(lock_free(&source.root.join(GUARD)));
+        assert!(!lock_free(&source.root.join(LOCK_PATH)));
+        assert_eq!(read.receipt().open_connections, 0);
+        assert_eq!(read.receipt().open_files, 1);
+        assert!(!read.receipt().uncertain);
+        assert!(source.root.join("profiles").join(JOURNAL).is_file());
+        read.close_continuation().unwrap();
+        assert!(lock_free(&source.root.join(LOCK_PATH)));
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn recovery_authority_initializes_before_branching_on_the_workspace() {
         for (case, expected) in [
-            ("missing", RecoveryAuthorityReached::ActiveReservation),
+            ("missing", RecoveryAuthorityReached::JournalClear),
             ("directory", RecoveryAuthorityReached::ActivationStore),
             ("file", RecoveryAuthorityReached::ActivationStore),
-            ("dangling", RecoveryAuthorityReached::ActiveReservation),
-            ("loop", RecoveryAuthorityReached::ActiveReservation),
+            ("dangling", RecoveryAuthorityReached::JournalClear),
+            ("loop", RecoveryAuthorityReached::JournalClear),
         ] {
             with_setup_source(|source, read, cancellation, _| {
                 enter(source, read, cancellation);
@@ -158,15 +215,8 @@ mod tests {
                 );
                 db.close().unwrap();
                 assert!(source.root.join("authority/v4.key").is_file());
-                assert!(lock_free(&source.root.join(GUARD)));
-                assert!(!lock_free(&source.root.join(LOCK_PATH)));
-                assert_eq!(read.receipt().open_connections, 0);
-                assert_eq!(read.receipt().open_files, 1);
-                assert!(!read.receipt().uncertain);
                 assert!(read.run_recovery_authority(source, cancellation).is_err());
-                assert!(source.root.join("profiles").join(JOURNAL).is_file());
-                read.close_continuation().unwrap();
-                assert!(lock_free(&source.root.join(LOCK_PATH)));
+                verify_custody(source, read);
             });
         }
     }
@@ -189,6 +239,145 @@ mod tests {
             assert!(source.root.join("profiles").join(JOURNAL).is_file());
             read.close_continuation().unwrap();
             assert!(lock_free(&source.root.join(LOCK_PATH)));
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_authority_uses_exact_activation_id_and_active_state() {
+        for matches in 0..=2 {
+            with_setup_source(|source, read, cancellation, _| {
+                enter(source, read, cancellation);
+                initialize(source, read, cancellation);
+                let db = Connection::open(source.root.join(DATABASE)).unwrap();
+                for (index, (id, state)) in [
+                    ("activation:RECOVERY", "active"),
+                    ("another-activation", "active"),
+                    (ACTIVATION_ID, "prepared"),
+                    (ACTIVATION_ID, "ready_without_authority"),
+                    (ACTIVATION_ID, "committing"),
+                    (ACTIVATION_ID, "retired"),
+                    (ACTIVATION_ID, "aborted"),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    insert(&db, 1 + index as i64, id, state);
+                }
+                for i in 0..matches {
+                    insert(&db, 20 + i, ACTIVATION_ID, "active");
+                }
+                db.close().unwrap();
+                let result = read.run_recovery_authority(source, cancellation);
+                match matches {
+                    0 => assert_eq!(result.unwrap(), RecoveryAuthorityReached::JournalClear),
+                    1 => assert_eq!(
+                        result.unwrap(),
+                        RecoveryAuthorityReached::MatchedReservation
+                    ),
+                    _ => {
+                        let error = result.unwrap_err();
+                        assert_eq!(error.stage, OriginalAuthorityStage::ActiveReservation);
+                        assert_eq!(
+                            error.class,
+                            "core_runtime.authority.store_contracts.AuthorityStoreError"
+                        );
+                        assert_eq!(
+                            error.message,
+                            "multiple active authority reservations exist"
+                        );
+                        assert!(error.cause.is_none());
+                    }
+                }
+                verify_custody(source, read);
+            });
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_authority_reads_signed_activation_id_after_workspace_stat() {
+        use RecoveryAuthorityReached::*;
+        for (id, workspace_exists, expected) in [
+            ("", true, Ok(ActivationStore)),
+            ("", false, Err(("builtins.KeyError", "'activation_id'"))),
+            (
+                r#""activation_id": [], "#,
+                false,
+                Err((
+                    "core_runtime.authority.store_contracts.AuthorityStoreError",
+                    "active activation read failed",
+                )),
+            ),
+            (r#""activation_id": 42, "#, false, Ok(MatchedReservation)),
+            (r#""activation_id": true, "#, false, Ok(MatchedReservation)),
+            (r#""activation_id": null, "#, false, Ok(JournalClear)),
+        ] {
+            with_setup_source(|source, read, cancellation, _| {
+                let candidate = format!(r#"{{{id}"profile_id": "{PROFILE_ID}"}}"#);
+                enter_candidate(source, read, cancellation, &candidate);
+                initialize(source, read, cancellation);
+                let db = Connection::open(source.root.join(DATABASE)).unwrap();
+                insert(&db, 1, "1", "active");
+                insert(&db, 2, "42", "active");
+                db.close().unwrap();
+                let workspace = source.root.join("workspaces").join(PROFILE_ID);
+                if workspace_exists {
+                    fs::create_dir_all(workspace).unwrap();
+                }
+                let result = read.run_recovery_authority(source, cancellation);
+                match expected {
+                    Ok(expected) => assert_eq!(result.unwrap(), expected),
+                    Err((class, message)) => {
+                        let error = result.unwrap_err();
+                        assert_eq!(error.class, class);
+                        assert_eq!(error.message, message);
+                        if message == "active activation read failed" {
+                            assert!(matches!(
+                                error.cause,
+                                Some(OriginalAuthorityCause::Python {
+                                    class: "sqlite3.ProgrammingError",
+                                    ..
+                                })
+                            ));
+                        }
+                    }
+                }
+                verify_custody(source, read);
+            });
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_authority_wraps_a_sqlite_reservation_read_failure() {
+        with_setup_source(|source, read, cancellation, _| {
+            enter(source, read, cancellation);
+            initialize(source, read, cancellation);
+            let db = Connection::open(source.root.join(DATABASE)).unwrap();
+            // A legacy table with an incomplete shape makes the actual
+            // reservation prepare fail after the store constructor.
+            db.execute_batch(
+                "DROP TABLE activation_reservations;
+                 CREATE TABLE activation_reservations (reservation_id TEXT PRIMARY KEY) STRICT;",
+            )
+            .unwrap();
+            db.close().unwrap();
+            let error = read
+                .run_recovery_authority(source, cancellation)
+                .unwrap_err();
+            assert_eq!(error.stage, OriginalAuthorityStage::ActiveReservation);
+            assert_eq!(
+                error.class,
+                "core_runtime.authority.store_contracts.AuthorityStoreError"
+            );
+            assert_eq!(error.message, "active activation read failed");
+            assert!(error.suppressed);
+            assert!(matches!(
+                error.cause,
+                Some(OriginalAuthorityCause::Python {
+                    class: "sqlite3.OperationalError",
+                    ..
+                })
+            ));
+            verify_custody(source, read);
         });
     }
 }

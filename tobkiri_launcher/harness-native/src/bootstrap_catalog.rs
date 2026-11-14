@@ -703,8 +703,18 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         Ok(RecoveryAuthorityReached::ActivationStore) => {
             BootstrapReviewReachpoint::RecoveryActivationStoreNotBound
         }
-        Ok(RecoveryAuthorityReached::ActiveReservation) => {
-            BootstrapReviewReachpoint::RecoveryActiveReservationNotBound
+        Ok(RecoveryAuthorityReached::JournalClear) => {
+            BootstrapReviewReachpoint::RecoveryJournalClearNotBound
+        }
+        Ok(RecoveryAuthorityReached::MatchedReservation) => {
+            return Ok(Err(review_continuation::denied(
+                review,
+                pack,
+                caller,
+                "Profile publication workspace is unavailable",
+                BootstrapDeniedRaise::Plain,
+            )
+            .await?));
         }
         Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
     };

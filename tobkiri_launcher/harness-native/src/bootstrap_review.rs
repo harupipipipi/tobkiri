@@ -63,7 +63,7 @@ pub enum BootstrapReviewReachpoint {
     AdmittedHostExtensionProjectionNotBound,
     CatalogWithProfilesNotBound,
     RecoveryActivationStoreNotBound,
-    RecoveryActiveReservationNotBound,
+    RecoveryJournalClearNotBound,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,

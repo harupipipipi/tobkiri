@@ -76,7 +76,8 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
     owner_type = type(port)
     catalog_with_profiles = owner_type.catalog_with_profiles
     authority = capture.AuthorityStore
-    original_read = authority.active_activation_reservation
+    journal_type = capture.ProfilePublicationJournal
+    original_clear = journal_type.clear
     observed = []
     authority_observations = []
 
@@ -100,12 +101,11 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
             raise AssertionError("original lock ownership changed before Authority")
         return authority(path)
 
-    def stop_at_active_reservation(self, activation_id):
-        if (type(activation_id) is not str or not activation_id
-                or _lock_free(user_data / "profiles/.bootstrap-publication.lock") is not False
+    def stop_at_journal_clear(self):
+        if (_lock_free(user_data / "profiles/.bootstrap-publication.lock") is not False
                 or not (user_data / "authority/v4.sqlite3").is_file()):
-            raise AssertionError("original active reservation call differs")
-        authority_observations.append("active-reservation-entry")
+            raise AssertionError("original empty active reservation read did not retain custody")
+        authority_observations.append("journal-clear-entry")
         raise AuthorityBoundary
 
     def non_authority(root):
@@ -118,7 +118,7 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
     try:
         owner_type.catalog_with_profiles = observe
         capture.AuthorityStore = open_authority
-        authority.active_activation_reservation = stop_at_active_reservation
+        journal_type.clear = stop_at_journal_clear
         try:
             capture._recover_bootstrap_publication(discard_superseded=True)
         except AuthorityBoundary:
@@ -128,9 +128,9 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
     finally:
         owner_type.catalog_with_profiles = catalog_with_profiles
         capture.AuthorityStore = authority
-        authority.active_activation_reservation = original_read
+        journal_type.clear = original_clear
     if (code_hashes(runtime) != hashes or before != non_authority(user_data)
-            or authority_observations != ["active-reservation-entry"]
+            or authority_observations != ["journal-clear-entry"]
             or _lock_free(user_data / "profiles/.bootstrap-publication.lock") is not True):
         raise AssertionError("original recovery altered the retained profile seed or source")
     write_json(output, {"profile_rows_digest": observed[0], "authority_constructor_entries": 1,

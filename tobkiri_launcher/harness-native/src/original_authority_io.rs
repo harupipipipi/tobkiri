@@ -1636,6 +1636,48 @@ impl<S: OriginalAuthorityOwner> Database<'_, '_, '_, S> {
         }
         Ok(output)
     }
+    pub(in crate::original_authority::io) fn active_reservation_count(
+        &self,
+        bind_activation_id: impl FnOnce() -> Result<Funded<Value>>,
+    ) -> Result<u8> {
+        self.validate()?;
+        let statement = self
+            .connection()
+            .prepare(
+                "SELECT * FROM activation_reservations WHERE activation_id=? AND state='active'",
+            )
+            .map_err(|error| match error {
+                rusqlite::Error::SqlInputError { error, msg, .. } => {
+                    self.sql(rusqlite::Error::SqliteFailure(error, Some(msg)))
+                }
+                error => self.sql(error),
+            })?;
+        let columns = statement.column_count();
+        // Keep the bound-text reservation through statement finalization.
+        let (activation_id, mut statement) = (bind_activation_id()?, statement);
+        let mut cursor = statement
+            .query([&activation_id.value])
+            .map_err(|error| self.sql(error))?;
+        let mut count = 0;
+        // Fetch to exhaustion so a later read failure still precedes duplicate
+        // classification. The caller only tests whether a reservation exists.
+        while let Some(row) = cursor.next().map_err(|error| self.sql(error))? {
+            self.store.op.check(self.stage)?;
+            for column in 0..columns {
+                if let ValueRef::Text(bytes) =
+                    row.get_ref(column).map_err(|error| self.sql(error))?
+                    && std::str::from_utf8(bytes).is_err()
+                {
+                    return Err(OriginalAuthorityError::unsupported(
+                        self.stage,
+                        "SQLite text decoding exception",
+                    ));
+                }
+            }
+            count = (count + 1).min(2);
+        }
+        Ok(count)
+    }
     pub fn complete<T>(self, outcome: Result<T>) -> Result<T> {
         let finish = self.finish(outcome.is_ok());
         match finish {

@@ -15,6 +15,7 @@ name: Issue 1520 original Profile definition prefix
       - tools/original_host_extension_catalog_reference.py
       - tobkiri_launcher/harness-native/src/bootstrap_admitted_closure.rs
       - tobkiri_launcher/harness-native/src/original_recovery_authority.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_active_reservation.rs
       - tobkiri_launcher/harness-native/src/bootstrap_catalog.rs
       - tobkiri_launcher/harness-native/src/bootstrap_review*.rs
       - tobkiri_launcher/harness-native/src/original_active_profile.rs
@@ -149,14 +150,14 @@ jobs:
           TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 15 --
+          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 16 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::external_catalog::
           -- --test-threads=1 --nocapture
-      - name: Check original Authority initialization and journal cleanup
+      - name: Check original Authority initialization and active reservation read
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 5 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::tests::
           -- --test-threads=1 --nocapture

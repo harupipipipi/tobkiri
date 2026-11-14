@@ -3794,3 +3794,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `active_activation_reservation().fetchall()` が返す行は、この呼出し元では存在確認にのみ使われる。
   後続の移植では候補ID、active状態、複数行のエラー、SQLiteの後半読み取りエラーを保持しながら、
   行データの領域を呼出し元で確保せずに済む。activationの復旧と通常DMGの通し試験は未完了。
+- 前段の固定原本比較はLinuxで成功。署名済み2 Packの再読、Host Extensionの
+  元Pythonでの再構成、Authority初期化の2試験が通過した。macOSの比較が残る。
+- 次のスライスは、ゲストに返さない固定SQLで、workspaceがない場合の予約の有無を照合する。
+  該当なしはジャーナルの削除直前、1件は既存の拒否生成、複数件は元のAuthorityエラーへ進む。
+  同時に、closureの後続検証に使う外部専用のdigest指定サブ処理を試験構成に追加した。
+  旧版と署名済み後継版の両方を個別に選択し、元の読み取り順・生成catalogへのフォールバックを検証する。
+  本番で外部executable catalogを使うには別途、Packと実行定義の再読および互換レコード全体の再構成が必要。
+- [実Wasm CI 43602884999](https://github.com/harupipipipi/tobkiri/actions/runs/43602884999)は
+  Profile置換の試験で、先行するcatalog-loadでWasmの燃料を消費し切った。
+  元の読込位置はカタログ項目2回目、計測時点で経過時間上限は未到達、解放後の確保0。
+  現在の復旧試験を同じ上限で再実行し、既存のスキーマ照合にかかる実行量を詰める。

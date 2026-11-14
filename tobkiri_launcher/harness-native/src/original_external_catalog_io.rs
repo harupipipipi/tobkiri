@@ -11,6 +11,11 @@ mod external_catalog_inventory;
 mod external_catalog_model;
 #[path = "original_external_catalog_operations.rs"]
 mod external_catalog_operations;
+// The pinned scan is exercised against signed fixtures before it is connected
+// to the independent executable-catalog verification.
+#[cfg(test)]
+#[path = "original_external_catalog_pinned.rs"]
+mod external_catalog_pinned;
 #[path = "original_external_catalog_receipt.rs"]
 mod external_catalog_receipt;
 #[path = "original_external_catalog_variants.rs"]
@@ -34,12 +39,16 @@ pub(crate) struct BundledRecords {
     _ids: CoreValue,
 }
 
+struct CatalogInputs {
+    _bundled: BundledRecords,
+    registry: RegistryInput,
+    _paths: NativeSetupReservation,
+}
+
 /// The physical registry input, or the absence that the original read uses to
 /// return an empty catalog. This result does not confer Pack authority.
 struct RegistryInput {
-    _bundled: BundledRecords,
-    registry: PathBuf,
-    _paths: NativeSetupReservation,
+    path: PathBuf,
     raw: Option<Funded<Zeroizing<Vec<u8>>>>,
 }
 
@@ -645,7 +654,7 @@ fn read_inputs<S: OriginalAuthorityOwner>(
     runtime: &Path,
     user_data: &Path,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<RegistryInput> {
+) -> Result<CatalogInputs> {
     // Original runtime_user_data_scope resolves this path before reading the
     // generated Pack catalog. Keep using the original selected Host owner.
     let paths = op.reserve(
@@ -656,23 +665,31 @@ fn read_inputs<S: OriginalAuthorityOwner>(
     let user_data = resolve_existing_prefix(op, user_data)?;
     let source_path = runtime.join(SOURCE_CATALOG);
     let bundled = read_bundled(op, &source_path, budget)?;
-    let registry = user_data.join("pack_control").join(REGISTRY);
-    op.check(OriginalAuthorityStage::Source)?;
-    let raw = registry
-        .exists()
-        .then(|| read_registry(op, &registry, budget))
-        .transpose()?;
-    Ok(RegistryInput {
+    let registry = read_registry_input(op, &user_data, budget)?;
+    Ok(CatalogInputs {
         _bundled: bundled,
         registry,
         _paths: paths,
-        raw,
     })
+}
+
+fn read_registry_input<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    user_data: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<RegistryInput> {
+    let path = user_data.join("pack_control").join(REGISTRY);
+    op.check(OriginalAuthorityStage::Source)?;
+    let raw = path
+        .exists()
+        .then(|| read_registry(op, &path, budget))
+        .transpose()?;
+    Ok(RegistryInput { path, raw })
 }
 
 fn authenticate<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
-    input: RegistryInput,
+    input: CatalogInputs,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<ExternalPackRead> {
     let catalog = authenticate_external(op, input, budget)?;
@@ -686,22 +703,35 @@ fn authenticate<S: OriginalAuthorityOwner>(
 
 fn authenticate_external<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
-    input: RegistryInput,
+    input: CatalogInputs,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<ExternalPackRead> {
-    let Some(raw) = input.raw else {
+    let Some((registry, mut inventory)) = authenticate_registry(op, input.registry, budget)? else {
         return Ok(ExternalPackRead {
             _bundled: input._bundled,
             _registry: None,
             inventory: None,
         });
     };
+    inventory.finish_revision(&registry, op, budget)?;
+    Ok(ExternalPackRead {
+        _bundled: input._bundled,
+        _registry: Some(registry),
+        inventory: Some(inventory),
+    })
+}
+
+fn authenticate_registry<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    input: RegistryInput,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<(Funded<Document>, VerifiedInventory)>> {
+    let Some(raw) = input.raw else {
+        return Ok(None);
+    };
     let mut registry = model::parse_envelope(&raw, op, budget)?;
     drop(raw);
-    let pack_control = input
-        .registry
-        .parent()
-        .expect("external registry directory");
+    let pack_control = input.path.parent().expect("external registry directory");
     let key = signing_key(op, &pack_control.join(KEY)).map_err(|error| {
         if error.class == "core_runtime.hmac_key_manager.SigningKeyError" {
             caused(
@@ -715,11 +745,7 @@ fn authenticate_external<S: OriginalAuthorityOwner>(
     model::authenticate_and_validate_journal(&mut registry, &key, op, budget)?;
     drop(key);
     let inventory = verify_retained_packs(op, &registry, pack_control, budget)?;
-    Ok(ExternalPackRead {
-        _bundled: input._bundled,
-        _registry: Some(registry),
-        inventory: Some(inventory),
-    })
+    Ok(Some((registry, inventory)))
 }
 
 fn reject_bundled_collisions<S: OriginalAuthorityOwner>(
@@ -883,19 +909,38 @@ fn verify_retained_packs<S: OriginalAuthorityOwner>(
     }
     drop(versions);
     drop(versions_funding);
-    let revision = if host_extension_pending {
-        None
-    } else {
-        Some(catalog_revision(registry, entries, &verified, op, budget)?)
-    };
     Ok(VerifiedInventory {
         _entries: Funded {
             value: verified,
             _capacity: retention,
         },
-        _revision: revision,
+        _revision: None,
         host_extension_pending,
     })
+}
+
+impl VerifiedInventory {
+    fn finish_revision<S: OriginalAuthorityOwner>(
+        &mut self,
+        registry: &Document,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<()> {
+        if !self.host_extension_pending {
+            let entries = registry
+                .get(registry.root, "entries")
+                .and_then(|entries| registry.entries(entries))
+                .expect("authenticated entry object");
+            self._revision = Some(catalog_revision(
+                registry,
+                entries,
+                &self._entries,
+                op,
+                budget,
+            )?);
+        }
+        Ok(())
+    }
 }
 
 fn registry_text<'a>(doc: &'a Document, object: usize, name: &str) -> &'a Text {
