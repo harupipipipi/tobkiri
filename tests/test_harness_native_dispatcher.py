@@ -1362,7 +1362,12 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.static_edges(source)
         self.dynamic_edges(catalog, profile_id, source)
         artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
-        result = self.Resolved({}, {}, {})
+        definition_digest = "sha256:" + "2" * 64
+        plan_digest = "sha256:" + "3" * 64
+        lock_digest = "sha256:" + "4" * 64
+        result = self.Resolved({}, {"lock_digest": lock_digest}, {
+            "profile_definition_digest": definition_digest, "plan_digest": plan_digest,
+        })
         existing = self.registry.retain(result.profile)
         leaf = self.bridge.bind("fixture-root", "/fixture/shell")
 
@@ -1380,6 +1385,9 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         packet = wire.loads(self.dispatcher.call("resolve_profile", request))
         self.assertEqual(packet["format"], PREFIX + "resolver-profile-result.v1")
         self.assertEqual(packet["scope"], self.scope.wire())
+        self.assertEqual(packet["profile_definition_digest"], definition_digest)
+        self.assertEqual(packet["plan_digest"], plan_digest)
+        self.assertEqual(packet["lock_digest"], lock_digest)
         for name, value in (("resolved", result), ("profile", result.profile),
                             ("lock", result.lock), ("plan", result.plan)):
             self.assertIs(self.registry.borrow(self.registry.reference(packet[name])), value)
@@ -1436,6 +1444,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         captured = {}
         resolved.plan.update(profile_definition_digest="fixture-definition", plan_digest="fixture-plan")
         resolved.lock["bundle_digest"] = "fixture-bundle"
+        resolved.lock["lock_digest"] = "fixture-lock"
 
         def resolve(*args, **kwargs):
             captured.update(kwargs)
