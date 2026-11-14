@@ -3427,13 +3427,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   WebKitの既定機能が既存ロックに含まれない依存を追加するため停止した。
   `6dd360e41` は利用するWebKitバインディングだけを明示し、元の確認欄が使うTailwind
   クラスを資産に含める。[再実行43559922441](https://github.com/harupipipipi/tobkiri/actions/runs/43559922441)で
-  実表示、非永続設定、ナビゲーション拒否、表示枠のサイズ追従、取り外しを検証する。
+  実表示、非永続設定、ナビゲーション拒否、表示枠のサイズ追従、取り外しを確認した。
 - 実際の `main` windowはsplashから認証済み `/panel/` に進み、ReactがSetupを選ぶ。
   `Setup.tsx` の確認欄は引き継ぎUIの後にあり、外側がスクロールする。
   Core所有の表示を載せる際はスクロール・レイアウト・フォーカスを追従し、候補の再取得、
   Launchへの遷移、親の非表示化で取り外す。既存main-thread dispatchは待機期限で
   キューの処理を取り消さないため、表示前に候補と親がまだ有効かを再確認する。
   製品用の挿入、承認の結び付け、DMGへの組み込みは残る。
+- `4e86bfd47` は表示範囲と文書全体の枠を分け、既存のWebKit座標からAppKitのポイントへ
+  変換する。画面外の部分はクリップして、文書の幅と高さを保つ。
+  [AppKit比較43561063548](https://github.com/harupipipipi/tobkiri/actions/runs/43561063548)で検証する。
+- `92a554c06` は元のSetupに測定用の属性を付け、Rustが決まった式を親WebKitで実行する。
+  DOMから取得するのは表示座標だけ。クリップ祖先、モーダル、非表示、拡大中を処理する。
+  JavaScriptの2件は通過。[WebKit測定43561318088](https://github.com/harupipipipi/tobkiri/actions/runs/43561318088)で実表示を検証する。
+  `f562ba942` は表示を候補単位で保有し、親のポート・ルート・非表示状態を再確認し、
+  取り消し済みの測定結果を捨てる。[寿命の検証43561542672](https://github.com/harupipipipi/tobkiri/actions/runs/43561542672)を実行中。
+  製品の親は引き継ぎ状態に応じて上下に伸びる。Core所有の確認欄に切り替える時は、
+  ビューの `body/#root` の画面高ではなく、確認欄のsectionの実寸を親に返して外側の
+  スクロールを維持する。親のモーダルとnative sheetでの撤去、拡大表示、子のスクロール
+  とフォーカスも既存経路で確認する。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
