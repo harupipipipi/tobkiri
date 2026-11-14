@@ -3,6 +3,9 @@
 //! WebKit receives only the embedded document and a bounded listing. The view
 //! has no Tauri label, scheme handler, or message controller registration.
 
+#[path = "native_setup_review_slot.rs"]
+pub(crate) mod slot;
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use block2::DynBlock;
 use objc2::{

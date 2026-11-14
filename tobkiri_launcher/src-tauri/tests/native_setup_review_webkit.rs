@@ -7,9 +7,9 @@ mod native_setup_review;
 #[cfg(target_os = "macos")]
 fn main() {
     use block2::RcBlock;
-    use native_setup_review::SetupReviewView;
+    use native_setup_review::{slot::SetupReviewSlot, SetupReviewView};
     use objc2::{rc::autoreleasepool, runtime::AnyObject, MainThreadMarker, MainThreadOnly};
-    use objc2_app_kit::{NSApplication, NSBackingStoreType, NSWindow, NSWindowStyleMask};
+    use objc2_app_kit::{NSApplication, NSBackingStoreType, NSView, NSWindow, NSWindowStyleMask};
     use objc2_foundation::{NSDate, NSError, NSPoint, NSRect, NSRunLoop, NSSize, NSString};
     use objc2_web_kit::WKWebView;
     use std::cell::Cell;
@@ -118,7 +118,57 @@ fn main() {
         assert!(evaluate_boolean(webview, &render, deadline));
         drop(view);
         assert_eq!(slot.subviews().len(), 0);
-        println!("Actual WebKit displayed the pinned Setup confirmation, blocked navigation and detached");
+
+        // Simulate the real parent view's inset within its native container.
+        let parent = NSView::initWithFrame(
+            NSView::alloc(mtm),
+            NSRect::new(NSPoint::new(16.0, 24.0), NSSize::new(800.0, 600.0)),
+        );
+        slot.addSubview(&parent);
+        let mut geometry = serde_json::json!({
+            "full": {"left": 30, "top": -100, "right": 730, "bottom": 800},
+            "clip": {"left": 30, "top": 0, "right": 730, "bottom": 600},
+            "viewportWidth": 800, "viewportHeight": 600,
+        });
+        let placed = SetupReviewSlot::mount(
+            mtm,
+            &parent,
+            serde_json::from_value(geometry.clone()).unwrap(),
+            listing,
+        )
+        .unwrap();
+        let clip = slot.subviews().objectAtIndex(1);
+        let full = clip.subviews().objectAtIndex(0);
+        assert!(clip.clipsToBounds());
+        assert_eq!(clip.frame().origin, NSPoint::new(46.0, 24.0));
+        assert_eq!(clip.frame().size, NSSize::new(700.0, 600.0));
+        assert_eq!(full.frame().origin, NSPoint::new(0.0, -200.0));
+        assert_eq!(full.frame().size, NSSize::new(700.0, 900.0));
+        assert_eq!(
+            full.subviews().objectAtIndex(0).frame().size,
+            full.bounds().size
+        );
+
+        geometry["full"]["top"] = (-200).into();
+        geometry["full"]["bottom"] = 700.into();
+        assert!(placed.update(Some(serde_json::from_value(geometry.clone()).unwrap())));
+        assert_eq!(full.frame().origin, NSPoint::new(0.0, -100.0));
+        assert_eq!(full.frame().size, NSSize::new(700.0, 900.0));
+        geometry["viewportHeight"] = 601.5.into();
+        assert!(!placed.update(Some(serde_json::from_value(geometry.clone()).unwrap())));
+        assert!(clip.isHidden());
+        geometry["viewportHeight"] = 600.into();
+        geometry["clip"]["bottom"] = 601.into();
+        assert!(!placed.update(Some(serde_json::from_value(geometry.clone()).unwrap())));
+        geometry["clip"]["bottom"] = 600.into();
+        geometry["listing"] = "renderer-controlled data".into();
+        assert!(
+            serde_json::from_value::<native_setup_review::slot::ReviewGeometry>(geometry).is_err()
+        );
+        assert!(!placed.update(None));
+        drop(placed);
+        assert_eq!(slot.subviews().len(), 1);
+        println!("Actual WebKit rendered the pinned review, blocked navigation, clipped scrolling and detached");
     });
 }
 
