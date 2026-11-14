@@ -13,6 +13,7 @@ name: Issue 1520 Rust-connected actual App catalog Wasm
       - tools/python313-producer/bundle_catalog/schema_phases.py
       - tools/python313-producer/bundle_catalog/schema_phases.wit
       - tools/python313-producer/bundle_catalog_inputs.py
+      - tools/python313-producer/harness_native_dependencies.py
       - tools/python313-producer/build_components.py
       - tools/python313-producer/schema_kernel/**
       - tools/python313-producer/schema_kernel_translate.py

@@ -19,6 +19,20 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class BundleInputsTests(unittest.TestCase):
+    def test_app_bundle_storage_can_preserve_uncompressed_members_and_verify_bytes(self):
+        raw = b'{"example": "raw bundle member"}\n' * 40
+        member = inputs.BUNDLE_RESOURCE_ROOT + 'blobs/0.json'
+        files = {member: raw, 'original.py': b'pass\n' * 100}
+        original = {row[0]: row for row in inputs.compress_sources(files)}
+        packed = inputs.compress_sources(files, identity_prefix=inputs.BUNDLE_RESOURCE_ROOT)
+        changed = {row[0]: row for row in packed}
+        self.assertEqual(original[member][1], 'zlib')
+        self.assertEqual(changed['original.py'], original['original.py'])
+        self.assertEqual(changed[member][1:3], ('identity', raw))
+        self.assertEqual(changed[member][3:], original[member][3:])
+        tree = inputs.Finder(packed, {}, '/capture', compressed=True).tree
+        self.assertEqual(tree.files[member], raw)
+
     def test_embedded_identity_fast_path_keeps_json_types_and_order(self):
         adapter = ROOT / inputs.PACK / 'python/bundle_catalog_adapter.py'
         syntax = ast.parse(adapter.read_bytes())

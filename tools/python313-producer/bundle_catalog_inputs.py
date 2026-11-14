@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from build_native import HERE
-from bundle_catalog_resources import resources
+from bundle_catalog_resources import ROOT as BUNDLE_RESOURCE_ROOT, resources
 from capability_projection_inputs import runtime_sources
 from fetch_sdk import inventory
 from harness_native_dependencies import MAX_FILE, MAX_TOTAL, _read, compress_sources
@@ -136,7 +136,12 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
         entry, export, kernel_bytes, kernel_derivation = derive(
             files, entry, export, kernel_extension, app_backend=app_schema_backend,
             schema_progress=app_schema_progress, schema_phases=app_schema_phases)
-    packed = compress_sources(files)
+    # The App lane reads every immutable bundle member before validation.
+    # Keep the original raw bytes and verify SHA-256 at the same read, but
+    # avoid expanding bytes that this invocation must retain in any case.
+    packed = compress_sources(
+        files, identity_prefix=BUNDLE_RESOURCE_ROOT if app_schema_backend else None,
+    )
     captured = Finder(
         packed,
         distributions,
@@ -198,6 +203,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
                   if app_schema_backend else
                   "declared keyword source derivation; other original bytes unchanged; ")
         source_receipt["source_storage"] = change + "per-file zlib/identity, no expansion cache"
+        if app_schema_backend:
+            source_receipt["source_storage"] += "; original bundle members use identity"
         if app_schema_progress:
             source_receipt["source_storage"] += "; separate split-call diagnostic export"
         if app_schema_phases:
@@ -229,7 +236,7 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
             repo / "crates/tobkiri-wit/wit/core/core.wit"
         )
     if any(len(raw) > MAX_SOURCE_FILE for raw in staged_files.values()):
-        raise ValueError("bundle catalog source file exceeds four MiB")
+        raise ValueError("bundle catalog source file exceeds eight MiB")
     if sum(map(len, staged_files.values())) > MAX_TOTAL:
         raise ValueError("bundle catalog source stage exceeds original 32 MiB bound")
 

@@ -169,13 +169,14 @@ def _stdlib_preimports(files: dict[str, bytes], modules: dict) -> tuple[str, ...
     return tuple(sorted(stdlib))
 
 
-def compress_sources(files: dict[str, bytes]) -> tuple:
+def compress_sources(files: dict[str, bytes], *, identity_prefix: str | None = None) -> tuple:
     """Encode each complete original member, without a code or expansion cache."""
     import zlib
 
     rows = []
     for name, raw in sorted(files.items()):
-        packed = zlib.compress(raw, level=9)
+        packed = (raw if identity_prefix is not None and name.startswith(identity_prefix)
+                  else zlib.compress(raw, level=9))
         # Incompressible/empty members retain their one original immutable bytes
         # object; neither storage form can exceed the existing raw read bound.
         codec, payload = (
