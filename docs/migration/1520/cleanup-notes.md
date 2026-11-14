@@ -3545,6 +3545,30 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元の固定getterだけでなくcatalog・manifest・lookupも扱う。全固定呼出しの比較が通った後、
   wireのタグ、実参照、同じStoreでの保持を保ったまま名前と共有責務を揃える。
 
+## PR #1521 のマージ前チェックリスト
+
+- [#1525](https://github.com/harupipipipi/tobkiri/issues/1525) はレビュー時点の
+  `4f17a0200` を対象にしている。#1521 の現在のheadは `8be3110a3` で、修正はその
+  子孫の統合ブランチに積んでいる。契約・SDK・UIを別々にレビューできる単位で保持する。
+- B-2 と B-3 は構造化チャット2.0、ツール・コマンド一覧1.1を別の変更で定義した。
+  既存のプロンプト、OpenAI互換プロバイダー、会話保存、Flow、UIは1.0のテキスト契約を使う。
+  ツール呼出しと結果のID、reasoning、終了理由、キャッシュ使用量を同じ実ターンで照合してから、
+  重複する変換を整理する。既存の保存済み会話の読込と承認・権限の照合を維持する。
+- B-4 / C-11 は、`crates/tobkiri-profile/src/compile.rs` が `many` の候補を複数確定し、
+  CoreがGateに登録するところまで実装されている。`crates/tobkiri-core/src/host.rs` の
+  dispatchは候補が複数だと選択先がなく拒否する。選択したPackをFlowとPackの入力から
+  初回admissionと最終dispatchまで結び付け、既存の単一選択と権限検査を維持する。
+- A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
+  `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
+  を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
+  `domain/agent/loop_engine.py` の `LoopEngine` には現在のソースで参照がない。
+  削除前に動的ロードや配布構成も確認する。
+- A-6 は、現行のモデルへの使用量変換がキャッシュトークンを落とすことを確認した。
+  毎回のツール選択でプロンプトの早い位置が変わり得る。キャッシュヒット率への影響は未計測。
+  A-7 は、元の `tobkiri_protocol/saved_messages.py` の分岐、ツール結果IDと画像の上限を
+  Rust/Wasmで比較した後、保存履歴から切り離したモデル入力に圧縮を適用する。
+  承認を要する保存済み履歴の圧縮と、送信する入力に結び付いたdigestは維持する。
+
 ## 040: 公開Profileへ混入しない既存データ
 
 - `crates/tobkiri-e2e/tests/storage_tiers.rs` に、既存の実Wasm経路で3段の値と承認を
