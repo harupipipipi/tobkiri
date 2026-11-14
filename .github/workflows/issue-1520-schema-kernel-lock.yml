@@ -4,7 +4,10 @@ on:
   push:
     branches: [codex/issue-1520-native-shared-state]
     paths:
+      - '.github/workflows/issue-1520-schema-kernel-lock.yml'
+      - 'tools/python313-producer/build_schema_kernel.py'
       - 'tools/python313-producer/schema_kernel/Cargo.toml'
+      - 'tools/python313-producer/schema_kernel/Cargo.lock'
   workflow_dispatch:
 
 permissions:
@@ -31,26 +34,16 @@ jobs:
           set -euo pipefail
           python3 -B - <<'PY'
           from pathlib import Path
-          import tomllib
+          import sys
 
-          path = Path('tools/python313-producer/schema_kernel/Cargo.toml')
-          manifest = tomllib.loads(path.read_text())
-          if manifest['dependencies'] != {'pyo3': {
-                  'version': '=0.30.1', 'default-features': False,
-                  'features': ['macros', 'abi3-py313']}}:
-              raise SystemExit('primitive port requires only the exact limited-ABI PyO3')
-          if manifest['package']['metadata']['tobkiri']['schema-engine'] != 'original-object-port':
-              raise SystemExit('original-object port scope differs')
-          if manifest['lib'].get('name') != '_tobkiri_schema_kernel':
-              raise SystemExit('candidate extension name differs')
-          if manifest['lib'].get('crate-type') != ['cdylib']:
-              raise SystemExit('candidate must be a standalone extension')
+          root = Path('tools/python313-producer')
+          sys.path.insert(0, str(root))
+          from build_schema_kernel import packages
+
+          packages(root / 'schema_kernel')
           PY
           rustup toolchain install 1.94.0 --profile minimal
-          if [ ! -f tools/python313-producer/schema_kernel/Cargo.lock ]; then
-            cargo +1.94.0 generate-lockfile --manifest-path tools/python313-producer/schema_kernel/Cargo.toml
-          fi
-          cargo +1.94.0 metadata --locked --no-deps --format-version 1 --manifest-path tools/python313-producer/schema_kernel/Cargo.toml > "$RUNNER_TEMP/schema-kernel-metadata.json"
+          cargo +1.94.0 metadata --locked --all-features --format-version 1 --manifest-path tools/python313-producer/schema_kernel/Cargo.toml > "$RUNNER_TEMP/schema-kernel-metadata.json"
       - name: Bind source manifest and registry checksums to this source revision
         shell: bash
         run: |
