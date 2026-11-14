@@ -9,7 +9,7 @@ use objc2::{
 };
 use objc2_app_kit::{NSView, NSWindowOrderingMode};
 use objc2_foundation::{NSError, NSPoint, NSRect, NSSize, NSString};
-use objc2_web_kit::WKWebView;
+use objc2_web_kit::{WKContentWorld, WKWebView};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -32,6 +32,7 @@ pub(crate) struct SetupReviewPresentation {
     owner: Retained<NSView>,
     url: String,
     port: u16,
+    anchor: ReviewAnchor,
     state: Rc<RefCell<PresentationState>>,
 }
 
@@ -47,6 +48,7 @@ impl SetupReviewPresentation {
         parent: &WKWebView,
         owner: &NSView,
         port: u16,
+        anchor: ReviewAnchor,
         listing: String,
     ) -> Result<Self, &'static str> {
         if listing.is_empty() || listing.len() > MAX_LISTING_BYTES {
@@ -60,6 +62,7 @@ impl SetupReviewPresentation {
             owner: owner.retain(),
             url: eligible_owner(parent, port).ok_or("Setup review owner is unavailable")?,
             port,
+            anchor,
             state: Rc::new(RefCell::new(PresentationState {
                 display: Some(Display::Waiting(listing)),
                 measurement_pending: false,
@@ -86,9 +89,10 @@ impl SetupReviewPresentation {
         let owner = Weak::new(&*self.owner);
         let url = self.url.clone();
         let port = self.port;
+        let anchor = self.anchor.clone();
         let presentation = Rc::downgrade(&self.state);
         let deadline = Instant::now() + MEASUREMENT_TIMEOUT;
-        measure(&self.parent, move |geometry| {
+        measure(&self.parent, move |sample| {
             let Some(presentation) = presentation.upgrade() else {
                 return;
             };
@@ -104,7 +108,17 @@ impl SetupReviewPresentation {
                 state.display = None;
                 return;
             }
-            let geometry = geometry.filter(|_| Instant::now() < deadline);
+            if Instant::now() >= deadline {
+                if let Some(Display::Mounted(slot)) = state.display.as_ref() {
+                    slot.update(None);
+                }
+                return;
+            }
+            let Some(sample) = sample.filter(|sample| sample.matches(&anchor)) else {
+                state.display = None;
+                return;
+            };
+            let geometry = sample.geometry();
             match state.display.as_ref() {
                 Some(Display::Waiting(listing)) => {
                     if let (Some(geometry), Some(mtm)) = (geometry, MainThreadMarker::new()) {
@@ -129,7 +143,7 @@ impl SetupReviewPresentation {
     }
 }
 
-fn eligible_owner(parent: &WKWebView, port: u16) -> Option<String> {
+pub(super) fn eligible_owner(parent: &WKWebView, port: u16) -> Option<String> {
     let window = parent.window()?;
     if !window.isVisible()
         || window.isMiniaturized()
@@ -143,37 +157,105 @@ fn eligible_owner(parent: &WKWebView, port: u16) -> Option<String> {
     (parsed.scheme() == "http"
         && matches!(parsed.host_str(), Some("127.0.0.1" | "localhost"))
         && parsed.port_or_known_default() == Some(port)
-        && parsed.path() == "/panel/setup")
-        .then_some(url)
+        && parsed.path() == "/panel/setup"
+        && parsed.query().is_none()
+        && parsed.fragment().is_none()
+        && parsed.username().is_empty()
+        && parsed.password().is_none())
+    .then_some(url)
 }
 
-/// Sample the fixed Setup marker. The callback runs on the AppKit thread.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ReviewAnchor {
+    id: String,
+    confirmation: String,
+}
+
+impl ReviewAnchor {
+    pub(crate) fn confirmation(&self) -> &str {
+        &self.confirmation
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct ReviewSample {
+    anchor_id: String,
+    confirmation: String,
+    geometry: Option<ReviewGeometry>,
+}
+
+impl ReviewSample {
+    pub(crate) fn anchor(&self) -> ReviewAnchor {
+        ReviewAnchor {
+            id: self.anchor_id.clone(),
+            confirmation: self.confirmation.clone(),
+        }
+    }
+
+    pub(crate) fn geometry(&self) -> Option<ReviewGeometry> {
+        self.geometry
+    }
+
+    fn matches(&self, anchor: &ReviewAnchor) -> bool {
+        self.anchor_id == anchor.id && self.confirmation == anchor.confirmation
+    }
+
+    fn valid(&self) -> bool {
+        fn hex(text: &str, len: usize) -> bool {
+            text.len() == len
+                && text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        }
+        hex(&self.anchor_id, 32)
+            && self
+                .confirmation
+                .strip_prefix("sha256:")
+                .is_some_and(|digest| hex(digest, 64))
+    }
+}
+
+/// Sample the fixed Setup anchor. The callback runs on the AppKit thread.
 /// The owner must discard late results after a route or candidate change.
 #[allow(dead_code)]
-pub(crate) fn measure(parent: &WKWebView, apply: impl FnOnce(Option<ReviewGeometry>) + 'static) {
-    // Keep native AppKit and CSS coordinates at the same scale.
-    if unsafe { parent.pageZoom() != 1.0 || parent.magnification() != 1.0 } {
+pub(crate) fn measure(parent: &WKWebView, apply: impl FnOnce(Option<ReviewSample>) + 'static) {
+    let Some(mtm) = MainThreadMarker::new() else {
         apply(None);
         return;
-    }
+    };
+    let same_scale = unsafe { parent.pageZoom() == 1.0 && parent.magnification() == 1.0 };
     let pending = RefCell::new(Some(apply));
     let callback = RcBlock::new(move |value: *mut AnyObject, error: *mut NSError| {
         let Some(apply) = pending.borrow_mut().take() else {
             return;
         };
-        let geometry = if error.is_null() {
+        let sample = if error.is_null() {
             // WebKit owns the result until the callback returns.
             unsafe { value.as_ref() }
                 .and_then(AnyObject::downcast_ref::<NSString>)
                 .filter(|value| value.length() <= 1024)
-                .and_then(|value| serde_json::from_str(&value.to_string()).ok())
+                .and_then(|value| serde_json::from_str::<ReviewSample>(&value.to_string()).ok())
+                .filter(ReviewSample::valid)
+                .map(|mut sample| {
+                    if !same_scale {
+                        sample.geometry = None;
+                    }
+                    sample
+                })
         } else {
             None
         };
-        apply(geometry);
+        apply(sample);
     });
     unsafe {
-        parent.evaluateJavaScript_completionHandler(&NSString::from_str(MEASURE), Some(&callback))
+        let world = WKContentWorld::defaultClientWorld(mtm);
+        parent.evaluateJavaScript_inFrame_inContentWorld_completionHandler(
+            &NSString::from_str(MEASURE),
+            None,
+            &world,
+            Some(&callback),
+        )
     };
 }
 

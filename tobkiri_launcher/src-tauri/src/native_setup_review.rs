@@ -26,6 +26,37 @@ const DOCUMENT: &str = include_str!("../../setup-review-ui/native.html");
 const LISTING_SLOT: &str = "<template id=\"setup-review-listing\">";
 const MAX_LISTING_BYTES: usize = 4 * 1024 * 1024;
 
+pub(crate) fn listing_confirmation(listing: &str) -> Option<&str> {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct Listing<'a> {
+        state: &'a str,
+        #[serde(borrow)]
+        recommended_default_profile: Profile<'a>,
+    }
+    #[derive(Deserialize)]
+    struct Profile<'a> {
+        #[serde(borrow)]
+        confirmation: Confirmation<'a>,
+    }
+    #[derive(Deserialize)]
+    struct Confirmation<'a> {
+        confirmation_digest: &'a str,
+    }
+
+    if listing.is_empty() || listing.len() > MAX_LISTING_BYTES {
+        return None;
+    }
+    let listing: Listing<'_> = serde_json::from_str(listing).ok()?;
+    (listing.state == "review_required").then_some(
+        listing
+            .recommended_default_profile
+            .confirmation
+            .confirmation_digest,
+    )
+}
+
 fn review_document(listing: &str) -> Result<String, &'static str> {
     if listing.is_empty() || listing.len() > MAX_LISTING_BYTES {
         return Err("Setup review listing exceeds its display limit");

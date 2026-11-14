@@ -1,6 +1,6 @@
 //! Bridge the existing Tauri main window to its AppKit-owned review.
 
-use super::slot::SetupReviewPresentation;
+use super::slot::{eligible_owner, measure, ReviewAnchor, SetupReviewPresentation};
 use dispatch2::MainThreadBound;
 use objc2::{rc::Retained, MainThreadMarker};
 use objc2_web_kit::WKWebView;
@@ -20,6 +20,8 @@ pub(crate) struct SetupReviewOwner {
     window: tauri::WebviewWindow,
     port: u16,
     generation: u64,
+    url: String,
+    anchor: ReviewAnchor,
     window_state: SetupReviewWindowState,
 }
 
@@ -44,23 +46,76 @@ impl SetupReviewWindowState {
         )))
     }
 
-    /// A new request supersedes all pending results for the previous candidate.
-    pub(crate) fn begin(
+    /// Capture the actual Setup anchor before any worker receives a request.
+    pub(crate) async fn begin(
         &self,
         window: tauri::WebviewWindow,
-        mtm: MainThreadMarker,
         port: u16,
-    ) -> Result<SetupReviewOwner, &'static str> {
+    ) -> Result<SetupReviewOwner, SetupReviewOwnerError> {
+        use SetupReviewOwnerError::{Retired, Schedule, TimedOut, Unavailable};
+
         if window.label() != "main" {
-            return Err("Setup review requires the Launcher main window");
+            return Err(Unavailable);
         }
-        let generation = self
-            .retire(mtm)
-            .ok_or("Setup review generation exhausted")?;
+        let state = self.clone();
+        let deadline = Instant::now() + UI_HANDOFF_TIMEOUT;
+        let (reply, wait) = tokio::sync::oneshot::channel();
+        window
+            .with_webview(move |webview| {
+                let Some(mtm) = MainThreadMarker::new() else {
+                    let _ = reply.send(Err(Unavailable));
+                    return;
+                };
+                if reply.is_closed() || Instant::now() >= deadline {
+                    return;
+                }
+                // Tauri borrows the current platform view for this callback.
+                let Some(parent) =
+                    (unsafe { Retained::<WKWebView>::retain(webview.inner().cast()) })
+                else {
+                    let _ = reply.send(Err(Unavailable));
+                    return;
+                };
+                let Some(url) = eligible_owner(&parent, port) else {
+                    let _ = reply.send(Err(Unavailable));
+                    return;
+                };
+                let Some(generation) = state.retire(mtm) else {
+                    let _ = reply.send(Err(Retired));
+                    return;
+                };
+                let current = objc2::rc::Weak::new(&*parent);
+                measure(&parent, move |sample| {
+                    let admit = || {
+                        if reply.is_closed() || Instant::now() >= deadline {
+                            return Err(TimedOut);
+                        }
+                        if state.0.get(mtm).borrow().generation != generation {
+                            return Err(Retired);
+                        }
+                        let parent = current.load().ok_or(Unavailable)?;
+                        if eligible_owner(&parent, port).as_ref() != Some(&url) {
+                            return Err(Retired);
+                        }
+                        let anchor = sample.ok_or(Unavailable)?.anchor();
+                        Ok((generation, url, anchor))
+                    };
+                    let result = admit();
+                    let _ = reply.send(result);
+                });
+            })
+            .map_err(Schedule)?;
+        let (generation, url, anchor) =
+            tokio::time::timeout(deadline.saturating_duration_since(Instant::now()), wait)
+                .await
+                .map_err(|_| TimedOut)?
+                .map_err(|_| Unavailable)??;
         Ok(SetupReviewOwner {
             window,
             port,
             generation,
+            url,
+            anchor,
             window_state: self.clone(),
         })
     }
@@ -97,18 +152,27 @@ impl SetupReviewOwner {
     pub(crate) async fn display(&self, listing: String) -> Result<(), SetupReviewOwnerError> {
         use SetupReviewOwnerError::{Retired, Schedule, TimedOut, Unavailable};
 
+        let confirmation = super::listing_confirmation(&listing).ok_or(Unavailable)?;
+        if confirmation != self.anchor.confirmation() {
+            return Err(Retired);
+        }
         let state = self.window_state.0.clone();
         let port = self.port;
         let generation = self.generation;
+        let url = self.url.clone();
+        let anchor = self.anchor.clone();
         let deadline = Instant::now() + UI_HANDOFF_TIMEOUT;
         let (reply, wait) = tokio::sync::oneshot::channel();
         self.window
             .with_webview(move |webview| {
+                let Some(mtm) = MainThreadMarker::new() else {
+                    let _ = reply.send(Err(Unavailable));
+                    return;
+                };
                 let admit = || {
                     if reply.is_closed() || Instant::now() >= deadline {
                         return Err(TimedOut);
                     }
-                    let mtm = MainThreadMarker::new().ok_or(Unavailable)?;
                     let mut state = state.get(mtm).try_borrow_mut().map_err(|_| Unavailable)?;
                     if state.generation != generation {
                         return Err(Retired);
@@ -116,13 +180,17 @@ impl SetupReviewOwner {
                     // Tauri's platform handle borrows the live WKWebView on this thread.
                     let parent = unsafe { Retained::<WKWebView>::retain(webview.inner().cast()) }
                         .ok_or(Unavailable)?;
+                    if eligible_owner(&parent, port).as_ref() != Some(&url) {
+                        return Err(Retired);
+                    }
                     // Wry installs the primary WKWebView under the content view.
                     let owner = parent
                         .window()
                         .and_then(|window| window.contentView())
                         .ok_or(Unavailable)?;
-                    let presentation = SetupReviewPresentation::new(&parent, &owner, port, listing)
-                        .map_err(|_| Unavailable)?;
+                    let presentation =
+                        SetupReviewPresentation::new(&parent, &owner, port, anchor, listing)
+                            .map_err(|_| Unavailable)?;
                     if reply.is_closed() || Instant::now() >= deadline {
                         return Err(TimedOut);
                     }
@@ -132,15 +200,11 @@ impl SetupReviewOwner {
                     Ok(())
                 };
                 let result = admit();
-                let accepted = result.is_ok();
-                let delivered = reply.send(result).is_ok();
-                if !accepted {
+                if result.is_err() {
+                    let _ = reply.send(result);
                     return;
                 }
-                let Some(mtm) = MainThreadMarker::new() else {
-                    return;
-                };
-                if !delivered {
+                if reply.send(result).is_err() {
                     if let Some(presentation) = state.get(mtm).borrow_mut().presentation.take() {
                         presentation.retire();
                     }

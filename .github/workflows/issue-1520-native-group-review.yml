@@ -10,6 +10,8 @@ on:
       - 'tobkiri_launcher/core-host/src/native_contract.rs'
       - 'tobkiri_launcher/core-host/src/runtime.rs'
       - 'tobkiri_launcher/src-tauri/src/core_host.rs'
+      - 'tobkiri_launcher/src-tauri/src/legacy.rs'
+      - 'tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs'
       - 'tobkiri_launcher/src-tauri/src/native_setup_review*.rs'
       - 'tobkiri_launcher/src-tauri/tests/native_setup_review_webkit.rs'
       - 'tobkiri_launcher/src-tauri/build.rs'
@@ -22,6 +24,7 @@ on:
       - 'tobkiri_launcher/frontend/src/pages/DefaultsConfirmationDetails.tsx'
       - 'tobkiri_launcher/frontend/src/pages/NativeSetupReview.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Setup.test.tsx'
+      - 'tobkiri_launcher/frontend/src/pages/Setup.tsx'
       - 'tobkiri_launcher/frontend/src/setup-review.*'
       - 'tobkiri_launcher/frontend/setup-review/**'
       - 'tobkiri_launcher/frontend/scripts/package-setup-review.mjs'
@@ -94,3 +97,15 @@ jobs:
           cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
           --features core-host --test build_script
           build_script::setup_component_build::tests::verified_bytes_and_index_are_staged_together -- --exact
+      - name: Build and seal the original debug Pack Shell
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/tobkiri_launcher/src-tauri/target
+        run: |
+          cargo build --locked --manifest-path pack-shell/Cargo.toml --target aarch64-apple-darwin
+          python3 -B .github/scripts/seal_pack_shell.py --target aarch64-apple-darwin
+      - name: Compile the review owner and worker in the original Launcher
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/tobkiri_launcher/src-tauri/target
+        run: >-
+          cargo check --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
+          --features native-harness-bootstrap,native-setup-review

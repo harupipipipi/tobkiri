@@ -8,7 +8,8 @@ mod native_setup_review;
 fn main() {
     use block2::RcBlock;
     use native_setup_review::{
-        slot::{measure, SetupReviewPresentation, SetupReviewSlot},
+        listing_confirmation,
+        slot::{measure, ReviewSample, SetupReviewPresentation, SetupReviewSlot},
         SetupReviewView,
     };
     use objc2::{rc::autoreleasepool, runtime::AnyObject, MainThreadMarker, MainThreadOnly};
@@ -48,6 +49,19 @@ fn main() {
         }
     }
 
+    fn sample(view: &WKWebView, deadline: Instant) -> ReviewSample {
+        let observed = Rc::new(Cell::new(None));
+        let result = observed.clone();
+        measure(view, move |value| result.set(Some(value)));
+        loop {
+            if let Some(result) = observed.take() {
+                return result.expect("WebKit did not identify the Setup anchor");
+            }
+            assert!(Instant::now() < deadline, "WebKit sample did not complete");
+            pump();
+        }
+    }
+
     autoreleasepool(|_| {
         let mtm = MainThreadMarker::new().expect("WebKit smoke requires the main thread");
         let _application = NSApplication::sharedApplication(mtm);
@@ -77,6 +91,10 @@ fn main() {
         let digest = fixture["recommended_default_profile"]["confirmation"]["confirmation_digest"]
             .as_str()
             .unwrap();
+        assert_eq!(listing_confirmation(listing), Some(digest));
+        let stale_state = listing.replace("\"review_required\"", "\"active\"");
+        assert!(listing_confirmation(&stale_state).is_none());
+        assert!(listing_confirmation(r#"{"state":"review_required"}"#).is_none());
         let digest = serde_json::to_string(digest).unwrap();
         let render = format!(
             "String(document.body?.textContent.includes({digest}) &&
@@ -186,10 +204,10 @@ fn main() {
         window.orderFrontRegardless();
         let base =
             NSURL::URLWithString(&NSString::from_str("http://127.0.0.1/panel/setup")).unwrap();
-        let body = NSString::from_str(
+        let body = NSString::from_str(&format!(
             "<!doctype html><style>body{margin:0}section{width:700px;height:900px}</style>
-             <section data-native-setup-review-slot></section>",
-        );
+             <section><span hidden data-native-setup-review-anchor={digest}></span></section>",
+        ));
         unsafe { parent.loadHTMLString_baseURL(&body, Some(&base)) }.unwrap();
         let deadline = Instant::now() + Duration::from_secs(20);
         while !evaluate_boolean(
@@ -203,19 +221,15 @@ fn main() {
             );
             pump();
         }
-        let observed = Rc::new(Cell::new(None));
-        let result = observed.clone();
-        measure(&parent, move |value| result.set(Some(value)));
-        let geometry = loop {
-            if let Some(result) = observed.take() {
-                break result.expect("WebKit did not measure the visible Setup marker");
-            }
-            assert!(
-                Instant::now() < deadline,
-                "WebKit slot measurement did not complete"
-            );
-            pump();
-        };
+        let initial = sample(&parent, deadline);
+        let anchor = initial.anchor();
+        assert!(evaluate_boolean(
+            &parent,
+            "String(typeof globalThis.tobkiriSetupReviewAnchor === 'undefined')",
+            deadline,
+        ));
+        assert_eq!(sample(&parent, deadline).anchor(), anchor);
+        let geometry = initial.geometry().expect("visible Setup geometry");
         let placed = SetupReviewSlot::mount(mtm, &parent, &slot, geometry, listing).unwrap();
         let clip = slot.subviews().objectAtIndex(2);
         assert_eq!(clip.frame().size, NSSize::new(700.0, 600.0));
@@ -225,17 +239,43 @@ fn main() {
         );
         drop(placed);
 
-        assert!(SetupReviewPresentation::new(&parent, &slot, 8765, listing.to_owned()).is_err());
+        assert!(SetupReviewPresentation::new(
+            &parent,
+            &slot,
+            8765,
+            anchor.clone(),
+            listing.to_owned()
+        )
+        .is_err());
         let cancelled =
-            SetupReviewPresentation::new(&parent, &slot, 80, listing.to_owned()).unwrap();
+            SetupReviewPresentation::new(&parent, &slot, 80, anchor.clone(), listing.to_owned())
+                .unwrap();
         cancelled.refresh();
         cancelled.retire();
         for _ in 0..5 {
             pump();
         }
         assert_eq!(slot.subviews().len(), 2);
+        let stale =
+            SetupReviewPresentation::new(&parent, &slot, 80, anchor.clone(), listing.to_owned())
+                .unwrap();
+        assert!(evaluate_boolean(
+            &parent,
+            "const marker = document.querySelector('section span');
+             marker.replaceWith(marker.cloneNode()); String(true)",
+            deadline,
+        ));
+        let replacement = sample(&parent, deadline).anchor();
+        assert_eq!(replacement.confirmation(), anchor.confirmation());
+        assert_ne!(replacement, anchor);
+        stale.refresh();
+        for _ in 0..5 {
+            pump();
+        }
+        assert_eq!(slot.subviews().len(), 2);
         let presentation =
-            SetupReviewPresentation::new(&parent, &slot, 80, listing.to_owned()).unwrap();
+            SetupReviewPresentation::new(&parent, &slot, 80, replacement, listing.to_owned())
+                .unwrap();
         presentation.refresh();
         presentation.refresh();
         while slot.subviews().len() == 2 {

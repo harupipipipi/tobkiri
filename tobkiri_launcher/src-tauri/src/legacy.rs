@@ -4101,7 +4101,7 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri::plugin::Builder::<tauri::Wry, ()>::new("nav-guard")
-                .on_navigation(move |_webview, url| {
+                .on_navigation(move |webview, url| {
                     let scheme = url.scheme();
                     let host = url.host_str().unwrap_or("");
                     let port = url.port_or_known_default();
@@ -4114,6 +4114,12 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
                     if !allowed {
                         log::warn!("Blocked navigation to: {url}");
                     }
+                    #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
+                    if allowed && webview.label() == "main" {
+                        schedule_setup_review_retirement(webview.app_handle());
+                    }
+                    #[cfg(not(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review")))]
+                    let _ = webview;
                     allowed
                 })
                 .build(),

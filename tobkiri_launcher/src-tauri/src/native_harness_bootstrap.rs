@@ -402,12 +402,11 @@ mod selected_setup_component {
 
 /// Review the existing Profile using the component fixed by the Launcher build.
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
-pub(crate) fn prepare_setup_review(
+pub(crate) async fn prepare_setup_review(
     app: &AppHandle,
     options: tobkiri_harness_native::BootstrapReviewOptions,
 ) -> Result<(), SetupReviewStartError> {
     use crate::native_setup_review::owner::SetupReviewWindowState;
-    let mtm = objc2::MainThreadMarker::new().ok_or(SetupReviewStartError::Window)?;
     let window = app
         .get_webview_window("main")
         .ok_or(SetupReviewStartError::Window)?;
@@ -422,7 +421,8 @@ pub(crate) fn prepare_setup_review(
         .map_err(SetupReviewStartError::Component)?
         .ok_or(SetupReviewStartError::Unbound)?;
     let owner = state
-        .begin(window, mtm, port)
+        .begin(window, port)
+        .await
         .map_err(|_| SetupReviewStartError::Window)?;
     let job = prepare_original_component(
         app.clone(),

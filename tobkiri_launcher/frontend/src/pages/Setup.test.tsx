@@ -130,10 +130,12 @@ test('review displays the exact Host confirmation and every operation binding', 
   ), 'utf8'));
   const setup = parseDefaultsSetupState(fixture);
   const html = renderToString(<DefaultsReview setup={setup} reviewed={false}
-    activating={false} error={null} onReviewedChange={() => undefined}
+    activating={false} error={null} nativeSlotGeneration={2} onReviewedChange={() => undefined}
     onActivate={() => { throw new Error('render must not activate'); }} />);
   const confirmation = setup.recommended_default_profile.confirmation;
   assert.ok(html.includes(confirmation.confirmation_digest));
+  assert.ok(html.includes(`<span hidden="" data-native-setup-review-anchor="${confirmation.confirmation_digest}"`));
+  assert.match(html, /<input[^>]*type="checkbox"/);
   assert.ok(html.includes(confirmation.profile_revision));
   assert.ok(html.includes(confirmation.authority_snapshot_digest));
   for (const binding of confirmation.bindings) {

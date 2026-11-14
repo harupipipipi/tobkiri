@@ -91,7 +91,7 @@ tauri-plugin-single-instance = "2.4.2"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
-objc2-web-kit = { version = "=0.3.2", optional = true, default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKFrameInfo", "WKNavigation", "WKNavigationAction", "WKNavigationDelegate", "WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore"] }
+objc2-web-kit = { version = "=0.3.2", optional = true, default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKContentWorld", "WKFrameInfo", "WKNavigation", "WKNavigationAction", "WKNavigationDelegate", "WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore"] }
 dispatch2 = "0.3"
 block2 = "0.6"
 
