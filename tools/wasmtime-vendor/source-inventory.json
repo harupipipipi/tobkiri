@@ -1,0 +1,328 @@
+{
+  "format": "tobkiri.wasmtime-vendor-inventory/1",
+  "packages": {
+    "wasmtime": {
+      "added": {
+        "src/runtime/component/allocation.rs": {
+          "bytes": 25770,
+          "mode": "100644",
+          "sha256": "599082ee3c45ec556c94733595c78c42b0812fa49fcd6f6dfbda4e58e6e5898c"
+        },
+        "src/runtime/component/delivery.rs": {
+          "bytes": 97648,
+          "mode": "100644",
+          "sha256": "3b962153c457e9292b8badab84132eda1de24c777b596c89800402fd9a86f12f"
+        },
+        "src/runtime/component/delivery/value.rs": {
+          "bytes": 11301,
+          "mode": "100644",
+          "sha256": "af0519fcd5afd98d401f7378e4de68ed424daa6515ecb37aca28b897acc5f97f"
+        }
+      },
+      "archive_sha256": "4cdaf5b8af5713146e3a62d940c71e3eb2ad1ebacfa6b55f0c8509a5b4b87718",
+      "changed": {
+        "src/runtime/component/func.rs": {
+          "upstream": {
+            "bytes": 27997,
+            "mode": "100644",
+            "sha256": "7fa5e56c6709f47600d02b6f7808822dd42a13d0091300cba8d77aa859449839"
+          },
+          "vendor": {
+            "bytes": 32295,
+            "mode": "100644",
+            "sha256": "f4b0ae8fdb59164cd84454da72559807637e2921969870300178961e838731f2"
+          }
+        },
+        "src/runtime/component/func/host.rs": {
+          "upstream": {
+            "bytes": 29648,
+            "mode": "100644",
+            "sha256": "0241ea657610c6fc2b403882c65c139687f284f795aa3bbddb2132b6ece643d5"
+          },
+          "vendor": {
+            "bytes": 35679,
+            "mode": "100644",
+            "sha256": "ef4c4fd13978ccac58b17dfd83fda0c6e059232af0ef0cdc03481fa53daa4c3a"
+          }
+        },
+        "src/runtime/component/func/options.rs": {
+          "upstream": {
+            "bytes": 19307,
+            "mode": "100644",
+            "sha256": "07bcabc8850cf6bd9df888cb53e7e4e3f7e0e2b4e9ac99c2cc52e201d5900ee8"
+          },
+          "vendor": {
+            "bytes": 24997,
+            "mode": "100644",
+            "sha256": "441c6521402b3a361708f6dfac5aab96a76db5fc425c639e1b0e6af8296b89ca"
+          }
+        },
+        "src/runtime/component/func/typed.rs": {
+          "upstream": {
+            "bytes": 112494,
+            "mode": "100644",
+            "sha256": "da1347b61f3551c16ad87f25867aa2adafd488712f8d30a68c6bd3e057252865"
+          },
+          "vendor": {
+            "bytes": 122132,
+            "mode": "100644",
+            "sha256": "a6971ccc078d8c5a4f61b2d9e0abc9dc3a63a1d1ab460a6d61ebdb4989376239"
+          }
+        },
+        "src/runtime/component/instance.rs": {
+          "upstream": {
+            "bytes": 47800,
+            "mode": "100644",
+            "sha256": "d257b69e386f0b870377d35cbecbb9d1994655caca8326ea22715ccf9d289669"
+          },
+          "vendor": {
+            "bytes": 47807,
+            "mode": "100644",
+            "sha256": "4abfe51da8798e52d3b3ddff62ee9dda21f93cf57e434d6e7da2652e3de0a7c8"
+          }
+        },
+        "src/runtime/component/linker.rs": {
+          "upstream": {
+            "bytes": 37647,
+            "mode": "100644",
+            "sha256": "fce2bc0962e644f49dd953fbff0a30f6a93ad552f549356deaaf7dde5c53a768"
+          },
+          "vendor": {
+            "bytes": 37894,
+            "mode": "100644",
+            "sha256": "7ababd2e3fd02b4601374bec749cb0279b4023ea0b780a929b0ae09f50cdb14f"
+          }
+        },
+        "src/runtime/component/mod.rs": {
+          "upstream": {
+            "bytes": 31947,
+            "mode": "100644",
+            "sha256": "cfbea50a50eafcfdbb02ae4a9a6e3840bc17b5296552592cbeee5faaddc92f6b"
+          },
+          "vendor": {
+            "bytes": 32910,
+            "mode": "100644",
+            "sha256": "305b2a243923fb00c41c4528586c2af570e6acd8fda385b87a5dc9bba5bb90e4"
+          }
+        },
+        "src/runtime/component/resource_table.rs": {
+          "upstream": {
+            "bytes": 16788,
+            "mode": "100644",
+            "sha256": "e8dad2d667783f227fa6967112589716c150071014a954203e28623dcc3bdc76"
+          },
+          "vendor": {
+            "bytes": 21078,
+            "mode": "100644",
+            "sha256": "e6c6df80a0556e6fd695d977e4e50c95357da8c7bf0a00e14abe193d85faff33"
+          }
+        },
+        "src/runtime/component/resources/any.rs": {
+          "upstream": {
+            "bytes": 14220,
+            "mode": "100644",
+            "sha256": "3facb74d23ccbebc1075bf2316630ec56f94bc91db3903ea212fbefe19f5a43d"
+          },
+          "vendor": {
+            "bytes": 15413,
+            "mode": "100644",
+            "sha256": "7fd7d75517b0c1d2339b805eb4f370a628b52ac51f5241174a609b6bfc495219"
+          }
+        },
+        "src/runtime/component/resources/host_tables.rs": {
+          "upstream": {
+            "bytes": 12660,
+            "mode": "100644",
+            "sha256": "3852c52eb023b17381eeaacf54af293be08c0d3ae0dfe7968207007cd8fd90c1"
+          },
+          "vendor": {
+            "bytes": 48871,
+            "mode": "100644",
+            "sha256": "484b20a31b826db4dc0810dd5f9d0a21edac4732a2d908848c66aad7d6a3ed38"
+          }
+        },
+        "src/runtime/component/store.rs": {
+          "upstream": {
+            "bytes": 20158,
+            "mode": "100644",
+            "sha256": "0a09410f8d396165bda51e9c987e100484e65f17353b16b457c2a5590b26364a"
+          },
+          "vendor": {
+            "bytes": 22034,
+            "mode": "100644",
+            "sha256": "59952ad3b492e9443e7b312eb409c242c04fff800a7ec59fe6475296f78fed14"
+          }
+        },
+        "src/runtime/component/values.rs": {
+          "upstream": {
+            "bytes": 52058,
+            "mode": "100644",
+            "sha256": "60140cd143cae9a2dcf0608a221735444d66fbdbef4120204b42001229c9e5fc"
+          },
+          "vendor": {
+            "bytes": 54938,
+            "mode": "100644",
+            "sha256": "b349c7e860d42348dc5e885132760c7db229cca4b13cbbde71f908a47375c726"
+          }
+        },
+        "src/runtime/fiber.rs": {
+          "upstream": {
+            "bytes": 43879,
+            "mode": "100644",
+            "sha256": "ca6be0af71901583466ea0fc7a26a09225e28a637d5febfc627c5e128d1edca3"
+          },
+          "vendor": {
+            "bytes": 48572,
+            "mode": "100644",
+            "sha256": "a53f8d7275c9e4f6fe70fb5628441a80cd8961735a01dd388109f94b41903a5a"
+          }
+        },
+        "src/runtime/store.rs": {
+          "upstream": {
+            "bytes": 101697,
+            "mode": "100644",
+            "sha256": "edd2bc1352a8df27ee8abe6d9e1cb30f5fa8cdc93c55acd52da1083ab89a04fe"
+          },
+          "vendor": {
+            "bytes": 103619,
+            "mode": "100644",
+            "sha256": "46fa36fe952b4b0d1ff7df14a7b9ed27ac958be1a7bd0d9c0971b9d2c19879ee"
+          }
+        },
+        "src/runtime/store/async_.rs": {
+          "upstream": {
+            "bytes": 8816,
+            "mode": "100644",
+            "sha256": "f3bcd62686f6dbb1f048b175ab077148cb8e556bfaa6f8a317b528fc90c53013"
+          },
+          "vendor": {
+            "bytes": 11533,
+            "mode": "100644",
+            "sha256": "02a76ee0276a4b278283857f23c2d1f50d1de91e2681f287b4c7c3aa51a30ce8"
+          }
+        },
+        "src/runtime/vm/component.rs": {
+          "upstream": {
+            "bytes": 44253,
+            "mode": "100644",
+            "sha256": "27d1e09ad047b20888a833c4b568dd93f21e74ab02de2d6a68b21d0f261b0840"
+          },
+          "vendor": {
+            "bytes": 44427,
+            "mode": "100644",
+            "sha256": "280067399626ee67d94b51cbe67faa9b247527783287c92ed870ff94f8d57a4d"
+          }
+        },
+        "src/runtime/vm/component/handle_table.rs": {
+          "upstream": {
+            "bytes": 20978,
+            "mode": "100644",
+            "sha256": "1e18af865c9ca60e8adda63ef4e76dea2f4ca1029c0e80373dc2327707fd0fb8"
+          },
+          "vendor": {
+            "bytes": 28874,
+            "mode": "100644",
+            "sha256": "87a6865ea490c39962687b7bbb662c9fe768d7ed3f78775e51305fee96e8e876"
+          }
+        },
+        "src/runtime/vm/component/resources.rs": {
+          "upstream": {
+            "bytes": 14020,
+            "mode": "100644",
+            "sha256": "6b712e645376e5de80fd20cd848d18eee19ba7c3d6020b82b5e7c31fe42b7abc"
+          },
+          "vendor": {
+            "bytes": 24796,
+            "mode": "100644",
+            "sha256": "b4cae95b96afa94ca668d019a334a9bbd298a42b209de4c4b0063b900d80cdbd"
+          }
+        },
+        "src/runtime/vm/memory.rs": {
+          "upstream": {
+            "bytes": 30487,
+            "mode": "100644",
+            "sha256": "3406736e3dc52a9e44654ac2543ff249f9604c3cc469d9fb9122c2172e32ff83"
+          },
+          "vendor": {
+            "bytes": 30438,
+            "mode": "100644",
+            "sha256": "430003b8d0825a10ff4084d8661004726031976eb1e4c5d010ab1c14a7ac2809"
+          }
+        },
+        "src/runtime/vm/table.rs": {
+          "upstream": {
+            "bytes": 35698,
+            "mode": "100644",
+            "sha256": "d7ea6fb32c383462fde8e611a7560f8f3af3bf49d91461eed03c0e4c74543cee"
+          },
+          "vendor": {
+            "bytes": 35640,
+            "mode": "100644",
+            "sha256": "6fc4a1eb1693b6f718a0b885121a3cc629f4150203019d4737cf73c553070d45"
+          }
+        }
+      },
+      "license_sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "removed": {},
+      "unchanged": 230,
+      "upstream_files": 250,
+      "upstream_inventory_sha256": "ca8cbc3107e982766edf50ab6d80d10b4fc79988abdc999df30f71f35765fab3",
+      "vendor_files": 253,
+      "vendor_inventory_sha256": "b148df3924fb1f83a4bc2f79ada1139307fda58b8e0a234ba49526b97904a81f"
+    },
+    "wasmtime-internal-fiber": {
+      "added": {
+        ".gitignore": {
+          "bytes": 42,
+          "mode": "100644",
+          "sha256": "32ab07ec58c23e212af8a4bddf789cd92fe217179a5e093c1e75d776ed5622d3"
+        }
+      },
+      "archive_sha256": "4d126366176553e8f304e8ac2078a4cc37134fe8f19d4d4695a09c5a2f577f10",
+      "changed": {
+        "src/lib.rs": {
+          "upstream": {
+            "bytes": 17350,
+            "mode": "100644",
+            "sha256": "cbad53a8430814870cbfe80cf44e94e8424d4cd69773f7a3569979cb018e04c9"
+          },
+          "vendor": {
+            "bytes": 18483,
+            "mode": "100644",
+            "sha256": "52d3c4eec2bc7da63bbc73ea83ceb9170f6e7c62f314098511dd86a9353ba818"
+          }
+        },
+        "src/unix.rs": {
+          "upstream": {
+            "bytes": 18658,
+            "mode": "100644",
+            "sha256": "83121bc6a5becaeae393b99848f6c1fd169e44c1b7857b3b862f74c64b950c4c"
+          },
+          "vendor": {
+            "bytes": 24423,
+            "mode": "100644",
+            "sha256": "e93f397e717b5a0cb4e40770fd8c0b22b72b89ab4ae16bc6ca3666c690357ccb"
+          }
+        }
+      },
+      "license_sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "removed": {},
+      "unchanged": 20,
+      "upstream_files": 22,
+      "upstream_inventory_sha256": "1f3ac0ae3bb3f787eb9f6f3962e37b39bb331443c2d6f9b39bf7f40bdac56da8",
+      "vendor_files": 23,
+      "vendor_inventory_sha256": "b1697ddaea762568782079ef85426435ff2d14230766fe47f0fc42f264e2ae76"
+    }
+  },
+  "upstream_vcs": "254cb7a02d5804d4e466198212cda9d3575ad381",
+  "vendor_inventory_sha256": "adecb15f6fa7dfc8c812a1c2165d64f101785bc3000f07bb7ff2e5fe7d7f50ff",
+  "vendor_only_files": {
+    "vendor/.gitignore": {
+      "bytes": 48,
+      "mode": "100644",
+      "sha256": "c0dd7316439f6562c30610f31208803e265ebf4272912bb6233538754898b450"
+    }
+  },
+  "vendor_tree": "a046fbaee26ff3a53ecba2ff3a5b4f529fd10164",
+  "version": "47.0.4"
+}
