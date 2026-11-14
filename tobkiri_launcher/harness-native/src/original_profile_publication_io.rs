@@ -485,8 +485,19 @@ impl Directory {
                     ));
                 }
                 op.check(OriginalAuthorityStage::Guard)?;
-                if unsafe { libc::renameat(fd, name.as_ptr(), fd, destination.as_ptr()) } != 0 {
-                    return Err(raw_io(std::io::Error::last_os_error(), Some(target)));
+                let renamed = if must_be_absent {
+                    rename_new(fd, &name, destination)?
+                } else {
+                    unsafe { libc::renameat(fd, name.as_ptr(), fd, destination.as_ptr()) }
+                };
+                if renamed != 0 {
+                    let error = std::io::Error::last_os_error();
+                    if must_be_absent && error.kind() == std::io::ErrorKind::AlreadyExists {
+                        return Err(value(
+                            "Profile publication already has an unfinished intent",
+                        ));
+                    }
+                    return Err(raw_io(error, Some(target)));
                 }
                 published = true;
                 let after = Self::stat(directory, target, true)?.expect("required destination");
@@ -716,6 +727,40 @@ impl Directory {
                 }
             });
         close_files(files, result)
+    }
+}
+
+#[cfg(all(test, unix))]
+fn rename_new(fd: std::os::fd::RawFd, source: &CStr, destination: &CStr) -> Result<i32> {
+    // Both names are relative to the same open, validated directory. A
+    // concurrent destination appearing after the final stat must win.
+    #[cfg(target_os = "macos")]
+    return Ok(unsafe {
+        libc::renameatx_np(
+            fd,
+            source.as_ptr(),
+            fd,
+            destination.as_ptr(),
+            libc::RENAME_EXCL,
+        )
+    });
+    #[cfg(target_os = "linux")]
+    return Ok(unsafe {
+        libc::renameat2(
+            fd,
+            source.as_ptr(),
+            fd,
+            destination.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    });
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (fd, source, destination);
+        Err(OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Source,
+            "atomic publication intent creation",
+        ))
     }
 }
 
