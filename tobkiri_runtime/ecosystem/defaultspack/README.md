@@ -65,7 +65,7 @@ Tobkiri runtime の標準パックです。
 
 runtime 本体はドメイン知識を持たない汎用カーネルです。defaultspack は ecosystem に「AI サービスとして動作するための全ての仕組み」を提供します。チャット、エージェント、ツール、プロンプト、AI クライアント、コーディング支援、マルチモーダル処理、フロントエンド通信は、defaultspack の handler と domain コードで動作します。
 
-ただし defaults が提供するのは「仕組み」だけである。具体的な UI、ツール定義、エージェント定義、プロンプト、テーマ、レイアウトは全て user_data 側に配置される。defaults はそれらを「置ける場所」と「動かす仕組み」を提供する。
+defaults は仕組みに加えて frontend や標準コンテンツも提供する。UI asset は承認された Pack の capture から配信され、frontend extension は active Profile の有効な Pack または digest 固定の UI projection から読み込まれる。設定などの可変なユーザーデータは別に管理される。
 
 defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin）と正面から戦えるレベルの品質を目指す。
 
@@ -81,7 +81,7 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 
 **Security by Capability, Not by Trust.** defaults は rumiai のセキュリティモデルに完全に従う。defaults 自身も Grant された権限の範囲内でのみ動作する。
 
-**Infrastructure Only, Content in user_data.** defaults が提供するのはドメインロジック（handler）、通信基盤、Widget ライブラリ、シェル、Flow 定義のみ。画面の見た目（Asset）、ツール定義、エージェント設定、プロンプト、テーマ、レイアウトは全て user_data に配置される。defaults はそれらが動くための API とフレームワークを提供する。
+**Reviewed content and mutable state.** defaults はドメインロジック、通信基盤、Widget、frontend と標準コンテンツを提供する。実行・UI 拡張の authority は承認された Pack や Profile に属し、可変な user_data は設定やユーザーの状態を保持する。詳細は `docs/frontend_extensions.md` を参照。
 
 ---
 
@@ -143,11 +143,11 @@ and OpenClaw, see `docs/competitive_agent_install_eval.md`.
 ## defaults が提供しないもの
 
 - **任意実行 UI/Asset** — 画面に描画される独自 UI ファイル。template は builtin renderer へ metadata を渡せるが、任意 React module の実行権限は持たない。
-- **ツール定義** — tool.json + handler.py。user_data/shared/tools/ に配置される。
+- **ユーザーの任意 Python ツール** — 旧 `user_data/shared/tools/` の動的 Python handler は実行できない。reviewed Pack、MCP server、connector への移行は `docs/writing-tools.md` を参照。
 - **エージェント定義** — agent.json。user_data/shared/agents/ に配置される。
 - **プロンプト定義** — user_data/shared/prompts/ に配置される。
 - **テーマ定義** — theme.yaml。user_data/themes/ に配置される。
-- **レイアウト定義** — layout.json。user_data/layouts/ に配置される。
+- **ユーザーの任意 UI レイアウト authority** — frontend extension の配置先と activation は `docs/frontend_extensions.md` を参照。
 - **AI モデルプロファイル** — user_data/shared/ai_models/ に配置される。
 
 ---
@@ -908,7 +908,7 @@ defaults 単体で以下と同等以上のユーザー体験を提供する:
 - **MCP** — 外部ツール連携、プロトコル対応
 - **VS Code Extension** — defaults の handler を呼び出す Pack で実現可能
 
-これらは全て defaultspack の handler + user_data のコンテンツ（Asset、tool、agent、prompt）の組み合わせで実現される。
+これらの構成には defaultspack の handler、承認された Pack のコンテンツ、ユーザーの設定やデータを組み合わせる。
 
 ### Hosted provider setup
 

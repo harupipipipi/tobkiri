@@ -227,22 +227,16 @@ preview feed は次のソースを集約している。
 
 ## 開発フロー: sidebar item を足すには
 
-`.ui.json` は pack の sealed artifact set の一部 (`artifact-index.v4.json` に
-`role: "asset"` として digest 列挙される) なので、編集後は reseal と
-re-activation が必要。
+Pack の UI 配信用 asset は認証された capture の有限な inventory と digest に結び付く。可変な `user_data` はその authority にならない。一方、この registry は上記の選択済みディレクトリから `.ui.json` を読む。拡張を配布・有効化するときは、変更を Pack の artifact として再生成し、review と activation を行う。
 
 1. `ecosystem/<pack_id>/frontend_extensions/<name>.ui.json` を編集する。
 2. pack の v4 artifact を再生成して `artifact-index.v4.json` の digest を
    更新する (`python scripts/migrate_pack_artifacts_v4.py`)。
 3. pack-set / Profile の activation ceremony (resolve → review → Authority
    approval → activation) をやり直して、新しい digest を active Profile に
-   commit する。`/api/ui/catalog` は request ごとに `FrontendRegistry` を
-   組み立てるので、activation 後の再起動不要で反映される。
+   commit する。反映は有効な activation と capture の lifecycle に従う。
 
-ui_projection 側 (`profile_projections/<id>/frontend_extensions/`) を編集する
-場合は、projection の `content_digest` が読み込み時に再検証されるため、
-`scripts/generate_profile_artifacts.py` で Profile artifact を再生成してから
-activate する。
+ui_projection 側を変更する場合は、projection の `content_digest` が読み込み時に再検証されるため、変更を含む projection と Profile artifact を再生成し、review と activation を行う。
 
 まだ effective set に入っていない新しい pack は、source tree を置くだけでは
 読まれない。Host-owned admission と pack-set transaction (`/api/setup/packs`
