@@ -130,6 +130,22 @@ def identity_text(value: object) -> str:
     )
 
 
+def _matches_source_identity(observed: dict, expected: object) -> bool:
+    """Compare the fixed parsed shape without serializing its read inventory."""
+    if type(expected) is not dict or observed != expected:
+        return False
+    # The index comes from strict JSON, but dict equality accepts bools and
+    # floats as integers. Check every numeric field at its original type.
+    if type(expected["lock"]["bytes"]) is not int:
+        return False
+    return all(
+        type(row["index"]) is int
+        and type(row["reread"]) is bool
+        and type(row["bytes"]) is int
+        for row in expected["reads"]
+    )
+
+
 def embedded_owner() -> BundleDefaultsOwner:
     """Read only this actual module's fixed compiled-in immutable defaults.
 
@@ -180,16 +196,19 @@ def embedded_owner() -> BundleDefaultsOwner:
 
         lock = read_member("lock.json", value["lock"])
         blobs = []
-        unique = set()
+        by_digest = {}
         owned = len(lock)
         for ordinal, expected in enumerate(value["blobs"]):
             member = read_member(f"blobs/{ordinal}.json", expected)
             owned += len(member)
             if owned > MAX_SOURCE_BYTES:
                 _limit_exceeded("bundle defaults source bytes exceed four MiB")
-            if member in unique:
+            # read_member already verified the digest against these bytes.
+            # Equal bytes must share a bucket; distinct bytes may collide.
+            same_digest = by_digest.setdefault(expected["sha256"], [])
+            if member in same_digest:
                 _invalid_request()
-            unique.add(member)
+            same_digest.append(member)
             blobs.append(member)
         reads = []
         referenced = set()
@@ -232,7 +251,9 @@ def embedded_owner() -> BundleDefaultsOwner:
             "lock": value["lock"],
             "reads": actual,
         }
-        if identity_text(observed) != identity_text(value["source_identity"]):
+        expected = value["source_identity"]
+        if (not _matches_source_identity(observed, expected)
+                and identity_text(observed) != identity_text(expected)):
             raise BundleCatalogError(
                 "invalid-request", "embedded bundle source bytes changed"
             )

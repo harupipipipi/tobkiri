@@ -19,6 +19,33 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class BundleInputsTests(unittest.TestCase):
+    def test_embedded_identity_fast_path_keeps_json_types_and_order(self):
+        adapter = ROOT / inputs.PACK / 'python/bundle_catalog_adapter.py'
+        syntax = ast.parse(adapter.read_bytes())
+        functions = ast.Module(body=[node for node in syntax.body
+                                    if isinstance(node, ast.FunctionDef)
+                                    and node.name in {'identity_text', '_matches_source_identity'}],
+                               type_ignores=[])
+        scope = {'json': json}
+        exec(compile(functions, str(adapter), 'exec'), scope)
+        matches = scope['_matches_source_identity']
+        canonical = scope['identity_text']
+        observed = fixture()['source_identity']
+        reordered = {key: observed[key] for key in reversed(observed)}
+        self.assertTrue(matches(observed, reordered))
+        for field, alternate in [('index', False), ('index', 0.0),
+                                 ('reread', 0), ('bytes', float(observed['reads'][0]['bytes']))]:
+            expected = copy.deepcopy(observed)
+            expected['reads'][0][field] = alternate
+            with self.subTest(field=field, alternate=alternate):
+                self.assertEqual(observed, expected)
+                self.assertFalse(matches(observed, expected))
+                self.assertNotEqual(canonical(observed), canonical(expected))
+        expected = copy.deepcopy(observed)
+        expected['reads'].reverse()
+        self.assertFalse(matches(observed, expected))
+        self.assertNotEqual(canonical(observed), canonical(expected))
+
     def test_cold_phase_derivation_preserves_the_original_store_call_and_output(self):
         source = (inputs.HERE / 'bundle_catalog/native.py').read_bytes()
         derived = kernel_inputs._observe_cold_call(source)
