@@ -2916,6 +2916,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   159,637,695 fuelで、その途中で燃料切れ。ピーク25,205,956 bytes、終了後の確保・予約0。
   [無計測CI43549005667](https://github.com/harupipipipi/tobkiri/actions/runs/43549005667)も
   coldと全カタログが既存の燃料上限で停止した。
+- `b7e56d0a8` は参照解決で毎回作成していた固定の属性名を再利用する。Registryの実際の
+  descriptor取得とコールバック、結果の参照、例外順序は維持する。
+  [原本比較43551375081](https://github.com/harupipipipi/tobkiri/actions/runs/43551375081)と
+  [燃料計測43551374165](https://github.com/harupipipipi/tobkiri/actions/runs/43551374165)、
+  [無計測CI43551376678](https://github.com/harupipipipi/tobkiri/actions/runs/43551376678)で検証する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3317,6 +3322,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   場合も元の公開ロックを保持してHostの先行pointerを読み取る。復旧の入れ子は同じロックを
   借りる。ここで検証するのは書き込み前の範囲。実保存にはGUI承認、ロック下での再解決、
   物理的な再取得、Authorityとworkspaceの永続化が残る。
+- [ロック比較43550162901](https://github.com/harupipipipi/tobkiri/actions/runs/43550162901)と
+  [復旧比較43550162634](https://github.com/harupipipipi/tobkiri/actions/runs/43550162634)が通過。
+  `001362994` の[比較43550579150](https://github.com/harupipipipi/tobkiri/actions/runs/43550579150)も通過し、
+  承認後の復旧では古い先行pointerを拒否して署名済みintentを残すことを確認した。
+- `72fcad6dc` は、元のwriterが生成した公開intentとRustで生成したintentの全バイトを
+  比較する。隔離したテスト用の鍵を使い、確認文書全体のdigest、候補のactivation ID、
+  署名・再読込、既存intentの保護を検査する。定義登録のアトミック書き込みを再利用し、
+  intentが既にあるときは拒否する。鍵の作成と実GUIからの書き込みは別途必要。
+  [初回43551150533](https://github.com/harupipipipi/tobkiri/actions/runs/43551150533)はLinuxの
+  既存Clippyと競合。`7d4c272a1` が比較専用のRust 1.94.0を隔離し、
+  [再実行43551451311](https://github.com/harupipipipi/tobkiri/actions/runs/43551451311)で検証する。
+- Setupの確認欄を移す際は `DefaultsReview.tsx` と `DefaultsConfirmationDetails.tsx` の表示を
+  再利用する。現在の `legacy.rs` が表示するSetupと `core_host.rs` の既存承認シートは
+  異なる入口。既存のUI操作を維持するため、元のSetup内にCoreが所有する独立の確認領域を
+  配置し、Coreが表示データと入力を保持する。Tauriの親window権限を子まで持ち込まない
+  構成と実機確認が前提。Launch後の個別承認は既存の専用ウィンドウで行う。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
