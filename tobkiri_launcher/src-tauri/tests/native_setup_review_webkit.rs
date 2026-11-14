@@ -136,6 +136,7 @@ fn main() {
         let placed = SetupReviewSlot::mount(
             mtm,
             &parent,
+            &slot,
             serde_json::from_value(geometry.clone()).unwrap(),
             listing,
         )
@@ -215,7 +216,7 @@ fn main() {
             );
             pump();
         };
-        let placed = SetupReviewSlot::mount(mtm, &parent, geometry, listing).unwrap();
+        let placed = SetupReviewSlot::mount(mtm, &parent, &slot, geometry, listing).unwrap();
         let clip = slot.subviews().objectAtIndex(2);
         assert_eq!(clip.frame().size, NSSize::new(700.0, 600.0));
         assert_eq!(
@@ -224,15 +225,17 @@ fn main() {
         );
         drop(placed);
 
-        assert!(SetupReviewPresentation::new(&parent, 8765, listing.to_owned()).is_err());
-        let cancelled = SetupReviewPresentation::new(&parent, 80, listing.to_owned()).unwrap();
+        assert!(SetupReviewPresentation::new(&parent, &slot, 8765, listing.to_owned()).is_err());
+        let cancelled =
+            SetupReviewPresentation::new(&parent, &slot, 80, listing.to_owned()).unwrap();
         cancelled.refresh();
         cancelled.retire();
         for _ in 0..5 {
             pump();
         }
         assert_eq!(slot.subviews().len(), 2);
-        let presentation = SetupReviewPresentation::new(&parent, 80, listing.to_owned()).unwrap();
+        let presentation =
+            SetupReviewPresentation::new(&parent, &slot, 80, listing.to_owned()).unwrap();
         presentation.refresh();
         presentation.refresh();
         while slot.subviews().len() == 2 {

@@ -29,6 +29,7 @@ enum Display {
 #[allow(dead_code)] // The Launcher owner will supply the admitted worker result.
 pub(crate) struct SetupReviewPresentation {
     parent: Retained<WKWebView>,
+    owner: Retained<NSView>,
     url: String,
     port: u16,
     state: Rc<RefCell<PresentationState>>,
@@ -44,14 +45,19 @@ impl SetupReviewPresentation {
     /// Capture the exact URL of the already validated Setup owner and its listing.
     pub(crate) fn new(
         parent: &WKWebView,
+        owner: &NSView,
         port: u16,
         listing: String,
     ) -> Result<Self, &'static str> {
         if listing.is_empty() || listing.len() > MAX_LISTING_BYTES {
             return Err("Setup review listing exceeds its display limit");
         }
+        if !contains_view(owner, parent) {
+            return Err("Setup review owner is unavailable");
+        }
         Ok(Self {
             parent: parent.retain(),
+            owner: owner.retain(),
             url: eligible_owner(parent, port).ok_or("Setup review owner is unavailable")?,
             port,
             state: Rc::new(RefCell::new(PresentationState {
@@ -64,7 +70,9 @@ impl SetupReviewPresentation {
     /// Coalesce refresh requests and fail closed while geometry is unavailable.
     pub(crate) fn refresh(&self) {
         let mut state = self.state.borrow_mut();
-        if eligible_owner(&self.parent, self.port).as_ref() != Some(&self.url) {
+        if !contains_view(&self.owner, &self.parent)
+            || eligible_owner(&self.parent, self.port).as_ref() != Some(&self.url)
+        {
             state.display = None;
             return;
         }
@@ -75,6 +83,7 @@ impl SetupReviewPresentation {
         drop(state);
 
         let parent = Weak::new(&*self.parent);
+        let owner = Weak::new(&*self.owner);
         let url = self.url.clone();
         let port = self.port;
         let presentation = Rc::downgrade(&self.state);
@@ -85,12 +94,12 @@ impl SetupReviewPresentation {
             };
             let mut state = presentation.borrow_mut();
             state.measurement_pending = false;
-            let parent = parent.load();
-            if parent
-                .as_deref()
-                .and_then(|parent| eligible_owner(parent, port))
-                .as_ref()
-                != Some(&url)
+            let (Some(parent), Some(owner)) = (parent.load(), owner.load()) else {
+                state.display = None;
+                return;
+            };
+            if !contains_view(&owner, &parent)
+                || eligible_owner(&parent, port).as_ref() != Some(&url)
             {
                 state.display = None;
                 return;
@@ -98,10 +107,10 @@ impl SetupReviewPresentation {
             let geometry = geometry.filter(|_| Instant::now() < deadline);
             match state.display.as_ref() {
                 Some(Display::Waiting(listing)) => {
-                    if let (Some(geometry), Some(mtm), Some(parent)) =
-                        (geometry, MainThreadMarker::new(), parent)
-                    {
-                        if let Ok(slot) = SetupReviewSlot::mount(mtm, &parent, geometry, listing) {
+                    if let (Some(geometry), Some(mtm)) = (geometry, MainThreadMarker::new()) {
+                        if let Ok(slot) =
+                            SetupReviewSlot::mount(mtm, &parent, &owner, geometry, listing)
+                        {
                             state.display = Some(Display::Mounted(slot));
                         }
                     }
@@ -259,6 +268,7 @@ impl ReviewGeometry {
 pub(crate) struct SetupReviewSlot {
     _review: SetupReviewView,
     parent: Retained<NSView>,
+    owner: Retained<NSView>,
     clip: Retained<NSView>,
     full: Retained<NSView>,
 }
@@ -269,14 +279,12 @@ impl SetupReviewSlot {
     pub(crate) fn mount(
         mtm: MainThreadMarker,
         parent: &NSView,
+        owner: &NSView,
         geometry: ReviewGeometry,
         listing: &str,
     ) -> Result<Self, &'static str> {
-        let owner = parent
-            .superview()
-            .ok_or("Setup owner view is unavailable")?;
-        if parent.isHiddenOrHasHiddenAncestor() {
-            return Err("Setup owner view is hidden");
+        if !contains_view(owner, parent) || parent.isHiddenOrHasHiddenAncestor() {
+            return Err("Setup owner view is unavailable");
         }
         let (full, clip) = geometry
             .frames(parent.bounds(), parent.isFlipped())
@@ -302,6 +310,7 @@ impl SetupReviewSlot {
         Ok(Self {
             _review: review,
             parent: parent.retain(),
+            owner: owner.retain(),
             clip: clip_view,
             full: full_view,
         })
@@ -311,14 +320,14 @@ impl SetupReviewSlot {
     pub(crate) fn update(&self, geometry: Option<ReviewGeometry>) -> bool {
         let frames = geometry.and_then(|geometry| {
             let parent = &*self.parent;
-            let owner = self.clip.superview()?;
-            if parent.superview().as_deref() != Some(&*owner)
+            if !contains_view(&self.owner, parent)
+                || !contains_view(&self.owner, &self.clip)
                 || parent.isHiddenOrHasHiddenAncestor()
             {
                 return None;
             }
             let (full, clip) = geometry.frames(parent.bounds(), parent.isFlipped())?;
-            Some((full, owner.convertRect_fromView(clip, Some(parent))))
+            Some((full, self.owner.convertRect_fromView(clip, Some(parent))))
         });
         let Some((full, clip)) = frames else {
             self.clip.setHidden(true);
@@ -330,6 +339,13 @@ impl SetupReviewSlot {
         self.clip.setHidden(false);
         true
     }
+}
+
+fn contains_view(owner: &NSView, view: &NSView) -> bool {
+    owner
+        .subviews()
+        .iter()
+        .any(|child| std::ptr::eq(&*child, view))
 }
 
 impl Drop for SetupReviewSlot {
