@@ -2910,7 +2910,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `3e66f6bbb` はASCIIのbase URIを受け付けた時点で検証済みのscheme境界を保持し、
   後続の相対URI判定と結合に再利用する。baseのscheme中には除去対象の制御文字がない。
   参照側は従来通り制御文字の除去後にschemeを調べ、元の引数をそのまま返す経路も保つ。
-  元実装との比較に制御文字・大文字を含む2組を追加。燃料の効果は実WasmのCIで測定する。
+  制御文字と大文字を含む2組を追加し、[原本比較43548960540](https://github.com/harupipipipi/tobkiri/actions/runs/43548960540)で
+  155組を確認した。[実Wasm計測43548996895](https://github.com/harupipipipi/tobkiri/actions/runs/43548996895)の
+  41件の評価区間は1,665,145,906 fuel（10,951,942減）。42件目の評価開始時は
+  159,637,695 fuelで、その途中で燃料切れ。ピーク25,205,956 bytes、終了後の確保・予約0。
+  [無計測CI43549005667](https://github.com/harupipipipi/tobkiri/actions/runs/43549005667)も
+  coldと全カタログが既存の燃料上限で停止した。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3298,6 +3303,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   グラフから使う。元の固定Packの比較には、認証済み取り込みの実一覧での一致・古い一覧の
   拒否・整数の拒否を追加した。[比較CI 43548658443](https://github.com/harupipipipi/tobkiri/actions/runs/43548658443)
   で検証する。Launcherへ一覧を返す既存のJSON形式はそのまま。
+- `761e0e4ee` の[固定原本比較43549477713](https://github.com/harupipipipi/tobkiri/actions/runs/43549477713)は
+  公開ロックの下で元のcaptureを実行した。一致時はHostカタログ準備、source Profileと
+  bundle lockの再取得後に最初の公開intentの入口へ達した。古い確認はカタログ準備前、
+  sourceとbundle lockの変更はintent作成前に拒否した。既存ファイルとロック解放も確認した。
+- `2d2415e90` は元のresolverが返したPlanとLockのdigestをその時点で記録し、後から返る
+  Setup確認とsourceを照合する。sourceとそのdigestを同時に置き換えるケースを追加した。
+  [最初のWasm CI43549752201](https://github.com/harupipipipi/tobkiri/actions/runs/43549752201)は
+  テスト用PlanとLockに追加のdigestがないため3件で停止。`164ad2517` でfixtureを補い、
+  [Wasm CI43550240528](https://github.com/harupipipipi/tobkiri/actions/runs/43550240528)で再検証する。
+- `23b258989` は引き継ぎジャーナルが存在しない場合の検査と認証処理を共通化した。
+  確認済みcaptureの検証経路では、不完全な引き継ぎをロック作成前に止め、intentがない
+  場合も元の公開ロックを保持してHostの先行pointerを読み取る。復旧の入れ子は同じロックを
+  借りる。ここで検証するのは書き込み前の範囲。実保存にはGUI承認、ロック下での再解決、
+  物理的な再取得、Authorityとworkspaceの永続化が残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
