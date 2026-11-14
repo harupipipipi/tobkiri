@@ -359,8 +359,11 @@ fn main() {
                 .unwrap();
         assert!(evaluate_boolean(
             &parent,
-            "const marker = document.querySelector('section span');
-             marker.replaceWith(marker.cloneNode()); String(true)",
+            "(() => {
+                const marker = document.querySelector('section span');
+                marker.replaceWith(marker.cloneNode());
+                return String(true);
+             })()",
             deadline,
         ));
         let replacement = sample(&parent, deadline).anchor();
@@ -416,8 +419,11 @@ fn main() {
         // The real gesture in the old child must re-sample the parent itself.
         assert!(evaluate_boolean(
             &parent,
-            "const marker = document.querySelector('section span');
-             marker.replaceWith(marker.cloneNode()); String(true)",
+            "(() => {
+                const marker = document.querySelector('section span');
+                marker.replaceWith(marker.cloneNode());
+                return String(true);
+             })()",
             deadline,
         ));
         press_space(
