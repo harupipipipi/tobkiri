@@ -16,6 +16,8 @@ mod packaging_toolchain;
 mod packvm_bundle;
 #[path = "src/runtime_resource_paths.rs"]
 mod runtime_resource_paths;
+#[path = "setup_component_build.rs"]
+mod setup_component_build;
 #[allow(dead_code)]
 #[path = "src/sealed_python_protocol.rs"]
 mod sealed_python_protocol;
@@ -234,6 +236,13 @@ fn main() {
         return;
     }
 
+    for name in [
+        setup_component_build::SOURCE_ENV,
+        setup_component_build::RECEIPT_ENV,
+        setup_component_build::PIN_ENV,
+    ] {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
     println!("cargo:rerun-if-changed=splash/index.html");
     println!("cargo:rerun-if-changed=splash/browser-access-approval.html");
     println!("cargo:rerun-if-changed=splash/tobkiri_launcher_startup_blade_cut.svg");
@@ -609,6 +618,7 @@ fn capture_local_development_authority(
         &runtime_root,
     )?;
     stage_local_development_packvm_bundle(&staged_root)?;
+    stage_setup_component(&staged_root)?;
     write_runtime_resource_manifest(&staged_root)?;
     let manifest = fs::read(staged_root.join(RUNTIME_RESOURCE_MANIFEST))?;
     Ok((staged_root, format!("{:x}", Sha256::digest(manifest))))
@@ -1206,6 +1216,7 @@ fn stage_runtime_bundle_into(
             staged_root.join("intermediate-shell-stage.v1"),
             b"io.tobkiri.intermediate-shell-stage.v1\n",
         )?;
+        write_unbound_setup_component()?;
         return write_runtime_resource_manifest(&staged_root);
     }
     if required_cargo_profile()? != "release" {
@@ -1276,6 +1287,7 @@ fn stage_runtime_bundle_into(
         .map_err(|error| stage_error("stage build-pinned PackVM", error))?;
     bind_sealed_python_root(&staged_root.join(SEALED_PYTHON_ROOT), false)
         .map_err(|error| stage_error("bind sealed Python environment", error))?;
+    stage_setup_component(&staged_root)?;
     write_runtime_resource_manifest(&staged_root)
         .map_err(|error| stage_error("seal staged runtime", error))?;
     prepare_staged_macos_xattr_transport(&staged_root)
@@ -1335,8 +1347,52 @@ fn stage_development_runtime_bundle(
     }
     bind_sealed_python_root(&staged_root.join(SEALED_PYTHON_ROOT), false)
         .map_err(|error| stage_error("bind development Python environment", error))?;
+    stage_setup_component(&staged_root)?;
     write_runtime_resource_manifest(staged_root)
         .map_err(|error| stage_error("seal staged development runtime", error))
+}
+
+fn setup_component_generated() -> Option<PathBuf> {
+    if !cfg!(all(feature = "native-harness-bootstrap", feature = "native-setup-review"))
+        || !std::env::var_os("CARGO_CFG_TARGET_OS").is_some_and(|os| os == "macos")
+        || cfg!(test)
+    {
+        return None;
+    }
+    std::env::var_os("OUT_DIR")
+        .map(|root| PathBuf::from(root).join(setup_component_build::GENERATED))
+}
+
+fn write_unbound_setup_component() -> io::Result<()> {
+    if let Some(generated) = setup_component_generated() {
+        fs::write(generated, "static COMPONENT: Option<SetupComponent> = None;\n")?;
+    }
+    Ok(())
+}
+
+fn stage_setup_component(root: &Path) -> io::Result<()> {
+    let Some(generated) = setup_component_generated() else {
+        return Ok(());
+    };
+    match (
+        std::env::var_os(setup_component_build::SOURCE_ENV),
+        std::env::var_os(setup_component_build::RECEIPT_ENV),
+        std::env::var_os(setup_component_build::PIN_ENV),
+    ) {
+        (None, None, None) => write_unbound_setup_component(),
+        (Some(source), Some(receipt), Some(pin)) => {
+            let (source, receipt) = (PathBuf::from(source), PathBuf::from(receipt));
+            let pin = pin
+                .to_str()
+                .ok_or_else(|| invalid_release("invalid Setup component receipt digest"))?;
+            println!("cargo:rerun-if-changed={}", source.display());
+            println!("cargo:rerun-if-changed={}", receipt.display());
+            setup_component_build::stage(&source, &receipt, pin, root, &generated)
+        }
+        _ => Err(invalid_release(
+            "Setup component requires its source, receipt and expected receipt digest",
+        )),
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

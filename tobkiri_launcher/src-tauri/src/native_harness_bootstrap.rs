@@ -346,11 +346,65 @@ fn setup_display_requires_a_completed_listing_result() {
 /// Review the existing selected Profile under the original Launcher's owner.
 /// The native caller supplies already selected component inputs and options.
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+#[path = "setup_component_path.rs"]
+mod setup_component_path;
+
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+mod selected_setup_component {
+    use super::{
+        setup_component_path, AppHandle, BootstrapModuleIndex, Digest, File, Manager, Result,
+    };
+    use std::fs::OpenOptions;
+    use std::os::unix::fs::OpenOptionsExt;
+    use tobkiri_harness_native::BootstrapModule;
+
+    struct SetupComponent {
+        sha256: &'static str,
+        index: &'static BootstrapModuleIndex,
+    }
+    include!(concat!(env!("OUT_DIR"), "/setup_component.rs"));
+
+    pub(super) fn open(
+        app: &AppHandle,
+    ) -> Result<Option<(File, Digest, &'static BootstrapModuleIndex)>> {
+        let Some(component) = &COMPONENT else {
+            return Ok(None);
+        };
+        let root = if env!("TOBKIRI_LOCAL_DEV_WORKSPACE") == "1" {
+            std::path::PathBuf::from(
+                option_env!("TOBKIRI_LOCAL_DEV_AUTHORITY_STAGE").ok_or_else(|| {
+                    anyhow::anyhow!("Setup component development stage unavailable")
+                })?,
+            )
+        } else {
+            app.path().resource_dir()?.join("app")
+        };
+        let path = root.join(setup_component_path::RESOURCE);
+        anyhow::ensure!(
+            path.canonicalize()? == path,
+            "Setup component resource is not physical"
+        );
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+            .open(path)?;
+        let metadata = file.metadata()?;
+        anyhow::ensure!(
+            metadata.is_file()
+                && (1..=setup_component_path::MAX_COMPONENT_BYTES).contains(&metadata.len()),
+            "Setup component resource is not a bounded regular file"
+        );
+        Ok(Some((
+            file,
+            Digest::parse(component.sha256)?,
+            component.index,
+        )))
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 pub(crate) fn prepare_setup_review(
     app: &AppHandle,
-    artifact: File,
-    expected: Digest,
-    index: &'static BootstrapModuleIndex,
     options: tobkiri_harness_native::BootstrapReviewOptions,
 ) -> Result<(), SetupReviewStartError> {
     use crate::native_setup_review::owner::SetupReviewWindowState;
@@ -365,6 +419,9 @@ pub(crate) fn prepare_setup_review(
         .try_state::<crate::AppConfig>()
         .ok_or(SetupReviewStartError::Window)?
         .kernel_port;
+    let (artifact, expected, index) = selected_setup_component::open(app)
+        .map_err(SetupReviewStartError::Component)?
+        .ok_or(SetupReviewStartError::Unbound)?;
     let owner = state
         .begin(window, mtm, port)
         .map_err(|_| SetupReviewStartError::Window)?;
@@ -388,6 +445,8 @@ pub(crate) fn prepare_setup_review(
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 pub(crate) enum SetupReviewStartError {
     Window,
+    Unbound,
+    Component(anyhow::Error),
     Worker(DetachedFailure),
 }
 

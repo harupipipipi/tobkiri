@@ -13,6 +13,8 @@ on:
       - 'tobkiri_launcher/src-tauri/src/native_setup_review*.rs'
       - 'tobkiri_launcher/src-tauri/tests/native_setup_review_webkit.rs'
       - 'tobkiri_launcher/src-tauri/build.rs'
+      - 'tobkiri_launcher/src-tauri/setup_component_build.rs'
+      - 'tobkiri_launcher/src-tauri/src/setup_component_path.rs'
       - 'tobkiri_launcher/src-tauri/Cargo.*'
       - 'tobkiri_launcher/frontend/src/lib/defaultsSetup*.ts'
       - 'tobkiri_launcher/frontend/src/lib/measureSetupReviewSlot*'
@@ -87,3 +89,8 @@ jobs:
         run: >-
           cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
           --features core-host,native-setup-review --test native_setup_review_webkit
+      - name: Verify Setup component staging and fixed digest
+        run: >-
+          cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
+          --features core-host --test build_script
+          build_script::setup_component_build::tests::verified_bytes_and_index_are_staged_together -- --exact
