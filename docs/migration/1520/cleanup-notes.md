@@ -3559,15 +3559,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   別ロックでの初版保存を接続した。取得したPackの検証済みテンプレートだけを既存の
   StrictV1上限付きDATAにし、取得先のKeyErrorを元の例外のまま拒否に結び付ける。
   実競合時だけ再読取りし、ロック・時計・保存の順番を比較する。変更したPython transport
-  89件が成功。[レジストリ比較CI 43596397948](https://github.com/harupipipipi/tobkiri/actions/runs/43596397948)と
-  [Wasm本体CI 43596417935](https://github.com/harupipipipi/tobkiri/actions/runs/43596417935)を実行中。
+  89件が成功。[レジストリ比較CI 43596397948](https://github.com/harupipipipi/tobkiri/actions/runs/43596397948)は
+  Ubuntu・macOSで初回登録と再実行の原本比較に通過。
+  [Wasm本体CI 43596417935](https://github.com/harupipipipi/tobkiri/actions/runs/43596417935)も
+  ビルド、元Runtime初期化、getter、通常DATA入口からの専用lookup拒否に成功した。
   `e5b1f6523` は同じregistryを読み直し、元の並び順、tombstone除外、10キーの有無だけの
   判定で解決候補を作る。[CI 43596750559](https://github.com/harupipipipi/tobkiri/actions/runs/43596750559)で
-  実行する。旧定義import、旧successor builder、外部カタログ採用が残る。
-  次の元コードはユーザーの同じrootで公式schemaと外部Pack一覧を毎回読む。空でも
-  存在確認が必要で、既存のHost HMACとinstall journal、versionを含む全CAS参照の検証後に
-  normal Packだけを絞る。旧署名前提と現行Wasm Packの検証方式が異なるため、暗号処理と
-  物理読み取りを共有し、片方のmanifestをもう片方の代わりに使わない。
+  Ubuntuで通過し、macOSで実行中。旧定義importと旧successor builderが残る。
+  `5b455dff3`、`fe3c27c50`、`6d1cad954` は既存の復旧ロックが選んだ同じ
+  ユーザーデータで、公式Pack一覧の読込み、外部レジストリのスキーマ、既存のHost HMAC、
+  install journalの連鎖、最初の対象ルートのdevice/inodeまでを検査する。独立に署名・
+  admissionしたPackとHMAC変更の原本比較は[CI 43597966368](https://github.com/harupipipipi/tobkiri/actions/runs/43597966368)。
+  UTF-16/32のJSONと一部の複合値のPython文字列化は未対応。次はCASの全実体検証
+  （旧manifestとexecutable catalog、compile結果、署名付きファイル一覧）をつないでから
+  closureを組み立て、同じRuntimeでProfile一覧を差し替える。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
