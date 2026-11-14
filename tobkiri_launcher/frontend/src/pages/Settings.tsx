@@ -166,7 +166,7 @@ export function Settings() {
   };
 
   const themes: Theme[] = ['Rounded', 'Minimal'];
-  const updateName = (target: UpdateTarget) => target === 'tobkiri' ? PRODUCT_DISPLAY_NAME : 'defaultspack';
+  const updateName = (target: UpdateTarget) => target === 'tobkiri' ? PRODUCT_DISPLAY_NAME : 'Harness';
   const permissionRows = desktopInfo?.permissions ?? [];
 
   const handleApplyUpdate = async (target: UpdateTarget) => {
