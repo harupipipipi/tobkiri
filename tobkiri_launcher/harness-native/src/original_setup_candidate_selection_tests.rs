@@ -34,6 +34,92 @@ impl crate::BootstrapReviewOwner for ChangingOwner<'_> {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn confirmed_publication_checks_handover_before_lock_and_holds_it_without_intent() {
+    use super::super::{JOURNAL, LOCK, with_confirmed_predecessor};
+    use super::tests::operation;
+
+    for case in [
+        "no-handover",
+        "missing-journal",
+        "incomplete-handover",
+        "completed-handover",
+        "bad-intent",
+    ] {
+        with_source(|source, read, cancel, budget| {
+            let root = &source.root;
+            let lock = root.join("profiles").join(LOCK);
+            let intent = root.join("profiles").join(JOURNAL);
+            let key = [7; 32];
+            if matches!(
+                case,
+                "missing-journal" | "incomplete-handover" | "completed-handover"
+            ) {
+                fs::create_dir(root).unwrap();
+                fs::write(root.join(development_handover::KEY), key).unwrap();
+                if case != "missing-journal" {
+                    let stage = if case == "completed-handover" {
+                        "completed"
+                    } else {
+                        "staging"
+                    };
+                    let mut payload = json!({
+                        "schema": "io.tobkiri.development-host-handover-journal.v1",
+                        "stage": stage,
+                    });
+                    let data = serde_json::to_vec(&payload).unwrap();
+                    let variant = tobkiri_canon::Variant::StrictV1;
+                    let canonical = tobkiri_canon::parse(&data, variant).unwrap();
+                    payload["authentication"] =
+                        json!(tobkiri_canon::seal(&canonical, variant, &key).unwrap());
+                    fs::write(
+                        root.join(development_handover::JOURNAL),
+                        serde_json::to_vec(&payload).unwrap(),
+                    )
+                    .unwrap();
+                }
+            }
+            if case == "bad-intent" {
+                fs::create_dir_all(root.join("profiles")).unwrap();
+                fs::write(&intent, b"invalid intent").unwrap();
+            }
+            let op = operation(read, source, cancel);
+            let result = with_confirmed_predecessor(&op, root, budget, |current| {
+                assert!(matches!(case, "no-handover" | "completed-handover"));
+                assert!(current.is_none());
+                assert!(!lock_free(&lock));
+                assert!(!intent.exists());
+                Ok(())
+            });
+            match case {
+                "no-handover" | "completed-handover" => {
+                    result.unwrap();
+                    assert!(lock_free(&lock));
+                    assert!(!intent.exists());
+                }
+                "missing-journal" | "incomplete-handover" => {
+                    let error = result.unwrap_err();
+                    assert!(
+                        error
+                            .message
+                            .starts_with("Development Host handover requires")
+                    );
+                    assert!(!root.join("profiles").exists());
+                }
+                "bad-intent" => {
+                    assert_eq!(
+                        result.unwrap_err().message,
+                        "Profile publication recovery failed closed"
+                    );
+                    assert!(lock_free(&lock));
+                    assert_eq!(fs::read(&intent).unwrap(), b"invalid intent");
+                }
+                _ => unreachable!(),
+            }
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn both_recoveries_precede_selection_and_absent_root_stays_absent() {
     for additions in [false, true] {
         with_source(|source, read, cancel, budget| {

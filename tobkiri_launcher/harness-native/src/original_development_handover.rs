@@ -12,7 +12,42 @@ pub(super) struct Handover {
     pub(super) digest: Digest,
 }
 
-pub(super) fn read<S: OriginalAuthorityOwner>(
+/// Read the handover fence without creating any state. Both pre-publication
+/// admission and the imported predecessor check need the same witness rules.
+pub(super) fn read_optional<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<Handover>> {
+    let _paths = op.reserve(
+        OriginalAuthorityStage::Path,
+        root.as_os_str()
+            .len()
+            .saturating_mul(4)
+            .saturating_add(8192),
+    )?;
+    use candidate_selection::{predecessor_path_present, predecessor_stat};
+    if predecessor_stat(op, root, |path| fs::metadata(path))?.is_none() {
+        return Ok(None);
+    }
+    if predecessor_path_present(op, &root.join(JOURNAL))? {
+        return read(op, root, budget).map(Some);
+    }
+    for witness in [
+        root.join(KEY),
+        root.join("development-host-staging"),
+        root.join("packvm-vz").join(JOURNAL),
+    ] {
+        if predecessor_path_present(op, &witness)? {
+            return Err(value(
+                "Development Host handover requires its authenticated recovery journal",
+            ));
+        }
+    }
+    Ok(None)
+}
+
+fn read<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
     budget: &Arc<dyn AllocationBudget>,

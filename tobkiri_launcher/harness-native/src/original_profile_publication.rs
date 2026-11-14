@@ -388,9 +388,7 @@ fn prefix<S: OriginalAuthorityOwner>(
     }
     #[cfg(unix)]
     {
-        let directory = Directory::capture(op, &profiles, true)?;
-        let guard = PublicationLock::acquire(op, &directory)?;
-        let mut scope = Some(RecoveryScope { directory, guard });
+        let mut scope = Some(RecoveryScope::acquire(op, &profiles)?);
         // This private lexical body is the only continuation. Neither an
         // authenticated arena nor a guard escapes for a later reacquisition.
         let result = (|| {
@@ -401,27 +399,9 @@ fn prefix<S: OriginalAuthorityOwner>(
             let Some(mut intent) = read_intent(op, &profiles)? else {
                 return Ok(Prefix::NoIntent);
             };
-            // The caller actually parses the predecessor a SECOND time after
-            // journal.read. Do not reuse the first validation as a cache.
-            let predecessor = intent
-                .doc
-                .get(intent.payload, "predecessor")
-                .expect("intent payload");
-            let expected = if matches!(intent.doc.node(predecessor), Node::Scalar(CanonValue::Null))
-            {
-                None
-            } else {
-                Some(validate_pointer(op, &mut intent.doc, predecessor)?)
-            };
+            let expected = intent.predecessor(op)?;
             let current = active_profile::load(op, root)?;
-            let same = match (&current, &expected) {
-                (None, None) => true,
-                (Some(current), Some(expected)) => {
-                    current.pointer.matches(&current.doc, expected, &intent.doc)
-                }
-                _ => false,
-            };
-            if !same && !published_candidate(current.as_ref(), &intent, expected.as_ref())? {
+            if !intent.is_current(current.as_ref(), expected.as_ref())? {
                 // prepare_bootstrap_profile_review supplies confirmation=None.
                 // Its outer occurrence discards; the inner occurrence keeps.
                 if discard_superseded {
@@ -499,6 +479,20 @@ struct RecoveryScope {
 }
 #[cfg(unix)]
 impl RecoveryScope {
+    fn acquire<S: OriginalAuthorityOwner>(op: &Operation<'_, S>, profiles: &Path) -> Result<Self> {
+        let directory = Directory::capture(op, profiles, true)?;
+        let guard = PublicationLock::acquire(op, &directory)?;
+        Ok(Self { directory, guard })
+    }
+
+    fn validate<S: OriginalAuthorityOwner>(&self, op: &Operation<'_, S>) -> Result<()> {
+        self.directory.validate_file(
+            op,
+            LOCK,
+            self.guard.file.as_ref().expect("publication lock"),
+        )
+    }
+
     fn finish<S: OriginalAuthorityOwner>(
         mut self,
         op: &Operation<'_, S>,
@@ -507,14 +501,7 @@ impl RecoveryScope {
         // Python validates after a normal return from the with body. Errors
         // and the not-yet-bound exceptional continuation skip that check.
         let result = if matches!(result, Ok(Prefix::NoIntent | Prefix::RecoveredNone)) {
-            finish_scope(
-                result,
-                self.directory.validate_file(
-                    op,
-                    LOCK,
-                    self.guard.file.as_ref().expect("publication lock"),
-                ),
-            )
+            finish_scope(result, self.validate(op))
         } else {
             result
         };
@@ -527,6 +514,108 @@ impl RecoveryScope {
 struct Intent {
     doc: Funded<Document>,
     payload: usize,
+}
+
+#[cfg(unix)]
+impl Intent {
+    fn predecessor<S: OriginalAuthorityOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+    ) -> Result<Option<Pointer>> {
+        // The caller parses the predecessor again after journal.read.
+        let id = self
+            .doc
+            .get(self.payload, "predecessor")
+            .expect("intent payload");
+        if matches!(self.doc.node(id), Node::Scalar(CanonValue::Null)) {
+            Ok(None)
+        } else {
+            validate_pointer(op, &mut self.doc, id).map(Some)
+        }
+    }
+
+    fn is_current(
+        &self,
+        current: Option<&active_profile::LoadedPointer>,
+        expected: Option<&Pointer>,
+    ) -> Result<bool> {
+        let same = match (current, expected) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => {
+                current.pointer.matches(&current.doc, expected, &self.doc)
+            }
+            _ => false,
+        };
+        if same {
+            Ok(true)
+        } else {
+            published_candidate(current, self, expected)
+        }
+    }
+}
+
+#[cfg(all(test, unix))]
+fn with_confirmed_predecessor<S: OriginalAuthorityOwner, T>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    budget: &Arc<dyn tobkiri_canon::AllocationBudget>,
+    inspect: impl FnOnce(Option<&active_profile::LoadedPointer>) -> Result<T>,
+) -> Result<T> {
+    if let Some(handover) = development_handover::read_optional(op, root, budget)?
+        && !handover
+            .payload
+            .get(handover.payload.root, "stage")
+            .is_some_and(|stage| handover.payload.string_is(stage, "completed"))
+    {
+        return Err(value(
+            "Development Host handover requires recovery before activation",
+        ));
+    }
+    let _paths = op.reserve(
+        OriginalAuthorityStage::Path,
+        root.as_os_str()
+            .len()
+            .saturating_mul(16)
+            .saturating_add(8192),
+    )?;
+    let profiles = root.join("profiles");
+    let mut scope = RecoveryScope::acquire(op, &profiles)?;
+    let result = (|| {
+        let path = profiles.join(JOURNAL);
+        op.check(OriginalAuthorityStage::Source)?;
+        let exists = path.exists() || path.is_symlink();
+        op.check(OriginalAuthorityStage::Source)?;
+        if exists {
+            // The original nested recovery borrows the outer lock. Its
+            // confirmed caller refuses stale evidence without clearing it.
+            let intent = read_intent(op, &profiles).map_err(recovery_error)?;
+            if let Some(mut intent) = intent {
+                let expected = intent.predecessor(op).map_err(recovery_error)?;
+                let current = active_profile::load(op, root).map_err(recovery_error)?;
+                if !intent
+                    .is_current(current.as_ref(), expected.as_ref())
+                    .map_err(recovery_error)?
+                {
+                    return Err(raw(
+                        crate::bootstrap_review::DENIED,
+                        "Profile publication predecessor is stale",
+                    ));
+                }
+                return Err(OriginalAuthorityError::unsupported(
+                    OriginalAuthorityStage::Source,
+                    "confirmed publication recovery still requires activation store",
+                ));
+            }
+        }
+        let current = active_profile::load(op, root)?;
+        inspect(current.as_ref())
+    })();
+    let result = if result.is_ok() {
+        finish_scope(result, scope.validate(op))
+    } else {
+        result
+    };
+    finish_scope(result, scope.guard.close())
 }
 
 #[cfg(unix)]

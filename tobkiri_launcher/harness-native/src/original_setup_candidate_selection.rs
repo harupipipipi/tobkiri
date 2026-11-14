@@ -534,6 +534,9 @@ pub(super) fn inactive_handover_at<S: OriginalAuthorityOwner>(
     registry: &mut definitions::InactiveBootstrapRegistry,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<tobkiri_canon::CoreValue>> {
+    let Some(journal) = development_handover::read_optional(op, root, budget)? else {
+        return Ok(None);
+    };
     let _paths = op.reserve(
         OriginalAuthorityStage::Path,
         root.as_os_str()
@@ -542,37 +545,17 @@ pub(super) fn inactive_handover_at<S: OriginalAuthorityOwner>(
             .saturating_add(profile_id.len())
             .saturating_add(8192),
     )?;
-    if predecessor_stat(op, root, |path| fs::metadata(path))?.is_none() {
-        return Ok(None);
+    let snapshot = registry.check_handover(op, &journal.payload, budget)?;
+    if inactive_has_active_profile(op, root, profile_id)? {
+        return Err(active_predecessor_conflict());
     }
-    use development_handover::{JOURNAL, KEY};
-    if predecessor_path_present(op, &root.join(JOURNAL))? {
-        let journal = development_handover::read(op, root, budget)?;
-        let snapshot = registry.check_handover(op, &journal.payload, budget)?;
-        if inactive_has_active_profile(op, root, profile_id)? {
-            return Err(active_predecessor_conflict());
-        }
-        let digests = definitions::InactiveHandoverDigests {
-            snapshot,
-            journal: journal.digest,
-        };
-        return registry
-            .project_handover(op, &digests, profile_id, budget)
-            .map(Some);
-    }
-    for witness in [
-        root.join(KEY),
-        root.join("development-host-staging"),
-        root.join("packvm-vz").join(JOURNAL),
-    ] {
-        if predecessor_path_present(op, &witness)? {
-            return Err(raw(
-                "builtins.ValueError",
-                "Development Host handover requires its authenticated recovery journal",
-            ));
-        }
-    }
-    Ok(None)
+    let digests = definitions::InactiveHandoverDigests {
+        snapshot,
+        journal: journal.digest,
+    };
+    registry
+        .project_handover(op, &digests, profile_id, budget)
+        .map(Some)
 }
 
 #[cfg(unix)]
@@ -617,7 +600,7 @@ pub(super) fn predecessor_path_present<S: OriginalAuthorityOwner>(
 }
 
 #[cfg(unix)]
-fn predecessor_stat<S: OriginalAuthorityOwner>(
+pub(super) fn predecessor_stat<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     path: &Path,
     read: fn(&Path) -> std::io::Result<fs::Metadata>,
