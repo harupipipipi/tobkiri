@@ -3529,12 +3529,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   引き継ぎをロック前に確認し、ロック下で復旧状態と候補選択・resolverの保存先を照合する。
   一致時はロックとディレクトリの同一性を確認し、元のワーカー終了処理で実FDを閉じる。
   ロック以外のFD・接続の残留やclose失敗は従来のcleanup検査で扱う。
-  [元Launcher CI 43573161607](https://github.com/harupipipipi/tobkiri/actions/runs/43573161607)と
-  [ロック比較 CI 43573161659](https://github.com/harupipipipi/tobkiri/actions/runs/43573161659)で検証中。
+  [元Launcher CI 43573161607](https://github.com/harupipipipi/tobkiri/actions/runs/43573161607)は通過した。
+  [ロック比較 CI 43573161659](https://github.com/harupipipipi/tobkiri/actions/runs/43573161659)の
+  Ubuntuは拒否理由が診断の `cause` に入ることを試験が見落としていた。`a7b2aa4ef` で修正し、
+  [レジストリ CI 43574843849](https://github.com/harupipipipi/tobkiri/actions/runs/43574843849)で
+  新規候補の未変更・差し替えの回帰がLinux・macOSで通過した。
   次は同じStoreでHostカタログを準備し、配布カタログのProfileを取り直した後に物理lockを再読込する。
   `CatalogIo` のloaderを再利用し、参照の受付を各実呼び出しに結び付ける。各読込の順序と
   保存直前の同一性を比較できてから、試験用の別入口を整理する。製品Setupからの開始、
   active Profileの再確認と、元のジャーナルへの書き込みは残る。
+- `6b43986ce` と `6dfcc2bed` は元の定義ロックを取り直し、保存済みの多言語名から
+  対象locale、言語、日英、旧nameの順で選び、元の言語マップと既存版を保持した後継版を追加する。
+  全件を確認してから時計を一度だけ読み、ハッシュを更新したindexを一回の書き換えで保存する。
+  [レジストリ CI 43574843849](https://github.com/harupipipipi/tobkiri/actions/runs/43574843849)は
+  両OSで履歴、再オープン時の重複生成なし、後の行が不正な場合の全体拒否を確認した。
+  固定Pythonとの書き込み全バイト比較と、廃止済みPack projectionの移行は残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
@@ -3554,8 +3563,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既存のプロンプト、OpenAI互換プロバイダー、会話保存、Flow、UIは1.0のテキスト契約を使う。
   ツール呼出しと結果のID、reasoning、終了理由、キャッシュ使用量を同じ実ターンで照合してから、
   重複する変換を整理する。既存の保存済み会話の読込と承認・権限の照合を維持する。
+  [契約 CI 43574843792](https://github.com/harupipipipi/tobkiri/actions/runs/43574843792)で
+  4件が通過した。Pi では既存の `load()` がコマンド名だけ返すため、説明文を表示するには
+  wrapperとadapterの両方で一覧操作を受け渡し、対応するWITをPackに登録する必要がある。
 - B-4 / C-11 は、`crates/tobkiri-profile/src/compile.rs` が `many` の候補を複数確定し、
-  CoreがGateに登録するところまで実装されている。`crates/tobkiri-core/src/host.rs` の
+  CoreがGateに登録するところまで実装されている。`crates/tobkiri-wasm/src/host.rs` の
   dispatchは候補が複数だと選択先がなく拒否する。選択したPackをFlowとPackの入力から
   初回admissionと最終dispatchまで結び付け、既存の単一選択と権限検査を維持する。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
@@ -3568,6 +3580,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   A-7 は、元の `tobkiri_protocol/saved_messages.py` の分岐、ツール結果IDと画像の上限を
   Rust/Wasmで比較した後、保存履歴から切り離したモデル入力に圧縮を適用する。
   承認を要する保存済み履歴の圧縮と、送信する入力に結び付いたdigestは維持する。
+- D-2 は `78c549e62` で、Launcher更新欄と日英の説明の表示をHarnessに揃えた。
+  更新APIに送る既存の `defaultspack` キーは互換性のため引き続き使う。
+- C-7 は、イベントだけが呼び出し元の `has-ui` を受け、ツールとコマンドには
+  実画面の状態が届かない。`5bcc4f786` に仕様と試験を記録し、
+  [実Pi CI 43574843811](https://github.com/harupipipipi/tobkiri/actions/runs/43574843811)で
+  現状の動作を確認した。実画面の状態を渡す接続は未実装。
 
 ## 040: 公開Profileへ混入しない既存データ
 
