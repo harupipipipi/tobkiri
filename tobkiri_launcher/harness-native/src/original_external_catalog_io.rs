@@ -26,7 +26,6 @@ const REGISTRY: &str = "external_normal_pack_catalog.v4.json";
 const KEY: &str = ".external_normal_pack_catalog_key";
 const CAS: &str = "external_normal_pack_cas";
 const BOUNDARY_ERROR: &str = "core_runtime.pack_boundary.PackBoundaryError";
-#[cfg(test)]
 const EXTERNAL_ERROR: &str = "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied";
 
 /// Funded records for one actual bundled inventory read.
@@ -441,11 +440,74 @@ fn authenticate<S: OriginalAuthorityOwner>(
     model::authenticate_and_validate_journal(&mut registry, &key, op, budget)?;
     drop(key);
     let inventory = verify_retained_packs(op, &registry, pack_control, budget)?;
+    if !inventory.host_extension_pending {
+        reject_bundled_collisions(op, &input._bundled, &registry, &inventory, budget)?;
+    }
     Ok(ExternalPackRead {
         _bundled: input._bundled,
         _registry: Some(registry),
         inventory: Some(inventory),
     })
+}
+
+fn reject_bundled_collisions<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    bundled: &BundledRecords,
+    registry: &Document,
+    admitted: &VerifiedInventory,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    // The bootstrap loads admitted records without pins. A collision under
+    // this call can never satisfy the original explicit-digest exception.
+    let mut collisions = Vec::new();
+    let length = admitted._entries.len();
+    let _funding = op.reserve(
+        OriginalAuthorityStage::Source,
+        length.saturating_mul(size_of::<&Text>()),
+    )?;
+    collisions.try_reserve_exact(length).map_err(capacity)?;
+    if collisions.capacity() != length {
+        return Err(capacity(()));
+    }
+    let ids = bundled._ids.array().expect("verified bundled inventory");
+    for pack in admitted._entries.iter().filter(|pack| pack._selected) {
+        let selected = registry_text(registry, pack._root.entry, "pack_id");
+        for candidate in ids.iter() {
+            let candidate = candidate.as_str().expect("verified bundled Pack ID");
+            charge(op, budget, candidate.len() + 1)?;
+            if selected.is(candidate) {
+                collisions.push(selected);
+                break;
+            }
+        }
+    }
+    if collisions.is_empty() {
+        return Ok(());
+    }
+    // Admitted keys were already visited in Python string order.
+    let max = collisions.iter().map(|id| id.0.len() + 5).sum::<usize>() + 128;
+    let _message_funding = op.reserve(OriginalAuthorityStage::Source, max)?;
+    let mut message = String::new();
+    message.try_reserve_exact(max).map_err(capacity)?;
+    if message.capacity() != max {
+        return Err(capacity(()));
+    }
+    message.push_str("external Pack catalog shadows bundled Pack IDs: [");
+    for (index, collision) in collisions.into_iter().enumerate() {
+        if index != 0 {
+            message.push_str(", ");
+        }
+        message.push('\'');
+        message.extend(
+            collision
+                .0
+                .iter()
+                .map(|&point| char::from_u32(point).expect("canonical Pack ID")),
+        );
+        message.push('\'');
+    }
+    message.push(']');
+    Err(raw(EXTERNAL_ERROR, message))
 }
 
 fn verify_retained_packs<S: OriginalAuthorityOwner>(
