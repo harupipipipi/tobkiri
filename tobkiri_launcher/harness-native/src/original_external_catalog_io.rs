@@ -44,25 +44,41 @@ struct RegistryInput {
     raw: Option<Funded<Zeroizing<Vec<u8>>>>,
 }
 
-/// Authenticated Host data up to the first external artifact verification.
+/// Authenticated Host admission data through the ordinary retained inventory scan.
 pub(crate) struct ExternalPackRead {
     _bundled: BundledRecords,
     _registry: Option<Funded<Document>>,
-    first: Option<PackRoot>,
-    artifact: Option<ArtifactDefinitions>,
+    inventory: Option<VerifiedInventory>,
 }
 
 impl ExternalPackRead {
     pub(crate) fn verification_reachpoint(&self) -> crate::BootstrapReviewReachpoint {
         use crate::BootstrapReviewReachpoint::*;
-        match &self.artifact {
-            Some(artifact) if artifact.receipt.host_extension => {
+        match &self.inventory {
+            Some(inventory) if inventory.host_extension_pending => {
                 AdmittedHostExtensionProjectionNotBound
             }
-            Some(_) => AdmittedPackInventoryNotBound,
-            None => CatalogWithProfilesNotBound,
+            Some(inventory) if inventory._entries.iter().any(|entry| entry.selected_normal) => {
+                AdmittedPackClosureNotBound
+            }
+            _ => CatalogWithProfilesNotBound,
         }
     }
+}
+
+struct VerifiedInventory {
+    _entries: Funded<Vec<RetainedPack>>,
+    _revision: Option<tobkiri_canon::Digest>,
+    host_extension_pending: bool,
+}
+
+struct RetainedPack {
+    _root: PackRoot,
+    _key: usize,
+    _selected: bool,
+    selected_normal: bool,
+    _artifact_digest: tobkiri_canon::Digest,
+    _content_digest: tobkiri_canon::Digest,
 }
 
 struct PackRoot {
@@ -195,7 +211,7 @@ mod tests {
             "io.tobkiri.original-external-pack-catalog-reference.v1"
         );
         let cases = fixture["cases"].as_array().unwrap();
-        assert_eq!(cases.len(), 3);
+        assert_eq!(cases.len(), 4);
         for case in cases {
             with_source(|source, read, cancellation, budget| {
                 let op = operation(read, source, cancellation);
@@ -221,10 +237,60 @@ mod tests {
                             assert_eq!(expected["entries"], json!({}));
                             assert_eq!(expected["journal"], json!([]));
                         }
-                        assert_eq!(observed.first.is_some(), case["name"] == "admitted");
-                        if let Some(root) = &observed.first {
+                        if case["name"] == "retained-version" {
+                            let inventory = observed.inventory.as_ref().unwrap();
+                            let registry = observed._registry.as_ref().unwrap();
+                            let retained = &case["retained_probe"];
+                            let ordered = retained["ordered"].as_array().unwrap();
+                            let records = registry
+                                .entries(registry.get(registry.root, "entries").unwrap())
+                                .unwrap();
+                            assert_eq!(ordered.len(), 2);
+                            assert_eq!(inventory._entries.len(), ordered.len());
+                            let mut selected = serde_json::Map::new();
+                            for (pack, expected) in inventory._entries.iter().zip(ordered) {
+                                let key = &records[pack._key].0;
+                                assert!(key.is(expected["key"].as_str().unwrap()));
+                                assert_eq!(
+                                    pack._artifact_digest.as_str(),
+                                    expected["artifact_digest"]
+                                );
+                                assert_eq!(
+                                    pack._content_digest.as_str(),
+                                    expected["content_digest"]
+                                );
+                                if pack._selected {
+                                    let id = registry_text(registry, pack._root.entry, "pack_id")
+                                        .utf8()
+                                        .unwrap();
+                                    selected
+                                        .insert(id, Value::from(pack._artifact_digest.as_str()));
+                                }
+                            }
+                            assert_eq!(Value::Object(selected), retained["selected"]);
+                            assert_eq!(
+                                inventory._revision.as_ref().unwrap().as_str(),
+                                retained["revision"]
+                            );
+                            assert_eq!(
+                                observed.verification_reachpoint(),
+                                crate::BootstrapReviewReachpoint::AdmittedPackClosureNotBound
+                            );
+                        } else if case["name"] == "admitted" {
                             assert_eq!(case["artifact_probe"]["outcome"], "verified");
                             let registry = observed._registry.as_ref().unwrap();
+                            let inventory = observed.inventory.as_ref().unwrap();
+                            assert_eq!(inventory._entries.len(), 1);
+                            let pack = &inventory._entries[0];
+                            let root = &pack._root;
+                            assert_eq!(
+                                pack._artifact_digest.as_str(),
+                                case["artifact_probe"]["artifact_digest"]
+                            );
+                            assert_eq!(
+                                pack._content_digest.as_str(),
+                                case["artifact_probe"]["content_digest"]
+                            );
                             let compiled_prefix =
                                 read_artifact_definitions(&op, root, registry, budget).unwrap();
                             assert_eq!(
@@ -267,6 +333,8 @@ mod tests {
                                     if message == "executable catalog artifact digest mismatch"
                             ));
                             root_fd.close().unwrap();
+                        } else {
+                            assert!(observed.inventory.is_none());
                         }
                     }
                     "error" => {
@@ -307,12 +375,7 @@ pub(crate) fn read<S: crate::BootstrapReviewOwner>(
     owner
         .with_original_catalog_source(|source| {
             let input = read_inputs(&op, source.runtime, &pending.root, budget)?;
-            let mut catalog = authenticate(&op, input, budget)?;
-            if let Some(root) = &catalog.first {
-                let registry = catalog._registry.as_ref().expect("authenticated catalog");
-                catalog.artifact = Some(read_artifact_definitions(&op, root, registry, budget)?);
-            }
-            Ok(catalog)
+            authenticate(&op, input, budget)
         })?
         .map_err(recovery_error)
 }
@@ -356,8 +419,7 @@ fn authenticate<S: OriginalAuthorityOwner>(
         return Ok(ExternalPackRead {
             _bundled: input._bundled,
             _registry: None,
-            first: None,
-            artifact: None,
+            inventory: None,
         });
     };
     let mut registry = model::parse_envelope(&raw, op, budget)?;
@@ -378,28 +440,27 @@ fn authenticate<S: OriginalAuthorityOwner>(
     })?;
     model::authenticate_and_validate_journal(&mut registry, &key, op, budget)?;
     drop(key);
-    let first = first_visible_root(op, &registry, pack_control, budget)?;
+    let inventory = verify_retained_packs(op, &registry, pack_control, budget)?;
     Ok(ExternalPackRead {
         _bundled: input._bundled,
         _registry: Some(registry),
-        first,
-        artifact: None,
+        inventory: Some(inventory),
     })
 }
 
-fn first_visible_root<S: OriginalAuthorityOwner>(
+fn verify_retained_packs<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     registry: &Document,
     pack_control: &Path,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<Option<PackRoot>> {
+) -> Result<VerifiedInventory> {
     let entries = registry
         .get(registry.root, "entries")
         .and_then(|entries| registry.entries(entries))
         .expect("authenticated entry object");
     let _funding = op.reserve(
         OriginalAuthorityStage::Source,
-        entries.len().saturating_mul(size_of::<&(Text, usize)>()),
+        entries.len().saturating_mul(size_of::<usize>()),
     )?;
     let mut ordered = Vec::new();
     ordered.try_reserve_exact(entries.len()).map_err(capacity)?;
@@ -419,17 +480,155 @@ fn first_visible_root<S: OriginalAuthorityOwner>(
             .saturating_mul(key_bound + 1)
             .saturating_mul(usize::BITS as usize),
     )?;
-    ordered.extend(entries);
-    ordered.sort_unstable_by(|left, right| left.0.0.cmp(&right.0.0));
-    for (key, raw) in ordered {
+    ordered.extend(0..entries.len());
+    ordered.sort_unstable_by(|&left, &right| entries[left].0.cmp(&entries[right].0));
+    let retention = op.reserve(
+        OriginalAuthorityStage::Source,
+        entries.len().saturating_mul(size_of::<RetainedPack>()),
+    )?;
+    let mut verified = Vec::new();
+    verified
+        .try_reserve_exact(entries.len())
+        .map_err(capacity)?;
+    if verified.capacity() != entries.len() {
+        return Err(capacity(()));
+    }
+    let versions_funding = op.reserve(
+        OriginalAuthorityStage::Source,
+        entries.len().saturating_mul(128),
+    )?;
+    let mut versions = std::collections::HashMap::new();
+    versions.try_reserve(entries.len()).map_err(capacity)?;
+    let mut host_extension_pending = false;
+    for position in ordered {
+        let (key, raw) = &entries[position];
         charge(op, budget, 1024)?;
         let Some(entry) = model::visible_entry(registry, *raw)? else {
             continue;
         };
         model::validate_visible_entry(registry, key, entry)?;
-        return checked_entry_root(op, registry, entry, pack_control).map(Some);
+        let root = checked_entry_root(op, registry, entry, pack_control)?;
+        let artifact = read_artifact_definitions(op, &root, registry, budget)?;
+        if artifact.receipt.host_extension {
+            // Compatibility precedes the next entry and all selection.
+            host_extension_pending = true;
+            break;
+        }
+        let pack = registry_text(registry, entry, "pack_id");
+        let record = registry
+            .get(entry, "catalog_record")
+            .expect("verified entry");
+        if !matches!(registry.get(record, "pack_id").map(|id| registry.node(id)),
+            Some(Node::String(id)) if id == pack)
+        {
+            return Err(model::denied(
+                "external Pack catalog record identity is invalid",
+            ));
+        }
+        let digest = registry_text(registry, entry, "artifact_digest");
+        if let Some(previous) = versions.insert((&pack.0[..], &digest.0[..]), entry)
+            && !external_catalog_operations::python_equal(
+                registry, previous, registry, entry, op, budget,
+            )?
+        {
+            return Err(model::denied("Pack revision digest is duplicated"));
+        }
+        let selected = key == pack;
+        let selected_normal = selected
+            && registry
+                .get(record, "authority")
+                .is_some_and(|id| registry.string_is(id, "host-signed-external-normal-v4"));
+        verified.push(RetainedPack {
+            _root: root,
+            _key: position,
+            _selected: selected,
+            selected_normal,
+            _artifact_digest: artifact._artifact_digest,
+            _content_digest: artifact.receipt._content_digest,
+        });
     }
-    Ok(None)
+    drop(versions);
+    drop(versions_funding);
+    let revision = if host_extension_pending {
+        None
+    } else {
+        Some(catalog_revision(registry, entries, &verified, op, budget)?)
+    };
+    Ok(VerifiedInventory {
+        _entries: Funded {
+            value: verified,
+            _capacity: retention,
+        },
+        _revision: revision,
+        host_extension_pending,
+    })
+}
+
+fn registry_text<'a>(doc: &'a Document, object: usize, name: &str) -> &'a Text {
+    let Node::String(text) = doc.node(doc.get(object, name).expect("validated registry field"))
+    else {
+        unreachable!("validated registry text");
+    };
+    text
+}
+
+fn catalog_revision<S: OriginalAuthorityOwner>(
+    registry: &Document,
+    entries: &[(Text, usize)],
+    verified: &[RetainedPack],
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<tobkiri_canon::Digest> {
+    use sha2::{Digest as _, Sha256};
+
+    let mut hash = Sha256::new();
+    let mut length = 0usize;
+    let mut write = |bytes: &[u8]| -> Result<()> {
+        length = length.saturating_add(bytes.len());
+        if length > MAX_BYTES {
+            return Err(json::strict_error("canonical JSON exceeds size limit"));
+        }
+        for chunk in bytes.chunks(64 * 1024) {
+            charge(op, budget, chunk.len())?;
+            hash.update(chunk);
+        }
+        Ok(())
+    };
+    write(b"{\"entries\":{")?;
+    for (position, pack) in verified.iter().enumerate() {
+        if position != 0 {
+            write(b",")?;
+        }
+        write(b"\"")?;
+        let key = &entries[pack._key].0;
+        let _funding = op.reserve(OriginalAuthorityStage::Source, key.0.len())?;
+        let mut buffer = Vec::new();
+        buffer.try_reserve_exact(key.0.len()).map_err(capacity)?;
+        if buffer.capacity() != key.0.len() {
+            return Err(capacity(()));
+        }
+        // Catalog-key validation ensures the characters need no JSON escaping.
+        buffer.extend(key.0.iter().map(|&point| point as u8));
+        write(&buffer)?;
+        write(b"\":")?;
+        let payload = json::canonical_subtree(registry, pack._root.entry, None, op, budget)?;
+        write(&payload)?;
+    }
+    write(b"},\"journal\":")?;
+    let journal = registry
+        .get(registry.root, "journal")
+        .expect("validated registry");
+    let payload = json::canonical_subtree(registry, journal, None, op, budget)?;
+    write(&payload)?;
+    drop(payload);
+    write(b",\"version\":")?;
+    let version = registry
+        .get(registry.root, "version")
+        .expect("validated registry");
+    let payload = json::canonical_subtree(registry, version, None, op, budget)?;
+    write(&payload)?;
+    write(b"}")?;
+    Ok(tobkiri_canon::Digest::from_sha256(hash.finalize().into()))
 }
 
 fn checked_entry_root<S: OriginalAuthorityOwner>(

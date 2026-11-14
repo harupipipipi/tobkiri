@@ -231,7 +231,7 @@ fn check_schemas<S: OriginalAuthorityOwner>(
     Ok(())
 }
 
-fn python_equal<S: OriginalAuthorityOwner>(
+pub(super) fn python_equal<S: OriginalAuthorityOwner>(
     left_doc: &Document,
     left: usize,
     right_doc: &Document,

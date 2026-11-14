@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from collections.abc import Mapping
 import hashlib
 import json
 import os
@@ -16,13 +17,16 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import ModuleType
+from typing import Any
 
 from original_authority_reference import ORIGINAL_HEAD, error_graph, write_json
 from original_setup_review_reference import check_original
 
 FORMAT = "io.tobkiri.original-external-pack-catalog-reference.v1"
-CASES = ("absent", "admitted", "malformed-hmac")
+CASES = ("absent", "admitted", "malformed-hmac", "retained-version")
 LIMIT = 2 * 1024 * 1024
+PACK_ID = "conformance.minimal.echo"
 
 
 def digest(value):
@@ -70,7 +74,7 @@ def publisher(runtime):
                  "build_signed_manifest": build_signed_manifest, "sign_manifest": sign_manifest,
                  "canonical_digest": canonical_digest,
                  "FIXTURE": runtime / "tests/fixtures/conformance_minimal_echo_pack",
-                 "PACK_ID": "conformance.minimal.echo",
+                 "PACK_ID": PACK_ID,
                  "CONTRACT_ID": "io.tobkiri.conformance.echo.v1"}
     module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0),
                               *nodes], type_ignores=[])
@@ -92,8 +96,7 @@ def observe_artifact(external, owner, entry):
 
     artifact_compiler.validate_file = validate
     try:
-        pack_id = "conformance.minimal.echo"
-        external._verify_entry_root(pack_id, entry, external._entry_root(entry, owner))
+        external._verify_entry_root(PACK_ID, entry, external._entry_root(entry, owner))
     finally:
         artifact_compiler.validate_file = original_validate
     if observed_reads != [
@@ -107,6 +110,102 @@ def observe_artifact(external, owner, entry):
             "artifact_digest": entry["artifact_digest"], "content_digest": entry["content_digest"]}
 
 
+def _admit_retained_revision(
+    external: ModuleType,
+    runtime: Path,
+    directory: Path,
+) -> dict[str, Mapping[str, Any]]:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from core_runtime.pack_version_selection import version_catalog_key
+
+    publish = publisher(runtime)
+    signing_key = Ed25519PrivateKey.generate()
+    baseline, successor = directory / "baseline", directory / "successor"
+    baseline.mkdir(mode=0o700)
+    successor.mkdir(mode=0o700)
+    source, trust = publish(baseline, signing_key=signing_key)
+    first = external.admit_signed_external_pack(source, trust_store_path=trust)
+    source, trust = publish(
+        successor,
+        signing_key=signing_key,
+        version="1.1.0",
+        runtime_suffix="\n# signed revision two\n",
+    )
+    second = external.admit_signed_pack_version(
+        source,
+        trust_store_path=trust,
+        expected_predecessor_digest=first["artifact_digest"],
+        expected_catalog_revision=external.control_catalog_revision(),
+    )
+    if (first["pack_id"] != PACK_ID or second["pack_id"] != PACK_ID
+            or first["key_id"] != second["key_id"]
+            or first["version_string"] != "1.0.0"
+            or second["version_string"] != "1.1.0"
+            or first["artifact_digest"] == second["artifact_digest"]):
+        raise AssertionError("same-key original signed revision admission differs")
+    return {
+        PACK_ID: first,
+        version_catalog_key(PACK_ID, second["artifact_digest"]): second,
+    }
+
+
+def _observe_retained_catalog(
+    external: ModuleType,
+    admitted: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    from core_runtime import pack_version_selection
+
+    resolve_key = pack_version_selection.catalog_key_identity
+    verify_root = external._verify_entry_root
+    ordered: list[dict[str, str]] = []
+    pending_key: str | None = None
+
+    def observe_key(key: str, entry: Mapping[str, Any]) -> str:
+        nonlocal pending_key
+        if pending_key is not None:
+            raise AssertionError("original identified another key before CAS verify")
+        pack_id = resolve_key(key, entry)
+        pending_key = key
+        return pack_id
+
+    def observe_root(pack_id: str, entry: Mapping[str, Any], root: Path) -> None:
+        nonlocal pending_key
+        verify_root(pack_id, entry, root)
+        if pending_key is None or entry != admitted.get(pending_key):
+            raise AssertionError("original verified a different CAS entry than identified")
+        ordered.append({
+            "key": pending_key,
+            "artifact_digest": entry["artifact_digest"],
+            "content_digest": entry["content_digest"],
+        })
+        pending_key = None
+
+    try:
+        pack_version_selection.catalog_key_identity = observe_key
+        external._verify_entry_root = observe_root
+        snapshot = external._load_external_pack_catalog()
+    finally:
+        pack_version_selection.catalog_key_identity = resolve_key
+        external._verify_entry_root = verify_root
+    visited_keys = [visit["key"] for visit in ordered]
+    if pending_key is not None or visited_keys != sorted(admitted):
+        raise AssertionError("original did not verify both revisions in key order")
+    baseline = admitted[PACK_ID]
+    retained = {entry["artifact_digest"]: entry for entry in admitted.values()}
+    if (snapshot.records != {PACK_ID: baseline["catalog_record"]}
+            or snapshot.entries != {PACK_ID: baseline}
+            or snapshot.versions != {PACK_ID: retained}):
+        raise AssertionError("original retained catalog projection differs")
+    return {
+        "ordered": ordered,
+        "selected": {
+            pack_id: record["artifact_digest"]
+            for pack_id, record in snapshot.records.items()
+        },
+        "revision": snapshot.revision,
+    }
+
+
 def worker(original, owner, name, output):
     check_original(original)
     runtime = original / "tobkiri_runtime"
@@ -117,18 +216,24 @@ def worker(original, owner, name, output):
     from core_runtime.pack_boundary import load_pack_catalog
 
     owner.mkdir(mode=0o700, parents=True, exist_ok=False)
+    retained = None
     if name != "absent":
         source_dir = owner.parent / (owner.name + "-publisher-temporary")
         source_dir.mkdir(mode=0o700)
         try:
-            source, trust = publisher(runtime)(source_dir)
-            admitted = external.admit_signed_external_pack(source, trust_store_path=trust)
-            if admitted["pack_id"] != "conformance.minimal.echo":
-                raise AssertionError("actual original signed echo admission failed")
-            for path in (source, *source.rglob("*")):
+            if name == "retained-version":
+                retained = _admit_retained_revision(external, runtime, source_dir)
+            else:
+                source, trust = publisher(runtime)(source_dir)
+                admitted = external.admit_signed_external_pack(
+                    source, trust_store_path=trust,
+                )
+                if admitted["pack_id"] != PACK_ID:
+                    raise AssertionError("actual original signed echo admission failed")
+        finally:
+            for path in source_dir.rglob("*"):
                 if path.is_dir():
                     path.chmod(0o700)
-        finally:
             shutil.rmtree(source_dir)
         if name == "malformed-hmac":
             path = external._catalog_path(owner)
@@ -168,6 +273,12 @@ def worker(original, owner, name, output):
     if name == "admitted" and expected["outcome"] == "success":
         entry = next(iter(expected["value"]["entries"].values()))
         artifact_probe = observe_artifact(external, owner, entry)
+    retained_probe = None
+    if retained is not None:
+        if (expected["outcome"] != "success"
+                or expected["value"]["entries"] != retained):
+            raise AssertionError("authenticated catalog omitted a retained admission")
+        retained_probe = _observe_retained_catalog(external, retained)
     after = inventory(owner)
     if before != after:
         raise AssertionError("catalog read changed owner inventory")
@@ -179,8 +290,17 @@ def worker(original, owner, name, output):
         raise AssertionError("same-owner malformed HMAC did not reach authentication")
     write_json(output, {"bundled": bundled_observation, "expected": expected,
                         "artifact_probe": artifact_probe,
+                        **({"retained_probe": retained_probe} if retained else {}),
                         "file_sequence": sequence, "inventory_before": before,
                         "inventory_after": after})
+
+
+def _stable_retained_probe(
+    probe: Mapping[str, Any],
+) -> tuple[list[tuple[str, str]], Mapping[str, str]]:
+    # Publisher keys, content digests and catalog revisions bind to one owner.
+    return ([(row["key"], row["artifact_digest"]) for row in probe["ordered"]],
+            probe["selected"])
 
 
 def prepare(original, destination):
@@ -207,6 +327,10 @@ def prepare(original, destination):
                 or (reference["artifact_probe"] or {}).get("artifact_digest")
                 != (native["artifact_probe"] or {}).get("artifact_digest")):
             raise AssertionError("independently admitted owner observations disagree")
+        if (name == "retained-version"
+                and _stable_retained_probe(reference["retained_probe"])
+                != _stable_retained_probe(native["retained_probe"])):
+            raise AssertionError("independent retained catalog visits disagree")
         cases.append({"name": name, "runtime_dir": str(original / "tobkiri_runtime"),
                       "native_user_data": str(directory / "native-owner"), **native})
     check_original(original)
@@ -214,7 +338,8 @@ def prepare(original, destination):
                "cases": cases, "native_comparison": False, "qualification": False,
                "production_enabled": False,
                "scope": "original bundled catalog and authenticated external catalog reader; "
-                        "independent real signed echo admissions and original CAS verification; no activation"}
+                        "independent signed echo admissions and ordered retained CAS "
+                        "verification; no activation"}
     raw = json.dumps(summary, ensure_ascii=False, separators=(",", ":")).encode()
     if len(raw) > LIMIT:
         raise ValueError("original catalog summary exceeds bound")
