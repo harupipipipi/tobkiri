@@ -65,57 +65,28 @@ fn main() {
         }
     }
 
-    fn click(window: &NSWindow, view: &WKWebView, selector: &str, deadline: Instant) {
-        let position = Rc::new(Cell::new(None));
-        let observed = position.clone();
-        let callback = RcBlock::new(move |value: *mut AnyObject, error: *mut NSError| {
-            let point = error
-                .is_null()
-                .then(|| {
-                    let text =
-                        unsafe { value.as_ref() }.and_then(AnyObject::downcast_ref::<NSString>)?;
-                    let [x, y] = serde_json::from_str::<[f64; 2]>(&text.to_string()).ok()?;
-                    Some(NSPoint::new(x, y))
-                })
-                .flatten();
-            observed.set(Some(point));
-        });
+    fn press_space(window: &NSWindow, view: &WKWebView, selector: &str, deadline: Instant) {
+        assert!(window.makeFirstResponder(Some(view)));
         let selector = serde_json::to_string(selector).unwrap();
         let script = format!(
             "(() => {{
                 const el = document.querySelector({selector});
-                el.scrollIntoView({{block: 'center'}});
-                const {{x, y, width, height}} = el.getBoundingClientRect();
-                return JSON.stringify([x + width / 2, y + height / 2]);
+                el.focus();
+                return String(document.activeElement === el);
             }})()"
         );
-        unsafe {
-            view.evaluateJavaScript_completionHandler(&NSString::from_str(&script), Some(&callback))
+        assert!(evaluate_boolean(view, &script, deadline));
+        let space = NSString::from_str(" ");
+        let key = |event_type| {
+            NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+                event_type, NSPoint::new(0.0, 0.0), NSEventModifierFlags::empty(), 0.0,
+                window.windowNumber(), None, &space, &space, false, 49,
+            ).expect("AppKit space key event")
         };
-        let mut point = loop {
-            if let Some(point) = position.get() {
-                break point.expect("confirmation control position");
-            }
-            assert!(
-                Instant::now() < deadline,
-                "confirmation control position timed out"
-            );
-            pump();
-        };
-        if !view.isFlipped() {
-            point.y = view.bounds().size.height - point.y;
-        }
-        let point = view.convertPoint_toView(point, None);
-        for event_type in [NSEventType::LeftMouseDown, NSEventType::LeftMouseUp] {
-            let event = unsafe {
-                NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
-                    event_type, point, NSEventModifierFlags::empty(), 0.0, window.windowNumber(),
-                    None, 0, 1, 1.0,
-                )
-            }.expect("AppKit click event");
-            window.sendEvent(&event);
-            pump();
-        }
+        view.keyDown(&key(NSEventType::KeyDown));
+        pump();
+        view.keyUp(&key(NSEventType::KeyUp));
+        pump();
     }
 
     autoreleasepool(|_| {
@@ -236,7 +207,7 @@ fn main() {
                document.querySelector('input[data-native-setup-reviewed]').click(); String(true)",
             deadline,
         ));
-        click(
+        press_space(
             &window,
             webview,
             "input[data-native-setup-reviewed]",
@@ -250,7 +221,7 @@ fn main() {
             assert!(Instant::now() < deadline, "AppKit review click was not delivered");
             pump();
         }
-        click(
+        press_space(
             &window,
             webview,
             "button[data-native-setup-confirm]",

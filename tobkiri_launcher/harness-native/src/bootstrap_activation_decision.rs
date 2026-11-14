@@ -109,6 +109,40 @@ pub(super) struct Reviewed<'a> {
     pub(super) identity: &'a ResolvedProfileIdentity,
 }
 
+pub(super) fn body_from_listing(
+    listing: &[u8],
+    confirmation_digest: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    let listing = CoreValue::parse_guest(listing, budget)?;
+    if denied::field(&listing, "state")?.as_str() != Some("review_required") {
+        bail!("native Setup listing is not awaiting review");
+    }
+    let profile = denied::field(&listing, "recommended_default_profile")?;
+    let confirmation = denied::field(&profile, "confirmation")?;
+    let digest = denied::field(&confirmation, "confirmation_digest")?;
+    if digest.as_str() != Some(confirmation_digest) {
+        bail!("native Setup confirmation differs from the displayed listing");
+    }
+    Ok(CoreValue::object_shared(
+        [
+            (
+                "setup_api_version",
+                CoreValue::string("io.tobkiri.setup-state.v4", budget)?,
+            ),
+            (
+                "operation_id",
+                CoreValue::string("defaults.activate", budget)?,
+            ),
+            ("confirmed", CoreValue::bool(true, budget)?),
+            ("confirmation", confirmation),
+        ]
+        .into_iter()
+        .map(Ok),
+        budget,
+    )?)
+}
+
 pub(super) async fn run<S: BootstrapInputOwner>(
     pack: &mut ReviewPackBorrow<'_, S>,
     body: Option<&CoreValue>,
@@ -245,6 +279,49 @@ mod tests {
             Ok(())
         }
         fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn body_from_listing_preserves_the_complete_reviewed_confirmation() -> Result<()> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let listing_bytes = include_bytes!(
+            "../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json"
+        );
+        let listing: serde_json::Value = serde_json::from_slice(listing_bytes)?;
+        let confirmation = &listing["recommended_default_profile"]["confirmation"];
+        let digest = confirmation["confirmation_digest"].as_str().unwrap();
+        assert_eq!(
+            digest,
+            "sha256:12d855e6a199214a92b361be4a1f5f022b7323f999eadb5d20ad82ea9f98bed5"
+        );
+        let body = body_from_listing(listing_bytes, digest, &budget)?;
+        let encoded = body.encode_guest(&budget)?;
+        let actual: serde_json::Value = serde_json::from_slice(encoded.as_bytes())?;
+        assert_eq!(
+            actual,
+            json!({
+                "setup_api_version": "io.tobkiri.setup-state.v4",
+                "operation_id": "defaults.activate",
+                "confirmed": true,
+                "confirmation": confirmation,
+            })
+        );
+
+        assert!(body_from_listing(listing_bytes, "sha256:different", &budget).is_err());
+        let mut changed = listing.clone();
+        changed["state"] = json!("ready");
+        assert!(body_from_listing(&serde_json::to_vec(&changed)?, digest, &budget).is_err());
+        for malformed in [
+            json!(null),
+            json!([]),
+            json!({}),
+            json!({"confirmation_digest": 3}),
+        ] {
+            let mut changed = listing.clone();
+            changed["recommended_default_profile"]["confirmation"] = malformed;
+            assert!(body_from_listing(&serde_json::to_vec(&changed)?, digest, &budget).is_err());
+        }
+        Ok(())
     }
 
     #[test]

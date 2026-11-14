@@ -32,6 +32,19 @@ const CONFIRM_MESSAGE: &str = "tobkiriSetupConfirmation";
 const CONFIRM_SCRIPT: &str = include_str!("../../frontend/src/lib/nativeSetupConfirmation.js");
 const MAX_LISTING_BYTES: usize = 4 * 1024 * 1024;
 
+#[derive(Clone)]
+pub(crate) struct SetupReviewListing(std::sync::Arc<String>);
+
+impl SetupReviewListing {
+    pub(crate) fn new(listing: String) -> Self {
+        Self(std::sync::Arc::new(listing))
+    }
+
+    pub(crate) fn text(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 pub(crate) fn listing_confirmation(listing: &str) -> Option<&str> {
     use serde::Deserialize;
 

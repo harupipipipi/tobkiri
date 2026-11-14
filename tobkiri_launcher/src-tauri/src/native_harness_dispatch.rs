@@ -25,11 +25,12 @@ impl OriginalGetter {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum OriginalOperation {
     /// Execute this no-argument getter, then describe its actual issued value.
     Observe(OriginalGetter),
     ReviewListing(BootstrapReviewOptions),
+    #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+    ConfirmSetup(ConfirmedSetup),
     /// Internal binding verification only: Profile id, host root, bundled root,
     /// each immediately followed by description in the same original Store.
     #[cfg(test)]
@@ -49,6 +50,8 @@ pub(crate) enum OriginalOperation {
 pub(super) enum AdmittedOperation {
     Observe(OriginalGetter),
     ReviewListing(BootstrapReviewOptions),
+    #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+    ConfirmSetup(ConfirmedSetup),
     #[cfg(test)]
     VerifyBoundGetters,
     #[cfg(test)]
@@ -76,6 +79,8 @@ impl OriginalOperation {
                 }
                 Ok(AdmittedOperation::ReviewListing(options))
             }
+            #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+            Self::ConfirmSetup(input) => Ok(AdmittedOperation::ConfirmSetup(input)),
             #[cfg(test)]
             Self::VerifyBoundGetters => Ok(AdmittedOperation::VerifyBoundGetters),
             #[cfg(test)]
@@ -89,6 +94,17 @@ impl OriginalOperation {
             Self::Unbound(operation) => Err(DetachedFailure::integration(
                 IntegrationFailure::OperationNotBound(operation),
             )),
+        }
+    }
+}
+
+impl AdmittedOperation {
+    pub(super) fn uses_review(&self) -> bool {
+        match self {
+            Self::ReviewListing(_) => true,
+            #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+            Self::ConfirmSetup(_) => true,
+            _ => false,
         }
     }
 }
@@ -199,6 +215,8 @@ pub(super) struct Observations([Option<Observation>; 3]);
 pub(super) enum DispatchOutput {
     Observations(Observations),
     ReviewListing(CoreBuffer),
+    #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+    SetupDecision(tobkiri_harness_native::BootstrapActivationDecision),
 }
 
 impl DispatchOutput {
@@ -211,6 +229,25 @@ impl DispatchOutput {
                 // can parse the listing after worker cleanup and publication.
                 let mut output = serde_json::Map::new();
                 output.insert("listing".to_owned(), serde_json::Value::String(listing));
+                Ok(serde_json::Value::Object(output))
+            }
+            #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+            Self::SetupDecision(decision) => {
+                use tobkiri_harness_native::BootstrapActivationDecision::{Matched, Rejected};
+                let (decision, data) = match decision {
+                    Matched(_) => ("matched", serde_json::Value::Null),
+                    Rejected(response) => (
+                        "rejected",
+                        serde_json::Value::String(detachment.description(response)?),
+                    ),
+                };
+                let output = serde_json::Map::from_iter([
+                    (
+                        "setup_decision".to_owned(),
+                        serde_json::Value::String(decision.to_owned()),
+                    ),
+                    ("data".to_owned(), data),
+                ]);
                 Ok(serde_json::Value::Object(output))
             }
         }
@@ -340,6 +377,25 @@ pub(super) async fn execute<
         AdmittedOperation::ReviewListing(options) => {
             let failure = match runner.setup_review_listing(&options).await {
                 Ok(Ok(listing)) => return Ok(DispatchOutput::ReviewListing(listing)),
+                Ok(Err(error)) => Failure::Review(error),
+                Err(error) => Failure::Native(error),
+            };
+            return Err(Failed {
+                failure,
+                _completed: Observations([None, None, None]),
+            });
+        }
+        #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+        AdmittedOperation::ConfirmSetup(input) => {
+            let failure = match runner
+                .setup_activation_decision_for_listing(
+                    &input.options,
+                    input.listing.text().as_bytes(),
+                    input.gesture.confirmation_digest(),
+                )
+                .await
+            {
+                Ok(Ok(decision)) => return Ok(DispatchOutput::SetupDecision(decision)),
                 Ok(Err(error)) => Failure::Review(error),
                 Err(error) => Failure::Native(error),
             };

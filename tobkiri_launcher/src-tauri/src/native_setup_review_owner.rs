@@ -1,6 +1,9 @@
 //! Bridge the existing Tauri main window to its AppKit-owned review.
 
-use super::slot::{eligible_owner, measure, ReviewAnchor, SetupReviewPresentation};
+use super::slot::{
+    eligible_owner, measure, ConfirmationSender, ReviewAnchor, SetupReviewPresentation,
+};
+use super::{SetupReviewConfirmation, SetupReviewListing};
 use dispatch2::MainThreadBound;
 use objc2::{rc::Retained, MainThreadMarker};
 use objc2_web_kit::WKWebView;
@@ -148,11 +151,25 @@ pub(crate) enum SetupReviewOwnerError {
 
 #[allow(dead_code)]
 impl SetupReviewOwner {
-    /// Admit the listing on the UI thread and start its first geometry sample.
-    pub(crate) async fn display(&self, listing: String) -> Result<(), SetupReviewOwnerError> {
+    /// Mount the review and await a gesture for the still-visible candidate.
+    /// The caller owns the wait lifetime. Dropping it closes the gesture path.
+    pub(crate) async fn confirm(
+        &self,
+        listing: SetupReviewListing,
+    ) -> Result<SetupReviewConfirmation, SetupReviewOwnerError> {
+        let (reply, wait) = tokio::sync::oneshot::channel();
+        self.present(listing, reply).await?;
+        wait.await.map_err(|_| SetupReviewOwnerError::Retired)
+    }
+
+    async fn present(
+        &self,
+        listing: SetupReviewListing,
+        confirm: ConfirmationSender,
+    ) -> Result<(), SetupReviewOwnerError> {
         use SetupReviewOwnerError::{Retired, Schedule, TimedOut, Unavailable};
 
-        let confirmation = super::listing_confirmation(&listing).ok_or(Unavailable)?;
+        let confirmation = super::listing_confirmation(listing.text()).ok_or(Unavailable)?;
         if confirmation != self.anchor.confirmation() {
             return Err(Retired);
         }
@@ -188,9 +205,15 @@ impl SetupReviewOwner {
                         .window()
                         .and_then(|window| window.contentView())
                         .ok_or(Unavailable)?;
-                    let presentation =
-                        SetupReviewPresentation::new(&parent, &owner, port, anchor, listing)
-                            .map_err(|_| Unavailable)?;
+                    let presentation = SetupReviewPresentation::with_confirmation(
+                        &parent,
+                        &owner,
+                        port,
+                        anchor,
+                        listing,
+                        Some(confirm),
+                    )
+                    .map_err(|_| Unavailable)?;
                     if reply.is_closed() || Instant::now() >= deadline {
                         return Err(TimedOut);
                     }

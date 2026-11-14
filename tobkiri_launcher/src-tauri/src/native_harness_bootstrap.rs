@@ -145,6 +145,14 @@ struct OriginalBootstrapOwner {
     // Field order releases the actual AppHandle before publishing its receipt.
     _custody: SourceCustody,
 }
+
+/// Single-use input from the completed review and its actual UI gesture.
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+pub(crate) struct ConfirmedSetup {
+    listing: crate::native_setup_review::SetupReviewListing,
+    gesture: crate::native_setup_review::SetupReviewConfirmation,
+    options: tobkiri_harness_native::BootstrapReviewOptions,
+}
 impl Clone for OriginalBootstrapInputs {
     fn clone(&self) -> Self {
         Self {
@@ -274,16 +282,23 @@ pub(crate) struct SetupReviewJob(OriginalComponentJob);
 
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 impl SetupReviewJob {
-    pub(crate) async fn display(
+    async fn confirm(
         self,
         owner: crate::native_setup_review::owner::SetupReviewOwner,
-    ) -> Result<(), SetupReviewDisplayError> {
+        options: tobkiri_harness_native::BootstrapReviewOptions,
+    ) -> Result<ConfirmedSetup, SetupReviewDisplayError> {
         let listing =
             setup_listing(self.0.result().await).map_err(SetupReviewDisplayError::Worker)?;
-        owner
-            .display(listing)
+        let listing = crate::native_setup_review::SetupReviewListing::new(listing);
+        let gesture = owner
+            .confirm(listing.clone())
             .await
-            .map_err(SetupReviewDisplayError::Window)
+            .map_err(SetupReviewDisplayError::Window)?;
+        Ok(ConfirmedSetup {
+            listing,
+            gesture,
+            options,
+        })
     }
 }
 
@@ -400,12 +415,13 @@ mod selected_setup_component {
     }
 }
 
-/// Review the existing Profile using the component fixed by the Launcher build.
+/// Review the existing Profile and run the original decision for its gesture.
+/// A matched decision is DATA for the subsequent locked activation transaction.
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 pub(crate) async fn prepare_setup_review(
     app: &AppHandle,
     options: tobkiri_harness_native::BootstrapReviewOptions,
-) -> Result<(), SetupReviewStartError> {
+) -> Result<serde_json::Value, SetupReviewStartError> {
     use crate::native_setup_review::owner::SetupReviewWindowState;
     let window = app
         .get_webview_window("main")
@@ -429,16 +445,28 @@ pub(crate) async fn prepare_setup_review(
         artifact,
         expected,
         index,
-        OriginalOperation::ReviewListing(options),
+        OriginalOperation::ReviewListing(options.clone()),
     )
     .map(SetupReviewJob)
     .map_err(SetupReviewStartError::Worker)?;
-    tauri::async_runtime::spawn(async move {
-        if job.display(owner).await.is_err() {
-            log::warn!("The Launcher could not display the native Setup review");
-        }
-    });
-    Ok(())
+    let confirmed = job
+        .confirm(owner, options)
+        .await
+        .map_err(SetupReviewStartError::Review)?;
+    let (artifact, expected, index) = selected_setup_component::open(app)
+        .map_err(SetupReviewStartError::Component)?
+        .ok_or(SetupReviewStartError::Unbound)?;
+    prepare_original_component(
+        app.clone(),
+        artifact,
+        expected,
+        index,
+        OriginalOperation::ConfirmSetup(confirmed),
+    )
+    .map_err(SetupReviewStartError::Worker)?
+    .result()
+    .await
+    .map_err(SetupReviewStartError::Worker)
 }
 
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
@@ -447,6 +475,7 @@ pub(crate) enum SetupReviewStartError {
     Unbound,
     Component(anyhow::Error),
     Worker(DetachedFailure),
+    Review(SetupReviewDisplayError),
 }
 
 /// Execute only the current closed bound subset. No caller receives Bootstrap,
@@ -526,7 +555,7 @@ async fn run_original_job(
     // No Store/IO exists during these synchronous stages. Owner creation is
     // already represented by the registered worker before reaching this code.
     let mut stage = Stage::Owner;
-    let review = matches!(&operation, dispatch::AdmittedOperation::ReviewListing(_));
+    let review = operation.uses_review();
     let prepared = catch_unwind(AssertUnwindSafe(|| -> Result<_> {
         let invocation = runtime.begin(&app, &job)?;
         let parent = job.attach_invocation(&invocation)?;

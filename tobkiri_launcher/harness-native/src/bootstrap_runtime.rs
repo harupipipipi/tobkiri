@@ -1092,11 +1092,47 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        if self.work.get().phase.load(Ordering::Acquire) != READY || request.len() > MAX_BYTES {
+        self.admit_activation_input(request)?;
+        let body = CoreValue::parse_guest(request, &self.input_budget)?;
+        self.run_activation_decision(options, body).await
+    }
+
+    /// Build the activation decision request from the entire worker-issued
+    /// listing and its confirmed digest. The caller must own the UI receipt.
+    pub async fn setup_activation_decision_for_listing(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+        listing: &[u8],
+        confirmation_digest: &str,
+    ) -> Result<std::result::Result<BootstrapActivationDecision, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
+        self.admit_activation_input(listing)?;
+        let body = activation_decision::body_from_listing(
+            listing,
+            confirmation_digest,
+            &self.input_budget,
+        )?;
+        self.run_activation_decision(options, body).await
+    }
+
+    fn admit_activation_input(&self, input: &[u8]) -> Result<()> {
+        if self.work.get().phase.load(Ordering::Acquire) != READY || input.len() > MAX_BYTES {
             bail!("native bootstrap activation input is unavailable or exceeds the envelope");
         }
         self.work.get().source.check_live()?;
-        let body = CoreValue::parse_guest(request, &self.input_budget)?;
+        Ok(())
+    }
+
+    async fn run_activation_decision(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+        body: CoreValue,
+    ) -> Result<std::result::Result<BootstrapActivationDecision, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
         if body.object().is_none() {
             bail!("bootstrap activation body must be a mapping");
         }

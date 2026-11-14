@@ -150,9 +150,9 @@ enum Scenario {
     ReviewPaused,
     ReviewPanic,
 }
-fn expected_getters(operation: OriginalOperation) -> Vec<OriginalGetter> {
+fn expected_getters(operation: &OriginalOperation) -> Vec<OriginalGetter> {
     match operation {
-        OriginalOperation::Observe(getter) => vec![getter],
+        OriginalOperation::Observe(getter) => vec![*getter],
         OriginalOperation::VerifyBoundGetters => vec![
             OriginalGetter::BootstrapProfileId,
             OriginalGetter::HostResourceRoot,
@@ -160,6 +160,8 @@ fn expected_getters(operation: OriginalOperation) -> Vec<OriginalGetter> {
         ],
         OriginalOperation::Unbound(_) => panic!("unbound fixture must not compile"),
         OriginalOperation::ReviewListing(_) => vec![],
+        #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+        OriginalOperation::ConfirmSetup(_) => vec![],
         OriginalOperation::VerifyDenied(_) => vec![],
         OriginalOperation::VerifyDeniedCodec => vec![],
         OriginalOperation::VerifyIdentity(_) => vec![],
@@ -268,7 +270,7 @@ fn component(
     let (details_ptr, details_len) = data(&mut memory, &mut offset, details.as_bytes());
     let mut getters = String::new();
     let mut descriptions = String::new();
-    let selected = expected_getters(operation);
+    let selected = expected_getters(&operation);
     for getter in [
         OriginalGetter::BootstrapProfileId,
         OriginalGetter::HostResourceRoot,
@@ -699,12 +701,13 @@ fn drain(jobs: &Jobs, controls: &Controls, invocation: &NativeSetupInvocation, c
     assert_eq!(invocation.capacity_snapshot().unwrap().charged_bytes, 0);
 }
 fn outcome(operation: OriginalOperation, scenario: Scenario) -> serde_json::Value {
-    let running = launch(operation.clone(), scenario, 0, false);
+    let getters = expected_getters(&operation);
+    let running = launch(operation, scenario, 0, false);
     let invocation = receive(&running.ready);
     let result = tauri::async_runtime::block_on(running.waiter.result()).unwrap();
     assert_eq!(receive(&running.published), (true, true));
     drain(&running.jobs, &running.controls, &invocation, true);
-    let expected: Vec<_> = expected_getters(operation)
+    let expected: Vec<_> = getters
         .into_iter()
         .map(|getter| {
             serde_json::json!({"getter":getter.name(),"description":view(&scope(&invocation),getter)})

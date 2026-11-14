@@ -1,6 +1,8 @@
 //! Place the review beside the parent WebKit view, in AppKit points.
 
-use super::{valid_bounds, SetupReviewView, MAX_LISTING_BYTES};
+use super::{
+    valid_bounds, SetupReviewConfirmation, SetupReviewListing, SetupReviewView, MAX_LISTING_BYTES,
+};
 use block2::RcBlock;
 use objc2::{
     rc::{Retained, Weak},
@@ -11,7 +13,7 @@ use objc2_app_kit::{NSView, NSWindowOrderingMode};
 use objc2_foundation::{NSError, NSPoint, NSRect, NSSize, NSString};
 use objc2_web_kit::{WKContentWorld, WKWebView};
 use serde::Deserialize;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -21,8 +23,15 @@ const MEASURE: &str = include_str!("../../frontend/src/lib/measureSetupReviewSlo
 const MEASUREMENT_TIMEOUT: Duration = Duration::from_secs(1);
 
 enum Display {
-    Waiting(String),
+    Waiting(PendingReview),
     Mounted(SetupReviewSlot),
+}
+
+pub(super) type ConfirmationSender = tokio::sync::oneshot::Sender<SetupReviewConfirmation>;
+
+struct PendingReview {
+    listing: SetupReviewListing,
+    confirmation: Option<ConfirmationSender>,
 }
 
 /// One native candidate and its exact parent page, confined to the UI thread.
@@ -51,7 +60,25 @@ impl SetupReviewPresentation {
         anchor: ReviewAnchor,
         listing: String,
     ) -> Result<Self, &'static str> {
-        if listing.is_empty() || listing.len() > MAX_LISTING_BYTES {
+        Self::with_confirmation(
+            parent,
+            owner,
+            port,
+            anchor,
+            SetupReviewListing::new(listing),
+            None,
+        )
+    }
+
+    pub(super) fn with_confirmation(
+        parent: &WKWebView,
+        owner: &NSView,
+        port: u16,
+        anchor: ReviewAnchor,
+        listing: SetupReviewListing,
+        confirmation: Option<ConfirmationSender>,
+    ) -> Result<Self, &'static str> {
+        if listing.text().is_empty() || listing.text().len() > MAX_LISTING_BYTES {
             return Err("Setup review listing exceeds its display limit");
         }
         if !contains_view(owner, parent) {
@@ -64,7 +91,10 @@ impl SetupReviewPresentation {
             port,
             anchor,
             state: Rc::new(RefCell::new(PresentationState {
-                display: Some(Display::Waiting(listing)),
+                display: Some(Display::Waiting(PendingReview {
+                    listing,
+                    confirmation,
+                })),
                 measurement_pending: false,
             })),
         })
@@ -119,13 +149,38 @@ impl SetupReviewPresentation {
                 return;
             };
             let geometry = sample.geometry();
-            match state.display.as_ref() {
-                Some(Display::Waiting(listing)) => {
+            match state.display.as_mut() {
+                Some(Display::Waiting(pending)) => {
                     if let (Some(geometry), Some(mtm)) = (geometry, MainThreadMarker::new()) {
-                        if let Ok(slot) =
-                            SetupReviewSlot::mount(mtm, &parent, &owner, geometry, listing)
-                        {
+                        let slot = if let Some(reply) = pending.confirmation.take() {
+                            let confirm = ParentConfirmation {
+                                parent: Weak::new(&*parent),
+                                url,
+                                port,
+                                anchor,
+                                reply,
+                            };
+                            SetupReviewSlot::mount_review(
+                                mtm,
+                                &parent,
+                                &owner,
+                                geometry,
+                                pending.listing.text(),
+                                Some(confirm),
+                            )
+                        } else {
+                            SetupReviewSlot::mount(
+                                mtm,
+                                &parent,
+                                &owner,
+                                geometry,
+                                pending.listing.text(),
+                            )
+                        };
+                        if let Ok(slot) = slot {
                             state.display = Some(Display::Mounted(slot));
+                        } else {
+                            state.display = None;
                         }
                     }
                 }
@@ -140,6 +195,62 @@ impl SetupReviewPresentation {
     /// Retire this candidate on replacement, navigation or owner hide.
     pub(crate) fn retire(&self) {
         self.state.borrow_mut().display = None;
+    }
+}
+
+struct ParentConfirmation {
+    parent: Weak<WKWebView>,
+    url: String,
+    port: u16,
+    anchor: ReviewAnchor,
+    reply: ConfirmationSender,
+}
+
+impl ParentConfirmation {
+    fn complete(self, gesture: SetupReviewConfirmation, shown: Rc<Cell<Option<ReviewGeometry>>>) {
+        if self.reply.is_closed() || gesture.confirmation_digest() != self.anchor.confirmation() {
+            return;
+        }
+        let Some(parent) = self.parent.load() else {
+            return;
+        };
+        let Some(clicked_geometry) = shown.get() else {
+            return;
+        };
+        if eligible_owner(&parent, self.port).as_ref() != Some(&self.url) {
+            return;
+        }
+        let deadline = Instant::now() + MEASUREMENT_TIMEOUT;
+        let (reply, wait) = tokio::sync::oneshot::channel();
+        let ParentConfirmation {
+            parent: current,
+            url,
+            port,
+            anchor,
+            reply: action,
+        } = self;
+        measure(&parent, move |sample| {
+            if Instant::now() < deadline
+                && shown.get() == Some(clicked_geometry)
+                && current
+                    .load()
+                    .is_some_and(|parent| eligible_owner(&parent, port).as_ref() == Some(&url))
+                && sample.is_some_and(|sample| {
+                    sample.matches(&anchor) && sample.geometry() == Some(clicked_geometry)
+                })
+            {
+                let _ = reply.send(gesture);
+            }
+        });
+        // Timeout releases the caller even if WebKit never replies. The late
+        // callback holds no sender for the original action.
+        tauri::async_runtime::spawn(async move {
+            if let Ok(Ok(gesture)) =
+                tokio::time::timeout(deadline.saturating_duration_since(Instant::now()), wait).await
+            {
+                let _ = action.send(gesture);
+            }
+        });
     }
 }
 
@@ -259,7 +370,7 @@ pub(crate) fn measure(parent: &WKWebView, apply: impl FnOnce(Option<ReviewSample
     };
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct Edges {
     left: f64,
@@ -301,7 +412,7 @@ impl Edges {
 
 /// The parent page supplies presentation coordinates only.
 #[allow(dead_code)] // Consumed by the native slot and its actual WebKit test.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct ReviewGeometry {
     full: Edges,
@@ -353,6 +464,7 @@ pub(crate) struct SetupReviewSlot {
     owner: Retained<NSView>,
     clip: Retained<NSView>,
     full: Retained<NSView>,
+    shown: Rc<Cell<Option<ReviewGeometry>>>,
 }
 
 #[allow(dead_code)]
@@ -364,6 +476,17 @@ impl SetupReviewSlot {
         owner: &NSView,
         geometry: ReviewGeometry,
         listing: &str,
+    ) -> Result<Self, &'static str> {
+        Self::mount_review(mtm, parent, owner, geometry, listing, None)
+    }
+
+    fn mount_review(
+        mtm: MainThreadMarker,
+        parent: &NSView,
+        owner: &NSView,
+        geometry: ReviewGeometry,
+        listing: &str,
+        confirmation: Option<ParentConfirmation>,
     ) -> Result<Self, &'static str> {
         if !contains_view(owner, parent) || parent.isHiddenOrHasHiddenAncestor() {
             return Err("Setup owner view is unavailable");
@@ -382,7 +505,16 @@ impl SetupReviewSlot {
             NSRect::new(NSPoint::new(0.0, 0.0), full.size),
         );
         clip_view.addSubview(&full_view);
-        let review = SetupReviewView::mount(mtm, &full_view, listing)?;
+        let shown = Rc::new(Cell::new(Some(geometry)));
+        let review = match confirmation {
+            Some(confirmation) => {
+                let shown = shown.clone();
+                SetupReviewView::mount_with_confirmation(mtm, &full_view, listing, move |gesture| {
+                    confirmation.complete(gesture, shown);
+                })
+            }
+            None => SetupReviewView::mount(mtm, &full_view, listing),
+        }?;
         owner.addSubview_positioned_relativeTo(
             &clip_view,
             NSWindowOrderingMode::Above,
@@ -395,6 +527,7 @@ impl SetupReviewSlot {
             owner: owner.retain(),
             clip: clip_view,
             full: full_view,
+            shown,
         })
     }
 
@@ -412,6 +545,7 @@ impl SetupReviewSlot {
             Some((full, self.owner.convertRect_fromView(clip, Some(parent))))
         });
         let Some((full, clip)) = frames else {
+            self.shown.set(None);
             self.clip.setHidden(true);
             return false;
         };
@@ -419,6 +553,7 @@ impl SetupReviewSlot {
         self.full
             .setFrame(self.clip.convertRect_fromView(full, Some(&self.parent)));
         self.clip.setHidden(false);
+        self.shown.set(geometry);
         true
     }
 }
@@ -432,6 +567,7 @@ fn contains_view(owner: &NSView, view: &NSView) -> bool {
 
 impl Drop for SetupReviewSlot {
     fn drop(&mut self) {
+        self.shown.set(None);
         self.clip.removeFromSuperview();
     }
 }
