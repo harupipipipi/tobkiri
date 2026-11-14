@@ -191,7 +191,7 @@ async fn original_publication_intent_bytes_match() {
     assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
     let path =
         PathBuf::from(std::env::var_os("TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE").unwrap());
-    let bytes = fs::read(path).unwrap();
+    let bytes = fs::read(&path).unwrap();
     assert!(bytes.len() <= 2 * 1024 * 1024);
     let fixture: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(
