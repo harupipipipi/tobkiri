@@ -3491,12 +3491,27 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ワーカーの開始前に識別し、結果表示前と表示範囲の更新時に照合する。同じURL・ダイジェストの
   再マウント、候補再取得、ルート移動後に旧結果を表示しない。既存Setupの
   チェックボックスと有効化ボタンは元のままで、画面からワーカーを呼び出す接続は残る。
-  ローカルのJavaScript 5件は通過。[実WebKitと元Launcherの検証43565562062](https://github.com/harupipipipi/tobkiri/actions/runs/43565562062)を実行中。
+  ローカルのJavaScript 5件は通過。[初回実WebKit CI 43565562062](https://github.com/harupipipipi/tobkiri/actions/runs/43565562062)は
+  テストHTMLのCSS括弧を `format!` 内でエスケープしておらず、実行前のコンパイルで停止した。
+- `2b6575304` はテストのCSS括弧を修正し、隔離された確認欄に元のチェックボックスと
+  有効化ボタンを再利用する。専用WebKitコンテントワールドは、実入力で確認したチェックボックスと
+  同じ要素への確認操作を照合し、固定のメッセージを一度だけRustへ渡す。表示候補のdigestは
+  Rustが保持し、メッセージには含めない。元のSetupの操作経路はまだこの入力に切り替えていない。
+  ローカルのJavaScript 7件が通過し、[実WebKit再実行43566438224](https://github.com/harupipipipi/tobkiri/actions/runs/43566438224)
+  でAppKitの入力と元Launcherの型を検証する。
+- 既存Hostの起動は `pack_control_v4.py` のAuthority DBと `profile_definition_store_v4.py` の
+  ProfileレジストリをSetup表示前に初期化する。どちらも不在という条件では既存の初回Setupを
+  接続できない。現ワーカーの旧復旧経路はジャーナル削除、ディレクトリとロックの作成・chmod、
+  SQLiteのWALオープンを含む。既存Hostと並行で候補を生成するなら、開始前の不在確認だけでなく、
+  既存の初回レジストリとAuthorityを扱う読み取り専用の入口が必要。利用者の確定操作後は元の順序で
+  publication、workspace activation、Host active、definitionのロックを取り再検証する。
+  開発Host引き継ぎの排他ファイルはflockと独立した作成・削除型なので、同じファイル名へのflockでは代替できない。
 - [通常版43564055821](https://github.com/harupipipipi/tobkiri/actions/runs/43564055821)は
   両ジョブが通過し、macOSの実Wasm初期化、Profile IDとroot getter、Coreへの所有者引き継ぎを確認した。
   `5e4015e29` は [macOSの厳格lint](https://github.com/harupipipipi/tobkiri/actions/runs/43563472645)
   が指摘した決定値のサイズ差3件に限定したClippyの例外を付けた。既存の予算外に
   Boxを確保しないため、インライン表現を維持する。
+  [再実行43565562034](https://github.com/harupipipipi/tobkiri/actions/runs/43565562034)はLinux・macOSの両方で通過した。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
