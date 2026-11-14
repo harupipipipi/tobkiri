@@ -29,6 +29,9 @@ on:
       - 'tobkiri_launcher/frontend/src/pages/NativeSetupReview.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Setup.test.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Setup.tsx'
+      - 'tobkiri_launcher/frontend/src/pages/Settings.tsx'
+      - 'tobkiri_launcher/frontend/src/pages/Settings.test.tsx'
+      - 'tobkiri_launcher/frontend/src/lib/i18n.ts'
       - 'tobkiri_launcher/frontend/src/setup-review.*'
       - 'tobkiri_launcher/frontend/setup-review/**'
       - 'tobkiri_launcher/frontend/scripts/package-setup-review.mjs'
@@ -83,7 +86,7 @@ jobs:
         run: |
           npm ci
           npm run build:core-host
-      - name: Verify shared Setup presentation and legacy transport compatibility
+      - name: Verify Setup and Settings presentation and legacy transport compatibility
         working-directory: tobkiri_launcher/frontend
         run: >-
           node --import tsx --test
@@ -91,6 +94,7 @@ jobs:
           src/lib/nativeSetupConfirmation.test.mjs src/pages/Setup.test.tsx
           src/pages/DefaultsReview.successor.test.tsx
           src/pages/DefaultsReview.packVersions.test.tsx
+          src/pages/Settings.test.tsx
       - name: Build the isolated Setup review assets
         working-directory: tobkiri_launcher/frontend
         run: npm run build:setup-review

@@ -281,6 +281,7 @@ test('Settings manages runtime target updates through the v4 host API', async ()
     await flush();
 
     // Auto-update preferences load on mount; the heavier release check stays manual.
+    assert.match(container.textContent ?? '', /bundled Harness/);
     assert.ok(requests.some((r) => r.method === 'GET' && r.path === '/api/v4/updates/settings'));
     assert.equal(requests.some((r) => r.path === '/api/v4/updates'), false);
 
@@ -301,7 +302,7 @@ test('Settings manages runtime target updates through the v4 host API', async ()
     assert.match(tobkiriRow.textContent ?? '', /1\.0\.0/);
     assert.match(tobkiriRow.textContent ?? '', /1\.1\.0/);
     assert.match(tobkiriRow.textContent ?? '', /Available/);
-    assert.match(packRow.textContent ?? '', /defaultspack/);
+    assert.match(packRow.textContent ?? '', /Harness/);
     assert.match(packRow.textContent ?? '', /Current/);
 
     // Per-target auto-update switch persists through the v4 settings route.
@@ -311,12 +312,22 @@ test('Settings manages runtime target updates through the v4 host API', async ()
     const packSwitch = packRow.querySelector<HTMLButtonElement>('[role="switch"]');
     assert.ok(packSwitch);
     assert.equal(packSwitch.getAttribute('aria-checked'), 'true');
+    assert.equal(packSwitch.getAttribute('aria-label'), 'Harness Auto update');
+    await act(async () => {
+      packSwitch.click();
+    });
+    await flush();
+    assert.ok(requests.some(
+      (r) => r.method === 'POST' && r.path === '/api/v4/updates/settings'
+        && JSON.stringify(r.body) === JSON.stringify({auto_update: {defaultspack: false}}),
+    ));
     await act(async () => {
       autoUpdateSwitch.click();
     });
     await flush();
     const settingsPost = requests.find(
-      (r) => r.method === 'POST' && r.path === '/api/v4/updates/settings',
+      (r) => r.method === 'POST' && r.path === '/api/v4/updates/settings'
+        && (r.body?.auto_update as Record<string, boolean> | undefined)?.tobkiri === true,
     );
     assert.deepEqual(settingsPost?.body, {auto_update: {tobkiri: true}});
 

@@ -138,7 +138,7 @@ export function Settings() {
   };
 
   const runtimeUpdateTargetName = (target: ApiUpdateTarget) =>
-    target === 'tobkiri' ? PRODUCT_DISPLAY_NAME : 'defaultspack';
+    target === 'tobkiri' ? PRODUCT_DISPLAY_NAME : 'Harness';
 
   useEffect(() => {
     void loadRuntimeUpdateSettings({silent: true});
