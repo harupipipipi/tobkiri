@@ -4,6 +4,7 @@ use super::Object;
 use crate::keywords::module_member;
 use pyo3::{
     exceptions::PyMemoryError,
+    ffi,
     prelude::*,
     types::{PyIterator, PyList, PyString, PyTuple},
 };
@@ -336,5 +337,16 @@ impl Cursor {
     }
 }
 fn next<'py>(py: Python<'py>, iterator: &Py<PyIterator>) -> PyResult<Option<Bound<'py, PyAny>>> {
-    iterator.bind(py).clone().next().transpose()
+    // SAFETY: the cursor owns a live Python iterator under this interpreter.
+    // PyIter_Next runs its actual next operation and returns a new reference.
+    // The cursor already keeps the iterator alive across that call, so there
+    // is no need to increment and decrement a second owning reference.
+    let item = unsafe { Bound::from_owned_ptr_or_opt(py, ffi::PyIter_Next(iterator.as_ptr())) };
+    if item.is_some() {
+        Ok(item)
+    } else if let Some(error) = PyErr::take(py) {
+        Err(error)
+    } else {
+        Ok(None)
+    }
 }
