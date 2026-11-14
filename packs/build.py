@@ -101,9 +101,9 @@ def base_manifest(pack: str, runtime: dict[str, Any], permissions: dict[str, Any
             "ui": None, "files": []}
 
 
-def port(shape: str, optional: bool = False) -> dict[str, Any]:
+def port(shape: str, optional: bool = False, *, version: str = "1.0") -> dict[str, Any]:
     """Declare a typed major/minor shape reference."""
-    return {"shape": shape, "version": "1.0", "optional": optional}
+    return {"shape": shape, "version": version, "optional": optional}
 
 
 def bind_files(directory: Path, manifest: dict[str, Any], paths: list[str]) -> dict[str, Any]:
@@ -123,6 +123,25 @@ def stage_shape(directory: Path, shape: str) -> list[str]:
     shutil.copyfile(ROOT / "shapes" / (shape + ".wit"), wit / (shape + ".wit"))
     shutil.copyfile(REPO / "crates/tobkiri-wit/wit/core/core.wit", deps / "core.wit")
     return ["wit/" + shape + ".wit", "wit/deps/core.wit"]
+
+
+def stage_discovery_shape(
+    directory: Path, manifest: dict[str, Any], package: str, interface: str,
+    source_dir: str,
+) -> list[str]:
+    """Register a 1.1 port in the manifest of its owning Pack."""
+    source = ROOT / "shapes" / source_dir
+    wit = f"wit/{package}-v1-1.wit"
+    sidecar = f"{interface}.shape.json"
+    shutil.copyfile(source / f"{package}.wit", directory / wit)
+    shutil.copyfile(source / sidecar, directory / "wit" / sidecar)
+    manifest["shapes"].append({
+        "name": f"local.{package}.{interface}",
+        "version": "1.1",
+        "kind": "port",
+        "wit": wit,
+    })
+    return [wit, f"wit/{sidecar}"]
 
 
 def chat_flow(shape: str) -> dict[str, Any]:
@@ -145,7 +164,7 @@ def chat_flow(shape: str) -> dict[str, Any]:
             ], "on_error": {"default": "fail", "steps": {}}}
 
 
-def shape_pack(shape: str) -> dict[str, Any]:
+def shape_pack(shape: str, *, pi_discovery: bool = False) -> dict[str, Any]:
     """The Flow/data Pack owns domain shapes; the core owns none."""
     directory = ROOT / ("local." + shape)
     directory.mkdir(exist_ok=True)
@@ -162,6 +181,10 @@ def shape_pack(shape: str) -> dict[str, Any]:
                    "callbacks": {}, "conformance": None}
         write_json(directory / "wit" / (name + ".shape.json"), sidecar)
         paths.append("wit/" + name + ".shape.json")
+    if pi_discovery and shape == "harness-chat":
+        paths.extend(stage_discovery_shape(
+            directory, manifest, shape, "command-provider", "provider-discovery-v1-1",
+        ))
     manifest["ports"]["consumes"] = [port(value.rsplit("@", 1)[0]) for value in ports]
     write_json(directory / "flows/turn.flow.json", chat_flow(shape))
     manifest["flows"] = ["flows/turn.flow.json"]
@@ -169,7 +192,8 @@ def shape_pack(shape: str) -> dict[str, Any]:
     return bind_files(directory, manifest, paths)
 
 
-def agent_shape_pack() -> dict[str, Any]:
+def agent_shape_pack(*, pi_discovery: bool = False) -> dict[str, Any]:
+    """Package the Harness Agent shapes consumed by tool adapters."""
     directory=ROOT/"local.harness-agent"
     directory.mkdir(exist_ok=True)
     paths=stage_shape(directory,"harness-agent")
@@ -178,10 +202,63 @@ def agent_shape_pack() -> dict[str, Any]:
         manifest["shapes"].append({"name":"local.harness-agent."+name,"version":"1.0","kind":kind,"wit":"wit/harness-agent.wit"})
         write_json(directory/"wit"/(name+".shape.json"),{"cardinality":"many" if name=="tool-provider" else "one","streams":{},"callbacks":{},"conformance":None})
         paths.append("wit/"+name+".shape.json")
+    if pi_discovery:
+        paths.extend(stage_discovery_shape(
+            directory, manifest, "harness-agent", "tool-provider",
+            "provider-discovery-v1-1",
+        ))
     return bind_files(directory,manifest,paths)
 
 
-def guest_manifest(name: str, target: Path, origin: str, model: str) -> dict[str, Any]:
+def stage_pi_adapter(
+    directory: Path, manifest: dict[str, Any], *, discovery: bool
+) -> tuple[list[str], list[Path]]:
+    """Stage and declare the shapes implemented by the selected adapter world."""
+    paths = stage_shape(directory, "pi-adapter")
+    shapes = ROOT / "shapes"
+    world = directory / "wit" / ("pack-discovery.wit" if discovery else "pack.wit")
+    sources = [world]
+    paths.append(world.relative_to(directory).as_posix())
+    interfaces = [("harness-agent.wit", shapes / "harness-agent.wit")]
+    if discovery:
+        interfaces.extend(
+            (f"{name}-v1-1.wit", shapes / "provider-discovery-v1-1" / f"{name}.wit")
+            for name in ("harness-agent", "harness-chat")
+        )
+    else:
+        interfaces.append(("harness-chat.wit", shapes / "harness-chat.wit"))
+    for filename, source in interfaces:
+        path = f"wit/deps/{filename}"
+        shutil.copyfile(source, directory / path)
+        paths.append(path)
+        sources.append(source)
+    manifest["shapes"].append({
+        "name": "local.pi-adapter.pi-extension",
+        "version": "1.0",
+        "kind": "port",
+        "wit": "wit/pi-adapter.wit",
+    })
+    sidecar = "wit/pi-extension.shape.json"
+    write_json(directory / sidecar, {
+        "cardinality": "one", "streams": {}, "callbacks": {}, "conformance": None,
+    })
+    paths.append(sidecar)
+    version = "1.1" if discovery else "1.0"
+    manifest["ports"]["provides"] = [
+        port("local.harness-agent.tool-provider", version=version),
+        port("local.harness-agent.tool-call-guard"),
+        port("local.harness-chat.command-provider", version=version),
+    ]
+    if discovery:
+        paths.extend(stage_discovery_shape(
+            directory, manifest, "pi-adapter", "command-inventory", "pi-adapter-v1-1",
+        ))
+        sources.append(shapes / "pi-adapter-v1-1/pi-adapter.wit")
+    return paths, sources
+
+
+def guest_manifest(name: str, target: Path, origin: str, model: str, *,
+                   pi_discovery: bool = False) -> dict[str, Any]:
     """Create a guest Pack from the selected workspace's real wasm component."""
     directory = ROOT / ("local." + name)
     artifact = target / "wasm32-wasip2/debug" / ("tobkiri_pack_" + name.replace("-", "_") + ".wasm")
@@ -192,7 +269,10 @@ def guest_manifest(name: str, target: Path, origin: str, model: str) -> dict[str
         shape, iface = "pi-adapter", "tool-provider"
     fq = "local." + shape + "."
     imports = []
-    if name == "pi-adapter": imports = ["local.pi-adapter.pi-extension@1.0"]
+    if name == "pi-adapter":
+        imports = ["local.pi-adapter.pi-extension@1.0"]
+        if pi_discovery:
+            imports.append("local.pi-adapter.command-inventory@1.1")
     if name.endswith("input"): imports = ["local."+shape+".turn-flow@1.0"]
     permissions = permission_set(ports=imports, network=[origin] if name == "openai-compat-provider" else [],
                                  secrets=name == "openai-compat-provider", private="store" in name,
@@ -210,26 +290,23 @@ def guest_manifest(name: str, target: Path, origin: str, model: str) -> dict[str
     # permissions.ports is effect authority only; a Pack that places dynamic
     # port/Flow calls must also declare each consumed view in ports.consumes
     # before the host admits the call.
-    manifest["ports"]["consumes"] = [port(value.rsplit("@", 1)[0]) for value in imports]
+    manifest["ports"]["consumes"] = [
+        port(shape_name, version=version)
+        for shape_name, version in (value.rsplit("@", 1) for value in imports)
+    ]
     if name.endswith("input"):
         # Author-selected physical entry, independent of provider routing.
         manifest["inputs"] = [{"exact_input_view":fq+"user-input@1.0","operation":"read"}]
     if "store" in name:
         manifest["stores"] = [{"name": "conversations", "tier": "private", "data_shape": fq + "messages@1.0"}]
     if name == "pi-adapter":
-        manifest["ports"]["provides"] = [port("local.harness-agent.tool-provider"),port("local.harness-agent.tool-call-guard"),port("local.harness-chat.command-provider")]
-        manifest["ports"]["consumes"] = [port(fq+"pi-extension")]
-        paths = stage_shape(directory, shape)
-        paths.extend(["wit/pack.wit","wit/deps/harness-chat.wit","wit/deps/harness-agent.wit"])
-        manifest["shapes"].append({"name":fq+"pi-extension","version":"1.0","kind":"port","wit":"wit/pi-adapter.wit"})
-        write_json(directory/"wit/pi-extension.shape.json",{"cardinality":"one","streams":{},"callbacks":{},"conformance":None})
-        paths.append("wit/pi-extension.shape.json")
+        paths, wit_sources = stage_pi_adapter(directory, manifest, discovery=pi_discovery)
     else:
         paths = ["wit/pack.wit", "wit/deps/core.wit", "wit/deps/shape.wit"]
+        wit_sources = [directory / "wit/pack.wit"]
     paths.append("component.wasm")
     paths.append("config.json")
-    source_paths = [directory/"src/lib.rs", directory/"build.rs", directory/"Cargo.toml", ROOT/"Cargo.toml", ROOT/"Cargo.lock", *sorted((ROOT/"guest-sdk/src").glob("*.rs")), directory/"wit/pack.wit", REPO/"crates/tobkiri-wit/wit/core/core.wit", ROOT/"shapes"/(shape+".wit")]
-    if name == "pi-adapter": source_paths.append(directory/"guest-wit/pack.wit")
+    source_paths = [directory/"src/lib.rs", directory/"build.rs", directory/"Cargo.toml", ROOT/"Cargo.toml", ROOT/"Cargo.lock", *sorted((ROOT/"guest-sdk/src").glob("*.rs")), *wit_sources, REPO/"crates/tobkiri-wit/wit/core/core.wit", ROOT/"shapes"/(shape+".wit")]
     write_json(directory / "component.build.json", {"format":"tobkiri.component-build/1","language":"rust","tools":{"rust":"1.94.0","wit-bindgen":"0.62.0"},
               "artifact_sha256":sha256((directory/"component.wasm").read_bytes()),"artifact_bytes":(directory/"component.wasm").stat().st_size,
               "sources":{source.relative_to(REPO).as_posix():sha256(source.read_bytes()) for source in source_paths},"production_enabled":False})
@@ -290,7 +367,12 @@ def main() -> None:
     """Build the complete source set, or only re-pin already built components."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--skip-build", action="store_true")
-    parser.add_argument("--profiles-only", action="store_true", help="re-publish explicit limits from existing hash-bound manifests without changing component artifacts")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--profiles-only", action="store_true", help="re-publish explicit limits from existing hash-bound manifests without changing component artifacts")
+    mode.add_argument(
+        "--pi-discovery", action="store_true",
+        help="package the Pi adapter with 1.1 discovery and require a compatible wrapper",
+    )
     parser.add_argument("--origin", default="http://127.0.0.1:18080")
     parser.add_argument("--model", default="gemma3-1b-local")
     parser.add_argument("--target-dir", type=Path, default=REPO.parent/".work/cargo-target")
@@ -300,16 +382,35 @@ def main() -> None:
         raise SystemExit("origin must be an exact HTTP origin, with no path or credentials")
     if not args.profiles_only and shutil.disk_usage(ROOT).free < 5 * 1024**3:
         raise SystemExit("Pack build requires the agreed 5 GiB free-space floor")
+    # Distinct artifacts also make --skip-build select the correct ABI.
+    discovery_target = args.target_dir / "pi-discovery"
     if not args.skip_build and not args.profiles_only:
         environment = {**os.environ,"CARGO_TARGET_DIR":str(args.target_dir.absolute()),"CARGO_BUILD_JOBS":"2","CARGO_INCREMENTAL":"0"}
-        subprocess.run(["cargo","build","--manifest-path",str(ROOT/"Cargo.toml"),"--locked","--target","wasm32-wasip2","--workspace"],env=environment,check=True)
+        cargo_build = [
+            "cargo", "build", "--manifest-path", str(ROOT / "Cargo.toml"),
+            "--locked", "--target", "wasm32-wasip2",
+        ]
+        subprocess.run([*cargo_build, "--workspace"], env=environment, check=True)
+        if args.pi_discovery:
+            subprocess.run(
+                [*cargo_build, "--package", "tobkiri-pack-pi-adapter",
+                 "--features", "discovery", "--target-dir", str(discovery_target)],
+                env=environment, check=True,
+            )
     if args.profiles_only:
         packs = {name:json.loads((ROOT/("local."+name)/"pack.json").read_text()) for name in [*GUESTS,"harness-chat","echo-chat","harness-ui","harness-agent"]}
     else:
-        packs = {name:guest_manifest(name,args.target_dir,args.origin,args.model) for name in GUESTS}
-        for name in ("harness-chat","echo-chat"): packs[name]=shape_pack(name)
+        packs = {}
+        for name in GUESTS:
+            discovery = args.pi_discovery and name == "pi-adapter"
+            target = discovery_target if discovery else args.target_dir
+            packs[name] = guest_manifest(
+                name, target, args.origin, args.model, pi_discovery=discovery,
+            )
+        for name in ("harness-chat", "echo-chat"):
+            packs[name] = shape_pack(name, pi_discovery=args.pi_discovery)
         packs["harness-ui"]=ui_pack()
-        packs["harness-agent"]=agent_shape_pack()
+        packs["harness-agent"] = agent_shape_pack(pi_discovery=args.pi_discovery)
     for file, shape, provider in (("harness-live","harness-chat","openai-compat-provider"),("harness-mock","harness-chat","mock-llm"),("echo","echo-chat","echo-llm")):
         if args.profiles_only:
             document=json.loads((ROOT/"profiles"/(file+".profile.json")).read_text())

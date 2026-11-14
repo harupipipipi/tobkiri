@@ -10,6 +10,9 @@ on:
       - 'packs/local.pi-adapter/**'
       - 'packs/local.pi-example-*/**'
       - 'packs/shapes/pi-adapter.wit'
+      - 'packs/shapes/pi-adapter-v1-1/**'
+      - 'packs/shapes/provider-discovery-v1-1/**'
+      - 'packs/build.py'
       - 'crates/tobkiri-wit/wit/core/core.wit'
       - 'sdk/js/**'
   workflow_dispatch:
@@ -46,7 +49,7 @@ jobs:
       - name: Install the locked wrapper tools in CI
         run: npm ci --prefix sdk/js
       - name: Verify the pi adapter context
-        run: node --test sdk/js/tests/adapter.test.mjs
+        run: node --test sdk/js/tests/adapter.test.mjs sdk/js/tests/command-inventory.test.mjs
       - name: Build verified Rust Packs and both pinned upstream wrappers
         run: |
           python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
@@ -61,7 +64,21 @@ jobs:
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/pi-replay.log" --expected-passed 2 --
-          cargo test --locked -p tobkiri-e2e --test pi -- --ignored --nocapture
+          cargo test --locked -p tobkiri-e2e --test pi -- --ignored --nocapture original_
+      - name: Build the opt-in inventory adapter and the unchanged pinned wrapper
+        run: |
+          python3 -B packs/build.py --pi-discovery --target-dir "$CARGO_TARGET_DIR"
+          destination="$RUNNER_TEMP/pi-inventory"
+          mkdir -p "$destination"
+          cp -R packs/local.pi-example-hello "$destination/"
+          node sdk/js/wrap-pi.mjs --command-inventory "$destination/local.pi-example-hello"
+          echo "TOBKIRI_PI_DISCOVERY_WRAPPER=$destination/local.pi-example-hello" >> "$GITHUB_ENV"
+      - name: Replay tool and command inventory through actual Wasm and Gate
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/pi-discovery.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test pi
+          pi_adapter_lists_registrations_through_verified_ports -- --ignored --exact --nocapture
       - name: Retain test and build receipts
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,6 +86,7 @@ jobs:
           name: issue-1520-pi-replay
           path: |
             ${{ runner.temp }}/pi-replay.log*
+            ${{ runner.temp }}/pi-discovery.log*
             packs/local.pi-example-hello/component.build.json
             packs/local.pi-example-protected-paths/component.build.json
           if-no-files-found: warn

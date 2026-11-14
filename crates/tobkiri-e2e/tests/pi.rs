@@ -9,11 +9,12 @@ use tobkiri_gate::PermissionSet;
 
 async fn start_example(
     example: &str,
-    shape: &str,
-    operation: &str,
+    operations: &[(&str, &str)],
+    discovery_wrapper: Option<std::path::PathBuf>,
 ) -> Result<(Fixture, Core, Session)> {
     let mut fixture = Fixture::new("harness-mock", None)?;
-    let wrapper = repo().join("packs").join(example);
+    let discovery = discovery_wrapper.is_some();
+    let wrapper = discovery_wrapper.unwrap_or_else(|| repo().join("packs").join(example));
     let provenance: serde_json::Value =
         serde_json::from_slice(&std::fs::read(wrapper.join("upstream.json"))?)?;
     assert_eq!(
@@ -53,7 +54,12 @@ async fn start_example(
         profile["packs"].as_array_mut().unwrap().push(serde_json::json!({"id":pack.manifest.id,"version":pack.manifest.version,"sha256":pack.hash,"source":format!("file:{}",path.display())}));
     }
     let ports = profile["ceiling"]["ports"].as_array_mut().unwrap();
-    ports.extend(["local.pi-adapter.pi-extension@1.0", shape].map(|port| serde_json::json!(port)));
+    ports.push(serde_json::json!("local.pi-adapter.pi-extension@1.0"));
+    ports.extend(operations.iter().map(|(port, _)| serde_json::json!(port)));
+    if discovery {
+        ports.push(serde_json::json!("local.pi-adapter.command-inventory@1.1"));
+        profile["bindings"]["local.pi-adapter.command-inventory@1"] = serde_json::json!(example);
+    }
     profile["bindings"]["local.pi-adapter.pi-extension@1"] = serde_json::json!(example);
     profile["bindings"]["local.harness-agent.tool-provider@1"] =
         serde_json::json!("local.pi-adapter");
@@ -71,18 +77,20 @@ async fn start_example(
         );
     }
     let user = PermissionSet {
-        ports: [shape.to_string()].into_iter().collect(),
+        ports: operations
+            .iter()
+            .map(|(shape, _)| (*shape).into())
+            .collect(),
         wasm: fixture.profile.ceiling.wasm.clone(),
         loops: fixture.profile.ceiling.loops.clone(),
         ..Default::default()
     };
     fixture.profile.user_permissions = Some(user);
-    fixture
-        .host
-        .utility_ports
-        .lock()
-        .unwrap()
-        .insert((shape.into(), operation.into()));
+    fixture.host.utility_ports.lock().unwrap().extend(
+        operations
+            .iter()
+            .map(|(shape, operation)| ((*shape).into(), (*operation).into())),
+    );
     fixture.host.approve_literal_user(&fixture.profile)?;
     let (core, session) = fixture.start().await?;
     Ok((fixture, core, session))
@@ -93,7 +101,7 @@ async fn start_example(
 async fn original_hello_runs_through_wrapper_adapter_and_gate() -> Result<()> {
     let shape = "local.harness-agent.tool-provider@1.0";
     let (_temporary, _core, session) =
-        start_example("local.pi-example-hello", shape, "invoke").await?;
+        start_example("local.pi-example-hello", &[(shape, "invoke")], None).await?;
     let args = canon(&serde_json::json!({
         "call":{"id":"hello-1","name":"hello","arguments":{"name":"Tobkiri"}}
     }))?;
@@ -117,8 +125,12 @@ async fn original_hello_runs_through_wrapper_adapter_and_gate() -> Result<()> {
 #[ignore = "requires separately built componentize-js Pi example components"]
 async fn original_protected_paths_guard_runs_through_wrapper_adapter_and_gate() -> Result<()> {
     let shape = "local.harness-agent.tool-call-guard@1.0";
-    let (fixture, _core, session) =
-        start_example("local.pi-example-protected-paths", shape, "on-tool-call").await?;
+    let (fixture, _core, session) = start_example(
+        "local.pi-example-protected-paths",
+        &[(shape, "on-tool-call")],
+        None,
+    )
+    .await?;
     *fixture.host.notifications.lock().unwrap() = Some(Vec::new());
     for (name, path, block) in [
         ("write", ".env", true),
@@ -172,5 +184,80 @@ async fn original_protected_paths_guard_runs_through_wrapper_adapter_and_gate() 
     println!(
         "Pi wasm runtime receipt: example=protected-paths cases=5 wrapper+adapter=true gated-notifications=true"
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires the opt-in Rust Pi adapter and pinned wrapper with inventory"]
+async fn pi_adapter_lists_registrations_through_verified_ports() -> Result<()> {
+    let tools = "local.harness-agent.tool-provider@1.1";
+    let commands = "local.harness-chat.command-provider@1.1";
+    let legacy = "local.harness-agent.tool-provider@1.0";
+    let wrapper = std::env::var_os("TOBKIRI_PI_DISCOVERY_WRAPPER")
+        .map(std::path::PathBuf::from)
+        .context("opt-in pinned wrapper directory required")?;
+    let (_fixture, _core, session) = start_example(
+        "local.pi-example-hello",
+        &[
+            (tools, "list-tools"),
+            (commands, "list-commands"),
+            (legacy, "invoke"),
+        ],
+        Some(wrapper),
+    )
+    .await?;
+    let arguments = canon(&serde_json::json!({}))?;
+    let tool_list = session
+        .call_user_port(
+            ShapeRef::parse(tools)?,
+            OpName::parse("list-tools")?,
+            &arguments,
+        )
+        .await?;
+    let tool_list = parse_output(&tool_list)?;
+    let tool_list = tool_list
+        .as_array()
+        .context("tool inventory is not a list")?;
+    assert_eq!(tool_list.len(), 1);
+    let tool = &tool_list[0];
+    assert_eq!(
+        tool.get("name").and_then(|value| value.as_str()),
+        Some("hello")
+    );
+    assert_eq!(
+        tool.get("description").and_then(|value| value.as_str()),
+        Some("A simple greeting tool")
+    );
+    let name = tool
+        .get("parameters")
+        .and_then(|schema| schema.get("properties"))
+        .and_then(|properties| properties.get("name"));
+    assert_eq!(
+        name.and_then(|schema| schema.get("type"))
+            .and_then(|ty| ty.as_str()),
+        Some("string")
+    );
+    let command_list = session
+        .call_user_port(
+            ShapeRef::parse(commands)?,
+            OpName::parse("list-commands")?,
+            &arguments,
+        )
+        .await?;
+    assert_eq!(parse_output(&command_list)?, canon(&serde_json::json!([]))?);
+
+    let request = canon(&serde_json::json!({
+        "call":{"id":"hello-1","name":"hello","arguments":{"name":"Tobkiri"}}
+    }))?;
+    let reply = session
+        .call_user_port(ShapeRef::parse(legacy)?, OpName::parse("invoke")?, &request)
+        .await?;
+    assert_eq!(
+        parse_output(&reply)?,
+        canon(
+            &serde_json::json!({"content":[{"type":"text","text":"Hello, Tobkiri!"}],"details":{"greeted":"Tobkiri"}})
+        )?
+    );
+    session.close().await?;
     Ok(())
 }

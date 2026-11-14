@@ -1,34 +1,45 @@
-use std::path::PathBuf;
-fn main() {
-    let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let output = root.join("wit");
-    let deps = output.join("deps");
-    std::fs::create_dir_all(&deps).unwrap();
-    // A WIT directory is one package. The published shape and compilation
-    // world belong to distinct packages, so compile the world separately.
-    let guest = root.join("guest-wit");
-    let guest_deps = guest.join("deps");
-    std::fs::create_dir_all(&guest_deps).unwrap();
-    std::fs::copy(output.join("pack.wit"), guest.join("pack.wit")).unwrap();
+use std::{env, fs, path::PathBuf};
 
-    let core = root.join("../../crates/tobkiri-wit/wit/core/core.wit");
-    std::fs::copy(&core, deps.join("core.wit")).unwrap();
-    std::fs::copy(&core, guest_deps.join("core.wit")).unwrap();
-    let shape = root.join("../shapes/pi-adapter.wit");
-    std::fs::copy(&shape, output.join("pi-adapter.wit")).unwrap();
-    std::fs::copy(&shape, guest_deps.join("pi-adapter.wit")).unwrap();
-    for name in ["harness-chat", "harness-agent"] {
-        let source = root.join(format!("../shapes/{name}.wit"));
-        std::fs::copy(&source, deps.join(format!("{name}.wit"))).unwrap();
-        std::fs::copy(&source, guest_deps.join(format!("{name}.wit"))).unwrap();
-        println!("cargo:rerun-if-changed={}", source.display());
+fn main() {
+    let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let discovery = env::var_os("CARGO_FEATURE_DISCOVERY").is_some();
+    let (variant, world) = if discovery {
+        ("discovery", "wit/pack-discovery.wit")
+    } else {
+        ("legacy", "wit/pack.wit")
+    };
+    // Keep the host-facing WIT separate from Cargo's generated guest world.
+    let guest = root.join("guest-wit").join(variant);
+    fs::create_dir_all(guest.join("deps")).unwrap();
+    let mut files = vec![
+        (world, "pack.wit"),
+        (
+            "../../crates/tobkiri-wit/wit/core/core.wit",
+            "deps/core.wit",
+        ),
+        ("../shapes/pi-adapter.wit", "deps/pi-adapter.wit"),
+        ("../shapes/harness-agent.wit", "deps/harness-agent.wit"),
+    ];
+    if discovery {
+        files.extend([
+            (
+                "../shapes/pi-adapter-v1-1/pi-adapter.wit",
+                "deps/pi-adapter-v1-1.wit",
+            ),
+            (
+                "../shapes/provider-discovery-v1-1/harness-agent.wit",
+                "deps/harness-agent-v1-1.wit",
+            ),
+            (
+                "../shapes/provider-discovery-v1-1/harness-chat.wit",
+                "deps/harness-chat-v1-1.wit",
+            ),
+        ]);
+    } else {
+        files.push(("../shapes/harness-chat.wit", "deps/harness-chat.wit"));
     }
-    let old = deps.join("shape.wit");
-    if old.exists() {
-        std::fs::remove_file(old).unwrap();
+    for (source, destination) in files {
+        fs::copy(root.join(source), guest.join(destination)).unwrap();
+        println!("cargo:rerun-if-changed={source}");
     }
-    println!("cargo:rerun-if-changed={}", core.display());
-    println!("cargo:rerun-if-changed={}", shape.display());
-    println!("cargo:rerun-if-changed=wit/pack.wit");
-    println!("cargo:rustc-env=TOBKIRI_GUEST_WIT={}", output.display());
 }

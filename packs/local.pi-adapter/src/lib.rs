@@ -1,9 +1,19 @@
 //! Typed adapter between a wrapped pi extension and Flow port operations.
-wit_bindgen::generate!({path:"guest-wit",world:"pack",generate_all});
+#[cfg(not(feature = "discovery"))]
+wit_bindgen::generate!({path:"guest-wit/legacy",world:"pack",generate_all});
+#[cfg(feature = "discovery")]
+wit_bindgen::generate!({path:"guest-wit/discovery",world:"pack",generate_all});
+
+#[cfg(not(feature = "discovery"))]
 use exports::local::harness_agent::{tool_call_guard, tool_provider};
 use exports::local::harness_chat::command_provider;
+#[cfg(feature = "discovery")]
+use exports::local::{harness_agent1_0_0::tool_call_guard, harness_agent1_1_0::tool_provider};
 use exports::tobkiri::core::lifecycle;
+#[cfg(not(feature = "discovery"))]
 use local::pi_adapter::pi_extension;
+#[cfg(feature = "discovery")]
+use local::{pi_adapter1_0_0::pi_extension, pi_adapter1_1_0::command_inventory};
 use tobkiri::core::types::{Error, ErrorCode};
 
 struct Pack;
@@ -38,6 +48,20 @@ impl tool_provider::Guest for Pack {
             .to_string();
         pi_extension::invoke_tool(name, id, &args)
     }
+
+    #[cfg(feature = "discovery")]
+    fn list_tools() -> Result<Vec<tool_provider::ToolDefinition>, Error> {
+        Ok(pi_extension::load()?
+            .tools
+            .into_iter()
+            .map(|tool| tool_provider::ToolDefinition {
+                name: tool.name,
+                label: tool.label,
+                description: tool.description,
+                parameters: tool.parameters,
+            })
+            .collect())
+    }
 }
 impl tool_call_guard::Guest for Pack {
     fn on_tool_call(call: String, has_ui: bool) -> Result<tool_call_guard::Decision, Error> {
@@ -67,6 +91,17 @@ impl tool_call_guard::Guest for Pack {
 impl command_provider::Guest for Pack {
     fn invoke(name: String, args: String) -> Result<String, Error> {
         pi_extension::run_command(&name, &args)
+    }
+
+    #[cfg(feature = "discovery")]
+    fn list_commands() -> Result<Vec<command_provider::CommandDefinition>, Error> {
+        Ok(command_inventory::list_commands()?
+            .into_iter()
+            .map(|command| command_provider::CommandDefinition {
+                name: command.name,
+                description: command.description,
+            })
+            .collect())
     }
 }
 export!(Pack);
