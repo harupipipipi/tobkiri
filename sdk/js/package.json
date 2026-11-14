@@ -1,0 +1,8 @@
+{
+  "name": "tobkiri-pack-ui-sdk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/ports.test.mjs"
+  }
+}
