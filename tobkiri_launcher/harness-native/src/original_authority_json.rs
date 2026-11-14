@@ -1392,6 +1392,26 @@ pub(super) fn canonical<S: OriginalAuthorityOwner>(
     audit: Option<Audit<'_>>,
     op: &Operation<'_, S>,
 ) -> Result<Funded<Vec<u8>>> {
+    canonical_view(doc, doc.root, None, audit, op)
+}
+
+#[cfg(unix)]
+pub(super) fn canonical_subtree<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    root: usize,
+    omit: Option<&str>,
+    op: &Operation<'_, S>,
+) -> Result<Funded<Vec<u8>>> {
+    canonical_view(doc, root, omit, None, op)
+}
+
+fn canonical_view<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    root: usize,
+    omit: Option<&str>,
+    audit: Option<Audit<'_>>,
+    op: &Operation<'_, S>,
+) -> Result<Funded<Vec<u8>>> {
     let extra = audit
         .as_ref()
         .map(|value| value.id.len() + value.kind.len() + value.state.len() + value.previous.len())
@@ -1446,7 +1466,7 @@ pub(super) fn canonical<S: OriginalAuthorityOwner>(
             Action::Literal("}"),
             Action::NativeText(value.previous),
             Action::Literal(",\"previous_digest\":"),
-            Action::Node(doc.root),
+            Action::Node(root),
             Action::Literal(",\"payload\":"),
             Action::NativeText(value.kind),
             Action::Literal(",\"event_type\":"),
@@ -1458,7 +1478,7 @@ pub(super) fn canonical<S: OriginalAuthorityOwner>(
             Action::Literal("{\"created_at\":"),
         ]);
     } else {
-        actions.push(Action::Node(doc.root));
+        actions.push(Action::Node(root));
     }
     while let Some(action) = actions.pop() {
         op.check(OriginalAuthorityStage::Audit)?;
@@ -1485,7 +1505,9 @@ pub(super) fn canonical<S: OriginalAuthorityOwner>(
                     order.try_reserve_exact(values.len()).map_err(|_| {
                         OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit)
                     })?;
-                    order.extend(values.iter());
+                    order.extend(values.iter().filter(|(key, _)| {
+                        id != root || omit.is_none_or(|omitted| !key.is(omitted))
+                    }));
                     order.sort_unstable_by(|one, two| one.0.cmp(&two.0));
                     actions.push(Action::Literal("}"));
                     for (index, (key, value)) in order.into_iter().enumerate().rev() {

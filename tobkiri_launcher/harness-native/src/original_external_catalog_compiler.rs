@@ -1,4 +1,4 @@
-//! Old CAS Pack v4 documents checked before the original artifact compiler.
+//! Old CAS Pack v4 definition checks and the opening steps of the artifact compiler.
 use super::charge;
 use super::external_catalog_model::{
     self as model, SemanticPath, digest_syntax, id_syntax, validate_semantics,
@@ -8,11 +8,13 @@ use crate::original_authority::{
     OriginalAuthorityStage, Result,
     json::{self, Document, Node, Text},
 };
-use std::sync::Arc;
+use std::{ffi::CStr, sync::Arc};
 use tobkiri_canon::{AllocationBudget, CanonValue};
+use zeroize::Zeroizing;
 
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 const SCHEMA_ERROR: &str = "tobkiri_protocol.errors.SchemaValidationError";
+const INVALID_ARTIFACT: &str = "tobkiri_host.errors.InvalidArtifactError";
 
 /// Executable catalog retained under the read's capacity reservation.
 pub(super) struct ExecutableCatalog {
@@ -24,6 +26,81 @@ pub(super) struct ExecutableCatalog {
 pub(super) struct PackManifest {
     _doc: Funded<Document>,
     host_extension: bool,
+}
+
+/// Compiler definitions held under the operation's capacity reservation.
+pub(super) struct DirectDefinitions {
+    pub(super) manifest: Funded<Document>,
+    _contracts: Funded<Document>,
+    pub(super) index: Funded<Document>,
+    pub(super) executable: Funded<Document>,
+}
+
+/// Read and validate the direct compiler's four inputs, then check their identities.
+pub(super) fn read_direct_definitions<S: OriginalAuthorityOwner>(
+    mut read: impl FnMut(&'static CStr) -> Result<Funded<Zeroizing<Vec<u8>>>>,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<DirectDefinitions> {
+    let mut validated = |file: &'static CStr, name: &'static str, fields: &'static [Field]| {
+        op.check(STAGE)?;
+        let bytes = read(file)?;
+        read_document(bytes.as_slice(), Rule::Closed(fields), name, op, budget)
+    };
+    let manifest = validated(c"pack.v4.json", "pack", MANIFEST)?;
+    let contracts = validated(
+        c"contracts.v4.json",
+        "pack_contract_catalog",
+        CONTRACT_CATALOG,
+    )?;
+    let index = validated(
+        c"artifact-index.v4.json",
+        "pack_artifact_index",
+        ARTIFACT_INDEX,
+    )?;
+    let executable = validated(c"executables.v4.json", "executable_catalog", EXECUTABLE)?;
+
+    let sidecars = [&*contracts, &*index, &*executable];
+    for (section, manifest_field, sidecar_field, message) in [
+        (
+            "pack",
+            "id",
+            "pack_id",
+            "v4 artifact documents disagree on Pack identity",
+        ),
+        (
+            "integrity",
+            "source_identity",
+            "source_identity",
+            "v4 artifact documents disagree on source identity",
+        ),
+    ] {
+        let section = manifest
+            .get(manifest.root, section)
+            .expect("checked manifest section");
+        let expected = required_text(&manifest, section, manifest_field);
+        for sidecar in sidecars {
+            let actual = required_text(sidecar, sidecar.root, sidecar_field);
+            charge(op, budget, expected.0.len().min(actual.0.len()) + 1)?;
+            if actual != expected {
+                return Err(invalid_artifact(message));
+            }
+        }
+    }
+    Ok(DirectDefinitions {
+        manifest,
+        _contracts: contracts,
+        index,
+        executable,
+    })
+}
+
+fn required_text<'a>(doc: &'a Document, parent: usize, key: &str) -> &'a Text {
+    let id = doc.get(parent, key).expect("checked compiler field");
+    let Node::String(text) = doc.node(id) else {
+        unreachable!("checked compiler string");
+    };
+    text
 }
 
 /// Decode and check the first document reached by the original CAS verifier.
@@ -143,10 +220,11 @@ fn read_document<S: OriginalAuthorityOwner>(
 fn schema_diagnostics_unavailable(name: &'static str) -> OriginalAuthorityError {
     // The original includes all sorted JSON Schema and semantic error messages.
     // Keep an explicit integration boundary until that projection is available.
-    let feature = if name == "pack" {
-        "original CAS Pack manifest schema diagnostics"
-    } else {
-        "original CAS executable catalog schema diagnostics"
+    let feature = match name {
+        "pack" => "original CAS Pack manifest schema diagnostics",
+        "pack_contract_catalog" => "original CAS Pack Contract catalog schema diagnostics",
+        "pack_artifact_index" => "original CAS Pack artifact index schema diagnostics",
+        _ => "original CAS executable catalog schema diagnostics",
     };
     OriginalAuthorityError::unsupported(STAGE, feature)
 }
@@ -156,6 +234,11 @@ fn artifact_failure(cause: OriginalAuthorityCause) -> OriginalAuthorityError {
     error.cause = Some(cause);
     error.suppressed = true;
     error
+}
+
+/// Wrap a compiler inconsistency in the external CAS verifier's denial.
+pub(super) fn invalid_artifact(message: &'static str) -> OriginalAuthorityError {
+    artifact_failure(python_cause(json::raw_error(INVALID_ARTIFACT, message)))
 }
 
 fn json_failure(error: OriginalAuthorityError) -> OriginalAuthorityError {
@@ -200,6 +283,7 @@ enum Rule {
     RepositoryTree,
     Object,
     Map(&'static Rule),
+    SchemaCatalog,
     Closed(&'static [Field]),
     Array {
         items: &'static Rule,
@@ -284,6 +368,118 @@ const EXECUTABLE_OPERATION: &[Field] = &[
     required("timeout_default_ms", Integer(1)),
     required("timeout_hard_max_ms", Integer(1)),
     required("idempotency", OneOf(&["none", "keyed", "replayable"])),
+];
+
+const CONTRACT_CATALOG: &[Field] = &[
+    required(
+        "catalog_api_version",
+        OneOf(&["io.tobkiri.pack-contract-catalog.v4"]),
+    ),
+    required("pack_id", Id),
+    required("source_identity", Digest),
+    required("contracts", array(&Closed(CONTRACT_DOCUMENT), 0, false)),
+];
+
+const CONTRACT_DOCUMENT: &[Field] = &[
+    required("contract_api_version", OneOf(&["io.tobkiri.contract.v4"])),
+    required("contract_id", ContractId),
+    required("version", Semver),
+    required("revision_digest", Digest),
+    required("owner", Id),
+    required(
+        "status",
+        OneOf(&["draft", "accepted", "deprecated", "sunset"]),
+    ),
+    required("operations", array(&Closed(CONTRACT_OPERATION), 1, false)),
+    required("schema_catalog", SchemaCatalog),
+    required("provider_semantics", Closed(PROVIDER_SEMANTICS)),
+    required("provenance", Provenance),
+];
+
+const CONTRACT_OPERATION: &[Field] = &[
+    required("operation_id", Id),
+    required("input_schema_digest", Digest),
+    required("output_schema_digest", Digest),
+    required("error_schema_digest", Digest),
+    optional("progress_schema_digest", Digest),
+    required("effect_ceiling", array(&Nonempty, 0, true)),
+    optional("scope_semantics_digest", Digest),
+    optional(
+        "scope_semantics",
+        OneOf(&["declarative", "host_broker", "opaque", "unknown"]),
+    ),
+    optional("idempotency", Closed(IDEMPOTENCY)),
+    optional("timeout_default_ms", Integer(1)),
+    optional("timeout_hard_max_ms", Integer(1)),
+];
+
+const IDEMPOTENCY: &[Field] = &[
+    required("mode", OneOf(&["none", "keyed", "replayable"])),
+    optional("key_namespace", String),
+    optional("reconcile_operation_id", Id),
+    optional("retention_seconds", Integer(0)),
+];
+
+const PROVIDER_SEMANTICS: &[Field] = &[
+    required("provider_id", Id),
+    required(
+        "cardinality",
+        OneOf(&["one", "many", "keyed", "chain", "fanout", "optional"]),
+    ),
+    required(
+        "security",
+        OneOf(&["public", "internal", "sensitive", "restricted"]),
+    ),
+    required(
+        "failure",
+        OneOf(&["fail_closed", "isolate", "continue_chain", "best_effort"]),
+    ),
+    required(
+        "isolation",
+        OneOf(&["in_process", "process", "sandbox", "remote", "declarative"]),
+    ),
+    required("required_capabilities", array(&Nonempty, 0, true)),
+    required("lifecycle", Object),
+    optional("routing_keys", array(&Nonempty, 0, true)),
+    optional("instance_key", Nonempty),
+    optional("priority", Integer(i64::MIN)),
+    optional("before", array(&String, 0, true)),
+    optional("after", array(&String, 0, true)),
+];
+
+const ARTIFACT_INDEX: &[Field] = &[
+    required(
+        "index_api_version",
+        OneOf(&["io.tobkiri.pack-artifact-index.v4"]),
+    ),
+    required("pack_id", Id),
+    required("source_identity", Digest),
+    required("artifacts", array(&Closed(INDEX_ENTRY), 2, false)),
+    required("artifact_set_digest", Digest),
+    required("integrity_seal", Closed(INDEX_SEAL)),
+];
+
+const INDEX_ENTRY: &[Field] = &[
+    required("path", Nonempty),
+    required("digest", Digest),
+    required(
+        "role",
+        OneOf(&[
+            "canonical_manifest",
+            "contract_catalog",
+            "runtime",
+            "asset",
+            "schema",
+            "sidecar",
+            "host_contract_contribution",
+            "host_contract_update_metadata",
+        ]),
+    ),
+];
+
+const INDEX_SEAL: &[Field] = &[
+    required("algorithm", OneOf(&["sha256-canonical-v1"])),
+    required("signed_digest", Digest),
 ];
 
 const MANIFEST: &[Field] = &[
@@ -532,6 +728,20 @@ impl<S: OriginalAuthorityOwner> Validation<'_, '_, S> {
             RepositoryTree => lower_hex(regex_value, 64),
             Object => self.doc.entries(id).is_some(),
             Map(rule) => return self.check_fields(id, &[], Some(*rule)),
+            SchemaCatalog => {
+                let Some(entries) = self.doc.entries(id) else {
+                    return Ok(false);
+                };
+                for (key, value) in entries {
+                    charge(self.op, self.budget, 16 + key.0.len())?;
+                    if !digest_syntax(key.0.strip_suffix(&[10]).unwrap_or(&key.0))
+                        || self.doc.entries(*value).is_none()
+                    {
+                        return Ok(false);
+                    }
+                }
+                true
+            }
             Closed(fields) => return self.check_fields(id, fields, None),
             Array { items, min, unique } => {
                 return self.check_array(node, *items, min, unique);
@@ -797,6 +1007,12 @@ mod tests {
     const MANIFEST_BYTES: &[u8] = include_bytes!(
         "../../../tobkiri_runtime/tests/fixtures/conformance_minimal_echo_pack/pack.v4.json"
     );
+    const CONTRACTS_BYTES: &[u8] = include_bytes!(
+        "../../../tobkiri_runtime/tests/fixtures/conformance_minimal_echo_pack/contracts.v4.json"
+    );
+    const INDEX_BYTES: &[u8] = include_bytes!(
+        "../../../tobkiri_runtime/tests/fixtures/conformance_minimal_echo_pack/artifact-index.v4.json"
+    );
 
     fn assert_denial(error: OriginalAuthorityError, expected: &str) {
         assert_eq!(
@@ -812,6 +1028,95 @@ mod tests {
             panic!("original exception cause missing");
         };
         assert_eq!(message, expected);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn direct_compiler_reads_validated_documents_in_order_before_identity_checks() {
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let mut contracts: Value = serde_json::from_slice(CONTRACTS_BYTES).unwrap();
+            let source_identity = contracts["source_identity"].clone();
+            let other_source_identity = Value::from(format!("sha256:{}", "0".repeat(64)));
+            let cases = [
+                ("conformance.minimal.echo", source_identity, None),
+                (
+                    "another.pack",
+                    other_source_identity.clone(),
+                    Some("v4 artifact documents disagree on Pack identity"),
+                ),
+                (
+                    "conformance.minimal.echo",
+                    other_source_identity,
+                    Some("v4 artifact documents disagree on source identity"),
+                ),
+            ];
+            for (pack_id, source_identity, expected) in cases {
+                contracts["pack_id"] = Value::from(pack_id);
+                contracts["source_identity"] = source_identity;
+                let contracts = serde_json::to_vec(&contracts).unwrap();
+                let mut paths = [
+                    c"pack.v4.json",
+                    c"contracts.v4.json",
+                    c"artifact-index.v4.json",
+                    c"executables.v4.json",
+                ]
+                .into_iter();
+                let result = read_direct_definitions(
+                    |name| {
+                        assert_eq!(Some(name), paths.next());
+                        let bytes = match name.to_bytes() {
+                            b"pack.v4.json" => MANIFEST_BYTES,
+                            b"contracts.v4.json" => contracts.as_slice(),
+                            b"artifact-index.v4.json" => INDEX_BYTES,
+                            b"executables.v4.json" => EXECUTABLE_BYTES,
+                            _ => panic!("unexpected compiler file"),
+                        };
+                        let capacity = op.reserve(STAGE, bytes.len())?;
+                        Ok(Funded {
+                            value: Zeroizing::new(bytes.to_vec()),
+                            _capacity: capacity,
+                        })
+                    },
+                    &op,
+                    budget,
+                );
+                assert!(paths.next().is_none());
+                if let Some(expected) = expected {
+                    let error = result
+                        .err()
+                        .expect("compiler identity mismatch was accepted");
+                    assert!(matches!(
+                        error.cause.as_ref(),
+                        Some(OriginalAuthorityCause::Python { class, .. }) if *class == INVALID_ARTIFACT
+                    ));
+                    assert_denial(error, expected);
+                } else {
+                    assert!(result.is_ok());
+                }
+            }
+            let mut paths = [c"pack.v4.json", c"contracts.v4.json"].into_iter();
+            let error = read_direct_definitions(
+                |name| {
+                    assert_eq!(Some(name), paths.next());
+                    let bytes = if name == c"pack.v4.json" {
+                        MANIFEST_BYTES
+                    } else {
+                        b"[]"
+                    };
+                    let capacity = op.reserve(STAGE, bytes.len())?;
+                    Ok(Funded {
+                        value: Zeroizing::new(bytes.to_vec()),
+                        _capacity: capacity,
+                    })
+                },
+                &op,
+                budget,
+            )
+            .err()
+            .expect("non-object Contract catalog was accepted");
+            assert!(paths.next().is_none());
+            assert_denial(error, "serialized protocol document must be an object");
+        });
     }
 
     #[tokio::test(flavor = "current_thread")]

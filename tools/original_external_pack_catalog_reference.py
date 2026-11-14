@@ -78,6 +78,35 @@ def publisher(runtime):
     return namespace["_signed_external_pack"]
 
 
+def observe_artifact(external, owner, entry):
+    # Observe the ordinary compiler's actual read/validate order. Delegation
+    # retains the pinned compiler, arguments, and complete verification tail.
+    from tobkiri_host import artifact_compiler
+
+    observed_reads = []
+    original_validate = artifact_compiler.validate_file
+
+    def validate(path, schema):
+        observed_reads.append([path.name, schema])
+        return original_validate(path, schema)
+
+    artifact_compiler.validate_file = validate
+    try:
+        pack_id = "conformance.minimal.echo"
+        external._verify_entry_root(pack_id, entry, external._entry_root(entry, owner))
+    finally:
+        artifact_compiler.validate_file = original_validate
+    if observed_reads != [
+        ["pack.v4.json", "pack"],
+        ["contracts.v4.json", "pack_contract_catalog"],
+        ["artifact-index.v4.json", "pack_artifact_index"],
+        ["executables.v4.json", "executable_catalog"],
+    ]:
+        raise AssertionError("original direct compiler read sequence changed")
+    return {"outcome": "verified", "direct_reads": observed_reads,
+            "artifact_digest": entry["artifact_digest"]}
+
+
 def worker(original, owner, name, output):
     check_original(original)
     runtime = original / "tobkiri_runtime"
@@ -137,10 +166,8 @@ def worker(original, owner, name, output):
         external._read_json_nofollow, external.validate_document, external.load_signing_key = original_read, original_validate, original_key
     artifact_probe = None
     if name == "admitted" and expected["outcome"] == "success":
-        pack_id = "conformance.minimal.echo"
         entry = next(iter(expected["value"]["entries"].values()))
-        external._verify_entry_root(pack_id, entry, external._entry_root(entry, owner))
-        artifact_probe = "verified"
+        artifact_probe = observe_artifact(external, owner, entry)
     after = inventory(owner)
     if before != after:
         raise AssertionError("catalog read changed owner inventory")

@@ -60,9 +60,8 @@ struct PackRoot {
 }
 
 struct ArtifactDefinitions {
-    _executable: compiler::ExecutableCatalog,
-    _manifest: compiler::PackManifest,
-    _host_extension: bool,
+    _documents: compiler::DirectDefinitions,
+    _artifact_digest: tobkiri_canon::Digest,
 }
 
 #[cfg(test)]
@@ -209,9 +208,14 @@ mod tests {
                         }
                         assert_eq!(observed.first.is_some(), case["name"] == "admitted");
                         if let Some(root) = &observed.first {
-                            assert_eq!(case["artifact_probe"], "verified");
+                            assert_eq!(case["artifact_probe"]["outcome"], "verified");
                             let registry = observed._registry.as_ref().unwrap();
-                            read_artifact_definitions(&op, root, registry, budget).unwrap();
+                            let compiled_prefix =
+                                read_artifact_definitions(&op, root, registry, budget).unwrap();
+                            assert_eq!(
+                                compiled_prefix._artifact_digest.as_str(),
+                                case["artifact_probe"]["artifact_digest"].as_str().unwrap()
+                            );
                             // Compare the later physical inventory in isolation.
                             // In recovery the original compiler must run before it.
                             let root_fd = Parent::walk(&root.path, &op.cleanup).unwrap();
@@ -543,23 +547,166 @@ fn read_artifact_definitions<S: OriginalAuthorityOwner>(
             .is_some_and(|value| {
                 registry.string_is(value, "host-signed-external-host-extension-v4")
             });
-        let host_extension = compiler::require_external_catalog_identity(
+        compiler::require_external_catalog_identity(
             &executable,
             &manifest,
             host_extension_authority,
             op,
             budget,
         )?;
+        drop((executable, manifest));
+        let documents = compiler::read_direct_definitions(
+            |name| read_artifact_definition(op, &directory, &root.path, name, budget),
+            op,
+            budget,
+        )?;
+        let artifact_digest = check_artifact_pins(op, budget, &documents, || {
+            read_artifact_definition(op, &directory, &root.path, c"executables.v4.json", budget)
+        })?;
         Ok(ArtifactDefinitions {
-            _executable: executable,
-            _manifest: manifest,
-            _host_extension: host_extension,
+            _documents: documents,
+            _artifact_digest: artifact_digest,
         })
     })();
     finish_scope(
         definitions,
         directory.close().map_err(|error| raw_io(error, None)),
     )
+}
+
+fn check_artifact_pins<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    inputs: &compiler::DirectDefinitions,
+    read_executable: impl FnOnce() -> Result<Funded<Zeroizing<Vec<u8>>>>,
+) -> Result<tobkiri_canon::Digest> {
+    fn field(doc: &Document, parent: usize, key: &str) -> usize {
+        doc.get(parent, key).expect("schema-checked compiler input")
+    }
+    fn items(doc: &Document) -> &[usize] {
+        match doc.node(field(doc, doc.root, "artifacts")) {
+            Node::Array(items) => items,
+            _ => unreachable!("schema-checked artifacts"),
+        }
+    }
+    fn matches_digest(
+        doc: &Document,
+        parent: usize,
+        key: &str,
+        value: &tobkiri_canon::Digest,
+    ) -> bool {
+        doc.string_is(field(doc, parent, key), value.as_str())
+    }
+    let invalid = compiler::invalid_artifact;
+    let canonical_digest = |doc: &Document, node, omit| {
+        let levels = usize::BITS - doc.node_count().max(1).leading_zeros();
+        charge(
+            op,
+            budget,
+            doc.source_bytes().saturating_mul((levels as usize + 2) * 8),
+        )?;
+        let bytes = json::canonical_subtree(doc, node, omit, op)?;
+        if bytes.len() > MAX_BYTES {
+            return Err(caused(
+                model::denied("external Pack artifact digest verification failed"),
+                json::strict_error("canonical JSON exceeds size limit"),
+            ));
+        }
+        Ok(tobkiri_canon::Digest::hash(&bytes))
+    };
+    let executable = &inputs.executable;
+    let released_catalog = canonical_digest(executable, executable.root, Some("catalog_digest"))?;
+    if !matches_digest(
+        executable,
+        executable.root,
+        "catalog_digest",
+        &released_catalog,
+    ) {
+        return Err(invalid("executable catalog digest changed"));
+    }
+
+    let manifest = &inputs.manifest;
+    let index = &inputs.index;
+    let candidate = canonical_digest(manifest, field(manifest, manifest.root, "artifacts"), None)?;
+    let pack = field(manifest, manifest.root, "pack");
+    let integrity = field(manifest, manifest.root, "integrity");
+    if !matches_digest(manifest, pack, "artifact_digest", &candidate)
+        || !matches_digest(manifest, integrity, "artifact_set_digest", &candidate)
+        || !matches_digest(index, index.root, "artifact_set_digest", &candidate)
+    {
+        return Err(invalid("Pack artifact set digest is stale"));
+    }
+
+    let index_rows = items(index);
+    let paths_funding = op.reserve(
+        OriginalAuthorityStage::Source,
+        index_rows.len().saturating_mul(size_of::<&Text>()),
+    )?;
+    let mut paths = Vec::new();
+    paths
+        .try_reserve_exact(index_rows.len())
+        .map_err(capacity)?;
+    if paths.capacity() != index_rows.len() {
+        return Err(capacity(()));
+    }
+    let mut sidecar = None;
+    let mut longest = 0;
+    for &item in index_rows {
+        let Node::String(path) = index.node(field(index, item, "path")) else {
+            unreachable!("schema-checked artifact path");
+        };
+        charge(op, budget, path.0.len() + 1)?;
+        if path.0.is_empty() {
+            continue;
+        }
+        longest = longest.max(path.0.len());
+        paths.push(path);
+        if path.is("executables.v4.json") && index.string_is(field(index, item, "role"), "sidecar")
+        {
+            sidecar = Some(item);
+        }
+    }
+    charge(
+        op,
+        budget,
+        paths
+            .len()
+            .saturating_mul(usize::BITS as usize)
+            .saturating_mul(longest + 1),
+    )?;
+    paths.sort_unstable();
+    if paths.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(invalid("artifact index contains duplicate paths"));
+    }
+    drop(paths);
+    drop(paths_funding);
+    let sidecar =
+        sidecar.ok_or_else(|| invalid("artifact index does not pin executable catalog"))?;
+    charge(op, budget, items(manifest).len().saturating_mul(64))?;
+    let mut executable_rows = items(manifest)
+        .iter()
+        .copied()
+        .filter(|item| manifest.string_is(field(manifest, *item, "path"), "executables.v4.json"));
+    let manifest_pin = executable_rows
+        .next()
+        .filter(|_| executable_rows.next().is_none())
+        .ok_or_else(|| invalid("Pack manifest does not pin executable catalog"))?;
+
+    let bytes = read_executable()?;
+    charge(op, budget, bytes.len())?;
+    let physical = tobkiri_canon::Digest::hash(&bytes);
+    drop(bytes);
+    if !matches_digest(index, sidecar, "digest", &physical)
+        || !matches_digest(manifest, manifest_pin, "digest", &physical)
+    {
+        return Err(invalid("executable catalog artifact digest mismatch"));
+    }
+    let seal = field(index, index.root, "integrity_seal");
+    let unsigned = canonical_digest(index, index.root, Some("integrity_seal"))?;
+    if !matches_digest(index, seal, "signed_digest", &unsigned) {
+        return Err(invalid("artifact index integrity seal is invalid"));
+    }
+    Ok(candidate)
 }
 
 fn read_artifact_definition<S: OriginalAuthorityOwner>(
