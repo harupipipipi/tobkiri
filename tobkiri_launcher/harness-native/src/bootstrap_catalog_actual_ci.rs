@@ -479,6 +479,7 @@ async fn run_original_catalog_component_driver(
                     && rows.len() == 1
                     && id.as_str() == Some("recovery-test-profile")
                     && observation["authority_constructor_entries"] == 1
+                    && observation["next_stage"] == "active-reservation-entry"
                     && profiles.digest_guest(runtime.data_budget())?.as_str()
                         == observation["profile_rows_digest"].as_str().context("original Profile digest required")?
                     && user_data.join("authority/v4.sqlite3").is_file(),

@@ -3694,6 +3694,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [CI 43596134776](https://github.com/harupipipipi/tobkiri/actions/runs/43596134776)のオフライン
   CLI・ライブラリ実コンパイルが成功。従来2拡張と1.1在庫の同じ実行をCIで再確認中。
 
+- D-5 は `69fe1c9dd` で、Launcherの登録とHarnessの「普段使うモデル」の
+  適用範囲を日英の表示に追加した。[表示 CI 43604721250](https://github.com/harupipipipi/tobkiri/actions/runs/43604721250)を実行中。
+  B-6 のWasmプロンプトとProviderには同じモデル名が独立したPackデータとして保存され、
+  Providerは不一致を拒否する。Launcher側の既存のモデル登録はそのWasm設定に接続されていない。
+  接続先・Secret・モデルを獲得する箇所を一つの実Wasmターンに接続し、既存保存値と照合する。
+- A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
+  旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
+  現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。
+  通常のチャットもターンごとの時刻とヒントをシステム入力の先頭付近に挿入する。
+  実測のヒット率は未確認。実装では対応する公式ストリームだけで使用量を要求し、
+  明示設定と汎用互換・llama.cpp経路を維持する。対象 `rumi_provider_adapters_pack/runtime/adapter.py`
+  は現行と履歴の署名済みPack目録に固定されているため、既存の成果物を保存して新しい版で検証する。
+
 ## 040: 公開Profileへ混入しない既存データ
 
 - `crates/tobkiri-e2e/tests/storage_tiers.rs` に、既存の実Wasm経路で3段の値と承認を
@@ -3767,3 +3780,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `2e785d2c4` で残りを実エラーを検査する `expect_err` に揃えた。
   [再実行CI 43429417116](https://github.com/harupipipipi/tobkiri/actions/runs/43429417116)
   はLinux、macOS、厳格lint、Python Packの再生が成功し、最終ゲートで未移植を検出した。
+
+## 042: 復旧時の外部PackとAuthority
+
+- `81e9046df` は保持したWasm catalogでの既存Pack照会、署名済みNormal Packのcatalogと
+  CASの独立した再読、それぞれの依存順序の観測を追加した。外部のexecutable catalog再読と
+  全Packを含める `catalog_with_packs` の反映、既存Host Extensionの互換比較が残る。
+  [固定原本比較 CI 43604577547](https://github.com/harupipipipi/tobkiri/actions/runs/43604577547)で
+  原本が署名して登録した2 Packと独立した正規Host Extension更新を準備する。dispatcherはローカル81件が成功。
+- 同じコミットで、保存済みProfileを入れたcatalogを確認してからpublication lockの内側で
+  Authority DBを開閉し、元のworkspace有無まで進めた。実Wasmの検証では独立した原本を
+  Authorityの初期化から呼出しまで実行して比較する。Workspaceがない場合、原本の
+  `active_activation_reservation().fetchall()` が返す行は、この呼出し元では存在確認にのみ使われる。
+  後続の移植では候補ID、active状態、複数行のエラー、SQLiteの後半読み取りエラーを保持しながら、
+  行データの領域を呼出し元で確保せずに済む。activationの復旧と通常DMGの通し試験は未完了。

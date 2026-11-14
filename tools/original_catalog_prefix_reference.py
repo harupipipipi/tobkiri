@@ -47,7 +47,7 @@ class ProfileDefinitionBoundary(BaseException):
 
 
 def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
-    """Compare the live Profile projection immediately before original Authority."""
+    """Observe the live Profile projection and scoped Authority initialization."""
     check_original(original)
     runtime = fixtures.parent / "packaged-valid/reference/runtime"
     user_data = fixtures.parent / "packaged-valid/reference/user-data"
@@ -76,7 +76,9 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
     owner_type = type(port)
     catalog_with_profiles = owner_type.catalog_with_profiles
     authority = capture.AuthorityStore
+    original_read = authority.active_activation_reservation
     observed = []
+    authority_observations = []
 
     class AuthorityBoundary(BaseException):
         """The original has evaluated all arguments by this call."""
@@ -90,18 +92,33 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
         observed.append(canonical_digest([[key, value] for key, value in projected.profiles.items()]))
         return projected
 
-    def stop(path):
+    def open_authority(path):
         if path != user_data / "authority/v4.sqlite3" or len(observed) != 1:
             raise AssertionError("original Authority call or catalog order changed")
         if (_lock_free(user_data / "profiles/.bootstrap-publication.lock") is not False
                 or _lock_free(user_data / "profiles/.profile-definition.lock") is not True):
             raise AssertionError("original lock ownership changed before Authority")
+        return authority(path)
+
+    def stop_at_active_reservation(self, activation_id):
+        if (type(activation_id) is not str or not activation_id
+                or _lock_free(user_data / "profiles/.bootstrap-publication.lock") is not False
+                or not (user_data / "authority/v4.sqlite3").is_file()):
+            raise AssertionError("original active reservation call differs")
+        authority_observations.append("active-reservation-entry")
         raise AuthorityBoundary
 
-    before = filesystem(user_data)
+    def non_authority(root):
+        return [item for item in filesystem(root)["files"]
+                if item["path"] != "authority" and not item["path"].startswith("authority/")]
+
+    before = non_authority(user_data)
+    if (user_data / "authority").exists() or (native_data / "authority").exists():
+        raise AssertionError("Authority fixture must start absent")
     try:
         owner_type.catalog_with_profiles = observe
-        capture.AuthorityStore = stop
+        capture.AuthorityStore = open_authority
+        authority.active_activation_reservation = stop_at_active_reservation
         try:
             capture._recover_bootstrap_publication(discard_superseded=True)
         except AuthorityBoundary:
@@ -111,9 +128,13 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
     finally:
         owner_type.catalog_with_profiles = catalog_with_profiles
         capture.AuthorityStore = authority
-    if code_hashes(runtime) != hashes or before != filesystem(user_data):
+        authority.active_activation_reservation = original_read
+    if (code_hashes(runtime) != hashes or before != non_authority(user_data)
+            or authority_observations != ["active-reservation-entry"]
+            or _lock_free(user_data / "profiles/.bootstrap-publication.lock") is not True):
         raise AssertionError("original recovery altered the retained profile seed or source")
-    write_json(output, {"profile_rows_digest": observed[0], "authority_constructor_entries": 1})
+    write_json(output, {"profile_rows_digest": observed[0], "authority_constructor_entries": 1,
+                        "next_stage": authority_observations[0]})
 
 
 def code_hashes(runtime: Path) -> dict[str, str]:

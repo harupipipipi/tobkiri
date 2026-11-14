@@ -374,7 +374,7 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::catalog_actual_ci::original_catalog_component_driver
           -- --ignored --exact --test-threads=1 --nocapture
-      - name: Observe the original Profile replacement before Authority
+      - name: Observe original Profile replacement and Authority initialization
         id: recovery_catalog_reference
         if: ${{ !cancelled() && inputs.verification == 'recovery-catalog' && steps.catalog_prefix_reference.conclusion == 'success' }}
         run: >-
@@ -382,7 +382,7 @@ jobs:
           --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
           --fixtures "$RUNNER_TEMP/original-catalog-prefix/summary.json"
           --output "$RUNNER_TEMP/original-catalog-prefix/recovery-authority-reference.json"
-      - name: Replace the live Profile table in the actual retained catalog
+      - name: Replace the live Profile table and open the actual Authority database
         if: ${{ !cancelled() && steps.recovery_catalog_reference.conclusion == 'success' }}
         env:
           TOBKIRI_ORIGINAL_CATALOG_PREFIX_FIXTURES: ${{ runner.temp }}/original-catalog-prefix/summary.json
