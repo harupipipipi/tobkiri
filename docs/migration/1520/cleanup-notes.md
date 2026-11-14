@@ -3543,7 +3543,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   全件を確認してから時計を一度だけ読み、ハッシュを更新したindexを一回の書き換えで保存する。
   [レジストリ CI 43574843849](https://github.com/harupipipipi/tobkiri/actions/runs/43574843849)は
   両OSで履歴、再オープン時の重複生成なし、後の行が不正な場合の全体拒否を確認した。
-  固定Pythonとの書き込み全バイト比較と、廃止済みPack projectionの移行は残る。
+  `ddd598e52` の[原本比較CI 43592124848](https://github.com/harupipipipi/tobkiri/actions/runs/43592124848)
+  では、UbuntuとmacOSで固定Pythonと保存後の全バイトが一致し、再実行でも追加書き込みがなかった。
+- `62e997141` は廃止済み4種類のPackを既存Profileの中立projectionへ移す。元の定義ロック内で
+  runtime rootから実ファイルを読み、元の順序を保ってハッシュを照合する。各Profileの
+  immutableな履歴、既存descriptor、移行receipt、元のbootstrap metadataを保持して一回だけ
+  書き換える。後半の不正で全体を中断し、再実行では時刻の読取りも書込みも発生しない。
+  UTF-8で表せない相対名は未対応。読取り中の交換に対してはdirectory descriptorの一致も
+  確認する。原本の固定Pythonとの全バイト比較は
+  [CI 43593582219](https://github.com/harupipipipi/tobkiri/actions/runs/43593582219)で実行中。
+  `7b2e4f01e` は元の順に別の定義ロックで状態を読み直し、既存Profileのある場合は一覧の
+  手前、空のときはテンプレート検索の手前まで進む。
+  [CI 43594182859](https://github.com/harupipipipi/tobkiri/actions/runs/43594182859)で検証する。
+  次は同じRuntimeのgetter再呼出しと実catalogのsubscript、tombstone込みの照会・
+  別ロックでの初版保存、競合時だけの再読取りを接続する。さらに旧定義のimport、旧successor
+  builder、外部カタログ採用が残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
@@ -3566,10 +3580,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [契約 CI 43574843792](https://github.com/harupipipipi/tobkiri/actions/runs/43574843792)で
   4件が通過した。Pi では既存の `load()` がコマンド名だけ返すため、説明文を表示するには
   wrapperとadapterの両方で一覧操作を受け渡し、対応するWITをPackに登録する必要がある。
-- B-4 / C-11 は、`crates/tobkiri-profile/src/compile.rs` が `many` の候補を複数確定し、
-  CoreがGateに登録するところまで実装されている。`crates/tobkiri-wasm/src/host.rs` の
-  dispatchは候補が複数だと選択先がなく拒否する。選択したPackをFlowとPackの入力から
-  初回admissionと最終dispatchまで結び付け、既存の単一選択と権限検査を維持する。
+  `d27bc058c` と `7a4eb2ac1` はopt-inのPi wrapperとWasm adapterにツールおよび
+  コマンド一覧を接続した。コマンド説明を登録から取り出すNode試験4件は成功。
+  [従来のPi再生CI 43593497033](https://github.com/harupipipipi/tobkiri/actions/runs/43593497033)は
+  ピン留めされた2拡張で成功した。新しい実Wasmの
+  [CI 43593582212](https://github.com/harupipipipi/tobkiri/actions/runs/43593582212)はmacOSで
+  同じhello拡張のツールとスキーマ、空のコマンド一覧、従来呼出しの照合に通過した。
+  通常のHarnessターンとの接続は残る。
+- B-4 / C-11 は、`de1f3a75e` でProfileにproviderの集合を明示できるようにし、
+  `4f9fb7557` でFlowの `call.provider` を追加した。初回admissionと最終dispatchで
+  Pack ID、ハッシュ、提供ビューを照合する。[契約 CI 43592612365](https://github.com/harupipipipi/tobkiri/actions/runs/43592612365)は
+  非バインドの拒否と、明示時に最新の互換minorを選ぶコンパイラ試験に通過した。
+  [実Wasm CI 43592612356](https://github.com/harupipipipi/tobkiri/actions/runs/43592612356)は
+  2つのproviderと、未選択時にどちらも実行しないことを確認した。
+  `089f5187f` は2つのPackの応答値を区別し、監査行の対象操作と実行回数も検証する。
+  [追加検証CI 43593496962](https://github.com/harupipipipi/tobkiri/actions/runs/43593496962)を実行中。
+  ゲストからの動的呼び出し先選択は残る。最高の互換minorの検索はCore、Wasm Host、明示Flowの
+  コンパイラにあり、共通化前に省略時の固定済みwitnessと既存の選択結果を比較する。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
@@ -3586,6 +3613,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実画面の状態が届かない。`5bcc4f786` に仕様と試験を記録し、
   [実Pi CI 43574843811](https://github.com/harupipipipi/tobkiri/actions/runs/43574843811)で
   現状の動作を確認した。実画面の状態を渡す接続は未実装。
+- C-2 は `99cfd5f65` で、承認されたUI assetと可変なユーザーデータの境界、
+  廃止された動的Pythonツールのエラーと移行先をドキュメントに反映した。
+- C-15、C-16、D-6の一部は `77125f304`。Pack UIは親からの接続待ちを10秒で
+  終え、接続失敗を表示する。最初の応答を待つpullは最大300秒とし、Coreが元の
+  deadlineとキャンセルを適用する。停止・失敗時は未保存の行を外して下書きを維持する。
+  SDK、Harness UI、native source、Pi inventoryのローカル試験37件が成功。
+  C-14の同じSDKコピーは、汎用SDK、Harness Pack、native試験Packの3か所にある。
+  同じmanifestの自己完結と、既存のnative検証に使うbytes一致を保てる生成範囲を
+  決めてから追跡済みコピーを削る。固定会話IDの置換は保存済み履歴の互換と実1B
+  検証の会話IDを一緒に扱う。
 
 ## 040: 公開Profileへ混入しない既存データ
 

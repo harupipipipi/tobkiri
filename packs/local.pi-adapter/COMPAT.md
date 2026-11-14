@@ -24,6 +24,17 @@ for protected paths, plus proof that an allowed write still receives the ordinar
 fs grant and approval. The current guard-decision replay does not prove those
 file effects or the complete Harness tool loop.
 
+The opt-in inventory build exposes `list-tools` through
+`local.harness-agent.tool-provider@1.1` and `list-commands` through
+`local.harness-chat.command-provider@1.1`. Their results describe registrations:
+tool name, label, description and argument schema, or command name and
+description. The normal invocation and tool-call guard remain available. Use
+`python3 -B packs/build.py --pi-discovery` to build the adapter and shape owners,
+and `node sdk/js/wrap-pi.mjs --command-inventory <pack-directory>` to prepare a
+wrapper with the required `local.pi-adapter.command-inventory@1.1` port. The
+Profile must bind that port to the wrapper and grant it to the adapter. The
+default build and existing wrappers continue to use the 1.0 contract.
+
 Only `ctx.ui.notify` is mapped; other `ctx.ui` methods throw even when an
 event's caller passes `has-ui: true`. The flag is supplied by that caller and
 is not evidence that a display is present or that notification delivery is
