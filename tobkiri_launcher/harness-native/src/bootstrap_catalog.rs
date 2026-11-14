@@ -504,8 +504,8 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
                 BootstrapReviewReachpoint::RepairLegacyDisplayNamesNotBound
             }
             #[cfg(unix)]
-            DefinitionRecovery::MigrateRetiredPackProjections => {
-                BootstrapReviewReachpoint::MigrateRetiredPackProjectionsNotBound
+            DefinitionRecovery::BootstrapState => {
+                BootstrapReviewReachpoint::ProfileBootstrapStateNotBound
             }
         }))),
         Err(error) => {

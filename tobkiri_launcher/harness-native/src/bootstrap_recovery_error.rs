@@ -102,6 +102,9 @@ fn planned<'a>(
                 INTEGRITY => ActiveProfileStoreIntegrityError,
                 LOCK_TIMEOUT => ActiveProfileStoreLockTimeout,
                 "builtins.ValueError" => ValueError,
+                "core_runtime.profile_content_projection.ProfileContentProjectionError" => {
+                    ProfileContentProjectionError
+                }
                 "tobkiri_protocol.errors.ProtocolError" => ProtocolError,
                 "tobkiri_protocol.errors.CanonicalizationError" => CanonicalizationError,
                 // Registry RuntimeError subclasses, JSON/Unicode errors whose

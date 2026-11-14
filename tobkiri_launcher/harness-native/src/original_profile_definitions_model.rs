@@ -10,6 +10,9 @@ pub(super) use successor_selection::select_successor;
 #[path = "original_profile_definitions_display_names.rs"]
 mod display_names;
 pub(super) use display_names::prepare_display_name_repair;
+#[path = "original_profile_definitions_retired.rs"]
+mod retired;
+pub(super) use retired::prepare_retired_pack_migration;
 
 const SCHEMA: &str = "io.tobkiri.profile-definition-store.v1";
 pub(super) const CONFLICT: &str =
@@ -1104,6 +1107,32 @@ fn encode_successors(
     changed: i64,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<CoreBuffer> {
+    let legacy = snapshot
+        .get_key("legacy")
+        .expect("validated legacy metadata");
+    let bootstrap = CoreValue::parse_guest(
+        br#"{"state":"not_required","template_profile_revision":null}"#,
+        budget,
+    )
+    .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
+    encode_state(
+        snapshot,
+        profiles,
+        timestamp,
+        changed,
+        [legacy, bootstrap],
+        budget,
+    )
+}
+
+fn encode_state(
+    snapshot: &CoreValue,
+    profiles: CoreValue,
+    timestamp: &CoreValue,
+    changed: i64,
+    [legacy, bootstrap]: [CoreValue; 2],
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer> {
     let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
     let generation = snapshot
         .get_key("generation")
@@ -1116,11 +1145,6 @@ fn encode_successors(
             json::strict_error("integer exceeds I-JSON safe range; use a canonical decimal string")
         })?;
     let generation = CoreValue::int(generation, budget).map_err(capacity)?;
-    let bootstrap = CoreValue::parse_guest(
-        br#"{"state":"not_required","template_profile_revision":null}"#,
-        budget,
-    )
-    .map_err(capacity)?;
     let snapshot = snapshot.object().expect("validated registry");
     let keys = [
         "schema",
@@ -1138,6 +1162,7 @@ fn encode_successors(
                     "generation" => generation.share(),
                     "updated_at" => timestamp.share(),
                     "profiles" => profiles.share(),
+                    "legacy" => legacy.share(),
                     "bootstrap" => bootstrap.share(),
                     _ => snapshot.get(key).expect("validated registry field"),
                 },

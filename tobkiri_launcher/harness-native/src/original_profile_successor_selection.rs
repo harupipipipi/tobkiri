@@ -82,7 +82,7 @@ fn unhashable(message: &'static str) -> OriginalAuthorityError {
 
 // The arena's object fields are a physical list. Meter their actual scan,
 // including arbitrary source keys and the current profile's version lookup.
-fn lookup<S: OriginalAuthorityOwner>(
+pub(super) fn lookup<S: OriginalAuthorityOwner>(
     doc: &Document,
     object: usize,
     name: &str,

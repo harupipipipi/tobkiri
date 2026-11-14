@@ -431,6 +431,7 @@ fn recovery_error(error: OriginalAuthorityError) -> OriginalAuthorityError {
             error.class,
             "builtins.ValueError"
                 | "builtins.FileNotFoundError"
+                | "core_runtime.profile_content_projection.ProfileContentProjectionError"
                 | "tobkiri_protocol.errors.CanonicalizationError"
                 | "tobkiri_protocol.secure_persistence.SecurePersistenceError"
                 | "core_runtime.hmac_key_manager.SigningKeyError"

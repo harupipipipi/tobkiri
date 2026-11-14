@@ -8,6 +8,7 @@ name: Issue 1520 original Profile definition prefix
       - tools/original_profile_definition_prefix_reference.py
       - tools/original_profile_successor_entry_reference.py
       - tools/original_profile_display_name_reference.py
+      - tools/original_profile_retired_projection_reference.py
       - tobkiri_launcher/harness-native/src/bootstrap_catalog.rs
       - tobkiri_launcher/harness-native/src/bootstrap_review*.rs
       - tobkiri_launcher/harness-native/src/original_active_profile.rs
@@ -87,9 +88,10 @@ jobs:
       - name: Verify native definition constructors and held journal lock mechanics
         env:
           TOBKIRI_DISPLAY_NAME_REPAIR_FIXTURE: ${{ runner.temp }}/original-profile-display-name
+          TOBKIRI_RETIRED_PROJECTION_MIGRATION_FIXTURE: ${{ runner.temp }}/original-profile-retired-projection
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-definitions-unit.log" --expected-passed 8 --
+          --log "$RUNNER_TEMP/native-definitions-unit.log" --expected-passed 11 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::tests
           -- --test-threads=1 --nocapture
@@ -98,6 +100,11 @@ jobs:
           python3 -B tools/original_profile_display_name_reference.py
           --original-root "$GITHUB_WORKSPACE/original-definitions-source"
           --fixture "$RUNNER_TEMP/original-profile-display-name"
+      - name: Compare native retired Pack projection writes with the fixed original registry
+        run: >-
+          python3 -B tools/original_profile_retired_projection_reference.py
+          --original-root "$GITHUB_WORKSPACE/original-definitions-source"
+          --fixture "$RUNNER_TEMP/original-profile-retired-projection"
       - name: Check fresh Setup root custody and original pointer errors
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -162,6 +169,7 @@ jobs:
             ${{ runner.temp }}/original-profile-definitions/comparison.json
             ${{ runner.temp }}/original-profile-successor-entry/summary.json
             ${{ runner.temp }}/original-profile-display-name/comparison.json
+            ${{ runner.temp }}/original-profile-retired-projection/comparison.json
             ${{ runner.temp }}/native-definitions-unit.log*
             ${{ runner.temp }}/native-definitions-json.log*
             ${{ runner.temp }}/native-definitions-reference.log*

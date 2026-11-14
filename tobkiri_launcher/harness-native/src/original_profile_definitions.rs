@@ -14,6 +14,9 @@ mod definitions_model;
 #[cfg(all(test, unix))]
 #[path = "original_inactive_registration_ci.rs"]
 mod inactive_registration_ci;
+#[cfg(unix)]
+#[path = "original_profile_definitions_projection_io.rs"]
+mod projection_io;
 #[cfg(all(test, unix))]
 #[path = "original_publication_begin_ci.rs"]
 mod publication_begin_ci;
@@ -35,7 +38,7 @@ pub(crate) enum DefinitionRecovery {
     SuccessorBuilder(SuccessorCandidate),
     RepairLegacyDisplayNames,
     #[cfg(unix)]
-    MigrateRetiredPackProjections,
+    BootstrapState,
 }
 
 /// Funded DATA for the unbound successor builder on the same review.
@@ -151,7 +154,12 @@ fn recover_at<S: crate::BootstrapReviewOwner>(
     match store.select_successor(op, budget)? {
         DefinitionRecovery::RepairLegacyDisplayNames => {
             store.repair_display_names(op, budget, registry_time)?;
-            Ok(DefinitionRecovery::MigrateRetiredPackProjections)
+            store.migrate_retired_pack_projections(op, budget, registry_time, |retirement| {
+                op.owner.with_original_catalog_source(|source| {
+                    projection_io::inventory(op, source.runtime, retirement.directory, budget)
+                })?
+            })?;
+            Ok(DefinitionRecovery::BootstrapState)
         }
         next => Ok(next),
     }
@@ -537,12 +545,35 @@ impl Store {
         budget: &Arc<dyn AllocationBudget>,
         clock: impl FnOnce() -> Result<i64>,
     ) -> Result<usize> {
+        self.update_definitions(op, budget, |state| {
+            definitions_model::prepare_display_name_repair(op, state, budget, clock)
+        })
+    }
+
+    fn migrate_retired_pack_projections<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+        clock: impl FnOnce() -> Result<i64>,
+        inventory: impl FnMut(&projection_io::Retirement) -> Result<(Digest, usize)>,
+    ) -> Result<usize> {
+        self.update_definitions(op, budget, |state| {
+            definitions_model::prepare_retired_pack_migration(op, state, budget, clock, inventory)
+        })
+    }
+
+    fn update_definitions<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+        prepare: impl FnOnce(
+            &definitions_model::State,
+        ) -> Result<Option<(usize, tobkiri_canon::CoreBuffer)>>,
+    ) -> Result<usize> {
         let mut lock = self.lock(op)?;
         let result = (|| {
             let state = self.read_state(op, budget)?;
-            let prepared =
-                definitions_model::prepare_display_name_repair(op, &state, budget, clock)?;
-            let Some((count, output)) = prepared else {
+            let Some((count, output)) = prepare(&state)? else {
                 return Ok(0);
             };
             drop(state);

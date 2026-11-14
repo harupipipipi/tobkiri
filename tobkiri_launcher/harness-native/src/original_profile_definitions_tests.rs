@@ -17,6 +17,7 @@ impl NativeSetupLease for Portable {
 }
 pub(super) struct Source {
     pub(super) root: PathBuf,
+    runtime: PathBuf,
 }
 impl OriginalAuthorityOwner for Source {
     fn with_original_user_data<R>(&self, f: impl FnOnce(&Path) -> R) -> Result<R> {
@@ -29,6 +30,17 @@ impl OriginalAuthorityOwner for Source {
 impl crate::BootstrapReviewOwner for Source {
     fn with_original_review_user_data<R>(&self, f: impl FnOnce(&Path) -> R) -> Result<R> {
         Ok(f(&self.root))
+    }
+
+    fn with_original_catalog_source<R>(
+        &self,
+        use_source: impl for<'host> FnOnce(crate::BootstrapCatalogSource<'host>) -> R,
+    ) -> Result<R> {
+        Ok(use_source(crate::BootstrapCatalogSource {
+            runtime: &self.runtime,
+            environment: "development",
+            configured_app: None,
+        }))
     }
 }
 pub(super) fn with_source(
@@ -43,8 +55,10 @@ pub(super) fn with_setup_source(
     run: impl FnOnce(&Source, &mut PublicationRead, &CoreCancellation, &Arc<dyn AllocationBudget>),
 ) {
     let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().canonicalize().unwrap().join("user-data");
     let source = Source {
-        root: temporary.path().canonicalize().unwrap().join("user-data"),
+        runtime: root.join("runtime"),
+        root,
     };
     let control = CoreControl::default();
     let account = CapacityLedger::new()
@@ -597,5 +611,275 @@ async fn registry_snapshot_postyield_validation_is_normal_only_and_always_closes
             assert!(read.receipt().verified());
             assert!(lock_free(&profiles.join("held-definition-lock")));
         }
+    });
+}
+
+fn profile_packs(row: &mut Value, packs: Value) {
+    row["revisions"][0]["profile"]["packs"] = packs;
+    let revision = digest(&row["revisions"][0]["profile"]);
+    row["revisions"][0]["profile_revision"] = json!(revision);
+    row["current_revision"] = json!(revision);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_retired_pack_migration_publishes_python_canonical_receipts() {
+    with_source(|source, read, cancel, budget| {
+        let runtime = source.root.join("runtime");
+        let local = runtime.join("profile_projections/local-agent");
+        let reference = runtime.join("profile_projections/reference-ui");
+        fs::create_dir_all(local.join("a")).unwrap();
+        fs::create_dir_all(&reference).unwrap();
+        fs::write(local.join("a/é.md"), b"nested").unwrap();
+        fs::write(local.join("a.txt"), b"top").unwrap();
+        fs::write(
+            reference.join("existing"),
+            b"ignored descriptor still verified",
+        )
+        .unwrap();
+
+        let mut first = entry("first", 5);
+        profile_packs(
+            &mut first,
+            json!([
+                "rumi_reference_ui_pack",
+                {"pack_id":"defaultspack","role":"application"},
+                {"pack_id":"rumi_local_agent_pack","role":"provider"},
+                "rumi_local_agent_pack",
+                {"pack_id":null}, false
+            ]),
+        );
+        let existing = json!({
+            "projection_id":"tobkiri.ui-projection.reference.v1","arbitrary":true
+        });
+        first["revisions"][0]["profile"]["content_projections"] = json!([17, existing, {"projection_id":"000-existing"}, {"projection_id":"000-existing","also":true}]);
+        let revision = digest(&first["revisions"][0]["profile"]);
+        first["revisions"][0]["profile_revision"] = json!(revision);
+        first["current_revision"] = json!(revision);
+        let mut second = entry("second", 1);
+        profile_packs(&mut second, json!(["rumi_local_agent_pack"]));
+        let mut untouched = entry("untouched", 2);
+        profile_packs(
+            &mut untouched,
+            json!(["keep", {"pack_id":["rumi_local_agent_pack"]}]),
+        );
+        let mut before = state(vec![first, second, untouched]);
+        before["generation"] = json!(7);
+        before["legacy"] = json!({
+            "projection_migrations": [["unrelated", {"source":"old"}]],
+            "opaque": [true, 1]
+        });
+        let before_bytes = sealed(before.clone());
+        write_index(source, &before_bytes);
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let mut publication = PublicationLock::acquire(&op, &store.directory).unwrap();
+        let definition_lock = source.root.join("profiles/.profile-definition.lock");
+        let publication_lock = source.root.join("profiles").join(LOCK);
+        let index = source.root.join("profiles").join(INDEX);
+        let mut inventories = Vec::new();
+        let count = store
+            .migrate_retired_pack_projections(
+                &op,
+                budget,
+                || {
+                    assert!(!lock_free(&definition_lock));
+                    assert!(!lock_free(&publication_lock));
+                    assert_eq!(fs::read(&index).unwrap(), before_bytes);
+                    Ok(1700000400)
+                },
+                |retirement| {
+                    assert!(!lock_free(&definition_lock));
+                    assert!(!lock_free(&publication_lock));
+                    inventories.push(retirement.pack);
+                    projection_io::inventory(&op, &runtime, retirement.directory, budget)
+                },
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(
+            inventories,
+            [
+                "rumi_local_agent_pack",
+                "rumi_reference_ui_pack",
+                "rumi_local_agent_pack"
+            ]
+        );
+
+        let local_digest = digest(&json!([
+            {"path":"a/é.md","digest":Digest::hash(b"nested").as_str()},
+            {"path":"a.txt","digest":Digest::hash(b"top").as_str()}
+        ]));
+        let descriptor = json!({
+            "projection_id":"tobkiri.profile-content.local-agent.v1",
+            "kind":"profile_content",
+            "artifact_root":"profile_projections/local-agent",
+            "content_digest":local_digest,
+            "file_count":2,
+            "source_legacy_pack_id":"rumi_local_agent_pack"
+        });
+        let migration = "retired-declarative-packs-to-profile-projections-v1";
+        let mut expected = before;
+        let mut receipts = Vec::new();
+        for (position, packs, projections, ids) in [
+            (
+                0,
+                json!([{"pack_id":"defaultspack","role":"application"},{"pack_id":null},false]),
+                json!([{"projection_id":"000-existing"},{"projection_id":"000-existing","also":true},descriptor,existing]),
+                json!(["rumi_local_agent_pack", "rumi_reference_ui_pack"]),
+            ),
+            (
+                1,
+                json!([]),
+                json!([descriptor]),
+                json!(["rumi_local_agent_pack"]),
+            ),
+        ] {
+            let entry = &mut expected["profiles"][position];
+            let prior = entry["current_revision"].clone();
+            let mut profile = entry["revisions"][0]["profile"].clone();
+            profile["packs"] = packs;
+            profile["content_projections"] = projections;
+            let successor = digest(&profile);
+            entry["current_revision"] = json!(successor);
+            entry["updated_at"] = json!(1700000400);
+            entry["revisions"].as_array_mut().unwrap().push(json!({
+                "profile_revision":successor,"parent_revision":prior,"profile":profile,
+                "created_at":1700000400,"updated_at":1700000400,"tombstone":false
+            }));
+            receipts.push(json!({
+                "migration_id":migration,"profile_id":entry["profile_id"],"profile_revision":successor,
+                "prior_profile_revision":prior,"migrated_pack_ids":ids,"migrated_count":ids.as_array().unwrap().len(),
+                "pre_state_digest":prior,"post_state_digest":successor,"rollback_digest":prior
+            }));
+        }
+        expected["legacy"]["projection_migrations"] = json!({"unrelated":{"source":"old"}});
+        expected["legacy"]["projection_migrations"][migration] = json!({
+            "migration_id":migration,"compatibility_release":"v1.10.3",
+            "remove_no_earlier_than_release":"v1.10.4","sunset_at":"2026-10-31",
+            "profile_count":2,"migrated_count":3,"receipts":receipts
+        });
+        expected["generation"] = json!(9);
+        expected["updated_at"] = json!(1700000400);
+        let mut expected_bytes = sealed(expected);
+        expected_bytes.push(b'\n');
+        let actual_bytes = fs::read(&index).unwrap();
+        assert_eq!(actual_bytes, expected_bytes);
+        if let Some(output) = std::env::var_os("TOBKIRI_RETIRED_PROJECTION_MIGRATION_FIXTURE") {
+            let output = PathBuf::from(output);
+            fs::create_dir(&output).unwrap();
+            fs::write(output.join("before.json"), &before_bytes).unwrap();
+            fs::write(output.join("rust.json"), &actual_bytes).unwrap();
+        }
+        let reopened = Store::new(&op, &source.root).unwrap();
+        assert_eq!(
+            reopened
+                .migrate_retired_pack_projections(
+                    &op,
+                    budget,
+                    || panic!("no clock on replay"),
+                    |_| panic!("no inventory on replay"),
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(fs::read(&index).unwrap(), actual_bytes);
+        assert!(lock_free(&definition_lock));
+        publication.close().unwrap();
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_retired_pack_migration_rejects_a_later_symlink_without_publishing() {
+    use std::os::unix::fs::symlink;
+
+    with_source(|source, read, cancel, budget| {
+        let runtime = source.root.join("runtime");
+        let local = runtime.join("profile_projections/local-agent");
+        let reference = runtime.join("profile_projections/reference-ui");
+        fs::create_dir_all(&local).unwrap();
+        fs::create_dir_all(&reference).unwrap();
+        fs::write(local.join("stable"), b"fixed").unwrap();
+        symlink(local.join("stable"), reference.join("linked")).unwrap();
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let mut publication = PublicationLock::acquire(&op, &store.directory).unwrap();
+        let mut first = entry("first", 0);
+        let mut second = entry("second", 1);
+        profile_packs(&mut first, json!(["rumi_local_agent_pack"]));
+        profile_packs(&mut second, json!(["rumi_reference_ui_pack"]));
+        let input = sealed(state(vec![first, second]));
+        write_index(source, &input);
+        let error = store
+            .migrate_retired_pack_projections(
+                &op,
+                budget,
+                || panic!("no timestamp before validation"),
+                |retirement| projection_io::inventory(&op, &runtime, retirement.directory, budget),
+            )
+            .unwrap_err();
+        assert_eq!(error.class, projection_io::PROJECTION_ERROR);
+        assert_eq!(error.message, "Profile projection contains a symlink");
+        assert_eq!(
+            fs::read(source.root.join("profiles").join(INDEX)).unwrap(),
+            input
+        );
+        assert!(lock_free(
+            &source.root.join("profiles/.profile-definition.lock")
+        ));
+        assert!(!lock_free(&source.root.join("profiles").join(LOCK)));
+        publication.close().unwrap();
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_retired_pack_migration_runs_in_original_recovery_order() {
+    with_source(|source, read, cancel, budget| {
+        let local = source.runtime.join("profile_projections/local-agent");
+        fs::create_dir_all(&local).unwrap();
+        fs::write(local.join("fixed"), b"new runtime artifact").unwrap();
+        let mut first = entry("first", 0);
+        first["revisions"][0]["profile"]["display_name"] = json!({"ja":"日本語","en":"First"});
+        profile_packs(&mut first, json!(["rumi_local_agent_pack"]));
+        let input = sealed(state(vec![first]));
+        write_index(source, &input);
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let mut publication = PublicationLock::acquire(&op, &store.directory).unwrap();
+        assert!(matches!(
+            recover(read, source, cancel, budget).unwrap(),
+            DefinitionRecovery::BootstrapState
+        ));
+        let path = source.root.join("profiles").join(INDEX);
+        let actual: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        let revisions = actual["profiles"][0]["revisions"].as_array().unwrap();
+        assert_eq!(revisions.len(), 3);
+        assert_eq!(
+            revisions[0]["profile"]["display_name"],
+            json!({"ja":"日本語","en":"First"})
+        );
+        assert_eq!(revisions[1]["profile"]["display_name"], "日本語");
+        assert_eq!(revisions[1]["profile"]["packs"][0], "rumi_local_agent_pack");
+        assert_eq!(
+            revisions[2]["parent_revision"],
+            revisions[1]["profile_revision"]
+        );
+        assert_eq!(revisions[2]["profile"]["packs"], json!([]));
+        let projection = &revisions[2]["profile"]["content_projections"][0];
+        assert_eq!(
+            projection["projection_id"],
+            "tobkiri.profile-content.local-agent.v1"
+        );
+        assert_eq!(
+            projection["content_digest"],
+            digest(&json!([{
+                "path":"fixed","digest":Digest::hash(b"new runtime artifact").as_str()
+            }]))
+        );
+        assert_eq!(actual["generation"], 3);
+        assert!(lock_free(
+            &source.root.join("profiles/.profile-definition.lock")
+        ));
+        assert!(!lock_free(&source.root.join("profiles").join(LOCK)));
+        publication.close().unwrap();
     });
 }
