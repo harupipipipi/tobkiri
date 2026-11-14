@@ -683,6 +683,9 @@ def _observe_publication_checks(
     load = port_type.load_catalog
     begin = ProfilePublicationJournal.begin
     capture_code = capture._capture_bootstrap_profile.__code__
+    candidate_code = capture._bootstrap_review_candidate.__code__
+    host_catalog_code = capture.host_profile_catalog.__code__
+    read_bytes = Path.read_bytes
     lock = bundle / "bundle.lock.json"
     lock_before = lock.read_bytes()
     publication_lock = "profiles/.bootstrap-publication.lock"
@@ -736,6 +739,7 @@ def _observe_publication_checks(
         before = copy.deepcopy(approved)
         host_catalog_seen = False
         reread = None
+        reread_digest = None
         candidate = None
         events = []
 
@@ -745,6 +749,10 @@ def _observe_publication_checks(
             # Host catalog loader still use their actual inputs and behavior.
             caller = sys._getframe(1).f_code
             result = load(self, location)
+            if caller is candidate_code:
+                events.append("load-resolver-catalog")
+            elif caller is host_catalog_code:
+                events.append("load-host-catalog")
             if caller is not capture_code:
                 return result
             if location != bundle or not host_catalog_seen:
@@ -761,6 +769,16 @@ def _observe_publication_checks(
             reread = result
             return result
 
+        def watch_read(path: Path) -> bytes:
+            nonlocal reread_digest
+            result = read_bytes(path)
+            if sys._getframe(1).f_code is capture_code and path == lock:
+                if reread is None or reread_digest is not None or _lock_free(root / publication_lock) is not False:
+                    raise AssertionError("original lock reread is outside the confirmed catalog")
+                events.append("reread-bundle-lock-under-publication-lock")
+                reread_digest = "sha256:" + hashlib.sha256(result).hexdigest()
+            return result
+
         def watch_host_catalog(*args: Any, **kwargs: Any) -> Any:
             nonlocal host_catalog_seen
             if _lock_free(root / publication_lock) is not False or host_catalog_seen:
@@ -768,6 +786,7 @@ def _observe_publication_checks(
             events.append("materialize-host-catalog")
             result = host_catalog(*args, **kwargs)
             host_catalog_seen = True
+            events.append("materialized-host-catalog")
             return result
 
         def stop_begin(
@@ -792,7 +811,7 @@ def _observe_publication_checks(
                 profile_id != approved["profile_id"]
                 or plan_digest != approved["plan_digest"]
                 or definition_digest != canonical_digest(reread.profiles[profile_id])
-                or bundle_digest != "sha256:" + hashlib.sha256(lock_before).hexdigest()
+                or bundle_digest != reread_digest
                 or activation_id != f"activation:{profile_id}-{plan_digest[7:23]}"
             ):
                 raise AssertionError("original publication candidate identities differ")
@@ -835,6 +854,7 @@ def _observe_publication_checks(
                 }),
                 patch.object(port_type, "load_catalog", load_catalog),
                 patch.object(capture, "host_profile_catalog", watch_host_catalog),
+                patch.object(Path, "read_bytes", watch_read),
                 patch.object(ProfilePublicationJournal, "begin", stop_begin),
             ):
                 capture.capture_bootstrap_profile(confirmation=approved)
@@ -855,18 +875,25 @@ def _observe_publication_checks(
                 lock.write_bytes(lock_before)
         after = _inventory(root, [*kept, publication_lock])
         same_entries = all(after[name] == existing[name] for name in kept)
-        expected_events = [] if case in {"stale-confirmation", "stale-intent"} else [
-            "materialize-host-catalog", "reread-catalog-under-publication-lock",
-        ]
+        expected_events = [] if case == "stale-intent" else ["load-resolver-catalog"]
+        expected_digest = None
+        if case not in {"stale-intent", "stale-confirmation"}:
+            expected_events.extend([
+                "materialize-host-catalog", "load-host-catalog", "materialized-host-catalog",
+                "reread-catalog-under-publication-lock", "reread-bundle-lock-under-publication-lock",
+            ])
+            actual_lock = lock_before + b"\n" if case == "changed-lock" else lock_before
+            expected_digest = "sha256:" + hashlib.sha256(actual_lock).hexdigest()
         if case == "matched":
             expected_events.append("before-first-publication-intent")
         if (
-            events != expected_events or approved != before or not same_entries
+            events != expected_events or reread_digest != expected_digest
+            or approved != before or not same_entries
             or _lock_free(root / publication_lock) is not True
             or lock.read_bytes() != lock_before
         ):
             raise AssertionError((case, "capture altered its inputs or publication sequence"))
-        rows.append({"case": case, "events": events, "outcome": outcome})
+        rows.append({"case": case, "events": events, "reread_bundle_digest": reread_digest, "outcome": outcome})
     return rows
 
 
