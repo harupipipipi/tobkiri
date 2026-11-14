@@ -1,0 +1,17 @@
+package local:harness-agent@1.1.0;
+
+/// Tool inventory is descriptive metadata; it does not authorize invocation.
+interface tool-provider {
+  use tobkiri:core/types@1.0.0.{error, json};
+
+  /// The input schema uses the same JSON representation as pi-extension.
+  record tool-definition {
+    name: string,
+    label: string,
+    description: string,
+    parameters: json,
+  }
+
+  invoke: func(call: json) -> result<json, error>;
+  list-tools: func() -> result<list<tool-definition>, error>;
+}
