@@ -3418,7 +3418,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   アクション、クリップボード書き込み、承認IPCを持たず、表示に失敗した場合はエラーを返す。
   [資産ビルド43557247571](https://github.com/harupipipipi/tobkiri/actions/runs/43557247571)では
   macOSの表示回帰と独立資産のビルドが通過した。
-  AppKitへの載せ込みと、実表示・フォーカス・ナビゲーションの確認が次の接続範囲。
+  `b7c25251e` はビルド済みのJSとCSSを個別のCSPハッシュ付きで一枚のHTMLに含め、
+  メモリからWebKitに渡せる形にした。ファイル配布用のschemeとTauri資産ルートの
+  追加が不要になった。[独立ビルド43559363670](https://github.com/harupipipipi/tobkiri/actions/runs/43559363670)が通過。
+- `c92779404` はAppKitの表示枠に読み取り専用の `WKWebView` を載せる。
+  独立の非永続データストアを使い、初回のメモリ文書だけを許可する。
+  [初回43559771589](https://github.com/harupipipipi/tobkiri/actions/runs/43559771589)は
+  WebKitの既定機能が既存ロックに含まれない依存を追加するため停止した。
+  `6dd360e41` は利用するWebKitバインディングだけを明示し、元の確認欄が使うTailwind
+  クラスを資産に含める。[再実行43559922441](https://github.com/harupipipipi/tobkiri/actions/runs/43559922441)で
+  実表示、非永続設定、ナビゲーション拒否、表示枠のサイズ追従、取り外しを検証する。
+- 実際の `main` windowはsplashから認証済み `/panel/` に進み、ReactがSetupを選ぶ。
+  `Setup.tsx` の確認欄は引き継ぎUIの後にあり、外側がスクロールする。
+  Core所有の表示を載せる際はスクロール・レイアウト・フォーカスを追従し、候補の再取得、
+  Launchへの遷移、親の非表示化で取り外す。既存main-thread dispatchは待機期限で
+  キューの処理を取り消さないため、表示前に候補と親がまだ有効かを再確認する。
+  製品用の挿入、承認の結び付け、DMGへの組み込みは残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
