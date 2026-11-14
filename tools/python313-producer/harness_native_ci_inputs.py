@@ -106,8 +106,6 @@ def bind(
             or build["exports"] != [RUNTIME, TRANSPORT]
             or build["production_enabled"] is not False):
         raise ValueError("actual native Harness artifact/source/ABI differs")
-    verify_producer_selection(artifact, build, plan, identity, diagnostic=schema_call_diagnostic)
-
     previous = sys.path[:]
     sys.path.insert(0, str(ROOT / "scripts/wasm"))
     try:
@@ -124,10 +122,6 @@ def bind(
     if derived.get("format") != (DIAGNOSTIC_SOURCE if schema_call_diagnostic else NORMAL_SOURCE):
         raise ValueError("native Harness source mode differs")
     original_plan = (json.dumps(stage.plan_for(base), sort_keys=True, indent=2) + "\n").encode()
-    if build["harness_native_dependencies"]["original_plan_sha256"] != hashlib.sha256(
-        original_plan
-    ).hexdigest():
-        raise ValueError("native Harness original source plan differs")
     diagnostic_contract = None
     if schema_call_diagnostic:
         diagnostic_contract = derived.get("checkpoint_contract", {})
@@ -151,6 +145,11 @@ def bind(
         if (row is None or row["sha256"] != hashlib.sha256(data).hexdigest()
                 or row["destination"] != name.removeprefix("python/")):
             raise ValueError(f"actual component lacks current original source: {name}")
+    verify_producer_selection(artifact, build, plan, identity, diagnostic=schema_call_diagnostic)
+    if build["harness_native_dependencies"]["original_plan_sha256"] != hashlib.sha256(
+        original_plan
+    ).hexdigest():
+        raise ValueError("native Harness original source plan differs")
     tree = ast.parse(base["python/harness_native_source_index.py"])
     index = {row.targets[0].id: ast.literal_eval(row.value)
              for row in tree.body if isinstance(row, ast.Assign)}
@@ -188,6 +187,18 @@ def bind(
     output.mkdir(mode=0o700)
     index_path = output / "module-index.rs"
     index_path.write_bytes(header)
+    if not schema_call_diagnostic:
+        # Data only. A separately pinned copy of this receipt can be consumed
+        # by the Launcher build; this CI verification does not enable release.
+        (output / "launcher-component.json").write_text(json.dumps({
+            "format": "io.tobkiri.launcher-setup-component.v1",
+            "component": identity,
+            "source_index_sha256": index["INDEX_SHA256"],
+            "modules": [
+                {"module": module, "relative_file": relative}
+                for module, relative in selected
+            ],
+        }, sort_keys=True) + "\n", encoding="utf-8")
     env = {
         "TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT": str(artifact),
         "TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT_SHA256": identity["sha256"],
