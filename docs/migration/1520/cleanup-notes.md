@@ -3442,6 +3442,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   JavaScriptの2件は通過。[WebKit測定43561318088](https://github.com/harupipipipi/tobkiri/actions/runs/43561318088)で実表示を検証する。
   `f562ba942` は表示を候補単位で保有し、親のポート・ルート・非表示状態を再確認し、
   取り消し済みの測定結果を捨てる。[寿命の検証43561542672](https://github.com/harupipipipi/tobkiri/actions/runs/43561542672)を実行中。
+  最初の2回はAppKitの非保持 `superview()` 取得でコンパイルが停止した。
+  `ca1a62f50` は保持中のコンテナを呼び出し元から渡し、`subviews()` で実際の親子関係を検査する。
+  [修正後43561750355](https://github.com/harupipipipi/tobkiri/actions/runs/43561750355)で再検証する。
   製品の親は引き継ぎ状態に応じて上下に伸びる。Core所有の確認欄に切り替える時は、
   ビューの `body/#root` の画面高ではなく、確認欄のsectionの実寸を親に返して外側の
   スクロールを維持する。親のモーダルとnative sheetでの撤去、拡大表示、子のスクロール
