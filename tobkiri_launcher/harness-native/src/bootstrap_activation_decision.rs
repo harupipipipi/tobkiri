@@ -5,6 +5,10 @@ use crate::BootstrapReviewFailure;
 /// The original Pack's DATA outcome. Matching a confirmation confers no
 /// write authority. Activation must independently validate its trusted input.
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Keep the candidate inline: boxing it would add an unbudgeted heap allocation"
+)]
 pub enum BootstrapActivationDecision {
     Rejected(CoreBuffer),
     Matched(BootstrapActivationCandidate),
@@ -89,6 +93,10 @@ impl BootstrapActivationCandidate {
     }
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Keep the candidate inline: boxing it would add an unbudgeted heap allocation"
+)]
 pub(super) enum Decision {
     Continue,
     Rejected(CoreBuffer),

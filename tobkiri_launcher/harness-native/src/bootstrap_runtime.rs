@@ -1289,6 +1289,10 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     }
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Keep the decision inline: boxing it would add an unbudgeted heap allocation"
+)]
 enum SetupOutput {
     Listing(CoreBuffer),
     Decision(BootstrapActivationDecision),
