@@ -13,7 +13,7 @@ files are stored unchanged and pinned to commit
 | `on("before_agent_start")` | Wrapper can dispatch the event; prompt assembly overlay integration pending |
 | `registerCommand` | `local.harness-chat.command-provider` |
 | `ctx.ui.notify` | Generic `host-io.display`, subject to declared permission |
-| `ctx.hasUI` | Host embedding capability from the adapter context |
+| `ctx.hasUI` | Event handlers receive the caller-supplied `has-ui` flag; tools and commands currently receive `false` because their WIT calls carry no UI context. A true event flag does not imply full pi UI support. |
 | Other APIs/events | Throw `unsupported by tobkiri.pi-adapter: <api>` |
 
 esbuild aliases resolve the pi imports at build time. componentize-js compiles
@@ -23,6 +23,12 @@ through the core gate. Full acceptance requires an overlay which skips `next`
 for protected paths, plus proof that an allowed write still receives the ordinary
 fs grant and approval. The current guard-decision replay does not prove those
 file effects or the complete Harness tool loop.
+
+Only `ctx.ui.notify` is mapped; other `ctx.ui` methods throw even when an
+event's caller passes `has-ui: true`. The flag is supplied by that caller and
+is not evidence that a display is present or that notification delivery is
+permitted. Propagating a verified UI context to tools and commands remains
+unimplemented.
 
 Reverify stored sources:
 

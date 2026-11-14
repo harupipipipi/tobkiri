@@ -36,6 +36,21 @@ test("pinned protected-paths returns a block before dispatch and allows other pa
   assert.equal(blocked.block, true);
   assert.equal(notifications.length, 1);
   assert.equal(await extension.onEvent("tool_call", '{"toolName":"write","input":{"path":"project/readme.md"}}', true), undefined);
+  const blockedWithoutUI = JSON.parse(await extension.onEvent("tool_call", '{"toolName":"write","input":{"path":"project/.env"}}', false));
+  assert.equal(blockedWithoutUI.block, true);
+  assert.equal(notifications.length, 1);
+});
+
+test("event UI flag is caller supplied while tools and commands use host context", async () => {
+  const extension = createExtension((pi) => {
+    pi.on("tool_call", (_event, ctx) => ({ hasUI: ctx.hasUI }));
+    pi.registerTool({ name: "context", parameters: {}, execute: (_id, _args, _signal, _update, ctx) => ({ hasUI: ctx.hasUI }) });
+    pi.registerCommand("context", { handler: (_args, ctx) => ({ hasUI: ctx.hasUI }) });
+  }, { notify() {}, hasUI: () => false, isCancelled: () => false });
+  assert.deepEqual(JSON.parse(await extension.onEvent("tool_call", "{}", true)), { hasUI: true });
+  assert.deepEqual(JSON.parse(await extension.onEvent("tool_call", "{}", false)), { hasUI: false });
+  assert.deepEqual(JSON.parse(await extension.invokeTool("context", "id", "{}")), { hasUI: false });
+  assert.deepEqual(JSON.parse(await extension.runCommand("context", "")), { hasUI: false });
 });
 
 test("unsupported pi APIs fail explicitly", () => {

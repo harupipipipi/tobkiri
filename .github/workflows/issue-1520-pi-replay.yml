@@ -45,6 +45,8 @@ jobs:
           node-version: '22.22.0'
       - name: Install the locked wrapper tools in CI
         run: npm ci --prefix sdk/js
+      - name: Verify the pi adapter context
+        run: node --test sdk/js/tests/adapter.test.mjs
       - name: Build verified Rust Packs and both pinned upstream wrappers
         run: |
           python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
