@@ -2930,7 +2930,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   燃料残りは34,280,686（25,972,022増）。全カタログは燃料切れで、終了後の確保量は0だった。
 - `edc636278` はCI専用の計測成果物で、実カタログの読み込み件数の節目、スキーマの読み込み件数と
   最後のファイル名を記録する。[実Wasm計測43552917269](https://github.com/harupipipipi/tobkiri/actions/runs/43552917269)で
-  上限を保ったまま停止位置を確認する。
+  上限を保ったまま、最初のカタログ項目の処理中に停止したことを確認した。32回目のスキーマ読込
+  `resolved_plan_v2.schema.json` で57,050,015 fuelが残り、次の読込は観測されなかった。
+  計測付きの独立初期化は42件を完了し、19,199,366 fuelが残った。両方で終了後の確保・予約は0。
+  `76ef62280` は処理のたびに作成していた固定の属性名を再利用し、実際の属性取得、descriptor、
+  `create_resource` の呼び出しは維持する。[実Wasm43553887697](https://github.com/harupipipipi/tobkiri/actions/runs/43553887697)で検証する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3349,13 +3353,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `ae227bb0c` は確認後の候補解決、Hostカタログ、配布カタログをそれぞれ読み、最後に
   ロックを独立して開く順序を固定原本で観測する。`e74e27f75` は既存の物理読込テストで
   選択時のパスを保持し、ローダー完了後にロックを一度だけ読み直す。前の読み込み後に
-  バイトを入れ替えて違いを検出する。[原本比較43552133355](https://github.com/harupipipipi/tobkiri/actions/runs/43552133355)と
-  [物理読込43552300422](https://github.com/harupipipipi/tobkiri/actions/runs/43552300422)で検証する。
+  バイトを入れ替えて違いを検出する。[原本比較43552133355](https://github.com/harupipipipi/tobkiri/actions/runs/43552133355)は両OSで成功。
+  [物理読込43552300422](https://github.com/harupipipipi/tobkiri/actions/runs/43552300422)は先行ステップで
+  11件が成功したが、CIが10件を期待して停止した。`279669889` は実件数に揃え、
+  [再実行43553458280](https://github.com/harupipipipi/tobkiri/actions/runs/43553458280)で物理読込へ進める。
+- `ecc8ca3b8` は固定原本の署名付きintent比較で、鍵がない場合の生成、同期、再読込を追加した。
+  元と同じ64桁の形式と所有者専用の権限で保存し、既存鍵とintentを置換しない。危険なリンクは拒否する。
+  [原本比較43553784493](https://github.com/harupipipipi/tobkiri/actions/runs/43553784493)で検証する。
+  製品の書込には、実際のクリックで得た確認と再解決、ジャーナル下の登録・有効化が必要。
 - Setupの確認欄を移す際は `DefaultsReview.tsx` と `DefaultsConfirmationDetails.tsx` の表示を
   再利用する。現在の `legacy.rs` が表示するSetupと `core_host.rs` の既存承認シートは
   異なる入口。既存のUI操作を維持するため、元のSetup内にCoreが所有する独立の確認領域を
   配置し、Coreが表示データと入力を保持する。Tauriの親window権限を子まで持ち込まない
-  構成と実機確認が前提。Launch後の個別承認は既存の専用ウィンドウで行う。
+  構成と実機確認が前提。macOSでは既存 `main` window内のAppKitビューで独立した
+  `WKWebView` を管理できる。Tauriの子webviewは親windowラベルでも権限が適用されるため、
+  隔離にはTauri IPCを持たない構成を使う。既存の確認欄と実クリックを同じ表示データに結び付ける。
+  製品切替時には旧 `/api/setup/packs/install` の直接送信も同じ承認経路に移し、既存の再検証UIを使う。
+  Launch後の個別承認は既存の専用ウィンドウで行う。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
