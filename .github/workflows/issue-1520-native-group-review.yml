@@ -19,7 +19,7 @@ on:
       - 'tobkiri_launcher/frontend/src/pages/DefaultsConfirmationDetails.tsx'
       - 'tobkiri_launcher/frontend/src/pages/NativeSetupReview.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Setup.test.tsx'
-      - 'tobkiri_launcher/frontend/src/setup-review.tsx'
+      - 'tobkiri_launcher/frontend/src/setup-review.*'
       - 'tobkiri_launcher/frontend/setup-review/**'
       - 'tobkiri_launcher/frontend/scripts/package-setup-review.mjs'
       - 'tobkiri_launcher/frontend/package.json'

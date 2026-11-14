@@ -94,7 +94,8 @@ fn main() {
         }
         assert!(evaluate_boolean(
             webview,
-            "String(getComputedStyle(document.body).marginTop === '0px')",
+            "String(getComputedStyle(document.body).marginTop === '0px' &&
+             getComputedStyle(document.querySelector('section')).paddingTop === '28px')",
             deadline,
         ));
         assert!(evaluate_boolean(

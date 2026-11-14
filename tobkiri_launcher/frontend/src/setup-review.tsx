@@ -1,7 +1,7 @@
 import {createRoot} from 'react-dom/client';
 import {applyAppearanceToRoot, normalizeColorMode, normalizeTheme} from './lib/appearance';
 import {NativeSetupReview} from './pages/NativeSetupReview';
-import './index.css';
+import './setup-review.css';
 
 const root = document.getElementById('root');
 const payload = document.getElementById('setup-review-listing');
