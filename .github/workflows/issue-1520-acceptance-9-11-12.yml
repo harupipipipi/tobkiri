@@ -11,6 +11,8 @@ on:
       - 'crates/tobkiri-gate/**'
       - 'crates/tobkiri-wit/**'
       - 'crates/tobkiri-canon/**'
+      - 'packs/shapes/harness-chat-v2/**'
+      - 'packs/shapes/provider-discovery-v1-1/**'
       - 'Cargo.lock'
   workflow_dispatch:
 
@@ -100,6 +102,11 @@ jobs:
             enum_minor_extension_is_input_only_and_width_changes_need_adapter; do
             grep -F "test $name ... ok" "$RUNNER_TEMP/a12-manifest.log"
           done
+      - name: Verify structured chat and provider discovery shape contracts
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-contracts.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-manifest --test harness_chat_v2 --test provider_discovery
       - name: Retain ABI and frozen-vector test receipts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -110,4 +117,5 @@ jobs:
             ${{ runner.temp }}/a2-*.receipt.json
             ${{ runner.temp }}/a20-*.log
             ${{ runner.temp }}/a20-*.receipt.json
+            ${{ runner.temp }}/harness-contracts.log*
           if-no-files-found: warn
