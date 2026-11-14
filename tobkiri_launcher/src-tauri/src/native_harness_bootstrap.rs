@@ -343,8 +343,6 @@ fn setup_display_requires_a_completed_listing_result() {
     ));
 }
 
-/// Review the existing selected Profile under the original Launcher's owner.
-/// The native caller supplies already selected component inputs and options.
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 #[path = "setup_component_path.rs"]
 mod setup_component_path;
@@ -402,6 +400,7 @@ mod selected_setup_component {
     }
 }
 
+/// Review the existing Profile using the component fixed by the Launcher build.
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 pub(crate) fn prepare_setup_review(
     app: &AppHandle,
