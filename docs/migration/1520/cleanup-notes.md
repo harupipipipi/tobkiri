@@ -3615,8 +3615,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
-  `domain/agent/loop_engine.py` の `LoopEngine` には現在のソースで参照がない。
-  削除前に動的ロードや配布構成も確認する。
+  A-2 では `domain/agent/loop_engine.py` を削除した。静的参照、公開エクスポート、
+  ハンドラー登録、Packマニフェスト、固定ソース目録に対象への参照はなかった。デスクトップの
+  リソース目録とsealed環境は、配布時にソースから生成される。旧ループだけが使っていた
+  `domain/agent/context_builder.py` は別の削除候補。配布前のファイル目録と、固定入力からの
+  目録検証が通過した。共通fixtureを省いたローカル試験79件と単独のストリーム試験3件が
+  通過した。プロセス終了後の復旧を扱う2件はCIでの再確認が必要。
 - A-6 は、現行のモデルへの使用量変換がキャッシュトークンを落とすことを確認した。
   毎回のツール選択でプロンプトの早い位置が変わり得る。キャッシュヒット率への影響は未計測。
   A-7 は、元の `tobkiri_protocol/saved_messages.py` の分岐、ツール結果IDと画像の上限を
