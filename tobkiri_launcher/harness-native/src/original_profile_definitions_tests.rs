@@ -922,3 +922,271 @@ async fn registry_bootstrap_state_is_a_fresh_locked_read_without_writes() {
         ));
     });
 }
+
+fn bootstrap_empty_state(profiles: Vec<Value>) -> Value {
+    let mut empty = state(profiles);
+    empty["bootstrap"]["state"] = json!("empty");
+    empty
+}
+
+fn bootstrap_tombstone(id: &str) -> Value {
+    let mut row = entry(id, 7);
+    let revision = digest(&json!({
+        "schema":"io.tobkiri.profile-tombstone.v1","profile_id":id,"parent_revision":null
+    }));
+    row["current_revision"] = json!(revision);
+    row["tombstone"] = json!(true);
+    row["revisions"] = json!([{
+        "profile_revision":revision,"parent_revision":null,"profile":null,
+        "created_at":10,"updated_at":10,"tombstone":true
+    }]);
+    row
+}
+
+const BOOTSTRAP_TEMPLATE: &[u8] =
+    "{\"profile_id\":\"defaults\",\"display_name\":\"  ハーネス  \",\"packs\":[\"one\",\"two\"]}"
+        .as_bytes();
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_bootstrap_appends_first_revision_and_replays_without_a_write() {
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let mut before = bootstrap_empty_state(vec![bootstrap_tombstone("retired")]);
+        before["legacy"] = json!({"legacy_id_map":{"old":"retired"},"metadata":{"saved":true}});
+        let before_bytes = sealed(before.clone());
+        write_index(source, &before_bytes);
+        let store = Store::new(&op, &source.root).unwrap();
+        let path = source.root.join("profiles").join(INDEX);
+        let lock = source.root.join("profiles/.profile-definition.lock");
+        let template = CoreValue::parse_guest(BOOTSTRAP_TEMPLATE, budget).unwrap();
+        store
+            .bootstrap_defaults(&op, &template, budget, || {
+                assert!(lock_free(&lock));
+                assert_eq!(fs::read(&path).unwrap(), before_bytes);
+                Ok(23)
+            })
+            .unwrap();
+
+        let document: Value = serde_json::from_slice(BOOTSTRAP_TEMPLATE).unwrap();
+        let revision = digest(&document);
+        let mut expected = before;
+        expected["generation"] = json!(2);
+        expected["updated_at"] = json!(23);
+        expected["profiles"].as_array_mut().unwrap().push(json!({
+            "profile_id":"defaults","order":1,"tombstone":false,"current_revision":revision,
+            "revisions":[{"profile_revision":revision,"parent_revision":null,"profile":document,
+                "created_at":23,"updated_at":23,"tombstone":false}],
+            "created_at":23,"updated_at":23,"legacy_ids":[]
+        }));
+        expected["bootstrap"] =
+            json!({"state":"template_available","template_profile_revision":revision});
+        let mut expected = sealed(expected);
+        expected.push(b'\n');
+        let actual_bytes = fs::read(&path).unwrap();
+        assert_eq!(actual_bytes, expected);
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let reopened = Store::new(&op, &source.root).unwrap();
+        assert_eq!(
+            reopened.bootstrap_state(&op, budget).unwrap(),
+            RegistryBootstrapState::TemplateAvailable
+        );
+        reopened
+            .bootstrap_defaults(&op, &template, budget, || panic!("clock during replay"))
+            .unwrap();
+        let replay = fs::read(&path).unwrap();
+        assert_eq!(replay, actual_bytes);
+        assert!(lock_free(&lock));
+
+        if let Some(output) = std::env::var_os("TOBKIRI_BOOTSTRAP_TEMPLATE_FIXTURE") {
+            let output = PathBuf::from(output);
+            fs::create_dir(&output).unwrap();
+            fs::write(output.join("before.json"), before_bytes).unwrap();
+            fs::write(output.join("template.json"), BOOTSTRAP_TEMPLATE).unwrap();
+            fs::write(output.join("actual.json"), actual_bytes).unwrap();
+            fs::write(output.join("replay.json"), replay).unwrap();
+        }
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_bootstrap_resumes_the_same_store_with_the_definition_lock_released() {
+    with_source(|source, read, cancel, budget| {
+        let DefinitionRecovery::BootstrapTemplate(store) =
+            recover(read, source, cancel, budget).unwrap()
+        else {
+            panic!("fresh registry did not request the bundled template");
+        };
+        let profiles = source.root.join("profiles");
+        let lock = profiles.join(".profile-definition.lock");
+        assert!(lock_free(&lock));
+        assert!(!profiles.join(INDEX).exists());
+        assert_eq!(read.receipt().open_files, 0);
+        let template = CoreValue::parse_guest(BOOTSTRAP_TEMPLATE, budget).unwrap();
+        let replaced_read = PublicationRead::new(&read.invocation).unwrap();
+        let error =
+            complete_bootstrap_template(&replaced_read, source, cancel, budget, store, &template)
+                .unwrap_err();
+        assert!(matches!(
+            error.cause,
+            Some(OriginalAuthorityCause::SourceUnavailable)
+        ));
+        assert!(!profiles.join(INDEX).exists());
+        let DefinitionRecovery::BootstrapTemplate(store) =
+            recover(read, source, cancel, budget).unwrap()
+        else {
+            panic!("denied continuation changed the registry");
+        };
+        complete_bootstrap_template(read, source, cancel, budget, store, &template).unwrap();
+        assert!(lock_free(&lock));
+        assert!(matches!(
+            recover(read, source, cancel, budget).unwrap(),
+            DefinitionRecovery::BootstrapState(RegistryBootstrapState::TemplateAvailable)
+        ));
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_bootstrap_tombstone_wins_before_normalization_and_clock() {
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let lock = source.root.join("profiles/.profile-definition.lock");
+        let before = sealed(bootstrap_empty_state(vec![bootstrap_tombstone("defaults")]));
+        write_index(source, &before);
+        let invalid = CoreValue::parse_guest(
+            br#"{"profile_id":"defaults","display_name":{"en":"wrong"}}"#,
+            budget,
+        )
+        .unwrap();
+        store
+            .bootstrap_defaults(&op, &invalid, budget, || {
+                panic!("clock for existing tombstone")
+            })
+            .unwrap();
+        let path = source.root.join("profiles").join(INDEX);
+        assert_eq!(fs::read(&path).unwrap(), before);
+        let empty = sealed(bootstrap_empty_state(vec![]));
+        write_index(source, &empty);
+        let error = store
+            .bootstrap_defaults(&op, &invalid, budget, || {
+                panic!("clock before normalization")
+            })
+            .unwrap_err();
+        assert_eq!(error.class, INTEGRITY);
+        assert_eq!(
+            error.message,
+            "Profile display_name must be a non-empty string"
+        );
+        let whitespace = CoreValue::parse_guest(
+            br#"{"profile_id":"defaults","display_name":"\u001f\u00a0"}"#,
+            budget,
+        )
+        .unwrap();
+        let error = store
+            .bootstrap_defaults(&op, &whitespace, budget, || {
+                panic!("clock for whitespace name")
+            })
+            .unwrap_err();
+        assert_eq!(error.class, INTEGRITY);
+        assert_eq!(
+            error.message,
+            "Profile display_name must be a non-empty string"
+        );
+        assert_eq!(fs::read(&path).unwrap(), empty);
+        assert!(lock_free(&lock));
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_bootstrap_create_handles_only_actual_duplicate_conflict() {
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let lock = source.root.join("profiles/.profile-definition.lock");
+        let path = source.root.join("profiles").join(INDEX);
+        let template = CoreValue::parse_guest(BOOTSTRAP_TEMPLATE, budget).unwrap();
+        let tombstone = bootstrap_tombstone("defaults");
+
+        let still_empty = sealed(bootstrap_empty_state(vec![tombstone]));
+        let error = store
+            .bootstrap_defaults(&op, &template, budget, || {
+                assert!(lock_free(&lock));
+                write_index(source, &still_empty);
+                Ok(23)
+            })
+            .unwrap_err();
+        assert_eq!(error.class, definitions_model::CONFLICT);
+        assert_eq!(
+            error.message,
+            "Profile 'defaults' already exists, including tombstones"
+        );
+        assert_eq!(fs::read(&path).unwrap(), still_empty);
+        assert!(lock_free(&lock));
+
+        fs::remove_file(&path).unwrap();
+        let winner = sealed(state(vec![entry("defaults", 0)]));
+        store
+            .bootstrap_defaults(&op, &template, budget, || {
+                assert!(lock_free(&lock));
+                write_index(source, &winner);
+                Ok(23)
+            })
+            .unwrap();
+        assert_eq!(fs::read(&path).unwrap(), winner);
+        assert!(lock_free(&lock));
+
+        fs::remove_file(&path).unwrap();
+        let error = store
+            .bootstrap_defaults(&op, &template, budget, || {
+                assert!(lock_free(&lock));
+                write_index(source, b"{}");
+                Ok(23)
+            })
+            .unwrap_err();
+        assert_eq!(error.class, INTEGRITY);
+        assert_eq!(error.message, "Profile definition store digest changed");
+        assert!(error.context.is_none());
+        assert_eq!(fs::read(&path).unwrap(), b"{}");
+        assert!(lock_free(&lock));
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_bootstrap_conflict_fresh_read_error_keeps_the_actual_conflict() {
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let lock = source.root.join("profiles/.profile-definition.lock");
+        let path = source.root.join("profiles").join(INDEX);
+        let before = sealed(bootstrap_empty_state(vec![bootstrap_tombstone("defaults")]));
+        write_index(source, &before);
+        let template = CoreValue::parse_guest(BOOTSTRAP_TEMPLATE, budget).unwrap();
+        let id = Text::from_str("defaults");
+        let created = store.update_definitions(&op, budget, |state| {
+            definitions_model::prepare_bootstrap_template(&op, state, &template, &id, 23, budget)
+                .map(|output| Some((1, output)))
+        });
+        assert!(matches!(&created, Err(error) if error.class == definitions_model::CONFLICT));
+        assert!(lock_free(&lock));
+        write_index(source, b"{");
+        let error = store
+            .finish_bootstrap_create(&op, budget, created)
+            .unwrap_err();
+        assert_eq!(error.class, INTEGRITY);
+        assert_eq!(error.message, "Profile definition store is unreadable");
+        let conflict = error
+            .context
+            .expect("fresh read raised during conflict handling");
+        assert_eq!(conflict.class, definitions_model::CONFLICT);
+        assert_eq!(
+            conflict.message,
+            "Profile 'defaults' already exists, including tombstones"
+        );
+        assert!(error.cause.is_some());
+        assert_eq!(fs::read(&path).unwrap(), b"{");
+        assert!(lock_free(&lock));
+    });
+}

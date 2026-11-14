@@ -52,6 +52,7 @@ const BOOTSTRAP_LISTING: u8 = 22;
 const BOOTSTRAP_INACTIVE_EQUALITY: u8 = 23;
 const BOOTSTRAP_ACTIVATION_PREFLIGHT: u8 = 24;
 const BOOTSTRAP_ACTIVATION_MATCH: u8 = 25;
+const BOOTSTRAP_TEMPLATE_LOOKUP: u8 = 26;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
 const BOOTSTRAP_PREVIEW_SLOT: usize = 10;
@@ -194,6 +195,7 @@ impl CiRetiredCall {
             BOOTSTRAP_LISTING => "bootstrap-listing",
             BOOTSTRAP_ACTIVATION_PREFLIGHT => "bootstrap-activation-preflight",
             BOOTSTRAP_ACTIVATION_MATCH => "bootstrap-activation-match",
+            BOOTSTRAP_TEMPLATE_LOOKUP => "bootstrap-template-lookup",
             _ => "unknown",
         }
     }
@@ -1446,6 +1448,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                         if phase != RESOLVER_SOURCE_LOOKUP =>
                     {
                         bail!("source Profile lookup is outside the fixed Review reachpoint");
+                    }
+                    Some(catalog::BOOTSTRAP_TEMPLATE_REQUEST)
+                        if phase != BOOTSTRAP_TEMPLATE_LOOKUP =>
+                    {
+                        bail!("bootstrap template lookup is outside the fixed Review reachpoint");
                     }
                     Some(resolver_edges::STATIC_REQUEST) if phase != RESOLVER_STATIC_EDGES => {
                         bail!("static Profile edges are outside the fixed Review reachpoint");

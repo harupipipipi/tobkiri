@@ -12,6 +12,9 @@ use std::path::PathBuf;
 #[path = "bootstrap_recovery_error.rs"]
 mod recovery_cause;
 
+pub(super) const BOOTSTRAP_TEMPLATE_REQUEST: &str =
+    "io.tobkiri.native-bootstrap-template-lookup.v1";
+
 pub(super) struct RootResolution {
     pub resolved: CoreBuffer,
     pub binding: CoreBuffer,
@@ -304,7 +307,9 @@ pub(super) async fn resolver_lock_digest<S: BootstrapInputOwner + crate::Bootstr
 
 fn bundle_calls(review: &mut Review, caller: ReviewCaller) -> &mut BundleCalls {
     match caller {
-        ReviewCaller::Recovery | ReviewCaller::Candidate => &mut review.actual.catalog_roots,
+        ReviewCaller::Recovery | ReviewCaller::RecoveryTemplate | ReviewCaller::Candidate => {
+            &mut review.actual.catalog_roots
+        }
         ReviewCaller::Resolver => &mut review.actual.resolver_roots,
     }
 }
@@ -491,51 +496,229 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
         pack.cancellation,
         pack.input_budget,
     );
-    match definitions {
-        Ok(outcome) => Ok(Err(BootstrapReviewFailure::NotBound(match outcome {
-            DefinitionRecovery::ImportLegacy => {
-                BootstrapReviewReachpoint::ImportLegacyCollectionNotBound
-            }
-            DefinitionRecovery::SuccessorBuilder(candidate) => {
-                review.actual._successor_candidate = Some(candidate);
-                BootstrapReviewReachpoint::LegacySuccessorBuilderNotBound
-            }
-            DefinitionRecovery::RepairLegacyDisplayNames => {
-                BootstrapReviewReachpoint::RepairLegacyDisplayNamesNotBound
-            }
-            #[cfg(unix)]
-            DefinitionRecovery::BootstrapState(state) => match state {
-                definitions::RegistryBootstrapState::Empty => {
-                    BootstrapReviewReachpoint::ProfileBootstrapTemplateLookupNotBound
-                }
-                definitions::RegistryBootstrapState::TemplateAvailable
-                | definitions::RegistryBootstrapState::NotRequired => {
-                    BootstrapReviewReachpoint::HostProfileDefinitionListNotBound
-                }
-            },
-        }))),
-        Err(error) => {
-            match recovery_cause::project(&error, &pack.work.get().invocation, pack.input_budget)? {
-                Some(cause) => {
-                    // No borrowed native String diagnostic may survive its
-                    // prepaid Read through retirement/factory awaits. The
-                    // fixed source raise text was checked by this projector.
-                    drop(error);
-                    Ok(Err(review_continuation::denied(
-                        review,
-                        pack,
-                        caller,
-                        recovery_cause::MESSAGE,
-                        BootstrapDeniedRaise::ExplicitFrom(cause),
-                    )
-                    .await?))
-                }
-                // Still an explicitly UNQUALIFIED typed factory request (or
-                // an uncaught raw registry error), never a fallback factory.
-                None => Ok(Err(original_failure(error))),
-            }
+    let reachpoint = match definitions {
+        Ok(DefinitionRecovery::ImportLegacy) => {
+            BootstrapReviewReachpoint::ImportLegacyCollectionNotBound
         }
+        Ok(DefinitionRecovery::SuccessorBuilder(candidate)) => {
+            review.actual._successor_candidate = Some(candidate);
+            BootstrapReviewReachpoint::LegacySuccessorBuilderNotBound
+        }
+        Ok(DefinitionRecovery::RepairLegacyDisplayNames) => {
+            BootstrapReviewReachpoint::RepairLegacyDisplayNamesNotBound
+        }
+        #[cfg(unix)]
+        Ok(DefinitionRecovery::BootstrapState(
+            definitions::RegistryBootstrapState::TemplateAvailable
+            | definitions::RegistryBootstrapState::NotRequired,
+        )) => BootstrapReviewReachpoint::HostProfileDefinitionListNotBound,
+        #[cfg(unix)]
+        Ok(DefinitionRecovery::BootstrapState(definitions::RegistryBootstrapState::Empty)) => {
+            bail!("empty Profile registry is missing its retained Store");
+        }
+        #[cfg(unix)]
+        Ok(DefinitionRecovery::BootstrapTemplate(store)) => {
+            return bootstrap_template(review, pack, store).await;
+        }
+        Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
+    };
+    Ok(Err(BootstrapReviewFailure::NotBound(reachpoint)))
+}
+
+#[cfg(unix)]
+async fn bootstrap_template<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    store: definitions::BootstrapTemplateStore,
+) -> super::listing::Outcome {
+    let caller = ReviewCaller::RecoveryTemplate;
+    pack.require_same_runtime()?;
+    let identity = match review_continuation::validated_identity(review, pack, caller).await? {
+        Ok(identity) => identity,
+        Err(error) => return Ok(Err(error)),
+    };
+    let mut ascii = [0; 128];
+    let key = identity.ascii_identity(&mut ascii)?;
+    drop(identity);
+    let scope = actual_call_scope(pack)?;
+    let catalog = result_root(
+        pack,
+        returned(
+            review
+                .actual
+                .catalog
+                .as_ref()
+                .context("actual recovery catalog missing")?,
+        )?,
+        &scope,
+    )?;
+    let profile_id = result_root(
+        pack,
+        returned(
+            caller
+                .getter(review)
+                .as_ref()
+                .context("actual recovery template key missing")?,
+        )?,
+        &scope,
+    )?;
+    let input = denied::frame(
+        pack,
+        BOOTSTRAP_TEMPLATE_REQUEST,
+        [
+            ("catalog", catalog.share()),
+            ("profile_id", profile_id.share()),
+        ],
+    )?;
+    let lookup = pack
+        .observe_fixed_projection(&input, "bootstrap-template-lookup")
+        .await?;
+    caller.check(review, pack)?;
+    let data = match lookup {
+        Ok(data) => data,
+        Err(error) => {
+            return Ok(Err(
+                handle_call_failure(review, pack, caller, error, false).await?
+            ));
+        }
+    };
+    let template =
+        bootstrap_template_data(&data, &scope, &catalog, &profile_id, key, pack.input_budget)?;
+    drop((data, input, scope, catalog, profile_id));
+    if let Err(error) = definitions::complete_bootstrap_template(
+        &review.read,
+        &pack.work.get().source,
+        pack.cancellation,
+        pack.input_budget,
+        store,
+        &template,
+    ) {
+        drop(template);
+        return Ok(Err(registry_failure(review, pack, caller, error).await?));
     }
+    Ok(Err(BootstrapReviewFailure::NotBound(
+        BootstrapReviewReachpoint::HostProfileDefinitionListNotBound,
+    )))
+}
+
+#[cfg(unix)]
+fn bootstrap_template_data(
+    data: &CoreBuffer,
+    scope: &CoreValue,
+    catalog: &CoreValue,
+    profile_id: &CoreValue,
+    key: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    let packet = CoreValue::parse_guest(data.as_bytes(), budget)?;
+    denied::exact(
+        &packet,
+        &["format", "scope", "catalog", "profile_id", "profile"],
+    )?;
+    if denied::field(&packet, "format")?.as_str()
+        != Some("io.tobkiri.native-bootstrap-template-data.v1")
+        || !denied::same_scope(&denied::field(&packet, "scope")?, scope)
+        || !denied::same_reference(&denied::field(&packet, "catalog")?, catalog)?
+        || !denied::same_reference(&denied::field(&packet, "profile_id")?, profile_id)?
+    {
+        bail!("bootstrap template DATA differs from the actual catalog or getter");
+    }
+    let profile = denied::field(&packet, "profile")?;
+    if profile
+        .get_key("profile_id")
+        .as_ref()
+        .and_then(CoreValue::as_str)
+        != Some(key)
+    {
+        bail!("bootstrap template Profile ID differs from the selected key");
+    }
+    Ok(profile)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+    use tobkiri_canon::{AllocationError, AllocationRequest};
+
+    struct TestBudget;
+
+    impl AllocationBudget for TestBudget {
+        fn reserve(&self, _: AllocationRequest) -> Result<(), AllocationError> {
+            Ok(())
+        }
+
+        fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn bootstrap_template_data_requires_same_catalog_getter_and_profile_key() -> Result<()> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let parse = |value: &Value| -> Result<CoreValue> {
+            Ok(CoreValue::parse_guest(
+                &serde_json::to_vec(value)?,
+                &budget,
+            )?)
+        };
+        let scope = json!(["1", "2", "3", "4"]);
+        let catalog = json!({"scope": scope, "object": "1"});
+        let profile_id = json!({"scope": scope, "object": "2"});
+        let packet = json!({
+            "format": "io.tobkiri.native-bootstrap-template-data.v1",
+            "scope": scope,
+            "catalog": catalog,
+            "profile_id": profile_id,
+            "profile": {"profile_id": "defaults", "display_name": "Tobkiri Harness"},
+        });
+        let scope = parse(&scope)?;
+        let catalog = parse(&catalog)?;
+        let profile_id = parse(&profile_id)?;
+        let selected = |packet: &Value| -> Result<CoreValue> {
+            let bytes = CoreBuffer::copy_from(&serde_json::to_vec(packet)?, &budget)?;
+            bootstrap_template_data(&bytes, &scope, &catalog, &profile_id, "defaults", &budget)
+        };
+        assert_eq!(
+            selected(&packet)?
+                .get_key("display_name")
+                .as_ref()
+                .and_then(CoreValue::as_str),
+            Some("Tobkiri Harness")
+        );
+        for (field, value) in [
+            ("/scope/0", json!("5")),
+            ("/catalog/object", json!("2")),
+            ("/profile_id/object", json!("1")),
+            ("/profile/profile_id", json!("alternate")),
+        ] {
+            let mut changed = packet.clone();
+            *changed.pointer_mut(field).context("fixture field")? = value;
+            assert!(selected(&changed).is_err(), "{field}");
+        }
+        Ok(())
+    }
+}
+
+async fn registry_failure<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
+    error: crate::OriginalAuthorityError,
+) -> Result<BootstrapReviewFailure> {
+    let Some(cause) =
+        recovery_cause::project(&error, &pack.work.get().invocation, pack.input_budget)?
+    else {
+        return Ok(original_failure(error));
+    };
+    // The error diagnostic is funded by Read. Release it before awaiting the factory.
+    drop(error);
+    review_continuation::denied(
+        review,
+        pack,
+        caller,
+        recovery_cause::MESSAGE,
+        BootstrapDeniedRaise::ExplicitFrom(cause),
+    )
+    .await
 }
 
 fn parent(resolved: &CoreBuffer, count: usize) -> Result<PathBuf> {
@@ -575,12 +758,18 @@ pub(super) async fn handle_call_failure<S: BootstrapInputOwner + crate::Bootstra
 ) -> Result<BootstrapReviewFailure> {
     match value {
         BootstrapIdentityOutcome::GetterRaised(error) => {
-            let json = error
-                .observation()
-                .get_key("kind")
-                .and_then(|v| v.as_str().map(|s| s == "json-decode-error"))
-                == Some(true);
-            if manifest && json {
+            let kind = error.observation().get_key("kind");
+            let kind = kind.as_ref().and_then(CoreValue::as_str);
+            if matches!(caller, ReviewCaller::RecoveryTemplate) && kind == Some("key-error") {
+                review_continuation::denied(
+                    review,
+                    pack,
+                    caller,
+                    "application bootstrap Profile is unavailable from its catalog",
+                    BootstrapDeniedRaise::OpaqueGetter(error),
+                )
+                .await
+            } else if manifest && kind == Some("json-decode-error") {
                 review_continuation::denied(
                     review,
                     pack,
@@ -589,8 +778,7 @@ pub(super) async fn handle_call_failure<S: BootstrapInputOwner + crate::Bootstra
                     BootstrapDeniedRaise::OpaqueGetter(error),
                 )
                 .await
-            } else if matches!(caller, ReviewCaller::Recovery)
-                && error.recovery_catch() != BootstrapRecoveryCatch::None
+            } else if caller.is_recovery() && error.recovery_catch() != BootstrapRecoveryCatch::None
             {
                 review_continuation::denied(
                     review,

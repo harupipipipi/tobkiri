@@ -4,6 +4,11 @@ use super::*;
 use crate::unicode15_1::{self, UnicodeError, UnicodeWork};
 use tobkiri_canon::{AllocationError, CoreBuffer, CoreValue};
 
+#[path = "original_profile_definitions_bootstrap.rs"]
+mod bootstrap;
+pub(super) use bootstrap::{
+    bootstrap_template_id, normalize_bootstrap_template, prepare_bootstrap_template,
+};
 #[path = "original_profile_successor_selection.rs"]
 mod successor_selection;
 pub(super) use successor_selection::select_successor;
@@ -941,23 +946,30 @@ pub(super) fn get<S: OriginalAuthorityOwner>(
     profile_id: &Text,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<StoredProfile>> {
-    let doc = &mut state.doc;
+    let Some(entry) = find_entry(op, state, profile_id, budget)? else {
+        return Ok(None);
+    };
+    if boolean(&state.doc, field(&state.doc, entry, "tombstone")).expect("validated bool") {
+        return Ok(None);
+    }
+    Ok(Some(stored_from_entry(&mut state.doc, entry)))
+}
+
+pub(super) fn find_entry<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &State,
+    profile_id: &Text,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<usize>> {
+    let doc = &state.doc;
     let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
-    let mut matching = None;
     for &entry in entries {
         charge(op, budget, 1 + profile_id.0.len() as u64)?;
         if text(doc, field(doc, entry, "profile_id")) == Some(profile_id) {
-            matching = Some(entry);
-            break;
+            return Ok(Some(entry));
         }
     }
-    let Some(entry) = matching else {
-        return Ok(None);
-    };
-    if boolean(doc, field(doc, entry, "tombstone")).expect("validated bool") {
-        return Ok(None);
-    }
-    Ok(Some(stored_from_entry(doc, entry)))
+    Ok(None)
 }
 
 /// Validate the generation and current revision again under the update lock.
@@ -980,16 +992,7 @@ pub(super) fn require_registration_cas<S: OriginalAuthorityOwner>(
     )?;
     let profile_id = Text::from_str(profile_id);
     canonical_id(&profile_id, op, budget)?;
-    let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
-    let mut selected = None;
-    for &entry in entries {
-        charge(op, budget, 1 + profile_id.0.len() as u64)?;
-        if text(doc, field(doc, entry, "profile_id")) == Some(&profile_id) {
-            selected = Some(entry);
-            break;
-        }
-    }
-    let current = selected
+    let current = find_entry(op, state, &profile_id, budget)?
         .filter(|&id| boolean(doc, field(doc, id, "tombstone")) == Some(false))
         .ok_or_else(|| {
             raw(

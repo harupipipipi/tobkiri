@@ -1,6 +1,8 @@
 //! The fixed Host registry scopes shared by recovery and Setup lookup.
 use super::*;
 use tobkiri_canon::AllocationBudget;
+#[cfg(unix)]
+use tobkiri_canon::CoreValue;
 
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 #[path = "original_setup_candidate_reference_ci.rs"]
@@ -38,7 +40,20 @@ pub(crate) enum DefinitionRecovery {
     SuccessorBuilder(SuccessorCandidate),
     RepairLegacyDisplayNames,
     #[cfg(unix)]
+    BootstrapTemplate(BootstrapTemplateStore),
+    #[cfg(unix)]
     BootstrapState(RegistryBootstrapState),
+}
+
+/// The on-disk registry and original invocation retained during catalog lookup.
+#[cfg(unix)]
+pub(crate) struct BootstrapTemplateStore {
+    store: Store,
+    invocation: NativeSetupInvocation,
+    cleanup: Arc<io::CleanupState>,
+    cancellation: CoreCancellation,
+    budget: Arc<dyn AllocationBudget>,
+    pid: u32,
 }
 
 #[cfg(unix)]
@@ -108,6 +123,31 @@ pub(crate) fn recover<S: crate::BootstrapReviewOwner>(
         .map_err(recovery_error)
 }
 
+/// Resume the same Profile registry after the bundled catalog subscript.
+#[cfg(unix)]
+pub(crate) fn complete_bootstrap_template<S: crate::BootstrapReviewOwner>(
+    read: &PublicationRead,
+    owner: &S,
+    cancellation: &CoreCancellation,
+    budget: &Arc<dyn AllocationBudget>,
+    pending: BootstrapTemplateStore,
+    template: &CoreValue,
+) -> Result<()> {
+    if !pending.invocation.same_invocation(&read.invocation)
+        || !Arc::ptr_eq(&pending.cleanup, &read.cleanup)
+        || !pending.cancellation.same_node(cancellation)
+        || !Arc::ptr_eq(&pending.budget, budget)
+        || pending.pid != std::process::id()
+    {
+        return Err(OriginalAuthorityError::unavailable());
+    }
+    let op = review_operation(read, owner, cancellation)?;
+    pending
+        .store
+        .bootstrap_defaults(&op, template, budget, registry_time)
+        .map_err(recovery_error)
+}
+
 // Retain the original constructor/list comparison's stopping point.
 #[cfg(all(test, unix))]
 fn run<S: crate::BootstrapReviewOwner>(
@@ -167,9 +207,19 @@ fn recover_at<S: crate::BootstrapReviewOwner>(
                     projection_io::inventory(op, source.runtime, retirement.directory, budget)
                 })?
             })?;
-            Ok(DefinitionRecovery::BootstrapState(
-                store.bootstrap_state(op, budget)?,
-            ))
+            match store.bootstrap_state(op, budget)? {
+                RegistryBootstrapState::Empty => Ok(DefinitionRecovery::BootstrapTemplate(
+                    BootstrapTemplateStore {
+                        store,
+                        invocation: op.invocation.clone(),
+                        cleanup: op.cleanup.clone(),
+                        cancellation: op.cancellation.clone(),
+                        budget: budget.clone(),
+                        pid: op.pid,
+                    },
+                )),
+                state => Ok(DefinitionRecovery::BootstrapState(state)),
+            }
         }
         next => Ok(next),
     }
@@ -476,6 +526,68 @@ impl Store {
     ) -> Result<RegistryBootstrapState> {
         let state = self.snapshot(op, budget)?;
         definitions_model::bootstrap_state(op, &state, budget)
+    }
+
+    fn bootstrap_defaults<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        template: &CoreValue,
+        budget: &Arc<dyn AllocationBudget>,
+        clock: impl FnOnce() -> Result<i64>,
+    ) -> Result<()> {
+        let profile_id = definitions_model::bootstrap_template_id(op, template, budget)?;
+        // get_profile(include_tombstone=True) owns its own snapshot. The
+        // caller discards the record, so only presence is needed here.
+        definitions_model::canonical_id(&profile_id, op, budget)?;
+        let state = self.snapshot(op, budget)?;
+        let existing = definitions_model::find_entry(op, &state, &profile_id, budget)?;
+        drop(state);
+        if existing.is_some() {
+            return Ok(());
+        }
+
+        definitions_model::normalize_bootstrap_template(op, template, &profile_id, budget)?;
+        let now = clock()?;
+        if now < 0 {
+            return Err(raw(STORE_ERROR, "clock returned a negative timestamp"));
+        }
+        let created = self.update_definitions(op, budget, |state| {
+            definitions_model::prepare_bootstrap_template(
+                op,
+                state,
+                template,
+                &profile_id,
+                now,
+                budget,
+            )
+            .map(|output| Some((1, output)))
+        });
+        self.finish_bootstrap_create(op, budget, created)
+    }
+
+    fn finish_bootstrap_create<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+        created: Result<usize>,
+    ) -> Result<()> {
+        match created {
+            Err(conflict) if conflict.class == definitions_model::CONFLICT => {
+                match self.bootstrap_state(op, budget) {
+                    Ok(RegistryBootstrapState::Empty) => Err(conflict),
+                    Ok(_) => Ok(()),
+                    Err(mut error) => {
+                        let mut context = &mut error.context;
+                        while let Some(previous) = context {
+                            context = &mut previous.context;
+                        }
+                        *context = Some(Box::new(conflict));
+                        Err(error)
+                    }
+                }
+            }
+            result => result.map(|_| ()),
+        }
     }
 
     fn get_profile<S: OriginalAuthorityOwner>(

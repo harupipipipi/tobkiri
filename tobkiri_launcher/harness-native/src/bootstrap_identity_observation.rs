@@ -287,6 +287,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (7, "catalog")
                 | (2, "manifest")
                 | (2, "resolver-source-lookup")
+                | (2, "bootstrap-template-lookup")
                 | (2, "resolver-static-edges")
                 | (2, "resolver-dynamic-edges")
                 | (2, "resolver-verified-artifacts")
@@ -314,6 +315,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "catalog") => CATALOG_LOAD,
             (REVIEW, "manifest") => CATALOG_PARSE,
             (REVIEW, "resolver-source-lookup") => RESOLVER_SOURCE_LOOKUP,
+            (REVIEW, "bootstrap-template-lookup") => BOOTSTRAP_TEMPLATE_LOOKUP,
             (REVIEW, "resolver-static-edges") => RESOLVER_STATIC_EDGES,
             (REVIEW, "resolver-dynamic-edges") => RESOLVER_DYNAMIC_EDGES,
             (REVIEW, "resolver-verified-artifacts") => RESOLVER_VERIFIED_ARTIFACTS,
@@ -395,6 +397,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | BOOTSTRAP_CONFIRMATION
                 | BOOTSTRAP_PREVIEW
                 | BOOTSTRAP_LISTING
+                | BOOTSTRAP_TEMPLATE_LOOKUP
                 | BOOTSTRAP_ACTIVATION_PREFLIGHT
                 | BOOTSTRAP_ACTIVATION_MATCH
         ) && pending.result.is_some()
@@ -695,6 +698,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (
                 Some("resolver-source-lookup-raised"),
                 "resolver-source-lookup",
+                true
+            )
+            | (
+                Some("bootstrap-template-lookup-raised"),
+                "bootstrap-template-lookup",
                 true
             )
             | (

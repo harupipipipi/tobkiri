@@ -461,10 +461,12 @@ class Dispatcher:
         target = getattr(state.runtime, method)
         identity = method == "bootstrap_profile_id" and not args and not kwargs
         if identity:
-            state.registry._begin_resolver_getter()
+            state.registry._begin_bootstrap_getter()
         caller = ({"host_resource_root": "host-root",
                    "bundled_profile_root": "bundle-root"}.get(method)
                   if not args and not kwargs else None)
+        if method == "load_catalog":
+            state.registry._begin_bootstrap_template_catalog()
         if method == "load_catalog" and len(args) == 1 and not kwargs:
             from .native_path import NativePath
             if type(args[0]) is NativePath:
@@ -611,6 +613,44 @@ class Dispatcher:
         except BaseException:
             state.registry._rollback(created)
             raise
+
+    def _bootstrap_template_lookup(self, state: _State, frame: dict[str, Any]) -> str:
+        registry = state.registry
+        self._checked_frame(frame, "bootstrap-template-lookup", {"catalog", "profile_id"})
+        catalog_ref = registry.reference(frame["catalog"])
+        profile_id_ref = registry.reference(frame["profile_id"])
+        catalog, profile_id = registry._begin_bootstrap_template_lookup(catalog_ref, profile_id_ref)
+
+        from tobkiri_protocol.canonical import strict_loads
+        from tobkiri_protocol.errors import ProtocolError
+        from tobkiri_protocol.ids import validate_canonical_id
+
+        # The Host validates the getter before reaching this caller. Enforce
+        # the same syntax at the DATA boundary without replacing the object.
+        try:
+            validate_canonical_id(profile_id, field="bootstrap_profile_id")
+        except ProtocolError:
+            raise InvalidReference("bootstrap template getter is not canonical") from None
+        profile = self._apply_original(
+            lambda: catalog.profiles[profile_id], caller="bootstrap-template-lookup",
+        )
+        if type(profile) is not dict:
+            raise UnsupportedValue("actual bootstrap template is not a Profile dictionary")
+        # Only this selected, verified catalog document crosses as detached
+        # DATA. The ordered encoder enforces the exact native JSON domain and
+        # transport bounds; StrictV1 also rejects floats and unsafe integers.
+        try:
+            packet = wire.dumps({
+                "format": PREFIX + "bootstrap-template-data.v1",
+                "scope": registry.scope.wire(), "catalog": catalog_ref.wire(),
+                "profile_id": profile_id_ref.wire(), "profile": profile,
+            })
+            strict_loads(packet)
+        except (wire.OrderedJSONError, ProtocolError):
+            raise UnsupportedValue(
+                "actual bootstrap template exceeds the StrictV1 DATA domain",
+            ) from None
+        return packet
 
     def _bootstrap_predecessor_source(self, state: _State, frame: dict[str, Any]) -> str:
         registry = state.registry
@@ -830,6 +870,8 @@ class Dispatcher:
         """Serve closed DATA observations and fixed original Setup operations."""
         state = self._current()
         frame = self._load(payload)
+        if frame.get("format") == PREFIX + "bootstrap-template-lookup.v1":
+            return self._bootstrap_template_lookup(state, frame)
         if frame.get("format") == PREFIX + "bootstrap-predecessor-source.v1":
             return self._bootstrap_predecessor_source(state, frame)
         if frame.get("format") == PREFIX + "bootstrap-inactive-source.v1":

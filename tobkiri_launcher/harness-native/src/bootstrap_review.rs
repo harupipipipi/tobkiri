@@ -57,7 +57,6 @@ pub enum BootstrapReviewReachpoint {
     ImportLegacyCollectionNotBound,
     LegacySuccessorBuilderNotBound,
     RepairLegacyDisplayNamesNotBound,
-    ProfileBootstrapTemplateLookupNotBound,
     HostProfileDefinitionListNotBound,
 }
 
@@ -124,6 +123,7 @@ pub(crate) struct Review {
 #[derive(Default)]
 pub(crate) struct ActualCustody {
     pub(crate) getter: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) recovery_template_getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) denied: Option<crate::BootstrapDenied>,
     pub(crate) factory_failure: Option<crate::BootstrapDeniedFailure>,
     pub(crate) catalog_roots: BundleCalls,

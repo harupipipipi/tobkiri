@@ -17,6 +17,7 @@ sys.path[:0] = [
     str(ROOT / "tools/python313-producer"),
     str(ROOT / "packs/local.ai-tool-bridge-ordered-python"),
     str(ROOT / "scripts/wasm"),
+    str(ROOT / "tobkiri_runtime"),
 ]
 
 from harness_native.dispatcher import (  # noqa: E402
@@ -834,6 +835,11 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             "resolver-source-lookup", catalog=catalog, profile_id=profile_id, **fields,
         )))
 
+    def template(self, catalog: dict, profile_id: dict, **fields: object) -> dict:
+        return wire.loads(self.dispatcher.describe_value(self.frame(
+            "bootstrap-template-lookup", catalog=catalog, profile_id=profile_id, **fields,
+        )))
+
     def view(self, packet: dict) -> dict:
         return wire.loads(self.dispatcher.describe_value(self.frame(
             "bootstrap-call-describe", root=packet["root"],
@@ -864,6 +870,124 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.getter("first-id")
         profile_id = self.getter("fixture-id")
         return catalog, profile_id, self.lookup(catalog, profile_id)["root"]
+
+    def test_recovery_template_uses_exact_subscript_and_detaches_only_the_profile(self) -> None:
+        old_id = "".join(["fixture", "-id"])
+        current_id = "".join(["fixture", "-id"])
+        self.assertIsNot(current_id, old_id)
+        profile = {"profile_id": current_id, "nested": [{"integer": 2**53 - 1}]}
+        calls = []
+
+        class Profiles(dict):
+            def __getitem__(self, key):
+                calls.append(("subscript", key))
+                return super().__getitem__(key)
+
+            def get(self, key):
+                calls.append(("get", key))
+                return super().get(key)
+
+        self.runtime.catalog.profiles = Profiles({current_id: profile, "other-id": object()})
+        old_ref = self.getter(old_id)
+        catalog = self.load()
+        profile_id = self.getter(current_id)
+        alien = self.registry.retain(self.Catalog()).wire()
+        with self.assertRaises(InvalidReference):
+            self.template(catalog, old_ref)
+        with self.assertRaises(InvalidReference):
+            self.template(alien, profile_id)
+        with self.assertRaises(InvalidReference):
+            self.template(catalog, {**profile_id, "scope": ["1", "2", "9", "4"]})
+        with self.assertRaises(InvalidFrame):
+            self.template(catalog, profile_id, attribute="profiles")
+        with self.assertRaises(InvalidReference):
+            self.lookup(catalog, profile_id)
+        self.assertEqual(calls, [])
+
+        result = self.template(catalog, profile_id)
+        self.assertEqual(result, {
+            "format": PREFIX + "bootstrap-template-data.v1", "scope": self.scope.wire(),
+            "catalog": catalog, "profile_id": profile_id, "profile": profile,
+        })
+        self.assertIs(calls[0][1], current_id)
+        profile["nested"].append("live change")
+        self.assertEqual(result["profile"]["nested"], [{"integer": 2**53 - 1}])
+        with self.assertRaises(InvalidReference):
+            self.template(catalog, profile_id)
+
+        next_id = self.getter(current_id)
+        self.assertEqual(next_id, profile_id)
+        self.assertEqual(self.view(self.lookup(catalog, next_id))["kind"], "dict")
+        self.assertEqual([method for method, _ in calls], ["subscript", "get"])
+
+    def test_recovery_template_preserves_exact_key_error_and_consumes_the_call(self) -> None:
+        original = KeyError("actual missing template")
+
+        class Profiles(dict):
+            def __getitem__(self, key):
+                raise original
+
+        self.runtime.catalog.profiles = Profiles()
+        self.getter("initial-id")
+        catalog = self.load()
+        profile_id = self.getter("missing-id")
+        with self.assertRaises(MethodRaised) as raised:
+            self.template(catalog, profile_id)
+        packet = wire.loads(raised.exception.details)
+        self.assertIs(self.registry.borrow(self.registry.reference(packet["root"])), original)
+        view = self.view(packet)
+        self.assertEqual(view["origin"], "bootstrap-template-lookup-raised")
+        self.assertEqual(view["kind"], "key-error")
+        self.assertEqual(view["exception"]["args"][0]["value"]["codepoints"],
+                         list(map(ord, original.args[0])))
+        with self.assertRaises(InvalidReference):
+            self.template(catalog, profile_id)
+        self.dispatcher.release_values(self.frame("values-release", refs=[packet["root"]]))
+        with self.assertRaises(InvalidReference):
+            self.view(packet)
+
+    def test_recovery_template_refuses_out_of_sequence_or_released_inputs(self) -> None:
+        for case in ("missing-first", "later-getter", "throwing-getter", "reloaded",
+                     "released-catalog", "released-getter", "retired", "noncanonical", "nonstring"):
+            with self.subTest(case=case):
+                self.setUp()
+                if case != "missing-first":
+                    self.getter("initial-id")
+                catalog = self.load()
+                if case == "throwing-getter":
+                    self.runtime.failure = KeyError("getter failed")
+                    with self.assertRaises(MethodRaised):
+                        self.getter("ignored-id")
+                    self.runtime.failure = None
+                value = {"noncanonical": "legacy.bad", "nonstring": 1}.get(case, "fixture-id")
+                profile_id = self.getter(value)
+                if case == "later-getter":
+                    self.assertEqual(self.getter(value), profile_id)
+                if case == "reloaded":
+                    self.assertEqual(self.load(), catalog)
+                if case.startswith("released-"):
+                    ref = catalog if case == "released-catalog" else profile_id
+                    self.dispatcher.release_values(self.frame("values-release", refs=[ref]))
+                if case == "retired":
+                    self.registry.retire()
+                with self.assertRaises(InvalidReference):
+                    self.template(catalog, profile_id)
+
+    def test_recovery_template_refuses_values_outside_strict_data(self) -> None:
+        nested = []
+        for _ in range(65):
+            nested = [nested]
+        for bad in ([], {"value": 2**53}, {"value": 1.5}, {"value": "\ud800"}, {"value": nested}):
+            with self.subTest(bad=bad):
+                self.setUp()
+                self.runtime.catalog.profiles["fixture-id"] = bad
+                self.getter("initial-id")
+                catalog = self.load()
+                profile_id = self.getter("fixture-id")
+                with self.assertRaises(UnsupportedValue):
+                    self.template(catalog, profile_id)
+                with self.assertRaises(InvalidReference):
+                    self.template(catalog, profile_id)
 
     def test_uses_second_exact_input_and_preserves_live_aliases(self) -> None:
         first_value = "".join(["fixture", "-id"])

@@ -24,7 +24,7 @@ impl crate::unicode15_1::UnicodeWork for Meter<'_> {
     }
 }
 
-struct Scratch {
+pub(super) struct Scratch {
     points: Vec<u32>,
     normalized: Vec<u32>,
     _capacity: NativeSetupReservation,
@@ -86,7 +86,7 @@ impl Scratch {
         })
     }
 
-    fn ascii_identity<'a>(&self, ascii: &'a mut [u8; 128]) -> Result<&'a str> {
+    pub(super) fn ascii_identity<'a>(&self, ascii: &'a mut [u8; 128]) -> Result<&'a str> {
         for (out, point) in ascii.iter_mut().zip(&self.points) {
             *out = u8::try_from(*point)?;
         }
@@ -97,6 +97,7 @@ impl Scratch {
 #[derive(Clone, Copy)]
 pub(super) enum ReviewCaller {
     Recovery,
+    RecoveryTemplate,
     Candidate,
     Resolver,
 }
@@ -108,7 +109,7 @@ impl ReviewCaller {
         pack: &ReviewPackBorrow<'_, S>,
     ) -> std::result::Result<(), crate::OriginalAuthorityError> {
         match self {
-            Self::Recovery => review.read.check_continuation_thread(),
+            Self::Recovery | Self::RecoveryTemplate => review.read.check_continuation_thread(),
             Self::Candidate => review
                 .read
                 .check_candidate_root(&pack.work.get().source, pack.cancellation),
@@ -118,11 +119,16 @@ impl ReviewCaller {
         }
     }
 
-    fn getter(self, review: &mut Review) -> &mut Option<BootstrapIdentityOutcome> {
+    pub(super) fn getter(self, review: &mut Review) -> &mut Option<BootstrapIdentityOutcome> {
         match self {
             Self::Recovery | Self::Candidate => &mut review.actual.getter,
+            Self::RecoveryTemplate => &mut review.actual.recovery_template_getter,
             Self::Resolver => &mut review.actual.resolver_getter,
         }
+    }
+
+    pub(super) fn is_recovery(self) -> bool {
+        matches!(self, Self::Recovery | Self::RecoveryTemplate)
     }
 }
 
@@ -304,7 +310,7 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     }
 }
 
-async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+pub(super) async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
@@ -326,26 +332,10 @@ async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner
             };
             return Ok(Err(BootstrapReviewFailure::ObservationRefused(error)));
         }
-        BootstrapIdentityOutcome::GetterRaised(error) => {
-            if !matches!(caller, ReviewCaller::Recovery)
-                || error.recovery_catch() == BootstrapRecoveryCatch::None
-            {
-                let Some(BootstrapIdentityOutcome::GetterRaised(error)) = getter.take() else {
-                    unreachable!()
-                };
-                return Ok(Err(BootstrapReviewFailure::GetterRaised(error)));
-            }
-            // The raw getter precedes the canonical try. Only the original
-            // recovery catch wraps its ACTUAL opaque ValueError/OSError here.
-            let Some(BootstrapIdentityOutcome::GetterRaised(error)) = getter.take() else {
-                unreachable!()
-            };
-            return Ok(Err(denied(
-                review,
-                pack,
-                caller,
-                "Profile publication recovery failed closed",
-                BootstrapDeniedRaise::OpaqueGetter(error),
+        BootstrapIdentityOutcome::GetterRaised(_) => {
+            let outcome = getter.take().expect("actual getter failure");
+            return Ok(Err(super::catalog::handle_call_failure(
+                review, pack, caller, outcome, false,
             )
             .await?));
         }
