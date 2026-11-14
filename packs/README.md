@@ -1,5 +1,23 @@
 # Tobkiri guest Packs
 
+## Choose an extension format
+
+| What you want to add | Entry point |
+| --- | --- |
+| A new tool, provider, Flow, or isolated UI for the Rust runtime | Create a guest Pack with `pack.json`. A Wasm Pack declares its WIT ports and can include Flow definitions and UI assets. Use a data Pack for static assets without a guest component. |
+| An existing Pi extension | Use the [Pi adapter](local.pi-adapter/COMPAT.md). The wrapper produces a guest Pack for a supported Pi extension and records its source provenance. |
+| Tools from an existing MCP server | Use the [MCP connection](../tobkiri_runtime/ecosystem/defaultspack/docs/mcp.md) on the existing Harness path. |
+| Instructions or reusable prompt content | Use a [skill or a prompt](../tobkiri_runtime/ecosystem/defaultspack/docs/index.md). Tool execution and side effects still follow the selected Pack and Profile permissions. |
+| An extension for a deployed v4 Host | Use the [v4 Pack guide](../tobkiri_runtime/docs/pack-development-guide.md). Follow the [v4 UI asset guide](../tobkiri_runtime/ecosystem/defaultspack/docs/frontend_extensions.md) or [v4 template guide](../tobkiri_runtime/ecosystem/defaultspack/docs/templates.md) for those surfaces. |
+
+For an existing deployment, check which Pack format its Launcher supports before
+building. A v4 `pack.v4.json` and a guest `pack.json` belong to different
+installation paths. Mutable `extensions/` folders, older bundle formats and
+dynamic Python tool definitions are compatibility or migration inputs. For the
+reviewed path for older tools, see [Writing Tools](../tobkiri_runtime/ecosystem/defaultspack/docs/writing-tools.md).
+
+## Stage a guest Pack
+
 To author a Pack, stage the files it will ship and create a JSON template with
 the usual manifest fields. In the template, write `files` as an array of
 relative paths (for example, `["assets/theme.json"]`) and supply a `permissions`
@@ -70,17 +88,20 @@ The provider's SSE framing handles split UTF-8, LF/CRLF, comments, usage and DON
 dropping a cancelled response closes the external request. Core imports enforce
 the gate, cancellation, original deadline, exact origin and opaque secret binding.
 
-pi extensions are byte-identical recorded copies at a pinned upstream commit.
-Install development build tools with `npm ci --prefix sdk/js`, then build:
+The bundled Pi examples retain byte-identical source from a pinned upstream
+commit. Install development build tools with `npm ci --prefix sdk/js`, then
+build the examples or wrap a local extension:
 
 ```sh
 node sdk/js/wrap-pi.mjs packs/local.pi-example-hello
 node sdk/js/wrap-pi.mjs packs/local.pi-example-protected-paths
+node sdk/js/wrap-pi.mjs --source ./my-extension.ts --local-source --out ./my-extension-pack --id local.my-extension
 ```
 
 The compiler uses build-time esbuild aliases and componentize-js, with direct
-WASI HTTP disabled. It ships a wasm component, unchanged upstream source and
-provenance, with no native Node runtime. Unsupported pi APIs throw explicitly.
+WASI HTTP disabled. It ships a Wasm component, source bytes and provenance, with
+no native Node runtime. Local builds record the input hash and use local,
+unverified provenance. The compatibility guide lists supported Pi APIs.
 The adapter and wrapped extension are admitted as two ordinary Packs.
 
 `local.shell-policy-python` is a Python-on-wasm pilot built with the existing
