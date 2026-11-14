@@ -15,8 +15,8 @@ impl NativeSetupLease for Portable {
         Digest::hash(b"registry-test-only-not-source-authority")
     }
 }
-pub(super) struct Source {
-    pub(super) root: PathBuf,
+pub(in crate::original_authority::io::publication) struct Source {
+    pub(in crate::original_authority::io::publication) root: PathBuf,
     runtime: PathBuf,
 }
 impl OriginalAuthorityOwner for Source {
@@ -43,7 +43,7 @@ impl crate::BootstrapReviewOwner for Source {
         }))
     }
 }
-pub(super) fn with_source(
+pub(in crate::original_authority::io::publication) fn with_source(
     run: impl FnOnce(&Source, &mut PublicationRead, &CoreCancellation, &Arc<dyn AllocationBudget>),
 ) {
     with_setup_source(|source, read, cancellation, budget| {
@@ -78,7 +78,7 @@ pub(super) fn with_setup_source(
     let remaining = account.snapshot().unwrap();
     assert_eq!((remaining.charged_bytes, remaining.reservations), (0, 0));
 }
-pub(super) fn operation<'a>(
+pub(in crate::original_authority::io::publication) fn operation<'a>(
     read: &'a PublicationRead,
     source: &'a Source,
     cancel: &'a CoreCancellation,

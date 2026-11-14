@@ -48,6 +48,7 @@ impl ExternalPackRead {
 struct PackRoot {
     _path: PathBuf,
     _entry: usize,
+    _physical_identity: (u64, u64),
     _capacity: NativeSetupReservation,
 }
 
@@ -441,6 +442,7 @@ fn checked_entry_root<S: OriginalAuthorityOwner>(
     Ok(PackRoot {
         _path: path,
         _entry: entry,
+        _physical_identity: (metadata.dev(), metadata.ino()),
         _capacity: capacity,
     })
 }
