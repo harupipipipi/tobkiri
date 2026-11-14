@@ -85,10 +85,34 @@ def _journal_rows(path: Path) -> tuple[int, int]:
         connection.close()
 
 
-@pytest.mark.parametrize("interrupt", [None, "cancel", "epoch", "revocation"])
+@pytest.mark.parametrize(
+    ("interrupt", "usage"),
+    [
+        pytest.param(None, None, id="None"),
+        pytest.param("cancel", None, id="cancel"),
+        pytest.param("epoch", None, id="epoch"),
+        pytest.param("revocation", None, id="revocation"),
+        pytest.param(
+            None,
+            {"prompt_tokens": 2048, "prompt_tokens_details": {"cached_tokens": 1024}},
+            id="cached-tokens",
+        ),
+        pytest.param(
+            None,
+            {"prompt_tokens": 2048, "prompt_tokens_details": {"cached_tokens": 0}},
+            id="zero-cached-tokens",
+        ),
+        pytest.param(
+            None,
+            {"prompt_tokens": 2048},
+            id="cached-tokens-omitted",
+        ),
+    ],
+)
 def test_first_actual_http_chunk_is_readable_before_provider_completion(
     tmp_path: Path,
     interrupt: str | None,
+    usage: dict[str, Any] | None,
 ) -> None:
     """A real blocking HTTP server proves progress before EOF; fences close IO."""
     release, sent, published, finished = Event(), Event(), Event(), Event()
@@ -108,9 +132,11 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
             sent.set()
             release.wait(5)
             try:
-                self.wfile.write(
-                    _frame(" second") + _frame(finish="stop") + b"data: [DONE]\n\n"
-                )
+                tail = _frame(" second") + _frame(finish="stop")
+                if usage is not None:
+                    trailer = {"choices": [], "usage": usage}
+                    tail += b"data: " + json.dumps(trailer).encode() + b"\n\n"
+                self.wfile.write(tail + b"data: [DONE]\n\n")
                 self.wfile.flush()
             except OSError:
                 pass
@@ -211,7 +237,18 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
         else:
             release.set()
             assert finished.wait(2) and not failures
-            assert stream.result()["output"] == "first buffered second"
+            result = stream.result()
+            assert result["output"] == "first buffered second"
+            assert result["usage"] == (usage or {})
+            assert result["events"][-2:] == [
+                {"type": "usage", "usage": usage or {}},
+                {"type": "finish", "finish_reason": "stop"},
+            ]
+            completed_page = journal.read(
+                identity, owner="owner", capture="capture", cursor=0
+            )
+            assert completed_page["provider_complete"]
+            assert all(row["event"]["type"] != "usage" for row in completed_page["events"])
         assert len(requests) == 1 and requests[0]["stream"] is True
         with pytest.raises(PermissionError, match="consumed"):
             transport.stream_chat(
