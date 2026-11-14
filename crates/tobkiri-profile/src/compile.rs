@@ -638,7 +638,11 @@ pub fn compile(
             &mut errors,
         );
     }
-    for key in profile.bindings.keys() {
+    for key in profile
+        .bindings
+        .keys()
+        .chain(profile.provider_bindings.keys())
+    {
         let valid = key.rsplit_once('@').is_some_and(|(name, major)| {
             ShapeName::parse(name).is_ok()
                 && major.parse::<u16>().is_ok()
@@ -649,6 +653,29 @@ pub fn compile(
             errors.push(conflict(
                 "binding-key",
                 "bindings must use shape-name@major",
+                vec![],
+            ));
+        }
+    }
+    for (key, choices) in &profile.provider_bindings {
+        if profile.bindings.contains_key(key) {
+            errors.push(conflict(
+                "provider-binding",
+                "a shape cannot use both binding forms",
+                vec![],
+            ));
+        }
+        if choices.is_empty() {
+            errors.push(conflict(
+                "provider-binding",
+                "provider set cannot be empty",
+                vec![],
+            ));
+        }
+        if choices.iter().collect::<BTreeSet<_>>().len() != choices.len() {
+            errors.push(conflict(
+                "provider-binding",
+                "provider set contains duplicates",
                 vec![],
             ));
         }
@@ -678,7 +705,30 @@ pub fn compile(
         };
         let ids: BTreeSet<_> = providers.iter().map(|(id, _)| id.clone()).collect();
         let key = format!("{name}@{major}");
-        let chosen = if definition.cardinality == Cardinality::Many {
+        let chosen = if let Some(choices) = profile.provider_bindings.get(&key) {
+            if definition.cardinality != Cardinality::Many && choices.len() > 1 {
+                errors.push(conflict(
+                    "provider-binding",
+                    "single slot cannot select multiple providers",
+                    vec![],
+                ));
+            }
+            for choice in choices {
+                if !ids.contains(choice) {
+                    errors.push(conflict(
+                        "provider-binding",
+                        "explicit binding is not a provider",
+                        vec![choice.to_string()],
+                    ));
+                }
+            }
+            choices
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        } else if definition.cardinality == Cardinality::Many {
             ids.into_iter().collect::<Vec<_>>()
         } else if let Some(choice) = profile.bindings.get(&key) {
             if !ids.contains(choice) {
@@ -757,6 +807,18 @@ pub fn compile(
                 "unused-binding",
                 "explicit binding does not name an available port",
                 vec![choice.to_string()],
+            ));
+        }
+    }
+    for (key, choices) in &profile.provider_bindings {
+        if !provider_groups
+            .keys()
+            .any(|(name, major)| format!("{name}@{major}") == *key)
+        {
+            errors.push(conflict(
+                "unused-binding",
+                "explicit binding does not name an available port",
+                choices.iter().map(ToString::to_string).collect(),
             ));
         }
     }

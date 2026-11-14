@@ -132,6 +132,7 @@ fn profile(packs: &[VerifiedPack]) -> Profile {
         ceiling,
         user_permissions: None,
         bindings: BTreeMap::new(),
+        provider_bindings: BTreeMap::new(),
         overlay_order: vec![],
         user_overlays: vec![],
         startup: Startup {
@@ -278,6 +279,81 @@ fn single_provider_collision_needs_explicit_choice_and_many_is_automatic() {
         compile(&p, &packs).unwrap().bindings[&reference("query")].len(),
         2
     );
+}
+
+#[test]
+fn explicit_provider_sets_validate_and_round_trip_without_changing_legacy_wire() {
+    let mut packs = vec![contracts(), provider("local.one"), provider("local.two")];
+    let mut p = profile(&packs);
+    let key = "local.contracts.query@1".to_string();
+    let one = PackId::parse("local.one").unwrap();
+    let two = PackId::parse("local.two").unwrap();
+    let legacy = serde_json::to_value(&p).unwrap();
+    assert!(legacy.get("provider_bindings").is_none());
+    let legacy_bytes = serde_json::to_vec(&p).unwrap();
+    let parsed = tobkiri_profile::parse_profile(&legacy_bytes).unwrap();
+    assert_eq!(serde_json::to_vec(&parsed).unwrap(), legacy_bytes);
+    let legacy_packs = vec![contracts(), provider("local.one")];
+    let legacy_profile = profile(&legacy_packs);
+    let round_trip =
+        tobkiri_profile::parse_profile(&serde_json::to_vec(&legacy_profile).unwrap()).unwrap();
+    assert_eq!(
+        compile(&legacy_profile, &legacy_packs).unwrap().plan_digest,
+        compile(&round_trip, &legacy_packs).unwrap().plan_digest
+    );
+    assert!(
+        serde_json::to_value(p.published())
+            .unwrap()
+            .get("provider_bindings")
+            .is_none()
+    );
+
+    p.provider_bindings
+        .insert(key.clone(), vec![one.clone(), two.clone()]);
+    has_error(compile(&p, &packs), "provider-binding");
+    packs[0] = rebuild(&packs[0], |_, files| {
+        files.insert(
+            "wit/query.shape.json".into(),
+            br#"{"cardinality":"many","streams":{},"callbacks":{}}"#.to_vec(),
+        );
+    });
+    p = profile(&packs);
+    p.provider_bindings.insert(key.clone(), vec![two.clone()]);
+    let compiled = compile(&p, &packs).unwrap();
+    assert_eq!(compiled.bindings[&reference("query")], vec![two.clone()]);
+    p.provider_bindings
+        .insert(key.clone(), vec![two.clone(), one.clone()]);
+    assert_eq!(
+        compile(&p, &packs).unwrap().bindings[&reference("query")],
+        vec![one.clone(), two.clone()]
+    );
+    p.provider_bindings.insert(key.clone(), vec![two.clone()]);
+    let published = p.published();
+    let bytes = serde_json::to_vec(&published).unwrap();
+    let restored = tobkiri_profile::parse_published(&bytes)
+        .unwrap()
+        .to_profile(p.id.clone(), p.name.clone());
+    assert_eq!(restored.provider_bindings, p.provider_bindings);
+    assert_eq!(
+        compile(&restored, &packs).unwrap().plan_digest,
+        compiled.plan_digest
+    );
+
+    p.provider_bindings.insert(key.clone(), vec![]);
+    has_error(compile(&p, &packs), "provider-binding");
+    p.provider_bindings
+        .insert(key.clone(), vec![one.clone(), one.clone()]);
+    has_error(compile(&p, &packs), "provider-binding");
+    p.provider_bindings
+        .insert(key.clone(), vec![PackId::parse("local.unknown").unwrap()]);
+    has_error(compile(&p, &packs), "provider-binding");
+    p.provider_bindings.insert(key.clone(), vec![one.clone()]);
+    p.bindings.insert(key.clone(), one);
+    has_error(compile(&p, &packs), "provider-binding");
+    p.bindings.clear();
+    p.provider_bindings
+        .insert("local.missing@1".into(), vec![two]);
+    has_error(compile(&p, &packs), "unused-binding");
 }
 #[test]
 fn optional_and_untyped_ports_cannot_satisfy_required_typed_slots() {

@@ -846,6 +846,7 @@ impl Fixture {
                 .map(|(_, pack)| (pack.manifest.id.clone(), pack.manifest.permissions.clone()))
                 .collect(),
             bindings: BTreeMap::new(),
+            provider_bindings: BTreeMap::new(),
             overlay_order: Vec::new(),
             user_overlays: Vec::new(),
             startup: Startup {
@@ -1136,6 +1137,7 @@ impl Fixture {
             } else {
                 BTreeMap::new()
             },
+            provider_bindings: BTreeMap::new(),
             overlay_order: Vec::new(),
             user_overlays: Vec::new(),
             startup: Startup {

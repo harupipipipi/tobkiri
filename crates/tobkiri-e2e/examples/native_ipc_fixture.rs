@@ -205,6 +205,7 @@ fn profile(
         user_permissions: Some(permissions.clone()),
         pack_limits: BTreeMap::from([(pack_id, permissions)]),
         bindings: BTreeMap::new(),
+        provider_bindings: BTreeMap::new(),
         overlay_order: Vec::new(),
         user_overlays: Vec::new(),
         startup: Startup {

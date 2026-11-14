@@ -101,6 +101,7 @@ fn profile(pack: &VerifiedPack, entry: InputEntry) -> Profile {
         ceiling,
         user_permissions: None,
         bindings: BTreeMap::new(),
+        provider_bindings: BTreeMap::new(),
         overlay_order: vec![],
         user_overlays: vec![],
         startup: Startup {

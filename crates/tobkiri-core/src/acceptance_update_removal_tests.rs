@@ -362,6 +362,28 @@ async fn removing_a_provider_of_another_packs_required_port_fails_and_keeps_data
 }
 
 #[tokio::test]
+async fn removing_last_explicit_provider_keeps_the_saved_profile() {
+    let (core, host, mut profile, _dir) = fixture();
+    let provider = PackId::parse("local.fixture").unwrap();
+    profile
+        .provider_bindings
+        .insert("local.fixture.port@1".into(), vec![provider.clone()]);
+    let head = core.save_profile(profile.clone(), None).await.unwrap();
+    let before = crate::profiles::strict_bytes(&core.profile(&profile.id).unwrap().0).unwrap();
+    let prompts = host.prompts.lock().unwrap().len();
+    match core.remove_pack(&profile.id, &provider).await {
+        Err(CoreError::Conflicts(conflicts)) => {
+            assert!(conflicts.iter().any(|c| c.code == "provider-binding"))
+        }
+        other => panic!("empty explicit provider set must reject removal: {other:?}"),
+    }
+    let (stored, current_head) = core.profile(&profile.id).unwrap();
+    assert_eq!(current_head, head);
+    assert_eq!(crate::profiles::strict_bytes(&stored).unwrap(), before);
+    assert_eq!(host.prompts.lock().unwrap().len(), prompts);
+}
+
+#[tokio::test]
 async fn native_pack_requires_the_profile_to_allow_native_and_is_prompted_as_dangerous() {
     let (core, host, mut profile, dir) = fixture();
     let dir = physical(&dir);

@@ -468,6 +468,7 @@ fn profile(id: &str, packs: &[&Pack]) -> Result<Profile> {
             .iter()
             .map(|pack| (format!("{}@1", pack.probe.name), pack.pin.id.clone()))
             .collect(),
+        provider_bindings: BTreeMap::new(),
         overlay_order: vec![],
         user_overlays: vec![],
         startup: Startup {

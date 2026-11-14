@@ -8751,6 +8751,7 @@ mod control_admission_tests {
             user_permissions: None,
             pack_limits: BTreeMap::new(),
             bindings: BTreeMap::new(),
+            provider_bindings: BTreeMap::new(),
             overlay_order: Vec::new(),
             user_overlays: Vec::new(),
             startup: tobkiri_profile::Startup {

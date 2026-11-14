@@ -763,6 +763,9 @@ impl Core {
             return Err(CoreError::NotFound("Pack is not installed".into()));
         }
         profile.bindings.retain(|_, provider| provider != pack);
+        for providers in profile.provider_bindings.values_mut() {
+            providers.retain(|provider| provider != pack);
+        }
         // The removed Pack's own narrowing entry must go with it; compilation
         // rejects limits that belong to no selected Pack.
         profile.pack_limits.remove(pack);

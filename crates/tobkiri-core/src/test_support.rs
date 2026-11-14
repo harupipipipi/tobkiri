@@ -489,6 +489,7 @@ pub(crate) fn runtime_profile(
             .map(|pack| (pack.manifest.id.clone(), permissions.clone()))
             .collect(),
         bindings: BTreeMap::new(),
+        provider_bindings: BTreeMap::new(),
         overlay_order: Vec::new(),
         user_overlays: Vec::new(),
         startup: Startup {

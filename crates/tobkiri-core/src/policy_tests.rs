@@ -87,6 +87,7 @@ fn fixture() -> Fixture {
         user_permissions: None,
         pack_limits: BTreeMap::from([(pack.clone(), permissions.clone())]),
         bindings: BTreeMap::new(),
+        provider_bindings: BTreeMap::new(),
         overlay_order: Vec::new(),
         user_overlays: Vec::new(),
         startup: Startup {

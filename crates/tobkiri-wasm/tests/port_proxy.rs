@@ -756,6 +756,7 @@ impl Fixture {
             } else {
                 BTreeMap::new()
             },
+            provider_bindings: BTreeMap::new(),
             overlay_order: Vec::new(),
             user_overlays: Vec::new(),
             startup: Startup {

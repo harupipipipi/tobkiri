@@ -24,6 +24,9 @@ pub struct Profile {
     pub user_permissions: Option<PermissionSet>,
     pub pack_limits: BTreeMap<PackId, PermissionSet>,
     pub bindings: BTreeMap<String, PackId>,
+    /// Explicit provider sets keyed by shape name and major version.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub provider_bindings: BTreeMap<String, Vec<PackId>>,
     pub overlay_order: Vec<OverlayOrder>,
     pub user_overlays: Vec<OverlayDocument>,
     pub startup: Startup,
@@ -41,6 +44,8 @@ pub struct PublishedProfile {
     pub user_permissions: Option<PermissionSet>,
     pub pack_limits: BTreeMap<PackId, PermissionSet>,
     pub bindings: BTreeMap<String, PackId>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub provider_bindings: BTreeMap<String, Vec<PackId>>,
     pub overlay_order: Vec<OverlayOrder>,
     pub user_overlays: Vec<OverlayDocument>,
     pub startup: Startup,
@@ -487,6 +492,7 @@ impl Profile {
             user_permissions: self.user_permissions.clone(),
             pack_limits: self.pack_limits.clone(),
             bindings: self.bindings.clone(),
+            provider_bindings: self.provider_bindings.clone(),
             overlay_order: self.overlay_order.clone(),
             user_overlays: self.user_overlays.clone(),
             startup: self.startup.clone(),
@@ -506,6 +512,7 @@ impl PublishedProfile {
             user_permissions: self.user_permissions.clone(),
             pack_limits: self.pack_limits.clone(),
             bindings: self.bindings.clone(),
+            provider_bindings: self.provider_bindings.clone(),
             overlay_order: self.overlay_order.clone(),
             user_overlays: self.user_overlays.clone(),
             startup: self.startup.clone(),

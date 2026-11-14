@@ -997,6 +997,7 @@ impl Slots {
                 .map(|pack| (pack.manifest.id.clone(), slot_permissions()))
                 .collect(),
             bindings: BTreeMap::new(),
+            provider_bindings: BTreeMap::new(),
             overlay_order: Vec::new(),
             user_overlays: Vec::new(),
             startup: tobkiri_profile::Startup {

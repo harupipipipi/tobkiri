@@ -162,6 +162,7 @@ mod tests {
             user_permissions: None,
             pack_limits: BTreeMap::new(),
             bindings: BTreeMap::new(),
+            provider_bindings: BTreeMap::new(),
             overlay_order: vec![],
             user_overlays: vec![],
             startup: Startup {
