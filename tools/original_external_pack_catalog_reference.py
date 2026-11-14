@@ -96,6 +96,9 @@ def worker(original, owner, name, output):
             admitted = external.admit_signed_external_pack(source, trust_store_path=trust)
             if admitted["pack_id"] != "conformance.minimal.echo":
                 raise AssertionError("actual original signed echo admission failed")
+            for path in (source, *source.rglob("*")):
+                if path.is_dir():
+                    path.chmod(0o700)
         finally:
             shutil.rmtree(source_dir)
         if name == "malformed-hmac":

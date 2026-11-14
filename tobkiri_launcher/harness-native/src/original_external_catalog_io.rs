@@ -3,12 +3,17 @@ use super::*;
 use std::os::unix::fs::OpenOptionsExt;
 use tobkiri_canon::{AllocationBudget, AllocationKind, AllocationRequest, CoreValue, MAX_BYTES};
 
+#[path = "original_external_catalog_model.rs"]
+mod external_catalog_model;
+use external_catalog_model as model;
+
 // The generated catalog describes packaged Pack IDs. It is distinct from the
 // selected bundle catalog and from user-installed Pack manifests.
 const SOURCE_CATALOG: &str = "schemas/pack_v4_catalog.v1.json";
 const SOURCE_VERSION: &str = "io.tobkiri.pack-source-catalog.v1";
 const REGISTRY: &str = "external_normal_pack_catalog.v4.json";
-const REGISTRY_MAX_BYTES: usize = 16 * 1024 * 1024;
+const KEY: &str = ".external_normal_pack_catalog_key";
+const CAS: &str = "external_normal_pack_cas";
 const BOUNDARY_ERROR: &str = "core_runtime.pack_boundary.PackBoundaryError";
 const EXTERNAL_ERROR: &str = "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied";
 
@@ -20,15 +25,30 @@ pub(crate) struct BundledRecords {
 
 /// The physical registry input, or the absence that the original read uses to
 /// return an empty catalog. This result does not confer Pack authority.
-pub(crate) struct RegistryInput {
+struct RegistryInput {
     _bundled: BundledRecords,
+    registry: PathBuf,
+    _paths: NativeSetupReservation,
     raw: Option<Funded<Zeroizing<Vec<u8>>>>,
 }
 
-impl RegistryInput {
-    pub(crate) fn has_saved_registry(&self) -> bool {
-        self.raw.is_some()
+/// Authenticated Host data up to the first external artifact verification.
+pub(crate) struct ExternalPackRead {
+    _bundled: BundledRecords,
+    _registry: Option<Funded<Document>>,
+    first: Option<PackRoot>,
+}
+
+impl ExternalPackRead {
+    pub(crate) fn need_artifact_verification(&self) -> bool {
+        self.first.is_some()
     }
+}
+
+struct PackRoot {
+    _path: PathBuf,
+    _entry: usize,
+    _capacity: NativeSetupReservation,
 }
 
 #[cfg(test)]
@@ -63,7 +83,7 @@ mod tests {
             let op = operation(read, source, cancellation);
             let path = stage(&runtime, &manifest());
             let catalog = read_inputs(&op, &runtime, &source.root, budget).unwrap();
-            assert!(!catalog.has_saved_registry());
+            assert!(catalog.raw.is_none());
             assert_eq!(
                 catalog
                     ._bundled
@@ -135,7 +155,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn external_catalog_matches_the_pinned_bundled_ids_when_supplied() {
+    async fn external_catalog_matches_the_original_bundled_ids_and_authentication() {
         let Some(path) = std::env::var_os("TOBKIRI_EXTERNAL_CATALOG_FIXTURE") else {
             return;
         };
@@ -160,10 +180,37 @@ mod tests {
                 for (actual, expected) in actual.iter().zip(expected) {
                     assert_eq!(actual.as_str(), expected.as_str());
                 }
-                assert_eq!(
-                    catalog.has_saved_registry(),
-                    case["name"].as_str() != Some("absent")
-                );
+                let observed = authenticate(&op, catalog, budget);
+                match case["expected"]["outcome"].as_str().unwrap() {
+                    "success" => {
+                        let observed = observed.unwrap();
+                        let expected = &case["expected"]["value"];
+                        let registry = observed._registry;
+                        if let Some(registry) = registry {
+                            let value = json::canonical(&registry, None, &op).unwrap();
+                            let value: Value = serde_json::from_slice(&value).unwrap();
+                            assert_eq!(&value, expected);
+                        } else {
+                            assert_eq!(expected["entries"], json!({}));
+                            assert_eq!(expected["journal"], json!([]));
+                        }
+                        assert_eq!(observed.first.is_some(), case["name"] == "admitted");
+                    }
+                    "error" => {
+                        let error = observed
+                            .err()
+                            .expect("original authentication was rejected");
+                        assert_eq!(
+                            error.class,
+                            case["expected"]["error"]["type"].as_str().unwrap()
+                        );
+                        assert_eq!(
+                            error.message,
+                            case["expected"]["error"]["message"].as_str().unwrap()
+                        );
+                    }
+                    _ => panic!("unknown original fixture outcome"),
+                }
                 assert_eq!(read.receipt().open_files, 0);
             });
         }
@@ -175,7 +222,7 @@ pub(crate) fn read<S: crate::BootstrapReviewOwner>(
     owner: &S,
     cancellation: &CoreCancellation,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<RegistryInput> {
+) -> Result<ExternalPackRead> {
     publication.check_continuation_thread()?;
     let pending = publication.pending.as_ref().expect("held recovery");
     let op = PublicationRead::operation(
@@ -186,7 +233,8 @@ pub(crate) fn read<S: crate::BootstrapReviewOwner>(
     )?;
     owner
         .with_original_catalog_source(|source| {
-            read_inputs(&op, source.runtime, &pending.root, budget)
+            let input = read_inputs(&op, source.runtime, &pending.root, budget)?;
+            authenticate(&op, input, budget)
         })?
         .map_err(recovery_error)
 }
@@ -199,7 +247,7 @@ fn read_inputs<S: OriginalAuthorityOwner>(
 ) -> Result<RegistryInput> {
     // Original runtime_user_data_scope resolves this path before reading the
     // generated Pack catalog. Keep using the original selected Host owner.
-    let _paths = op.reserve(
+    let paths = op.reserve(
         OriginalAuthorityStage::Source,
         12 * (runtime.as_os_str().len() + user_data.as_os_str().len() + 512),
     )?;
@@ -215,7 +263,185 @@ fn read_inputs<S: OriginalAuthorityOwner>(
         .transpose()?;
     Ok(RegistryInput {
         _bundled: bundled,
+        registry,
+        _paths: paths,
         raw,
+    })
+}
+
+fn authenticate<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    input: RegistryInput,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<ExternalPackRead> {
+    let Some(raw) = input.raw else {
+        return Ok(ExternalPackRead {
+            _bundled: input._bundled,
+            _registry: None,
+            first: None,
+        });
+    };
+    let mut registry = model::parse_envelope(&raw, op, budget)?;
+    drop(raw);
+    let pack_control = input
+        .registry
+        .parent()
+        .expect("external registry directory");
+    let key = signing_key(op, &pack_control.join(KEY)).map_err(|error| {
+        if error.class == "core_runtime.hmac_key_manager.SigningKeyError" {
+            caused(
+                model::denied("external Normal Pack catalog key is unavailable"),
+                error,
+            )
+        } else {
+            error
+        }
+    })?;
+    model::authenticate_and_validate_journal(&mut registry, &key, op, budget)?;
+    drop(key);
+    let first = first_visible_root(op, &registry, pack_control, budget)?;
+    Ok(ExternalPackRead {
+        _bundled: input._bundled,
+        _registry: Some(registry),
+        first,
+    })
+}
+
+fn first_visible_root<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    registry: &Document,
+    pack_control: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<PackRoot>> {
+    let entries = registry
+        .get(registry.root, "entries")
+        .and_then(|entries| registry.entries(entries))
+        .expect("authenticated entry object");
+    let _funding = op.reserve(
+        OriginalAuthorityStage::Source,
+        entries.len().saturating_mul(size_of::<&(Text, usize)>()),
+    )?;
+    let mut ordered = Vec::new();
+    ordered.try_reserve_exact(entries.len()).map_err(capacity)?;
+    if ordered.capacity() != entries.len() {
+        return Err(capacity(()));
+    }
+    let key_bound = entries
+        .iter()
+        .map(|(key, _)| key.0.len())
+        .max()
+        .unwrap_or(0);
+    charge(
+        op,
+        budget,
+        entries
+            .len()
+            .saturating_mul(key_bound + 1)
+            .saturating_mul(usize::BITS as usize),
+    )?;
+    ordered.extend(entries);
+    ordered.sort_unstable_by(|left, right| left.0.0.cmp(&right.0.0));
+    for (key, raw) in ordered {
+        charge(op, budget, 1024)?;
+        let Some(entry) = model::visible_entry(registry, *raw)? else {
+            continue;
+        };
+        model::validate_visible_entry(registry, key, entry)?;
+        return checked_entry_root(op, registry, entry, pack_control).map(Some);
+    }
+    Ok(None)
+}
+
+fn checked_entry_root<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    registry: &Document,
+    entry: usize,
+    pack_control: &Path,
+) -> Result<PackRoot> {
+    let field = |name| registry.node(registry.get(entry, name).expect("validated entry field"));
+    let Node::String(token) = field("store_token") else {
+        return Err(model::denied(
+            "external Normal Pack artifact path is unsafe",
+        ));
+    };
+    let _token_capacity = op.reserve(
+        OriginalAuthorityStage::Source,
+        token.0.len().saturating_mul(4).max(1),
+    )?;
+    let mut token_text = String::new();
+    let maximum = token.0.len().saturating_mul(4);
+    token_text.try_reserve_exact(maximum).map_err(capacity)?;
+    if token_text.capacity() != maximum {
+        return Err(capacity(()));
+    }
+    for point in &token.0 {
+        let ch = char::from_u32(*point)
+            .ok_or_else(|| model::denied("external Normal Pack artifact path is unsafe"))?;
+        token_text.push(ch);
+    }
+    let relative = Path::new(&token_text);
+    if token_text.is_empty()
+        || token_text.contains('\\')
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err(model::denied(
+            "external Normal Pack artifact path is unsafe",
+        ));
+    }
+    let capacity = op.reserve(
+        OriginalAuthorityStage::Source,
+        8 * (pack_control.as_os_str().len() + token_text.len() + 512),
+    )?;
+    let root = pack_control.join(CAS);
+    let candidate = root.join(relative);
+    let mut current = root.clone();
+    for part in relative.components() {
+        if matches!(part, std::path::Component::CurDir) {
+            continue;
+        }
+        op.check(OriginalAuthorityStage::Source)?;
+        current.push(part);
+        let metadata = current.symlink_metadata().map_err(|error| {
+            caused(
+                model::denied("external Pack artifact path is unavailable"),
+                raw_io(error, current.to_str()),
+            )
+        })?;
+        if metadata.is_symlink() || (current != candidate && !metadata.is_dir()) {
+            return Err(model::denied(
+                "external Pack artifact path contains a symlink",
+            ));
+        }
+    }
+    let path = fs::canonicalize(&candidate).map_err(|error| raw_io(error, candidate.to_str()))?;
+    let root = fs::canonicalize(&root).map_err(|error| raw_io(error, root.to_str()))?;
+    if path == root || !path.starts_with(&root) {
+        return Err(model::denied(
+            "external Normal Pack artifact store token escapes",
+        ));
+    }
+    let metadata = path
+        .symlink_metadata()
+        .map_err(|error| raw_io(error, path.to_str()))?;
+    if metadata.is_symlink() || !metadata.is_dir() {
+        return Err(model::denied("external Pack root is unavailable"));
+    }
+    let integer = |name| match field(name) {
+        Node::Scalar(tobkiri_canon::CanonValue::Int(value)) => u64::try_from(*value).ok(),
+        _ => None,
+    };
+    if integer("root_device") != Some(metadata.dev())
+        || integer("root_inode") != Some(metadata.ino())
+    {
+        return Err(model::denied("external Pack root identity changed"));
+    }
+    Ok(PackRoot {
+        _path: path,
+        _entry: entry,
+        _capacity: capacity,
     })
 }
 
@@ -531,11 +757,14 @@ fn read_registry<S: OriginalAuthorityOwner>(
     let mut file = TrackedFile::new(file, op.cleanup.clone());
     let input = (|| {
         let before = file.metadata().map_err(|error| raw_io(error, None))?;
-        if !before.is_file() || before.nlink() != 1 || before.len() > REGISTRY_MAX_BYTES as u64 {
+        if !before.is_file()
+            || before.nlink() != 1
+            || before.len() > model::MAX_CATALOG_BYTES as u64
+        {
             return Err(external_error("Host JSON file identity is invalid"));
         }
         // Preserve the original bounded single os.read occurrence.
-        let max = REGISTRY_MAX_BYTES + 1;
+        let max = model::MAX_CATALOG_BYTES + 1;
         let funding = op.reserve(OriginalAuthorityStage::Source, max)?;
         let mut raw = Zeroizing::new(Vec::new());
         raw.try_reserve_exact(max).map_err(capacity)?;
@@ -546,7 +775,9 @@ fn read_registry<S: OriginalAuthorityOwner>(
         raw.resize(max, 0);
         let size = file.read(&mut raw).map_err(|error| raw_io(error, None))?;
         let after = file.metadata().map_err(|error| raw_io(error, None))?;
-        if size > REGISTRY_MAX_BYTES || after.nlink() != 1 || identity(&before) != identity(&after)
+        if size > model::MAX_CATALOG_BYTES
+            || after.nlink() != 1
+            || identity(&before) != identity(&after)
         {
             return Err(external_error("Host JSON file changed while reading"));
         }

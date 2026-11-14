@@ -139,14 +139,14 @@ jobs:
           python3 -B tools/original_external_pack_catalog_reference.py prepare
           --original-root "$GITHUB_WORKSPACE/original-definitions-source"
           --output "$RUNNER_TEMP/original-external-catalog"
-      - name: Compare the original bundled catalog and physical registry input
+      - name: Compare the original bundled catalog and authenticated registry
         env:
           TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 3 --
+          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-harness-native --lib
-          original_authority::io::publication::external_catalog::tests::
+          original_authority::io::publication::external_catalog::
           -- --test-threads=1 --nocapture
       - name: Check fresh Setup root custody and original pointer errors
         run: >-
