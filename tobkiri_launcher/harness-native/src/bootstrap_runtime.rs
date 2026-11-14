@@ -53,6 +53,7 @@ const BOOTSTRAP_INACTIVE_EQUALITY: u8 = 23;
 const BOOTSTRAP_ACTIVATION_PREFLIGHT: u8 = 24;
 const BOOTSTRAP_ACTIVATION_MATCH: u8 = 25;
 const BOOTSTRAP_TEMPLATE_LOOKUP: u8 = 26;
+const BOOTSTRAP_RECOVERY_CATALOG: u8 = 27;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
 const BOOTSTRAP_PREVIEW_SLOT: usize = 10;
@@ -196,6 +197,7 @@ impl CiRetiredCall {
             BOOTSTRAP_ACTIVATION_PREFLIGHT => "bootstrap-activation-preflight",
             BOOTSTRAP_ACTIVATION_MATCH => "bootstrap-activation-match",
             BOOTSTRAP_TEMPLATE_LOOKUP => "bootstrap-template-lookup",
+            BOOTSTRAP_RECOVERY_CATALOG => "bootstrap-recovery-catalog",
             _ => "unknown",
         }
     }
@@ -1491,7 +1493,10 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         ) && !matches!(
             (slot, phase),
             (BOOTSTRAP_CONFIRMATION_SLOT, BOOTSTRAP_CONFIRMATION)
-                | (BOOTSTRAP_PREVIEW_SLOT, BOOTSTRAP_PREVIEW)
+                | (
+                    BOOTSTRAP_PREVIEW_SLOT,
+                    BOOTSTRAP_PREVIEW | BOOTSTRAP_RECOVERY_CATALOG
+                )
                 | (BOOTSTRAP_LISTING_SLOT, BOOTSTRAP_LISTING)
                 | (
                     BOOTSTRAP_ACTIVATION_DECISION_SLOT,

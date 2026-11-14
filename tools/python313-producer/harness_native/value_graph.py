@@ -162,6 +162,7 @@ class Registry:
         self._bootstrap_identity: dict[int, str] = {}
         self._bootstrap_template_stage = "awaiting-pre-catalog-getter"
         self._bootstrap_template_profile_id: int | None = None
+        self._bootstrap_recovery_catalog: int | None = None
         # The same Python string can be returned by both getter occurrences.
         # Track the resolver position separately from the identity of its DATA.
         self._resolver_stage = "awaiting-catalog"
@@ -359,6 +360,7 @@ class Registry:
 
     def _clear_resolver_inputs(self) -> None:
         self._clear_bootstrap_template_inputs()
+        self._bootstrap_recovery_catalog = None
         self._resolver_stage = "closed"
         self._resolver_catalog = None
         self._resolver_profile_id = None
@@ -381,12 +383,16 @@ class Registry:
     def _begin_bootstrap_template_catalog(self) -> None:
         # The original Recovery path has a successful getter before loading
         # its catalog. A failed or replacement loader cannot reuse old custody.
+        self._bootstrap_recovery_catalog = None
         if self._bootstrap_template_stage == "awaiting-catalog":
             self._bootstrap_template_stage = "catalog-pending"
         else:
             self._clear_bootstrap_template_inputs()
 
     def _begin_bootstrap_getter(self) -> None:
+        # The optional template getter defers recovery projection until the
+        # lookup of that actual template succeeds.
+        self._bootstrap_recovery_catalog = None
         if self._bootstrap_template_stage == "awaiting-pre-catalog-getter":
             self._bootstrap_template_stage = "pre-catalog-getter-pending"
         elif self._bootstrap_template_stage == "awaiting-post-catalog-getter":
@@ -409,6 +415,7 @@ class Registry:
                 self._resolver_stage = "awaiting-first-getter"
                 if self._bootstrap_template_stage == "catalog-pending":
                     self._bootstrap_template_stage = "awaiting-post-catalog-getter"
+                    self._bootstrap_recovery_catalog = reference.object_id
             else:
                 self._clear_resolver_inputs()
         elif origin == "getter-returned":
@@ -448,6 +455,20 @@ class Registry:
         # Even a throw or a failed projection consumes this original call.
         self._clear_bootstrap_template_inputs()
         return catalog, profile_id
+
+    def _complete_bootstrap_template_lookup(self, catalog_ref: Reference) -> None:
+        self._bootstrap_recovery_catalog = catalog_ref.object_id
+
+    def _begin_bootstrap_recovery_catalog(self, catalog_ref: Reference) -> Any:
+        catalog = self.borrow(catalog_ref)
+        record = self._records.get(type(catalog))
+        if (catalog_ref.object_id != self._bootstrap_recovery_catalog
+                or catalog_ref.object_id != self._resolver_catalog
+                or self._bootstrap_identity.get(catalog_ref.object_id) != "catalog-returned"
+                or record is None or record.kind != "bundled-catalog"):
+            raise InvalidReference("reference has no current bootstrap recovery catalog origin")
+        self._clear_resolver_inputs()
+        return catalog
 
     def _resolver_retained_inputs(
         self, catalog_ref: Reference, profile_id_ref: Reference,
@@ -734,6 +755,7 @@ class Registry:
             "catalog-returned", "catalog-raised",
             "manifest-returned", "manifest-raised",
             "bootstrap-template-lookup-raised",
+            "bootstrap-recovery-catalog-raised",
             "resolver-source-lookup-returned", "resolver-source-lookup-raised",
             "resolver-static-edges-raised", "resolver-dynamic-edges-raised",
             "resolver-verified-artifacts-returned", "resolver-verified-artifacts-raised",

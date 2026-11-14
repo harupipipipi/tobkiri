@@ -767,6 +767,9 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.packs = {}
             self.root = None
             self.artifact_root = None
+            self.bases = {}
+            self.shells = {}
+            self.executable_catalogs = {}
 
     class Runtime(IdentityRuntimeFixture):
         def __init__(self) -> None:
@@ -870,6 +873,95 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.getter("first-id")
         profile_id = self.getter("fixture-id")
         return catalog, profile_id, self.lookup(catalog, profile_id)["root"]
+
+    def recovery_catalog(self, catalog: dict, profiles: list, **fields: object) -> dict:
+        return wire.loads(self.dispatcher.call("catalog_with_profiles", self.frame(
+            "bootstrap-recovery-catalog", catalog=catalog, profiles=profiles, **fields,
+        )))
+
+    def recovery_projector(self, catalog: Catalog, profiles: dict) -> Catalog:
+        self.assertIs(catalog, self.runtime.catalog)
+        value = self.Catalog()
+        value.__dict__ = vars(catalog).copy()
+        value.profiles = dict(profiles)
+        return value
+
+    def test_recovery_catalog_replaces_profiles_in_store_order_on_actual_loader(self) -> None:
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        self.runtime.catalog.profiles = {"bundled-only": {"profile_id": "bundled-only"}}
+        self.getter("fixture-id")
+        catalog = self.load()
+        alien = self.registry.retain(self.Catalog()).wire()
+        profiles = [["z", {"profile_id": "z"}], ["a", {"profile_id": "a", "packs": []}]]
+        with self.assertRaises(InvalidReference):
+            self.recovery_catalog(alien, profiles)
+        with self.assertRaises(InvalidReference):
+            self.recovery_catalog({**catalog, "scope": ["1", "2", "9", "4"]}, profiles)
+        for invalid in ({}, [profiles[0], profiles[0]], [["a", {"profile_id": "b"}]]):
+            with self.assertRaises(InvalidFrame):
+                self.recovery_catalog(catalog, invalid)
+        with self.assertRaises(InvalidFrame):
+            self.recovery_catalog(catalog, profiles, include_bundled=True)
+        result = self.recovery_catalog(catalog, profiles)
+        self.assertEqual(result, {
+            "format": PREFIX + "bootstrap-recovery-catalog-result.v1",
+            "scope": self.scope.wire(), "root": result["root"],
+            "owned": [result["root"]["object"]],
+        })
+        value = self.registry.borrow(self.registry.reference(result["root"]))
+        self.assertEqual(list(value.profiles), ["z", "a"])
+        self.assertEqual(value.profiles, dict(profiles))
+        self.assertEqual(list(self.runtime.catalog.profiles), ["bundled-only"])
+        with self.assertRaises(InvalidReference):
+            self.recovery_catalog(catalog, profiles)
+
+    def test_recovery_catalog_refuses_fresh_candidate_loader(self) -> None:
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        catalog = self.load()
+        self.getter("fixture-id")
+        with self.assertRaises(InvalidReference):
+            self.recovery_catalog(catalog, [])
+
+    def test_recovery_catalog_waits_for_selected_template_lookup(self) -> None:
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        self.runtime.catalog.profiles["fixture-id"] = {"profile_id": "fixture-id"}
+        self.getter("fixture-id")
+        catalog = self.load()
+        profile_id = self.getter("fixture-id")
+        with self.assertRaises(InvalidReference):
+            self.recovery_catalog(catalog, [])
+        self.template(catalog, profile_id)
+        result = self.recovery_catalog(catalog, [])
+        value = self.registry.borrow(self.registry.reference(result["root"]))
+        self.assertEqual(value.profiles, {})
+
+    def test_recovery_catalog_preserves_raise_and_consumes_origin(self) -> None:
+        self.getter("fixture-id")
+        catalog = self.load()
+
+        def raised(*_args):
+            raise KeyError("actual fixed failure")
+
+        self.runtime.catalog_with_profiles = raised
+        with self.assertRaises(MethodRaised) as caught:
+            self.recovery_catalog(catalog, [])
+        error = wire.loads(caught.exception.details)
+        self.assertEqual(self.view(error)["origin"], "bootstrap-recovery-catalog-raised")
+        with self.assertRaises(InvalidReference):
+            self.recovery_catalog(catalog, [])
+
+    def test_recovery_catalog_refuses_changed_pack_inventory(self) -> None:
+        self.getter("fixture-id")
+        catalog = self.load()
+
+        def changed(source, profiles):
+            value = self.recovery_projector(source, profiles)
+            value.packs = {}
+            return value
+
+        self.runtime.catalog_with_profiles = changed
+        with self.assertRaises(UnsupportedValue):
+            self.recovery_catalog(catalog, [])
 
     def test_recovery_template_uses_exact_subscript_and_detaches_only_the_profile(self) -> None:
         old_id = "".join(["fixture", "-id"])

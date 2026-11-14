@@ -40,7 +40,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.native = job(self.workflow, "execute-original-native-bootstrap")
 
     def test_schema_diagnostic_is_an_explicit_separate_producer_and_binder(self) -> None:
-        self.assertIn("catalog-prefix, catalog-schema-diagnostic, launcher-staging]", self.workflow)
+        self.assertIn("catalog-prefix, recovery-catalog, catalog-schema-diagnostic, launcher-staging]", self.workflow)
         build = job(self.workflow, "build-whole-native-harness")
         producer = step(build, "Build the actual native Harness dispatcher and original module closure")
         self.assertIn("build_components.py --harness-native", producer)

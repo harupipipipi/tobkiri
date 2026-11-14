@@ -234,7 +234,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         origin: &'static str,
     ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
         let slot = match origin {
-            "bootstrap-preview" => BOOTSTRAP_PREVIEW_SLOT,
+            "bootstrap-preview" | "bootstrap-recovery-catalog" => BOOTSTRAP_PREVIEW_SLOT,
             "bootstrap-listing" => BOOTSTRAP_LISTING_SLOT,
             "bootstrap-activation-preflight" | "bootstrap-activation-match" => {
                 BOOTSTRAP_ACTIVATION_DECISION_SLOT
@@ -296,6 +296,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "bootstrap-inactive-equality")
                 | (BOOTSTRAP_CONFIRMATION_SLOT, "bootstrap-confirmation")
                 | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-preview")
+                | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-recovery-catalog")
                 | (BOOTSTRAP_LISTING_SLOT, "bootstrap-listing")
                 | (
                     BOOTSTRAP_ACTIVATION_DECISION_SLOT,
@@ -325,6 +326,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "bootstrap-inactive-equality") => BOOTSTRAP_INACTIVE_EQUALITY,
             (REVIEW, "bootstrap-confirmation") => BOOTSTRAP_CONFIRMATION,
             (REVIEW, "bootstrap-preview") => BOOTSTRAP_PREVIEW,
+            (REVIEW, "bootstrap-recovery-catalog") => BOOTSTRAP_RECOVERY_CATALOG,
             (REVIEW, "bootstrap-listing") => BOOTSTRAP_LISTING,
             (REVIEW, "bootstrap-activation-preflight") => BOOTSTRAP_ACTIVATION_PREFLIGHT,
             (REVIEW, "bootstrap-activation-match") => BOOTSTRAP_ACTIVATION_MATCH,
@@ -396,6 +398,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | BOOTSTRAP_INACTIVE_EQUALITY
                 | BOOTSTRAP_CONFIRMATION
                 | BOOTSTRAP_PREVIEW
+                | BOOTSTRAP_RECOVERY_CATALOG
                 | BOOTSTRAP_LISTING
                 | BOOTSTRAP_TEMPLATE_LOOKUP
                 | BOOTSTRAP_ACTIVATION_PREFLIGHT
@@ -747,6 +750,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
                 true
             )
             | (Some("bootstrap-preview-raised"), "bootstrap-preview", true)
+            | (
+                Some("bootstrap-recovery-catalog-raised"),
+                "bootstrap-recovery-catalog",
+                true
+            )
             | (Some("bootstrap-listing-raised"), "bootstrap-listing", true)
             | (
                 Some("bootstrap-activation-preflight-raised"),

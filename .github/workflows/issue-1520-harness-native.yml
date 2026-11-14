@@ -39,7 +39,7 @@ on:
       verification:
         description: Original runtime regression, targeted comparison, or Launcher resource staging
         type: choice
-        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, catalog-schema-diagnostic, launcher-staging]
+        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, recovery-catalog, catalog-schema-diagnostic, launcher-staging]
         default: bootstrap
 
 permissions:
@@ -242,7 +242,7 @@ jobs:
           bootstrap_runtime::resolver_edges::tests::
           -- --test-threads=1 --nocapture
       - name: Checkout pinned original factory and identity references
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'catalog-schema-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         uses: actions/checkout@v4
         with:
           ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
@@ -250,7 +250,7 @@ jobs:
           persist-credentials: false
       - name: Install original reference dependencies once
         id: original_reference_dependencies
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'catalog-schema-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: |
           python3 -B tools/original_setup_review_reference.py requirements \
             --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
@@ -358,7 +358,7 @@ jobs:
           --output "$RUNNER_TEMP/original-publication-identity-reference/actual-default-comparison.json"
       - name: Prepare independent original catalog resource fixtures
         id: catalog_prefix_reference
-        if: ${{ !cancelled() && (inputs.verification == 'catalog-prefix' || inputs.verification == 'catalog-schema-diagnostic') && steps.original_reference_dependencies.conclusion == 'success' }}
+        if: ${{ !cancelled() && (inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic') && steps.original_reference_dependencies.conclusion == 'success' }}
         run: >-
           python3 -B tools/original_catalog_prefix_reference.py prepare
           --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
@@ -373,6 +373,16 @@ jobs:
           --log "$RUNNER_TEMP/harness-native-catalog-prefix.log" --expected-passed 1 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::catalog_actual_ci::original_catalog_component_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Replace the live Profile table in the actual retained catalog
+        if: ${{ !cancelled() && inputs.verification == 'recovery-catalog' && steps.catalog_prefix_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_CATALOG_PREFIX_FIXTURES: ${{ runner.temp }}/original-catalog-prefix/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-recovery-catalog.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::catalog_actual_ci::original_recovery_catalog_component_driver
           -- --ignored --exact --test-threads=1 --nocapture
       - name: Independently compare actual catalog reachpoint and effects
         if: ${{ !cancelled() && inputs.verification == 'catalog-prefix' && steps.catalog_prefix_native.outcome != 'skipped' && steps.catalog_prefix_reference.conclusion == 'success' }}
@@ -553,11 +563,13 @@ jobs:
             ${{ runner.temp }}/original-publication-identity-reference/actual-default-review-observations.json
             ${{ runner.temp }}/original-publication-identity-reference/actual-default-comparison.json
             ${{ runner.temp }}/harness-native-catalog-prefix.log*
+            ${{ runner.temp }}/harness-native-recovery-catalog.log*
             ${{ runner.temp }}/harness-native-catalog-funding.log*
             ${{ runner.temp }}/harness-native-catalog-reader.log*
             ${{ runner.temp }}/harness-native-resolver-edges.log*
             ${{ runner.temp }}/original-catalog-prefix/summary.json
             ${{ runner.temp }}/original-catalog-prefix/actual-catalog-observations.json
+            ${{ runner.temp }}/original-catalog-prefix/actual-recovery-catalog-observations.json
             ${{ runner.temp }}/original-catalog-prefix/actual-catalog-schema-trace.json
             ${{ runner.temp }}/harness-native-schema-fixed-import.log*
             ${{ runner.temp }}/harness-native-schema-checkpoint.log*

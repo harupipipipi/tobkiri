@@ -603,7 +603,7 @@ async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOw
     caller: ReviewCaller,
     profiles: CoreValue,
 ) -> super::listing::Outcome {
-    review.actual._recovery_profile_definitions = Some(profiles);
+    review.actual._recovery_profile_definitions = Some(profiles.share());
     let catalog = match crate::original_authority::external_catalog::read(
         &review.read,
         &pack.work.get().source,
@@ -615,7 +615,76 @@ async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOw
     };
     let boundary = catalog.verification_reachpoint();
     review.actual._recovery_external_catalog = Some(catalog);
-    Ok(Err(BootstrapReviewFailure::NotBound(boundary)))
+    if boundary != BootstrapReviewReachpoint::CatalogWithProfilesNotBound {
+        return Ok(Err(BootstrapReviewFailure::NotBound(boundary)));
+    }
+    replace_recovery_profiles(review, pack, caller, profiles).await
+}
+
+#[cfg(unix)]
+async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
+    profiles: CoreValue,
+) -> super::listing::Outcome {
+    caller.check(review, pack)?;
+    pack.require_same_runtime()?;
+    let scope = actual_call_scope(pack)?;
+    let original = result_root(
+        pack,
+        returned(
+            review
+                .actual
+                .catalog
+                .as_ref()
+                .context("actual recovery catalog missing")?,
+        )?,
+        &scope,
+    )?;
+    let request = denied::frame(
+        pack,
+        "io.tobkiri.native-bootstrap-recovery-catalog.v1",
+        [("catalog", original.share()), ("profiles", profiles)],
+    )?;
+    let outcome = pack
+        .observe_fixed_projection(&request, "bootstrap-recovery-catalog")
+        .await?;
+    caller.check(review, pack)?;
+    let data = match outcome {
+        Ok(data) => data,
+        Err(error) => {
+            return Ok(Err(
+                handle_call_failure(review, pack, caller, error, false).await?
+            ));
+        }
+    };
+    review.actual._recovery_catalog = Some(data);
+    let result = CoreValue::parse_guest(
+        review
+            .actual
+            ._recovery_catalog
+            .as_ref()
+            .expect("actual recovery catalog")
+            .as_bytes(),
+        pack.input_budget,
+    )?;
+    denied::exact(&result, &["format", "scope", "root", "owned"])?;
+    if denied::field(&result, "format")?.as_str()
+        != Some("io.tobkiri.native-bootstrap-recovery-catalog-result.v1")
+        || !denied::same_scope(&denied::field(&result, "scope")?, &scope)
+    {
+        bail!("recovery catalog result differs from the retained runtime");
+    }
+    let root = denied::field(&result, "root")?;
+    denied::reference(&root, &scope)?;
+    denied::ownership(&result, &root, true)?;
+    if denied::same_reference(&root, &original)? {
+        bail!("recovery catalog was not replaced");
+    }
+    Ok(Err(BootstrapReviewFailure::NotBound(
+        BootstrapReviewReachpoint::RecoveryAuthorityStoreNotBound,
+    )))
 }
 
 #[cfg(unix)]

@@ -126,7 +126,14 @@ async fn original_catalog_component_driver() -> Result<()> {
         !cfg!(feature = "catalog-diagnostics-ci"),
         "unmeasured catalog gate requires the baseline Core configuration"
     );
-    run_original_catalog_component_driver(false).await
+    run_original_catalog_component_driver(false, false).await
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires actual component and the pinned original recovery seed"]
+async fn original_recovery_catalog_component_driver() -> Result<()> {
+    ensure!(!cfg!(feature = "catalog-diagnostics-ci"));
+    run_original_catalog_component_driver(false, true).await
 }
 
 #[cfg(feature = "catalog-diagnostics-ci")]
@@ -140,7 +147,7 @@ async fn original_catalog_schema_diagnostic_driver() -> Result<()> {
     );
     // Diagnostic observation never turns the original catalog failure into
     // functional qualification, even if the measured call reaches its end.
-    let outcome = run_original_catalog_component_driver(true).await;
+    let outcome = run_original_catalog_component_driver(true, false).await;
     if let Err(error) = outcome {
         return Err(error.context("schema checkpoint diagnostic remains unqualified"));
     }
@@ -229,7 +236,10 @@ pub(super) fn write_schema_trace(
     Ok(metadata)
 }
 
-async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Result<()> {
+async fn run_original_catalog_component_driver(
+    schema_diagnostic: bool,
+    recovery: bool,
+) -> Result<()> {
     #[cfg(not(feature = "catalog-diagnostics-ci"))]
     let _ = schema_diagnostic;
     ensure!(
@@ -352,11 +362,12 @@ async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Resul
     #[cfg(feature = "catalog-diagnostics-ci")]
     let mut schema_trace = None;
     let execution: Result<()> = async {
-        let outcome = runtime
-            // Preserve this constructor-entry proof while normal listing
-            // continues into the independently tested definition interval.
-            .setup_review_catalog_prefix(&BootstrapReviewOptions::default())
-            .await;
+        let options = BootstrapReviewOptions::default();
+        let outcome = if recovery {
+            runtime.setup_review_listing(&options).await
+        } else {
+            runtime.setup_review_catalog_prefix(&options).await
+        };
         // Review/Read live outside the caught call future, including a trap.
         // Acquire its actual ledger BEFORE `?` or finish, not only typed DATA.
         cleanup_probe = runtime.original_review_uncertain_cleanup();
@@ -437,15 +448,13 @@ async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Resul
                 "native_details":native.details().map(diagnostic_text),
                 "qualification":false}));
         }
-        ensure!(
-            matches!(
-                error,
-                BootstrapReviewFailure::NotBound(
-                    BootstrapReviewReachpoint::ProfileDefinitionStoreNotBound
-                )
-            ),
-            "actual catalog did not reach the original constructor entry: {error:?}"
-        );
+        let expected = if recovery {
+            BootstrapReviewReachpoint::RecoveryAuthorityStoreNotBound
+        } else {
+            BootstrapReviewReachpoint::ProfileDefinitionStoreNotBound
+        };
+        ensure!(matches!(error, BootstrapReviewFailure::NotBound(value) if *value == expected),
+            "actual catalog did not reach {expected:?}: {error:?}");
         let actual = &runtime
             .review
             .as_ref()
@@ -457,11 +466,20 @@ async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Resul
                 && actual.catalog.is_some(),
             "real same-Store roots and loader result must be retained"
         );
+        if recovery {
+            ensure!(
+                actual._recovery_catalog.is_some()
+                    && actual._recovery_profile_definitions.is_some()
+                    && !user_data.join("authority").exists(),
+                "the same Store must retain the recovered catalog before Authority opens",
+            );
+        }
         let fuel_after = runtime.fuel_remaining()?;
         ensure!(fuel_after < fuel_before && invocation.deadline()? == deadline);
         ensure!(cleanup_probe.is_some() && !lock_is_free(&user_data)?);
         observed = Some(
-            json!({"outcome":"integration-boundary", "stage":"profile-definition-store-entry",
+            json!({"outcome":"integration-boundary",
+            "stage":if recovery {"recovery-authority-store-entry"} else {"profile-definition-store-entry"},
             "fuel_before":fuel_before,"fuel_after":fuel_after,"budget_resets":0,
             "inspection_attempts_before_review":inspections_before_review,
             "inspection_attempts_after_review":runtime.inspection_attempts(),
@@ -543,7 +561,11 @@ async fn run_original_catalog_component_driver(schema_diagnostic: bool) -> Resul
         output
     };
     std::fs::write(
-        fixtures_path.with_file_name("actual-catalog-observations.json"),
+        fixtures_path.with_file_name(if recovery {
+            "actual-recovery-catalog-observations.json"
+        } else {
+            "actual-catalog-observations.json"
+        }),
         serde_json::to_vec_pretty(&output)?,
     )?;
     cleanup?;

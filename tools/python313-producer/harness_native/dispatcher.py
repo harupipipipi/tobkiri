@@ -432,6 +432,8 @@ class Dispatcher:
             return self._bootstrap_fresh_confirmation(state, frame)
         if method == "catalog_with_profiles" and frame.get("format") == PREFIX + "bootstrap-preview-catalog.v1":
             return self._bootstrap_preview_catalog(state, frame)
+        if method == "catalog_with_profiles" and frame.get("format") == PREFIX + "bootstrap-recovery-catalog.v1":
+            return self._bootstrap_recovery_catalog(state, frame)
         if method == "setup_listing" and frame.get("format") == PREFIX + "bootstrap-setup-listing.v1":
             return self._bootstrap_setup_listing(state, frame)
         if method == "setup_activation_decision":
@@ -650,6 +652,7 @@ class Dispatcher:
             raise UnsupportedValue(
                 "actual bootstrap template exceeds the StrictV1 DATA domain",
             ) from None
+        registry._complete_bootstrap_template_lookup(catalog_ref)
         return packet
 
     def _bootstrap_predecessor_source(self, state: _State, frame: dict[str, Any]) -> str:
@@ -755,6 +758,51 @@ class Dispatcher:
             registry._bootstrap_confirmation = root.object_id
             registry._resolver_dynamic_stage = "bootstrap-confirmation-returned"
             return packet
+        except BaseException:
+            registry._rollback(created)
+            raise
+
+    def _bootstrap_recovery_catalog(self, state: _State, frame: dict[str, Any]) -> str:
+        self._checked_frame(frame, "bootstrap-recovery-catalog", {"catalog", "profiles"})
+        registry = state.registry
+        catalog_ref = registry.reference(frame["catalog"])
+        rows = frame["profiles"]
+        if type(rows) is not list:
+            raise InvalidFrame("invalid fixed recovery Profile rows")
+        # The Host supplies its checked Profile store rows in list order.
+        # They are detached DATA; only the original catalog is an issued ref.
+        profiles = {}
+        for row in rows:
+            if (type(row) is not list or len(row) != 2 or type(row[0]) is not str
+                    or type(row[1]) is not dict or row[1].get("profile_id") != row[0]
+                    or row[0] in profiles):
+                raise InvalidFrame("invalid fixed recovery Profile row")
+            profiles[row[0]] = row[1]
+
+        catalog = registry._begin_bootstrap_recovery_catalog(catalog_ref)
+        value = self._apply_original(
+            lambda: state.runtime.catalog_with_profiles(catalog, profiles),
+            caller="bootstrap-recovery-catalog",
+        )
+        if (type(value) is not type(catalog) or value is catalog
+                or type(value.profiles) is not dict
+                or value.profiles is profiles or value.profiles is catalog.profiles
+                or len(value.profiles) != len(profiles)
+                or any(key != expected or entry is not profile
+                       for (key, entry), (expected, profile)
+                       in zip(value.profiles.items(), profiles.items()))
+                or any(getattr(value, name) is not getattr(catalog, name) for name in (
+                    "root", "packs", "bases", "shells", "artifact_root", "executable_catalogs",
+                ))):
+            raise UnsupportedValue("original bootstrap recovery catalog is not bound")
+        created: list[tuple[Reference, int]] = []
+        try:
+            root, fresh = registry._retain(value, created=created)
+            if not fresh:
+                raise UnsupportedValue("original bootstrap recovery catalog was already issued")
+            return wire.dumps({"format": PREFIX + "bootstrap-recovery-catalog-result.v1",
+                               "scope": registry.scope.wire(), "root": root.wire(),
+                               "owned": [format(ref.object_id, "x") for ref, _ in created]})
         except BaseException:
             registry._rollback(created)
             raise
