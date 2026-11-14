@@ -100,6 +100,9 @@ struct Trace {
 #[derive(Default)]
 struct CatalogReads {
     owner_start: Option<u64>,
+    index_ready: Option<u64>,
+    blobs_ready: Option<u64>,
+    read_map_ready: Option<u64>,
     owner_return: Option<u64>,
     loader_return: Option<u64>,
     entries: usize,
@@ -137,8 +140,19 @@ impl Trace {
         match kind {
             "phase" => match value {
                 "owner-start" if catalog.last_fuel.is_none() => catalog.owner_start = Some(fuel),
+                "index-ready" if catalog.owner_start.is_some() && catalog.index_ready.is_none() => {
+                    catalog.index_ready = Some(fuel);
+                }
+                "blobs-ready" if catalog.index_ready.is_some() && catalog.blobs_ready.is_none() => {
+                    catalog.blobs_ready = Some(fuel);
+                }
+                "read-map-ready"
+                    if catalog.blobs_ready.is_some() && catalog.read_map_ready.is_none() =>
+                {
+                    catalog.read_map_ready = Some(fuel);
+                }
                 "owner-return"
-                    if catalog.owner_start.is_some() && catalog.owner_return.is_none() =>
+                    if catalog.read_map_ready.is_some() && catalog.owner_return.is_none() =>
                 {
                     catalog.owner_return = Some(fuel);
                 }
@@ -594,6 +608,9 @@ async fn compare_checkpoints(full_catalog: bool) -> Result<()> {
         });
     let (reached_expected_boundary, last_fuel) = if let Some(catalog) = &trace.catalog {
         report["fuel_at_owner_start"] = json!(catalog.owner_start);
+        report["fuel_at_index_ready"] = json!(catalog.index_ready);
+        report["fuel_at_blobs_ready"] = json!(catalog.blobs_ready);
+        report["fuel_at_read_map_ready"] = json!(catalog.read_map_ready);
         report["fuel_at_owner_return"] = json!(catalog.owner_return);
         report["fuel_at_loader_return"] = json!(catalog.loader_return);
         report["entry_reads_at_last_checkpoint"] = json!(catalog.entries);

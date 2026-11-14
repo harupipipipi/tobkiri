@@ -90,6 +90,19 @@ def _observe_catalog_reads(runtime: bytes) -> bytes:
 ''')
 
 
+def _observe_catalog_owner(adapter: bytes) -> bytes:
+    adapter = _replace_one(adapter, b'import sys\n',
+                           b'import sys\nfrom wit_world.imports.bindings import checkpoint\n')
+    for anchor, phase in (
+        (b'        lock = read_member("lock.json", value["lock"])\n', 'index-ready'),
+        (b'        reads = []\n', 'blobs-ready'),
+        (b'        expected = value["source_identity"]\n', 'read-map-ready'),
+    ):
+        marker = f'        checkpoint("catalog:phase:{phase}")\n'.encode()
+        adapter = _replace_one(adapter, anchor, marker + anchor)
+    return adapter
+
+
 def derive(files: dict[str, bytes], entry: bytes, export: bytes,
            extension_root: Path, *, app_backend: bool = False,
            schema_progress: bool = False,
@@ -147,6 +160,13 @@ def derive(files: dict[str, bytes], entry: bytes, export: bytes,
                 HERE/'bundle_catalog/schema_phases.py').read_bytes()
             runtime_name = 'bundle_catalog_kernel_runtime.py'
             additions[runtime_name] = _observe_catalog_reads(additions[runtime_name])
+            adapter_name = 'bundle_catalog_adapter.py'
+            adapter = files[adapter_name]
+            files[adapter_name] = _observe_catalog_owner(adapter)
+            changes[adapter_name] = {
+                'original_sha256': identity(adapter)['sha256'],
+                'derived_sha256': identity(files[adapter_name])['sha256'],
+            }
             additions['app_schema_provider.py'] = _observe_provider(provider)
             changes['app_schema_provider.py'] = {
                 'original_sha256': identity(provider)['sha256'],
