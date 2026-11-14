@@ -21,6 +21,7 @@ name: Issue 1520 original Setup resolver prefix
       - tobkiri_launcher/harness-native/src/bootstrap_activation_decision.rs
       - tobkiri_launcher/harness-native/src/original_profile_publication_io.rs
       - tobkiri_launcher/harness-native/src/original_profile_publication.rs
+      - tobkiri_launcher/harness-native/src/original_publication_begin_ci.rs
       - tobkiri_launcher/harness-native/src/original_authority_json.rs
       - tobkiri_launcher/harness-native/src/original_development_handover.rs
       - tobkiri_launcher/harness-native/src/original_inactive_registration_ci.rs
@@ -144,6 +145,16 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           bootstrap_runtime::listing::tests::preview_and_listing_require_the_same_reviewed_confirmation
           -- --exact --test-threads=1 --nocapture
+      - name: Compare the signed native publication intent with the original writer
+        if: matrix.os == 'ubuntu-22.04'
+        env:
+          TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE: ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-setup-resolver-prefix/intent-writer.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::definitions::publication_begin_ci::original_publication_intent_bytes_match
+          -- --ignored --exact --test-threads=1 --nocapture
       - name: Check activation candidate binding to reviewed Profile and bundle
         if: matrix.os == 'ubuntu-22.04'
         run: >-
@@ -167,6 +178,7 @@ jobs:
             ${{ runner.temp }}/original-setup-resolver-prefix/confirmation.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/registration.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/confirmed-lock.log*
+            ${{ runner.temp }}/original-setup-resolver-prefix/intent-writer.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/listing.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/activation-candidate.log*
           if-no-files-found: warn

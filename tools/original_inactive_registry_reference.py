@@ -681,6 +681,7 @@ def _observe_publication_checks(
     port = require_profile_runtime()
     port_type = type(port)
     load = port_type.load_catalog
+    begin = ProfilePublicationJournal.begin
     capture_code = capture._capture_bootstrap_profile.__code__
     lock = bundle / "bundle.lock.json"
     lock_before = lock.read_bytes()
@@ -801,6 +802,26 @@ def _observe_publication_checks(
                 "bundle_digest": bundle_digest,
                 "plan_digest": plan_digest,
                 "activation_id": activation_id,
+            }
+            # Run the actual writer on a separate CI-only root. Its fixed test
+            # key never enters the live capture fixture or uploaded metadata.
+            oracle_root = inputs / "publication-intent-oracle" / "user-data"
+            (oracle_root / "profiles").mkdir(mode=0o700, parents=True)
+            key = oracle_root / "profiles/.publication-key"
+            key.touch(mode=0o600)
+            key.write_bytes(b"0123456789abcdef" * 4)
+            oracle = ProfilePublicationJournal(oracle_root)
+            with oracle.locked():
+                begin(
+                    oracle, predecessor=predecessor, resolved=resolved,
+                    activation_id=activation_id, confirmation=confirmation,
+                )
+                payload = oracle.read()
+            if payload is None or not _lock_free(oracle_root / publication_lock):
+                raise AssertionError("original writer did not leave authenticated intent")
+            candidate["intent"] = {
+                "payload": payload,
+                "encoded_sha256": hashlib.sha256(oracle.path.read_bytes()).hexdigest(),
             }
             events.append("before-first-publication-intent")
             raise _PublicationBoundary

@@ -401,17 +401,42 @@ impl Directory {
         op: &Operation<'_, S>,
         bytes: &[u8],
     ) -> Result<()> {
+        self.replace_fixed(op, c"index.json", bytes, false)
+    }
+
+    #[cfg(test)]
+    pub(super) fn create_publication_intent<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        bytes: &[u8],
+    ) -> Result<()> {
+        self.replace_fixed(op, c"bootstrap-publication.json", bytes, true)
+    }
+
+    #[cfg(test)]
+    fn replace_fixed<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        destination: &CStr,
+        bytes: &[u8],
+        must_be_absent: bool,
+    ) -> Result<()> {
         use std::io::Write;
-        const INDEX: &str = "index.json";
-        let parent = self.parent(op, Path::new(INDEX))?;
+        let target = destination.to_str().expect("fixed UTF-8 persistence name");
+        let parent = self.parent(op, Path::new(target))?;
         let result = (|| {
             let directory = parent.files.last().expect("directory chain");
             let fd = directory.as_raw_fd();
-            let prior = Self::stat(directory, INDEX, false)?;
+            let prior = Self::stat(directory, target, false)?;
+            if must_be_absent && prior.is_some() {
+                return Err(value(
+                    "Profile publication already has an unfinished intent",
+                ));
+            }
             let _name_capacity = op.reserve(OriginalAuthorityStage::Path, 512)?;
             let mut nonce = [0_u8; 16];
             getrandom::fill(&mut nonce).map_err(|_| OriginalAuthorityError::unavailable())?;
-            let mut temporary = format!(".{INDEX}.{}.", op.pid);
+            let mut temporary = format!(".{target}.{}.", op.pid);
             for byte in nonce {
                 use std::fmt::Write;
                 write!(&mut temporary, "{byte:02x}").expect("write to string");
@@ -451,7 +476,7 @@ impl Directory {
                 if fingerprint(&opened) != named.fingerprint {
                     return Err(secure_error("persistence temporary changed"));
                 }
-                let current = Self::stat(directory, INDEX, false)?;
+                let current = Self::stat(directory, target, false)?;
                 if prior.as_ref().map(|stat| stat.fingerprint)
                     != current.map(|stat| stat.fingerprint)
                 {
@@ -460,11 +485,11 @@ impl Directory {
                     ));
                 }
                 op.check(OriginalAuthorityStage::Guard)?;
-                if unsafe { libc::renameat(fd, name.as_ptr(), fd, c"index.json".as_ptr()) } != 0 {
-                    return Err(raw_io(std::io::Error::last_os_error(), Some(INDEX)));
+                if unsafe { libc::renameat(fd, name.as_ptr(), fd, destination.as_ptr()) } != 0 {
+                    return Err(raw_io(std::io::Error::last_os_error(), Some(target)));
                 }
                 published = true;
-                let after = Self::stat(directory, INDEX, true)?.expect("required registry");
+                let after = Self::stat(directory, target, true)?.expect("required destination");
                 if after.fingerprint != fingerprint(&opened) {
                     return Err(secure_error(
                         "persistence destination changed during publication",

@@ -15,6 +15,9 @@ mod definitions_model;
 #[path = "original_inactive_registration_ci.rs"]
 mod inactive_registration_ci;
 #[cfg(all(test, unix))]
+#[path = "original_publication_begin_ci.rs"]
+mod publication_begin_ci;
+#[cfg(all(test, unix))]
 #[path = "original_profile_definitions_reference_ci.rs"]
 mod reference_ci;
 #[cfg(all(test, unix))]
