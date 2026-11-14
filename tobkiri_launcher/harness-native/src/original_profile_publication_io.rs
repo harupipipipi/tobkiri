@@ -414,6 +414,57 @@ impl Directory {
     }
 
     #[cfg(test)]
+    pub(super) fn create_publication_key<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        bytes: &[u8],
+    ) -> Result<()> {
+        self.replace_fixed(op, c".publication-key", bytes, true)
+    }
+
+    #[cfg(test)]
+    pub(super) fn sync_publication_key<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+    ) -> Result<()> {
+        let parent = self.parent(op, Path::new(KEY))?;
+        let result = (|| {
+            let directory = parent.files.last().expect("directory chain");
+            let before = Self::stat(directory, KEY, true)?.expect("required key");
+            let descriptor = unsafe {
+                libc::openat(
+                    directory.as_raw_fd(),
+                    parent.name.as_ptr(),
+                    libc::O_RDWR | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+                )
+            };
+            if descriptor < 0 {
+                return Err(raw_io(std::io::Error::last_os_error(), Some(KEY)));
+            }
+            let file =
+                TrackedFile::new(unsafe { File::from_raw_fd(descriptor) }, op.cleanup.clone());
+            let result = (|| {
+                let opened = file.metadata().map_err(|error| raw_io(error, None))?;
+                if !owned_regular(&opened)
+                    || opened.mode() & 0o077 != 0
+                    || before.read_fingerprint() != read_fingerprint(&opened)
+                {
+                    return Err(secure_error("publication signing key identity is unsafe"));
+                }
+                op.check(OriginalAuthorityStage::Key)?;
+                file.sync_all().map_err(|error| raw_io(error, None))?;
+                let named = Self::stat(directory, KEY, true)?.expect("required key");
+                if before.read_fingerprint() != named.read_fingerprint() {
+                    return Err(secure_error("publication signing key changed during sync"));
+                }
+                Ok(())
+            })();
+            finish_scope(result, file.close().map_err(|error| raw_io(error, None)))
+        })();
+        parent.finish(result)
+    }
+
+    #[cfg(test)]
     fn replace_fixed<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -423,15 +474,20 @@ impl Directory {
     ) -> Result<()> {
         use std::io::Write;
         let target = destination.to_str().expect("fixed UTF-8 persistence name");
+        let already_exists = || {
+            if target == KEY {
+                value("Profile publication signing key changed")
+            } else {
+                value("Profile publication already has an unfinished intent")
+            }
+        };
         let parent = self.parent(op, Path::new(target))?;
         let result = (|| {
             let directory = parent.files.last().expect("directory chain");
             let fd = directory.as_raw_fd();
             let prior = Self::stat(directory, target, false)?;
             if must_be_absent && prior.is_some() {
-                return Err(value(
-                    "Profile publication already has an unfinished intent",
-                ));
+                return Err(already_exists());
             }
             let _name_capacity = op.reserve(OriginalAuthorityStage::Path, 512)?;
             let mut nonce = [0_u8; 16];
@@ -493,9 +549,7 @@ impl Directory {
                 if renamed != 0 {
                     let error = std::io::Error::last_os_error();
                     if must_be_absent && error.kind() == std::io::ErrorKind::AlreadyExists {
-                        return Err(value(
-                            "Profile publication already has an unfinished intent",
-                        ));
+                        return Err(already_exists());
                     }
                     return Err(raw_io(error, Some(target)));
                 }

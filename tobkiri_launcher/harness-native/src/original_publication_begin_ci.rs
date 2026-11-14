@@ -1,7 +1,7 @@
 //! Exact original journal encoding and persistence on CI-owned state.
 use super::super::*;
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
+use sha2::{Digest as _, Sha256};
 use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, MAX_BYTES};
 
 const SCHEMA: &str = "io.tobkiri.profile-publication-intent.v1";
@@ -14,6 +14,49 @@ struct Target<'a> {
 
 fn capacity(_: AllocationError) -> OriginalAuthorityError {
     OriginalAuthorityError::capacity(OriginalAuthorityStage::Source)
+}
+
+fn begin<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    directory: &Directory,
+    profiles: &Path,
+    target: Target<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer> {
+    if directory.exists(op, JOURNAL)? {
+        return Err(value(
+            "Profile publication already has an unfinished intent",
+        ));
+    }
+    let key_path = profiles.join(KEY);
+    let mut generated = Zeroizing::new([0_u8; 64]);
+    let existing = if directory.exists(op, KEY)? {
+        Some(signing_key(op, &key_path)?)
+    } else {
+        let mut random = Zeroizing::new([0_u8; 32]);
+        getrandom::fill(&mut random[..]).map_err(|_| OriginalAuthorityError::unavailable())?;
+        let mut digest = Sha256::digest(&random[..]);
+        for (pair, &byte) in generated.chunks_exact_mut(2).zip(digest.iter()) {
+            let hex = b"0123456789abcdef";
+            pair[0] = hex[usize::from(byte >> 4)];
+            pair[1] = hex[usize::from(byte & 0xf)];
+        }
+        zeroize::Zeroize::zeroize(&mut digest[..]);
+        directory.create_publication_key(op, &generated[..])?;
+        None
+    };
+    let expected = match &existing {
+        Some(existing) => existing.as_slice(),
+        None => &generated[..],
+    };
+    directory.sync_publication_key(op)?;
+    let key = signing_key(op, &key_path)?;
+    if key.as_slice() != expected {
+        return Err(value("Profile publication signing key changed"));
+    }
+    let intent = encode(op, None, target, &key, budget)?;
+    directory.create_publication_intent(op, intent.as_bytes())?;
+    Ok(intent)
 }
 
 fn encode<S: OriginalAuthorityOwner>(
@@ -174,22 +217,21 @@ async fn original_publication_intent_bytes_match() {
             assert!(!lock_free(&profiles.join(LOCK)));
             fs::write(profiles.join(KEY), key).unwrap();
             fs::set_permissions(profiles.join(KEY), fs::Permissions::from_mode(0o600)).unwrap();
-            let encoded = encode(
+            let encoded = begin(
                 &op,
-                None,
+                &dir,
+                &profiles,
                 Target {
                     confirmation: &confirmation,
                     definition: &definition,
                     lock: &lock,
                 },
-                key,
                 budget,
             )?;
             assert_eq!(
                 &Digest::hash(encoded.as_bytes()).as_str()[7..],
                 expected_sha256
             );
-            dir.create_publication_intent(&op, encoded.as_bytes())?;
             assert_eq!(
                 dir.create_publication_intent(&op, b"second intent")
                     .unwrap_err()
@@ -204,6 +246,58 @@ async fn original_publication_intent_bytes_match() {
             Ok(())
         });
         result.unwrap();
+        assert!(lock_free(&profiles.join(LOCK)));
+    });
+
+    // An absent key uses the original 64-character format. Reopening a later
+    // transaction uses those same persisted bytes and signs the same target.
+    with_source(|source, read, cancel, budget| {
+        use std::os::unix::fs::{MetadataExt, symlink};
+
+        let op = operation(read, source, cancel);
+        let root = &source.root;
+        let profiles = root.join("profiles");
+        let confirmation = serde_json::to_vec(&imported["setup_review"]["confirmation"]).unwrap();
+        let confirmation = CoreValue::parse_guest(&confirmation, budget).unwrap();
+        with_confirmed_predecessor(&op, root, budget, |predecessor| {
+            assert!(predecessor.is_none());
+            let dir = Directory::capture(&op, &profiles, false)?;
+            let key = profiles.join(KEY);
+            let journal = profiles.join(JOURNAL);
+            let begin = || {
+                begin(
+                    &op,
+                    &dir,
+                    &profiles,
+                    Target {
+                        confirmation: &confirmation,
+                        definition: &definition,
+                        lock: &lock,
+                    },
+                    budget,
+                )
+            };
+            symlink("absent-key-target", &key).unwrap();
+            assert!(begin().is_err());
+            assert!(key.is_symlink());
+            assert!(!journal.exists());
+            fs::remove_file(&key).unwrap();
+            let intent = begin()?;
+            let stored = signing_key(&op, &key)?;
+            assert_eq!(stored.len(), 64);
+            assert!(
+                stored
+                    .iter()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+            );
+            assert_eq!(fs::metadata(&key).unwrap().mode() & 0o777, 0o600);
+            assert!(read_intent(&op, &profiles)?.is_some());
+            dir.clear_journal(&op)?;
+            assert_eq!(begin()?.as_bytes(), intent.as_bytes());
+            assert_eq!(signing_key(&op, &key)?.as_slice(), stored.as_slice());
+            Ok(())
+        })
+        .unwrap();
         assert!(lock_free(&profiles.join(LOCK)));
     });
 }
