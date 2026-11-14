@@ -3550,15 +3550,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   immutableな履歴、既存descriptor、移行receipt、元のbootstrap metadataを保持して一回だけ
   書き換える。後半の不正で全体を中断し、再実行では時刻の読取りも書込みも発生しない。
   UTF-8で表せない相対名は未対応。読取り中の交換に対してはdirectory descriptorの一致も
-  確認する。原本の固定Pythonとの全バイト比較は
-  [CI 43593582219](https://github.com/harupipipipi/tobkiri/actions/runs/43593582219)は、Ubuntuで
-  保存後の全バイトと再実行を確認した。macOSの確認は待機中。
+  確認する。[CI 43593582219](https://github.com/harupipipipi/tobkiri/actions/runs/43593582219)は
+  UbuntuとmacOSで固定Pythonとの全バイト一致と再実行時の無変更を確認した。
   `7b2e4f01e` は元の順に別の定義ロックで状態を読み直し、既存Profileのある場合は一覧の
   手前、空のときはテンプレート検索の手前まで進む。
-  [CI 43594182859](https://github.com/harupipipipi/tobkiri/actions/runs/43594182859)で検証する。
-  次は同じRuntimeのgetter再呼出しと実catalogのsubscript、tombstone込みの照会・
-  別ロックでの初版保存、競合時だけの再読取りを接続する。さらに旧定義のimport、旧successor
-  builder、外部カタログ採用が残る。
+  [CI 43594182859](https://github.com/harupipipipi/tobkiri/actions/runs/43594182859)は両OSで成功。
+  `3656f0aab` は同じRuntimeのgetter再呼出しと実catalogの添字参照、tombstone込みの照会、
+  別ロックでの初版保存を接続した。取得したPackの検証済みテンプレートだけを既存の
+  StrictV1上限付きDATAにし、取得先のKeyErrorを元の例外のまま拒否に結び付ける。
+  実競合時だけ再読取りし、ロック・時計・保存の順番を比較する。変更したPython transport
+  89件が成功。[レジストリ比較CI 43596397948](https://github.com/harupipipipi/tobkiri/actions/runs/43596397948)と
+  [Wasm本体CI 43596417935](https://github.com/harupipipipi/tobkiri/actions/runs/43596417935)を実行中。
+  `e5b1f6523` は同じregistryを読み直し、元の並び順、tombstone除外、10キーの有無だけの
+  判定で解決候補を作る。[CI 43596750559](https://github.com/harupipipipi/tobkiri/actions/runs/43596750559)で
+  実行する。旧定義import、旧successor builder、外部カタログ採用が残る。
+  次の元コードはユーザーの同じrootで公式schemaと外部Pack一覧を毎回読む。空でも
+  存在確認が必要で、既存のHost HMACとinstall journal、versionを含む全CAS参照の検証後に
+  normal Packだけを絞る。旧署名前提と現行Wasm Packの検証方式が異なるため、暗号処理と
+  物理読み取りを共有し、片方のmanifestをもう片方の代わりに使わない。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
@@ -3628,7 +3637,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   画面上の利用者向けの文言へ変更した。検証済みの手順順序、各digestと権限状態の値、
   確認要素と操作は維持する。
   [Launcher CI 43594705258](https://github.com/harupipipipi/tobkiri/actions/runs/43594705258)で
-  既存のSetup表示と実WebKitを再検証する。
+  既存のSetup表示と実WebKitが成功。
+- C-10は `5048a0a8f`。自作のPiソースを `--local-source` で受け付け、入力バイトの
+  ハッシュとローカル来歴を保存する。従来のGitHub固定入力も利用できる。
+  componentize-jsを限定環境の別プロセスで実行し、ライブラリ呼出し元の環境を保持する。
+  [CI 43596134776](https://github.com/harupipipipi/tobkiri/actions/runs/43596134776)のオフライン
+  CLI・ライブラリ実コンパイルが成功。従来2拡張と1.1在庫の同じ実行をCIで再確認中。
 
 ## 040: 公開Profileへ混入しない既存データ
 
