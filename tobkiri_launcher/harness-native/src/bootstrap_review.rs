@@ -135,6 +135,7 @@ pub(crate) struct ActualCustody {
     pub(crate) resolver_verified_artifacts: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) resolver_bindings: Option<CoreValue>,
     pub(crate) resolver_profile_result: Option<CoreBuffer>,
+    pub(crate) resolver_identity: Option<crate::bootstrap_runtime::ResolvedProfileIdentity>,
     pub(crate) predecessor_inputs:
         Option<crate::original_authority::definitions::BootstrapPredecessorInputs>,
     pub(crate) bootstrap_confirmation: Option<CoreBuffer>,

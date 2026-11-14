@@ -16,6 +16,7 @@ pub struct BootstrapActivationCandidate {
     confirmation: CoreValue,
     source_profile: CoreValue,
     bundle_digest: tobkiri_canon::Digest,
+    lock_digest: tobkiri_canon::Digest,
 }
 
 impl BootstrapActivationCandidate {
@@ -30,6 +31,11 @@ impl BootstrapActivationCandidate {
     pub fn bundle_digest(&self) -> &tobkiri_canon::Digest {
         &self.bundle_digest
     }
+
+    /// Digest of the resolved Profile Lock, separate from the bundle lock.
+    pub fn lock_digest(&self) -> &tobkiri_canon::Digest {
+        &self.lock_digest
+    }
 }
 
 pub(super) enum Decision {
@@ -41,6 +47,7 @@ pub(super) enum Decision {
 pub(super) struct Reviewed<'a> {
     pub(super) confirmation: &'a CoreValue,
     pub(super) bundle_digest: &'a tobkiri_canon::Digest,
+    pub(super) identity: &'a ResolvedProfileIdentity,
 }
 
 pub(super) async fn run<S: BootstrapInputOwner>(
@@ -149,6 +156,8 @@ fn admit_candidate(
     let source_digest = source_profile.digest_guest(budget)?;
     if source_id.as_str().is_none()
         || source_id.as_str() != reviewed_id.as_str()
+        || source_digest != review.identity.definition
+        || plan != review.identity.plan.as_str()
         || denied::field(value, "profile_definition_digest")?.as_str()
             != Some(source_digest.as_str())
         || denied::field(value, "bundle_digest")?.as_str() != Some(review.bundle_digest.as_str())
@@ -160,6 +169,7 @@ fn admit_candidate(
         confirmation,
         source_profile,
         bundle_digest: review.bundle_digest.clone(),
+        lock_digest: review.identity.lock.clone(),
     })
 }
 
@@ -193,6 +203,11 @@ mod tests {
             "profile_definition_digest": source_digest.as_str(), "bundle_digest": bundle.as_str(),
             "plan_digest": plan.as_str(),
         });
+        let identity = ResolvedProfileIdentity {
+            definition: source_digest.clone(),
+            plan,
+            lock: Digest::hash(b"resolved profile lock"),
+        };
         let parse = |value: &serde_json::Value| -> Result<BootstrapActivationCandidate> {
             let value = CoreValue::parse_guest(&serde_json::to_vec(value)?, &budget)?;
             admit_candidate(
@@ -200,12 +215,14 @@ mod tests {
                 Reviewed {
                     confirmation: &expected_confirmation,
                     bundle_digest: &bundle,
+                    identity: &identity,
                 },
                 &budget,
             )
         };
         let matched = parse(&packet)?;
         assert_eq!(matched.bundle_digest(), &bundle);
+        assert_eq!(matched.lock_digest(), &identity.lock);
         assert_eq!(
             matched.source_profile().digest_guest(&budget)?,
             source_digest
@@ -229,6 +246,13 @@ mod tests {
             *changed.pointer_mut(path).unwrap() = replacement;
             assert!(parse(&changed).is_err(), "{path}");
         }
+        let mut changed = packet;
+        changed["source_profile"]["name"] = json!("changed and redigested source");
+        let different =
+            CoreValue::parse_guest(&serde_json::to_vec(&changed["source_profile"])?, &budget)?
+                .digest_guest(&budget)?;
+        changed["profile_definition_digest"] = json!(different.as_str());
+        assert!(parse(&changed).is_err());
         Ok(())
     }
 }

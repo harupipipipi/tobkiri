@@ -128,11 +128,17 @@ fn resolved_profile_requires_completed_shell_and_distinct_scoped_references() ->
         "profile": {"scope": ["1", "2", "3", "4"], "object": "b"},
         "lock": {"scope": ["1", "2", "3", "4"], "object": "c"},
         "plan": {"scope": ["1", "2", "3", "4"], "object": "d"},
+        "profile_definition_digest": Digest::hash(b"source definition").as_str(),
+        "plan_digest": Digest::hash(b"plan").as_str(),
+        "lock_digest": Digest::hash(b"lock").as_str(),
         "owned": ["a", "b", "c", "d"],
     });
     let response = CoreValue::parse_guest(&serde_json::to_vec(&accepted)?, &budget)?;
     let scope = denied::field(&response, "scope")?;
-    validate_resolved_profile(&response, &scope, true)?;
+    let identity = validate_resolved_profile(&response, &scope, true)?;
+    assert_eq!(identity.definition, Digest::hash(b"source definition"));
+    assert_eq!(identity.plan, Digest::hash(b"plan"));
+    assert_eq!(identity.lock, Digest::hash(b"lock"));
     assert!(validate_resolved_profile(&response, &scope, false).is_err());
     for (pointer, invalid) in [
         ("/format", serde_json::json!(STATIC_RESPONSE)),
@@ -141,6 +147,12 @@ fn resolved_profile_requires_completed_shell_and_distinct_scoped_references() ->
         ("/plan/object", serde_json::json!("b")),
         ("/resolved/object", serde_json::json!("0a")),
         ("/profile", serde_json::json!({"data": "unscoped"})),
+        (
+            "/profile_definition_digest",
+            serde_json::json!("bad digest"),
+        ),
+        ("/plan_digest", serde_json::json!(1)),
+        ("/lock_digest", serde_json::json!(null)),
         ("/owned", serde_json::json!(["a", "c", "b"])),
         ("/owned", serde_json::json!(["a", "a"])),
         ("/owned", serde_json::json!(["e"])),

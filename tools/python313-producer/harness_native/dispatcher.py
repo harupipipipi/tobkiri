@@ -539,6 +539,9 @@ class Dispatcher:
                     "scope": registry.scope.wire(),
                     **dict(zip(("resolved", "profile", "lock", "plan"),
                                (ref.wire() for ref in refs))),
+                    "profile_definition_digest": value.plan["profile_definition_digest"],
+                    "plan_digest": value.plan["plan_digest"],
+                    "lock_digest": value.lock["lock_digest"],
                     "owned": [format(ref.object_id, "x") for ref, _ in created],
                 })
                 registry._resolved_profile = refs[0].object_id

@@ -93,8 +93,18 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         predecessor,
         pack.input_budget,
     )?;
+    let plan = &review
+        .actual
+        .resolver_identity
+        .as_ref()
+        .context("original resolved Profile identity missing")?
+        .plan;
+    let document = denied::field(&value, "confirmation")?;
+    if denied::field(&document, "plan_digest")?.as_str() != Some(plan.as_str()) {
+        bail!("bootstrap confirmation differs from the original resolved Plan");
+    }
     let confirmation = denied::field(&value, "root")?;
-    drop(value);
+    drop((document, value));
     listing::run(review, pack, scope, &confirmation).await
 }
 

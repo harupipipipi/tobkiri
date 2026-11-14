@@ -82,6 +82,7 @@ pub use identity_observation::{
 mod catalog;
 #[path = "bootstrap_listing.rs"]
 mod listing;
+pub(crate) use resolver_edges::ResolvedProfileIdentity;
 #[path = "bootstrap_predecessor.rs"]
 mod predecessor;
 #[path = "bootstrap_resolver_edges.rs"]
@@ -1332,6 +1333,11 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     let reviewed = activation_decision::Reviewed {
         confirmation: &confirmation,
         bundle_digest: authority.bundle_lock_digest(),
+        identity: review
+            .actual
+            .resolver_identity
+            .as_ref()
+            .context("activation candidate resolver identity missing")?,
     };
     match activation_decision::run(pack, None, Some(reviewed)).await? {
         Ok(Decision::Continue) => bail!("activation match requested another listing"),

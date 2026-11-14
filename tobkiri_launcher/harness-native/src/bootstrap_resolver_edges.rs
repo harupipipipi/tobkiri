@@ -18,6 +18,13 @@ const RESOLVED_FIELDS: [&str; 4] = ["resolved", "profile", "lock", "plan"];
 const SCHEMA: &str = "io.tobkiri.profile-authority-edge.v1";
 const REF_PREFIX: &str = "authority-ref:";
 
+/// Digests observed directly on the original resolved Plan and Lock.
+pub(crate) struct ResolvedProfileIdentity {
+    pub(super) definition: Digest,
+    pub(super) plan: Digest,
+    pub(super) lock: Digest,
+}
+
 pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
@@ -236,10 +243,11 @@ async fn resolve_profile<S: BootstrapInputOwner + BootstrapReviewOwner>(
             .as_bytes(),
         pack.input_budget,
     )?;
-    validate_resolved_profile(&result, scope, shell_completed)?;
+    let identity = validate_resolved_profile(&result, scope, shell_completed)?;
     if pack.work.get().source_occurrence.load(Ordering::Acquire) != SOURCE_COMPLETED {
         bail!("original resolver did not complete projection source resolution");
     }
+    review.actual.resolver_identity = Some(identity);
     drop(result);
     predecessor::run(review, pack, scope, profile_id).await
 }
@@ -248,14 +256,23 @@ fn validate_resolved_profile(
     result: &CoreValue,
     scope: &CoreValue,
     shell_completed: bool,
-) -> Result<()> {
+) -> Result<ResolvedProfileIdentity> {
     if !shell_completed {
         bail!("original resolver did not finish verifying the selected Shell");
     }
     denied::exact(
         result,
         &[
-            "format", "scope", "resolved", "profile", "lock", "plan", "owned",
+            "format",
+            "scope",
+            "resolved",
+            "profile",
+            "lock",
+            "plan",
+            "owned",
+            "profile_definition_digest",
+            "plan_digest",
+            "lock_digest",
         ],
     )?;
     if denied::field(result, "format")?.as_str() != Some(RESOLVE_RESPONSE)
@@ -288,7 +305,18 @@ fn validate_resolved_profile(
             bail!("resolved Profile ownership differs from the issued references");
         }
     }
-    Ok(())
+    let digest = |field| -> Result<Digest> {
+        Ok(Digest::parse(
+            denied::field(result, field)?
+                .as_str()
+                .context("resolved Profile digest is not text")?,
+        )?)
+    };
+    Ok(ResolvedProfileIdentity {
+        definition: digest("profile_definition_digest")?,
+        plan: digest("plan_digest")?,
+        lock: digest("lock_digest")?,
+    })
 }
 
 fn validate_bundled_dynamic_rows(
