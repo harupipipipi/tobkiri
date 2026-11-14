@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PackPortClient } from "../pack-ui/index.js";
+import { connectPackUi, PackPortClient } from "../pack-ui/index.js";
 
 class Port {
   messages = [];
@@ -39,6 +39,32 @@ test("opaque UI stream pulls are bounded and cancellation is explicit", async ()
   await cancelled;
   await assert.rejects(stream.pull(1), /closed/);
   client.close();
+});
+
+test("stream pulls allow a slow first frame and respect an explicit shorter transport timeout", async () => {
+  const port = new Port();
+  const client = new PackPortClient(port);
+  const opened = client.call("local.demo.stream@1.0", "open", {});
+  port.reply(1, { kind: "stream", handle: 9 });
+  const stream = await opened;
+  const original = globalThis.setTimeout;
+  const delays = [];
+  globalThis.setTimeout = (callback, ms) => {
+    delays.push(ms);
+    return original(callback, ms);
+  };
+  try {
+    const first = stream.pull(1);
+    port.reply(2, [{ kind: "first-frame" }]);
+    assert.equal((await first)[0].kind, "first-frame");
+    const second = stream.pull(1, { timeoutMs: 1234 });
+    port.reply(3, []);
+    assert.deepEqual(await second, []);
+    assert.deepEqual(delays, [300000, 1234]);
+  } finally {
+    globalThis.setTimeout = original;
+    client.close();
+  }
 });
 
 test("closing the UI cancels pending calls and invalidates stream views", async () => {
@@ -103,4 +129,57 @@ test("a failed cancellation send still rejects the pending caller", async () => 
   controller.abort();
   await assert.rejects(pending, /cancelled/);
   client.close();
+});
+
+test("UI connection accepts only the expected parent and cleans up listeners", async () => {
+  const previousWindow = globalThis.window;
+  const listeners = new Map();
+  const parent = {};
+  globalThis.window = {
+    parent,
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    removeEventListener(type, listener) { if (listeners.get(type) === listener) listeners.delete(type); },
+  };
+  try {
+    const connection = connectPackUi(parent, { timeoutMs: 1000 });
+    const port = new Port();
+    listeners.get("message")({ source: {}, data: { type: "tobkiri-pack-channel" }, ports: [port] });
+    assert.equal(listeners.has("message"), true);
+    listeners.get("message")({ source: parent, data: { type: "tobkiri-pack-channel" }, ports: [port] });
+    const client = await connection;
+    assert.equal(listeners.has("message"), false);
+    listeners.get("pagehide")();
+    assert.equal(port.closed, true);
+    client.close();
+  } finally { globalThis.window = previousWindow; }
+});
+
+test("UI connection times out and removes its listeners", async () => {
+  const previousWindow = globalThis.window;
+  const listeners = new Map();
+  globalThis.window = {
+    parent: {},
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    removeEventListener(type, listener) { if (listeners.get(type) === listener) listeners.delete(type); },
+  };
+  try {
+    await assert.rejects(connectPackUi(window.parent, { timeoutMs: 1 }), /connection timed out/);
+    assert.equal(listeners.size, 0);
+  } finally { globalThis.window = previousWindow; }
+});
+
+test("leaving the page cancels an outstanding UI connection", async () => {
+  const previousWindow = globalThis.window;
+  const listeners = new Map();
+  globalThis.window = {
+    parent: {},
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    removeEventListener(type, listener) { if (listeners.get(type) === listener) listeners.delete(type); },
+  };
+  try {
+    const connection = connectPackUi(window.parent, { timeoutMs: 1000 });
+    listeners.get("pagehide")();
+    await assert.rejects(connection, /connection cancelled/);
+    assert.equal(listeners.size, 0);
+  } finally { globalThis.window = previousWindow; }
 });

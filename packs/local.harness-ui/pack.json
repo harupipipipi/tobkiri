@@ -2,8 +2,8 @@
   "files": [
     {
       "path": "ui/app.js",
-      "sha256": "sha256:db9fe6c939c2b70ecdc6a143b363e108d35e0fa86a78c05c49015bdd1566c172",
-      "size": 3959
+      "sha256": "sha256:5639940bf773cca73a176ecbb1c3b6ed88158dd065ac42b39ce7cd3b96995451",
+      "size": 4402
     },
     {
       "path": "ui/float.js",
@@ -17,8 +17,8 @@
     },
     {
       "path": "ui/ports.js",
-      "sha256": "sha256:0950b3311192a2bf4cf6f4a6630844aa879e2bf77731b0399ef590959e5e5de6",
-      "size": 5277
+      "sha256": "sha256:afc56f7376555cbbec57bfcf5cffa71ddf7d9fe6d8c83e6aa543d38dae1567c5",
+      "size": 6236
     },
     {
       "path": "ui/style.css",

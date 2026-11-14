@@ -1,17 +1,20 @@
 /** Port client for an isolated Pack iframe. The host binds the Core UI session. */
 export { toCanonFloat } from "./float.js";
 
+const MAX_TIMEOUT_MS = 300000;
+
 /** An opaque Core-owned stream. Pulls retain the original Core call context. */
 class PackStream {
   #client;
   #handle;
   #closed = false;
   constructor(client, handle) { this.#client = client; this.#handle = handle; }
-  async pull(max = 32, options = {}) {
+  async pull(max = 32, { timeoutMs = MAX_TIMEOUT_MS, ...options } = {}) {
     if (!Number.isSafeInteger(max) || max < 1 || max > 32) throw new RangeError("stream pull max must be 1..32");
     if (this.#closed) throw new Error("Pack stream is closed");
     try {
-      const values = await this.#client.request({ type: "stream-pull", handle: this.#handle, max }, options);
+      // Core still enforces the original call's deadline while waiting for data.
+      const values = await this.#client.request({ type: "stream-pull", handle: this.#handle, max }, { timeoutMs, ...options });
       if (!Array.isArray(values) || values.length > max) throw new Error("invalid bounded stream response");
       if (!values.length) { this.#closed = true; this.#client.forget(this); }
       return values;
@@ -69,7 +72,7 @@ export class PackPortClient {
   /** Internal transport; the Core checks handle ownership and every call's scope. */
   request(message, { timeoutMs = 30000, signal } = {}) {
     if (this.#closed) return Promise.reject(new Error("Pack UI session closed"));
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300000) return Promise.reject(new RangeError("timeout must be 1..300000 ms"));
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) return Promise.reject(new RangeError("timeout must be 1..300000 ms"));
     if (signal?.aborted) return Promise.reject(new Error("Port call cancelled"));
     if (!Number.isSafeInteger(this.#next)) return Promise.reject(new Error("Pack UI request counter exhausted"));
     const id = this.#next++;
@@ -117,13 +120,37 @@ export class PackPortClient {
 }
 
 /** Bind a one-use channel supplied by the embedding host; no global IPC API. */
-export const connectPackUi = (expectedParent = window.parent) => new Promise((resolve) => {
-  const connect = (event) => {
-    if (event.source !== expectedParent || event.data?.type !== "tobkiri-pack-channel" || event.ports.length !== 1) return;
-    window.removeEventListener("message", connect);
-    const client = new PackPortClient(event.ports[0]);
-    window.addEventListener("pagehide", () => client.close(), { once: true });
-    resolve(client);
-  };
-  window.addEventListener("message", connect);
-});
+export const connectPackUi = (expectedParent = window.parent, { timeoutMs = 10000 } = {}) => {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
+    return Promise.reject(new RangeError("timeout must be 1..300000 ms"));
+  }
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      window.removeEventListener("message", connect);
+      window.removeEventListener("pagehide", pagehide);
+    };
+    const pagehide = () => {
+      cleanup();
+      reject(new Error("Pack UI connection cancelled"));
+    };
+    const connect = (event) => {
+      if (event.source !== expectedParent || event.data?.type !== "tobkiri-pack-channel" || event.ports?.length !== 1) return;
+      cleanup();
+      try {
+        const client = new PackPortClient(event.ports[0]);
+        window.addEventListener("pagehide", () => client.close(), { once: true });
+        resolve(client);
+      } catch (error) {
+        event.ports[0].close();
+        reject(error);
+      }
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Pack UI connection timed out"));
+    }, timeoutMs);
+    window.addEventListener("message", connect);
+    window.addEventListener("pagehide", pagehide, { once: true });
+  });
+};

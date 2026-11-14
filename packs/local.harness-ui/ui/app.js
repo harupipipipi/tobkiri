@@ -11,7 +11,9 @@ const stop = document.querySelector("#stop");
 const conversation = "e2e";
 let client;
 let active;
+let submitting = false;
 let cancelled = false;
+let stopping;
 
 const message = (role, content, receipt) => {
   const article = document.createElement("article");
@@ -22,12 +24,13 @@ const message = (role, content, receipt) => {
   state.textContent = receipt;
   article.append(body, state);
   messages.append(article);
-  return { body, state };
+  return { article, body, state };
 };
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!client || active || !text.value.trim()) return;
+  if (!client || submitting || !text.value.trim()) return;
+  submitting = true;
   const input = text.value;
   const user = message("user", input, "◷ 保存待ち");
   const assistant = message("assistant", "", "生成中");
@@ -45,7 +48,10 @@ form.addEventListener("submit", async (event) => {
       for (const event of events) {
         const frame = event.kind;
         if (frame?.kind === "failed") throw new Error("会話を完了できませんでした。下書きを残しています。");
-        if (frame?.kind === "cancelled") throw new Error("停止しました。下書きを残しています。");
+        if (frame?.kind === "cancelled") {
+          cancelled = true;
+          break;
+        }
         if (frame?.kind === "completed") completed = true;
         if (frame?.kind === "emitted" && frame.shape === "local.harness-chat.assistant-output@1.0") {
           const value = frame.value;
@@ -53,9 +59,11 @@ form.addEventListener("submit", async (event) => {
           if (value.kind === "done") assistant.state.textContent = "保存を確認中";
         }
       }
+      if (cancelled) break;
     }
-    if (cancelled) throw new Error("停止しました。下書きを残しています。");
+    if (cancelled) return;
     if (!completed) throw new Error("会話の完了を確認できませんでした。下書きを残しています。");
+    stop.disabled = true;
     const persisted = await client.call(storeShape, "load", { conversation });
     const tail = persisted.messages.slice(-2);
     if (persisted.messages.length < previous.messages.length + 2 || tail[0]?.role !== "user" || tail[0]?.content !== input || tail[1]?.role !== "assistant" || tail[1]?.content !== assistant.body.textContent) {
@@ -63,29 +71,42 @@ form.addEventListener("submit", async (event) => {
     }
     user.state.textContent = "✓ 保存済み";
     assistant.state.textContent = "✓ 保存済み";
-    text.value = "";
+    if (text.value === input) text.value = "";
     status.textContent = "準備できました";
   } catch (error) {
-    assistant.state.textContent = "送信を完了できませんでした";
-    status.textContent = error.message;
-    // Draft remains in the composer when the Flow fails or is cancelled.
+    if (!cancelled) {
+      user.article.remove();
+      assistant.article.remove();
+      status.textContent = error.message;
+    }
   } finally {
+    if (cancelled) {
+      user.article.remove();
+      assistant.article.remove();
+      status.textContent = "停止しました。下書きを残しています。";
+    }
     if (active) {
-      try { await active.cancel(); } catch {}
+      try { await (stopping ?? active.cancel()); } catch {}
     }
     active = undefined;
+    stopping = undefined;
+    submitting = false;
     stop.disabled = true;
     send.disabled = false;
   }
 });
-stop.addEventListener("click", async () => {
+stop.addEventListener("click", () => {
+  if (!active || cancelled) return;
   cancelled = true;
-  if (active) await active.cancel();
-  active = undefined;
-  status.textContent = "停止しました";
+  stop.disabled = true;
+  status.textContent = "停止しています";
+  stopping = active.cancel();
+  void stopping.catch(() => {});
 });
 connectPackUi().then((connection) => {
   client = connection;
   send.disabled = false;
   status.textContent = "準備できました";
+}).catch(() => {
+  status.textContent = "ホストに接続できませんでした。画面を再読み込みしてください。";
 });
