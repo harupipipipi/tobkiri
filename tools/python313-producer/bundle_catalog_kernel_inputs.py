@@ -103,15 +103,6 @@ def _observe_catalog_owner(adapter: bytes) -> bytes:
     return adapter
 
 
-def app_resource_loader(source: bytes) -> bytes:
-    """Hash expanded bytes using the pinned App Rust kernel on each read."""
-    return _replace_one(source, b'        actual = self._sha256(raw).hexdigest()\n',
-                        b'        kernel = sys.modules.get("_tobkiri_schema_kernel")\n'
-                        b'        if kernel is None:\n'
-                        b'            raise ValueError("captured App source hash kernel is unavailable")\n'
-                        b'        actual = kernel.app_source_sha256(raw)\n')
-
-
 def app_catalog_occurrence_hash(source: bytes) -> bytes:
     """Preserve the original entry and reread calls, replacing only their hash."""
     source = _replace_one(source, b'import hashlib\n', b'import hashlib\n'
