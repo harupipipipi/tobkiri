@@ -61,12 +61,30 @@ fn is_original_json_type(instance: &Bound<'_, PyAny>, kind: &str) -> PyResult<bo
     }
 }
 
+/// Hash one actual bounded byte object from the immutable App source loader.
+#[cfg(feature = "app-schema-backend")]
+#[pyfunction]
+fn app_source_sha256(value: &Bound<'_, pyo3::types::PyBytes>) -> PyResult<String> {
+    use sha2::{Digest, Sha256};
+
+    let bytes = value.as_bytes();
+    if bytes.len() > 4 * 1024 * 1024 {
+        return Err(PyValueError::new_err(
+            "captured source member exceeds its bound",
+        ));
+    }
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
 #[pymodule]
 fn _tobkiri_schema_kernel(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(retain_objects, module)?)?;
     module.add_function(wrap_pyfunction!(is_original_json_type, module)?)?;
     #[cfg(feature = "app-schema-backend")]
-    app_schema::register(module)?;
+    {
+        app_schema::register(module)?;
+        module.add_function(wrap_pyfunction!(app_source_sha256, module)?)?;
+    }
     keywords::register(module)?;
     traversal::register(module)?;
     module.add("production_enabled", false)?;

@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import sys
 
-LOCK_SHA256 = "222ef5c4c4b48fbad400c604b0135efe9a56d7ecd1c9cec90ef1021d639b93d6"
+LOCK_SHA256 = "31703bcfb80fb20e3a4eddbc2ce5aa734f7baeb5d7fc00642313b76dc930d985"
 REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
 EXTENSION = "_tobkiri_schema_kernel"
 INTERFACE = "tobkiri-ui:schema-probe/probe@1.0.0"
@@ -409,13 +409,14 @@ def packages(source: Path) -> list[dict]:
         or manifest.get("workspace") != {}
         or manifest["lib"] != {"name": EXTENSION, "crate-type": ["cdylib"]}
         or manifest.get("features") != {
-            "default": [], "app-schema-backend": [],
+            "default": [], "app-schema-backend": ["dep:sha2"],
             "app-schema-phases": ["app-schema-backend"],
         }
-        or dependencies != {"pyo3": {
-            "version": "=0.30.1", "default-features": False,
-            "features": ["macros", "abi3-py313"],
-        }}
+        or dependencies != {
+            "pyo3": {"version": "=0.30.1", "default-features": False,
+                     "features": ["macros", "abi3-py313"]},
+            "sha2": {"version": "=0.10.9", "default-features": False, "optional": True},
+        }
         or manifest["package"].get("metadata", {}).get("tobkiri", {}).get(
             "schema-engine"
         ) != "original-object-port"

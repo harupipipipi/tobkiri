@@ -13,11 +13,12 @@ crate-type = ["cdylib"]
 
 [features]
 default = []
-app-schema-backend = []
+app-schema-backend = ["dep:sha2"]
 app-schema-phases = ["app-schema-backend"]
 
 [dependencies]
 pyo3 = { version = "=0.30.1", default-features = false, features = ["macros", "abi3-py313"] }
+sha2 = { version = "=0.10.9", default-features = false, optional = true }
 
 [package.metadata.tobkiri]
 schema-engine = "original-object-port"

@@ -34,6 +34,16 @@ def compare(args, receipt, package_paths, extension):
             or kernel.production_enabled is not False
             or not hasattr(kernel, 'app_check_schema')):
         raise ValueError('actual feature-enabled extension required')
+    for length in (0, 1, 55, 56, 63, 64, 65, 4097, 4 * 1024 * 1024):
+        raw = (bytes(range(256)) * ((length + 255) // 256))[:length]
+        if kernel.app_source_sha256(raw) != hashlib.sha256(raw).hexdigest():
+            raise ValueError(f'captured App source hash differs at {length} bytes')
+    try:
+        kernel.app_source_sha256(bytes(4 * 1024 * 1024 + 1))
+    except ValueError:
+        pass
+    else:
+        raise ValueError('oversized App source hash was accepted')
     spec = importlib.util.spec_from_file_location('app_schema_provider', args.source/'app_provider.py')
     if spec is None or spec.loader is None:
         raise ValueError('actual provider source unavailable')

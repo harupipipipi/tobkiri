@@ -154,9 +154,16 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
         + "NAMESPACES = " + repr(namespaces) + "\n"
     ).encode()
     add("bundle_catalog_data.py", data)
-    add("bundle_catalog_loader.py", _read_source(
-        HERE / "schema_probe/captured_loader.py"
-    ))
+    loader = _read_source(HERE / "schema_probe/captured_loader.py")
+    if app_schema_backend:
+        from bundle_catalog_kernel_inputs import app_resource_loader
+        derived_loader = app_resource_loader(loader)
+        kernel_derivation["app_source_changes"]["bundle_catalog_loader.py"] = {
+            "original_sha256": hashlib.sha256(loader).hexdigest(),
+            "derived_sha256": hashlib.sha256(derived_loader).hexdigest(),
+        }
+        loader = derived_loader
+    add("bundle_catalog_loader.py", loader)
     add("rpds/rpds.abi3.so", _read_source(
         rpds / "work/stage/rpds.abi3.so", verified["extension"]
     ))
