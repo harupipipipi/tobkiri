@@ -99,6 +99,9 @@ struct Trace {
 
 #[derive(Default)]
 struct CatalogReads {
+    owner_start: Option<u64>,
+    owner_return: Option<u64>,
+    loader_return: Option<u64>,
     entries: usize,
     schemas: usize,
     last_schema: Option<usize>,
@@ -132,20 +135,41 @@ impl Trace {
             .split_once(':')
             .context("invalid catalog checkpoint")?;
         match kind {
+            "phase" => match value {
+                "owner-start" if catalog.last_fuel.is_none() => catalog.owner_start = Some(fuel),
+                "owner-return"
+                    if catalog.owner_start.is_some() && catalog.owner_return.is_none() =>
+                {
+                    catalog.owner_return = Some(fuel);
+                }
+                "loader-return"
+                    if catalog.entries == CATALOG_ENTRY_READS
+                        && catalog.schemas == CATALOG_SCHEMA_READS
+                        && catalog.loader_return.is_none() =>
+                {
+                    catalog.loader_return = Some(fuel);
+                }
+                _ => anyhow::bail!("out-of-order catalog phase checkpoint"),
+            },
             "entry" => {
                 let expected = match catalog.entries {
                     0 => 1,
                     previous => (previous * 2).min(CATALOG_ENTRY_READS),
                 };
                 ensure!(
-                    catalog.entries < CATALOG_ENTRY_READS && value.parse::<usize>()? == expected,
+                    catalog.owner_return.is_some()
+                        && catalog.loader_return.is_none()
+                        && catalog.entries < CATALOG_ENTRY_READS
+                        && value.parse::<usize>()? == expected,
                     "out-of-order catalog entry checkpoint"
                 );
                 catalog.entries = expected;
             }
             "schema" => {
                 ensure!(
-                    catalog.schemas < CATALOG_SCHEMA_READS,
+                    catalog.entries > 0
+                        && catalog.loader_return.is_none()
+                        && catalog.schemas < CATALOG_SCHEMA_READS,
                     "excess catalog schema reads"
                 );
                 let schema = self
@@ -569,6 +593,9 @@ async fn compare_checkpoints(full_catalog: bool) -> Result<()> {
                 && s.reservations == 0
         });
     let (reached_expected_boundary, last_fuel) = if let Some(catalog) = &trace.catalog {
+        report["fuel_at_owner_start"] = json!(catalog.owner_start);
+        report["fuel_at_owner_return"] = json!(catalog.owner_return);
+        report["fuel_at_loader_return"] = json!(catalog.loader_return);
         report["entry_reads_at_last_checkpoint"] = json!(catalog.entries);
         report["schema_reads_observed"] = json!(catalog.schemas);
         report["fuel_at_last_read_checkpoint"] = json!(catalog.last_fuel);
@@ -578,7 +605,7 @@ async fn compare_checkpoints(full_catalog: bool) -> Result<()> {
                 .map(|schema| trace.names[schema].as_str())
         );
         let reached = if report["stage"] == "returned-original-catalog" {
-            catalog.entries == CATALOG_ENTRY_READS && catalog.schemas == CATALOG_SCHEMA_READS
+            catalog.loader_return.is_some()
         } else {
             catalog.entries > 0 && report["stage"] == "original-fuel-stop"
         };

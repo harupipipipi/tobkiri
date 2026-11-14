@@ -77,6 +77,13 @@ def _observe_catalog_reads(runtime: bytes) -> bytes:
     schema = b'            schema_reads.append(path.name)\n'
     runtime = _replace_one(runtime, schema, schema +
                            b'            checkpoint(f"catalog:schema:{path.name}")\n')
+    runtime = _replace_one(runtime, b'        actual = app.read_catalog(app.embedded_owner())\n',
+                           b'''        checkpoint("catalog:phase:owner-start")
+        owner = app.embedded_owner()
+        checkpoint("catalog:phase:owner-return")
+        actual = app.read_catalog(owner)
+        checkpoint("catalog:phase:loader-return")
+''')
     read = (b'            raise RuntimeError(\'actual entry read observation exceeded its bound\')\n')
     return _replace_one(runtime, read, read + b'''        if reads == 453 or (reads & (reads - 1)) == 0:
             checkpoint(f"catalog:entry:{reads}")
