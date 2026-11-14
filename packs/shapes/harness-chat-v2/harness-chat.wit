@@ -1,0 +1,58 @@
+package local:harness-chat@2.0.0;
+
+/// Structured chat data. Tool metadata and calls are data, not authority.
+interface messages {
+  use tobkiri:core/types@1.0.0.{json};
+
+  record tool-call { id: string, name: string, arguments: json }
+  record tool-result { call-id: string, content: string, is-error: bool }
+  variant message-part { text(string), tool-call(tool-call), tool-result(tool-result) }
+  record message { role: string, parts: list<message-part> }
+  record tool-definition { name: string, description: string, parameters: json }
+  record input { conversation: string, parts: list<message-part>, tools: list<tool-definition> }
+  record context { conversation: string, messages: list<message> }
+  record prompt { messages: list<message>, tools: list<tool-definition>, model: string, max-tokens: u32 }
+
+  /// Fragments with the same index identify the same call within this response.
+  /// The id and name may arrive in later fragments; arguments is a JSON text fragment.
+  record tool-delta { index: u32, id: option<string>, name: option<string>, arguments: option<string> }
+  record usage { prompt-tokens: option<u64>, completion-tokens: option<u64>, cached-tokens: option<u64> }
+  /// `other` preserves a provider reason that has no common classification.
+  variant finish-reason { stop, length, tool-calls, content-filter, other(string) }
+  variant chat-event { text-delta(string), tool-delta(tool-delta), reasoning-delta(string), usage(usage), finish(finish-reason) }
+}
+
+interface user-input {
+  use tobkiri:core/types@1.0.0.{json, error, stream-handle};
+  use messages.{input, chat-event};
+  type flow-frame = json;
+  read: func() -> result<input, error>;
+  submit: func(input: input) -> result<stream-handle, error>;
+  pull: func(%stream: stream-handle, max: u32) -> result<list<chat-event>, error>;
+  cancel: func(%stream: stream-handle);
+}
+interface conversation-store {
+  use messages.{context, input, chat-event};
+  use tobkiri:core/types@1.0.0.{error};
+  load: func(conversation: string) -> result<context, error>;
+  append: func(conversation: string, input: input, events: list<chat-event>) -> result<_, error>;
+}
+interface prompt-builder {
+  use messages.{context, input, prompt};
+  use tobkiri:core/types@1.0.0.{error};
+  build: func(ctx: context, input: input) -> result<prompt, error>;
+}
+interface llm-provider {
+  use messages.{prompt};
+  use tobkiri:core/types@1.0.0.{error, stream-handle};
+  chat: func(prompt: prompt) -> result<stream-handle, error>;
+}
+interface assistant-output {
+  use messages.{chat-event};
+  use tobkiri:core/types@1.0.0.{error};
+  emit: func(event: chat-event) -> result<_, error>;
+}
+interface turn-flow { run: func(); }
+interface load-context { run: func(); }
+interface assemble-prompt { run: func(); }
+interface generate { run: func(); }
