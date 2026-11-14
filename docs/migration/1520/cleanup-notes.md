@@ -3486,6 +3486,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   載せる前に、親画面の候補切替・同じURLへの再マウントを判別し、確認に使う候補を
   同じ世代と実表示へ結び付ける。元の復旧は古いジャーナルを削除できるため、
   新規状態で事前実行するならRust側の所有・ロックの境界で新規性を確認する。
+- `32ff72ccd` は既存Setupの確認候補を、WebKitのメインフレームで取得した要素単位の識別子と
+  確認ダイジェストに結び付ける。識別子はWebKitの分離されたスクリプト環境が保持する。
+  ワーカーの開始前に識別し、結果表示前と表示範囲の更新時に照合する。同じURL・ダイジェストの
+  再マウント、候補再取得、ルート移動後に旧結果を表示しない。既存Setupの
+  チェックボックスと有効化ボタンは元のままで、画面からワーカーを呼び出す接続は残る。
+  ローカルのJavaScript 5件は通過。[実WebKitと元Launcherの検証43565562062](https://github.com/harupipipipi/tobkiri/actions/runs/43565562062)を実行中。
+- [通常版43564055821](https://github.com/harupipipipi/tobkiri/actions/runs/43564055821)は
+  両ジョブが通過し、macOSの実Wasm初期化、Profile IDとroot getter、Coreへの所有者引き継ぎを確認した。
+  `5e4015e29` は [macOSの厳格lint](https://github.com/harupipipipi/tobkiri/actions/runs/43563472645)
+  が指摘した決定値のサイズ差3件に限定したClippyの例外を付けた。既存の予算外に
+  Boxを確保しないため、インライン表現を維持する。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
