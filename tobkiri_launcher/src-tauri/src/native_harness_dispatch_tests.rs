@@ -210,16 +210,16 @@ fn data(memory: &mut String, offset: &mut usize, bytes: &[u8]) -> (usize, usize)
 /// invocation scope, issued object identity, and getter/description ordering.
 fn component(
     invocation: &NativeSetupInvocation,
-    operation: OriginalOperation,
+    operation: &OriginalOperation,
     scenario: Scenario,
 ) -> Vec<u8> {
     let actual_scope = scope(invocation);
-    let review = match &operation {
+    let review = match operation {
         OriginalOperation::ReviewListing(_) => Some(ReviewProbe::Boundary),
         OriginalOperation::VerifyReview(probe) => Some(*probe),
         _ => None,
     };
-    let identity = match &operation {
+    let identity = match operation {
         OriginalOperation::VerifyIdentity(probe) => Some(*probe),
         _ if review.is_some() => Some(match review.unwrap() {
             ReviewProbe::RawValue | ReviewProbe::RawType => IdentityProbe::ValueError,
@@ -239,7 +239,7 @@ fn component(
         _ => None,
     };
     let denied = matches!(
-        &operation,
+        operation,
         OriginalOperation::VerifyDenied(_) | OriginalOperation::VerifyDeniedCodec
     ) || if review.is_some() {
         review_message.is_some()
@@ -249,7 +249,7 @@ fn component(
             Some(IdentityProbe::ValueError | IdentityProbe::OsError | IdentityProbe::FactoryRaised)
         )
     };
-    let denied_codec = matches!(&operation, OriginalOperation::VerifyDeniedCodec);
+    let denied_codec = matches!(operation, OriginalOperation::VerifyDeniedCodec);
     let mut memory = String::new();
     let mut offset = 1024;
     let call = format!(
@@ -270,7 +270,7 @@ fn component(
     let (details_ptr, details_len) = data(&mut memory, &mut offset, details.as_bytes());
     let mut getters = String::new();
     let mut descriptions = String::new();
-    let selected = expected_getters(&operation);
+    let selected = expected_getters(operation);
     for getter in [
         OriginalGetter::BootstrapProfileId,
         OriginalGetter::HostResourceRoot,
@@ -364,11 +364,7 @@ fn component(
         let kind = if review == Some(ReviewProbe::RawType) {
             "type-error"
         } else if raised {
-            if os {
-                "os-error"
-            } else {
-                "value-error"
-            }
+            if os { "os-error" } else { "value-error" }
         } else if probe == IdentityProbe::NonString {
             "dict"
         } else {
@@ -446,7 +442,9 @@ fn component(
                 // factory error or a second freshly issued hold on ee3.
                 let details = serde_json::json!({"format":"io.tobkiri.native-value-result.v1","scope":actual_scope,"root":{"scope":actual_scope,"object":"ee5"},"owned":["ee5"]}).to_string();
                 let (ptr, len) = data(&mut memory, &mut offset, details.as_bytes());
-                format!("call $refuse i32.const 144 i32.const {ptr} i32.store i32.const 148 i32.const {len} i32.store")
+                format!(
+                    "call $refuse i32.const 144 i32.const {ptr} i32.store i32.const 148 i32.const {len} i32.store"
+                )
             } else if name == "denied" && matches!(scenario, Scenario::HostDomain) {
                 "call $refuse".to_owned()
             } else {
@@ -614,16 +612,15 @@ fn launch_with_detachment(
     let (send, result) = tokio::sync::oneshot::channel();
     let lifecycle = jobs.clone();
     let worker_jobs = jobs.clone();
-    let admitted = operation
-        .clone()
-        .admit()
-        .unwrap_or_else(|_| panic!("unbound operation admitted"));
     jobs.spawn(move |job| {
         tauri::async_runtime::block_on(async move {
             let owner = RuntimeOwner::open(path.join("data")).unwrap();
             let invocation = owner.begin_native_setup().unwrap();
             let parent = job.attach_invocation(&invocation).unwrap();
-            let bytes = component(&invocation, operation, scenario);
+            let bytes = component(&invocation, &operation, scenario);
+            let admitted = operation
+                .admit()
+                .unwrap_or_else(|_| panic!("unbound operation admitted"));
             let artifact = path.join("finite-fixture.wasm");
             File::create(&artifact).unwrap().write_all(&bytes).unwrap();
             let source = Source {
