@@ -44,6 +44,7 @@ async fn confirmed_publication_checks_handover_before_lock_and_holds_it_without_
         "incomplete-handover",
         "completed-handover",
         "bad-intent",
+        "stale-intent",
     ] {
         with_source(|source, read, cancel, budget| {
             let root = &source.root;
@@ -82,6 +83,24 @@ async fn confirmed_publication_checks_handover_before_lock_and_holds_it_without_
                 fs::create_dir_all(root.join("profiles")).unwrap();
                 fs::write(&intent, b"invalid intent").unwrap();
             }
+            let stale_before = if case == "stale-intent" {
+                std::env::var_os("TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE").map(|path| {
+                    let path = PathBuf::from(path);
+                    let fixture = path
+                        .with_file_name("inactive-registry-inputs")
+                        .join("publication-stale-intent/user-data/profiles");
+                    fs::create_dir_all(root.join("profiles")).unwrap();
+                    let key = root.join("profiles/.publication-key");
+                    fs::copy(fixture.join(JOURNAL), &intent).unwrap();
+                    fs::copy(fixture.join(".publication-key"), &key).unwrap();
+                    (fs::read(&intent).unwrap(), key)
+                })
+            } else {
+                None
+            };
+            if case == "stale-intent" && stale_before.is_none() {
+                return;
+            }
             let op = operation(read, source, cancel);
             let result = with_confirmed_predecessor(&op, root, budget, |current| {
                 assert!(matches!(case, "no-handover" | "completed-handover"));
@@ -112,6 +131,16 @@ async fn confirmed_publication_checks_handover_before_lock_and_holds_it_without_
                     );
                     assert!(lock_free(&lock));
                     assert_eq!(fs::read(&intent).unwrap(), b"invalid intent");
+                }
+                "stale-intent" => {
+                    let (bytes, key) = stale_before.unwrap();
+                    assert_eq!(
+                        result.unwrap_err().message,
+                        "Profile publication predecessor is stale"
+                    );
+                    assert!(lock_free(&lock));
+                    assert_eq!(fs::read(&intent).unwrap(), bytes);
+                    assert!(key.is_file());
                 }
                 _ => unreachable!(),
             }

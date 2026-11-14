@@ -12,7 +12,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
-from types import FrameType
+from types import FrameType, SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -672,6 +672,7 @@ def _observe_publication_checks(
     confirmation: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Observe confirmed capture under the real lock up to the first intent."""
+    from core_runtime.active_profile_store_v4 import ActiveProfilePointer
     from core_runtime.bootstrap import profile_capture as capture
     from core_runtime.bootstrap.profile_publication import ProfilePublicationJournal
     from core_runtime.profile_runtime_port import require_profile_runtime
@@ -695,10 +696,39 @@ def _observe_publication_checks(
             raise AssertionError("confirmed capture callable is outside the staged original")
 
     rows = []
-    for case in ("matched", "stale-confirmation", "changed-source", "changed-lock"):
+    for case in (
+        "matched", "stale-confirmation", "changed-source", "changed-lock", "stale-intent",
+    ):
         root = inputs / f"publication-{case}" / "user-data"
         shutil.copytree(seed, root)
-        existing = _inventory(root, files)
+        kept = list(files)
+        if case == "stale-intent":
+            # Use the actual writer to authenticate a prior intent expecting a
+            # Host pointer that is now absent. Confirmed recovery must keep it.
+            previous = ActiveProfilePointer(
+                profile_id="defaults", profile_revision="sha256:" + "1" * 64,
+                activation_id="activation:previous", plan_digest="sha256:" + "2" * 64,
+                lock_digest="sha256:" + "3" * 64,
+                activation_snapshot_path="workspaces/defaults/activation/activations/previous.json",
+                activation_snapshot_digest="sha256:" + "4" * 64,
+                catalog_revision=None, generation=1, updated_at=REGISTRATION_TIME,
+            )
+            resolved = SimpleNamespace(
+                profile={"profile_id": "defaults"},
+                plan={
+                    "profile_revision": confirmation["profile_revision"],
+                    "plan_digest": confirmation["plan_digest"],
+                    "profile_definition_digest": "sha256:" + "5" * 64,
+                    "security_epoch": confirmation["security_epoch"],
+                },
+                lock={"lock_digest": "sha256:" + "6" * 64},
+            )
+            ProfilePublicationJournal(root).begin(
+                predecessor=previous, resolved=resolved, activation_id="activation:fixture",
+                confirmation=confirmation,
+            )
+            kept.extend(("profiles/.publication-key", "profiles/bootstrap-publication.json"))
+        existing = _inventory(root, kept)
         approved = copy.deepcopy(confirmation)
         if case == "stale-confirmation":
             approved["confirmation_digest"] = "stale-fixture-digest"
@@ -790,11 +820,10 @@ def _observe_publication_checks(
         except _PublicationBoundary:
             outcome = {"candidate": candidate}
         except Exception as error:
-            expected = (
-                "bootstrap activation confirmation is stale or tampered"
-                if case == "stale-confirmation" else
-                "bootstrap target changed after confirmation"
-            )
+            expected = {
+                "stale-confirmation": "bootstrap activation confirmation is stale or tampered",
+                "stale-intent": "Profile publication predecessor is stale",
+            }.get(case, "bootstrap target changed after confirmation")
             if case == "matched" or not port.is_resolution_denied(error) or str(error) != expected:
                 raise
             outcome = {"error": error_graph(error, root)}
@@ -803,9 +832,9 @@ def _observe_publication_checks(
         finally:
             if case == "changed-lock":
                 lock.write_bytes(lock_before)
-        after = _inventory(root, [*files, publication_lock])
-        same_entries = all(after[name] == existing[name] for name in files)
-        expected_events = [] if case == "stale-confirmation" else [
+        after = _inventory(root, [*kept, publication_lock])
+        same_entries = all(after[name] == existing[name] for name in kept)
+        expected_events = [] if case in {"stale-confirmation", "stale-intent"} else [
             "materialize-host-catalog", "reread-catalog-under-publication-lock",
         ]
         if case == "matched":
