@@ -302,6 +302,165 @@ async fn registry_rehashed_history_and_unicode_fail_at_the_original_validation_s
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn registry_repairs_localized_names_as_one_replayable_transaction() {
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let index = source.root.join("profiles").join(INDEX);
+        let lock = source.root.join("profiles/.profile-definition.lock");
+        let mut publication = PublicationLock::acquire(&op, &store.directory).unwrap();
+        assert_eq!(
+            store
+                .repair_display_names(&op, budget, || panic!("no changes"))
+                .unwrap(),
+            0
+        );
+        assert!(!index.exists());
+        assert!(lock_free(&lock));
+
+        let mut before = state(vec![
+            entry("exact", 3),
+            entry("language", 4),
+            entry("japanese", 1),
+            entry("english", 2),
+            entry("fallback", 5),
+            entry("scalar", 6),
+            entry("missing", 7),
+        ]);
+        before["generation"] = json!(9);
+        before["legacy"] = json!({"source_path": "previous", "unknown": [3, true]});
+        let cases = [
+            json!({"display_name": {"en":"English","JA":"Japanese","pt-BR":"\u{a0}Português\u{1f}"},"locale":"PT_br","other":[1,true]}),
+            json!({"display_name": {"en":"English","ja":"\u{3000}日本語\u{3000}"},"locale":"en_GB","legacy_display_name":{"ja":"\u{3000}日本語\u{3000}","en":"English"}}),
+            json!({"display_name": {"en":"English","ja":"Japanese"},"locale":"fr-CA","legacy_display_name":null}),
+            json!({"display_name": {"en":"English","fr":"French"}}),
+            json!({"display_name": {"fr":"French"},"name":"  Kept name\n"}),
+            json!({"display_name":"  Keep scalar  ","locale":{},"legacy_display_name":{}}),
+            json!({"legacy_display_name":true,"locale":5}),
+        ];
+        for (row, fields) in before["profiles"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .zip(cases)
+        {
+            let mut document = fields.as_object().unwrap().clone();
+            document.insert("profile_id".into(), row["profile_id"].clone());
+            let document = Value::Object(document);
+            let revision = digest(&document);
+            row["current_revision"] = json!(revision);
+            row["revisions"][0]["profile_revision"] = json!(revision);
+            row["revisions"][0]["profile"] = document;
+        }
+        let source_bytes = sealed(before.clone());
+        write_index(source, &source_bytes);
+        let count = store
+            .repair_display_names(&op, budget, || {
+                assert!(!lock_free(&lock));
+                assert!(!lock_free(&source.root.join("profiles").join(LOCK)));
+                assert_eq!(fs::read(&index).unwrap(), source_bytes);
+                Ok(1700000300)
+            })
+            .unwrap();
+        assert_eq!(count, 5);
+        let actual_bytes = fs::read(&index).unwrap();
+        assert_eq!(actual_bytes.last(), Some(&b'\n'));
+        assert_eq!(
+            fs::metadata(&index).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let actual: Value = serde_json::from_slice(&actual_bytes).unwrap();
+        assert_eq!(actual["generation"], 14);
+        assert_eq!(actual["updated_at"], 1700000300);
+        assert_eq!(actual["legacy"], before["legacy"]);
+        assert_eq!(actual["bootstrap"], before["bootstrap"]);
+        for (at, name) in ["Português", "English", "Japanese", "English", "Kept name"]
+            .into_iter()
+            .enumerate()
+        {
+            let old = &before["profiles"][at];
+            let updated = &actual["profiles"][at];
+            assert_eq!(updated["order"], old["order"]);
+            assert_eq!(updated["revisions"][0], old["revisions"][0]);
+            let latest = &updated["revisions"][1];
+            assert_eq!(latest["profile"]["display_name"], name);
+            assert_eq!(
+                latest["profile"]["legacy_display_name"],
+                old["revisions"][0]["profile"]["display_name"]
+            );
+            assert_eq!(latest["parent_revision"], old["current_revision"]);
+            assert_eq!(latest["created_at"], 1700000300);
+            assert_eq!(latest["updated_at"], 1700000300);
+            assert_eq!(latest["profile_revision"], digest(&latest["profile"]));
+        }
+        assert_eq!(
+            actual["profiles"][0]["revisions"][1]["profile"]["other"],
+            json!([1, true])
+        );
+        for at in [5, 6] {
+            assert_eq!(actual["profiles"][at], before["profiles"][at]);
+        }
+        assert!(lock_free(&lock));
+        let reopened = Store::new(&op, &source.root).unwrap();
+        assert_eq!(
+            reopened
+                .repair_display_names(&op, budget, || panic!("replay"))
+                .unwrap(),
+            0
+        );
+        assert_eq!(fs::read(&index).unwrap(), actual_bytes);
+
+        for (display, preserved, message) in [
+            (
+                json!({"ja":"A","JA":"B"}),
+                Value::Null,
+                "legacy Profile localized display_name is ambiguous",
+            ),
+            (
+                json!({"ja":true}),
+                json!({"ja":1}),
+                "legacy Profile localized display_name is invalid",
+            ),
+            (
+                json!({"ja":"A"}),
+                json!({"ja":"B"}),
+                "legacy Profile display_name preservation is ambiguous",
+            ),
+            (
+                json!({"fr":"Nom"}),
+                Value::Null,
+                "legacy Profile localized display_name has no deterministic fallback",
+            ),
+        ] {
+            let mut bad = before.clone();
+            let row = &mut bad["profiles"][6];
+            row["revisions"][0]["profile"] = json!({"profile_id":"missing","display_name":display,"legacy_display_name":preserved});
+            let revision = digest(&row["revisions"][0]["profile"]);
+            row["current_revision"] = json!(revision);
+            row["revisions"][0]["profile_revision"] = json!(revision);
+            let input = sealed(bad);
+            write_index(source, &input);
+            let error = reopened
+                .repair_display_names(&op, budget, || panic!("invalid row"))
+                .unwrap_err();
+            assert_eq!((error.class, error.message.as_str()), (INTEGRITY, message));
+            assert_eq!(fs::read(&index).unwrap(), input);
+            assert!(lock_free(&lock));
+        }
+        write_index(source, &source_bytes);
+        let error = reopened
+            .repair_display_names(&op, budget, || Ok(-1))
+            .unwrap_err();
+        assert_eq!(
+            (error.class, error.message.as_str()),
+            (STORE_ERROR, "clock returned a negative timestamp")
+        );
+        assert_eq!(fs::read(&index).unwrap(), source_bytes);
+        publication.close().unwrap();
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn registry_tombstones_keep_the_prior_document_and_check_parent_before_digest() {
     with_source(|source, read, cancel, budget| {
         let mut profile = entry("alpha", 0);

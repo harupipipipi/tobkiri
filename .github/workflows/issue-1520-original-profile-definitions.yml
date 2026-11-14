@@ -17,6 +17,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_shell_*.rs
       - tobkiri_launcher/harness-native/src/original_profile_successor_selection*.rs
       - tobkiri_launcher/harness-native/src/original_profile_publication.rs
+      - tobkiri_launcher/harness-native/src/original_profile_publication_io.rs
       - tobkiri_launcher/harness-native/src/original_setup_candidate_selection*.rs
       - .github/workflows/issue-1520-original-profile-definitions.yml
 
@@ -85,14 +86,14 @@ jobs:
       - name: Verify native definition constructors and held journal lock mechanics
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-definitions-unit.log" --expected-passed 7 --
+          --log "$RUNNER_TEMP/native-definitions-unit.log" --expected-passed 8 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::tests
           -- --test-threads=1 --nocapture
       - name: Check fresh Setup root custody and original pointer errors
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-setup-candidate-unit.log" --expected-passed 11 --
+          --log "$RUNNER_TEMP/native-setup-candidate-unit.log" --expected-passed 12 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::candidate_selection_tests
           -- --test-threads=1 --nocapture

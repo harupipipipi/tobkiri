@@ -406,8 +406,7 @@ impl Directory {
         self.read_relative_with_limit(op, Path::new(name), Some(max_bytes))
     }
 
-    /// Fixed definition-store replacement for the original registration comparison.
-    #[cfg(test)]
+    /// Fixed definition-store replacement under the definition lock.
     pub(super) fn replace_definition<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -476,7 +475,6 @@ impl Directory {
         parent.finish(result)
     }
 
-    #[cfg(test)]
     fn replace_fixed<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -796,7 +794,7 @@ impl Directory {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(unix)]
 fn rename_new(fd: std::os::fd::RawFd, source: &CStr, destination: &CStr) -> Result<i32> {
     // Both names are relative to the same open, validated directory. A
     // concurrent destination appearing after the final stat must win.

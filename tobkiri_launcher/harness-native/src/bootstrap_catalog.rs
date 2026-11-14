@@ -503,6 +503,10 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
             DefinitionRecovery::RepairLegacyDisplayNames => {
                 BootstrapReviewReachpoint::RepairLegacyDisplayNamesNotBound
             }
+            #[cfg(unix)]
+            DefinitionRecovery::MigrateRetiredPackProjections => {
+                BootstrapReviewReachpoint::MigrateRetiredPackProjectionsNotBound
+            }
         }))),
         Err(error) => {
             match recovery_cause::project(&error, &pack.work.get().invocation, pack.input_budget)? {

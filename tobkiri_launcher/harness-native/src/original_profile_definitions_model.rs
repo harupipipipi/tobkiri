@@ -7,6 +7,9 @@ use tobkiri_canon::{AllocationError, CoreBuffer, CoreValue};
 #[path = "original_profile_successor_selection.rs"]
 mod successor_selection;
 pub(super) use successor_selection::select_successor;
+#[path = "original_profile_definitions_display_names.rs"]
+mod display_names;
+pub(super) use display_names::prepare_display_name_repair;
 
 const SCHEMA: &str = "io.tobkiri.profile-definition-store.v1";
 pub(super) const CONFLICT: &str =
@@ -1007,8 +1010,6 @@ pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
         return Err(integrity("Profile display_name must be a non-empty string"));
     }
     let timestamp = CoreValue::int(now, budget).map_err(capacity)?;
-    let revision = source.digest_guest(budget).map_err(capacity)?;
-    let revision = CoreValue::string(revision.as_str(), budget).map_err(capacity)?;
     let doc = &state.doc;
     // One funded copy of the validated snapshot admits shared links to all
     // existing rows. The source, new revision and changed counters are the
@@ -1026,6 +1027,30 @@ pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
     let row = profiles
         .get(entry_position)
         .expect("selected registry entry");
+    let row = append_successor(&row, source, &timestamp, budget)?;
+    let profiles = CoreValue::array_shared(
+        profiles.iter().enumerate().map(|(index, value)| {
+            Ok(if index == entry_position {
+                row.share()
+            } else {
+                value
+            })
+        }),
+        budget,
+    )
+    .map_err(capacity)?;
+    encode_successors(&snapshot, profiles, &timestamp, 1, budget)
+}
+
+fn append_successor(
+    row: &CoreValue,
+    source: &CoreValue,
+    timestamp: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
+    let revision = source.digest_guest(budget).map_err(capacity)?;
+    let revision = CoreValue::string(revision.as_str(), budget).map_err(capacity)?;
     let parent = row.get_key("current_revision").expect("validated revision");
     let successor = CoreValue::object_shared(
         [
@@ -1052,7 +1077,7 @@ pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
     }
     history.push(successor).map_err(capacity)?;
     let history = history.finish().map_err(capacity)?;
-    let row = CoreValue::object_shared(
+    CoreValue::object_shared(
         row.object()
             .expect("validated row")
             .iter()
@@ -1069,23 +1094,28 @@ pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
             }),
         budget,
     )
-    .map_err(capacity)?;
-    let profiles = CoreValue::array_shared(
-        profiles.iter().enumerate().map(|(index, value)| {
-            Ok(if index == entry_position {
-                row.share()
-            } else {
-                value
-            })
-        }),
-        budget,
-    )
-    .map_err(capacity)?;
+    .map_err(capacity)
+}
+
+fn encode_successors(
+    snapshot: &CoreValue,
+    profiles: CoreValue,
+    timestamp: &CoreValue,
+    changed: i64,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer> {
+    let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
     let generation = snapshot
         .get_key("generation")
         .and_then(|generation| generation.as_i64())
         .expect("validated generation");
-    let generation = CoreValue::int(generation + 1, budget).map_err(capacity)?;
+    let generation = generation
+        .checked_add(changed)
+        .filter(|value| value.unsigned_abs() <= tobkiri_canon::MAX_SAFE_INTEGER)
+        .ok_or_else(|| {
+            json::strict_error("integer exceeds I-JSON safe range; use a canonical decimal string")
+        })?;
+    let generation = CoreValue::int(generation, budget).map_err(capacity)?;
     let bootstrap = CoreValue::parse_guest(
         br#"{"state":"not_required","template_profile_revision":null}"#,
         budget,

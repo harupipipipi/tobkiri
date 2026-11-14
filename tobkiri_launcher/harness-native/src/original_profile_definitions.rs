@@ -27,11 +27,15 @@ mod tests;
 const INDEX: &str = "index.json";
 const INTEGRITY: &str =
     "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreIntegrityError";
+#[cfg(unix)]
+const STORE_ERROR: &str = "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreError";
 
 pub(crate) enum DefinitionRecovery {
     ImportLegacy,
     SuccessorBuilder(SuccessorCandidate),
     RepairLegacyDisplayNames,
+    #[cfg(unix)]
+    MigrateRetiredPackProjections,
 }
 
 /// Funded DATA for the unbound successor builder on the same review.
@@ -141,9 +145,15 @@ fn recover_at<S: crate::BootstrapReviewOwner>(
     requested: &Path,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<DefinitionRecovery> {
-    match first_list(op, requested, budget)? {
-        Some(store) => store.select_successor(op, budget),
-        None => Ok(DefinitionRecovery::ImportLegacy),
+    let Some(store) = first_list(op, requested, budget)? else {
+        return Ok(DefinitionRecovery::ImportLegacy);
+    };
+    match store.select_successor(op, budget)? {
+        DefinitionRecovery::RepairLegacyDisplayNames => {
+            store.repair_display_names(op, budget, registry_time)?;
+            Ok(DefinitionRecovery::MigrateRetiredPackProjections)
+        }
+        next => Ok(next),
     }
 }
 
@@ -520,6 +530,59 @@ impl Store {
             Err(error) => finish_scope(Err(error), lock.close()),
         }
     }
+
+    fn repair_display_names<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+        clock: impl FnOnce() -> Result<i64>,
+    ) -> Result<usize> {
+        let mut lock = self.lock(op)?;
+        let result = (|| {
+            let state = self.read_state(op, budget)?;
+            let prepared =
+                definitions_model::prepare_display_name_repair(op, &state, budget, clock)?;
+            let Some((count, output)) = prepared else {
+                return Ok(0);
+            };
+            drop(state);
+            self.directory
+                .replace_definition(op, output.as_bytes())
+                .map_err(|error| {
+                    if error.class == RAW_IO
+                        || matches!(
+                            error.class,
+                            "builtins.FileNotFoundError"
+                                | "builtins.ValueError"
+                                | "tobkiri_protocol.secure_persistence.SecurePersistenceError"
+                        )
+                    {
+                        caused(
+                            raw(
+                                STORE_ERROR,
+                                "Profile definition store could not be committed",
+                            ),
+                            error,
+                        )
+                    } else {
+                        error
+                    }
+                })?;
+            Ok(count)
+        })();
+        finish_snapshot(op, &self.directory, &mut lock, result)
+    }
+}
+
+#[cfg(unix)]
+fn registry_time() -> Result<i64> {
+    let seconds = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(elapsed) => i64::try_from(elapsed.as_secs()).ok(),
+        Err(error) => i64::try_from(error.duration().as_secs())
+            .ok()
+            .and_then(i64::checked_neg),
+    };
+    seconds.ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))
 }
 
 #[cfg(unix)]
