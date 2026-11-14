@@ -2921,6 +2921,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [原本比較43551375081](https://github.com/harupipipipi/tobkiri/actions/runs/43551375081)と
   [燃料計測43551374165](https://github.com/harupipipipi/tobkiri/actions/runs/43551374165)、
   [無計測CI43551376678](https://github.com/harupipipipi/tobkiri/actions/runs/43551376678)で検証する。
+- `b7e56d0a8` の原本比較が通過し、無計測の実Wasmでは42件すべてのcold schema-storeが
+  元と同じ134,817バイトを返した。燃料残り8,308,664、終了後の確保量0。カタログ全体は
+  同じ成果物の別の実行で燃料切れだった。計測版は42件目の評価完了後に26,266,880 fuelを
+  記録し、後続の処理で停止した。`25268e5c7` はPythonの実iteratorを保持したまま進め、
+  反復ごとの同じ参照の追加・解放を省く。[原本比較43552218512](https://github.com/harupipipipi/tobkiri/actions/runs/43552218512)は通過し、
+  [実Wasm43552218468](https://github.com/harupipipipi/tobkiri/actions/runs/43552218468)で再検証する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3333,6 +3339,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [初回43551150533](https://github.com/harupipipipi/tobkiri/actions/runs/43551150533)はLinuxの
   既存Clippyと競合。`7d4c272a1` が比較専用のRust 1.94.0を隔離し、
   [再実行43551451311](https://github.com/harupipipipi/tobkiri/actions/runs/43551451311)で検証する。
+- 隔離した再実行と、書き込み直前に別のintentが出現しても置換しない `13cf074d0` の
+  [比較43551670298](https://github.com/harupipipipi/tobkiri/actions/runs/43551670298)が通過。
+  Linuxで元writerとの全バイト一致とRustでの認証、macOSで固定原本の観測が成功した。
+- `ae227bb0c` は確認後の候補解決、Hostカタログ、配布カタログをそれぞれ読み、最後に
+  ロックを独立して開く順序を固定原本で観測する。`e74e27f75` は既存の物理読込テストで
+  選択時のパスを保持し、ローダー完了後にロックを一度だけ読み直す。前の読み込み後に
+  バイトを入れ替えて違いを検出する。[原本比較43552133355](https://github.com/harupipipipi/tobkiri/actions/runs/43552133355)と
+  [物理読込43552300422](https://github.com/harupipipipi/tobkiri/actions/runs/43552300422)で検証する。
 - Setupの確認欄を移す際は `DefaultsReview.tsx` と `DefaultsConfirmationDetails.tsx` の表示を
   再利用する。現在の `legacy.rs` が表示するSetupと `core_host.rs` の既存承認シートは
   異なる入口。既存のUI操作を維持するため、元のSetup内にCoreが所有する独立の確認領域を
