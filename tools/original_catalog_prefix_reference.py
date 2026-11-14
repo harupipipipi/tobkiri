@@ -46,6 +46,76 @@ class ProfileDefinitionBoundary(BaseException):
     """Test-only reachpoint, never an original application error."""
 
 
+def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
+    """Compare the live Profile projection immediately before original Authority."""
+    check_original(original)
+    runtime = fixtures.parent / "packaged-valid/reference/runtime"
+    user_data = fixtures.parent / "packaged-valid/reference/user-data"
+    native_data = fixtures.parent / "packaged-valid/native/user-data"
+    hashes = code_hashes(original / "tobkiri_runtime")
+    if code_hashes(runtime) != hashes:
+        raise ValueError("staged original code differs")
+    sys.path.insert(0, str(runtime))
+    os.environ.update(TOBKIRI_USER_DATA=str(user_data), RUMI_USER_DATA=str(user_data),
+                      RUMI_ENVIRONMENT="production")
+    os.environ.pop("RUMI_APP_DIR", None)
+    from core_runtime.bootstrap import profile_capture as capture
+    from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
+    from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+        install_defaultspack_profile_runtime,
+    )
+    from original_profile_definition_prefix_reference import _lock_free
+    from tobkiri_protocol.canonical import canonical_digest
+
+    profile = json.loads((runtime / "ecosystem/defaultspack/v4/defaults.profile.v5.json").read_bytes())
+    profile["profile_id"] = "recovery-test-profile"
+    for owner in (user_data, native_data):
+        ProfileDefinitionStore(owner).create_profile(profile)
+
+    port = install_defaultspack_profile_runtime()
+    owner_type = type(port)
+    catalog_with_profiles = owner_type.catalog_with_profiles
+    authority = capture.AuthorityStore
+    observed = []
+
+    class AuthorityBoundary(BaseException):
+        """The original has evaluated all arguments by this call."""
+
+    def observe(self, catalog, profiles):
+        projected = catalog_with_profiles(self, catalog, profiles)
+        if self is not port or projected is catalog:
+            raise AssertionError("recovery did not use the original runtime catalog")
+        if list(projected.profiles) != ["recovery-test-profile"] or list(catalog.profiles) == list(projected.profiles):
+            raise AssertionError("recovery did not replace the Profile table")
+        observed.append(canonical_digest([[key, value] for key, value in projected.profiles.items()]))
+        return projected
+
+    def stop(path):
+        if path != user_data / "authority/v4.sqlite3" or len(observed) != 1:
+            raise AssertionError("original Authority call or catalog order changed")
+        if (_lock_free(user_data / "profiles/.bootstrap-publication.lock") is not False
+                or _lock_free(user_data / "profiles/.profile-definition.lock") is not True):
+            raise AssertionError("original lock ownership changed before Authority")
+        raise AuthorityBoundary
+
+    before = filesystem(user_data)
+    try:
+        owner_type.catalog_with_profiles = observe
+        capture.AuthorityStore = stop
+        try:
+            capture._recover_bootstrap_publication(discard_superseded=True)
+        except AuthorityBoundary:
+            pass
+        else:
+            raise AssertionError("original did not reach Authority")
+    finally:
+        owner_type.catalog_with_profiles = catalog_with_profiles
+        capture.AuthorityStore = authority
+    if code_hashes(runtime) != hashes or before != filesystem(user_data):
+        raise AssertionError("original recovery altered the retained profile seed or source")
+    write_json(output, {"profile_rows_digest": observed[0], "authority_constructor_entries": 1})
+
+
 def code_hashes(runtime: Path) -> dict[str, str]:
     return {name: hashlib.sha256((runtime / name).read_bytes()).hexdigest()
             for name in SOURCES}
@@ -409,7 +479,8 @@ def compare_nine_actual(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "probe", "compare-actual", "compare-nine-actual"))
+    parser.add_argument("command", choices=("prepare", "probe", "probe-recovery",
+                                            "compare-actual", "compare-nine-actual"))
     parser.add_argument("--original-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runtime", type=Path)
@@ -424,6 +495,10 @@ def main() -> None:
         if args.runtime is None or args.user_data is None:
             parser.error("probe requires --runtime and --user-data")
         probe(original, args.runtime.resolve(strict=True), args.user_data.resolve(strict=True), args.output)
+    elif args.command == "probe-recovery":
+        if args.fixtures is None:
+            parser.error("probe-recovery requires --fixtures")
+        probe_recovery(original, args.fixtures.resolve(strict=True), args.output)
     else:
         if args.fixtures is None or args.observations is None:
             parser.error("actual comparison requires --fixtures and --observations")

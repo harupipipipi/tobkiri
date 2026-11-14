@@ -467,9 +467,20 @@ async fn run_original_catalog_component_driver(
             "real same-Store roots and loader result must be retained"
         );
         if recovery {
+            let observation = std::fs::read(fixtures_path.with_file_name("recovery-authority-reference.json"))?;
+            ensure!(observation.len() <= 4096);
+            let observation: Value = serde_json::from_slice(&observation)?;
+            let profiles = actual._recovery_profile_definitions.as_ref().context("recovered Profiles required")?;
+            let rows = profiles.array().context("ordered Profile rows required")?;
+            let row = rows.get(0).context("configured Profile required")?;
+            let id = row.get_index(0).context("Profile ID required")?;
             ensure!(
                 actual._recovery_catalog.is_some()
-                    && actual._recovery_profile_definitions.is_some()
+                    && rows.len() == 1
+                    && id.as_str() == Some("recovery-test-profile")
+                    && observation["authority_constructor_entries"] == 1
+                    && profiles.digest_guest(runtime.data_budget())?.as_str()
+                        == observation["profile_rows_digest"].as_str().context("original Profile digest required")?
                     && !user_data.join("authority").exists(),
                 "the same Store must retain the recovered catalog before Authority opens",
             );
