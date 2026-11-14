@@ -581,8 +581,12 @@ impl ReferenceState {
         let (uri, fragment) = env.measure(py, FuelBucket::Uri, || {
             uri::resolve(py, base_uri.bind(py), reference)
         })?;
+        // Reuse only the fixed attribute name. The actual descriptor lookup,
+        // receiver and retrieval callback still run for each reference.
         let retrieved = env.measure(py, FuelBucket::Registry, || {
-            registry.bind(py).call_method1("get_or_retrieve", (&uri,))
+            registry
+                .bind(py)
+                .call_method1(pyo3::intern!(py, "get_or_retrieve"), (&uri,))
         });
         let retrieved = match retrieved {
             Ok(value) => value,
@@ -616,16 +620,26 @@ impl ReferenceState {
                     retrieved
                 } else {
                     retrieved
-                        .getattr("registry")?
-                        .call_method1("anchor", (&uri, &fragment))?
+                        .getattr(pyo3::intern!(py, "registry"))?
+                        .call_method1(pyo3::intern!(py, "anchor"), (&uri, &fragment))?
                 };
-                let state = self.evolved(py, uri, selected.getattr("registry")?)?;
-                state.fragment(py, env, &selected.getattr("value")?, &fragment, pointer)
+                let state =
+                    self.evolved(py, uri, selected.getattr(pyo3::intern!(py, "registry"))?)?;
+                state.fragment(
+                    py,
+                    env,
+                    &selected.getattr(pyo3::intern!(py, "value"))?,
+                    &fragment,
+                    pointer,
+                )
             });
         }
-        let state = self.evolved(py, uri, retrieved.getattr("registry")?)?;
+        let state = self.evolved(py, uri, retrieved.getattr(pyo3::intern!(py, "registry"))?)?;
         Ok((
-            retrieved.getattr("value")?.getattr("contents")?.unbind(),
+            retrieved
+                .getattr(pyo3::intern!(py, "value"))?
+                .getattr(pyo3::intern!(py, "contents"))?
+                .unbind(),
             state,
         ))
     }
@@ -730,7 +744,7 @@ fn default_subresource_path(
             // None of the closed ASCII keywords contains a surrogate. Preserve
             // unknown-token behavior without introducing a UTF-8-only error.
             Err(error) if error.is_instance_of::<PyUnicodeEncodeError>(py) => {
-                return Ok(Some(false))
+                return Ok(Some(false));
             }
             Err(error) => return Err(error),
         };
