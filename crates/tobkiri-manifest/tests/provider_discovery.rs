@@ -42,7 +42,7 @@ fn verified_shape(id: &str, interface: &str, minor: u16, wit: &str, sidecar: &st
             .collect(),
     };
     let tpk = build_tpk(&manifest, &files, None).unwrap();
-    verify_tpk(&tpk, &BTreeMap::new()).unwrap().shapes.remove(0)
+    verify_tpk(&tpk, &BTreeMap::new()).unwrap().shapes[0].clone()
 }
 
 fn assert_discovery_contract(

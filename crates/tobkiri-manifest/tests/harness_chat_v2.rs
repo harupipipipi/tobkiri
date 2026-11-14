@@ -48,10 +48,7 @@ fn shape(major: u16, interface: &str, wit: &str, sidecar: &str) -> ShapeDef {
             .collect(),
     };
     let bytes = build_tpk(&manifest, &files, None).unwrap();
-    verify_tpk(&bytes, &BTreeMap::new())
-        .unwrap()
-        .shapes
-        .remove(0)
+    verify_tpk(&bytes, &BTreeMap::new()).unwrap().shapes[0].clone()
 }
 
 fn field<'a>(ty: &'a WitType, name: &str) -> &'a WitType {
