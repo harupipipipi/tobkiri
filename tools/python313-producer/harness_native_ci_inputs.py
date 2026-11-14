@@ -52,13 +52,17 @@ def verify_producer_selection(
     source = member["source"]
     inputs = bundle / "inputs"
     metadata = fingerprint(inputs / "python" / METADATA, 4 * 1024**2)
+    # Artifact transport preserves file bytes but normalizes producer file modes.
+    provenance_file = source["files"]["provenance.json"]
+    metadata_file = source["files"]["python/" + METADATA]
     if (
         member["artifact"] != identity
         or member["build_receipt"] != fingerprint(
             artifact.with_name("component.build.json"), 4 * 1024**2
         )
-        or source["files"]["provenance.json"] != fingerprint(inputs / "provenance.json")
-        or source["files"]["python/" + METADATA] != metadata
+        or {key: provenance_file[key] for key in ("bytes", "sha256")}
+        != fingerprint(inputs / "provenance.json")
+        or {key: metadata_file[key] for key in ("bytes", "sha256")} != metadata
         or source["source_files"] != plan["sources"]
         or build["compiler_executable_sha256"] != receipt["producer"]["sha256"]
         or build["producer_ci_receipt_sha256"] != receipt["producer_receipt"]["sha256"]

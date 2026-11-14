@@ -66,7 +66,10 @@ class HarnessNativeCIInputsTests(unittest.TestCase):
             "source": {
                 "source_files": plan["sources"],
                 "plan_sha256": build["build_plan_sha256"],
-                "files": {"provenance.json": provenance, metadata_name: metadata_identity},
+                "files": {
+                    "provenance.json": {**provenance, "mode": "0o600"},
+                    metadata_name: {**metadata_identity, "mode": "0o644"},
+                },
             },
         }
         receipt = {
@@ -95,6 +98,13 @@ class HarnessNativeCIInputsTests(unittest.TestCase):
                 artifact, build, {**plan, "sources": [row, row]}, identity,
                 diagnostic=diagnostic,
             )
+        provenance_path = directory / "inputs/provenance.json"
+        provenance_path.write_bytes(b"[]")
+        with self.assertRaisesRegex(ValueError, "successful producer"):
+            binding.verify_producer_selection(
+                artifact, build, plan, identity, diagnostic=diagnostic
+            )
+        write(provenance_path, {})
         write(receipt_path, {**receipt, "outcome": "failed"})
         with self.assertRaisesRegex(ValueError, "producer selection"):
             binding.verify_producer_selection(

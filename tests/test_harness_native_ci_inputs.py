@@ -95,8 +95,14 @@ class DiagnosticInputBindingTests(unittest.TestCase):
                 "source": {
                     "plan_sha256": hashlib.sha256(raw_plan).hexdigest(),
                     "source_files": plan["sources"],
-                    "files": {path: {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
-                              for path, raw in files.items()},
+                    "files": {
+                        path: {
+                            "bytes": len(raw),
+                            "sha256": hashlib.sha256(raw).hexdigest(),
+                            "mode": "0o600" if path == "provenance.json" else "0o644",
+                        }
+                        for path, raw in files.items()
+                    },
                 },
             }},
         }))
