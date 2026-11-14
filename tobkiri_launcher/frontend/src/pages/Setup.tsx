@@ -474,6 +474,7 @@ export function Setup() {
       </div>}
     </section>}
     <DefaultsReview
+      nativeSlot={desktopShell && setup?.state === 'review_required' && !reviewLoading && !activating}
       setup={setup}
       reviewed={reviewed}
       activating={activating}

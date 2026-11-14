@@ -15,6 +15,7 @@ type Props = {
   readonly activationAllowed?: boolean;
   readonly activationBlockedMessage?: string;
   readonly readOnly?: boolean;
+  readonly nativeSlot?: boolean;
   readonly onRecover?: () => void;
   readonly onReviewedChange?: (reviewed: boolean) => void;
   readonly onActivate?: () => void;
@@ -30,6 +31,7 @@ export function DefaultsReview({
   activationAllowed = true,
   activationBlockedMessage = 'Select “Include new bundled Profile Packs and operation bindings” above to review a complete successor before activation.',
   readOnly = false,
+  nativeSlot = false,
   onRecover = () => undefined,
   onReviewedChange,
   onActivate,
@@ -43,7 +45,8 @@ export function DefaultsReview({
   const targetPacks = setup?.recommended_default_profile.pack_ids ?? [];
   const addedPacks = targetPacks.filter((id) => !predecessor?.pack_ids.includes(id));
   const removedPacks = predecessor?.pack_ids.filter((id) => !targetPacks.includes(id)) ?? [];
-  return <section className="rounded-[18px] border border-border bg-bg-card p-7 shadow-lg" aria-labelledby="defaults-review-title">
+  return <section className="rounded-[18px] border border-border bg-bg-card p-7 shadow-lg"
+    aria-labelledby="defaults-review-title" data-native-setup-review-slot={nativeSlot || undefined}>
     <p className="text-xs font-medium text-text-muted">Tobkiri Harness setup</p>
     <h1 id="defaults-review-title" className="mt-3 text-2xl font-semibold text-text-main">
       {reconfirmationRequired ? 'Profile reconfirmation required' : 'Activate Tobkiri Harness'}

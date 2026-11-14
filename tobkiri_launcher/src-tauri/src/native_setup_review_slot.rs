@@ -1,13 +1,47 @@
 //! Place the review beside the parent WebKit view, in AppKit points.
 
 use super::{valid_bounds, SetupReviewView};
-use objc2::{rc::Retained, MainThreadMarker, MainThreadOnly, Message};
+use block2::RcBlock;
+use objc2::{rc::Retained, runtime::AnyObject, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{NSView, NSWindowOrderingMode};
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSError, NSPoint, NSRect, NSSize, NSString};
+use objc2_web_kit::WKWebView;
 use serde::Deserialize;
+use std::cell::RefCell;
 
 const MAX_DIMENSION: f64 = 16_384.0;
 const VIEWPORT_TOLERANCE: f64 = 1.0;
+const MEASURE: &str = include_str!("../../frontend/src/lib/measureSetupReviewSlot.js");
+
+/// Sample the fixed Setup marker. The callback runs on the AppKit thread.
+/// The owner must discard late results after a route or candidate change.
+#[allow(dead_code)]
+pub(crate) fn measure(parent: &WKWebView, apply: impl FnOnce(Option<ReviewGeometry>) + 'static) {
+    // Keep native AppKit and CSS coordinates at the same scale.
+    if unsafe { parent.pageZoom() != 1.0 || parent.magnification() != 1.0 } {
+        apply(None);
+        return;
+    }
+    let pending = RefCell::new(Some(apply));
+    let callback = RcBlock::new(move |value: *mut AnyObject, error: *mut NSError| {
+        let Some(apply) = pending.borrow_mut().take() else {
+            return;
+        };
+        let geometry = if error.is_null() {
+            // WebKit owns the result until the callback returns.
+            unsafe { value.as_ref() }
+                .and_then(AnyObject::downcast_ref::<NSString>)
+                .filter(|value| value.length() <= 1024)
+                .and_then(|value| serde_json::from_str(&value.to_string()).ok())
+        } else {
+            None
+        };
+        apply(geometry);
+    });
+    unsafe {
+        parent.evaluateJavaScript_completionHandler(&NSString::from_str(MEASURE), Some(&callback))
+    };
+}
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

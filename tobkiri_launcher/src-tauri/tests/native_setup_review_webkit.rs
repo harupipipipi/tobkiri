@@ -7,11 +7,14 @@ mod native_setup_review;
 #[cfg(target_os = "macos")]
 fn main() {
     use block2::RcBlock;
-    use native_setup_review::{slot::SetupReviewSlot, SetupReviewView};
+    use native_setup_review::{
+        slot::{measure, SetupReviewSlot},
+        SetupReviewView,
+    };
     use objc2::{rc::autoreleasepool, runtime::AnyObject, MainThreadMarker, MainThreadOnly};
     use objc2_app_kit::{NSApplication, NSBackingStoreType, NSView, NSWindow, NSWindowStyleMask};
-    use objc2_foundation::{NSDate, NSError, NSPoint, NSRect, NSRunLoop, NSSize, NSString};
-    use objc2_web_kit::WKWebView;
+    use objc2_foundation::{NSDate, NSError, NSPoint, NSRect, NSRunLoop, NSSize, NSString, NSURL};
+    use objc2_web_kit::{WKWebView, WKWebViewConfiguration};
     use std::cell::Cell;
     use std::rc::Rc;
     use std::time::{Duration, Instant};
@@ -168,6 +171,59 @@ fn main() {
         assert!(!placed.update(None));
         drop(placed);
         assert_eq!(slot.subviews().len(), 1);
+
+        // Exercise the same geometry script against actual WebKit on a parent
+        // using the Setup pathname. This in-memory document has no resources.
+        let parent = unsafe {
+            WKWebView::initWithFrame_configuration(
+                WKWebView::alloc(mtm),
+                parent.frame(),
+                &WKWebViewConfiguration::new(mtm),
+            )
+        };
+        slot.addSubview(&parent);
+        window.orderFrontRegardless();
+        let base =
+            NSURL::URLWithString(&NSString::from_str("http://127.0.0.1/panel/setup")).unwrap();
+        let body = NSString::from_str(
+            "<!doctype html><style>body{margin:0}section{width:700px;height:900px}</style>
+             <section data-native-setup-review-slot></section>",
+        );
+        unsafe { parent.loadHTMLString_baseURL(&body, Some(&base)) }.unwrap();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !evaluate_boolean(
+            &parent,
+            "String(document.visibilityState === 'visible' && !!document.querySelector('section'))",
+            deadline,
+        ) {
+            assert!(
+                Instant::now() < deadline,
+                "Parent Setup fixture did not render"
+            );
+            pump();
+        }
+        let observed = Rc::new(Cell::new(None));
+        let result = observed.clone();
+        measure(&parent, move |value| result.set(Some(value)));
+        let geometry = loop {
+            if let Some(result) = observed.take() {
+                break result.expect("WebKit did not measure the visible Setup marker");
+            }
+            assert!(
+                Instant::now() < deadline,
+                "WebKit slot measurement did not complete"
+            );
+            pump();
+        };
+        let placed = SetupReviewSlot::mount(mtm, &parent, geometry, listing).unwrap();
+        let clip = slot.subviews().objectAtIndex(2);
+        assert_eq!(clip.frame().size, NSSize::new(700.0, 600.0));
+        assert_eq!(
+            clip.subviews().objectAtIndex(0).frame().size,
+            NSSize::new(700.0, 900.0)
+        );
+        drop(placed);
+        window.orderOut(None);
         println!("Actual WebKit rendered the pinned review, blocked navigation, clipped scrolling and detached");
     });
 }
