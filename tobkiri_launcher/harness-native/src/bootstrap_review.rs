@@ -57,7 +57,7 @@ pub enum BootstrapReviewReachpoint {
     ImportLegacyCollectionNotBound,
     LegacySuccessorBuilderNotBound,
     RepairLegacyDisplayNamesNotBound,
-    AdmittedPackArtifactVerificationNotBound,
+    AdmittedPackArtifactCompilationNotBound,
     CatalogWithProfilesNotBound,
 }
 

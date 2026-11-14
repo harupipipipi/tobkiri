@@ -135,6 +135,12 @@ def worker(original, owner, name, output):
             expected = {"outcome": "error", "error": error_graph(error, owner)}
     finally:
         external._read_json_nofollow, external.validate_document, external.load_signing_key = original_read, original_validate, original_key
+    artifact_probe = None
+    if name == "admitted" and expected["outcome"] == "success":
+        pack_id = "conformance.minimal.echo"
+        entry = next(iter(expected["value"]["entries"].values()))
+        external._verify_entry_root(pack_id, entry, external._entry_root(entry, owner))
+        artifact_probe = "verified"
     after = inventory(owner)
     if before != after:
         raise AssertionError("catalog read changed owner inventory")
@@ -145,6 +151,7 @@ def worker(original, owner, name, output):
     if name == "malformed-hmac" and (expected.get("outcome") != "error" or expected["error"]["message"] != "external Normal Pack catalog authentication failed"):
         raise AssertionError("same-owner malformed HMAC did not reach authentication")
     write_json(output, {"bundled": bundled_observation, "expected": expected,
+                        "artifact_probe": artifact_probe,
                         "file_sequence": sequence, "inventory_before": before,
                         "inventory_after": after})
 
@@ -167,7 +174,8 @@ def prepare(original, destination):
             output.unlink()
         reference, native = results["reference"], results["native"]
         if (reference["bundled"] != native["bundled"] or reference["file_sequence"] != native["file_sequence"]
-                or reference["expected"]["outcome"] != native["expected"]["outcome"]):
+                or reference["expected"]["outcome"] != native["expected"]["outcome"]
+                or reference["artifact_probe"] != native["artifact_probe"]):
             raise AssertionError("independently admitted owner observations disagree")
         cases.append({"name": name, "runtime_dir": str(original / "tobkiri_runtime"),
                       "native_user_data": str(directory / "native-owner"), **native})
@@ -175,8 +183,8 @@ def prepare(original, destination):
     summary = {"format": FORMAT, "original_head": ORIGINAL_HEAD, "case_count": len(cases),
                "cases": cases, "native_comparison": False, "qualification": False,
                "production_enabled": False,
-               "scope": "original bundled catalog and authenticated external catalog reader only; "
-                        "independent real signed echo admissions; no CAS verification or activation"}
+               "scope": "original bundled catalog and authenticated external catalog reader; "
+                        "independent real signed echo admissions and original CAS verification; no activation"}
     raw = json.dumps(summary, ensure_ascii=False, separators=(",", ":")).encode()
     if len(raw) > LIMIT:
         raise ValueError("original catalog summary exceeds bound")

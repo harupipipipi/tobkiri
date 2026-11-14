@@ -288,13 +288,13 @@ fn lower_hex_text(value: Option<&Text>, count: usize, schema_pattern: bool) -> b
     })
 }
 
-fn digest_syntax(value: &[u32]) -> bool {
+pub(super) fn digest_syntax(value: &[u32]) -> bool {
     value
         .strip_prefix(&[115, 104, 97, 50, 53, 54, 58])
         .is_some_and(|hex| lower_hex(hex, 64))
 }
 
-fn id_syntax(value: &[u32]) -> bool {
+pub(super) fn id_syntax(value: &[u32]) -> bool {
     if !matches!(value.first(), Some(97..=122)) {
         return false;
     }
@@ -627,7 +627,7 @@ fn opaque_reference(value: &[u32]) -> bool {
 }
 
 #[derive(Clone, Copy)]
-enum SemanticPath {
+pub(super) enum SemanticPath {
     Root,
     Journal,
     Bindings,
@@ -652,7 +652,7 @@ impl SemanticPath {
     }
 }
 
-fn validate_semantics<S: OriginalAuthorityOwner>(
+pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
     doc: &Document,
     id: usize,
     path: SemanticPath,

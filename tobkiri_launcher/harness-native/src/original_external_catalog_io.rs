@@ -3,8 +3,14 @@ use super::*;
 use std::os::unix::fs::OpenOptionsExt;
 use tobkiri_canon::{AllocationBudget, AllocationKind, AllocationRequest, CoreValue, MAX_BYTES};
 
+#[path = "original_external_catalog_compiler.rs"]
+mod external_catalog_compiler;
+#[cfg(test)]
+#[path = "original_external_catalog_inventory.rs"]
+mod external_catalog_inventory;
 #[path = "original_external_catalog_model.rs"]
 mod external_catalog_model;
+use external_catalog_compiler as compiler;
 use external_catalog_model as model;
 
 // The generated catalog describes packaged Pack IDs. It is distinct from the
@@ -37,19 +43,26 @@ pub(crate) struct ExternalPackRead {
     _bundled: BundledRecords,
     _registry: Option<Funded<Document>>,
     first: Option<PackRoot>,
+    artifact: Option<ArtifactDefinitions>,
 }
 
 impl ExternalPackRead {
-    pub(crate) fn need_artifact_verification(&self) -> bool {
-        self.first.is_some()
+    pub(crate) fn need_artifact_compilation(&self) -> bool {
+        self.artifact.is_some()
     }
 }
 
 struct PackRoot {
-    _path: PathBuf,
-    _entry: usize,
-    _physical_identity: (u64, u64),
+    path: PathBuf,
+    entry: usize,
+    physical_identity: (u64, u64),
     _capacity: NativeSetupReservation,
+}
+
+struct ArtifactDefinitions {
+    _executable: compiler::ExecutableCatalog,
+    _manifest: compiler::PackManifest,
+    _host_extension: bool,
 }
 
 #[cfg(test)]
@@ -186,9 +199,8 @@ mod tests {
                     "success" => {
                         let observed = observed.unwrap();
                         let expected = &case["expected"]["value"];
-                        let registry = observed._registry;
-                        if let Some(registry) = registry {
-                            let value = json::canonical(&registry, None, &op).unwrap();
+                        if let Some(registry) = &observed._registry {
+                            let value = json::canonical(registry, None, &op).unwrap();
                             let value: Value = serde_json::from_slice(&value).unwrap();
                             assert_eq!(&value, expected);
                         } else {
@@ -196,6 +208,29 @@ mod tests {
                             assert_eq!(expected["journal"], json!([]));
                         }
                         assert_eq!(observed.first.is_some(), case["name"] == "admitted");
+                        if let Some(root) = &observed.first {
+                            assert_eq!(case["artifact_probe"], "verified");
+                            let registry = observed._registry.as_ref().unwrap();
+                            read_artifact_definitions(&op, root, registry, budget).unwrap();
+                            // Compare the later physical inventory in isolation.
+                            // In recovery the original compiler must run before it.
+                            let root_fd = Parent::walk(&root.path, &op.cleanup).unwrap();
+                            let manifest_bytes = read_artifact_definition(
+                                &op,
+                                &root_fd,
+                                &root.path,
+                                c".tobkiri/signed-pack.json",
+                                budget,
+                            )
+                            .unwrap();
+                            let manifest =
+                                json::decode_catalog_manifest(&manifest_bytes, &op, budget)
+                                    .unwrap();
+                            drop(manifest_bytes);
+                            external_catalog_inventory::verify(&op, &root_fd, &manifest, budget)
+                                .unwrap();
+                            root_fd.close().unwrap();
+                        }
                     }
                     "error" => {
                         let error = observed
@@ -235,7 +270,12 @@ pub(crate) fn read<S: crate::BootstrapReviewOwner>(
     owner
         .with_original_catalog_source(|source| {
             let input = read_inputs(&op, source.runtime, &pending.root, budget)?;
-            authenticate(&op, input, budget)
+            let mut catalog = authenticate(&op, input, budget)?;
+            if let Some(root) = &catalog.first {
+                let registry = catalog._registry.as_ref().expect("authenticated catalog");
+                catalog.artifact = Some(read_artifact_definitions(&op, root, registry, budget)?);
+            }
+            Ok(catalog)
         })?
         .map_err(recovery_error)
 }
@@ -280,6 +320,7 @@ fn authenticate<S: OriginalAuthorityOwner>(
             _bundled: input._bundled,
             _registry: None,
             first: None,
+            artifact: None,
         });
     };
     let mut registry = model::parse_envelope(&raw, op, budget)?;
@@ -305,6 +346,7 @@ fn authenticate<S: OriginalAuthorityOwner>(
         _bundled: input._bundled,
         _registry: Some(registry),
         first,
+        artifact: None,
     })
 }
 
@@ -440,9 +482,9 @@ fn checked_entry_root<S: OriginalAuthorityOwner>(
         return Err(model::denied("external Pack root identity changed"));
     }
     Ok(PackRoot {
-        _path: path,
-        _entry: entry,
-        _physical_identity: (metadata.dev(), metadata.ino()),
+        path,
+        entry,
+        physical_identity: (metadata.dev(), metadata.ino()),
         _capacity: capacity,
     })
 }
@@ -471,6 +513,108 @@ fn resolve_existing_prefix<S: OriginalAuthorityOwner>(
             Err(error) => return Err(raw_io(error, prefix.to_str())),
         }
     }
+}
+
+fn read_artifact_definitions<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &PackRoot,
+    registry: &Document,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<ArtifactDefinitions> {
+    op.check(OriginalAuthorityStage::Source)?;
+    let directory = Parent::walk(&root.path, &op.cleanup)
+        .map_err(|error| caused(model::denied("external Pack root is unavailable"), error))?;
+    let definitions = (|| {
+        let opened = directory.metadata().map_err(|error| raw_io(error, None))?;
+        if (opened.dev(), opened.ino()) != root.physical_identity {
+            return Err(model::denied("external Pack root identity changed"));
+        }
+        let raw_executable =
+            read_artifact_definition(op, &directory, &root.path, c"executables.v4.json", budget)?;
+        let executable = compiler::read_executable(&raw_executable, op, budget)?;
+        drop(raw_executable);
+        let raw_manifest =
+            read_artifact_definition(op, &directory, &root.path, c"pack.v4.json", budget)?;
+        let manifest = compiler::read_manifest(&raw_manifest, op, budget)?;
+        drop(raw_manifest);
+        let host_extension_authority = registry
+            .get(root.entry, "catalog_record")
+            .and_then(|record| registry.get(record, "authority"))
+            .is_some_and(|value| {
+                registry.string_is(value, "host-signed-external-host-extension-v4")
+            });
+        let host_extension = compiler::require_external_catalog_identity(
+            &executable,
+            &manifest,
+            host_extension_authority,
+            op,
+            budget,
+        )?;
+        Ok(ArtifactDefinitions {
+            _executable: executable,
+            _manifest: manifest,
+            _host_extension: host_extension,
+        })
+    })();
+    finish_scope(
+        definitions,
+        directory.close().map_err(|error| raw_io(error, None)),
+    )
+}
+
+fn read_artifact_definition<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    directory: &TrackedFile,
+    root: &Path,
+    name: &std::ffi::CStr,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Funded<Zeroizing<Vec<u8>>>> {
+    op.check(OriginalAuthorityStage::Source)?;
+    let artifact_error = || model::denied("external Pack artifact digest verification failed");
+    let io_failure = |error: std::io::Error| {
+        let path = root.join(std::ffi::OsStr::from_bytes(name.to_bytes()));
+        let cause = raw_io(error, path.to_str());
+        caused(artifact_error(), cause)
+    };
+    let flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC;
+    let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), flags) };
+    if fd < 0 {
+        return Err(io_failure(std::io::Error::last_os_error()));
+    }
+    let mut file = TrackedFile::new(unsafe { File::from_raw_fd(fd) }, op.cleanup.clone());
+    let bytes = (|| {
+        let before = file.metadata().map_err(io_failure)?;
+        if !before.is_file() {
+            return Err(artifact_error());
+        }
+        let count = usize::try_from(before.len())
+            .ok()
+            .filter(|size| *size <= model::MAX_CATALOG_BYTES)
+            .ok_or_else(|| capacity(()))?;
+        let funding = op.reserve(OriginalAuthorityStage::Source, count.max(1))?;
+        let mut bytes = Zeroizing::new(Vec::new());
+        bytes.try_reserve_exact(count).map_err(capacity)?;
+        if bytes.capacity() != count {
+            return Err(capacity(()));
+        }
+        charge(op, budget, count)?;
+        bytes.resize(count, 0);
+        for chunk in bytes.chunks_mut(1024 * 1024) {
+            op.check(OriginalAuthorityStage::Source)?;
+            file.read_exact(chunk).map_err(io_failure)?;
+        }
+        let mut extra = [0];
+        if file.read(&mut extra).map_err(io_failure)? != 0
+            || identity(&file.metadata().map_err(io_failure)?) != identity(&before)
+        {
+            return Err(artifact_error());
+        }
+        Ok(Funded {
+            value: bytes,
+            _capacity: funding,
+        })
+    })();
+    finish_scope(bytes, file.close().map_err(io_failure))
 }
 
 fn read_bundled<S: OriginalAuthorityOwner>(
