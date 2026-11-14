@@ -2950,6 +2950,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   データ所有者の構築前後は1,966,154,985→1,413,862,289 fuel。全カタログは最初の項目の処理中、
   33回目のスキーマ読込後に停止した。`b7a60f5f3` はindex、blobの展開・検証、読込対応表、
   最終照合に分けて計測する。[計測CI43555145202](https://github.com/harupipipipi/tobkiri/actions/runs/43555145202)
+- 上記の計測で、準備全体は524,161,698 fuel。内訳はindex 57,556,739、blobの展開と検証
+  443,743,216、読込対応表16,678,229、最終照合6,183,514。終了後の確保量は0だった。
+  `1a5de1e3b` はApp比較用の複製ローダーだけ、展開後の実バイトを同じ上限でRustのSHA-256に渡す。
+  圧縮形式、実バイトの照合、照合順を維持する。[燃料比較43555818184](https://github.com/harupipipipi/tobkiri/actions/runs/43555818184)と
+  [無計測43555830118](https://github.com/harupipipipi/tobkiri/actions/runs/43555830118)で確認する。
+  `5c31e575c` はソースlockのCIを既存の共通検証に揃え、全featureを有効にして依存を解決する。
+  [依存解決43555901004](https://github.com/harupipipipi/tobkiri/actions/runs/43555901004)が通過した。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3382,6 +3389,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Profileと別読込のraw lockを、CI用の署名付きintent書き込みの直前に候補と照合する。
   `e1c01c38a` は保持中の公開ロックが指すディレクトリを使い、置換が起きた場合は書き込み前に止める。
   [固定原本とRustの比較43555264904](https://github.com/harupipipipi/tobkiri/actions/runs/43555264904)で検証する。
+  初回比較ではfixtureのパスを読み込み時にmoveしていたためRustのコンパイルが停止した。
+  `b5ad4ae59` で同じパスを借用し、[再実行43555771881](https://github.com/harupipipipi/tobkiri/actions/runs/43555771881)で検証する。
   実際のクリック後に新しいWasmローダーを動かす接続は残る。
 - Setupの確認欄を移す際は `DefaultsReview.tsx` と `DefaultsConfirmationDetails.tsx` の表示を
   再利用する。現在の `legacy.rs` が表示するSetupと `core_host.rs` の既存承認シートは
