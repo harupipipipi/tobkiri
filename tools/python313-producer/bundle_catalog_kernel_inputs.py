@@ -71,6 +71,18 @@ def _observe_cold_call(export: bytes) -> bytes:
     return _replace_one(export, call, wrapped)
 
 
+def _observe_catalog_reads(runtime: bytes) -> bytes:
+    runtime = _replace_one(runtime, b'import sys\n',
+                           b'import sys\nfrom wit_world.imports.bindings import checkpoint\n')
+    schema = b'            schema_reads.append(path.name)\n'
+    runtime = _replace_one(runtime, schema, schema +
+                           b'            checkpoint(f"catalog:schema:{path.name}")\n')
+    read = (b'            raise RuntimeError(\'actual entry read observation exceeded its bound\')\n')
+    return _replace_one(runtime, read, read + b'''        if reads == 453 or (reads & (reads - 1)) == 0:
+            checkpoint(f"catalog:entry:{reads}")
+''')
+
+
 def derive(files: dict[str, bytes], entry: bytes, export: bytes,
            extension_root: Path, *, app_backend: bool = False,
            schema_progress: bool = False,
@@ -126,6 +138,8 @@ def derive(files: dict[str, bytes], entry: bytes, export: bytes,
         if schema_phases:
             additions['app_schema_phases.py'] = (
                 HERE/'bundle_catalog/schema_phases.py').read_bytes()
+            runtime_name = 'bundle_catalog_kernel_runtime.py'
+            additions[runtime_name] = _observe_catalog_reads(additions[runtime_name])
             additions['app_schema_provider.py'] = _observe_provider(provider)
             changes['app_schema_provider.py'] = {
                 'original_sha256': identity(provider)['sha256'],

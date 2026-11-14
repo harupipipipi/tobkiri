@@ -1,4 +1,4 @@
-//! Fixed host fuel checkpoints for one actual, unsplit cold App schema-store call.
+//! Fixed host fuel checkpoints for actual, unsplit App catalog operations.
 use super::*;
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 use std::sync::Mutex;
@@ -14,6 +14,8 @@ mod fuel_samples;
 
 const INTERFACE: &str = "tobkiri-native:app-schema-phases/bindings@1.0.0";
 const SCHEMAS: usize = 42;
+const CATALOG_SCHEMA_READS: usize = 45;
+const CATALOG_ENTRY_READS: usize = 453;
 const NAME_BYTES: usize = 128;
 const MAX_FUEL: u64 = 2_000_000_000;
 const MAX_MEMORY: u64 = 64 * 1024 * 1024;
@@ -92,10 +94,19 @@ struct Trace {
     returned: usize,
     fuel_after_prepare: Option<u64>,
     samples: fuel_samples::Samples,
+    catalog: Option<CatalogReads>,
+}
+
+#[derive(Default)]
+struct CatalogReads {
+    entries: usize,
+    schemas: usize,
+    last_schema: Option<usize>,
+    last_fuel: Option<u64>,
 }
 
 impl Trace {
-    fn new(names: [SchemaName; SCHEMAS]) -> Self {
+    fn new(names: [SchemaName; SCHEMAS], full_catalog: bool) -> Self {
         Self {
             names,
             rows: [None; MAX_ROWS],
@@ -103,7 +114,51 @@ impl Trace {
             returned: 0,
             fuel_after_prepare: None,
             samples: fuel_samples::Samples::new(),
+            catalog: full_catalog.then(CatalogReads::default),
         }
+    }
+
+    fn record_catalog_read(&mut self, marker: &str, fuel: u64) -> Result<()> {
+        let catalog = self
+            .catalog
+            .as_mut()
+            .context("unexpected catalog checkpoint")?;
+        let previous = catalog.last_fuel.or(self.fuel_after_prepare);
+        ensure!(
+            previous.is_some_and(|previous| fuel <= previous),
+            "catalog fuel increased"
+        );
+        let (kind, value) = marker
+            .split_once(':')
+            .context("invalid catalog checkpoint")?;
+        match kind {
+            "entry" => {
+                let expected = match catalog.entries {
+                    0 => 1,
+                    previous => (previous * 2).min(CATALOG_ENTRY_READS),
+                };
+                ensure!(
+                    catalog.entries < CATALOG_ENTRY_READS && value.parse::<usize>()? == expected,
+                    "out-of-order catalog entry checkpoint"
+                );
+                catalog.entries = expected;
+            }
+            "schema" => {
+                ensure!(
+                    catalog.schemas < CATALOG_SCHEMA_READS,
+                    "excess catalog schema reads"
+                );
+                let schema = self
+                    .names
+                    .binary_search_by(|name| name.as_str().cmp(value))
+                    .map_err(|_| anyhow::anyhow!("schema read outside the pinned inventory"))?;
+                catalog.schemas += 1;
+                catalog.last_schema = Some(schema);
+            }
+            _ => anyhow::bail!("unknown catalog read checkpoint"),
+        }
+        catalog.last_fuel = Some(fuel);
+        Ok(())
     }
 
     fn last(&self) -> Option<Row> {
@@ -256,7 +311,11 @@ fn checkpoint(context: NativeImportContext<'_, State>) -> Result<NativeImportOpe
         .get()
         .try_lock()
         .map_err(|_| NativeDataIoError::Unavailable)?;
-    if matches!(point, "sample-begin" | "sample-end" | "sample-count") {
+    if point == "catalog" {
+        trace.record_catalog_read(tail, fuel)?;
+    } else if trace.catalog.is_some() {
+        anyhow::bail!("unexpected cold schema phase in full-catalog observation");
+    } else if matches!(point, "sample-begin" | "sample-end" | "sample-count") {
         let mut parts = tail.splitn(3, ':');
         let bucket = parts.next().context("sample bucket missing")?;
         let text = parts.next().context("sample ordinal missing")?;
@@ -287,6 +346,16 @@ static IMPORTS: [NativeImportBinding<State>; 1] = [NativeImportBinding {
 #[tokio::test]
 #[ignore = "actual App schema phases, one CI-only instrumented artifact and Store"]
 async fn actual_app_schema_cold_store_phases() -> Result<()> {
+    compare_checkpoints(false).await
+}
+
+#[tokio::test]
+#[ignore = "actual App catalog read checkpoints, one CI-only instrumented Store"]
+async fn actual_app_full_catalog_reads() -> Result<()> {
+    compare_checkpoints(true).await
+}
+
+async fn compare_checkpoints(full_catalog: bool) -> Result<()> {
     ensure!(
         std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
             && std::env::var("TOBKIRI_BUNDLE_APP_BACKEND").as_deref() == Ok("1")
@@ -346,7 +415,7 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
             + (size_of::<std::os::raw::c_long>() + 56) as u64
             + 16 * 1024,
     )?;
-    let state = Mutex::new(Trace::new(names));
+    let state = Mutex::new(Trace::new(names, full_catalog));
     drop(
         state
             .try_lock()
@@ -354,8 +423,9 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
     );
     let trace = HeldTrace::try_new_precharged(state, trace_funds)?;
     let mut report = json!({
-        "format":"tobkiri.app-schema-cold-store-phases/3", "component_sha256":identity.as_str(),
-        "operation":"cold-schema-store", "diagnostic_only":true,
+        "format":if full_catalog { "tobkiri.app-full-catalog-reads/1" } else { "tobkiri.app-schema-cold-store-phases/3" },
+        "component_sha256":identity.as_str(),
+        "operation":if full_catalog { "full-catalog" } else { "cold-schema-store" }, "diagnostic_only":true,
         "qualification":false, "production_enabled":false, "whole_catalog_acceptance":false,
         "cold_schema_acceptance":false, "stores":1, "budget_resets":0, "export_calls_started":0,
         "fuel_limit":MAX_FUEL, "memory_limit_bytes":MAX_MEMORY, "wall_seconds":30,
@@ -391,13 +461,22 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
             "prepared fuel exceeds original budget"
         );
         report["fuel_after_prepare"] = json!(prepared);
-        let payload = CoreBuffer::copy_from(COLD_SCHEMA_STORE_PAYLOAD, owners.graph())?;
+        let input = if full_catalog {
+            b"tobkiri.embedded-bundle-read/1".as_slice()
+        } else {
+            COLD_SCHEMA_STORE_PAYLOAD
+        };
+        let payload = CoreBuffer::copy_from(input, owners.graph())?;
         trace
             .get()
             .try_lock()
             .map_err(|_| NativeDataIoError::Unavailable)?
             .fuel_after_prepare = Some(prepared);
-        report["stage"] = json!("invoke-cold-schema-store");
+        report["stage"] = json!(if full_catalog {
+            "invoke-full-catalog"
+        } else {
+            "invoke-cold-schema-store"
+        });
         report["export_calls_started"] = json!(1);
         let reply = program.invoke(0, Some(&payload)).await;
         let observation = program.observation();
@@ -428,7 +507,7 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
             return Ok(());
         }
         let Ok(NativeDataValue::String(actual)) = reply? else {
-            anyhow::bail!("cold schema phase call returned an unexpected DATA result");
+            anyhow::bail!("diagnostic call returned an unexpected DATA result");
         };
         ensure!(
             observation.post_return
@@ -437,19 +516,36 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
                 && !observation.post_return_failed,
             "actual post-return or original Store lifetime differs"
         );
-        let output_digest = Digest::hash(actual.as_bytes());
-        report["schema_store_output_bytes"] = json!(actual.as_bytes().len());
-        report["schema_store_output_sha256"] = json!(output_digest.hex());
-        ensure!(
-            original["schema_store_expected_bytes"].as_u64()
-                == Some(actual.as_bytes().len() as u64)
-                && original["schema_store_expected_sha256"] == output_digest.hex(),
-            "actual original cold schema store/cache outcome differs"
-        );
+        if full_catalog {
+            ensure!(
+                actual.as_bytes().len() <= 16 * 1024,
+                "oversized catalog receipt"
+            );
+            let receipt: Value = serde_json::from_slice(actual.as_bytes())?;
+            ensure!(
+                receipt["actual_sha256"] == original["expected_sha256"]
+                    && receipt["actual_bytes"] == original["expected_bytes"],
+                "catalog outcome differs"
+            );
+        } else {
+            let output_digest = Digest::hash(actual.as_bytes());
+            report["schema_store_output_bytes"] = json!(actual.as_bytes().len());
+            report["schema_store_output_sha256"] = json!(output_digest.hex());
+            ensure!(
+                original["schema_store_expected_bytes"].as_u64()
+                    == Some(actual.as_bytes().len() as u64)
+                    && original["schema_store_expected_sha256"] == output_digest.hex(),
+                "actual original cold schema store/cache outcome differs"
+            );
+        }
         drop((actual, payload, owners));
         program.retire();
         report["store_retired_after_operation"] = json!(program.observation().store_retired);
-        report["stage"] = json!("returned-original-cold-schema-store");
+        report["stage"] = json!(if full_catalog {
+            "returned-original-catalog"
+        } else {
+            "returned-original-cold-schema-store"
+        });
         Ok(())
     }
     .await;
@@ -472,14 +568,35 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
                 && s.charged_bytes == 0
                 && s.reservations == 0
         });
-    let reached_expected_boundary = if report["stage"] == "returned-original-cold-schema-store" {
-        trace.returned == SCHEMAS
+    let (reached_expected_boundary, last_fuel) = if let Some(catalog) = &trace.catalog {
+        report["entry_reads_at_last_checkpoint"] = json!(catalog.entries);
+        report["schema_reads_observed"] = json!(catalog.schemas);
+        report["fuel_at_last_read_checkpoint"] = json!(catalog.last_fuel);
+        report["last_schema_read"] = json!(
+            catalog
+                .last_schema
+                .map(|schema| trace.names[schema].as_str())
+        );
+        let reached = if report["stage"] == "returned-original-catalog" {
+            catalog.entries == CATALOG_ENTRY_READS && catalog.schemas == CATALOG_SCHEMA_READS
+        } else {
+            catalog.entries > 0 && report["stage"] == "original-fuel-stop"
+        };
+        (reached, catalog.last_fuel)
+    } else if report["stage"] == "returned-original-cold-schema-store" {
+        (
+            trace.returned == SCHEMAS,
+            trace.last().map(|row| row.fuel_remaining),
+        )
     } else {
-        trace.len > 0 && report["stage"] == "original-fuel-stop"
+        (
+            trace.len > 0 && report["stage"] == "original-fuel-stop",
+            trace.last().map(|row| row.fuel_remaining),
+        )
     };
-    let tail_fuel = trace.last().and_then(|row| {
+    let tail_fuel = last_fuel.and_then(|last_fuel| {
         let end = report["observation"]["fuel_remaining"].as_u64()?;
-        row.fuel_remaining.checked_sub(end)
+        last_fuel.checked_sub(end)
     });
     let valid = outcome.is_ok() && cleanup_ok && reached_expected_boundary && tail_fuel.is_some();
     report["diagnostic_observation_valid"] = json!(valid);
@@ -502,10 +619,14 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
         completed_operation_counts: fuel_samples::Counts<'a>,
         unfinished_operation_sample: Option<fuel_samples::Row<'a>>,
     }
+    let mut output = PathBuf::from(std::env::var("TOBKIRI_BUNDLE_REPORT")?);
+    if full_catalog {
+        output.set_file_name("app-full-catalog-reads-observation.json");
+    }
     let file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(PathBuf::from(std::env::var("TOBKIRI_BUNDLE_REPORT")?))?;
+        .open(output)?;
     serde_json::to_writer_pretty(
         file,
         &Receipt {
@@ -519,7 +640,7 @@ async fn actual_app_schema_cold_store_phases() -> Result<()> {
     outcome?;
     ensure!(
         valid,
-        "cold schema diagnostic lacks valid original phase or cleanup evidence"
+        "diagnostic lacks valid checkpoints or cleanup evidence"
     );
     Ok(())
 }

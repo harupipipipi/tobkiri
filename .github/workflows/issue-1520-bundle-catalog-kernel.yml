@@ -32,7 +32,7 @@ name: Issue 1520 Rust-connected actual App catalog Wasm
         required: false
         default: false
       schema_phases:
-        description: Observe fixed phases of one cold App schema-store call; requires app_schema_backend
+        description: Observe cold schema phases and full-catalog read progress; requires app_schema_backend
         type: boolean
         required: false
         default: false
@@ -261,6 +261,12 @@ jobs:
           cargo test --locked -p tobkiri-wasm --features bootstrap-ci --test bundle_catalog_kernel_ci \
             schema_phases::actual_app_schema_cold_store_phases -- --ignored --exact --nocapture
           test -s "$RUNNER_TEMP/app-schema-phases-observation.json"
+      - name: Observe read checkpoints from one actual full App catalog call
+        if: ${{ !cancelled() && inputs.schema_phases && steps.bind_artifact.conclusion == 'success' }}
+        run: |
+          cargo test --locked -p tobkiri-wasm --features bootstrap-ci --test bundle_catalog_kernel_ci \
+            schema_phases::actual_app_full_catalog_reads -- --ignored --exact --nocapture
+          test -s "$RUNNER_TEMP/app-full-catalog-reads-observation.json"
       - name: Retain actual source/build/runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -290,6 +296,7 @@ jobs:
             ${{ runner.temp }}/app-schema-cold-store-observation.json
             ${{ runner.temp }}/app-schema-progress-observation.json
             ${{ runner.temp }}/app-schema-phases-observation.json
+            ${{ runner.temp }}/app-full-catalog-reads-observation.json
             ${{ runner.temp }}/bundle-native-profile.json
           retention-days: 14
           if-no-files-found: warn
