@@ -10,6 +10,7 @@ import shutil
 import stat
 import sys
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from types import FrameType
 from typing import Any
@@ -33,6 +34,8 @@ SANITIZER_SOURCE = "ecosystem/defaultspack/defaultspack/development_host_data.py
 PERSISTENCE_SOURCE = "tobkiri_protocol/secure_persistence.py"
 STORE_SOURCE = "core_runtime/profile_definition_store_v4.py"
 SETUP_RUNTIME_SOURCE = "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py"
+CAPTURE_SOURCE = "core_runtime/bootstrap/profile_capture.py"
+PUBLICATION_SOURCE = "core_runtime/bootstrap/profile_publication.py"
 SOURCES = (
     PREDECESSOR_SOURCE,
     ACTIVE_SOURCE,
@@ -41,6 +44,8 @@ SOURCES = (
     PERSISTENCE_SOURCE,
     STORE_SOURCE,
     SETUP_RUNTIME_SOURCE,
+    CAPTURE_SOURCE,
+    PUBLICATION_SOURCE,
 )
 LOCK = "profiles/.profile-definition.lock"
 INDEX = "profiles/index.json"
@@ -533,6 +538,10 @@ def observe_inactive_registry(
             row["setup_review"] = _observe_setup_review(runtime, root, expected["predecessor"])
             if _inventory(root, files) != before:
                 raise AssertionError("original Setup review changed the import")
+            row["publication_checks"] = _observe_publication_checks(
+                runtime, bundle, root, inputs, files,
+                row["setup_review"]["confirmation"],
+            )
             row["registration_cases"] = _observe_registration(
                 runtime, root, inputs, source, expected["predecessor"],
             )
@@ -648,6 +657,167 @@ def _observe_setup_review(
         "confirmation": confirmation,
         "listing_digest": canonical_digest(listing),
     }
+
+
+class _PublicationBoundary(BaseException):
+    """Stop before the original journal creates a key or intent."""
+
+
+def _observe_publication_checks(
+    runtime: Path,
+    bundle: Path,
+    seed: Path,
+    inputs: Path,
+    files: list[str],
+    confirmation: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Observe confirmed capture under the real lock up to the first intent."""
+    from core_runtime.bootstrap import profile_capture as capture
+    from core_runtime.bootstrap.profile_publication import ProfilePublicationJournal
+    from core_runtime.profile_runtime_port import require_profile_runtime
+    from tobkiri_protocol.canonical import canonical_digest
+
+    port = require_profile_runtime()
+    port_type = type(port)
+    load = port_type.load_catalog
+    capture_code = capture._capture_bootstrap_profile.__code__
+    lock = bundle / "bundle.lock.json"
+    lock_before = lock.read_bytes()
+    publication_lock = "profiles/.bootstrap-publication.lock"
+    for method, relative in (
+        (capture.capture_bootstrap_profile, CAPTURE_SOURCE),
+        (capture._capture_bootstrap_profile, CAPTURE_SOURCE),
+        (capture.host_profile_catalog, CAPTURE_SOURCE),
+        (ProfilePublicationJournal.begin, PUBLICATION_SOURCE),
+        (load, SETUP_RUNTIME_SOURCE),
+    ):
+        if Path(method.__code__.co_filename).resolve() != runtime / relative:
+            raise AssertionError("confirmed capture callable is outside the staged original")
+
+    rows = []
+    for case in ("matched", "stale-confirmation", "changed-source", "changed-lock"):
+        root = inputs / f"publication-{case}" / "user-data"
+        shutil.copytree(seed, root)
+        existing = _inventory(root, files)
+        approved = copy.deepcopy(confirmation)
+        if case == "stale-confirmation":
+            approved["confirmation_digest"] = "stale-fixture-digest"
+        before = copy.deepcopy(approved)
+        host_catalog_seen = False
+        reread = None
+        candidate = None
+        events = []
+
+        def load_catalog(self: Any, location: Path) -> Any:
+            nonlocal reread
+            # Only the last independent read is changed. The re-resolver and
+            # Host catalog loader still use their actual inputs and behavior.
+            caller = sys._getframe(1).f_code
+            result = load(self, location)
+            if caller is not capture_code:
+                return result
+            if location != bundle or not host_catalog_seen:
+                raise AssertionError("original capture skipped Host catalog materialization")
+            if _lock_free(root / publication_lock) is not False or reread is not None:
+                raise AssertionError("original capture did not hold its unique publication lock")
+            events.append("reread-catalog-under-publication-lock")
+            profile_id = confirmation["profile_id"]
+            if case == "changed-source":
+                source = dict(result.profiles[profile_id], display_name="Changed after review")
+                result = replace(result, profiles={**result.profiles, profile_id: source})
+            elif case == "changed-lock":
+                lock.write_bytes(lock_before + b"\n")
+            reread = result
+            return result
+
+        def watch_host_catalog(*args: Any, **kwargs: Any) -> Any:
+            nonlocal host_catalog_seen
+            if _lock_free(root / publication_lock) is not False or host_catalog_seen:
+                raise AssertionError("original Host catalog ran outside the publication lock")
+            events.append("materialize-host-catalog")
+            result = host_catalog(*args, **kwargs)
+            host_catalog_seen = True
+            return result
+
+        def stop_begin(
+            journal: Any, *, predecessor: Any, resolved: Any,
+            activation_id: str, confirmation: Mapping[str, Any],
+        ) -> None:
+            nonlocal candidate
+            if (
+                case != "matched"
+                or journal.root != root / "profiles"
+                or _lock_free(root / publication_lock) is not False
+                or predecessor is not None
+                or confirmation is not approved
+                or reread is None
+            ):
+                raise AssertionError("original publication admitted an unexpected candidate")
+            profile_id = resolved.profile["profile_id"]
+            plan_digest = resolved.plan["plan_digest"]
+            definition_digest = resolved.plan["profile_definition_digest"]
+            bundle_digest = resolved.lock["bundle_digest"]
+            if (
+                profile_id != approved["profile_id"]
+                or plan_digest != approved["plan_digest"]
+                or definition_digest != canonical_digest(reread.profiles[profile_id])
+                or bundle_digest != "sha256:" + hashlib.sha256(lock_before).hexdigest()
+                or activation_id != f"activation:{profile_id}-{plan_digest[7:23]}"
+            ):
+                raise AssertionError("original publication candidate identities differ")
+            candidate = {
+                "profile_id": profile_id,
+                "profile_definition_digest": definition_digest,
+                "bundle_digest": bundle_digest,
+                "plan_digest": plan_digest,
+                "activation_id": activation_id,
+            }
+            events.append("before-first-publication-intent")
+            raise _PublicationBoundary
+
+        host_catalog = capture.host_profile_catalog
+        try:
+            with (
+                patch.dict(os.environ, {
+                    "TOBKIRI_USER_DATA": str(root), "RUMI_USER_DATA": str(root),
+                    "RUMI_ENVIRONMENT": "production", "RUMI_APP_DIR": "",
+                }),
+                patch.object(port_type, "load_catalog", load_catalog),
+                patch.object(capture, "host_profile_catalog", watch_host_catalog),
+                patch.object(ProfilePublicationJournal, "begin", stop_begin),
+            ):
+                capture.capture_bootstrap_profile(confirmation=approved)
+        except _PublicationBoundary:
+            outcome = {"candidate": candidate}
+        except Exception as error:
+            expected = (
+                "bootstrap activation confirmation is stale or tampered"
+                if case == "stale-confirmation" else
+                "bootstrap target changed after confirmation"
+            )
+            if case == "matched" or not port.is_resolution_denied(error) or str(error) != expected:
+                raise
+            outcome = {"error": error_graph(error, root)}
+        else:
+            raise AssertionError("capture passed the first publication intent")
+        finally:
+            if case == "changed-lock":
+                lock.write_bytes(lock_before)
+        after = _inventory(root, [*files, publication_lock])
+        same_entries = all(after[name] == existing[name] for name in files)
+        expected_events = [] if case == "stale-confirmation" else [
+            "materialize-host-catalog", "reread-catalog-under-publication-lock",
+        ]
+        if case == "matched":
+            expected_events.append("before-first-publication-intent")
+        if (
+            events != expected_events or approved != before or not same_entries
+            or _lock_free(root / publication_lock) is not True
+            or lock.read_bytes() != lock_before
+        ):
+            raise AssertionError((case, "capture altered its inputs or publication sequence"))
+        rows.append({"case": case, "events": events, "outcome": outcome})
+    return rows
 
 
 def _observe_registration(
