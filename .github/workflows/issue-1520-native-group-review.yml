@@ -33,6 +33,7 @@ on:
       - 'tobkiri_launcher/frontend/src/pages/Settings.test.tsx'
       - 'tobkiri_launcher/frontend/src/lib/i18n.ts'
       - 'tobkiri_launcher/frontend/src/components/presentation/ShellLaunchCard*.tsx'
+      - 'tobkiri_launcher/frontend/src/components/workflow/RegisteredModelsPanel*.tsx'
       - 'tobkiri_launcher/frontend/src/setup-review.*'
       - 'tobkiri_launcher/frontend/setup-review/**'
       - 'tobkiri_launcher/frontend/scripts/package-setup-review.mjs'
@@ -97,6 +98,7 @@ jobs:
           src/pages/DefaultsReview.packVersions.test.tsx
           src/pages/Settings.test.tsx
           src/components/presentation/ShellLaunchCard.test.tsx
+          src/components/workflow/RegisteredModelsPanel.test.tsx
       - name: Build the isolated Setup review assets
         working-directory: tobkiri_launcher/frontend
         run: npm run build:setup-review

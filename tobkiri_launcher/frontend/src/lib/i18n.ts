@@ -10,6 +10,13 @@ export type Locale = 'en' | 'ja' | 'zh' | 'ko' | 'es' | 'fr' | 'de' | 'pt' | 'ru
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  'registered_models.aria_label': 'Shared registered models',
+  'registered_models.title': 'Registered models',
+  'registered_models.refresh': 'Refresh',
+  'registered_models.description': 'Harness Settings and Flow use the same registrations. Only registrations for the current execution Profile are shown; API keys are not returned. This is separate from checking whether a connection is reachable.',
+  'registered_models.error': 'Could not load registrations. Check the model capability and running state of this Profile.',
+  'registered_models.no_provider': 'No connection specified',
+  'registered_models.empty': 'No registered models are available for selection.',
   'shell_launch.error': 'Tobkiri could not verify the selected Profile launch surface.',
   'shell_launch.activate_before': 'Activate this Profile before launching its Shell.',
   'shell_launch.launcher_only': 'Profile launch is available in Tobkiri Launcher.',
@@ -347,6 +354,13 @@ const en: Dict = {
 };
 
 const ja: Dict = {
+  'registered_models.aria_label': '共有の登録済みモデル',
+  'registered_models.title': '登録済みモデル',
+  'registered_models.refresh': '更新',
+  'registered_models.description': 'HarnessのSettingsとFlowは同じ登録情報を参照します。現在の実行Profileの登録だけを表示し、APIキーは返しません。接続先への到達確認とは別です',
+  'registered_models.error': '登録情報を取得できません。このProfileのモデル機能と起動状態を確認してください',
+  'registered_models.no_provider': '接続未指定',
+  'registered_models.empty': '選択可能な登録済みモデルがありません',
   'shell_launch.error': '選択したProfileの起動先を確認できませんでした。',
   'shell_launch.activate_before': 'Shellを起動する前にこのProfileを有効化してください。',
   'shell_launch.launcher_only': 'Profileの起動はTobkiri Launcherで利用できます。',
