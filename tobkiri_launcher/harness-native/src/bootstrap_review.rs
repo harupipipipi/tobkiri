@@ -57,7 +57,8 @@ pub enum BootstrapReviewReachpoint {
     ImportLegacyCollectionNotBound,
     LegacySuccessorBuilderNotBound,
     RepairLegacyDisplayNamesNotBound,
-    ProfileBootstrapStateNotBound,
+    ProfileBootstrapTemplateLookupNotBound,
+    HostProfileDefinitionListNotBound,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,

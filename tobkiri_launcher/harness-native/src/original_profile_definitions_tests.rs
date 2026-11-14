@@ -847,7 +847,7 @@ async fn registry_retired_pack_migration_runs_in_original_recovery_order() {
         let mut publication = PublicationLock::acquire(&op, &store.directory).unwrap();
         assert!(matches!(
             recover(read, source, cancel, budget).unwrap(),
-            DefinitionRecovery::BootstrapState
+            DefinitionRecovery::BootstrapState(RegistryBootstrapState::NotRequired)
         ));
         let path = source.root.join("profiles").join(INDEX);
         let actual: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
@@ -881,5 +881,44 @@ async fn registry_retired_pack_migration_runs_in_original_recovery_order() {
         ));
         assert!(!lock_free(&source.root.join("profiles").join(LOCK)));
         publication.close().unwrap();
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn registry_bootstrap_state_is_a_fresh_locked_read_without_writes() {
+    with_source(|source, read, cancel, budget| {
+        let op = operation(read, source, cancel);
+        let store = Store::new(&op, &source.root).unwrap();
+        let path = source.root.join("profiles").join(INDEX);
+
+        assert_eq!(
+            store.bootstrap_state(&op, budget).unwrap(),
+            RegistryBootstrapState::Empty
+        );
+        assert!(!path.exists());
+
+        let empty = sealed(state(vec![]));
+        write_index(source, &empty);
+        assert_eq!(
+            store.bootstrap_state(&op, budget).unwrap(),
+            RegistryBootstrapState::NotRequired
+        );
+        assert_eq!(fs::read(&path).unwrap(), empty);
+
+        let mut template = state(vec![entry("defaults", 0)]);
+        template["bootstrap"] = json!({
+            "state":"template_available",
+            "template_profile_revision":template["profiles"][0]["current_revision"],
+        });
+        let available = sealed(template);
+        write_index(source, &available);
+        assert_eq!(
+            store.bootstrap_state(&op, budget).unwrap(),
+            RegistryBootstrapState::TemplateAvailable
+        );
+        assert_eq!(fs::read(&path).unwrap(), available);
+        assert!(lock_free(
+            &source.root.join("profiles/.profile-definition.lock")
+        ));
     });
 }

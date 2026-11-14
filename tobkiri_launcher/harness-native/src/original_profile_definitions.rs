@@ -38,7 +38,15 @@ pub(crate) enum DefinitionRecovery {
     SuccessorBuilder(SuccessorCandidate),
     RepairLegacyDisplayNames,
     #[cfg(unix)]
-    BootstrapState,
+    BootstrapState(RegistryBootstrapState),
+}
+
+#[cfg(unix)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RegistryBootstrapState {
+    Empty,
+    TemplateAvailable,
+    NotRequired,
 }
 
 /// Funded DATA for the unbound successor builder on the same review.
@@ -159,7 +167,9 @@ fn recover_at<S: crate::BootstrapReviewOwner>(
                     projection_io::inventory(op, source.runtime, retirement.directory, budget)
                 })?
             })?;
-            Ok(DefinitionRecovery::BootstrapState)
+            Ok(DefinitionRecovery::BootstrapState(
+                store.bootstrap_state(op, budget)?,
+            ))
         }
         next => Ok(next),
     }
@@ -457,6 +467,15 @@ impl Store {
         // Both original consumers convert rows after the lock's post-yield
         // validation and physical unlock/close.
         finish_snapshot(op, &self.directory, &mut lock, state)
+    }
+
+    fn bootstrap_state<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<RegistryBootstrapState> {
+        let state = self.snapshot(op, budget)?;
+        definitions_model::bootstrap_state(op, &state, budget)
     }
 
     fn get_profile<S: OriginalAuthorityOwner>(

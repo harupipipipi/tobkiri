@@ -367,6 +367,25 @@ fn validate_state<S: OriginalAuthorityOwner>(
     }
     Ok(())
 }
+pub(super) fn bootstrap_state<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &State,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<RegistryBootstrapState> {
+    charge(op, budget, 96)?;
+    let doc = &state.doc;
+    let state = field(doc, field(doc, doc.root, "bootstrap"), "state");
+    if doc.string_is(state, "empty") {
+        Ok(RegistryBootstrapState::Empty)
+    } else if doc.string_is(state, "template_available") {
+        Ok(RegistryBootstrapState::TemplateAvailable)
+    } else if doc.string_is(state, "not_required") {
+        Ok(RegistryBootstrapState::NotRequired)
+    } else {
+        Err(integrity("Profile bootstrap metadata is invalid"))
+    }
+}
+
 fn validate_entry<S: OriginalAuthorityOwner>(
     doc: &mut Document,
     entry: usize,

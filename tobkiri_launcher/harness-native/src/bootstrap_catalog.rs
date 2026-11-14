@@ -504,9 +504,15 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
                 BootstrapReviewReachpoint::RepairLegacyDisplayNamesNotBound
             }
             #[cfg(unix)]
-            DefinitionRecovery::BootstrapState => {
-                BootstrapReviewReachpoint::ProfileBootstrapStateNotBound
-            }
+            DefinitionRecovery::BootstrapState(state) => match state {
+                definitions::RegistryBootstrapState::Empty => {
+                    BootstrapReviewReachpoint::ProfileBootstrapTemplateLookupNotBound
+                }
+                definitions::RegistryBootstrapState::TemplateAvailable
+                | definitions::RegistryBootstrapState::NotRequired => {
+                    BootstrapReviewReachpoint::HostProfileDefinitionListNotBound
+                }
+            },
         }))),
         Err(error) => {
             match recovery_cause::project(&error, &pack.work.get().invocation, pack.input_budget)? {
