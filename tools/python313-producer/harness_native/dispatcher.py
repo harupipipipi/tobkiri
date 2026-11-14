@@ -762,6 +762,66 @@ class Dispatcher:
             registry._rollback(created)
             raise
 
+    def _bootstrap_admitted_closure_step(
+        self, state: _State, frame: dict[str, Any],
+    ) -> str:
+        self._checked_frame(frame, "bootstrap-admitted-closure-step", {
+            "catalog", "pack_id", "manifest", "artifact_digest",
+        })
+        registry = state.registry
+        catalog_ref = registry.reference(frame["catalog"])
+        catalog = registry._current_bootstrap_recovery_catalog(catalog_ref)
+        pack_id, manifest, digest = (
+            frame["pack_id"], frame["manifest"], frame["artifact_digest"],
+        )
+        if (type(pack_id) is not str
+                or (manifest is None and digest is not None)
+                or (manifest is not None and (
+                    type(manifest) is not dict or type(digest) is not str
+                    or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+                ))):
+            raise InvalidFrame("invalid fixed admitted Pack closure step")
+        if type(catalog.packs) is not dict:
+            raise UnsupportedValue("original Pack inventory is outside the fixed ABI")
+        # The original recovery call has no artifact pins. Bundled membership
+        # therefore wins before any fresh Host filesystem observation.
+        if pack_id in catalog.packs:
+            if manifest is not None:
+                raise InvalidFrame("external manifest cannot replace a bundled Pack")
+            manifest = catalog.packs[pack_id]
+            kind = "bundled"
+        elif manifest is not None:
+            kind = "external-read"
+        else:
+            kind = "external-required"
+
+        dependencies = []
+        if kind != "external-required":
+            if type(manifest) is not dict or type(manifest.get("requirements")) is not dict:
+                raise UnsupportedValue("Pack manifest is outside the fixed ABI")
+            requirements = manifest["requirements"]
+            if kind == "external-read":
+                # The Host rechecks semantic identity on its validated bytes
+                # before this detached DATA observation. The packet confers
+                # neither Pack admission nor an executable-catalog receipt.
+                pack = manifest.get("pack")
+                if (type(pack) is not dict or pack.get("id") != pack_id
+                        or pack.get("artifact_digest") != digest
+                        or pack.get("kind") not in ("normal_sandbox", "application")
+                        or requirements.get("execution_boundary")
+                        not in ("sandbox", "declarative_only")):
+                    raise UnsupportedValue("external Pack manifest identity differs")
+            dependencies_by_id = requirements.get("pack_dependencies")
+            if (type(dependencies_by_id) is not dict
+                    or any(type(key) is not str for key in dependencies_by_id)):
+                raise UnsupportedValue("Pack dependencies are outside the fixed ABI")
+            dependencies = sorted(dependencies_by_id)
+        return wire.dumps({
+            "format": PREFIX + "bootstrap-admitted-closure-step-result.v1",
+            "scope": registry.scope.wire(), "catalog": catalog_ref.wire(),
+            "pack_id": pack_id, "kind": kind, "dependencies": dependencies,
+        })
+
     def _bootstrap_recovery_catalog(self, state: _State, frame: dict[str, Any]) -> str:
         self._checked_frame(frame, "bootstrap-recovery-catalog", {"catalog", "profiles"})
         registry = state.registry
@@ -920,6 +980,8 @@ class Dispatcher:
         frame = self._load(payload)
         if frame.get("format") == PREFIX + "bootstrap-template-lookup.v1":
             return self._bootstrap_template_lookup(state, frame)
+        if frame.get("format") == PREFIX + "bootstrap-admitted-closure-step.v1":
+            return self._bootstrap_admitted_closure_step(state, frame)
         if frame.get("format") == PREFIX + "bootstrap-predecessor-source.v1":
             return self._bootstrap_predecessor_source(state, frame)
         if frame.get("format") == PREFIX + "bootstrap-inactive-source.v1":

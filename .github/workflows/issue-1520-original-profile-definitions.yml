@@ -11,6 +11,10 @@ name: Issue 1520 original Profile definition prefix
       - tools/original_profile_retired_projection_reference.py
       - tools/original_bootstrap_template_reference.py
       - tools/original_external_pack_catalog_reference.py
+      - tools/original_external_closure_reference.py
+      - tools/original_host_extension_catalog_reference.py
+      - tobkiri_launcher/harness-native/src/bootstrap_admitted_closure.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_authority.rs
       - tobkiri_launcher/harness-native/src/bootstrap_catalog.rs
       - tobkiri_launcher/harness-native/src/bootstrap_review*.rs
       - tobkiri_launcher/harness-native/src/original_active_profile.rs
@@ -122,6 +126,7 @@ jobs:
           --original-root "$GITHUB_WORKSPACE/original-definitions-source"
           --fixture "$RUNNER_TEMP/original-profile-bootstrap-template"
       - name: Install pinned signed Pack producer dependencies
+        id: original_admission_dependencies
         run: |
           python3 -B - "$RUNNER_TEMP/original-pack-admission-requirements.txt" <<'PY'
           from pathlib import Path
@@ -144,10 +149,37 @@ jobs:
           TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 14 --
+          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 15 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::external_catalog::
           -- --test-threads=1 --nocapture
+      - name: Check original Authority initialization and journal cleanup
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::recovery_authority::tests::
+          -- --test-threads=1 --nocapture
+      - name: Observe original admitted Pack dependency closure and independent Host reads
+        run: >-
+          python3 -B tools/original_external_closure_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-definitions-source"
+          --output "$RUNNER_TEMP/original-external-closure"
+      - name: Compare native signed closure manifest rereads to original Pack rows
+        env:
+          TOBKIRI_EXTERNAL_CLOSURE_FIXTURE: ${{ runner.temp }}/original-external-closure/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-external-closure.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::external_catalog::tests::ordinary_closure_rereads_the_original_signed_manifest_rows
+          -- --test-threads=1 --nocapture
+      - name: Observe original signed Host Extension compatibility projection
+        if: ${{ !cancelled() && steps.original_admission_dependencies.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_host_extension_catalog_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-definitions-source"
+          --output "$RUNNER_TEMP/original-host-extension-catalog"
       - name: Check fresh Setup root custody and original pointer errors
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -221,6 +253,10 @@ jobs:
             ${{ runner.temp }}/native-definitions-reference.log*
             ${{ runner.temp }}/native-setup-candidate-unit.log*
             ${{ runner.temp }}/native-catalog-resources-unit.log*
+            ${{ runner.temp }}/native-recovery-authority.log*
+            ${{ runner.temp }}/native-external-closure.log*
+            ${{ runner.temp }}/original-external-closure/summary.json
+            ${{ runner.temp }}/original-host-extension-catalog/summary.json
             ${{ runner.temp }}/native-successor-selection-unit.log*
             ${{ runner.temp }}/original-catalog-prefix/summary.json
           if-no-files-found: warn

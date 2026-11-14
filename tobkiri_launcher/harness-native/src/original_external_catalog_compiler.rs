@@ -28,6 +28,12 @@ pub(super) struct PackManifest {
     host_extension: bool,
 }
 
+impl PackManifest {
+    pub(super) fn document(&self) -> &Document {
+        &self._doc
+    }
+}
+
 /// Compiler definitions held under the operation's capacity reservation.
 pub(super) struct DirectDefinitions {
     pub(super) manifest: Funded<Document>,

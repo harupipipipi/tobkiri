@@ -9,11 +9,16 @@ use crate::{BootstrapReviewFailure, BootstrapReviewReachpoint};
 use review_continuation::ReviewCaller;
 use std::path::PathBuf;
 
+#[cfg(unix)]
+#[path = "bootstrap_admitted_closure.rs"]
+mod admitted_closure;
 #[path = "bootstrap_recovery_error.rs"]
 mod recovery_cause;
 
 pub(super) const BOOTSTRAP_TEMPLATE_REQUEST: &str =
     "io.tobkiri.native-bootstrap-template-lookup.v1";
+pub(super) const ADMITTED_CLOSURE_REQUEST: &str =
+    "io.tobkiri.native-bootstrap-admitted-closure-step.v1";
 
 pub(super) struct RootResolution {
     pub resolved: CoreBuffer,
@@ -614,6 +619,14 @@ async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOw
         Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
     };
     let boundary = catalog.verification_reachpoint();
+    if boundary == BootstrapReviewReachpoint::AdmittedPackClosureNotBound {
+        let seed = match catalog.closure_seed(pack.input_budget) {
+            Ok(seed) => seed,
+            Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
+        };
+        review.actual._recovery_external_catalog = Some(catalog);
+        return admitted_closure::run(review, pack, caller, seed).await;
+    }
     review.actual._recovery_external_catalog = Some(catalog);
     if boundary != BootstrapReviewReachpoint::CatalogWithProfilesNotBound {
         return Ok(Err(BootstrapReviewFailure::NotBound(boundary)));
@@ -682,9 +695,20 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
     if denied::same_reference(&root, &original)? {
         bail!("recovery catalog was not replaced");
     }
-    Ok(Err(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::RecoveryAuthorityStoreNotBound,
-    )))
+    use crate::original_authority::RecoveryAuthorityReached;
+    let boundary = match review
+        .read
+        .run_recovery_authority(&pack.work.get().source, pack.cancellation)
+    {
+        Ok(RecoveryAuthorityReached::ActivationStore) => {
+            BootstrapReviewReachpoint::RecoveryActivationStoreNotBound
+        }
+        Ok(RecoveryAuthorityReached::ActiveReservation) => {
+            BootstrapReviewReachpoint::RecoveryActiveReservationNotBound
+        }
+        Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
+    };
+    Ok(Err(BootstrapReviewFailure::NotBound(boundary)))
 }
 
 #[cfg(unix)]

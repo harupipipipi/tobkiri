@@ -58,9 +58,12 @@ pub enum BootstrapReviewReachpoint {
     LegacySuccessorBuilderNotBound,
     RepairLegacyDisplayNamesNotBound,
     AdmittedPackClosureNotBound,
+    AdmittedPackExecutableCatalogNotBound,
+    ClosureBundledPackRootNotBound,
     AdmittedHostExtensionProjectionNotBound,
     CatalogWithProfilesNotBound,
-    RecoveryAuthorityStoreNotBound,
+    RecoveryActivationStoreNotBound,
+    RecoveryActiveReservationNotBound,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,
@@ -130,6 +133,8 @@ pub(crate) struct ActualCustody {
     pub(crate) _recovery_profile_definitions: Option<CoreValue>,
     #[cfg(unix)]
     pub(crate) _recovery_catalog: Option<CoreBuffer>,
+    #[cfg(unix)]
+    pub(crate) _admitted_closure: Option<CoreValue>,
     #[cfg(unix)]
     pub(crate) _recovery_external_catalog:
         Option<crate::original_authority::external_catalog::ExternalPackRead>,

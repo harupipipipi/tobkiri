@@ -288,6 +288,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (2, "manifest")
                 | (2, "resolver-source-lookup")
                 | (2, "bootstrap-template-lookup")
+                | (2, "bootstrap-admitted-closure-step")
                 | (2, "resolver-static-edges")
                 | (2, "resolver-dynamic-edges")
                 | (2, "resolver-verified-artifacts")
@@ -317,6 +318,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "manifest") => CATALOG_PARSE,
             (REVIEW, "resolver-source-lookup") => RESOLVER_SOURCE_LOOKUP,
             (REVIEW, "bootstrap-template-lookup") => BOOTSTRAP_TEMPLATE_LOOKUP,
+            (REVIEW, "bootstrap-admitted-closure-step") => BOOTSTRAP_ADMITTED_CLOSURE_STEP,
             (REVIEW, "resolver-static-edges") => RESOLVER_STATIC_EDGES,
             (REVIEW, "resolver-dynamic-edges") => RESOLVER_DYNAMIC_EDGES,
             (REVIEW, "resolver-verified-artifacts") => RESOLVER_VERIFIED_ARTIFACTS,
@@ -401,6 +403,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | BOOTSTRAP_RECOVERY_CATALOG
                 | BOOTSTRAP_LISTING
                 | BOOTSTRAP_TEMPLATE_LOOKUP
+                | BOOTSTRAP_ADMITTED_CLOSURE_STEP
                 | BOOTSTRAP_ACTIVATION_PREFLIGHT
                 | BOOTSTRAP_ACTIVATION_MATCH
         ) && pending.result.is_some()

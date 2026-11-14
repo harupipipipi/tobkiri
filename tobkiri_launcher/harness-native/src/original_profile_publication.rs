@@ -30,6 +30,11 @@ mod development_handover;
 #[path = "original_external_catalog_io.rs"]
 pub(crate) mod external_catalog;
 pub(crate) use candidate_selection::{CandidateSelection, ResolverAuthority};
+#[cfg(unix)]
+#[path = "original_recovery_authority.rs"]
+mod recovery_authority;
+#[cfg(unix)]
+pub(crate) use recovery_authority::RecoveryAuthorityReached;
 
 const JOURNAL: &str = "bootstrap-publication.json";
 const LOCK: &str = ".bootstrap-publication.lock";
@@ -315,7 +320,16 @@ impl PublicationRead {
                 .pending
                 .as_mut()
                 .expect("held publication continuation");
-            pending._workspace = Some(workspace_path(&op, &pending.root, identity)?);
+            if !pending.cancellation.same_node(cancellation)
+                || !pending.intent.doc.string_is(pending.profile_id, identity)
+                || pending.workspace.is_some()
+            {
+                return Err(OriginalAuthorityError::unsupported(
+                    OriginalAuthorityStage::Source,
+                    "workspace does not belong to the held publication recovery",
+                ));
+            }
+            pending.workspace = Some(workspace_path(&op, &pending.root, identity)?);
             Ok(())
         }
         #[cfg(not(unix))]
@@ -521,7 +535,9 @@ fn prefix<S: OriginalAuthorityOwner>(
                     profile_id,
                     _current: current,
                     _expected: expected,
-                    _workspace: None,
+                    workspace: None,
+                    authority_attempted: false,
+                    cancellation: op.cancellation.clone(),
                     thread: std::thread::current().id(),
                 });
             }
@@ -552,7 +568,9 @@ struct PendingRecoveryScope {
     profile_id: usize,
     _current: Option<active_profile::LoadedPointer>,
     _expected: Option<Pointer>,
-    _workspace: Option<Funded<PathBuf>>,
+    workspace: Option<Funded<PathBuf>>,
+    authority_attempted: bool,
+    cancellation: CoreCancellation,
     thread: std::thread::ThreadId,
 }
 #[cfg(unix)]

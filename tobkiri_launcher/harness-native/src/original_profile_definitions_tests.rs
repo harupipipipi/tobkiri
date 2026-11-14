@@ -51,7 +51,7 @@ pub(in crate::original_authority::io::publication) fn with_source(
         assert!(!source.root.join("authority").exists());
     });
 }
-pub(super) fn with_setup_source(
+pub(in crate::original_authority::io::publication) fn with_setup_source(
     run: impl FnOnce(&Source, &mut PublicationRead, &CoreCancellation, &Arc<dyn AllocationBudget>),
 ) {
     let temporary = tempfile::tempdir().unwrap();
@@ -125,7 +125,7 @@ pub(super) fn write_index(source: &Source, bytes: &[u8]) {
     fs::write(profiles.join(INDEX), bytes).unwrap();
     fs::set_permissions(profiles.join(INDEX), fs::Permissions::from_mode(0o600)).unwrap();
 }
-pub(super) fn lock_free(path: &Path) -> bool {
+pub(in crate::original_authority::io::publication) fn lock_free(path: &Path) -> bool {
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)

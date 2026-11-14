@@ -51,6 +51,29 @@ pub(crate) struct ExternalPackRead {
 }
 
 impl ExternalPackRead {
+    pub(crate) fn closure_seed(&self, budget: &Arc<dyn AllocationBudget>) -> Result<CoreValue> {
+        let inventory = self
+            .inventory
+            .as_ref()
+            .expect("verified admission inventory");
+        let registry = self
+            ._registry
+            .as_ref()
+            .expect("authenticated admission registry");
+        let mut ids =
+            CoreValue::array_builder(budget, inventory._entries.len()).map_err(capacity)?;
+        for pack in inventory
+            ._entries
+            .iter()
+            .filter(|entry| entry.selected_normal)
+        {
+            let id = registry_text(registry, pack._root.entry, "pack_id");
+            let id = json_projection_text(id, budget)?;
+            ids.push(id).map_err(capacity)?;
+        }
+        ids.finish().map_err(capacity)
+    }
+
     pub(crate) fn verification_reachpoint(&self) -> crate::BootstrapReviewReachpoint {
         use crate::BootstrapReviewReachpoint::*;
         match &self.inventory {
@@ -63,6 +86,200 @@ impl ExternalPackRead {
             _ => CatalogWithProfilesNotBound,
         }
     }
+}
+
+pub(crate) enum ClosureManifest {
+    External {
+        manifest: CoreValue,
+        artifact_digest: CoreValue,
+    },
+    BundledSource,
+    HostExtension,
+}
+
+pub(crate) fn read_closure_manifest<S: crate::BootstrapReviewOwner>(
+    publication: &PublicationRead,
+    owner: &S,
+    cancellation: &CoreCancellation,
+    budget: &Arc<dyn AllocationBudget>,
+    id: &str,
+) -> Result<ClosureManifest> {
+    publication.check_continuation_thread()?;
+    let pending = publication.pending.as_ref().expect("held recovery");
+    let op = PublicationRead::operation(
+        &publication.invocation,
+        &publication.cleanup,
+        owner,
+        cancellation,
+    )?;
+    owner
+        .with_original_catalog_source(|source| {
+            read_manifest_from_catalogs(&op, source.runtime, &pending.root, budget, id)
+        })?
+        .map_err(recovery_error)
+}
+
+fn read_manifest_from_catalogs<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    runtime: &Path,
+    user_data: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+    id: &str,
+) -> Result<ClosureManifest> {
+    // The original calls both public authorities in this order. Each
+    // re-observes the admission registry under the selected user-data.
+    let input = read_inputs(op, runtime, user_data, budget)?;
+    let catalog = authenticate(op, input, budget)?;
+    if catalog
+        .inventory
+        .as_ref()
+        .is_some_and(|inventory| inventory.host_extension_pending)
+    {
+        return Ok(ClosureManifest::HostExtension);
+    }
+    let digest = match catalog.selected(op, budget, id)? {
+        Some(pack) if pack.selected_normal => pack._artifact_digest.clone(),
+        Some(_) => return Ok(ClosureManifest::HostExtension),
+        None if catalog
+            ._bundled
+            ._ids
+            .array()
+            .expect("verified bundled records")
+            .iter()
+            .any(|pack| pack.as_str() == Some(id)) =>
+        {
+            return Ok(ClosureManifest::BundledSource);
+        }
+        None => {
+            return Err(raw(
+                "core_runtime.pack_control_v4.PackControlInvalidRequest",
+                "Pack is absent from the canonical v4 catalog",
+            ));
+        }
+    };
+    drop(catalog);
+    let input = read_inputs(op, runtime, user_data, budget)?;
+    let roots = authenticate_external(op, input, budget)?;
+    if roots
+        .inventory
+        .as_ref()
+        .is_some_and(|inventory| inventory.host_extension_pending)
+    {
+        return Ok(ClosureManifest::HostExtension);
+    }
+    let Some(pack) = roots.selected(op, budget, id)? else {
+        let _diagnostic =
+            op.reserve(OriginalAuthorityStage::Source, id.len().saturating_add(128))?;
+        return Err(raw(
+            BOUNDARY_ERROR,
+            format!("Pack is absent from the Host v4 catalog: {id}"),
+        ));
+    };
+    let root = &pack._root;
+    let directory = Parent::walk(&root.path, &op.cleanup)
+        .map_err(|error| closure_manifest_failure("Pack v4 manifest is unavailable", error))?;
+    let row = (|| {
+        let current = directory.metadata().map_err(|error| raw_io(error, None))?;
+        if (current.dev(), current.ino()) != root.physical_identity {
+            return Err(closure_error("Pack v4 manifest is unavailable"));
+        }
+        let raw = read_artifact_definition(op, &directory, &root.path, c"pack.v4.json", budget)
+            .map_err(|error| closure_manifest_failure("Pack v4 manifest is unavailable", error))?;
+        let doc = compiler::read_manifest(&raw, op, budget)
+            .map_err(|error| closure_manifest_failure("Pack v4 manifest is invalid", error))?;
+        drop(raw);
+        let doc = doc.document();
+        let pack = doc.get(doc.root, "pack").expect("validated manifest pack");
+        let requirements = doc
+            .get(doc.root, "requirements")
+            .expect("validated manifest requirements");
+        let is = |at, field, value| {
+            doc.get(at, field)
+                .is_some_and(|value_id| doc.string_is(value_id, value))
+        };
+        if !is(pack, "id", id)
+            || !is(pack, "artifact_digest", digest.as_str())
+            || !(is(pack, "kind", "normal_sandbox") || is(pack, "kind", "application"))
+            || !(is(requirements, "execution_boundary", "sandbox")
+                || is(requirements, "execution_boundary", "declarative_only"))
+        {
+            return Err(closure_error("Pack v4 manifest identity is inconsistent"));
+        }
+        let bytes = json::canonical_subtree(doc, doc.root, None, op, budget)?;
+        let manifest = CoreValue::parse_guest(&bytes, budget).map_err(capacity)?;
+        let artifact_digest = CoreValue::string(digest.as_str(), budget).map_err(capacity)?;
+        Ok(ClosureManifest::External {
+            manifest,
+            artifact_digest,
+        })
+    })();
+    finish_scope(row, directory.close().map_err(|error| raw_io(error, None)))
+}
+
+impl ExternalPackRead {
+    fn selected<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+        id: &str,
+    ) -> Result<Option<&RetainedPack>> {
+        let (Some(registry), Some(inventory)) = (&self._registry, &self.inventory) else {
+            return Ok(None);
+        };
+        for pack in &*inventory._entries {
+            charge(op, budget, id.len().saturating_add(1))?;
+            if pack._selected && registry_text(registry, pack._root.entry, "pack_id").is(id) {
+                return Ok(Some(pack));
+            }
+        }
+        Ok(None)
+    }
+}
+
+fn closure_manifest_failure(
+    message: &'static str,
+    error: OriginalAuthorityError,
+) -> OriginalAuthorityError {
+    if matches!(
+        error.cause.as_ref(),
+        Some(
+            OriginalAuthorityCause::Capacity
+                | OriginalAuthorityCause::Cancelled
+                | OriginalAuthorityCause::Deadline
+        )
+    ) {
+        return error;
+    }
+    caused(closure_error(message), error)
+}
+
+fn closure_error(message: &'static str) -> OriginalAuthorityError {
+    raw(
+        "core_runtime.pack_control_v4.PackControlDigestMismatch",
+        message,
+    )
+}
+
+fn json_projection_text(text: &Text, budget: &Arc<dyn AllocationBudget>) -> Result<CoreValue> {
+    let bytes = text.0.len().checked_mul(4).ok_or_else(|| capacity(()))?;
+    let temporary = AllocationRequest {
+        kind: AllocationKind::Temporary,
+        bytes: u64::try_from(bytes).map_err(capacity)?,
+        depth: 0,
+        elements: 0,
+        work: text.0.len() as u64,
+    };
+    budget.reserve(temporary).map_err(capacity)?;
+    let result = (|| {
+        let mut utf8 = String::new();
+        utf8.try_reserve_exact(bytes).map_err(capacity)?;
+        for &point in &text.0 {
+            utf8.push(char::from_u32(point).ok_or_else(|| capacity(()))?);
+        }
+        CoreValue::string(&utf8, budget).map_err(capacity)
+    })();
+    budget.release(temporary.bytes);
+    result
 }
 
 struct VerifiedInventory {
@@ -194,6 +411,50 @@ mod tests {
                 "Host JSON file is unreadable: external_normal_pack_catalog.v4.json"
             );
             assert_eq!(read.receipt().open_files, 0);
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ordinary_closure_rereads_the_original_signed_manifest_rows() {
+        let Some(path) = std::env::var_os("TOBKIRI_EXTERNAL_CLOSURE_FIXTURE") else {
+            return;
+        };
+        let bytes = fs::read(path).unwrap();
+        assert!(bytes.len() <= 2 * 1024 * 1024);
+        let fixture: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            fixture["format"],
+            "io.tobkiri.original-external-closure-reference.v1"
+        );
+        let runtime = Path::new(fixture["runtime_dir"].as_str().unwrap());
+        let owner = Path::new(fixture["native_user_data"].as_str().unwrap());
+        let expected = &fixture["bootstrap"];
+        let requested = expected["requested"].as_array().unwrap();
+        assert_eq!(requested.len(), 2);
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let input = read_inputs(&op, runtime, owner, budget).unwrap();
+            let catalog = authenticate(&op, input, budget).unwrap();
+            let seed = catalog.closure_seed(budget).unwrap();
+            let ids = seed.array().unwrap();
+            assert_eq!(ids.len(), requested.len());
+            drop(catalog);
+            for (id, expected_id) in ids.iter().zip(requested.iter()) {
+                assert_eq!(id.as_str(), expected_id.as_str());
+                let id = id.as_str().unwrap();
+                let ClosureManifest::External {
+                    manifest,
+                    artifact_digest,
+                } = read_manifest_from_catalogs(&op, runtime, owner, budget, id).unwrap()
+                else {
+                    panic!("missing original signed manifest row for {id}");
+                };
+                assert_eq!(artifact_digest.as_str(), fixture["pins"][id].as_str());
+                let manifest = manifest.encode_guest(budget).unwrap();
+                let observed: Value = serde_json::from_slice(manifest.as_bytes()).unwrap();
+                assert_eq!(observed, expected["project"][id]["pack"]);
+                assert_eq!(read.receipt().open_files, 0);
+            }
         });
     }
 
@@ -414,6 +675,20 @@ fn authenticate<S: OriginalAuthorityOwner>(
     input: RegistryInput,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<ExternalPackRead> {
+    let catalog = authenticate_external(op, input, budget)?;
+    if let (Some(inventory), Some(registry)) = (&catalog.inventory, &catalog._registry)
+        && !inventory.host_extension_pending
+    {
+        reject_bundled_collisions(op, &catalog._bundled, registry, inventory, budget)?;
+    }
+    Ok(catalog)
+}
+
+fn authenticate_external<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    input: RegistryInput,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<ExternalPackRead> {
     let Some(raw) = input.raw else {
         return Ok(ExternalPackRead {
             _bundled: input._bundled,
@@ -440,9 +715,6 @@ fn authenticate<S: OriginalAuthorityOwner>(
     model::authenticate_and_validate_journal(&mut registry, &key, op, budget)?;
     drop(key);
     let inventory = verify_retained_packs(op, &registry, pack_control, budget)?;
-    if !inventory.host_extension_pending {
-        reject_bundled_collisions(op, &input._bundled, &registry, &inventory, budget)?;
-    }
     Ok(ExternalPackRead {
         _bundled: input._bundled,
         _registry: Some(registry),

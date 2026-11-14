@@ -886,6 +886,107 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         value.profiles = dict(profiles)
         return value
 
+    def admitted_closure_step(
+        self, catalog: dict, pack_id: str, manifest: dict | None = None,
+        artifact_digest: str | None = None, **fields: object,
+    ) -> dict:
+        return wire.loads(self.dispatcher.describe_value(self.frame(
+            "bootstrap-admitted-closure-step", catalog=catalog, pack_id=pack_id,
+            manifest=manifest, artifact_digest=artifact_digest, **fields,
+        )))
+
+    def test_admitted_closure_observes_live_bundled_and_host_read_dependencies(self) -> None:
+        self.getter("fixture-id")
+        catalog = self.load()
+        actual_packs = self.runtime.catalog.packs
+        actual_packs["bundled"] = {"requirements": {"pack_dependencies": {
+            "z-pack": "*", "a-pack": "*", "\u00e9-pack": "*",
+        }}}
+        common = {
+            "format": PREFIX + "bootstrap-admitted-closure-step-result.v1",
+            "scope": self.scope.wire(), "catalog": catalog,
+        }
+        self.assertEqual(self.admitted_closure_step(catalog, "bundled"), {
+            **common, "pack_id": "bundled", "kind": "bundled",
+            "dependencies": ["a-pack", "z-pack", "\u00e9-pack"],
+        })
+        self.assertEqual(self.admitted_closure_step(catalog, "external"), {
+            **common, "pack_id": "external", "kind": "external-required",
+            "dependencies": [],
+        })
+        digest = "sha256:" + "a" * 64
+        manifest = {
+            "pack": {"id": "external", "kind": "normal_sandbox",
+                     "artifact_digest": digest},
+            "requirements": {"execution_boundary": "sandbox",
+                             "pack_dependencies": {"z-pack": "*", "a-pack": "*"}},
+        }
+        held = self.registry._objects.copy()
+        self.assertEqual(self.admitted_closure_step(catalog, "external", manifest, digest), {
+            **common, "pack_id": "external", "kind": "external-read",
+            "dependencies": ["a-pack", "z-pack"],
+        })
+        self.assertEqual(self.registry._objects, held)
+        self.assertIs(self.runtime.catalog.packs, actual_packs)
+        self.assertEqual(list(actual_packs), ["bundled"])
+
+    def test_admitted_closure_refuses_fresh_candidate_catalog(self) -> None:
+        catalog = self.load()
+        with self.assertRaises(InvalidReference):
+            self.admitted_closure_step(catalog, "external")
+
+    def test_admitted_closure_checks_recovery_template_and_catalog_origin(self) -> None:
+        self.getter("fixture-id")
+        catalog = self.load()
+        profile_id = self.getter("fixture-id")
+        self.runtime.catalog.profiles["fixture-id"] = {"profile_id": "fixture-id"}
+        with self.assertRaises(InvalidReference):
+            self.admitted_closure_step(catalog, "external")
+        self.template(catalog, profile_id)
+        alien = self.registry.retain(self.Catalog()).wire()
+        foreign = {**catalog, "scope": ["1", "2", "9", "4"]}
+        released = self.registry.retain(self.Catalog())
+        self.registry.release([released])
+        for invalid in (alien, foreign, released.wire()):
+            with self.subTest(invalid=invalid), self.assertRaises(InvalidReference):
+                self.admitted_closure_step(invalid, "external")
+        self.admitted_closure_step(catalog, "external")
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        self.recovery_catalog(catalog, [])
+        with self.assertRaises(InvalidReference):
+            self.admitted_closure_step(catalog, "external")
+
+    def test_admitted_closure_rejects_malformed_receipt_and_replacement(self) -> None:
+        self.getter("fixture-id")
+        catalog = self.load()
+        self.runtime.catalog.packs["bundled"] = {
+            "requirements": {"pack_dependencies": {}},
+        }
+        digest = "sha256:" + "a" * 64
+        manifest = {
+            "pack": {"id": "external", "kind": "application", "artifact_digest": digest},
+            "requirements": {"execution_boundary": "declarative_only",
+                             "pack_dependencies": {}},
+        }
+        with self.assertRaises(InvalidFrame):
+            self.admitted_closure_step(catalog, "external", artifact_digest=digest)
+        with self.assertRaises(InvalidFrame):
+            self.admitted_closure_step(catalog, "external", manifest)
+        with self.assertRaises(InvalidFrame):
+            self.admitted_closure_step(catalog, "bundled", manifest, digest)
+        with self.assertRaises(InvalidFrame):
+            self.admitted_closure_step(catalog, "external", host_verified=True)
+        for key, value in (("id", "other"), ("kind", "host_extension"),
+                           ("artifact_digest", "sha256:" + "b" * 64)):
+            with self.subTest(key=key), self.assertRaises(UnsupportedValue):
+                changed = {**manifest, "pack": {**manifest["pack"], key: value}}
+                self.admitted_closure_step(catalog, "external", changed, digest)
+        changed = {**manifest, "requirements": {
+            **manifest["requirements"], "execution_boundary": "host_brokered",
+        }}
+        with self.assertRaises(UnsupportedValue):
+            self.admitted_closure_step(catalog, "external", changed, digest)
+
     def test_recovery_catalog_replaces_profiles_in_store_order_on_actual_loader(self) -> None:
         self.runtime.catalog_with_profiles = self.recovery_projector
         self.runtime.catalog.profiles = {"bundled-only": {"profile_id": "bundled-only"}}

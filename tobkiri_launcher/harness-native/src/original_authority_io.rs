@@ -697,10 +697,9 @@ pub(crate) const AUTHORITY_PATH_DENIAL: &str = "Authority store path is not a re
 pub(super) const CAPTURE_DENIAL_CLASS: &str =
     "core_runtime.bootstrap.profile_capture.ProfileResolutionDenied";
 
-/// Enter the actual Store on the root already selected by registered Setup.
+/// Enter the actual Store on the root already selected by Setup.
 /// Unlike a resolver snapshot, the constructor also runs for an absent DB.
 #[cfg(unix)]
-#[cfg_attr(not(test), allow(dead_code))] // The activation factory is not yet bound.
 pub(super) fn with_registered_store<S: OriginalAuthorityOwner, T>(
     op: &Operation<'_, S>,
     root: &Path,
@@ -713,7 +712,7 @@ pub(super) fn with_registered_store<S: OriginalAuthorityOwner, T>(
         .and_then(|bytes| bytes.checked_add(8192))
         .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
     let _paths = op.reserve(OriginalAuthorityStage::Path, path_bytes)?;
-    let mut store = Store::open(op, root.join("authority/v4.sqlite3"))?;
+    let mut store = Store::open(op, canonical(&root.join("authority/v4.sqlite3"))?)?;
     store.enter()?;
     let outcome = body(&store);
     finish_scope(outcome, store.close())
@@ -1125,7 +1124,6 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
         parent.continuity()?;
         Ok(store)
     }
-    #[cfg_attr(not(test), allow(dead_code))] // The activation factory is not yet bound.
     fn enter(&self) -> Result<()> {
         self.check_process(OriginalAuthorityStage::Process)?;
         if self.closed {

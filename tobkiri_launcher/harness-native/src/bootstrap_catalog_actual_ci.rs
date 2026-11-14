@@ -449,7 +449,7 @@ async fn run_original_catalog_component_driver(
                 "qualification":false}));
         }
         let expected = if recovery {
-            BootstrapReviewReachpoint::RecoveryAuthorityStoreNotBound
+            BootstrapReviewReachpoint::RecoveryActiveReservationNotBound
         } else {
             BootstrapReviewReachpoint::ProfileDefinitionStoreNotBound
         };
@@ -481,8 +481,8 @@ async fn run_original_catalog_component_driver(
                     && observation["authority_constructor_entries"] == 1
                     && profiles.digest_guest(runtime.data_budget())?.as_str()
                         == observation["profile_rows_digest"].as_str().context("original Profile digest required")?
-                    && !user_data.join("authority").exists(),
-                "the same Store must retain the recovered catalog before Authority opens",
+                    && user_data.join("authority/v4.sqlite3").is_file(),
+                "the same Runtime must retain the recovered catalog and open the registered Authority database",
             );
         }
         let fuel_after = runtime.fuel_remaining()?;
@@ -490,7 +490,7 @@ async fn run_original_catalog_component_driver(
         ensure!(cleanup_probe.is_some() && !lock_is_free(&user_data)?);
         observed = Some(
             json!({"outcome":"integration-boundary",
-            "stage":if recovery {"recovery-authority-store-entry"} else {"profile-definition-store-entry"},
+            "stage":if recovery {"recovery-active-reservation-entry"} else {"profile-definition-store-entry"},
             "fuel_before":fuel_before,"fuel_after":fuel_after,"budget_resets":0,
             "inspection_attempts_before_review":inspections_before_review,
             "inspection_attempts_after_review":runtime.inspection_attempts(),

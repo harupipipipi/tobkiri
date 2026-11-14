@@ -459,7 +459,7 @@ class Registry:
     def _complete_bootstrap_template_lookup(self, catalog_ref: Reference) -> None:
         self._bootstrap_recovery_catalog = catalog_ref.object_id
 
-    def _begin_bootstrap_recovery_catalog(self, catalog_ref: Reference) -> Any:
+    def _current_bootstrap_recovery_catalog(self, catalog_ref: Reference) -> Any:
         catalog = self.borrow(catalog_ref)
         record = self._records.get(type(catalog))
         if (catalog_ref.object_id != self._bootstrap_recovery_catalog
@@ -467,6 +467,10 @@ class Registry:
                 or self._bootstrap_identity.get(catalog_ref.object_id) != "catalog-returned"
                 or record is None or record.kind != "bundled-catalog"):
             raise InvalidReference("reference has no current bootstrap recovery catalog origin")
+        return catalog
+
+    def _begin_bootstrap_recovery_catalog(self, catalog_ref: Reference) -> Any:
+        catalog = self._current_bootstrap_recovery_catalog(catalog_ref)
         self._clear_resolver_inputs()
         return catalog
 
