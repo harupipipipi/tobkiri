@@ -44,7 +44,6 @@ impl Document {
     pub fn storage_bound(&self) -> usize {
         self.allocation_bound
     }
-    #[cfg(test)]
     pub fn actual_storage_bytes(&self) -> usize {
         let mut total = self.nodes.capacity() * std::mem::size_of::<Node>();
         for node in &self.nodes {
@@ -251,9 +250,29 @@ pub(super) fn decode_profile_definitions<S: OriginalAuthorityOwner>(
         .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
     let bound = definition_allocation_bound(input)
         .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
-    let doc =
+    let mut doc =
         decode_inner(input, op, true, Some((bound, budget.clone()))).map_err(strict_parse_error)?;
     validate_strict(&doc, op)?;
+    // Registry validation uses small temporary metadata nodes and may infer
+    // bootstrap state. Keep enough funded space for either growth, but release
+    // the parser frames, duplicate diagnostics and numeric scratch provision
+    // before canonical hashing and later authenticated reads.
+    let arena_growth = doc
+        .nodes
+        .capacity()
+        .checked_mul(2)
+        .and_then(|nodes| nodes.checked_mul(std::mem::size_of::<Node>()))
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let retained = doc
+        .actual_storage_bytes()
+        .checked_add(arena_growth)
+        .and_then(|bytes| bytes.checked_add(8192))
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?
+        .min(bound);
+    doc._capacity
+        .resize(retained as u64)
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    doc.allocation_bound = retained;
     Ok(doc)
 }
 
@@ -397,12 +416,16 @@ fn definition_allocation_bound(input: &[u8]) -> Option<usize> {
     let (mut atoms, mut containers, mut strings, mut text, mut numeric) =
         (0_usize, 0_usize, 0_usize, 0_usize, 0_usize);
     let (mut quoted, mut escaped, mut scalar) = (false, false, false);
+    let mut longest_text = 0_usize;
+    let mut current_text = 0_usize;
     for &byte in input {
         if quoted {
             if !escaped && byte == b'"' {
                 quoted = false;
             } else {
                 text = text.checked_add(1)?;
+                current_text = current_text.checked_add(1)?;
+                longest_text = longest_text.max(current_text);
                 if escaped {
                     escaped = false;
                 } else if byte == b'\\' {
@@ -415,6 +438,7 @@ fn definition_allocation_bound(input: &[u8]) -> Option<usize> {
                     strings = strings.checked_add(1)?;
                     atoms = atoms.checked_add(1)?;
                     quoted = true;
+                    current_text = 0;
                     scalar = false;
                 }
                 b'{' | b'[' => {
@@ -487,12 +511,13 @@ fn definition_allocation_bound(input: &[u8]) -> Option<usize> {
         .checked_mul(3)?
         .checked_add(texts.checked_mul(4)?)?
         .checked_mul(std::mem::size_of::<u32>())?;
-    // A duplicate-key error can coexist with the arena. repr_text emits at
-    // most 10 bytes/u32 plus quotes. Its retained String uses <=2*r+8 bytes;
-    // format!'s old+new String uses <=3*(r+prefix)+8. Their simultaneous bound
+    // Only one duplicate-key error can coexist with the arena. Bound its
+    // repr by the longest reached quoted token, including an unfinished one.
+    // repr_text emits at most 10 bytes/u32 plus quotes. Its retained String
+    // uses <=2*r+8 bytes; format!'s old+new String uses <=3*(r+prefix)+8. Their simultaneous bound
     // is 5*r+3*prefix+16, including diagnostic growth, without reading args or
     // changing the original duplicate-before-strict-scalar validation order.
-    let repr_bytes = text.checked_mul(10)?.checked_add(2)?;
+    let repr_bytes = longest_text.checked_mul(10)?.checked_add(2)?;
     let duplicate_scratch = repr_bytes
         .checked_mul(5)?
         .checked_add("duplicate JSON object key: ".len().checked_mul(3)?)?

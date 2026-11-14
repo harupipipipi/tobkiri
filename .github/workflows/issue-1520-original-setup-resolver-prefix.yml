@@ -20,6 +20,7 @@ name: Issue 1520 original Setup resolver prefix
       - tobkiri_launcher/harness-native/src/bootstrap_listing.rs
       - tobkiri_launcher/harness-native/src/bootstrap_activation_decision.rs
       - tobkiri_launcher/harness-native/src/original_profile_publication_io.rs
+      - tobkiri_launcher/harness-native/src/original_authority_json.rs
       - tobkiri_launcher/harness-native/src/original_development_handover.rs
       - tobkiri_launcher/harness-native/src/original_inactive_registration_ci.rs
       - tobkiri_launcher/harness-native/src/original_setup_candidate_selection_tests.rs
