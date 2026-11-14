@@ -3,7 +3,17 @@ import {AlertCircle, Clock3, ShieldAlert} from 'lucide-react';
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import type {DefaultsSetupState} from '@/src/lib/defaultsSetupContract';
+import {DEFAULTS_REQUIRED_TRANSACTION} from '@/src/lib/generatedDefaultsSetupContract';
 import {DefaultsConfirmationDetails} from './DefaultsConfirmationDetails';
+
+const activationStepLabels: Record<(typeof DEFAULTS_REQUIRED_TRANSACTION)[number], string> = {
+  'catalog.verify': 'Verify the bundled catalog',
+  'profile.resolve': 'Check the selected Packs and operations',
+  'authority.snapshot': 'Check the permissions for this activation',
+  'activation.prepare': 'Prepare the Profile for activation',
+  'activation.commit': 'Save the activation',
+  'runtime.capture': 'Load the activated Profile',
+};
 
 type Props = {
   readonly setup: DefaultsSetupState | null;
@@ -57,17 +67,17 @@ export function DefaultsReview({
     </h1>
     <p className="mt-2 text-sm leading-6 text-text-muted">
       {reconfirmationRequired
-        ? 'The Host has withheld the verified dispatch map. Review the exact Harness v4 transaction below to restore local operations.'
-        : 'Review the finite local composition. Activation occurs only after this exact confirmation.'}
+        ? 'Local operations are paused until you review and confirm this Profile again.'
+        : 'Review the selected Packs and activation details below. Activation starts after you confirm them.'}
     </p>
     {!readOnly && activationCommitted && setup?.state !== 'active' && <div role="alert" className="mt-6 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
       <Clock3 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" data-error-icon="activation-verification-required" />
       <div className="min-w-0 flex-1">
         <p className="font-medium">Activation was submitted; verification is required.</p>
-        <p className="mt-2 text-text-muted">Tobkiri will re-read the Host-owned Setup state. The previous confirmation will not be submitted again.</p>
+        <p className="mt-2 text-text-muted">Tobkiri will check the setup status again using the existing submission.</p>
         <div className="mt-4"><Button variant="outline" onClick={onRecover} loading={activating}>Verify activation</Button></div>
       </div>
-      <CopyErrorButton label="Copy activation verification status" text={'Activation was submitted; verification is required.\nTobkiri will re-read the Host-owned Setup state. The previous confirmation will not be submitted again.'} />
+      <CopyErrorButton label="Copy activation verification status" text={'Activation was submitted and needs verification.\nTobkiri will check the setup status again using the existing submission.'} />
     </div>}
     {!setup && !error && <p role="status" className="mt-6 text-sm text-text-muted">Loading verified catalog…</p>}
     {setup?.state === 'activation_denied' && <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
@@ -84,12 +94,12 @@ export function DefaultsReview({
         <ul className="mt-2 space-y-1 text-text-main">{setup.recommended_default_profile.packs.map((pack) => <li key={pack.pack_id}>{pack.display_name} <span className="text-xs text-text-muted">({pack.pack_id})</span></li>)}</ul>
       </div>
       <div className="rounded-lg border border-border bg-bg-main p-4">
-        <p className="text-xs font-medium text-text-muted">Host activation ceremony</p>
-        <ol aria-label="Harness v4 activation ceremony" className="mt-2 list-decimal space-y-1 pl-5 text-text-main">
-          {setup.required_transaction.map((step) => <li key={step}>{step}</li>)}
+        <p className="text-xs font-medium text-text-muted">Activation steps</p>
+        <ol aria-label="Activation steps" className="mt-2 list-decimal space-y-1 pl-5 text-text-main">
+          {DEFAULTS_REQUIRED_TRANSACTION.map((step) => <li key={step}>{activationStepLabels[step]}</li>)}
         </ol>
         <p className="mt-3 text-xs leading-5 text-text-muted">
-          Resolve, review, approve, activate, and capture are performed by the Host-owned transaction. This screen only submits the exact confirmation it issued.
+          Tobkiri uses the revisions, operations, and permissions shown here for this activation.
         </p>
       </div>
       {predecessor && <div role="status" className="rounded-lg border border-border p-4 text-sm text-text-main">
@@ -119,7 +129,7 @@ export function DefaultsReview({
           className="mt-1 size-4 shrink-0"
           aria-describedby="defaults-review-confirmation"
         />
-        <span id="defaults-review-confirmation">I confirm this exact catalog/profile revision, provider operations, Authority snapshot, and SecurityEpoch.{predecessor && ' I also confirm the displayed imported predecessor and its immutable successor, including the Pack selection changes.'}{packPinPredecessor && ' I also confirm these saved Pack versions against the displayed current activation.'}</span>
+        <span id="defaults-review-confirmation">I confirm the catalog and Profile revisions, provider operations, and permission identifiers shown in the activation details.{predecessor && ' I also confirm the imported Profile, its new revision, and the Pack selection changes shown here.'}{packPinPredecessor && ' I also confirm the saved Pack versions for the current activation shown here.'}</span>
       </label>
       <Button size="lg" className="w-full" data-native-setup-confirm={nativeConfirmation || undefined}
         disabled={!reviewed || activating || !canActivate} loading={activating}

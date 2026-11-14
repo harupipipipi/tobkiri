@@ -3,14 +3,14 @@ import type {DefaultsConfirmation} from '@/src/lib/defaultsSetupContract';
 export function DefaultsConfirmationDetails({confirmation}: {readonly confirmation: DefaultsConfirmation}) {
   return <details className="rounded-lg border border-border bg-bg-main p-4">
     <summary className="cursor-pointer font-medium text-text-main">Exact activation details ({confirmation.bindings.length} operation bindings)</summary>
-    <p className="mt-3 text-xs text-text-muted">These are the Host-issued identities submitted by this confirmation. Digests identify exact revisions; they are not descriptions of what an operation is allowed to do.</p>
+    <p className="mt-3 text-xs text-text-muted">These identifiers bind your confirmation to the exact revisions and permission state shown here.</p>
     <dl className="mt-3 space-y-2 text-xs">
       <Field label="Profile" value={confirmation.profile_id} />
       <Field label="Profile revision" value={confirmation.profile_revision} />
       <Field label="Catalog revision" value={confirmation.catalog_revision} />
       <Field label="Plan digest" value={confirmation.plan_digest} />
-      <Field label="Authority snapshot" value={confirmation.authority_snapshot_digest} />
-      <Field label="SecurityEpoch" value={String(confirmation.security_epoch)} />
+      <Field label="Permission snapshot digest" value={confirmation.authority_snapshot_digest} />
+      <Field label="Permission state version" value={String(confirmation.security_epoch)} />
       <Field label="Confirmation digest" value={confirmation.confirmation_digest} />
       {confirmation.pack_pin_predecessor && <>
         <Field label="Current activation" value={confirmation.pack_pin_predecessor.activation_id} />
