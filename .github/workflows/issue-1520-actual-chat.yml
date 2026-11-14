@@ -76,5 +76,6 @@ jobs:
             ${{ runner.temp }}/actual-chat.log*
             ${{ runner.temp }}/actual-network.log*
             ${{ runner.temp }}/actual-ui-ports.log*
+            ${{ runner.temp }}/pack-manifest.log*
             ${{ runner.temp }}/actual-cli-publication.log
           if-no-files-found: warn

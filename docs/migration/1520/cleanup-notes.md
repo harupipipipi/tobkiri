@@ -3565,14 +3565,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ビルド、元Runtime初期化、getter、通常DATA入口からの専用lookup拒否に成功した。
   `e5b1f6523` は同じregistryを読み直し、元の並び順、tombstone除外、10キーの有無だけの
   判定で解決候補を作る。[CI 43596750559](https://github.com/harupipipipi/tobkiri/actions/runs/43596750559)で
-  Ubuntuで通過し、macOSで実行中。旧定義importと旧successor builderが残る。
+  UbuntuとmacOSの両方で通過した。旧定義importと旧successor builderが残る。
   `5b455dff3`、`fe3c27c50`、`6d1cad954` は既存の復旧ロックが選んだ同じ
   ユーザーデータで、公式Pack一覧の読込み、外部レジストリのスキーマ、既存のHost HMAC、
   install journalの連鎖、最初の対象ルートのdevice/inodeまでを検査する。独立に署名・
   admissionしたPackとHMAC変更の原本比較は[CI 43597966368](https://github.com/harupipipipi/tobkiri/actions/runs/43597966368)。
-  UTF-16/32のJSONと一部の複合値のPython文字列化は未対応。次はCASの全実体検証
-  （旧manifestとexecutable catalog、compile結果、署名付きファイル一覧）をつないでから
-  closureを組み立て、同じRuntimeでProfile一覧を差し替える。
+  UbuntuとmacOSの両方で通過した。UTF-16/32のJSONと一部の複合値のPython文字列化は未対応。
+  `3b35f3676` は最初のCASルートをdescriptorで再確認し、元の順序で実行カタログ、
+  Packマニフェスト、Host Extensionと実行種別の識別を扱う。コンパイルとdigest照合の
+  手前で止まる。署名付きファイル一覧と実ファイルの照合は、コンパイル後に接続するための
+  比較テストに組み込んだ。[実署名付きPack比較CI 43599247113](https://github.com/harupipipipi/tobkiri/actions/runs/43599247113)でUbuntuは通過し、macOSで実行中。
+  元の全スキーマ診断と一部の複合値は未移植。残るCAS照合をつないでからclosureを
+  組み立て、同じRuntimeでProfile一覧を差し替える。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
@@ -3588,6 +3592,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - [#1525](https://github.com/harupipipipi/tobkiri/issues/1525) はレビュー時点の
   `4f17a0200` を対象にしている。#1521 の現在のheadは `8be3110a3` で、修正はその
   子孫の統合ブランチに積んでいる。契約・SDK・UIを別々にレビューできる単位で保持する。
+  E-1は `soon` 向けの [Launcher表示 #1526](https://github.com/harupipipipi/tobkiri/pull/1526) と
+  [Pack UI SDK #1527](https://github.com/harupipipipi/tobkiri/pull/1527) を切り出した。
+  SDKのみで11件が通過。契約テストには現在 `tobkiri-{canon,gate,wit,manifest}` と基準WITが必要。
+  E-2は [Wasmtimeソース #1528](https://github.com/harupipipipi/tobkiri/pull/1528) と
+  [旧検証記録 #1529](https://github.com/harupipipipi/tobkiri/pull/1529) を別のドラフトにした。
+  Wasmtimeは公開された2アーカイブのハッシュ・ライセンス・Git treeと差分を確認し、
+  旧検証記録は圧縮前後のハッシュが一致した。アプリ配布に使うCargo接続と、既存fixtureの分割は残る。
 - B-2 と B-3 は構造化チャット2.0、ツール・コマンド一覧1.1を別の変更で定義した。
   既存のプロンプト、OpenAI互換プロバイダー、会話保存、Flow、UIは1.0のテキスト契約を使う。
   ツール呼出しと結果のID、reasoning、終了理由、キャッシュ使用量を同じ実ターンで照合してから、
@@ -3612,6 +3623,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [追加検証CI 43593496962](https://github.com/harupipipipi/tobkiri/actions/runs/43593496962)も成功した。
   ゲストからの動的呼び出し先選択は残る。最高の互換minorの検索はCore、Wasm Host、明示Flowの
   コンパイラにあり、共通化前に省略時の固定済みwitnessと既存の選択結果を比較する。
+  レビュー対象 `4f17a0200` の `harness-live.profile.json` はすべて単一Pack名の文字列を
+  `bindings` に入れていた。Piアダプタも同時点では `pi-extension@1.0` の単一import。
+  現在の集合とFlowの明示選択は確認済みだが、通常のHarnessで複数のPi拡張を選ぶ導線は必要。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
@@ -3628,12 +3642,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   承認を要する保存済み履歴の圧縮と、送信する入力に結び付いたdigestは維持する。
 - D-2 は `78c549e62` で、Launcher更新欄と日英の説明の表示をHarnessに揃えた。
   更新APIに送る既存の `defaultspack` キーは互換性のため引き続き使う。
+- D-3 のShell起動画面を `13bb521e6` で日英対応にした。通常の起動操作を
+  [Launcher CI 43598692796](https://github.com/harupipipipi/tobkiri/actions/runs/43598692796)で確認中。
+  共通ヘルパーと他画面の直書き文言は残る。
 - C-7 は、イベントだけが呼び出し元の `has-ui` を受け、ツールとコマンドには
   実画面の状態が届かない。`5bcc4f786` に仕様と試験を記録し、
   [実Pi CI 43574843811](https://github.com/harupipipipi/tobkiri/actions/runs/43574843811)で
   現状の動作を確認した。実画面の状態を渡す接続は未実装。
 - C-2 は `99cfd5f65` で、承認されたUI assetと可変なユーザーデータの境界、
   廃止された動的Pythonツールのエラーと移行先をドキュメントに反映した。
+  `3c758088b` では、同READMEの旧フォルダ一覧からも配布物の配置先としての説明を修正した。
+- C-4 は `844ec6f08` で `tobkiri pack manifest` を追加した。明示した成果物だけを読み、
+  ハッシュとサイズ、既存の型に基づく権限一覧を生成する。macOS/Linuxの既存ディレクトリ
+  読取りを使う。実際のCLIで生成、ビルド、検証する[CI 43599247031](https://github.com/harupipipipi/tobkiri/actions/runs/43599247031)を確認中。
 - C-15、C-16、D-6の一部は `77125f304`。Pack UIは親からの接続待ちを10秒で
   終え、接続失敗を表示する。最初の応答を待つpullは最大300秒とし、Coreが元の
   deadlineとキャンセルを適用する。停止・失敗時は未保存の行を外して下書きを維持する。
