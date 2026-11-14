@@ -2926,7 +2926,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じ成果物の別の実行で燃料切れだった。計測版は42件目の評価完了後に26,266,880 fuelを
   記録し、後続の処理で停止した。`25268e5c7` はPythonの実iteratorを保持したまま進め、
   反復ごとの同じ参照の追加・解放を省く。[原本比較43552218512](https://github.com/harupipipipi/tobkiri/actions/runs/43552218512)は通過し、
-  [実Wasm43552218468](https://github.com/harupipipipi/tobkiri/actions/runs/43552218468)で再検証する。
+  [実Wasm43552218468](https://github.com/harupipipipi/tobkiri/actions/runs/43552218468)も同じ42件と出力を確認した。
+  燃料残りは34,280,686（25,972,022増）。全カタログは燃料切れで、終了後の確保量は0だった。
+- `edc636278` はCI専用の計測成果物で、実カタログの読み込み件数の節目、スキーマの読み込み件数と
+  最後のファイル名を記録する。[実Wasm計測43552917269](https://github.com/harupipipipi/tobkiri/actions/runs/43552917269)で
+  上限を保ったまま停止位置を確認する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
