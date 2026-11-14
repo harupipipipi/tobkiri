@@ -3444,11 +3444,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   取り消し済みの測定結果を捨てる。[寿命の検証43561542672](https://github.com/harupipipipi/tobkiri/actions/runs/43561542672)を実行中。
   最初の2回はAppKitの非保持 `superview()` 取得でコンパイルが停止した。
   `ca1a62f50` は保持中のコンテナを呼び出し元から渡し、`subviews()` で実際の親子関係を検査する。
-  [修正後43561750355](https://github.com/harupipipipi/tobkiri/actions/runs/43561750355)で再検証する。
+  [修正後43561750355](https://github.com/harupipipipi/tobkiri/actions/runs/43561750355)が通過。
+  実WebKitで元のルートと同じパスの測定、文書全体のサイズを保ったクリップ、候補の取り消し、
+  ウィンドウ非表示後の取り外しを確認した。
   製品の親は引き継ぎ状態に応じて上下に伸びる。Core所有の確認欄に切り替える時は、
   ビューの `body/#root` の画面高ではなく、確認欄のsectionの実寸を親に返して外側の
   スクロールを維持する。親のモーダルとnative sheetでの撤去、拡大表示、子のスクロール
   とフォーカスも既存経路で確認する。
+- `9757b2495` と `2b7baf526` は既存LauncherのAppHandleで登録されたワーカーの
+  完了結果を、Tauriの `main` に対応する実AppKitコンテナへ渡す。
+  Storeの終了処理で失敗した結果や公開前に取り消された結果は表示に進めない。
+  閉じる、非表示、セッション再認証、終了で世代を無効化し、遅れた結果を拒否する。
+  独立Core Hostのビルドは既存LauncherのRustモジュールを含まないため、
+  [Desktop Installers](https://github.com/harupipipipi/tobkiri/actions/workflows/desktop-installers.yml)
+  に両機能を有効にした元Launcher側の回帰を追加した。
+  実際の画面からの開始には、既存の権限検証を通った通常Wasmとモジュール索引の
+  Launcher内での選択が残る。CI専用のパスや診断用Wasmを配布物に入れない。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
