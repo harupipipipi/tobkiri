@@ -85,7 +85,7 @@ use tobkiri_gate::{
     ResourceLimits, TrustedPrompt, UiEmbed,
 };
 use tobkiri_manifest::{
-    FileEntry, InputDeclaration, PackManifest, PortDeclaration, Ports, RuntimeSpec,
+    FileEntry, InputDeclaration, PackManifest, PortDeclaration, Ports, RuntimeConfig, RuntimeSpec,
     ShapeDefinition, ShapeKind, ShapeSidecar, UiDefinition, VerifiedPack,
 };
 use tobkiri_profile::{
@@ -1084,19 +1084,22 @@ impl Fixture {
                     core_modules: Default::default(),
                     component: "component.wasm".into(),
                     toolchain: "rust-1.94.0/wasm32-wasip2".into(),
-                    config: None,
+                    config: options.two_flow_providers.then(|| RuntimeConfig {
+                        path: "config.json".into(),
+                        shape: None,
+                    }),
                 },
                 provider_permissions,
             );
             substitute.ports.provides = vec![port("arithmetic")];
-            packs.push(write_pack(
-                &root,
-                substitute,
-                BTreeMap::from([
-                    ("component.wasm".into(), provider_bytes),
-                    ("wit/fixtures.wit".into(), wit.clone()),
-                ]),
-            )?);
+            let mut files = BTreeMap::from([
+                ("component.wasm".into(), provider_bytes),
+                ("wit/fixtures.wit".into(), wit.clone()),
+            ]);
+            if options.two_flow_providers {
+                files.insert("config.json".into(), br#"{"increment":7}"#.to_vec());
+            }
+            packs.push(write_pack(&root, substitute, files)?);
         }
 
         let mut ui_permissions = permissions(&["arithmetic", "entry"]);
@@ -2516,7 +2519,8 @@ async fn flow_dispatches_only_its_explicitly_bound_provider() -> TestResult {
                 let event = event.get("kind").ok_or("missing Flow event")?;
                 match event.get("kind").and_then(CanonValue::as_str) {
                     Some("completed") => {
-                        assert_eq!(event.get("value"), Some(&CanonValue::Int(42)));
+                        let expected = if selected == Some(SUBSTITUTE) { 48 } else { 42 };
+                        assert_eq!(event.get("value"), Some(&CanonValue::Int(expected)));
                         assert!(terminal.replace("completed").is_none());
                     }
                     Some("failed") => {
@@ -2543,16 +2547,18 @@ async fn flow_dispatches_only_its_explicitly_bound_provider() -> TestResult {
         );
         assert_eq!(failed_pull, selected.is_none());
         let rows = fixture.audit_rows(&session).await?;
-        for provider in [PROVIDER, SUBSTITUTE] {
-            assert_eq!(
-                has_pack_event(&rows, "dispatch", provider),
-                selected == Some(provider)
-            );
-            assert_eq!(
-                has_pack_event(&rows, "outcome", provider),
-                selected == Some(provider)
-            );
-        }
+        let call = EffectRequest::PortCall {
+            shape: shape("arithmetic"),
+            op: op("increment"),
+        };
+        assert_eq!(
+            effect_rows(&rows, &call, "dispatch")?.len(),
+            usize::from(selected.is_some())
+        );
+        assert_eq!(
+            effect_rows(&rows, &call, "outcome")?.len(),
+            usize::from(selected.is_some())
+        );
         session.close().await?;
     }
     Ok(())

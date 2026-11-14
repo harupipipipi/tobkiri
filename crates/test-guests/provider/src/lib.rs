@@ -4,16 +4,18 @@ struct Provider;
 use std::{cell::RefCell, collections::BTreeMap};
 use tobkiri::core::types::{CallbackHandle, Error, ErrorCode, StreamHandle};
 thread_local! {static STREAMS:RefCell<BTreeMap<u64,(u32,u32)>>=const{RefCell::new(BTreeMap::new())};}
+thread_local! {static INCREMENT: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };}
 
 impl exports::tobkiri::core::lifecycle::Guest for Provider {
-    fn init(_: String) -> Result<(), tobkiri::core::types::Error> {
+    fn init(config: String) -> Result<(), tobkiri::core::types::Error> {
+        INCREMENT.set(if config == r#"{"increment":7}"# { 7 } else { 1 });
         Ok(())
     }
     fn shutdown() {}
 }
 impl exports::local::proxy_test::arithmetic::Guest for Provider {
     fn increment(value: u32) -> u32 {
-        value.saturating_add(1)
+        value.saturating_add(INCREMENT.get())
     }
     fn floats(single: f32, double: f64) -> (f32, f64) {
         (single, double)
