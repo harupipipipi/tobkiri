@@ -152,15 +152,21 @@ async fn confirmed_publication_checks_handover_before_lock_and_holds_it_without_
 async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
     use super::super::LOCK;
 
-    for case in ["same", "candidate-root", "resolver-root", "lock-replaced"] {
+    for case in [
+        "same",
+        "candidate-root",
+        "resolver-root",
+        "lock-replaced-before-resolver",
+        "lock-replaced-before-verification",
+    ] {
         with_source(|source, read, cancel, budget| {
             let other_root = source.root.with_file_name("other-user-data");
             let owner = ChangingOwner {
                 first: &source.root,
-                next: if case == "same" || case == "lock-replaced" {
-                    &source.root
-                } else {
+                next: if matches!(case, "candidate-root" | "resolver-root") {
                     &other_root
+                } else {
+                    &source.root
                 },
                 calls: AtomicUsize::new(if case == "candidate-root" { 2 } else { 1 }),
             };
@@ -171,6 +177,7 @@ async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
             assert!(read.enter_recovery(&owner, cancel, true).is_err());
             assert!(read.begin_confirmed(&owner, cancel, budget).is_err());
             let candidate_root = read.acquire_candidate_root(&owner, cancel);
+            let mut held = lock.clone();
             if case == "candidate-root" {
                 assert_eq!(
                     candidate_root.unwrap_err().message,
@@ -183,27 +190,34 @@ async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
                         .unwrap(),
                     CandidateSelection::BundledCatalog
                 ));
-                let resolver_root = read.acquire_resolver_root(&owner, cancel);
-                if case == "resolver-root" {
-                    assert_eq!(
-                        resolver_root.unwrap_err().message,
+                if case == "lock-replaced-before-resolver" {
+                    held = lock.with_extension("held");
+                    fs::rename(&lock, &held).unwrap();
+                    fs::write(&lock, b"").unwrap();
+                }
+                match case {
+                    "resolver-root" => assert_eq!(
+                        read.acquire_resolver_root(&owner, cancel)
+                            .unwrap_err()
+                            .message,
                         "Setup root differs from the locked publication root"
-                    );
-                } else {
-                    resolver_root.unwrap();
-                    read.verify_confirmed(&owner, cancel).unwrap();
+                    ),
+                    "lock-replaced-before-resolver" => {
+                        assert!(read.acquire_resolver_root(&owner, cancel).is_err());
+                    }
+                    _ => {
+                        read.acquire_resolver_root(&owner, cancel).unwrap();
+                        read.verify_confirmed(&owner, cancel).unwrap();
+                    }
                 }
             }
 
-            let held = if case == "lock-replaced" {
-                let original = lock.with_extension("held");
-                fs::rename(&lock, &original).unwrap();
+            if case == "lock-replaced-before-verification" {
+                held = lock.with_extension("held");
+                fs::rename(&lock, &held).unwrap();
                 fs::write(&lock, b"").unwrap();
                 assert!(read.verify_confirmed(&owner, cancel).is_err());
-                original
-            } else {
-                lock
-            };
+            }
             assert!(!lock_free(&held));
             read.close_continuation().unwrap();
             assert!(read.receipt().verified());

@@ -3520,6 +3520,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   が指摘した決定値のサイズ差3件に限定したClippyの例外を付けた。既存の予算外に
   Boxを確保しないため、インライン表現を維持する。
   [再実行43565562034](https://github.com/harupipipipi/tobkiri/actions/runs/43565562034)はLinux・macOSの両方で通過した。
+- `d58a6f638` はWebKit試験内の繰り返し評価を別スコープにし、同じダイジェストを
+  持つ親候補への入れ替えを実AppKitのキー操作で確認する。
+  [実WebKit CI 43572515915](https://github.com/harupipipipi/tobkiri/actions/runs/43572515915)では
+  この確認が通過した。続く元Launcherのワーカー試験は単回入力の `clone` でコンパイルが
+  停止し、`81a146759` で試験のWasm作成時に入力を借り、ワーカーへの受付時に一度だけ消費する。
+- `6a480c2f5` は承認後の新規Setup候補を、元の公開ロックを保持した状態で再解決する。
+  引き継ぎをロック前に確認し、ロック下で復旧状態と候補選択・resolverの保存先を照合する。
+  一致時はロックとディレクトリの同一性を確認し、元のワーカー終了処理で実FDを閉じる。
+  ロック以外のFD・接続の残留やclose失敗は従来のcleanup検査で扱う。
+  [元Launcher CI 43573161607](https://github.com/harupipipipi/tobkiri/actions/runs/43573161607)と
+  [ロック比較 CI 43573161659](https://github.com/harupipipipi/tobkiri/actions/runs/43573161659)で検証中。
+  次は同じStoreでHostカタログを準備し、配布カタログのProfileを取り直した後に物理lockを再読込する。
+  `CatalogIo` のloaderを再利用し、参照の受付を各実呼び出しに結び付ける。各読込の順序と
+  保存直前の同一性を比較できてから、試験用の別入口を整理する。製品Setupからの開始、
+  active Profileの再確認と、元のジャーナルへの書き込みは残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、

@@ -158,7 +158,7 @@ impl PublicationRead {
         }
         let op = self.candidate_operation(owner, cancellation)?;
         let root = read_root(&op)?;
-        self.check_confirmed_root(&root)?;
+        self.check_confirmed_root(&op, &root)?;
         self.fresh.root = Some(root);
         Ok(())
     }
@@ -326,8 +326,9 @@ impl PublicationRead {
                 "bundled Setup candidate is not held",
             ));
         }
-        let root = read_root(&self.candidate_operation(owner, cancellation)?)?;
-        self.check_confirmed_root(&root)?;
+        let op = self.candidate_operation(owner, cancellation)?;
+        let root = read_root(&op)?;
+        self.check_confirmed_root(&op, &root)?;
         self.fresh.resolver_root = Some(root);
         self.fresh.progress = Progress::Resolving;
         Ok(())
@@ -527,18 +528,23 @@ impl PublicationRead {
         Self::operation(&self.invocation, &self.cleanup, owner, cancellation)
     }
 
-    fn check_confirmed_root(&self, root: &Path) -> Result<()> {
+    fn check_confirmed_root<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        root: &Path,
+    ) -> Result<()> {
         #[cfg(unix)]
-        if let Some(confirmed) = &self.confirmed
-            && !confirmed.scope.directory.is_profiles_at(root)
-        {
-            return Err(OriginalAuthorityError::unsupported(
-                OriginalAuthorityStage::Guard,
-                "Setup root differs from the locked publication root",
-            ));
+        if let Some(confirmed) = &self.confirmed {
+            if !confirmed.scope.directory.is_profiles_at(root) {
+                return Err(OriginalAuthorityError::unsupported(
+                    OriginalAuthorityStage::Guard,
+                    "Setup root differs from the locked publication root",
+                ));
+            }
+            confirmed.scope.validate(op)?;
         }
         #[cfg(not(unix))]
-        let _ = root;
+        let _ = (op, root);
         Ok(())
     }
 }
