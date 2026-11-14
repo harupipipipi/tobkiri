@@ -17,6 +17,7 @@ pub struct BootstrapActivationCandidate {
     source_profile: CoreValue,
     bundle_digest: tobkiri_canon::Digest,
     lock_digest: tobkiri_canon::Digest,
+    definition_digest: tobkiri_canon::Digest,
 }
 
 impl BootstrapActivationCandidate {
@@ -35,6 +36,56 @@ impl BootstrapActivationCandidate {
     /// Digest of the resolved Profile Lock, separate from the bundle lock.
     pub fn lock_digest(&self) -> &tobkiri_canon::Digest {
         &self.lock_digest
+    }
+
+    pub fn definition_digest(&self) -> &tobkiri_canon::Digest {
+        &self.definition_digest
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture(
+        confirmation: CoreValue,
+        source_profile: CoreValue,
+        bundle_digest: tobkiri_canon::Digest,
+        resolved_digests: [tobkiri_canon::Digest; 3],
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Self> {
+        let [definition, plan, lock] = resolved_digests;
+        let identity = ResolvedProfileIdentity {
+            definition,
+            plan,
+            lock,
+        };
+        let value = CoreValue::object_shared(
+            [
+                ("confirmation", confirmation.share()),
+                ("source_profile", source_profile),
+                (
+                    "profile_definition_digest",
+                    CoreValue::string(identity.definition.as_str(), budget)?,
+                ),
+                (
+                    "bundle_digest",
+                    CoreValue::string(bundle_digest.as_str(), budget)?,
+                ),
+                (
+                    "plan_digest",
+                    CoreValue::string(identity.plan.as_str(), budget)?,
+                ),
+            ]
+            .into_iter()
+            .map(Ok),
+            budget,
+        )?;
+        admit_candidate(
+            &value,
+            Reviewed {
+                confirmation: &confirmation,
+                bundle_digest: &bundle_digest,
+                identity: &identity,
+            },
+            budget,
+        )
     }
 }
 
@@ -170,6 +221,7 @@ fn admit_candidate(
         source_profile,
         bundle_digest: review.bundle_digest.clone(),
         lock_digest: review.identity.lock.clone(),
+        definition_digest: source_digest,
     })
 }
 

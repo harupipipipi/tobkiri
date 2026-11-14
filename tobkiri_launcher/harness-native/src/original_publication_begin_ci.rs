@@ -1,5 +1,6 @@
 //! Exact original journal encoding and persistence on CI-owned state.
 use super::super::*;
+use crate::BootstrapActivationCandidate;
 use hmac::{Hmac, Mac};
 use sha2::{Digest as _, Sha256};
 use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, MAX_BYTES};
@@ -20,9 +21,26 @@ fn begin<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     directory: &Directory,
     profiles: &Path,
-    target: Target<'_>,
+    candidate: &BootstrapActivationCandidate,
+    read_published_source: impl FnOnce() -> Result<(CoreValue, Digest)>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<CoreBuffer> {
+    let (source, raw_bundle_digest) = read_published_source()?;
+    let definition = source.digest_guest(budget).map_err(capacity)?;
+    if &definition != candidate.definition_digest()
+        || &raw_bundle_digest != candidate.bundle_digest()
+    {
+        return Err(raw(
+            crate::bootstrap_review::DENIED,
+            "bootstrap target changed after confirmation",
+        ));
+    }
+    let target = Target {
+        confirmation: candidate.confirmation(),
+        definition: &definition,
+        lock: candidate.lock_digest(),
+    };
+    drop(source);
     if directory.exists(op, JOURNAL)? {
         return Err(value(
             "Profile publication already has an unfinished intent",
@@ -201,6 +219,33 @@ async fn original_publication_intent_bytes_match() {
     )
     .unwrap();
     let lock = Digest::parse(expected["candidate"]["lock_digest"].as_str().unwrap()).unwrap();
+    let bundle = Digest::parse(oracle_digest(matched)).unwrap();
+    let plan = Digest::parse(expected["candidate"]["plan_digest"].as_str().unwrap()).unwrap();
+    let fixture_root = path.with_file_name("inactive-registry-inputs");
+    let load_candidate = |budget: &Arc<dyn AllocationBudget>| {
+        let source = fs::read(fixture_root.join("source-profile.json")).unwrap();
+        let source = CoreValue::parse_guest(&source, budget).unwrap();
+        let confirmation = serde_json::to_vec(&imported["setup_review"]["confirmation"]).unwrap();
+        let confirmation = CoreValue::parse_guest(&confirmation, budget).unwrap();
+        BootstrapActivationCandidate::fixture(
+            confirmation,
+            source,
+            bundle.clone(),
+            [definition.clone(), plan.clone(), lock.clone()],
+            budget,
+        )
+        .unwrap()
+    };
+    let reread = |case: &str, budget: &Arc<dyn AllocationBudget>| -> Result<(CoreValue, Digest)> {
+        let dir = fixture_root.join(format!("publication-{case}"));
+        let source = fs::read(dir.join("reread-source.json")).unwrap();
+        let raw_lock = fs::read(dir.join("reread-bundle.lock.json")).unwrap();
+        assert!(source.len() <= MAX_BYTES && raw_lock.len() <= MAX_BYTES);
+        Ok((
+            CoreValue::parse_guest(&source, budget).map_err(capacity)?,
+            Digest::hash(&raw_lock),
+        ))
+    };
 
     with_source(|source, read, cancel, budget| {
         use std::os::unix::fs::PermissionsExt;
@@ -208,8 +253,7 @@ async fn original_publication_intent_bytes_match() {
         let op = operation(read, source, cancel);
         let root = &source.root;
         let profiles = root.join("profiles");
-        let confirmation = serde_json::to_vec(&imported["setup_review"]["confirmation"]).unwrap();
-        let confirmation = CoreValue::parse_guest(&confirmation, budget).unwrap();
+        let candidate = load_candidate(budget);
         let key = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         let result = with_confirmed_predecessor(&op, root, budget, |predecessor| {
             assert!(predecessor.is_none());
@@ -221,10 +265,10 @@ async fn original_publication_intent_bytes_match() {
                 &op,
                 &dir,
                 &profiles,
-                Target {
-                    confirmation: &confirmation,
-                    definition: &definition,
-                    lock: &lock,
+                &candidate,
+                || {
+                    assert!(!lock_free(&profiles.join(LOCK)));
+                    reread("matched", budget)
                 },
                 budget,
             )?;
@@ -257,8 +301,7 @@ async fn original_publication_intent_bytes_match() {
         let op = operation(read, source, cancel);
         let root = &source.root;
         let profiles = root.join("profiles");
-        let confirmation = serde_json::to_vec(&imported["setup_review"]["confirmation"]).unwrap();
-        let confirmation = CoreValue::parse_guest(&confirmation, budget).unwrap();
+        let candidate = load_candidate(budget);
         with_confirmed_predecessor(&op, root, budget, |predecessor| {
             assert!(predecessor.is_none());
             let dir = Directory::capture(&op, &profiles, false)?;
@@ -269,11 +312,8 @@ async fn original_publication_intent_bytes_match() {
                     &op,
                     &dir,
                     &profiles,
-                    Target {
-                        confirmation: &confirmation,
-                        definition: &definition,
-                        lock: &lock,
-                    },
+                    &candidate,
+                    || reread("matched", budget),
                     budget,
                 )
             };
@@ -300,4 +340,56 @@ async fn original_publication_intent_bytes_match() {
         .unwrap();
         assert!(lock_free(&profiles.join(LOCK)));
     });
+
+    for case in ["changed-source", "changed-lock"] {
+        let original = imported["publication_checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["case"] == case)
+            .unwrap();
+        with_source(|source, read, cancel, budget| {
+            let op = operation(read, source, cancel);
+            let root = &source.root;
+            let profiles = root.join("profiles");
+            let candidate = load_candidate(budget);
+            let error = with_confirmed_predecessor(&op, root, budget, |predecessor| {
+                assert!(predecessor.is_none());
+                let dir = Directory::capture(&op, &profiles, false)?;
+                begin(
+                    &op,
+                    &dir,
+                    &profiles,
+                    &candidate,
+                    || {
+                        assert!(!lock_free(&profiles.join(LOCK)));
+                        let (source, lock) = reread(case, budget)?;
+                        assert_eq!(lock.as_str(), oracle_digest(original));
+                        Ok((source, lock))
+                    },
+                    budget,
+                )
+            })
+            .unwrap_err();
+            assert_eq!(error.class, crate::bootstrap_review::DENIED);
+            let original = &original["outcome"]["error"];
+            assert_eq!(
+                original["type"],
+                "ecosystem.defaultspack.domain.runtime_v4.service.ProfileResolutionDenied"
+            );
+            assert_eq!(error.message, original["message"].as_str().unwrap());
+            assert!(error.cause.is_none() && error.context.is_none() && !error.suppressed);
+            assert!(
+                original["cause"].is_null()
+                    && original["context"].is_null()
+                    && original["suppressed"] == false
+            );
+            assert!(!profiles.join(KEY).exists() && !profiles.join(JOURNAL).exists());
+            assert!(lock_free(&profiles.join(LOCK)));
+        });
+    }
+}
+
+fn oracle_digest(row: &serde_json::Value) -> &str {
+    row["reread_bundle_digest"].as_str().unwrap()
 }

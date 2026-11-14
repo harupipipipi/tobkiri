@@ -777,6 +777,14 @@ def _observe_publication_checks(
                     raise AssertionError("original lock reread is outside the confirmed catalog")
                 events.append("reread-bundle-lock-under-publication-lock")
                 reread_digest = "sha256:" + hashlib.sha256(result).hexdigest()
+                # Keep the final source and exact physical lock bytes for the
+                # separate Rust writer comparison. These stay on the CI runner.
+                from tobkiri_protocol.canonical import canonical_bytes
+
+                (root.parent / "reread-source.json").write_bytes(
+                    canonical_bytes(reread.profiles[confirmation["profile_id"]]),
+                )
+                (root.parent / "reread-bundle.lock.json").write_bytes(result)
             return result
 
         def watch_host_catalog(*args: Any, **kwargs: Any) -> Any:
