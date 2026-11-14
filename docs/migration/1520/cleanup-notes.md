@@ -2943,10 +2943,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `2f5a685c9` は既存の埋め込みindexを型と配列順を保って比較し、不一致時は従来のJSON比較を使う。
   blobの重複判定は実計算済みSHA-256で候補を絞り、同じdigest内で実バイトを比較する。
   `446676b18` はApp計測・比較成果物に限り、埋め込みカタログのソースを展開不要な既存codecで保持する。
-  元の生バイト、読込順、実行時のハッシュ照合と上限を保つ。スキーマとPythonモジュールの圧縮は継続する。
-  [JSON比較後43554376094](https://github.com/harupipipipi/tobkiri/actions/runs/43554376094)と
-  [展開省略後43554528659](https://github.com/harupipipipi/tobkiri/actions/runs/43554528659)で
-  実燃料とメモリを確認する。
+  [JSON比較後43554376094](https://github.com/harupipipipi/tobkiri/actions/runs/43554376094)は42件を完了し、全カタログは燃料切れ。
+  [展開省略後43554528659](https://github.com/harupipipipi/tobkiri/actions/runs/43554528659)は内側Wasmが
+  37,765,552バイトとなり、既存32MiB上限で停止した。`dec0146e2` で無圧縮化を取り消した。
+- [実測43554257071](https://github.com/harupipipipi/tobkiri/actions/runs/43554257071)の
+  データ所有者の構築前後は1,966,154,985→1,413,862,289 fuel。全カタログは最初の項目の処理中、
+  33回目のスキーマ読込後に停止した。`b7a60f5f3` はindex、blobの展開・検証、読込対応表、
+  最終照合に分けて計測する。[計測CI43555145202](https://github.com/harupipipipi/tobkiri/actions/runs/43555145202)
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3374,6 +3377,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [原本比較43553784493](https://github.com/harupipipipi/tobkiri/actions/runs/43553784493)は両OSで通過し、
   Linuxでは原本と同じ署名付きintent、初回鍵、危険なリンクの拒否をRustで確認した。
   製品の書込には、実際のクリックで得た確認と再解決、ジャーナル下の登録・有効化が必要。
+- [再実行43553458280](https://github.com/harupipipipi/tobkiri/actions/runs/43553458280)で、ローダーが読んだ後の
+  raw lockの再読込をLinux・macOSで確認した。`4a3a3e172` は元の最後のカタログ読込で得た
+  Profileと別読込のraw lockを、CI用の署名付きintent書き込みの直前に候補と照合する。
+  `e1c01c38a` は保持中の公開ロックが指すディレクトリを使い、置換が起きた場合は書き込み前に止める。
+  [固定原本とRustの比較43555264904](https://github.com/harupipipipi/tobkiri/actions/runs/43555264904)で検証する。
+  実際のクリック後に新しいWasmローダーを動かす接続は残る。
 - Setupの確認欄を移す際は `DefaultsReview.tsx` と `DefaultsConfirmationDetails.tsx` の表示を
   再利用する。現在の `legacy.rs` が表示するSetupと `core_host.rs` の既存承認シートは
   異なる入口。既存のUI操作を維持するため、元のSetup内にCoreが所有する独立の確認領域を
