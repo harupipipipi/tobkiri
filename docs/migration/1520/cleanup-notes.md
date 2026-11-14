@@ -3577,6 +3577,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   比較テストに組み込んだ。[実署名付きPack比較CI 43599247113](https://github.com/harupipipipi/tobkiri/actions/runs/43599247113)でUbuntuは通過し、macOSで実行中。
   元の全スキーマ診断と一部の複合値は未移植。残るCAS照合をつないでからclosureを
   組み立て、同じRuntimeでProfile一覧を差し替える。
+  `26079f919`、`576fb6a9e` は元のコンパイラの4文書を実ファイルから順に再読込し、Pack ID、
+  source identity、canonicalなartifactと実行カタログのdigest、sidecarの生バイトのdigest、
+  indexのsealまで照合する。4文書を共有したままWIT等の検証に必要な以後の項目を扱う。
+  実装ファイルとOperationの全件照合、コンパイル結果とreceiptの照合、署名付き一覧の
+  製品経路での照合、依存Packのclosure、Profile一覧の差し替えが残る。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
@@ -3594,7 +3599,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   子孫の統合ブランチに積んでいる。契約・SDK・UIを別々にレビューできる単位で保持する。
   E-1は `soon` 向けの [Launcher表示 #1526](https://github.com/harupipipipi/tobkiri/pull/1526) と
   [Pack UI SDK #1527](https://github.com/harupipipipi/tobkiri/pull/1527) を切り出した。
-  SDKのみで11件が通過。契約テストには現在 `tobkiri-{canon,gate,wit,manifest}` と基準WITが必要。
+  SDKのみで11件が通過。[WIT契約 #1530](https://github.com/harupipipipi/tobkiri/pull/1530) は
+  基準WITを含むソースのドラフト。契約テストには現在 `tobkiri-{canon,gate,wit,manifest}` が必要。
   E-2は [Wasmtimeソース #1528](https://github.com/harupipipipi/tobkiri/pull/1528) と
   [旧検証記録 #1529](https://github.com/harupipipipi/tobkiri/pull/1529) を別のドラフトにした。
   Wasmtimeは公開された2アーカイブのハッシュ・ライセンス・Git treeと差分を確認し、
@@ -3643,7 +3649,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - D-2 は `78c549e62` で、Launcher更新欄と日英の説明の表示をHarnessに揃えた。
   更新APIに送る既存の `defaultspack` キーは互換性のため引き続き使う。
 - D-3 のShell起動画面を `13bb521e6` で日英対応にした。通常の起動操作を
-  [Launcher CI 43598692796](https://github.com/harupipipipi/tobkiri/actions/runs/43598692796)で確認中。
+  [Launcher CI 43598692796](https://github.com/harupipipipi/tobkiri/actions/runs/43598692796)で確認し、
+  関連49件と実AppKit/WebKitが通過した。登録済みモデル一覧の表示は `7c2b4a962` で日英対応。
   共通ヘルパーと他画面の直書き文言は残る。
 - C-7 は、イベントだけが呼び出し元の `has-ui` を受け、ツールとコマンドには
   実画面の状態が届かない。`5bcc4f786` に仕様と試験を記録し、
@@ -3652,6 +3659,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - C-2 は `99cfd5f65` で、承認されたUI assetと可変なユーザーデータの境界、
   廃止された動的Pythonツールのエラーと移行先をドキュメントに反映した。
   `3c758088b` では、同READMEの旧フォルダ一覧からも配布物の配置先としての説明を修正した。
+- C-1 は `e53bfb384` で `packs/README.md` に新Pack、Pi、MCP、プロンプト、旧v4の開始点を整理した。
+- A-11 は `cfb010379` で両プロンプトの名乗りをTobkiriにした。既存の本文の残りは維持する。
 - C-4 は `844ec6f08` で `tobkiri pack manifest` を追加した。明示した成果物だけを読み、
   ハッシュとサイズ、既存の型に基づく権限一覧を生成する。macOS/Linuxの既存ディレクトリ
   読取りを使う。実際のCLIで生成、ビルド、検証する[CI 43599247031](https://github.com/harupipipipi/tobkiri/actions/runs/43599247031)を確認中。
