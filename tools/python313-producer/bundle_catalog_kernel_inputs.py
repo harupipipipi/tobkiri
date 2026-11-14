@@ -112,6 +112,27 @@ def app_resource_loader(source: bytes) -> bytes:
                         b'        actual = kernel.app_source_sha256(raw)\n')
 
 
+def app_catalog_occurrence_hash(source: bytes) -> bytes:
+    """Preserve the original entry and reread calls, replacing only their hash."""
+    source = _replace_one(source, b'import hashlib\n', b'import hashlib\n'
+                          b'from _tobkiri_schema_kernel import app_source_sha256\n')
+    helper = b'''
+def _app_occurrence_digest(raw: object) -> str:
+    if type(raw) is bytes and len(raw) <= 4 * 1024 * 1024:
+        return app_source_sha256(raw)
+    return hashlib.sha256(raw).hexdigest()
+
+
+'''
+    anchor = b'@lru_cache(maxsize=512)\n'
+    source = _replace_one(source, anchor, helper + anchor)
+    for name in (b'raw', b'catalog_raw'):
+        statement = b" = 'sha256:' + hashlib.sha256(" + name + b').hexdigest()\n'
+        source = _replace_one(source, statement,
+                              b" = 'sha256:' + _app_occurrence_digest(" + name + b')\n')
+    return source
+
+
 def derive(files: dict[str, bytes], entry: bytes, export: bytes,
            extension_root: Path, *, app_backend: bool = False,
            schema_progress: bool = False,
@@ -154,6 +175,13 @@ def derive(files: dict[str, bytes], entry: bytes, export: bytes,
 
     translation = None
     if app_backend:
+        catalog_name = 'tobkiri_protocol/bundle_catalog.py'
+        catalog = files[catalog_name]
+        files[catalog_name] = app_catalog_occurrence_hash(catalog)
+        changes[catalog_name] = {
+            'original_sha256': identity(catalog)['sha256'],
+            'derived_sha256': identity(files[catalog_name])['sha256'],
+        }
         provider = (source/'app_provider.py').read_bytes()
         additions['app_schema_provider.py'] = provider
         additions['app_schema_model.py'] = (source/'app_schema_model.py').read_bytes()

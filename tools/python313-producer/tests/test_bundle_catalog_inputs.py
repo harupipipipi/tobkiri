@@ -19,6 +19,44 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class BundleInputsTests(unittest.TestCase):
+    def test_app_catalog_hash_keeps_entry_and_pin_reread_in_the_original_positions(self):
+        path = ROOT / 'tobkiri_runtime/tobkiri_protocol/bundle_catalog.py'
+        original = path.read_bytes()
+        derived = kernel_inputs.app_catalog_occurrence_hash(original)
+
+        def statements(raw):
+            catalog = next(node for node in ast.parse(raw).body
+                           if isinstance(node, ast.ClassDef) and node.name == 'BundledCatalog')
+            loader = next(node for node in catalog.body
+                          if isinstance(node, ast.FunctionDef) and node.name == 'load_from_reader')
+            return ast.unparse(loader)
+
+        expected = statements(original)
+        for name in ('raw', 'catalog_raw'):
+            expected = expected.replace(f'hashlib.sha256({name}).hexdigest()',
+                                        f'_app_occurrence_digest({name})')
+        self.assertEqual(statements(derived), expected)
+        with self.assertRaises(ValueError):
+            kernel_inputs.app_catalog_occurrence_hash(derived)
+
+        syntax = ast.parse(derived)
+        digest = next(node for node in syntax.body
+                      if isinstance(node, ast.FunctionDef) and node.name == '_app_occurrence_digest')
+        calls = []
+
+        def rust_hash(raw):
+            calls.append(raw)
+            return hashlib.sha256(raw).hexdigest()
+
+        scope = {'hashlib': hashlib, 'app_source_sha256': rust_hash}
+        exec(compile(ast.Module(body=[digest], type_ignores=[]), str(path), 'exec'), scope)
+        hash_entry = scope['_app_occurrence_digest']
+        first = b'original occurrence'
+        reread = b'changed reread'
+        self.assertNotEqual(hash_entry(first), hash_entry(reread))
+        self.assertEqual(hash_entry(memoryview(first)), hashlib.sha256(first).hexdigest())
+        self.assertEqual(calls, [first, reread])
+
     def test_embedded_identity_fast_path_keeps_json_types_and_order(self):
         adapter = ROOT / inputs.PACK / 'python/bundle_catalog_adapter.py'
         syntax = ast.parse(adapter.read_bytes())
