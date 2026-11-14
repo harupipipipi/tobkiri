@@ -179,10 +179,12 @@ async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
             let candidate_root = read.acquire_candidate_root(&owner, cancel);
             let mut held = lock.clone();
             if case == "candidate-root" {
-                assert_eq!(
-                    candidate_root.unwrap_err().message,
-                    "Setup root differs from the locked publication root"
-                );
+                assert!(matches!(
+                    candidate_root.unwrap_err().cause,
+                    Some(OriginalAuthorityCause::Unsupported(
+                        "Setup root differs from the locked publication root"
+                    ))
+                ));
             } else {
                 candidate_root.unwrap();
                 assert!(matches!(
@@ -196,12 +198,14 @@ async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
                     fs::write(&lock, b"").unwrap();
                 }
                 match case {
-                    "resolver-root" => assert_eq!(
+                    "resolver-root" => assert!(matches!(
                         read.acquire_resolver_root(&owner, cancel)
                             .unwrap_err()
-                            .message,
-                        "Setup root differs from the locked publication root"
-                    ),
+                            .cause,
+                        Some(OriginalAuthorityCause::Unsupported(
+                            "Setup root differs from the locked publication root"
+                        ))
+                    )),
                     "lock-replaced-before-resolver" => {
                         assert!(read.acquire_resolver_root(&owner, cancel).is_err());
                     }
