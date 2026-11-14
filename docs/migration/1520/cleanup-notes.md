@@ -3479,7 +3479,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   AppKitの試験と、フィクスチャの変更・リンク・不正索引の拒否が通過した。
   `bab923a47` は通常版を作った同じCIで、binderが記録したレシートのハッシュを
   元Launcherのデバッグビルドへ渡す。ステージの封印とTauri側のコピーを検証する
-  [配置CI 43564606334](https://github.com/harupipipipi/tobkiri/actions/runs/43564606334)を開始した。
+  [配置CI 43564606334](https://github.com/harupipipipi/tobkiri/actions/runs/43564606334)は成功した。
+  同じ通常版の実Wasmで初期化、元のLauncherでのステージ封印、Tauri側へのコピーを照合した。
   既定DMGへの固定レシート供給と、既存Setupルートからの開始、確認操作の接続は残る。
 - `/panel/setup` は認証後のSPA内遷移なので、全ページのロード通知をSetup開始の
   根拠にはできない。現状の表示枠は確認チェックと有効化ボタンも含む。読み取り専用表示を
@@ -3497,8 +3498,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   有効化ボタンを再利用する。専用WebKitコンテントワールドは、実入力で確認したチェックボックスと
   同じ要素への確認操作を照合し、固定のメッセージを一度だけRustへ渡す。表示候補のdigestは
   Rustが保持し、メッセージには含めない。元のSetupの操作経路はまだこの入力に切り替えていない。
-  ローカルのJavaScript 7件が通過し、[実WebKit再実行43566438224](https://github.com/harupipipipi/tobkiri/actions/runs/43566438224)
-  でAppKitの入力と元Launcherの型を検証する。
+  ローカルのJavaScript 7件が通過した。[実WebKit再実行43566438224](https://github.com/harupipipipi/tobkiri/actions/runs/43566438224)
+  はコンパイルと画面描画を通過したが、テストのマウス入力が確認チェックボックスに届かず停止した。
+- `d328b93e2` はRustが保持する候補と親画面を確定操作時に再照合し、ワーカーが返した
+  確認オブジェクト全体を次の実Wasm Storeへ渡す。元の判定はそのStoreで候補を再生成し、
+  元の確認と比較する。検証済み判定はワーカー終了後にDATAとして返し、有効化の書き込みは
+  今後接続する。テスト入力はAppKitのキーボード操作へ切り替えた。
+  `bb161016d` は同じダイジェストの親候補を入れ替えた後に旧画面からの入力を拒否する回帰を追加した。
+  [修正後のCI 43572029432](https://github.com/harupipipipi/tobkiri/actions/runs/43572029432)では、
+  固定の元listingから確認全体を取り出すRust試験、実WebKitの操作、元Launcherのワーカーを検証する。
 - 既存Hostの起動は `pack_control_v4.py` のAuthority DBと `profile_definition_store_v4.py` の
   ProfileレジストリをSetup表示前に初期化する。どちらも不在という条件では既存の初回Setupを
   接続できない。現ワーカーの旧復旧経路はジャーナル削除、ディレクトリとロックの作成・chmod、
