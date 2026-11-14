@@ -9,6 +9,8 @@ mod native_ipc_probe;
 
 #[cfg(all(feature = "core-host", target_os = "macos"))]
 mod native_plan_review;
+#[cfg(all(feature = "native-setup-review", target_os = "macos"))]
+mod native_setup_review;
 #[cfg(all(feature = "core-host", target_os = "macos"))]
 mod project_directory_picker;
 #[cfg(feature = "core-host")]

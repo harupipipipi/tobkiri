@@ -8,6 +8,7 @@ default = []
 core-host = ["dep:tobkiri-launcher-core-host", "dep:async-trait", "dep:tokio", "dep:ulid"]
 native-source-inspection = ["dep:tobkiri-core", "dep:tokio", "dep:async-trait"]
 native-harness-bootstrap = ["dep:tobkiri-core", "dep:tobkiri-gate", "dep:tobkiri-harness-native", "dep:tobkiri-wasm", "dep:tokio"]
+native-setup-review = ["dep:objc2-web-kit"]
 
 [lib]
 name = "tobkiri_launcher_lib"
@@ -65,6 +66,11 @@ shell-words = "1"
 [dev-dependencies]
 wat = "=1.252.0"
 
+[[test]]
+name = "native_setup_review_webkit"
+harness = false
+required-features = ["native-setup-review"]
+
 # Development startup authenticates large VM images too. Optimize the digest
 # implementation rather than omitting any seal/inventory verification pass.
 # Release packaging retains its existing profile below.
@@ -85,6 +91,7 @@ tauri-plugin-single-instance = "2.4.2"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+objc2-web-kit = { version = "=0.3.2", optional = true }
 dispatch2 = "0.3"
 block2 = "0.6"
 

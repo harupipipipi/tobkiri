@@ -194,6 +194,11 @@ struct SourceProvenance<'a> {
 
 #[cfg(not(test))]
 fn main() {
+    if cfg!(feature = "native-setup-review") && std::env::var_os("CARGO_CFG_TARGET_OS").is_some_and(|os| os == "macos") {
+        let document = "../setup-review-ui/native.html";
+        println!("cargo:rerun-if-changed={document}");
+        assert!(Path::new(document).is_file(), "run npm run build:setup-review before building the native Setup review");
+    }
     if cfg!(feature = "core-host") {
         // The optional in-process host has its own asset/config/capability set.
         // It does not stage or authenticate legacy Python/VM resources.

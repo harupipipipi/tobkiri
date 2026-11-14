@@ -10,6 +10,10 @@ on:
       - 'tobkiri_launcher/core-host/src/native_contract.rs'
       - 'tobkiri_launcher/core-host/src/runtime.rs'
       - 'tobkiri_launcher/src-tauri/src/core_host.rs'
+      - 'tobkiri_launcher/src-tauri/src/native_setup_review.rs'
+      - 'tobkiri_launcher/src-tauri/tests/native_setup_review_webkit.rs'
+      - 'tobkiri_launcher/src-tauri/build.rs'
+      - 'tobkiri_launcher/src-tauri/Cargo.*'
       - 'tobkiri_launcher/frontend/src/lib/defaultsSetup*.ts'
       - 'tobkiri_launcher/frontend/src/pages/Defaults*Review*.tsx'
       - 'tobkiri_launcher/frontend/src/pages/DefaultsConfirmationDetails.tsx'
@@ -78,3 +82,7 @@ jobs:
         working-directory: tobkiri_launcher/frontend
         run: npm run build:setup-review
       - run: cargo check --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml --features core-host
+      - name: Exercise the isolated view in actual AppKit and WebKit
+        run: >-
+          cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
+          --features core-host,native-setup-review --test native_setup_review_webkit

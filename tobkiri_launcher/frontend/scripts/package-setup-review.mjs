@@ -32,7 +32,7 @@ function hash(value) {
 }
 
 const document = index.replace(csp,
-  `default-src 'none'; script-src ${hash(script)}; style-src ${hash(style)}; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'`)
+  `default-src 'none'; script-src ${hash(script)}; style-src ${hash(style)}; base-uri 'none'; form-action 'none'; frame-src 'none'`)
   .replace(scriptTag, () => `<script type="module">${script}</script>`)
   .replace(styleTag, () => `<style>${style}</style>`);
 await writeFile(new URL('native.html', output), document);
