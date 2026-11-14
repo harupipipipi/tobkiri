@@ -13,7 +13,10 @@ fn main() {
         SetupReviewView,
     };
     use objc2::{rc::autoreleasepool, runtime::AnyObject, MainThreadMarker, MainThreadOnly};
-    use objc2_app_kit::{NSApplication, NSBackingStoreType, NSView, NSWindow, NSWindowStyleMask};
+    use objc2_app_kit::{
+        NSApplication, NSBackingStoreType, NSEvent, NSEventModifierFlags, NSEventType, NSView,
+        NSWindow, NSWindowStyleMask,
+    };
     use objc2_foundation::{NSDate, NSError, NSPoint, NSRect, NSRunLoop, NSSize, NSString, NSURL};
     use objc2_web_kit::{WKWebView, WKWebViewConfiguration};
     use std::cell::Cell;
@@ -58,6 +61,59 @@ fn main() {
                 return result.expect("WebKit did not identify the Setup anchor");
             }
             assert!(Instant::now() < deadline, "WebKit sample did not complete");
+            pump();
+        }
+    }
+
+    fn click(window: &NSWindow, view: &WKWebView, selector: &str, deadline: Instant) {
+        let position = Rc::new(Cell::new(None));
+        let observed = position.clone();
+        let callback = RcBlock::new(move |value: *mut AnyObject, error: *mut NSError| {
+            let point = error
+                .is_null()
+                .then(|| {
+                    let text =
+                        unsafe { value.as_ref() }.and_then(AnyObject::downcast_ref::<NSString>)?;
+                    let [x, y] = serde_json::from_str::<[f64; 2]>(&text.to_string()).ok()?;
+                    Some(NSPoint::new(x, y))
+                })
+                .flatten();
+            observed.set(Some(point));
+        });
+        let selector = serde_json::to_string(selector).unwrap();
+        let script = format!(
+            "(() => {{
+                const el = document.querySelector({selector});
+                el.scrollIntoView({{block: 'center'}});
+                const {{x, y, width, height}} = el.getBoundingClientRect();
+                return JSON.stringify([x + width / 2, y + height / 2]);
+            }})()"
+        );
+        unsafe {
+            view.evaluateJavaScript_completionHandler(&NSString::from_str(&script), Some(&callback))
+        };
+        let mut point = loop {
+            if let Some(point) = position.get() {
+                break point.expect("confirmation control position");
+            }
+            assert!(
+                Instant::now() < deadline,
+                "confirmation control position timed out"
+            );
+            pump();
+        };
+        if !view.isFlipped() {
+            point.y = view.bounds().size.height - point.y;
+        }
+        let point = view.convertPoint_toView(point, None);
+        for event_type in [NSEventType::LeftMouseDown, NSEventType::LeftMouseUp] {
+            let event = unsafe {
+                NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+                    event_type, point, NSEventModifierFlags::empty(), 0.0, window.windowNumber(),
+                    None, 0, 1, 1.0,
+                )
+            }.expect("AppKit click event");
+            window.sendEvent(&event);
             pump();
         }
     }
@@ -140,6 +196,77 @@ fn main() {
         drop(view);
         assert_eq!(slot.subviews().len(), 0);
 
+        let accepted = Rc::new(Cell::new(0));
+        let observed = accepted.clone();
+        let expected = fixture["recommended_default_profile"]["confirmation"]
+            ["confirmation_digest"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let interactive =
+            SetupReviewView::mount_with_confirmation(mtm, &slot, listing, move |result| {
+                assert_eq!(result.confirmation_digest(), expected);
+                observed.set(observed.get() + 1);
+            })
+            .unwrap();
+        let webview = interactive.webview();
+        window.makeKeyAndOrderFront(None);
+        window.orderFrontRegardless();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !evaluate_boolean(
+            webview,
+            "String(document.querySelector('input[data-native-setup-reviewed]')?.disabled === false &&
+             document.querySelector('button[data-native-setup-confirm]')?.disabled === true &&
+             !window.webkit?.messageHandlers?.tobkiriSetupConfirmation)",
+            deadline,
+        ) {
+            assert!(Instant::now() < deadline, "interactive review did not render");
+            pump();
+        }
+        assert!(evaluate_boolean(
+            webview,
+            "document.querySelector('input[data-native-setup-reviewed]').click();
+             document.querySelector('button[data-native-setup-confirm]').click(); String(true)",
+            deadline,
+        ));
+        assert_eq!(accepted.get(), 0);
+        assert!(evaluate_boolean(
+            webview,
+            "if (document.querySelector('input[data-native-setup-reviewed]').checked)
+               document.querySelector('input[data-native-setup-reviewed]').click(); String(true)",
+            deadline,
+        ));
+        click(
+            &window,
+            webview,
+            "input[data-native-setup-reviewed]",
+            deadline,
+        );
+        while !evaluate_boolean(
+            webview,
+            "String(document.querySelector('button[data-native-setup-confirm]')?.disabled === false)",
+            deadline,
+        ) {
+            assert!(Instant::now() < deadline, "AppKit review click was not delivered");
+            pump();
+        }
+        click(
+            &window,
+            webview,
+            "button[data-native-setup-confirm]",
+            deadline,
+        );
+        while accepted.get() == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "AppKit confirmation click was not delivered"
+            );
+            pump();
+        }
+        assert_eq!(accepted.get(), 1);
+        drop(interactive);
+        assert_eq!(slot.subviews().len(), 0);
+
         // Simulate the real parent view's inset within its native container.
         let parent = NSView::initWithFrame(
             NSView::alloc(mtm),
@@ -205,7 +332,7 @@ fn main() {
         let base =
             NSURL::URLWithString(&NSString::from_str("http://127.0.0.1/panel/setup")).unwrap();
         let body = NSString::from_str(&format!(
-            "<!doctype html><style>body{margin:0}section{width:700px;height:900px}</style>
+            "<!doctype html><style>body{{margin:0}}section{{width:700px;height:900px}}</style>
              <section><span hidden data-native-setup-review-anchor={digest}></span></section>",
         ));
         unsafe { parent.loadHTMLString_baseURL(&body, Some(&base)) }.unwrap();

@@ -15,6 +15,7 @@ type Props = {
   readonly activationAllowed?: boolean;
   readonly activationBlockedMessage?: string;
   readonly readOnly?: boolean;
+  readonly nativeConfirmation?: boolean;
   readonly nativeSlotGeneration?: number;
   readonly onRecover?: () => void;
   readonly onReviewedChange?: (reviewed: boolean) => void;
@@ -31,6 +32,7 @@ export function DefaultsReview({
   activationAllowed = true,
   activationBlockedMessage = 'Select “Include new bundled Profile Packs and operation bindings” above to review a complete successor before activation.',
   readOnly = false,
+  nativeConfirmation = false,
   nativeSlotGeneration,
   onRecover = () => undefined,
   onReviewedChange,
@@ -39,7 +41,7 @@ export function DefaultsReview({
   const canActivate = setup?.state === 'review_required'
     && !activationCommitted
     && activationAllowed && !readOnly
-    && onReviewedChange !== undefined && onActivate !== undefined;
+    && onReviewedChange !== undefined && (onActivate !== undefined || nativeConfirmation);
   const predecessor = setup?.recommended_default_profile.confirmation.definition_predecessor;
   const packPinPredecessor = setup?.recommended_default_profile.confirmation.pack_pin_predecessor;
   const targetPacks = setup?.recommended_default_profile.pack_ids ?? [];
@@ -110,6 +112,7 @@ export function DefaultsReview({
       <label className="flex items-start gap-3 rounded-lg border border-border p-4 text-text-main">
         <input
           type="checkbox"
+          data-native-setup-reviewed={nativeConfirmation || undefined}
           checked={reviewed}
           disabled={!canActivate || activating}
           onChange={canActivate ? (event) => onReviewedChange?.(event.target.checked) : undefined}
@@ -118,7 +121,9 @@ export function DefaultsReview({
         />
         <span id="defaults-review-confirmation">I confirm this exact catalog/profile revision, provider operations, Authority snapshot, and SecurityEpoch.{predecessor && ' I also confirm the displayed imported predecessor and its immutable successor, including the Pack selection changes.'}{packPinPredecessor && ' I also confirm these saved Pack versions against the displayed current activation.'}</span>
       </label>
-      <Button size="lg" className="w-full" disabled={!reviewed || activating || !canActivate} loading={activating} onClick={canActivate ? onActivate : undefined}>Activate Tobkiri Harness</Button>
+      <Button size="lg" className="w-full" data-native-setup-confirm={nativeConfirmation || undefined}
+        disabled={!reviewed || activating || !canActivate} loading={activating}
+        onClick={canActivate ? onActivate : undefined}>Activate Tobkiri Harness</Button>
     </div>}
     {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500"><AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="setup" /><p className="min-w-0 flex-1 break-words">{error}</p>{!readOnly && <CopyErrorButton label="Copy setup error" text={error} />}</div>}
   </section>;

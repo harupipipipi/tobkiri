@@ -20,6 +20,7 @@ on:
       - 'tobkiri_launcher/src-tauri/Cargo.*'
       - 'tobkiri_launcher/frontend/src/lib/defaultsSetup*.ts'
       - 'tobkiri_launcher/frontend/src/lib/measureSetupReviewSlot*'
+      - 'tobkiri_launcher/frontend/src/lib/nativeSetupConfirmation*'
       - 'tobkiri_launcher/frontend/src/pages/Defaults*Review*.tsx'
       - 'tobkiri_launcher/frontend/src/pages/DefaultsConfirmationDetails.tsx'
       - 'tobkiri_launcher/frontend/src/pages/NativeSetupReview.tsx'
@@ -81,7 +82,8 @@ jobs:
         working-directory: tobkiri_launcher/frontend
         run: >-
           node --import tsx --test
-          src/lib/defaultsSetup.test.ts src/lib/measureSetupReviewSlot.test.mjs src/pages/Setup.test.tsx
+          src/lib/defaultsSetup.test.ts src/lib/measureSetupReviewSlot.test.mjs
+          src/lib/nativeSetupConfirmation.test.mjs src/pages/Setup.test.tsx
           src/pages/DefaultsReview.successor.test.tsx
           src/pages/DefaultsReview.packVersions.test.tsx
       - name: Build the isolated Setup review assets
