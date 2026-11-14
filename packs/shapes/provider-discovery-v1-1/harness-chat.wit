@@ -1,0 +1,14 @@
+package local:harness-chat@1.1.0;
+
+/// Command inventory is descriptive metadata; it does not authorize invocation.
+interface command-provider {
+  use tobkiri:core/types@1.0.0.{error, json};
+
+  record command-definition {
+    name: string,
+    description: string,
+  }
+
+  invoke: func(name: string, args: string) -> result<json, error>;
+  list-commands: func() -> result<list<command-definition>, error>;
+}
