@@ -3,6 +3,8 @@
 //! WebKit receives only the embedded document and a bounded listing. The view
 //! has no Tauri label, scheme handler, or message controller registration.
 
+#[path = "native_setup_review_owner.rs"]
+pub(crate) mod owner;
 #[path = "native_setup_review_slot.rs"]
 pub(crate) mod slot;
 

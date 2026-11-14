@@ -427,6 +427,19 @@ jobs:
         working-directory: tobkiri_launcher/src-tauri
         run: cargo test --locked --features native-source-inspection,native-harness-bootstrap
 
+      - name: Build isolated Setup review assets for the original Launcher tests
+        if: runner.os == 'macOS'
+        working-directory: tobkiri_launcher/frontend
+        run: npm run build:setup-review
+
+      - name: Verify the original Launcher worker to native Setup boundary
+        if: runner.os == 'macOS'
+        working-directory: tobkiri_launcher/src-tauri
+        run: >-
+          cargo test --locked --features native-harness-bootstrap,native-setup-review
+          --lib native_harness_bootstrap::setup_display_requires_a_completed_listing_result
+          -- --exact
+
       - name: Build release Pack Shell for verified Tauri Shell artifact
         run: cargo build --release --locked --manifest-path pack-shell/Cargo.toml --target ${{ matrix.target }}
 

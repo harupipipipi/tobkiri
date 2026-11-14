@@ -267,6 +267,102 @@ impl OriginalComponentJob {
     }
 }
 
+/// A review result can be consumed as display data only after the existing
+/// worker completes its authority/Store cleanup and admits publication.
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+pub(crate) struct SetupReviewJob(OriginalComponentJob);
+
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+impl SetupReviewJob {
+    pub(crate) async fn display(
+        self,
+        owner: crate::native_setup_review::owner::SetupReviewOwner,
+    ) -> Result<(), SetupReviewDisplayError> {
+        let listing =
+            setup_listing(self.0.result().await).map_err(SetupReviewDisplayError::Worker)?;
+        owner
+            .display(listing)
+            .await
+            .map_err(SetupReviewDisplayError::Window)
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+pub(crate) enum SetupReviewDisplayError {
+    Worker(DetachedFailure),
+    Window(crate::native_setup_review::owner::SetupReviewOwnerError),
+}
+
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+fn setup_listing(outcome: Outcome) -> Result<String, DetachedFailure> {
+    if let serde_json::Value::Object(mut fields) = outcome? {
+        if fields.len() == 1 {
+            if let Some(serde_json::Value::String(listing)) = fields.remove("listing") {
+                return Ok(listing);
+            }
+        }
+    }
+    Err(DetachedFailure::integration(
+        crate::native_worker_failure::IntegrationFailure::InvalidValueResult,
+    ))
+}
+
+#[cfg(all(test, target_os = "macos", feature = "native-setup-review"))]
+#[test]
+fn setup_display_requires_a_completed_listing_result() {
+    use serde_json::json;
+    let listing = "{ \"exact\": \"入力\" }";
+    assert_eq!(
+        setup_listing(Ok(json!({"listing": listing}))).unwrap(),
+        listing
+    );
+    for other in [
+        json!({"observations": []}),
+        json!({"listing": listing, "unexpected": true}),
+        json!({"listing": {}}),
+    ] {
+        assert!(setup_listing(Ok(other)).is_err());
+    }
+    let cleanup_failure = crate::native_worker_failure::complete(
+        Ok(json!({"listing": listing})),
+        Some(DetachedFailure::condition(
+            Stage::Finish,
+            Condition::NativePanic,
+        )),
+        true,
+    );
+    assert!(matches!(
+        setup_listing(cleanup_failure),
+        Err(DetachedFailure::Cleanup { .. })
+    ));
+    let retired =
+        crate::native_worker_failure::complete(Ok(json!({"listing": listing})), None, false);
+    assert!(matches!(
+        setup_listing(retired),
+        Err(DetachedFailure::Publication { .. })
+    ));
+}
+
+/// Review the existing selected Profile under the original Launcher's owner.
+/// The native caller supplies already selected component inputs and options.
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+pub(crate) fn prepare_setup_review(
+    app: AppHandle,
+    artifact: File,
+    expected: Digest,
+    index: &'static BootstrapModuleIndex,
+    options: tobkiri_harness_native::BootstrapReviewOptions,
+) -> Result<SetupReviewJob, DetachedFailure> {
+    prepare_original_component(
+        app,
+        artifact,
+        expected,
+        index,
+        OriginalOperation::ReviewListing(options),
+    )
+    .map(SetupReviewJob)
+}
+
 /// Execute only the current closed bound subset. No caller receives Bootstrap,
 /// its DATA budget, a funded buffer, or a function argument borrowing them.
 pub(crate) fn prepare_original_component(
