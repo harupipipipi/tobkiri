@@ -9,8 +9,8 @@ pub(in super::super) fn prepare_display_name_repair<S: OriginalAuthorityOwner>(
 ) -> Result<Option<(usize, CoreBuffer)>> {
     let doc = &state.doc;
     let entries = array(doc, field(doc, doc.root, "profiles")).expect("validated profiles");
-    let mut repairs = Vec::new();
     let mut funding = None;
+    let mut repairs = Vec::new();
     for (position, &entry) in entries.iter().enumerate() {
         charge(op, budget, 1)?;
         if boolean(doc, field(doc, entry, "tombstone")) == Some(true) {
@@ -35,6 +35,9 @@ pub(in super::super) fn prepare_display_name_repair<S: OriginalAuthorityOwner>(
                 repairs
                     .try_reserve_exact(entries.len())
                     .map_err(|_| capacity(()))?;
+                if repairs.capacity() != entries.len() {
+                    return Err(capacity(()));
+                }
             }
             repairs.push((position, name));
         }

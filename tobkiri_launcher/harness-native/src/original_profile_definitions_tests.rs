@@ -364,6 +364,12 @@ async fn registry_repairs_localized_names_as_one_replayable_transaction() {
             .unwrap();
         assert_eq!(count, 5);
         let actual_bytes = fs::read(&index).unwrap();
+        if let Some(output) = std::env::var_os("TOBKIRI_DISPLAY_NAME_REPAIR_FIXTURE") {
+            let output = PathBuf::from(output);
+            fs::create_dir(&output).unwrap();
+            fs::write(output.join("before.json"), &source_bytes).unwrap();
+            fs::write(output.join("rust.json"), &actual_bytes).unwrap();
+        }
         assert_eq!(actual_bytes.last(), Some(&b'\n'));
         assert_eq!(
             fs::metadata(&index).unwrap().permissions().mode() & 0o777,
