@@ -3580,8 +3580,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `26079f919`、`576fb6a9e` は元のコンパイラの4文書を実ファイルから順に再読込し、Pack ID、
   source identity、canonicalなartifactと実行カタログのdigest、sidecarの生バイトのdigest、
   indexのsealまで照合する。4文書を共有したままWIT等の検証に必要な以後の項目を扱う。
-  実装ファイルとOperationの全件照合、コンパイル結果とreceiptの照合、署名付き一覧の
-  製品経路での照合、依存Packのclosure、Profile一覧の差し替えが残る。
+  `433bb0e4f` は実装ファイルをdescriptorから分割読込みし、Function、Contract と
+  Operationのスキーマを照合した後、署名済み一覧と内容digestを既存のHost受領証と照合する。
+  [CI 43601961985](https://github.com/harupipipipi/tobkiri/actions/runs/43601961985) のUbuntu比較は通過。
+  `4d69b6226` と `cd887369d` は通常Packの保存済み版を順に照合し、元の一覧revisionを計算し、
+  未指定時の同梱ID衝突を拒否する。[CI 43602338697](https://github.com/harupipipipi/tobkiri/actions/runs/43602338697) の
+  Ubuntuで同一鍵から別々に署名した2版との比較が通過。旧Host Extensionの互換性再投影は残る。
+  `093012fee` は外部Pack追加が不要な復旧で、同じStoreの実catalogに保存済みのProfile一覧を渡し、
+  AuthorityStoreの生成直前まで接続した。実App/Wasmとの照合を
+  [CI 43603201335](https://github.com/harupipipipi/tobkiri/actions/runs/43603201335)で検証中。
+  外部Packを使うProfileの解決とAuthorityによる復旧は残る。Operationをハッシュするときは
+  親文書全体への予算を都度確保せず、同じcanonical writerが実際に走査する部分木を見積もる。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
@@ -3652,6 +3661,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [Launcher CI 43598692796](https://github.com/harupipipipi/tobkiri/actions/runs/43598692796)で確認し、
   関連49件と実AppKit/WebKitが通過した。登録済みモデル一覧の表示は `7c2b4a962` で日英対応。
   共通ヘルパーと他画面の直書き文言は残る。
+- C-13 は `a5c6c9eca` で設定ラベルのワイルドカードを、登録済みセクションと項目の
+  完全一致に変更した。既存の日本語訳と別セクションの同名フィールドを含む26件が成功。
 - C-7 は、イベントだけが呼び出し元の `has-ui` を受け、ツールとコマンドには
   実画面の状態が届かない。`5bcc4f786` に仕様と試験を記録し、
   [実Pi CI 43574843811](https://github.com/harupipipipi/tobkiri/actions/runs/43574843811)で
