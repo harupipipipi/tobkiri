@@ -102,8 +102,9 @@ fn project_name(
             .append(point.encode_utf8(&mut storage).as_bytes())
             .map_err(capacity)?;
     }
-    let name = CoreValue::string_from_utf8(bytes.finish().map_err(capacity)?.as_bytes(), budget)
-        .map_err(capacity)?;
+    let bytes = bytes.finish().map_err(capacity)?;
+    let name = CoreValue::string_from_utf8(&bytes, budget).map_err(capacity)?;
+    drop(bytes);
     let mut fields = fields.iter().map(|(key, value)| {
         Ok((
             key,
