@@ -27,7 +27,7 @@ enum Display {
     Mounted(SetupReviewSlot),
 }
 
-pub(super) type ConfirmationSender = tokio::sync::oneshot::Sender<SetupReviewConfirmation>;
+pub(crate) type ConfirmationSender = tokio::sync::oneshot::Sender<SetupReviewConfirmation>;
 
 struct PendingReview {
     listing: SetupReviewListing,
@@ -70,7 +70,7 @@ impl SetupReviewPresentation {
         )
     }
 
-    pub(super) fn with_confirmation(
+    pub(crate) fn with_confirmation(
         parent: &WKWebView,
         owner: &NSView,
         port: u16,
@@ -195,6 +195,14 @@ impl SetupReviewPresentation {
     /// Retire this candidate on replacement, navigation or owner hide.
     pub(crate) fn retire(&self) {
         self.state.borrow_mut().display = None;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn review_webview(&self) -> Option<Retained<WKWebView>> {
+        match self.state.borrow().display.as_ref()? {
+            Display::Mounted(slot) => Some(slot._review.webview().retain()),
+            Display::Waiting(_) => None,
+        }
     }
 }
 

@@ -10,7 +10,7 @@ fn main() {
     use native_setup_review::{
         listing_confirmation,
         slot::{measure, ReviewSample, SetupReviewPresentation, SetupReviewSlot},
-        SetupReviewView,
+        SetupReviewListing, SetupReviewView,
     };
     use objc2::{rc::autoreleasepool, runtime::AnyObject, MainThreadMarker, MainThreadOnly};
     use objc2_app_kit::{
@@ -371,9 +371,16 @@ fn main() {
             pump();
         }
         assert_eq!(slot.subviews().len(), 2);
-        let presentation =
-            SetupReviewPresentation::new(&parent, &slot, 80, replacement, listing.to_owned())
-                .unwrap();
+        let (confirm, mut confirmed) = tokio::sync::oneshot::channel();
+        let presentation = SetupReviewPresentation::with_confirmation(
+            &parent,
+            &slot,
+            80,
+            replacement,
+            SetupReviewListing::new(listing.to_owned()),
+            Some(confirm),
+        )
+        .unwrap();
         presentation.refresh();
         presentation.refresh();
         while slot.subviews().len() == 2 {
@@ -381,6 +388,54 @@ fn main() {
             pump();
         }
         assert_eq!(slot.subviews().len(), 3);
+        let child = presentation.review_webview().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !evaluate_boolean(
+            &child,
+            "String(!!document.querySelector('input[data-native-setup-reviewed]'))",
+            deadline,
+        ) {
+            assert!(
+                Instant::now() < deadline,
+                "Parent review controls did not render"
+            );
+            pump();
+        }
+        press_space(
+            &window,
+            &child,
+            "input[data-native-setup-reviewed]",
+            deadline,
+        );
+        assert!(evaluate_boolean(
+            &child,
+            "String(document.querySelector('button[data-native-setup-confirm]')?.disabled === false)",
+            deadline,
+        ));
+        // Replace the parent candidate without refreshing the overlay first.
+        // The real gesture in the old child must re-sample the parent itself.
+        assert!(evaluate_boolean(
+            &parent,
+            "const marker = document.querySelector('section span');
+             marker.replaceWith(marker.cloneNode()); String(true)",
+            deadline,
+        ));
+        press_space(
+            &window,
+            &child,
+            "button[data-native-setup-confirm]",
+            deadline,
+        );
+        loop {
+            match confirmed.try_recv() {
+                Ok(_) => panic!("replaced Setup candidate admitted a gesture"),
+                Err(tokio::sync::oneshot::error::TryRecvError::Closed) => break,
+                Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+                    assert!(Instant::now() < deadline, "stale gesture was not retired");
+                    pump();
+                }
+            }
+        }
         window.orderOut(None);
         presentation.refresh();
         assert_eq!(slot.subviews().len(), 2);
