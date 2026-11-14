@@ -78,6 +78,8 @@ use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use config::AppConfig;
+#[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
+use native_setup_review::owner::SetupReviewWindowState;
 use debug_approval::{DebugApprovalManager, DebugApprovalStatus};
 use defaultspack_manager::DefaultspackManager;
 use host_broker::HostBrokerRuntime;
@@ -2908,6 +2910,10 @@ fn navigate_window_to_panel_session(
     port: u16,
     panel_code: &str,
 ) -> Result<(), tauri::Error> {
+    #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
+    if window.label() == "main" {
+        schedule_setup_review_retirement(window.app_handle());
+    }
     // On macOS a WebView can exist before WKWebView has a URL. Calling
     // `window.url()` during that short window panics in Wry, so always use the
     // stable panel entry point for a fresh authenticated session.
@@ -3009,6 +3015,8 @@ pub(crate) fn show_primary_window(app: &AppHandle) -> Result<(), String> {
 }
 
 pub(crate) fn send_app_to_background(app: &AppHandle) -> Result<(), String> {
+    #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
+    schedule_setup_review_retirement(app);
     let mut found_window = false;
     for label in PRIMARY_WINDOW_LABELS {
         if let Some(window) = app.get_webview_window(label) {
@@ -3024,6 +3032,18 @@ pub(crate) fn send_app_to_background(app: &AppHandle) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
+fn schedule_setup_review_retirement(app: &AppHandle) {
+    if let Some(state) = app.try_state::<SetupReviewWindowState>() {
+        let state = state.inner().clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(mtm) = objc2::MainThreadMarker::new() {
+                state.retire(mtm);
+            }
+        });
+    }
 }
 
 fn collect_primary_window_states(app: &AppHandle) -> Vec<WindowRuntimeSnapshot> {
@@ -4112,6 +4132,21 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             Ok(())
         })
         .on_window_event(|window, event| {
+            #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
+            if window.label() == "main" {
+                if let (Some(mtm), Some(state)) = (
+                    objc2::MainThreadMarker::new(),
+                    window.app_handle().try_state::<SetupReviewWindowState>(),
+                ) {
+                    match event {
+                        tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
+                            state.retire(mtm);
+                        }
+                        tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_) => state.refresh(mtm),
+                        _ => {}
+                    }
+                }
+            }
             if browser_access_lifecycle::controlled_label(window.label())
                 && matches!(
                     event,
@@ -4192,6 +4227,8 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
     record_startup_stage(&startup_stage, "running");
     app.run(|app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+            #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
+            schedule_setup_review_retirement(app_handle);
             let shutdown_requested = app_handle
                 .state::<ShutdownState>()
                 .inner()
@@ -4446,6 +4483,10 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     app.manage(native_harness_bootstrap::NativeRuntimeState::new(
         Arc::clone(&shutdown_flag),
     ));
+    #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
+    if let Some(mtm) = objc2::MainThreadMarker::new() {
+        app.manage(SetupReviewWindowState::new(mtm));
+    }
 
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();

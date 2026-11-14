@@ -19,12 +19,68 @@ const UI_HANDOFF_TIMEOUT: Duration = Duration::from_secs(2);
 pub(crate) struct SetupReviewOwner {
     window: tauri::WebviewWindow,
     port: u16,
-    presentation: Arc<MainThreadBound<RefCell<OwnerState>>>,
+    generation: u64,
+    window_state: SetupReviewWindowState,
 }
 
 struct OwnerState {
-    retired: bool,
+    generation: u64,
     presentation: Option<SetupReviewPresentation>,
+}
+
+/// The Launcher manages the presentation without retaining its own AppHandle.
+#[derive(Clone)]
+pub(crate) struct SetupReviewWindowState(Arc<MainThreadBound<RefCell<OwnerState>>>);
+
+#[allow(dead_code)]
+impl SetupReviewWindowState {
+    pub(crate) fn new(mtm: MainThreadMarker) -> Self {
+        Self(Arc::new(MainThreadBound::new(
+            RefCell::new(OwnerState {
+                generation: 0,
+                presentation: None,
+            }),
+            mtm,
+        )))
+    }
+
+    /// A new request supersedes all pending results for the previous candidate.
+    pub(crate) fn begin(
+        &self,
+        window: tauri::WebviewWindow,
+        mtm: MainThreadMarker,
+        port: u16,
+    ) -> Result<SetupReviewOwner, &'static str> {
+        if window.label() != "main" {
+            return Err("Setup review requires the Launcher main window");
+        }
+        let generation = self
+            .retire(mtm)
+            .ok_or("Setup review generation exhausted")?;
+        Ok(SetupReviewOwner {
+            window,
+            port,
+            generation,
+            window_state: self.clone(),
+        })
+    }
+
+    pub(crate) fn refresh(&self, mtm: MainThreadMarker) {
+        if let Some(presentation) = &self.0.get(mtm).borrow().presentation {
+            presentation.refresh();
+        }
+    }
+
+    pub(crate) fn retire(&self, mtm: MainThreadMarker) -> Option<u64> {
+        let mut state = self.0.get(mtm).borrow_mut();
+        if let Some(presentation) = state.presentation.take() {
+            presentation.retire();
+        }
+        // Reserve the final value for permanent exhaustion. An earlier
+        // pending worker can never hold this generation.
+        state.generation = state.generation.saturating_add(1);
+        (state.generation != u64::MAX).then_some(state.generation)
+    }
 }
 
 #[derive(Debug)]
@@ -37,34 +93,13 @@ pub(crate) enum SetupReviewOwnerError {
 
 #[allow(dead_code)]
 impl SetupReviewOwner {
-    /// The original Launcher calls this on the UI thread.
-    pub(crate) fn bind(
-        window: tauri::WebviewWindow,
-        mtm: MainThreadMarker,
-        port: u16,
-    ) -> Result<Self, &'static str> {
-        if window.label() != "main" {
-            return Err("Setup review requires the Launcher main window");
-        }
-        Ok(Self {
-            window,
-            port,
-            presentation: Arc::new(MainThreadBound::new(
-                RefCell::new(OwnerState {
-                    retired: false,
-                    presentation: None,
-                }),
-                mtm,
-            )),
-        })
-    }
-
     /// Admit the listing on the UI thread and start its first geometry sample.
     pub(crate) async fn display(&self, listing: String) -> Result<(), SetupReviewOwnerError> {
         use SetupReviewOwnerError::{Retired, Schedule, TimedOut, Unavailable};
 
-        let state = self.presentation.clone();
+        let state = self.window_state.0.clone();
         let port = self.port;
+        let generation = self.generation;
         let deadline = Instant::now() + UI_HANDOFF_TIMEOUT;
         let (reply, wait) = tokio::sync::oneshot::channel();
         self.window
@@ -75,7 +110,7 @@ impl SetupReviewOwner {
                     }
                     let mtm = MainThreadMarker::new().ok_or(Unavailable)?;
                     let mut state = state.get(mtm).try_borrow_mut().map_err(|_| Unavailable)?;
-                    if state.retired {
+                    if state.generation != generation {
                         return Err(Retired);
                     }
                     // Tauri's platform handle borrows the live WKWebView on this thread.
@@ -121,21 +156,5 @@ impl SetupReviewOwner {
             .await
             .map_err(|_| TimedOut)?
             .map_err(|_| Unavailable)?
-    }
-
-    /// Re-evaluate the original Setup marker after layout changes.
-    pub(crate) fn refresh(&self, mtm: MainThreadMarker) {
-        if let Some(presentation) = &self.presentation.get(mtm).borrow().presentation {
-            presentation.refresh();
-        }
-    }
-
-    /// Retire this owner before navigation, hide or candidate replacement.
-    pub(crate) fn retire(&self, mtm: MainThreadMarker) {
-        let mut state = self.presentation.get(mtm).borrow_mut();
-        state.retired = true;
-        if let Some(presentation) = state.presentation.take() {
-            presentation.retire();
-        }
     }
 }

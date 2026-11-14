@@ -347,20 +347,48 @@ fn setup_display_requires_a_completed_listing_result() {
 /// The native caller supplies already selected component inputs and options.
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 pub(crate) fn prepare_setup_review(
-    app: AppHandle,
+    app: &AppHandle,
     artifact: File,
     expected: Digest,
     index: &'static BootstrapModuleIndex,
     options: tobkiri_harness_native::BootstrapReviewOptions,
-) -> Result<SetupReviewJob, DetachedFailure> {
-    prepare_original_component(
-        app,
+) -> Result<(), SetupReviewStartError> {
+    use crate::native_setup_review::owner::SetupReviewWindowState;
+    let mtm = objc2::MainThreadMarker::new().ok_or(SetupReviewStartError::Window)?;
+    let window = app
+        .get_webview_window("main")
+        .ok_or(SetupReviewStartError::Window)?;
+    let state = app
+        .try_state::<SetupReviewWindowState>()
+        .ok_or(SetupReviewStartError::Window)?;
+    let port = app
+        .try_state::<crate::AppConfig>()
+        .ok_or(SetupReviewStartError::Window)?
+        .kernel_port;
+    let owner = state
+        .begin(window, mtm, port)
+        .map_err(|_| SetupReviewStartError::Window)?;
+    let job = prepare_original_component(
+        app.clone(),
         artifact,
         expected,
         index,
         OriginalOperation::ReviewListing(options),
     )
     .map(SetupReviewJob)
+    .map_err(SetupReviewStartError::Worker)?;
+    tauri::async_runtime::spawn(async move {
+        if job.display(owner).await.is_err() {
+            log::warn!("The Launcher could not display the native Setup review");
+        }
+    });
+    Ok(())
+}
+
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+pub(crate) enum SetupReviewStartError {
+    Window,
+    Worker(DetachedFailure),
 }
 
 /// Execute only the current closed bound subset. No caller receives Bootstrap,
