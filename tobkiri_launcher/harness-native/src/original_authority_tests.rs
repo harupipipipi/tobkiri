@@ -292,6 +292,7 @@ pub(super) fn stage_name(value: OriginalAuthorityStage) -> &'static str {
         OriginalAuthorityStage::Connect => "connect",
         OriginalAuthorityStage::Initialize => "initialize",
         OriginalAuthorityStage::Audit => "audit",
+        OriginalAuthorityStage::ActiveReservation => "active-reservation",
         OriginalAuthorityStage::Migration => "migration",
         OriginalAuthorityStage::Epoch => "epoch",
         OriginalAuthorityStage::EpochRecord => "epoch-record",

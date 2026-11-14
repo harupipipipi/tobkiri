@@ -20,6 +20,12 @@ pub(super) const BOOTSTRAP_TEMPLATE_REQUEST: &str =
 pub(super) const ADMITTED_CLOSURE_REQUEST: &str =
     "io.tobkiri.native-bootstrap-admitted-closure-step.v1";
 
+// A successful recovery here returns the original None, after the journal lock closes.
+pub(super) type RecoveryOutcome = Result<std::result::Result<(), BootstrapReviewFailure>>;
+
+pub(super) const RECOVERY_FINISHED_REQUEST: &str =
+    "io.tobkiri.native-bootstrap-recovery-finished.v1";
+
 pub(super) struct RootResolution {
     pub resolved: CoreBuffer,
     pub binding: CoreBuffer,
@@ -151,17 +157,18 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Err(error) => return Ok(Err(error)),
     };
     io.bind_loader(CoreValue::string(binding.as_str()?, pack.input_budget)?)?;
-    *pack
-        .work
-        .get()
-        .catalog
-        .lock()
-        .unwrap_or_else(|error| error.into_inner()) = Some(io);
-    pack.work
-        .get()
-        .catalog_dispatch
-        .set(dispatch::<S>)
-        .map_err(|_| anyhow::anyhow!("catalog caller already bound"))?;
+    {
+        let work = pack.work.get();
+        let mut current = work
+            .catalog
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if current.as_ref().is_some_and(|io| !io.completed()) {
+            bail!("previous catalog read did not complete");
+        }
+        *current = Some(io);
+        work.catalog_dispatch.get_or_init(|| dispatch::<S>);
+    }
     let input = review
         .actual
         .catalog_input
@@ -479,7 +486,7 @@ async fn select_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> super::listing::Outcome {
+) -> RecoveryOutcome {
     let caller = ReviewCaller::Recovery;
     if let Err(error) = load(review, pack, caller).await? {
         return Ok(Err(error));
@@ -530,7 +537,7 @@ async fn bootstrap_template<S: BootstrapInputOwner + crate::BootstrapReviewOwner
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     store: definitions::BootstrapTemplateStore,
-) -> super::listing::Outcome {
+) -> RecoveryOutcome {
     let caller = ReviewCaller::RecoveryTemplate;
     pack.require_same_runtime()?;
     let identity = match review_continuation::validated_identity(review, pack, caller).await? {
@@ -607,7 +614,7 @@ async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOw
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
     profiles: CoreValue,
-) -> super::listing::Outcome {
+) -> RecoveryOutcome {
     review.actual._recovery_profile_definitions = Some(profiles.share());
     let catalog = match crate::original_authority::external_catalog::read(
         &review.read,
@@ -640,7 +647,7 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
     profiles: CoreValue,
-) -> super::listing::Outcome {
+) -> RecoveryOutcome {
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
     let scope = actual_call_scope(pack)?;
@@ -700,11 +707,26 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         .read
         .run_recovery_authority(&pack.work.get().source, pack.cancellation)
     {
-        Ok(RecoveryAuthorityReached::ActivationStore) => {
-            BootstrapReviewReachpoint::RecoveryActivationStoreNotBound
+        Ok(RecoveryAuthorityReached::RecoverActivation) => {
+            BootstrapReviewReachpoint::RecoveryActivationJournalNotBound
         }
-        Ok(RecoveryAuthorityReached::JournalClear) => {
-            BootstrapReviewReachpoint::RecoveryJournalClearNotBound
+        Ok(RecoveryAuthorityReached::RecoveredNone) => {
+            let request = denied::frame(pack, RECOVERY_FINISHED_REQUEST, [("catalog", root)])?;
+            let response = pack
+                .observe_fixed_projection(&request, "bootstrap-recovery-finished")
+                .await?;
+            let Ok(response) = response else {
+                bail!("original completed recovery did not release catalog custody");
+            };
+            let status = CoreValue::parse_guest(response.as_bytes(), pack.input_budget)?;
+            denied::exact(&status, &["format", "scope"])?;
+            if denied::field(&status, "format")?.as_str()
+                != Some("io.tobkiri.native-bootstrap-recovery-finished-result.v1")
+                || !denied::same_scope(&denied::field(&status, "scope")?, &scope)
+            {
+                bail!("original completed recovery acknowledgement differs");
+            }
+            return Ok(Ok(()));
         }
         Ok(RecoveryAuthorityReached::MatchedReservation) => {
             return Ok(Err(review_continuation::denied(

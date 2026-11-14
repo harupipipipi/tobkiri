@@ -6,8 +6,8 @@ mod active_reservation;
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    ActivationStore,
-    JournalClear,
+    RecoverActivation,
+    RecoveredNone,
     MatchedReservation,
 }
 
@@ -60,15 +60,21 @@ impl PublicationRead {
                 })?
                 .is_some();
                 if exists {
-                    return Ok(RecoveryAuthorityReached::ActivationStore);
+                    recovery_workspace::construct(&op, workspace)?;
+                    return Ok(RecoveryAuthorityReached::RecoverActivation);
                 }
-                active_reservation::read(&op, store, &pending.intent).map(|matched| {
-                    if matched {
-                        RecoveryAuthorityReached::MatchedReservation
-                    } else {
-                        RecoveryAuthorityReached::JournalClear
-                    }
-                })
+                if active_reservation::read(&op, store, &pending.intent)? {
+                    return Ok(RecoveryAuthorityReached::MatchedReservation);
+                }
+                // Original recovery clears the intent in both open contexts,
+                // reopening the fixed journal directory under the same guard.
+                let _path = op.reserve(
+                    OriginalAuthorityStage::Path,
+                    pending.root.as_os_str().len().saturating_add(8192),
+                )?;
+                Directory::capture(&op, &pending.root.join("profiles"), true)?
+                    .clear_journal(&op)?;
+                Ok(RecoveryAuthorityReached::RecoveredNone)
             })
         })()
         .map_err(recovery_error)?;
@@ -80,6 +86,14 @@ impl PublicationRead {
                 OriginalAuthorityStage::Close,
                 "publication recovery Authority cleanup is uncertain",
             ));
+        }
+        if reached == RecoveryAuthorityReached::RecoveredNone {
+            let pending = self.pending.take().expect("completed publication recovery");
+            pending
+                .scope
+                .finish(&op, Ok(Prefix::RecoveredNone))
+                .map_err(recovery_error)?;
+            self.fresh.record_recovery(cancellation);
         }
         Ok(reached)
     }
@@ -166,13 +180,28 @@ mod tests {
         .unwrap();
     }
 
-    fn verify_custody(source: &Source, read: &mut PublicationRead) {
+    fn verify_custody(
+        source: &Source,
+        read: &mut PublicationRead,
+        cancellation: &CoreCancellation,
+        cleared: bool,
+    ) {
         assert!(lock_free(&source.root.join(GUARD)));
-        assert!(!lock_free(&source.root.join(LOCK_PATH)));
+        assert_eq!(lock_free(&source.root.join(LOCK_PATH)), cleared);
         assert_eq!(read.receipt().open_connections, 0);
-        assert_eq!(read.receipt().open_files, 1);
+        assert_eq!(read.receipt().open_files, if cleared { 0 } else { 1 });
         assert!(!read.receipt().uncertain);
-        assert!(source.root.join("profiles").join(JOURNAL).is_file());
+        assert_eq!(
+            !source.root.join("profiles").join(JOURNAL).exists(),
+            cleared
+        );
+        if cleared {
+            assert_eq!(
+                read.enter_recovery(source, cancellation, false).unwrap(),
+                Prefix::NoJournal
+            );
+            read.acquire_candidate_root(source, cancellation).unwrap();
+        }
         read.close_continuation().unwrap();
         assert!(lock_free(&source.root.join(LOCK_PATH)));
     }
@@ -180,11 +209,10 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn recovery_authority_initializes_before_branching_on_the_workspace() {
         for (case, expected) in [
-            ("missing", RecoveryAuthorityReached::JournalClear),
-            ("directory", RecoveryAuthorityReached::ActivationStore),
-            ("file", RecoveryAuthorityReached::ActivationStore),
-            ("dangling", RecoveryAuthorityReached::JournalClear),
-            ("loop", RecoveryAuthorityReached::JournalClear),
+            ("missing", RecoveryAuthorityReached::RecoveredNone),
+            ("directory", RecoveryAuthorityReached::RecoverActivation),
+            ("dangling", RecoveryAuthorityReached::RecoveredNone),
+            ("loop", RecoveryAuthorityReached::RecoveredNone),
         ] {
             with_setup_source(|source, read, cancellation, _| {
                 enter(source, read, cancellation);
@@ -192,7 +220,6 @@ mod tests {
                 fs::create_dir(workspace.parent().unwrap()).unwrap();
                 match case {
                     "directory" => fs::create_dir(&workspace).unwrap(),
-                    "file" => fs::write(&workspace, "existing").unwrap(),
                     "dangling" => symlink("missing", &workspace).unwrap(),
                     "loop" => symlink(PROFILE_ID, &workspace).unwrap(),
                     "missing" => {}
@@ -216,7 +243,12 @@ mod tests {
                 db.close().unwrap();
                 assert!(source.root.join("authority/v4.key").is_file());
                 assert!(read.run_recovery_authority(source, cancellation).is_err());
-                verify_custody(source, read);
+                verify_custody(
+                    source,
+                    read,
+                    cancellation,
+                    expected == RecoveryAuthorityReached::RecoveredNone,
+                );
             });
         }
     }
@@ -269,7 +301,7 @@ mod tests {
                 db.close().unwrap();
                 let result = read.run_recovery_authority(source, cancellation);
                 match matches {
-                    0 => assert_eq!(result.unwrap(), RecoveryAuthorityReached::JournalClear),
+                    0 => assert_eq!(result.unwrap(), RecoveryAuthorityReached::RecoveredNone),
                     1 => assert_eq!(
                         result.unwrap(),
                         RecoveryAuthorityReached::MatchedReservation
@@ -288,7 +320,7 @@ mod tests {
                         assert!(error.cause.is_none());
                     }
                 }
-                verify_custody(source, read);
+                verify_custody(source, read, cancellation, matches == 0);
             });
         }
     }
@@ -297,7 +329,7 @@ mod tests {
     async fn recovery_authority_reads_signed_activation_id_after_workspace_stat() {
         use RecoveryAuthorityReached::*;
         for (id, workspace_exists, expected) in [
-            ("", true, Ok(ActivationStore)),
+            ("", true, Ok(RecoverActivation)),
             ("", false, Err(("builtins.KeyError", "'activation_id'"))),
             (
                 r#""activation_id": [], "#,
@@ -309,7 +341,7 @@ mod tests {
             ),
             (r#""activation_id": 42, "#, false, Ok(MatchedReservation)),
             (r#""activation_id": true, "#, false, Ok(MatchedReservation)),
-            (r#""activation_id": null, "#, false, Ok(JournalClear)),
+            (r#""activation_id": null, "#, false, Ok(RecoveredNone)),
         ] {
             with_setup_source(|source, read, cancellation, _| {
                 let candidate = format!(r#"{{{id}"profile_id": "{PROFILE_ID}"}}"#);
@@ -341,7 +373,7 @@ mod tests {
                         }
                     }
                 }
-                verify_custody(source, read);
+                verify_custody(source, read, cancellation, expected == Ok(RecoveredNone));
             });
         }
     }
@@ -377,7 +409,7 @@ mod tests {
                     ..
                 })
             ));
-            verify_custody(source, read);
+            verify_custody(source, read, cancellation, false);
         });
     }
 }

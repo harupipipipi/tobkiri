@@ -81,9 +81,6 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
     observed = []
     authority_observations = []
 
-    class AuthorityBoundary(BaseException):
-        """The original has evaluated all arguments by this call."""
-
     def observe(self, catalog, profiles):
         projected = catalog_with_profiles(self, catalog, profiles)
         if self is not port or projected is catalog:
@@ -101,12 +98,14 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
             raise AssertionError("original lock ownership changed before Authority")
         return authority(path)
 
-    def stop_at_journal_clear(self):
+    def observe_journal_clear(self):
         if (_lock_free(user_data / "profiles/.bootstrap-publication.lock") is not False
                 or not (user_data / "authority/v4.sqlite3").is_file()):
             raise AssertionError("original empty active reservation read did not retain custody")
-        authority_observations.append("journal-clear-entry")
-        raise AuthorityBoundary
+        original_clear(self)
+        if (user_data / "profiles/bootstrap-publication.json").exists():
+            raise AssertionError("the original journal was not cleared")
+        authority_observations.append("journal-cleared")
 
     def non_authority(root):
         return [item for item in filesystem(root)["files"]
@@ -118,19 +117,19 @@ def probe_recovery(original: Path, fixtures: Path, output: Path) -> None:
     try:
         owner_type.catalog_with_profiles = observe
         capture.AuthorityStore = open_authority
-        journal_type.clear = stop_at_journal_clear
-        try:
-            capture._recover_bootstrap_publication(discard_superseded=True)
-        except AuthorityBoundary:
-            pass
-        else:
-            raise AssertionError("original did not reach Authority")
+        journal_type.clear = observe_journal_clear
+        if capture._recover_bootstrap_publication(discard_superseded=True) is not None:
+            raise AssertionError("original empty recovery did not return None")
+        if capture._recover_bootstrap_publication(discard_superseded=False) is not None:
+            raise AssertionError("original second recovery did not return None")
     finally:
         owner_type.catalog_with_profiles = catalog_with_profiles
         capture.AuthorityStore = authority
         journal_type.clear = original_clear
-    if (code_hashes(runtime) != hashes or before != non_authority(user_data)
-            or authority_observations != ["journal-clear-entry"]
+    expected_files = [item for item in before if item["path"] != "profiles/bootstrap-publication.json"]
+    if (len(expected_files) != len(before) - 1 or code_hashes(runtime) != hashes
+            or expected_files != non_authority(user_data)
+            or authority_observations != ["journal-cleared"]
             or _lock_free(user_data / "profiles/.bootstrap-publication.lock") is not True):
         raise AssertionError("original recovery altered the retained profile seed or source")
     write_json(output, {"profile_rows_digest": observed[0], "authority_constructor_entries": 1,

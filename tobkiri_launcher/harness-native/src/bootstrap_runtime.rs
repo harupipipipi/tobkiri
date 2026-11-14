@@ -55,6 +55,7 @@ const BOOTSTRAP_ACTIVATION_MATCH: u8 = 25;
 const BOOTSTRAP_TEMPLATE_LOOKUP: u8 = 26;
 const BOOTSTRAP_RECOVERY_CATALOG: u8 = 27;
 const BOOTSTRAP_ADMITTED_CLOSURE_STEP: u8 = 28;
+const BOOTSTRAP_RECOVERY_FINISHED: u8 = 29;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
 const BOOTSTRAP_PREVIEW_SLOT: usize = 10;
@@ -200,6 +201,7 @@ impl CiRetiredCall {
             BOOTSTRAP_TEMPLATE_LOOKUP => "bootstrap-template-lookup",
             BOOTSTRAP_RECOVERY_CATALOG => "bootstrap-recovery-catalog",
             BOOTSTRAP_ADMITTED_CLOSURE_STEP => "bootstrap-admitted-closure-step",
+            BOOTSTRAP_RECOVERY_FINISHED => "bootstrap-recovery-finished",
             _ => "unknown",
         }
     }
@@ -1080,7 +1082,10 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        match self.setup_review_inner(options, false, false, None).await? {
+        match self
+            .setup_review_inner(options, false, false, false, None)
+            .await?
+        {
             Ok(SetupOutput::Listing(listing)) => Ok(Ok(listing)),
             Ok(SetupOutput::Decision(_)) => bail!("unexpected Setup decision"),
             Err(error) => Ok(Err(error)),
@@ -1157,7 +1162,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             bail!("bootstrap activation body must be a mapping");
         }
         match self
-            .setup_review_inner(options, false, false, Some(input))
+            .setup_review_inner(options, false, false, false, Some(input))
             .await?
         {
             Ok(SetupOutput::Decision(decision)) => Ok(Ok(decision)),
@@ -1175,7 +1180,10 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        match self.setup_review_inner(options, true, false, None).await? {
+        match self
+            .setup_review_inner(options, true, false, false, None)
+            .await?
+        {
             Ok(SetupOutput::Listing(listing)) => Ok(Ok(listing)),
             Ok(SetupOutput::Decision(_)) => bail!("unexpected Setup decision"),
             Err(error) => Ok(Err(error)),
@@ -1191,7 +1199,28 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        match self.setup_review_inner(options, false, true, None).await? {
+        match self
+            .setup_review_inner(options, false, true, false, None)
+            .await?
+        {
+            Ok(SetupOutput::Listing(listing)) => Ok(Ok(listing)),
+            Ok(SetupOutput::Decision(_)) => bail!("unexpected Setup decision"),
+            Err(error) => Ok(Err(error)),
+        }
+    }
+
+    #[cfg(all(test, feature = "bootstrap-ci", target_os = "macos"))]
+    async fn setup_review_recovery_fixture(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+    ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
+        match self
+            .setup_review_inner(options, false, false, true, None)
+            .await?
+        {
             Ok(SetupOutput::Listing(listing)) => Ok(Ok(listing)),
             Ok(SetupOutput::Decision(_)) => bail!("unexpected Setup decision"),
             Err(error) => Ok(Err(error)),
@@ -1203,6 +1232,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         options: &crate::BootstrapReviewOptions,
         identity_prefix: bool,
         catalog_prefix: bool,
+        recovery_only: bool,
         activation: Option<ActivationInput>,
     ) -> Result<std::result::Result<SetupOutput, crate::BootstrapReviewFailure>>
     where
@@ -1231,6 +1261,12 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         };
         review.identity_prefix = identity_prefix;
         review.catalog_prefix = catalog_prefix;
+        #[cfg(test)]
+        {
+            review.recovery_only = recovery_only;
+        }
+        #[cfg(not(test))]
+        debug_assert!(!recovery_only);
         // The carrier remains in self, outside dispatch's caught future, even
         // if a source callback panics during its real persistence operation.
         self.review = Some(review);
@@ -1464,6 +1500,11 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                         bail!(
                             "admitted Pack closure lookup is outside the fixed Review reachpoint"
                         );
+                    }
+                    Some(catalog::RECOVERY_FINISHED_REQUEST)
+                        if phase != BOOTSTRAP_RECOVERY_FINISHED =>
+                    {
+                        bail!("recovery completion is outside the fixed Review reachpoint");
                     }
                     Some(resolver_edges::STATIC_REQUEST) if phase != RESOLVER_STATIC_EDGES => {
                         bail!("static Profile edges are outside the fixed Review reachpoint");

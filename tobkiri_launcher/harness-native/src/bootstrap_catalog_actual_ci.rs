@@ -364,7 +364,7 @@ async fn run_original_catalog_component_driver(
     let execution: Result<()> = async {
         let options = BootstrapReviewOptions::default();
         let outcome = if recovery {
-            runtime.setup_review_listing(&options).await
+            runtime.setup_review_recovery_fixture(&options).await
         } else {
             runtime.setup_review_catalog_prefix(&options).await
         };
@@ -449,7 +449,7 @@ async fn run_original_catalog_component_driver(
                 "qualification":false}));
         }
         let expected = if recovery {
-            BootstrapReviewReachpoint::RecoveryJournalClearNotBound
+            BootstrapReviewReachpoint::RecoveryCompleted
         } else {
             BootstrapReviewReachpoint::ProfileDefinitionStoreNotBound
         };
@@ -479,24 +479,25 @@ async fn run_original_catalog_component_driver(
                     && rows.len() == 1
                     && id.as_str() == Some("recovery-test-profile")
                     && observation["authority_constructor_entries"] == 1
-                    && observation["next_stage"] == "journal-clear-entry"
+                    && observation["next_stage"] == "journal-cleared"
                     && profiles.digest_guest(runtime.data_budget())?.as_str()
                         == observation["profile_rows_digest"].as_str().context("original Profile digest required")?
                     && user_data.join("authority/v4.sqlite3").is_file()
-                    && user_data.join("profiles/bootstrap-publication.json").is_file(),
+                    && !user_data.join("profiles/bootstrap-publication.json").exists(),
                 "the same Runtime must retain the recovered catalog and open the registered Authority database",
             );
         }
         let fuel_after = runtime.fuel_remaining()?;
         ensure!(fuel_after < fuel_before && invocation.deadline()? == deadline);
-        ensure!(cleanup_probe.is_some() && !lock_is_free(&user_data)?);
+        let journal_held = !lock_is_free(&user_data)?;
+        ensure!(journal_held != recovery && (recovery || cleanup_probe.is_some()));
         observed = Some(
             json!({"outcome":"integration-boundary",
-            "stage":if recovery {"recovery-journal-clear-entry"} else {"profile-definition-store-entry"},
+            "stage":if recovery {"recovery-journal-cleared"} else {"profile-definition-store-entry"},
             "fuel_before":fuel_before,"fuel_after":fuel_after,"budget_resets":0,
             "inspection_attempts_before_review":inspections_before_review,
             "inspection_attempts_after_review":runtime.inspection_attempts(),
-            "same_original_deadline":true,"journal_lock_held_before_finish":true,
+            "same_original_deadline":true,"journal_lock_held_before_finish":journal_held,
             "actual_host_root_retained":true,"actual_bundle_root_retained":true,
             "actual_catalog_retained":true}),
         );
@@ -521,6 +522,7 @@ async fn run_original_catalog_component_driver(
     let before = invocation.capacity_snapshot();
     #[cfg(feature = "catalog-diagnostics-ci")]
     let schema_status = runtime.ci_schema_status();
+    let recovery_receipt = runtime.review.as_ref().map(|review| review.receipt());
     let cleanup = runtime.finish().await;
     let after_finish = invocation.capacity_snapshot();
     #[cfg(feature = "catalog-diagnostics-ci")]
@@ -534,7 +536,9 @@ async fn run_original_catalog_component_driver(
         Ok(Value::Null)
     };
     let probe_present = cleanup_probe.is_some();
-    let verified = cleanup_probe.as_ref().map(|v| v.is_verified());
+    let verified = cleanup_probe.as_ref().map(|v| v.is_verified()).or_else(|| {
+        (recovery && recovery_receipt.is_some_and(|receipt| receipt.verified())).then_some(true)
+    });
     let lock_released = lock_is_free(&user_data)?;
     drop(held_failure);
     drop(held_success);
@@ -560,7 +564,7 @@ async fn run_original_catalog_component_driver(
     "reaped":reaped,"after_reap":{"bytes":after_reap.charged_bytes,"reservations":after_reap.reservations}},
     "qualification":false,"production_enabled":false,
     "scope":if recovery {
-        "actual catalog and empty Authority reservation read through the journal-clear entry with controlled CI resource owner"
+        "actual catalog and empty Authority reservation read with the journal cleared and lock released before returning"
     } else {
         "actual catalog through Profile Definition Store entry with controlled CI resource owner and empty artifact directory"
     }});

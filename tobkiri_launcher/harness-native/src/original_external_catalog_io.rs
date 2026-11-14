@@ -16,6 +16,9 @@ mod external_catalog_operations;
 #[cfg(test)]
 #[path = "original_external_catalog_pinned.rs"]
 mod external_catalog_pinned;
+#[cfg(test)]
+#[path = "original_external_catalog_projection.rs"]
+mod external_catalog_projection;
 #[path = "original_external_catalog_receipt.rs"]
 mod external_catalog_receipt;
 #[path = "original_external_catalog_variants.rs"]
@@ -352,7 +355,7 @@ mod tests {
             let op = operation(read, source, cancellation);
             let path = stage(&runtime, &manifest());
             let catalog = read_inputs(&op, &runtime, &source.root, budget).unwrap();
-            assert!(catalog.raw.is_none());
+            assert!(catalog.registry.raw.is_none());
             assert_eq!(
                 catalog
                     ._bundled
@@ -399,7 +402,7 @@ mod tests {
             let sample = br#"{"signature":"not-yet-validated"}"#;
             fs::write(&path, sample).unwrap();
             let catalog = read_inputs(&op, &runtime, &source.root, budget).unwrap();
-            assert_eq!(catalog.raw.as_ref().unwrap().as_slice(), sample);
+            assert_eq!(catalog.registry.raw.as_ref().unwrap().as_slice(), sample);
             assert_eq!(fs::read(&path).unwrap(), sample);
             assert!(!parent.join(".external_normal_pack_catalog_key").exists());
             let second_name = parent.join("second-file");

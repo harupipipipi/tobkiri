@@ -7,7 +7,7 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
     seed: CoreValue,
-) -> super::super::listing::Outcome {
+) -> RecoveryOutcome {
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
     let scope = actual_call_scope(pack)?;

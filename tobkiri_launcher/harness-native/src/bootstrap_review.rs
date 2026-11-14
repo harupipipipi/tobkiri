@@ -62,8 +62,9 @@ pub enum BootstrapReviewReachpoint {
     ClosureBundledPackRootNotBound,
     AdmittedHostExtensionProjectionNotBound,
     CatalogWithProfilesNotBound,
-    RecoveryActivationStoreNotBound,
-    RecoveryJournalClearNotBound,
+    RecoveryActivationJournalNotBound,
+    #[cfg(test)]
+    RecoveryCompleted,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,
@@ -125,6 +126,8 @@ pub(crate) struct Review {
     pub(crate) actual: ActualCustody,
     pub(crate) identity_prefix: bool,
     pub(crate) catalog_prefix: bool,
+    #[cfg(test)]
+    pub(crate) recovery_only: bool,
 }
 #[derive(Default)]
 pub(crate) struct ActualCustody {
@@ -188,6 +191,8 @@ impl Review {
             actual: ActualCustody::default(),
             identity_prefix: false,
             catalog_prefix: false,
+            #[cfg(test)]
+            recovery_only: false,
         })
     }
     pub(crate) fn receipt(&self) -> OriginalAuthorityCloseReceipt {

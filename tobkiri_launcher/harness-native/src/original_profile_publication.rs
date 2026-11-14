@@ -34,6 +34,9 @@ pub(crate) use candidate_selection::{CandidateSelection, ResolverAuthority};
 #[path = "original_recovery_authority.rs"]
 mod recovery_authority;
 #[cfg(unix)]
+#[path = "original_recovery_workspace.rs"]
+mod recovery_workspace;
+#[cfg(unix)]
 pub(crate) use recovery_authority::RecoveryAuthorityReached;
 
 const JOURNAL: &str = "bootstrap-publication.json";

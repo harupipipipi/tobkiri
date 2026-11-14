@@ -172,7 +172,15 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
                 | PublicationPrefix::RecoveredNone,
             ) => {}
             Ok(PublicationPrefix::BootstrapProfileIdNotBound) => {
-                return nonstale(review, pack).await;
+                if let Err(error) = nonstale(review, pack).await? {
+                    return Ok(Err(error));
+                }
+                #[cfg(test)]
+                if review.recovery_only {
+                    return Ok(Err(BootstrapReviewFailure::NotBound(
+                        BootstrapReviewReachpoint::RecoveryCompleted,
+                    )));
+                }
             }
         }
     }
@@ -182,7 +190,7 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> super::listing::Outcome {
+) -> super::catalog::RecoveryOutcome {
     let caller = ReviewCaller::Recovery;
     let identity = match validated_identity(review, pack, caller).await? {
         Ok(identity) => identity,

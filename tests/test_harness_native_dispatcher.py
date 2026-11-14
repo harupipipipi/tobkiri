@@ -1016,6 +1016,34 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         with self.assertRaises(InvalidReference):
             self.recovery_catalog(catalog, profiles)
 
+    def test_completed_recovery_releases_replacement_and_allows_fresh_candidate(self) -> None:
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        self.getter("fixture-id")
+        old_catalog = self.load()
+        replacement = self.recovery_catalog(old_catalog, [])["root"]
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.describe_value(self.frame(
+                "bootstrap-recovery-finished", catalog=old_catalog,
+            ))
+        packet = wire.loads(self.dispatcher.describe_value(self.frame(
+            "bootstrap-recovery-finished", catalog=replacement,
+        )))
+        self.assertEqual(packet, {
+            "format": PREFIX + "bootstrap-recovery-finished-result.v1",
+            "scope": self.scope.wire(),
+        })
+        with self.assertRaises(InvalidReference):
+            self.registry.reference(replacement)
+        self.runtime.catalog = self.Catalog()
+        self.runtime.catalog.profiles["fixture-id"] = {"profile_id": "fixture-id"}
+        new_catalog = self.load()
+        self.assertNotEqual(new_catalog, old_catalog)
+        self.getter("fixture-id")
+        profile = self.getter("fixture-id")
+        result = self.lookup(new_catalog, profile)
+        original = self.registry.borrow(self.registry.reference(result["root"]))
+        self.assertIs(original, self.runtime.catalog.profiles["fixture-id"])
+
     def test_recovery_catalog_refuses_fresh_candidate_loader(self) -> None:
         self.runtime.catalog_with_profiles = self.recovery_projector
         catalog = self.load()

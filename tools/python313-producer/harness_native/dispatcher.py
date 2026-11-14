@@ -860,9 +860,11 @@ class Dispatcher:
             root, fresh = registry._retain(value, created=created)
             if not fresh:
                 raise UnsupportedValue("original bootstrap recovery catalog was already issued")
-            return wire.dumps({"format": PREFIX + "bootstrap-recovery-catalog-result.v1",
+            response = wire.dumps({"format": PREFIX + "bootstrap-recovery-catalog-result.v1",
                                "scope": registry.scope.wire(), "root": root.wire(),
                                "owned": [format(ref.object_id, "x") for ref, _ in created]})
+            registry._record_recovery_catalog_replacement(root)
+            return response
         except BaseException:
             registry._rollback(created)
             raise
@@ -980,6 +982,14 @@ class Dispatcher:
         frame = self._load(payload)
         if frame.get("format") == PREFIX + "bootstrap-template-lookup.v1":
             return self._bootstrap_template_lookup(state, frame)
+        if frame.get("format") == PREFIX + "bootstrap-recovery-finished.v1":
+            self._checked_frame(frame, "bootstrap-recovery-finished", {"catalog"})
+            registry = state.registry
+            catalog = registry.reference(frame["catalog"])
+            result = wire.dumps({"format": PREFIX + "bootstrap-recovery-finished-result.v1",
+                                 "scope": registry.scope.wire()})
+            registry._finish_bootstrap_recovery(catalog)
+            return result
         if frame.get("format") == PREFIX + "bootstrap-admitted-closure-step.v1":
             return self._bootstrap_admitted_closure_step(state, frame)
         if frame.get("format") == PREFIX + "bootstrap-predecessor-source.v1":
