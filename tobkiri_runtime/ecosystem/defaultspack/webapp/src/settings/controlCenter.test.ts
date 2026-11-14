@@ -11,6 +11,7 @@ import {
   controlCenterSectionMeta,
   localizedSettingsSourceLabel,
   mapSettingsSectionId,
+  normalizeSettingsField,
   safeSettingsLabel,
 } from "./controlCenter";
 
@@ -31,6 +32,29 @@ test("settings control center keeps the required section order", () => {
     "Advanced Settings",
     "Diagnostics & Support",
   ]);
+});
+
+test("Japanese field copy applies only to its owning settings section", () => {
+  const cases = [
+    ["preview", "auto_open", "自動で開く"],
+    ["calendar", "quick_add_enabled", "日付を押して追加"],
+    ["models", "model_api_routes", "モデル別の接続先"],
+    ["external_input", "input_provider", "受け取り元"],
+    ["external_output", "output_provider", "送信先サービス"],
+    ["external_custom", "custom_template_path", "追加テンプレートの場所"],
+    ["triggers", "mode", "起動の判断方法"],
+    ["debug", "ai_request_logging", "AIへのリクエストを記録"],
+    ["operations_company", "model_allowlist", "利用するモデル"],
+    ["mimo_coding_company", "model_allowlist", "利用するモデル"],
+  ];
+  for (const [section, id, expected] of cases) {
+    const field = { id, label: "Extension label", type: "text", help: "Extension help" } as SettingsSection["fields"][number];
+    assert.equal(normalizeSettingsField(field, section, "ja").label, expected);
+    const extension = normalizeSettingsField(field, "third_party", "ja");
+    assert.equal(extension.label, field.label);
+    assert.equal(extension.help, field.help);
+    assert.equal(normalizeSettingsField(field, section, "en").label, field.label);
+  }
 });
 
 test("control center canonical section ids round-trip through settings navigation", () => {
