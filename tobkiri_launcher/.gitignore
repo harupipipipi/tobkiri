@@ -2,3 +2,4 @@
 src-tauri/target/
 src-tauri/gen/
 core-host-ui/
+setup-review-ui/

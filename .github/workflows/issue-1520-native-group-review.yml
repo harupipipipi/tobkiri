@@ -15,6 +15,9 @@ on:
       - 'tobkiri_launcher/frontend/src/pages/DefaultsConfirmationDetails.tsx'
       - 'tobkiri_launcher/frontend/src/pages/NativeSetupReview.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Setup.test.tsx'
+      - 'tobkiri_launcher/frontend/src/setup-review.tsx'
+      - 'tobkiri_launcher/frontend/setup-review/**'
+      - 'tobkiri_launcher/frontend/vite.setup-review.config.ts'
       - '.github/workflows/issue-1520-native-group-review.yml'
   workflow_dispatch:
 permissions:
@@ -69,4 +72,7 @@ jobs:
           src/lib/defaultsSetup.test.ts src/pages/Setup.test.tsx
           src/pages/DefaultsReview.successor.test.tsx
           src/pages/DefaultsReview.packVersions.test.tsx
+      - name: Build the isolated Setup review assets
+        working-directory: tobkiri_launcher/frontend
+        run: npm run build:setup-review
       - run: cargo check --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml --features core-host

@@ -165,7 +165,9 @@ test('isolated setup review validates the listing and exposes no activation acti
   assert.ok(denied.includes('&lt;script&gt;invalid review&lt;/script&gt;'));
   assert.doesNotMatch(denied, /<script|Copy activation denial|Verify activation/);
   listing.recommended_default_profile.confirmation.confirmation_digest = 'unbound';
-  assert.throws(() => renderToString(<NativeSetupReview listing={listing} />), /confirmation_digest.*invalid/i);
+  const invalid = renderToString(<NativeSetupReview listing={listing} />);
+  assert.match(invalid, /The Setup review could not be displayed/);
+  assert.doesNotMatch(invalid, /Confirmed operation bindings|Copy setup error/);
 });
 
 test('the current GUI has no dependency on retired setup-pack routing', () => {
