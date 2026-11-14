@@ -1,17 +1,142 @@
 //! Place the review beside the parent WebKit view, in AppKit points.
 
-use super::{valid_bounds, SetupReviewView};
+use super::{valid_bounds, SetupReviewView, MAX_LISTING_BYTES};
 use block2::RcBlock;
-use objc2::{rc::Retained, runtime::AnyObject, MainThreadMarker, MainThreadOnly, Message};
+use objc2::{
+    rc::{Retained, Weak},
+    runtime::AnyObject,
+    MainThreadMarker, MainThreadOnly, Message,
+};
 use objc2_app_kit::{NSView, NSWindowOrderingMode};
 use objc2_foundation::{NSError, NSPoint, NSRect, NSSize, NSString};
 use objc2_web_kit::WKWebView;
 use serde::Deserialize;
 use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 const MAX_DIMENSION: f64 = 16_384.0;
 const VIEWPORT_TOLERANCE: f64 = 1.0;
 const MEASURE: &str = include_str!("../../frontend/src/lib/measureSetupReviewSlot.js");
+const MEASUREMENT_TIMEOUT: Duration = Duration::from_secs(1);
+
+enum Display {
+    Waiting(String),
+    Mounted(SetupReviewSlot),
+}
+
+/// One native candidate and its exact parent page, confined to the UI thread.
+#[allow(dead_code)] // The Launcher owner will supply the admitted worker result.
+pub(crate) struct SetupReviewPresentation {
+    parent: Retained<WKWebView>,
+    url: String,
+    port: u16,
+    state: Rc<RefCell<PresentationState>>,
+}
+
+struct PresentationState {
+    display: Option<Display>,
+    measurement_pending: bool,
+}
+
+#[allow(dead_code)]
+impl SetupReviewPresentation {
+    /// Capture the exact URL of the already validated Setup owner and its listing.
+    pub(crate) fn new(
+        parent: &WKWebView,
+        port: u16,
+        listing: String,
+    ) -> Result<Self, &'static str> {
+        if listing.is_empty() || listing.len() > MAX_LISTING_BYTES {
+            return Err("Setup review listing exceeds its display limit");
+        }
+        Ok(Self {
+            parent: parent.retain(),
+            url: eligible_owner(parent, port).ok_or("Setup review owner is unavailable")?,
+            port,
+            state: Rc::new(RefCell::new(PresentationState {
+                display: Some(Display::Waiting(listing)),
+                measurement_pending: false,
+            })),
+        })
+    }
+
+    /// Coalesce refresh requests and fail closed while geometry is unavailable.
+    pub(crate) fn refresh(&self) {
+        let mut state = self.state.borrow_mut();
+        if eligible_owner(&self.parent, self.port).as_ref() != Some(&self.url) {
+            state.display = None;
+            return;
+        }
+        if state.measurement_pending || state.display.is_none() {
+            return;
+        }
+        state.measurement_pending = true;
+        drop(state);
+
+        let parent = Weak::new(&*self.parent);
+        let url = self.url.clone();
+        let port = self.port;
+        let presentation = Rc::downgrade(&self.state);
+        let deadline = Instant::now() + MEASUREMENT_TIMEOUT;
+        measure(&self.parent, move |geometry| {
+            let Some(presentation) = presentation.upgrade() else {
+                return;
+            };
+            let mut state = presentation.borrow_mut();
+            state.measurement_pending = false;
+            let parent = parent.load();
+            if parent
+                .as_deref()
+                .and_then(|parent| eligible_owner(parent, port))
+                .as_ref()
+                != Some(&url)
+            {
+                state.display = None;
+                return;
+            }
+            let geometry = geometry.filter(|_| Instant::now() < deadline);
+            match state.display.as_ref() {
+                Some(Display::Waiting(listing)) => {
+                    if let (Some(geometry), Some(mtm), Some(parent)) =
+                        (geometry, MainThreadMarker::new(), parent)
+                    {
+                        if let Ok(slot) = SetupReviewSlot::mount(mtm, &parent, geometry, listing) {
+                            state.display = Some(Display::Mounted(slot));
+                        }
+                    }
+                }
+                Some(Display::Mounted(slot)) => {
+                    slot.update(geometry);
+                }
+                None => {}
+            }
+        });
+    }
+
+    /// Retire this candidate on replacement, navigation or owner hide.
+    pub(crate) fn retire(&self) {
+        self.state.borrow_mut().display = None;
+    }
+}
+
+fn eligible_owner(parent: &WKWebView, port: u16) -> Option<String> {
+    let window = parent.window()?;
+    if !window.isVisible()
+        || window.isMiniaturized()
+        || window.attachedSheet().is_some()
+        || parent.isHiddenOrHasHiddenAncestor()
+    {
+        return None;
+    }
+    let url = unsafe { parent.URL() }?.absoluteString()?.to_string();
+    let parsed = tauri::Url::parse(&url).ok()?;
+    (parsed.scheme() == "http"
+        && matches!(parsed.host_str(), Some("127.0.0.1" | "localhost"))
+        && parsed.port_or_known_default() == Some(port)
+        && parsed.path() == "/panel/setup")
+        .then_some(url)
+}
 
 /// Sample the fixed Setup marker. The callback runs on the AppKit thread.
 /// The owner must discard late results after a route or candidate change.

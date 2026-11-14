@@ -8,7 +8,7 @@ mod native_setup_review;
 fn main() {
     use block2::RcBlock;
     use native_setup_review::{
-        slot::{measure, SetupReviewSlot},
+        slot::{measure, SetupReviewPresentation, SetupReviewSlot},
         SetupReviewView,
     };
     use objc2::{rc::autoreleasepool, runtime::AnyObject, MainThreadMarker, MainThreadOnly};
@@ -223,7 +223,26 @@ fn main() {
             NSSize::new(700.0, 900.0)
         );
         drop(placed);
+
+        assert!(SetupReviewPresentation::new(&parent, 8765, listing.to_owned()).is_err());
+        let cancelled = SetupReviewPresentation::new(&parent, 80, listing.to_owned()).unwrap();
+        cancelled.refresh();
+        cancelled.retire();
+        for _ in 0..5 {
+            pump();
+        }
+        assert_eq!(slot.subviews().len(), 2);
+        let presentation = SetupReviewPresentation::new(&parent, 80, listing.to_owned()).unwrap();
+        presentation.refresh();
+        presentation.refresh();
+        while slot.subviews().len() == 2 {
+            assert!(Instant::now() < deadline, "Parent review was not mounted");
+            pump();
+        }
+        assert_eq!(slot.subviews().len(), 3);
         window.orderOut(None);
+        presentation.refresh();
+        assert_eq!(slot.subviews().len(), 2);
         println!("Actual WebKit rendered the pinned review, blocked navigation, clipped scrolling and detached");
     });
 }
