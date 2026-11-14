@@ -16,11 +16,63 @@ import re
 import sys
 
 from build_native import fingerprint
+from harness_native_dependencies import DIAGNOSTIC_FORMAT, ENTRYPOINT, METADATA
+from harness_native_dependencies import verify_component_receipt
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = "tobkiri-ui:harness-native/runtime@1.0.0"
 TRANSPORT = "tobkiri-ui:harness-native/transport@1.0.0"
 IMPORT = "tobkiri-native:harness/bindings@1.0.0"
+NORMAL_SOURCE = "io.tobkiri.harness-native-component-source.v1"
+DIAGNOSTIC_SOURCE = "io.tobkiri.harness-native-schema-call-diagnostic-source.v1"
+NORMAL_DEPENDENCIES = "tobkiri.harness-native-dependencies/1"
+
+
+def verify_producer_selection(
+    artifact: Path, build: dict, plan: dict, identity: dict, *, diagnostic: bool,
+) -> None:
+    """Bind this same-run component to its successful producer and all inputs."""
+    bundle = artifact.parent.parent
+    name = "harness-native-schema-diagnostic" if diagnostic else "harness-native"
+    variant = "schema-diagnostic" if diagnostic else "candidate"
+    receipt_path = bundle.parent / "components-build.json"
+    fingerprint(receipt_path, 4 * 1024**2)
+    receipt = json.loads(receipt_path.read_bytes())
+    if (
+        receipt.get("format") != f"tobkiri.python313-native-harness-{variant}/1"
+        or receipt.get("outcome") != "success"
+        or receipt.get("inputs_unchanged") is not True
+        or receipt.get("production_enabled") is not False
+        or receipt.get("diagnostic_only", False) is not diagnostic
+        or set(receipt.get("components", {})) != {name}
+        or bundle.name != name
+    ):
+        raise ValueError("native Harness producer selection differs")
+    member = receipt["components"][name]
+    source = member["source"]
+    inputs = bundle / "inputs"
+    metadata = fingerprint(inputs / "python" / METADATA, 4 * 1024**2)
+    if (
+        member["artifact"] != identity
+        or member["build_receipt"] != fingerprint(
+            artifact.with_name("component.build.json"), 4 * 1024**2
+        )
+        or source["files"]["provenance.json"] != fingerprint(inputs / "provenance.json")
+        or source["files"]["python/" + METADATA] != metadata
+        or source["source_files"] != plan["sources"]
+        or build["compiler_executable_sha256"] != receipt["producer"]["sha256"]
+        or build["producer_ci_receipt_sha256"] != receipt["producer_receipt"]["sha256"]
+        or plan["entrypoint"] != ENTRYPOINT
+    ):
+        raise ValueError("native Harness files differ from the successful producer")
+    verify_component_receipt(build, source, inputs)
+    dependencies = build["harness_native_dependencies"]
+    if (
+        dependencies.get("format") != (DIAGNOSTIC_FORMAT if diagnostic else NORMAL_DEPENDENCIES)
+        or dependencies.get("diagnostic_only", False) is not diagnostic
+        or dependencies.get("original_source_files_unchanged") is not (not diagnostic)
+    ):
+        raise ValueError("native Harness dependency mode differs")
 
 
 def bind(
@@ -43,16 +95,18 @@ def bind(
     raw_plan = (inputs / "plan.json").read_bytes()
     plan = json.loads(raw_plan)
     identity = fingerprint(artifact, 32 * 1024**2)
-    if (build["format"] != "tobkiri.component-build/2"
+    if (identity["bytes"] == 0
+            or build["format"] != "tobkiri.component-build/2"
             or build["world"] != "harness-native"
             or plan["world"] != "harness-native"
             or build["artifact_sha256"] != identity["sha256"]
             or build["artifact_bytes"] != identity["bytes"]
             or build["build_plan_sha256"] != hashlib.sha256(raw_plan).hexdigest()
             or build["imports"] != [IMPORT]
-            or set(build["exports"]) != {RUNTIME, TRANSPORT}
+            or build["exports"] != [RUNTIME, TRANSPORT]
             or build["production_enabled"] is not False):
         raise ValueError("actual native Harness artifact/source/ABI differs")
+    verify_producer_selection(artifact, build, plan, identity, diagnostic=schema_call_diagnostic)
 
     previous = sys.path[:]
     sys.path.insert(0, str(ROOT / "scripts/wasm"))
@@ -63,18 +117,21 @@ def bind(
                 if schema_call_diagnostic else stage.captured())
     finally:
         sys.path[:] = previous
+    provenance = (inputs / "provenance.json").read_bytes()
+    if provenance != base["provenance.json"]:
+        raise ValueError("native Harness provenance differs from the selected source")
+    derived = json.loads(provenance)
+    if derived.get("format") != (DIAGNOSTIC_SOURCE if schema_call_diagnostic else NORMAL_SOURCE):
+        raise ValueError("native Harness source mode differs")
+    original_plan = (json.dumps(stage.plan_for(base), sort_keys=True, indent=2) + "\n").encode()
+    if build["harness_native_dependencies"]["original_plan_sha256"] != hashlib.sha256(
+        original_plan
+    ).hexdigest():
+        raise ValueError("native Harness original source plan differs")
     diagnostic_contract = None
     if schema_call_diagnostic:
-        # Independently regenerate the admitted derivation. The derived module
-        # must bind its ACTUAL bytes/index, never an original-source digest.
-        provenance = (inputs / "provenance.json").read_bytes()
-        if provenance != base["provenance.json"]:
-            raise ValueError("diagnostic provenance differs from the current exact derivation")
-        derived = json.loads(provenance)
         diagnostic_contract = derived.get("checkpoint_contract", {})
-        if (derived.get("format")
-                != "io.tobkiri.harness-native-schema-call-diagnostic-source.v1"
-                or derived.get("diagnostic_only") is not True
+        if (derived.get("diagnostic_only") is not True
                 or derived.get("original_source_files_unchanged") is not False
                 or derived.get("other_original_members_unchanged") is not True
                 or diagnostic_contract.get("tag_count") != 69
@@ -148,6 +205,7 @@ def bind(
         "source_index_sha256": index["INDEX_SHA256"], "module_anchors": len(selected),
         "native_rust_index": fingerprint(index_path), "current_sources_verified": True,
         "component_init_verified": False, "production_enabled": False,
+        "producer_selection_verified": True,
     }
     if diagnostic_contract is not None:
         report.update({

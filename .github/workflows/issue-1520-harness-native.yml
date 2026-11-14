@@ -21,6 +21,7 @@ on:
       - 'Cargo.lock'
       - 'tools/python313-producer/tests/test_build_components.py'
       - 'tools/python313-producer/tests/test_harness_native_dependencies.py'
+      - 'tools/python313-producer/tests/test_harness_native_ci_inputs.py'
       - 'tools/python313-producer/tests/test_schema_compressed_loader.py'
       - 'tools/quality/test_harness_native_workflow.py'
       - 'tools/quality/test_artifact_archive.py'
@@ -86,6 +87,7 @@ jobs:
           python3 -B -m unittest discover -s tests -p 'test_harness_native_*.py'
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_harness_native_dependencies.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_harness_native_ci_inputs.py
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_schema_loader.py
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_schema_compressed_loader.py
       - name: Restore the archived successful custom producer from its verified private archive
@@ -131,12 +133,14 @@ jobs:
             ${{ runner.temp }}/harness-native/components-build.json
             ${{ runner.temp }}/harness-native/harness-native/inputs/plan.json
             ${{ runner.temp }}/harness-native/harness-native/inputs/provenance.json
+            ${{ runner.temp }}/harness-native/harness-native/inputs/python/harness-native-dependencies.json
             ${{ runner.temp }}/harness-native/harness-native/build/
             ${{ runner.temp }}/harness-native/harness-native/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native/work/generated-bindings/
             ${{ runner.temp }}/harness-native/harness-native/work/component.wasm
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/plan.json
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/provenance.json
+            ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/python/harness-native-dependencies.json
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/build/
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/generated-bindings/
