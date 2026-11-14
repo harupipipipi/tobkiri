@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import os
@@ -31,6 +32,7 @@ HANDOVER_SOURCE = "core_runtime/development_host_handover_guard.py"
 SANITIZER_SOURCE = "ecosystem/defaultspack/defaultspack/development_host_data.py"
 PERSISTENCE_SOURCE = "tobkiri_protocol/secure_persistence.py"
 STORE_SOURCE = "core_runtime/profile_definition_store_v4.py"
+SETUP_RUNTIME_SOURCE = "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py"
 SOURCES = (
     PREDECESSOR_SOURCE,
     ACTIVE_SOURCE,
@@ -38,6 +40,7 @@ SOURCES = (
     SANITIZER_SOURCE,
     PERSISTENCE_SOURCE,
     STORE_SOURCE,
+    SETUP_RUNTIME_SOURCE,
 )
 LOCK = "profiles/.profile-definition.lock"
 INDEX = "profiles/index.json"
@@ -527,7 +530,7 @@ def observe_inactive_registry(
             "expected": expected,
         }
         if case == "authenticated-handover":
-            row["setup_review"] = _observe_setup_review(root, expected["predecessor"])
+            row["setup_review"] = _observe_setup_review(runtime, root, expected["predecessor"])
             if _inventory(root, files) != before:
                 raise AssertionError("original Setup review changed the import")
             row["registration_cases"] = _observe_registration(
@@ -549,8 +552,13 @@ def observe_inactive_registry(
     )
 
 
-def _observe_setup_review(root: Path, predecessor: dict[str, Any]) -> dict[str, Any]:
+def _observe_setup_review(
+    runtime: Path, root: Path, predecessor: dict[str, Any],
+) -> dict[str, Any]:
     from core_runtime.api.setup_handlers import SetupHandlersMixin
+    from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+        DefaultspackProfileRuntime,
+    )
     from tobkiri_protocol.canonical import canonical_digest
 
     with patch.dict(os.environ, {
@@ -574,7 +582,67 @@ def _observe_setup_review(root: Path, predecessor: dict[str, Any]) -> dict[str, 
         })
     ):
         raise AssertionError("original Setup did not bind the authenticated import")
+    decide = DefaultspackProfileRuntime().setup_activation_decision
+    if Path(decide.__code__.co_filename).resolve() != runtime / SETUP_RUNTIME_SOURCE:
+        raise AssertionError("Setup decision callable is outside the staged original")
+    body = {
+        "setup_api_version": "io.tobkiri.setup-state.v4",
+        "operation_id": "defaults.activate",
+        "confirmed": True,
+        "confirmation": copy.deepcopy(confirmation),
+    }
+    body_before = copy.deepcopy(body)
+    listing_before = copy.deepcopy(listing)
+    preflight = decide(body, None)
+    accepted = decide(body, listing)
+    stale_listing = copy.deepcopy(listing)
+    stale_listing["recommended_default_profile"]["confirmation"]["confirmation_digest"] = (
+        "stale-fixture-digest"
+    )
+    stale_before = copy.deepcopy(stale_listing)
+    stale = decide(body, stale_listing)
+    integer_body = copy.deepcopy(body)
+    integer_body["confirmed"] = 1
+    integer_before = copy.deepcopy(integer_body)
+    denied = decide(integer_body, None)
+    stale_response = {
+        "error": "Harness Profile confirmation is stale or tampered",
+        "status_code": 409,
+        "state": "review_required",
+        "write_set": [],
+    }
+    denied_response = {
+        "error": "Harness Profile requires explicit confirmation",
+        "status_code": 409,
+        "state": "confirmation_required",
+        "write_set": [],
+    }
+    if (
+        preflight.response is not None
+        or accepted.response is not None
+        or preflight.confirmation != confirmation
+        or accepted.confirmation != confirmation
+        or preflight.confirmation is body["confirmation"]
+        or accepted.confirmation is body["confirmation"]
+        or accepted.confirmation is preflight.confirmation
+        or stale.response != stale_response
+        or stale.confirmation is not None
+        or denied.response != denied_response
+        or denied.confirmation is not None
+        or body != body_before
+        or listing != listing_before
+        or stale_listing != stale_before
+        or integer_body != integer_before
+    ):
+        raise AssertionError("original Setup activation decisions differ")
     return {
+        "decision_observation": {
+            "preflight": "confirmation-copy",
+            "listing_match": "confirmation-copy",
+            "stale_listing": stale_response,
+            "integer_confirmed_preflight": denied_response,
+            "inputs_unchanged": True,
+        },
         "state": listing["state"],
         "profile_id": profile["profile_id"],
         "confirmation": confirmation,

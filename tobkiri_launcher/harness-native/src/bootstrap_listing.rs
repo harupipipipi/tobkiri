@@ -4,7 +4,7 @@ use crate::bootstrap_review::Review;
 use crate::{BootstrapReviewFailure, BootstrapReviewOwner};
 use review_continuation::ReviewCaller;
 
-pub(super) type Outcome = Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>>;
+pub(super) type Outcome = Result<std::result::Result<CoreValue, BootstrapReviewFailure>>;
 const PREVIEW_REQUEST: &str = "io.tobkiri.native-bootstrap-preview-catalog.v1";
 const PREVIEW_RESPONSE: &str = "io.tobkiri.native-bootstrap-preview-catalog-result.v1";
 const LISTING_REQUEST: &str = "io.tobkiri.native-bootstrap-setup-listing.v1";
@@ -137,7 +137,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         presentation,
         pack.input_budget,
     )?;
-    Ok(Ok(listing.encode_guest(pack.input_budget)?))
+    Ok(Ok(listing))
 }
 
 fn preview_reference(

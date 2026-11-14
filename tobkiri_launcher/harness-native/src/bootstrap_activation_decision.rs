@@ -39,7 +39,7 @@ pub(super) enum Decision {
 }
 
 pub(super) struct Reviewed<'a> {
-    pub(super) listing: &'a CoreBuffer,
+    pub(super) confirmation: &'a CoreValue,
     pub(super) bundle_digest: &'a tobkiri_canon::Digest,
 }
 
@@ -135,10 +135,8 @@ fn admit_candidate(
             "plan_digest",
         ],
     )?;
-    let listing = CoreValue::parse_guest(review.listing.as_bytes(), budget)?;
-    let profile = denied::field(&listing, "recommended_default_profile")?;
     let confirmation = denied::field(value, "confirmation")?;
-    if !confirmation.eq_guest(&denied::field(&profile, "confirmation")?, budget)? {
+    if !confirmation.eq_guest(review.confirmation, budget)? {
         bail!("activation decision changed its reviewed confirmation");
     }
     let source_profile = denied::field(value, "source_profile")?;
@@ -188,12 +186,8 @@ mod tests {
         let source_digest = CoreValue::parse_guest(&serde_json::to_vec(&source)?, &budget)?
             .digest_guest(&budget)?;
         let confirmation = json!({"profile_id":"defaults","plan_digest":plan.as_str()});
-        let listing = CoreBuffer::copy_from(
-            &serde_json::to_vec(&json!({
-                "recommended_default_profile":{"confirmation":confirmation},
-            }))?,
-            &budget,
-        )?;
+        let expected_confirmation =
+            CoreValue::parse_guest(&serde_json::to_vec(&confirmation)?, &budget)?;
         let packet = json!({
             "confirmation": confirmation, "source_profile": source,
             "profile_definition_digest": source_digest.as_str(), "bundle_digest": bundle.as_str(),
@@ -204,7 +198,7 @@ mod tests {
             admit_candidate(
                 &value,
                 Reviewed {
-                    listing: &listing,
+                    confirmation: &expected_confirmation,
                     bundle_digest: &bundle,
                 },
                 &budget,

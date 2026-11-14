@@ -3279,6 +3279,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   はLinux/macOSで成功。新しい[登録CAS比較 43508549743](https://github.com/harupipipipi/tobkiri/actions/runs/43508549743)
   は実行中。製品への接続後、registry読み込みとcanonical出力後の再パースを一度の所有グラフで
   置き換えられるか調べる。確定済みの内容、履歴順序、物理ロック、保存形式の比較は維持する。
+- `26542c5e0` と `70abd5ff9` は比較済みの定義グラフとJSON解析の一時予約を、次の
+  認証済みジャーナル読み取りより前に解放する。重複キーの診断枠は最長トークンから求める。
+  64 MiBの上限、ロック順序、保存形式を維持し、`30917702f` でworkspace lockのimportを
+  補った。[登録比較CI 43547877973](https://github.com/harupipipipi/tobkiri/actions/runs/43547877973)
+  はLinuxとmacOSで成功。LinuxのRust比較は登録成功時のファイル全バイトと、並行編集・
+  Host側／workspace側のactive pointerによる拒否を照合した。
+- `d3f560d14` と `501667fdc` は、元のPackによる事前判定と新しく生成した一覧との照合を
+  同じStoreに接続した。承認と一致した候補は、元の確認文書、source Profile、bundle lockと
+  PlanのdigestをHost側でも照合する。[実Wasm CI 43510084337](https://github.com/harupipipipi/tobkiri/actions/runs/43510084337)
+  は `confirmed: 1` を409で拒否し、データrootを開かないことをmacOSで確認した。
+  この経路は確認データを返すまで。専用GUI承認、公開直前の再読み取りと実登録は未接続。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、

@@ -129,7 +129,7 @@ impl ReviewCaller {
 pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+) -> super::listing::Outcome {
     if review.attempted {
         return Ok(Err(BootstrapReviewFailure::Admission(
             crate::OriginalAuthorityAdmission::AlreadyAttempted,
@@ -158,7 +158,7 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+) -> super::listing::Outcome {
     let caller = ReviewCaller::Recovery;
     let identity = match validated_identity(review, pack, caller).await? {
         Ok(identity) => identity,
@@ -200,7 +200,7 @@ async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+) -> super::listing::Outcome {
     // The original candidate enters the exact Host user-data scope before
     // evaluating the root, the actual App loader, then the bootstrap getter.
     if let Err(error) = review
@@ -241,7 +241,7 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+) -> super::listing::Outcome {
     let source = &pack.work.get().source;
     if let Err(error) = review.read.acquire_resolver_root(source, pack.cancellation) {
         return Ok(Err(original_failure(error)));

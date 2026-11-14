@@ -469,7 +469,7 @@ async fn select_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> Result<std::result::Result<CoreBuffer, BootstrapReviewFailure>> {
+) -> super::listing::Outcome {
     let caller = ReviewCaller::Recovery;
     if let Err(error) = load(review, pack, caller).await? {
         return Ok(Err(error));

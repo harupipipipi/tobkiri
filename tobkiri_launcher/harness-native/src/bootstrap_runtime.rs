@@ -1317,15 +1317,20 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Err(error) => return Ok(Err(error)),
     };
     if !decide {
-        return Ok(Ok(SetupOutput::Listing(listing)));
+        return Ok(Ok(SetupOutput::Listing(
+            listing.encode_guest(pack.input_budget)?,
+        )));
     }
+    let recommended = denied::field(&listing, "recommended_default_profile")?;
+    let confirmation = denied::field(&recommended, "confirmation")?;
+    drop((recommended, listing));
     let authority = review
         .actual
         .resolver_authority
         .as_ref()
         .context("activation candidate Authority snapshot missing")?;
     let reviewed = activation_decision::Reviewed {
-        listing: &listing,
+        confirmation: &confirmation,
         bundle_digest: authority.bundle_lock_digest(),
     };
     match activation_decision::run(pack, None, Some(reviewed)).await? {
