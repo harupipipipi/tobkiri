@@ -37,11 +37,11 @@ pub use bootstrap_metadata::{
     BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, BootstrapRoots,
 };
 pub use bootstrap_runtime::{
-    BootstrapActivationDecision, BootstrapBuiltinKind, BootstrapCleanupFailure, BootstrapDenied,
-    BootstrapDeniedFailure, BootstrapDeniedRaise, BootstrapDeniedStage,
-    BootstrapDomainCleanupFailure, BootstrapGetterError, BootstrapIdentityFailure,
-    BootstrapIdentityOutcome, BootstrapIdentityStage, BootstrapIdentityValue,
-    BootstrapRecoveryCatch, NativeBootstrap,
+    BootstrapActivationCandidate, BootstrapActivationDecision, BootstrapBuiltinKind,
+    BootstrapCleanupFailure, BootstrapDenied, BootstrapDeniedFailure, BootstrapDeniedRaise,
+    BootstrapDeniedStage, BootstrapDomainCleanupFailure, BootstrapGetterError,
+    BootstrapIdentityFailure, BootstrapIdentityOutcome, BootstrapIdentityStage,
+    BootstrapIdentityValue, BootstrapRecoveryCatch, NativeBootstrap,
 };
 pub use init_diagnostic::OriginalInitializationFailure;
 pub use init_trace::{InitializationRejection, InitializationTrace};

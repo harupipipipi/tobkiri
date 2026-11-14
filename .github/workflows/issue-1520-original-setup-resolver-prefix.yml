@@ -133,6 +133,14 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           bootstrap_runtime::listing::tests::preview_and_listing_require_the_same_reviewed_confirmation
           -- --exact --test-threads=1 --nocapture
+      - name: Check activation candidate binding to reviewed Profile and bundle
+        if: matrix.os == 'ubuntu-22.04'
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-setup-resolver-prefix/activation-candidate.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          bootstrap_runtime::activation_decision::tests::matched_activation_requires_the_reviewed_source_bundle_and_confirmation
+          -- --exact --test-threads=1 --nocapture
       - name: Retain bounded original observation metadata only
         if: always()
         uses: actions/upload-artifact@v4
@@ -148,5 +156,6 @@ jobs:
             ${{ runner.temp }}/original-setup-resolver-prefix/confirmation.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/registration.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/listing.log*
+            ${{ runner.temp }}/original-setup-resolver-prefix/activation-candidate.log*
           if-no-files-found: warn
           retention-days: 7

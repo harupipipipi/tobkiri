@@ -624,18 +624,22 @@ class Registry:
             raise InvalidReference("bootstrap activation preflight is outside its original call")
         self._bootstrap_activation_started = True
 
-    def _take_activation_match(self) -> tuple[dict[str, Any], Any]:
+    def _take_activation_match(self) -> tuple[dict[str, Any], Any, dict[str, Any], Any]:
         self._live()
         if (self._resolver_dynamic_stage != "bootstrap-listing-returned"
                 or self._bootstrap_activation_body is None
-                or self._bootstrap_activation_listing is None):
+                or self._bootstrap_activation_listing is None
+                or self._resolver_source is None
+                or self._resolved_profile is None):
             raise InvalidReference("bootstrap activation has no completed listing")
         body = self._bootstrap_activation_body
         listing = self._bootstrap_activation_listing
+        source = self._objects[self._resolver_source]
+        resolved = self._objects[self._resolved_profile]
         self._bootstrap_activation_body = None
         self._bootstrap_activation_listing = None
         self._resolver_dynamic_stage = "bootstrap-activation-match-started"
-        return body, listing
+        return body, listing, source, resolved
 
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:

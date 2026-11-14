@@ -68,7 +68,7 @@ const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
 mod activation_decision;
 #[path = "bootstrap_denied.rs"]
 mod denied;
-pub use activation_decision::BootstrapActivationDecision;
+pub use activation_decision::{BootstrapActivationCandidate, BootstrapActivationDecision};
 pub use denied::{
     BootstrapDenied, BootstrapDeniedFailure, BootstrapDeniedRaise, BootstrapDeniedStage,
 };
@@ -1319,7 +1319,16 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     if !decide {
         return Ok(Ok(SetupOutput::Listing(listing)));
     }
-    match activation_decision::run(pack, None, Some(&listing)).await? {
+    let authority = review
+        .actual
+        .resolver_authority
+        .as_ref()
+        .context("activation candidate Authority snapshot missing")?;
+    let reviewed = activation_decision::Reviewed {
+        listing: &listing,
+        bundle_digest: authority.bundle_lock_digest(),
+    };
+    match activation_decision::run(pack, None, Some(reviewed)).await? {
         Ok(Decision::Continue) => bail!("activation match requested another listing"),
         Ok(Decision::Rejected(response)) => Ok(Ok(SetupOutput::Decision(
             BootstrapActivationDecision::Rejected(response),

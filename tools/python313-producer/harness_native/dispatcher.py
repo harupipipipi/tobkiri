@@ -793,7 +793,7 @@ class Dispatcher:
             listing = None
             caller = "bootstrap-activation-preflight"
         else:
-            body, listing = registry._take_activation_match()
+            body, listing, source, resolved = registry._take_activation_match()
             caller = "bootstrap-activation-match"
 
         def decide():
@@ -806,7 +806,13 @@ class Dispatcher:
                 raise UnsupportedValue("original setup decision has no activation input")
             if preflight:
                 return "continue", None
-            return "matched", dict(decision.confirmation)
+            return "matched", {
+                "confirmation": dict(decision.confirmation),
+                "source_profile": source,
+                "profile_definition_digest": resolved.plan["profile_definition_digest"],
+                "bundle_digest": resolved.lock["bundle_digest"],
+                "plan_digest": resolved.plan["plan_digest"],
+            }
 
         outcome, value = self._apply_original(decide, caller=caller)
         packet = wire.dumps({

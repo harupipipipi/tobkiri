@@ -1434,6 +1434,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
 
         resolved = self.Resolved({}, {}, {})
         captured = {}
+        resolved.plan.update(profile_definition_digest="fixture-definition", plan_digest="fixture-plan")
+        resolved.lock["bundle_digest"] = "fixture-bundle"
 
         def resolve(*args, **kwargs):
             captured.update(kwargs)
@@ -1579,7 +1581,13 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.dispatcher.call("setup_activation_decision", self.frame(
                 "bootstrap-activation-match", body={"replacement": True},
             ))
-        expected = returned if equal else {"state": "review_required", "write_set": []}
+        expected = ({
+            "confirmation": returned,
+            "source_profile": self.registry.borrow(self.registry.reference(source)),
+            "profile_definition_digest": "fixture-definition",
+            "bundle_digest": "fixture-bundle",
+            "plan_digest": "fixture-plan",
+        } if equal else {"state": "review_required", "write_set": []})
         self.assertEqual(wire.loads(self.dispatcher.call("setup_activation_decision", match)), {
             "format": PREFIX + "bootstrap-activation-match-result.v1",
             "scope": self.scope.wire(), "outcome": "matched" if equal else "rejected",

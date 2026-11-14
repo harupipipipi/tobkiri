@@ -45,9 +45,12 @@ impl<S> RegisteredActivationScope<'_, '_, '_, S> {
 pub(crate) struct ResolverAuthority {
     _material: OriginalAuthorityMaterial,
     snapshot_digest: Digest,
-    _bundle_lock_digest: Digest,
+    bundle_lock_digest: Digest,
 }
 impl ResolverAuthority {
+    pub(crate) fn bundle_lock_digest(&self) -> &Digest {
+        &self.bundle_lock_digest
+    }
     pub(crate) fn snapshot_digest(&self) -> &Digest {
         &self.snapshot_digest
     }
@@ -65,7 +68,7 @@ impl ResolverAuthority {
         (
             &self._material,
             &self.snapshot_digest,
-            &self._bundle_lock_digest,
+            &self.bundle_lock_digest,
         )
     }
 }
@@ -358,7 +361,7 @@ impl PublicationRead {
             Ok(read) => Ok(Some(ResolverAuthority {
                 _material: read.material,
                 snapshot_digest: read.snapshot_digest.expect("requested Authority snapshot"),
-                _bundle_lock_digest: bundle_lock_digest,
+                bundle_lock_digest,
             })),
             Err(error)
                 if error.class == super::super::CAPTURE_DENIAL_CLASS
