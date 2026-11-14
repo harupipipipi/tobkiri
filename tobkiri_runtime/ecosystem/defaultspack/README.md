@@ -856,18 +856,15 @@ ecosystem/defaults/
             └── dependency-resolution.md
 ```
 
-user_data 側（defaults がセットアップ時に配置するデフォルトコンテンツ）:
+`user_data` は会話や設定などの可変データを保存します。更新前の環境では、旧版で作成したユーザー定義や設定も残っている場合があります。承認された UI asset と拡張を配置する場所は [Frontend Extensions](docs/frontend_extensions.md) を参照してください。
 
 ```
 user_data/
 ├── shared/
-│     ├── tools/                       # デフォルトツール群
-│     ├── agents/                      # デフォルトエージェント定義
-│     ├── prompts/                     # デフォルトプロンプト
+│     ├── tools/                       # 旧版のツール定義（移行対象）
+│     ├── agents/                      # 保存されたエージェント定義
+│     ├── prompts/                     # 保存されたプロンプト
 │     └── ai_models/                   # AI モデルプロファイル
-├── assets/                            # デフォルト Asset（chat 画面、agent 画面等）
-├── themes/                            # デフォルトテーマ
-├── layouts/                           # デフォルトレイアウト
 ├── chat/                              # 会話データ
 ├── memory/                            # ユーザーメモリ
 └── config.json                        # ユーザー設定
