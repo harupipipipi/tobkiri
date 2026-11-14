@@ -61,6 +61,7 @@ jobs:
           --log-file issue-1520-security.log --
           python -m pytest
           tobkiri_runtime/tests/test_egress_proxy.py
+          tobkiri_runtime/tests/test_incremental_ai_stream.py
           tobkiri_runtime/tests/test_defaultspack_chat_filters_compact.py
           tobkiri_runtime/tests/test_defaultspack_desktop_access_exchange.py
           tobkiri_runtime/tests/test_defaultspack_self_improvement_runtime.py
