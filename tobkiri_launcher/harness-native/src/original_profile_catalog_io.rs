@@ -31,6 +31,10 @@ pub(crate) struct CatalogIo {
     source: PathBuf,
     runtime: PathBuf,
     selected: PathBuf,
+    // The selected spelling precedes the loader's strict resolve. A later
+    // original caller reading bundle.lock.json uses this spelling.
+    #[cfg(test)]
+    selected_before_resolve: Option<PathBuf>,
     cancellation: CoreCancellation,
     cleanup: Arc<CleanupState>,
     _capacity: NativeSetupReservation,
@@ -225,6 +229,8 @@ impl CatalogIo {
             source,
             runtime: runtime.to_path_buf(),
             selected: PathBuf::new(),
+            #[cfg(test)]
+            selected_before_resolve: None,
             cancellation: cancellation.clone(),
             cleanup,
             _capacity: capacity,
@@ -391,11 +397,39 @@ impl CatalogIo {
         owner: &S,
         invocation: &NativeSetupInvocation,
     ) -> Result<Digest> {
-        let op = self.operation(owner, invocation, &self.cancellation)?;
         if self.selected.as_os_str().is_empty() || self.binding.is_some() {
             return Err(OriginalAuthorityError::unavailable());
         }
-        let path = self.selected.join("bundle.lock.json");
+        self.read_raw_lock_digest(owner, invocation, &self.selected)
+    }
+
+    /// The confirmed capture reopens the selected lexical lock after the
+    /// loader and source lookup. This runs in the locked comparison until the
+    /// product publication caller can prove those actual guest occurrences.
+    #[cfg(test)]
+    fn publication_lock_digest<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        invocation: &NativeSetupInvocation,
+    ) -> Result<Digest> {
+        if !self.completed() {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        let selected = self
+            .selected_before_resolve
+            .take()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        self.read_raw_lock_digest(owner, invocation, &selected)
+    }
+
+    fn read_raw_lock_digest<S: crate::BootstrapReviewOwner>(
+        &self,
+        owner: &S,
+        invocation: &NativeSetupInvocation,
+        selected: &Path,
+    ) -> Result<Digest> {
+        let op = self.operation(owner, invocation, &self.cancellation)?;
+        let path = selected.join("bundle.lock.json");
         let bytes = read_file(&op, &path, &self.budget)?;
         charge_work(&self.budget, bytes.value.len() as u64)?;
         let digest = Digest::hash(&bytes.value);
@@ -596,8 +630,17 @@ impl CatalogIo {
             Loader::RootResolve
                 if operation == "resolve" && strict(&args) && steps_array.is_empty() =>
             {
-                self.selected = fs::canonicalize(&self.selected)
+                let canonical = fs::canonicalize(&self.selected)
                     .map_err(|e| raw_io(e, self.selected.to_str()))?;
+                #[cfg(test)]
+                {
+                    self.selected_before_resolve =
+                        Some(std::mem::replace(&mut self.selected, canonical));
+                }
+                #[cfg(not(test))]
+                {
+                    self.selected = canonical;
+                }
                 write_path(
                     &mut output,
                     self.binding.as_ref().expect("bound loader"),

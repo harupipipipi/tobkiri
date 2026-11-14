@@ -1020,6 +1020,7 @@ async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
         io.select_packaged(&bundle).unwrap();
         io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
             .unwrap();
+        assert!(io.publication_lock_digest(source, invocation).is_err());
         call(
             io,
             source,
@@ -1120,6 +1121,15 @@ async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
             json!([]),
         );
         assert!(io.completed());
+        // The loader already read and verified its own lock occurrence. A
+        // subsequent capture reread must observe the newly written raw bytes.
+        let changed = b"changed after the source Profile lookup";
+        fs::write(bundle.join("bundle.lock.json"), changed).unwrap();
+        assert_eq!(
+            io.publication_lock_digest(source, invocation).unwrap(),
+            Digest::hash(changed)
+        );
+        assert!(io.publication_lock_digest(source, invocation).is_err());
         assert!(
             io.inspect(
                 source,
