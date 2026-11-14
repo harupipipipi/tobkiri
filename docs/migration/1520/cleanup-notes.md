@@ -2957,6 +2957,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [無計測43555830118](https://github.com/harupipipipi/tobkiri/actions/runs/43555830118)で確認する。
   `5c31e575c` はソースlockのCIを既存の共通検証に揃え、全featureを有効にして依存を解決する。
   [依存解決43555901004](https://github.com/harupipipipi/tobkiri/actions/runs/43555901004)が通過した。
+- 展開後のSHA-256の移植では、blob区間が443,743,216から447,586,160 fuelに増えた。
+  独立スキーマ初期化は同じ出力で完了し、全カタログは引き続き最初の項目で停止した。
+  `2ac5e9478` で展開後の検証を元の実装に戻した。`f84bc1f1f` ではApp比較用の
+  カタログ本体が、元の初回読込と再読込それぞれの実バイトをRustでハッシュする。
+  対象は4MiB以内の組み込み `bytes`。元のcallback、入力順、比較結果、対象外のハッシュ動作を維持する。
+  [変更後の計測43556473713](https://github.com/harupipipipi/tobkiri/actions/runs/43556473713)
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3391,6 +3397,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [固定原本とRustの比較43555264904](https://github.com/harupipipipi/tobkiri/actions/runs/43555264904)で検証する。
   初回比較ではfixtureのパスを読み込み時にmoveしていたためRustのコンパイルが停止した。
   `b5ad4ae59` で同じパスを借用し、[再実行43555771881](https://github.com/harupipipipi/tobkiri/actions/runs/43555771881)で検証する。
+  再実行は両OSで成功し、LinuxのRust writerでProfile、raw lock、公開先ディレクトリの変更を拒否した。
   実際のクリック後に新しいWasmローダーを動かす接続は残る。
 - Setupの確認欄を移す際は `DefaultsReview.tsx` と `DefaultsConfirmationDetails.tsx` の表示を
   再利用する。現在の `legacy.rs` が表示するSetupと `core_host.rs` の既存承認シートは
