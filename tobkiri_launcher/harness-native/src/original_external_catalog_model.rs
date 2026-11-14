@@ -93,9 +93,7 @@ fn decode_failure(mut error: OriginalAuthorityError) -> OriginalAuthorityError {
     }
 }
 
-/// Parse raw legacy JSON, then validate the exact external catalog shape.
-/// Schema validation appears before loading the signing key in the old Host.
-pub(super) fn parse_envelope<S: OriginalAuthorityOwner>(
+pub(super) fn decode_host_json<S: OriginalAuthorityOwner>(
     bytes: &[u8],
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
@@ -108,7 +106,7 @@ pub(super) fn parse_envelope<S: OriginalAuthorityOwner>(
     {
         return Err(OriginalAuthorityError::unsupported(
             STAGE,
-            "original external Pack catalog byte encoding",
+            "original external Pack Host JSON byte encoding",
         ));
     }
     // The catalog decoder's fast allocation census assumes a complete token
@@ -119,7 +117,17 @@ pub(super) fn parse_envelope<S: OriginalAuthorityOwner>(
     } else {
         json::decode_catalog_manifest(bytes, op, budget)
     };
-    let doc = parsed.map_err(decode_failure)?;
+    parsed.map_err(decode_failure)
+}
+
+/// Parse raw legacy JSON, then validate the exact external catalog shape.
+/// Schema validation appears before loading the signing key in the old Host.
+pub(super) fn parse_envelope<S: OriginalAuthorityOwner>(
+    bytes: &[u8],
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Funded<Document>> {
+    let doc = decode_host_json(bytes, op, budget)?;
     let root = fixed_fields(
         &doc,
         doc.root,

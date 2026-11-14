@@ -475,7 +475,7 @@ fn stat_child(
     Ok(unsafe { stat.assume_init() })
 }
 
-fn open_child<S: OriginalAuthorityOwner>(
+pub(super) fn open_child<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
     name: &CStr,

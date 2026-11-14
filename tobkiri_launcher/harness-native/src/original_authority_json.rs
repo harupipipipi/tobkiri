@@ -1212,6 +1212,14 @@ pub(super) fn validate_strict<S: OriginalAuthorityOwner>(
     doc: &Document,
     op: &Operation<'_, S>,
 ) -> Result<()> {
+    validate_strict_at_depth(doc, op, 0)
+}
+
+pub(super) fn validate_strict_at_depth<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    op: &Operation<'_, S>,
+    root_depth: usize,
+) -> Result<()> {
     enum Check<'a> {
         Value(usize, usize),
         Key(&'a Text, usize),
@@ -1230,7 +1238,7 @@ pub(super) fn validate_strict<S: OriginalAuthorityOwner>(
     let mut work = Vec::new();
     work.try_reserve_exact(count)
         .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
-    work.push(Check::Value(doc.root, 0));
+    work.push(Check::Value(doc.root, root_depth));
     while let Some(check) = work.pop() {
         op.check(OriginalAuthorityStage::Audit)?;
         let (id, depth) = match check {
@@ -1392,7 +1400,7 @@ pub(super) fn canonical<S: OriginalAuthorityOwner>(
     audit: Option<Audit<'_>>,
     op: &Operation<'_, S>,
 ) -> Result<Funded<Vec<u8>>> {
-    canonical_view(doc, doc.root, None, audit, op)
+    canonical_view(doc, doc.root, None, audit, doc.bytes, doc.nodes.len(), op)
 }
 
 #[cfg(unix)]
@@ -1401,8 +1409,69 @@ pub(super) fn canonical_subtree<S: OriginalAuthorityOwner>(
     root: usize,
     omit: Option<&str>,
     op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
 ) -> Result<Funded<Vec<u8>>> {
-    canonical_view(doc, root, omit, None, op)
+    fn bounds<S: OriginalAuthorityOwner>(
+        doc: &Document,
+        node: usize,
+        depth: usize,
+        op: &Operation<'_, S>,
+        budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+        totals: &mut (usize, usize),
+    ) -> Result<()> {
+        const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Audit;
+        op.check(STAGE)?;
+        if depth > 64 {
+            return Err(strict_error("json nesting exceeds depth limit"));
+        }
+        let mut units = 8usize;
+        match doc.node(node) {
+            Node::String(text) => units += text.0.len(),
+            Node::Scalar(CanonValue::BigInt(text)) => units += text.len(),
+            Node::Scalar(_) => units += 32,
+            Node::Array(elements) => {
+                for &child in elements {
+                    bounds(doc, child, depth + 1, op, budget, totals)?;
+                }
+            }
+            Node::Object(entries) => {
+                let longest = entries
+                    .iter()
+                    .map(|(name, _)| name.0.len())
+                    .max()
+                    .unwrap_or(0);
+                let levels = usize::BITS - entries.len().max(1).leading_zeros();
+                units = units.saturating_add(entries.len().saturating_mul(longest + 1));
+                budget
+                    .reserve(tobkiri_canon::AllocationRequest {
+                        kind: tobkiri_canon::AllocationKind::Temporary,
+                        bytes: 0,
+                        depth: 0,
+                        elements: 0,
+                        work: units.saturating_mul(levels as usize + 1) as u64,
+                    })
+                    .map_err(|_| OriginalAuthorityError::capacity(STAGE))?;
+                for (_, child) in entries {
+                    bounds(doc, *child, depth + 1, op, budget, totals)?;
+                }
+            }
+        }
+        budget
+            .reserve(tobkiri_canon::AllocationRequest {
+                kind: tobkiri_canon::AllocationKind::Temporary,
+                bytes: 0,
+                depth: 0,
+                elements: 0,
+                work: units as u64,
+            })
+            .map_err(|_| OriginalAuthorityError::capacity(STAGE))?;
+        totals.0 = totals.0.saturating_add(units);
+        totals.1 += 1;
+        Ok(())
+    }
+    let mut totals = (0, 0);
+    bounds(doc, root, 0, op, budget, &mut totals)?;
+    canonical_view(doc, root, omit, None, totals.0, totals.1, op)
 }
 
 fn canonical_view<S: OriginalAuthorityOwner>(
@@ -1410,14 +1479,15 @@ fn canonical_view<S: OriginalAuthorityOwner>(
     root: usize,
     omit: Option<&str>,
     audit: Option<Audit<'_>>,
+    input_units: usize,
+    input_nodes: usize,
     op: &Operation<'_, S>,
 ) -> Result<Funded<Vec<u8>>> {
     let extra = audit
         .as_ref()
         .map(|value| value.id.len() + value.kind.len() + value.state.len() + value.previous.len())
         .unwrap_or(0);
-    let bound = doc
-        .bytes
+    let bound = input_units
         .checked_mul(12)
         .and_then(|n| n.checked_add(extra.checked_mul(6)?))
         .and_then(|n| n.checked_add(1024))
@@ -1426,20 +1496,14 @@ fn canonical_view<S: OriginalAuthorityOwner>(
     // object edge contributes four actions, each array edge at most two;
     // the additional sixteen cover the audit wrapper. A single object-sort
     // vector can coexist, with one borrowed entry pointer per arena node.
-    let action_count = doc
-        .nodes
-        .len()
+    let action_count = input_nodes
         .checked_mul(4)
         .and_then(|n| n.checked_add(16))
         .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
     let work = action_count
         .checked_mul(std::mem::size_of::<Action<'_>>())
         .and_then(|n| {
-            n.checked_add(
-                doc.nodes
-                    .len()
-                    .checked_mul(std::mem::size_of::<&(Text, usize)>())?,
-            )
+            n.checked_add(input_nodes.checked_mul(std::mem::size_of::<&(Text, usize)>())?)
         })
         .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
     let capacity = op.reserve(

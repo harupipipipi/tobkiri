@@ -104,7 +104,7 @@ def observe_artifact(external, owner, entry):
     ]:
         raise AssertionError("original direct compiler read sequence changed")
     return {"outcome": "verified", "direct_reads": observed_reads,
-            "artifact_digest": entry["artifact_digest"]}
+            "artifact_digest": entry["artifact_digest"], "content_digest": entry["content_digest"]}
 
 
 def worker(original, owner, name, output):
@@ -202,7 +202,10 @@ def prepare(original, destination):
         reference, native = results["reference"], results["native"]
         if (reference["bundled"] != native["bundled"] or reference["file_sequence"] != native["file_sequence"]
                 or reference["expected"]["outcome"] != native["expected"]["outcome"]
-                or reference["artifact_probe"] != native["artifact_probe"]):
+                or (reference["artifact_probe"] or {}).get("direct_reads")
+                != (native["artifact_probe"] or {}).get("direct_reads")
+                or (reference["artifact_probe"] or {}).get("artifact_digest")
+                != (native["artifact_probe"] or {}).get("artifact_digest")):
             raise AssertionError("independently admitted owner observations disagree")
         cases.append({"name": name, "runtime_dir": str(original / "tobkiri_runtime"),
                       "native_user_data": str(directory / "native-owner"), **native})

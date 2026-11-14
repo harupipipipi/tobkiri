@@ -144,7 +144,7 @@ jobs:
           TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 12 --
+          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 14 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::external_catalog::
           -- --test-threads=1 --nocapture

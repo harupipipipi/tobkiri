@@ -31,7 +31,7 @@ pub(super) struct PackManifest {
 /// Compiler definitions held under the operation's capacity reservation.
 pub(super) struct DirectDefinitions {
     pub(super) manifest: Funded<Document>,
-    _contracts: Funded<Document>,
+    pub(super) contracts: Funded<Document>,
     pub(super) index: Funded<Document>,
     pub(super) executable: Funded<Document>,
 }
@@ -89,7 +89,7 @@ pub(super) fn read_direct_definitions<S: OriginalAuthorityOwner>(
     }
     Ok(DirectDefinitions {
         manifest,
-        _contracts: contracts,
+        contracts,
         index,
         executable,
     })

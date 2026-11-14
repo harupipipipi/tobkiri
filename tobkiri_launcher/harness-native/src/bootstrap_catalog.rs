@@ -613,11 +613,7 @@ async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOw
         Ok(catalog) => catalog,
         Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
     };
-    let boundary = if catalog.need_artifact_compilation() {
-        BootstrapReviewReachpoint::AdmittedPackArtifactCompilationNotBound
-    } else {
-        BootstrapReviewReachpoint::CatalogWithProfilesNotBound
-    };
+    let boundary = catalog.verification_reachpoint();
     review.actual._recovery_external_catalog = Some(catalog);
     Ok(Err(BootstrapReviewFailure::NotBound(boundary)))
 }

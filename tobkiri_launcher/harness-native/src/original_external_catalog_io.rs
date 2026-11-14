@@ -5,11 +5,16 @@ use tobkiri_canon::{AllocationBudget, AllocationKind, AllocationRequest, CoreVal
 
 #[path = "original_external_catalog_compiler.rs"]
 mod external_catalog_compiler;
-#[cfg(test)]
 #[path = "original_external_catalog_inventory.rs"]
 mod external_catalog_inventory;
 #[path = "original_external_catalog_model.rs"]
 mod external_catalog_model;
+#[path = "original_external_catalog_operations.rs"]
+mod external_catalog_operations;
+#[path = "original_external_catalog_receipt.rs"]
+mod external_catalog_receipt;
+#[path = "original_external_catalog_variants.rs"]
+mod external_catalog_variants;
 use external_catalog_compiler as compiler;
 use external_catalog_model as model;
 
@@ -21,6 +26,7 @@ const REGISTRY: &str = "external_normal_pack_catalog.v4.json";
 const KEY: &str = ".external_normal_pack_catalog_key";
 const CAS: &str = "external_normal_pack_cas";
 const BOUNDARY_ERROR: &str = "core_runtime.pack_boundary.PackBoundaryError";
+#[cfg(test)]
 const EXTERNAL_ERROR: &str = "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied";
 
 /// Funded records for one actual bundled inventory read.
@@ -47,8 +53,15 @@ pub(crate) struct ExternalPackRead {
 }
 
 impl ExternalPackRead {
-    pub(crate) fn need_artifact_compilation(&self) -> bool {
-        self.artifact.is_some()
+    pub(crate) fn verification_reachpoint(&self) -> crate::BootstrapReviewReachpoint {
+        use crate::BootstrapReviewReachpoint::*;
+        match &self.artifact {
+            Some(artifact) if artifact.receipt.host_extension => {
+                AdmittedHostExtensionProjectionNotBound
+            }
+            Some(_) => AdmittedPackInventoryNotBound,
+            None => CatalogWithProfilesNotBound,
+        }
     }
 }
 
@@ -62,6 +75,8 @@ struct PackRoot {
 struct ArtifactDefinitions {
     _documents: compiler::DirectDefinitions,
     _artifact_digest: tobkiri_canon::Digest,
+    _verified: external_catalog_variants::VerifiedVariants,
+    receipt: external_catalog_receipt::Receipt,
 }
 
 #[cfg(test)]
@@ -216,8 +231,11 @@ mod tests {
                                 compiled_prefix._artifact_digest.as_str(),
                                 case["artifact_probe"]["artifact_digest"].as_str().unwrap()
                             );
-                            // Compare the later physical inventory in isolation.
-                            // In recovery the original compiler must run before it.
+                            assert_eq!(
+                                compiled_prefix.receipt._content_digest.as_str(),
+                                case["artifact_probe"]["content_digest"].as_str().unwrap()
+                            );
+                            assert!(!compiled_prefix.receipt.host_extension);
                             let root_fd = Parent::walk(&root.path, &op.cleanup).unwrap();
                             let mismatched_bytes = || {
                                 let input = read_artifact_definition(
@@ -248,20 +266,6 @@ mod tests {
                                 Some(OriginalAuthorityCause::Python { class: "tobkiri_host.errors.InvalidArtifactError", ref message, .. })
                                     if message == "executable catalog artifact digest mismatch"
                             ));
-                            let manifest_bytes = read_artifact_definition(
-                                &op,
-                                &root_fd,
-                                &root.path,
-                                c".tobkiri/signed-pack.json",
-                                budget,
-                            )
-                            .unwrap();
-                            let manifest =
-                                json::decode_catalog_manifest(&manifest_bytes, &op, budget)
-                                    .unwrap();
-                            drop(manifest_bytes);
-                            external_catalog_inventory::verify(&op, &root_fd, &manifest, budget)
-                                .unwrap();
                             root_fd.close().unwrap();
                         }
                     }
@@ -576,7 +580,7 @@ fn read_artifact_definitions<S: OriginalAuthorityOwner>(
             .is_some_and(|value| {
                 registry.string_is(value, "host-signed-external-host-extension-v4")
             });
-        compiler::require_external_catalog_identity(
+        let host_extension = compiler::require_external_catalog_identity(
             &executable,
             &manifest,
             host_extension_authority,
@@ -592,15 +596,60 @@ fn read_artifact_definitions<S: OriginalAuthorityOwner>(
         let artifact_digest = check_artifact_pins(op, budget, &documents, || {
             read_artifact_definition(op, &directory, &root.path, c"executables.v4.json", budget)
         })?;
+        let verified = external_catalog_variants::verify(
+            &documents,
+            |relative| hash_implementation(op, budget, &directory, relative),
+            op,
+            budget,
+        )?;
+        let receipt = external_catalog_receipt::verify(
+            op,
+            budget,
+            &directory,
+            registry,
+            root.entry,
+            external_catalog_receipt::CompiledIdentity {
+                definitions: &documents,
+                artifact_digest: &artifact_digest,
+                host_extension,
+            },
+            || read_signed_manifest(op, budget, &directory, &root.path),
+        )?;
+        let current = root
+            .path
+            .symlink_metadata()
+            .map_err(|error| raw_io(error, root.path.to_str()))?;
+        if !current.is_dir() || (current.dev(), current.ino()) != root.physical_identity {
+            return Err(model::denied("external Pack root identity changed"));
+        }
         Ok(ArtifactDefinitions {
             _documents: documents,
             _artifact_digest: artifact_digest,
+            _verified: verified,
+            receipt,
         })
     })();
     finish_scope(
         definitions,
         directory.close().map_err(|error| raw_io(error, None)),
     )
+}
+
+fn canonical_digest<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    node: usize,
+    omit: Option<&str>,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<tobkiri_canon::Digest> {
+    let bytes = json::canonical_subtree(doc, node, omit, op, budget)?;
+    if bytes.len() > MAX_BYTES {
+        return Err(caused(
+            model::denied("external Pack artifact digest verification failed"),
+            json::strict_error("canonical JSON exceeds size limit"),
+        ));
+    }
+    Ok(tobkiri_canon::Digest::hash(&bytes))
 }
 
 fn check_artifact_pins<S: OriginalAuthorityOwner>(
@@ -627,24 +676,14 @@ fn check_artifact_pins<S: OriginalAuthorityOwner>(
         doc.string_is(field(doc, parent, key), value.as_str())
     }
     let invalid = compiler::invalid_artifact;
-    let canonical_digest = |doc: &Document, node, omit| {
-        let levels = usize::BITS - doc.node_count().max(1).leading_zeros();
-        charge(
-            op,
-            budget,
-            doc.source_bytes().saturating_mul((levels as usize + 2) * 8),
-        )?;
-        let bytes = json::canonical_subtree(doc, node, omit, op)?;
-        if bytes.len() > MAX_BYTES {
-            return Err(caused(
-                model::denied("external Pack artifact digest verification failed"),
-                json::strict_error("canonical JSON exceeds size limit"),
-            ));
-        }
-        Ok(tobkiri_canon::Digest::hash(&bytes))
-    };
     let executable = &inputs.executable;
-    let released_catalog = canonical_digest(executable, executable.root, Some("catalog_digest"))?;
+    let released_catalog = canonical_digest(
+        executable,
+        executable.root,
+        Some("catalog_digest"),
+        op,
+        budget,
+    )?;
     if !matches_digest(
         executable,
         executable.root,
@@ -656,7 +695,13 @@ fn check_artifact_pins<S: OriginalAuthorityOwner>(
 
     let manifest = &inputs.manifest;
     let index = &inputs.index;
-    let candidate = canonical_digest(manifest, field(manifest, manifest.root, "artifacts"), None)?;
+    let candidate = canonical_digest(
+        manifest,
+        field(manifest, manifest.root, "artifacts"),
+        None,
+        op,
+        budget,
+    )?;
     let pack = field(manifest, manifest.root, "pack");
     let integrity = field(manifest, manifest.root, "integrity");
     if !matches_digest(manifest, pack, "artifact_digest", &candidate)
@@ -731,7 +776,7 @@ fn check_artifact_pins<S: OriginalAuthorityOwner>(
         return Err(invalid("executable catalog artifact digest mismatch"));
     }
     let seal = field(index, index.root, "integrity_seal");
-    let unsigned = canonical_digest(index, index.root, Some("integrity_seal"))?;
+    let unsigned = canonical_digest(index, index.root, Some("integrity_seal"), op, budget)?;
     if !matches_digest(index, seal, "signed_digest", &unsigned) {
         return Err(invalid("artifact index integrity seal is invalid"));
     }
@@ -791,6 +836,96 @@ fn read_artifact_definition<S: OriginalAuthorityOwner>(
         })
     })();
     finish_scope(bytes, file.close().map_err(io_failure))
+}
+
+fn hash_implementation<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    root: &TrackedFile,
+    relative: &Text,
+) -> Result<tobkiri_canon::Digest> {
+    use sha2::{Digest as _, Sha256};
+
+    let invalid = || compiler::invalid_artifact("executable implementation escapes its Pack root");
+    let slot = relative.0.len().saturating_mul(4).saturating_add(1);
+    let _path_funding = op.reserve(OriginalAuthorityStage::Source, slot.saturating_mul(2))?;
+    charge(op, budget, slot)?;
+    let relative = relative.utf8().map_err(|_| invalid())?;
+    let path = Path::new(&relative);
+    let mut components = path.components().peekable();
+    let mut directory: Option<TrackedFile> = None;
+    let read = (|| {
+        while let Some(component) = components.next() {
+            op.check(OriginalAuthorityStage::Source)?;
+            let name = match component {
+                std::path::Component::Normal(name) => name,
+                std::path::Component::CurDir => continue,
+                _ => return Err(invalid()),
+            };
+            let entry = CString::new(name.as_bytes()).map_err(|_| invalid())?;
+            let flags = if components.peek().is_some() {
+                libc::O_DIRECTORY
+            } else {
+                0
+            };
+            let parent = directory.as_ref().unwrap_or(root);
+            let file = external_catalog_inventory::open_child(op, parent, &entry, flags).map_err(
+                |error| {
+                    if matches!(error.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR)) {
+                        invalid()
+                    } else {
+                        caused(
+                            model::denied("external Pack artifact digest verification failed"),
+                            raw_io(error, None),
+                        )
+                    }
+                },
+            )?;
+            if flags == 0 {
+                let mut file = file;
+                let outcome = (|| {
+                    let before = file.metadata().map_err(|error| raw_io(error, None))?;
+                    if !before.is_file() {
+                        return Err(invalid());
+                    }
+                    let _buffer_funding = op.reserve(OriginalAuthorityStage::Source, 8192)?;
+                    let mut buffer = [0; 8192];
+                    let mut hash = Sha256::new();
+                    let mut observed = 0u64;
+                    loop {
+                        op.check(OriginalAuthorityStage::Source)?;
+                        let count = match file.read(&mut buffer) {
+                            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                                continue;
+                            }
+                            result => result.map_err(|error| raw_io(error, None))?,
+                        };
+                        if count == 0 {
+                            break;
+                        }
+                        observed += count as u64;
+                        if observed > before.len() {
+                            return Err(invalid());
+                        }
+                        charge(op, budget, count)?;
+                        hash.update(&buffer[..count]);
+                    }
+                    let after = file.metadata().map_err(|error| raw_io(error, None))?;
+                    if observed != before.len() || identity(&after) != identity(&before) {
+                        return Err(invalid());
+                    }
+                    Ok(tobkiri_canon::Digest::from_sha256(hash.finalize().into()))
+                })();
+                return finish_scope(outcome, file.close().map_err(|error| raw_io(error, None)));
+            }
+            if let Some(previous) = directory.replace(file) {
+                previous.close().map_err(|error| raw_io(error, None))?;
+            }
+        }
+        Err(invalid())
+    })();
+    let close = directory.map_or(Ok(()), |fd| fd.close().map_err(|error| raw_io(error, None)));
+    finish_scope(read, close)
 }
 
 fn read_bundled<S: OriginalAuthorityOwner>(
@@ -1062,7 +1197,6 @@ fn read_registry<S: OriginalAuthorityOwner>(
     path: &Path,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
-    let external_error = |message| raw(EXTERNAL_ERROR, message);
     op.check(OriginalAuthorityStage::Source)?;
     let file = fs::OpenOptions::new()
         .read(true)
@@ -1070,20 +1204,50 @@ fn read_registry<S: OriginalAuthorityOwner>(
         .open(path)
         .map_err(|error| {
             caused(
-                external_error(
-                    "Host JSON file is unreadable: external_normal_pack_catalog.v4.json",
-                ),
+                model::denied("Host JSON file is unreadable: external_normal_pack_catalog.v4.json"),
                 raw_io(error, path.to_str()),
             )
         })?;
-    let mut file = TrackedFile::new(file, op.cleanup.clone());
+    read_host_json(op, TrackedFile::new(file, op.cleanup.clone()), budget)
+}
+
+fn read_signed_manifest<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    root: &TrackedFile,
+    path: &Path,
+) -> Result<Funded<Zeroizing<Vec<u8>>>> {
+    let unreadable = |error| {
+        let path = path.join(".tobkiri/signed-pack.json");
+        caused(
+            model::denied("Host JSON file is unreadable: signed-pack.json"),
+            raw_io(error, path.to_str()),
+        )
+    };
+    op.check(OriginalAuthorityStage::Source)?;
+    let metadata = external_catalog_inventory::open_child(op, root, c".tobkiri", libc::O_DIRECTORY)
+        .map_err(unreadable)?;
+    let outcome = external_catalog_inventory::open_child(op, &metadata, c"signed-pack.json", 0)
+        .map_err(unreadable)
+        .and_then(|file| read_host_json(op, file, budget));
+    finish_scope(
+        outcome,
+        metadata.close().map_err(|error| raw_io(error, None)),
+    )
+}
+
+fn read_host_json<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    mut file: TrackedFile,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Funded<Zeroizing<Vec<u8>>>> {
     let input = (|| {
         let before = file.metadata().map_err(|error| raw_io(error, None))?;
         if !before.is_file()
             || before.nlink() != 1
             || before.len() > model::MAX_CATALOG_BYTES as u64
         {
-            return Err(external_error("Host JSON file identity is invalid"));
+            return Err(model::denied("Host JSON file identity is invalid"));
         }
         // Preserve the original bounded single os.read occurrence.
         let max = model::MAX_CATALOG_BYTES + 1;
@@ -1101,7 +1265,7 @@ fn read_registry<S: OriginalAuthorityOwner>(
             || after.nlink() != 1
             || identity(&before) != identity(&after)
         {
-            return Err(external_error("Host JSON file changed while reading"));
+            return Err(model::denied("Host JSON file changed while reading"));
         }
         raw.truncate(size);
         // The original retains only the returned bytes.
