@@ -191,10 +191,12 @@ impl Review {
 }
 
 pub(crate) fn original_failure(mut error: OriginalAuthorityError) -> BootstrapReviewFailure {
-    if error.class == DENIED {
+    if error.class == DENIED
+        && let Some(cause) = error.cause.take()
+    {
         BootstrapReviewFailure::ResolutionDenied {
             message: error.message,
-            cause: error.cause.take().expect("recovery's original cause"),
+            cause,
         }
     } else {
         BootstrapReviewFailure::Original(error)

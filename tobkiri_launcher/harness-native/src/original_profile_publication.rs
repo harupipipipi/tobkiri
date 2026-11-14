@@ -51,6 +51,8 @@ pub(crate) struct PublicationRead {
     _capacity: NativeSetupReservation,
     #[cfg(unix)]
     pending: Option<PendingRecoveryScope>,
+    #[cfg(unix)]
+    confirmed: Option<ConfirmedScope>,
     #[cfg(test)]
     remove_intent_after_lock: bool,
 }
@@ -78,6 +80,8 @@ impl PublicationRead {
             _capacity: capacity,
             #[cfg(unix)]
             pending: None,
+            #[cfg(unix)]
+            confirmed: None,
             #[cfg(test)]
             remove_intent_after_lock: false,
         })
@@ -98,6 +102,100 @@ impl PublicationRead {
         discard_superseded: bool,
     ) -> Result<Prefix> {
         self.run_inner(owner, cancellation, discard_superseded, true)
+    }
+
+    /// The confirmed capture takes its outer lock before recovering or resolving.
+    pub(crate) fn begin_confirmed<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        budget: &Arc<dyn tobkiri_canon::AllocationBudget>,
+    ) -> Result<()> {
+        #[cfg(unix)]
+        {
+            if self.calls != 0 {
+                return Err(OriginalAuthorityError::unsupported(
+                    OriginalAuthorityStage::Guard,
+                    "confirmed publication has already entered recovery",
+                ));
+            }
+            // Both recovery occurrences borrow this one lock. Listing recovery
+            // can discard a stale intent, which a confirmed capture must refuse.
+            self.calls = 2;
+            let op = Self::operation(&self.invocation, &self.cleanup, owner, cancellation)?;
+            op.check(OriginalAuthorityStage::Source)?;
+            self.confirmed = Some(
+                owner
+                    .with_original_review_user_data(|root| confirmed_scope(&op, root, budget))??,
+            );
+            self.fresh.record_confirmed_recovery(cancellation);
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (owner, cancellation, budget);
+            Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Source,
+                "Windows confirmed publication persistence/ACL",
+            ))
+        }
+    }
+
+    /// Validate the same directory and lock after the confirmed review returns.
+    pub(crate) fn verify_confirmed<S: OriginalAuthorityOwner>(
+        &self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+    ) -> Result<()> {
+        #[cfg(unix)]
+        if let Some(confirmed) = &self.confirmed {
+            let op = self.candidate_operation(owner, cancellation)?;
+            op.check(OriginalAuthorityStage::Guard)?;
+            confirmed.scope.validate(&op)?;
+            if self.candidate_io_verified() {
+                return Ok(());
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = (owner, cancellation);
+        Err(OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Guard,
+            "confirmed publication cleanup is uncertain or the lock is absent",
+        ))
+    }
+
+    fn candidate_io_verified(&self) -> bool {
+        // The confirmed branch accounts for its own held lock only. Any other
+        // outstanding descriptor, connection, or uncertain close still fails.
+        #[cfg(unix)]
+        if let Some(confirmed) = &self.confirmed {
+            let receipt = self.receipt();
+            return confirmed.scope.guard.file.is_some()
+                && receipt.open_files == 1
+                && receipt.open_connections == 0
+                && !receipt.uncertain;
+        }
+        self.cleanup.verified()
+    }
+
+    fn operation<'a, S: OriginalAuthorityOwner>(
+        invocation: &'a NativeSetupInvocation,
+        cleanup: &Arc<CleanupState>,
+        owner: &'a S,
+        cancellation: &'a CoreCancellation,
+    ) -> Result<Operation<'a, S>> {
+        Ok(Operation {
+            owner,
+            invocation,
+            cancellation,
+            deadline: invocation
+                .deadline()
+                .map_err(|_| OriginalAuthorityError::unavailable())?,
+            pid: std::process::id(),
+            cleanup: cleanup.clone(),
+            #[cfg(test)]
+            fixture: None,
+        })
     }
     fn run_inner<S: crate::BootstrapReviewOwner>(
         &mut self,
@@ -122,19 +220,7 @@ impl PublicationRead {
         self.calls += 1;
         #[cfg(test)]
         let remove_intent_after_lock = std::mem::take(&mut self.remove_intent_after_lock);
-        let op = Operation {
-            owner,
-            invocation: &self.invocation,
-            cancellation,
-            deadline: self
-                .invocation
-                .deadline()
-                .map_err(|_| OriginalAuthorityError::unavailable())?,
-            pid: std::process::id(),
-            cleanup: self.cleanup.clone(),
-            #[cfg(test)]
-            fixture: None,
-        };
+        let op = Self::operation(&self.invocation, &self.cleanup, owner, cancellation)?;
         op.check(OriginalAuthorityStage::Source)?;
         // Retirement is applied after the actual body/close by the owning job.
         // Do not replace a prior original failure with a later shutdown flag.
@@ -239,6 +325,12 @@ impl PublicationRead {
     /// exits skip Python's post-yield validation; actual unlock/close always run.
     pub(crate) fn close_continuation(&mut self) -> Result<()> {
         self.fresh = candidate_selection::FreshSetup::default();
+        #[cfg(unix)]
+        if let Some(mut confirmed) = self.confirmed.take() {
+            let thread = check_scope_thread(confirmed.thread);
+            let closed = confirmed.scope.guard.close();
+            return finish_scope(thread, closed);
+        }
         #[cfg(unix)]
         if let Some(mut pending) = self.pending.take() {
             let thread = pending.check_thread();
@@ -462,14 +554,19 @@ struct PendingRecoveryScope {
 #[cfg(unix)]
 impl PendingRecoveryScope {
     fn check_thread(&self) -> Result<()> {
-        if self.thread != std::thread::current().id() {
-            return Err(OriginalAuthorityError::unsupported(
-                OriginalAuthorityStage::Guard,
-                "publication continuation moved from its logical worker thread",
-            ));
-        }
-        Ok(())
+        check_scope_thread(self.thread)
     }
+}
+
+#[cfg(unix)]
+fn check_scope_thread(thread: std::thread::ThreadId) -> Result<()> {
+    if thread != std::thread::current().id() {
+        return Err(OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Guard,
+            "publication continuation moved from its logical worker thread",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -554,13 +651,19 @@ impl Intent {
     }
 }
 
-#[cfg(all(test, unix))]
-fn with_confirmed_predecessor<S: OriginalAuthorityOwner, T>(
+#[cfg(unix)]
+struct ConfirmedScope {
+    scope: RecoveryScope,
+    _predecessor: Option<active_profile::LoadedPointer>,
+    thread: std::thread::ThreadId,
+}
+
+#[cfg(unix)]
+fn confirmed_scope<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
     budget: &Arc<dyn tobkiri_canon::AllocationBudget>,
-    inspect: impl FnOnce(&RecoveryScope, Option<&active_profile::LoadedPointer>) -> Result<T>,
-) -> Result<T> {
+) -> Result<ConfirmedScope> {
     if let Some(handover) = development_handover::read_optional(op, root, budget)?
         && !handover
             .payload
@@ -607,9 +710,31 @@ fn with_confirmed_predecessor<S: OriginalAuthorityOwner, T>(
                 ));
             }
         }
-        let current = active_profile::load(op, root)?;
-        inspect(&scope, current.as_ref())
+        active_profile::load(op, root)
     })();
+    match result {
+        Ok(predecessor) => Ok(ConfirmedScope {
+            scope,
+            _predecessor: predecessor,
+            thread: std::thread::current().id(),
+        }),
+        Err(error) => finish_scope(Err(error), scope.guard.close()),
+    }
+}
+
+#[cfg(all(test, unix))]
+fn with_confirmed_predecessor<S: OriginalAuthorityOwner, T>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    budget: &Arc<dyn tobkiri_canon::AllocationBudget>,
+    inspect: impl FnOnce(&RecoveryScope, Option<&active_profile::LoadedPointer>) -> Result<T>,
+) -> Result<T> {
+    let ConfirmedScope {
+        mut scope,
+        _predecessor: predecessor,
+        ..
+    } = confirmed_scope(op, root, budget)?;
+    let result = inspect(&scope, predecessor.as_ref());
     let result = if result.is_ok() {
         finish_scope(result, scope.validate(op))
     } else {

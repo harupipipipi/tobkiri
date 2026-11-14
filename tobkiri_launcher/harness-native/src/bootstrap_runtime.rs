@@ -1094,7 +1094,14 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     {
         self.admit_activation_input(request)?;
         let body = CoreValue::parse_guest(request, &self.input_budget)?;
-        self.run_activation_decision(options, body).await
+        self.run_activation_decision(
+            options,
+            ActivationInput {
+                body,
+                confirmed: false,
+            },
+        )
+        .await
     }
 
     /// Build the activation decision request from the entire worker-issued
@@ -1114,7 +1121,14 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             confirmation_digest,
             &self.input_budget,
         )?;
-        self.run_activation_decision(options, body).await
+        self.run_activation_decision(
+            options,
+            ActivationInput {
+                body,
+                confirmed: true,
+            },
+        )
+        .await
     }
 
     fn admit_activation_input(&self, input: &[u8]) -> Result<()> {
@@ -1128,16 +1142,16 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     async fn run_activation_decision(
         &mut self,
         options: &crate::BootstrapReviewOptions,
-        body: CoreValue,
+        input: ActivationInput,
     ) -> Result<std::result::Result<BootstrapActivationDecision, crate::BootstrapReviewFailure>>
     where
         S: crate::BootstrapReviewOwner,
     {
-        if body.object().is_none() {
+        if input.body.object().is_none() {
             bail!("bootstrap activation body must be a mapping");
         }
         match self
-            .setup_review_inner(options, false, false, Some(body))
+            .setup_review_inner(options, false, false, Some(input))
             .await?
         {
             Ok(SetupOutput::Decision(decision)) => Ok(Ok(decision)),
@@ -1183,7 +1197,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         options: &crate::BootstrapReviewOptions,
         identity_prefix: bool,
         catalog_prefix: bool,
-        body: Option<CoreValue>,
+        activation: Option<ActivationInput>,
     ) -> Result<std::result::Result<SetupOutput, crate::BootstrapReviewFailure>>
     where
         S: crate::BootstrapReviewOwner,
@@ -1247,7 +1261,12 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 call_pending,
                 defer_pending_drop: true,
             };
-            match run_setup_review(review.as_mut().expect("admitted review"), &mut pack, body).await
+            match run_setup_review(
+                review.as_mut().expect("admitted review"),
+                &mut pack,
+                activation,
+            )
+            .await
             {
                 Err(error) => Err(pack.retire_failure(error).await),
                 outcome => outcome,
@@ -1334,15 +1353,21 @@ enum SetupOutput {
     Decision(BootstrapActivationDecision),
 }
 
+struct ActivationInput {
+    body: CoreValue,
+    confirmed: bool,
+}
+
 async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut crate::bootstrap_review::Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-    body: Option<CoreValue>,
+    activation: Option<ActivationInput>,
 ) -> Result<std::result::Result<SetupOutput, crate::BootstrapReviewFailure>> {
     use activation_decision::Decision;
-    let decide = body.is_some();
-    if let Some(body) = body {
-        match activation_decision::run(pack, Some(&body), None).await? {
+    let decide = activation.is_some();
+    let confirmed = activation.as_ref().is_some_and(|input| input.confirmed);
+    if let Some(input) = activation {
+        match activation_decision::run(pack, Some(&input.body), None).await? {
             Ok(Decision::Continue) => {}
             Ok(Decision::Rejected(response)) => {
                 return Ok(Ok(SetupOutput::Decision(
@@ -1353,7 +1378,7 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             Err(error) => return Ok(Err(error)),
         }
     }
-    let listing = match review_continuation::run(review, pack).await? {
+    let listing = match review_continuation::run(review, pack, confirmed).await? {
         Ok(listing) => listing,
         Err(error) => return Ok(Err(error)),
     };
@@ -1384,9 +1409,18 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Ok(Decision::Rejected(response)) => Ok(Ok(SetupOutput::Decision(
             BootstrapActivationDecision::Rejected(response),
         ))),
-        Ok(Decision::Matched(confirmation)) => Ok(Ok(SetupOutput::Decision(
-            BootstrapActivationDecision::Matched(confirmation),
-        ))),
+        Ok(Decision::Matched(confirmation)) => {
+            if confirmed
+                && let Err(error) = review
+                    .read
+                    .verify_confirmed(&pack.work.get().source, pack.cancellation)
+            {
+                return Ok(Err(crate::bootstrap_review::original_failure(error)));
+            }
+            Ok(Ok(SetupOutput::Decision(
+                BootstrapActivationDecision::Matched(confirmation),
+            )))
+        }
         Err(error) => Ok(Err(error)),
     }
 }

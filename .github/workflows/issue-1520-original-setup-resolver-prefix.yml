@@ -151,6 +151,14 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           bootstrap_runtime::listing::tests::preview_and_listing_require_the_same_reviewed_confirmation
           -- --exact --test-threads=1 --nocapture
+      - name: Verify the confirmed candidate stays on its locked publication root
+        if: matrix.os == 'ubuntu-22.04'
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-setup-resolver-prefix/confirmed-candidate.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::definitions::candidate_selection_tests::confirmed_candidate_uses_the_locked_root_and_verifies_before_finish
+          -- --exact --test-threads=1 --nocapture
       - name: Compare the signed native publication intent with the original writer
         if: matrix.os == 'ubuntu-22.04'
         env:
@@ -184,6 +192,7 @@ jobs:
             ${{ runner.temp }}/original-setup-resolver-prefix/confirmation.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/registration.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/confirmed-lock.log*
+            ${{ runner.temp }}/original-setup-resolver-prefix/confirmed-candidate.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/intent-writer.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/listing.log*
             ${{ runner.temp }}/original-setup-resolver-prefix/activation-candidate.log*

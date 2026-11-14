@@ -170,6 +170,11 @@ impl Directory {
 }
 #[cfg(unix)]
 impl Directory {
+    pub(super) fn is_profiles_at(&self, root: &Path) -> bool {
+        self.root.file_name().is_some_and(|name| name == "profiles")
+            && self.root.parent() == Some(root)
+    }
+
     pub(super) fn capture<S: OriginalAuthorityOwner>(
         op: &Operation<'_, S>,
         path: &Path,

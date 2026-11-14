@@ -149,6 +149,78 @@ async fn confirmed_publication_checks_handover_before_lock_and_holds_it_without_
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
+    use super::super::LOCK;
+
+    for case in ["same", "candidate-root", "resolver-root", "lock-replaced"] {
+        with_source(|source, read, cancel, budget| {
+            let other_root = source.root.with_file_name("other-user-data");
+            let owner = ChangingOwner {
+                first: &source.root,
+                next: if case == "same" || case == "lock-replaced" {
+                    &source.root
+                } else {
+                    &other_root
+                },
+                calls: AtomicUsize::new(if case == "candidate-root" { 2 } else { 1 }),
+            };
+            read.begin_confirmed(&owner, cancel, budget).unwrap();
+            let lock = source.root.join("profiles").join(LOCK);
+            assert!(!lock_free(&lock));
+            assert_eq!(read.receipt().open_files, 1);
+            assert!(read.enter_recovery(&owner, cancel, true).is_err());
+            assert!(read.begin_confirmed(&owner, cancel, budget).is_err());
+            let candidate_root = read.acquire_candidate_root(&owner, cancel);
+            if case == "candidate-root" {
+                assert_eq!(
+                    candidate_root.unwrap_err().message,
+                    "Setup root differs from the locked publication root"
+                );
+            } else {
+                candidate_root.unwrap();
+                assert!(matches!(
+                    read.candidate_selection(&owner, cancel, "defaults", false, budget)
+                        .unwrap(),
+                    CandidateSelection::BundledCatalog
+                ));
+                let resolver_root = read.acquire_resolver_root(&owner, cancel);
+                if case == "resolver-root" {
+                    assert_eq!(
+                        resolver_root.unwrap_err().message,
+                        "Setup root differs from the locked publication root"
+                    );
+                } else {
+                    resolver_root.unwrap();
+                    read.verify_confirmed(&owner, cancel).unwrap();
+                }
+            }
+
+            let held = if case == "lock-replaced" {
+                let original = lock.with_extension("held");
+                fs::rename(&lock, &original).unwrap();
+                fs::write(&lock, b"").unwrap();
+                assert!(read.verify_confirmed(&owner, cancel).is_err());
+                original
+            } else {
+                lock
+            };
+            assert!(!lock_free(&held));
+            read.close_continuation().unwrap();
+            assert!(read.receipt().verified());
+            assert!(lock_free(&held));
+            assert!(!other_root.exists());
+            assert!(!source.root.join("profiles/.publication-key").exists());
+            assert!(
+                !source
+                    .root
+                    .join("profiles/bootstrap-publication.json")
+                    .exists()
+            );
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn both_recoveries_precede_selection_and_absent_root_stays_absent() {
     for additions in [false, true] {
         with_source(|source, read, cancel, budget| {

@@ -119,6 +119,12 @@ pub(super) struct FreshSetup {
     resolver_root: Option<Funded<PathBuf>>,
 }
 impl FreshSetup {
+    #[cfg(unix)]
+    pub(super) fn record_confirmed_recovery(&mut self, cancellation: &CoreCancellation) {
+        self.cancellation = Some(cancellation.clone());
+        self.recoveries = 2;
+    }
+
     pub(super) fn record_recovery(&mut self, cancellation: &CoreCancellation) {
         if self.recoveries == 0 {
             self.cancellation = Some(cancellation.clone());
@@ -143,7 +149,8 @@ impl PublicationRead {
         owner: &S,
         cancellation: &CoreCancellation,
     ) -> Result<()> {
-        if self.fresh.recoveries != 2 || self.fresh.root.is_some() || !self.cleanup.verified() {
+        if self.fresh.recoveries != 2 || self.fresh.root.is_some() || !self.candidate_io_verified()
+        {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Guard,
                 "fresh Setup recovery is not complete",
@@ -151,6 +158,7 @@ impl PublicationRead {
         }
         let op = self.candidate_operation(owner, cancellation)?;
         let root = read_root(&op)?;
+        self.check_confirmed_root(&root)?;
         self.fresh.root = Some(root);
         Ok(())
     }
@@ -250,7 +258,7 @@ impl PublicationRead {
             ));
         }
         self.fresh.progress = Progress::RegisteredAuthorityStarted;
-        if !self.cleanup.verified() {
+        if !self.candidate_io_verified() {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Guard,
                 "registered Setup candidate cleanup is uncertain",
@@ -319,6 +327,7 @@ impl PublicationRead {
             ));
         }
         let root = read_root(&self.candidate_operation(owner, cancellation)?)?;
+        self.check_confirmed_root(&root)?;
         self.fresh.resolver_root = Some(root);
         self.fresh.progress = Progress::Resolving;
         Ok(())
@@ -414,7 +423,7 @@ impl PublicationRead {
         profile_id: &str,
     ) -> Result<bool> {
         self.check_resolver_root(owner, cancellation)?;
-        if self.fresh.progress != Progress::PredecessorStarted || !self.cleanup.verified() {
+        if self.fresh.progress != Progress::PredecessorStarted || !self.candidate_io_verified() {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Guard,
                 "inactive predecessor is outside the resolved candidate",
@@ -477,7 +486,8 @@ impl PublicationRead {
         #[cfg(unix)]
         {
             self.check_resolver_root(owner, cancellation)?;
-            if self.fresh.progress != Progress::InactiveRegistryStarted || !self.cleanup.verified()
+            if self.fresh.progress != Progress::InactiveRegistryStarted
+                || !self.candidate_io_verified()
             {
                 return Err(OriginalAuthorityError::unsupported(
                     OriginalAuthorityStage::Guard,
@@ -499,7 +509,7 @@ impl PublicationRead {
         }
     }
 
-    fn candidate_operation<'a, S: OriginalAuthorityOwner>(
+    pub(super) fn candidate_operation<'a, S: OriginalAuthorityOwner>(
         &'a self,
         owner: &'a S,
         cancellation: &'a CoreCancellation,
@@ -510,19 +520,26 @@ impl PublicationRead {
                 "fresh Setup cancellation changed",
             ));
         }
-        Ok(Operation {
-            owner,
-            invocation: &self.invocation,
-            cancellation,
-            deadline: self
-                .invocation
-                .deadline()
-                .map_err(|_| OriginalAuthorityError::unavailable())?,
-            pid: std::process::id(),
-            cleanup: self.cleanup.clone(),
-            #[cfg(test)]
-            fixture: None,
-        })
+        #[cfg(unix)]
+        if let Some(confirmed) = &self.confirmed {
+            check_scope_thread(confirmed.thread)?;
+        }
+        Self::operation(&self.invocation, &self.cleanup, owner, cancellation)
+    }
+
+    fn check_confirmed_root(&self, root: &Path) -> Result<()> {
+        #[cfg(unix)]
+        if let Some(confirmed) = &self.confirmed
+            && !confirmed.scope.directory.is_profiles_at(root)
+        {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Guard,
+                "Setup root differs from the locked publication root",
+            ));
+        }
+        #[cfg(not(unix))]
+        let _ = root;
+        Ok(())
     }
 }
 

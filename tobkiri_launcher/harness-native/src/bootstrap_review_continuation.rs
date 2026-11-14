@@ -1,5 +1,5 @@
 //! Original recovery and fresh Setup candidate callers on the same Pack Store.
-//! Only recovery retains the original pending journal guard.
+//! Recovery and confirmed capture retain their respective publication guards.
 use super::*;
 use crate::app_bootstrap_identity::{BootstrapIdentityInput, validate_bootstrap_identity};
 use crate::bootstrap_review::{Review, original_failure};
@@ -129,6 +129,7 @@ impl ReviewCaller {
 pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    confirmed: bool,
 ) -> super::listing::Outcome {
     if review.attempted {
         return Ok(Err(BootstrapReviewFailure::Admission(
@@ -136,6 +137,23 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         )));
     }
     review.attempted = true;
+    if confirmed {
+        // The original source-update precheck must run before lock acquisition.
+        // Its active candidate path is a separate continuation.
+        if review.include_source_additions {
+            return Ok(Err(BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::ActiveCandidateAuthorityNotBound,
+            )));
+        }
+        if let Err(error) = review.read.begin_confirmed(
+            &pack.work.get().source,
+            pack.cancellation,
+            pack.input_budget,
+        ) {
+            return Ok(Err(original_failure(error)));
+        }
+        return fresh_candidate(review, pack).await;
+    }
     for discard in [true, false] {
         match review
             .read
