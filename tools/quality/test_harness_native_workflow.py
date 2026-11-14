@@ -40,7 +40,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.native = job(self.workflow, "execute-original-native-bootstrap")
 
     def test_schema_diagnostic_is_an_explicit_separate_producer_and_binder(self) -> None:
-        self.assertIn("catalog-prefix, catalog-schema-diagnostic]", self.workflow)
+        self.assertIn("catalog-prefix, catalog-schema-diagnostic, launcher-staging]", self.workflow)
         build = job(self.workflow, "build-whole-native-harness")
         producer = step(build, "Build the actual native Harness dispatcher and original module closure")
         self.assertIn("build_components.py --harness-native", producer)
@@ -158,6 +158,28 @@ class NativeWorkflowContracts(unittest.TestCase):
                 self.assertEqual(condition.group(1), guard)
                 self.assertNotIn("success()", condition.group(1))
                 self.assertLess(self.native.index(metadata), self.native.index(source))
+
+    def test_original_launcher_staging_uses_only_the_bound_normal_artifact(self) -> None:
+        source = step(
+            self.native, "Stage the verified same-run Wasm through the original Launcher"
+        )
+        for required in (
+            "inputs.verification == 'launcher-staging'",
+            "steps.native_inputs.conclusion == 'success'",
+            '["launcher_component_receipt"]["sha256"]',
+            'TOBKIRI_SETUP_COMPONENT_SOURCE="$TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT"',
+            'TOBKIRI_SETUP_COMPONENT_RECEIPT="$bound/launcher-component.json"',
+            'TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$pin"',
+            "--features native-harness-bootstrap,native-setup-review",
+            "verify_runtime_resource_manifest(stage)",
+            'name = "native-setup/component.wasm"',
+            "fingerprint(copied, 32 * 1024**2) != expected",
+        ):
+            self.assertIn(required, source)
+        for unrelated in ("catalog-schema-diagnostic", "--features core-host", "continue-on-error"):
+            self.assertNotIn(unrelated, source)
+        evidence = step(self.native, "Retain actual native execution evidence")
+        self.assertIn("harness-native-launcher-staging.log*", evidence)
 
     def test_runtime_features_come_from_the_same_resolved_and_compiled_consumer(self) -> None:
         source = step(self.native, "Retain resolved and actually compiled runtime features")

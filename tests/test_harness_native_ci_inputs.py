@@ -139,12 +139,15 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         self.assertIn("TOBKIRI_TEST_NATIVE_HARNESS_SCHEMA_DIAGNOSTIC=1\n",
                       self.environment.read_text())
         self.assertFalse((self.root / "bound/launcher-component.json").exists())
+        self.assertNotIn("launcher_component_receipt", report)
 
     def test_only_normal_binding_emits_launcher_receipt(self):
         artifact, _, _ = self.fixture(False)
         output = self.root / "bound"
-        binder.bind(artifact, output, self.environment)
-        receipt = json.loads((output / "launcher-component.json").read_bytes())
+        report = binder.bind(artifact, output, self.environment)
+        receipt_path = output / "launcher-component.json"
+        receipt = json.loads(receipt_path.read_bytes())
+        self.assertEqual(report["launcher_component_receipt"], binder.fingerprint(receipt_path))
         self.assertEqual(receipt["format"], "io.tobkiri.launcher-setup-component.v1")
         self.assertEqual(receipt["component"], binder.fingerprint(artifact))
         self.assertTrue(receipt["modules"])

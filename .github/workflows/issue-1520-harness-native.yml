@@ -37,9 +37,9 @@ on:
   workflow_dispatch:
     inputs:
       verification:
-        description: Original runtime regression or additional actual factory/getter comparison
+        description: Original runtime regression, targeted comparison, or Launcher resource staging
         type: choice
-        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, catalog-schema-diagnostic]
+        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, catalog-schema-diagnostic, launcher-staging]
         default: bootstrap
 
 permissions:
@@ -469,6 +469,58 @@ jobs:
           --log "$RUNNER_TEMP/harness-native-owner-transfer.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-core --lib
           core::runtime_owner_tests:: -- --nocapture
+      - name: Install Node for the original Launcher staging check
+        if: ${{ inputs.verification == 'launcher-staging' && steps.native_inputs.conclusion == 'success' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - name: Build the isolated Setup assets used by the original Launcher
+        if: ${{ inputs.verification == 'launcher-staging' && steps.native_inputs.conclusion == 'success' }}
+        working-directory: tobkiri_launcher/frontend
+        run: |
+          npm ci
+          npm run build:setup-review
+      - name: Build and seal the original debug Pack Shell for Launcher staging
+        if: ${{ inputs.verification == 'launcher-staging' && steps.native_inputs.conclusion == 'success' }}
+        run: |
+          cargo build --locked --manifest-path pack-shell/Cargo.toml --target aarch64-apple-darwin
+          python3 -B .github/scripts/seal_pack_shell.py --target aarch64-apple-darwin
+      - name: Stage the verified same-run Wasm through the original Launcher
+        if: ${{ inputs.verification == 'launcher-staging' && steps.native_inputs.conclusion == 'success' }}
+        run: |
+          set -euo pipefail
+          bound="$RUNNER_TEMP/harness-native-inputs"
+          pin="$(python3 -B -c 'import json, sys; print(json.load(sys.stdin)["launcher_component_receipt"]["sha256"])' < "$bound/inputs.json")"
+          TOBKIRI_SETUP_COMPONENT_SOURCE="$TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT" \
+          TOBKIRI_SETUP_COMPONENT_RECEIPT="$bound/launcher-component.json" \
+          TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$pin" \
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/harness-native-launcher-staging.log" --expected-passed 1 -- \
+            cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+            --target aarch64-apple-darwin --features native-harness-bootstrap,native-setup-review \
+            --lib native_harness_bootstrap::setup_display_requires_a_completed_listing_result -- --exact
+          python3 -B - "$bound/inputs.json" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          sys.path[:0] = [".github/scripts", "tools/python313-producer"]
+          from build_native import fingerprint
+          from prepare_tauri_resources import verify_runtime_resource_manifest
+
+          expected = json.loads(Path(sys.argv[1]).read_bytes())["component"]
+          stage = Path("tobkiri_launcher/src-tauri/gen/app")
+          manifest = verify_runtime_resource_manifest(stage)
+          name = "native-setup/component.wasm"
+          (entry,) = [row for row in manifest["entries"] if row["path"] == name]
+          if entry != {"path": name, "size": expected["bytes"], "sha256": expected["sha256"]}:
+              raise SystemExit("original Launcher seal does not contain the verified Wasm")
+          copied = Path(os.environ["CARGO_TARGET_DIR"]) / "aarch64-apple-darwin/debug/app" / name
+          if fingerprint(copied, 32 * 1024**2) != expected:
+              raise SystemExit("Tauri resource copy differs from the verified Wasm")
+          print("Verified the original Launcher resource seal and Tauri Wasm copy")
+          PY
       - name: Retain actual native execution evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -482,6 +534,7 @@ jobs:
             ${{ runner.temp }}/harness-native-source-metadata.log*
             ${{ runner.temp }}/harness-native-inspection-policy.log*
             ${{ runner.temp }}/harness-native-preparation.log*
+            ${{ runner.temp }}/harness-native-launcher-staging.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
             ${{ runner.temp }}/harness-native-runtime-features/
             ${{ runner.temp }}/harness-native-denied-factory.log*

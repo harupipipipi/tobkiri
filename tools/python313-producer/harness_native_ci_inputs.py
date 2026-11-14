@@ -191,10 +191,12 @@ def bind(
     output.mkdir(mode=0o700)
     index_path = output / "module-index.rs"
     index_path.write_bytes(header)
+    launcher_receipt = None
     if not schema_call_diagnostic:
         # Data only. A separately pinned copy of this receipt can be consumed
         # by the Launcher build; this CI verification does not enable release.
-        (output / "launcher-component.json").write_text(json.dumps({
+        launcher_receipt = output / "launcher-component.json"
+        launcher_receipt.write_text(json.dumps({
             "format": "io.tobkiri.launcher-setup-component.v1",
             "component": identity,
             "source_index_sha256": index["INDEX_SHA256"],
@@ -222,6 +224,8 @@ def bind(
         "component_init_verified": False, "production_enabled": False,
         "producer_selection_verified": True,
     }
+    if launcher_receipt is not None:
+        report["launcher_component_receipt"] = fingerprint(launcher_receipt)
     if diagnostic_contract is not None:
         report.update({
             "schema_call_diagnostic": True,
