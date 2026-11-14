@@ -9,6 +9,7 @@ export default defineConfig({
   publicDir: false,
   plugins: [react(), tailwindcss()],
   build: {
+    modulePreload: false,
     outDir: path.resolve(import.meta.dirname, '../setup-review-ui'),
     emptyOutDir: true,
   },

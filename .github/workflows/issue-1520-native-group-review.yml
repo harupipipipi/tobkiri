@@ -17,6 +17,8 @@ on:
       - 'tobkiri_launcher/frontend/src/pages/Setup.test.tsx'
       - 'tobkiri_launcher/frontend/src/setup-review.tsx'
       - 'tobkiri_launcher/frontend/setup-review/**'
+      - 'tobkiri_launcher/frontend/scripts/package-setup-review.mjs'
+      - 'tobkiri_launcher/frontend/package.json'
       - 'tobkiri_launcher/frontend/vite.setup-review.config.ts'
       - '.github/workflows/issue-1520-native-group-review.yml'
   workflow_dispatch:

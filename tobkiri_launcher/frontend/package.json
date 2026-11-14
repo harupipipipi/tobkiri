@@ -25,7 +25,7 @@
     "test": "node --test-concurrency=1 --import tsx --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\" \"scripts/**/*.test.mjs\"",
     "tauri": "cd .. && npm exec --prefix frontend -- tauri",
     "build:core-host": "vite build --config vite.core-host.config.ts",
-    "build:setup-review": "vite build --config vite.setup-review.config.ts"
+    "build:setup-review": "vite build --config vite.setup-review.config.ts && node scripts/package-setup-review.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.10.1",
