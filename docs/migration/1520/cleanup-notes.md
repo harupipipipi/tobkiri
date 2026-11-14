@@ -3551,7 +3551,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   書き換える。後半の不正で全体を中断し、再実行では時刻の読取りも書込みも発生しない。
   UTF-8で表せない相対名は未対応。読取り中の交換に対してはdirectory descriptorの一致も
   確認する。原本の固定Pythonとの全バイト比較は
-  [CI 43593582219](https://github.com/harupipipipi/tobkiri/actions/runs/43593582219)で実行中。
+  [CI 43593582219](https://github.com/harupipipipi/tobkiri/actions/runs/43593582219)は、Ubuntuで
+  保存後の全バイトと再実行を確認した。macOSの確認は待機中。
   `7b2e4f01e` は元の順に別の定義ロックで状態を読み直し、既存Profileのある場合は一覧の
   手前、空のときはテンプレート検索の手前まで進む。
   [CI 43594182859](https://github.com/harupipipipi/tobkiri/actions/runs/43594182859)で検証する。
@@ -3594,7 +3595,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [実Wasm CI 43592612356](https://github.com/harupipipipi/tobkiri/actions/runs/43592612356)は
   2つのproviderと、未選択時にどちらも実行しないことを確認した。
   `089f5187f` は2つのPackの応答値を区別し、監査行の対象操作と実行回数も検証する。
-  [追加検証CI 43593496962](https://github.com/harupipipipi/tobkiri/actions/runs/43593496962)を実行中。
+  [追加検証CI 43593496962](https://github.com/harupipipipi/tobkiri/actions/runs/43593496962)も成功した。
   ゲストからの動的呼び出し先選択は残る。最高の互換minorの検索はCore、Wasm Host、明示Flowの
   コンパイラにあり、共通化前に省略時の固定済みwitnessと既存の選択結果を比較する。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
@@ -3623,6 +3624,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じmanifestの自己完結と、既存のnative検証に使うbytes一致を保てる生成範囲を
   決めてから追跡済みコピーを削る。固定会話IDの置換は保存済み履歴の互換と実1B
   検証の会話IDを一緒に扱う。
+- D-4のSetup確認は `271334a63` と `15181e0d1` で、確認手順と権限の説明を
+  画面上の利用者向けの文言へ変更した。検証済みの手順順序、各digestと権限状態の値、
+  確認要素と操作は維持する。
+  [Launcher CI 43594705258](https://github.com/harupipipipi/tobkiri/actions/runs/43594705258)で
+  既存のSetup表示と実WebKitを再検証する。
 
 ## 040: 公開Profileへ混入しない既存データ
 
