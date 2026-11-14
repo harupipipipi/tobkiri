@@ -13,6 +13,10 @@ use std::{
 use tobkiri_canon::hash_bytes;
 use tobkiri_canon::{CanonValue, Variant, digest, encode, parse, sign, verify_signature};
 
+#[path = "authoring.rs"]
+mod authoring;
+pub use authoring::generate_manifest;
+
 fn invalid(message: impl Into<String>) -> ManifestError {
     ManifestError::Invalid(message.into())
 }

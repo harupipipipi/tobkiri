@@ -1,5 +1,43 @@
 # Tobkiri guest Packs
 
+To author a Pack, stage the files it will ship and create a JSON template with
+the usual manifest fields. In the template, write `files` as an array of
+relative paths (for example, `["assets/theme.json"]`) and supply a `permissions`
+object. Use `{}` to request no effects; Wasm Packs also need concrete execution
+limits. Tobkiri fills in the file digests, sizes, and omitted permission fields.
+
+For example, this draft describes a local data Pack with one staged file:
+
+```json
+{
+  "format": "tobkiri.pack/1",
+  "id": "local.my-pack",
+  "version": "1.0.0",
+  "runtime": {"kind": "data"},
+  "shapes": [],
+  "ports": {"provides": [], "consumes": [], "untyped": []},
+  "flows": [],
+  "overlays": [],
+  "stores": [],
+  "permissions": {},
+  "files": ["assets/theme.json"]
+}
+```
+
+```sh
+tobkiri pack manifest ./stage --template ./draft.json --output ./stage/pack.json
+tobkiri pack build ./stage --output ./my-pack.tpk
+tobkiri pack verify ./my-pack.tpk
+```
+
+The generator reads only the staged paths you list and preserves any existing
+output file. Keep credentials out of the list. If you omit `--output`, it writes
+the manifest to stdout. Directory generation uses the secure Unix file reader.
+For a signed Pack, declare the publisher key in the template and run
+`tobkiri pack sign` before building; verification still needs a trusted publisher
+binding. Regenerate the manifest after changing payload bytes, and re-sign if
+applicable.
+
 Unsigned development Packs use `local.*`. The Rust guest workspace is separate
 from the host workspace, targets `wasm32-wasip2`, and pins wit-bindgen 0.62.0
 (published 2026-09-10; 0.63.0 was too new under the reviewed dependency rule).

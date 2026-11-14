@@ -268,6 +268,29 @@ async fn profile(core: &Core, command: ProfileCommand) -> Result<()> {
 
 async fn pack(command: PackCommand) -> Result<()> {
     match command {
+        PackCommand::Manifest {
+            directory,
+            template,
+            output,
+        } => {
+            let draft = bounded_read(&template, tobkiri_core::MAX_BYTES)?;
+            let bytes = tobkiri_core::pack::generate_manifest(&directory, &draft)?;
+            if let Some(output) = output {
+                let parent = output
+                    .parent()
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .unwrap_or_else(|| Path::new("."));
+                let mut file = tempfile::NamedTempFile::new_in(parent)?;
+                file.write_all(&bytes)?;
+                let _file = file
+                    .persist_noclobber(&output)
+                    .with_context(|| format!("create {}", output.display()))?;
+            } else {
+                let mut stdout = std::io::stdout().lock();
+                stdout.write_all(&bytes)?;
+                stdout.flush()?;
+            }
+        }
         PackCommand::Build { directory, output } => {
             let manifest = tobkiri_core::pack::parse_manifest(&bounded_read(
                 &directory.join("pack.json"),

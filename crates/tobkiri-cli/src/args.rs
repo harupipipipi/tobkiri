@@ -21,7 +21,7 @@ pub enum Command {
         #[command(subcommand)]
         command: ProfileCommand,
     },
-    /// Build, sign, verify and wrap independently admitted Pack artifacts.
+    /// Generate manifests, build, sign, verify and wrap Pack artifacts.
     Pack {
         #[command(subcommand)]
         command: PackCommand,
@@ -112,6 +112,16 @@ pub enum ProfileCommand {
 }
 #[derive(Subcommand)]
 pub enum PackCommand {
+    /// Generate canonical pack.json from an explicit draft and staged payload files.
+    Manifest {
+        directory: PathBuf,
+        /// Draft JSON with a permissions object and a files array of relative paths.
+        #[arg(long)]
+        template: PathBuf,
+        /// Write to a new file instead of stdout; existing files are preserved.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Build a deterministic .tpk from a manifest and its declared files.
     Build {
         directory: PathBuf,

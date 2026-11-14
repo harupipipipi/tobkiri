@@ -6,8 +6,9 @@ pub mod source;
 pub use files::ArtifactFiles;
 mod wit_preflight;
 pub use package::{
-    build_tpk, canonical_manifest, parse_manifest, sign_manifest, verify_directory,
-    verify_directory_in_catalog, verify_tpk, verify_tpk_file, verify_tpk_file_in_catalog,
+    build_tpk, canonical_manifest, generate_manifest, parse_manifest, sign_manifest,
+    verify_directory, verify_directory_in_catalog, verify_tpk, verify_tpk_file,
+    verify_tpk_file_in_catalog,
 };
 pub use shapes::{
     PackCoreErrorBindings, PackWitInspection, WitBindingDirection, allowed_imports,
