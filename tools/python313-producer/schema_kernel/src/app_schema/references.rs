@@ -160,7 +160,7 @@ impl ResourcePolicy {
         Ok(self.resources.contains(value)
             && value.get_type().is(self.resource_type.bind(py))
             && value
-                .getattr("_specification")?
+                .getattr(pyo3::intern!(py, "_specification"))?
                 .is(self.specification.bind(py)))
     }
     fn method(
@@ -173,8 +173,10 @@ impl ResourcePolicy {
         // Exact MethodType metadata cannot execute an arbitrary callable's
         // __getattribute__. The actual descriptor lookup already happened once.
         Ok(value.get_type().is(self.method_type.bind(py))
-            && value.getattr("__func__")?.is(function.bind(py))
-            && value.getattr("__self__")?.is(receiver))
+            && value
+                .getattr(pyo3::intern!(py, "__func__"))?
+                .is(function.bind(py))
+            && value.getattr(pyo3::intern!(py, "__self__"))?.is(receiver))
     }
 }
 
@@ -329,7 +331,7 @@ impl ReferenceState {
         pointer: &Bound<'_, PyAny>,
     ) -> PyResult<(Object, Rc<Self>)> {
         POINTERS.fetch_add(1, Ordering::Relaxed);
-        let mut contents = resource.getattr("contents")?;
+        let mut contents = resource.getattr(pyo3::intern!(py, "contents"))?;
         if !pointer.is_truthy()? {
             return Ok((contents.unbind(), self.clone()));
         }
@@ -366,11 +368,12 @@ impl ReferenceState {
             segments.append(token)?;
             // Preserve original function lookup and argument evaluation order.
             // In particular create_resource is ALWAYS the actual live call.
-            let specification = resource.getattr("_specification")?;
-            let helper = specification.getattr("maybe_in_subresource")?;
+            let specification_name = pyo3::intern!(py, "_specification");
+            let specification = resource.getattr(specification_name)?;
+            let helper = specification.getattr(pyo3::intern!(py, "maybe_in_subresource"))?;
             let subresource = resource
-                .getattr("_specification")?
-                .call_method1("create_resource", (&contents,))?;
+                .getattr(specification_name)?
+                .call_method1(pyo3::intern!(py, "create_resource"), (&contents,))?;
             let native = if specification.is(env.specification.bind(py))
                 && helper.is(env.resource_policy.maybe_function.bind(py))
             {
@@ -664,7 +667,7 @@ impl ReferenceState {
         if schema.is_exact_instance_of::<PyDict>() {
             let dictionary = schema.cast::<PyDict>()?;
             if dictionary
-                .get_item("$id")?
+                .get_item(pyo3::intern!(py, "$id"))?
                 .is_none_or(|value| value.is_none())
             {
                 return Ok(self.clone());
