@@ -219,6 +219,35 @@ mod tests {
                             // Compare the later physical inventory in isolation.
                             // In recovery the original compiler must run before it.
                             let root_fd = Parent::walk(&root.path, &op.cleanup).unwrap();
+                            let mismatched_bytes = || {
+                                let input = read_artifact_definition(
+                                    &op,
+                                    &root_fd,
+                                    &root.path,
+                                    c"executables.v4.json",
+                                    budget,
+                                )?;
+                                let capacity =
+                                    op.reserve(OriginalAuthorityStage::Source, input.len() + 1)?;
+                                let mut bytes = Zeroizing::new(Vec::with_capacity(input.len() + 1));
+                                bytes.extend_from_slice(&input);
+                                bytes.push(b'\n');
+                                Ok(Funded {
+                                    value: bytes,
+                                    _capacity: capacity,
+                                })
+                            };
+                            let error = check_artifact_pins(
+                                &op,
+                                budget,
+                                &compiled_prefix._documents,
+                                mismatched_bytes,
+                            )
+                            .unwrap_err();
+                            assert!(matches!(error.cause,
+                                Some(OriginalAuthorityCause::Python { class: "tobkiri_host.errors.InvalidArtifactError", ref message, .. })
+                                    if message == "executable catalog artifact digest mismatch"
+                            ));
                             let manifest_bytes = read_artifact_definition(
                                 &op,
                                 &root_fd,
