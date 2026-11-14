@@ -7,28 +7,37 @@ import path from "node:path";
 import * as esbuild from "esbuild";
 import { componentize } from "@bytecodealliance/componentize-js";
 import { _setPreopens, _clearPreopens } from "@bytecodealliance/preview2-shim/filesystem";
+import { addInventoryWorld, inventoryFiles, inventoryPorts, inventoryWorldExport, inventoryEntryExport } from "./pi-wrapper-config.js";
 
 const tools = { esbuild: "0.28.2", "componentize-js": "0.23.0", "preview2-shim": "0.28.0", typebox: "0.34.52" };
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** Compile a caller-selected pinned wrapper; no runtime source discovery. */
-export const wrapPi = async (packDirectory, packId = path.basename(packDirectory)) => {
-  if (!/^local\.[a-z][a-z0-9-]+$/.test(packId)) throw new Error("unsigned wrapper must use a local.* Pack ID");
-  const pack = path.resolve(packDirectory);
+const readPinnedSource = async (pack) => {
   const provenance = JSON.parse(await readFile(path.join(pack, "upstream.json"), "utf8"));
   if (!/^[a-f0-9]{40}$/.test(provenance.commit)) throw new Error("upstream commit must be pinned");
   const original = await readFile(path.join(pack, provenance.stored_path));
   if (digest(original) !== provenance.sha256) throw new Error("upstream source pin mismatch");
+  return { provenance, original };
+};
+
+/** Compile a caller-selected pinned wrapper; no runtime source discovery. */
+export const wrapPi = async (packDirectory, packId = path.basename(packDirectory), { commandInventory = false } = {}) => {
+  if (!/^local\.[a-z][a-z0-9-]+$/.test(packId)) throw new Error("unsigned wrapper must use a local.* Pack ID");
+  const pack = path.resolve(packDirectory);
+  const { provenance, original } = await readPinnedSource(pack);
   const shim = path.join(here, "pi-shim/index.js");
+  const factoryImport = commandInventory
+    ? `import {createExtensionWithCommandInventory as createExtension} from ${JSON.stringify(path.join(here, "pi-shim/command-inventory.js"))};`
+    : `import {createExtension} from ${JSON.stringify(shim)};`;
   const entry = `import factory from ${JSON.stringify(path.join(pack, provenance.stored_path))};
-import {createExtension} from ${JSON.stringify(shim)};
+${factoryImport}
 import {display} from 'tobkiri:core/host-io@1.0.0';
 import {isCancelled} from 'tobkiri:core/flow@1.0.0';
 let extension;
 const get=()=>extension??=createExtension(factory,{notify:(text,level)=>display('notification',JSON.stringify({text,level})),hasUI:()=>false,isCancelled});
 export const lifecycle={init:()=>{get();},shutdown:()=>{extension=undefined;}};
-export const piExtension={load:()=>get().load(),invokeTool:(...a)=>get().invokeTool(...a),onEvent:(...a)=>get().onEvent(...a),runCommand:(...a)=>get().runCommand(...a)};`;
+export const piExtension={load:()=>get().load(),invokeTool:(...a)=>get().invokeTool(...a),onEvent:(...a)=>get().onEvent(...a),runCommand:(...a)=>get().runCommand(...a)};${inventoryEntryExport(commandInventory)}`;
   const result = await esbuild.build({
     stdin: { contents: entry, resolveDir: pack, sourcefile: "wrapper-entry.mjs" },
     bundle: true, format: "esm", platform: "neutral", target: "es2022", write: false,
@@ -64,9 +73,12 @@ export const piExtension={load:()=>get().load(),invokeTool:(...a)=>get().invokeT
   await writeFile(path.join(pack, "config.json"), "{}\n");
   const files = ["component.wasm", "component.build.json", "config.json", "wrapper.js", "wrapper.js.map", "upstream.json",
     provenance.stored_path, "wit/pack.wit", "wit/deps/core.wit", "wit/deps/pi-adapter.wit"];
+  files.push(...inventoryFiles(commandInventory));
+  const provides = [{ shape: "local.pi-adapter.pi-extension", version: "1.0", optional: false }];
+  provides.push(...inventoryPorts(commandInventory));
   const manifest = { format: "tobkiri.pack/1", id: packId, version: "0.1.0", publisher_key: null,
     runtime: { kind: "wasm", component: "component.wasm", toolchain: "esbuild/0.28.2;componentize-js/0.23.0", config: { path: "config.json" } },
-    shapes: [], ports: { provides: [{ shape: "local.pi-adapter.pi-extension", version: "1.0", optional: false }], consumes: [], untyped: [] },
+    shapes: [], ports: { provides, consumes: [], untyped: [] },
     flows: [], overlays: [], stores: [], ui: null,
     permissions: { network: { origins: [] }, fs: [], proc: [], pty: false, secrets: [],
       storage: { private: false, public_read: false, public_write: false }, native: false, cross_profile_storage: false,
@@ -84,13 +96,28 @@ export const piExtension={load:()=>get().load(),invokeTool:(...a)=>get().invokeT
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let packDirectory;
   let packId;
+  let commandInventory = false;
   if (process.argv.length === 3 && !process.argv[2].startsWith("--")) {
     packDirectory = process.argv[2];
+  } else if (process.argv.length === 4 && process.argv.slice(2).includes("--command-inventory") &&
+      process.argv.slice(2).filter((arg) => !arg.startsWith("--")).length === 1) {
+    packDirectory = path.resolve(process.argv.slice(2).find((arg) => arg !== "--command-inventory"));
+    packId = path.basename(packDirectory);
+    if (!/^local\.[a-z][a-z0-9-]+$/.test(packId)) throw new Error("unsigned wrapper must use a local.* Pack ID");
+    await readPinnedSource(packDirectory);
+    const worldPath = path.join(packDirectory, "wit/pack.wit");
+    const world = addInventoryWorld(await readFile(worldPath, "utf8"), packId);
+    const repo = path.resolve(here, "../..");
+    await copyFile(path.join(repo, "packs/shapes/pi-adapter-v1-1/pi-adapter.wit"), path.join(packDirectory, "wit/deps/pi-adapter-v1-1.wit"));
+    await writeFile(worldPath, world);
+    commandInventory = true;
   } else {
     const { values } = parseArgs({ options: {
       source: { type: "string" }, upstream: { type: "string" },
       out: { type: "string" }, id: { type: "string" },
+      "command-inventory": { type: "boolean", default: false },
     }});
+    commandInventory = values["command-inventory"];
     if (!values.source || !values.upstream || !values.out || !/^local\.[a-z][a-z0-9-]+$/.test(values.id ?? "")) {
       throw new Error("usage: node sdk/js/wrap-pi.mjs --source <ext.ts> --upstream <GitHub repo>@<40hex>:<path> --out <Pack dir> --id local.<name>");
     }
@@ -109,8 +136,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const repo = path.resolve(here, "../..");
     await copyFile(path.join(repo, "crates/tobkiri-wit/wit/core/core.wit"), path.join(packDirectory, "wit/deps/core.wit"));
     await copyFile(path.join(repo, "packs/shapes/pi-adapter.wit"), path.join(packDirectory, "wit/deps/pi-adapter.wit"));
-    await writeFile(path.join(packDirectory, "wit/pack.wit"), `package local:${values.id.split(".")[1]}@1.0.0;\nworld pack {\n include tobkiri:core/pack-minimal@1.0.0;\n import tobkiri:core/host-io@1.0.0;\n export local:pi-adapter/pi-extension@1.0.0;\n}\n`);
+    if (commandInventory) await copyFile(path.join(repo, "packs/shapes/pi-adapter-v1-1/pi-adapter.wit"), path.join(packDirectory, "wit/deps/pi-adapter-v1-1.wit"));
+    await writeFile(path.join(packDirectory, "wit/pack.wit"), `package local:${values.id.split(".")[1]}@1.0.0;\nworld pack {\n include tobkiri:core/pack-minimal@1.0.0;\n import tobkiri:core/host-io@1.0.0;\n export local:pi-adapter/pi-extension@1.0.0;\n${inventoryWorldExport(commandInventory)}}\n`);
   }
-  const receipt = await wrapPi(packDirectory, packId);
+  const receipt = await wrapPi(packDirectory, packId, { commandInventory });
   process.stdout.write(`${JSON.stringify({ artifact_bytes: receipt.artifact_bytes, artifact_sha256: receipt.artifact_sha256 })}\n`);
 }

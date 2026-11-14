@@ -1,0 +1,8 @@
+package local:pi-adapter@1.1.0;
+
+/// Descriptive metadata only; invocation remains on pi-extension 1.0.
+interface command-inventory {
+  use tobkiri:core/types@1.0.0.{error};
+  record command-definition { name: string, description: string }
+  list-commands: func() -> result<list<command-definition>, error>;
+}
