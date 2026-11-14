@@ -52,3 +52,21 @@ Expected hashes are in each wrapper's `upstream.json`. Native JS behavior tests
 are development diagnostics. M4 acceptance additionally requires execution of
 the compiled wrapper plus adapter in a gated Flow; diagnostics alone do not
 resolve any migration inventory row.
+
+A self-authored single-file extension can be wrapped offline with:
+
+```sh
+node sdk/js/wrap-pi.mjs --source ./extension.ts --local-source --out ./local.my-extension --id local.my-extension
+```
+
+`--local-source` and `--upstream` are mutually exclusive. The original bytes
+are packaged with their SHA-256 in `upstream.json`, marked
+`origin: local-unverified`; this is a self-declaration, not proof of authorship
+or an upstream pin. Rebuilding checks the stored bytes against the recorded
+hash. The source may import only the two supported pi aliases; arbitrary
+local files and installed packages are not resolved for this mode. The wrapper
+remains an unsigned `local.*` Pack with the same permissions as other wrappers.
+Pinned upstream mode still fetches and compares the source before packaging.
+The component compiler runs in a private process with only PATH and temporary
+directory variables inherited, keeping its WIT preopens isolated and leaving
+the calling process environment unchanged.
