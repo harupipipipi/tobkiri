@@ -1,7 +1,7 @@
 //! App-owned reference state and explicit Python resolution boundaries.
 //! Derived from referencing 0.37.0, referencing/_core.py and jsonschema.py
 //! (MIT; see crate-root COPYING.jsonschema). Builtin ownership is metadata, not authority.
-use super::{uri, Environment, FuelBucket, Object};
+use super::{Environment, FuelBucket, Object, uri};
 use crate::keywords::{builtin, module_member};
 use pyo3::{
     exceptions::{PyLookupError, PyUnicodeEncodeError},
@@ -15,8 +15,8 @@ use std::{
     cell::RefCell,
     rc::Rc,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
@@ -346,9 +346,7 @@ impl ReferenceState {
                 if contents.is_instance(&module_member(py, "referencing._core", "Sequence")?)? {
                     builtin(py, "int")?.call1((segment,))?
                 } else {
-                    segment
-                        .call_method1("replace", ("~1", "/"))?
-                        .call_method1("replace", ("~0", "~"))?
+                    unescape_pointer_token(segment)?
                 };
             contents = match contents.get_item(&token) {
                 Ok(value) => value,
@@ -684,6 +682,28 @@ impl ReferenceState {
             .call_method1("in_subresource", (resource,))?;
         Self::from_boundary(&resolver, env)
     }
+}
+
+fn unescape_pointer_token<'py>(token: Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    if token.is_exact_instance_of::<PyString>() {
+        // SAFETY: The bound object is exact Unicode. Both operations use
+        // code-point indexes, including strings containing surrogates.
+        let length = unsafe { ffi::PyUnicode_GetLength(token.as_ptr()) };
+        if length < 0 {
+            return Err(PyErr::fetch(token.py()));
+        }
+        let tilde =
+            unsafe { ffi::PyUnicode_FindChar(token.as_ptr(), u32::from(b'~'), 0, length, 1) };
+        match tilde {
+            -1 => return Ok(token),
+            -2 => return Err(PyErr::fetch(token.py())),
+            _ => {}
+        }
+    }
+    let py = token.py();
+    token
+        .call_method1(pyo3::intern!(py, "replace"), ("~1", "/"))?
+        .call_method1(pyo3::intern!(py, "replace"), ("~0", "~"))
 }
 
 /// Classify exact strings by code point, including strings with surrogates.

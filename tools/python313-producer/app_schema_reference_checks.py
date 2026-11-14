@@ -91,11 +91,14 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
         object.__setattr__(registry, "_retrieve", retrieve)
         saved_pointer = Resource.pointer
         saved_defrag = reference_core.urldefrag
+        saved_unquote = reference_core.unquote
         try:
             if "pointer_override" in state:
                 Resource.pointer = state["pointer_override"](saved_pointer, events)
             if "defrag_override" in state:
                 reference_core.urldefrag = state["defrag_override"](saved_defrag, events)
+            if "unquote_override" in state:
+                reference_core.unquote = state["unquote_override"](events)
             try:
                 selected.check_schema(actual, format_checker=state.get("checker"))
             except exceptions.SchemaError as error:
@@ -126,6 +129,7 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
                     Resource.pointer = saved_pointer
                 finally:
                     reference_core.urldefrag = saved_defrag
+                    reference_core.unquote = saved_unquote
                     selected.META_SCHEMA = saved_meta
 
     def compare(name, make):
@@ -240,7 +244,8 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
                 target = {"type": "integer"}
                 return {
                     "meta": {"$id": root_uri,
-                             "$defs": {"a/b~c": target, "array": [target]},
+                             "$defs": {"a/b~c": target, "a~1": target,
+                                       "🦉": target, "array": [target]},
                              "$ref": fragment},
                     "actual": "bad", "local_only": True,
                 }
@@ -248,12 +253,41 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
 
         for label, fragment in (
             ("escaped", "#/$defs/a~1b~0c"),
+            ("nested_escape_order", "#/$defs/a~01"),
+            ("unicode_pointer", "#/$defs/🦉"),
             ("array_index", "#/$defs/array/0"),
             ("missing", "#/$defs/missing"),
             ("missing_anchor", "#missing"),
             ("invalid_anchor", "#missing/anchor"),
         ):
             compare("reference_lookup_" + label, pointer_reference(fragment))
+
+        def pointer_with_custom_token():
+            state = pointer_reference("#/$defs/a~01")()
+
+            def unquote_override(events):
+                class Token(str):
+                    def replace(self, old, new):
+                        events.append({"replace": [old, new]})
+                        return Token(super().replace(old, new))
+
+                class Decoded:
+                    def split(self, separator):
+                        events.append({"split": separator})
+                        return ["$defs", Token("a~01")]
+
+                def unquote(value):
+                    events.append({"unquote": value})
+                    return Decoded()
+
+                return unquote
+
+            state["unquote_override"] = unquote_override
+            state["error_schema"] = state["meta"]["$defs"]["a~1"]
+            return state
+
+        compare("reference_lookup_custom_token_keeps_live_replacements",
+                pointer_with_custom_token)
 
         def empty_fragment():
             target = {"type": "integer"}
