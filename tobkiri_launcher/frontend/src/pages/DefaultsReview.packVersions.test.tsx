@@ -41,7 +41,7 @@ test('saved Pack version review retains and presents its exact current activatio
   assert.match(html, /Review saved Pack versions/);
   assert.match(html, /activation:defaults-current-version/);
   assert.match(html, /Saved Pack version revision/);
-  assert.match(html, /I also confirm these saved Pack versions/);
+  assert.match(html, /I also confirm the saved Pack versions for the current activation/);
   assert.match(html, /disabled=""/);
 });
 

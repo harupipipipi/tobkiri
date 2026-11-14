@@ -96,7 +96,7 @@ export function DefaultsReview({
       <div className="rounded-lg border border-border bg-bg-main p-4">
         <p className="text-xs font-medium text-text-muted">Activation steps</p>
         <ol aria-label="Activation steps" className="mt-2 list-decimal space-y-1 pl-5 text-text-main">
-          {DEFAULTS_REQUIRED_TRANSACTION.map((step) => <li key={step}>{activationStepLabels[step]}</li>)}
+          {setup.required_transaction.map((step) => <li key={step}>{activationStepLabels[step]}</li>)}
         </ol>
         <p className="mt-3 text-xs leading-5 text-text-muted">
           Tobkiri uses the revisions, operations, and permissions shown here for this activation.

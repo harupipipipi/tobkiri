@@ -121,7 +121,7 @@ export type DefaultsSetupState = {
     readonly conversation_provider: string;
     readonly confirmation: DefaultsConfirmation;
   };
-  readonly required_transaction: readonly string[];
+  readonly required_transaction: typeof DEFAULTS_REQUIRED_TRANSACTION;
 };
 
 export type DefaultsActivation = {

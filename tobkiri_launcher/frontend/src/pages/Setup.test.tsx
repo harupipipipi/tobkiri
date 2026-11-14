@@ -46,7 +46,7 @@ test('the setup component exposes verification instead of replay after an ambigu
   );
 
   assert.match(html, /Activation was submitted; verification is required/);
-  assert.match(html, /previous confirmation will not be submitted again/);
+  assert.match(html, /Tobkiri will check the setup status again using the existing submission/);
   assert.match(html, /Verify activation/);
   assert.match(html, /data-error-icon="activation-verification-required"/);
   assert.match(html, /lucide-clock-3/);
@@ -59,7 +59,7 @@ test('setup activation is explicit and followed by selected presentation materia
   const reviewSource = readFileSync(resolve(import.meta.dirname, 'DefaultsReview.tsx'), 'utf8');
   assert.match(reviewSource, /type="checkbox"/);
   assert.match(reviewSource, /disabled=\{!reviewed \|\| activating \|\| !canActivate\}/);
-  assert.match(reviewSource, /previous confirmation will not be submitted again/);
+  assert.match(reviewSource, /Tobkiri will check the setup status again using the existing submission/);
   assert.match(setupSource, /PresentationSelector/);
   assert.match(setupSource, /selectPresentation/);
   assert.match(setupSource, /navigate\(panelRoutes\.home\)/);
@@ -119,7 +119,7 @@ test('reconfirmation setup copy exposes only the Host-owned bootstrap ceremony',
   const reviewSource = readFileSync(resolve(import.meta.dirname, 'DefaultsReview.tsx'), 'utf8');
   assert.match(reviewSource, /Profile reconfirmation required/);
   assert.match(reviewSource, /required_transaction/);
-  assert.match(reviewSource, /Host-owned transaction/);
+  assert.match(reviewSource, /Tobkiri uses the revisions, operations, and permissions shown here/);
   assert.doesNotMatch(reviewSource, /profile\.change\.(resolve|review|approve|activate)/);
 });
 
@@ -138,6 +138,9 @@ test('review displays the exact Host confirmation and every operation binding', 
   assert.match(html, /<input[^>]*type="checkbox"/);
   assert.ok(html.includes(confirmation.profile_revision));
   assert.ok(html.includes(confirmation.authority_snapshot_digest));
+  assert.match(html, /Check the permissions for this activation/);
+  assert.match(html, /Permission state version/);
+  assert.doesNotMatch(html, /authority\.snapshot|SecurityEpoch/);
   for (const binding of confirmation.bindings) {
     assert.ok(html.includes(binding.operation_id));
     assert.ok(html.includes(binding.caller_function_id));

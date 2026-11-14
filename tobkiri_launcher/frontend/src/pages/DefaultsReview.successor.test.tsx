@@ -47,7 +47,7 @@ test('successor review keeps the exact predecessor and explicitly presents selec
   assert.match(html, /Imported Shell: shell.tauri.default/);
   assert.match(html, /Imported predecessor revision/);
   assert.match(html, /Completed handover digest/);
-  assert.match(html, /I also confirm the displayed imported predecessor/);
+  assert.match(html, /I also confirm the imported Profile, its new revision, and the Pack selection changes/);
   assert.match(html, /disabled=""/);
 });
 
