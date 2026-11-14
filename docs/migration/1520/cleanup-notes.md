@@ -2962,7 +2962,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `2ac5e9478` で展開後の検証を元の実装に戻した。`f84bc1f1f` ではApp比較用の
   カタログ本体が、元の初回読込と再読込それぞれの実バイトをRustでハッシュする。
   対象は4MiB以内の組み込み `bytes`。元のcallback、入力順、比較結果、対象外のハッシュ動作を維持する。
-  [変更後の計測43556473713](https://github.com/harupipipipi/tobkiri/actions/runs/43556473713)
+  [変更後の計測43556473713](https://github.com/harupipipipi/tobkiri/actions/runs/43556473713)では
+  診断用の独立初期化42件が91,387,365 fuelを残して元と同じ出力を返した。全カタログは最初の項目で
+  33回目のスキーマを読み、60,500,716 fuelから停止した。終了後の確保量は0。
+  [通常の比較43556451217](https://github.com/harupipipipi/tobkiri/actions/runs/43556451217)は別構成で、
+  LinuxとmacOSの両方で独立初期化が燃料切れになった。通常の比較の通過には含めない。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3408,6 +3412,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   隔離にはTauri IPCを持たない構成を使う。既存の確認欄と実クリックを同じ表示データに結び付ける。
   製品切替時には旧 `/api/setup/packs/install` の直接送信も同じ承認経路に移し、既存の再検証UIを使う。
   Launch後の個別承認は既存の専用ウィンドウで行う。
+- `042bd8258` は既存のv4検証を通信から分離し、既存の確認欄を読み取り専用で再利用する。
+  [表示回帰43557093919](https://github.com/harupipipipi/tobkiri/actions/runs/43557093919)のmacOSステップが通過。
+  `41f1e0162` は既存パネルとは別のビルドにし、長さを制限したbase64のUTF-8 JSONだけを表示する。
+  アクション、クリップボード書き込み、承認IPCを持たず、表示に失敗した場合はエラーを返す。
+  [資産ビルド43557247571](https://github.com/harupipipipi/tobkiri/actions/runs/43557247571)では
+  macOSの表示回帰と独立資産のビルドが通過した。
+  AppKitへの載せ込みと、実表示・フォーカス・ナビゲーションの確認が次の接続範囲。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
