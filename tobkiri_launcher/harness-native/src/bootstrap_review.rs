@@ -57,7 +57,8 @@ pub enum BootstrapReviewReachpoint {
     ImportLegacyCollectionNotBound,
     LegacySuccessorBuilderNotBound,
     RepairLegacyDisplayNamesNotBound,
-    AdmittedPackCatalogNotBound,
+    AdmittedPackCatalogAuthenticationNotBound,
+    CatalogWithProfilesNotBound,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,
@@ -125,6 +126,9 @@ pub(crate) struct ActualCustody {
     pub(crate) getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) recovery_template_getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) _recovery_profile_definitions: Option<CoreValue>,
+    #[cfg(unix)]
+    pub(crate) _recovery_external_catalog:
+        Option<crate::original_authority::external_catalog::RegistryInput>,
     pub(crate) denied: Option<crate::BootstrapDenied>,
     pub(crate) factory_failure: Option<crate::BootstrapDeniedFailure>,
     pub(crate) catalog_roots: BundleCalls,

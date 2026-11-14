@@ -509,8 +509,7 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
         }
         #[cfg(unix)]
         Ok(DefinitionRecovery::ProfileDefinitions(profiles)) => {
-            review.actual._recovery_profile_definitions = Some(profiles);
-            BootstrapReviewReachpoint::AdmittedPackCatalogNotBound
+            return read_admitted_catalog(review, pack, caller, profiles).await;
         }
         #[cfg(unix)]
         Ok(DefinitionRecovery::BootstrapTemplate(store)) => {
@@ -590,13 +589,37 @@ async fn bootstrap_template<S: BootstrapInputOwner + crate::BootstrapReviewOwner
         &template,
     );
     drop(template);
-    review.actual._recovery_profile_definitions = Some(match profiles {
+    let profiles = match profiles {
         Ok(profiles) => profiles,
         Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
-    });
-    Ok(Err(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::AdmittedPackCatalogNotBound,
-    )))
+    };
+    read_admitted_catalog(review, pack, caller, profiles).await
+}
+
+#[cfg(unix)]
+async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
+    profiles: CoreValue,
+) -> super::listing::Outcome {
+    review.actual._recovery_profile_definitions = Some(profiles);
+    let catalog = match crate::original_authority::external_catalog::read(
+        &review.read,
+        &pack.work.get().source,
+        pack.cancellation,
+        pack.input_budget,
+    ) {
+        Ok(catalog) => catalog,
+        Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
+    };
+    let boundary = if catalog.has_saved_registry() {
+        BootstrapReviewReachpoint::AdmittedPackCatalogAuthenticationNotBound
+    } else {
+        BootstrapReviewReachpoint::CatalogWithProfilesNotBound
+    };
+    review.actual._recovery_external_catalog = Some(catalog);
+    Ok(Err(BootstrapReviewFailure::NotBound(boundary)))
 }
 
 #[cfg(unix)]

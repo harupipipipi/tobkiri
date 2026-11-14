@@ -13,7 +13,7 @@ pub(super) fn read_stream<S: OriginalAuthorityOwner>(
 }
 
 #[cfg(unix)]
-fn read_stream_limited<S: OriginalAuthorityOwner>(
+pub(super) fn read_stream_limited<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     file: &mut TrackedFile,
     chunk: usize,

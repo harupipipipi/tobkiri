@@ -26,6 +26,9 @@ pub(crate) mod definitions;
 #[cfg(unix)]
 #[path = "original_development_handover.rs"]
 mod development_handover;
+#[cfg(unix)]
+#[path = "original_external_catalog_io.rs"]
+pub(crate) mod external_catalog;
 pub(crate) use candidate_selection::{CandidateSelection, ResolverAuthority};
 
 const JOURNAL: &str = "bootstrap-publication.json";

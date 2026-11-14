@@ -10,12 +10,14 @@ name: Issue 1520 original Profile definition prefix
       - tools/original_profile_display_name_reference.py
       - tools/original_profile_retired_projection_reference.py
       - tools/original_bootstrap_template_reference.py
+      - tools/original_external_pack_catalog_reference.py
       - tobkiri_launcher/harness-native/src/bootstrap_catalog.rs
       - tobkiri_launcher/harness-native/src/bootstrap_review*.rs
       - tobkiri_launcher/harness-native/src/original_active_profile.rs
       - tobkiri_launcher/harness-native/src/original_authority_io.rs
       - tobkiri_launcher/harness-native/src/original_authority_json.rs
       - tobkiri_launcher/harness-native/src/original_profile_definitions*.rs
+      - tobkiri_launcher/harness-native/src/original_external_catalog*.rs
       - tobkiri_launcher/harness-native/src/original_profile_catalog*.rs
       - tobkiri_launcher/harness-native/src/original_shell_*.rs
       - tobkiri_launcher/harness-native/src/original_profile_successor_selection*.rs
@@ -119,6 +121,33 @@ jobs:
           python3 -B tools/original_bootstrap_template_reference.py
           --original-root "$GITHUB_WORKSPACE/original-definitions-source"
           --fixture "$RUNNER_TEMP/original-profile-bootstrap-template"
+      - name: Install pinned signed Pack producer dependencies
+        run: |
+          python3 -B - "$RUNNER_TEMP/original-pack-admission-requirements.txt" <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "tools")
+          from original_authority_reference import requirements
+          requirements(Path("original-definitions-source"), Path(sys.argv[1]),
+                       packages=("cryptography", "cffi", "pycparser"))
+          PY
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/original-pack-admission-requirements.txt"
+      - name: Observe the original source catalog and real signed admission registry
+        run: >-
+          python3 -B tools/original_external_pack_catalog_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-definitions-source"
+          --output "$RUNNER_TEMP/original-external-catalog"
+      - name: Compare the original bundled catalog and physical registry input
+        env:
+          TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 3 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::external_catalog::tests::
+          -- --test-threads=1 --nocapture
       - name: Check fresh Setup root custody and original pointer errors
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -188,6 +217,7 @@ jobs:
             ${{ runner.temp }}/native-definitions-unit.log*
             ${{ runner.temp }}/native-definitions-json.log*
             ${{ runner.temp }}/native-template-data.log*
+            ${{ runner.temp }}/native-external-io.log*
             ${{ runner.temp }}/native-definitions-reference.log*
             ${{ runner.temp }}/native-setup-candidate-unit.log*
             ${{ runner.temp }}/native-catalog-resources-unit.log*

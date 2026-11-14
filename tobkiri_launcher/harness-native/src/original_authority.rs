@@ -14,6 +14,8 @@ mod io;
 pub(crate) use io::AUTHORITY_PATH_DENIAL;
 pub(crate) use io::publication::catalog;
 pub(crate) use io::publication::definitions;
+#[cfg(unix)]
+pub(crate) use io::publication::external_catalog;
 pub(crate) use io::publication::{
     CandidateSelection, Prefix as PublicationPrefix, PublicationRead, ResolverAuthority,
 };

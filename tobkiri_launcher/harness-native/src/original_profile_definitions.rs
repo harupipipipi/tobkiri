@@ -27,7 +27,7 @@ mod publication_begin_ci;
 mod reference_ci;
 #[cfg(all(test, unix))]
 #[path = "original_profile_definitions_tests.rs"]
-mod tests;
+pub(super) mod tests;
 
 const INDEX: &str = "index.json";
 const INTEGRITY: &str =
