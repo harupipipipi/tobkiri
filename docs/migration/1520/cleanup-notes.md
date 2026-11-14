@@ -2907,6 +2907,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   はcoldと全カタログの両方で燃料切れ。既存の別backendを使う
   [private Wasm CI 43459741563](https://github.com/harupipipipi/tobkiri/actions/runs/43459741563)
   も前版と同じ燃料上限で停止した。
+- `3e66f6bbb` はASCIIのbase URIを受け付けた時点で検証済みのscheme境界を保持し、
+  後続の相対URI判定と結合に再利用する。baseのscheme中には除去対象の制御文字がない。
+  参照側は従来通り制御文字の除去後にschemeを調べ、元の引数をそのまま返す経路も保つ。
+  元実装との比較に制御文字・大文字を含む2組を追加。燃料の効果は実WasmのCIで測定する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3290,6 +3294,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   PlanのdigestをHost側でも照合する。[実Wasm CI 43510084337](https://github.com/harupipipipi/tobkiri/actions/runs/43510084337)
   は `confirmed: 1` を409で拒否し、データrootを開かないことをmacOSで確認した。
   この経路は確認データを返すまで。専用GUI承認、公開直前の再読み取りと実登録は未接続。
+- `437e4a433` は、照合済みの一覧の確認内容をJSONに再変換せず、同じ予算で保持した
+  グラフから使う。元の固定Packの比較には、認証済み取り込みの実一覧での一致・古い一覧の
+  拒否・整数の拒否を追加した。[比較CI 43548658443](https://github.com/harupipipipi/tobkiri/actions/runs/43548658443)
+  で検証する。Launcherへ一覧を返す既存のJSON形式はそのまま。
 - 既存の `tobkiri_launcher/src-tauri/src/defaultspack_authority.rs` の
   `artifact_tree_digest` も同じ木をハッシュする。現状はファイル全体を読み、
   パス名をlossy UTF-8にしている。元のPack検証では順序付きの相対名を厳密にUTF-8化し、
