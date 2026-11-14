@@ -626,12 +626,14 @@ impl Fixture {
                     // A static-slot request-ui step exercises a real typed
                     // provider failure through the compiled manifest Flow.
                     PortCall {
+                        provider: None,
                         shape: shape("arithmetic"),
                         op: op("request-ui"),
                         args: args(&[("slot", CanonValue::Str("startup".into()))]),
                     }
                 } else {
                     PortCall {
+                        provider: None,
                         shape: shape("arithmetic"),
                         op: op("increment"),
                         args: args(&[("value", CanonValue::Str("$input.value".into()))]),
@@ -655,6 +657,7 @@ impl Fixture {
                 role: None,
                 overlay: OverlayAccess::Closed,
                 kind: StepKind::Call(PortCall {
+                    provider: None,
                     shape: shape("arithmetic"),
                     op: op("increment"),
                     args: args(&[("value", CanonValue::Int(41))]),

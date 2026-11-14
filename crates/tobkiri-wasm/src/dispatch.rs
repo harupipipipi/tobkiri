@@ -134,23 +134,24 @@ impl PackHost {
             .ok_or_else(|| {
                 StepError::new("denied", "port dispatch has no matching reached witness")
             })?;
+        let [target] = witness.targets() else {
+            return Err(StepError::new(
+                "denied",
+                "a Flow call needs exactly one frozen provider",
+            ));
+        };
         let (pack, provided, _) = self
-            .resolve_for_admission(cx, witness.shape(), witness.op(), false)
+            .resolve_provider(cx, witness.shape(), witness.op(), false, Some(&target.pack))
             .map_err(step_error)?;
-        let target = witness
-            .targets()
-            .iter()
-            .find(|target| {
-                target.pack == pack.manifest.id
-                    && target.hash == pack.hash
-                    && target.provided == provided.reference
-            })
-            .ok_or_else(|| {
-                StepError::new(
-                    "denied",
-                    "actual provider is outside the frozen call target",
-                )
-            })?;
+        if target.pack != pack.manifest.id
+            || target.hash != pack.hash
+            || target.provided != provided.reference
+        {
+            return Err(StepError::new(
+                "denied",
+                "actual provider is outside the frozen call target",
+            ));
+        }
         // Core authenticates the live reached activation, not merely these
         // descriptor getters. The same one-shot proof survives final claim.
         let activation = frame.compiled_activation(cx, node, arguments_digest, target)?;
@@ -348,8 +349,17 @@ impl PackHost {
             EffectRequest::PortCall { shape, op } => (shape.clone(), op.clone()),
             _ => bail!("physical port admission effect mismatch"),
         };
-        let (pack, provided, provider_function) =
-            self.resolve_for_admission(cx, &view, &op, admission.requires_dynamic_consumes())?;
+        let selected = match origin {
+            ProviderOrigin::Reached { .. } => Some(&admission.target().pack),
+            _ => None,
+        };
+        let (pack, provided, provider_function) = self.resolve_provider(
+            cx,
+            &view,
+            &op,
+            admission.requires_dynamic_consumes(),
+            selected,
+        )?;
         let caller_function = self
             .shared
             .views

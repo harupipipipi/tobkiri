@@ -17,6 +17,9 @@ on:
       - 'crates/tobkiri-gate/**'
       - 'crates/tobkiri-profile/**'
       - 'crates/tobkiri-store/**'
+      - 'crates/tobkiri-wasm/src/dispatch.rs'
+      - 'crates/tobkiri-wasm/src/host.rs'
+      - 'crates/test-guests/**'
   workflow_dispatch:
 
 permissions:
@@ -49,6 +52,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
           components: rustfmt, clippy
+          targets: wasm32-wasip2
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
       - name: Items 6, 7 and 10 compiler topology (open roles, user override, single slot, total order)
@@ -103,6 +107,16 @@ jobs:
         run: >-
           cargo clippy --locked -p tobkiri-core --all-targets --no-deps
           -- -D warnings
+      - name: Build the verified provider and consumer test components
+        run: >-
+          cargo build --locked --manifest-path crates/test-guests/Cargo.toml
+          --target wasm32-wasip2 -p tobkiri-test-provider -p tobkiri-test-consumer
+      - name: Exercise two real providers through the reached Flow and Gate
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/flow-provider-dispatch.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-core --test provider_proxy
+          flow_dispatches_only_its_explicitly_bound_provider -- --exact
       - name: Retain executed-test receipts
         if: always()
         uses: actions/upload-artifact@v4
@@ -113,4 +127,5 @@ jobs:
             ${{ runner.temp }}/flow-engine.log*
             ${{ runner.temp }}/store-authority.log*
             ${{ runner.temp }}/core-acceptance.log*
+            ${{ runner.temp }}/flow-provider-dispatch.log*
           if-no-files-found: warn

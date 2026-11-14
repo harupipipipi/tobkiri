@@ -53,6 +53,7 @@ fn call(id: &str, op: &str, args: CanonValue, out: Option<&str>) -> Step {
     step(
         id,
         StepKind::Call(PortCall {
+            provider: None,
             shape: shape(),
             op: OpName::parse(op).unwrap(),
             args,

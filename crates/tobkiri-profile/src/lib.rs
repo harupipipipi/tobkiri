@@ -163,6 +163,13 @@ pub enum StepKind {
 pub struct PortCall {
     pub shape: ShapeRef,
     pub op: OpName,
+    /// Restrict the compiled call to one provider from the Profile binding.
+    #[serde(
+        default,
+        deserialize_with = "wire::present_kind",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub provider: Option<PackId>,
     pub args: CanonValue,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]

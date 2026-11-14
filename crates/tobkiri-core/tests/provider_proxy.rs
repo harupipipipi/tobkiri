@@ -456,6 +456,8 @@ fn write_pack(
 #[derive(Clone)]
 struct Options {
     consumer_allowed: bool,
+    two_flow_providers: bool,
+    explicit_flow_provider: Option<&'static str>,
     substitute_input: bool,
     bind_substitute_input: bool,
     native_input: bool,
@@ -469,6 +471,8 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             consumer_allowed: true,
+            two_flow_providers: false,
+            explicit_flow_provider: None,
             substitute_input: false,
             bind_substitute_input: false,
             native_input: false,
@@ -918,7 +922,11 @@ impl Fixture {
             ("input-flow", None),
         ] {
             let sidecar = ShapeSidecar {
-                cardinality: tobkiri_manifest::Cardinality::One,
+                cardinality: if name == "arithmetic" && options.two_flow_providers {
+                    tobkiri_manifest::Cardinality::Many
+                } else {
+                    tobkiri_manifest::Cardinality::One
+                },
                 streams: stream
                     .map(|operation| BTreeMap::from([(operation.into(), "json".into())]))
                     .unwrap_or_default(),
@@ -1014,6 +1022,7 @@ impl Fixture {
                 role: None,
                 overlay: OverlayAccess::Closed,
                 kind: StepKind::Call(PortCall {
+                    provider: options.explicit_flow_provider.map(pack_id),
                     shape: shape("arithmetic"),
                     op: op("increment"),
                     args: args(&[("value", CanonValue::Str("$input.value".into()))]),
@@ -1036,6 +1045,7 @@ impl Fixture {
                 role: None,
                 overlay: OverlayAccess::Closed,
                 kind: StepKind::Call(PortCall {
+                    provider: None,
                     shape: shape("arithmetic"),
                     op: op("increment"),
                     args: args(&[("value", CanonValue::Int(41))]),
@@ -1067,7 +1077,7 @@ impl Fixture {
         }
         packs.push(write_pack(&root, consumer, consumer_files)?);
 
-        if options.substitute_input {
+        if options.substitute_input || options.two_flow_providers {
             let mut substitute = manifest(
                 SUBSTITUTE,
                 RuntimeSpec::Wasm {
@@ -2448,6 +2458,103 @@ async fn guest_run_flow_uses_actual_core_bridge_and_manifest_flow_typed_port() -
         measured.elapsed().as_millis()
     );
     session.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn flow_dispatches_only_its_explicitly_bound_provider() -> TestResult {
+    for selected in [Some(PROVIDER), Some(SUBSTITUTE), None] {
+        let fixture = Fixture::new(Options {
+            two_flow_providers: true,
+            explicit_flow_provider: selected,
+            ..Options::default()
+        })?;
+        let session = fixture.start().await?;
+        let ui = fixture.ui(&session).await?;
+        let opened = fixture
+            .ui_call(
+                &session,
+                &ui,
+                "entry",
+                "run-flow",
+                &args(&[
+                    (
+                        "implements",
+                        CanonValue::Str(shape("increment-flow").to_string()),
+                    ),
+                    ("input", CanonValue::Str("{\"value\":41}".into())),
+                ]),
+            )
+            .await?;
+        let opened = parse_output(&opened)?;
+        let handle = u64::try_from(
+            opened
+                .get("handle")
+                .and_then(CanonValue::as_i64)
+                .ok_or("missing Flow stream handle")?,
+        )?;
+        let mut terminal = None;
+        let mut failed_pull = false;
+        loop {
+            let batch = match fixture.pull(&session, &ui, handle, 8).await {
+                Ok(batch) => batch,
+                Err(error) => {
+                    let error = error
+                        .downcast_ref::<CoreError>()
+                        .ok_or_else(|| error.to_string())?;
+                    assert_eq!(terminal, Some("failed"));
+                    assert_eq!(error_code(error), "denied");
+                    failed_pull = true;
+                    break;
+                }
+            };
+            let events = batch.as_array().ok_or("Flow batch is not an array")?;
+            if events.is_empty() {
+                break;
+            }
+            for event in events {
+                let event = event.get("kind").ok_or("missing Flow event")?;
+                match event.get("kind").and_then(CanonValue::as_str) {
+                    Some("completed") => {
+                        assert_eq!(event.get("value"), Some(&CanonValue::Int(42)));
+                        assert!(terminal.replace("completed").is_none());
+                    }
+                    Some("failed") => {
+                        assert_eq!(
+                            event
+                                .get("error")
+                                .and_then(|error| error.get("code"))
+                                .and_then(CanonValue::as_str),
+                            Some("denied")
+                        );
+                        assert!(terminal.replace("failed").is_none());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(
+            terminal,
+            Some(if selected.is_some() {
+                "completed"
+            } else {
+                "failed"
+            })
+        );
+        assert_eq!(failed_pull, selected.is_none());
+        let rows = fixture.audit_rows(&session).await?;
+        for provider in [PROVIDER, SUBSTITUTE] {
+            assert_eq!(
+                has_pack_event(&rows, "dispatch", provider),
+                selected == Some(provider)
+            );
+            assert_eq!(
+                has_pack_event(&rows, "outcome", provider),
+                selected == Some(provider)
+            );
+        }
+        session.close().await?;
+    }
     Ok(())
 }
 

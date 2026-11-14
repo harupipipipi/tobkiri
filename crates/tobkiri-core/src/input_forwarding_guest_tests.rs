@@ -266,6 +266,7 @@ fn write_pack_variant(
                     out: None,
                     stream: None,
                     kind: StepKind::Call(PortCall {
+                        provider: None,
                         shape: input.clone(),
                         op: OpName::parse("consume").unwrap(),
                         args: CanonValue::Obj(BTreeMap::from([(

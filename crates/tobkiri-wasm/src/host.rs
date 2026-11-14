@@ -2515,6 +2515,19 @@ impl PackHost {
         op: &OpName,
         require_dynamic_consumes: bool,
     ) -> Result<(Arc<VerifiedPack>, ShapeDef, WitFunction)> {
+        self.resolve_provider(cx, shape, op, require_dynamic_consumes, None)
+    }
+
+    /// Resolve routing metadata from the immutable Profile binding. A
+    /// selected Pack still needs the exact reached witness and Gate admission.
+    pub(crate) fn resolve_provider(
+        &self,
+        cx: &CallCx,
+        shape: &ShapeRef,
+        op: &OpName,
+        require_dynamic_consumes: bool,
+        selected: Option<&PackId>,
+    ) -> Result<(Arc<VerifiedPack>, ShapeDef, WitFunction)> {
         cx.check_active()?;
         if cx.profile() != &self.shared.profile {
             bail!("component Profile mismatch")
@@ -2544,13 +2557,16 @@ impl PackHost {
             .bindings
             .get(shape)
             .context("shape is unbound")?;
-        if providers.len() != 1 {
-            bail!("a many-provider shape needs an explicit selected dispatch")
-        }
+        let provider = match (selected, providers.as_slice()) {
+            (Some(selected), providers) if providers.contains(selected) => selected,
+            (Some(_), _) => bail!("selected provider is outside the frozen binding"),
+            (None, [only]) => only,
+            (None, _) => bail!("a many-provider shape needs an explicit selected dispatch"),
+        };
         let pack = self
             .shared
             .verified
-            .get(&providers[0])
+            .get(provider)
             .context("provider Pack missing")?
             .clone();
         let provided = pack

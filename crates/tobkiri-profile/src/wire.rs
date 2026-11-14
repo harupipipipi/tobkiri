@@ -28,7 +28,7 @@ struct StepWire {
 fn present<'de, D: Deserializer<'de>>(d: D) -> Result<Option<CanonValue>, D::Error> {
     Ok(Some(CanonValue::deserialize(d)?))
 }
-fn present_kind<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+pub(super) fn present_kind<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     d: D,
 ) -> Result<Option<T>, D::Error> {
     Ok(Some(T::deserialize(d)?))

@@ -1356,16 +1356,22 @@ fn append_witnesses(
     for step in all {
         let mut requests = Vec::new();
         if let StepKind::Call(call) = &step.kind {
-            requests.push((CallNodeKind::Call, call.shape.clone(), call.op.clone()));
+            requests.push((
+                CallNodeKind::Call,
+                call.shape.clone(),
+                call.op.clone(),
+                call.provider.as_ref(),
+            ));
         }
         if let Some(route) = &step.stream {
             requests.push((
                 CallNodeKind::StreamEmit,
                 route.emit.clone(),
                 OpName::parse("emit").expect("fixed operation"),
+                None,
             ));
         }
-        for (kind, shape, op) in requests {
+        for (kind, shape, op, provider) in requests {
             let key = CallNodeKey {
                 code: code.clone(),
                 node: step.id.clone().ok_or_else(|| {
@@ -1376,6 +1382,7 @@ fn append_witnesses(
             let providers = bindings
                 .get(&shape)
                 .filter(|p| !p.is_empty())
+                .map(Vec::as_slice)
                 .ok_or_else(|| {
                     vec![conflict(
                         "witness-target",
@@ -1383,6 +1390,18 @@ fn append_witnesses(
                         vec![],
                     )]
                 })?;
+            let providers = if let Some(provider) = provider {
+                if !providers.contains(provider) {
+                    return Err(vec![conflict(
+                        "call-provider",
+                        format!("provider is outside the frozen binding for {shape}"),
+                        vec![provider.to_string()],
+                    )]);
+                }
+                std::slice::from_ref(provider)
+            } else {
+                providers
+            };
             let mut targets = Vec::new();
             for id in providers {
                 let pack = selected.get(id).ok_or_else(|| {
@@ -1396,7 +1415,19 @@ fn append_witnesses(
                     .filter(|p| p.shape == shape.name && p.version.major == shape.version.major)
                     .map(|p| ShapeRef::new(p.shape.clone(), p.version))
                     .collect();
-                let provided = if refs.contains(&shape) {
+                let provided = if provider.is_some() {
+                    // Match Core's frozen binding for this requested view.
+                    refs.into_iter()
+                        .filter(|provided| provided.version.minor >= shape.version.minor)
+                        .max_by_key(|provided| provided.version.minor)
+                        .ok_or_else(|| {
+                            vec![conflict(
+                                "call-provider",
+                                format!("provider has no compatible frozen view for {shape}"),
+                                vec![id.to_string()],
+                            )]
+                        })?
+                } else if refs.contains(&shape) {
                     shape.clone()
                 } else if refs.len() == 1 {
                     refs[0].clone()

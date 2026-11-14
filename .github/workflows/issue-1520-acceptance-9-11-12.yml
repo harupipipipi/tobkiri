@@ -113,6 +113,11 @@ jobs:
           --log "$RUNNER_TEMP/harness-provider-binding.log" --expected-passed 1 --
           cargo test --locked -p tobkiri-profile --test compiler -- --exact
           explicit_provider_sets_validate_and_round_trip_without_changing_legacy_wire
+      - name: Verify explicit Flow target selection and compatible minor
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-flow-provider.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-profile --test compiler explicit_flow_provider
       - name: Retain ABI and frozen-vector test receipts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -125,4 +130,5 @@ jobs:
             ${{ runner.temp }}/a20-*.receipt.json
             ${{ runner.temp }}/harness-contracts.log*
             ${{ runner.temp }}/harness-provider-binding.log*
+            ${{ runner.temp }}/harness-flow-provider.log*
           if-no-files-found: warn

@@ -328,6 +328,7 @@ pub(crate) fn runtime_pack_with_step(
             out: None,
             stream: None,
             kind: StepKind::Call(tobkiri_profile::PortCall {
+                provider: None,
                 shape: input.clone(),
                 op: OpName::parse("echo").unwrap(),
                 args: CanonValue::Obj(BTreeMap::from([(

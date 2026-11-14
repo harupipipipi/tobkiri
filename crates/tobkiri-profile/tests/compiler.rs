@@ -158,6 +158,7 @@ fn call(id: &str) -> Step {
     let mut s = Step::new(
         id,
         StepKind::Call(PortCall {
+            provider: None,
             shape: reference("query"),
             op: OpName::parse("query").unwrap(),
             args: CanonValue::Obj(BTreeMap::from([("value".into(), "hello".into())])),
@@ -1301,6 +1302,146 @@ fn witnesses_bind_original_ast_owner_revision_node_and_exact_frozen_target() {
             )
             .is_none()
     );
+}
+
+#[test]
+fn explicit_flow_provider_freezes_one_bound_target() {
+    let contracts = rebuild(&contracts(), |_, files| {
+        files.insert(
+            "wit/query.shape.json".into(),
+            br#"{"cardinality":"many","streams":{},"callbacks":{}}"#.to_vec(),
+        );
+    });
+    let one = provider("local.one");
+    let two = provider("local.two");
+    let mut document = serde_json::to_value(flow(vec![call("query")])).unwrap();
+    assert_eq!(
+        document["steps"][0]["call"],
+        serde_json::json!({
+            "shape": reference("query"),
+            "op": "query",
+            "args": {"value": "hello"}
+        })
+    );
+    let without_provider = serde_json::to_vec(&document).unwrap();
+    let omitted = parse_flow(&without_provider).unwrap();
+    assert_eq!(serde_json::to_value(&omitted).unwrap(), document);
+    let key = CallNodeKey {
+        code: CodeLocation::Flow,
+        node: "query".into(),
+        kind: CallNodeKind::Call,
+    };
+    let mut packs = vec![contracts, one, two, flow_pack(&omitted)];
+    let legacy = compile(&profile(&packs), &packs).unwrap();
+    let legacy_witness = legacy.call_witness("local.flow/turn", &key).unwrap();
+    assert_eq!(legacy_witness.targets().len(), 2);
+    let legacy_ast =
+        tobkiri_canon::parse(&without_provider, tobkiri_canon::Variant::StrictV1).unwrap();
+    assert_eq!(
+        legacy_witness.ast_hash(),
+        &tobkiri_canon::digest(&legacy_ast, tobkiri_canon::Variant::StrictV1).unwrap()
+    );
+
+    document["steps"][0]["call"]["provider"] = serde_json::json!("local.two");
+    let explicit = parse_flow(&serde_json::to_vec(&document).unwrap()).unwrap();
+    assert_eq!(serde_json::to_value(&explicit).unwrap(), document);
+    packs[3] = flow_pack(&explicit);
+    let mut p = profile(&packs);
+    let compiled = compile(&p, &packs).unwrap();
+    assert_eq!(compiled.bindings, legacy.bindings);
+    let witness = compiled.call_witness("local.flow/turn", &key).unwrap();
+    assert_ne!(witness.ast_hash(), legacy_witness.ast_hash());
+    assert_ne!(witness.id(), legacy_witness.id());
+    assert_eq!(
+        witness.targets(),
+        &[FrozenTarget {
+            pack: packs[2].manifest.id.clone(),
+            hash: packs[2].hash.clone(),
+            provided: reference("query"),
+        }]
+    );
+
+    p.provider_bindings.insert(
+        "local.contracts.query@1".into(),
+        vec![packs[1].manifest.id.clone()],
+    );
+    has_error(compile(&p, &packs), "call-provider");
+    document["steps"][0]["call"]["provider"] = serde_json::json!("local.unknown");
+    packs[3] = flow_pack(&parse_flow(&serde_json::to_vec(&document).unwrap()).unwrap());
+    has_error(compile(&profile(&packs), &packs), "call-provider");
+    document["steps"][0]["call"]["provider"] = serde_json::json!("invalid pack ID");
+    assert!(parse_flow(&serde_json::to_vec(&document).unwrap()).is_err());
+    document["steps"][0]["call"]["provider"] = serde_json::Value::Null;
+    assert!(parse_flow(&serde_json::to_vec(&document).unwrap()).is_err());
+}
+
+#[test]
+fn explicit_flow_provider_freezes_highest_compatible_minor() {
+    let newer_view = ShapeRef::new(reference("query").name, ShapeVersion::new(1, 1));
+    let contracts = rebuild(&contracts(), |manifest, files| {
+        files.insert(
+            "wit/newer.wit".into(),
+            b"package local:contracts@1.1.0; interface query { query: func(value: string) -> string; added: func(); }".to_vec(),
+        );
+        manifest.shapes.push(ShapeDefinition {
+            name: newer_view.name.clone(),
+            version: newer_view.version,
+            kind: ShapeKind::Port,
+            wit: "wit/newer.wit".into(),
+        });
+    });
+    let older_provider = provider("local.provider");
+    let dual_provider = rebuild(&older_provider, |manifest, _| {
+        manifest.ports.provides.push(PortDeclaration {
+            shape: newer_view.name.clone(),
+            version: newer_view.version,
+            optional: false,
+        });
+    });
+    let mut doc = flow(vec![call("query")]);
+    let key = CallNodeKey {
+        code: CodeLocation::Flow,
+        node: "query".into(),
+        kind: CallNodeKind::Call,
+    };
+    let mut packs = vec![contracts, dual_provider, flow_pack(&doc)];
+    let legacy = compile(&profile(&packs), &packs).unwrap();
+    assert_eq!(
+        legacy
+            .call_witness("local.flow/turn", &key)
+            .unwrap()
+            .targets()[0]
+            .provided,
+        reference("query")
+    );
+
+    let StepKind::Call(request) = &mut doc.steps[0].kind else {
+        unreachable!()
+    };
+    request.provider = Some(packs[1].manifest.id.clone());
+    packs[2] = flow_pack(&doc);
+    let selected = compile(&profile(&packs), &packs).unwrap();
+    let witness = selected.call_witness("local.flow/turn", &key).unwrap();
+    assert_eq!(witness.shape(), &reference("query"));
+    assert_eq!(witness.targets()[0].provided, newer_view);
+
+    let StepKind::Call(request) = &mut doc.steps[0].kind else {
+        unreachable!()
+    };
+    request.shape = newer_view.clone();
+    packs[1] = older_provider;
+    let caller = flow_pack(&doc);
+    let mut permissions = caller.manifest.permissions.clone();
+    permissions.ports.insert(newer_view.to_string());
+    packs[2] = with_permissions(caller, permissions);
+    let mut p = profile(&packs);
+    p.ceiling.ports.insert(newer_view.to_string());
+    p.pack_limits
+        .get_mut(&packs[2].manifest.id)
+        .unwrap()
+        .ports
+        .insert(newer_view.to_string());
+    has_error(compile(&p, &packs), "call-provider");
 }
 
 #[test]

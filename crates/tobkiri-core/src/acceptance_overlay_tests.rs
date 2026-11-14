@@ -107,6 +107,7 @@ fn insert() -> Vec<Step> {
     let mut call = Step::new(
         "extra",
         StepKind::Call(PortCall {
+            provider: None,
             shape: input_shape(),
             op: OpName::parse("echo").unwrap(),
             args: value_args(5),
@@ -124,6 +125,7 @@ fn hang() -> Vec<Step> {
     let call = Step::new(
         "hang",
         StepKind::Call(PortCall {
+            provider: None,
             shape: input_shape(),
             op: OpName::parse("wait").unwrap(),
             args: CanonValue::Obj(BTreeMap::new()),
