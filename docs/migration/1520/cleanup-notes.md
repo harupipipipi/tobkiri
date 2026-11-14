@@ -3808,7 +3808,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `e6f235be9` はApp Rust schema backendのpointer参照で、チルダを含まない実Unicodeの
   tokenに対する2回のreplaceを省く。escape順、非組み込み型に対する実メソッド呼出し、
   Unicode、コールバック、同一の予算を維持する。
-  [原本比較 CI 43606106760](https://github.com/harupipipipi/tobkiri/actions/runs/43606106760)と
+  新しい3ケースに合わせた件数を `373b47175` で修正し、36件の参照を含む
+  [原本比較 CI 43606290093](https://github.com/harupipipipi/tobkiri/actions/runs/43606290093)が通過した。
   [App Wasm CI 43606128602](https://github.com/harupipipipi/tobkiri/actions/runs/43606128602)を実行中。
   既存の別枝に明示選択の実装があるが、実カタログの
   [CI 42980447600](https://github.com/harupipipipi/tobkiri/actions/runs/42980447600)は燃料切れ。
