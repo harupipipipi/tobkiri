@@ -2934,7 +2934,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `resolved_plan_v2.schema.json` で57,050,015 fuelが残り、次の読込は観測されなかった。
   計測付きの独立初期化は42件を完了し、19,199,366 fuelが残った。両方で終了後の確保・予約は0。
   `76ef62280` は処理のたびに作成していた固定の属性名を再利用し、実際の属性取得、descriptor、
-  `create_resource` の呼び出しは維持する。[実Wasm43553887697](https://github.com/harupipipipi/tobkiri/actions/runs/43553887697)で検証する。
+  `create_resource` の呼び出しは維持する。[実Wasm43553887697](https://github.com/harupipipipi/tobkiri/actions/runs/43553887697)で
+  独立初期化の出力が一致し、105,513,931 fuelが残った。全カタログは燃料切れで停止した。
+- 全カタログは最初のPackを検証する前に、埋め込みblob 305個とlockの計2,408,795バイトを展開・検証する。
+  最初のPackのスキーマも、別々の名前のキャッシュキーで検証される。
+  `065fd46d2` で実ソース所有者の構築前後を計測し、ローダーの処理から切り分ける。
+  [計測CI43554257071](https://github.com/harupipipipi/tobkiri/actions/runs/43554257071)
+- `2f5a685c9` は既存の埋め込みindexを型と配列順を保って比較し、不一致時は従来のJSON比較を使う。
+  blobの重複判定は実計算済みSHA-256で候補を絞り、同じdigest内で実バイトを比較する。
+  `446676b18` はApp計測・比較成果物に限り、埋め込みカタログのソースを展開不要な既存codecで保持する。
+  元の生バイト、読込順、実行時のハッシュ照合と上限を保つ。スキーマとPythonモジュールの圧縮は継続する。
+  [JSON比較後43554376094](https://github.com/harupipipipi/tobkiri/actions/runs/43554376094)と
+  [展開省略後43554528659](https://github.com/harupipipipi/tobkiri/actions/runs/43554528659)で
+  実燃料とメモリを確認する。
 
 ## 039: 初回Setupと既存の公開処理の復旧
 
@@ -3359,7 +3371,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [再実行43553458280](https://github.com/harupipipipi/tobkiri/actions/runs/43553458280)で物理読込へ進める。
 - `ecc8ca3b8` は固定原本の署名付きintent比較で、鍵がない場合の生成、同期、再読込を追加した。
   元と同じ64桁の形式と所有者専用の権限で保存し、既存鍵とintentを置換しない。危険なリンクは拒否する。
-  [原本比較43553784493](https://github.com/harupipipipi/tobkiri/actions/runs/43553784493)で検証する。
+  [原本比較43553784493](https://github.com/harupipipipi/tobkiri/actions/runs/43553784493)は両OSで通過し、
+  Linuxでは原本と同じ署名付きintent、初回鍵、危険なリンクの拒否をRustで確認した。
   製品の書込には、実際のクリックで得た確認と再解決、ジャーナル下の登録・有効化が必要。
 - Setupの確認欄を移す際は `DefaultsReview.tsx` と `DefaultsConfirmationDetails.tsx` の表示を
   再利用する。現在の `legacy.rs` が表示するSetupと `core_host.rs` の既存承認シートは
