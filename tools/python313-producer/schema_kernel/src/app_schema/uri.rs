@@ -20,6 +20,12 @@ static JOIN_ONLY: AtomicUsize = AtomicUsize::new(0);
 static RESOLVE_BOUNDARIES: AtomicUsize = AtomicUsize::new(0);
 static JOIN_BOUNDARIES: AtomicUsize = AtomicUsize::new(0);
 
+struct Admitted<'a> {
+    base: &'a str,
+    reference: &'a str,
+    base_scheme_end: usize,
+}
+
 /// Return borrowed exact ASCII arguments only. This admission scan performs no
 /// URI parse or foreign protocol operation. Bracketed/Unicode authorities keep
 /// their original validators; scheme-less bases keep original parser-cache and
@@ -27,7 +33,7 @@ static JOIN_BOUNDARIES: AtomicUsize = AtomicUsize::new(0);
 fn admitted<'a, 'py>(
     base: &'a Bound<'py, PyAny>,
     reference: &'a Bound<'py, PyAny>,
-) -> PyResult<Option<(&'a str, &'a str)>> {
+) -> PyResult<Option<Admitted<'a>>> {
     if !base.is_exact_instance_of::<PyString>() || !reference.is_exact_instance_of::<PyString>() {
         return Ok(None);
     }
@@ -44,10 +50,19 @@ fn admitted<'a, 'py>(
     if base.contains(['[', ']']) || reference.contains(['[', ']']) {
         return Ok(None);
     }
-    if !base.is_empty() && scheme_end(base).is_none() {
-        return Ok(None);
-    }
-    Ok(Some((base, reference)))
+    let base_scheme_end = if base.is_empty() {
+        0
+    } else {
+        let Some(end) = scheme_end(base) else {
+            return Ok(None);
+        };
+        end
+    };
+    Ok(Some(Admitted {
+        base,
+        reference,
+        base_scheme_end,
+    }))
 }
 
 fn scheme_end(value: &str) -> Option<usize> {
@@ -92,18 +107,14 @@ fn uses_relative(scheme: &str) -> bool {
 /// and may return its path object directly for a raw scheme-less reference.
 /// Keep all potentially fragmented sequences on the original path. This
 /// decision precedes native URI work; direct fragment-only slicing is separate.
-fn resolve_admitted(base: &str, reference: &str) -> bool {
-    if reference.starts_with('#') {
+fn resolve_admitted(input: &Admitted<'_>) -> bool {
+    if input.reference.starts_with('#') {
         return true;
     }
-    if base.contains('#') || reference.contains('#') {
+    if input.base.contains('#') || input.reference.contains('#') {
         return false;
     }
-    if base.is_empty() {
-        return true;
-    }
-    let end = scheme_end(base).expect("raw scheme established by argument admission");
-    uses_relative(&lowercase_scheme(&base[..end]))
+    uses_relative(&lowercase_scheme(&input.base[..input.base_scheme_end]))
 }
 
 fn lowercase_scheme(scheme: &str) -> Cow<'_, str> {
@@ -194,14 +205,7 @@ struct Parts<'a> {
 
 /// Inputs were admitted before reaching this parser. In particular neither
 /// bracket/IP validation nor Unicode NFKC validation is replaced here.
-fn parse<'a>(mut value: &'a str, default_scheme: &'a str) -> Parts<'a> {
-    let scheme = if let Some(end) = scheme_end(value) {
-        let scheme = lowercase_scheme(&value[..end]);
-        value = &value[end + 1..];
-        scheme
-    } else {
-        Cow::Borrowed(default_scheme)
-    };
+fn parse<'a>(mut value: &'a str, scheme: Cow<'a, str>) -> Parts<'a> {
     let netloc = if let Some(rest) = value.strip_prefix("//") {
         let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
         value = &rest[end..];
@@ -301,17 +305,37 @@ fn string<'py>(py: Python<'py>, value: &str) -> PyResult<Bound<'py, PyAny>> {
     PyString::from_bytes(py, value.as_bytes()).map(Bound::into_any)
 }
 
-fn join_native(base: &str, reference: &str) -> Joined {
+fn join_native(input: Admitted<'_>) -> Joined {
+    let Admitted {
+        base,
+        reference,
+        base_scheme_end,
+    } = input;
     if base.is_empty() {
         return Joined::Reference;
     }
     if reference.is_empty() {
         return Joined::Base;
     }
+    // Admission proved the raw base prefix contains only scheme characters.
+    // Cleaning can remove controls after the colon, so its offset is stable.
     let base_clean = clean(base);
-    let base = parse(&base_clean, "");
+    let base = parse(
+        &base_clean[base_scheme_end + 1..],
+        lowercase_scheme(&base_clean[..base_scheme_end]),
+    );
     let reference_clean = clean(reference);
-    let reference = parse(&reference_clean, &base.scheme);
+    let (reference_tail, reference_scheme) = match scheme_end(&reference_clean) {
+        Some(end) => (
+            &reference_clean[end + 1..],
+            lowercase_scheme(&reference_clean[..end]),
+        ),
+        None => (
+            reference_clean.as_ref(),
+            Cow::Borrowed(base.scheme.as_ref()),
+        ),
+    };
+    let reference = parse(reference_tail, reference_scheme);
     if reference.scheme != base.scheme || !uses_relative(&reference.scheme) {
         // CPython returns the original argument, including controls/case which
         // were removed only from the temporary parsed view.
@@ -400,9 +424,7 @@ pub(super) fn resolve<'py>(
     base: &Bound<'py, PyAny>,
     reference: &Bound<'py, PyAny>,
 ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
-    let Some((base_text, reference_text)) =
-        admitted(base, reference)?.filter(|(base, reference)| resolve_admitted(base, reference))
-    else {
+    let Some(input) = admitted(base, reference)?.filter(resolve_admitted) else {
         RESOLVE_BOUNDARIES.fetch_add(1, Ordering::Relaxed);
         let pair = module_member(py, "app_schema_model", "uri_resolve_boundary")?
             .call1((base, reference))?;
@@ -410,12 +432,12 @@ pub(super) fn resolve<'py>(
         // two-item unpack; its result here is its own exact tuple.
         return Ok((pair.get_item(0)?, pair.get_item(1)?));
     };
-    if let Some(fragment) = reference_text.strip_prefix('#') {
+    if let Some(fragment) = input.reference.strip_prefix('#') {
         // The source bypasses both helpers and preserves the actual base handle.
         return Ok((base.clone(), string(py, fragment)?));
     }
     JOIN_DEFRAGS.fetch_add(1, Ordering::Relaxed);
-    let joined = join_native(base_text, reference_text);
+    let joined = join_native(input);
     // Admission guarantees neither argument can contribute a literal fragment.
     // Source urldefrag therefore returns the joined object itself and ''.
     Ok((joined.object(py, base, reference)?, string(py, "")?))
@@ -427,13 +449,13 @@ pub(super) fn join<'py>(
     base: &Bound<'py, PyAny>,
     reference: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let Some((base_text, reference_text)) = admitted(base, reference)? else {
+    let Some(input) = admitted(base, reference)? else {
         JOIN_BOUNDARIES.fetch_add(1, Ordering::Relaxed);
         return module_member(py, "app_schema_model", "uri_join_boundary")?
             .call1((base, reference));
     };
     JOIN_ONLY.fetch_add(1, Ordering::Relaxed);
-    join_native(base_text, reference_text).object(py, base, reference)
+    join_native(input).object(py, base, reference)
 }
 
 #[pyfunction]

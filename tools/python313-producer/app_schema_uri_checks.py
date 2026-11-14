@@ -232,6 +232,8 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
 
     for base, ref in (
         ("http://a/\t\nb", " c\r/d"), ("http:\n//a/a", "../c"),
+        ("HTTP:\t//a/a", "h\ntTp:child"),
+        ("https:\r\n//a/a", "HTTP:\t//b/child"),
         ("http://a/a ", "?x"), ("http://a/a", "\x00\x1f ../c\t?x\r#f\n"),
         ("http://a/a", "https:\n//b/c?"), ("http://a/a", "\tother:c?"),
         ("", "\x00HTTP://A/path?"), ("", "\x00HTTP://A/path?#f"),
@@ -675,6 +677,6 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
     assert all(after[name] >= before[name] for name in fields)
     checks["fresh_default_provider_reaches_meaningful_native_join_defrag_work"] = True
 
-    # 153 symmetric pairs plus the independent-owner isolation comparison.
-    assert comparisons == 153 and len(checks) == 17 and all(checks.values())
+    # 155 symmetric pairs plus the independent-owner isolation comparison.
+    assert comparisons == 155 and len(checks) == 17 and all(checks.values())
     return checks
