@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {LauncherConnectionsPanel} from './LauncherConnectionsPanel';
 import {ApiContractError} from '@/src/lib/apiTransport';
+import {translate} from '@/src/lib/i18n';
 import type {
   LauncherActiveProfileContext,
   LauncherConnectionsSnapshot,
@@ -132,6 +133,13 @@ async function flush(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
+
+test('model choice guidance is localized with English fallback', () => {
+  const key = 'launcher_connections.model_choice';
+  assert.match(translate(key, undefined, 'ja'), /普段使うモデル/);
+  assert.match(translate(key, undefined, 'en'), /Preferred model/);
+  assert.equal(translate(key, undefined, 'fr'), translate(key, undefined, 'en'));
+});
 
 test('the panel explains that a verified active Profile is required', async () => {
   const {container, root} = await createDom();

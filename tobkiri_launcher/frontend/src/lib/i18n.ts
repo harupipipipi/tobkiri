@@ -10,6 +10,7 @@ export type Locale = 'en' | 'ja' | 'zh' | 'ko' | 'es' | 'fr' | 'de' | 'pt' | 'ru
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  'launcher_connections.model_choice': 'Save here to register a connection or model. To choose the initial model for new chats, use Preferred model in Harness settings. A model chosen for a chat or turn applies to that chat or turn.',
   'registered_models.aria_label': 'Shared registered models',
   'registered_models.title': 'Registered models',
   'registered_models.refresh': 'Refresh',
@@ -354,6 +355,7 @@ const en: Dict = {
 };
 
 const ja: Dict = {
+  'launcher_connections.model_choice': 'ここで保存すると接続またはモデルが登録されます。新しい会話の開始時に使うモデルは、Harnessの設定にある「普段使うモデル」で選んでください。会話やターンで個別に選んだモデルは、その会話やターンに適用されます。',
   'registered_models.aria_label': '共有の登録済みモデル',
   'registered_models.title': '登録済みモデル',
   'registered_models.refresh': '更新',

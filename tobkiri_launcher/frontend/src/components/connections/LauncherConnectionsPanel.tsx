@@ -22,6 +22,7 @@ import {
 } from '@/src/lib/launcherConnectionsConfigure';
 import {formatUserFacingError} from '@/src/lib/userFacingError';
 import {getBrowserStorage} from '@/src/lib/safeStorage';
+import {useT} from '@/src/lib/i18n';
 import {ConnectionStatusList} from './ConnectionStatusList';
 import {ModelProfileForm} from './ModelProfileForm';
 import {ProviderConnectionForm} from './ProviderConnectionForm';
@@ -61,6 +62,7 @@ export function LauncherConnectionsPanel({
   client?: LauncherConnectionsClient;
   onRegistryChanged?: () => void;
 }) {
+  const t = useT();
   const scope =
     profile && isLauncherActiveProfileContext(profile) ? profile : null;
   const scopeKey = scope ? `${scope.profile_id}:${scope.activation_id}` : null;
@@ -225,6 +227,7 @@ export function LauncherConnectionsPanel({
           </div>
         </div>
         <CardDescription>{COPY.description}</CardDescription>
+        <p className="text-xs text-text-muted">{t('launcher_connections.model_choice')}</p>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {!scope ? (
