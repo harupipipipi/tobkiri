@@ -306,6 +306,36 @@ def _route_agent_model(
     return decision.selected_model or preferred_model
 
 
+_MAX_CONSECUTIVE_INVALID_TOOL_CALLS = 3
+_SKIPPED_AFTER_INVALID = (
+    "Not executed: an earlier tool call in the same assistant turn was invalid."
+)
+_SKIPPED_AFTER_REJECTION = (
+    "Not executed: the user rejected an earlier tool call in the same assistant turn."
+)
+
+
+def _response_reasoning_content(data):
+    if not isinstance(data, dict):
+        return ""
+    for key in ("reasoning_content", "reasoning", "thinking"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
+
+
+class _AutoDecision:
+    """An automatic approval decision to settle without growing the call stack."""
+
+    __slots__ = ("kind", "execution_id", "value")
+
+    def __init__(self, kind, execution_id, value):
+        self.kind = kind
+        self.execution_id = execution_id
+        self.value = value
+
+
 class AgentEngine:
     def __init__(self, *, settings_owner: SettingsOwnerPort | None = None):
         self._settings_owner = settings_owner
@@ -570,6 +600,23 @@ class AgentEngine:
             return tool_args
         return {}
 
+    def _parse_tool_args(self, tool_args):
+        """Return ``(arguments, error)`` without inventing a payload for bad input."""
+        if tool_args is None:
+            return {}, None
+        if isinstance(tool_args, dict):
+            return tool_args, None
+        if isinstance(tool_args, str):
+            if not tool_args.strip():
+                return {}, None
+            try:
+                parsed = json.loads(tool_args)
+            except (TypeError, ValueError) as exc:
+                return {}, "tool arguments are not valid JSON (" + str(exc) + ")"
+            if isinstance(parsed, dict):
+                return parsed, None
+        return {}, "tool arguments must be a JSON object"
+
     def _normalize_tool_call(self, raw_call):
         if not isinstance(raw_call, dict):
             return None
@@ -578,19 +625,158 @@ class AgentEngine:
             raw_call.get("name")
             or raw_call.get("tool_name")
             or function_def.get("name")
-            or "unknown"
         )
         tool_args = (
             raw_call.get("args")
             if "args" in raw_call
             else raw_call.get("input", function_def.get("arguments", {}))
         )
-        return {
+        arguments, args_error = self._parse_tool_args(tool_args)
+        normalized = {
             "type": "tool_call",
-            "tool_name": str(tool_name),
-            "tool_args": self._normalize_tool_args(tool_args),
+            "tool_name": str(tool_name or "unknown"),
+            "tool_args": arguments,
             "raw": raw_call,
         }
+        if not tool_name:
+            normalized["invalid_reason"] = "tool call has no tool name"
+        elif args_error:
+            normalized["invalid_reason"] = (
+                "invalid arguments for tool '" + str(tool_name) + "': " + args_error
+            )
+        return normalized
+
+    def _tool_call_id_for(self, call):
+        """Return the call's stable ID, assigning one when the provider sent none."""
+        raw = call.get("raw") if isinstance(call.get("raw"), dict) else {}
+        call_id = raw.get("id") or raw.get("tool_call_id") or call.get("tool_call_id")
+        if not call_id:
+            call_id = gen_id("call_")
+        call["tool_call_id"] = str(call_id)
+        return call["tool_call_id"]
+
+    def _assistant_turn_for(self, parsed):
+        """Describe the whole assistant turn that proposed a batch of tool calls.
+
+        The turn keeps the text and reasoning that accompanied the calls and
+        lists every call once, so each later tool result has a matching call.
+        """
+        batch = parsed.get("tool_calls") if isinstance(parsed.get("tool_calls"), list) else None
+        if not batch:
+            return None
+        tool_calls = []
+        for call in batch:
+            if not isinstance(call, dict):
+                continue
+            call_id = self._tool_call_id_for(call)
+            raw = call.get("raw") if isinstance(call.get("raw"), dict) and call.get("raw") else None
+            if raw is None:
+                raw = {"name": call.get("tool_name"), "args": call.get("tool_args")}
+            if not (raw.get("id") or raw.get("tool_call_id")):
+                raw = dict(raw)
+                raw["id"] = call_id
+            tool_calls.append(raw)
+        first = batch[0] if isinstance(batch[0], dict) else {}
+        if first.get("raw") == parsed.get("raw") and first.get("tool_call_id"):
+            parsed["tool_call_id"] = first["tool_call_id"]
+        text = parsed.get("assistant_text")
+        turn = {
+            "content": text if isinstance(text, str) and text.strip() else None,
+            "tool_calls": tool_calls,
+        }
+        reasoning = parsed.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning.strip():
+            turn["reasoning_content"] = reasoning
+        return turn
+
+    def _append_assistant_turn(self, execution, pending):
+        turn = pending.get("assistant_turn") if isinstance(pending, dict) else None
+        if isinstance(turn, dict):
+            message = {
+                "role": "assistant",
+                "content": turn.get("content"),
+                "tool_calls": list(turn.get("tool_calls") or []),
+            }
+            if turn.get("reasoning_content"):
+                message["reasoning_content"] = turn["reasoning_content"]
+            execution.messages.append(message)
+            return
+        if isinstance(pending, dict) and pending.get("batch_continuation"):
+            # The turn that proposed this call is already in the history.
+            return
+        # A pending call stored before assistant turns were recorded.
+        execution.messages.append({
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                pending.get("raw", {"name": pending["tool_name"], "args": pending["tool_args"]})
+            ],
+        })
+
+    def _append_tool_message(self, execution, tool_name, tool_call_id, content):
+        execution.messages.append({
+            "role": "tool",
+            "content": content if isinstance(content, str) else str(content),
+            "name": tool_name,
+            "tool_call_id": str(tool_call_id),
+        })
+
+    def _recoverable_tool_call_error(self, execution, parsed):
+        """Return why the model must retry this call, or ``None`` when it is usable."""
+        reason = parsed.get("invalid_reason")
+        if reason:
+            return str(reason)
+        connected_tools = self._connected_tool_names(execution)
+        enforced_tools = self._enforced_tool_names(execution)
+        allowed_tools = enforced_tools if enforced_tools is not None else connected_tools
+        tool_name = parsed.get("tool_name", "")
+        if tool_name not in allowed_tools:
+            return "tool call is not connected to this agent: " + tool_name
+        return None
+
+    def _invalid_tool_call_streak(self, execution):
+        streak = 0
+        for step in reversed(execution.steps):
+            if step.step_type != "tool_error":
+                break
+            streak += 1
+        return streak
+
+    def _record_invalid_tool_call(self, execution, parsed, reason, remaining):
+        """Answer an unusable call and the rest of its turn without running anything."""
+        tool_name = str(parsed.get("tool_name") or "unknown")
+        message = (
+            "Error: " + reason + ". The tool was not executed. "
+            "Correct the call or continue without it."
+        )
+        self._append_tool_message(
+            execution, tool_name, self._tool_call_id_for(parsed), message
+        )
+        for call in remaining:
+            if not isinstance(call, dict):
+                continue
+            self._append_tool_message(
+                execution,
+                str(call.get("tool_name") or "unknown"),
+                self._tool_call_id_for(call),
+                _SKIPPED_AFTER_INVALID,
+            )
+        execution.add_step("tool_error", {"tool_name": tool_name, "error": reason})
+        transcript_id = (getattr(execution, "context", {}) or {}).get("transcript_id")
+        if transcript_id:
+            self._transcripts.append_tool_result(
+                transcript_id,
+                {"tool_name": tool_name, "result": message, "is_error": True},
+            )
+
+    def _fail_invalid_tool_call(self, execution, parsed, reason):
+        if parsed.get("invalid_reason") or not self._reject_unconnected_tool_call(execution, parsed):
+            execution.status = "error"
+            execution.error = reason
+            execution.add_step("error", {
+                "error": reason,
+                "tool_name": parsed.get("tool_name", ""),
+            })
 
     def _reject_unconnected_tool_call(self, execution, parsed):
         connected_tools = self._connected_tool_names(execution)
@@ -628,6 +814,7 @@ class AgentEngine:
         return True
 
     def _set_pending_tool_call(self, execution, parsed):
+        assistant_turn = self._assistant_turn_for(parsed)
         queued = parsed.get("tool_calls", []) if isinstance(parsed.get("tool_calls"), list) else []
         execution.queued_tool_calls = queued[1:] if queued and queued[0].get("raw") == parsed.get("raw") else queued
         execution.status = "waiting_approval"
@@ -647,6 +834,8 @@ class AgentEngine:
             "tool_args": self._normalize_tool_args(parsed["tool_args"]),
             "raw": raw,
         }
+        if assistant_turn is not None:
+            execution.pending_tool_call["assistant_turn"] = assistant_turn
         execution.add_step("tool_call", {
             "tool_name": parsed["tool_name"],
             "tool_args": execution.pending_tool_call["tool_args"],
@@ -660,7 +849,8 @@ class AgentEngine:
             return False
         return _truthy(policy_from_context(context).get("yolo_mode"))
 
-    def _auto_approve_pending_tool_call(self, execution):
+    def _auto_decision_for_pending(self, execution):
+        """Decide an automatic approval; the caller settles it iteratively."""
         if not execution.pending_tool_call:
             return None
         if self._auto_approval_enabled(execution):
@@ -669,7 +859,7 @@ class AgentEngine:
                 "tool_auto_approved",
                 execution.pending_tool_call,
             )
-            return self.approve(execution.execution_id, source="agent.full_access")
+            return _AutoDecision("approve", execution.execution_id, "agent.full_access")
         context = getattr(execution, "context", {}) or {}
         from domain.tool.approval_reviewer import (
             delegated_approval_requested,
@@ -700,16 +890,117 @@ class AgentEngine:
         pending["delegated_review"] = review
         self._persist_execution(execution, "tool_delegated_reviewed", pending)
         if review.get("decision") == "approve":
-            return self.approve(
-                execution.execution_id,
-                source="agent.approval_reviewer",
+            return _AutoDecision(
+                "approve", execution.execution_id, "agent.approval_reviewer"
             )
         if review.get("decision") == "deny":
-            return self.reject(
+            return _AutoDecision(
+                "reject",
                 execution.execution_id,
                 str(review.get("reason") or "Denied by delegated reviewer"),
             )
         return None
+
+    def _settle(self, result):
+        """Apply automatic decisions in a loop until a caller-visible result remains."""
+        while isinstance(result, _AutoDecision):
+            if result.kind == "approve":
+                result = self._approve_step(result.execution_id, source=result.value)
+            else:
+                result = self._reject_step(result.execution_id, result.value)
+        return result
+
+    def _model_turn(self, execution, ai_context, phase):
+        """Call the model and settle its answer.
+
+        A call the model can correct (unknown tool, unreadable arguments) is
+        answered with an error result and the model is asked again, up to a
+        small consecutive limit. Nothing is executed for such a call.
+        """
+        execution_id = execution.execution_id
+        while True:
+            self._inject_pending_instructions(execution)
+            if self._is_cancelled(execution):
+                return self._cancelled_result(execution)
+            self._touch_execution(execution, "model_call_started", {"phase": phase})
+            ai_result = self._ai_complete(execution.messages, execution.model, ai_context, execution.tools)
+            self._touch_execution(execution, "model_call_completed", {"phase": phase})
+            if self._is_cancelled(execution):
+                return self._cancelled_result(execution)
+            parsed = self._parse_ai_response(ai_result)
+            if parsed["type"] == "authority_approval_required":
+                return self._authority_approval_result(execution, parsed)
+            if parsed["type"] == "error":
+                execution.status = "error"
+                execution.error = parsed["content"]
+                execution.add_step("error", {"error": parsed["content"]})
+                self._persist_execution(execution, "run_failed", {"error": parsed["content"]})
+                return {
+                    "execution_id": execution_id,
+                    "status": "error",
+                    "result": execution.to_dict(),
+                }
+            if parsed["type"] == "tool_call":
+                reason = self._recoverable_tool_call_error(execution, parsed)
+                if reason is not None:
+                    if self._invalid_tool_call_streak(execution) + 1 >= _MAX_CONSECUTIVE_INVALID_TOOL_CALLS:
+                        self._fail_invalid_tool_call(execution, parsed, reason)
+                        self._persist_execution(execution, "run_failed", {"error": execution.error})
+                        return {
+                            "execution_id": execution_id,
+                            "status": "error",
+                            "result": execution.to_dict(),
+                        }
+                    batch = [call for call in parsed.get("tool_calls") or [] if isinstance(call, dict)]
+                    self._append_assistant_turn(
+                        execution,
+                        {
+                            "assistant_turn": self._assistant_turn_for(parsed),
+                            "tool_name": parsed.get("tool_name"),
+                            "tool_args": parsed.get("tool_args"),
+                            "raw": parsed.get("raw"),
+                        },
+                    )
+                    self._record_invalid_tool_call(execution, parsed, reason, batch[1:])
+                    self._persist_execution(
+                        execution,
+                        "tool_call_invalid",
+                        {"tool_name": parsed.get("tool_name"), "error": reason},
+                    )
+                    continue
+                if self._reject_policy_violation(execution, parsed):
+                    self._persist_execution(execution, "run_failed", {"error": execution.error})
+                    return {
+                        "execution_id": execution_id,
+                        "status": "error",
+                        "result": execution.to_dict(),
+                    }
+                self._set_pending_tool_call(execution, parsed)
+                self._transcripts.append_tool_call(
+                    execution.context["transcript_id"],
+                    execution.pending_tool_call,
+                )
+                decision = self._auto_decision_for_pending(execution)
+                if decision is not None:
+                    return decision
+                self._persist_execution(execution, "approval_requested", execution.pending_tool_call)
+                return {
+                    "execution_id": execution_id,
+                    "status": "waiting_approval",
+                    "result": execution.to_dict(),
+                }
+            execution.status = "completed"
+            execution.result = parsed["content"]
+            execution.messages.append({"role": "assistant", "content": parsed["content"]})
+            self._transcripts.append_message(execution.context["transcript_id"], execution.messages[-1])
+            execution.add_step("response", {"content": parsed["content"]})
+            self._process_conversation_steer(execution)
+            self._persist_execution(execution, "run_completed", {"result": parsed["content"]})
+            return {
+                "execution_id": execution_id,
+                "status": "completed",
+                "result": execution.to_dict(),
+            }
 
     def _authority_approval_result(self, execution, parsed):
         approval = dict(parsed.get("content") if isinstance(parsed.get("content"), dict) else {})
@@ -763,6 +1054,9 @@ class AgentEngine:
         if parsed_calls:
             first = dict(parsed_calls[0])
             first["tool_calls"] = parsed_calls
+            text = _text_from_content_blocks(data.get("content"))
+            first["assistant_text"] = text if isinstance(text, str) else ""
+            first["reasoning_content"] = _response_reasoning_content(data)
             return first
         content = ""
         if isinstance(data, dict):
@@ -775,13 +1069,25 @@ class AgentEngine:
         return {"type": "text", "content": content}
 
     def _promote_queued_tool_call(self, execution):
+        """Make the next queued call pending.
+
+        Returns True when a call is pending or the run failed. An unusable
+        queued call is answered with an error result, the rest of its turn is
+        skipped, and False is returned so the model can react.
+        """
         if not execution.queued_tool_calls:
             return False
         parsed = execution.queued_tool_calls.pop(0)
         remaining = list(execution.queued_tool_calls)
-        if self._reject_unconnected_tool_call(execution, parsed) or self._reject_policy_violation(execution, parsed):
+        reason = self._recoverable_tool_call_error(execution, parsed)
+        if reason is not None:
+            execution.queued_tool_calls = []
+            self._record_invalid_tool_call(execution, parsed, reason, remaining)
+            return False
+        if self._reject_policy_violation(execution, parsed):
             return True
         self._set_pending_tool_call(execution, parsed)
+        execution.pending_tool_call["batch_continuation"] = True
         execution.queued_tool_calls = remaining
         return True
 
@@ -794,6 +1100,9 @@ class AgentEngine:
         return messages
 
     def execute(self, task, tools, model, system_prompt, context):
+        return self._settle(self._execute_start(task, tools, model, system_prompt, context))
+
+    def _execute_start(self, task, tools, model, system_prompt, context):
         execution_id = gen_id("agent_")
         execution_context = dict(context or {}) if isinstance(context, dict) else {}
         execution_context = resolve_runtime_profile_context(execution_context)
@@ -927,63 +1236,12 @@ class AgentEngine:
             self._transcripts.append_message(execution.context["transcript_id"], message)
         execution.add_step("think", {"action": "start", "task": task})
         self._persist_execution(execution, "run_started", {"task": task})
-        self._inject_pending_instructions(execution)
-        if self._is_cancelled(execution):
-            return self._cancelled_result(execution)
-        self._touch_execution(execution, "model_call_started", {"phase": "execute"})
-        ai_result = self._ai_complete(execution.messages, execution.model, execution.context, execution.tools)
-        self._touch_execution(execution, "model_call_completed", {"phase": "execute"})
-        if self._is_cancelled(execution):
-            return self._cancelled_result(execution)
-        parsed = self._parse_ai_response(ai_result)
-        if parsed["type"] == "authority_approval_required":
-            return self._authority_approval_result(execution, parsed)
-        if parsed["type"] == "error":
-            execution.status = "error"
-            execution.error = parsed["content"]
-            execution.add_step("error", {"error": parsed["content"]})
-            self._persist_execution(execution, "run_failed", {"error": parsed["content"]})
-            return {
-                "execution_id": execution_id,
-                "status": "error",
-                "result": execution.to_dict(),
-            }
-        if parsed["type"] == "tool_call":
-            if self._reject_unconnected_tool_call(execution, parsed) or self._reject_policy_violation(execution, parsed):
-                self._persist_execution(execution, "run_failed", {"error": execution.error})
-                return {
-                    "execution_id": execution_id,
-                    "status": "error",
-                    "result": execution.to_dict(),
-                }
-            self._set_pending_tool_call(execution, parsed)
-            self._transcripts.append_tool_call(
-                execution.context["transcript_id"],
-                execution.pending_tool_call,
-            )
-            auto_result = self._auto_approve_pending_tool_call(execution)
-            if auto_result is not None:
-                return auto_result
-            self._persist_execution(execution, "approval_requested", execution.pending_tool_call)
-            return {
-                "execution_id": execution_id,
-                "status": "waiting_approval",
-                "result": execution.to_dict(),
-            }
-        execution.status = "completed"
-        execution.result = parsed["content"]
-        execution.messages.append({"role": "assistant", "content": parsed["content"]})
-        self._transcripts.append_message(execution.context["transcript_id"], execution.messages[-1])
-        execution.add_step("response", {"content": parsed["content"]})
-        self._process_conversation_steer(execution)
-        self._persist_execution(execution, "run_completed", {"result": parsed["content"]})
-        return {
-            "execution_id": execution_id,
-            "status": "completed",
-            "result": execution.to_dict(),
-        }
+        return self._model_turn(execution, execution.context, "execute")
 
     def approve(self, execution_id, source="agent.approve"):
+        return self._settle(self._approve_step(execution_id, source=source))
+
+    def _approve_step(self, execution_id, source="agent.approve"):
         execution = self._get_execution(execution_id)
         if not execution:
             return {"execution_id": execution_id, "status": "error", "result": {"error": "execution not found"}}
@@ -1033,17 +1291,8 @@ class AgentEngine:
             "tool_name": pending["tool_name"],
             "result": tool_content,
         })
-        execution.messages.append({
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [pending.get("raw", {"name": pending["tool_name"], "args": pending["tool_args"]})],
-        })
-        execution.messages.append({
-            "role": "tool",
-            "content": str(tool_content) if not isinstance(tool_content, str) else tool_content,
-            "name": pending["tool_name"],
-            "tool_call_id": str(tool_call_id),
-        })
+        self._append_assistant_turn(execution, pending)
+        self._append_tool_message(execution, pending["tool_name"], tool_call_id, tool_content)
         self._transcripts.append_tool_result(
             execution.context["transcript_id"],
             {"tool_name": pending["tool_name"], "result": tool_content},
@@ -1052,9 +1301,16 @@ class AgentEngine:
         if self._is_cancelled(execution):
             return self._cancelled_result(execution)
         if self._promote_queued_tool_call(execution):
-            auto_result = self._auto_approve_pending_tool_call(execution)
-            if auto_result is not None:
-                return auto_result
+            if execution.status == "error":
+                self._persist_execution(execution, "run_failed", {"error": execution.error})
+                return {
+                    "execution_id": execution_id,
+                    "status": execution.status,
+                    "result": execution.to_dict(),
+                }
+            decision = self._auto_decision_for_pending(execution)
+            if decision is not None:
+                return decision
             self._persist_execution(execution, "approval_requested", execution.pending_tool_call or {})
             return {
                 "execution_id": execution_id,
@@ -1081,63 +1337,12 @@ class AgentEngine:
                 "status": execution.status,
                 "result": execution.to_dict(),
             }
-        self._inject_pending_instructions(execution)
-        if self._is_cancelled(execution):
-            return self._cancelled_result(execution)
-        self._touch_execution(execution, "model_call_started", {"phase": "approve"})
-        ai_result = self._ai_complete(execution.messages, execution.model, context_for_tool, execution.tools)
-        self._touch_execution(execution, "model_call_completed", {"phase": "approve"})
-        if self._is_cancelled(execution):
-            return self._cancelled_result(execution)
-        parsed = self._parse_ai_response(ai_result)
-        if parsed["type"] == "authority_approval_required":
-            return self._authority_approval_result(execution, parsed)
-        if parsed["type"] == "error":
-            execution.status = "error"
-            execution.error = parsed["content"]
-            execution.add_step("error", {"error": parsed["content"]})
-            self._persist_execution(execution, "run_failed", {"error": parsed["content"]})
-            return {
-                "execution_id": execution_id,
-                "status": "error",
-                "result": execution.to_dict(),
-            }
-        if parsed["type"] == "tool_call":
-            if self._reject_unconnected_tool_call(execution, parsed) or self._reject_policy_violation(execution, parsed):
-                self._persist_execution(execution, "run_failed", {"error": execution.error})
-                return {
-                    "execution_id": execution_id,
-                    "status": "error",
-                    "result": execution.to_dict(),
-                }
-            self._set_pending_tool_call(execution, parsed)
-            self._transcripts.append_tool_call(
-                execution.context["transcript_id"],
-                execution.pending_tool_call,
-            )
-            auto_result = self._auto_approve_pending_tool_call(execution)
-            if auto_result is not None:
-                return auto_result
-            self._persist_execution(execution, "approval_requested", execution.pending_tool_call)
-            return {
-                "execution_id": execution_id,
-                "status": "waiting_approval",
-                "result": execution.to_dict(),
-            }
-        execution.status = "completed"
-        execution.result = parsed["content"]
-        execution.messages.append({"role": "assistant", "content": parsed["content"]})
-        self._transcripts.append_message(execution.context["transcript_id"], execution.messages[-1])
-        execution.add_step("response", {"content": parsed["content"]})
-        self._process_conversation_steer(execution)
-        self._persist_execution(execution, "run_completed", {"result": parsed["content"]})
-        return {
-            "execution_id": execution_id,
-            "status": "completed",
-            "result": execution.to_dict(),
-        }
+        return self._model_turn(execution, context_for_tool, "approve")
 
     def reject(self, execution_id, reason):
+        return self._settle(self._reject_step(execution_id, reason))
+
+    def _reject_step(self, execution_id, reason):
         execution = self._get_execution(execution_id)
         if not execution:
             return {"execution_id": execution_id, "status": "error", "result": {"error": "execution not found"}}
@@ -1161,64 +1366,34 @@ class AgentEngine:
             + reason
             + ". Please suggest an alternative approach."
         )
-        execution.messages.append({"role": "user", "content": rejection_msg})
-        execution.add_step("think", {"action": "rejection", "reason": reason})
-        self._inject_pending_instructions(execution)
-        context_for_ai = dict(getattr(execution, "context", {}) or {})
-        if self._is_cancelled(execution):
-            return self._cancelled_result(execution)
-        self._touch_execution(execution, "model_call_started", {"phase": "reject"})
-        ai_result = self._ai_complete(execution.messages, execution.model, context_for_ai, execution.tools)
-        self._touch_execution(execution, "model_call_completed", {"phase": "reject"})
-        if self._is_cancelled(execution):
-            return self._cancelled_result(execution)
-        parsed = self._parse_ai_response(ai_result)
-        if parsed["type"] == "authority_approval_required":
-            return self._authority_approval_result(execution, parsed)
-        if parsed["type"] == "error":
-            execution.status = "error"
-            execution.error = parsed["content"]
-            execution.add_step("error", {"error": parsed["content"]})
-            self._persist_execution(execution, "run_failed", {"error": parsed["content"]})
-            return {
-                "execution_id": execution_id,
-                "status": "error",
-                "result": execution.to_dict(),
-            }
-        if parsed["type"] == "tool_call":
-            if self._reject_unconnected_tool_call(execution, parsed) or self._reject_policy_violation(execution, parsed):
-                self._persist_execution(execution, "run_failed", {"error": execution.error})
-                return {
-                    "execution_id": execution_id,
-                    "status": "error",
-                    "result": execution.to_dict(),
-                }
-            self._set_pending_tool_call(execution, parsed)
-            self._transcripts.append_tool_call(
-                execution.context["transcript_id"],
-                execution.pending_tool_call,
+        if pending:
+            # Answer the rejected call, and every call still queued from the
+            # same assistant turn, so the history keeps one result per call.
+            self._append_assistant_turn(execution, pending)
+            self._append_tool_message(
+                execution,
+                pending["tool_name"],
+                pending.get("tool_call_id") or pending.get("id") or gen_id("call_"),
+                rejection_msg,
             )
-            auto_result = self._auto_approve_pending_tool_call(execution)
-            if auto_result is not None:
-                return auto_result
-            self._persist_execution(execution, "approval_requested", execution.pending_tool_call)
-            return {
-                "execution_id": execution_id,
-                "status": "waiting_approval",
-                "result": execution.to_dict(),
-            }
-        execution.status = "completed"
-        execution.result = parsed["content"]
-        execution.messages.append({"role": "assistant", "content": parsed["content"]})
-        self._transcripts.append_message(execution.context["transcript_id"], execution.messages[-1])
-        execution.add_step("response", {"content": parsed["content"]})
-        self._process_conversation_steer(execution)
-        self._persist_execution(execution, "run_completed", {"result": parsed["content"]})
-        return {
-            "execution_id": execution_id,
-            "status": "completed",
-            "result": execution.to_dict(),
-        }
+            for call in execution.queued_tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                self._append_tool_message(
+                    execution,
+                    str(call.get("tool_name") or "unknown"),
+                    self._tool_call_id_for(call),
+                    _SKIPPED_AFTER_REJECTION,
+                )
+        else:
+            execution.messages.append({"role": "user", "content": rejection_msg})
+        execution.queued_tool_calls = []
+        execution.add_step("think", {"action": "rejection", "reason": reason})
+        return self._model_turn(
+            execution,
+            dict(getattr(execution, "context", {}) or {}),
+            "reject",
+        )
 
     def cancel(self, execution_id):
         execution = self._get_execution(execution_id)

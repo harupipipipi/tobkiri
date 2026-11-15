@@ -633,3 +633,177 @@ def test_agent_reject_preserves_tools_for_followup_completion() -> None:
     assert started["status"] == "waiting_approval"
     assert rejected["status"] == "completed"
     assert seen_followup_tools == [tools, tools]
+
+
+def _messages(engine: AgentEngine, result: dict) -> list[dict]:
+    return engine._executions[result["execution_id"]].messages
+
+
+def test_agent_yolo_runs_many_tool_calls_without_recursion() -> None:
+    engine = AgentEngine()
+    rounds = 600
+    ai_calls = []
+    executed = []
+
+    def fake_ai(messages, model, context, tools=None):
+        ai_calls.append(True)
+        if len(ai_calls) <= rounds:
+            return _tool_call_response("search")
+        return _text_response("finished")
+
+    def fake_execute_tool(tool_name, tool_args, context):
+        executed.append(tool_name)
+        return {"status": "ok", "data": "found"}
+
+    engine._ai_complete = fake_ai
+    engine._execute_tool = fake_execute_tool
+
+    result = engine.execute(
+        "find docs",
+        [_tool("search")],
+        "stub/model",
+        None,
+        {"profile_policy": {"yolo_mode": True}},
+    )
+
+    assert result["status"] == "completed"
+    assert len(executed) == rounds
+
+
+def test_agent_returns_invalid_json_arguments_to_the_model() -> None:
+    engine = AgentEngine()
+    ai_calls = []
+    executed = []
+
+    def fake_ai(messages, model, context, tools=None):
+        ai_calls.append(list(messages))
+        if len(ai_calls) == 1:
+            return _tool_call_response("search", arguments='{"q": "rumi"')
+        return _text_response("answered without the tool")
+
+    def fake_execute_tool(tool_name, tool_args, context):
+        executed.append((tool_name, tool_args))
+        return {"status": "ok", "data": "found"}
+
+    engine._ai_complete = fake_ai
+    engine._execute_tool = fake_execute_tool
+
+    result = engine.execute("find docs", [_tool("search")], "stub/model", None, {})
+
+    assert result["status"] == "completed"
+    assert executed == []
+    assert result["result"]["pending_tool_call"] is None
+    history = _messages(engine, result)
+    assert history[-3]["role"] == "assistant"
+    assert history[-3]["tool_calls"][0]["id"] == "call_1"
+    assert history[-2]["role"] == "tool"
+    assert history[-2]["tool_call_id"] == "call_1"
+    assert "not valid JSON" in history[-2]["content"]
+
+
+def test_agent_lets_the_model_correct_an_unconnected_tool_call() -> None:
+    engine = AgentEngine()
+    ai_calls = []
+
+    def fake_ai(messages, model, context, tools=None):
+        ai_calls.append(True)
+        if len(ai_calls) == 1:
+            return _tool_call_response("not_connected")
+        return _tool_call_response("search")
+
+    engine._ai_complete = fake_ai
+
+    result = engine.execute("find docs", [_tool("search")], "stub/model", None, {})
+
+    assert result["status"] == "waiting_approval"
+    assert result["result"]["pending_tool_call"]["tool_name"] == "search"
+    tool_messages = [m for m in _messages(engine, result) if m["role"] == "tool"]
+    assert len(tool_messages) == 1
+    assert "not connected" in tool_messages[0]["content"]
+
+
+def test_agent_keeps_text_reasoning_and_one_result_per_batched_call() -> None:
+    engine = AgentEngine()
+    ai_calls = []
+
+    def fake_ai(messages, model, context, tools=None):
+        ai_calls.append(list(messages))
+        if len(ai_calls) == 1:
+            return {
+                "status": "ok",
+                "data": {
+                    "content": "I will look this up.",
+                    "reasoning_content": "Two searches are needed.",
+                    "tool_calls": [
+                        {"id": "call_a", "function": {"name": "search", "arguments": '{"q": "a"}'}},
+                        {"function": {"name": "search", "arguments": '{"q": "b"}'}},
+                    ],
+                },
+            }
+        return _text_response("both found")
+
+    def fake_execute_tool(tool_name, tool_args, context):
+        return {"status": "ok", "data": "found " + tool_args["q"]}
+
+    engine._ai_complete = fake_ai
+    engine._execute_tool = fake_execute_tool
+
+    started = engine.execute("find docs", [_tool("search")], "stub/model", None, {})
+    second = engine.approve(started["execution_id"])
+    finished = engine.approve(started["execution_id"])
+
+    assert started["status"] == "waiting_approval"
+    assert second["status"] == "waiting_approval"
+    assert finished["status"] == "completed"
+    followup = ai_calls[1]
+    assistant_turns = [m for m in followup if m["role"] == "assistant"]
+    assert len(assistant_turns) == 1
+    assert assistant_turns[0]["content"] == "I will look this up."
+    assert assistant_turns[0]["reasoning_content"] == "Two searches are needed."
+    call_ids = [call["id"] for call in assistant_turns[0]["tool_calls"]]
+    assert call_ids[0] == "call_a"
+    assert len(set(call_ids)) == 2
+    tool_messages = [m for m in followup if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in tool_messages] == call_ids
+    assert [m["content"] for m in tool_messages] == ["found a", "found b"]
+
+
+def test_agent_reject_answers_the_rejected_and_queued_calls() -> None:
+    engine = AgentEngine()
+    ai_calls = []
+    executed = []
+
+    def fake_ai(messages, model, context, tools=None):
+        ai_calls.append(list(messages))
+        if len(ai_calls) == 1:
+            return {
+                "status": "ok",
+                "data": {
+                    "tool_calls": [
+                        {"id": "call_a", "function": {"name": "search", "arguments": '{"q": "a"}'}},
+                        {"id": "call_b", "function": {"name": "search", "arguments": '{"q": "b"}'}},
+                    ],
+                },
+            }
+        return _text_response("alternate answer")
+
+    def fake_execute_tool(tool_name, tool_args, context):
+        executed.append(tool_args)
+        return {"status": "ok", "data": "found"}
+
+    engine._ai_complete = fake_ai
+    engine._execute_tool = fake_execute_tool
+
+    started = engine.execute("find docs", [_tool("search")], "stub/model", None, {})
+    rejected = engine.reject(started["execution_id"], "not now")
+
+    assert rejected["status"] == "completed"
+    assert executed == []
+    assert rejected["result"]["queued_tool_calls"] == []
+    followup = ai_calls[1]
+    assistant_turns = [m for m in followup if m["role"] == "assistant"]
+    assert [call["id"] for call in assistant_turns[0]["tool_calls"]] == ["call_a", "call_b"]
+    tool_messages = [m for m in followup if m["role"] == "tool"]
+    assert [m["tool_call_id"] for m in tool_messages] == ["call_a", "call_b"]
+    assert "not now" in tool_messages[0]["content"]
+    assert "Not executed" in tool_messages[1]["content"]
