@@ -215,6 +215,7 @@ struct Work<S> {
     phase: AtomicU8,
     inspections: AtomicU64,
     index: &'static BootstrapModuleIndex,
+    profile_schemas: Option<bootstrap_metadata::BoundProfileSchemas>,
     metadata_policy: Option<&'static crate::ModuleMetadataPolicy>,
     source_occurrence: AtomicU8,
     result_identity: AtomicU64,
@@ -719,7 +720,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         source: S,
         index: &'static BootstrapModuleIndex,
     ) -> Result<std::result::Result<Self, NativeDataError>> {
-        Self::prepare_inner(engine, component, invocation, source, index, None).await
+        Self::prepare_inner(engine, component, invocation, source, index, None, None).await
     }
 
     /// Retain the actual preparation lineage; cancellation conveys no IO rights.
@@ -729,9 +730,19 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         invocation: NativeSetupInvocation,
         source: S,
         index: &'static BootstrapModuleIndex,
+        profile_schemas: Option<bootstrap_metadata::BoundProfileSchemas>,
         parent: &CoreCancellation,
     ) -> Result<std::result::Result<Self, NativeDataError>> {
-        Self::prepare_inner(engine, component, invocation, source, index, Some(parent)).await
+        Self::prepare_inner(
+            engine,
+            component,
+            invocation,
+            source,
+            index,
+            profile_schemas,
+            Some(parent),
+        )
+        .await
     }
 
     async fn prepare_inner(
@@ -740,6 +751,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         invocation: NativeSetupInvocation,
         source: S,
         index: &'static BootstrapModuleIndex,
+        profile_schemas: Option<bootstrap_metadata::BoundProfileSchemas>,
         parent: Option<&CoreCancellation>,
     ) -> Result<std::result::Result<Self, NativeDataError>> {
         source.check_live()?;
@@ -755,6 +767,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 phase: AtomicU8::new(CONSTRUCTING),
                 inspections: AtomicU64::new(0),
                 index,
+                profile_schemas,
                 metadata_policy,
                 source_occurrence: AtomicU8::new(SOURCE_UNUSED),
                 result_identity: AtomicU64::new(1),

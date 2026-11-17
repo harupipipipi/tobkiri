@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import harness_native_ci_inputs as binding  # noqa: E402
 from build_native import fingerprint  # noqa: E402
+from harness_native_dependencies import compress_sources  # noqa: E402
 
 
 def write(path, document):
@@ -115,6 +117,53 @@ class HarnessNativeCIInputsTests(unittest.TestCase):
         for diagnostic in (False, True):
             with self.subTest(diagnostic=diagnostic), tempfile.TemporaryDirectory() as temporary:
                 self.check_variant(Path(temporary), diagnostic)
+
+    def test_only_original_profile_schema_bytes_from_verified_capture_bind(self):
+        originals = {
+            name: (binding.ROOT / "tobkiri_runtime" / name).read_bytes()
+            for name in binding.PROFILE_SCHEMA_PATHS.values()
+        }
+        base = {"python/" + name: raw for name, raw in originals.items()}
+        with tempfile.TemporaryDirectory() as temporary:
+            inputs = Path(temporary)
+            capture = inputs / "python" / binding.CAPTURED_DATA
+            capture.parent.mkdir()
+
+            def staged_manifest(files: dict[str, bytes]) -> list[dict]:
+                capture.write_text(f"FILES = {compress_sources(files)!r}\n", encoding="utf-8")
+                return [
+                    {"source": "python/" + binding.CAPTURED_DATA,
+                     "destination": binding.CAPTURED_DATA, **fingerprint(capture)},
+                    *({"source": "python/" + name, "destination": name,
+                       "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+                      for name, raw in originals.items()),
+                ]
+
+            captured = {**originals, "tobkiri_protocol/schemas/profile_v6.schema.json": b"{}"}
+            manifest = staged_manifest(captured)
+            selected = binding._profile_schema_resources(inputs, base, manifest)
+            self.assertEqual(selected, {version: originals[name]
+                                       for version, name in binding.PROFILE_SCHEMA_PATHS.items()})
+            rust = binding._rust_profile_schemas("ab" * 32, selected).decode("ascii")
+            self.assertIn(f'component_sha256: "sha256:{"ab" * 32}"', rust)
+            for version, raw in selected.items():
+                field = re.search(rf'\b{version}: b"([^"]+)"', rust).group(1)
+                self.assertEqual(bytes.fromhex("".join(re.findall(r"\\x([0-9a-f]{2})", field))), raw)
+
+            capture.write_bytes(capture.read_bytes() + b"\n")
+            with self.assertRaisesRegex(ValueError, "verified bytes"):
+                binding._profile_schema_resources(inputs, base, manifest)
+            v4 = binding.PROFILE_SCHEMA_PATHS["v4"]
+            with self.assertRaisesRegex(ValueError, "both Profile schemas once"):
+                manifest = staged_manifest({name: raw for name, raw in captured.items() if name != v4})
+                binding._profile_schema_resources(inputs, base, manifest)
+            with self.assertRaisesRegex(ValueError, "differs from original source"):
+                manifest = staged_manifest({**captured, v4: originals[v4] + b"\n"})
+                binding._profile_schema_resources(inputs, base, manifest)
+            with self.assertRaisesRegex(ValueError, "differs from original source"):
+                manifest = staged_manifest(captured)
+                manifest[1]["sha256"] = manifest[2]["sha256"]
+                binding._profile_schema_resources(inputs, base, manifest)
 
 
 if __name__ == "__main__":

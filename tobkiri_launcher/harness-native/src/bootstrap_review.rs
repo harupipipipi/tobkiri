@@ -65,6 +65,10 @@ pub enum BootstrapReviewReachpoint {
         name: &'static str,
         legacy: bool,
     },
+    RecoveryCheckActiveSnapshotProfileSchemaNotBound {
+        name: &'static str,
+        legacy: bool,
+    },
     #[cfg(test)]
     RecoveryCompleted,
 }

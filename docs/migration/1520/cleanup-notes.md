@@ -3929,3 +3929,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   重複の分類前に最後の行まで読み、後続のSQLiteエラーを優先する。Harness全179件と
   strict Clippyが成功し、外部fixture前提の9件は未実行。先頭Profileの失敗4例は元Pythonの
   `validate_document` でも比較した。
+- [実Wasm CI 44083568336](https://github.com/harupipipipi/tobkiri/actions/runs/44083568336)は
+  通常カタログで `Runtime.init` 後に1,392,234,787、先頭export前に1,263,894,246 fuel残り、
+  25.708秒で0になった。復旧は先頭export前に1,263,598,822、29.368秒で0になった。
+  どちらも元の最初の項目の途中で、Storeとworkspace lockは解放され、最終の確保・予約は0。
+  比較9件中5件は原本と一致。別の1件 `source-without-artifact-root` は30.012秒で期限に達し、
+  754,712,042 fuelが残った。backtraceだけでは `Resolver.lookup` と
+  `Registry.get_or_retrieve` の生存区間を区別できない。次の計測では既存のphasesを実loaderの
+  `load_schema` に接続し、元の呼出しでどちらの区間が長いかを記録する。
+- 最初のProfileスキーマ2点は、選んだWasmと同じsource manifestの圧縮DATAから取り出す。
+  Producerは元のスキーマと実入力の長さ・SHA-256を照合し、Launcherは別途pinしたv2レシートと
+  各スキーマのdigest・ID・バージョンを確認する。v1レシートの従来経路も使える。
+  同じコンポーネントのdigestを確認した組だけを保持し、workspace lock内で選択済みスキーマを
+  厳密JSONとして読む。Appのキャッシュ済みオブジェクト、メタスキーマ、参照先、レコード検証は後続。
+  Rust Harness 180件、strict Clippy、Producer 2件、ワークフロー13件、Launcherステージングの
+  独立テストを実行。実macOS CI向けのHarnessテストもローカルでコンパイル確認した。

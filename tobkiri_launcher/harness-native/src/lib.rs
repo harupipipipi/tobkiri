@@ -34,7 +34,8 @@ mod source_resolve;
 ))]
 mod thread_capabilities_actual_ci;
 pub use bootstrap_metadata::{
-    BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, BootstrapRoots,
+    BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, BootstrapProfileSchemas,
+    BootstrapRoots,
 };
 pub use bootstrap_runtime::{
     BootstrapActivationCandidate, BootstrapActivationDecision, BootstrapBuiltinKind,

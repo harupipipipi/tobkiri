@@ -1,5 +1,6 @@
 //! The AuthorityStore context at the original nonstale publication caller.
 use super::*;
+use crate::bootstrap_metadata::BoundProfileSchemas;
 use crate::original_authority::io::Store;
 use catalog::RecoveryCatalogInputs;
 use pending_reservation::PendingRepublish;
@@ -17,6 +18,7 @@ mod workspace_active;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
     LoadActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
+    CheckActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     MissingPublishedAuthority,
     RecoveredNone,
     MatchedReservation,
@@ -31,11 +33,13 @@ impl PublicationRead {
         cancellation: &CoreCancellation,
         budget: &Arc<dyn AllocationBudget>,
         recovery_catalog: RecoveryCatalogInputs<'_>,
+        profile_schemas: Option<BoundProfileSchemas>,
     ) -> Result<RecoveryAuthorityReached> {
         self.run_recovery(
             owner,
             cancellation,
             budget,
+            profile_schemas,
             |op, store, workspace, pending, profile_id| {
                 let identity =
                     recovery_catalog.verify_committed_artifact(op, &pending.profile, profile_id)?;
@@ -51,6 +55,7 @@ impl PublicationRead {
         owner: &S,
         cancellation: &CoreCancellation,
         budget: &Arc<dyn AllocationBudget>,
+        profile_schemas: Option<BoundProfileSchemas>,
         mut on_committed: impl FnMut(
             &Operation<'_, S>,
             &Store<'_, '_, S>,
@@ -121,7 +126,15 @@ impl PublicationRead {
                                 }
                                 let snapshot = read_snapshot
                                     .then(|| {
-                                        workspace_active::read(&op, state, workspace_digest, budget)
+                                        let snapshot = workspace_active::read(&op, state, workspace_digest, budget)?;
+                                        let name = snapshot.profile_schema;
+                                        let legacy = snapshot.legacy;
+                                        if let Some(schemas) = profile_schemas {
+                                            workspace_active::load_profile_schema(&op, schemas, name)?;
+                                            Ok(RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema { name, legacy })
+                                        } else {
+                                            Ok(RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema { name, legacy })
+                                        }
                                     })
                                     .transpose()?;
                                 Ok(ControlFlow::Continue(snapshot))
@@ -137,12 +150,7 @@ impl PublicationRead {
                     };
                     recover_activation(false)?;
                     if active_reservation::read(&op, store, &pending.intent)? {
-                        let snapshot =
-                            recover_activation(true)?.expect("requested active snapshot");
-                        return Ok(RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema {
-                            name: snapshot.profile_schema,
-                            legacy: snapshot.legacy,
-                        });
+                        return Ok(recover_activation(true)?.expect("requested active snapshot"));
                     }
                 } else if active_reservation::read(&op, store, &pending.intent)? {
                     return Ok(RecoveryAuthorityReached::MatchedReservation);
@@ -200,6 +208,7 @@ impl PublicationRead {
             owner,
             cancellation,
             budget,
+            None,
             |op, store, workspace, pending, id| {
                 pending.publish(op, store, workspace, id, budget, |_| Ok(()))
             },
@@ -226,6 +235,11 @@ mod tests {
     const LOCK_PATH: &str = "profiles/.bootstrap-publication.lock";
     const PROFILE_SCHEMA_REACHED: RecoveryAuthorityReached =
         RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema {
+            name: "profile_v5.schema.json",
+            legacy: false,
+        };
+    const PROFILE_SCHEMA_LOADED: RecoveryAuthorityReached =
+        RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema {
             name: "profile_v5.schema.json",
             legacy: false,
         };
@@ -428,7 +442,7 @@ mod tests {
                 PROFILE_ID,
                 "1",
                 "reformatted.json",
-                Ok(PROFILE_SCHEMA_REACHED),
+                Ok(PROFILE_SCHEMA_LOADED),
             ),
             (
                 "active",
@@ -606,7 +620,8 @@ mod tests {
                     [epoch],
                 )
                 .unwrap();
-                let publish = expected == Ok(PROFILE_SCHEMA_REACHED);
+                let publish =
+                    matches!(expected, Ok(PROFILE_SCHEMA_REACHED | PROFILE_SCHEMA_LOADED));
                 if publish {
                     insert(&db, 2, "activation:abandoned", "prepared");
                     db.execute(
@@ -619,7 +634,9 @@ mod tests {
 
                 let mut called = false;
                 let mut checked_under_lock = false;
-                let result = read.run_recovery(source, cancellation, budget, |op, store, workspace, republish, id| {
+                let schemas = (expected == Ok(PROFILE_SCHEMA_LOADED))
+                    .then(workspace_active::tests::bound_fixture_schemas);
+                let result = read.run_recovery(source, cancellation, budget, schemas, |op, store, workspace, republish, id| {
                     assert_eq!(id, PROFILE_ID);
                     assert!(lock_free(&lock));
                     assert!(!lock_free(&source.root.join(LOCK_PATH)));

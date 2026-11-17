@@ -194,7 +194,7 @@ jobs:
       - name: Check the locked workspace active pointer and pinned envelope
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 4 --
+          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 5 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::tests::
           -- --test-threads=1 --nocapture

@@ -50,7 +50,8 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn('if [ "$SCHEMA_DIAGNOSTIC" = true ]; then', binder)
         for component in ("harness-native", "harness-native-schema-diagnostic"):
             self.assertIn(f'harness-built/harness-native/{component}/work/component.wasm', binder)
-            for path in ("inputs/plan.json", "inputs/provenance.json", "work/component.wasm"):
+            for path in ("inputs/plan.json", "inputs/provenance.json", "work/component.wasm",
+                         "inputs/python/harness_native_dependency_data.py"):
                 self.assertIn(f'harness-native/{component}/{path}', build)
 
     def test_app_backend_runs_the_whole_harness_catalog_and_recovery(self) -> None:
@@ -61,6 +62,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         binder = step(self.native, "Bind the actual component, original modules and native index")
         self.assertIn("--app-backend", binder)
         self.assertIn("harness-native-app-frame/work/component.wasm", binder)
+        self.assertIn("harness-native-app-frame/inputs/python/harness_native_dependency_data.py", build)
         for name in ("Execute the actual same-guard catalog to constructor entry",
                      "Observe original Profile replacement and Authority initialization",
                      "Independently compare actual catalog reachpoint and effects"):
@@ -266,7 +268,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         for operation in (
             "NativeComponentPreparation::new(invocation.clone(), source)?",
             "preparation.compile(input, &expected)?",
-            "prepared.initialize(&selected::INDEX).await?",
+            ".initialize_with_profile_schemas(&selected::INDEX, Some(&selected::PROFILE_SCHEMAS))",
             "runtime.bootstrap_profile_id().await?",
         ):
             self.assertTrue(operation in actual, f"missing real consumer operation: {operation}")
@@ -320,7 +322,7 @@ class NativeWorkflowContracts(unittest.TestCase):
             "File::open(&path)?",
             "preparation.compile(input, &expected)?",
             "original native deadline exhausted during component preparation",
-            "prepared.initialize(&selected::INDEX).await?",
+            ".initialize_with_profile_schemas(&selected::INDEX, Some(&selected::PROFILE_SCHEMAS))",
         )]
         self.assertEqual(positions, sorted(positions))
         self.assertIn("invocation.deadline()? == deadline", actual)
@@ -344,7 +346,8 @@ class NativeWorkflowContracts(unittest.TestCase):
             "OriginalBootstrapInputs::new(app,job.source_custody()?,&invocation)?",
             "NativeComponentPreparation::new_with_cancellation_parent(",
             ".compile(artifact,&expected)?",
-            "caught(prepared.initialize(index)).await",
+            "letinitialize=prepared.initialize_with_profile_schemas(index,profile_schemas);",
+            "caught(initialize).await",
         )]
         self.assertEqual(positions, sorted(positions))
         for caller in (adapter, actual):
@@ -360,6 +363,7 @@ class NativeWorkflowContracts(unittest.TestCase):
             "bytes.try_reserve_exact(size)?",
             "input.read_exact(&mutbytes)?",
             "&Digest::hash(&bytes)==expected",
+            "schemas.bind(&self.component_digest)",
             "Component::new(self.engine.engine(),&bytes)",
             "drop(bytes);", "drop(payload);", "drop(permit);",
         ):
@@ -368,6 +372,8 @@ class NativeWorkflowContracts(unittest.TestCase):
                         compact.index("bytes.try_reserve_exact(size)?"))
         self.assertLess(compact.index("Component::new("), compact.index("drop(bytes);"))
         self.assertLess(compact.index("drop(bytes);"), compact.index("drop(payload);"))
+        self.assertLess(compact.index("schemas.bind(&self.component_digest)"),
+                        compact.index("NativeBootstrap::prepare_with_cancellation_parent("))
         self.assertIn("self.invocation.deadline()? == self.deadline", shared)
         self.assertIn("self.preparation.invocation", shared)
         self.assertIn("self.preparation.source", shared)

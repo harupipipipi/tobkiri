@@ -2,7 +2,7 @@
 use std::{path::Path, sync::Arc};
 use tobkiri_canon::{
     AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CoreBuffer,
-    CoreBufferBuilder, MAX_BYTES,
+    CoreBufferBuilder, Digest, MAX_BYTES,
 };
 use tobkiri_gate::NativeSetupInvocation;
 use tobkiri_wasm::NativeDataIoError;
@@ -47,6 +47,40 @@ pub struct BootstrapModule {
 pub struct BootstrapModuleIndex {
     pub sha256: &'static str,
     pub modules: &'static [BootstrapModule],
+}
+
+/// Immutable source data from the receipt of the selected Setup component.
+/// These bytes confer no filesystem access or record authority.
+pub struct BootstrapProfileSchemas {
+    pub component_sha256: &'static str,
+    pub v4: &'static [u8],
+    pub v5: &'static [u8],
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct BoundProfileSchemas(&'static BootstrapProfileSchemas);
+
+impl BootstrapProfileSchemas {
+    pub(crate) fn bind(&'static self, component: &Digest) -> anyhow::Result<BoundProfileSchemas> {
+        anyhow::ensure!(
+            self.component_sha256 == component.as_str()
+                && [self.v4, self.v5]
+                    .iter()
+                    .all(|bytes| (1..=MAX_BYTES).contains(&bytes.len())),
+            "Profile schema resources do not match the selected Setup component"
+        );
+        Ok(BoundProfileSchemas(self))
+    }
+}
+
+impl BoundProfileSchemas {
+    pub(crate) fn get(self, name: &str) -> Option<&'static [u8]> {
+        match name {
+            "profile_v4.schema.json" => Some(self.0.v4),
+            "profile_v5.schema.json" => Some(self.0.v5),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

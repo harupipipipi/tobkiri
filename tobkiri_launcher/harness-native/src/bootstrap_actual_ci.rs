@@ -9,6 +9,7 @@ use tobkiri_core::RuntimeOwner;
 
 pub(super) mod selected {
     use super::{BootstrapModule, BootstrapModuleIndex};
+    use crate::BootstrapProfileSchemas;
     include!(env!("TOBKIRI_HARNESS_NATIVE_MODULE_INDEX_RS"));
 }
 
@@ -127,7 +128,10 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
             && std::time::Instant::now() < deadline,
         "original native deadline exhausted during component preparation"
     );
-    let mut runtime = match prepared.initialize(&selected::INDEX).await? {
+    let mut runtime = match prepared
+        .initialize_with_profile_schemas(&selected::INDEX, Some(&selected::PROFILE_SCHEMAS))
+        .await?
+    {
         Ok(runtime) => runtime,
         Err(error) => bail!(
             "actual original initialization refused: {}",

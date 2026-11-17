@@ -346,7 +346,10 @@ async fn run_original_catalog_component_driver(
     let preparation = crate::NativeComponentPreparation::new(invocation.clone(), source)?;
     let prepared = preparation.compile(File::open(&component)?, &digest)?;
     ensure!(prepared.observation().deadline == deadline);
-    let mut runtime = match prepared.initialize(&selected::INDEX).await? {
+    let mut runtime = match prepared
+        .initialize_with_profile_schemas(&selected::INDEX, Some(&selected::PROFILE_SCHEMAS))
+        .await?
+    {
         Ok(value) => value,
         Err(_) => bail!("actual catalog initialization refused"),
     };

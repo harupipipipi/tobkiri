@@ -16,8 +16,9 @@ import re
 import sys
 
 from build_native import fingerprint
-from harness_native_dependencies import DIAGNOSTIC_FORMAT, ENTRYPOINT, METADATA
+from harness_native_dependencies import DIAGNOSTIC_FORMAT, ENTRYPOINT, METADATA, _read
 from harness_native_dependencies import verify_component_receipt
+from schema_probe.captured_loader import Tree
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = "tobkiri-ui:harness-native/runtime@1.0.0"
@@ -26,6 +27,11 @@ IMPORT = "tobkiri-native:harness/bindings@1.0.0"
 NORMAL_SOURCE = "io.tobkiri.harness-native-component-source.v1"
 DIAGNOSTIC_SOURCE = "io.tobkiri.harness-native-schema-call-diagnostic-source.v1"
 NORMAL_DEPENDENCIES = "tobkiri.harness-native-dependencies/1"
+CAPTURED_DATA = "harness_native_dependency_data.py"
+PROFILE_SCHEMA_PATHS = {
+    version: f"tobkiri_protocol/schemas/profile_{version}.schema.json"
+    for version in ("v4", "v5")
+}
 
 
 def verify_producer_selection(
@@ -102,6 +108,58 @@ def verify_app_source_bindings(build: dict, actual: dict) -> None:
         row = actual.get("python/" + name, {})
         if row.get("sha256") != digest or row.get("destination") != name:
             raise ValueError(f"native Harness App dependency differs: {name}")
+
+
+def _profile_schema_resources(
+    inputs: Path, base: dict[str, bytes], manifest: list[dict],
+) -> dict[str, bytes]:
+    """Select the exact pair from the prepared component's captured DATA."""
+    def row_for(destination: str) -> dict:
+        source = "python/" + destination
+        rows = [row for row in manifest
+                if row["source"] == source or row["destination"] == destination]
+        if (len(rows) != 1 or rows[0]["source"] != source
+                or rows[0]["destination"] != destination):
+            raise ValueError(f"invalid fixed capture source: {destination}")
+        return rows[0]
+
+    capture = row_for(CAPTURED_DATA)
+    tree = ast.parse(_read(inputs / capture["source"], capture))
+    tables = [node.value for node in tree.body if isinstance(node, ast.Assign)
+              and any(isinstance(target, ast.Name) and target.id == "FILES"
+                      for target in node.targets)]
+    if len(tables) != 1 or not isinstance(tables[0], ast.Tuple):
+        raise ValueError("native captured DATA must have one literal FILES table")
+    wanted = set(PROFILE_SCHEMA_PATHS.values())
+    selected = tuple(ast.literal_eval(row) for row in tables[0].elts
+                     if isinstance(row, ast.Tuple) and row.elts
+                     and isinstance(row.elts[0], ast.Constant)
+                     and row.elts[0].value in wanted)
+    if len(selected) != len(wanted) or {row[0] for row in selected} != wanted:
+        raise ValueError("native captured DATA must contain both Profile schemas once")
+    resources = Tree(selected, compressed=True)
+    result = {}
+    for version, name in PROFILE_SCHEMA_PATHS.items():
+        row = row_for(name)
+        raw, digest = resources.path(name)._read_verified_bytes()
+        if (not raw or len(raw) != row["bytes"] or digest != row["sha256"]
+                or raw != base.get(row["source"])):
+            raise ValueError(f"captured Profile schema differs from original source: {name}")
+        result[version] = raw
+    return result
+
+
+def _rust_profile_schemas(component_sha256: str, schemas: dict[str, bytes]) -> bytes:
+    """Write immutable Rust literals without source-language string ambiguities."""
+    lines = [
+        "\npub static PROFILE_SCHEMAS: BootstrapProfileSchemas = BootstrapProfileSchemas {",
+        f'    component_sha256: "sha256:{component_sha256}",',
+    ]
+    for version, raw in schemas.items():
+        chunks = ["".join(f"\\x{byte:02x}" for byte in raw[start:start + 20])
+                  for start in range(0, len(raw), 20)]
+        lines.append(f'    {version}: b"' + "\\\n        ".join(chunks) + '",')
+    return ("\n".join([*lines, "};", ""])).encode("ascii")
 
 
 def bind(
@@ -191,6 +249,7 @@ def bind(
         original_plan
     ).hexdigest():
         raise ValueError("native Harness original source plan differs")
+    profile_schemas = _profile_schema_resources(inputs, base, build["source_manifest"])
     tree = ast.parse(base["python/harness_native_source_index.py"])
     index = {row.targets[0].id: ast.literal_eval(row.value)
              for row in tree.body if isinstance(row, ast.Assign)}
@@ -217,7 +276,7 @@ def bind(
                   + ", relative_file: " + json.dumps(relative) + " },\n"
                   for name, relative in selected)
         + "    ],\n};\n"
-    ).encode()
+    ).encode() + _rust_profile_schemas(identity["sha256"], profile_schemas)
     if diagnostic_contract is not None:
         header += (
             '#[cfg(feature = "catalog-diagnostics-ci")]\n'
@@ -234,13 +293,18 @@ def bind(
         # by the Launcher build; this CI verification does not enable release.
         launcher_receipt = output / "launcher-component.json"
         launcher_receipt.write_text(json.dumps({
-            "format": "io.tobkiri.launcher-setup-component.v1",
+            "format": "io.tobkiri.launcher-setup-component.v2",
             "component": identity,
             "source_index_sha256": index["INDEX_SHA256"],
             "modules": [
                 {"module": module, "relative_file": relative}
                 for module, relative in selected
             ],
+            "profile_schemas": {
+                version: {"sha256": hashlib.sha256(raw).hexdigest(),
+                          "content": raw.decode("utf-8")}
+                for version, raw in profile_schemas.items()
+            },
         }, sort_keys=True) + "\n", encoding="utf-8")
     env = {
         "TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT": str(artifact),

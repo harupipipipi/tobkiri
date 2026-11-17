@@ -748,11 +748,18 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
             pack.cancellation,
             pack.input_budget,
             inputs,
+            work.profile_schemas,
         )
     };
     let boundary = match reached {
         Ok(RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema { name, legacy }) => {
             BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotProfileSchemaNotBound {
+                name,
+                legacy,
+            }
+        }
+        Ok(RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema { name, legacy }) => {
+            BootstrapReviewReachpoint::RecoveryCheckActiveSnapshotProfileSchemaNotBound {
                 name,
                 legacy,
             }

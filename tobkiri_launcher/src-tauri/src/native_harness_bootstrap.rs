@@ -19,9 +19,9 @@ use std::{
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{Core, Digest, HostIo, NativeSetupInvocation, RuntimeOwner};
 use tobkiri_harness_native::{
-    BootstrapInputOwner, BootstrapModuleIndex, BootstrapRoots, ModuleMetadataPolicy,
-    NativeBootstrap, NativeComponentPreparation, OriginalAuthorityError, OriginalAuthorityMaterial,
-    OriginalAuthorityOwner, ORIGINAL_PROFILE_SOURCE_METADATA,
+    BootstrapInputOwner, BootstrapModuleIndex, BootstrapProfileSchemas, BootstrapRoots,
+    ModuleMetadataPolicy, NativeBootstrap, NativeComponentPreparation, OriginalAuthorityError,
+    OriginalAuthorityMaterial, OriginalAuthorityOwner, ORIGINAL_PROFILE_SOURCE_METADATA,
 };
 use tobkiri_wasm::NativeDataIoError;
 
@@ -362,10 +362,18 @@ fn setup_display_requires_a_completed_listing_result() {
 #[path = "setup_component_path.rs"]
 mod setup_component_path;
 
+struct SelectedOriginalComponent {
+    artifact: File,
+    expected: Digest,
+    index: &'static BootstrapModuleIndex,
+    profile_schemas: Option<&'static BootstrapProfileSchemas>,
+}
+
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 mod selected_setup_component {
     use super::{
-        setup_component_path, AppHandle, BootstrapModuleIndex, Digest, File, Manager, Result,
+        setup_component_path, AppHandle, BootstrapModuleIndex, BootstrapProfileSchemas, Digest,
+        Manager, Result, SelectedOriginalComponent,
     };
     use std::fs::OpenOptions;
     use std::os::unix::fs::OpenOptionsExt;
@@ -374,12 +382,11 @@ mod selected_setup_component {
     struct SetupComponent {
         sha256: &'static str,
         index: &'static BootstrapModuleIndex,
+        profile_schemas: Option<&'static BootstrapProfileSchemas>,
     }
     include!(concat!(env!("OUT_DIR"), "/setup_component.rs"));
 
-    pub(super) fn open(
-        app: &AppHandle,
-    ) -> Result<Option<(File, Digest, &'static BootstrapModuleIndex)>> {
+    pub(super) fn open(app: &AppHandle) -> Result<Option<SelectedOriginalComponent>> {
         let Some(component) = &COMPONENT else {
             return Ok(None);
         };
@@ -407,11 +414,12 @@ mod selected_setup_component {
                 && (1..=setup_component_path::MAX_COMPONENT_BYTES).contains(&metadata.len()),
             "Setup component resource is not a bounded regular file"
         );
-        Ok(Some((
-            file,
-            Digest::parse(component.sha256)?,
-            component.index,
-        )))
+        Ok(Some(SelectedOriginalComponent {
+            artifact: file,
+            expected: Digest::parse(component.sha256)?,
+            index: component.index,
+            profile_schemas: component.profile_schemas,
+        }))
     }
 }
 
@@ -433,7 +441,7 @@ pub(crate) async fn prepare_setup_review(
         .try_state::<crate::AppConfig>()
         .ok_or(SetupReviewStartError::Window)?
         .kernel_port;
-    let (artifact, expected, index) = selected_setup_component::open(app)
+    let selected = selected_setup_component::open(app)
         .map_err(SetupReviewStartError::Component)?
         .ok_or(SetupReviewStartError::Unbound)?;
     let owner = state
@@ -442,9 +450,7 @@ pub(crate) async fn prepare_setup_review(
         .map_err(|_| SetupReviewStartError::Window)?;
     let job = prepare_original_component(
         app.clone(),
-        artifact,
-        expected,
-        index,
+        selected,
         OriginalOperation::ReviewListing(options.clone()),
     )
     .map(SetupReviewJob)
@@ -453,14 +459,12 @@ pub(crate) async fn prepare_setup_review(
         .confirm(owner, options)
         .await
         .map_err(SetupReviewStartError::Review)?;
-    let (artifact, expected, index) = selected_setup_component::open(app)
+    let selected = selected_setup_component::open(app)
         .map_err(SetupReviewStartError::Component)?
         .ok_or(SetupReviewStartError::Unbound)?;
     prepare_original_component(
         app.clone(),
-        artifact,
-        expected,
-        index,
+        selected,
         OriginalOperation::ConfirmSetup(confirmed),
     )
     .map_err(SetupReviewStartError::Worker)?
@@ -480,11 +484,9 @@ pub(crate) enum SetupReviewStartError {
 
 /// Execute only the current closed bound subset. No caller receives Bootstrap,
 /// its DATA budget, a funded buffer, or a function argument borrowing them.
-pub(crate) fn prepare_original_component(
+fn prepare_original_component(
     app: AppHandle,
-    artifact: File,
-    expected: Digest,
-    index: &'static BootstrapModuleIndex,
+    selected: SelectedOriginalComponent,
     operation: OriginalOperation,
 ) -> std::result::Result<OriginalComponentJob, DetachedFailure> {
     // An unbound operation is an integration failure before owner/Engine/IO,
@@ -506,7 +508,7 @@ pub(crate) fn prepare_original_component(
         .spawn(move |job| {
             let outcome = catch_unwind(AssertUnwindSafe(|| {
                 tauri::async_runtime::block_on(run_original_job(
-                    runtime, app, job, artifact, expected, index, operation,
+                    runtime, app, job, selected, operation,
                 ))
             }));
             let (result, cleanup_verified) = match outcome {
@@ -547,11 +549,15 @@ async fn run_original_job(
     runtime: NativeRuntimeState,
     app: AppHandle,
     job: JobTicket,
-    artifact: File,
-    expected: Digest,
-    index: &'static BootstrapModuleIndex,
+    selected: SelectedOriginalComponent,
     operation: dispatch::AdmittedOperation,
 ) -> (Outcome, bool) {
+    let SelectedOriginalComponent {
+        artifact,
+        expected,
+        index,
+        profile_schemas,
+    } = selected;
     // No Store/IO exists during these synchronous stages. Owner creation is
     // already represented by the registered worker before reaching this code.
     let mut stage = Stage::Owner;
@@ -595,7 +601,8 @@ async fn run_original_job(
         }
     };
     let (prepared, source, invocation, cancellation, retention) = prepared;
-    let runner = match caught(prepared.initialize(index)).await {
+    let initialize = prepared.initialize_with_profile_schemas(index, profile_schemas);
+    let runner = match caught(initialize).await {
         Ok(Ok(Ok(runner))) => runner,
         Ok(Ok(Err(domain))) => {
             let detached = detachment.domain_data(&domain);

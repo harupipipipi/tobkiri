@@ -1,5 +1,6 @@
 //! Read the original workspace activation pointer and its selected envelope.
 use super::*;
+use crate::bootstrap_metadata::BoundProfileSchemas;
 use recovery_workspace::{APP_DENIED, pending};
 use tobkiri_canon::{CoreBuffer, CoreValue};
 
@@ -143,6 +144,26 @@ fn field_is(doc: &Document, id: usize, key: &str, expected: &str) -> bool {
         .is_some_and(|id| doc.string_is(id, expected))
 }
 
+/// Load the already selected component's finite resource under the workspace lock.
+pub(super) fn load_profile_schema<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    schemas: BoundProfileSchemas,
+    name: &str,
+) -> Result<()> {
+    let source = || {
+        OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Source,
+            "selected Setup component Profile schema resource",
+        )
+    };
+    let bytes = schemas.get(name).ok_or_else(source)?;
+    let data = json::decode_strict(bytes, op)?;
+    if data.entries(data.root).is_none() {
+        return Err(source());
+    }
+    Ok(())
+}
+
 fn record(doc: &Document, key: &str, invalid: &'static str) -> Result<usize> {
     doc.get(doc.root, key)
         .filter(|&id| matches!(doc.node(id), Node::Object(_) | Node::String(_)))
@@ -224,12 +245,42 @@ fn schema_failure(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::original_authority::definitions::tests::{operation, with_source};
     use serde_json::{Value, json};
 
     const NAME: &str = "selected.json";
+
+    static SCHEMAS: crate::BootstrapProfileSchemas = crate::BootstrapProfileSchemas {
+        component_sha256: "sha256:df236ea3735c6e7102f4284c4cd6af041c31b6edea151558769c21200fe2d787",
+        v4: include_bytes!(
+            "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_v4.schema.json"
+        ),
+        v5: include_bytes!(
+            "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_v5.schema.json"
+        ),
+    };
+
+    pub(in crate::original_authority::io::publication::recovery_authority) fn bound_fixture_schemas()
+    -> BoundProfileSchemas {
+        SCHEMAS
+            .bind(&Digest::parse(SCHEMAS.component_sha256).unwrap())
+            .unwrap()
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn loads_only_the_original_profile_pair_bound_to_the_compiled_component() {
+        assert!(SCHEMAS.bind(&Digest::hash(b"foreign component")).is_err());
+        let schemas = bound_fixture_schemas();
+        with_source(|source, read, cancellation, _| {
+            let op = operation(read, source, cancellation);
+            for (_, name) in PROFILE_SCHEMAS {
+                load_profile_schema(&op, schemas, name).unwrap();
+            }
+            assert!(load_profile_schema(&op, schemas, "profile_lock_v5.schema.json").is_err());
+        });
+    }
 
     struct Fixture {
         directory: PathBuf,

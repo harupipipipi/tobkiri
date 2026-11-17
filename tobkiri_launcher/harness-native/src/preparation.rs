@@ -1,7 +1,7 @@
 //! One original invocation for Engine creation, source reading and compilation.
 //! Source handles/digests prove no authorization; the caller must supply its
 //! actually admitted source and retain that original input owner's custody.
-use crate::{BootstrapInputOwner, BootstrapModuleIndex, NativeBootstrap};
+use crate::{BootstrapInputOwner, BootstrapModuleIndex, BootstrapProfileSchemas, NativeBootstrap};
 use anyhow::{Result, ensure};
 use std::{fs::File, io::Read, time::Instant};
 use tobkiri_canon::{CoreBuffer, Digest};
@@ -42,6 +42,7 @@ pub struct NativeComponentPreparation<S: NativeComponentOwner> {
 pub struct PreparedNativeComponent<S: NativeComponentOwner> {
     preparation: NativeComponentPreparation<S>,
     component: Component,
+    component_digest: Digest,
     observation: NativePreparationObservation,
 }
 
@@ -182,6 +183,7 @@ impl<S: NativeComponentOwner> NativeComponentPreparation<S> {
         Ok(PreparedNativeComponent {
             preparation: self,
             component,
+            component_digest: expected.clone(),
             observation,
         })
     }
@@ -262,7 +264,22 @@ impl<S: NativeComponentOwner> PreparedNativeComponent<S> {
     where
         S: BootstrapInputOwner,
     {
+        self.initialize_with_profile_schemas(index, None).await
+    }
+
+    /// Initialize with the fixed schema resources from the same component's receipt.
+    pub async fn initialize_with_profile_schemas(
+        self,
+        index: &'static BootstrapModuleIndex,
+        profile_schemas: Option<&'static BootstrapProfileSchemas>,
+    ) -> Result<std::result::Result<NativeBootstrap<S>, NativeDataError>>
+    where
+        S: BootstrapInputOwner,
+    {
         self.preparation.check_live()?;
+        let profile_schemas = profile_schemas
+            .map(|schemas| schemas.bind(&self.component_digest))
+            .transpose()?;
         let cancellation = self.preparation.cancellation;
         let result = NativeBootstrap::prepare_with_cancellation_parent(
             &self.preparation.engine,
@@ -270,6 +287,7 @@ impl<S: NativeComponentOwner> PreparedNativeComponent<S> {
             self.preparation.invocation,
             self.preparation.source,
             index,
+            profile_schemas,
             &cancellation,
         )
         .await;

@@ -345,7 +345,10 @@ async fn observe_case(
     let prepared = crate::NativeComponentPreparation::new(invocation.clone(), source)?
         .compile(File::open(component)?, digest)?;
     ensure!(prepared.observation().deadline == deadline);
-    let mut runtime = match prepared.initialize(&selected::INDEX).await? {
+    let mut runtime = match prepared
+        .initialize_with_profile_schemas(&selected::INDEX, Some(&selected::PROFILE_SCHEMAS))
+        .await?
+    {
         Ok(value) => value,
         Err(_) => bail!("actual case initialization refused"),
     };

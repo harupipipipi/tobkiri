@@ -178,6 +178,7 @@ jobs:
             ${{ runner.temp }}/harness-native/harness-native/inputs/plan.json
             ${{ runner.temp }}/harness-native/harness-native/inputs/provenance.json
             ${{ runner.temp }}/harness-native/harness-native/inputs/python/harness-native-dependencies.json
+            ${{ runner.temp }}/harness-native/harness-native/inputs/python/harness_native_dependency_data.py
             ${{ runner.temp }}/harness-native/harness-native/build/
             ${{ runner.temp }}/harness-native/harness-native/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native/work/generated-bindings/
@@ -185,6 +186,7 @@ jobs:
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/plan.json
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/provenance.json
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/python/harness-native-dependencies.json
+            ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/inputs/python/harness_native_dependency_data.py
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/build/
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native-schema-diagnostic/work/generated-bindings/
@@ -192,6 +194,7 @@ jobs:
             ${{ runner.temp }}/harness-native/harness-native-app-frame/inputs/plan.json
             ${{ runner.temp }}/harness-native/harness-native-app-frame/inputs/provenance.json
             ${{ runner.temp }}/harness-native/harness-native-app-frame/inputs/python/harness-native-dependencies.json
+            ${{ runner.temp }}/harness-native/harness-native-app-frame/inputs/python/harness_native_dependency_data.py
             ${{ runner.temp }}/harness-native/harness-native-app-frame/build/
             ${{ runner.temp }}/harness-native/harness-native-app-frame/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native-app-frame/work/generated-bindings/
