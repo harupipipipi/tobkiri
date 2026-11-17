@@ -55,9 +55,6 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
     if name.is_empty() || name == "." || name.contains('/') {
         return Err(raw(APP_DENIED, "active envelope path is invalid"));
     }
-    if name.as_bytes().contains(&0) {
-        return Err(value("embedded null byte"));
-    }
     let path_bytes = "activations/".len().saturating_add(name.len());
     let stage = OriginalAuthorityStage::Path;
     let _path = op.reserve(stage, path_bytes)?;
@@ -260,6 +257,22 @@ mod tests {
                 "activation envelope is unavailable: selected.json"
             );
             assert!(missing.cause.is_some());
+
+            fixture.pointer["envelope_path"] = json!("invalid\0leaf.json");
+            fixture.write_pointer();
+            let invalid_leaf = fixture.read(&op, budget).unwrap_err();
+            assert_eq!(invalid_leaf.class, "builtins.ValueError");
+            assert_eq!(
+                invalid_leaf.message,
+                "stat: embedded null character in path"
+            );
+            fs::remove_dir(fixture.directory.join("activations")).unwrap();
+            let missing_parent = fixture.read(&op, budget).unwrap_err();
+            assert_eq!(missing_parent.class, APP_DENIED);
+            assert_eq!(
+                missing_parent.message,
+                "activation envelope is unavailable: persistence child directory is unsafe"
+            );
         });
     }
 

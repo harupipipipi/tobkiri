@@ -135,9 +135,6 @@ fn with_envelope_path<S: OriginalAuthorityOwner, T>(
     let mut path = PathBuf::with_capacity(name.len().saturating_add(16));
     path.push("activations");
     path.push(name);
-    if path.as_os_str().as_encoded_bytes().contains(&0) {
-        return Err(value("embedded null byte"));
-    }
     use_path(&path)
 }
 

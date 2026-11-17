@@ -3901,16 +3901,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   チェックポイント、`Runtime.init` 完了、先頭のcatalog exportの前後を計測する。
   既存の残燃料と経過時間を記録し、2B fuel、30秒、64MiBの予算を共有する。
   ローカルでは `bootstrap-ci` のコンパイルとワークフロー検査13件が成功した。
-- コミット済みのShellを検証した後、workspace lockの外と再取得後でそれぞれ
+- `d6f2b035f` ではコミット済みのShellを検証した後、workspace lockの外と再取得後でそれぞれ
   配布物のメタデータを取り直す。同じ保留記録、envelope、Authority予約、
   SecurityEpochの場合に、ワークスペースの `active.json` を元のcanonical JSONで
   原子的に書き換え、その後に `pending.json` を消す。既存の配布記録は保持する。
   保留記録が変わった場合は復旧ループへ戻る。途中でenvelopeやepochが変わる例では
   元のポインタを保持する。再公開後にも残る未完了予約を中止してから、同じ状態ディレクトリで
   active pointerとenvelopeを照合する。現行レコードの検証、旧版migration、
-  再読による一致確認とHostポインタ公開は残る。パスにNULを含む例は親の確認順が原本と異なる。
+  再読による一致確認とHostポインタ公開は残る。パスにNULを含む場合も、親ディレクトリの
+  確認を先に行う元のエラー順を復元した。
   Authority関連のローカルRust試験93件とstrict Clippyが通過し、4件は原本fixture待ち。
 - `30fb1876b` の `schema_kernel/src/app_schema/references.rs` では、元の `pointer[1:]` と
   同じ `PySlice_New` でスライスを作る。`builtins.slice` の検索と呼出しを外し、先に取得した
   `unquote` と実際の `__getitem__` を使う。macOSのローカル拡張で原本比較19グループが通過。
+  [固定依存関係によるApp原本比較 CI 44086016083](https://github.com/harupipipipi/tobkiri/actions/runs/44086016083)も成功。
   同一予算でのWasm燃料差は未計測。Registryと他の名前解決は元と同じ順序を個別確認してから扱う。

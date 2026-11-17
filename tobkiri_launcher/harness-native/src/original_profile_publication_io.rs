@@ -676,8 +676,6 @@ impl Directory {
         let Some((name, directories)) = parts.split_last() else {
             return Err(secure_error("persistence path must be relative"));
         };
-        let name =
-            CString::new(name.as_bytes()).map_err(|_| OriginalAuthorityError::unavailable())?;
         let mut files = self.open(op)?;
         if files.try_reserve_exact(directories.len()).is_err() {
             return close_files(
@@ -730,16 +728,18 @@ impl Directory {
                 }
                 files.push(file);
             }
-            Ok(())
+            // The original opens each parent before passing the leaf to stat.
+            CString::new(name.as_bytes())
+                .map_err(|_| value("stat: embedded null character in path"))
         })();
-        if let Err(error) = result {
-            return close_files(files, Err(error));
+        match result {
+            Ok(name) => Ok(Parent {
+                files,
+                name,
+                _capacity: capacity,
+            }),
+            Err(error) => close_files(files, Err(error)),
         }
-        Ok(Parent {
-            files,
-            name,
-            _capacity: capacity,
-        })
     }
     pub(super) fn clear_journal<S: OriginalAuthorityOwner>(
         &self,
