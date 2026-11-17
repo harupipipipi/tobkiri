@@ -295,6 +295,8 @@ pub(super) fn retain_active<S: OriginalAuthorityOwner>(
     .map_err(|_| capacity())?;
     Ok(ActiveSnapshot {
         artifact_profile,
+        activation_profile_id: to_core(records.activation.field("profile_id")?)?,
+        catalog_revision: to_core(records.plan.field("catalog_revision")?)?,
         records: seals,
         candidate,
     })

@@ -982,7 +982,6 @@ fn process_lock<S: OriginalAuthorityOwner>(
 pub(super) enum LockName {
     Publication,
     Definition,
-    #[cfg(test)]
     HostSelection,
     Workspace([u8; 42]),
 }
@@ -1004,7 +1003,6 @@ impl LockName {
         match self {
             Self::Publication => c".bootstrap-publication.lock",
             Self::Definition => c".profile-definition.lock",
-            #[cfg(test)]
             Self::HostSelection => c".active-profile.lock",
             Self::Workspace(name) => {
                 CStr::from_bytes_with_nul(name).expect("fixed workspace lock name")
@@ -1090,7 +1088,9 @@ impl PublicationLock {
             Some(process_lock(op, &path, name)?)
         };
         let files = directory.open(op).map_err(|error| {
-            if name.is_workspace() && matches!(error.class, RAW_IO | SECURE_PERSISTENCE_ERROR) {
+            if (name.is_workspace() || matches!(name, LockName::HostSelection))
+                && matches!(error.class, RAW_IO | SECURE_PERSISTENCE_ERROR)
+            {
                 name.unavailable(error)
             } else {
                 error
@@ -1114,7 +1114,9 @@ impl PublicationLock {
                 let kind = error.kind();
                 let error = raw_io(error, Some(name.text()));
                 return Err(
-                    if name.is_workspace() && kind == std::io::ErrorKind::AlreadyExists {
+                    if (name.is_workspace() || matches!(name, LockName::HostSelection))
+                        && kind == std::io::ErrorKind::AlreadyExists
+                    {
                         caused(secure_error("persistence lock changed before open"), error)
                     } else {
                         error

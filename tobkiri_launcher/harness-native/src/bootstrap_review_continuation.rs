@@ -161,10 +161,12 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         return fresh_candidate(review, pack).await;
     }
     for discard in [true, false] {
-        match review
-            .read
-            .enter_recovery(&pack.work.get().source, pack.cancellation, discard)
-        {
+        match review.read.enter_recovery_metered(
+            &pack.work.get().source,
+            pack.cancellation,
+            discard,
+            pack.input_budget,
+        ) {
             Err(error) => return Ok(Err(original_failure(error))),
             Ok(
                 PublicationPrefix::NoJournal

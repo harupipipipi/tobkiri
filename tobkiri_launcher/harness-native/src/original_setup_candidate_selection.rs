@@ -143,7 +143,7 @@ impl FreshSetup {
 
 impl PublicationRead {
     /// Freeze the actual Host selection at the original caller's root scope,
-    /// before catalog loading, after both recovery occurrences returned None.
+    /// before catalog loading, after both recovery occurrences returned normally.
     pub(crate) fn acquire_candidate_root<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
@@ -689,7 +689,7 @@ fn select<S: OriginalAuthorityOwner>(
     }
     #[cfg(unix)]
     {
-        let Some(pointer) = active_profile::load(op, root)? else {
+        let Some(pointer) = active_profile::load_verified(op, root, budget)? else {
             return Ok(Err("source update requires the active Profile"));
         };
         if !pointer.profile_id().is(profile_id) {

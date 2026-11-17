@@ -17,6 +17,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_recovery_authority.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace_active.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_publish_active.rs
       - tobkiri_launcher/harness-native/src/original_recovery_snapshot_graph*.rs
       - tobkiri_launcher/harness-native/src/original_recovery_snapshot_projections.rs
       - tobkiri_launcher/harness-native/src/original_recovery_profile_schema.rs
@@ -240,6 +241,13 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::catalog::shell_inputs::recovery_tests::
           -- --test-threads=1 --nocapture
+      - name: Check the Host active pointer commit and competing predecessors
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-host-pointer-commit.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::active_profile::tests::host_pointer_commit
+          -- --test-threads=1 --nocapture
       - name: Check descriptor-bound committed artifact identity and digests
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -362,6 +370,7 @@ jobs:
             ${{ runner.temp }}/native-recovery-incomplete.log*
             ${{ runner.temp }}/native-recovery-abort.log*
             ${{ runner.temp }}/native-recovery-shell-selection.log*
+            ${{ runner.temp }}/native-host-pointer-commit.log*
             ${{ runner.temp }}/native-recovery-artifact.log*
             ${{ runner.temp }}/native-recovery-executable.log*
             ${{ runner.temp }}/native-recovery-bundle.log*

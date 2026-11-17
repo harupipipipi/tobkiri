@@ -169,6 +169,7 @@ pub(crate) enum DetachmentIssue {
     Allocation,
     Depth,
     Encoding,
+    UnprojectedSchemaValidation,
 }
 #[derive(Debug)]
 pub(crate) enum DetachedFailure {

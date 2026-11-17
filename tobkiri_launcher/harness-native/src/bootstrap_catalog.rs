@@ -767,9 +767,6 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         Ok(RecoveryAuthorityReached::LoadActiveSnapshotLockSchema { legacy }) => {
             BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotLockSchemaNotBound { legacy }
         }
-        Ok(RecoveryAuthorityReached::PublishActiveSnapshot) => {
-            BootstrapReviewReachpoint::RecoveryPublishActiveSnapshotNotBound
-        }
         Ok(RecoveryAuthorityReached::ActiveSnapshotReconfirmationRequired) => {
             BootstrapReviewReachpoint::RecoverySurfaceActiveSnapshotReconfirmationNotBound
         }
@@ -786,7 +783,9 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
             )
             .await?));
         }
-        Ok(RecoveryAuthorityReached::RecoveredNone) => {
+        Ok(
+            RecoveryAuthorityReached::RecoveredNone | RecoveryAuthorityReached::RecoveredPublished,
+        ) => {
             let request = denied::frame(pack, RECOVERY_FINISHED_REQUEST, [("catalog", root)])?;
             let response = pack
                 .observe_fixed_projection(&request, "bootstrap-recovery-finished")

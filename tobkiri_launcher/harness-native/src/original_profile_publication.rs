@@ -107,15 +107,26 @@ impl PublicationRead {
         cancellation: &CoreCancellation,
         discard_superseded: bool,
     ) -> Result<Prefix> {
-        self.run_inner(owner, cancellation, discard_superseded, false)
+        self.run_inner(owner, cancellation, discard_superseded, false, None)
     }
+    #[cfg(test)]
     pub(crate) fn enter_recovery<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
         discard_superseded: bool,
     ) -> Result<Prefix> {
-        self.run_inner(owner, cancellation, discard_superseded, true)
+        self.run_inner(owner, cancellation, discard_superseded, true, None)
+    }
+
+    pub(crate) fn enter_recovery_metered<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        discard_superseded: bool,
+        budget: &Arc<dyn tobkiri_canon::AllocationBudget>,
+    ) -> Result<Prefix> {
+        self.run_inner(owner, cancellation, discard_superseded, true, Some(budget))
     }
 
     /// The confirmed capture takes its outer lock before recovering or resolving.
@@ -217,6 +228,7 @@ impl PublicationRead {
         cancellation: &CoreCancellation,
         discard_superseded: bool,
         retain_continuation: bool,
+        budget: Option<&Arc<dyn tobkiri_canon::AllocationBudget>>,
     ) -> Result<Prefix> {
         #[cfg(unix)]
         if self.pending.is_some() {
@@ -245,6 +257,7 @@ impl PublicationRead {
                     root,
                     discard_superseded,
                     retain_continuation,
+                    budget,
                     #[cfg(unix)]
                     &mut self.pending,
                     #[cfg(test)]
@@ -459,6 +472,7 @@ fn recovery_error(error: OriginalAuthorityError) -> OriginalAuthorityError {
                 | SECURE_PERSISTENCE_ERROR
                 | "core_runtime.hmac_key_manager.SigningKeyError"
                 | "core_runtime.active_profile_store_v4.ActiveProfileStoreError"
+                | "core_runtime.active_profile_store_v4.ActiveProfileStoreConflict"
                 | "core_runtime.active_profile_store_v4.ActiveProfileStoreIntegrityError"
                 | "core_runtime.active_profile_store_v4.ActiveProfileStoreLockTimeout"
         )
@@ -480,6 +494,7 @@ fn prefix<S: OriginalAuthorityOwner>(
     root: &Path,
     discard_superseded: bool,
     retain_continuation: bool,
+    budget: Option<&Arc<dyn tobkiri_canon::AllocationBudget>>,
     #[cfg(unix)] pending: &mut Option<PendingRecoveryScope>,
     #[cfg(test)] remove_intent_after_lock: bool,
 ) -> Result<Prefix> {
@@ -516,7 +531,10 @@ fn prefix<S: OriginalAuthorityOwner>(
                 return Ok(Prefix::NoIntent);
             };
             let expected = intent.predecessor(op)?;
-            let current = active_profile::load(op, root)?;
+            let current = match budget {
+                Some(budget) => active_profile::load_verified(op, root, budget)?,
+                None => active_profile::load(op, root)?,
+            };
             if !intent.is_current(current.as_ref(), expected.as_ref())? {
                 // prepare_bootstrap_profile_review supplies confirmation=None.
                 // Its outer occurrence discards; the inner occurrence keeps.
@@ -558,7 +576,7 @@ fn prefix<S: OriginalAuthorityOwner>(
     }
     #[cfg(not(unix))]
     {
-        let _ = (retain_continuation, paths_capacity);
+        let _ = (retain_continuation, paths_capacity, budget);
         Err(OriginalAuthorityError::unsupported(
             OriginalAuthorityStage::Source,
             "Windows publication persistence/ACL",
@@ -727,7 +745,8 @@ fn confirmed_scope<S: OriginalAuthorityOwner>(
             let intent = read_intent(op, &profiles).map_err(recovery_error)?;
             if let Some(mut intent) = intent {
                 let expected = intent.predecessor(op).map_err(recovery_error)?;
-                let current = active_profile::load(op, root).map_err(recovery_error)?;
+                let current =
+                    active_profile::load_verified(op, root, budget).map_err(recovery_error)?;
                 if !intent
                     .is_current(current.as_ref(), expected.as_ref())
                     .map_err(recovery_error)?
@@ -743,7 +762,7 @@ fn confirmed_scope<S: OriginalAuthorityOwner>(
                 ));
             }
         }
-        active_profile::load(op, root)
+        active_profile::load_verified(op, root, budget)
     })();
     match result {
         Ok(predecessor) => Ok(ConfirmedScope {

@@ -308,6 +308,15 @@ pub(super) fn detach_cause(
         OriginalAuthorityCause::Deadline => OriginalAuthorityCause::Deadline,
         OriginalAuthorityCause::SourceUnavailable => OriginalAuthorityCause::SourceUnavailable,
         OriginalAuthorityCause::Unsupported(value) => OriginalAuthorityCause::Unsupported(value),
+        OriginalAuthorityCause::SchemaValidation { .. } => {
+            // Setup projects this Store-funded graph through the original
+            // guest error factory before detachment. A graph left here
+            // cannot outlive the worker's Store.
+            return Err(DetachedFailure::Detachment {
+                stage: Stage::Operation,
+                issue: DetachmentIssue::UnprojectedSchemaValidation,
+            });
+        }
         OriginalAuthorityCause::Python {
             class,
             message,

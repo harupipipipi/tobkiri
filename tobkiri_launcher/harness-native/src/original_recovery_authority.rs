@@ -11,6 +11,8 @@ use tobkiri_canon::{AllocationBudget, CoreValue};
 mod active_reservation;
 #[path = "original_recovery_pending_reservation.rs"]
 mod pending_reservation;
+#[path = "original_recovery_publish_active.rs"]
+mod publish_active;
 #[path = "original_recovery_workspace_active.rs"]
 mod workspace_active;
 
@@ -25,7 +27,7 @@ pub(crate) enum RecoveryAuthorityReached {
     LoadActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     CheckActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     LoadActiveSnapshotLockSchema { legacy: bool },
-    PublishActiveSnapshot,
+    RecoveredPublished,
     ActiveSnapshotReconfirmationRequired,
     BuildLegacyActivationSuccessor,
     MissingPublishedAuthority,
@@ -178,6 +180,15 @@ impl PublicationRead {
                             |profile| (checks.artifact)(&op, profile, profile_id),
                             || Ok(recover_activation(true)?.expect("requested active snapshot")),
                             |digest| (checks.definition)(&op, profile_id, digest),
+                            |active| {
+                                publish_active::publish(
+                                    &op,
+                                    &pending.root,
+                                    &pending.scope,
+                                    budget,
+                                    active,
+                                )
+                            },
                         );
                     }
                 } else if active_reservation::read(&op, store, &pending.intent)? {
@@ -212,7 +223,10 @@ impl PublicationRead {
                 "publication recovery Authority cleanup is uncertain",
             ));
         }
-        if reached == RecoveryAuthorityReached::RecoveredNone {
+        if matches!(
+            reached,
+            RecoveryAuthorityReached::RecoveredNone | RecoveryAuthorityReached::RecoveredPublished
+        ) {
             let pending = self.pending.take().expect("completed publication recovery");
             pending
                 .scope
@@ -257,6 +271,7 @@ fn verify_active_snapshot(
     verify_artifact: impl FnOnce(&CoreValue) -> Result<ActiveArtifactVerification>,
     reread: impl FnOnce() -> Result<workspace_active::ActiveSnapshotRead>,
     verify_definition: impl FnOnce(&str) -> Result<()>,
+    publish: impl FnOnce(&workspace_active::ActiveSnapshot) -> Result<()>,
 ) -> Result<RecoveryAuthorityReached> {
     let Some(first) = first.current else {
         return Ok(incomplete_snapshot(first.prefix));
@@ -285,9 +300,10 @@ fn verify_active_snapshot(
             "Profile publication candidate changed",
         ));
     }
-    let digest = first.profile_definition_digest();
+    let digest = first.candidate_field("profile_definition_digest");
     verify_definition(digest.as_str().expect("verified Profile definition digest"))?;
-    Ok(RecoveryAuthorityReached::PublishActiveSnapshot)
+    publish(&first)?;
+    Ok(RecoveryAuthorityReached::RecoveredPublished)
 }
 
 #[cfg(test)]

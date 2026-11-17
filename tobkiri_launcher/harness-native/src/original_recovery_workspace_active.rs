@@ -59,6 +59,8 @@ pub(super) struct ActiveSnapshotPrefix {
 #[derive(Debug)]
 pub(super) struct ActiveSnapshot {
     pub(super) artifact_profile: CoreValue,
+    pub(super) activation_profile_id: CoreValue,
+    pub(super) catalog_revision: CoreValue,
     records: [Digest; 4],
     candidate: CoreValue,
 }
@@ -68,10 +70,10 @@ impl ActiveSnapshot {
         self.records == other.records
     }
 
-    pub(super) fn profile_definition_digest(&self) -> CoreValue {
+    pub(super) fn candidate_field(&self, name: &'static str) -> CoreValue {
         self.candidate
-            .get_key("profile_definition_digest")
-            .expect("verified Profile definition digest")
+            .get_key(name)
+            .expect("verified publication candidate field")
     }
 
     pub(super) fn matches_candidate(&self, intent: &Intent) -> Result<bool> {
@@ -573,8 +575,10 @@ pub(super) mod tests {
     use crate::original_authority::definitions::tests::{
         lock_free, operation, with_setup_source, with_source,
     };
+    use hmac::{Hmac, Mac};
     use rusqlite::{Connection, params};
     use serde_json::{Value, json};
+    use sha2::Sha256;
     use std::ops::ControlFlow;
 
     const NAME: &str = "selected.json";
@@ -1139,6 +1143,7 @@ pub(super) mod tests {
             &Connection,
             &mut Intent,
             &mut dyn FnMut(&mut Fixture) -> Result<ActiveSnapshotRead>,
+            &mut dyn FnMut(&ActiveSnapshot) -> Result<()>,
         ),
     ) {
         let activation = &records["activation"];
@@ -1205,6 +1210,15 @@ pub(super) mod tests {
                 )
                 .unwrap();
                 let lock = fixture.directory.join(lock_name.text());
+                let stem = activation["activation_id"]
+                    .as_str()
+                    .unwrap()
+                    .strip_prefix("activation:")
+                    .unwrap();
+                let published_envelope = fixture
+                    .directory
+                    .join("activations")
+                    .join(format!("{stem}.json"));
                 let mut capture = |saved: &mut Fixture| {
                     let snapshot = reader.recover(&op, |state, digest, pending| {
                         assert!(pending.is_none());
@@ -1212,17 +1226,95 @@ pub(super) mod tests {
                         saved.pointer["workspace_digest"] = json!(digest.as_str());
                         saved.envelope["workspace_digest"] = json!(digest.as_str());
                         saved.write();
+                        fs::copy(
+                            saved.directory.join("activations").join(NAME),
+                            &published_envelope,
+                        )
+                        .unwrap();
                         read(&op, state, digest, budget, Some(schemas), store, profile_id)
                             .map(ControlFlow::<(), _>::Continue)
                     });
                     assert!(lock_free(&lock));
                     snapshot.map(|result| result.continue_value().expect("active snapshot"))
                 };
-                test(&mut fixture, &db, &mut intent, &mut capture);
+                let mut publish = |active: &ActiveSnapshot| {
+                    assert!(lock_free(&lock));
+                    verify_host_publication(
+                        &op,
+                        &source.root,
+                        budget,
+                        active,
+                        &signed_fields["candidate"],
+                    )
+                };
+                test(&mut fixture, &db, &mut intent, &mut capture, &mut publish);
                 Ok(())
             })
             .unwrap();
         });
+    }
+
+    fn verify_host_publication<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        root: &Path,
+        budget: &Arc<dyn AllocationBudget>,
+        active: &ActiveSnapshot,
+        candidate: &Value,
+    ) -> Result<()> {
+        use super::super::publish_active::publish;
+        let profiles = root.join("profiles");
+        let scope = RecoveryScope::acquire(op, &profiles)?;
+        let key = [b'k'; 32];
+        let key_path = profiles.join(KEY);
+        fs::write(&key_path, key).unwrap();
+        fs::set_permissions(key_path, fs::Permissions::from_mode(0o600)).unwrap();
+        let payload = json!({
+            "candidate": candidate, "confirmation_digest": null, "predecessor": null,
+            "schema": "io.tobkiri.profile-publication-intent.v1",
+        });
+        let preimage = python_default_spacing(op, &serde_json::to_vec(&payload).unwrap())?;
+        let mut hmac = Hmac::<Sha256>::new_from_slice(&key).unwrap();
+        hmac.update(&preimage);
+        let signature = Digest::from_sha256(hmac.finalize().into_bytes().into());
+        let intent_bytes =
+            serde_json::to_vec(&json!({"payload": payload, "hmac": signature.hex()})).unwrap();
+        let intent = profiles.join(JOURNAL);
+        let write_intent = || {
+            fs::write(&intent, &intent_bytes).unwrap();
+            fs::set_permissions(&intent, fs::Permissions::from_mode(0o600)).unwrap();
+        };
+        write_intent();
+        publish(op, root, &scope, budget, active)?;
+        assert!(!intent.exists());
+        let pointer_file = profiles.join("active.json");
+        let pointer = fs::read(&pointer_file).unwrap();
+        let value: Value = serde_json::from_slice(&pointer).unwrap();
+        assert_eq!(value["generation"], 1);
+        assert_eq!(value["profile_id"], candidate["profile_id"]);
+        assert_eq!(value["activation_id"], candidate["activation_id"]);
+        write_intent();
+        publish(op, root, &scope, budget, active)?;
+        assert!(!intent.exists());
+        assert_eq!(fs::read(&pointer_file).unwrap(), pointer);
+
+        // After an independent commit advances the generation, the original
+        // intent cannot treat the same activation identity as its own commit.
+        publish(op, root, &scope, budget, active)?;
+        let newer = fs::read(&pointer_file).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&newer).unwrap()["generation"],
+            2
+        );
+        write_intent();
+        assert_eq!(
+            publish(op, root, &scope, budget, active)
+                .unwrap_err()
+                .message,
+            "Profile publication predecessor is stale"
+        );
+        assert_eq!(fs::read(&intent).unwrap(), intent_bytes);
+        assert_eq!(fs::read(&pointer_file).unwrap(), newer);
+        scope.finish(op, Ok(Prefix::RecoveredNone)).map(|_| ())
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1231,7 +1323,7 @@ pub(super) mod tests {
             "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
         ))
         .unwrap();
-        with_snapshot(&records, |fixture, db, _, capture| {
+        with_snapshot(&records, |fixture, db, _, capture, _| {
             assert_eq!(
                 capture(fixture).unwrap().prefix.check,
                 ProfileCheck::NeedsLegacySuccessor
@@ -1268,7 +1360,7 @@ pub(super) mod tests {
             let record = field.strip_suffix("_api_version").unwrap();
             assert_eq!(records[record][field], id);
         }
-        with_snapshot(&records, |fixture, db, intent, capture| {
+        with_snapshot(&records, |fixture, db, intent, capture, publish| {
             assert_eq!(
                 capture(fixture).unwrap().prefix,
                 ActiveSnapshotPrefix {
@@ -1306,10 +1398,11 @@ pub(super) mod tests {
                     intent,
                     verify,
                     || capture(fixture),
-                    verify_definition
+                    verify_definition,
+                    publish,
                 )
                 .unwrap(),
-                RecoveryAuthorityReached::PublishActiveSnapshot,
+                RecoveryAuthorityReached::RecoveredPublished,
             );
             let first = capture(fixture).unwrap();
             let changed = verify_active_snapshot(
@@ -1325,6 +1418,7 @@ pub(super) mod tests {
                     reread
                 },
                 |_| panic!("changed records cannot reach the definition check"),
+                |_| panic!("changed records cannot be published"),
             )
             .unwrap_err();
             assert_eq!(
@@ -1343,6 +1437,7 @@ pub(super) mod tests {
                 verify,
                 || capture(fixture),
                 |_| panic!("different candidate cannot reach the definition check"),
+                |_| panic!("different candidate cannot be published"),
             )
             .unwrap_err();
             assert_eq!(
@@ -1359,6 +1454,7 @@ pub(super) mod tests {
                     |_| panic!(
                         "verified successor requires reconfirmation before checking the definition"
                     ),
+                    |_| panic!("verified successor cannot be published before reconfirmation"),
                 )
                 .unwrap(),
                 RecoveryAuthorityReached::ActiveSnapshotReconfirmationRequired,

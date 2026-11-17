@@ -339,7 +339,7 @@ pub(super) fn bootstrap_predecessor_inputs<S: OriginalAuthorityOwner>(
             .max(1),
     )?;
     let registered = store.get_profile(op, &Text::from_str(profile_id), budget)?;
-    let pointer = active_profile::load(op, root)?;
+    let pointer = active_profile::load_verified(op, root, budget)?;
     Ok(BootstrapPredecessorInputs {
         _snapshot: snapshot,
         registered,
