@@ -4038,6 +4038,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ローカルPython 3.13.9・元と同じライブラリ版で実拡張をビルドし、64件の本体比較、
   boundary 11群、reference 36群、object 22群と既存の追加比較が通過した。
   schema-phasesを含むビルド確認と、入力・候補の補助テスト15件も成功した。
+  [App callerの原本比較CI 44123561928](https://github.com/harupipipipi/tobkiri/actions/runs/44123561928)
+  は固定Python 3.13.16のLinuxでも通過した。
   元の `keywords.rs` のRequired／DependenciesとApp frameには走査とメッセージ整形の
   重複がある。両経路のiterator寿命とエラーcontextの一致を確認したら、小さい共有処理へ
   移せる。document validator全体の移植と、実Wasmの燃料・期限の検証は後続。
@@ -4072,8 +4074,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ローカルの原本生成fixtureでは、Rustが保存したProfile・Lock・Plan・Activationが
   元Pythonと一致した。権限世代の変更、保存前後のartifact変更と、保存後に残ったpending
   からの復旧も検証した。Rust 220件、Python 243件、CI feature付きlibraryのstrict Clippy、
-  workflow・CI補助52件が通過した。tests込みのClippyは既存の
-  `original_external_catalog_io.rs` のtests module配置で停止する。
+  workflow・CI補助52件が通過した。`eeec29fd8` は
+  `original_external_catalog_io.rs` のtests moduleを末尾へ移し、tests込みのstrict Clippyと
+  関連20件を通過した。移動したテスト本体と製品コードの一致も比較した。
   定義CIのcatalogテスト数指定も実行済み8件に合わせた。
   実Wasmを通す復旧全体と、元GUIからの会話を含む製品検証は残る。
   現在のresolver結果は `bootstrap_catalog.rs` でscopeと形式を確認し、
@@ -4094,4 +4097,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   は同じrunで生成したWasmの検証済みセットを元のLauncherへ配置するテストに成功。
   [復旧resolver接続後の実Wasm CI 44114533643](https://github.com/harupipipipi/tobkiri/actions/runs/44114533643)
   は成果物の生成とbootstrap検証を通過した。
+  [実保存を含む定義CI 44119941406](https://github.com/harupipipipi/tobkiri/actions/runs/44119941406)
+  はLinux・macOSで通過し、[実Wasm CI 44119964703](https://github.com/harupipipipi/tobkiri/actions/runs/44119964703)
+  は同じ世代の成果物生成とbootstrap検証を通過した。
   SetupからGUI承認、会話までの実機検証は後続。
