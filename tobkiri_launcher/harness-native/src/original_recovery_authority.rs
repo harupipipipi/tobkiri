@@ -16,8 +16,7 @@ mod workspace_active;
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    ValidateActiveSnapshotRecords,
-    MigrateLegacySnapshot,
+    LoadActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     MissingPublishedAuthority,
     RecoveredNone,
     MatchedReservation,
@@ -140,13 +139,9 @@ impl PublicationRead {
                     if active_reservation::read(&op, store, &pending.intent)? {
                         let snapshot =
                             recover_activation(true)?.expect("requested active snapshot");
-                        return Ok(match snapshot {
-                            workspace_active::ActiveSnapshotPrefix::ReadyForRecordValidation => {
-                                RecoveryAuthorityReached::ValidateActiveSnapshotRecords
-                            }
-                            workspace_active::ActiveSnapshotPrefix::LegacyMigration => {
-                                RecoveryAuthorityReached::MigrateLegacySnapshot
-                            }
+                        return Ok(RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema {
+                            name: snapshot.profile_schema,
+                            legacy: snapshot.legacy,
                         });
                     }
                 } else if active_reservation::read(&op, store, &pending.intent)? {
@@ -229,6 +224,11 @@ mod tests {
     const DATABASE: &str = "authority/v4.sqlite3";
     const GUARD: &str = "authority/.v4.sqlite3.lifecycle.lock";
     const LOCK_PATH: &str = "profiles/.bootstrap-publication.lock";
+    const PROFILE_SCHEMA_REACHED: RecoveryAuthorityReached =
+        RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema {
+            name: "profile_v5.schema.json",
+            legacy: false,
+        };
 
     fn enter(source: &Source, read: &mut PublicationRead, cancellation: &CoreCancellation) {
         enter_candidate(
@@ -421,14 +421,14 @@ mod tests {
                 PROFILE_ID,
                 "+１",
                 "pinned.json",
-                Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecords),
+                Ok(PROFILE_SCHEMA_REACHED),
             ),
             (
                 "active",
                 PROFILE_ID,
                 "1",
                 "reformatted.json",
-                Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecords),
+                Ok(PROFILE_SCHEMA_REACHED),
             ),
             (
                 "active",
@@ -554,7 +554,7 @@ mod tests {
                 )
                 .unwrap();
                 let contents = format!(
-                    r#"{{"activation":{{"state":"active"}},"lock":{{}},"plan":{{"plan_digest":"plan","security_epoch":2}},"profile":{{"profile_authority_snapshot_digest":"authority"}},"schema":"io.tobkiri.defaultspack-activation-envelope.v1","workspace_digest":"{digest}"}}"#,
+                    r#"{{"activation":{{"state":"active"}},"lock":{{}},"plan":{{"plan_digest":"plan","security_epoch":2}},"profile":{{"profile_api_version":"io.tobkiri.profile.v5","profile_authority_snapshot_digest":"authority"}},"schema":"io.tobkiri.defaultspack-activation-envelope.v1","workspace_digest":"{digest}"}}"#,
                 );
                 let envelope_digest = Digest::hash(contents.as_bytes());
                 fs::write(&stored_envelope, &contents).unwrap();
@@ -606,8 +606,7 @@ mod tests {
                     [epoch],
                 )
                 .unwrap();
-                let publish =
-                    expected == Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecords);
+                let publish = expected == Ok(PROFILE_SCHEMA_REACHED);
                 if publish {
                     insert(&db, 2, "activation:abandoned", "prepared");
                     db.execute(

@@ -1,9 +1,15 @@
 //! Read the original workspace activation pointer and its selected envelope.
 use super::*;
 use recovery_workspace::{APP_DENIED, pending};
+use tobkiri_canon::{CoreBuffer, CoreValue};
 
 pub(super) const POINTER_SCHEMA: &str = "io.tobkiri.defaultspack-active-pointer.v1";
 const ENVELOPE_SCHEMA: &str = "io.tobkiri.defaultspack-activation-envelope.v1";
+const CANONICALIZATION_ERROR: &str = "tobkiri_protocol.errors.CanonicalizationError";
+const PROFILE_SCHEMAS: [(&str, &str); 2] = [
+    ("io.tobkiri.profile.v4", "profile_v4.schema.json"),
+    ("io.tobkiri.profile.v5", "profile_v5.schema.json"),
+];
 const POINTER_KEYS: [&str; 5] = [
     "schema",
     "activation_id",
@@ -13,12 +19,12 @@ const POINTER_KEYS: [&str; 5] = [
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum ActiveSnapshotPrefix {
-    ReadyForRecordValidation,
-    LegacyMigration,
+pub(super) struct ActiveSnapshotPrefix {
+    pub(super) profile_schema: &'static str,
+    pub(super) legacy: bool,
 }
 
-/// Read the locked snapshot up to record validation or legacy migration.
+/// Read the first record up to the original versioned App schema load.
 pub(super) fn read<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &Directory,
@@ -93,7 +99,7 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
         ));
     }
 
-    record(&envelope, "profile", "activation profile record is invalid")?;
+    let profile = record(&envelope, "profile", "activation profile record is invalid")?;
     let lock = record(&envelope, "lock", "activation lock record is invalid")?;
     let plan = record(&envelope, "plan", "activation plan record is invalid")?;
     let activation = record(
@@ -101,7 +107,7 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
         "activation",
         "activation envelope records are invalid",
     )?;
-    if [lock, plan, activation]
+    let legacy = [lock, plan, activation]
         .iter()
         .all(|id| envelope.entries(*id).is_some())
         && (field_is(
@@ -119,11 +125,17 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
             activation,
             "activation_api_version",
             "io.tobkiri.activation-record.v1",
-        ))
-    {
-        return Ok(ActiveSnapshotPrefix::LegacyMigration);
+        ));
+    // The replacement catalog is held by the caller. Legacy migration then
+    // requires a raw mapping before the first ordinary validate_document call.
+    if legacy && envelope.entries(profile).is_none() {
+        return Err(raw(APP_DENIED, "legacy activation profile is invalid"));
     }
-    Ok(ActiveSnapshotPrefix::ReadyForRecordValidation)
+    let profile_schema = select_profile_schema(op, budget, &envelope, profile)?;
+    Ok(ActiveSnapshotPrefix {
+        profile_schema,
+        legacy,
+    })
 }
 
 fn field_is(doc: &Document, id: usize, key: &str, expected: &str) -> bool {
@@ -135,6 +147,80 @@ fn record(doc: &Document, key: &str, invalid: &'static str) -> Result<usize> {
     doc.get(doc.root, key)
         .filter(|&id| matches!(doc.node(id), Node::Object(_) | Node::String(_)))
         .ok_or_else(|| raw(APP_DENIED, invalid))
+}
+
+fn select_profile_schema<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    envelope: &Document,
+    profile: usize,
+) -> Result<&'static str> {
+    // The canonical envelope already proves an object child's canonical JSON
+    // eligibility. Preserve its ordered arena. Serialized text requires an
+    // independent strict parse before the version lookup.
+    let decoded = if matches!(envelope.node(profile), Node::String(_)) {
+        let text = definitions::render_python_str(op, budget, envelope, profile)?;
+        Some(match json::decode_strict(text.as_bytes(), op) {
+            Ok(document) => document,
+            Err(error) if error.class == CANONICALIZATION_ERROR => {
+                return Err(schema_failure(budget, Err(error))?);
+            }
+            Err(error) => return Err(error),
+        })
+    } else {
+        None
+    };
+    let (doc, profile) = decoded
+        .as_deref()
+        .map_or((envelope, profile), |doc| (doc, doc.root));
+    let message = if doc.entries(profile).is_some() {
+        for (version, schema) in PROFILE_SCHEMAS {
+            if field_is(doc, profile, "profile_api_version", version) {
+                return Ok(schema);
+            }
+        }
+        "unsupported profile API version"
+    } else {
+        "serialized protocol document must be an object"
+    };
+    Err(schema_failure(budget, Ok(message))?)
+}
+
+fn schema_failure(
+    budget: &Arc<dyn AllocationBudget>,
+    failure: std::result::Result<&'static str, OriginalAuthorityError>,
+) -> Result<OriginalAuthorityError> {
+    let capacity = || OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
+    let mut argument = CoreBuffer::builder(budget, tobkiri_canon::MAX_BYTES);
+    let (diagnostic, cause) = match failure {
+        Ok(message) => {
+            argument
+                .append(message.as_bytes())
+                .map_err(|_| capacity())?;
+            (None, None)
+        }
+        Err(error) => {
+            for bytes in [error.message.as_bytes(), b": ", error.message.as_bytes()] {
+                argument.append(bytes).map_err(|_| capacity())?;
+            }
+            let diagnostic = CoreValue::string(&error.message, budget).map_err(|_| capacity())?;
+            (Some(diagnostic), Some(Box::new(into_cause(error))))
+        }
+    };
+    let diagnostics =
+        CoreValue::array_shared(diagnostic.into_iter().map(Ok), budget).map_err(|_| capacity())?;
+    let argument = argument.finish().map_err(|_| capacity())?;
+    let mut error = raw(
+        crate::bootstrap_review::DENIED,
+        "Profile publication recovery failed closed",
+    );
+    error.cause = Some(OriginalAuthorityCause::SchemaValidation {
+        argument,
+        diagnostics,
+        cause,
+    });
+    error.suppressed = true;
+    Ok(error)
 }
 
 #[cfg(test)]
@@ -159,7 +245,8 @@ mod tests {
             let envelope = json!({
                 "schema": ENVELOPE_SCHEMA,
                 "workspace_digest": workspace.as_str(),
-                "profile": {}, "lock": {}, "plan": {}, "activation": {},
+                "profile": {"profile_api_version": "io.tobkiri.profile.v5"},
+                "lock": {}, "plan": {}, "activation": {},
                 "additional_envelope_field": true,
             });
             let pointer = json!({
@@ -309,7 +396,7 @@ mod tests {
                 (
                     "activation profile record is invalid",
                     "profile",
-                    json!("serialized profile"),
+                    json!(r#"{"profile_api_version":"io.tobkiri.profile.v4"}"#),
                 ),
                 ("activation lock record is invalid", "lock", json!({})),
                 ("activation plan record is invalid", "plan", json!({})),
@@ -329,7 +416,10 @@ mod tests {
             fixture.write();
             assert_eq!(
                 fixture.read(&op, budget).unwrap(),
-                ActiveSnapshotPrefix::ReadyForRecordValidation
+                ActiveSnapshotPrefix {
+                    profile_schema: "profile_v4.schema.json",
+                    legacy: false
+                }
             );
         });
     }
@@ -352,7 +442,10 @@ mod tests {
                 fixture.write();
                 assert_eq!(
                     fixture.read(&op, budget).unwrap(),
-                    ActiveSnapshotPrefix::LegacyMigration
+                    ActiveSnapshotPrefix {
+                        profile_schema: "profile_v5.schema.json",
+                        legacy: true
+                    }
                 );
                 fixture.envelope[record] = json!({});
             }
@@ -361,7 +454,87 @@ mod tests {
             fixture.write();
             assert_eq!(
                 fixture.read(&op, budget).unwrap(),
-                ActiveSnapshotPrefix::ReadyForRecordValidation
+                ActiveSnapshotPrefix {
+                    profile_schema: "profile_v5.schema.json",
+                    legacy: false
+                }
+            );
+            fixture.envelope["plan"] = json!({});
+            fixture.envelope["profile"] =
+                json!(r#"{"profile_api_version":"io.tobkiri.profile.v4"}"#);
+            fixture.write();
+            let error = fixture.read(&op, budget).unwrap_err();
+            assert_eq!(error.class, APP_DENIED);
+            assert_eq!(error.message, "legacy activation profile is invalid");
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn first_profile_record_matches_the_original_decode_and_version_failures() {
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let mut fixture = Fixture::new(source.root.join("activation"));
+            // These are admissible envelope fields. Their own content cannot
+            // be checked before the first profile validates completely.
+            for name in ["lock", "plan", "activation"] {
+                fixture.envelope[name] = json!("invalid JSON");
+            }
+            let duplicate = "duplicate JSON object key: 'profile_api_version'";
+            for (profile, message, has_cause) in [
+                (
+                    json!("[]"),
+                    "serialized protocol document must be an object",
+                    false,
+                ),
+                (
+                    json!({"profile_api_version": false}),
+                    "unsupported profile API version",
+                    false,
+                ),
+                (
+                    json!({"profile_api_version": "io.tobkiri.profile.v999"}),
+                    "unsupported profile API version",
+                    false,
+                ),
+                (
+                    json!(r#"{"profile_api_version":0,"profile_api_version":1}"#),
+                    duplicate,
+                    true,
+                ),
+            ] {
+                fixture.envelope["profile"] = profile;
+                fixture.write();
+                let error = fixture.read(&op, budget).unwrap_err();
+                assert_eq!(error.class, crate::bootstrap_review::DENIED);
+                assert_eq!(error.message, "Profile publication recovery failed closed");
+                assert!(error.suppressed);
+                let Some(OriginalAuthorityCause::SchemaValidation {
+                    argument,
+                    diagnostics,
+                    cause,
+                }) = error.cause
+                else {
+                    panic!("structured SchemaValidationError expected");
+                };
+                let diagnostics = diagnostics.array().unwrap();
+                if has_cause {
+                    assert_eq!(argument.as_str().unwrap(), format!("{message}: {message}"));
+                    assert_eq!(diagnostics.len(), 1);
+                    assert_eq!(diagnostics.get(0).unwrap().as_str(), Some(message));
+                    assert!(
+                        matches!(cause.as_deref(), Some(OriginalAuthorityCause::Python { class: CANONICALIZATION_ERROR, message: actual, .. }) if actual == message)
+                    );
+                } else {
+                    assert_eq!(argument.as_str().unwrap(), message);
+                    assert_eq!(diagnostics.len(), 0);
+                    assert!(cause.is_none());
+                }
+            }
+            fixture.envelope["profile"] = json!({"profile_api_version": "io.tobkiri.profile.v5"});
+            fixture.write();
+            assert_eq!(
+                fixture.read(&op, budget).unwrap().profile_schema,
+                "profile_v5.schema.json"
             );
         });
     }

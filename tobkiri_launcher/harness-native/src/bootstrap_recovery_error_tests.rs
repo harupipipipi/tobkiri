@@ -92,6 +92,45 @@ fn caught(cause: OriginalAuthorityCause) -> OriginalAuthorityError {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn first_profile_schema_diagnostics_and_canonicalization_cause_are_preserved() {
+    with_operation(|invocation, budget, _, _, _| {
+        let diagnostic = "duplicate JSON object key: 'profile_api_version'";
+        let argument = format!("{diagnostic}: {diagnostic}");
+        let inner = python("tobkiri_protocol.errors.CanonicalizationError", diagnostic);
+        let diagnostics = tobkiri_canon::CoreValue::array_shared(
+            std::iter::once(tobkiri_canon::CoreValue::string(diagnostic, budget)),
+            budget,
+        )
+        .unwrap();
+        let error = caught(OriginalAuthorityCause::SchemaValidation {
+            argument: CoreBuffer::copy_from(argument.as_bytes(), budget).unwrap(),
+            diagnostics,
+            cause: Some(Box::new(inner)),
+        });
+        let graph = project(&error, invocation, budget).unwrap().unwrap();
+        let root = graph.root();
+        assert_eq!(root.kind(), NativeErrorKind::SchemaValidationError);
+        assert_eq!(graph.message().as_str().unwrap(), argument);
+        assert_eq!(
+            root.args().get_index(0).unwrap().as_str(),
+            Some(argument.as_str())
+        );
+        assert_eq!(
+            root.fields()
+                .get_key("diagnostics")
+                .unwrap()
+                .get_index(0)
+                .unwrap()
+                .as_str(),
+            Some(diagnostic)
+        );
+        assert!(root.suppress_context());
+        assert_eq!(root.cause(), root.context());
+        assert!(root.cause().is_some());
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn fixed_native_app_classes_keep_exact_meaning_and_unset_os_fields() {
     with_operation(|invocation, budget, _, _, _| {
         for (class, kind) in [

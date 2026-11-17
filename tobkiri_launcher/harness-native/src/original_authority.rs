@@ -126,6 +126,11 @@ pub enum OriginalAuthorityCause {
         context: Option<Box<OriginalAuthorityCause>>,
         suppressed: bool,
     },
+    SchemaValidation {
+        argument: tobkiri_canon::CoreBuffer,
+        diagnostics: tobkiri_canon::CoreValue,
+        cause: Option<Box<OriginalAuthorityCause>>,
+    },
 }
 #[derive(Debug)]
 pub struct OriginalAuthorityIoError {

@@ -114,6 +114,23 @@ fn planned<'a>(
             };
             (kind, *suppressed)
         }
+        OriginalAuthorityCause::SchemaValidation {
+            argument,
+            diagnostics,
+            cause,
+        } => {
+            work(budget, argument.len())?;
+            let diagnostics = diagnostics
+                .array()
+                .context("schema diagnostics must be an array")?;
+            for diagnostic in diagnostics.iter() {
+                let diagnostic = diagnostic
+                    .as_str()
+                    .context("schema diagnostic must be text")?;
+                work(budget, diagnostic.len().saturating_add(1))?;
+            }
+            (SchemaValidationError, cause.is_some())
+        }
         OriginalAuthorityCause::Io(io) => {
             work(
                 budget,
@@ -222,6 +239,9 @@ fn message(node: &Planned<'_>, budget: &Arc<dyn AllocationBudget>) -> anyhow::Re
     let mut out = CoreBuffer::builder(budget, MAX_BYTES);
     match node.source {
         OriginalAuthorityCause::Python { message, .. } => out.append(message.as_bytes())?,
+        OriginalAuthorityCause::SchemaValidation { argument, .. } => {
+            out.append(argument.as_bytes())?;
+        }
         OriginalAuthorityCause::Io(io) => {
             let errno = io.errno.expect("planned actual errno");
             work(budget, ERROR_TEXT_BYTES * 8)?;
@@ -255,6 +275,25 @@ fn payload(
             } else {
                 out.append(b"],\"fields\":{}")?;
             }
+        }
+        OriginalAuthorityCause::SchemaValidation {
+            argument,
+            diagnostics,
+            ..
+        } => {
+            crate::bootstrap_metadata::string_parts(out, [argument.as_str()?])?;
+            out.append(b"],\"fields\":{\"diagnostics\":[")?;
+            let diagnostics = diagnostics.array().expect("planned diagnostics");
+            for (index, diagnostic) in diagnostics.iter().enumerate() {
+                if index != 0 {
+                    out.append(b",")?;
+                }
+                crate::bootstrap_metadata::string_parts(
+                    out,
+                    [diagnostic.as_str().expect("planned diagnostic text")],
+                )?;
+            }
+            out.append(b"]}")?;
         }
         OriginalAuthorityCause::Io(io) => {
             let errno = io.errno.expect("planned actual errno");
@@ -325,6 +364,7 @@ pub(super) fn project(
                 (cause.as_deref(), context.as_deref())
             }
             OriginalAuthorityCause::Io(io) => (None, io.context.as_deref()),
+            OriginalAuthorityCause::SchemaValidation { cause, .. } => (cause.as_deref(), None),
             _ => unreachable!("closed planned node"),
         };
         let mut edges = [None, None];

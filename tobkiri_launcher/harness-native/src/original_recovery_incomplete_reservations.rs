@@ -177,7 +177,7 @@ fn fetch_all<S: OriginalAuthorityOwner>(
     Ok(inventory)
 }
 
-fn own_row<S: OriginalAuthorityOwner, const N: usize>(
+pub(super) fn own_row<S: OriginalAuthorityOwner, const N: usize>(
     op: &Operation<'_, S>,
     stage: OriginalAuthorityStage,
     values: [Option<ValueRef<'_>>; N],
@@ -230,13 +230,13 @@ fn own(stage: OriginalAuthorityStage, value: ValueRef<'_>) -> Result<Value> {
 // Read name bytes without rusqlite::Statement::column_name, which panics if
 // a legacy/corrupt schema cannot decode as UTF-8. Each constant statement
 // stays on the guarded connection and the handle cannot escape this module.
-struct Query<'a> {
+pub(super) struct Query<'a> {
     connection: &'a Connection,
     statement: NonNull<ffi::sqlite3_stmt>,
     stage: OriginalAuthorityStage,
 }
 impl<'a> Query<'a> {
-    fn prepare(
+    pub(super) fn prepare(
         connection: &'a Connection,
         sql: &'static CStr,
         stage: OriginalAuthorityStage,
@@ -263,7 +263,7 @@ impl<'a> Query<'a> {
         })
     }
 
-    fn bind_text(&self, text: &str) -> Result<()> {
+    pub(super) fn bind_text(&self, text: &str) -> Result<()> {
         let size = i32::try_from(text.len()).map_err(|_| {
             raw(
                 self.stage,
@@ -289,7 +289,31 @@ impl<'a> Query<'a> {
         }
     }
 
-    fn step(&mut self) -> Result<bool> {
+    pub(super) fn bind_activation_id(&self, value: &Value) -> Result<()> {
+        // These are the scalar parameter types accepted by the signed JSON
+        // decoder. Text uses a funded transient binding as in bind_text.
+        let rc = match value {
+            Value::Text(text) => return self.bind_text(text),
+            // SAFETY: This live query has an activation ID parameter at 1.
+            Value::Null => unsafe { ffi::sqlite3_bind_null(self.statement.as_ptr(), 1) },
+            Value::Integer(value) => unsafe {
+                ffi::sqlite3_bind_int64(self.statement.as_ptr(), 1, *value)
+            },
+            _ => {
+                return Err(OriginalAuthorityError::unsupported(
+                    self.stage,
+                    "activation ID binding type",
+                ));
+            }
+        };
+        if rc == ffi::SQLITE_OK {
+            Ok(())
+        } else {
+            Err(sql_error(self.stage, self.connection, rc))
+        }
+    }
+
+    pub(super) fn step(&mut self) -> Result<bool> {
         // SAFETY: The statement is live, and &mut self excludes borrowed
         // pointers from the preceding step.
         match unsafe { ffi::sqlite3_step(self.statement.as_ptr()) } {
@@ -304,7 +328,7 @@ impl<'a> Query<'a> {
         unsafe { ffi::sqlite3_column_count(self.statement.as_ptr()) }
     }
 
-    fn fields<const N: usize>(&self, names: [&[u8]; N]) -> Result<[Option<i32>; N]> {
+    pub(super) fn fields<const N: usize>(&self, names: [&[u8]; N]) -> Result<[Option<i32>; N]> {
         let mut fields = [None; N];
         for column in 0..self.columns() {
             let name = self.name(column)?;
@@ -318,7 +342,7 @@ impl<'a> Query<'a> {
         Ok(fields)
     }
 
-    fn convert_row<const N: usize>(
+    pub(super) fn convert_row<const N: usize>(
         &self,
         fields: [Option<i32>; N],
     ) -> Result<[Option<ValueRef<'_>>; N]> {

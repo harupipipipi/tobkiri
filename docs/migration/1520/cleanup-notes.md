@@ -3916,3 +3916,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `unquote` と実際の `__getitem__` を使う。macOSのローカル拡張で原本比較19グループが通過。
   [固定依存関係によるApp原本比較 CI 44086016083](https://github.com/harupipipipi/tobkiri/actions/runs/44086016083)も成功。
   同一予算でのWasm燃料差は未計測。Registryと他の名前解決は元と同じ順序を個別確認してから扱う。
+- `29fcc1f94` は、組み込み `str` に限って `str.split` と同じ `PyUnicode_Split` を呼ぶ。
+  `unquote` がサブクラスや別オブジェクトを返した場合は元の属性検索と呼出しを使う。
+  実Rust拡張の原本比較20グループは通過。Unicode・空要素と実ディスクリプタを追加した。
+- 再公開したアクティベーションで、workspace lockを保持したまま先頭Profileの厳密JSONを読み、
+  v4/v5に対応するAppのスキーマを選ぶ。元の順序で、旧版の生オブジェクト条件と現行の
+  文字列レコードを扱う。オブジェクト以外・未対応バージョン・重複キーなどを元の
+  SchemaValidationErrorの診断と原因付きで扱う。JSON構文エラーの深い原因の再構成、
+  Appスキーマ読込・検証以降、および旧版の更新は残る。後続レコードの先読みは行わない。
+  同一の `SELECT *` に元のSQLiteカーソル処理を共用した。既存の公開意図の確認は値のコピーを
+  行わず、次のスナップショット照合用の5列はテストで実DBから取得した。
+  重複の分類前に最後の行まで読み、後続のSQLiteエラーを優先する。Harness全179件と
+  strict Clippyが成功し、外部fixture前提の9件は未実行。先頭Profileの失敗4例は元Pythonの
+  `validate_document` でも比較した。

@@ -751,11 +751,11 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         )
     };
     let boundary = match reached {
-        Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecords) => {
-            BootstrapReviewReachpoint::RecoveryValidateActiveSnapshotRecordsNotBound
-        }
-        Ok(RecoveryAuthorityReached::MigrateLegacySnapshot) => {
-            BootstrapReviewReachpoint::RecoveryMigrateLegacySnapshotNotBound
+        Ok(RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema { name, legacy }) => {
+            BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotProfileSchemaNotBound {
+                name,
+                legacy,
+            }
         }
         Ok(RecoveryAuthorityReached::MissingPublishedAuthority) => {
             return Ok(Err(review_continuation::denied(

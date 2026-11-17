@@ -1463,6 +1463,13 @@ pub(super) struct Rows {
     _capacity: Vec<NativeSetupReservation>,
 }
 #[cfg(unix)]
+pub(in crate::original_authority::io) enum ActiveReservation<T> {
+    Absent,
+    Sole(T),
+    Multiple,
+}
+
+#[cfg(unix)]
 impl<S: OriginalAuthorityOwner> Database<'_, '_, '_, S> {
     fn connection(&self) -> &Connection {
         self.connection.as_ref().expect("live original connection")
@@ -1642,47 +1649,37 @@ impl<S: OriginalAuthorityOwner> Database<'_, '_, '_, S> {
         }
         Ok(output)
     }
-    pub(in crate::original_authority::io) fn active_reservation_count(
+    pub(in crate::original_authority::io) fn active_reservation<const N: usize, B, T>(
         &self,
-        bind_activation_id: impl FnOnce() -> Result<Funded<Value>>,
-    ) -> Result<u8> {
+        fields: [&[u8]; N],
+        bind: impl FnOnce(&incomplete_reservations::Query<'_>) -> Result<B>,
+        project: impl FnOnce([Option<ValueRef<'_>>; N]) -> Result<T>,
+    ) -> Result<ActiveReservation<T>> {
         self.validate()?;
-        let statement = self
-            .connection()
-            .prepare(
-                "SELECT * FROM activation_reservations WHERE activation_id=? AND state='active'",
-            )
-            .map_err(|error| match error {
-                rusqlite::Error::SqlInputError { error, msg, .. } => {
-                    self.sql(rusqlite::Error::SqliteFailure(error, Some(msg)))
-                }
-                error => self.sql(error),
-            })?;
-        let columns = statement.column_count();
-        // Keep the bound-text reservation through statement finalization.
-        let (activation_id, mut statement) = (bind_activation_id()?, statement);
-        let mut cursor = statement
-            .query([&activation_id.value])
-            .map_err(|error| self.sql(error))?;
-        let mut count = 0;
-        // Fetch to exhaustion so a later read failure still precedes duplicate
-        // classification. The caller only tests whether a reservation exists.
-        while let Some(row) = cursor.next().map_err(|error| self.sql(error))? {
+        let query = incomplete_reservations::Query::prepare(
+            self.connection(),
+            c"SELECT * FROM activation_reservations WHERE activation_id=? AND state='active'",
+            self.stage,
+        )?;
+        // Release the SQLite transient text copy before its capacity permit.
+        let (_binding, mut query) = (bind(&query)?, query);
+        // CPython executes the first step before building the cursor description.
+        let mut has_row = query.step()?;
+        let fields = query.fields(fields)?;
+        let mut reservation = ActiveReservation::Absent;
+        let mut project = Some(project);
+        // CPython fetches and converts all selected columns in every matching
+        // row before classifying duplicates, including columns no caller uses.
+        while has_row {
             self.store.op.check(self.stage)?;
-            for column in 0..columns {
-                if let ValueRef::Text(bytes) =
-                    row.get_ref(column).map_err(|error| self.sql(error))?
-                    && std::str::from_utf8(bytes).is_err()
-                {
-                    return Err(OriginalAuthorityError::unsupported(
-                        self.stage,
-                        "SQLite text decoding exception",
-                    ));
-                }
-            }
-            count = (count + 1).min(2);
+            let row = query.convert_row(fields)?;
+            reservation = match project.take() {
+                Some(project) => ActiveReservation::Sole(project(row)?),
+                None => ActiveReservation::Multiple,
+            };
+            has_row = query.step()?;
         }
-        Ok(count)
+        Ok(reservation)
     }
     pub fn complete<T>(self, outcome: Result<T>) -> Result<T> {
         let finish = self.finish(outcome.is_ok());
