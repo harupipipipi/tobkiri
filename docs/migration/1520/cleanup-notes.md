@@ -4170,4 +4170,6 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [原本との再比較44135235977](https://github.com/harupipipipi/tobkiri/actions/runs/44135235977)は
   build-two-worlds/compare-original-dataとも成功。`ee9b738d8` は、そのrun/SHA/artifact ID/digestを
   ordinary Flowのsupplierへ固定し直した。欠落・重複も明示エラーで拒否し、認証条件は維持する。
-  workflow 22件とmaterialization 4件が成功。現在の通常Flowでの再生をCI44138078966で確認する。
+  workflow 22件とmaterialization 4件が成功。
+  [通常Flow CI44138078966](https://github.com/harupipipipi/tobkiri/actions/runs/44138078966)も成功し、
+  実受信UI entryからのProfile Flowと未承認の入れ子route拒否、実consumerのstrict Clippyを通過した。
