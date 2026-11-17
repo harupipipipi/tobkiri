@@ -29,6 +29,9 @@ use std::{
 use tobkiri_gate::{ControlKind, ControlReservation, CoreControl};
 
 #[cfg(unix)]
+#[path = "original_recovery_abort_transaction.rs"]
+pub(super) mod abort_transaction;
+#[cfg(unix)]
 #[path = "original_recovery_incomplete_reservations.rs"]
 pub(super) mod incomplete_reservations;
 #[path = "original_profile_publication.rs"]

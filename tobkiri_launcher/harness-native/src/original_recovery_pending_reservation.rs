@@ -1,6 +1,6 @@
 //! Bind the held activation journal to its live Authority reservation.
 use super::*;
-use crate::original_authority::io::{Store, incomplete_reservations};
+use crate::original_authority::io::{Store, abort_transaction, incomplete_reservations};
 use recovery_workspace::{APP_DENIED, pending};
 use rusqlite::types::Value;
 
@@ -8,6 +8,24 @@ use rusqlite::types::Value;
 mod committed;
 
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::PendingReservation;
+
+pub(super) fn abort_incomplete<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    store: &Store<'_, '_, S>,
+    profile_id: &str,
+) -> Result<()> {
+    // The earlier fetchall must finish before any transaction. Each row is
+    // then fenced and audited independently, in the original token order.
+    let inventory = incomplete_reservations::read(op, store, profile_id)?;
+    for [id, state] in inventory.rows() {
+        abort_transaction::abort(
+            store,
+            column_text(id, "reservation_id")?,
+            column_text(state, "state")?,
+        )?;
+    }
+    Ok(())
+}
 
 pub(super) fn recover<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
@@ -84,10 +102,10 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
             )?;
             Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact)
         }
-        "prepared" | "ready_without_authority" | "committing" => {
-            Ok(RecoveryAuthorityReached::AbortPendingActivationReservation)
-        }
-        "aborted" => {
+        status @ ("prepared" | "ready_without_authority" | "committing" | "aborted") => {
+            if status != "aborted" {
+                abort_transaction::abort(store, text(&reservation), status)?;
+            }
             unlink(op, state, Path::new("pending.json"))?;
             with_envelope_path(op, name, |path| unlink(op, state, path))?;
             Ok(RecoveryAuthorityReached::WorkspaceRecovered)

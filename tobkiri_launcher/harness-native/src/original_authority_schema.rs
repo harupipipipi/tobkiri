@@ -671,19 +671,38 @@ fn migrate<S: OriginalAuthorityOwner>(
                 CanonValue::Str(lease_digest.as_str().into()),
             ),
         ]);
-        append_audit(store, db, &format!("schema-v2-{id}"), state, payload)?;
+        append_audit(
+            store,
+            db,
+            AuditKind::HostEffect,
+            &format!("schema-v2-{id}"),
+            state,
+            payload,
+        )?;
     }
     Ok(())
 }
 
 #[cfg(unix)]
-fn append_audit<S: OriginalAuthorityOwner>(
+pub(super) enum AuditKind {
+    HostEffect,
+    Activation,
+}
+
+#[cfg(unix)]
+pub(super) fn append_audit<S: OriginalAuthorityOwner>(
     store: &Store<'_, '_, S>,
     db: &Database<'_, '_, '_, S>,
+    kind: AuditKind,
     id: &str,
     state: &str,
     payload: CanonValue,
 ) -> Result<()> {
+    let (kind, stage) = match kind {
+        AuditKind::HostEffect => ("host_effect", OriginalAuthorityStage::Migration),
+        AuditKind::Activation => ("activation", OriginalAuthorityStage::ActivationTransition),
+    };
+    let genesis = zero_digest();
     let rows = db.query(
         "SELECT event_digest FROM authority_audit ORDER BY sequence DESC LIMIT 1",
         [],
@@ -693,31 +712,39 @@ fn append_audit<S: OriginalAuthorityOwner>(
         .first()
         .map(|row| text(row, 0))
         .transpose()?
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("sha256:{}", "0".repeat(64)));
+        .unwrap_or(&genesis);
     let created = store.clock();
+    let metadata_bytes = [id.len(), kind.len(), state.len(), previous.len()]
+        .into_iter()
+        .try_fold(2048usize, usize::checked_add)
+        .ok_or_else(|| OriginalAuthorityError::capacity(stage))?;
+    let _metadata_capacity = store.op.reserve(stage, metadata_bytes)?;
     let record = object([
         ("event_id", CanonValue::Str(id.into())),
-        ("event_type", CanonValue::Str("host_effect".into())),
+        ("event_type", CanonValue::Str(kind.into())),
         ("event_state", CanonValue::Str(state.into())),
-        ("previous_digest", CanonValue::Str(previous.clone())),
-        ("payload", payload.clone()),
+        ("previous_digest", CanonValue::Str(previous.into())),
+        ("payload", payload),
         ("created_at", CanonValue::Float(created)),
     ]);
     let hash = digest(store, &record)?;
-    let capacity = store
-        .op
-        .reserve(OriginalAuthorityStage::Migration, json_bound(&payload)?)?;
-    let encoded = encode(&payload, Variant::LegacyFloat).map_err(|_| {
-        OriginalAuthorityError::unsupported(
-            OriginalAuthorityStage::Migration,
-            "audit canonicalization",
-        )
-    })?;
+    let CanonValue::Obj(record) = &record else {
+        unreachable!("audit event record is an object");
+    };
+    let payload = &record["payload"];
+    let capacity = store.op.reserve(stage, json_bound(payload)?)?;
+    let encoded = encode(payload, Variant::LegacyFloat)
+        .map_err(|_| OriginalAuthorityError::unsupported(stage, "audit canonicalization"))?;
     store.assert_crypto()?;
     let encrypted = store.keys.encrypt(store.op, &encoded)?;
+    let _binding_capacity = store.op.reserve(
+        stage,
+        metadata_bytes
+            .checked_add(encrypted.len())
+            .ok_or_else(|| OriginalAuthorityError::capacity(stage))?,
+    )?;
     let result = db.execute("INSERT INTO authority_audit(event_id, event_type, event_state, previous_digest, event_digest, encrypted_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        params![id, "host_effect", state, previous, hash.as_str(), &encrypted.value, created]);
+        params![id, kind, state, previous, hash.as_str(), &encrypted.value, created]);
     drop(encrypted);
     drop(encoded);
     drop(capacity);

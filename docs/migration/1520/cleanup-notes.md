@@ -3852,9 +3852,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   さらにenvelope検証後に予約を別のSQLite接続で読み直し、plan、Profile authority、
   fencing token、activationの状態と照合する。すべて一致するときだけ現在のSecurityEpochを
   読む。原本の再照合を7ケースで確認し、別planではepochを読まないこと、古いepochを
-  拒否することを実Authorityの試験に追加した。中止のAuthority更新と監査、workspace
-  lockを解放した区間でのパッケージ検証と再公開、active snapshotが残る。
+  拒否することを実Authorityの試験に追加した。
+- 未完了の予約はworkspace lockを保持し、fencing token順で個別のAuthority
+  トランザクションを実行する。保留記録がある場合はその予約に絞り、状態の照合、
+  元のepoch行の読み取り、状態更新、暗号化された監査イベントを同一トランザクションに
+  入れる。既存の監査処理を共有し、監査書き込みの失敗で状態と時刻を戻すことを確認する。
+  元Pythonの実AuthorityStoreで3種類の中止と監査エラーでの巻き戻しを確認した。
+  workspace lockを解放した区間でのパッケージ検証と再公開、active snapshotが残る。
 - [原本比較 CI 44071483174](https://github.com/harupipipipi/tobkiri/actions/runs/44071483174)
   はURI 160件を含む比較に成功。全体の [macOS CI 44068320748](https://github.com/harupipipipi/tobkiri/actions/runs/44068320748)
   では、変更前の実componentがAuthorityの照合まで到達せず、実測30.24秒で元の期限に達した。
-  [実App Wasm CI 44071515666](https://github.com/harupipipipi/tobkiri/actions/runs/44071515666)で変更後を計測。
+  [実App Wasm CI 44071515666](https://github.com/harupipipipi/tobkiri/actions/runs/44071515666)は
+  変更後の初回スキーマ42件に成功（147,351,964 fuel残り）。全catalogは2Bを使い切った。
+  [計測 CI 44072390698](https://github.com/harupipipipi/tobkiri/actions/runs/44072390698)では
+  初期データ所有に523,930,522 fuel、最初のPackの34番目のスキーマファイルで約4M残り、
+  読み込みを返す前に停止した。計測用の埋め込み入力と異なり、実Launcherの経路では
+  既存のCatalogIoがファイルを供給する。次は同経路に原本比較済みRustのschema
+  providerを導入した候補を、現行の上限で比較する。

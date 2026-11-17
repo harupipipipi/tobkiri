@@ -724,12 +724,6 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact) => {
             BootstrapReviewReachpoint::RecoveryVerifyCommittedActivationArtifactNotBound
         }
-        Ok(RecoveryAuthorityReached::AbortPendingActivationReservation) => {
-            BootstrapReviewReachpoint::RecoveryAbortPendingActivationReservationNotBound
-        }
-        Ok(RecoveryAuthorityReached::ReadIncompleteActivationReservations) => {
-            BootstrapReviewReachpoint::RecoveryAbortIncompleteActivationReservationsNotBound
-        }
         Ok(RecoveryAuthorityReached::LoadActiveSnapshot) => {
             BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotNotBound
         }

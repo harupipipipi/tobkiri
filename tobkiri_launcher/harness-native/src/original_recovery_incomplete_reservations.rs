@@ -7,17 +7,17 @@ const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::IncompleteReservat
 const PENDING: OriginalAuthorityStage = OriginalAuthorityStage::PendingReservation;
 const EPOCH: OriginalAuthorityStage = OriginalAuthorityStage::Epoch;
 const SQL: &CStr = c"SELECT * FROM activation_reservations WHERE profile_id=? AND state IN ('prepared', 'ready_without_authority', 'committing') ORDER BY fencing_token";
-const PENDING_SQL: &CStr = c"SELECT * FROM activation_reservations WHERE reservation_id=?";
-const EPOCH_SQL: &CStr = c"SELECT value FROM authority_meta WHERE key='security_epoch'";
+pub(super) const PENDING_SQL: &CStr =
+    c"SELECT * FROM activation_reservations WHERE reservation_id=?";
+pub(super) const EPOCH_SQL: &CStr = c"SELECT value FROM authority_meta WHERE key='security_epoch'";
 const INVENTORY_FIELDS: [&[u8]; 2] = [b"reservation_id", b"state"];
 pub(in crate::original_authority::io) const BINDING_FIELDS: [&str; 4] =
     ["activation_id", "fencing_token", "profile_id", "state"];
 
-// Only these dictionary entries are used by _recover_locked. Keep SQLite
-// values intact until Python's subsequent str() calls are migrated. None means
+// Keep the entries consumed by _recover_locked in fencing order. None means
 // the original dictionary has no such key, which is not a fetchall error.
 type Entry = [Option<Value>; 2]; // reservation_id, state
-type Row<const N: usize> = Funded<[Option<Value>; N]>;
+pub(super) type Row<const N: usize> = Funded<[Option<Value>; N]>;
 
 #[derive(Default)]
 pub(in crate::original_authority::io) struct Inventory {
@@ -25,8 +25,10 @@ pub(in crate::original_authority::io) struct Inventory {
     vector_capacity: Option<NativeSetupReservation>,
 }
 impl Inventory {
-    pub(in crate::original_authority::io) fn is_empty(&self) -> bool {
-        self.rows.is_empty()
+    pub(in crate::original_authority::io) fn rows(
+        &self,
+    ) -> impl Iterator<Item = &[Option<Value>; 2]> {
+        self.rows.iter().map(|row| &row.value)
     }
 
     fn push<S: OriginalAuthorityOwner>(
@@ -122,7 +124,7 @@ pub(in crate::original_authority::io) fn read_epoch<S: OriginalAuthorityOwner>(
     })
 }
 
-fn fetch_one<S: OriginalAuthorityOwner, const N: usize>(
+pub(super) fn fetch_one<S: OriginalAuthorityOwner, const N: usize>(
     op: &Operation<'_, S>,
     db: &Database<'_, '_, '_, S>,
     stage: OriginalAuthorityStage,
@@ -495,7 +497,10 @@ fn invalid_utf8(
     raw(stage, "builtins.UnicodeDecodeError", message)
 }
 
-fn wrap_sqlite(error: OriginalAuthorityError, message: &'static str) -> OriginalAuthorityError {
+pub(super) fn wrap_sqlite(
+    error: OriginalAuthorityError,
+    message: &'static str,
+) -> OriginalAuthorityError {
     if !error.class.starts_with("sqlite3.") {
         return error;
     }

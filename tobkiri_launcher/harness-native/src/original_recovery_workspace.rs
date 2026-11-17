@@ -117,7 +117,7 @@ mod tests {
         name: LockName,
     ) -> Result<RecoveryAuthorityReached> {
         recover(op, workspace, name, |_, _| {
-            Ok(RecoveryAuthorityReached::ReadIncompleteActivationReservations)
+            Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact)
         })
     }
 

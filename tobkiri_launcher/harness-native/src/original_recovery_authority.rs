@@ -1,6 +1,5 @@
 //! The AuthorityStore context at the original nonstale publication caller.
 use super::*;
-use crate::original_authority::io::incomplete_reservations;
 use tobkiri_canon::AllocationBudget;
 #[path = "original_recovery_active_reservation.rs"]
 mod active_reservation;
@@ -11,11 +10,9 @@ mod pending_reservation;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
     VerifyCommittedActivationArtifact,
-    AbortPendingActivationReservation,
     WorkspaceRecovered,
     LoadActiveSnapshot,
     MissingPublishedAuthority,
-    ReadIncompleteActivationReservations,
     RecoveredNone,
     MatchedReservation,
 }
@@ -85,12 +82,8 @@ impl PublicationRead {
                                     &op, store, state, journal, profile_id, budget,
                                 );
                             }
-                            let rows = incomplete_reservations::read(&op, store, profile_id)?;
-                            Ok(if rows.is_empty() {
-                                RecoveryAuthorityReached::WorkspaceRecovered
-                            } else {
-                                RecoveryAuthorityReached::ReadIncompleteActivationReservations
-                            })
+                            pending_reservation::abort_incomplete(&op, store, profile_id)?;
+                            Ok(RecoveryAuthorityReached::WorkspaceRecovered)
                         },
                     )?;
                     if next != RecoveryAuthorityReached::WorkspaceRecovered {
@@ -360,7 +353,7 @@ mod tests {
                 PROFILE_ID,
                 "1",
                 "pinned.json",
-                Ok(RecoveryAuthorityReached::AbortPendingActivationReservation),
+                Ok(RecoveryAuthorityReached::RecoveredNone),
             ),
             (
                 "aborted",
@@ -521,6 +514,12 @@ mod tests {
                 } else {
                     assert_eq!(fs::read(pending).unwrap(), data);
                 }
+                let db = Connection::open(source.root.join(DATABASE)).unwrap();
+                let (status, audit_events) = reservation_state_and_audit(&db, "reservation:1");
+                let aborted = state == "committing";
+                assert_eq!(status, if aborted { "aborted" } else { state });
+                assert_eq!(audit_events, i64::from(aborted));
+                db.close().unwrap();
                 assert!(lock_free(&lock));
                 verify_custody(source, read, cancellation, cleared);
             });
@@ -549,13 +548,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn existing_workspace_checks_incomplete_reservations_before_active_snapshot() {
+    async fn existing_workspace_aborts_its_incomplete_reservations_before_active_snapshot() {
         for (state, expected) in [
             ("active", RecoveryAuthorityReached::LoadActiveSnapshot),
-            (
-                "committing",
-                RecoveryAuthorityReached::ReadIncompleteActivationReservations,
-            ),
+            ("committing", RecoveryAuthorityReached::RecoveredNone),
         ] {
             with_setup_source(|source, read, cancellation, budget| {
                 enter(source, read, cancellation);
@@ -564,11 +560,15 @@ mod tests {
                 initialize(source, read, cancellation);
                 let db = Connection::open(source.root.join(DATABASE)).unwrap();
                 insert(&db, 1, ACTIVATION_ID, state);
+                insert(&db, 5, "separate:5", "committing");
+                insert(&db, 2, "separate:2", "ready_without_authority");
+                insert(&db, 3, "separate:3", "prepared");
                 db.execute(
                     "UPDATE activation_reservations SET profile_id=?",
                     [PROFILE_ID],
                 )
                 .unwrap();
+                insert(&db, 10, "separate:10", "committing");
                 db.close().unwrap();
 
                 assert_eq!(
@@ -576,13 +576,53 @@ mod tests {
                         .unwrap(),
                     expected
                 );
+                let db = Connection::open(source.root.join(DATABASE)).unwrap();
+                let mut statement = db.prepare(
+                    "SELECT event_id FROM authority_audit WHERE event_type='activation' ORDER BY sequence",
+                ).unwrap();
+                let ids = statement
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .unwrap()
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .unwrap();
+                let profile_events = ["reservation:2", "reservation:3", "reservation:5"];
+                let expected_ids = (state == "committing")
+                    .then_some("reservation:1")
+                    .into_iter()
+                    .chain(profile_events)
+                    .map(|id| format!("activation-aborted-{id}"))
+                    .collect::<Vec<_>>();
+                assert_eq!(ids, expected_ids);
+                assert_eq!(
+                    reservation_state_and_audit(&db, "reservation:10"),
+                    ("committing".into(), 0),
+                );
+                drop(statement);
+                db.close().unwrap();
                 let lock = workspace
                     .join("activation")
                     .join(LockName::workspace(PROFILE_ID).text());
                 assert!(lock_free(&lock));
-                verify_custody(source, read, cancellation, false);
+                verify_custody(
+                    source,
+                    read,
+                    cancellation,
+                    expected == RecoveryAuthorityReached::RecoveredNone,
+                );
             });
         }
+    }
+
+    fn reservation_state_and_audit(db: &Connection, id: &str) -> (String, i64) {
+        db.query_row(
+            "SELECT state, (SELECT COUNT(*) FROM authority_audit
+             WHERE event_id='activation-aborted-' || ?1
+             AND event_type='activation' AND event_state='aborted')
+             FROM activation_reservations WHERE reservation_id=?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap()
     }
 
     #[tokio::test(flavor = "current_thread")]

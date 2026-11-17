@@ -94,6 +94,7 @@ pub enum OriginalAuthorityStage {
     ActiveReservation,
     PendingReservation,
     IncompleteReservation,
+    ActivationTransition,
     Close,
 }
 
