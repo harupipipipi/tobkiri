@@ -355,6 +355,36 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
     compare(lambda selected: fragment_case(selected, True), "boundary")
     checks["fragment_only_keeps_base_identity_and_skips_both_helpers"] = True
 
+    def exact_fragment_case(selected, base, reference, singleton):
+        state = fragment_case(selected)
+        expected = reference[1:]
+        anchors = []
+
+        def verify(outcome):
+            assert outcome["kind"] == "valid"
+            retrieved = next(event["retrieve"] for event in state["events"]
+                             if "retrieve" in event)
+            assert retrieved["same_base"]
+            if expected:
+                assert anchors == [expected]
+                assert (anchors[0] is expected) is singleton
+            else:
+                assert anchors == []
+
+        return {**state, "base": base, "reference": reference, "target": {},
+                "actual": {}, "on_anchor": anchors.append, "verify": verify}
+
+    for base, reference, singleton in (
+        ("https://[invalid]/base", "#", False),
+        ("relative/base", "#é", True),
+        ("https://example.invalid/雪", "#💡", False),
+        ("https://example.invalid/base", "#\ud800", False),
+        (object(), "#name[with brackets]", False),
+    ):
+        compare(lambda selected: exact_fragment_case(selected, base, reference, singleton),
+                "skip")
+    checks["exact_fragment_slicing_preserves_unicode_and_base_handles"] = True
+
     def anchor_names(selected, kind):
         events, names = [], []
         base = "https://anchor-cache.invalid/root"
@@ -677,6 +707,6 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
     assert all(after[name] >= before[name] for name in fields)
     checks["fresh_default_provider_reaches_meaningful_native_join_defrag_work"] = True
 
-    # 155 symmetric pairs plus the independent-owner isolation comparison.
-    assert comparisons == 155 and len(checks) == 17 and all(checks.values())
+    # 160 symmetric pairs plus the independent-owner isolation comparison.
+    assert comparisons == 160 and len(checks) == 18 and all(checks.values())
     return checks

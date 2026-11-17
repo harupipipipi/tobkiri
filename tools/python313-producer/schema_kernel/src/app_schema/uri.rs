@@ -7,6 +7,7 @@
 use crate::keywords::module_member;
 use pyo3::{
     exceptions::PyUnicodeEncodeError,
+    ffi,
     prelude::*,
     types::{PyDict, PyModule, PyString},
 };
@@ -108,9 +109,6 @@ fn uses_relative(scheme: &str) -> bool {
 /// Keep all potentially fragmented sequences on the original path. This
 /// decision precedes native URI work; direct fragment-only slicing is separate.
 fn resolve_admitted(input: &Admitted<'_>) -> bool {
-    if input.reference.starts_with('#') {
-        return true;
-    }
     if input.base.contains('#') || input.reference.contains('#') {
         return false;
     }
@@ -424,6 +422,28 @@ pub(super) fn resolve<'py>(
     base: &Bound<'py, PyAny>,
     reference: &Bound<'py, PyAny>,
 ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+    if reference.is_exact_instance_of::<PyString>() {
+        // SAFETY: The live bound reference is exact Python Unicode. The
+        // search range includes only the first code point, if present.
+        match unsafe { ffi::PyUnicode_FindChar(reference.as_ptr(), u32::from(b'#'), 0, 1, 1) } {
+            -2 => return Err(PyErr::fetch(py)),
+            0 => {
+                // The original takes ref[1:] without inspecting the base or
+                // invoking either URI helper. CPython uses this same Unicode
+                // operation for the slice, including empty and singleton results.
+                // SAFETY: CPython clamps the end index to the length. The API
+                // returns a new reference or NULL with a Python exception set.
+                let fragment = unsafe {
+                    Bound::from_owned_ptr_or_err(
+                        py,
+                        ffi::PyUnicode_Substring(reference.as_ptr(), 1, isize::MAX),
+                    )?
+                };
+                return Ok((base.clone(), fragment));
+            }
+            _ => {}
+        }
+    }
     let Some(input) = admitted(base, reference)?.filter(resolve_admitted) else {
         RESOLVE_BOUNDARIES.fetch_add(1, Ordering::Relaxed);
         let pair = module_member(py, "app_schema_model", "uri_resolve_boundary")?
@@ -432,10 +452,6 @@ pub(super) fn resolve<'py>(
         // two-item unpack; its result here is its own exact tuple.
         return Ok((pair.get_item(0)?, pair.get_item(1)?));
     };
-    if let Some(fragment) = input.reference.strip_prefix('#') {
-        // The source bypasses both helpers and preserves the actual base handle.
-        return Ok((base.clone(), string(py, fragment)?));
-    }
     JOIN_DEFRAGS.fetch_add(1, Ordering::Relaxed);
     let joined = join_native(input);
     // Admission guarantees neither argument can contribute a literal fragment.
