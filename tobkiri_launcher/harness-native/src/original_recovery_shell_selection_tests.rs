@@ -99,6 +99,39 @@ fn fixture_catalog(
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn recovery_catalog_verifies_the_selected_package_and_refuses_replaced_bytes() {
+    with_setup_source(|source, read, cancellation, budget| {
+        let op = operation(read, source, cancellation);
+        let mut shell = definition("verified", 1);
+        shell["launch"]["variants"][1]["artifact_digest"] =
+            json!(Digest::hash(b"payload\0the selected bytes"));
+        let mut io = fixture_catalog(&op, budget, shell, Some(Digest::hash(b"committed Pack")));
+        let root = source.root.join("platform-artifacts");
+        let selected = root.join("nested/TrustedShell.app");
+        fs::create_dir_all(&selected).unwrap();
+        let payload = selected.join("payload");
+        fs::write(&payload, b"the selected bytes").unwrap();
+        io.artifact_parent_identity = Some(identity(&fs::metadata(&source.root).unwrap()));
+        let profile = committed_profile();
+        let rows = guest(&json!([[PROFILE, &profile]]), budget);
+        let committed = guest(&profile, budget);
+        let catalog = RecoveryCatalogInputs::new(&io, &rows, None);
+        catalog
+            .verify_committed_tree(&op, &committed, PROFILE)
+            .unwrap();
+        fs::write(&payload, b"the replaced bytes").unwrap();
+        let denied = catalog
+            .verify_committed_tree(&op, &committed, PROFILE)
+            .unwrap_err();
+        assert_eq!(denied.class, RECOVERY_APP_DENIED);
+        assert_eq!(
+            denied.message,
+            "active Profile Shell artifact rejected: packaged artifact digest does not match selected bytes"
+        );
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn identity_selection_uses_the_catalog_digest_and_path_before_the_verify_binding() {
     with_setup_source(|source, read, cancellation, budget| {
         let op = operation(read, source, cancellation);

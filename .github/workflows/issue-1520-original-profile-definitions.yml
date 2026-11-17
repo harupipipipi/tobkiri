@@ -196,7 +196,7 @@ jobs:
       - name: Check committed Shell selection against the original replacement catalog
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-shell-selection.log" --expected-passed 3 --
+          --log "$RUNNER_TEMP/native-recovery-shell-selection.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::catalog::shell_inputs::recovery_tests::
           -- --test-threads=1 --nocapture
