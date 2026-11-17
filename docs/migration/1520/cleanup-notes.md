@@ -4073,6 +4073,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `uniqueItems` はlive `_keywords.uniq` を呼び、既存比較で開始前・途中の差し替えも検査する。
   exact list/strだけで呼び出しを省く案は、この挙動を消し、改善量も未測定のため保留した。
   次は `78fd660ee` 後の同条件で期限と燃料を比較する。
+  同じ観測のinstantiation前は22.05秒で、fuelはまだ2B。
+  `preparation.rs` は毎回Engineを作り、`Component::new` を同じ期限内で実行する。
+  Engine・読取り・hash・Store準備も含むため、この全時間をcompile単独には帰属できない。
+  現在のEngine設定にはWasmtimeのcompilation cacheがなく、`core_modules::CodeCache` は
+  同じEngine/catalog内のcore Module用で、NativeSetupのComponentには使えない。
+  既存の共有キャッシュの利用漏れとして接続できる箇所は確認できなかった。
 - 旧Activationのsuccessor解決は、元のレコードを照合したworkspace lock内で、同じ
   Authority Storeと置換catalogを使う。既存Setup resolverの入力は一部の旧authority-ref
   を拒否する。旧レコードのepoch 0は実Authorityとの照合を通過しない。既存のartifact検証を
@@ -4104,6 +4110,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   workflow・CI補助52件が通過した。`eeec29fd8` は
   `original_external_catalog_io.rs` のtests moduleを末尾へ移し、tests込みのstrict Clippyと
   関連20件を通過した。移動したテスト本体と製品コードの一致も比較した。
+  CI44130220241はsource staging 4件の後、全workspaceのfmt checkで別の改行差を検出した。
+  `4d7593c32` で `original_recovery_pending_reservation.rs` の `read_state_with` 呼出を
+  formatterの形に揃え、ローカルの `cargo fmt --all -- --check` に通過した。処理は変更しない。
   定義CIのcatalogテスト数指定も実行済み8件に合わせた。
   実Wasmを通す復旧全体と、元GUIからの会話を含む製品検証は残る。
   現在のresolver結果は `bootstrap_catalog.rs` でscopeと形式を確認し、
