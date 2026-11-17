@@ -3,6 +3,8 @@
 
 def fragment_checks(provider, kernel) -> dict[str, bool]:
     """Use real builtin Resources; neither names nor contents confer ownership."""
+    import builtins
+
     from jsonschema import Draft202012Validator as original, FormatChecker, exceptions
     from jsonschema import validators
     from referencing import Anchor, Registry, Resource, _core
@@ -230,6 +232,71 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                                ("/array/not-an-index", None), ("/missing", None)):
             compare(basic(suffix, "bad", target), "native_pointers")
         checks["builtin_pointer_escapes_indexes_and_genuine_failures"] = True
+
+        saved_slice = builtins.slice
+        saved_defrag, saved_unquote = _core.urldefrag, _core.unquote
+        slice_events = []
+
+        def pointer_slice(fixture, resource, specifications):
+            suffix = "/integer"
+            state = basic(suffix, "bad", lambda f: f["integer"])(
+                fixture, resource, specifications)
+            events = state["events"] = []
+            slice_events.append(events)
+
+            def unexpected_slice(*args):
+                builtins.slice = saved_slice
+                raise AssertionError("slice syntax must not look up builtins.slice")
+
+            def replacement_unquote(value):
+                raise AssertionError("unquote was selected after subscription")
+
+            def unquote(value):
+                events.append({"unquote": value})
+                try:
+                    return saved_unquote(value)
+                finally:
+                    _core.urldefrag = saved_defrag
+                    _core.unquote = saved_unquote
+
+            class Fragment(str):
+                def __bool__(self):
+                    builtins.slice = unexpected_slice
+                    return True
+
+                def __getitem__(self, key):
+                    builtins.slice = saved_slice
+                    assert type(key) is saved_slice
+                    events.append({"slice": [key.start, key.stop, key.step]})
+                    assert (key.start, key.stop, key.step) == (1, None, None)
+                    _core.unquote = replacement_unquote
+                    return super().__getitem__(key)
+
+            def defrag(value):
+                uri, fragment = saved_defrag(value)
+                if uri == core_uri and value == reference(suffix):
+                    fragment = Fragment(fragment)
+                return uri, fragment
+
+            def install(_state):
+                _core.urldefrag = defrag
+                _core.unquote = unquote
+
+            state["install"] = install
+            return state
+
+        try:
+            compare(pointer_slice, "native_pointers")
+        finally:
+            builtins.slice = saved_slice
+            _core.urldefrag = saved_defrag
+            _core.unquote = saved_unquote
+        expected = [
+            {"slice": [1, None, None]},
+            {"unquote": f"$defs/{fixture_key}/integer"},
+        ]
+        assert slice_events == [expected, expected]
+        checks["pointer_slice_is_live_and_preserves_preselected_unquote"] = True
 
         def dynamic_anchor(fixture, resource, specifications):
             return {"meta": {"$id": root_uri, "$dynamicRef": core_uri + "#meta"},
@@ -616,5 +683,5 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                             finally:
                                 selected.META_SCHEMA = saved_meta
 
-    assert len(checks) == 18 and all(value is True for value in checks.values())
+    assert len(checks) == 19 and all(value is True for value in checks.values())
     return checks

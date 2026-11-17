@@ -335,8 +335,28 @@ impl ReferenceState {
         if !pointer.is_truthy()? {
             return Ok((contents.unbind(), self.clone()));
         }
-        let decoded = module_member(py, "referencing._core", "unquote")?
-            .call1((pointer.get_item(builtin(py, "slice")?.call1((1, py.None()))?)?,))?;
+        let decoded = {
+            let unquote = module_member(py, "referencing._core", "unquote")?;
+            let suffix = {
+                // Match pointer[1:]: CPython builds a fresh slice without a
+                // builtin-name lookup, then invokes the actual subscription.
+                let start = crate::keywords::integer(py, 1);
+                // SAFETY: start remains bound during the call. NULL stop and
+                // step mean None. PySlice_New returns a new reference or NULL.
+                let slice = unsafe {
+                    Bound::from_owned_ptr_or_err(
+                        py,
+                        ffi::PySlice_New(
+                            start.as_ptr(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                        ),
+                    )?
+                };
+                pointer.get_item(&slice)?
+            };
+            unquote.call1((suffix,))?
+        };
         let parts = decoded.call_method1("split", ("/",))?;
         let mut segments = PyList::empty(py);
         let mut state = self.clone();
