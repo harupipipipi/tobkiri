@@ -4023,10 +4023,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   この形だった。Registryには毎回新しいPython文字列を渡し、ドットや空のセグメント、
   query、params、percent escapeは従来の処理を維持する。実拡張で原本と173組を比較し、
   同じ参照の連続取得で文字列を使い回さないことも確認した。ローカルのAppスキーマ42件の
-  処理時間は、6回ずつの中央値で44.77→42.97ms。実Wasmのfuelと全カタログは未計測。
+  処理時間は、6回ずつの中央値で44.77→42.97ms。
+  [実Wasm CI 44108246295](https://github.com/harupipipipi/tobkiri/actions/runs/44108246295) は
+  独立したcold exportで42件の出力を原本と照合し、準備後1,979,505,186→248,375,194 fuel。
+  同じ成果物の全カタログは従来の上限で燃料切れ、Storeを退役した。
 - 旧Activationのsuccessor解決は、元のレコードを照合したworkspace lock内で、同じ
-  Authority Storeと置換catalogを使う。既存Setup resolverの引数はepoch 0と一部の
-  旧authority-refを拒否するため、復旧の入力をそのまま通せない。既存のartifact検証を
+  Authority Storeと置換catalogを使う。既存Setup resolverの入力は一部の旧authority-ref
+  を拒否する。旧レコードのepoch 0は実Authorityとの照合を通過しない。既存のartifact検証を
   再利用できるのは、successorを解決・照合した後、workspace lockを一旦離す発行準備段階。
   承認済みの先行状態と署名付き公開意図を別々に扱い、元の処理どおりworkspaceの移行後に
-  Hostの公開候補を比較する。前後のロック範囲を確認し、実装は後続。
+  Hostの公開候補を比較する。
+  Rustの復旧経路を、元のワーカーで保持するAuthority Store・workspace lock・検証済み
+  レコードを貸し出したまま待機できる形にした。SQLite接続は従来どおり各操作で閉じる。
+  カタログのmutexは同期のHost検証中だけ保持する。中断時も既存のdescriptorとロックの
+  解放処理を共用する。Rust199件、strict Clippy、元Python生成の現行fixture 1件、
+  固定旧ソースのレガシー移行・ドリフト拒否6件をローカルで実行した。
+  復旧専用のPack呼び出しは未接続。次は置換catalogからShell入力を選び、元のedge参照と
+  snapshotを同じStoreのresolverに渡す。実ファイル検証後の再解決と発行writeも残る。
+- [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
+  はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
+  は同じrunで生成したWasmの検証済みセットを元のLauncherへ配置するテストに成功。
+  SetupからGUI承認、会話までの実機検証は後続。

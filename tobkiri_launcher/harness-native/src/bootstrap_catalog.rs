@@ -4,7 +4,7 @@
 use super::*;
 use crate::bootstrap_review::{BundleCalls, Review, original_failure};
 #[cfg(unix)]
-use crate::original_authority::catalog::RecoveryCatalogInputs;
+use crate::original_authority::catalog::RecoveryCatalogAccess;
 use crate::original_authority::catalog::{BindingFailure, CatalogIo};
 use crate::original_authority::definitions::{self, DefinitionRecovery};
 use crate::{BootstrapReviewFailure, BootstrapReviewReachpoint};
@@ -730,26 +730,25 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
     use crate::original_authority::RecoveryAuthorityReached;
     let reached = {
         let work = pack.work.get();
-        let io = work
-            .catalog
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let inputs = RecoveryCatalogInputs::new(
-            io.as_ref().context("recovery catalog loader is missing")?,
+        let inputs = RecoveryCatalogAccess::new(
+            &work.catalog,
             review
                 .actual
                 ._recovery_profile_definitions
                 .as_ref()
                 .context("replacement catalog Profile definitions are missing")?,
             review.actual._admitted_closure.as_ref(),
-        );
-        review.read.run_recovery_authority(
-            &work.source,
-            pack.cancellation,
-            pack.input_budget,
-            inputs,
-            work.profile_schemas,
-        )
+        )?;
+        review
+            .read
+            .run_recovery_authority(
+                &work.source,
+                pack.cancellation,
+                pack.input_budget,
+                inputs,
+                work.profile_schemas,
+            )
+            .await
     };
     let boundary = match reached {
         Ok(RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema { name, legacy }) => {

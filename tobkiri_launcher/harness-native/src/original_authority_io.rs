@@ -711,17 +711,42 @@ pub(super) fn with_registered_store<S: OriginalAuthorityOwner, T>(
     root: &Path,
     body: impl FnOnce(&Store<'_, '_, S>) -> Result<T>,
 ) -> Result<T> {
+    let mut store = registered_store(op, root)?;
+    let outcome = body(&store);
+    finish_scope(outcome, store.close())
+}
+
+/// Keep the entered Store on the native recovery worker while the application
+/// runs. Each Authority operation still opens and closes its own connection.
+#[cfg(unix)]
+pub(super) async fn with_registered_store_async<'a, 'host, S: OriginalAuthorityOwner, T>(
+    op: &'a Operation<'host, S>,
+    root: &Path,
+    body: impl AsyncFnOnce(&Store<'a, 'host, S>) -> Result<T>,
+) -> Result<T> {
+    let mut store = registered_store(op, root)?;
+    let outcome = body(&store).await;
+    finish_scope(outcome, store.close())
+}
+
+#[cfg(unix)]
+fn registered_store<'a, 'host, S: OriginalAuthorityOwner>(
+    op: &'a Operation<'host, S>,
+    root: &Path,
+) -> Result<Funded<Store<'a, 'host, S>>> {
     let path_bytes = root
         .as_os_str()
         .len()
         .checked_mul(16)
         .and_then(|bytes| bytes.checked_add(8192))
         .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
-    let _paths = op.reserve(OriginalAuthorityStage::Path, path_bytes)?;
-    let mut store = Store::open(op, canonical(&root.join("authority/v4.sqlite3"))?)?;
+    let paths = op.reserve(OriginalAuthorityStage::Path, path_bytes)?;
+    let store = Store::open(op, canonical(&root.join("authority/v4.sqlite3"))?)?;
     store.enter()?;
-    let outcome = body(&store);
-    finish_scope(outcome, store.close())
+    Ok(Funded {
+        value: store,
+        _capacity: paths,
+    })
 }
 
 pub(super) fn read_selected<S: OriginalAuthorityOwner>(

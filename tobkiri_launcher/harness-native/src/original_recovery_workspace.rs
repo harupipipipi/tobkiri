@@ -29,23 +29,33 @@ impl RecoveryWorkspace {
         })
     }
 
-    /// `Break` is the original exception that releases the lock for verification.
-    pub(super) fn recover<S: OriginalAuthorityOwner, B, T>(
+    /// Hold the original workspace lock while state recovery awaits Pack work.
+    /// `Break` returns to artifact verification only after the lock has closed.
+    pub(super) async fn recover_async<S: OriginalAuthorityOwner, B, T>(
         &self,
         op: &Operation<'_, S>,
-        on_state: impl FnOnce(
+        on_state: impl AsyncFnOnce(
             &Directory,
             &Digest,
             Option<Funded<Document>>,
         ) -> Result<ControlFlow<B, T>>,
     ) -> Result<ControlFlow<B, T>> {
-        self.with_lock(op, |state, workspace_digest| {
-            let pending = state
-                .exists(op, pending::NAME)?
-                .then(|| pending::read(op, state, workspace_digest))
-                .transpose()?;
-            on_state(state, workspace_digest, pending)
-        })
+        let guard = PublicationLock::acquire_named(op, &self.state, self.lock_name)?;
+        let result = match self.read_pending(op) {
+            Ok(pending) => on_state(&self.state, &self.workspace_digest, pending).await,
+            Err(error) => Err(error),
+        };
+        self.finish_lock(op, guard, result)
+    }
+
+    fn read_pending<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+    ) -> Result<Option<Funded<Document>>> {
+        self.state
+            .exists(op, pending::NAME)?
+            .then(|| pending::read(op, &self.state, &self.workspace_digest))
+            .transpose()
     }
 
     pub(super) fn republish<S: OriginalAuthorityOwner>(
@@ -53,21 +63,18 @@ impl RecoveryWorkspace {
         op: &Operation<'_, S>,
         publish: impl FnOnce(&Directory, &Digest) -> Result<()>,
     ) -> Result<()> {
-        let _ = self.with_lock(op, |state, workspace_digest| {
-            publish(state, workspace_digest)?;
-            Ok(ControlFlow::<()>::Continue(()))
-        })?;
-        Ok(())
+        let guard = PublicationLock::acquire_named(op, &self.state, self.lock_name)?;
+        let outcome = publish(&self.state, &self.workspace_digest).map(ControlFlow::<()>::Continue);
+        self.finish_lock(op, guard, outcome).map(|_| ())
     }
 
-    fn with_lock<S: OriginalAuthorityOwner, B, T>(
+    fn finish_lock<S: OriginalAuthorityOwner, B, T>(
         &self,
         op: &Operation<'_, S>,
-        run: impl FnOnce(&Directory, &Digest) -> Result<ControlFlow<B, T>>,
+        mut guard: PublicationLock,
+        outcome: Result<ControlFlow<B, T>>,
     ) -> Result<ControlFlow<B, T>> {
-        let mut guard = PublicationLock::acquire_named(op, &self.state, self.lock_name)?;
-        let result = (|| {
-            let reached = run(&self.state, &self.workspace_digest)?;
+        let result = outcome.and_then(|reached| {
             if reached.is_continue() {
                 self.state.validate_file(
                     op,
@@ -76,8 +83,21 @@ impl RecoveryWorkspace {
                 )?;
             }
             Ok(reached)
-        })();
+        });
         finish_scope(result, guard.close())
+    }
+}
+
+#[cfg(test)]
+pub(super) fn ready_test<T>(future: impl Future<Output = T>) -> T {
+    use std::task::{Context, Poll, Waker};
+    let mut future = std::pin::pin!(future);
+    match future
+        .as_mut()
+        .poll(&mut Context::from_waker(Waker::noop()))
+    {
+        Poll::Ready(result) => result,
+        Poll::Pending => panic!("fixture has no suspending recovery operation"),
     }
 }
 
@@ -88,14 +108,14 @@ pub(super) fn recover<S: OriginalAuthorityOwner, T>(
     lock_name: LockName,
     on_state: impl FnOnce(&Directory, Option<&Document>) -> Result<Option<T>>,
 ) -> Result<Option<T>> {
-    RecoveryWorkspace::open(op, workspace, lock_name)?
-        .recover(op, |state, _, journal| {
-            Ok(match on_state(state, journal.as_deref())? {
-                Some(value) => ControlFlow::Break(value),
-                None => ControlFlow::Continue(()),
-            })
+    let recovery = RecoveryWorkspace::open(op, workspace, lock_name)?;
+    ready_test(recovery.recover_async(op, async |state, _, journal| {
+        Ok(match on_state(state, journal.as_deref())? {
+            Some(value) => ControlFlow::Break(value),
+            None => ControlFlow::Continue(()),
         })
-        .map(ControlFlow::break_value)
+    }))
+    .map(ControlFlow::break_value)
 }
 
 fn initialize<S: OriginalAuthorityOwner>(
@@ -173,7 +193,12 @@ fn initialize<S: OriginalAuthorityOwner>(
 mod tests {
     use super::*;
     use crate::original_authority::definitions::tests::{lock_free, operation, with_source};
-    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::{
+        cell::Cell,
+        future::{Future, pending, poll_fn},
+        os::unix::fs::{PermissionsExt, symlink},
+        task::{Context, Poll, Waker},
+    };
 
     fn inspect<S: OriginalAuthorityOwner>(
         op: &Operation<'_, S>,
@@ -181,6 +206,67 @@ mod tests {
         name: LockName,
     ) -> Result<Option<()>> {
         recover(op, workspace, name, |_, _| Ok(Some(())))
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn async_recovery_keeps_the_workspace_lock_until_return_or_drop() {
+        struct ObserveCallbackDrop<'a>(&'a Path, &'a Cell<bool>);
+        impl Drop for ObserveCallbackDrop<'_> {
+            fn drop(&mut self) {
+                self.1.set(!lock_free(self.0));
+            }
+        }
+
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            fs::create_dir_all(&workspace).unwrap();
+            let name = LockName::workspace("profile");
+            let lock = workspace.join("activation").join(name.text());
+            let op = operation(read, source, cancellation);
+            let recovery = RecoveryWorkspace::open(&op, &workspace, name).unwrap();
+            let before = read.receipt();
+            let mut cx = Context::from_waker(Waker::noop());
+            let resume = Cell::new(false);
+
+            let mut completed =
+                std::pin::pin!(recovery.recover_async(&op, async |state, _, journal| {
+                    assert!(journal.is_none());
+                    poll_fn(|_| {
+                        if resume.get() {
+                            Poll::Ready(())
+                        } else {
+                            Poll::Pending
+                        }
+                    })
+                    .await;
+                    assert!(!lock_free(&lock));
+                    assert!(!state.exists(&op, pending::NAME)?);
+                    Ok(ControlFlow::<(), ()>::Break(()))
+                }));
+            assert!(completed.as_mut().poll(&mut cx).is_pending());
+            assert!(!lock_free(&lock));
+            assert_eq!(read.receipt().open_files, before.open_files + 1);
+            resume.set(true);
+            assert!(matches!(
+                completed.as_mut().poll(&mut cx),
+                Poll::Ready(Ok(ControlFlow::Break(())))
+            ));
+            assert!(lock_free(&lock));
+            assert_eq!(read.receipt(), before);
+
+            let locked_at_callback_drop = Cell::new(false);
+            {
+                let mut suspended = std::pin::pin!(recovery.recover_async(&op, async |_, _, _| {
+                    let _observe = ObserveCallbackDrop(&lock, &locked_at_callback_drop);
+                    pending::<Result<ControlFlow<()>>>().await
+                }));
+                assert!(suspended.as_mut().poll(&mut cx).is_pending());
+                assert!(!lock_free(&lock));
+            }
+            assert!(locked_at_callback_drop.get());
+            assert!(lock_free(&lock));
+            assert_eq!(read.receipt(), before);
+        });
     }
 
     #[tokio::test(flavor = "current_thread")]

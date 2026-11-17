@@ -2,9 +2,11 @@
 use super::*;
 use crate::bootstrap_metadata::BoundProfileSchemas;
 use crate::original_authority::io::Store;
-use catalog::{ActiveArtifactVerification, RecoveryCatalogInputs};
+use catalog::{ActiveArtifactVerification, RecoveryCatalogAccess};
 use pending_reservation::PendingRepublish;
 use recovery_workspace::RecoveryWorkspace;
+#[cfg(test)]
+use recovery_workspace::ready_test;
 use std::ops::ControlFlow;
 use tobkiri_canon::{AllocationBudget, CoreValue};
 #[path = "original_recovery_active_reservation.rs"]
@@ -38,12 +40,12 @@ pub(crate) enum RecoveryAuthorityReached {
 impl PublicationRead {
     /// Enter Authority only after Bootstrap has verified the replacement
     /// catalog on this runtime. Paths and intent stay in the journal scope.
-    pub(crate) fn run_recovery_authority<S: crate::BootstrapReviewOwner>(
+    pub(crate) async fn run_recovery_authority<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
         budget: &Arc<dyn AllocationBudget>,
-        recovery_catalog: RecoveryCatalogInputs<'_>,
+        recovery_catalog: RecoveryCatalogAccess<'_>,
         profile_schemas: Option<BoundProfileSchemas>,
     ) -> Result<RecoveryAuthorityReached> {
         self.run_recovery(
@@ -52,24 +54,32 @@ impl PublicationRead {
             budget,
             profile_schemas,
             |op, store, workspace, pending, profile_id| {
-                let identity =
-                    recovery_catalog.verify_committed_artifact(op, &pending.profile, profile_id)?;
+                let identity = recovery_catalog.with_inputs(|catalog| {
+                    catalog.verify_committed_artifact(op, &pending.profile, profile_id)
+                })?;
                 pending.publish(op, store, workspace, profile_id, budget, |profile| {
-                    recovery_catalog.require_committed_artifact_identity(op, profile, &identity)
+                    recovery_catalog.with_inputs(|catalog| {
+                        catalog.require_committed_artifact_identity(op, profile, &identity)
+                    })
                 })
             },
             ActiveSnapshotChecks {
                 artifact: |op: &Operation<'_, S>, profile: &CoreValue, profile_id: &str| {
-                    recovery_catalog.verify_active_artifact(op, profile, profile_id)
+                    recovery_catalog.with_inputs(|catalog| {
+                        catalog.verify_active_artifact(op, profile, profile_id)
+                    })
                 },
                 definition: |op: &Operation<'_, S>, profile_id: &str, digest: &str| {
-                    recovery_catalog.verify_registered_definition(op, profile_id, digest)
+                    recovery_catalog.with_inputs(|catalog| {
+                        catalog.verify_registered_definition(op, profile_id, digest)
+                    })
                 },
             },
         )
+        .await
     }
 
-    fn run_recovery<S: crate::BootstrapReviewOwner>(
+    async fn run_recovery<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
@@ -115,12 +125,12 @@ impl PublicationRead {
         }
 
         let op = Self::operation(&self.invocation, &self.cleanup, owner, cancellation)?;
-        let reached = (|| {
+        let reached = async {
             // Check continuity of the held publication lock before the
             // Authority or activation store may create state.
             op.check(OriginalAuthorityStage::Guard)?;
             pending.scope.validate(&op)?;
-            with_registered_store(&op, &pending.root, |store| {
+            with_registered_store_async(&op, &pending.root, async |store| {
                 // Path.exists follows links, treats files as existing too, and
                 // suppresses only the original finite set of stat errors.
                 let exists = candidate_selection::predecessor_stat(&op, &workspace.path, |path| {
@@ -135,9 +145,10 @@ impl PublicationRead {
                         .expect("held canonical bootstrap Profile ID");
                     let activation =
                         RecoveryWorkspace::open(&op, &workspace.path, workspace.lock_name)?;
-                    let mut recover_activation = |read_snapshot: bool| loop {
-                        let next =
-                            activation.recover(&op, |state, workspace_digest, journal| {
+                    let mut recover_activation = async |read_snapshot: bool| loop {
+                        pending.check_thread()?;
+                        let next = activation
+                            .recover_async(&op, async |state, workspace_digest, journal| {
                                 if let Some(journal) = journal {
                                     if let Some(pending) = pending_reservation::recover(
                                         &op, store, state, journal, profile_id, budget,
@@ -147,8 +158,8 @@ impl PublicationRead {
                                 } else {
                                     pending_reservation::abort_incomplete(&op, store, profile_id)?;
                                 }
-                                let snapshot = read_snapshot
-                                    .then(|| {
+                                let snapshot = if read_snapshot {
+                                    Some(
                                         workspace_active::read(
                                             &op,
                                             state,
@@ -158,10 +169,15 @@ impl PublicationRead {
                                             store,
                                             profile_id,
                                         )
-                                    })
-                                    .transpose()?;
+                                        .await?,
+                                    )
+                                } else {
+                                    None
+                                };
                                 Ok(ControlFlow::Continue(snapshot))
-                            })?;
+                            })
+                            .await?;
+                        pending.check_thread()?;
                         match next {
                             ControlFlow::Continue(snapshot) => break Ok(snapshot),
                             ControlFlow::Break(committed) => {
@@ -171,14 +187,20 @@ impl PublicationRead {
                             }
                         }
                     };
-                    recover_activation(false)?;
+                    recover_activation(false).await?;
                     if active_reservation::read(&op, store, &pending.intent)? {
-                        let first = recover_activation(true)?.expect("requested active snapshot");
+                        let first = recover_activation(true)
+                            .await?
+                            .expect("requested active snapshot");
                         return verify_active_snapshot(
                             first,
                             &pending.intent,
                             |profile| (checks.artifact)(&op, profile, profile_id),
-                            || Ok(recover_activation(true)?.expect("requested active snapshot")),
+                            async || {
+                                Ok(recover_activation(true)
+                                    .await?
+                                    .expect("requested active snapshot"))
+                            },
                             |digest| (checks.definition)(&op, profile_id, digest),
                             |active| {
                                 publish_active::publish(
@@ -189,7 +211,8 @@ impl PublicationRead {
                                     active,
                                 )
                             },
-                        );
+                        )
+                        .await;
                     }
                 } else if active_reservation::read(&op, store, &pending.intent)? {
                     return Ok(RecoveryAuthorityReached::MatchedReservation);
@@ -213,8 +236,11 @@ impl PublicationRead {
                     .clear_journal(&op)?;
                 Ok(RecoveryAuthorityReached::RecoveredNone)
             })
-        })()
+            .await
+        }
+        .await
         .map_err(recovery_error)?;
+        pending.check_thread()?;
         // The activation lock and Authority's SQLite and guard handles have
         // closed here. The publication lock stays in the outer continuation.
         if self.receipt() != receipt {
@@ -265,11 +291,11 @@ fn incomplete_snapshot(prefix: workspace_active::ActiveSnapshotPrefix) -> Recove
     }
 }
 
-fn verify_active_snapshot(
+async fn verify_active_snapshot(
     first: workspace_active::ActiveSnapshotRead,
     intent: &Intent,
     verify_artifact: impl FnOnce(&CoreValue) -> Result<ActiveArtifactVerification>,
-    reread: impl FnOnce() -> Result<workspace_active::ActiveSnapshotRead>,
+    reread: impl AsyncFnOnce() -> Result<workspace_active::ActiveSnapshotRead>,
     verify_definition: impl FnOnce(&str) -> Result<()>,
     publish: impl FnOnce(&workspace_active::ActiveSnapshot) -> Result<()>,
 ) -> Result<RecoveryAuthorityReached> {
@@ -284,7 +310,7 @@ fn verify_active_snapshot(
     ) {
         return Ok(RecoveryAuthorityReached::ActiveSnapshotReconfirmationRequired);
     }
-    let second = reread()?;
+    let second = reread().await?;
     let Some(second) = second.current else {
         return Ok(incomplete_snapshot(second.prefix));
     };
@@ -314,7 +340,7 @@ impl PublicationRead {
         cancellation: &CoreCancellation,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<RecoveryAuthorityReached> {
-        self.run_recovery(
+        ready_test(self.run_recovery(
             owner,
             cancellation,
             budget,
@@ -330,7 +356,7 @@ impl PublicationRead {
                     unreachable!("no bound active snapshot schemas")
                 },
             },
-        )
+        ))
     }
 }
 
@@ -754,7 +780,7 @@ mod tests {
                 let mut checked_under_lock = false;
                 let schemas = (expected == Ok(PROFILE_SCHEMA_LOADED))
                     .then(workspace_active::tests::bound_fixture_schemas);
-                let result = read.run_recovery(source, cancellation, budget, schemas, |op, store, workspace, republish, id| {
+                let result = ready_test(read.run_recovery(source, cancellation, budget, schemas, |op, store, workspace, republish, id| {
                     assert_eq!(id, PROFILE_ID);
                     assert!(lock_free(&lock));
                     assert!(!lock_free(&source.root.join(LOCK_PATH)));
@@ -795,7 +821,7 @@ mod tests {
                     definition: |_: &Operation<'_, Source>, _: &str, _: &str| {
                         unreachable!("no complete active snapshot schema closure")
                     },
-                });
+                }));
                 assert_eq!(
                     called,
                     publish

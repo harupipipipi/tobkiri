@@ -1,12 +1,63 @@
 //! The completed loader and the exact replacement rows used by recovery.
 use super::*;
 use artifact_identity::ArtifactTreeIdentity;
+use std::sync::Mutex;
 
 /// Result of checking the current catalog binding and the selected package bytes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ActiveArtifactVerification {
     Current,
     SuccessorNeedsReconfirmation,
+}
+
+/// Borrow the loader only during a synchronous Host artifact or definition
+/// check. The same loader is available to Pack imports during a Store call.
+pub(crate) struct RecoveryCatalogAccess<'a> {
+    loader: &'a Mutex<Option<CatalogIo>>,
+    profiles: &'a CoreValue,
+    admitted: Option<&'a CoreValue>,
+}
+
+impl<'a> RecoveryCatalogAccess<'a> {
+    pub(crate) fn new(
+        loader: &'a Mutex<Option<CatalogIo>>,
+        profiles: &'a CoreValue,
+        admitted: Option<&'a CoreValue>,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            loader
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_some(),
+            "recovery catalog loader is missing"
+        );
+        Ok(Self {
+            loader,
+            profiles,
+            admitted,
+        })
+    }
+
+    pub(in crate::original_authority::io::publication) fn with_inputs<T>(
+        &self,
+        run: impl FnOnce(RecoveryCatalogInputs<'_>) -> Result<T>,
+    ) -> Result<T> {
+        let loader = self
+            .loader
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let loader = loader.as_ref().ok_or_else(|| {
+            OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Source,
+                "recovery catalog loader is missing",
+            )
+        })?;
+        run(RecoveryCatalogInputs::new(
+            loader,
+            self.profiles,
+            self.admitted,
+        ))
+    }
 }
 
 pub(crate) struct RecoveryCatalogInputs<'a> {

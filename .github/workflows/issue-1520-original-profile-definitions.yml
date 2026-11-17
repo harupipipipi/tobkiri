@@ -184,7 +184,7 @@ jobs:
       - name: Check the original activation store constructor and held pending check
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-workspace.log" --expected-passed 7 --
+          --log "$RUNNER_TEMP/native-recovery-workspace.log" --expected-passed 8 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_workspace::tests::
           -- --test-threads=1 --nocapture

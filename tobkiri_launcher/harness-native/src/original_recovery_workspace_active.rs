@@ -132,7 +132,7 @@ pub(super) enum ProfileCheck {
 }
 
 /// Read the selected records in the original order with the bound schema closure.
-pub(super) fn read<S: crate::BootstrapReviewOwner>(
+pub(super) async fn read<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     state: &Directory,
     workspace_digest: &Digest,
@@ -142,23 +142,31 @@ pub(super) fn read<S: crate::BootstrapReviewOwner>(
     profile_id: &str,
 ) -> Result<ActiveSnapshotRead> {
     let mut current = None;
-    let prefix = read_records(op, state, workspace_digest, budget, schemas, |snapshot| {
-        let check = snapshot_graph::verify(op, store, budget, snapshot, profile_id)?;
-        if check == ProfileCheck::NeedsArtifactReverification {
-            current = Some(snapshot_graph::retain_active(op, budget, snapshot.records)?);
-        }
-        Ok(check)
-    })?;
+    let prefix = read_records(
+        op,
+        state,
+        workspace_digest,
+        budget,
+        schemas,
+        async |snapshot| {
+            let check = snapshot_graph::verify(op, store, budget, snapshot, profile_id)?;
+            if check == ProfileCheck::NeedsArtifactReverification {
+                current = Some(snapshot_graph::retain_active(op, budget, snapshot.records)?);
+            }
+            Ok(check)
+        },
+    )
+    .await?;
     Ok(ActiveSnapshotRead { prefix, current })
 }
 
-fn read_records<S: OriginalAuthorityOwner>(
+async fn read_records<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &Directory,
     workspace_digest: &Digest,
     budget: &Arc<dyn AllocationBudget>,
     schemas: Option<BoundProfileSchemas>,
-    verify: impl FnOnce(Snapshot<'_>) -> Result<ProfileCheck>,
+    verify: impl AsyncFnOnce(Snapshot<'_>) -> Result<ProfileCheck>,
 ) -> Result<ActiveSnapshotPrefix> {
     let pointer = pending::read_state(op, state, Path::new("active.json"), "active pointer")?;
     if !exact(&pointer, pointer.root, &POINTER_KEYS) {
@@ -273,7 +281,7 @@ fn read_records<S: OriginalAuthorityOwner>(
             pending: [lock, plan, activation],
             legacy,
         },
-        |records| {
+        async |records| {
             verify(Snapshot {
                 records,
                 pointer: View {
@@ -282,8 +290,10 @@ fn read_records<S: OriginalAuthorityOwner>(
                 },
                 legacy,
             })
+            .await
         },
-    )?;
+    )
+    .await?;
     Ok(ActiveSnapshotPrefix {
         profile_schema: profile.name,
         legacy,
@@ -324,12 +334,12 @@ struct SnapshotSelection<'a> {
     legacy: bool,
 }
 
-fn check_snapshot_records<S: OriginalAuthorityOwner>(
+async fn check_snapshot_records<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     schemas: Option<BoundProfileSchemas>,
     selection: SnapshotSelection<'_>,
-    verify: impl FnOnce(SnapshotRecords<'_>) -> Result<ProfileCheck>,
+    verify: impl AsyncFnOnce(SnapshotRecords<'_>) -> Result<ProfileCheck>,
 ) -> Result<ProfileCheck> {
     let SnapshotSelection {
         profile,
@@ -385,6 +395,7 @@ fn check_snapshot_records<S: OriginalAuthorityOwner>(
         plan: plan.view(),
         activation: activation.view(),
     })
+    .await
 }
 
 fn validate_record<S: OriginalAuthorityOwner>(
@@ -719,9 +730,14 @@ pub(super) mod tests {
             schemas: Option<BoundProfileSchemas>,
         ) -> Result<ActiveSnapshotPrefix> {
             let state = Directory::capture(op, &self.directory, false)?;
-            read_records(op, &state, &self.workspace, budget, schemas, |_| {
-                Ok(ProfileCheck::RecordsValidated)
-            })
+            super::super::ready_test(read_records(
+                op,
+                &state,
+                &self.workspace,
+                budget,
+                schemas,
+                async |_| Ok(ProfileCheck::RecordsValidated),
+            ))
         }
     }
 
@@ -1220,20 +1236,24 @@ pub(super) mod tests {
                     .join("activations")
                     .join(format!("{stem}.json"));
                 let mut capture = |saved: &mut Fixture| {
-                    let snapshot = reader.recover(&op, |state, digest, pending| {
-                        assert!(pending.is_none());
-                        assert!(!lock_free(&lock));
-                        saved.pointer["workspace_digest"] = json!(digest.as_str());
-                        saved.envelope["workspace_digest"] = json!(digest.as_str());
-                        saved.write();
-                        fs::copy(
-                            saved.directory.join("activations").join(NAME),
-                            &published_envelope,
-                        )
-                        .unwrap();
-                        read(&op, state, digest, budget, Some(schemas), store, profile_id)
-                            .map(ControlFlow::<(), _>::Continue)
-                    });
+                    let snapshot = super::super::ready_test(reader.recover_async(
+                        &op,
+                        async |state, digest, pending| {
+                            assert!(pending.is_none());
+                            assert!(!lock_free(&lock));
+                            saved.pointer["workspace_digest"] = json!(digest.as_str());
+                            saved.envelope["workspace_digest"] = json!(digest.as_str());
+                            saved.write();
+                            fs::copy(
+                                saved.directory.join("activations").join(NAME),
+                                &published_envelope,
+                            )
+                            .unwrap();
+                            read(&op, state, digest, budget, Some(schemas), store, profile_id)
+                                .await
+                                .map(ControlFlow::<(), _>::Continue)
+                        },
+                    ));
                     assert!(lock_free(&lock));
                     snapshot.map(|result| result.continue_value().expect("active snapshot"))
                 };
@@ -1369,7 +1389,7 @@ pub(super) mod tests {
                     check: ProfileCheck::NeedsArtifactReverification,
                 }
             );
-            use super::super::{RecoveryAuthorityReached, verify_active_snapshot};
+            use super::super::{RecoveryAuthorityReached, ready_test, verify_active_snapshot};
             use crate::original_authority::catalog::ActiveArtifactVerification;
             let lock = fixture
                 .directory
@@ -1393,23 +1413,23 @@ pub(super) mod tests {
                 Ok(())
             };
             assert_eq!(
-                verify_active_snapshot(
+                ready_test(verify_active_snapshot(
                     capture(fixture).unwrap(),
                     intent,
                     verify,
-                    || capture(fixture),
+                    async || capture(fixture),
                     verify_definition,
                     publish,
-                )
+                ))
                 .unwrap(),
                 RecoveryAuthorityReached::RecoveredPublished,
             );
             let first = capture(fixture).unwrap();
-            let changed = verify_active_snapshot(
+            let changed = ready_test(verify_active_snapshot(
                 first,
                 intent,
                 verify,
-                || {
+                async || {
                     // A different but valid activation record must not reuse the first hash.
                     let previous = fixture.envelope["activation"]["created_at"].take();
                     fixture.envelope["activation"]["created_at"] = json!("2000-01-01T00:00:00Z");
@@ -1419,7 +1439,7 @@ pub(super) mod tests {
                 },
                 |_| panic!("changed records cannot reach the definition check"),
                 |_| panic!("changed records cannot be published"),
-            )
+            ))
             .unwrap_err();
             assert_eq!(
                 changed.message,
@@ -1431,14 +1451,14 @@ pub(super) mod tests {
                 &mut intent.doc.nodes[epoch],
                 Node::Scalar(CanonValue::Int(-1)),
             );
-            let wrong_intent = verify_active_snapshot(
+            let wrong_intent = ready_test(verify_active_snapshot(
                 capture(fixture).unwrap(),
                 intent,
                 verify,
-                || capture(fixture),
+                async || capture(fixture),
                 |_| panic!("different candidate cannot reach the definition check"),
                 |_| panic!("different candidate cannot be published"),
-            )
+            ))
             .unwrap_err();
             assert_eq!(
                 wrong_intent.message,
@@ -1446,16 +1466,16 @@ pub(super) mod tests {
             );
             intent.doc.nodes[epoch] = old;
             assert_eq!(
-                verify_active_snapshot(
+                ready_test(verify_active_snapshot(
                     capture(fixture).unwrap(),
                     intent,
                     |_| Ok(ActiveArtifactVerification::SuccessorNeedsReconfirmation),
-                    || panic!("verified successor requires reconfirmation before any reread"),
+                    async || panic!("verified successor requires reconfirmation before any reread"),
                     |_| panic!(
                         "verified successor requires reconfirmation before checking the definition"
                     ),
                     |_| panic!("verified successor cannot be published before reconfirmation"),
-                )
+                ))
                 .unwrap(),
                 RecoveryAuthorityReached::ActiveSnapshotReconfirmationRequired,
             );

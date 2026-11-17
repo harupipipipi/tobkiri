@@ -16,8 +16,10 @@ mod bundle_metadata;
 #[cfg(unix)]
 #[path = "original_recovery_catalog_artifact.rs"]
 mod recovery_artifact;
+#[cfg(all(test, unix))]
+use recovery_artifact::RecoveryCatalogInputs;
 #[cfg(unix)]
-pub(crate) use recovery_artifact::{ActiveArtifactVerification, RecoveryCatalogInputs};
+pub(crate) use recovery_artifact::{ActiveArtifactVerification, RecoveryCatalogAccess};
 #[cfg(unix)]
 #[path = "original_shell_entrypoint.rs"]
 mod shell_entrypoint;
