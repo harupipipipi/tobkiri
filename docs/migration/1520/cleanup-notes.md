@@ -3659,6 +3659,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   旧 `domain/ai_client/providers/openai_provider.py` のHTTPError処理は57/167/206/664行付近で
   本文読取り・decode・整形を重複する。元のstatus/SSL/timeout/secret方針とGUI表示の
   一致を確認した後、共通のエラー整形へ移せる。既存Providerの削除は置換の製品検証後に行う。
+  [実チャットCI44130220413](https://github.com/harupipipipi/tobkiri/actions/runs/44130220413)も成功し、
+  同じrunでビルドしたPackのchat 4件・network 2件・UI port 2件・manifest 2件と、
+  通常CLIによるProfile作成・実行・公開・拒否・再取込み・User overlayの再生を通過した。
+  [実1B CI44130220058](https://github.com/harupipipipi/tobkiri/actions/runs/44130220058)は、固定した
+  llama.cpp b11146とGemma 3 1B Q4_K_Mを使い、認証付きloopback APIへの実Wasm入力・Flow・
+  stream・保存・cancelの1件を73.35秒で通過した。元Launcher GUI全体の合格を表すものではない。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
@@ -3717,6 +3723,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   B-6 のWasmプロンプトとProviderには同じモデル名が独立したPackデータとして保存され、
   Providerは不一致を拒否する。Launcher側の既存のモデル登録はそのWasm設定に接続されていない。
   接続先・Secret・モデルを獲得する箇所を一つの実Wasmターンに接続し、既存保存値と照合する。
+  `frontend/src/lib/launcherConnections.ts::saveLauncherModelProfile` の既存入力は
+  model_profile_id/model_id/provider_instance_idとRegistry revisionを送る。
+  `local.provider-registry-rust::configuration` のprepare/executeとCredentialPortは再利用候補だが、
+  現状はnative候補でWasm exportもCore contributionもない。DocumentStoreの実装もMemoryStore。
+  最初の接続単位は、既存設定契約をPack側adapterからprivate storageとCredential Brokerへ
+  結ぶこと。prompt/providerは同じ登録モデルsnapshotを読む必要がある。汎用の動的config getterは
+  まだなく、Hostのconfig mapや `Core::set_secret` 直呼びで既存の承認を置き換えない。
 - A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
   旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
   現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。
