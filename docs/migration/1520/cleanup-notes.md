@@ -3641,6 +3641,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   レビュー対象 `4f17a0200` の `harness-live.profile.json` はすべて単一Pack名の文字列を
   `bindings` に入れていた。Piアダプタも同時点では `pi-extension@1.0` の単一import。
   現在の集合とFlowの明示選択は確認済みだが、通常のHarnessで複数のPi拡張を選ぶ導線は必要。
+- B-5 の `cebfae6de` はWasmのProviderとpromptから512トークンの固定上限を外した。
+  Providerのtemperatureは既定0を保ち、0..2の値をAPIへ渡す。StrictV1のPack設定に小数は
+  置けないため、`"0.4"` のような文字列も読み、APIには数値で送る。既存configは変更しない。
+  base URLはoriginだけなら `/v1` を補い、明示されたAPI prefixを保持する。
+  URLのcredentials/query/fragmentは受け付けず、Coreのorigin承認を引き続き使う。
+  HTTPエラーは最大4096 bytesを読み、APIのmessage/type/code/paramを制限付きで表示する。
+  認証エラーの本文は表示せず、既知の資格情報表現も伏せる。任意の秘密形式の検出は保証しない。
+  Coreの `public_provider_error` とstream facadeはguestのエラー本文を固定文へ投影するため、
+  詳細は既存chat-eventの `kind:error` で一度通知し、次のpullで失敗する。Coreと監査には
+  本文を追加しない。UIはtextContentで詳細を表示し、失敗した会話を保存せず下書きを残す。
+  元の成功時のdelta・usage・保存順序を保ち、HTTP 400/401と途中delta後のSSEエラーを
+  実Wasm→承認済みテスト用Core→Flow→ローカルHTTPで検証した。network 2件、chat 4件、
+  UI port 2件、実SDKのMessageChannelを通すUI 11件、guest 7件、strict Clippy、workflow
+  22件が成功。component・UIの実ファイルとmanifest hash、既存権限、更新したProfileのpinも
+  照合した。通常LauncherのGUI承認・会話検証や、tool/reasoning/finish/retryは未完了。
+  旧 `domain/ai_client/providers/openai_provider.py` のHTTPError処理は57/167/206/664行付近で
+  本文読取り・decode・整形を重複する。元のstatus/SSL/timeout/secret方針とGUI表示の
+  一致を確認した後、共通のエラー整形へ移せる。既存Providerの削除は置換の製品検証後に行う。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
@@ -4046,6 +4064,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   候補commit `46c2f84cc` のRegistry hit処理は、Retrievedのconstructor／descriptorや
   同じ関数のcodeを変更した場合に元の呼び出しを飛ばす可能性がある。
   これらの動的な変更と、miss時のコールバック回数を比較してから採用を判断する。
+  [App frameの実Wasm診断44120217693](https://github.com/harupipipipi/tobkiri/actions/runs/44120217693)
+  は `3a5b95fe7` 世代（required移植前）を記録した。40 checkpointsを取得し、
+  `profile_intent_v1` の検査開始後、30.009538秒の期限で終了した。残燃料は53,915,988、
+  退役後の予約は0。完了済みcheck区間の差分では、defaults_setup/alias pack/inventory/
+  pack_manifest/external_normal_pack_catalogの5件が706,394,875 fuelの55.4%を占める。
+  checkpoint間にはimport構築も含み、keyword単独の消費や支配性を証明する計測ではない。
+  `uniqueItems` はlive `_keywords.uniq` を呼び、既存比較で開始前・途中の差し替えも検査する。
+  exact list/strだけで呼び出しを省く案は、この挙動を消し、改善量も未測定のため保留した。
+  次は `78fd660ee` 後の同条件で期限と燃料を比較する。
 - 旧Activationのsuccessor解決は、元のレコードを照合したworkspace lock内で、同じ
   Authority Storeと置換catalogを使う。既存Setup resolverの入力は一部の旧authority-ref
   を拒否する。旧レコードのepoch 0は実Authorityとの照合を通過しない。既存のartifact検証を
@@ -4100,4 +4127,6 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [実保存を含む定義CI 44119941406](https://github.com/harupipipipi/tobkiri/actions/runs/44119941406)
   はLinux・macOSで通過し、[実Wasm CI 44119964703](https://github.com/harupipipipi/tobkiri/actions/runs/44119964703)
   は同じ世代の成果物生成とbootstrap検証を通過した。
+  [tests込みClippy修正後の定義CI44124305192](https://github.com/harupipipipi/tobkiri/actions/runs/44124305192)
+  もLinux・macOSで通過した。
   SetupからGUI承認、会話までの実機検証は後続。
