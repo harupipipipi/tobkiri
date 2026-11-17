@@ -155,13 +155,10 @@ fn check_committed_envelope<S: OriginalAuthorityOwner>(
     journal: &Document,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<(Funded<Document>, Digest)> {
-    let envelope = pending::read_state_with(
-        op,
-        state,
-        path,
-        "committed activation envelope",
-        |bytes| json::decode_read_only_strict(bytes, op, budget),
-    )?;
+    let envelope =
+        pending::read_state_with(op, state, path, "committed activation envelope", |bytes| {
+            json::decode_read_only_strict(bytes, op, budget)
+        })?;
     let changed = || raw(APP_DENIED, "committed activation envelope changed");
     if envelope.entries(envelope.root).is_none() {
         return Err(changed());
