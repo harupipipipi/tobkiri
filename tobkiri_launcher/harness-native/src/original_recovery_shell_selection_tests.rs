@@ -133,11 +133,9 @@ async fn recovery_catalog_verifies_the_selected_package_and_refuses_replaced_byt
             let mut io = fixture_catalog(&op, budget, shell, Some(Digest::hash(b"committed Pack")));
             io.artifact_parent_identity = Some(identity(&fs::metadata(&source.root).unwrap()));
             let rows = guest(&json!([[PROFILE, profile]]), budget);
-            RecoveryCatalogInputs::new(&io, &rows, None).verify_committed_artifact(
-                &op,
-                &guest(profile, budget),
-                PROFILE,
-            )
+            RecoveryCatalogInputs::new(&io, &rows, None)
+                .verify_committed_artifact(&op, &guest(profile, budget), PROFILE)
+                .map(drop)
         };
         let assert_denied = |result: Result<()>, message: &str| {
             let denied = result.unwrap_err();

@@ -1,17 +1,23 @@
 //! The AuthorityStore context at the original nonstale publication caller.
 use super::*;
+use crate::original_authority::io::Store;
 use catalog::RecoveryCatalogInputs;
-use tobkiri_canon::{AllocationBudget, CoreValue};
+use pending_reservation::PendingRepublish;
+use recovery_workspace::RecoveryWorkspace;
+use std::ops::ControlFlow;
+use tobkiri_canon::AllocationBudget;
 #[path = "original_recovery_active_reservation.rs"]
 mod active_reservation;
 #[path = "original_recovery_pending_reservation.rs"]
 mod pending_reservation;
+#[path = "original_recovery_workspace_active.rs"]
+mod workspace_active;
 
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    RepublishCommittedActivation,
-    LoadActiveSnapshot,
+    ValidateActiveSnapshotRecords,
+    MigrateLegacySnapshot,
     MissingPublishedAuthority,
     RecoveredNone,
     MatchedReservation,
@@ -27,9 +33,18 @@ impl PublicationRead {
         budget: &Arc<dyn AllocationBudget>,
         recovery_catalog: RecoveryCatalogInputs<'_>,
     ) -> Result<RecoveryAuthorityReached> {
-        self.run_recovery(owner, cancellation, budget, |op, profile, profile_id| {
-            recovery_catalog.verify_committed_artifact(op, profile, profile_id)
-        })
+        self.run_recovery(
+            owner,
+            cancellation,
+            budget,
+            |op, store, workspace, pending, profile_id| {
+                let identity =
+                    recovery_catalog.verify_committed_artifact(op, &pending.profile, profile_id)?;
+                pending.publish(op, store, workspace, profile_id, budget, |profile| {
+                    recovery_catalog.require_committed_artifact_identity(op, profile, &identity)
+                })
+            },
+        )
     }
 
     fn run_recovery<S: crate::BootstrapReviewOwner>(
@@ -37,7 +52,13 @@ impl PublicationRead {
         owner: &S,
         cancellation: &CoreCancellation,
         budget: &Arc<dyn AllocationBudget>,
-        on_committed: impl FnOnce(&Operation<'_, S>, &CoreValue, &str) -> Result<()>,
+        mut on_committed: impl FnMut(
+            &Operation<'_, S>,
+            &Store<'_, '_, S>,
+            &RecoveryWorkspace,
+            PendingRepublish,
+            &str,
+        ) -> Result<()>,
     ) -> Result<RecoveryAuthorityReached> {
         self.check_continuation_thread()?;
         let receipt = self.receipt();
@@ -85,33 +106,51 @@ impl PublicationRead {
                         .file_name()
                         .and_then(|part| part.to_str())
                         .expect("held canonical bootstrap Profile ID");
-                    let next = recovery_workspace::recover(
-                        &op,
-                        &workspace.path,
-                        workspace.lock_name,
-                        |state, journal| {
-                            if let Some(journal) = journal {
-                                return pending_reservation::recover(
-                                    &op, store, state, journal, profile_id, budget,
-                                );
+                    let activation =
+                        RecoveryWorkspace::open(&op, &workspace.path, workspace.lock_name)?;
+                    let mut recover_activation = |read_snapshot: bool| loop {
+                        let next =
+                            activation.recover(&op, |state, workspace_digest, journal| {
+                                if let Some(journal) = journal {
+                                    if let Some(pending) = pending_reservation::recover(
+                                        &op, store, state, journal, profile_id, budget,
+                                    )? {
+                                        return Ok(ControlFlow::Break(pending));
+                                    }
+                                } else {
+                                    pending_reservation::abort_incomplete(&op, store, profile_id)?;
+                                }
+                                let snapshot = read_snapshot
+                                    .then(|| {
+                                        workspace_active::read(&op, state, workspace_digest, budget)
+                                    })
+                                    .transpose()?;
+                                Ok(ControlFlow::Continue(snapshot))
+                            })?;
+                        match next {
+                            ControlFlow::Continue(snapshot) => break Ok(snapshot),
+                            ControlFlow::Break(committed) => {
+                                // Keep the original Store and Host publication guard
+                                // while the workspace lock is released for verification.
+                                on_committed(&op, store, &activation, committed, profile_id)?;
                             }
-                            pending_reservation::abort_incomplete(&op, store, profile_id)?;
-                            Ok(None)
-                        },
-                    )?;
-                    if let Some(profile) = next {
-                        // The Workspace lock has closed. The original Store
-                        // and Host publication guard remain in this scope.
-                        on_committed(&op, &profile, profile_id)?;
-                        return Ok(RecoveryAuthorityReached::RepublishCommittedActivation);
+                        }
+                    };
+                    recover_activation(false)?;
+                    if active_reservation::read(&op, store, &pending.intent)? {
+                        let snapshot =
+                            recover_activation(true)?.expect("requested active snapshot");
+                        return Ok(match snapshot {
+                            workspace_active::ActiveSnapshotPrefix::ReadyForRecordValidation => {
+                                RecoveryAuthorityReached::ValidateActiveSnapshotRecords
+                            }
+                            workspace_active::ActiveSnapshotPrefix::LegacyMigration => {
+                                RecoveryAuthorityReached::MigrateLegacySnapshot
+                            }
+                        });
                     }
-                }
-                if active_reservation::read(&op, store, &pending.intent)? {
-                    return Ok(if exists {
-                        RecoveryAuthorityReached::LoadActiveSnapshot
-                    } else {
-                        RecoveryAuthorityReached::MatchedReservation
-                    });
+                } else if active_reservation::read(&op, store, &pending.intent)? {
+                    return Ok(RecoveryAuthorityReached::MatchedReservation);
                 }
                 if exists
                     && published_candidate(
@@ -162,7 +201,14 @@ impl PublicationRead {
         cancellation: &CoreCancellation,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<RecoveryAuthorityReached> {
-        self.run_recovery(owner, cancellation, budget, |_, _, _| Ok(()))
+        self.run_recovery(
+            owner,
+            cancellation,
+            budget,
+            |op, store, workspace, pending, id| {
+                pending.publish(op, store, workspace, id, budget, |_| Ok(()))
+            },
+        )
     }
 }
 
@@ -176,6 +222,7 @@ mod tests {
     use rusqlite::params;
     use sha2::Sha256;
     use std::os::unix::fs::symlink;
+    use tobkiri_canon::CoreValue;
 
     const PROFILE_ID: &str = "recovery-profile";
     const ACTIVATION_ID: &str = "activation:recovery";
@@ -374,7 +421,42 @@ mod tests {
                 PROFILE_ID,
                 "+１",
                 "pinned.json",
-                Ok(RecoveryAuthorityReached::RepublishCommittedActivation),
+                Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecords),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "1",
+                "reformatted.json",
+                Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecords),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "1",
+                "moved.json",
+                Err("pending activation journal is invalid"),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "1",
+                "replaced.json",
+                Err("committed activation envelope changed"),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "1",
+                "epoch-during-verify.json",
+                Err("activation reservation is stale immediately before publish"),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "1",
+                "artifact-moved.json",
+                Err("active Profile Shell artifact changed after verification"),
             ),
             (
                 "committing",
@@ -455,17 +537,6 @@ mod tests {
                 fs::create_dir_all(state_root.join("activations")).unwrap();
                 let stored_envelope = state_root.join("activations").join("pinned.json");
                 let other_envelope = state_root.join("activations").join("different.json");
-                let contents =
-                    br#"{ "profile": { "profile_authority_snapshot_digest": "authority" },
-                    "activation": { "state": "active" },
-                    "plan": { "security_epoch": 2, "plan_digest": "plan" } }"#;
-                fs::write(&stored_envelope, contents).unwrap();
-                if matches!(envelope, "stale-epoch.json" | "different-plan.json") {
-                    fs::write(state_root.join("activations").join(envelope), contents).unwrap();
-                }
-                let unrelated =
-                    br#"{"activation":{"state":"active"},"plan":{},"profile":{"revision":2}}"#;
-                fs::write(&other_envelope, unrelated).unwrap();
                 let lock = state_root.join(LockName::workspace(PROFILE_ID).text());
                 let digest = tobkiri_canon::digest(
                     &object([(
@@ -482,13 +553,36 @@ mod tests {
                     tobkiri_canon::Variant::StrictV1,
                 )
                 .unwrap();
+                let contents = format!(
+                    r#"{{"activation":{{"state":"active"}},"lock":{{}},"plan":{{"plan_digest":"plan","security_epoch":2}},"profile":{{"profile_authority_snapshot_digest":"authority"}},"schema":"io.tobkiri.defaultspack-activation-envelope.v1","workspace_digest":"{digest}"}}"#,
+                );
+                let envelope_digest = Digest::hash(contents.as_bytes());
+                fs::write(&stored_envelope, &contents).unwrap();
+                let selected_envelope = state_root.join("activations").join(envelope);
+                if !matches!(
+                    envelope,
+                    "different.json" | "missing.json" | "../pinned.json"
+                ) {
+                    fs::write(&selected_envelope, &contents).unwrap();
+                }
+                let unrelated =
+                    br#"{"activation":{"state":"active"},"plan":{},"profile":{"revision":2}}"#;
+                fs::write(&other_envelope, unrelated).unwrap();
+                let pointer = state_root.join("active.json");
+                let previous_pointer = format!(
+                    "{{\"activation_id\":\"activation:previous\",\"envelope_digest\":\"{}\",\"envelope_path\":\"different.json\",\"schema\":\"io.tobkiri.defaultspack-active-pointer.v1\",\"workspace_digest\":\"{digest}\"}}\n",
+                    Digest::hash(unrelated),
+                );
+                if state == "active" {
+                    fs::write(&pointer, &previous_pointer).unwrap();
+                }
                 let pending = state_root.join("pending.json");
                 let data = serde_json::to_vec(&serde_json::json!({
                     "schema": "io.tobkiri.defaultspack-pending-activation.v1",
                     "reservation_id": "reservation:1",
                     "activation_id": ACTIVATION_ID,
                     "envelope_path": envelope,
-                    "envelope_digest": Digest::hash(br#"{"activation":{"state":"active"},"plan":{"plan_digest":"plan","security_epoch":2},"profile":{"profile_authority_snapshot_digest":"authority"}}"#).as_str(),
+                    "envelope_digest": envelope_digest.as_str(),
                     "workspace_digest": digest.as_str(),
                     "fencing_token": fence,
                 }))
@@ -512,26 +606,69 @@ mod tests {
                     [epoch],
                 )
                 .unwrap();
+                let publish =
+                    expected == Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecords);
+                if publish {
+                    insert(&db, 2, "activation:abandoned", "prepared");
+                    db.execute(
+                        "UPDATE activation_reservations SET profile_id=? WHERE fencing_token=2",
+                        [PROFILE_ID],
+                    )
+                    .unwrap();
+                }
                 db.close().unwrap();
 
-                let mut captured_profile = false;
-                let result = read.run_recovery(source, cancellation, budget, |_, profile, id| {
+                let mut called = false;
+                let mut checked_under_lock = false;
+                let result = read.run_recovery(source, cancellation, budget, |op, store, workspace, republish, id| {
                     assert_eq!(id, PROFILE_ID);
                     assert!(lock_free(&lock));
                     assert!(!lock_free(&source.root.join(LOCK_PATH)));
                     assert_eq!(
-                        profile
+                        republish.profile
                             .get_key("profile_authority_snapshot_digest")
                             .as_ref()
                             .and_then(CoreValue::as_str),
                         Some("authority")
                     );
-                    captured_profile = true;
-                    Ok(())
+                    called = true;
+                    match envelope {
+                        "moved.json" => fs::write(&pending, b"{}").unwrap(),
+                        "reformatted.json" => {
+                            let value: serde_json::Value = serde_json::from_slice(&data).unwrap();
+                            fs::write(&pending, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                        }
+                        "replaced.json" => fs::write(&selected_envelope, unrelated).unwrap(),
+                        "epoch-during-verify.json" => {
+                            let db = Connection::open(source.root.join(DATABASE)).unwrap();
+                            db.execute("UPDATE authority_meta SET value='3' WHERE key='security_epoch'", []).unwrap();
+                        }
+                        _ => {}
+                    }
+                    republish.publish(op, store, workspace, id, budget, |_| {
+                        assert!(!lock_free(&lock));
+                        assert!(!lock_free(&source.root.join(LOCK_PATH)));
+                        checked_under_lock = true;
+                        if envelope == "artifact-moved.json" {
+                            return Err(raw(recovery_workspace::APP_DENIED, "active Profile Shell artifact changed after verification"));
+                        }
+                        Ok(())
+                    })
                 });
                 assert_eq!(
-                    captured_profile,
-                    expected == Ok(RecoveryAuthorityReached::RepublishCommittedActivation)
+                    called,
+                    publish
+                        || matches!(
+                            envelope,
+                            "moved.json"
+                                | "replaced.json"
+                                | "epoch-during-verify.json"
+                                | "artifact-moved.json"
+                        )
+                );
+                assert_eq!(
+                    checked_under_lock,
+                    publish || envelope == "artifact-moved.json"
                 );
                 let cleared = expected == Ok(RecoveryAuthorityReached::RecoveredNone);
                 match expected {
@@ -555,16 +692,35 @@ mod tests {
                 }
                 assert_eq!(stored_envelope.exists(), !cleared);
                 assert_eq!(fs::read(other_envelope).unwrap(), unrelated);
-                if cleared {
+                if cleared || publish {
                     assert!(!pending.exists());
+                } else if envelope == "moved.json" {
+                    assert_eq!(fs::read(pending).unwrap(), b"{}");
                 } else {
                     assert_eq!(fs::read(pending).unwrap(), data);
+                }
+                if publish {
+                    assert_eq!(
+                        fs::read_to_string(&pointer).unwrap(),
+                        format!(
+                            "{{\"activation_id\":\"{ACTIVATION_ID}\",\"envelope_digest\":\"{envelope_digest}\",\"envelope_path\":\"{envelope}\",\"schema\":\"io.tobkiri.defaultspack-active-pointer.v1\",\"workspace_digest\":\"{digest}\"}}\n"
+                        )
+                    );
+                    assert_eq!(fs::read_to_string(&selected_envelope).unwrap(), contents);
+                } else if state == "active" {
+                    assert_eq!(fs::read_to_string(&pointer).unwrap(), previous_pointer);
+                } else {
+                    assert!(!pointer.exists());
                 }
                 let db = Connection::open(source.root.join(DATABASE)).unwrap();
                 let (status, audit_events) = reservation_state_and_audit(&db, "reservation:1");
                 let aborted = state == "committing";
                 assert_eq!(status, if aborted { "aborted" } else { state });
                 assert_eq!(audit_events, i64::from(aborted));
+                if publish {
+                    let (status, _) = reservation_state_and_audit(&db, "reservation:2");
+                    assert_eq!(status, "aborted");
+                }
                 db.close().unwrap();
                 assert!(lock_free(&lock));
                 verify_custody(source, read, cancellation, cleared);
@@ -595,10 +751,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn existing_workspace_aborts_its_incomplete_reservations_before_active_snapshot() {
-        for (state, expected) in [
-            ("active", RecoveryAuthorityReached::LoadActiveSnapshot),
-            ("committing", RecoveryAuthorityReached::RecoveredNone),
-        ] {
+        for state in ["active", "committing"] {
             with_setup_source(|source, read, cancellation, budget| {
                 enter(source, read, cancellation);
                 let workspace = source.root.join("workspaces").join(PROFILE_ID);
@@ -617,11 +770,15 @@ mod tests {
                 insert(&db, 10, "separate:10", "committing");
                 db.close().unwrap();
 
-                assert_eq!(
-                    read.run_recovery_test(source, cancellation, budget)
-                        .unwrap(),
-                    expected
-                );
+                let result = read.run_recovery_test(source, cancellation, budget);
+                let cleared = state == "committing";
+                if cleared {
+                    assert_eq!(result.unwrap(), RecoveryAuthorityReached::RecoveredNone);
+                } else {
+                    let error = result.unwrap_err();
+                    assert_eq!(error.class, recovery_workspace::APP_DENIED);
+                    assert_eq!(error.message, "active pointer is unavailable: active.json");
+                }
                 let db = Connection::open(source.root.join(DATABASE)).unwrap();
                 let mut statement = db.prepare(
                     "SELECT event_id FROM authority_audit WHERE event_type='activation' ORDER BY sequence",
@@ -649,12 +806,7 @@ mod tests {
                     .join("activation")
                     .join(LockName::workspace(PROFILE_ID).text());
                 assert!(lock_free(&lock));
-                verify_custody(
-                    source,
-                    read,
-                    cancellation,
-                    expected == RecoveryAuthorityReached::RecoveredNone,
-                );
+                verify_custody(source, read, cancellation, cleared);
             });
         }
     }

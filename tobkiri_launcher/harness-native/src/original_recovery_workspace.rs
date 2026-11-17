@@ -1,5 +1,6 @@
 //! The original App activation store's first recovery branch on a held workspace.
 use super::*;
+use std::ops::ControlFlow;
 use tobkiri_canon::Variant;
 
 #[path = "original_recovery_pending.rs"]
@@ -8,30 +9,93 @@ pub(super) mod pending;
 pub(crate) const APP_DENIED: &str =
     "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied";
 
-/// Run the reached activation recovery branch under the original App lock,
-/// while Authority and the publication guard are live.
+pub(super) struct RecoveryWorkspace {
+    state: Directory,
+    workspace_digest: Digest,
+    lock_name: LockName,
+}
+
+impl RecoveryWorkspace {
+    pub(super) fn open<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        workspace: &Path,
+        lock_name: LockName,
+    ) -> Result<Self> {
+        let (state, workspace_digest) = initialize(op, workspace)?;
+        Ok(Self {
+            state,
+            workspace_digest,
+            lock_name,
+        })
+    }
+
+    /// `Break` is the original exception that releases the lock for verification.
+    pub(super) fn recover<S: OriginalAuthorityOwner, B, T>(
+        &self,
+        op: &Operation<'_, S>,
+        on_state: impl FnOnce(
+            &Directory,
+            &Digest,
+            Option<Funded<Document>>,
+        ) -> Result<ControlFlow<B, T>>,
+    ) -> Result<ControlFlow<B, T>> {
+        self.with_lock(op, |state, workspace_digest| {
+            let pending = state
+                .exists(op, pending::NAME)?
+                .then(|| pending::read(op, state, workspace_digest))
+                .transpose()?;
+            on_state(state, workspace_digest, pending)
+        })
+    }
+
+    pub(super) fn republish<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        publish: impl FnOnce(&Directory, &Digest) -> Result<()>,
+    ) -> Result<()> {
+        let _ = self.with_lock(op, |state, workspace_digest| {
+            publish(state, workspace_digest)?;
+            Ok(ControlFlow::<()>::Continue(()))
+        })?;
+        Ok(())
+    }
+
+    fn with_lock<S: OriginalAuthorityOwner, B, T>(
+        &self,
+        op: &Operation<'_, S>,
+        run: impl FnOnce(&Directory, &Digest) -> Result<ControlFlow<B, T>>,
+    ) -> Result<ControlFlow<B, T>> {
+        let mut guard = PublicationLock::acquire_named(op, &self.state, self.lock_name)?;
+        let result = (|| {
+            let reached = run(&self.state, &self.workspace_digest)?;
+            if reached.is_continue() {
+                self.state.validate_file(
+                    op,
+                    self.lock_name.text(),
+                    guard.file.as_ref().expect("App lock"),
+                )?;
+            }
+            Ok(reached)
+        })();
+        finish_scope(result, guard.close())
+    }
+}
+
+#[cfg(test)]
 pub(super) fn recover<S: OriginalAuthorityOwner, T>(
     op: &Operation<'_, S>,
     workspace: &Path,
     lock_name: LockName,
     on_state: impl FnOnce(&Directory, Option<&Document>) -> Result<Option<T>>,
 ) -> Result<Option<T>> {
-    let (state, workspace_digest) = initialize(op, workspace)?;
-    let mut guard = PublicationLock::acquire_named(op, &state, lock_name)?;
-    let result = (|| {
-        let pending = state
-            .exists(op, pending::NAME)?
-            .then(|| pending::read(op, &state, &workspace_digest))
-            .transpose()?;
-        let reached = on_state(&state, pending.as_deref())?;
-        // A committed activation unwinds the original context before the
-        // artifact walk. Only ordinary completion reaches post-yield checks.
-        if reached.is_none() {
-            state.validate_file(op, lock_name.text(), guard.file.as_ref().expect("App lock"))?;
-        }
-        Ok(reached)
-    })();
-    finish_scope(result, guard.close())
+    RecoveryWorkspace::open(op, workspace, lock_name)?
+        .recover(op, |state, _, journal| {
+            Ok(match on_state(state, journal.as_deref())? {
+                Some(value) => ControlFlow::Break(value),
+                None => ControlFlow::Continue(()),
+            })
+        })
+        .map(ControlFlow::break_value)
 }
 
 fn initialize<S: OriginalAuthorityOwner>(

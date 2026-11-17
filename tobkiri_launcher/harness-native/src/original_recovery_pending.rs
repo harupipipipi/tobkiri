@@ -1,7 +1,7 @@
 //! Read the original pending record before crossing into Authority again.
 use super::*;
 
-pub(super) const NAME: &str = "pending.json";
+pub(in crate::original_authority::io::publication) const NAME: &str = "pending.json";
 const SCHEMA: &str = "io.tobkiri.defaultspack-pending-activation.v1";
 const KEYS: [&str; 7] = [
     "schema",

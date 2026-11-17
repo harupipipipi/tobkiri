@@ -1,9 +1,9 @@
 //! Bind the held activation journal to its live Authority reservation.
 use super::*;
 use crate::original_authority::io::{Store, abort_transaction, incomplete_reservations};
-use recovery_workspace::{APP_DENIED, pending};
+use recovery_workspace::{APP_DENIED, RecoveryWorkspace, pending};
 use rusqlite::types::Value;
-use tobkiri_canon::CoreValue;
+use tobkiri_canon::{CoreBuffer, CoreValue, Variant};
 
 #[path = "original_recovery_committed_activation.rs"]
 mod committed;
@@ -32,15 +32,15 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     store: &Store<'_, '_, S>,
     state: &Directory,
-    journal: &Document,
+    journal: Funded<Document>,
     profile_id: &str,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<Option<CoreValue>> {
+) -> Result<Option<PendingRepublish>> {
     let render = |key| {
         let id = journal
             .get(journal.root, key)
             .expect("verified journal keys");
-        definitions::render_python_str(op, budget, journal, id)
+        definitions::render_python_str(op, budget, &journal, id)
     };
     let reservation = render("reservation_id")?;
     let Some(row) = incomplete_reservations::read_pending(
@@ -87,13 +87,13 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
     }
     match column_text(state_col, state_key)? {
         "active" => {
-            let envelope = with_envelope_path(op, name, |path| {
-                check_committed_envelope(op, state, path, journal, budget)
+            let (document, _) = with_envelope_path(op, name, |path| {
+                check_committed_envelope(op, state, path, &journal, budget)
             })?;
             committed::revalidate(
                 op,
                 store,
-                &envelope,
+                &document,
                 committed::Binding {
                     reservation_id: text(&reservation),
                     activation_id: text(&activation),
@@ -101,12 +101,15 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
                     fencing_token: actual_fence,
                 },
             )?;
-            let profile = subscript(&envelope, envelope.root, "profile")?;
-            let bytes = json::canonical_subtree(&envelope, profile, None, op, budget)?;
-            drop(envelope);
-            let profile = CoreValue::parse_guest(&bytes, budget)
-                .map_err(|_| OriginalAuthorityError::capacity(STAGE))?;
-            Ok(Some(profile))
+            let profile = committed_profile(op, &document, budget)?;
+            Ok(Some(PendingRepublish {
+                journal,
+                envelope,
+                reservation,
+                activation,
+                fencing_token: actual_fence,
+                profile,
+            }))
         }
         status @ ("prepared" | "ready_without_authority" | "committing" | "aborted") => {
             if status != "aborted" {
@@ -144,7 +147,7 @@ fn check_committed_envelope<S: OriginalAuthorityOwner>(
     path: &Path,
     journal: &Document,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<Funded<Document>> {
+) -> Result<(Funded<Document>, Digest)> {
     let envelope = pending::read_state(op, state, path, "committed activation envelope")?;
     let changed = || raw(APP_DENIED, "committed activation envelope changed");
     if envelope.entries(envelope.root).is_none() {
@@ -163,10 +166,110 @@ fn check_committed_envelope<S: OriginalAuthorityOwner>(
     {
         return Err(changed());
     }
-    Ok(envelope)
+    Ok((envelope, digest))
 }
 
-fn text(buffer: &tobkiri_canon::CoreBuffer) -> &str {
+pub(super) struct PendingRepublish {
+    journal: Funded<Document>,
+    envelope: CoreBuffer,
+    reservation: CoreBuffer,
+    activation: CoreBuffer,
+    fencing_token: i64,
+    pub(super) profile: CoreValue,
+}
+
+impl PendingRepublish {
+    /// Reacquire the same lock. The caller has already verified bytes unlocked.
+    pub(super) fn publish<S: OriginalAuthorityOwner>(
+        self,
+        op: &Operation<'_, S>,
+        store: &Store<'_, '_, S>,
+        workspace: &RecoveryWorkspace,
+        profile_id: &str,
+        budget: &Arc<dyn AllocationBudget>,
+        require_artifact: impl FnOnce(&CoreValue) -> Result<()>,
+    ) -> Result<()> {
+        workspace.republish(op, |state, workspace_digest| {
+            let path = Path::new(pending::NAME);
+            if !state.exists(op, pending::NAME)? {
+                return Ok(());
+            }
+            // Digest before interpreting fields. A different pending record
+            // belongs to the next recovery iteration, including other shapes.
+            let current = pending::read_state(op, state, path, "pending activation journal")?;
+            let digest = |doc: &Document| {
+                json::canonical_subtree(doc, doc.root, None, op, budget)
+                    .map(|bytes| Digest::hash(&bytes))
+            };
+            if digest(&current)? != digest(&self.journal)? {
+                return Ok(());
+            }
+            let name = text(&self.envelope);
+            let (envelope, envelope_digest) = with_envelope_path(op, name, |path| {
+                check_committed_envelope(op, state, path, &current, budget)
+            })?;
+            committed::revalidate(
+                op,
+                store,
+                &envelope,
+                committed::Binding {
+                    reservation_id: text(&self.reservation),
+                    activation_id: text(&self.activation),
+                    profile_id,
+                    fencing_token: self.fencing_token,
+                },
+            )?;
+            require_artifact(&committed_profile(op, &envelope, budget)?)?;
+            let activation = text(&self.activation);
+            let _write_capacity = op.reserve(
+                STAGE,
+                activation
+                    .len()
+                    .saturating_add(name.len())
+                    .saturating_mul(16)
+                    .saturating_add(8192),
+            )?;
+            let payload = object([
+                (
+                    "schema",
+                    CanonValue::Str(workspace_active::POINTER_SCHEMA.into()),
+                ),
+                ("activation_id", CanonValue::Str(activation.into())),
+                ("envelope_path", CanonValue::Str(name.into())),
+                (
+                    "envelope_digest",
+                    CanonValue::Str(envelope_digest.as_str().into()),
+                ),
+                (
+                    "workspace_digest",
+                    CanonValue::Str(workspace_digest.as_str().into()),
+                ),
+            ]);
+            let mut bytes = tobkiri_canon::encode(&payload, Variant::StrictV1)
+                .map_err(|_| OriginalAuthorityError::unavailable())?;
+            bytes.push(b'\n');
+            state
+                .replace_activation_pointer(op, &bytes)
+                .map_err(persistence_error)?;
+            unlink(op, state, path)
+        })
+    }
+}
+
+fn committed_profile<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    envelope: &Document,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    let profile = subscript(envelope, envelope.root, "profile")?;
+    if envelope.entries(profile).is_none() {
+        return Err(raw(APP_DENIED, "committed activation profile is invalid"));
+    }
+    let bytes = json::canonical_subtree(envelope, profile, None, op, budget)?;
+    CoreValue::parse_guest(&bytes, budget).map_err(|_| OriginalAuthorityError::capacity(STAGE))
+}
+
+fn text(buffer: &CoreBuffer) -> &str {
     buffer.as_str().expect("Python str rendered as valid UTF-8")
 }
 
@@ -239,14 +342,16 @@ fn unlink<S: OriginalAuthorityOwner>(
     state: &Directory,
     path: &Path,
 ) -> Result<()> {
-    state.unlink_if_present(op, path).map_err(|error| {
-        if error.class == RAW_IO || error.class == SECURE_PERSISTENCE_ERROR {
-            caused(
-                raw(APP_DENIED, "activation persistence is unavailable"),
-                error,
-            )
-        } else {
-            error
-        }
-    })
+    state.unlink_if_present(op, path).map_err(persistence_error)
+}
+
+fn persistence_error(error: OriginalAuthorityError) -> OriginalAuthorityError {
+    if error.class == RAW_IO || error.class == SECURE_PERSISTENCE_ERROR {
+        caused(
+            raw(APP_DENIED, "activation persistence is unavailable"),
+            error,
+        )
+    } else {
+        error
+    }
 }

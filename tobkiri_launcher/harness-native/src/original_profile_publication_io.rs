@@ -475,6 +475,14 @@ impl Directory {
         parent.finish(result)
     }
 
+    pub(super) fn replace_activation_pointer<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        bytes: &[u8],
+    ) -> Result<()> {
+        self.replace_fixed(op, c"active.json", bytes, false)
+    }
+
     fn replace_fixed<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,

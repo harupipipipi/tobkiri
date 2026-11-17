@@ -16,6 +16,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/bootstrap_admitted_closure.rs
       - tobkiri_launcher/harness-native/src/original_recovery_authority.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_workspace_active.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending_reservation.rs
       - tobkiri_launcher/harness-native/src/original_recovery_committed_activation.rs
@@ -188,6 +189,13 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::incomplete_reservations::tests::
           -- --test-threads=1 --nocapture
+      - name: Check the locked workspace active pointer and pinned envelope
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 3 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::recovery_authority::workspace_active::tests::
+          -- --test-threads=1 --nocapture
       - name: Check atomic activation aborts and the authenticated audit chain
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -316,6 +324,7 @@ jobs:
             ${{ runner.temp }}/native-catalog-resources-unit.log*
             ${{ runner.temp }}/native-recovery-authority.log*
             ${{ runner.temp }}/native-recovery-workspace.log*
+            ${{ runner.temp }}/native-recovery-workspace-active.log*
             ${{ runner.temp }}/native-recovery-incomplete.log*
             ${{ runner.temp }}/native-recovery-abort.log*
             ${{ runner.temp }}/native-recovery-shell-selection.log*

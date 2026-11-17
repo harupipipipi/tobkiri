@@ -20,7 +20,7 @@ const MEMBER_UNAVAILABLE: &str = "active Profile Shell artifact member is unavai
 const STREAM_CHUNK: usize = 1024 * 1024;
 
 /// The selected spelling and exact ordered lstat evidence. Owns no descriptors.
-pub(super) struct ArtifactTreeIdentity {
+pub(in crate::original_authority::io::publication) struct ArtifactTreeIdentity {
     root_end: usize,
     path_end: usize,
     rows: Buffer<Entry>,
@@ -252,7 +252,6 @@ pub(super) fn verify_tree_digest<S: crate::BootstrapReviewOwner>(
 }
 
 /// Compare exact evidence, with bounded work and no content reads.
-#[cfg(test)]
 pub(super) fn require_same<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
@@ -270,7 +269,6 @@ pub(super) fn require_same<S: crate::BootstrapReviewOwner>(
     })
 }
 
-#[cfg(test)]
 fn compare<S: OriginalAuthorityOwner, T: PartialEq>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,

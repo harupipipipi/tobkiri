@@ -751,11 +751,11 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         )
     };
     let boundary = match reached {
-        Ok(RecoveryAuthorityReached::RepublishCommittedActivation) => {
-            BootstrapReviewReachpoint::RecoveryRepublishCommittedActivationNotBound
+        Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecords) => {
+            BootstrapReviewReachpoint::RecoveryValidateActiveSnapshotRecordsNotBound
         }
-        Ok(RecoveryAuthorityReached::LoadActiveSnapshot) => {
-            BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotNotBound
+        Ok(RecoveryAuthorityReached::MigrateLegacySnapshot) => {
+            BootstrapReviewReachpoint::RecoveryMigrateLegacySnapshotNotBound
         }
         Ok(RecoveryAuthorityReached::MissingPublishedAuthority) => {
             return Ok(Err(review_continuation::denied(
