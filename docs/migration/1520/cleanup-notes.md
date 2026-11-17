@@ -3944,3 +3944,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   厳密JSONとして読む。Appのキャッシュ済みオブジェクト、メタスキーマ、参照先、レコード検証は後続。
   Rust Harness 180件、strict Clippy、Producer 2件、ワークフロー13件、Launcherステージングの
   独立テストを実行。実macOS CI向けのHarnessテストもローカルでコンパイル確認した。
+- Profile v4/v5に加えて、元の共通スキーマとProfileコンテンツ投影スキーマを同じWasmの
+  source manifestで検証する。v1・参照を含まないv2レシートは従来の読み取りを維持する。
+  完全な組がある復旧経路はworkspace lock内でProfileの構造、ID・digest・重複、禁止された
+  権限フィールドと参照の整合を確認して、次のLock検証へ進む。
+  約26KiBの元のv4 Profileは、読み取り専用JSONを既存の確保量計算で解析し、パーサーの
+  作業領域を解放することで従来の64MiB上限内で通った。元のPythonではv4・v5の成功例と
+  3つの拒否例を照合し、10種のパターンは17,720例で元 `re.search` と一致した。
+  構造・意味のいずれかが不一致の場合は復旧を止める。元の全診断文の再構成は後続。
+  次のLock v4/v5は現行の構造キーワードで扱える。Planは `function-principal.v1` と
+  そのルートへの固定参照、Activationには `date-time` と `activation:` IDのパターンが追加で必要。

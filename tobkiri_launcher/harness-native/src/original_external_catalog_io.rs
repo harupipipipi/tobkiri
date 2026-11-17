@@ -24,6 +24,8 @@ mod external_catalog_variants;
 use external_catalog_compiler as compiler;
 use external_catalog_model as model;
 
+pub(in crate::original_authority::io::publication) use model::validate_profile_semantics;
+
 // The generated catalog describes packaged Pack IDs. It is distinct from the
 // selected bundle catalog and from user-installed Pack manifests.
 const SOURCE_CATALOG: &str = "schemas/pack_v4_catalog.v1.json";

@@ -32,6 +32,16 @@ PROFILE_SCHEMA_PATHS = {
     version: f"tobkiri_protocol/schemas/profile_{version}.schema.json"
     for version in ("v4", "v5")
 }
+PROFILE_REFERENCE_IDS = {
+    "common": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json",
+    "content_projection": (
+        "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json"
+    ),
+}
+PROFILE_REFERENCE_PATHS = {
+    "common": "tobkiri_protocol/schemas/common_v1.schema.json",
+    "content_projection": "tobkiri_protocol/schemas/profile_content_projection_v1.schema.json",
+}
 
 
 def verify_producer_selection(
@@ -113,7 +123,7 @@ def verify_app_source_bindings(build: dict, actual: dict) -> None:
 def _profile_schema_resources(
     inputs: Path, base: dict[str, bytes], manifest: list[dict],
 ) -> dict[str, bytes]:
-    """Select the exact pair from the prepared component's captured DATA."""
+    """Select the original Profile roots and references from captured DATA."""
     def row_for(destination: str) -> dict:
         source = "python/" + destination
         rows = [row for row in manifest
@@ -130,36 +140,58 @@ def _profile_schema_resources(
                       for target in node.targets)]
     if len(tables) != 1 or not isinstance(tables[0], ast.Tuple):
         raise ValueError("native captured DATA must have one literal FILES table")
-    wanted = set(PROFILE_SCHEMA_PATHS.values())
+    paths = {**PROFILE_SCHEMA_PATHS, **PROFILE_REFERENCE_PATHS}
+    wanted = set(paths.values())
     selected = tuple(ast.literal_eval(row) for row in tables[0].elts
                      if isinstance(row, ast.Tuple) and row.elts
                      and isinstance(row.elts[0], ast.Constant)
                      and row.elts[0].value in wanted)
     if len(selected) != len(wanted) or {row[0] for row in selected} != wanted:
-        raise ValueError("native captured DATA must contain both Profile schemas once")
+        raise ValueError("native captured DATA must contain each Profile schema and reference once")
     resources = Tree(selected, compressed=True)
     result = {}
-    for version, name in PROFILE_SCHEMA_PATHS.items():
+    for key, name in paths.items():
         row = row_for(name)
         raw, digest = resources.path(name)._read_verified_bytes()
         if (not raw or len(raw) != row["bytes"] or digest != row["sha256"]
                 or raw != base.get(row["source"])):
             raise ValueError(f"captured Profile schema differs from original source: {name}")
-        result[version] = raw
+        if key in PROFILE_REFERENCE_IDS:
+            document = json.loads(raw)
+            if (not isinstance(document, dict)
+                    or document.get("$id") != PROFILE_REFERENCE_IDS[key]):
+                raise ValueError(f"captured Profile reference has an unexpected $id: {name}")
+        result[key] = raw
     return result
 
 
 def _rust_profile_schemas(component_sha256: str, schemas: dict[str, bytes]) -> bytes:
     """Write immutable Rust literals without source-language string ambiguities."""
+    def literal(raw: bytes) -> str:
+        chunks = ["".join(f"\\x{byte:02x}" for byte in raw[start:start + 20])
+                  for start in range(0, len(raw), 20)]
+        return 'b"' + "\\\n        ".join(chunks) + '"'
+
     lines = [
         "\npub static PROFILE_SCHEMAS: BootstrapProfileSchemas = BootstrapProfileSchemas {",
         f'    component_sha256: "sha256:{component_sha256}",',
+        *(f"    {version}: {literal(schemas[version])}," for version in PROFILE_SCHEMA_PATHS),
+        "    references: Some([",
+        *(f"        {literal(schemas[key])}," for key in PROFILE_REFERENCE_PATHS),
+        "    ]),",
     ]
-    for version, raw in schemas.items():
-        chunks = ["".join(f"\\x{byte:02x}" for byte in raw[start:start + 20])
-                  for start in range(0, len(raw), 20)]
-        lines.append(f'    {version}: b"' + "\\\n        ".join(chunks) + '",')
     return ("\n".join([*lines, "};", ""])).encode("ascii")
+
+
+def _profile_schema_receipt(schemas: dict[str, bytes]) -> dict:
+    def row(key: str) -> dict[str, str]:
+        raw = schemas[key]
+        return {"sha256": hashlib.sha256(raw).hexdigest(), "content": raw.decode("utf-8")}
+
+    return {
+        **{version: row(version) for version in PROFILE_SCHEMA_PATHS},
+        "references": {key: row(key) for key in PROFILE_REFERENCE_PATHS},
+    }
 
 
 def bind(
@@ -300,11 +332,7 @@ def bind(
                 {"module": module, "relative_file": relative}
                 for module, relative in selected
             ],
-            "profile_schemas": {
-                version: {"sha256": hashlib.sha256(raw).hexdigest(),
-                          "content": raw.decode("utf-8")}
-                for version, raw in profile_schemas.items()
-            },
+            "profile_schemas": _profile_schema_receipt(profile_schemas),
         }, sort_keys=True) + "\n", encoding="utf-8")
     env = {
         "TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT": str(artifact),

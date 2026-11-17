@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/python313-producer"))
 sys.path.insert(0, str(ROOT / "scripts/wasm"))
 import harness_native_ci_inputs as binder  # noqa: E402
+from harness_native_dependencies import compress_sources  # noqa: E402
 import stage_harness_native as stage  # noqa: E402
 
 
@@ -46,16 +47,26 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         }
         if diagnostic:
             metadata["diagnostic_only"] = True
-        metadata_name = "python/" + binder.METADATA
-        files[metadata_name] = json.dumps(metadata).encode()
-        (inputs / "python").mkdir()
-        (inputs / metadata_name).write_bytes(files[metadata_name])
-        plan["entrypoint"] = binder.ENTRYPOINT
-        plan["sources"].append({
-            "source": metadata_name,
-            "destination": binder.METADATA,
-            "sha256": hashlib.sha256(files[metadata_name]).hexdigest(),
+        schema_paths = (*binder.PROFILE_SCHEMA_PATHS.values(),
+                        *binder.PROFILE_REFERENCE_PATHS.values())
+        captured_schemas = compress_sources({
+            name: files["python/" + name] for name in schema_paths
         })
+        generated_sources = {
+            binder.METADATA: json.dumps(metadata).encode(),
+            binder.CAPTURED_DATA: f"FILES = {captured_schemas!r}\n".encode(),
+        }
+        (inputs / "python").mkdir()
+        plan["entrypoint"] = binder.ENTRYPOINT
+        for destination, raw in generated_sources.items():
+            source = "python/" + destination
+            files[source] = raw
+            (inputs / source).write_bytes(raw)
+            plan["sources"].append({
+                "source": source,
+                "destination": destination,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            })
         raw_plan = (json.dumps(plan, sort_keys=True) + "\n").encode()
         (inputs / "plan.json").write_bytes(raw_plan)
         (inputs / "provenance.json").write_bytes(files["provenance.json"])
@@ -148,9 +159,18 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         receipt_path = output / "launcher-component.json"
         receipt = json.loads(receipt_path.read_bytes())
         self.assertEqual(report["launcher_component_receipt"], binder.fingerprint(receipt_path))
-        self.assertEqual(receipt["format"], "io.tobkiri.launcher-setup-component.v1")
+        self.assertEqual(receipt["format"], "io.tobkiri.launcher-setup-component.v2")
         self.assertEqual(receipt["component"], binder.fingerprint(artifact))
         self.assertTrue(receipt["modules"])
+        paths = {**binder.PROFILE_SCHEMA_PATHS, **binder.PROFILE_REFERENCE_PATHS}
+        schemas = receipt["profile_schemas"]
+        self.assertEqual(set(schemas), {"v4", "v5", "references"})
+        self.assertEqual(set(schemas["references"]), {"common", "content_projection"})
+        for key, row in {"v4": schemas["v4"], "v5": schemas["v5"],
+                         **schemas["references"]}.items():
+            expected = (ROOT / "tobkiri_runtime" / paths[key]).read_bytes()
+            self.assertEqual(row, {"sha256": hashlib.sha256(expected).hexdigest(),
+                                   "content": expected.decode("utf-8")})
 
     def test_self_consistent_rehashed_plan_cannot_substitute_validation_source(self):
         artifact, inputs, plan = self.fixture(True)

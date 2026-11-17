@@ -17,6 +17,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_recovery_authority.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace_active.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_profile_schema.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending_reservation.rs
       - tobkiri_launcher/harness-native/src/original_recovery_committed_activation.rs
@@ -194,7 +195,7 @@ jobs:
       - name: Check the locked workspace active pointer and pinned envelope
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 5 --
+          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 6 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::tests::
           -- --test-threads=1 --nocapture
@@ -209,6 +210,13 @@ jobs:
             cargo test --locked -p tobkiri-harness-native --lib \
             first_profile_schema_diagnostics_and_canonicalization_cause_are_preserved \
             -- --test-threads=1 --nocapture
+      - name: Check the bundled Profile schemas, references and conditional rules
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-recovery-profile-schema.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::recovery_authority::workspace_active::profile_schema::tests::
+          -- --test-threads=1 --nocapture
       - name: Check atomic activation aborts and the authenticated audit chain
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -338,6 +346,7 @@ jobs:
             ${{ runner.temp }}/native-recovery-authority.log*
             ${{ runner.temp }}/native-recovery-workspace.log*
             ${{ runner.temp }}/native-recovery-workspace-active.log*
+            ${{ runner.temp }}/native-recovery-profile-schema.log*
             ${{ runner.temp }}/native-recovery-active-reservation.log*
             ${{ runner.temp }}/native-recovery-schema-cause.log*
             ${{ runner.temp }}/native-recovery-incomplete.log*

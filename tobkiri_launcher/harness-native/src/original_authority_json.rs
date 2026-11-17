@@ -236,23 +236,7 @@ pub(super) fn decode_profile_definitions<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
 ) -> Result<Funded<Document>> {
-    if input.len() > tobkiri_canon::MAX_BYTES {
-        return Err(strict_error("json input exceeds size limit"));
-    }
-    budget
-        .reserve(tobkiri_canon::AllocationRequest {
-            kind: tobkiri_canon::AllocationKind::Temporary,
-            bytes: 0,
-            elements: 0,
-            depth: 0,
-            work: input.len() as u64 * 8,
-        })
-        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
-    let bound = definition_allocation_bound(input)
-        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
-    let mut doc =
-        decode_inner(input, op, true, Some((bound, budget.clone()))).map_err(strict_parse_error)?;
-    validate_strict(&doc, op)?;
+    let mut doc = decode_censused_strict(input, op, budget)?;
     // Registry validation uses small temporary metadata nodes and may infer
     // bootstrap state. Keep enough funded space for either growth, but release
     // the parser frames, duplicate diagnostics and numeric scratch provision
@@ -268,11 +252,36 @@ pub(super) fn decode_profile_definitions<S: OriginalAuthorityOwner>(
         .checked_add(arena_growth)
         .and_then(|bytes| bytes.checked_add(8192))
         .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?
-        .min(bound);
+        .min(doc.allocation_bound);
     doc._capacity
         .resize(retained as u64)
         .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
     doc.allocation_bound = retained;
+    Ok(doc)
+}
+
+fn decode_censused_strict<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+) -> Result<Funded<Document>> {
+    if input.len() > tobkiri_canon::MAX_BYTES {
+        return Err(strict_error("json input exceeds size limit"));
+    }
+    budget
+        .reserve(tobkiri_canon::AllocationRequest {
+            kind: tobkiri_canon::AllocationKind::Temporary,
+            bytes: 0,
+            elements: 0,
+            depth: 0,
+            work: input.len() as u64 * 8,
+        })
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let bound = definition_allocation_bound(input)
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let doc =
+        decode_inner(input, op, true, Some((bound, budget.clone()))).map_err(strict_parse_error)?;
+    validate_strict(&doc, op)?;
     Ok(doc)
 }
 
@@ -301,6 +310,21 @@ fn decode_metered_strict<S: OriginalAuthorityOwner>(
     let doc =
         decode_inner(input, op, true, Some((bound, budget.clone()))).map_err(strict_parse_error)?;
     validate_strict(&doc, op)?;
+    Ok(doc)
+}
+
+/// Retain immutable strict DATA without its parser scratch or registry growth.
+pub(super) fn decode_read_only_strict<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+) -> Result<Funded<Document>> {
+    let mut doc = decode_censused_strict(input, op, budget)?;
+    let storage = doc.actual_storage_bytes();
+    doc._capacity
+        .resize(storage as u64)
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    doc.allocation_bound = storage;
     Ok(doc)
 }
 

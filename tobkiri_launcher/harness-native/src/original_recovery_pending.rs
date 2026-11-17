@@ -39,10 +39,22 @@ pub(in crate::original_authority::io::publication) fn read_state<S: OriginalAuth
     path: &Path,
     label: &'static str,
 ) -> Result<Funded<Document>> {
+    read_state_with(op, state, path, label, |bytes| {
+        json::decode_strict(bytes, op)
+    })
+}
+
+pub(in crate::original_authority::io::publication) fn read_state_with<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &Directory,
+    path: &Path,
+    label: &'static str,
+    decode: impl FnOnce(&[u8]) -> Result<Funded<Document>>,
+) -> Result<Funded<Document>> {
     let bytes = state
         .read_relative(op, path)
         .map_err(|error| read_error(op, label, error))?;
-    json::decode_strict(&bytes, op).map_err(|error| read_error(op, label, error))
+    decode(&bytes).map_err(|error| read_error(op, label, error))
 }
 
 fn read_error<S: OriginalAuthorityOwner>(

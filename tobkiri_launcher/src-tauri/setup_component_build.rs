@@ -48,6 +48,14 @@ struct Module {
 struct ProfileSchemas {
     v4: Schema,
     v5: Schema,
+    references: Option<ProfileSchemaReferences>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileSchemaReferences {
+    common: Schema,
+    content_projection: Schema,
 }
 
 #[derive(Deserialize)]
@@ -58,7 +66,7 @@ struct Schema {
 }
 
 impl Schema {
-    fn verified(&self, id: &str, api_version: &str) -> bool {
+    fn verified(&self, id: &str, api_version: Option<&str>) -> bool {
         let bytes = self.content.as_bytes();
         if !(1..=RECEIPT_LIMIT as usize).contains(&bytes.len())
             || !valid_digest(&self.sha256)
@@ -70,15 +78,17 @@ impl Schema {
             return false;
         };
         value.get("$id").and_then(serde_json::Value::as_str) == Some(id)
-            && value
-                .pointer("/properties/profile_api_version/const")
-                .and_then(serde_json::Value::as_str)
-                == Some(api_version)
+            && api_version.is_none_or(|version| {
+                value
+                    .pointer("/properties/profile_api_version/const")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(version)
+            })
     }
 }
 
-fn rust_schema(out: &mut String, version: &str, bytes: &[u8]) {
-    write!(out, "    {version}: b\"").expect("writing to String");
+fn rust_schema(out: &mut String, bytes: &[u8]) {
+    out.push_str("b\"");
     for (index, byte) in bytes.iter().enumerate() {
         if index > 0 && index % 20 == 0 {
             out.push_str("\\\n        ");
@@ -90,16 +100,20 @@ fn rust_schema(out: &mut String, version: &str, bytes: &[u8]) {
 
 fn schema_receipt_objects(raw: &[u8]) -> bool {
     // serde's derived structs also accept arrays of positional fields. This
-    // receipt format requires the named JSON objects, including both leaves.
+    // receipt format requires named JSON objects in every schema position.
+    fn fields_are_objects(value: &serde_json::Value, fields: &[&str]) -> bool {
+        fields
+            .iter()
+            .all(|field| value.get(*field).is_some_and(serde_json::Value::is_object))
+    }
     serde_json::from_slice::<serde_json::Value>(raw)
         .ok()
         .is_some_and(|receipt| {
             receipt.get("profile_schemas").is_some_and(|schemas| {
-                ["v4", "v5"].iter().all(|version| {
-                    schemas
-                        .get(*version)
-                        .is_some_and(serde_json::Value::is_object)
-                })
+                fields_are_objects(schemas, &["v4", "v5"])
+                    && schemas.get("references").is_none_or(|references| {
+                        fields_are_objects(references, &["common", "content_projection"])
+                    })
             })
         })
 }
@@ -182,12 +196,21 @@ pub fn stage(
             if schema_receipt_objects(&raw)
                 && schemas.v4.verified(
                     "https://schemas.tobkiri.local/io.tobkiri/profile.v4.schema.json",
-                    "io.tobkiri.profile.v4",
+                    Some("io.tobkiri.profile.v4"),
                 )
                 && schemas.v5.verified(
                     "https://schemas.tobkiri.local/io.tobkiri/profile.v5.schema.json",
-                    "io.tobkiri.profile.v5",
-                ) => {}
+                    Some("io.tobkiri.profile.v5"),
+                )
+                && schemas.references.as_ref().is_none_or(|references| {
+                    references.common.verified(
+                        "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json",
+                        None,
+                    ) && references.content_projection.verified(
+                        "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json",
+                        None,
+                    )
+                }) => {}
         _ => {
             return Err(invalid(
                 "Setup component receipt has invalid Profile schemas or format",
@@ -242,8 +265,20 @@ pub fn stage(
         let mut rust = format!(
             "static PROFILE_SCHEMAS: BootstrapProfileSchemas = BootstrapProfileSchemas {{\n    component_sha256: {component_digest:?},\n"
         );
-        rust_schema(&mut rust, "v4", schemas.v4.content.as_bytes());
-        rust_schema(&mut rust, "v5", schemas.v5.content.as_bytes());
+        for (version, schema) in [("v4", schemas.v4), ("v5", schemas.v5)] {
+            write!(rust, "    {version}: ").expect("writing to String");
+            rust_schema(&mut rust, schema.content.as_bytes());
+        }
+        if let Some(references) = schemas.references {
+            rust.push_str("    references: Some([\n");
+            for schema in [references.common, references.content_projection] {
+                rust.push_str("        ");
+                rust_schema(&mut rust, schema.content.as_bytes());
+            }
+            rust.push_str("    ]),\n");
+        } else {
+            rust.push_str("    references: None,\n");
+        }
         rust.push_str("};\n");
         (rust, "Some(&PROFILE_SCHEMAS)")
     } else {
@@ -368,7 +403,15 @@ mod tests {
         let rust = fs::read_to_string(generated)?;
         let component_digest = document["component"]["sha256"].as_str().unwrap();
         assert!(rust.contains("profile_schemas: Some(&PROFILE_SCHEMAS)"));
+        assert!(rust.contains("references: None"));
         assert!(rust.contains(&format!("component_sha256: \"sha256:{component_digest}\"")));
+        let decode_literal = |literal: &str| {
+            literal
+                .split("\\x")
+                .skip(1)
+                .map(|value| u8::from_str_radix(value, 16).unwrap())
+                .collect::<Vec<_>>()
+        };
         let emitted = rust.replace("\\\n        ", "");
         for (version, content) in [("v4", raw_v4), ("v5", raw_v5)] {
             let prefix = format!("    {version}: b\"");
@@ -379,13 +422,67 @@ mod tests {
                 .split_once('"')
                 .unwrap()
                 .0;
-            let bytes = literals
-                .split("\\x")
-                .skip(1)
-                .map(|value| u8::from_str_radix(value, 16).unwrap())
-                .collect::<Vec<_>>();
-            assert_eq!(bytes, content.as_bytes());
+            assert_eq!(decode_literal(literals), content.as_bytes());
         }
+
+        let v2_references = root.join("v2-references");
+        fs::create_dir(&v2_references)?;
+        let generated = v2_references.join(GENERATED);
+        let common =
+            "{\"$id\":\"https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json\"}\r\n";
+        let projection = "{\"$id\":\"https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json\"}\n";
+        let references =
+            serde_json::json!({"common": row(common), "content_projection": row(projection)});
+        for invalid_references in [
+            serde_json::Value::Null,
+            serde_json::json!([row(common), row(projection)]),
+            serde_json::json!({"common": row(common)}),
+            serde_json::json!({"content_projection": row(projection)}),
+            serde_json::json!({"common": row(common), "content_projection": row(projection), "extra": row("{}")}),
+            serde_json::json!({"common": row(projection), "content_projection": row(common)}),
+            serde_json::json!({"common": [references["common"]["sha256"], common], "content_projection": row(projection)}),
+            serde_json::json!({"common": {"content": common.trim_end(), "sha256": references["common"]["sha256"]}, "content_projection": row(projection)}),
+        ] {
+            document["profile_schemas"]["references"] = invalid_references;
+            assert!(stage(
+                &source,
+                &receipt,
+                &pin(&document)?,
+                &v2_references,
+                &generated
+            )
+            .is_err());
+        }
+        assert!(!generated.exists());
+        assert!(!v2_references.join(component::RESOURCE).exists());
+        document["profile_schemas"]["references"] = references;
+        stage(
+            &source,
+            &receipt,
+            &pin(&document)?,
+            &v2_references,
+            &generated,
+        )?;
+        let emitted = fs::read_to_string(&generated)?.replace("\\\n        ", "");
+        let literals = emitted
+            .split_once("    references: Some([\n")
+            .unwrap()
+            .1
+            .split_once("    ]),")
+            .unwrap()
+            .0;
+        let contents = literals
+            .lines()
+            .map(|line| {
+                decode_literal(
+                    line.strip_prefix("        b\"")
+                        .unwrap()
+                        .strip_suffix("\",")
+                        .unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(contents, [common.as_bytes(), projection.as_bytes()]);
         Ok(())
     }
 }

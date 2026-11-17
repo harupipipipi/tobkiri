@@ -4,6 +4,9 @@ use crate::bootstrap_metadata::BoundProfileSchemas;
 use recovery_workspace::{APP_DENIED, pending};
 use tobkiri_canon::{CoreBuffer, CoreValue};
 
+#[path = "original_recovery_profile_schema.rs"]
+mod profile_schema;
+
 pub(super) const POINTER_SCHEMA: &str = "io.tobkiri.defaultspack-active-pointer.v1";
 const ENVELOPE_SCHEMA: &str = "io.tobkiri.defaultspack-activation-envelope.v1";
 const CANONICALIZATION_ERROR: &str = "tobkiri_protocol.errors.CanonicalizationError";
@@ -23,14 +26,23 @@ const POINTER_KEYS: [&str; 5] = [
 pub(super) struct ActiveSnapshotPrefix {
     pub(super) profile_schema: &'static str,
     pub(super) legacy: bool,
+    pub(super) check: ProfileCheck,
 }
 
-/// Read the first record up to the original versioned App schema load.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ProfileCheck {
+    SourceUnavailable,
+    ReferencesUnavailable,
+    Validated,
+}
+
+/// Read the first record and validate it when the component's schema closure is bound.
 pub(super) fn read<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &Directory,
     workspace_digest: &Digest,
     budget: &Arc<dyn AllocationBudget>,
+    schemas: Option<BoundProfileSchemas>,
 ) -> Result<ActiveSnapshotPrefix> {
     let pointer = pending::read_state(op, state, Path::new("active.json"), "active pointer")?;
     if !exact(&pointer, pointer.root, &POINTER_KEYS) {
@@ -73,7 +85,9 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
     }
     path.push("activations");
     path.push(name);
-    let envelope = pending::read_state(op, state, &path, "activation envelope")?;
+    let envelope = pending::read_state_with(op, state, &path, "activation envelope", |bytes| {
+        json::decode_read_only_strict(bytes, op, budget)
+    })?;
 
     let changed = || raw(APP_DENIED, "activation envelope digest changed");
     if envelope.entries(envelope.root).is_none() {
@@ -132,10 +146,11 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
     if legacy && envelope.entries(profile).is_none() {
         return Err(raw(APP_DENIED, "legacy activation profile is invalid"));
     }
-    let profile_schema = select_profile_schema(op, budget, &envelope, profile)?;
+    let (profile_schema, check) = select_profile_schema(op, budget, &envelope, profile, schemas)?;
     Ok(ActiveSnapshotPrefix {
         profile_schema,
         legacy,
+        check,
     })
 }
 
@@ -145,11 +160,12 @@ fn field_is(doc: &Document, id: usize, key: &str, expected: &str) -> bool {
 }
 
 /// Load the already selected component's finite resource under the workspace lock.
-pub(super) fn load_profile_schema<S: OriginalAuthorityOwner>(
+fn load_profile_schema<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
     schemas: BoundProfileSchemas,
     name: &str,
-) -> Result<()> {
+) -> Result<Funded<Document>> {
     let source = || {
         OriginalAuthorityError::unsupported(
             OriginalAuthorityStage::Source,
@@ -157,11 +173,43 @@ pub(super) fn load_profile_schema<S: OriginalAuthorityOwner>(
         )
     };
     let bytes = schemas.get(name).ok_or_else(source)?;
-    let data = json::decode_strict(bytes, op)?;
+    let data = json::decode_read_only_strict(bytes, op, budget)?;
     if data.entries(data.root).is_none() {
         return Err(source());
     }
-    Ok(())
+    Ok(data)
+}
+
+fn validate_record<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    name: &'static str,
+    doc: &Document,
+    profile: usize,
+    schemas: Option<BoundProfileSchemas>,
+) -> Result<ProfileCheck> {
+    let Some(schemas) = schemas else {
+        return Ok(ProfileCheck::SourceUnavailable);
+    };
+    let root = load_profile_schema(op, budget, schemas, name)?;
+    let Some([common, projection]) = schemas.references() else {
+        return Ok(ProfileCheck::ReferencesUnavailable);
+    };
+    let common = json::decode_read_only_strict(common, op, budget)?;
+    let projection = json::decode_read_only_strict(projection, op, budget)?;
+    if !profile_schema::matches(op, budget, [&root, &common, &projection], doc, profile)? {
+        return Err(OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Source,
+            "original Profile JSON Schema mismatch diagnostics",
+        ));
+    }
+    if !external_catalog::validate_profile_semantics(doc, profile, op, budget)? {
+        return Err(OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Source,
+            "original Profile semantic mismatch diagnostics",
+        ));
+    }
+    Ok(ProfileCheck::Validated)
 }
 
 fn record(doc: &Document, key: &str, invalid: &'static str) -> Result<usize> {
@@ -175,19 +223,22 @@ fn select_profile_schema<S: OriginalAuthorityOwner>(
     budget: &Arc<dyn AllocationBudget>,
     envelope: &Document,
     profile: usize,
-) -> Result<&'static str> {
+    schemas: Option<BoundProfileSchemas>,
+) -> Result<(&'static str, ProfileCheck)> {
     // The canonical envelope already proves an object child's canonical JSON
     // eligibility. Preserve its ordered arena. Serialized text requires an
     // independent strict parse before the version lookup.
     let decoded = if matches!(envelope.node(profile), Node::String(_)) {
         let text = definitions::render_python_str(op, budget, envelope, profile)?;
-        Some(match json::decode_strict(text.as_bytes(), op) {
-            Ok(document) => document,
-            Err(error) if error.class == CANONICALIZATION_ERROR => {
-                return Err(schema_failure(budget, Err(error))?);
-            }
-            Err(error) => return Err(error),
-        })
+        Some(
+            match json::decode_read_only_strict(text.as_bytes(), op, budget) {
+                Ok(document) => document,
+                Err(error) if error.class == CANONICALIZATION_ERROR => {
+                    return Err(schema_failure(budget, Err(error))?);
+                }
+                Err(error) => return Err(error),
+            },
+        )
     } else {
         None
     };
@@ -197,7 +248,10 @@ fn select_profile_schema<S: OriginalAuthorityOwner>(
     let message = if doc.entries(profile).is_some() {
         for (version, schema) in PROFILE_SCHEMAS {
             if field_is(doc, profile, "profile_api_version", version) {
-                return Ok(schema);
+                return Ok((
+                    schema,
+                    validate_record(op, budget, schema, doc, profile, schemas)?,
+                ));
             }
         }
         "unsupported profile API version"
@@ -252,7 +306,7 @@ pub(super) mod tests {
 
     const NAME: &str = "selected.json";
 
-    static SCHEMAS: crate::BootstrapProfileSchemas = crate::BootstrapProfileSchemas {
+    const PROFILE_ROOTS: crate::BootstrapProfileSchemas = crate::BootstrapProfileSchemas {
         component_sha256: "sha256:df236ea3735c6e7102f4284c4cd6af041c31b6edea151558769c21200fe2d787",
         v4: include_bytes!(
             "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_v4.schema.json"
@@ -260,6 +314,19 @@ pub(super) mod tests {
         v5: include_bytes!(
             "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_v5.schema.json"
         ),
+        references: None,
+    };
+    static SCHEMAS: crate::BootstrapProfileSchemas = PROFILE_ROOTS;
+    static COMPLETE_SCHEMAS: crate::BootstrapProfileSchemas = crate::BootstrapProfileSchemas {
+        references: Some([
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/common_v1.schema.json"
+            ),
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_content_projection_v1.schema.json"
+            ),
+        ]),
+        ..PROFILE_ROOTS
     };
 
     pub(in crate::original_authority::io::publication::recovery_authority) fn bound_fixture_schemas()
@@ -273,12 +340,14 @@ pub(super) mod tests {
     async fn loads_only_the_original_profile_pair_bound_to_the_compiled_component() {
         assert!(SCHEMAS.bind(&Digest::hash(b"foreign component")).is_err());
         let schemas = bound_fixture_schemas();
-        with_source(|source, read, cancellation, _| {
+        with_source(|source, read, cancellation, budget| {
             let op = operation(read, source, cancellation);
             for (_, name) in PROFILE_SCHEMAS {
-                load_profile_schema(&op, schemas, name).unwrap();
+                load_profile_schema(&op, budget, schemas, name).unwrap();
             }
-            assert!(load_profile_schema(&op, schemas, "profile_lock_v5.schema.json").is_err());
+            assert!(
+                load_profile_schema(&op, budget, schemas, "profile_lock_v5.schema.json").is_err()
+            );
         });
     }
 
@@ -336,8 +405,17 @@ pub(super) mod tests {
             op: &Operation<'_, S>,
             budget: &Arc<dyn AllocationBudget>,
         ) -> Result<ActiveSnapshotPrefix> {
+            self.read_with_schemas(op, budget, None)
+        }
+
+        fn read_with_schemas<S: OriginalAuthorityOwner>(
+            &self,
+            op: &Operation<'_, S>,
+            budget: &Arc<dyn AllocationBudget>,
+            schemas: Option<BoundProfileSchemas>,
+        ) -> Result<ActiveSnapshotPrefix> {
             let state = Directory::capture(op, &self.directory, false)?;
-            read(op, &state, &self.workspace, budget)
+            read(op, &state, &self.workspace, budget, schemas)
         }
     }
 
@@ -469,7 +547,8 @@ pub(super) mod tests {
                 fixture.read(&op, budget).unwrap(),
                 ActiveSnapshotPrefix {
                     profile_schema: "profile_v4.schema.json",
-                    legacy: false
+                    legacy: false,
+                    check: ProfileCheck::SourceUnavailable,
                 }
             );
         });
@@ -495,7 +574,8 @@ pub(super) mod tests {
                     fixture.read(&op, budget).unwrap(),
                     ActiveSnapshotPrefix {
                         profile_schema: "profile_v5.schema.json",
-                        legacy: true
+                        legacy: true,
+                        check: ProfileCheck::SourceUnavailable,
                     }
                 );
                 fixture.envelope[record] = json!({});
@@ -507,7 +587,8 @@ pub(super) mod tests {
                 fixture.read(&op, budget).unwrap(),
                 ActiveSnapshotPrefix {
                     profile_schema: "profile_v5.schema.json",
-                    legacy: false
+                    legacy: false,
+                    check: ProfileCheck::SourceUnavailable,
                 }
             );
             fixture.envelope["plan"] = json!({});
@@ -587,6 +668,90 @@ pub(super) mod tests {
                 fixture.read(&op, budget).unwrap().profile_schema,
                 "profile_v5.schema.json"
             );
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn shipped_profile_shape_and_semantics_are_checked_before_later_records() {
+        let schemas = COMPLETE_SCHEMAS
+            .bind(&Digest::parse(COMPLETE_SCHEMAS.component_sha256).unwrap())
+            .unwrap();
+        let v4: Value = serde_json::from_slice(include_bytes!(
+            "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
+        ))
+        .unwrap();
+        let v5: Value = serde_json::from_slice(include_bytes!(
+            "../../../tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        ))
+        .unwrap();
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let mut fixture = Fixture::new(source.root.join("activation"));
+            fixture.envelope["plan"] = json!("invalid later record");
+            for (name, profile) in [
+                ("profile_v4.schema.json", v4["profile"].clone()),
+                (
+                    "profile_v5.schema.json",
+                    json!(serde_json::to_string(&v5).unwrap()),
+                ),
+            ] {
+                fixture.envelope["profile"] = profile;
+                fixture.write();
+                assert_eq!(
+                    fixture
+                        .read_with_schemas(&op, budget, Some(schemas))
+                        .unwrap(),
+                    ActiveSnapshotPrefix {
+                        profile_schema: name,
+                        legacy: false,
+                        check: ProfileCheck::Validated,
+                    }
+                );
+            }
+            for field in ["profile", "lock", "plan", "activation"] {
+                fixture.envelope[field] = v4[field].clone();
+            }
+            fixture.write();
+            assert_eq!(
+                fixture
+                    .read_with_schemas(&op, budget, Some(schemas))
+                    .unwrap(),
+                ActiveSnapshotPrefix {
+                    profile_schema: "profile_v4.schema.json",
+                    legacy: true,
+                    check: ProfileCheck::Validated,
+                }
+            );
+            fixture.envelope["lock"] = json!({});
+            for (path, value, feature) in [
+                (
+                    "base",
+                    json!(null),
+                    "original Profile JSON Schema mismatch diagnostics",
+                ),
+                (
+                    "provenance",
+                    json!({}),
+                    "original Profile JSON Schema mismatch diagnostics",
+                ),
+                (
+                    "authority_references",
+                    json!(["authority-ref:fixture-1"]),
+                    "original Profile semantic mismatch diagnostics",
+                ),
+            ] {
+                let mut invalid = v5.clone();
+                invalid[path] = value;
+                fixture.envelope["profile"] = invalid;
+                fixture.write();
+                let error = fixture
+                    .read_with_schemas(&op, budget, Some(schemas))
+                    .unwrap_err();
+                assert!(
+                    matches!(error.cause, Some(OriginalAuthorityCause::Unsupported(name)) if name == feature),
+                    "{error:?}"
+                );
+            }
         });
     }
 }

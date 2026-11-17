@@ -637,6 +637,7 @@ fn opaque_reference(value: &[u32]) -> bool {
 #[derive(Clone, Copy)]
 pub(super) enum SemanticPath {
     Root,
+    ProfileRoot,
     Journal,
     Bindings,
     Operations,
@@ -647,7 +648,10 @@ impl SemanticPath {
     fn child(self, key: &Text) -> Self {
         if matches!(self, Self::Root) && key.is("journal") {
             Self::Journal
-        } else if key.is("bindings") || suffix(&key.0, ".bindings") {
+        } else if key.is("bindings")
+            || suffix(&key.0, ".bindings")
+            || matches!(self, Self::ProfileRoot) && key.is("requested_edges")
+        {
             Self::Bindings
         } else if key.is("operations")
             || suffix(&key.0, ".operations")
@@ -727,7 +731,10 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
                         }
                     }
                 }
-                SemanticPath::Operations | SemanticPath::Other | SemanticPath::Root => {
+                SemanticPath::Operations
+                | SemanticPath::Other
+                | SemanticPath::Root
+                | SemanticPath::ProfileRoot => {
                     let fields = if matches!(path, SemanticPath::Operations) {
                         &["operation_id"][..]
                     } else {
@@ -776,6 +783,153 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
         _ => (),
     }
     Ok(())
+}
+
+/// Check the original semantic predicates after the pinned Profile shape passes.
+pub(in crate::original_authority::io::publication) fn validate_profile_semantics<
+    S: OriginalAuthorityOwner,
+>(
+    doc: &Document,
+    profile: usize,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
+    if let Err(error) = validate_semantics(doc, profile, SemanticPath::ProfileRoot, op, budget) {
+        if error.class == "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied"
+            && error.message == SCHEMA_ERROR
+        {
+            return Ok(false);
+        }
+        return Err(error);
+    }
+    if !profile_fields_allowed(doc, profile, op, budget)? {
+        return Ok(false);
+    }
+    let [
+        Some(snapshot),
+        Some(state),
+        Some(base),
+        Some(catalog),
+        Some(packs),
+        Some(references),
+        Some(edges),
+    ] = [
+        "profile_authority_snapshot_digest",
+        "state",
+        "base",
+        "catalog_revision",
+        "packs",
+        "authority_references",
+        "requested_edges",
+    ]
+    .map(|key| doc.get(profile, key))
+    else {
+        return Ok(false);
+    };
+    let is_text = |id| matches!(doc.node(id), Node::String(_));
+    let Node::Array(references) = doc.node(references) else {
+        return Ok(false);
+    };
+    let is_null = |id| matches!(doc.node(id), Node::Scalar(CanonValue::Null));
+    if doc.string_is(state, "needs_resolution") && (!references.is_empty() || !is_null(snapshot)) {
+        return Ok(false);
+    }
+    if doc.string_is(state, "resolved") {
+        if !["artifact_digest", "definition_revision"]
+            .into_iter()
+            .all(|key| doc.get(base, key).is_some_and(is_text))
+            || !is_text(catalog)
+            || is_null(snapshot)
+        {
+            return Ok(false);
+        }
+        let Node::Array(packs) = doc.node(packs) else {
+            return Ok(false);
+        };
+        for &pack in packs {
+            charge(op, budget, 1)?;
+            if !doc.get(pack, "artifact_digest").is_some_and(is_text) {
+                return Ok(false);
+            }
+        }
+    }
+
+    let _capacity = reserve_set(op, references.len())?;
+    let mut listed = HashSet::new();
+    listed
+        .try_reserve(references.len())
+        .map_err(|_| capacity())?;
+    for &id in references {
+        let Some(key) = text(doc, id) else {
+            return Ok(false);
+        };
+        charge(op, budget, key.0.len() as u64 + 1)?;
+        listed.insert(key.0.as_slice());
+    }
+    let Node::Array(edges) = doc.node(edges) else {
+        return Ok(false);
+    };
+    for &edge in edges {
+        charge(op, budget, 1)?;
+        if let Some(reference) = doc
+            .get(edge, "authority_reference")
+            .and_then(|id| text(doc, id))
+        {
+            charge(op, budget, reference.0.len() as u64 + 1)?;
+            if !listed.contains(reference.0.as_slice()) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn profile_fields_allowed<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    id: usize,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
+    const FORBIDDEN: [&str; 12] = [
+        "approved",
+        "approval",
+        "approvals",
+        "grant",
+        "grants",
+        "invocation_lease",
+        "provider_authority",
+        "provider_authority_record",
+        "secret_material",
+        "raw_secret",
+        "host_execution",
+        "rumi_allow_host_execution",
+    ];
+    charge(op, budget, 1)?;
+    match doc.node(id) {
+        Node::Object(fields) => {
+            for (key, child) in fields {
+                charge(
+                    op,
+                    budget,
+                    (key.0.len() as u64 + 1) * FORBIDDEN.len() as u64,
+                )?;
+                if FORBIDDEN.into_iter().any(|name| key.is(name))
+                    || !profile_fields_allowed(doc, *child, op, budget)?
+                {
+                    return Ok(false);
+                }
+            }
+        }
+        Node::Array(items) => {
+            for &child in items {
+                if !profile_fields_allowed(doc, child, op, budget)? {
+                    return Ok(false);
+                }
+            }
+        }
+        _ => (),
+    }
+    Ok(true)
 }
 
 #[derive(Eq, Hash, PartialEq)]

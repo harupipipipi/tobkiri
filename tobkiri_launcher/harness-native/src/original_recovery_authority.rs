@@ -19,6 +19,7 @@ mod workspace_active;
 pub(crate) enum RecoveryAuthorityReached {
     LoadActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     CheckActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
+    LoadActiveSnapshotLockSchema { legacy: bool },
     MissingPublishedAuthority,
     RecoveredNone,
     MatchedReservation,
@@ -126,15 +127,17 @@ impl PublicationRead {
                                 }
                                 let snapshot = read_snapshot
                                     .then(|| {
-                                        let snapshot = workspace_active::read(&op, state, workspace_digest, budget)?;
+                                        let snapshot = workspace_active::read(&op, state, workspace_digest, budget, profile_schemas)?;
                                         let name = snapshot.profile_schema;
                                         let legacy = snapshot.legacy;
-                                        if let Some(schemas) = profile_schemas {
-                                            workspace_active::load_profile_schema(&op, schemas, name)?;
-                                            Ok(RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema { name, legacy })
-                                        } else {
-                                            Ok(RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema { name, legacy })
-                                        }
+                                        Ok(match snapshot.check {
+                                            workspace_active::ProfileCheck::SourceUnavailable =>
+                                                RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema { name, legacy },
+                                            workspace_active::ProfileCheck::ReferencesUnavailable =>
+                                                RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema { name, legacy },
+                                            workspace_active::ProfileCheck::Validated =>
+                                                RecoveryAuthorityReached::LoadActiveSnapshotLockSchema { legacy },
+                                        })
                                     })
                                     .transpose()?;
                                 Ok(ControlFlow::Continue(snapshot))

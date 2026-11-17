@@ -55,6 +55,8 @@ pub struct BootstrapProfileSchemas {
     pub component_sha256: &'static str,
     pub v4: &'static [u8],
     pub v5: &'static [u8],
+    /// The common and Profile content projection schemas in that order.
+    pub references: Option<[&'static [u8]; 2]>,
 }
 
 #[derive(Clone, Copy)]
@@ -65,7 +67,8 @@ impl BootstrapProfileSchemas {
         anyhow::ensure!(
             self.component_sha256 == component.as_str()
                 && [self.v4, self.v5]
-                    .iter()
+                    .into_iter()
+                    .chain(self.references.into_iter().flatten())
                     .all(|bytes| (1..=MAX_BYTES).contains(&bytes.len())),
             "Profile schema resources do not match the selected Setup component"
         );
@@ -80,6 +83,10 @@ impl BoundProfileSchemas {
             "profile_v5.schema.json" => Some(self.0.v5),
             _ => None,
         }
+    }
+
+    pub(crate) fn references(self) -> Option<[&'static [u8]; 2]> {
+        self.0.references
     }
 }
 
