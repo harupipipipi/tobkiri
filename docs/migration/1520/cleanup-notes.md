@@ -3974,8 +3974,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   選択集合、Authority bindings、Activation ID・予約・fencing token・SecurityEpochを確認する。
   bindingごとにPlan全体を走査する元の処理を、重複を保持する予算付きの借用索引に置き換えた。
   closure digestは2つの既存subtreeを順番にhashへ渡し、複製したJSON成果物を保持しない。
-  中立投影は退役時のdigest walkerを共用し、保持したディレクトリのハンドルから辿る。Pack由来投影は
-  署名済みの採用元と宣言されたファイル一覧の再検証が必要なため、その箇所で止める。
+  中立投影は退役時のdigest walkerを共用し、保持したディレクトリのハンドルから辿る。
   旧版も元のdigest、実SQLiteの予約、epochとAuthority参照を照合する。後続は旧版の
   successor生成・発行と、現行のロック解放後の成果物再検証・Host公開。
   現行の再検証後にはロックを取り直して4レコードとAuthorityの読み直しが必要。
@@ -4004,3 +4003,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   30秒、64MiB、139件の上限は共用する。ProducerとBinderはApp拡張と両方のsource変換に
   加え実ローダーが使う圧縮内容を検証し、結果にはAppの利用を明示する。この経路から
   Launcher用のレシートは発行しない。実際のfuel計測とRegistry・URI別の内訳は後続。
+- Pack由来の復旧投影は選択集合が固定した版を使い、生成済みカタログと外部の署名付き登録を
+  検証する。選択元のNormal Packを再コンパイルし、マニフェストに記載された配下のファイルと
+  descriptorから計算した一覧を照合する。退役・中立投影と同じ走査、レコード生成、digest処理を
+  共用する。外部Host Extensionの互換性検証に達すると従来どおり停止する。
+  Rust 198件、strict Clippy、ワークフロー22件に加え、固定元ソースをローカルPython 3.13.9
+  で実行して得た署名付き投影と保持済み2版を比較した。現行の全Profileレコードによる追加検証も
+  通った。CIでは独立した署名付き登録の一致を固定Python 3.13.16で比較する。
+  投影と保留中のActivationレコードが個別に持つOSError整形は、対象パスと明示された例外の
+  causeを元Pythonと照合してから共用できる。

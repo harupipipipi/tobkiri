@@ -5,6 +5,8 @@ use tobkiri_canon::{AllocationBudget, AllocationKind, AllocationRequest, CoreVal
 
 #[path = "original_external_catalog_compiler.rs"]
 mod external_catalog_compiler;
+#[path = "original_external_catalog_content_source.rs"]
+mod external_catalog_content_source;
 #[path = "original_external_catalog_executable.rs"]
 mod external_catalog_executable;
 #[path = "original_external_catalog_inventory.rs"]
@@ -24,6 +26,9 @@ mod external_catalog_variants;
 use external_catalog_compiler as compiler;
 use external_catalog_model as model;
 
+pub(in crate::original_authority::io::publication) use external_catalog_content_source::{
+    ProjectionPackSource, resolve_projection_pack, with_projection_manifest,
+};
 pub(in crate::original_authority::io::publication) use model::{
     validate_profile_semantics, validate_recovery_record_semantics,
 };

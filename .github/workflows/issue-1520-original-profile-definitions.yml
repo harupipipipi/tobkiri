@@ -170,7 +170,7 @@ jobs:
           TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 18 --
+          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 20 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::external_catalog::
           -- --test-threads=1 --nocapture
@@ -220,10 +220,12 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::profile_schema::tests::
           -- --test-threads=1 --nocapture
-      - name: Check recovered activation bindings and physical neutral projections
+      - name: Check recovered activation bindings and physical content projections
+        env:
+          TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-snapshot-graph.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/native-recovery-snapshot-graph.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::snapshot_graph::
           -- --test-threads=1 --nocapture

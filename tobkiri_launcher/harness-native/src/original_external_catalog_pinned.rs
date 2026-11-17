@@ -42,33 +42,13 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
         return Ok(PinnedPackSelection::HostExtensionPending);
     }
 
-    let mut retained_for_id = false;
-    let mut selected = None;
-    for (position, pack) in inventory._entries.iter().enumerate() {
-        charge(op, budget, id.len().saturating_add(1))?;
-        if registry_text(&registry, pack._root.entry, "pack_id").is(id) {
-            retained_for_id = true;
-            if &pack._artifact_digest == digest {
-                // Identical duplicate entries can survive the authenticated
-                // scan. Python's assignment keeps the last matching key.
-                selected = Some(position);
-            }
-        }
-    }
+    let (selected, retained_for_id) =
+        exact_position(op, budget, &registry, &inventory, id, digest)?;
     if selected.is_none() && retained_for_id {
         // Only an unmatched pin for a Pack with retained revisions consults
         // the generated catalog. A bundled baseline isn't an external receipt.
         let bundled = read_bundled(op, &runtime.join(SOURCE_CATALOG), budget)?;
-        let ids = bundled._ids.array().expect("verified bundled inventory");
-        let mut bundled_id = false;
-        for candidate in ids.iter() {
-            charge(op, budget, id.len().saturating_add(1))?;
-            if candidate.as_str() == Some(id) {
-                bundled_id = true;
-                break;
-            }
-        }
-        if !bundled_id {
+        if !bundled_contains(op, budget, &bundled, id)? {
             return Err(model::denied("selected Pack revision is not admitted"));
         }
     }
@@ -80,6 +60,48 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
         registry,
         pack: inventory._entries.value.swap_remove(position),
     })
+}
+
+/// Return the last authenticated matching key and whether the Pack has any
+/// retained revisions, which controls the unmatched-pin error.
+pub(super) fn exact_position<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    registry: &Document,
+    inventory: &VerifiedInventory,
+    id: &str,
+    digest: &Digest,
+) -> Result<(Option<usize>, bool)> {
+    let mut retained_for_id = false;
+    let mut selected = None;
+    for (position, pack) in inventory._entries.iter().enumerate() {
+        charge(op, budget, id.len().saturating_add(1))?;
+        if registry_text(registry, pack._root.entry, "pack_id").is(id) {
+            retained_for_id = true;
+            if &pack._artifact_digest == digest {
+                // Identical duplicate entries may survive the authenticated
+                // scan. Python's assignment keeps the last matching key.
+                selected = Some(position);
+            }
+        }
+    }
+    Ok((selected, retained_for_id))
+}
+
+pub(super) fn bundled_contains<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    bundled: &BundledRecords,
+    id: &str,
+) -> Result<bool> {
+    let ids = bundled._ids.array().expect("verified bundled inventory");
+    for candidate in ids.iter() {
+        charge(op, budget, id.len().saturating_add(1))?;
+        if candidate.as_str() == Some(id) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(test)]

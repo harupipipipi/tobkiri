@@ -1,4 +1,4 @@
-//! Physical neutral projection inventory for migration and activation recovery.
+//! Physical projection inventory for migration and activation recovery.
 use super::*;
 use sha2::{Digest as _, Sha256};
 use std::{ffi::CStr, io::Read};
@@ -49,6 +49,8 @@ pub(super) const RETIREMENTS: [Retirement; 4] = [
 
 const ROOT_UNAVAILABLE: &str = "Profile projection root is unavailable";
 const UNSAFE_ROOT: &str = "Profile projection path is unsafe";
+const PACK_ROOT_UNAVAILABLE: &str = "projection Pack content root is unavailable";
+const CONTENT_MISMATCH: &str = "projection content differs from Pack artifacts";
 const CHANGED: &str = "Profile projection changed while being read";
 const PATH_BYTES: usize = 8192;
 const DEPTH: usize = 128;
@@ -56,6 +58,7 @@ const DEPTH: usize = 128;
 enum RootStep<'a> {
     Retirement,
     Persisted(Option<&'a [u8]>),
+    Pack(Option<&'a [u8]>),
 }
 
 pub(super) fn inventory<S: OriginalAuthorityOwner>(
@@ -80,6 +83,7 @@ pub(super) fn inventory<S: OriginalAuthorityOwner>(
                 &neutral,
                 c"profile_projections",
                 RootStep::Retirement,
+                || Ok(()),
                 |projection| {
                     let name = CString::new(directory).map_err(capacity)?;
                     with_root(
@@ -88,6 +92,7 @@ pub(super) fn inventory<S: OriginalAuthorityOwner>(
                         &selected,
                         &name,
                         RootStep::Retirement,
+                        || Ok(()),
                         |directory| inventory.walk(directory, 0),
                     )
                 },
@@ -133,7 +138,14 @@ pub(in crate::original_authority::io::publication) fn persisted_neutral_inventor
         budget,
         true,
         |parent, inventory| {
-            walk_roots(parent, &runtime, components.peekable(), inventory)?;
+            walk_roots(
+                parent,
+                &runtime,
+                components.peekable(),
+                inventory,
+                false,
+                || Ok(()),
+            )?;
             // Re-observe the canonical Host root as well as the relative roots
             // checked while walk_roots unwinds its anchored descriptors.
             op.check(OriginalAuthorityStage::Source)?;
@@ -152,6 +164,193 @@ pub(in crate::original_authority::io::publication) fn persisted_neutral_inventor
             )
         },
     )
+}
+
+/// Read the selected subtree of a physically admitted Pack and compare every
+/// regular file with the corresponding declaration in the verified manifest.
+pub(in crate::original_authority::io::publication) fn persisted_pack_inventory<
+    S: OriginalAuthorityOwner,
+>(
+    op: &Operation<'_, S>,
+    pack_root: &Path,
+    root_identity: (u64, u64),
+    relative: &Path,
+    manifest: &Document,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<(Digest, usize)> {
+    let relative_text = relative
+        .to_str()
+        .ok_or_else(|| pack_value_error("projection Pack content path is unsafe"))?;
+    let components = relative_text.as_bytes().split(|byte| *byte == b'/');
+    if relative_text.contains('\\')
+        || components
+            .clone()
+            .any(|part| part.is_empty() || part == b"." || part == b".." || part.contains(&0))
+    {
+        return Err(pack_value_error("projection Pack content path is unsafe"));
+    }
+    if components.clone().count() > DEPTH
+        || pack_root
+            .as_os_str()
+            .len()
+            .saturating_add(1)
+            .saturating_add(relative_text.len())
+            > PATH_BYTES
+    {
+        return Err(capacity(()));
+    }
+    if !pack_root.is_absolute() {
+        return Err(projection_error(CHANGED));
+    }
+    let _paths = op.reserve(OriginalAuthorityStage::Source, 12 * PATH_BYTES)?;
+    let selected = pack_root.join(relative);
+    let mut declarations = None;
+    let files = inventory_records(
+        op,
+        pack_root,
+        &selected,
+        budget,
+        true,
+        |directory, inventory| {
+            check_pack_identity(directory, root_identity)?;
+            walk_roots(
+                directory,
+                pack_root,
+                components.peekable(),
+                inventory,
+                true,
+                || {
+                    declarations =
+                        Some(Declarations::collect(op, budget, manifest, relative_text)?);
+                    Ok(())
+                },
+            )?;
+            op.check(OriginalAuthorityStage::Source)?;
+            let current = Parent::walk(pack_root, &op.cleanup)
+                .map_err(|error| caused(projection_error(CHANGED), error))?;
+            finish_scope(
+                check_pack_identity(&current, root_identity),
+                current.close().map_err(|error| raw_io(error, None)),
+            )
+        },
+    )?;
+    declarations
+        .expect("inventory requires a selected Pack directory")
+        .verify(op, budget, &files)?;
+    digest_inventory(&files, budget)
+}
+
+fn check_pack_identity(directory: &TrackedFile, expected: (u64, u64)) -> Result<()> {
+    let metadata = directory
+        .metadata()
+        .map_err(|error| caused(projection_error(CHANGED), raw_io(error, None)))?;
+    if (metadata.dev(), metadata.ino()) != expected {
+        return Err(projection_error(CHANGED));
+    }
+    Ok(())
+}
+
+struct Declarations<'a> {
+    entries: Vec<(&'a [u32], usize, &'a Text)>,
+    _funding: NativeSetupReservation,
+}
+
+impl<'a> Declarations<'a> {
+    fn collect<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+        manifest: &'a Document,
+        relative: &str,
+    ) -> Result<Self> {
+        let Some(Node::Array(items)) = manifest
+            .get(manifest.root, "artifacts")
+            .map(|id| manifest.node(id))
+        else {
+            return Err(projection_error(CONTENT_MISMATCH));
+        };
+        let prefix_len = relative.chars().count();
+        let _funding = op.reserve(OriginalAuthorityStage::Source, 1)?;
+        let mut entries = Vec::new();
+        let mut longest = 0;
+        for (order, &item) in items.iter().enumerate() {
+            op.check(OriginalAuthorityStage::Source)?;
+            let Some(Node::String(path)) = manifest.get(item, "path").map(|id| manifest.node(id))
+            else {
+                return Err(projection_error(CONTENT_MISMATCH));
+            };
+            let Some(suffix) = path.0.get(prefix_len + 1..) else {
+                charge_work(budget, 1)?;
+                continue;
+            };
+            charge_work(budget, (prefix_len + 1) as u64)?;
+            if path.0[prefix_len] != u32::from('/')
+                || !path.0[..prefix_len]
+                    .iter()
+                    .copied()
+                    .eq(relative.chars().map(u32::from))
+            {
+                continue;
+            }
+            let Some(Node::String(digest)) =
+                manifest.get(item, "digest").map(|id| manifest.node(id))
+            else {
+                return Err(projection_error(CONTENT_MISMATCH));
+            };
+            longest = longest.max(suffix.len());
+            push_funded(&_funding, &mut entries, (suffix, order, digest))?;
+        }
+        if entries.is_empty() {
+            return Err(pack_value_error(
+                "projection Pack content has no declared artifacts",
+            ));
+        }
+        let count = entries.len();
+        charge_work(
+            budget,
+            (count as u64)
+                .saturating_mul(u64::from(count.ilog2() + 1))
+                .saturating_mul(longest as u64 + 1),
+        )?;
+        // Python's declaration dictionary takes the last digest for a path.
+        entries.sort_unstable_by(|left, right| left.0.cmp(right.0).then(right.1.cmp(&left.1)));
+        entries.dedup_by(|left, right| left.0 == right.0);
+        Ok(Self { entries, _funding })
+    }
+
+    fn verify<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+        files: &CoreValue,
+    ) -> Result<()> {
+        let files = files.array().expect("inventory array");
+        if files.len() != self.entries.len() {
+            return Err(projection_error(CONTENT_MISMATCH));
+        }
+        for file in files.iter() {
+            op.check(OriginalAuthorityStage::Source)?;
+            let file = file.object().expect("inventory entry");
+            let path = file.get("path").expect("inventory path");
+            let path = path.as_str().expect("inventory path string");
+            let digest = file.get("digest").expect("inventory digest");
+            let digest = digest.as_str().expect("inventory digest string");
+            charge_work(
+                budget,
+                ((path.len() + 1) as u64)
+                    .saturating_mul(u64::from(self.entries.len().ilog2() + 1))
+                    .saturating_add(digest.len() as u64),
+            )?;
+            let Ok(index) = self.entries.binary_search_by(|(declared, _, _)| {
+                declared.iter().copied().cmp(path.chars().map(u32::from))
+            }) else {
+                return Err(projection_error(CONTENT_MISMATCH));
+            };
+            if !self.entries[index].2.is(digest) {
+                return Err(projection_error(CONTENT_MISMATCH));
+            }
+        }
+        Ok(())
+    }
 }
 
 fn selected_runtime<S: OriginalAuthorityOwner>(
@@ -179,6 +378,18 @@ fn inventory_at<S: OriginalAuthorityOwner>(
     skip_unreadable: bool,
     visit: impl FnOnce(&TrackedFile, &mut Inventory<'_, '_, S>) -> Result<()>,
 ) -> Result<(Digest, usize)> {
+    let files = inventory_records(op, runtime, selected, budget, skip_unreadable, visit)?;
+    digest_inventory(&files, budget)
+}
+
+fn inventory_records<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    selected: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+    skip_unreadable: bool,
+    visit: impl FnOnce(&TrackedFile, &mut Inventory<'_, '_, S>) -> Result<()>,
+) -> Result<CoreValue> {
     let mut scratch = String::new();
     scratch.try_reserve_exact(PATH_BYTES).map_err(capacity)?;
     if scratch.capacity() != PATH_BYTES {
@@ -192,14 +403,23 @@ fn inventory_at<S: OriginalAuthorityOwner>(
         root: selected,
         skip_unreadable,
     };
-    let runtime = Parent::walk(runtime, &op.cleanup)?;
-    let result = visit(&runtime, &mut inventory);
-    finish_scope(result, runtime.close().map_err(|error| raw_io(error, None)))?;
-    let count = inventory.files.len();
-    if count == 0 {
+    let directory = Parent::walk(root, &op.cleanup)?;
+    let result = visit(&directory, &mut inventory);
+    finish_scope(
+        result,
+        directory.close().map_err(|error| raw_io(error, None)),
+    )?;
+    if inventory.files.is_empty() {
         return Err(projection_error("Profile projection is empty"));
     }
-    let files = inventory.files.finish().map_err(capacity)?;
+    inventory.files.finish().map_err(capacity)
+}
+
+fn digest_inventory(
+    files: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<(Digest, usize)> {
+    let count = files.array().expect("inventory array").len();
     let digest = files.digest_guest(budget).map_err(capacity)?;
     Ok((digest, count))
 }
@@ -209,10 +429,10 @@ fn walk_roots<'a, S: OriginalAuthorityOwner>(
     path: &Path,
     mut parts: std::iter::Peekable<impl Iterator<Item = &'a [u8]>>,
     inventory: &mut Inventory<'_, '_, S>,
+    pack: bool,
+    ready: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
-    let Some(part) = parts.next() else {
-        return inventory.walk(parent, 0);
-    };
+    let part = parts.next().expect("validated nonempty projection path");
     let op = inventory.op;
     let _stack = op.reserve(OriginalAuthorityStage::Source, 4096)?;
     let length = path.as_os_str().len().saturating_add(part.len() + 1);
@@ -220,14 +440,26 @@ fn walk_roots<'a, S: OriginalAuthorityOwner>(
     let path = path.join(std::ffi::OsStr::from_bytes(part));
     let name = CString::new(part).map_err(capacity)?;
     let next = parts.peek().copied();
-    with_root(
-        op,
-        parent,
-        &path,
-        &name,
-        RootStep::Persisted(next),
-        |directory| walk_roots(directory, &path, parts, inventory),
-    )
+    let step = if pack {
+        RootStep::Pack(next)
+    } else {
+        RootStep::Persisted(next)
+    };
+    if next.is_some() {
+        with_root(
+            op,
+            parent,
+            &path,
+            &name,
+            step,
+            || Ok(()),
+            |directory| walk_roots(directory, &path, parts, inventory, pack, ready),
+        )
+    } else {
+        with_root(op, parent, &path, &name, step, ready, |directory| {
+            inventory.walk(directory, 0)
+        })
+    }
 }
 
 fn with_root<S: OriginalAuthorityOwner>(
@@ -236,21 +468,40 @@ fn with_root<S: OriginalAuthorityOwner>(
     path: &Path,
     name: &CStr,
     step: RootStep<'_>,
+    ready: impl FnOnce() -> Result<()>,
     visit: impl FnOnce(&TrackedFile) -> Result<()>,
 ) -> Result<()> {
     op.check(OriginalAuthorityStage::Source)?;
+    let pack = matches!(step, RootStep::Pack(_));
     let stat = stat_at(parent, name).map_err(|error| {
+        if pack {
+            if matches!(
+                error.raw_os_error(),
+                Some(libc::ENOENT | libc::ENOTDIR | libc::ELOOP)
+            ) {
+                return pack_value_error(PACK_ROOT_UNAVAILABLE);
+            }
+            return pack_projection_io_error(op, raw_io(error, path.to_str()));
+        }
         caused(
             projection_error(ROOT_UNAVAILABLE),
             raw_io(error, path.to_str()),
         )
     })?;
     if stat.st_mode & libc::S_IFMT == libc::S_IFLNK {
+        if pack {
+            return Err(pack_value_error(
+                "projection Pack content contains a symlink",
+            ));
+        }
         return Err(projection_error(
             "Profile projection path contains a symlink",
         ));
     }
     if stat.st_mode & libc::S_IFMT != libc::S_IFDIR {
+        if pack {
+            return Err(pack_value_error(PACK_ROOT_UNAVAILABLE));
+        }
         let error = projection_error(ROOT_UNAVAILABLE);
         return Err(match step {
             // Python lstat accepts this leaf, then gets ENOTDIR at the next
@@ -265,7 +516,8 @@ fn with_root<S: OriginalAuthorityOwner>(
             _ => error,
         });
     }
-    let flags = if matches!(step, RootStep::Persisted(Some(_))) {
+    ready()?;
+    let flags = if matches!(step, RootStep::Persisted(Some(_)) | RootStep::Pack(Some(_))) {
         SEARCH_DIR
     } else {
         libc::O_DIRECTORY
@@ -275,7 +527,7 @@ fn with_root<S: OriginalAuthorityOwner>(
         // The original rglob skips unreadable directories. Repeat lstat to
         // distinguish an unchanged unreadable root from a replaced one.
         Err(error)
-            if matches!(step, RootStep::Persisted(None))
+            if matches!(step, RootStep::Persisted(None) | RootStep::Pack(None))
                 && error.kind() == std::io::ErrorKind::PermissionDenied =>
         {
             let current = stat_at(parent, name)
@@ -284,16 +536,20 @@ fn with_root<S: OriginalAuthorityOwner>(
         }
         Err(error) => {
             let next_path = match step {
-                RootStep::Persisted(Some(next))
+                RootStep::Persisted(Some(next)) | RootStep::Pack(Some(next))
                     if error.kind() == std::io::ErrorKind::PermissionDenied =>
                 {
                     Some(path.join(std::ffi::OsStr::from_bytes(next)))
                 }
                 _ => None,
             };
+            let path = next_path.as_deref().unwrap_or(path);
+            if pack {
+                return Err(pack_projection_io_error(op, raw_io(error, path.to_str())));
+            }
             return Err(caused(
                 projection_error(ROOT_UNAVAILABLE),
-                raw_io(error, next_path.as_deref().unwrap_or(path).to_str()),
+                raw_io(error, path.to_str()),
             ));
         }
     };
@@ -305,7 +561,7 @@ fn with_root<S: OriginalAuthorityOwner>(
         visit(&dir)?;
         let current = stat_at(parent, name).map_err(|error| {
             caused(
-                projection_error(ROOT_UNAVAILABLE),
+                projection_error(if pack { CHANGED } else { ROOT_UNAVAILABLE }),
                 raw_io(error, path.to_str()),
             )
         })?;
@@ -362,7 +618,7 @@ impl<S: OriginalAuthorityOwner> Inventory<'_, '_, S> {
                     )
                 })?;
                 self.work(name.len() as u64 + 1)?;
-                push_name(
+                push_funded(
                     &funding,
                     &mut names,
                     CoreValue::string(name, self.budget).map_err(capacity)?,
@@ -526,35 +782,35 @@ impl<S: OriginalAuthorityOwner> Inventory<'_, '_, S> {
     }
 
     fn work(&self, work: u64) -> Result<()> {
-        self.budget
-            .reserve(tobkiri_canon::AllocationRequest {
-                kind: tobkiri_canon::AllocationKind::Temporary,
-                bytes: 0,
-                depth: 0,
-                elements: 0,
-                work,
-            })
-            .map_err(capacity)
+        charge_work(self.budget, work)
     }
 }
 
-fn push_name(
-    funding: &NativeSetupReservation,
-    names: &mut Vec<CoreValue>,
-    name: CoreValue,
-) -> Result<()> {
+fn charge_work(budget: &Arc<dyn AllocationBudget>, work: u64) -> Result<()> {
+    budget
+        .reserve(tobkiri_canon::AllocationRequest {
+            kind: tobkiri_canon::AllocationKind::Temporary,
+            bytes: 0,
+            depth: 0,
+            elements: 0,
+            work,
+        })
+        .map_err(capacity)
+}
+
+fn push_funded<T>(funding: &NativeSetupReservation, names: &mut Vec<T>, name: T) -> Result<()> {
     if names.len() == names.capacity() {
         let current = names.len();
         let next = current.max(4).checked_mul(2).ok_or_else(|| capacity(()))?;
         funding
-            .resize((current + next).saturating_mul(size_of::<CoreValue>()) as u64)
+            .resize((current + next).saturating_mul(size_of::<T>()) as u64)
             .map_err(capacity)?;
         names.try_reserve_exact(next - current).map_err(capacity)?;
         if names.capacity() != next {
             return Err(capacity(()));
         }
         funding
-            .resize(next.saturating_mul(size_of::<CoreValue>()) as u64)
+            .resize(next.saturating_mul(size_of::<T>()) as u64)
             .map_err(capacity)?;
     }
     names.push(name);
@@ -644,10 +900,162 @@ fn same_file(before: &fs::Metadata, after: &fs::Metadata, current: &libc::stat) 
             )
 }
 
+fn pack_value_error(message: &'static str) -> OriginalAuthorityError {
+    caused(
+        projection_error(message),
+        raw("builtins.ValueError", message),
+    )
+}
+
+/// Preserve the original projection error and explicit OSError cause.
+pub(in crate::original_authority::io::publication) fn pack_projection_io_error<
+    S: OriginalAuthorityOwner,
+>(
+    op: &Operation<'_, S>,
+    error: OriginalAuthorityError,
+) -> OriginalAuthorityError {
+    let stage = OriginalAuthorityStage::Source;
+    let Some(OriginalAuthorityCause::Io(io)) = &error.cause else {
+        return error;
+    };
+    let Some(errno) = io.errno else {
+        return error;
+    };
+    let unsupported = || OriginalAuthorityError::unsupported(stage, "projection Pack I/O message");
+    let mut strerror = [0_u8; 256];
+    let result = unsafe { libc::strerror_r(errno, strerror.as_mut_ptr().cast(), strerror.len()) };
+    if result != 0 {
+        return unsupported();
+    }
+    let Some(message) = CStr::from_bytes_until_nul(&strerror)
+        .ok()
+        .and_then(|message| message.to_str().ok())
+    else {
+        return unsupported();
+    };
+    let filename = io.filename.as_deref();
+    let bytes = message.len() + filename.map_or(0, |path| path.len().saturating_mul(12)) + 32;
+    let _funding = match op.reserve(stage, bytes) {
+        Ok(funding) => funding,
+        Err(error) => return error,
+    };
+    let message = match filename {
+        Some(filename) => format!("[Errno {errno}] {message}: {}", python_repr(filename)),
+        None => format!("[Errno {errno}] {message}"),
+    };
+    caused(raw(PROJECTION_ERROR, message), error)
+}
+
 fn projection_error(message: &'static str) -> OriginalAuthorityError {
     raw(PROJECTION_ERROR, message)
 }
 
 fn capacity(_: impl Sized) -> OriginalAuthorityError {
     OriginalAuthorityError::capacity(OriginalAuthorityStage::Source)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BootstrapReviewOwner;
+    use crate::original_authority::definitions::tests::{operation, with_source};
+    use serde_json::json;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reads_exact_declared_pack_subtree_with_original_error_precedence() {
+        with_source(|source, publication, cancellation, budget| {
+            let op = operation(publication, source, cancellation);
+            let runtime = source
+                .with_original_catalog_source(|source| {
+                    fs::create_dir_all(source.runtime).unwrap();
+                    fs::canonicalize(source.runtime).unwrap()
+                })
+                .unwrap();
+            let pack = runtime.join("selected-pack");
+            let subtree = pack.join("assets/é");
+            fs::create_dir_all(subtree.join("a")).unwrap();
+            fs::create_dir(pack.join("assets/empty")).unwrap();
+            fs::write(subtree.join("a/item"), b"nested").unwrap();
+            fs::write(subtree.join("a.txt"), b"plain").unwrap();
+            fs::write(pack.join("assets/é-other"), b"outside").unwrap();
+            let stat = fs::metadata(&pack).unwrap();
+            let identity = (stat.dev(), stat.ino());
+            let nested_digest = Digest::hash(b"nested");
+            let plain_digest = Digest::hash(b"plain");
+            let manifest = json!({
+                "artifacts": [
+                    {"path": "assets/é/a.txt", "digest": plain_digest.as_str()},
+                    {"path": "assets/é/a/item", "digest": nested_digest.as_str()},
+                    {"path": "assets/é-other", "digest": Digest::hash(b"outside").as_str()},
+                    {"path": "assets/empty/missing", "digest": plain_digest.as_str()},
+                ],
+            });
+            let manifest_bytes = serde_json::to_vec(&manifest).unwrap();
+            let manifest = json::decode_read_only_strict(&manifest_bytes, &op, budget).unwrap();
+            let verify = |relative| {
+                persisted_pack_inventory(
+                    &op,
+                    &pack,
+                    identity,
+                    Path::new(relative),
+                    &manifest,
+                    budget,
+                )
+            };
+            let expected = format!(
+                r#"[{{"digest":"{}","path":"a/item"}},{{"digest":"{}","path":"a.txt"}}]"#,
+                nested_digest.as_str(),
+                plain_digest.as_str(),
+            );
+            assert_eq!(
+                verify("assets/é").unwrap(),
+                (Digest::hash(expected.as_bytes()), 2),
+            );
+
+            let member = subtree.join("a.txt");
+            fs::write(&member, b"changed").unwrap();
+            assert_eq!(verify("assets/é").unwrap_err().message, CONTENT_MISMATCH);
+            fs::write(&member, b"plain").unwrap();
+            let extra = subtree.join("extra");
+            fs::write(&extra, b"extra").unwrap();
+            assert_eq!(verify("assets/é").unwrap_err().message, CONTENT_MISMATCH);
+            fs::remove_file(&extra).unwrap();
+            fs::remove_file(&member).unwrap();
+            assert_eq!(verify("assets/é").unwrap_err().message, CONTENT_MISMATCH);
+
+            std::os::unix::fs::symlink(subtree.join("a"), &member).unwrap();
+            assert_eq!(
+                verify("assets/é").unwrap_err().message,
+                "Profile projection contains a symlink",
+            );
+            std::os::unix::fs::symlink(&subtree, pack.join("link")).unwrap();
+            assert_eq!(
+                verify("link/a").unwrap_err().message,
+                "projection Pack content contains a symlink",
+            );
+            assert_eq!(
+                verify("assets/missing").unwrap_err().message,
+                PACK_ROOT_UNAVAILABLE
+            );
+            let no_declarations = pack.join("assets/unlisted");
+            fs::create_dir(&no_declarations).unwrap();
+            std::os::unix::fs::symlink(&subtree, no_declarations.join("link")).unwrap();
+            assert_eq!(
+                verify("assets/unlisted").unwrap_err().message,
+                "projection Pack content has no declared artifacts",
+            );
+            assert_eq!(
+                verify("assets/empty").unwrap_err().message,
+                "Profile projection is empty",
+            );
+            assert_eq!(
+                verify("assets//é").unwrap_err().message,
+                "projection Pack content path is unsafe",
+            );
+            fs::rename(&pack, runtime.join("previous-pack")).unwrap();
+            fs::create_dir(&pack).unwrap();
+            assert_eq!(verify("assets/é").unwrap_err().message, CHANGED);
+            assert_eq!(publication.receipt().open_files, 0);
+        });
+    }
 }

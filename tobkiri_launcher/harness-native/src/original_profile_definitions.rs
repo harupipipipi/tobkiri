@@ -22,7 +22,9 @@ mod inactive_registration_ci;
 #[path = "original_profile_definitions_projection_io.rs"]
 mod projection_io;
 #[cfg(unix)]
-pub(super) use projection_io::persisted_neutral_inventory;
+pub(super) use projection_io::{
+    pack_projection_io_error, persisted_neutral_inventory, persisted_pack_inventory,
+};
 #[cfg(all(test, unix))]
 #[path = "original_publication_begin_ci.rs"]
 mod publication_begin_ci;

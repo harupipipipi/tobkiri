@@ -110,6 +110,27 @@ def observe_artifact(external, owner, entry):
             "artifact_digest": entry["artifact_digest"], "content_digest": entry["content_digest"]}
 
 
+def observe_pack_projection(entry):
+    """Resolve and revalidate a projection of the actual signed Pack."""
+    from core_runtime.profile_content_projection import (
+        resolve_intent_projection,
+        selected_projection_roots,
+    )
+    from core_runtime.profile_pack_projection import admitted_projection_sources
+
+    pins = {PACK_ID: entry["artifact_digest"]}
+    intent = {"projection_id": "qa.echo-projection", "kind": "profile_content",
+              "artifact_root": "runtime", "source_pack_id": PACK_ID,
+              "source_artifact_digest": None, "content_digest": None}
+    sources = admitted_projection_sources([intent], pins)
+    resolved, files = resolve_intent_projection(intent, pack_sources=sources)
+    if sorted(files) != ["echo.py"]:
+        raise AssertionError("original signed echo projection content differs")
+    if len(selected_projection_roots([resolved], pack_sources=sources)) != 1:
+        raise AssertionError("original resolved projection did not revalidate")
+    return resolved
+
+
 def _admit_retained_revision(
     external: ModuleType,
     runtime: Path,
@@ -270,9 +291,11 @@ def worker(original, owner, name, output):
     finally:
         external._read_json_nofollow, external.validate_document, external.load_signing_key = original_read, original_validate, original_key
     artifact_probe = None
+    projection_probe = None
     if name == "admitted" and expected["outcome"] == "success":
         entry = next(iter(expected["value"]["entries"].values()))
         artifact_probe = observe_artifact(external, owner, entry)
+        projection_probe = observe_pack_projection(entry)
     retained_probe = None
     if retained is not None:
         if (expected["outcome"] != "success"
@@ -290,6 +313,7 @@ def worker(original, owner, name, output):
         raise AssertionError("same-owner malformed HMAC did not reach authentication")
     write_json(output, {"bundled": bundled_observation, "expected": expected,
                         "artifact_probe": artifact_probe,
+                        "projection_probe": projection_probe,
                         **({"retained_probe": retained_probe} if retained else {}),
                         "file_sequence": sequence, "inventory_before": before,
                         "inventory_after": after})
@@ -325,7 +349,8 @@ def prepare(original, destination):
                 or (reference["artifact_probe"] or {}).get("direct_reads")
                 != (native["artifact_probe"] or {}).get("direct_reads")
                 or (reference["artifact_probe"] or {}).get("artifact_digest")
-                != (native["artifact_probe"] or {}).get("artifact_digest")):
+                != (native["artifact_probe"] or {}).get("artifact_digest")
+                or reference["projection_probe"] != native["projection_probe"]):
             raise AssertionError("independently admitted owner observations disagree")
         if (name == "retained-version"
                 and _stable_retained_probe(reference["retained_probe"])
@@ -339,7 +364,7 @@ def prepare(original, destination):
                "production_enabled": False,
                "scope": "original bundled catalog and authenticated external catalog reader; "
                         "independent signed echo admissions and ordered retained CAS "
-                        "verification; no activation"}
+                        "verification and signed Pack projection; no activation"}
     raw = json.dumps(summary, ensure_ascii=False, separators=(",", ":")).encode()
     if len(raw) > LIMIT:
         raise ValueError("original catalog summary exceeds bound")
