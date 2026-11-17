@@ -89,6 +89,8 @@ def object_checks(provider, kernel) -> dict[str, bool]:
                 outcome = {"kind": "valid"}
         finally:
             selected.META_SCHEMA, selected.TYPE_CHECKER, re.search = saved
+            if "restore" in state:
+                state["restore"]()
         assert kernel.app_schema_entry_count() - before == (selected is provider)
         if "fault" in state:
             assert outcome["kind"] == "exception"
@@ -501,5 +503,163 @@ def object_checks(provider, kernel) -> dict[str, bool]:
          _utils.find_additional_properties, _utils.extras_msg) = saved
     assert first_difference(expected, actual) is None
     checks["generic_additional_property_helpers_are_not_app_algorithm_hooks"] = True
-    assert len(checks) == 16 and all(value is True for value in checks.values())
+    for required in ([], ["x"], ["y", "x"], ["x", "x"], "xy", [1], None):
+        for actual in ({}, {"x": 0}, {"x": 0, "y": 1}, [], None):
+            compare(lambda: {"meta": {"required": required}, "actual": actual})
+    compare(lambda: {"meta": {"anyOf": [{"required": ["x", "y"]},
+                                      {"required": ["z", "x"]}]}, "actual": {}})
+    checks["required_preserves_order_duplicates_type_gate_and_context"] = True
+
+    for dependencies in ({}, {"x": []}, {"x": ["y", "z", "y"]},
+                         {"x": "yz"}, {"x": None}, {"x": [], "y": ["z"]}):
+        for actual in ({}, {"x": 0}, {"x": 0, "y": 1}, [], None):
+            compare(lambda: {"meta": {"dependentRequired": dependencies}, "actual": actual})
+    compare(lambda: {"meta": {"anyOf": [
+        {"dependentRequired": {"x": ["y", "z"]}},
+        {"dependentRequired": {"x": ["w", "y"]}},
+    ]}, "actual": {"x": 0}})
+    checks["dependent_required_preserves_lazy_iteration_and_context"] = True
+
+    def membership_failure(keyword, stop):
+        events = []
+        fault = StopIteration("membership stopped") if stop else ValueError("membership refused")
+
+        class Actual(dict):
+            def __contains__(self, key):
+                events.append({"contains": key})
+                if key == "bad":
+                    raise fault
+                return True
+
+        requirements = ["ok", "bad"] if keyword == "required" else {"x": ["ok", "bad"]}
+        return {"meta": {keyword: requirements}, "actual": Actual(),
+                "events": events}
+
+    for keyword in ("required", "dependentRequired"):
+        for stop in (False, True):
+            compare(lambda: membership_failure(keyword, stop))
+    checks["required_membership_exceptions_keep_generator_context"] = True
+
+    def dependent_lifetimes():
+        import weakref
+        events, references = [], []
+
+        class Key:
+            def __repr__(self):
+                return "dependency"
+
+            def __del__(self):
+                events.append("released")
+
+        class Requirements:
+            def __init__(self, name, empty=False):
+                self.name, self.empty = name, empty
+
+            def __repr__(self):
+                return self.name
+
+            def __iter__(self):
+                events.append({"enter": self.name,
+                               "alive": [ref() is not None for ref in references]})
+                if not self.empty:
+                    key = Key()
+                    references.append(weakref.ref(key))
+                    yield key
+                events.append({"exhaust": self.name,
+                               "alive": [ref() is not None for ref in references]})
+
+        class Actual(dict):
+            def __contains__(self, key):
+                events.append({"contains": repr(key),
+                               "alive": [ref() is not None for ref in references]})
+                return True
+
+        return {"meta": {"dependentRequired": {
+            "x": Requirements("first"), "y": Requirements("empty", True),
+            "z": Requirements("last"),
+        }}, "actual": Actual(), "events": events}
+
+    compare(dependent_lifetimes)
+    checks["dependent_required_retains_last_dependency_across_empty_groups"] = True
+
+    def conversion_lifetime():
+        import weakref
+        events, references = [], []
+        create = exceptions.SchemaError.create_from
+        descriptor = vars(exceptions.SchemaError).get("create_from")
+
+        class Key:
+            def __repr__(self):
+                return "missing"
+
+            def __del__(self):
+                events.append("released")
+
+        class Requirements:
+            def __repr__(self):
+                return "requirements"
+
+            def __iter__(self):
+                key = Key()
+                references.append(weakref.ref(key))
+                yield key
+
+        def convert(cls, error):
+            events.append({"convert": [ref() is not None for ref in references]})
+            return create(error)
+
+        def restore():
+            if descriptor is None:
+                del exceptions.SchemaError.create_from
+            else:
+                exceptions.SchemaError.create_from = descriptor
+
+        return {"meta": {"required": Requirements()}, "actual": {}, "events": events,
+                "install": lambda: setattr(exceptions.SchemaError, "create_from",
+                                          classmethod(convert)),
+                "restore": restore}
+
+    compare(conversion_lifetime)
+    checks["required_iterator_locals_survive_schema_error_conversion"] = True
+
+    def dependency_iterator_release():
+        events = []
+
+        class Actual(dict):
+            def __contains__(self, key):
+                events.append({"contains": key, "released": self.get("released", False)})
+                if key == "x":
+                    return True
+                if key == "y":
+                    return self.get("released", False)
+                return False
+
+        actual = Actual()
+
+        class Iterator:
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                events.append("exhausted")
+                raise StopIteration
+
+            def __del__(self):
+                events.append("iterator-released")
+                actual["released"] = True
+
+        class Requirements:
+            def __repr__(self):
+                return "requirements"
+
+            def __iter__(self):
+                events.append("iterator-created")
+                return Iterator()
+
+        return {"meta": {"dependentRequired": {"x": Requirements(), "y": ["missing"]}},
+                "actual": actual, "events": events}
+
+    compare(dependency_iterator_release)
+    checks["exhausted_dependency_iterator_releases_before_next_membership"] = True
+    assert len(checks) == 22 and all(value is True for value in checks.values())
     return checks

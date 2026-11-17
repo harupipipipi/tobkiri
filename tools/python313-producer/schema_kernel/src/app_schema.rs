@@ -89,7 +89,17 @@ struct Alternatives {
 
 enum Handler {
     Children(Children),
-    Object { cursor: object::State, live: bool },
+    Object {
+        cursor: object::State,
+        live: bool,
+    },
+    Required(Cursor),
+    Dependencies {
+        outer: Cursor,
+        inner: Option<Cursor>,
+        property: Option<Object>,
+        last_dependency: Option<Object>,
+    },
     Reference,
     AnyOf(Alternatives),
 }
@@ -271,6 +281,76 @@ impl Frame {
         loop {
             if let Some(mut handler) = self.handler.take() {
                 let outcome = match &mut handler {
+                    Handler::Required(cursor) => {
+                        while let Some(Entry::Value(property)) = cursor.next(py)? {
+                            if !self.instance.bind(py).contains(property.bind(py))? {
+                                let error = validation_error(
+                                    py,
+                                    format(
+                                        py,
+                                        "{0!r} is a required property",
+                                        &[property.into_bound(py)],
+                                    )?,
+                                    None,
+                                )?
+                                .unbind();
+                                self.handler = Some(handler);
+                                return self.decorate(py, env, error);
+                            }
+                        }
+                        None
+                    }
+                    Handler::Dependencies {
+                        outer,
+                        inner,
+                        property,
+                        last_dependency,
+                    } => loop {
+                        if let Some(dependency) = inner {
+                            while let Some(Entry::Value(each)) = dependency.next(py)? {
+                                *last_dependency = Some(each.clone_ref(py));
+                                if !self.instance.bind(py).contains(each.bind(py))? {
+                                    let error = validation_error(
+                                        py,
+                                        format(
+                                            py,
+                                            "{0!r} is a dependency of {1!r}",
+                                            &[
+                                                each.into_bound(py),
+                                                property
+                                                    .as_ref()
+                                                    .expect("active dependency")
+                                                    .bind(py)
+                                                    .clone(),
+                                            ],
+                                        )?,
+                                        None,
+                                    )?
+                                    .unbind();
+                                    self.handler = Some(handler);
+                                    return self.decorate(py, env, error);
+                                }
+                            }
+                            // FOR_ITER drops its exhausted iterator before the
+                            // next outer pair. The final each local stays bound.
+                            *inner = None;
+                        }
+                        let Some(Entry::Pair(pair)) = outer.next(py)? else {
+                            break None;
+                        };
+                        // Bind this pair before testing membership or entering its
+                        // actual dependency iterator, as in the source for loop.
+                        *property = Some(pair.key);
+                        *inner = if self
+                            .instance
+                            .bind(py)
+                            .contains(property.as_ref().expect("bound dependency").bind(py))?
+                        {
+                            Some(Cursor::values(pair.value.bind(py))?)
+                        } else {
+                            None
+                        };
+                    },
                     Handler::Object { cursor, live } => {
                         if *live {
                             match signal.take() {
@@ -550,6 +630,20 @@ impl Frame {
                     children(ChildKind::PrefixItems, Cursor::prefix(instance, &value)?)
                 }
                 "allOf" => children(ChildKind::AllOf, Cursor::enumerated(&value)?),
+                "required" if json_type(env, instance, LiteralKind::object(py), schema)? => {
+                    self.handler = Some(Handler::Required(Cursor::values(&value)?));
+                }
+                "dependentRequired"
+                    if json_type(env, instance, LiteralKind::object(py), schema)? =>
+                {
+                    self.handler = Some(Handler::Dependencies {
+                        outer: Cursor::pairs(&value.call_method0(pyo3::intern!(py, "items"))?)?,
+                        inner: None,
+                        property: None,
+                        last_dependency: None,
+                    });
+                }
+                "required" | "dependentRequired" => {}
                 "anyOf" => {
                     self.handler = Some(Handler::AnyOf(Alternatives {
                         cursor: Cursor::enumerated(&value)?,
@@ -629,13 +723,7 @@ impl Frame {
                 }
                 // Annotation keywords are ignored as in the original. Known
                 // unimplemented evaluators refuse rather than trust or retry.
-                "required"
-                | "dependentRequired"
-                | "contains"
-                | "oneOf"
-                | "if"
-                | "unevaluatedItems"
-                | "unevaluatedProperties" => {
+                "contains" | "oneOf" | "if" | "unevaluatedItems" | "unevaluatedProperties" => {
                     return Err(PyNotImplementedError::new_err(format!(
                         "experimental META rule not yet implemented: {name}"
                     )))
@@ -662,7 +750,7 @@ impl Execution {
         frames.push(frame);
         Ok(Self { env, frames })
     }
-    fn first_error(mut self, py: Python<'_>) -> PyResult<Option<Object>> {
+    fn first_error(&mut self, py: Python<'_>) -> PyResult<Option<Object>> {
         let mut current = 0;
         let mut signal = None;
         loop {
@@ -840,7 +928,8 @@ fn check_schema(
     env.fuel_sample.calibrate(py)?;
     #[cfg(feature = "app-schema-phases")]
     let measured = env.clone();
-    let evaluated = Execution::new(env, frame)?.first_error(py);
+    let mut execution = Execution::new(env, frame)?;
+    let evaluated = execution.first_error(py);
     #[cfg(feature = "app-schema-phases")]
     measured.fuel_sample.counts(py)?;
     if let Some(error) = evaluated? {
