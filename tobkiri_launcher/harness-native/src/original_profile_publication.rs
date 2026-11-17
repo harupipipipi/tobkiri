@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 #[path = "original_profile_publication_io.rs"]
 mod publication_io;
 #[cfg(unix)]
-use publication_io::{Directory, PublicationLock, read_stream};
+use publication_io::{Directory, LockName, PublicationLock, read_stream};
 #[path = "original_profile_publication_model.rs"]
 mod model;
 use model::{Pointer, validate_pointer};
@@ -43,6 +43,7 @@ const JOURNAL: &str = "bootstrap-publication.json";
 const LOCK: &str = ".bootstrap-publication.lock";
 const KEY: &str = ".publication-key";
 const RAW_IO: &str = "tobkiri.native.PublicationRawIo";
+const SECURE_PERSISTENCE_ERROR: &str = "tobkiri_protocol.secure_persistence.SecurePersistenceError";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Prefix {
@@ -332,7 +333,10 @@ impl PublicationRead {
                     "workspace does not belong to the held publication recovery",
                 ));
             }
-            pending.workspace = Some(workspace_path(&op, &pending.root, identity)?);
+            pending.workspace = Some(RecoveryWorkspace {
+                path: workspace_path(&op, &pending.root, identity)?,
+                lock_name: LockName::workspace(identity),
+            });
             Ok(())
         }
         #[cfg(not(unix))]
@@ -402,10 +406,7 @@ fn value(message: &'static str) -> OriginalAuthorityError {
     raw("builtins.ValueError", message)
 }
 fn secure_error(message: &'static str) -> OriginalAuthorityError {
-    raw(
-        "tobkiri_protocol.secure_persistence.SecurePersistenceError",
-        message,
-    )
+    raw(SECURE_PERSISTENCE_ERROR, message)
 }
 fn into_cause(mut error: OriginalAuthorityError) -> OriginalAuthorityCause {
     if error.class == RAW_IO
@@ -453,7 +454,7 @@ fn recovery_error(error: OriginalAuthorityError) -> OriginalAuthorityError {
                 | "builtins.FileNotFoundError"
                 | "core_runtime.profile_content_projection.ProfileContentProjectionError"
                 | "tobkiri_protocol.errors.CanonicalizationError"
-                | "tobkiri_protocol.secure_persistence.SecurePersistenceError"
+                | SECURE_PERSISTENCE_ERROR
                 | "core_runtime.hmac_key_manager.SigningKeyError"
                 | "core_runtime.active_profile_store_v4.ActiveProfileStoreError"
                 | "core_runtime.active_profile_store_v4.ActiveProfileStoreIntegrityError"
@@ -571,10 +572,15 @@ struct PendingRecoveryScope {
     profile_id: usize,
     _current: Option<active_profile::LoadedPointer>,
     _expected: Option<Pointer>,
-    workspace: Option<Funded<PathBuf>>,
+    workspace: Option<RecoveryWorkspace>,
     authority_attempted: bool,
     cancellation: CoreCancellation,
     thread: std::thread::ThreadId,
+}
+#[cfg(unix)]
+struct RecoveryWorkspace {
+    path: Funded<PathBuf>,
+    lock_name: LockName,
 }
 #[cfg(unix)]
 impl PendingRecoveryScope {

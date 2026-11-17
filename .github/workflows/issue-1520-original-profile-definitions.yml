@@ -158,14 +158,14 @@ jobs:
       - name: Check original Authority initialization and active reservation read
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 5 --
+          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 6 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::tests::
           -- --test-threads=1 --nocapture
-      - name: Check the original activation store constructor for an existing workspace
+      - name: Check the original activation store constructor and held pending check
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-workspace.log" --expected-passed 3 --
+          --log "$RUNNER_TEMP/native-recovery-workspace.log" --expected-passed 5 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_workspace::tests::
           -- --test-threads=1 --nocapture
@@ -174,7 +174,7 @@ jobs:
           python3 -B tools/original_external_closure_reference.py prepare
           --original-root "$GITHUB_WORKSPACE/original-definitions-source"
           --output "$RUNNER_TEMP/original-external-closure"
-      - name: Compare native signed closure manifest rereads to original Pack rows
+      - name: Compare signed closure manifest and executable rereads to original Pack rows
         env:
           TOBKIRI_EXTERNAL_CLOSURE_FIXTURE: ${{ runner.temp }}/original-external-closure/summary.json
         run: >-

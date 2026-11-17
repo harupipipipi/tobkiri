@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import builtins
 from contextlib import contextmanager
 import importlib
@@ -9,6 +10,7 @@ import importlib.machinery
 import importlib.util
 from pathlib import Path
 import sys
+import textwrap
 from types import ModuleType
 import unittest
 from unittest.mock import patch
@@ -30,6 +32,7 @@ EXTRA = PACKAGE + ".extra"
 BROKEN = PACKAGE + ".broken"
 ORIGIN = "/captured-native-owner"
 VALIDATION_SOURCE = b"""import sys
+import textwrap
 from pathlib import Path
 FILE_VALUE = __file__
 EAGER = Path(__file__).with_name('schemas')
@@ -99,6 +102,66 @@ def bound():
 
 
 class OriginalLoaderBindingTests(unittest.TestCase):
+    def test_original_app_consumes_verified_external_catalog_data(self):
+        composition = "ecosystem.defaultspack.defaultspack.profile_runtime_composition"
+        source = composition.replace(".", "/") + ".py"
+        service = "ecosystem.defaultspack.domain.runtime_v4.service"
+        external = "core_runtime.external_pack_catalog_v4"
+        original = (ROOT / "tobkiri_runtime" / source).read_text()
+        runtime = next(node for node in ast.parse(original).body
+                       if isinstance(node, ast.ClassDef)
+                       and node.name == "DefaultspackProfileRuntime")
+        method = next(node for node in runtime.body
+                      if isinstance(node, ast.FunctionDef) and node.name == "catalog_with_packs")
+        body = textwrap.dedent(ast.get_source_segment(original, method, padded=True))
+        fixture_source = ("from __future__ import annotations\n"
+                          "from collections.abc import Mapping\n"
+                          "from pathlib import Path\n" + body).encode()
+        facade = ModuleType(service)
+
+        class Catalog:
+            def __init__(self, **fields):
+                self.__dict__.update(fields)
+
+        facade.BundledCatalog = Catalog
+        scope = Scope(1, 2, 3, 4)
+        bridge = PathBridge(scope, "posix", lambda _: self.fail("unexpected Path operation"),
+                            os_flags={"O_RDONLY": 0})
+        anchor = bridge.bind("source", "/native/composition.py")
+        meta_path = sys.meta_path[:]
+        finder = install({source: fixture_source}, {}, ORIGIN)
+        finder.seal()
+        binding = ModulePathBindings(bridge, {composition: anchor},
+                                     _catalog_capture=(finder, type(finder), Loader, finder.tree))
+        try:
+            with patch.dict(sys.modules, {service: facade}):
+                sys.modules.pop(composition, None)
+                binding.install()
+                spec = binding.find_spec(composition)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[composition] = module
+                spec.loader.exec_module(module)
+                catalog = Catalog(root=anchor, packs={}, bases={}, shells={}, profiles={},
+                                  artifact_root=None, executable_catalogs={})
+                profiles = catalog.profiles
+                manifest = {"pack": {"id": "fixture"}}
+                executable = {"pack_id": "fixture"}
+                packs = {"fixture": manifest}
+                action = lambda: module.catalog_with_packs(None, catalog, packs)
+                with self.assertRaises(UnsupportedValue):
+                    action()
+                value = bridge._with_verified_catalog_rows([("fixture", manifest, executable)], action)
+                self.assertIs(value.executable_catalogs["fixture"], executable)
+                self.assertIs(value.profiles, profiles)
+                self.assertEqual(catalog.packs, {})
+                self.assertIs(value.packs["fixture"], manifest)
+                self.assertNotIn(external, sys.modules)
+                with self.assertRaises(UnsupportedValue):
+                    action()
+        finally:
+            binding.close()
+            sys.meta_path[:] = meta_path
+
     def test_actual_owner_executes_once_and_keeps_original_file_spec_and_resources(self):
         with bound() as (finder, _, _, events, _):
             executions = []

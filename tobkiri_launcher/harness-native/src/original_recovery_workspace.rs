@@ -1,24 +1,27 @@
-//! The original App activation store's constructor on a held workspace.
+//! The original App activation store's first recovery branch on a held workspace.
 use super::*;
 use tobkiri_canon::Variant;
 
 const APP_DENIED: &str = "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied";
-const SECURE_PERSISTENCE_ERROR: &str = "tobkiri_protocol.secure_persistence.SecurePersistenceError";
-
-/// Initialize the original activation directory while both the Authority and
-/// publication guard are live. The constructor ends before the activation
-/// process lock or the first pending journal read.
-pub(super) fn construct<S: OriginalAuthorityOwner>(
+/// Construct the activation store and check for its pending journal under
+/// the original lock while Authority and the publication guard are live.
+pub(super) fn pending_exists<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     workspace: &Path,
-) -> Result<()> {
-    initialize(op, workspace).map(|_| ())
+    lock_name: LockName,
+) -> Result<bool> {
+    let (state, _) = initialize(op, workspace)?;
+    let mut guard = PublicationLock::acquire_named(op, &state, lock_name)?;
+    let present = state.exists(op, "pending.json");
+    // The original recovery body has not returned at either reachpoint, so
+    // closing this scope does not run the normal post-yield identity check.
+    finish_scope(present, guard.close())
 }
 
 fn initialize<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     workspace: &Path,
-) -> Result<Digest> {
+) -> Result<(Directory, Digest)> {
     let stage = OriginalAuthorityStage::Path;
     let lexical_bytes = workspace
         .as_os_str()
@@ -67,7 +70,7 @@ fn initialize<S: OriginalAuthorityOwner>(
     }
     // SecureDirectory captures the lexical activation path, not the resolved
     // workspace path. Redirected persistence ancestors must still be refused.
-    let _state = Directory::capture(op, &state_root, true).map_err(|error| {
+    let state = Directory::capture(op, &state_root, true).map_err(|error| {
         if error.class == SECURE_PERSISTENCE_ERROR {
             caused(raw(APP_DENIED, "activation state root is unsafe"), error)
         } else {
@@ -83,17 +86,17 @@ fn initialize<S: OriginalAuthorityOwner>(
     )
     .map_err(|_| OriginalAuthorityError::unavailable())?;
     op.check(stage)?;
-    Ok(workspace_digest)
+    Ok((state, workspace_digest))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::original_authority::definitions::tests::{operation, with_source};
+    use crate::original_authority::definitions::tests::{lock_free, operation, with_source};
     use std::os::unix::fs::{PermissionsExt, symlink};
 
-    #[test]
-    fn recovery_constructor_creates_private_state_and_preserves_existing_records() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_constructor_creates_private_state_and_preserves_existing_records() {
         with_source(|source, read, cancellation, _| {
             let workspace = source.root.join("workspaces/準備/an-activated-profile");
             let state_root = workspace.join("activation");
@@ -106,7 +109,7 @@ mod tests {
             .unwrap();
             let expected_digest = Digest::hash(&expected_bytes);
 
-            assert_eq!(initialize(&op, &workspace).unwrap(), expected_digest);
+            assert_eq!(initialize(&op, &workspace).unwrap().1, expected_digest);
             assert_eq!(fs::read_dir(&state_root).unwrap().count(), 0);
             assert_eq!(
                 fs::metadata(&state_root).unwrap().permissions().mode() & 0o777,
@@ -116,7 +119,7 @@ mod tests {
             let pending = state_root.join("pending.json");
             fs::write(&pending, b"existing bytes").unwrap();
             fs::set_permissions(&state_root, fs::Permissions::from_mode(0o755)).unwrap();
-            construct(&op, &workspace).unwrap();
+            initialize(&op, &workspace).unwrap();
             assert_eq!(fs::read(&pending).unwrap(), b"existing bytes");
             assert_eq!(fs::read_dir(&state_root).unwrap().count(), 1);
             assert_eq!(
@@ -126,8 +129,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn recovery_constructor_checks_state_symlink_before_workspace_symlink() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_constructor_checks_state_symlink_before_workspace_symlink() {
         with_source(|source, read, cancellation, _| {
             let target = source.root.join("workspace");
             let alias = source.root.join("alias");
@@ -136,14 +139,15 @@ mod tests {
             let state_alias = target.join("activation");
             symlink("missing", &state_alias).unwrap();
             let op = operation(read, source, cancellation);
+            let name = LockName::workspace("profile");
 
-            let error = construct(&op, &alias).unwrap_err();
+            let error = pending_exists(&op, &alias, name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "state_root must not be a symlink");
             assert!(error.cause.is_none());
 
             fs::remove_file(&state_alias).unwrap();
-            let error = construct(&op, &alias).unwrap_err();
+            let error = pending_exists(&op, &alias, name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "workspace_root must not be a symlink");
             assert!(error.cause.is_none());
@@ -151,8 +155,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn recovery_constructor_refuses_workspace_files_and_redirected_state_ancestors() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_constructor_refuses_workspace_files_and_redirected_state_ancestors() {
         with_source(|source, read, cancellation, _| {
             let actual = source.root.join("actual");
             fs::create_dir_all(actual.join("profile")).unwrap();
@@ -161,9 +165,10 @@ mod tests {
             let alias = source.root.join("alias");
             symlink(&actual, &alias).unwrap();
             let op = operation(read, source, cancellation);
+            let name = LockName::workspace("profile");
 
             let missing = source.root.join("missing-workspace");
-            let error = construct(&op, &missing).unwrap_err();
+            let error = pending_exists(&op, &missing, name).unwrap_err();
             assert_eq!(error.class, RAW_IO);
             assert!(matches!(
                 error.cause,
@@ -172,12 +177,12 @@ mod tests {
             ));
             assert!(!missing.exists());
 
-            let error = construct(&op, &workspace_file).unwrap_err();
+            let error = pending_exists(&op, &workspace_file, name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "workspace_root must be a directory");
             assert!(error.cause.is_none());
 
-            let error = construct(&op, &alias.join("profile")).unwrap_err();
+            let error = pending_exists(&op, &alias.join("profile"), name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "activation state root is unsafe");
             assert!(matches!(
@@ -189,6 +194,66 @@ mod tests {
             ));
             assert_eq!(fs::read(&workspace_file).unwrap(), b"workspace file");
             assert_eq!(fs::read_dir(actual.join("profile")).unwrap().count(), 0);
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_pending_presence_uses_the_original_lock_without_reading_bytes() {
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            fs::create_dir_all(&workspace).unwrap();
+            let state = workspace.join("activation");
+            let pending = state.join("pending.json");
+            let name = LockName::workspace("準備-profile");
+            let lock = state.join(".activation-e9d4221cd9afd87c40881ca3.lock");
+            let op = operation(read, source, cancellation);
+
+            assert!(!pending_exists(&op, &workspace, name).unwrap());
+            assert_eq!(
+                fs::metadata(&lock).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            assert_eq!(fs::read_dir(&state).unwrap().count(), 1);
+            assert!(lock_free(&lock));
+
+            let data = b"invalid journal contents";
+            fs::write(&pending, data).unwrap();
+            assert!(pending_exists(&op, &workspace, name).unwrap());
+            assert_eq!(fs::read(&pending).unwrap(), data);
+            assert_eq!(fs::read_dir(&state).unwrap().count(), 2);
+            assert!(lock_free(&lock));
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_pending_presence_refuses_a_directory_and_releases_its_lock() {
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            let state = workspace.join("activation");
+            let pending = state.join("pending.json");
+            fs::create_dir_all(&pending).unwrap();
+            let name = LockName::workspace("profile");
+            let op = operation(read, source, cancellation);
+
+            let error = pending_exists(&op, &workspace, name).unwrap_err();
+            assert_eq!(error.class, SECURE_PERSISTENCE_ERROR);
+            assert_eq!(error.message, "persistence entry identity is unsafe");
+            assert!(pending.is_dir());
+            let lock = state.join(name.text());
+            assert!(lock_free(&lock));
+
+            fs::remove_file(&lock).unwrap();
+            fs::create_dir(&lock).unwrap();
+            let error = pending_exists(&op, &workspace, name).unwrap_err();
+            assert_eq!(error.class, APP_DENIED);
+            assert_eq!(error.message, "activation process lock is unavailable");
+            assert!(matches!(
+                error.cause,
+                Some(OriginalAuthorityCause::Python {
+                    class: SECURE_PERSISTENCE_ERROR,
+                    ..
+                })
+            ));
         });
     }
 }

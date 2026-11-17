@@ -14,11 +14,8 @@ const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 
 #[derive(Clone, Copy)]
 pub(super) struct NormalProjection<'a> {
-    // These three documents have passed their individual Rust schema checks.
     pub(super) manifest: &'a Document,
-    pub(super) contracts: &'a Document,
     pub(super) executable: &'a Document,
-    pub(super) physical_contracts_digest: &'a Digest,
     pub(super) signed: &'a Document,
 }
 
@@ -49,21 +46,16 @@ pub(super) fn verify<S: OriginalAuthorityOwner>(
     Ok(())
 }
 
-fn project_digest<S: OriginalAuthorityOwner>(
+/// Check the projection's Contract identities before reading its executable.
+pub(super) fn check_contracts<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
-    input: NormalProjection<'_>,
-) -> Result<Digest> {
-    let NormalProjection {
-        manifest,
-        contracts,
-        executable,
-        physical_contracts_digest,
-        signed,
-    } = input;
+    manifest: &Document,
+    contracts: &Document,
+    physical_contracts_digest: &Digest,
+) -> Result<()> {
     let pack = field(manifest, manifest.root, "pack");
     let integrity = field(manifest, manifest.root, "integrity");
-    let requirements = field(manifest, manifest.root, "requirements");
     let pack_id = text(manifest, pack, "id");
 
     if !text(manifest, integrity, "contract_catalog_digest").is(physical_contracts_digest.as_str())
@@ -84,6 +76,22 @@ fn project_digest<S: OriginalAuthorityOwner>(
             "signed Pack Contract catalog identity is inconsistent",
         ));
     }
+    Ok(())
+}
+
+fn project_digest<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    input: NormalProjection<'_>,
+) -> Result<Digest> {
+    let NormalProjection {
+        manifest,
+        executable,
+        signed,
+    } = input;
+    let pack = field(manifest, manifest.root, "pack");
+    let requirements = field(manifest, manifest.root, "requirements");
+    let pack_id = text(manifest, pack, "id");
     if manifest.string_is(field(manifest, pack, "kind"), "host_extension") {
         // The explicit bundled baseline uses the separate captured Host
         // Extension helper and never produces this Normal projection.
@@ -587,11 +595,17 @@ mod tests {
                     assert_eq!(read.receipt().open_files, 0);
 
                     let physical_contracts = physical_contracts.unwrap();
+                    check_contracts(
+                        &op,
+                        budget,
+                        &definitions.manifest,
+                        &definitions.contracts,
+                        &physical_contracts,
+                    )
+                    .unwrap();
                     let input = NormalProjection {
                         manifest: &definitions.manifest,
-                        contracts: &definitions.contracts,
                         executable: &definitions.executable,
-                        physical_contracts_digest: &physical_contracts,
                         signed: &signed,
                     };
                     let record = field(&registry, root.entry, "catalog_record");
@@ -611,15 +625,12 @@ mod tests {
                     assert_eq!(error.message, "external Pack compatibility record changed");
 
                     let wrong_digest = Digest::hash(b"different contract catalog bytes");
-                    let error = verify(
+                    let error = check_contracts(
                         &op,
                         budget,
-                        NormalProjection {
-                            physical_contracts_digest: &wrong_digest,
-                            ..input
-                        },
-                        &registry,
-                        root.entry,
+                        &definitions.manifest,
+                        &definitions.contracts,
+                        &wrong_digest,
                     )
                     .unwrap_err();
                     assert_eq!(

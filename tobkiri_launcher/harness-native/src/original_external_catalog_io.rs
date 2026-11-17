@@ -5,18 +5,16 @@ use tobkiri_canon::{AllocationBudget, AllocationKind, AllocationRequest, CoreVal
 
 #[path = "original_external_catalog_compiler.rs"]
 mod external_catalog_compiler;
+#[path = "original_external_catalog_executable.rs"]
+mod external_catalog_executable;
 #[path = "original_external_catalog_inventory.rs"]
 mod external_catalog_inventory;
 #[path = "original_external_catalog_model.rs"]
 mod external_catalog_model;
 #[path = "original_external_catalog_operations.rs"]
 mod external_catalog_operations;
-// The pinned scan is exercised against signed fixtures before it is connected
-// to the independent executable-catalog verification.
-#[cfg(test)]
 #[path = "original_external_catalog_pinned.rs"]
 mod external_catalog_pinned;
-#[cfg(test)]
 #[path = "original_external_catalog_projection.rs"]
 mod external_catalog_projection;
 #[path = "original_external_catalog_receipt.rs"]
@@ -107,6 +105,45 @@ pub(crate) enum ClosureManifest {
     },
     BundledSource,
     HostExtension,
+}
+
+/// Outcome of the independent signed executable catalog read.
+pub(crate) enum ClosureExecutable {
+    External(CoreValue),
+    HostExtension,
+}
+
+/// Load the executable selected by the detached manifest from the current closure.
+pub(crate) fn read_closure_executable<S: crate::BootstrapReviewOwner>(
+    publication: &PublicationRead,
+    owner: &S,
+    cancellation: &CoreCancellation,
+    budget: &Arc<dyn AllocationBudget>,
+    id: &str,
+    expected_manifest: &CoreValue,
+    digest: &str,
+) -> Result<ClosureExecutable> {
+    publication.check_continuation_thread()?;
+    let pending = publication.pending.as_ref().expect("held recovery");
+    let op = PublicationRead::operation(
+        &publication.invocation,
+        &publication.cleanup,
+        owner,
+        cancellation,
+    )?;
+    owner
+        .with_original_catalog_source(|source| {
+            external_catalog_executable::read(
+                &op,
+                source.runtime,
+                &pending.root,
+                budget,
+                id,
+                expected_manifest,
+                digest,
+            )
+        })?
+        .map_err(recovery_error)
 }
 
 pub(crate) fn read_closure_manifest<S: crate::BootstrapReviewOwner>(
@@ -451,6 +488,7 @@ mod tests {
             let ids = seed.array().unwrap();
             assert_eq!(ids.len(), requested.len());
             drop(catalog);
+            let mut selected = Vec::new();
             for (id, expected_id) in ids.iter().zip(requested.iter()) {
                 assert_eq!(id.as_str(), expected_id.as_str());
                 let id = id.as_str().unwrap();
@@ -462,11 +500,46 @@ mod tests {
                     panic!("missing original signed manifest row for {id}");
                 };
                 assert_eq!(artifact_digest.as_str(), fixture["pins"][id].as_str());
-                let manifest = manifest.encode_guest(budget).unwrap();
-                let observed: Value = serde_json::from_slice(manifest.as_bytes()).unwrap();
+                let bytes = manifest.encode_guest(budget).unwrap();
+                let observed: Value = serde_json::from_slice(bytes.as_bytes()).unwrap();
                 assert_eq!(observed, expected["project"][id]["pack"]);
+                selected.push((id.to_owned(), manifest, artifact_digest));
                 assert_eq!(read.receipt().open_files, 0);
             }
+            for (id, manifest, artifact_digest) in selected {
+                let digest = artifact_digest.as_str().unwrap();
+                let ClosureExecutable::External(executable) = external_catalog_executable::read(
+                    &op, runtime, owner, budget, &id, &manifest, digest,
+                )
+                .unwrap() else {
+                    panic!("missing original signed executable row for {id}");
+                };
+                let executable = executable.encode_guest(budget).unwrap();
+                let executable: Value = serde_json::from_slice(executable.as_bytes()).unwrap();
+                assert_eq!(executable, expected["project"][&id]["executable_catalog"]);
+                assert_eq!(read.receipt().open_files, 0);
+            }
+        });
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let id = requested[0].as_str().unwrap();
+            let digest = fixture["pins"][id].as_str().unwrap();
+            let mut different = expected["project"][id]["pack"].clone();
+            different["pack"]["display_name"] = json!("A different manifest");
+            let different =
+                CoreValue::parse_guest(&serde_json::to_vec(&different).unwrap(), budget).unwrap();
+            let error = match external_catalog_executable::read(
+                &op, runtime, owner, budget, id, &different, digest,
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("a different manifest canonical digest was accepted"),
+            };
+            assert_eq!(error.class, EXTERNAL_ERROR);
+            assert_eq!(
+                error.message,
+                "external Pack executable catalog does not match the admitted manifest",
+            );
+            assert_eq!(read.receipt().open_files, 0);
         });
     }
 
@@ -1140,6 +1213,16 @@ fn read_artifact_definitions<S: OriginalAuthorityOwner>(
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<ArtifactDefinitions> {
     op.check(OriginalAuthorityStage::Source)?;
+    let current = root
+        .path
+        .symlink_metadata()
+        .map_err(|error| raw_io(error, root.path.to_str()))?;
+    if !current.is_dir() {
+        return Err(model::denied("external Pack root is unavailable"));
+    }
+    if (current.dev(), current.ino()) != root.physical_identity {
+        return Err(model::denied("external Pack root identity changed"));
+    }
     let directory = Parent::walk(&root.path, &op.cleanup)
         .map_err(|error| caused(model::denied("external Pack root is unavailable"), error))?;
     let definitions = (|| {
@@ -1169,20 +1252,8 @@ fn read_artifact_definitions<S: OriginalAuthorityOwner>(
             budget,
         )?;
         drop((executable, manifest));
-        let documents = compiler::read_direct_definitions(
-            |name| read_artifact_definition(op, &directory, &root.path, name, budget),
-            op,
-            budget,
-        )?;
-        let artifact_digest = check_artifact_pins(op, budget, &documents, || {
-            read_artifact_definition(op, &directory, &root.path, c"executables.v4.json", budget)
-        })?;
-        let verified = external_catalog_variants::verify(
-            &documents,
-            |relative| hash_implementation(op, budget, &directory, relative),
-            op,
-            budget,
-        )?;
+        let (documents, artifact_digest, verified) =
+            compile_artifact(op, budget, &directory, &root.path)?;
         let receipt = external_catalog_receipt::verify(
             op,
             budget,
@@ -1214,6 +1285,29 @@ fn read_artifact_definitions<S: OriginalAuthorityOwner>(
         definitions,
         directory.close().map_err(|error| raw_io(error, None)),
     )
+}
+
+fn compile_artifact<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    directory: &TrackedFile,
+    root: &Path,
+) -> Result<(
+    compiler::DirectDefinitions,
+    tobkiri_canon::Digest,
+    external_catalog_variants::VerifiedVariants,
+)> {
+    let read = |name| read_artifact_definition(op, directory, root, name, budget);
+    let documents = compiler::read_direct_definitions(read, op, budget)?;
+    let artifact_digest =
+        check_artifact_pins(op, budget, &documents, || read(c"executables.v4.json"))?;
+    let verified = external_catalog_variants::verify(
+        &documents,
+        |relative| hash_implementation(op, budget, directory, relative),
+        op,
+        budget,
+    )?;
+    Ok((documents, artifact_digest, verified))
 }
 
 fn canonical_digest<S: OriginalAuthorityOwner>(

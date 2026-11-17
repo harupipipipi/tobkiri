@@ -22,6 +22,12 @@ pub(super) struct ExecutableCatalog {
     variants: usize,
 }
 
+impl ExecutableCatalog {
+    pub(super) fn document(&self) -> &Document {
+        &self.doc
+    }
+}
+
 /// Pack kind at the original pre-compiler boundary.
 pub(super) struct PackManifest {
     _doc: Funded<Document>,
@@ -144,6 +150,21 @@ pub(super) fn read_manifest<S: OriginalAuthorityOwner>(
     })
 }
 
+/// Decode the independently projected Pack Contract catalog.
+pub(super) fn read_contracts<S: OriginalAuthorityOwner>(
+    bytes: &[u8],
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Funded<Document>> {
+    read_document(
+        bytes,
+        Rule::Closed(CONTRACT_CATALOG),
+        "pack_contract_catalog",
+        op,
+        budget,
+    )
+}
+
 /// Check the receipt's Host Extension authority before alias and backend checks.
 pub(super) fn require_external_catalog_identity<S: OriginalAuthorityOwner>(
     executable: &ExecutableCatalog,
@@ -158,12 +179,30 @@ pub(super) fn require_external_catalog_identity<S: OriginalAuthorityOwner>(
     if host_extension && !authority_is_host_extension {
         return Err(deny("Host Extension admission identity is missing"));
     }
+    check_external_catalog_identity(executable, manifest, op, budget).map_err(|error| {
+        if error.class == super::EXTERNAL_ERROR {
+            artifact_failure(python_cause(error))
+        } else {
+            error
+        }
+    })?;
+    Ok(host_extension)
+}
+
+/// Check the executable independently of any Host Extension admission authority.
+pub(super) fn check_external_catalog_identity<S: OriginalAuthorityOwner>(
+    executable: &ExecutableCatalog,
+    manifest: &PackManifest,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    op.check(STAGE)?;
     let doc = &executable.doc;
     if doc
         .get(doc.root, "materialization_catalog_digest")
         .is_some()
     {
-        return Err(deny(
+        return Err(model::denied(
             "external Pack cannot replace its executable catalog identity",
         ));
     }
@@ -175,18 +214,18 @@ pub(super) fn require_external_catalog_identity<S: OriginalAuthorityOwner>(
         let execution_kind = doc
             .get(variant, "execution_kind")
             .expect("checked execution kind");
-        let allowed = if host_extension {
+        let allowed = if manifest.host_extension {
             doc.string_is(execution_kind, "host_extension")
         } else {
             doc.string_is(execution_kind, "wasm") || doc.string_is(execution_kind, "pack_vm")
         };
         if !allowed {
-            return Err(deny(
+            return Err(model::denied(
                 "external admission accepts only Normal Sandbox backends",
             ));
         }
     }
-    Ok(host_extension)
+    Ok(())
 }
 
 fn read_document<S: OriginalAuthorityOwner>(

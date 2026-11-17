@@ -1,12 +1,13 @@
 //! Traverse the original recovery catalog without materializing execution authority.
 use super::*;
-use crate::original_authority::external_catalog::{self, ClosureManifest};
+use crate::original_authority::external_catalog::{self, ClosureExecutable, ClosureManifest};
 
 pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
     seed: CoreValue,
+    profiles: CoreValue,
 ) -> RecoveryOutcome {
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
@@ -119,10 +120,88 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             enqueue(&mut queue, &lease, dependency, pack.input_budget)?;
         }
     }
-    review.actual._admitted_closure = Some(external.finish()?);
-    Ok(Err(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::AdmittedPackExecutableCatalogNotBound,
-    )))
+    let external = external.finish()?;
+    let rows = external.array().context("external closure rows required")?;
+    let count = rows.len();
+    let plan_funding = pack.work.get().invocation.reserve(
+        CapacityKind::VfsBuffer,
+        u64::try_from(
+            count
+                .checked_mul(std::mem::size_of::<(usize, CoreValue)>())
+                .context("external executable plan size")?,
+        )?,
+    )?;
+    let mut sorted = Vec::new();
+    sorted.try_reserve_exact(count)?;
+    if sorted.capacity() != count {
+        bail!("external executable plan allocation differs");
+    }
+    for (index, row) in rows.iter().enumerate() {
+        sorted.push((
+            index,
+            row.get_index(0).context("external Pack ID required")?,
+        ));
+    }
+    let maximum_key_bytes = sorted
+        .iter()
+        .map(|(_, id)| id.as_str().map_or(0, str::len))
+        .max()
+        .unwrap_or(0);
+    pack.input_budget
+        .reserve(tobkiri_canon::AllocationRequest {
+            kind: tobkiri_canon::AllocationKind::Temporary,
+            bytes: 0,
+            depth: 0,
+            elements: 0,
+            work: count
+                .saturating_mul(usize::BITS as usize)
+                .saturating_mul(maximum_key_bytes.saturating_add(1)) as u64,
+        })?;
+    sorted.sort_unstable_by(|left, right| left.1.as_str().cmp(&right.1.as_str()));
+
+    let mut verified = CoreValue::array_builder_slots(pack.input_budget, count)?;
+    for (index, id) in sorted {
+        caller.check(review, pack)?;
+        let row = rows
+            .get(index)
+            .context("external Pack closure row required")?;
+        let manifest = row
+            .get_index(1)
+            .context("external Pack manifest required")?;
+        let digest = row
+            .get_index(2)
+            .context("external Pack artifact digest required")?;
+        let executable = match external_catalog::read_closure_executable(
+            &review.read,
+            &pack.work.get().source,
+            pack.cancellation,
+            pack.input_budget,
+            id.as_str().context("external Pack ID must be text")?,
+            &manifest,
+            digest
+                .as_str()
+                .context("external Pack artifact digest must be text")?,
+        ) {
+            Ok(ClosureExecutable::External(executable)) => executable,
+            Ok(ClosureExecutable::HostExtension) => {
+                return Ok(Err(BootstrapReviewFailure::NotBound(
+                    BootstrapReviewReachpoint::AdmittedHostExtensionProjectionNotBound,
+                )));
+            }
+            Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
+        };
+        verified.set(
+            index,
+            CoreValue::array_shared(
+                [Ok(id), Ok(manifest), Ok(executable)].into_iter(),
+                pack.input_budget,
+            )?,
+        )?;
+    }
+    let verified = verified.finish()?;
+    review.actual._admitted_closure = Some(verified.share());
+    drop((external, plan_funding));
+    replace_recovery_profiles(review, pack, caller, profiles, Some(verified)).await
 }
 
 fn enqueue(

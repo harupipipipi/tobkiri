@@ -632,13 +632,13 @@ async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOw
             Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
         };
         review.actual._recovery_external_catalog = Some(catalog);
-        return admitted_closure::run(review, pack, caller, seed).await;
+        return admitted_closure::run(review, pack, caller, seed, profiles).await;
     }
     review.actual._recovery_external_catalog = Some(catalog);
     if boundary != BootstrapReviewReachpoint::CatalogWithProfilesNotBound {
         return Ok(Err(BootstrapReviewFailure::NotBound(boundary)));
     }
-    replace_recovery_profiles(review, pack, caller, profiles).await
+    replace_recovery_profiles(review, pack, caller, profiles, None).await
 }
 
 #[cfg(unix)]
@@ -647,6 +647,7 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
     profiles: CoreValue,
+    external: Option<CoreValue>,
 ) -> RecoveryOutcome {
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
@@ -662,11 +663,23 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         )?,
         &scope,
     )?;
-    let request = denied::frame(
-        pack,
-        "io.tobkiri.native-bootstrap-recovery-catalog.v1",
-        [("catalog", original.share()), ("profiles", profiles)],
-    )?;
+    let format = "io.tobkiri.native-bootstrap-recovery-catalog.v1";
+    let request = match external {
+        Some(external) => denied::frame(
+            pack,
+            format,
+            [
+                ("catalog", original.share()),
+                ("profiles", profiles),
+                ("external", external),
+            ],
+        )?,
+        None => denied::frame(
+            pack,
+            format,
+            [("catalog", original.share()), ("profiles", profiles)],
+        )?,
+    };
     let outcome = pack
         .observe_fixed_projection(&request, "bootstrap-recovery-catalog")
         .await?;
@@ -707,8 +720,11 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         .read
         .run_recovery_authority(&pack.work.get().source, pack.cancellation)
     {
-        Ok(RecoveryAuthorityReached::RecoverActivation) => {
+        Ok(RecoveryAuthorityReached::ReadActivationJournal) => {
             BootstrapReviewReachpoint::RecoveryActivationJournalNotBound
+        }
+        Ok(RecoveryAuthorityReached::ReadIncompleteActivationReservations) => {
+            BootstrapReviewReachpoint::RecoveryIncompleteActivationReservationsNotBound
         }
         Ok(RecoveryAuthorityReached::RecoveredNone) => {
             let request = denied::frame(pack, RECOVERY_FINISHED_REQUEST, [("catalog", root)])?;

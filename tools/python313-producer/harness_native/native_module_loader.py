@@ -18,6 +18,10 @@ from .native_path import NativePath, PathBridge
 from .persistence_view import VIEW as _PERSISTENCE_VIEW
 from .value_graph import UnsupportedValue
 
+_COMPOSITION = "ecosystem.defaultspack.defaultspack.profile_runtime_composition"
+_COMPOSITION_SOURCE = "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py"
+_EXTERNAL_CATALOG = "core_runtime.external_pack_catalog_v4"
+_EXTERNAL_EXECUTABLE = "load_verified_pack_executable_catalog"
 _SERVICE = "ecosystem.defaultspack.domain.runtime_v4.service"
 _SERVICE_SOURCE = "ecosystem/defaultspack/domain/runtime_v4/service.py"
 _ARTIFACT = "tobkiri_protocol.platform_artifact"
@@ -160,6 +164,14 @@ class _ModuleLoader:
 
                 facade.verify_platform_artifact = verify_platform_artifact
                 return facade
+            if level == 0 and name == _EXTERNAL_CATALOG:
+                if (type(fromlist) is not tuple or fromlist != (_EXTERNAL_EXECUTABLE,)
+                        or self.bridge._verified_catalog_rows is None
+                        or not owns_import(_COMPOSITION, _COMPOSITION_SOURCE, globals)):
+                    raise UnsupportedValue("verified external Pack source owner is not bound")
+                facade = ModuleType(name)
+                facade.load_verified_pack_executable_catalog = self.bridge._take_verified_executable
+                return facade
             if level == 0 and name == _PERSISTENCE:
                 if (type(fromlist) is not tuple or fromlist != _PERSISTENCE_EXPORTS
                         or self.bridge._catalog_root is None
@@ -270,7 +282,7 @@ class ModulePathBindings:
                 raise UnsupportedValue("original bound module has no code loader")
             capture = self._catalog_capture
             if fullname in {
-                _SERVICE, _ARTIFACT, _RESOLUTION, _CONTENT_PROJECTION,
+                _COMPOSITION, _SERVICE, _ARTIFACT, _RESOLUTION, _CONTENT_PROJECTION,
             } and capture is not None and (
                 finder is not capture[0] or type(finder) is not capture[1]
                 or type(spec.loader) is not capture[2]

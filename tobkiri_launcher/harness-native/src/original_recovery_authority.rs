@@ -6,7 +6,8 @@ mod active_reservation;
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    RecoverActivation,
+    ReadActivationJournal,
+    ReadIncompleteActivationReservations,
     RecoveredNone,
     MatchedReservation,
 }
@@ -48,20 +49,28 @@ impl PublicationRead {
 
         let op = Self::operation(&self.invocation, &self.cleanup, owner, cancellation)?;
         let reached = (|| {
-            // Check continuity of the held lock before the constructor is
-            // allowed to create state. Never acquire a replacement lock/root.
+            // Check continuity of the held publication lock before the
+            // Authority or activation store may create state.
             op.check(OriginalAuthorityStage::Guard)?;
             pending.scope.validate(&op)?;
             with_registered_store(&op, &pending.root, |store| {
                 // Path.exists follows links, treats files as existing too, and
                 // suppresses only the original finite set of stat errors.
-                let exists = candidate_selection::predecessor_stat(&op, workspace, |path| {
+                let exists = candidate_selection::predecessor_stat(&op, &workspace.path, |path| {
                     fs::metadata(path)
                 })?
                 .is_some();
                 if exists {
-                    recovery_workspace::construct(&op, workspace)?;
-                    return Ok(RecoveryAuthorityReached::RecoverActivation);
+                    let present = recovery_workspace::pending_exists(
+                        &op,
+                        &workspace.path,
+                        workspace.lock_name,
+                    )?;
+                    return Ok(if present {
+                        RecoveryAuthorityReached::ReadActivationJournal
+                    } else {
+                        RecoveryAuthorityReached::ReadIncompleteActivationReservations
+                    });
                 }
                 if active_reservation::read(&op, store, &pending.intent)? {
                     return Ok(RecoveryAuthorityReached::MatchedReservation);
@@ -78,9 +87,8 @@ impl PublicationRead {
             })
         })()
         .map_err(recovery_error)?;
-        // The constructor's SQLite/guard handles and Authority context must
-        // have closed before this diagnostic leaves the host. The publication
-        // lock remains in the outer continuation for its own cleanup.
+        // The activation lock and Authority's SQLite and guard handles have
+        // closed here. The publication lock stays in the outer continuation.
         if self.receipt() != receipt {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Close,
@@ -210,7 +218,10 @@ mod tests {
     async fn recovery_authority_initializes_before_branching_on_the_workspace() {
         for (case, expected) in [
             ("missing", RecoveryAuthorityReached::RecoveredNone),
-            ("directory", RecoveryAuthorityReached::RecoverActivation),
+            (
+                "directory",
+                RecoveryAuthorityReached::ReadIncompleteActivationReservations,
+            ),
             ("dangling", RecoveryAuthorityReached::RecoveredNone),
             ("loop", RecoveryAuthorityReached::RecoveredNone),
         ] {
@@ -251,6 +262,30 @@ mod tests {
                 );
             });
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_authority_reaches_pending_read_and_preserves_publication_custody() {
+        with_setup_source(|source, read, cancellation, _| {
+            enter(source, read, cancellation);
+            let state = source
+                .root
+                .join("workspaces")
+                .join(PROFILE_ID)
+                .join("activation");
+            fs::create_dir_all(&state).unwrap();
+            let pending = state.join("pending.json");
+            fs::write(&pending, b"not parsed at this boundary").unwrap();
+            let lock = state.join(LockName::workspace(PROFILE_ID).text());
+
+            assert_eq!(
+                read.run_recovery_authority(source, cancellation).unwrap(),
+                RecoveryAuthorityReached::ReadActivationJournal
+            );
+            assert_eq!(fs::read(pending).unwrap(), b"not parsed at this boundary");
+            assert!(lock_free(&lock));
+            verify_custody(source, read, cancellation, false);
+        });
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -329,7 +364,7 @@ mod tests {
     async fn recovery_authority_reads_signed_activation_id_after_workspace_stat() {
         use RecoveryAuthorityReached::*;
         for (id, workspace_exists, expected) in [
-            ("", true, Ok(RecoverActivation)),
+            ("", true, Ok(ReadIncompleteActivationReservations)),
             ("", false, Err(("builtins.KeyError", "'activation_id'"))),
             (
                 r#""activation_id": [], "#,

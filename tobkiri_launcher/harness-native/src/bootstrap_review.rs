@@ -58,11 +58,11 @@ pub enum BootstrapReviewReachpoint {
     LegacySuccessorBuilderNotBound,
     RepairLegacyDisplayNamesNotBound,
     AdmittedPackClosureNotBound,
-    AdmittedPackExecutableCatalogNotBound,
     ClosureBundledPackRootNotBound,
     AdmittedHostExtensionProjectionNotBound,
     CatalogWithProfilesNotBound,
     RecoveryActivationJournalNotBound,
+    RecoveryIncompleteActivationReservationsNotBound,
     #[cfg(test)]
     RecoveryCompleted,
 }

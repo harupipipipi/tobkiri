@@ -964,7 +964,6 @@ pub(super) enum LockName {
     Definition,
     #[cfg(test)]
     HostSelection,
-    #[cfg(test)]
     Workspace([u8; 42]),
 }
 // Only these fixed lexical callers are admitted. The existing owner check
@@ -972,7 +971,6 @@ pub(super) enum LockName {
 // Python RLock recursion. Publication -> Definition is a different full name.
 #[cfg(unix)]
 impl LockName {
-    #[cfg(test)]
     pub(super) fn workspace(profile_id: &str) -> Self {
         let digest = Digest::hash(profile_id.as_bytes());
         let mut name = *b".activation-000000000000000000000000.lock\0";
@@ -988,7 +986,6 @@ impl LockName {
             Self::Definition => c".profile-definition.lock",
             #[cfg(test)]
             Self::HostSelection => c".active-profile.lock",
-            #[cfg(test)]
             Self::Workspace(name) => {
                 CStr::from_bytes_with_nul(name).expect("fixed workspace lock name")
             }
@@ -1005,12 +1002,7 @@ impl LockName {
         !matches!(self, Self::Publication)
     }
     fn is_workspace(self) -> bool {
-        #[cfg(test)]
-        {
-            matches!(self, Self::Workspace(_))
-        }
-        #[cfg(not(test))]
-        false
+        matches!(self, Self::Workspace(_))
     }
 
     fn unavailable(self, error: OriginalAuthorityError) -> OriginalAuthorityError {
@@ -1071,13 +1063,19 @@ impl PublicationLock {
         directory: &Directory,
         name: LockName,
     ) -> Result<Self> {
-        let path = directory.root.join(name.text());
         let local = if name.is_workspace() {
             None
         } else {
+            let path = directory.root.join(name.text());
             Some(process_lock(op, &path, name)?)
         };
-        let files = directory.open(op)?;
+        let files = directory.open(op).map_err(|error| {
+            if name.is_workspace() && matches!(error.class, RAW_IO | SECURE_PERSISTENCE_ERROR) {
+                name.unavailable(error)
+            } else {
+                error
+            }
+        })?;
         let result = (|| {
             let parent = files.last().expect("directory chain");
             let before = Directory::stat(parent, name.text(), false)?;
@@ -1092,7 +1090,16 @@ impl PublicationLock {
             let descriptor =
                 unsafe { libc::openat(parent.as_raw_fd(), name.c_str().as_ptr(), flags, 0o600) };
             if descriptor < 0 {
-                return Err(raw_io(std::io::Error::last_os_error(), Some(name.text())));
+                let error = std::io::Error::last_os_error();
+                let kind = error.kind();
+                let error = raw_io(error, Some(name.text()));
+                return Err(
+                    if name.is_workspace() && kind == std::io::ErrorKind::AlreadyExists {
+                        caused(secure_error("persistence lock changed before open"), error)
+                    } else {
+                        error
+                    },
+                );
             }
             let file =
                 TrackedFile::new(unsafe { File::from_raw_fd(descriptor) }, op.cleanup.clone());

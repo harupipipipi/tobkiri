@@ -822,8 +822,52 @@ class Dispatcher:
             "pack_id": pack_id, "kind": kind, "dependencies": dependencies,
         })
 
+    def _extend_recovery_catalog(self, state, catalog, rows):
+        from .native_path import NativePath
+
+        if (type(rows) is not list or type(catalog.root) is not NativePath
+                or type(catalog.packs) is not dict or type(catalog.executable_catalogs) is not dict):
+            raise UnsupportedValue("verified external catalog arguments differ")
+        packs = dict(catalog.packs)
+        checked = []
+        for row in rows:
+            if (type(row) is not list or len(row) != 3 or type(row[0]) is not str
+                    or row[0] in packs
+                    or type(row[1]) is not dict or type(row[2]) is not dict):
+                raise InvalidFrame("invalid verified external Pack row")
+            pack_id, manifest, executable = row
+            header = manifest.get("pack")
+            integrity = manifest.get("integrity")
+            if (type(header) is not dict or header.get("id") != pack_id
+                    or header.get("kind") not in ("normal_sandbox", "application")
+                    or type(integrity) is not dict or executable.get("pack_id") != pack_id
+                    or type(integrity.get("source_identity")) is not str
+                    or executable.get("source_identity") != integrity["source_identity"]):
+                raise UnsupportedValue("verified external Pack identity differs")
+            packs[pack_id] = manifest
+            checked.append((pack_id, manifest, executable))
+
+        value = catalog.root._bridge._with_verified_catalog_rows(
+            sorted(checked, key=lambda row: row[0]), lambda: state.runtime.catalog_with_packs(catalog, packs),
+        )
+        if (type(value) is not type(catalog) or value is catalog
+                or type(value.packs) is not dict or tuple(value.packs) != tuple(packs)
+                or any(value.packs[key] is not entry for key, entry in packs.items())
+                or type(value.executable_catalogs) is not dict
+                or len(value.executable_catalogs) != len(catalog.executable_catalogs) + len(checked)
+                or any(value.executable_catalogs.get(key) is not item
+                       for key, item in catalog.executable_catalogs.items())
+                or any(value.executable_catalogs.get(key) is not item for key, _, item in checked)
+                or any(getattr(value, name) is not getattr(catalog, name)
+                       for name in ("root", "bases", "shells", "profiles", "artifact_root"))):
+            raise UnsupportedValue("original external Pack catalog is not bound")
+        return value
+
     def _bootstrap_recovery_catalog(self, state: _State, frame: dict[str, Any]) -> str:
-        self._checked_frame(frame, "bootstrap-recovery-catalog", {"catalog", "profiles"})
+        fields = {"catalog", "profiles"}
+        if "external" in frame:
+            fields.add("external")
+        self._checked_frame(frame, "bootstrap-recovery-catalog", fields)
         registry = state.registry
         catalog_ref = registry.reference(frame["catalog"])
         rows = frame["profiles"]
@@ -840,6 +884,11 @@ class Dispatcher:
             profiles[row[0]] = row[1]
 
         catalog = registry._begin_bootstrap_recovery_catalog(catalog_ref)
+        if "external" in frame:
+            catalog = self._apply_original(
+                lambda: self._extend_recovery_catalog(state, catalog, frame["external"]),
+                caller="bootstrap-recovery-catalog",
+            )
         value = self._apply_original(
             lambda: state.runtime.catalog_with_profiles(catalog, profiles),
             caller="bootstrap-recovery-catalog",

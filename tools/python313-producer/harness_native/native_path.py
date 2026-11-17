@@ -81,6 +81,7 @@ class PathBridge:
         # changing this guest field cannot enable any native operation.
         self._catalog_root: NativePath | None = None
         self._resolving_catalog = False
+        self._verified_catalog_rows: Iterator | None = None
         self._resolver_artifact_root: NativePath | None = None
         self._resolver_resolved_root: NativePath | None = None
         self._resolver_shell_leaf: NativePath | None = None
@@ -103,6 +104,28 @@ class PathBridge:
             return target(selected)
         finally:
             self._catalog_root = None
+
+    def _with_verified_catalog_rows(self, rows, target):
+        if (self._verified_catalog_rows is not None or self._catalog_root is not None
+                or self._resolving_catalog):
+            raise UnsupportedValue("nested verified Pack catalog call")
+        self._verified_catalog_rows = iter(rows)
+        try:
+            result = target()
+            if next(self._verified_catalog_rows, None) is not None:
+                raise UnsupportedValue("original catalog did not consume every verified Pack")
+            return result
+        finally:
+            self._verified_catalog_rows = None
+
+    def _take_verified_executable(self, pack_id, manifest, *, retained_bundled_origin=None):
+        rows = self._verified_catalog_rows
+        if rows is None or retained_bundled_origin is not None:
+            raise UnsupportedValue("verified Pack read is outside recovery")
+        row = next(rows, None)
+        if row is None or type(pack_id) is not str or row[0] != pack_id or row[1] is not manifest:
+            raise UnsupportedValue("verified Pack read order or manifest differs")
+        return row[2]
 
     def _catalog_request(self, target: dict, operation: str, args: list) -> dict:
         return self._request(target, operation, args,

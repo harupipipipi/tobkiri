@@ -881,10 +881,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
 
     def recovery_projector(self, catalog: Catalog, profiles: dict) -> Catalog:
         self.assertIs(catalog, self.runtime.catalog)
-        value = self.Catalog()
-        value.__dict__ = vars(catalog).copy()
-        value.profiles = dict(profiles)
-        return value
+        return self.recovery_projector_clone(catalog, profiles)
 
     def admitted_closure_step(
         self, catalog: dict, pack_id: str, manifest: dict | None = None,
@@ -1043,6 +1040,47 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         result = self.lookup(new_catalog, profile)
         original = self.registry.borrow(self.registry.reference(result["root"]))
         self.assertIs(original, self.runtime.catalog.profiles["fixture-id"])
+
+    def test_recovery_catalog_consumes_external_executables_in_original_order(self) -> None:
+        self.getter("fixture-id")
+        catalog = self.load()
+        original = self.runtime.catalog
+        profiles = [["p", {"profile_id": "p"}]]
+        rows = [[pack_id, {"pack": {"id": pack_id, "kind": "normal_sandbox"},
+                          "integrity": {"source_identity": "source"}},
+                 {"pack_id": pack_id, "source_identity": "source"}]
+                for pack_id in ("z-admitted", "a-admitted")]
+        calls = []
+
+        def catalog_with_packs(old, packs):
+            self.assertIs(old, original)
+            self.assertEqual(list(packs), ["z-admitted", "a-admitted"])
+            result = self.Catalog()
+            result.__dict__ = vars(old).copy()
+            result.packs = dict(packs)
+            result.executable_catalogs = dict(old.executable_catalogs)
+            for pack_id in sorted(packs.keys() - old.packs.keys()):
+                calls.append(pack_id)
+                result.executable_catalogs[pack_id] = self.bridge._take_verified_executable(
+                    pack_id, packs[pack_id], retained_bundled_origin=None,
+                )
+            return result
+
+        self.runtime.catalog_with_packs = catalog_with_packs
+        self.runtime.catalog_with_profiles = self.recovery_projector_clone
+        merged = self.recovery_catalog(catalog, profiles, external=rows)
+        value = self.registry.borrow(self.registry.reference(merged["root"]))
+        self.assertEqual(calls, ["a-admitted", "z-admitted"])
+        self.assertEqual(list(value.packs), ["z-admitted", "a-admitted"])
+        self.assertEqual(value.executable_catalogs, {row[0]: row[2] for row in rows})
+        self.assertEqual(value.profiles, dict(profiles))
+        self.assertEqual(original.packs, {})
+
+    def recovery_projector_clone(self, catalog: Catalog, profiles: dict) -> Catalog:
+        value = self.Catalog()
+        value.__dict__ = vars(catalog).copy()
+        value.profiles = dict(profiles)
+        return value
 
     def test_recovery_catalog_refuses_fresh_candidate_loader(self) -> None:
         self.runtime.catalog_with_profiles = self.recovery_projector
