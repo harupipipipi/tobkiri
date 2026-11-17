@@ -4046,14 +4046,36 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   固定元ソース `1cf025f1e` が生成した46 Pack・176 bindingのレガシーfixtureでも、
   同じAuthority Storeを読むRustテストが後継比較を通過した。
   macOS・Linuxの定義CIでも、固定元ソースで旧Activationを実際に移行し、生成した後継を
-  Rustの照合テストに渡す。ローカルでは同じ生成・照合手順が通過した。実Wasmを通す復旧全体の
-  検証、後継artifactの検証後の再解決、workspace移行とHost公開が残る。
+  Rustの照合テストに渡す。後継artifactの検証はworkspace lockを離し、同じStoreと
+  公開guardを維持して行う。`4e8ddd79e` は再取得した後継の完全なplan digestと一致する検証証跡を
+  次のworkspace移行に使う。SQLiteとlifecycleのハンドルは各操作で閉じる。
+  `original_activation_authority.rs` は元の予約・CAS・退役・監査を、
+  `original_legacy_activation.rs` は4段階のenvelope保存とpending更新、2回のartifact
+  identity検査、失敗時のabortと削除を実行する。committing段階でready時のpending
+  digestを残す順序も元の処理と揃える。移行後の再読み取りとHostの候補照合まで接続した。
+  ローカルの原本生成fixtureでは、Rustが保存したProfile・Lock・Plan・Activationが
+  元Pythonと一致した。権限世代の変更、保存前後のartifact変更と、保存後に残ったpending
+  からの復旧も検証した。Rust 220件、Python 243件、CI feature付きlibraryのstrict Clippy、
+  workflow・CI補助52件が通過した。tests込みのClippyは既存の
+  `original_external_catalog_io.rs` のtests module配置で停止する。
+  定義CIのcatalogテスト数指定も実行済み8件に合わせた。
+  実Wasmを通す復旧全体と、元GUIからの会話を含む製品検証は残る。
   現在のresolver結果は `bootstrap_catalog.rs` でscopeと形式を確認し、
   `original_recovery_legacy_successor.rs` で既存schema検証用に再エンコードする。
   scopeの検証、確保量の追跡と元のschemaエラーを維持できれば、同じ解析結果を
   schema検証へ渡して中間エンコードを省ける。
+  successorのprofile/lock/planはimmutableな共有リンクで保存側へ渡し、Python側のdict
+  複製を置き換えた。再検証では元の3つの比較fieldを同じ候補から投影し、既存の
+  committed reservation照合を共用する。Directoryの固定ファイル書き込みも共通化し、
+  activation保存で不足する親を作成する。公開・定義保存では親の存在を既存のとおり要求する。
+  実際の大きな復旧envelopeで従来の汎用decodeの予約量が容量に達したため、読み取り専用の
+  正確な領域計測を使う既存decoderへ置き換え、同じ64MiB内でpending復旧まで検証した。
+  `original_recovery_abort_transaction.rs` と新しいgeneral transitionはabortのCASと監査を一部重複して
+  実装している。原本の不正row診断とrollbackを両方の経路で照合したら共用できる。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
   は同じrunで生成したWasmの検証済みセットを元のLauncherへ配置するテストに成功。
+  [復旧resolver接続後の実Wasm CI 44114533643](https://github.com/harupipipipi/tobkiri/actions/runs/44114533643)
+  は成果物の生成とbootstrap検証を通過した。
   SetupからGUI承認、会話までの実機検証は後続。
