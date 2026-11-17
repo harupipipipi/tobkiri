@@ -303,6 +303,38 @@ fn string<'py>(py: Python<'py>, value: &str) -> PyResult<Bound<'py, PyAny>> {
     PyString::from_bytes(py, value.as_bytes()).map(Bound::into_any)
 }
 
+fn simple_path(path: &str) -> bool {
+    path.split('/').all(|segment| {
+        !matches!(segment, "" | "." | "..")
+            && segment.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'~')
+            })
+    })
+}
+
+/// For a plain HTTPS path, urljoin retains the authority and replaces the
+/// final segment. No empty, dot, query or parameter segments need rewriting.
+fn simple_https_relative(base: &str, reference: &str) -> Option<String> {
+    let (host, path) = base.strip_prefix("https://")?.split_once('/')?;
+    if host.is_empty()
+        || !host
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
+        || !simple_path(reference)
+    {
+        return None;
+    }
+    let path_without_trailing_slash = path.strip_suffix('/').unwrap_or(path);
+    if !path.is_empty() && !simple_path(path_without_trailing_slash) {
+        return None;
+    }
+    let prefix = &base[..base.rfind('/')? + 1];
+    let mut result = String::with_capacity(prefix.len() + reference.len());
+    result.push_str(prefix);
+    result.push_str(reference);
+    Some(result)
+}
+
 fn join_native(input: Admitted<'_>) -> Joined {
     let Admitted {
         base,
@@ -314,6 +346,9 @@ fn join_native(input: Admitted<'_>) -> Joined {
     }
     if reference.is_empty() {
         return Joined::Base;
+    }
+    if let Some(joined) = simple_https_relative(base, reference) {
+        return Joined::Built(joined);
     }
     // Admission proved the raw base prefix contains only scheme characters.
     // Cleaning can remove controls after the colon, so its offset is stable.

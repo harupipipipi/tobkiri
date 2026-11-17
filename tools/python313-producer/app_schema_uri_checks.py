@@ -159,6 +159,8 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
         assert difference is None, (comparisons, difference)
         if mode == "native":
             assert delta == dict(zip(fields, (1, 0, 0, 0))), delta
+        elif mode == "two-native":
+            assert delta == dict(zip(fields, (2, 0, 0, 0))), delta
         elif mode == "boundary":
             assert delta == dict(zip(fields, (0, 0, 1, 0))), delta
         elif mode == "skip":
@@ -229,6 +231,39 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
     ):
         compare(simple(base, ref), "boundary" if base.startswith("git:") else hash_mode(base, ref))
     checks["scheme_tables_case_inheritance_authority_and_empty_netloc_rules"] = True
+
+    for base, ref in (
+        ("https://json-schema.org/draft/2020-12/schema", "meta/format-annotation"),
+        ("https://EXAMPLE.test/a/b/", "prefix/leaf"),
+        ("https://example.test/", "one"),
+        ("https://example.test/path", "path"),
+        ("https://example.test//", "leaf"),
+        ("https://example.test/a/../", "leaf"),
+        ("https://example.test/a/b", "x/../leaf"),
+        ("https://example.test/a/b", "leaf/"),
+        ("https://example.test/a?old", "leaf"),
+        ("https://example.test/a;b", "leaf"),
+        ("https://example.test/a", "x//leaf"),
+        ("https://example.test/a", "p%2ef"),
+    ):
+        compare(simple(base, ref))
+
+    def fresh_relative_lookup(selected):
+        base = "https://json-schema.org/draft/2020-12/schema"
+        first, second = ("meta/core".encode().decode() for _ in range(2))
+        uris = []
+
+        def verify(outcome):
+            assert outcome["kind"] == "valid" and len(uris) == 2
+            assert uris == ["https://json-schema.org/draft/2020-12/meta/core"] * 2
+            assert uris[0] is not uris[1]
+
+        return {"base": base, "reference": first,
+                "meta": {"allOf": [{"$ref": first}, {"$ref": second}]},
+                "target": {}, "actual": {}, "on_get": uris.append, "verify": verify}
+
+    compare(fresh_relative_lookup, "two-native")
+    checks["simple_https_relative_paths_keep_values_and_fresh_registry_arguments"] = True
 
     for base, ref in (
         ("http://a/\t\nb", " c\r/d"), ("http:\n//a/a", "../c"),
@@ -708,5 +743,5 @@ def uri_checks(provider, kernel) -> dict[str, bool]:
     checks["fresh_default_provider_reaches_meaningful_native_join_defrag_work"] = True
 
     # 160 symmetric pairs plus the independent-owner isolation comparison.
-    assert comparisons == 160 and len(checks) == 18 and all(checks.values())
+    assert comparisons == 173 and len(checks) == 19 and all(checks.values())
     return checks
