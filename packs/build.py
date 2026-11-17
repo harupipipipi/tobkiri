@@ -351,9 +351,14 @@ def portable_sources(document: dict[str, Any], destination: Path) -> None:
         pin["source"] = "file:" + Path(os.path.relpath(source, destination.parent)).as_posix()
 
 
-def ui_pack() -> dict[str, Any]:
-    """A sandboxed Pack UI with a channel client and no host IPC or HTTP."""
-    directory=ROOT/"local.harness-ui"
+def ui_pack(directory: Path | None = None) -> dict[str, Any]:
+    """Assemble a self-contained UI Pack using the authoritative JS SDK."""
+    source = ROOT / "local.harness-ui"
+    directory = directory or source
+    if directory != source:
+        (directory / "ui").mkdir(parents=True, exist_ok=True)
+        for name in ("index.html", "app.js", "style.css"):
+            shutil.copyfile(source / "ui" / name, directory / "ui" / name)
     shutil.copyfile(REPO/"sdk/js/pack-ui/index.js",directory/"ui/ports.js")
     shutil.copyfile(REPO/"sdk/js/pack-ui/float.js",directory/"ui/float.js")
     permissions=permission_set(ports=["local.harness-chat.user-input@1.0","local.harness-chat.conversation-store@1.0"])

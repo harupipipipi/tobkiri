@@ -1,9 +1,48 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import vm from "node:vm";
 
 const source = readFileSync(new URL("./ui/app.js", import.meta.url), "utf8");
+
+test("assembled Harness UI uses SDK bytes and preserves the pinned self-contained Pack", () => {
+  const repo = fileURLToPath(new URL("../..", import.meta.url));
+  const output = mkdtempSync(join(tmpdir(), "harness-ui-"));
+  try {
+    execFileSync("python3", ["-B", "-c", `
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("pack_build", pathlib.Path(sys.argv[1]) / "packs/build.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.ui_pack(pathlib.Path(sys.argv[2]))
+`, repo, output]);
+    const manifest = JSON.parse(readFileSync(join(output, "pack.json")));
+    const checkedIn = JSON.parse(readFileSync(join(repo, "packs/local.harness-ui/pack.json")));
+    assert.deepEqual(manifest, checkedIn);
+    for (const entry of manifest.files) {
+      const bytes = readFileSync(join(output, entry.path));
+      assert.equal(bytes.length, entry.size);
+      assert.equal(`sha256:${createHash("sha256").update(bytes).digest("hex")}`, entry.sha256);
+      assert.deepEqual(bytes, readFileSync(join(repo, "packs/local.harness-ui", entry.path)));
+    }
+    for (const [asset, sdk] of [["ports.js", "index.js"], ["float.js", "float.js"]]) {
+      assert.deepEqual(readFileSync(join(output, "ui", asset)), readFileSync(join(repo, "sdk/js/pack-ui", sdk)));
+    }
+    const profile = JSON.parse(readFileSync(join(repo, "packs/profiles/harness-ui.profile.json")));
+    const ordered = (value) => Array.isArray(value) ? value.map(ordered)
+      : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, ordered(value[key])])) : value;
+    const hash = `sha256:${createHash("sha256").update(JSON.stringify(ordered(manifest))).digest("hex")}`;
+    assert.equal(profile.packs.find((pack) => pack.id === manifest.id).sha256, hash);
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+  }
+});
 
 const element = () => ({
   dataset: {},
