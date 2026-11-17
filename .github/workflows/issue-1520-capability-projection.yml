@@ -103,7 +103,7 @@ jobs:
             ${{ runner.temp }}/projection/harness-capability-projection*/inputs/plan.json
             ${{ runner.temp }}/projection/harness-capability-projection*/inputs/provenance.json
             ${{ runner.temp }}/projection/harness-capability-projection*/build.*
-          retention-days: 7
+          retention-days: 90
 
   compare-original-data:
     needs: build-two-worlds
@@ -170,4 +170,4 @@ jobs:
         with:
           name: app-capability-projection-native-comparison
           path: ${{ runner.temp }}/projection/native-comparison.json
-          retention-days: 7
+          retention-days: 90
