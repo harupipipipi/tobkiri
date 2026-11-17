@@ -4026,8 +4026,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じ参照の連続取得で文字列を使い回さないことも確認した。ローカルのAppスキーマ42件の
   処理時間は、6回ずつの中央値で44.77→42.97ms。
   [実Wasm CI 44108246295](https://github.com/harupipipipi/tobkiri/actions/runs/44108246295) は
-  独立したcold exportで42件の出力を原本と照合し、準備後1,979,505,186→248,375,194 fuel。
+  独立したcold exportで42件の出力を原本と照合した。処理前の残燃料は1,979,505,186、
+  42件の処理後は248,375,194で、この区間で1,731,129,992 fuelを消費した。
   同じ成果物の全カタログは従来の上限で燃料切れ、Storeを退役した。
+- `78fd660ee` はAppのRust frameで `required` と `dependentRequired` を処理する。
+  元のmembership呼び出し、項目と依存先の順序、重複、型検査、例外contextを保持する。
+  空の依存先を挟む場合も最後のloop変数を保持し、終わったiteratorは次のmembershipより
+  先に解放する。iteratorのfinalizerが次のmembership結果を変える差分を再現して修正した。
+  エラー変換中は同じExecutionを保持し、SchemaError.create_fromの呼び出しが
+  suspended iteratorの値を参照できるようにした。
+  ローカルPython 3.13.9・元と同じライブラリ版で実拡張をビルドし、64件の本体比較、
+  boundary 11群、reference 36群、object 22群と既存の追加比較が通過した。
+  schema-phasesを含むビルド確認と、入力・候補の補助テスト15件も成功した。
+  元の `keywords.rs` のRequired／DependenciesとApp frameには走査とメッセージ整形の
+  重複がある。両経路のiterator寿命とエラーcontextの一致を確認したら、小さい共有処理へ
+  移せる。document validator全体の移植と、実Wasmの燃料・期限の検証は後続。
+  候補commit `46c2f84cc` のRegistry hit処理は、Retrievedのconstructor／descriptorや
+  同じ関数のcodeを変更した場合に元の呼び出しを飛ばす可能性がある。
+  これらの動的な変更と、miss時のコールバック回数を比較してから採用を判断する。
 - 旧Activationのsuccessor解決は、元のレコードを照合したworkspace lock内で、同じ
   Authority Storeと置換catalogを使う。既存Setup resolverの入力は一部の旧authority-ref
   を拒否する。旧レコードのepoch 0は実Authorityとの照合を通過しない。既存のartifact検証を
