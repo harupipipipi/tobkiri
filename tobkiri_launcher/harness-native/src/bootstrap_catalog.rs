@@ -720,11 +720,27 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         .read
         .run_recovery_authority(&pack.work.get().source, pack.cancellation)
     {
-        Ok(RecoveryAuthorityReached::ReadActivationJournal) => {
-            BootstrapReviewReachpoint::RecoveryActivationJournalNotBound
+        Ok(RecoveryAuthorityReached::ReadPendingActivationReservation) => {
+            BootstrapReviewReachpoint::RecoveryPendingActivationReservationNotBound
         }
         Ok(RecoveryAuthorityReached::ReadIncompleteActivationReservations) => {
-            BootstrapReviewReachpoint::RecoveryIncompleteActivationReservationsNotBound
+            BootstrapReviewReachpoint::RecoveryAbortIncompleteActivationReservationsNotBound
+        }
+        Ok(RecoveryAuthorityReached::LoadActiveSnapshot) => {
+            BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotNotBound
+        }
+        Ok(RecoveryAuthorityReached::MissingPublishedAuthority) => {
+            return Ok(Err(review_continuation::denied(
+                review,
+                pack,
+                caller,
+                "Profile publication authority is unavailable",
+                BootstrapDeniedRaise::Plain,
+            )
+            .await?));
+        }
+        Ok(RecoveryAuthorityReached::WorkspaceRecovered) => {
+            bail!("recovery did not complete its active reservation check");
         }
         Ok(RecoveryAuthorityReached::RecoveredNone) => {
             let request = denied::frame(pack, RECOVERY_FINISHED_REQUEST, [("catalog", root)])?;

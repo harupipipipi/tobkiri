@@ -92,6 +92,7 @@ pub enum OriginalAuthorityStage {
     EpochRecord,
     Snapshot,
     ActiveReservation,
+    IncompleteReservation,
     Close,
 }
 

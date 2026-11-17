@@ -2,20 +2,35 @@
 use super::*;
 use tobkiri_canon::Variant;
 
+#[path = "original_recovery_pending.rs"]
+mod pending;
+
 const APP_DENIED: &str = "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied";
-/// Construct the activation store and check for its pending journal under
-/// the original lock while Authority and the publication guard are live.
-pub(super) fn pending_exists<S: OriginalAuthorityOwner>(
+
+/// Run the reached activation recovery branch under the original App lock,
+/// while Authority and the publication guard are live.
+pub(super) fn recover<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     workspace: &Path,
     lock_name: LockName,
-) -> Result<bool> {
-    let (state, _) = initialize(op, workspace)?;
+    on_absent: impl FnOnce() -> Result<RecoveryAuthorityReached>,
+) -> Result<RecoveryAuthorityReached> {
+    let (state, workspace_digest) = initialize(op, workspace)?;
     let mut guard = PublicationLock::acquire_named(op, &state, lock_name)?;
-    let present = state.exists(op, "pending.json");
-    // The original recovery body has not returned at either reachpoint, so
-    // closing this scope does not run the normal post-yield identity check.
-    finish_scope(present, guard.close())
+    let result = (|| {
+        if state.exists(op, pending::NAME)? {
+            pending::read(op, &state, &workspace_digest)?;
+            return Ok(RecoveryAuthorityReached::ReadPendingActivationReservation);
+        }
+        let reached = on_absent()?;
+        // The post-yield identity check runs only after normal completion of
+        // the original body. Read boundaries and exceptions skip it.
+        if reached == RecoveryAuthorityReached::WorkspaceRecovered {
+            state.validate_file(op, lock_name.text(), guard.file.as_ref().expect("App lock"))?;
+        }
+        Ok(reached)
+    })();
+    finish_scope(result, guard.close())
 }
 
 fn initialize<S: OriginalAuthorityOwner>(
@@ -95,6 +110,16 @@ mod tests {
     use crate::original_authority::definitions::tests::{lock_free, operation, with_source};
     use std::os::unix::fs::{PermissionsExt, symlink};
 
+    fn inspect<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        workspace: &Path,
+        name: LockName,
+    ) -> Result<RecoveryAuthorityReached> {
+        recover(op, workspace, name, || {
+            Ok(RecoveryAuthorityReached::ReadIncompleteActivationReservations)
+        })
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn recovery_constructor_creates_private_state_and_preserves_existing_records() {
         with_source(|source, read, cancellation, _| {
@@ -141,13 +166,13 @@ mod tests {
             let op = operation(read, source, cancellation);
             let name = LockName::workspace("profile");
 
-            let error = pending_exists(&op, &alias, name).unwrap_err();
+            let error = inspect(&op, &alias, name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "state_root must not be a symlink");
             assert!(error.cause.is_none());
 
             fs::remove_file(&state_alias).unwrap();
-            let error = pending_exists(&op, &alias, name).unwrap_err();
+            let error = inspect(&op, &alias, name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "workspace_root must not be a symlink");
             assert!(error.cause.is_none());
@@ -168,7 +193,7 @@ mod tests {
             let name = LockName::workspace("profile");
 
             let missing = source.root.join("missing-workspace");
-            let error = pending_exists(&op, &missing, name).unwrap_err();
+            let error = inspect(&op, &missing, name).unwrap_err();
             assert_eq!(error.class, RAW_IO);
             assert!(matches!(
                 error.cause,
@@ -177,12 +202,12 @@ mod tests {
             ));
             assert!(!missing.exists());
 
-            let error = pending_exists(&op, &workspace_file, name).unwrap_err();
+            let error = inspect(&op, &workspace_file, name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "workspace_root must be a directory");
             assert!(error.cause.is_none());
 
-            let error = pending_exists(&op, &alias.join("profile"), name).unwrap_err();
+            let error = inspect(&op, &alias.join("profile"), name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "activation state root is unsafe");
             assert!(matches!(
@@ -198,7 +223,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn recovery_pending_presence_uses_the_original_lock_without_reading_bytes() {
+    async fn recovery_pending_read_validates_only_original_shape_and_does_not_mutate() {
         with_source(|source, read, cancellation, _| {
             let workspace = source.root.join("workspace");
             fs::create_dir_all(&workspace).unwrap();
@@ -208,7 +233,14 @@ mod tests {
             let lock = state.join(".activation-e9d4221cd9afd87c40881ca3.lock");
             let op = operation(read, source, cancellation);
 
-            assert!(!pending_exists(&op, &workspace, name).unwrap());
+            assert_eq!(
+                recover(&op, &workspace, name, || {
+                    assert!(!lock_free(&lock));
+                    Ok(RecoveryAuthorityReached::WorkspaceRecovered)
+                })
+                .unwrap(),
+                RecoveryAuthorityReached::WorkspaceRecovered
+            );
             assert_eq!(
                 fs::metadata(&lock).unwrap().permissions().mode() & 0o777,
                 0o600
@@ -216,12 +248,156 @@ mod tests {
             assert_eq!(fs::read_dir(&state).unwrap().count(), 1);
             assert!(lock_free(&lock));
 
-            let data = b"invalid journal contents";
-            fs::write(&pending, data).unwrap();
-            assert!(pending_exists(&op, &workspace, name).unwrap());
+            let resolved = workspace.canonicalize().unwrap();
+            let digest = Digest::hash(
+                &serde_json::to_vec(
+                    &serde_json::json!({"workspace_root": resolved.to_str().unwrap()}),
+                )
+                .unwrap(),
+            );
+            let valid = serde_json::json!({
+                "schema": "io.tobkiri.defaultspack-pending-activation.v1",
+                "reservation_id": null,
+                "activation_id": ["not", "yet", "interpreted"],
+                "envelope_path": "../deferred",
+                "envelope_digest": true,
+                "workspace_digest": digest.as_str(),
+                "fencing_token": {},
+            });
+            let mut invalid = vec![serde_json::json!([])];
+            let mut missing = valid.clone();
+            missing.as_object_mut().unwrap().remove("fencing_token");
+            invalid.push(missing);
+            for (key, value) in [
+                ("extra", serde_json::json!(null)),
+                ("schema", serde_json::json!("wrong")),
+                (
+                    "workspace_digest",
+                    serde_json::json!(Digest::hash(b"another workspace").as_str()),
+                ),
+            ] {
+                let mut changed = valid.clone();
+                changed[key] = value;
+                invalid.push(changed);
+            }
+            for value in invalid {
+                let data = serde_json::to_vec(&value).unwrap();
+                fs::write(&pending, &data).unwrap();
+                let error =
+                    recover(&op, &workspace, name, || panic!("journal exists")).unwrap_err();
+                assert_eq!(error.class, APP_DENIED);
+                assert_eq!(error.message, "pending activation journal is invalid");
+                assert!(error.cause.is_none());
+                assert_eq!(fs::read(&pending).unwrap(), data);
+                assert!(lock_free(&lock));
+            }
+
+            let data = serde_json::to_vec(&valid).unwrap();
+            fs::write(&pending, &data).unwrap();
+            assert_eq!(
+                recover(&op, &workspace, name, || panic!("journal exists")).unwrap(),
+                RecoveryAuthorityReached::ReadPendingActivationReservation
+            );
             assert_eq!(fs::read(&pending).unwrap(), data);
             assert_eq!(fs::read_dir(&state).unwrap().count(), 2);
             assert!(lock_free(&lock));
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_pending_read_preserves_strict_decoder_cause_and_unwinds_its_lock() {
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            let state = workspace.join("activation");
+            let pending = state.join("pending.json");
+            let name = LockName::workspace("profile");
+            let op = operation(read, source, cancellation);
+            fs::create_dir_all(&state).unwrap();
+            for (data, message, nested) in [
+                (
+                    b"{".as_slice(),
+                    "invalid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+                    Some("json.decoder.JSONDecodeError"),
+                ),
+                (
+                    b"\xff".as_slice(),
+                    "json input is not valid UTF-8",
+                    Some("builtins.UnicodeDecodeError"),
+                ),
+                (
+                    br#"{"schema":null,"schema":null}"#.as_slice(),
+                    "duplicate JSON object key: 'schema'",
+                    None,
+                ),
+            ] {
+                fs::write(&pending, data).unwrap();
+                let error =
+                    recover(&op, &workspace, name, || panic!("journal exists")).unwrap_err();
+                assert_eq!(error.class, APP_DENIED);
+                assert_eq!(
+                    error.message,
+                    format!("pending activation journal is unavailable: {message}")
+                );
+                assert!(error.suppressed);
+                let Some(OriginalAuthorityCause::Python {
+                    class,
+                    message: inner,
+                    cause,
+                    suppressed,
+                    ..
+                }) = error.cause
+                else {
+                    panic!("missing strict decoder cause");
+                };
+                assert_eq!(class, "tobkiri_protocol.errors.CanonicalizationError");
+                assert_eq!(inner, message);
+                assert_eq!(suppressed, nested.is_some());
+                assert_eq!(
+                    cause.as_deref().map(|cause| match cause {
+                        OriginalAuthorityCause::Python { class, .. } => *class,
+                        _ => panic!("unexpected strict decoder cause type"),
+                    }),
+                    nested
+                );
+                assert_eq!(fs::read(&pending).unwrap(), data);
+                assert!(lock_free(&state.join(name.text())));
+            }
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_pending_read_preserves_os_error_from_an_unreadable_record() {
+        // A privileged runner can open the fixture despite its mode.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            let state = workspace.join("activation");
+            let pending = state.join("pending.json");
+            let name = LockName::workspace("profile");
+            let op = operation(read, source, cancellation);
+            fs::create_dir_all(&state).unwrap();
+            fs::write(&pending, b"{}").unwrap();
+            fs::set_permissions(&pending, fs::Permissions::from_mode(0o000)).unwrap();
+
+            let result = recover(&op, &workspace, name, || panic!("journal exists"));
+            fs::set_permissions(&pending, fs::Permissions::from_mode(0o600)).unwrap();
+            let error = result.unwrap_err();
+            assert_eq!(error.class, APP_DENIED);
+            assert_eq!(
+                error.message,
+                "pending activation journal is unavailable: [Errno 13] Permission denied: 'pending.json'"
+            );
+            assert!(error.suppressed);
+            assert!(matches!(
+                error.cause,
+                Some(OriginalAuthorityCause::Io(io))
+                    if io.errno == Some(libc::EACCES)
+                        && io.filename.as_deref() == Some("pending.json")
+            ));
+            assert_eq!(fs::read(&pending).unwrap(), b"{}");
+            assert!(lock_free(&state.join(name.text())));
         });
     }
 
@@ -235,7 +411,7 @@ mod tests {
             let name = LockName::workspace("profile");
             let op = operation(read, source, cancellation);
 
-            let error = pending_exists(&op, &workspace, name).unwrap_err();
+            let error = inspect(&op, &workspace, name).unwrap_err();
             assert_eq!(error.class, SECURE_PERSISTENCE_ERROR);
             assert_eq!(error.message, "persistence entry identity is unsafe");
             assert!(pending.is_dir());
@@ -244,7 +420,7 @@ mod tests {
 
             fs::remove_file(&lock).unwrap();
             fs::create_dir(&lock).unwrap();
-            let error = pending_exists(&op, &workspace, name).unwrap_err();
+            let error = inspect(&op, &workspace, name).unwrap_err();
             assert_eq!(error.class, APP_DENIED);
             assert_eq!(error.message, "activation process lock is unavailable");
             assert!(matches!(

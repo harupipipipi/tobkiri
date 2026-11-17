@@ -3695,7 +3695,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   CLI・ライブラリ実コンパイルが成功。従来2拡張と1.1在庫の同じ実行をCIで再確認中。
 
 - D-5 は `69fe1c9dd` で、Launcherの登録とHarnessの「普段使うモデル」の
-  適用範囲を日英の表示に追加した。[表示 CI 43604721250](https://github.com/harupipipipi/tobkiri/actions/runs/43604721250)を実行中。
+  適用範囲を日英の表示に追加した。[表示 CI 43604721250](https://github.com/harupipipipi/tobkiri/actions/runs/43604721250)が、画面試験とmacOSのAppKit/WebKit試験で成功。
   B-6 のWasmプロンプトとProviderには同じモデル名が独立したPackデータとして保存され、
   Providerは不一致を拒否する。Launcher側の既存のモデル登録はそのWasm設定に接続されていない。
   接続先・Secret・モデルを獲得する箇所を一つの実Wasmターンに接続し、既存保存値と照合する。
@@ -3706,6 +3706,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実測のヒット率は未確認。実装では対応する公式ストリームだけで使用量を要求し、
   明示設定と汎用互換・llama.cpp経路を維持する。対象 `rumi_provider_adapters_pack/runtime/adapter.py`
   は現行と履歴の署名済みPack目録に固定されているため、既存の成果物を保存して新しい版で検証する。
+
+- C-14 は `74450120b` で、native acceptanceのSDKコピーと生成マニフェストを
+  正規SDKからのステージングに置き換えた。Node 21件とRustによる生成Packの検証1件が成功し、
+  UIマニフェストのハッシュが同じことを確認した。`eec96c310` ではHarness UIも
+  同じSDKから別ディレクトリに組み立て、既存Profileのハッシュと一致することを含む
+  関連Node 24件が成功。チェックイン済みHarness Packを直接参照するProfileの移行が残る。
 
 ## 040: 公開Profileへ混入しない既存データ
 
@@ -3810,8 +3816,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Unicode、コールバック、同一の予算を維持する。
   新しい3ケースに合わせた件数を `373b47175` で修正し、36件の参照を含む
   [原本比較 CI 43606290093](https://github.com/harupipipipi/tobkiri/actions/runs/43606290093)が通過した。
-  [App Wasm CI 43606128602](https://github.com/harupipipipi/tobkiri/actions/runs/43606128602)を実行中。
+  [App Wasm CI 43606128602](https://github.com/harupipipipi/tobkiri/actions/runs/43606128602)はcold schema 42件に成功し、全catalogの呼出しは2B fuelを使い切った。
   既存の別枝に明示選択の実装があるが、実カタログの
   [CI 42980447600](https://github.com/harupipipipi/tobkiri/actions/runs/42980447600)は燃料切れ。
   aliasとファイル名は別呼出しであり、同一ハッシュによるcheck_schemaのスキップに置き換えない。
   通常のLauncherへの採用は、現行の予算で原本比較と実カタログ通過を確認した後に扱う。
+
+- `998919dee` は一致する予約がないときに、元のAuthorityとpublication lockの内側で
+  ジャーナルを消し、元の次の起動処理へ進む。Authorityの試験はLinux・macOSで成功。
+  activationディレクトリの3試験はTokioを起動せずに失敗し、`5183407cb` で修正した。
+  同コミットはプロファイルごとのactivation lockを取得してpendingの有無を確認する。
+  [並列 CI 44068201150](https://github.com/harupipipipi/tobkiri/actions/runs/44068201150)で確認中。
+- `5183407cb` では、Normal Packの実行定義を指定digestで読み直し、互換レコードの
+  再構成とCASの独立した再確認を行う。元の `catalog_with_packs` が元の順序で利用し、
+  その後に保存済みProfileを反映する。Wasmへの受け渡しに使う実行定義は確認した最初の値で、
+  Nativeへの追加権限を持たない。ローカルでは元のメソッド本体を使った読み込みと
+  dispatcher 83件が成功した。適合Host Extensionの互換再構成、実Wasmの復旧通過は残る。
+  [実Wasm CI 44068320748](https://github.com/harupipipipi/tobkiri/actions/runs/44068320748)
+- 既存workspaceのpendingを元のロック内で読み、厳密JSONとworkspace digestを照合する。
+  pendingがないときはfencing token順で元のSQLite結果を読み、予約なしの場合は
+  錠を閉じてからactive予約を照合し、該当なしで未公開の場合はpublicationを復旧する。
+  SQLiteの未使用列も元と同様に変換を確認し、後で読むIDとstateだけを確保する。
+  pendingの予約照合、未完了予約のabort・監査、active snapshotの照合が残る。

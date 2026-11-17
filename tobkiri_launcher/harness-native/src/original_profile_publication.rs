@@ -408,7 +408,7 @@ fn value(message: &'static str) -> OriginalAuthorityError {
 fn secure_error(message: &'static str) -> OriginalAuthorityError {
     raw(SECURE_PERSISTENCE_ERROR, message)
 }
-fn into_cause(mut error: OriginalAuthorityError) -> OriginalAuthorityCause {
+pub(super) fn into_cause(mut error: OriginalAuthorityError) -> OriginalAuthorityCause {
     if error.class == RAW_IO
         && let Some(OriginalAuthorityCause::Io(mut io)) = error.cause.take()
     {

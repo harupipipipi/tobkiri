@@ -28,6 +28,9 @@ use std::{
 };
 use tobkiri_gate::{ControlKind, ControlReservation, CoreControl};
 
+#[cfg(unix)]
+#[path = "original_recovery_incomplete_reservations.rs"]
+pub(super) mod incomplete_reservations;
 #[path = "original_profile_publication.rs"]
 pub(crate) mod publication;
 

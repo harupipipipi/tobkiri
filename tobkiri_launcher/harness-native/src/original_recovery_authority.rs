@@ -1,12 +1,16 @@
 //! The AuthorityStore context at the original nonstale publication caller.
 use super::*;
+use crate::original_authority::io::incomplete_reservations;
 #[path = "original_recovery_active_reservation.rs"]
 mod active_reservation;
 
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    ReadActivationJournal,
+    ReadPendingActivationReservation,
+    WorkspaceRecovered,
+    LoadActiveSnapshot,
+    MissingPublishedAuthority,
     ReadIncompleteActivationReservations,
     RecoveredNone,
     MatchedReservation,
@@ -61,19 +65,43 @@ impl PublicationRead {
                 })?
                 .is_some();
                 if exists {
-                    let present = recovery_workspace::pending_exists(
+                    let profile_id = workspace
+                        .path
+                        .file_name()
+                        .and_then(|part| part.to_str())
+                        .expect("held canonical bootstrap Profile ID");
+                    let next = recovery_workspace::recover(
                         &op,
                         &workspace.path,
                         workspace.lock_name,
+                        || {
+                            let rows = incomplete_reservations::read(&op, store, profile_id)?;
+                            Ok(if rows.is_empty() {
+                                RecoveryAuthorityReached::WorkspaceRecovered
+                            } else {
+                                RecoveryAuthorityReached::ReadIncompleteActivationReservations
+                            })
+                        },
                     )?;
-                    return Ok(if present {
-                        RecoveryAuthorityReached::ReadActivationJournal
-                    } else {
-                        RecoveryAuthorityReached::ReadIncompleteActivationReservations
-                    });
+                    if next != RecoveryAuthorityReached::WorkspaceRecovered {
+                        return Ok(next);
+                    }
                 }
                 if active_reservation::read(&op, store, &pending.intent)? {
-                    return Ok(RecoveryAuthorityReached::MatchedReservation);
+                    return Ok(if exists {
+                        RecoveryAuthorityReached::LoadActiveSnapshot
+                    } else {
+                        RecoveryAuthorityReached::MatchedReservation
+                    });
+                }
+                if exists
+                    && published_candidate(
+                        pending._current.as_ref(),
+                        &pending.intent,
+                        pending._expected.as_ref(),
+                    )?
+                {
+                    return Ok(RecoveryAuthorityReached::MissingPublishedAuthority);
                 }
                 // Original recovery clears the intent in both open contexts,
                 // reopening the fixed journal directory under the same guard.
@@ -218,10 +246,7 @@ mod tests {
     async fn recovery_authority_initializes_before_branching_on_the_workspace() {
         for (case, expected) in [
             ("missing", RecoveryAuthorityReached::RecoveredNone),
-            (
-                "directory",
-                RecoveryAuthorityReached::ReadIncompleteActivationReservations,
-            ),
+            ("directory", RecoveryAuthorityReached::RecoveredNone),
             ("dangling", RecoveryAuthorityReached::RecoveredNone),
             ("loop", RecoveryAuthorityReached::RecoveredNone),
         ] {
@@ -265,24 +290,38 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn recovery_authority_reaches_pending_read_and_preserves_publication_custody() {
+    async fn recovery_authority_reaches_pending_reservation_and_preserves_publication_custody() {
         with_setup_source(|source, read, cancellation, _| {
             enter(source, read, cancellation);
-            let state = source
-                .root
-                .join("workspaces")
-                .join(PROFILE_ID)
-                .join("activation");
+            let workspace = source.root.join("workspaces").join(PROFILE_ID);
+            let state = workspace.join("activation");
             fs::create_dir_all(&state).unwrap();
+            let resolved = workspace.canonicalize().unwrap();
+            let digest = Digest::hash(
+                &serde_json::to_vec(
+                    &serde_json::json!({"workspace_root": resolved.to_str().unwrap()}),
+                )
+                .unwrap(),
+            );
+            let data = serde_json::to_vec(&serde_json::json!({
+                "schema": "io.tobkiri.defaultspack-pending-activation.v1",
+                "reservation_id": "not-in-sqlite",
+                "activation_id": ACTIVATION_ID,
+                "envelope_path": "not-on-disk.json",
+                "envelope_digest": null,
+                "workspace_digest": digest.as_str(),
+                "fencing_token": 1,
+            }))
+            .unwrap();
             let pending = state.join("pending.json");
-            fs::write(&pending, b"not parsed at this boundary").unwrap();
+            fs::write(&pending, &data).unwrap();
             let lock = state.join(LockName::workspace(PROFILE_ID).text());
 
             assert_eq!(
                 read.run_recovery_authority(source, cancellation).unwrap(),
-                RecoveryAuthorityReached::ReadActivationJournal
+                RecoveryAuthorityReached::ReadPendingActivationReservation
             );
-            assert_eq!(fs::read(pending).unwrap(), b"not parsed at this boundary");
+            assert_eq!(fs::read(pending).unwrap(), data);
             assert!(lock_free(&lock));
             verify_custody(source, read, cancellation, false);
         });
@@ -307,6 +346,42 @@ mod tests {
             read.close_continuation().unwrap();
             assert!(lock_free(&source.root.join(LOCK_PATH)));
         });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn existing_workspace_checks_incomplete_reservations_before_active_snapshot() {
+        for (state, expected) in [
+            ("active", RecoveryAuthorityReached::LoadActiveSnapshot),
+            (
+                "committing",
+                RecoveryAuthorityReached::ReadIncompleteActivationReservations,
+            ),
+        ] {
+            with_setup_source(|source, read, cancellation, _| {
+                enter(source, read, cancellation);
+                let workspace = source.root.join("workspaces").join(PROFILE_ID);
+                fs::create_dir_all(&workspace).unwrap();
+                initialize(source, read, cancellation);
+                let db = Connection::open(source.root.join(DATABASE)).unwrap();
+                insert(&db, 1, ACTIVATION_ID, state);
+                db.execute(
+                    "UPDATE activation_reservations SET profile_id=?",
+                    [PROFILE_ID],
+                )
+                .unwrap();
+                db.close().unwrap();
+
+                assert_eq!(
+                    read.run_recovery_authority(source, cancellation).unwrap(),
+                    expected
+                );
+                let lock = workspace
+                    .join("activation")
+                    .join(LockName::workspace(PROFILE_ID).text());
+                assert!(lock_free(&lock));
+                verify_custody(source, read, cancellation, false);
+            });
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -364,7 +439,7 @@ mod tests {
     async fn recovery_authority_reads_signed_activation_id_after_workspace_stat() {
         use RecoveryAuthorityReached::*;
         for (id, workspace_exists, expected) in [
-            ("", true, Ok(ReadIncompleteActivationReservations)),
+            ("", true, Err(("builtins.KeyError", "'activation_id'"))),
             ("", false, Err(("builtins.KeyError", "'activation_id'"))),
             (
                 r#""activation_id": [], "#,

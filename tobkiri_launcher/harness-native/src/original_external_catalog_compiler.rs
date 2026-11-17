@@ -23,6 +23,7 @@ pub(super) struct ExecutableCatalog {
 }
 
 impl ExecutableCatalog {
+    /// Borrow the validated executable document while its allocation is held.
     pub(super) fn document(&self) -> &Document {
         &self.doc
     }
@@ -134,7 +135,7 @@ pub(super) fn read_executable<S: OriginalAuthorityOwner>(
     Ok(ExecutableCatalog { doc, variants })
 }
 
-/// Decode and check the manifest after the executable catalog passes.
+/// Decode and check a Pack manifest at the current read boundary.
 pub(super) fn read_manifest<S: OriginalAuthorityOwner>(
     bytes: &[u8],
     op: &Operation<'_, S>,
