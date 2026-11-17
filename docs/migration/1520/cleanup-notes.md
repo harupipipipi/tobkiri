@@ -4092,6 +4092,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   現在のEngine設定にはWasmtimeのcompilation cacheがなく、`core_modules::CodeCache` は
   同じEngine/catalog内のcore Module用で、NativeSetupのComponentには使えない。
   既存の共有キャッシュの利用漏れとして接続できる箇所は確認できなかった。
+  [required移植後の実Wasm診断44130339328](https://github.com/harupipipipi/tobkiri/actions/runs/44130339328)
+  も期限で終了した。instantiation前24.353227秒、catalog開始27.725348秒、
+  終了30.022431秒で、残燃料753,733,103、退役後の予約は0。schema traceは8件で、
+  tag11/27/28を終えtag29を開始した。共通の3 schema区間では旧計測から性能改善を
+  確認できなかった。期限とcold準備時間が異なるため、完了schema数だけの優劣比較はしない。
+  requiredの原本比較が成功したことと、全体が実行上限に収まることは別々に確認する。
+  Appの定義自己検証を純JSON evaluatorへ限定移植する案も検討した。exact JSON入力と
+  singletonのidentityだけでは、META/Registry内容やFormatCheckerのmutable登録表は固定されない。
+  既存比較には、callbackが入力やhelperを変更する場合がある。現Reference/Value policyだけで
+  既定META全体を選別する狭い境界はまだない。invalid時だけ元Frameでエラーを作る案でも、
+  先行検査の副作用・残予算・期限を維持し、例外や予算切れ後に再実行しないことが必要。
 - 旧Activationのsuccessor解決は、元のレコードを照合したworkspace lock内で、同じ
   Authority Storeと置換catalogを使う。既存Setup resolverの入力は一部の旧authority-ref
   を拒否する。旧レコードのepoch 0は実Authorityとの照合を通過しない。既存のartifact検証を
@@ -4152,3 +4163,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [tests込みClippy修正後の定義CI44124305192](https://github.com/harupipipipi/tobkiri/actions/runs/44124305192)
   もLinux・macOSで通過した。
   SetupからGUI承認、会話までの実機検証は後続。
+- 通常App capability Profile FlowのCIは、成功済みrun40462099581の7日保存artifactが
+  取得できず停止した。`6278cf52d` でpaired componentsと原本比較の保存を90日にした。
+  再生成のbuildは成功したが、macos-14構成がGitHubに非対応として取り消されたため、
+  `5eb66580e` で既存のmacos-15へ変更した。
+  [原本との再比較44135235977](https://github.com/harupipipipi/tobkiri/actions/runs/44135235977)は
+  build-two-worlds/compare-original-dataとも成功。`ee9b738d8` は、そのrun/SHA/artifact ID/digestを
+  ordinary Flowのsupplierへ固定し直した。欠落・重複も明示エラーで拒否し、認証条件は維持する。
+  workflow 22件とmaterialization 4件が成功。現在の通常Flowでの再生をCI44138078966で確認する。
