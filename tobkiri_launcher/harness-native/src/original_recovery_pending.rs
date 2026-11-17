@@ -14,7 +14,7 @@ const KEYS: [&str; 7] = [
 ];
 
 /// Read and validate the record while its caller holds the activation lock.
-pub(super) fn read<S: OriginalAuthorityOwner>(
+pub(in crate::original_authority::io::publication) fn read<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &Directory,
     workspace_digest: &Digest,

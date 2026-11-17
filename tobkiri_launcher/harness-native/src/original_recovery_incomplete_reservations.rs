@@ -264,6 +264,10 @@ impl<'a> Query<'a> {
     }
 
     pub(super) fn bind_text(&self, text: &str) -> Result<()> {
+        self.bind_text_at(1, text)
+    }
+
+    pub(super) fn bind_text_at(&self, index: i32, text: &str) -> Result<()> {
         let size = i32::try_from(text.len()).map_err(|_| {
             raw(
                 self.stage,
@@ -276,7 +280,7 @@ impl<'a> Query<'a> {
         let rc = unsafe {
             ffi::sqlite3_bind_text(
                 self.statement.as_ptr(),
-                1,
+                index,
                 text.as_ptr().cast(),
                 size,
                 ffi::SQLITE_TRANSIENT(),
@@ -290,8 +294,8 @@ impl<'a> Query<'a> {
     }
 
     pub(super) fn bind_activation_id(&self, value: &Value) -> Result<()> {
-        // These are the scalar parameter types accepted by the signed JSON
-        // decoder. Text uses a funded transient binding as in bind_text.
+        // Callers bind a signed JSON scalar or a scalar from an original
+        // reservation row. Text/blob transient copies are funded by callers.
         let rc = match value {
             Value::Text(text) => return self.bind_text(text),
             // SAFETY: This live query has an activation ID parameter at 1.
@@ -299,11 +303,27 @@ impl<'a> Query<'a> {
             Value::Integer(value) => unsafe {
                 ffi::sqlite3_bind_int64(self.statement.as_ptr(), 1, *value)
             },
-            _ => {
-                return Err(OriginalAuthorityError::unsupported(
-                    self.stage,
-                    "activation ID binding type",
-                ));
+            Value::Real(value) => unsafe {
+                ffi::sqlite3_bind_double(self.statement.as_ptr(), 1, *value)
+            },
+            Value::Blob(value) => {
+                let size = i32::try_from(value.len()).map_err(|_| {
+                    raw(
+                        self.stage,
+                        "builtins.OverflowError",
+                        "BLOB longer than INT_MAX bytes",
+                    )
+                })?;
+                // SAFETY: SQLite immediately copies this live byte slice.
+                unsafe {
+                    ffi::sqlite3_bind_blob(
+                        self.statement.as_ptr(),
+                        1,
+                        value.as_ptr().cast(),
+                        size,
+                        ffi::SQLITE_TRANSIENT(),
+                    )
+                }
             }
         };
         if rc == ffi::SQLITE_OK {

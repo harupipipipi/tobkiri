@@ -115,9 +115,18 @@ impl ActiveSnapshot {
 }
 
 #[derive(Debug)]
+pub(super) struct LegacySuccessor {
+    pub(super) artifact_profile: CoreValue,
+    pub(super) plan_digest: Digest,
+    pub(super) resolved: CoreValue,
+    pub(super) created_at: CoreValue,
+}
+
+#[derive(Debug)]
 pub(super) struct ActiveSnapshotRead {
     pub(super) prefix: ActiveSnapshotPrefix,
     pub(super) current: Option<ActiveSnapshot>,
+    pub(super) legacy_successor: Option<LegacySuccessor>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,6 +155,7 @@ pub(super) async fn read<S: crate::BootstrapReviewOwner>(
     ),
 ) -> Result<ActiveSnapshotRead> {
     let mut current = None;
+    let mut legacy_successor = None;
     let prefix = read_records(
         op,
         state,
@@ -162,12 +172,12 @@ pub(super) async fn read<S: crate::BootstrapReviewOwner>(
                     snapshot_graph::resolver_input(op, budget, snapshot.records, profile_id)?;
                 if let Some(candidate) = resolve_legacy(input).await? {
                     op.check(OriginalAuthorityStage::Source)?;
-                    snapshot_graph::verify_legacy_successor(
+                    legacy_successor = Some(snapshot_graph::verify_legacy_successor(
                         op,
                         budget,
                         snapshot.records,
                         candidate,
-                    )?;
+                    )?);
                     return Ok(ProfileCheck::LegacySuccessorCompared);
                 }
             }
@@ -175,7 +185,11 @@ pub(super) async fn read<S: crate::BootstrapReviewOwner>(
         },
     )
     .await?;
-    Ok(ActiveSnapshotRead { prefix, current })
+    Ok(ActiveSnapshotRead {
+        prefix,
+        current,
+        legacy_successor,
+    })
 }
 
 async fn read_records<S: OriginalAuthorityOwner>(
@@ -414,6 +428,39 @@ async fn check_snapshot_records<S: OriginalAuthorityOwner>(
         activation: activation.view(),
     })
     .await
+}
+
+pub(super) fn validate_activation<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    schemas: BoundProfileSchemas,
+    activation: &CoreValue,
+) -> Result<()> {
+    let bytes = activation
+        .encode_guest(budget)
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
+    let document = json::decode_read_only_strict(bytes.as_bytes(), op, budget)?;
+    drop(bytes);
+    validate_activation_document(op, budget, schemas, &document)
+}
+
+pub(super) fn validate_activation_document<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    schemas: BoundProfileSchemas,
+    document: &Document,
+) -> Result<()> {
+    let selected = select_record(op, budget, document, document.root, RecordKind::Activation)?;
+    let schema = load_record_schema(op, budget, schemas, selected.name)?;
+    let [common, projection] = schemas.references().ok_or_else(|| {
+        OriginalAuthorityError::unsupported(
+            OriginalAuthorityStage::Source,
+            "selected Activation schema references",
+        )
+    })?;
+    let common = json::decode_read_only_strict(common, op, budget)?;
+    let projection = json::decode_read_only_strict(projection, op, budget)?;
+    validate_record(op, budget, &selected, &[&schema, &common, &projection])
 }
 
 fn validate_record<S: OriginalAuthorityOwner>(
@@ -666,6 +713,13 @@ pub(super) mod tests {
     -> BoundProfileSchemas {
         SCHEMAS
             .bind(&Digest::parse(SCHEMAS.component_sha256).unwrap())
+            .unwrap()
+    }
+
+    pub(in crate::original_authority::io::publication::recovery_authority) fn bound_recovery_schemas()
+    -> BoundProfileSchemas {
+        RECOVERY_SCHEMAS
+            .bind(&Digest::parse(RECOVERY_SCHEMAS.component_sha256).unwrap())
             .unwrap()
     }
 

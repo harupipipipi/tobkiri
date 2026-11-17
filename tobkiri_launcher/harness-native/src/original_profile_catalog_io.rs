@@ -17,6 +17,12 @@ mod bundle_metadata;
 #[path = "original_recovery_catalog_artifact.rs"]
 mod recovery_artifact;
 #[cfg(all(test, unix))]
+pub(in crate::original_authority::io::publication) use artifact_identity::{
+    capture as capture_artifact_identity, require_same as require_artifact_identity,
+};
+#[cfg(unix)]
+pub(in crate::original_authority::io::publication) use recovery_artifact::ArtifactTreeIdentity;
+#[cfg(all(test, unix))]
 use recovery_artifact::RecoveryCatalogInputs;
 #[cfg(unix)]
 pub(crate) use recovery_artifact::{ActiveArtifactVerification, RecoveryCatalogAccess};

@@ -148,7 +148,7 @@ impl ArtifactTreeIdentity {
 
 /// Capture a variant admitted by the loaded catalog, relative to its pinned
 /// artifact parent. A prior physical Shell walk can also pin the two leaves.
-pub(super) fn capture<S: crate::BootstrapReviewOwner>(
+pub(in crate::original_authority::io::publication) fn capture<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     root: &Path,
@@ -306,7 +306,9 @@ fn require_real_digest(digest: &str) -> Result<&[u8]> {
 }
 
 /// Compare exact evidence, with bounded work and no content reads.
-pub(super) fn require_same<S: crate::BootstrapReviewOwner>(
+pub(in crate::original_authority::io::publication) fn require_same<
+    S: crate::BootstrapReviewOwner,
+>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     expected: &ArtifactTreeIdentity,

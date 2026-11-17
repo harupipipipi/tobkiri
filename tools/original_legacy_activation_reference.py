@@ -44,6 +44,7 @@ def generate(runtime: Path, output: Path) -> None:
             "lock": migrated.resolved.lock,
             "plan": migrated.resolved.plan,
         }
+        records["migrated_activation"] = migrated.activation
         write_json(output, records, compact=True)
 
 

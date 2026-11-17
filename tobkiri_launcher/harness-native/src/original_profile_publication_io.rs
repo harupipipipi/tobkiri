@@ -483,6 +483,17 @@ impl Directory {
         self.replace_fixed(op, c"active.json", bytes, false)
     }
 
+    /// The activation journal uses the same atomic writer for its nested
+    /// envelopes. Only writes may create missing owned parent directories.
+    pub(super) fn replace_activation_state<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        relative: &Path,
+        bytes: &[u8],
+    ) -> Result<()> {
+        self.replace_relative(op, relative, bytes, false, true)
+    }
+
     fn replace_fixed<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -490,24 +501,42 @@ impl Directory {
         bytes: &[u8],
         must_be_absent: bool,
     ) -> Result<()> {
-        use std::io::Write;
         let target = destination.to_str().expect("fixed UTF-8 persistence name");
-        let already_exists = || {
-            if target == KEY {
-                value("Profile publication signing key changed")
-            } else {
-                value("Profile publication already has an unfinished intent")
-            }
-        };
-        let parent = self.parent(op, Path::new(target))?;
+        self.replace_relative(op, Path::new(target), bytes, must_be_absent, false)
+    }
+
+    fn replace_relative<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        relative: &Path,
+        bytes: &[u8],
+        must_be_absent: bool,
+        create_parents: bool,
+    ) -> Result<()> {
+        use std::io::Write;
+        let parent = self.parent_with_create(op, relative, create_parents)?;
         let result = (|| {
+            let destination = parent.name.as_c_str();
+            let target = destination
+                .to_str()
+                .map_err(|_| OriginalAuthorityError::unavailable())?;
+            let already_exists = || {
+                if target == KEY {
+                    value("Profile publication signing key changed")
+                } else {
+                    value("Profile publication already has an unfinished intent")
+                }
+            };
             let directory = parent.files.last().expect("directory chain");
             let fd = directory.as_raw_fd();
             let prior = Self::stat(directory, target, false)?;
             if must_be_absent && prior.is_some() {
                 return Err(already_exists());
             }
-            let _name_capacity = op.reserve(OriginalAuthorityStage::Path, 512)?;
+            let _name_capacity = op.reserve(
+                OriginalAuthorityStage::Path,
+                target.len().saturating_mul(4).saturating_add(512),
+            )?;
             let mut nonce = [0_u8; 16];
             getrandom::fill(&mut nonce).map_err(|_| OriginalAuthorityError::unavailable())?;
             let mut temporary = format!(".{target}.{}.", op.pid);
@@ -652,6 +681,15 @@ impl Directory {
         op: &Operation<'_, S>,
         relative: &Path,
     ) -> Result<Parent> {
+        self.parent_with_create(op, relative, false)
+    }
+
+    fn parent_with_create<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        relative: &Path,
+        create: bool,
+    ) -> Result<Parent> {
         let capacity = op.reserve(
             OriginalAuthorityStage::Path,
             relative
@@ -690,13 +728,35 @@ impl Directory {
                 op.check(OriginalAuthorityStage::Path)?;
                 let component = CString::new(component.as_bytes())
                     .map_err(|_| OriginalAuthorityError::unavailable())?;
-                let descriptor = unsafe {
+                let mut descriptor = unsafe {
                     libc::openat(
                         files.last().expect("parent").as_raw_fd(),
                         component.as_ptr(),
                         libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
                     )
                 };
+                if descriptor < 0
+                    && create
+                    && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound
+                {
+                    let parent = files.last().expect("parent").as_raw_fd();
+                    if unsafe { libc::mkdirat(parent, component.as_ptr(), 0o700) } != 0
+                        && std::io::Error::last_os_error().kind()
+                            != std::io::ErrorKind::AlreadyExists
+                    {
+                        return Err(caused(
+                            secure_error("persistence child directory is unsafe"),
+                            raw_io(std::io::Error::last_os_error(), component.to_str().ok()),
+                        ));
+                    }
+                    descriptor = unsafe {
+                        libc::openat(
+                            parent,
+                            component.as_ptr(),
+                            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                        )
+                    };
+                }
                 if descriptor < 0 {
                     return Err(caused(
                         secure_error("persistence child directory is unsafe"),

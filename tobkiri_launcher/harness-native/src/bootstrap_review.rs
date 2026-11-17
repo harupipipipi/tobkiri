@@ -74,7 +74,6 @@ pub enum BootstrapReviewReachpoint {
     },
     RecoverySurfaceActiveSnapshotReconfirmationNotBound,
     RecoveryBuildLegacyActivationSuccessorNotBound,
-    RecoveryVerifyLegacySuccessorArtifactNotBound,
     #[cfg(test)]
     RecoveryCompleted,
 }

@@ -16,6 +16,9 @@ name: Issue 1520 original Profile definition prefix
       - tools/original_host_extension_catalog_reference.py
       - tobkiri_launcher/harness-native/src/bootstrap_admitted_closure.rs
       - tobkiri_launcher/harness-native/src/original_recovery_authority.rs
+      - tobkiri_launcher/harness-native/src/original_activation_authority*.rs
+      - tobkiri_launcher/harness-native/src/original_legacy_activation*.rs
+      - tobkiri_launcher/harness-native/src/original_legacy_recovery_tests.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace_active.rs
       - tobkiri_launcher/harness-native/src/original_recovery_publish_active.rs
@@ -218,6 +221,15 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::tests::verifies_frozen_legacy_records_with_the_live_store_and_epoch
           -- --exact --test-threads=1 --nocapture
+      - name: Compare native legacy commits and verification fences with the original
+        env:
+          TOBKIRI_ORIGINAL_LEGACY_SUCCESSOR_FIXTURE: ${{ runner.temp }}/original-legacy-activation.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-legacy-activation-commit.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::recovery_authority::tests::legacy_recovery_revalidates_and_commits_the_original_successor
+          -- --ignored --exact --test-threads=1 --nocapture
       - name: Check the original active reservation row projection and schema error causes
         run: |
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
@@ -251,6 +263,20 @@ jobs:
           --log "$RUNNER_TEMP/native-recovery-abort.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::abort_transaction::tests::
+          -- --test-threads=1 --nocapture
+      - name: Check activation reservations, transitions and authenticated supersession
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-activation-authority.log" --expected-passed 11 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::activation_authority::tests::
+          -- --test-threads=1 --nocapture
+      - name: Check phased legacy Activation writes and crash recovery fences
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-legacy-activation-unit.log" --expected-passed 6 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::recovery_authority::legacy_activation::tests::
           -- --test-threads=1 --nocapture
       - name: Check committed and active Shell selection against the replacement catalog
         run: >-
@@ -315,7 +341,7 @@ jobs:
       - name: Check physical catalog binding and the fresh resolver reread
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-catalog-resources-unit.log" --expected-passed 7 --
+          --log "$RUNNER_TEMP/native-catalog-resources-unit.log" --expected-passed 8 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::catalog::tests
           -- --test-threads=1 --nocapture
@@ -387,6 +413,10 @@ jobs:
             ${{ runner.temp }}/native-recovery-schema-cause.log*
             ${{ runner.temp }}/native-recovery-incomplete.log*
             ${{ runner.temp }}/native-recovery-abort.log*
+            ${{ runner.temp }}/native-activation-authority.log*
+            ${{ runner.temp }}/native-legacy-activation.log*
+            ${{ runner.temp }}/native-legacy-activation-commit.log*
+            ${{ runner.temp }}/native-legacy-activation-unit.log*
             ${{ runner.temp }}/native-recovery-shell-selection.log*
             ${{ runner.temp }}/native-host-pointer-commit.log*
             ${{ runner.temp }}/native-recovery-artifact.log*

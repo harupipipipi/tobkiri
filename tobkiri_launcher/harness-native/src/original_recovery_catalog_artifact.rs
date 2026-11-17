@@ -1,6 +1,6 @@
 //! The completed loader and the exact replacement rows used by recovery.
 use super::*;
-use artifact_identity::ArtifactTreeIdentity;
+pub(in crate::original_authority::io::publication) use artifact_identity::ArtifactTreeIdentity;
 use std::sync::Mutex;
 
 /// Result of checking the current catalog binding and the selected package bytes.

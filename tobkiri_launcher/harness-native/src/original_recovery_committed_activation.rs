@@ -11,11 +11,11 @@ const FIELDS: [&str; 7] = [
     "state",
 ];
 
-pub(super) struct Binding<'a> {
-    pub(super) reservation_id: &'a str,
-    pub(super) activation_id: &'a str,
-    pub(super) profile_id: &'a str,
-    pub(super) fencing_token: i64,
+pub(in crate::original_authority::io::publication::recovery_authority) struct Binding<'a> {
+    pub(in crate::original_authority::io::publication::recovery_authority) reservation_id: &'a str,
+    pub(in crate::original_authority::io::publication::recovery_authority) activation_id: &'a str,
+    pub(in crate::original_authority::io::publication::recovery_authority) profile_id: &'a str,
+    pub(in crate::original_authority::io::publication::recovery_authority) fencing_token: i64,
 }
 
 pub(super) fn revalidate<S: OriginalAuthorityOwner>(

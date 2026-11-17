@@ -7,8 +7,18 @@ use tobkiri_canon::{CoreBuffer, CoreValue, Variant};
 
 #[path = "original_recovery_committed_activation.rs"]
 mod committed;
+pub(super) use committed::Binding;
 
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::PendingReservation;
+
+pub(super) fn revalidate_active<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    store: &Store<'_, '_, S>,
+    envelope: &Document,
+    binding: Binding<'_>,
+) -> Result<()> {
+    committed::revalidate(op, store, envelope, binding)
+}
 
 pub(super) fn abort_incomplete<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
@@ -145,7 +155,13 @@ fn check_committed_envelope<S: OriginalAuthorityOwner>(
     journal: &Document,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<(Funded<Document>, Digest)> {
-    let envelope = pending::read_state(op, state, path, "committed activation envelope")?;
+    let envelope = pending::read_state_with(
+        op,
+        state,
+        path,
+        "committed activation envelope",
+        |bytes| json::decode_read_only_strict(bytes, op, budget),
+    )?;
     let changed = || raw(APP_DENIED, "committed activation envelope changed");
     if envelope.entries(envelope.root).is_none() {
         return Err(changed());

@@ -2,6 +2,7 @@
 use super::*;
 use crate::bootstrap_metadata::BoundProfileSchemas;
 use crate::original_authority::io::Store;
+use catalog::ArtifactTreeIdentity;
 use catalog::{ActiveArtifactVerification, RecoveryCatalogAccess};
 use pending_reservation::PendingRepublish;
 use recovery_workspace::RecoveryWorkspace;
@@ -11,6 +12,8 @@ use std::ops::ControlFlow;
 use tobkiri_canon::{AllocationBudget, CoreValue};
 #[path = "original_recovery_active_reservation.rs"]
 mod active_reservation;
+#[path = "original_legacy_activation.rs"]
+mod legacy_activation;
 #[path = "original_recovery_pending_reservation.rs"]
 mod pending_reservation;
 #[path = "original_recovery_publish_active.rs"]
@@ -18,15 +21,17 @@ mod publish_active;
 #[path = "original_recovery_workspace_active.rs"]
 mod workspace_active;
 
-struct ActiveSnapshotChecks<Artifact, Definition, Legacy> {
+struct ActiveSnapshotChecks<Artifact, Definition, Legacy, LegacyArtifact, LegacyIdentity> {
     artifact: Artifact,
     definition: Definition,
     legacy: Legacy,
+    legacy_artifact: LegacyArtifact,
+    legacy_identity: LegacyIdentity,
 }
 
 enum RecoveryPause {
     Committed(PendingRepublish),
-    LegacyCompared(workspace_active::ActiveSnapshotPrefix),
+    VerifyLegacy(workspace_active::LegacySuccessor),
 }
 
 /// The result needed by the original recovery caller at its next operation.
@@ -38,7 +43,6 @@ pub(crate) enum RecoveryAuthorityReached {
     RecoveredPublished,
     ActiveSnapshotReconfirmationRequired,
     BuildLegacyActivationSuccessor,
-    VerifyLegacySuccessorArtifact,
     MissingPublishedAuthority,
     RecoveredNone,
     MatchedReservation,
@@ -83,6 +87,17 @@ impl PublicationRead {
                     })
                 },
                 legacy: resolve_legacy,
+                legacy_artifact: |op: &Operation<'_, S>, profile: &CoreValue, profile_id: &str| {
+                    recovery_catalog.with_inputs(|catalog| {
+                        catalog.verify_committed_artifact(op, profile, profile_id)
+                    })
+                },
+                legacy_identity:
+                    |op: &Operation<'_, S>, profile: &CoreValue, identity: &ArtifactTreeIdentity| {
+                        recovery_catalog.with_inputs(|catalog| {
+                            catalog.require_committed_artifact_identity(op, profile, identity)
+                        })
+                    },
             },
         )
         .await
@@ -105,6 +120,8 @@ impl PublicationRead {
             impl FnOnce(&Operation<'_, S>, &CoreValue, &str) -> Result<ActiveArtifactVerification>,
             impl FnOnce(&Operation<'_, S>, &str, &str) -> Result<()>,
             impl AsyncFnMut(LegacyResolverInput) -> Result<Option<CoreValue>>,
+            impl FnMut(&Operation<'_, S>, &CoreValue, &str) -> Result<ArtifactTreeIdentity>,
+            impl FnMut(&Operation<'_, S>, &CoreValue, &ArtifactTreeIdentity) -> Result<()>,
         >,
     ) -> Result<RecoveryAuthorityReached> {
         self.check_continuation_thread()?;
@@ -155,6 +172,7 @@ impl PublicationRead {
                         .expect("held canonical bootstrap Profile ID");
                     let activation =
                         RecoveryWorkspace::open(&op, &workspace.path, workspace.lock_name)?;
+                    let mut verified_legacy = None;
                     let mut recover_activation = async |read_snapshot: bool| loop {
                         pending.check_thread()?;
                         let next = activation
@@ -163,45 +181,100 @@ impl PublicationRead {
                                     if let Some(pending) = pending_reservation::recover(
                                         &op, store, state, journal, profile_id, budget,
                                     )? {
-                                        return Ok(ControlFlow::Break(RecoveryPause::Committed(pending)));
+                                        return Ok(ControlFlow::Break(RecoveryPause::Committed(
+                                            pending,
+                                        )));
                                     }
                                 } else {
                                     pending_reservation::abort_incomplete(&op, store, profile_id)?;
                                 }
-                                let snapshot = if read_snapshot {
-                                    Some(
-                                        workspace_active::read(
+                                if !read_snapshot {
+                                    return Ok(ControlFlow::Continue(None));
+                                }
+                                loop {
+                                    let mut snapshot = workspace_active::read(
+                                        &op,
+                                        state,
+                                        workspace_digest,
+                                        budget,
+                                        profile_schemas,
+                                        store,
+                                        (profile_id, &mut checks.legacy),
+                                    )
+                                    .await?;
+                                    let Some(successor) = snapshot.legacy_successor.take() else {
+                                        return Ok(ControlFlow::Continue(Some(snapshot)));
+                                    };
+                                    // The successor ID is derived from this fixed Profile ID
+                                    // and the plan digest. Compare the full digest on retry.
+                                    let identity = match verified_legacy.take() {
+                                        Some((digest, identity))
+                                            if digest == successor.plan_digest =>
+                                        {
+                                            identity
+                                        }
+                                        _ => {
+                                            return Ok(ControlFlow::Break(
+                                                RecoveryPause::VerifyLegacy(successor),
+                                            ));
+                                        }
+                                    };
+                                    // _activate_locked repeats recovery while holding this
+                                    // same lock, before reserving its next activation.
+                                    if state.exists(&op, recovery_workspace::pending::NAME)? {
+                                        let journal = recovery_workspace::pending::read(
                                             &op,
                                             state,
                                             workspace_digest,
-                                            budget,
-                                            profile_schemas,
-                                            store,
-                                            (profile_id, &mut checks.legacy),
-                                        )
-                                        .await?,
-                                    )
-                                } else {
-                                    None
-                                };
-                                Ok(match snapshot {
-                                    Some(value) if value.prefix.check == workspace_active::ProfileCheck::LegacySuccessorCompared => {
-                                        ControlFlow::Break(RecoveryPause::LegacyCompared(value.prefix))
+                                        )?;
+                                        if let Some(pending) = pending_reservation::recover(
+                                            &op, store, state, journal, profile_id, budget,
+                                        )? {
+                                            return Ok(ControlFlow::Break(
+                                                RecoveryPause::Committed(pending),
+                                            ));
+                                        }
+                                    } else {
+                                        pending_reservation::abort_incomplete(
+                                            &op, store, profile_id,
+                                        )?;
                                     }
-                                    snapshot => ControlFlow::Continue(snapshot),
-                                })
+                                    let schemas =
+                                        profile_schemas.expect("validated legacy record schemas");
+                                    legacy_activation::activate(
+                                        &op,
+                                        store,
+                                        state,
+                                        workspace_digest,
+                                        budget,
+                                        legacy_activation::Input {
+                                            profile_id,
+                                            resolved: &successor.resolved,
+                                            created_at: &successor.created_at,
+                                            schemas,
+                                        },
+                                        |profile| (checks.legacy_identity)(&op, profile, &identity),
+                                    )?;
+                                    // The original reloads the newly committed records
+                                    // under the same activation lock.
+                                }
                             })
                             .await?;
                         pending.check_thread()?;
                         match next {
                             ControlFlow::Continue(snapshot) => break Ok(snapshot),
                             ControlFlow::Break(RecoveryPause::Committed(committed)) => {
-                                // Keep the original Store and Host publication guard
-                                // while the workspace lock is released for verification.
+                                // Keep the original Store and Host publication guard.
+                                // Per-operation SQLite and lifecycle handles are closed.
                                 on_committed(&op, store, &activation, committed, profile_id)?;
                             }
-                            ControlFlow::Break(RecoveryPause::LegacyCompared(prefix)) => {
-                                break Ok(Some(workspace_active::ActiveSnapshotRead {prefix, current: None}));
+                            ControlFlow::Break(RecoveryPause::VerifyLegacy(successor)) => {
+                                let identity = (checks.legacy_artifact)(
+                                    &op,
+                                    &successor.artifact_profile,
+                                    profile_id,
+                                )?;
+                                verified_legacy = Some((successor.plan_digest, identity));
                             }
                         }
                     };
@@ -300,7 +373,7 @@ fn incomplete_snapshot(prefix: workspace_active::ActiveSnapshotPrefix) -> Recove
             RecoveryAuthorityReached::BuildLegacyActivationSuccessor
         }
         ProfileCheck::LegacySuccessorCompared => {
-            RecoveryAuthorityReached::VerifyLegacySuccessorArtifact
+            unreachable!("compared legacy successor retains its verification input")
         }
         ProfileCheck::NeedsArtifactReverification => {
             unreachable!("complete snapshot retains its records")
@@ -323,8 +396,8 @@ async fn verify_active_snapshot(
     let Some(first) = first.current else {
         return Ok(incomplete_snapshot(first.prefix));
     };
-    // Only the Host publication and Authority lifecycle guards are held here.
-    // Hashes of selected package bytes must run outside the workspace lock.
+    // The same Authority Store and Host publication guard remain here.
+    // Hashes of selected package bytes run outside the workspace lock.
     if matches!(
         verify_artifact(&first.artifact_profile)?,
         ActiveArtifactVerification::SuccessorNeedsReconfirmation
@@ -377,6 +450,12 @@ impl PublicationRead {
                     unreachable!("no bound active snapshot schemas")
                 },
                 legacy: async |_| Ok(None),
+                legacy_artifact: |_: &Operation<'_, S>, _: &CoreValue, _: &str| {
+                    unreachable!("no bound legacy snapshot schemas")
+                },
+                legacy_identity: |_: &Operation<'_, S>, _: &CoreValue, _: &ArtifactTreeIdentity| {
+                    unreachable!("no bound legacy snapshot schemas")
+                },
             },
         ))
     }
@@ -393,6 +472,7 @@ mod tests {
     use sha2::Sha256;
     use std::os::unix::fs::symlink;
     use tobkiri_canon::CoreValue;
+    include!("original_legacy_recovery_tests.rs");
 
     const PROFILE_ID: &str = "recovery-profile";
     const ACTIVATION_ID: &str = "activation:recovery";
@@ -425,6 +505,16 @@ mod tests {
         cancellation: &CoreCancellation,
         candidate: &str,
     ) {
+        enter_profile_candidate(source, read, cancellation, candidate, PROFILE_ID);
+    }
+
+    fn enter_profile_candidate(
+        source: &Source,
+        read: &mut PublicationRead,
+        cancellation: &CoreCancellation,
+        candidate: &str,
+        profile_id: &str,
+    ) {
         let profiles = source.root.join("profiles");
         fs::create_dir_all(&profiles).unwrap();
         let key = [b'k'; 32];
@@ -451,7 +541,7 @@ mod tests {
             read.enter_recovery(source, cancellation, true).unwrap(),
             Prefix::BootstrapProfileIdNotBound
         );
-        read.construct_workspace(source, cancellation, PROFILE_ID)
+        read.construct_workspace(source, cancellation, profile_id)
             .unwrap();
         assert!(!lock_free(&source.root.join(LOCK_PATH)));
     }
@@ -844,6 +934,12 @@ mod tests {
                         unreachable!("no complete active snapshot schema closure")
                     },
                     legacy: async |_| Ok(None),
+                    legacy_artifact: |_: &Operation<'_, Source>, _: &CoreValue, _: &str| {
+                        unreachable!("no complete legacy snapshot schema closure")
+                    },
+                    legacy_identity: |_: &Operation<'_, Source>, _: &CoreValue, _: &ArtifactTreeIdentity| {
+                        unreachable!("no complete legacy snapshot schema closure")
+                    },
                 }));
                 assert_eq!(
                     called,

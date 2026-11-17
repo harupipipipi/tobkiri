@@ -22,8 +22,9 @@ pub(in crate::original_authority::io::publication) fn verify<S: OriginalAuthorit
     budget: &Arc<dyn AllocationBudget>,
     predecessor: SnapshotRecords<'_>,
     candidate: CoreValue,
-) -> Result<()> {
+) -> Result<LegacySuccessor> {
     op.check(GRAPH)?;
+    let resolved = candidate.clone();
     let encoded = candidate.encode_guest(budget).map_err(|_| capacity())?;
     drop(candidate);
     let document = json::decode_read_only_strict(encoded.as_bytes(), op, budget)?;
@@ -39,12 +40,36 @@ pub(in crate::original_authority::io::publication) fn verify<S: OriginalAuthorit
         predecessor.plan.field("bindings")?,
         candidate.field("plan")?.field("bindings")?,
     )?;
+    let profile = candidate.field("profile")?;
     verify_edges(
         op,
         budget,
         predecessor.profile.field("requested_edges")?,
-        candidate.field("profile")?.field("requested_edges")?,
-    )
+        profile.field("requested_edges")?,
+    )?;
+    let digest = candidate.field("plan")?.field("plan_digest")?;
+    let rendered = definitions::render_python_str(op, budget, digest.doc, digest.id)?;
+    let plan_digest = rendered
+        .as_str()
+        .ok()
+        .and_then(|value| Digest::parse(value).ok())
+        .ok_or_else(|| {
+            OriginalAuthorityError::unsupported(GRAPH, "legacy successor Plan digest")
+        })?;
+    let timestamp = predecessor
+        .activation
+        .get("committed_at")
+        .filter(|value| matches!(value.node(), Node::String(text) if !text.0.is_empty()))
+        .unwrap_or(predecessor.activation.field("created_at")?);
+    let timestamp = definitions::render_python_str(op, budget, timestamp.doc, timestamp.id)?;
+    let created_at = CoreValue::string(timestamp.as_str().map_err(|_| capacity())?, budget)
+        .map_err(|_| capacity())?;
+    Ok(LegacySuccessor {
+        artifact_profile: retain_artifact_profile(op, budget, profile)?,
+        plan_digest,
+        resolved,
+        created_at,
+    })
 }
 
 fn capacity() -> OriginalAuthorityError {
@@ -708,7 +733,7 @@ mod tests {
         })
     }
 
-    fn denied(result: Result<()>, message: &str) -> OriginalAuthorityError {
+    fn denied<T: std::fmt::Debug>(result: Result<T>, message: &str) -> OriginalAuthorityError {
         let error = result.unwrap_err();
         assert_eq!((error.class, error.message.as_str()), (APP_DENIED, message));
         error
@@ -725,7 +750,7 @@ mod tests {
                 "profile":{"requested_edges":[]},
                 "lock":{"base":base,"shell":shell,"effective_set":effective},
                 "plan":{"base":base,"shell":shell,"bindings":[]},
-                "activation":{},
+                "activation":{"created_at":"2026-08-10T00:00:00Z"},
             });
             let data = serde_json::to_vec(&predecessor).unwrap();
             let document = json::decode_read_only_strict(&data, &op, budget).unwrap();
@@ -741,6 +766,9 @@ mod tests {
             };
             let mut successor = predecessor;
             successor["lock"]["shell"]["executable_artifact_digest"] = json!("new-pin");
+            successor["profile"]["shell"] = successor["lock"]["shell"].clone();
+            let plan_digest = Digest::hash(b"successor");
+            successor["plan"]["plan_digest"] = json!(plan_digest.as_str());
             successor["plan"]["effective_set"] = effective;
             successor["plan"]["content_projections"] = json!([{ "projection_id": "new" }]);
             successor["plan"]["closure_digest"] = json!(Digest::hash(
@@ -752,7 +780,18 @@ mod tests {
                         .unwrap();
                 verify(&op, budget, records, candidate)
             };
-            run(&successor).unwrap();
+            let retained = run(&successor).unwrap();
+            assert_eq!(retained.plan_digest, plan_digest);
+            assert_eq!(
+                retained
+                    .artifact_profile
+                    .get_key("shell")
+                    .unwrap()
+                    .get_key("executable_artifact_digest")
+                    .unwrap()
+                    .as_str(),
+                Some("new-pin"),
+            );
             let mut reversed = successor.clone();
             reversed["plan"]["effective_set"]
                 .as_array_mut()

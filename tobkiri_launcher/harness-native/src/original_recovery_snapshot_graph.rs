@@ -266,11 +266,7 @@ pub(super) fn retain_active<S: OriginalAuthorityOwner>(
         verified_digest(records.plan, "plan_digest")?,
         records.activation.digest(None, op, budget)?,
     ];
-    let artifact_profile = CoreValue::object_shared(
-        std::iter::once(Ok(("shell", to_core(records.profile.field("shell")?)?))),
-        budget,
-    )
-    .map_err(|_| capacity())?;
+    let artifact_profile = retain_artifact_profile(op, budget, records.profile)?;
     let candidate = CoreValue::object_shared(
         [
             Ok(("profile_id", to_core(records.profile.field("profile_id")?)?)),
@@ -304,6 +300,18 @@ pub(super) fn retain_active<S: OriginalAuthorityOwner>(
         records: seals,
         candidate,
     })
+}
+
+fn retain_artifact_profile<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    profile: View<'_>,
+) -> Result<CoreValue> {
+    let shell = profile.field("shell")?.canonical(op, budget)?;
+    let shell = CoreValue::parse_guest(&shell, budget)
+        .map_err(|_| OriginalAuthorityError::capacity(GRAPH))?;
+    CoreValue::object_shared(std::iter::once(Ok(("shell", shell))), budget)
+        .map_err(|_| OriginalAuthorityError::capacity(GRAPH))
 }
 
 fn epoch_matches<S: OriginalAuthorityOwner>(

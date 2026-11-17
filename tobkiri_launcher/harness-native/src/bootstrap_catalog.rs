@@ -794,9 +794,6 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         Ok(RecoveryAuthorityReached::BuildLegacyActivationSuccessor) => {
             BootstrapReviewReachpoint::RecoveryBuildLegacyActivationSuccessorNotBound
         }
-        Ok(RecoveryAuthorityReached::VerifyLegacySuccessorArtifact) => {
-            BootstrapReviewReachpoint::RecoveryVerifyLegacySuccessorArtifactNotBound
-        }
         Ok(RecoveryAuthorityReached::MissingPublishedAuthority) => {
             return Ok(Err(review_continuation::denied(
                 review,
