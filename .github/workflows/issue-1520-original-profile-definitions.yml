@@ -9,6 +9,7 @@ name: Issue 1520 original Profile definition prefix
       - tools/original_profile_successor_entry_reference.py
       - tools/original_profile_display_name_reference.py
       - tools/original_profile_retired_projection_reference.py
+      - tools/original_legacy_activation_reference.py
       - tools/original_bootstrap_template_reference.py
       - tools/original_external_pack_catalog_reference.py
       - tools/original_external_closure_reference.py
@@ -203,6 +204,20 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::tests::
           -- --test-threads=1 --nocapture
+      - name: Generate the pinned original legacy Activation and migrated successor
+        run: >-
+          python3 -B tools/original_legacy_activation_reference.py
+          --original-root "$GITHUB_WORKSPACE/original-definitions-source"
+          --output "$RUNNER_TEMP/original-legacy-activation.json"
+      - name: Compare the native successor with the original legacy migration
+        env:
+          TOBKIRI_ORIGINAL_LEGACY_SUCCESSOR_FIXTURE: ${{ runner.temp }}/original-legacy-activation.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-legacy-activation.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::recovery_authority::workspace_active::tests::verifies_frozen_legacy_records_with_the_live_store_and_epoch
+          -- --exact --test-threads=1 --nocapture
       - name: Check the original active reservation row projection and schema error causes
         run: |
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
