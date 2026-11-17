@@ -26,8 +26,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     env:
-      SUPPLIER_RUN: '40462099581'
-      SUPPLIER_HEAD: 9521b4969ee6cbd42ec2e644ca1fc2f2726f8a6d
+      SUPPLIER_RUN: '44135235977'
+      SUPPLIER_HEAD: 5eb66580eac208503c36eb7a50a14f17687911a9
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,9 +71,12 @@ jobs:
           if set(selected) != {'build-two-worlds','compare-original-data'} or any(j['conclusion']!='success' for j in selected.values()):
               raise ValueError('actual build/original comparison/strict consumer did not complete')
           artifacts = json.loads((root/'projection-supplier-artifacts.json').read_bytes())['artifacts']
-          (artifact,) = [a for a in artifacts if a['name']=='app-capability-projection-components']
-          if (artifact['id'] != 12714229887 or artifact['expired']
-                  or artifact['digest'] != 'sha256:5c5d033b9cb93e1d48b6a124bbc349ebd17146622fb3876c66697e39188e7e36'):
+          selected_artifacts = [a for a in artifacts if a['name']=='app-capability-projection-components']
+          if len(selected_artifacts) != 1:
+              raise ValueError('actual paired component artifact is missing or duplicated; regenerate the authenticated supplier')
+          artifact = selected_artifacts[0]
+          if (artifact['id'] != 14352520909 or artifact['expired']
+                  or artifact['digest'] != 'sha256:062cd9451f94038e06783db4cd4fcc40dd3a35d23b716fb3d940c89bb2731462'):
               raise ValueError('actual paired component artifact changed')
           PYTHON
       - uses: actions/download-artifact@v4
