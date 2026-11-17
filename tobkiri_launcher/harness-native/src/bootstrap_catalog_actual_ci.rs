@@ -523,6 +523,7 @@ async fn run_original_catalog_component_driver(
     #[cfg(feature = "catalog-diagnostics-ci")]
     let schema_status = runtime.ci_schema_status();
     let recovery_receipt = runtime.review.as_ref().map(|review| review.receipt());
+    let fuel_checkpoints = runtime.work.get().ci_fuel.receipt();
     let cleanup = runtime.finish().await;
     let after_finish = invocation.capacity_snapshot();
     #[cfg(feature = "catalog-diagnostics-ci")]
@@ -551,6 +552,7 @@ async fn run_original_catalog_component_driver(
     let output = json!({"format":"io.tobkiri.actual-catalog-prefix-observations.v1",
     "name":"packaged-valid","observation":observed,"execution_matched_branch":execution.is_ok(),
     "post_review_copy_only":post_review_copy,
+    "fuel_checkpoints":fuel_checkpoints,
     "native_outer_diagnostic_dropped_before_finish":native_outer_diagnostic_dropped_before_finish,
     "execution_error":execution.as_ref().err().map(ToString::to_string),
     "finish_ok":cleanup.is_ok(),"cleanup_probe_present":probe_present,

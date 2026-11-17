@@ -11,6 +11,9 @@ use tobkiri_canon::{AllocationBudget, CoreBuffer, CoreBufferBuilder, CoreValue, 
 #[path = "original_recovery_artifact_identity.rs"]
 mod artifact_identity;
 #[cfg(unix)]
+#[path = "original_recovery_bundle_metadata.rs"]
+mod bundle_metadata;
+#[cfg(unix)]
 #[path = "original_recovery_catalog_artifact.rs"]
 mod recovery_artifact;
 #[cfg(unix)]

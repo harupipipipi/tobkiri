@@ -136,6 +136,9 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     };
     let init_trace = runtime.initialization_trace();
     println!("NATIVE_HARNESS_INIT trace={init_trace:?}");
+    let fuel = &runtime.work.get().ci_fuel;
+    println!("NATIVE_HARNESS_FUEL_CHECKPOINTS {}", fuel.receipt());
+    let init_fuel_observed = fuel.initialization_observed(runtime.fuel_remaining()?);
     ensure!(
         init_trace.checkpoint_count == 7
             && init_trace.checkpoint_sequence == 7
@@ -448,6 +451,10 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
             == Some(true)
     );
     runtime.finish().await?;
+    ensure!(
+        init_fuel_observed,
+        "original initialization fuel observations differ"
+    );
     println!(
         "NATIVE_HARNESS_ORIGINAL_INIT init=true profile_id=true pure_inspections=0 \
          opaque_root_getters=2 module_resolutions=2 parents_target_proven=false physical_cleanup=true \

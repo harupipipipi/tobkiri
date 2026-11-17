@@ -354,6 +354,7 @@ async fn observe_case(
     let called = runtime
         .setup_review_catalog_prefix(&BootstrapReviewOptions::default())
         .await;
+    let fuel_checkpoints = runtime.work.get().ci_fuel.receipt();
     // Acquire real cleanup handles BEFORE inspecting/propagating the outer
     // Result. A trap may have retired the Store without returning a typed
     // Review outcome; it cannot bypass actual finish or synthesize a receipt.
@@ -522,6 +523,7 @@ async fn observe_case(
             "after_data":capacity(&after_data),"after_reap":capacity(&after_reap),
             "reaped":reaped.ok(),"limit_bytes":limit,"peak_bytes":peak},
         "measurement":{"same_original_deadline":same_deadline,"budget_resets":0,
+            "fuel_checkpoints":fuel_checkpoints,
             "fuel_before":fuel_before,"fuel_after":fuel_after,
             "actual_host_root_retained":host_root,"actual_bundle_root_retained":bundle_root,
             "actual_catalog_retained":catalog,

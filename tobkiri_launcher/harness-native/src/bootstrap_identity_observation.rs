@@ -284,7 +284,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (1, "getter")
                 | (3, "host-root")
                 | (4, "bundle-root")
-                | (7, "catalog")
+                | (CATALOG_LOAD_SLOT, "catalog")
                 | (2, "manifest")
                 | (2, "resolver-source-lookup")
                 | (2, "bootstrap-template-lookup")

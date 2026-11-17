@@ -56,6 +56,7 @@ const BOOTSTRAP_TEMPLATE_LOOKUP: u8 = 26;
 const BOOTSTRAP_RECOVERY_CATALOG: u8 = 27;
 const BOOTSTRAP_ADMITTED_CLOSURE_STEP: u8 = 28;
 const BOOTSTRAP_RECOVERY_FINISHED: u8 = 29;
+const CATALOG_LOAD_SLOT: usize = 7;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
 const BOOTSTRAP_PREVIEW_SLOT: usize = 10;
@@ -228,6 +229,13 @@ struct Work<S> {
     ci_retired_call: OnceLock<CiRetiredCall>,
     #[cfg(all(
         test,
+        feature = "bootstrap-ci",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    ci_fuel: fuel_ci::Samples,
+    #[cfg(all(
+        test,
         feature = "catalog-diagnostics-ci",
         target_os = "macos",
         target_arch = "aarch64"
@@ -295,6 +303,20 @@ fn inventory<S: BootstrapInputOwner>(
         bail!("native bootstrap inventory is not active");
     }
     trace.inventory_validated.fetch_add(1, Ordering::Relaxed);
+    #[cfg(all(
+        test,
+        feature = "bootstrap-ci",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    let _ = work
+        .get()
+        .ci_fuel
+        .inventory_import_entry
+        .set(fuel_ci::Boundary::sample(
+            &work.get().invocation,
+            context.ci_fuel_at_import_entry(),
+        ));
     let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
     context.inspect_retaining(custody, move |output| {
         let state = work.get();
@@ -345,6 +367,14 @@ fn inspect<S: BootstrapInputOwner>(
                         state.init_trace.reject(InitializationRejection::Frame);
                     })?;
             if let Some(sequence) = checkpoint_sequence(&frame) {
+                #[cfg(all(
+                    test,
+                    feature = "bootstrap-ci",
+                    target_os = "macos",
+                    target_arch = "aarch64"
+                ))]
+                let fuel =
+                    fuel_ci::Boundary::sample(&state.invocation, context.ci_fuel_at_import_entry());
                 state
                     .init_trace
                     .inspect_validated
@@ -362,6 +392,13 @@ fn inspect<S: BootstrapInputOwner>(
                     if !state.init_trace.checkpoint(sequence) {
                         return Err(NativeDataIoError::Unavailable);
                     }
+                    #[cfg(all(
+                        test,
+                        feature = "bootstrap-ci",
+                        target_os = "macos",
+                        target_arch = "aarch64"
+                    ))]
+                    let _ = state.ci_fuel.init_import_entries[usize::from(sequence - 1)].set(fuel);
                     // Fixed progress DATA carries no authority or init success.
                     output.append(b"{}")
                 });
@@ -732,6 +769,13 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 ci_retired_call: OnceLock::new(),
                 #[cfg(all(
                     test,
+                    feature = "bootstrap-ci",
+                    target_os = "macos",
+                    target_arch = "aarch64"
+                ))]
+                ci_fuel: fuel_ci::Samples::default(),
+                #[cfg(all(
+                    test,
                     feature = "catalog-diagnostics-ci",
                     target_os = "macos",
                     target_arch = "aarch64"
@@ -828,6 +872,20 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             },
         ];
         work.get().init_trace.phase(1);
+        #[cfg(all(
+            test,
+            feature = "bootstrap-ci",
+            target_os = "macos",
+            target_arch = "aarch64"
+        ))]
+        let _ = work
+            .get()
+            .ci_fuel
+            .before_instantiation
+            .set(fuel_ci::Boundary::sample(
+                &invocation,
+                store.fuel_remaining().ok(),
+            ));
         let program = match store.prepare_data_program(component, &bindings).await {
             Ok(program) => program,
             Err(original) => {
@@ -843,6 +901,20 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 return Err(original);
             }
         };
+        #[cfg(all(
+            test,
+            feature = "bootstrap-ci",
+            target_os = "macos",
+            target_arch = "aarch64"
+        ))]
+        let _ = work
+            .get()
+            .ci_fuel
+            .after_instantiation
+            .set(fuel_ci::Boundary::sample(
+                &invocation,
+                program.fuel_remaining().ok(),
+            ));
         let mut runner = Self {
             program: Some(program),
             work,
@@ -861,12 +933,26 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .phase
             .store(INITIALIZING, Ordering::Release);
         runner.work.get().init_trace.phase(2);
-        let result = runner
+        let program = runner
             .program
             .as_mut()
-            .context("native program was retired")?
-            .invoke(0, Some(&init))
-            .await;
+            .context("native program was retired")?;
+        let result = program.invoke(0, Some(&init)).await;
+        #[cfg(all(
+            test,
+            feature = "bootstrap-ci",
+            target_os = "macos",
+            target_arch = "aarch64"
+        ))]
+        let _ = runner
+            .work
+            .get()
+            .ci_fuel
+            .after_runtime_init
+            .set(fuel_ci::CallReturn::sample(
+                &invocation,
+                program.observation(),
+            ));
         runner
             .work
             .get()
@@ -1564,12 +1650,41 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         if let Err(original) = self.work.get().source.check_live() {
             return Err(self.retire_failure(original.into()).await);
         }
-        let result = self
+        let program = self
             .program
             .as_mut()
-            .context("native bootstrap was retired")?
-            .invoke(slot, Some(input))
-            .await;
+            .context("native bootstrap was retired")?;
+        #[cfg(all(
+            test,
+            feature = "bootstrap-ci",
+            target_os = "macos",
+            target_arch = "aarch64"
+        ))]
+        let first_catalog = (slot, phase) == (CATALOG_LOAD_SLOT, CATALOG_LOAD)
+            && self
+                .work
+                .get()
+                .ci_fuel
+                .before_first_catalog_export
+                .set(fuel_ci::Boundary::sample(
+                    &self.work.get().invocation,
+                    program.fuel_remaining().ok(),
+                ))
+                .is_ok();
+        let result = program.invoke(slot, Some(input)).await;
+        #[cfg(all(
+            test,
+            feature = "bootstrap-ci",
+            target_os = "macos",
+            target_arch = "aarch64"
+        ))]
+        if first_catalog {
+            // Copy the invocation's observation before the outer adapter retires
+            // its program. This remains valid after a trap destroys the Store.
+            let _ = self.work.get().ci_fuel.after_first_catalog_export.set(
+                fuel_ci::CallReturn::sample(&self.work.get().invocation, program.observation()),
+            );
+        }
         match result {
             Ok(result) => *self.call_pending = Some(result),
             Err(original) => return Err(self.retire_failure(original).await),
@@ -1729,6 +1844,14 @@ mod denied_actual_ci;
 #[cfg(all(test, target_os = "macos"))]
 #[path = "bootstrap_domain_cleanup_tests.rs"]
 mod domain_cleanup_tests;
+#[cfg(all(
+    test,
+    feature = "bootstrap-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "bootstrap_fuel_ci.rs"]
+mod fuel_ci;
 #[cfg(all(
     test,
     feature = "bootstrap-ci",

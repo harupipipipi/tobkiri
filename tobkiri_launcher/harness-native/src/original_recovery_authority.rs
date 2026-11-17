@@ -10,7 +10,7 @@ mod pending_reservation;
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    VerifyCommittedActivationEntrypoint,
+    RepublishCommittedActivation,
     LoadActiveSnapshot,
     MissingPublishedAuthority,
     RecoveredNone,
@@ -28,7 +28,7 @@ impl PublicationRead {
         recovery_catalog: RecoveryCatalogInputs<'_>,
     ) -> Result<RecoveryAuthorityReached> {
         self.run_recovery(owner, cancellation, budget, |op, profile, profile_id| {
-            recovery_catalog.verify_committed_tree(op, profile, profile_id)
+            recovery_catalog.verify_committed_artifact(op, profile, profile_id)
         })
     }
 
@@ -103,7 +103,7 @@ impl PublicationRead {
                         // The Workspace lock has closed. The original Store
                         // and Host publication guard remain in this scope.
                         on_committed(&op, &profile, profile_id)?;
-                        return Ok(RecoveryAuthorityReached::VerifyCommittedActivationEntrypoint);
+                        return Ok(RecoveryAuthorityReached::RepublishCommittedActivation);
                     }
                 }
                 if active_reservation::read(&op, store, &pending.intent)? {
@@ -374,7 +374,7 @@ mod tests {
                 PROFILE_ID,
                 "+１",
                 "pinned.json",
-                Ok(RecoveryAuthorityReached::VerifyCommittedActivationEntrypoint),
+                Ok(RecoveryAuthorityReached::RepublishCommittedActivation),
             ),
             (
                 "committing",
@@ -531,7 +531,7 @@ mod tests {
                 });
                 assert_eq!(
                     captured_profile,
-                    expected == Ok(RecoveryAuthorityReached::VerifyCommittedActivationEntrypoint)
+                    expected == Ok(RecoveryAuthorityReached::RepublishCommittedActivation)
                 );
                 let cleared = expected == Ok(RecoveryAuthorityReached::RecoveredNone);
                 match expected {

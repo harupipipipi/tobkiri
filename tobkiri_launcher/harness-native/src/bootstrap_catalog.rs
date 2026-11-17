@@ -184,7 +184,10 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         .as_ref()
         .expect("fixed loader input")
         .clone();
-    review.actual.catalog = Some(pack.observe_fixed_call(7, &input, "catalog").await?);
+    review.actual.catalog = Some(
+        pack.observe_fixed_call(CATALOG_LOAD_SLOT, &input, "catalog")
+            .await?,
+    );
     caller.check(review, pack)?;
     if let Some(failure) = take_failure(&mut review.actual.catalog) {
         return Ok(Err(handle_call_failure(
@@ -748,8 +751,8 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         )
     };
     let boundary = match reached {
-        Ok(RecoveryAuthorityReached::VerifyCommittedActivationEntrypoint) => {
-            BootstrapReviewReachpoint::RecoveryVerifyCommittedActivationEntrypointNotBound
+        Ok(RecoveryAuthorityReached::RepublishCommittedActivation) => {
+            BootstrapReviewReachpoint::RecoveryRepublishCommittedActivationNotBound
         }
         Ok(RecoveryAuthorityReached::LoadActiveSnapshot) => {
             BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotNotBound

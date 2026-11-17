@@ -20,7 +20,7 @@ impl<'a> RecoveryCatalogInputs<'a> {
         }
     }
 
-    pub(in crate::original_authority::io::publication) fn verify_committed_tree<
+    pub(in crate::original_authority::io::publication) fn verify_committed_artifact<
         S: crate::BootstrapReviewOwner,
     >(
         &self,
@@ -56,19 +56,7 @@ impl<'a> RecoveryCatalogInputs<'a> {
             self.profiles,
             self.admitted,
         )?;
-        let digest = selected.variant().get_key("artifact_digest");
-        let digest = digest
-            .as_ref()
-            .and_then(CoreValue::as_str)
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        artifact_identity::verify_tree_digest(
-            op,
-            &self.io.budget,
-            root,
-            selected.relative(),
-            parent,
-            &identity,
-            digest,
-        )
+        artifact_identity::SelectedPackage::new(root, selected.relative(), parent, &identity)
+            .verify(op, &self.io.budget, selected.variant())
     }
 }

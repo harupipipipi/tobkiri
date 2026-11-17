@@ -103,30 +103,87 @@ async fn recovery_catalog_verifies_the_selected_package_and_refuses_replaced_byt
     with_setup_source(|source, read, cancellation, budget| {
         let op = operation(read, source, cancellation);
         let mut shell = definition("verified", 1);
-        shell["launch"]["variants"][1]["artifact_digest"] =
-            json!(Digest::hash(b"payload\0the selected bytes"));
-        let mut io = fixture_catalog(&op, budget, shell, Some(Digest::hash(b"committed Pack")));
         let root = source.root.join("platform-artifacts");
         let selected = root.join("nested/TrustedShell.app");
-        fs::create_dir_all(&selected).unwrap();
-        let payload = selected.join("payload");
-        fs::write(&payload, b"the selected bytes").unwrap();
-        io.artifact_parent_identity = Some(identity(&fs::metadata(&source.root).unwrap()));
-        let profile = committed_profile();
-        let rows = guest(&json!([[PROFILE, &profile]]), budget);
-        let committed = guest(&profile, budget);
-        let catalog = RecoveryCatalogInputs::new(&io, &rows, None);
-        catalog
-            .verify_committed_tree(&op, &committed, PROFILE)
-            .unwrap();
-        fs::write(&payload, b"the replaced bytes").unwrap();
-        let denied = catalog
-            .verify_committed_tree(&op, &committed, PROFILE)
-            .unwrap_err();
-        assert_eq!(denied.class, RECOVERY_APP_DENIED);
-        assert_eq!(
-            denied.message,
-            "active Profile Shell artifact rejected: packaged artifact digest does not match selected bytes"
+        fs::create_dir_all(selected.join("Contents/MacOS")).unwrap();
+        let binary = selected.join("Contents/MacOS/Tobkiri");
+        let mach_o = b"\xcf\xfa\xed\xfe\x0c\x00\x00\x01";
+        let plist = br#"<?xml version="1.0" encoding="UTF-8"?>
+            <plist version="1.0"><dict><key>CFBundleIdentifier</key>
+            <string>io.tobkiri.fixture</string></dict></plist>"#;
+        fs::write(&binary, mach_o).unwrap();
+        fs::write(selected.join("Contents/Info.plist"), plist).unwrap();
+        let mut tree = Sha256::new();
+        for (name, data) in [
+            (b"Contents/Info.plist".as_slice(), plist.as_slice()),
+            (b"Contents/MacOS/Tobkiri".as_slice(), mach_o.as_slice()),
+        ] {
+            tree.update(name);
+            tree.update(b"\0");
+            tree.update(data);
+        }
+        let variant = &mut shell["launch"]["variants"][1];
+        variant["artifact_digest"] = json!(Digest::from_sha256(tree.finalize().into()));
+        variant["entrypoint_digest"] = json!(Digest::hash(mach_o));
+        variant["entrypoint"] = json!("nested/TrustedShell.app/Contents/./MacOS/Tobkiri");
+        variant["bundle_identity"] = json!("io.tobkiri.fixture");
+        let mut profile = committed_profile();
+        profile["shell"]["executable_artifact_digest"] = json!(Digest::hash(mach_o));
+        let verify = |shell, profile: &Value| {
+            let mut io = fixture_catalog(&op, budget, shell, Some(Digest::hash(b"committed Pack")));
+            io.artifact_parent_identity = Some(identity(&fs::metadata(&source.root).unwrap()));
+            let rows = guest(&json!([[PROFILE, profile]]), budget);
+            RecoveryCatalogInputs::new(&io, &rows, None).verify_committed_artifact(
+                &op,
+                &guest(profile, budget),
+                PROFILE,
+            )
+        };
+        let assert_denied = |result: Result<()>, message: &str| {
+            let denied = result.unwrap_err();
+            assert_eq!(denied.class, RECOVERY_APP_DENIED);
+            assert_eq!(
+                denied.message,
+                format!("active Profile Shell artifact rejected: {message}")
+            );
+        };
+        verify(shell.clone(), &profile).unwrap();
+        for (key, value, message) in [
+            (
+                "entrypoint",
+                json!("elsewhere/Tobkiri"),
+                "packaged artifact entrypoint is missing or outside artifact",
+            ),
+            (
+                "bundle_identity",
+                json!("io.tobkiri.different"),
+                "macOS packaged artifact bundle identity does not match",
+            ),
+            (
+                "architecture",
+                json!("x86_64"),
+                "packaged artifact architecture does not match selection",
+            ),
+            (
+                "entrypoint_digest",
+                json!(Digest::hash(b"bad pin")),
+                "packaged artifact entrypoint digest does not match",
+            ),
+        ] {
+            let mut changed_shell = shell.clone();
+            let mut changed_profile = profile.clone();
+            if key == "architecture" {
+                changed_profile["shell"][key] = value.clone();
+            } else if key == "entrypoint_digest" {
+                changed_profile["shell"]["executable_artifact_digest"] = value.clone();
+            }
+            changed_shell["launch"]["variants"][1][key] = value;
+            assert_denied(verify(changed_shell, &changed_profile), message);
+        }
+        fs::write(&binary, b"the replaced bytes").unwrap();
+        assert_denied(
+            verify(shell, &profile),
+            "packaged artifact digest does not match selected bytes",
         );
     });
 }

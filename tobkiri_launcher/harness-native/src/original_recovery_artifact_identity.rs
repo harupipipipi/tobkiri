@@ -5,6 +5,10 @@ use super::shell_root::{open_parent, open_shell_directory, stat_at, stat_identit
 use super::shell_tree::MAX_TREE_DEPTH;
 use super::*;
 
+#[path = "original_recovery_artifact_member.rs"]
+mod member;
+pub(super) use member::SelectedPackage;
+
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 const TIMEOUT: Duration = Duration::from_secs(5);
 const CHANGED: &str = "active Profile Shell artifact changed after verification";
@@ -690,8 +694,6 @@ impl<S: crate::BootstrapReviewOwner> Walk<'_, '_, S> {
         expected: Metadata,
         verification: &mut Verification<'_>,
     ) -> Result<()> {
-        let changed = || artifact_rejected("packaged artifact changed while it was verified");
-        let expected_size = u64::try_from(expected.size).map_err(|_| changed())?;
         let relative = self
             .path
             .as_os_str()
@@ -708,12 +710,30 @@ impl<S: crate::BootstrapReviewOwner> Walk<'_, '_, S> {
             stat_identity(stat),
         )
         .map_err(artifact_io)?;
-        if self.descriptor_metadata(&file)? != expected {
-            return Err(changed());
-        }
         verification.digest.update(relative);
         verification.digest.update(b"\0");
-        let buffer = &mut verification.scratch.values[..];
+        self.hash_contents(
+            &mut file,
+            expected,
+            &mut verification.scratch.values,
+            &mut verification.digest,
+        )?;
+        file.close()
+            .map_err(|_| OriginalAuthorityError::unavailable())
+    }
+
+    fn hash_contents(
+        &self,
+        file: &mut TrackedFile,
+        expected: Metadata,
+        buffer: &mut [u8],
+        digest: &mut Sha256,
+    ) -> Result<()> {
+        let changed = || artifact_rejected("packaged artifact changed while it was verified");
+        let expected_size = u64::try_from(expected.size).map_err(|_| changed())?;
+        if self.descriptor_metadata(file)? != expected {
+            return Err(changed());
+        }
         let mut size = 0;
         loop {
             self.op.check(STAGE)?;
@@ -728,13 +748,12 @@ impl<S: crate::BootstrapReviewOwner> Walk<'_, '_, S> {
                 return Err(changed());
             }
             charge_work(self.budget, count as u64)?;
-            verification.digest.update(&buffer[..count]);
+            digest.update(&buffer[..count]);
         }
-        if size != expected_size || self.descriptor_metadata(&file)? != expected {
+        if size != expected_size || self.descriptor_metadata(file)? != expected {
             return Err(changed());
         }
-        file.close()
-            .map_err(|_| OriginalAuthorityError::unavailable())
+        Ok(())
     }
 
     fn list(&self, file: &TrackedFile) -> Result<Listing> {
@@ -805,7 +824,7 @@ fn identity_timeout() -> OriginalAuthorityError {
     )
 }
 
-fn artifact_rejected(message: &'static str) -> OriginalAuthorityError {
+pub(super) fn artifact_rejected(message: &'static str) -> OriginalAuthorityError {
     caused(
         raw(
             RECOVERY_APP_DENIED,
