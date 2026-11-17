@@ -3869,6 +3869,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   macOSのInfo.plist、再ロックとポインタ公開、active snapshotは後続に残る。
   実ローダーのPack pinはIDとdigestだけを保持する。全経路が通ったら、既存ローダーの
   検証済み結果から同じpinを取り出せるか検討し、マニフェストの追加パースを減らせる。
+  `91717d7c9` のローカルHarness試験29件とstrict Clippyは成功。LauncherのDashboard
+  試験17件も成功した。`e85058491` の中止4件は
+  [CI 44076940752](https://github.com/harupipipipi/tobkiri/actions/runs/44076940752)で
+  Linux・macOSとも成功した。
 - [原本比較 CI 44071483174](https://github.com/harupipipipi/tobkiri/actions/runs/44071483174)
   はURI 160件を含む比較に成功。全体の [macOS CI 44068320748](https://github.com/harupipipipi/tobkiri/actions/runs/44068320748)
   では、変更前の実componentがAuthorityの照合まで到達せず、実測30.24秒で元の期限に達した。
@@ -3879,3 +3883,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   読み込みを返す前に停止した。計測用の埋め込み入力と異なり、実Launcherの経路では
   既存のCatalogIoがファイルを供給する。次は同経路に原本比較済みRustのschema
   providerを導入した候補を、現行の上限で比較する。
+- [whole Harness CI 44075223346](https://github.com/harupipipipi/tobkiri/actions/runs/44075223346)
+  は25,736,236 Bの実Wasmを生成してmacOSで照合した。実カタログの通常呼出しと復旧呼出しは
+  両方とも先頭のPackの処理中に2B fuelを使い切った。Rustの参照処理まで到達し、30秒の
+  時間切れとは別の失敗で、後処理時に使用領域と予約は0だった。エラー比較9件のうち先に
+  終わる5件は原本と一致し、カタログを読む4件ではWasmの呼出しが完了しなかった。
