@@ -2,8 +2,8 @@
   "files": [
     {
       "path": "ui/app.js",
-      "sha256": "sha256:5639940bf773cca73a176ecbb1c3b6ed88158dd065ac42b39ce7cd3b96995451",
-      "size": 4402
+      "sha256": "sha256:4fa99516acc02400b526a6103f31fc173c9ddde1d7618cb5ec68e3d721460ea6",
+      "size": 4685
     },
     {
       "path": "ui/float.js",
