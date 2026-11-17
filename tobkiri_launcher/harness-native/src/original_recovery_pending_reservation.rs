@@ -3,6 +3,7 @@ use super::*;
 use crate::original_authority::io::{Store, abort_transaction, incomplete_reservations};
 use recovery_workspace::{APP_DENIED, pending};
 use rusqlite::types::Value;
+use tobkiri_canon::CoreValue;
 
 #[path = "original_recovery_committed_activation.rs"]
 mod committed;
@@ -34,7 +35,7 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
     journal: &Document,
     profile_id: &str,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<RecoveryAuthorityReached> {
+) -> Result<Option<CoreValue>> {
     let render = |key| {
         let id = journal
             .get(journal.root, key)
@@ -100,7 +101,12 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
                     fencing_token: actual_fence,
                 },
             )?;
-            Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact)
+            let profile = subscript(&envelope, envelope.root, "profile")?;
+            let bytes = json::canonical_subtree(&envelope, profile, None, op, budget)?;
+            drop(envelope);
+            let profile = CoreValue::parse_guest(&bytes, budget)
+                .map_err(|_| OriginalAuthorityError::capacity(STAGE))?;
+            Ok(Some(profile))
         }
         status @ ("prepared" | "ready_without_authority" | "committing" | "aborted") => {
             if status != "aborted" {
@@ -108,7 +114,7 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
             }
             unlink(op, state, Path::new("pending.json"))?;
             with_envelope_path(op, name, |path| unlink(op, state, path))?;
-            Ok(RecoveryAuthorityReached::WorkspaceRecovered)
+            Ok(None)
         }
         _ => Err(raw(
             APP_DENIED,

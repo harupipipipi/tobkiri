@@ -20,6 +20,10 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_recovery_pending_reservation.rs
       - tobkiri_launcher/harness-native/src/original_recovery_committed_activation.rs
       - tobkiri_launcher/harness-native/src/original_recovery_abort_transaction.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_artifact_identity.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_artifact_identity_tests.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_catalog_artifact.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_shell_selection_tests.rs
       - tobkiri_launcher/harness-native/src/original_recovery_incomplete_reservations.rs
       - tobkiri_launcher/harness-native/src/original_recovery_active_reservation.rs
       - tobkiri_launcher/harness-native/src/bootstrap_catalog.rs
@@ -189,6 +193,20 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::abort_transaction::tests::
           -- --test-threads=1 --nocapture
+      - name: Check committed Shell selection against the original replacement catalog
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-recovery-shell-selection.log" --expected-passed 3 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::catalog::shell_inputs::recovery_tests::
+          -- --test-threads=1 --nocapture
+      - name: Check descriptor-bound committed artifact identity and digests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-recovery-artifact.log" --expected-passed 3 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::catalog::artifact_identity::tests::
+          -- --test-threads=1 --nocapture
       - name: Observe original admitted Pack dependency closure and independent Host reads
         run: >-
           python3 -B tools/original_external_closure_reference.py prepare
@@ -286,6 +304,8 @@ jobs:
             ${{ runner.temp }}/native-recovery-workspace.log*
             ${{ runner.temp }}/native-recovery-incomplete.log*
             ${{ runner.temp }}/native-recovery-abort.log*
+            ${{ runner.temp }}/native-recovery-shell-selection.log*
+            ${{ runner.temp }}/native-recovery-artifact.log*
             ${{ runner.temp }}/native-external-closure.log*
             ${{ runner.temp }}/original-external-closure/summary.json
             ${{ runner.temp }}/original-host-extension-catalog/summary.json

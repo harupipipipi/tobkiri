@@ -8,6 +8,14 @@ use sha2::{Digest as _, Sha256};
 use std::path::Path;
 use tobkiri_canon::{AllocationBudget, CoreBuffer, CoreBufferBuilder, CoreValue, MAX_BYTES};
 #[cfg(unix)]
+#[path = "original_recovery_artifact_identity.rs"]
+mod artifact_identity;
+#[cfg(unix)]
+#[path = "original_recovery_catalog_artifact.rs"]
+mod recovery_artifact;
+#[cfg(unix)]
+pub(crate) use recovery_artifact::RecoveryCatalogInputs;
+#[cfg(unix)]
 #[path = "original_shell_entrypoint.rs"]
 mod shell_entrypoint;
 #[cfg(unix)]
@@ -61,6 +69,8 @@ pub(crate) struct CatalogIo {
     shell_profile_id: Option<String>,
     #[cfg(unix)]
     shell_inputs: Option<shell_inputs::ShellInputs>,
+    #[cfg(unix)]
+    recovery_pack_pins: Option<shell_inputs::PackPins>,
     #[cfg(unix)]
     shell_leaf: Option<CoreValue>,
     #[cfg(unix)]
@@ -258,6 +268,8 @@ impl CatalogIo {
             #[cfg(unix)]
             shell_inputs: None,
             #[cfg(unix)]
+            recovery_pack_pins: None,
+            #[cfg(unix)]
             shell_leaf: None,
             #[cfg(unix)]
             shell_entrypoint: None,
@@ -388,6 +400,12 @@ impl CatalogIo {
         }
         self.binding = Some(binding);
         Ok(())
+    }
+
+    /// Keep the Pack pins from the actual recovery loader occurrences.
+    #[cfg(unix)]
+    pub(crate) fn retain_recovery_pack_pins(&mut self) {
+        self.recovery_pack_pins = Some(shell_inputs::PackPins::default());
     }
 
     /// The resolver hashes a separate physical read after its bundle selection.
@@ -737,7 +755,10 @@ impl CatalogIo {
                 )?;
                 write_bytes(&mut output, &bytes.value)?;
                 #[cfg(unix)]
-                self.retain_shell_input(&op, bytes)?;
+                {
+                    self.retain_pack_pin(&op, &bytes.value)?;
+                    self.retain_shell_input(&op, bytes)?;
+                }
                 self.candidate = None;
                 self.entry += 1;
                 self.loader = Loader::Entries;

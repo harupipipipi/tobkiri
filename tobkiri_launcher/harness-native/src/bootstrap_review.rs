@@ -61,7 +61,7 @@ pub enum BootstrapReviewReachpoint {
     ClosureBundledPackRootNotBound,
     AdmittedHostExtensionProjectionNotBound,
     CatalogWithProfilesNotBound,
-    RecoveryVerifyCommittedActivationArtifactNotBound,
+    RecoveryVerifyCommittedActivationEntrypointNotBound,
     RecoveryLoadActiveSnapshotNotBound,
     #[cfg(test)]
     RecoveryCompleted,

@@ -3,6 +3,8 @@
 //! policy stays in the same original Runtime receiver and its actual loader.
 use super::*;
 use crate::bootstrap_review::{BundleCalls, Review, original_failure};
+#[cfg(unix)]
+use crate::original_authority::catalog::RecoveryCatalogInputs;
 use crate::original_authority::catalog::{BindingFailure, CatalogIo};
 use crate::original_authority::definitions::{self, DefinitionRecovery};
 use crate::{BootstrapReviewFailure, BootstrapReviewReachpoint};
@@ -156,6 +158,13 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Ok(selected) => selected,
         Err(error) => return Ok(Err(error)),
     };
+    #[cfg(unix)]
+    if matches!(
+        caller,
+        ReviewCaller::Recovery | ReviewCaller::RecoveryTemplate
+    ) {
+        io.retain_recovery_pack_pins();
+    }
     io.bind_loader(CoreValue::string(binding.as_str()?, pack.input_budget)?)?;
     {
         let work = pack.work.get();
@@ -716,13 +725,31 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         bail!("recovery catalog was not replaced");
     }
     use crate::original_authority::RecoveryAuthorityReached;
-    let boundary = match review.read.run_recovery_authority(
-        &pack.work.get().source,
-        pack.cancellation,
-        pack.input_budget,
-    ) {
-        Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact) => {
-            BootstrapReviewReachpoint::RecoveryVerifyCommittedActivationArtifactNotBound
+    let reached = {
+        let work = pack.work.get();
+        let io = work
+            .catalog
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let inputs = RecoveryCatalogInputs::new(
+            io.as_ref().context("recovery catalog loader is missing")?,
+            review
+                .actual
+                ._recovery_profile_definitions
+                .as_ref()
+                .context("replacement catalog Profile definitions are missing")?,
+            review.actual._admitted_closure.as_ref(),
+        );
+        review.read.run_recovery_authority(
+            &work.source,
+            pack.cancellation,
+            pack.input_budget,
+            inputs,
+        )
+    };
+    let boundary = match reached {
+        Ok(RecoveryAuthorityReached::VerifyCommittedActivationEntrypoint) => {
+            BootstrapReviewReachpoint::RecoveryVerifyCommittedActivationEntrypointNotBound
         }
         Ok(RecoveryAuthorityReached::LoadActiveSnapshot) => {
             BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotNotBound
@@ -736,9 +763,6 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
                 BootstrapDeniedRaise::Plain,
             )
             .await?));
-        }
-        Ok(RecoveryAuthorityReached::WorkspaceRecovered) => {
-            bail!("recovery did not complete its active reservation check");
         }
         Ok(RecoveryAuthorityReached::RecoveredNone) => {
             let request = denied::frame(pack, RECOVERY_FINISHED_REQUEST, [("catalog", root)])?;

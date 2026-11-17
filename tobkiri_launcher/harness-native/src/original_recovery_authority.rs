@@ -1,6 +1,7 @@
 //! The AuthorityStore context at the original nonstale publication caller.
 use super::*;
-use tobkiri_canon::AllocationBudget;
+use catalog::RecoveryCatalogInputs;
+use tobkiri_canon::{AllocationBudget, CoreValue};
 #[path = "original_recovery_active_reservation.rs"]
 mod active_reservation;
 #[path = "original_recovery_pending_reservation.rs"]
@@ -9,8 +10,7 @@ mod pending_reservation;
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    VerifyCommittedActivationArtifact,
-    WorkspaceRecovered,
+    VerifyCommittedActivationEntrypoint,
     LoadActiveSnapshot,
     MissingPublishedAuthority,
     RecoveredNone,
@@ -25,6 +25,19 @@ impl PublicationRead {
         owner: &S,
         cancellation: &CoreCancellation,
         budget: &Arc<dyn AllocationBudget>,
+        recovery_catalog: RecoveryCatalogInputs<'_>,
+    ) -> Result<RecoveryAuthorityReached> {
+        self.run_recovery(owner, cancellation, budget, |op, profile, profile_id| {
+            recovery_catalog.verify_committed_tree(op, profile, profile_id)
+        })
+    }
+
+    fn run_recovery<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        budget: &Arc<dyn AllocationBudget>,
+        on_committed: impl FnOnce(&Operation<'_, S>, &CoreValue, &str) -> Result<()>,
     ) -> Result<RecoveryAuthorityReached> {
         self.check_continuation_thread()?;
         let receipt = self.receipt();
@@ -83,11 +96,14 @@ impl PublicationRead {
                                 );
                             }
                             pending_reservation::abort_incomplete(&op, store, profile_id)?;
-                            Ok(RecoveryAuthorityReached::WorkspaceRecovered)
+                            Ok(None)
                         },
                     )?;
-                    if next != RecoveryAuthorityReached::WorkspaceRecovered {
-                        return Ok(next);
+                    if let Some(profile) = next {
+                        // The Workspace lock has closed. The original Store
+                        // and Host publication guard remain in this scope.
+                        on_committed(&op, &profile, profile_id)?;
+                        return Ok(RecoveryAuthorityReached::VerifyCommittedActivationEntrypoint);
                     }
                 }
                 if active_reservation::read(&op, store, &pending.intent)? {
@@ -135,6 +151,18 @@ impl PublicationRead {
             self.fresh.record_recovery(cancellation);
         }
         Ok(reached)
+    }
+}
+
+#[cfg(test)]
+impl PublicationRead {
+    fn run_recovery_test<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<RecoveryAuthorityReached> {
+        self.run_recovery(owner, cancellation, budget, |_, _, _| Ok(()))
     }
 }
 
@@ -266,7 +294,7 @@ mod tests {
                 }
                 assert!(!source.root.join("authority").exists());
                 assert_eq!(
-                    read.run_recovery_authority(source, cancellation, budget)
+                    read.run_recovery_test(source, cancellation, budget)
                         .unwrap(),
                     expected
                 );
@@ -283,7 +311,7 @@ mod tests {
                 db.close().unwrap();
                 assert!(source.root.join("authority/v4.key").is_file());
                 assert!(
-                    read.run_recovery_authority(source, cancellation, budget)
+                    read.run_recovery_test(source, cancellation, budget)
                         .is_err()
                 );
                 verify_custody(
@@ -325,7 +353,7 @@ mod tests {
             let lock = state.join(LockName::workspace(PROFILE_ID).text());
 
             let error = read
-                .run_recovery_authority(source, cancellation, budget)
+                .run_recovery_test(source, cancellation, budget)
                 .unwrap_err();
             assert_eq!(error.class, recovery_workspace::APP_DENIED);
             assert_eq!(
@@ -346,7 +374,7 @@ mod tests {
                 PROFILE_ID,
                 "+１",
                 "pinned.json",
-                Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact),
+                Ok(RecoveryAuthorityReached::VerifyCommittedActivationEntrypoint),
             ),
             (
                 "committing",
@@ -486,7 +514,25 @@ mod tests {
                 .unwrap();
                 db.close().unwrap();
 
-                let result = read.run_recovery_authority(source, cancellation, budget);
+                let mut captured_profile = false;
+                let result = read.run_recovery(source, cancellation, budget, |_, profile, id| {
+                    assert_eq!(id, PROFILE_ID);
+                    assert!(lock_free(&lock));
+                    assert!(!lock_free(&source.root.join(LOCK_PATH)));
+                    assert_eq!(
+                        profile
+                            .get_key("profile_authority_snapshot_digest")
+                            .as_ref()
+                            .and_then(CoreValue::as_str),
+                        Some("authority")
+                    );
+                    captured_profile = true;
+                    Ok(())
+                });
+                assert_eq!(
+                    captured_profile,
+                    expected == Ok(RecoveryAuthorityReached::VerifyCommittedActivationEntrypoint)
+                );
                 let cleared = expected == Ok(RecoveryAuthorityReached::RecoveredNone);
                 match expected {
                     Ok(next) => assert_eq!(result.unwrap(), next),
@@ -532,7 +578,7 @@ mod tests {
             enter(source, read, cancellation);
             fs::create_dir_all(source.root.join(DATABASE)).unwrap();
             assert_eq!(
-                read.run_recovery_authority(source, cancellation, budget)
+                read.run_recovery_test(source, cancellation, budget)
                     .unwrap_err()
                     .class,
                 "core_runtime.authority.store_contracts.AuthorityStoreError"
@@ -572,7 +618,7 @@ mod tests {
                 db.close().unwrap();
 
                 assert_eq!(
-                    read.run_recovery_authority(source, cancellation, budget)
+                    read.run_recovery_test(source, cancellation, budget)
                         .unwrap(),
                     expected
                 );
@@ -650,7 +696,7 @@ mod tests {
                     insert(&db, 20 + i, ACTIVATION_ID, "active");
                 }
                 db.close().unwrap();
-                let result = read.run_recovery_authority(source, cancellation, budget);
+                let result = read.run_recovery_test(source, cancellation, budget);
                 match matches {
                     0 => assert_eq!(result.unwrap(), RecoveryAuthorityReached::RecoveredNone),
                     1 => assert_eq!(
@@ -706,7 +752,7 @@ mod tests {
                 if workspace_exists {
                     fs::create_dir_all(workspace).unwrap();
                 }
-                let result = read.run_recovery_authority(source, cancellation, budget);
+                let result = read.run_recovery_test(source, cancellation, budget);
                 match expected {
                     Ok(expected) => assert_eq!(result.unwrap(), expected),
                     Err((class, message)) => {
@@ -744,7 +790,7 @@ mod tests {
             .unwrap();
             db.close().unwrap();
             let error = read
-                .run_recovery_authority(source, cancellation, budget)
+                .run_recovery_test(source, cancellation, budget)
                 .unwrap_err();
             assert_eq!(error.stage, OriginalAuthorityStage::ActiveReservation);
             assert_eq!(

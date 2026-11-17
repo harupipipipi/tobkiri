@@ -3859,6 +3859,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   入れる。既存の監査処理を共有し、監査書き込みの失敗で状態と時刻を戻すことを確認する。
   元Pythonの実AuthorityStoreで3種類の中止と監査エラーでの巻き戻しを確認した。
   workspace lockを解放した区間でのパッケージ検証と再公開、active snapshotが残る。
+- `e85058491` は、中止の4試験がUbuntuで本番用ファイルシステム割り当て証明を要求し、
+  Authorityに入る前に停止した点を修正した。既存のテスト専用割り当てを使い、実SQLiteと
+  暗号化監査の照合および領域解放を確認する。本番の割り当て方法は別の試験で扱う。
+- コミット済みのProfileは元のworkspace lockを閉じた後、同じAuthorityと公開ロックの中で
+  確認する。現在の置換カタログに入れた登録Profile、実ローダーで読んだShell定義とPack pinを
+  照合し、親ディレクトリの記録を使って実ファイルの同一性とツリーのdigestを確認する。
+  元Pythonの実ファイルで有効例と変更例5件を照合した。エントリポイントのdigest・実行形式、
+  macOSのInfo.plist、再ロックとポインタ公開、active snapshotは後続に残る。
+  実ローダーのPack pinはIDとdigestだけを保持する。全経路が通ったら、既存ローダーの
+  検証済み結果から同じpinを取り出せるか検討し、マニフェストの追加パースを減らせる。
 - [原本比較 CI 44071483174](https://github.com/harupipipipi/tobkiri/actions/runs/44071483174)
   はURI 160件を含む比較に成功。全体の [macOS CI 44068320748](https://github.com/harupipipipi/tobkiri/actions/runs/44068320748)
   では、変更前の実componentがAuthorityの照合まで到達せず、実測30.24秒で元の期限に達した。
