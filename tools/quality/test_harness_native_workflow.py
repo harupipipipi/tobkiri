@@ -40,7 +40,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.native = job(self.workflow, "execute-original-native-bootstrap")
 
     def test_schema_diagnostic_is_an_explicit_separate_producer_and_binder(self) -> None:
-        self.assertIn("catalog-prefix, recovery-catalog, catalog-schema-diagnostic, launcher-staging]", self.workflow)
+        self.assertIn("catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, launcher-staging]", self.workflow)
         build = job(self.workflow, "build-whole-native-harness")
         producer = step(build, "Build the actual native Harness dispatcher and original module closure")
         self.assertIn("build_components.py --harness-native", producer)
@@ -52,6 +52,22 @@ class NativeWorkflowContracts(unittest.TestCase):
             self.assertIn(f'harness-built/harness-native/{component}/work/component.wasm', binder)
             for path in ("inputs/plan.json", "inputs/provenance.json", "work/component.wasm"):
                 self.assertIn(f'harness-native/{component}/{path}', build)
+
+    def test_app_backend_runs_the_whole_harness_catalog_and_recovery(self) -> None:
+        build = job(self.workflow, "build-whole-native-harness")
+        extension = step(build, "Build the source-bound App schema extension offline")
+        self.assertIn("build_schema_kernel_extension.py --app-backend", extension)
+        self.assertIn("inputs.verification == 'catalog-app-frame'", extension)
+        binder = step(self.native, "Bind the actual component, original modules and native index")
+        self.assertIn("--app-backend", binder)
+        self.assertIn("harness-native-app-frame/work/component.wasm", binder)
+        for name in ("Execute the actual same-guard catalog to constructor entry",
+                     "Observe original Profile replacement and Authority initialization",
+                     "Independently compare actual catalog reachpoint and effects"):
+            self.assertIn("inputs.verification == 'catalog-app-frame'", step(self.native, name))
+        launcher = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
+        self.assertIn("inputs.verification == 'launcher-staging'", launcher)
+        self.assertNotIn("catalog-app-frame", launcher)
 
     def test_schema_diagnostic_keeps_fresh_originals_and_skips_baseline_acceptance(self) -> None:
         for name in (

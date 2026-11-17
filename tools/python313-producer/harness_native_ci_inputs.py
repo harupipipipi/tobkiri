@@ -30,11 +30,14 @@ NORMAL_DEPENDENCIES = "tobkiri.harness-native-dependencies/1"
 
 def verify_producer_selection(
     artifact: Path, build: dict, plan: dict, identity: dict, *, diagnostic: bool,
+    app_backend: bool = False,
 ) -> None:
     """Bind this same-run component to its successful producer and all inputs."""
     bundle = artifact.parent.parent
-    name = "harness-native-schema-diagnostic" if diagnostic else "harness-native"
-    variant = "schema-diagnostic" if diagnostic else "candidate"
+    if app_backend and diagnostic:
+        raise ValueError("App provider and schema diagnostics are separate Harness variants")
+    variant = "app-frame" if app_backend else "schema-diagnostic" if diagnostic else "candidate"
+    name = "harness-native" if variant == "candidate" else f"harness-native-{variant}"
     receipt_path = bundle.parent / "components-build.json"
     fingerprint(receipt_path, 4 * 1024**2)
     receipt = json.loads(receipt_path.read_bytes())
@@ -44,6 +47,7 @@ def verify_producer_selection(
         or receipt.get("inputs_unchanged") is not True
         or receipt.get("production_enabled") is not False
         or receipt.get("diagnostic_only", False) is not diagnostic
+        or receipt.get("app_schema_backend", False) is not app_backend
         or set(receipt.get("components", {})) != {name}
         or bundle.name != name
     ):
@@ -74,18 +78,42 @@ def verify_producer_selection(
     if (
         dependencies.get("format") != (DIAGNOSTIC_FORMAT if diagnostic else NORMAL_DEPENDENCIES)
         or dependencies.get("diagnostic_only", False) is not diagnostic
-        or dependencies.get("original_source_files_unchanged") is not (not diagnostic)
+        or ("app_schema_backend" in dependencies) is not app_backend
+        or dependencies.get("original_source_files_unchanged") is not (not diagnostic and not app_backend)
     ):
         raise ValueError("native Harness dependency mode differs")
+
+
+def verify_app_source_bindings(build: dict, actual: dict) -> None:
+    from app_schema_extension_inputs import EXTENSION, PROVIDER_FILES, SOURCE
+    from app_schema_extension_inputs import derive_harness_entry, verify_report
+
+    evidence = build["harness_native_dependencies"]["app_schema_backend"]
+    report = evidence["extension_build"]
+    if evidence.get("validation_results_prepared") is not False:
+        raise ValueError("App provider requires live schema evaluation")
+    verify_report(report, ["app-schema-backend"])
+    wrapper = derive_harness_entry((SOURCE.parent / "harness_native/entry_wrapper.py").read_bytes())
+    expected = {EXTENSION: report["artifact"]["sha256"],
+                ENTRYPOINT + ".py": hashlib.sha256(wrapper).hexdigest()}
+    expected.update({name: report["source_files"][member]["sha256"]
+                     for name, member in PROVIDER_FILES.items()})
+    for name, digest in expected.items():
+        row = actual.get("python/" + name, {})
+        if row.get("sha256") != digest or row.get("destination") != name:
+            raise ValueError(f"native Harness App dependency differs: {name}")
 
 
 def bind(
     artifact: Path, output: Path, github_env: Path, *,
     schema_call_diagnostic: bool = False,
+    app_backend: bool = False,
 ) -> dict:
     """Verify immutable source/build identities and emit data-only Rust bindings."""
-    if type(schema_call_diagnostic) is not bool:
-        raise TypeError("diagnostic binding requires an explicit boolean")
+    if type(schema_call_diagnostic) is not bool or type(app_backend) is not bool:
+        raise TypeError("native Harness binding requires explicit variant booleans")
+    if schema_call_diagnostic and app_backend:
+        raise ValueError("App provider and schema diagnostics are separate Harness variants")
     if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("native Harness inputs are restricted to actual Mac CI")
     if not artifact.is_absolute() or artifact.resolve(strict=True) != artifact:
@@ -126,6 +154,12 @@ def bind(
     if derived.get("format") != (DIAGNOSTIC_SOURCE if schema_call_diagnostic else NORMAL_SOURCE):
         raise ValueError("native Harness source mode differs")
     original_plan = (json.dumps(stage.plan_for(base), sort_keys=True, indent=2) + "\n").encode()
+    if app_backend:
+        from app_schema_extension_inputs import derive_harness_sources
+
+        changes = derive_harness_sources({name.removeprefix("python/"): raw
+                                          for name, raw in base.items()})
+        base.update({"python/" + name: raw for name, raw in changes.items()})
     diagnostic_contract = None
     if schema_call_diagnostic:
         diagnostic_contract = derived.get("checkpoint_contract", {})
@@ -149,7 +183,10 @@ def bind(
         if (row is None or row["sha256"] != hashlib.sha256(data).hexdigest()
                 or row["destination"] != name.removeprefix("python/")):
             raise ValueError(f"actual component lacks current original source: {name}")
-    verify_producer_selection(artifact, build, plan, identity, diagnostic=schema_call_diagnostic)
+    verify_producer_selection(artifact, build, plan, identity, diagnostic=schema_call_diagnostic,
+                              app_backend=app_backend)
+    if app_backend:
+        verify_app_source_bindings(build, actual)
     if build["harness_native_dependencies"]["original_plan_sha256"] != hashlib.sha256(
         original_plan
     ).hexdigest():
@@ -192,7 +229,7 @@ def bind(
     index_path = output / "module-index.rs"
     index_path.write_bytes(header)
     launcher_receipt = None
-    if not schema_call_diagnostic:
+    if not schema_call_diagnostic and not app_backend:
         # Data only. A separately pinned copy of this receipt can be consumed
         # by the Launcher build; this CI verification does not enable release.
         launcher_receipt = output / "launcher-component.json"
@@ -235,6 +272,9 @@ def bind(
             "checkpoint_contract": diagnostic_contract,
             "whole_catalog_acceptance": False,
         })
+    if app_backend:
+        report.update(app_schema_backend=True, original_source_files_unchanged=False,
+                      actual_derived_source_index_verified=True, whole_catalog_acceptance=False)
     (output / "inputs.json").write_text(json.dumps(report, indent=2) + "\n")
     with github_env.open("a", encoding="utf-8") as stream:
         for name, value in env.items():
@@ -248,8 +288,10 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--github-env", type=Path, required=True)
     parser.add_argument("--schema-call-diagnostic", action="store_true")
+    parser.add_argument("--app-backend", action="store_true")
     args = parser.parse_args()
     print(json.dumps(bind(
         args.artifact, args.output, args.github_env,
         schema_call_diagnostic=args.schema_call_diagnostic,
+        app_backend=args.app_backend,
     ), sort_keys=True))

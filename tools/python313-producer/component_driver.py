@@ -106,8 +106,12 @@ def run() -> None:
             raise ValueError('native dependency source metadata changed')
         dependency_evidence = json.loads(selected)
         schema_diagnostic = dependencies.get('schema_call_diagnostic', False)
-        if type(schema_diagnostic) is not bool:
-            raise ValueError('schema diagnostic producer selection must be explicit')
+        app_backend = dependencies.get('app_schema_backend', False)
+        if (type(schema_diagnostic) is not bool or type(app_backend) is not bool
+                or (schema_diagnostic and app_backend)
+                or ('app_schema_backend' in dependency_evidence) is not app_backend
+                or (app_backend and dependency_evidence.get('original_source_files_unchanged') is not False)):
+            raise ValueError('native schema producer selection differs from its source')
         dependency_format = ('tobkiri.harness-native-schema-diagnostic-dependencies/1'
                              if schema_diagnostic else 'tobkiri.harness-native-dependencies/1')
         if (dependency_evidence['format'] != dependency_format

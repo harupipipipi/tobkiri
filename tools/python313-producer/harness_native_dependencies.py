@@ -192,6 +192,8 @@ def stage(
     schema_inputs: Path,
     stdlib: Path,
     rpds: Path,
+    *,
+    app_extension: tuple[Path, dict] | None = None,
 ) -> dict:
     """Extend only a freshly staged native plan; preserve all original bytes."""
     if inventory(destination) != original["files"]:
@@ -231,6 +233,14 @@ def stage(
         source_proof = validate({**component_sources, "provenance.json": component_provenance})
     elif source_proof.get("format") != "io.tobkiri.harness-native-component-source.v1":
         raise ValueError("diagnostic sources require the explicit diagnostic producer selection")
+    app_sources = None
+    if app_extension is not None:
+        if diagnostic:
+            raise ValueError("App provider and schema diagnostics are separate Harness variants")
+        from app_schema_extension_inputs import derive_harness_sources
+
+        app_sources = derive_harness_sources(files)
+        files.update(app_sources)
     modules, namespaces = _index(files)
     stdlib_preimports = _stdlib_preimports(files, modules)
     original_files = dict(files)
@@ -278,7 +288,18 @@ def stage(
             verified["extension"],
         ),
     )
-    add(ENTRYPOINT + ".py", _read(HERE / "harness_native/entry_wrapper.py"))
+    entrypoint = _read(HERE / "harness_native/entry_wrapper.py")
+    if app_extension is not None:
+        from app_schema_extension_inputs import (
+            EXTENSION, PROVIDER_FILES, SOURCE, derive_harness_entry,
+        )
+
+        artifact, extension_build = app_extension
+        add(EXTENSION, _read(artifact, extension_build["artifact"]))
+        for name, member in PROVIDER_FILES.items():
+            add(name, _read(SOURCE / member, extension_build["source_files"][member]))
+        entrypoint = derive_harness_entry(entrypoint)
+    add(ENTRYPOINT + ".py", entrypoint)
     add(
         "harness_native_captured_loader.py",
         _read(
@@ -337,7 +358,7 @@ def stage(
         "original_plan_sha256": original["plan_sha256"],
         "entrypoint": ENTRYPOINT,
         "original_entrypoint": "app",
-        "original_source_files_unchanged": not diagnostic,
+        "original_source_files_unchanged": not diagnostic and app_extension is None,
         "original_module_count": len(modules),
         "original_schema_count": len(schema_files),
         "captured_tree_files": len(tree_files),
@@ -380,6 +401,9 @@ def stage(
             "validation_derivation": source_proof["validation_derivation"],
             "provider_substitution": False, "whole_catalog_acceptance": False,
         })
+    if app_extension is not None:
+        proof["app_schema_backend"] = {"extension_build": extension_build,
+                                       "validation_results_prepared": False}
     metadata = (json.dumps(proof, sort_keys=True, indent=2) + "\n").encode()
     add(METADATA, metadata)
     if (
@@ -387,6 +411,12 @@ def stage(
         or sum(map(len, files.values())) + sum(map(len, additions.values())) > MAX_TOTAL
     ):
         raise ValueError("native dependency source capture exceeds original SDK bounds")
+    if app_sources is not None:
+        for item in plan["sources"]:
+            if item["destination"] in app_sources:
+                raw = app_sources[item["destination"]]
+                (destination / item["source"]).write_bytes(raw)
+                item["sha256"] = hashlib.sha256(raw).hexdigest()
     for name, raw in additions.items():
         source = "python/" + name
         target = destination / source
@@ -417,6 +447,8 @@ def stage(
     }
     if diagnostic:
         selected["harness_native_dependencies"]["schema_call_diagnostic"] = True
+    if app_extension is not None:
+        selected["harness_native_dependencies"]["app_schema_backend"] = True
     return selected
 
 

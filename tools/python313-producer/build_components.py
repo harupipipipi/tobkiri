@@ -21,6 +21,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         *, all_five: bool = False, harness_setup: bool = False,
         harness_native: bool = False,
         schema_call_diagnostic: bool = False,
+        harness_app_schema_backend: bool = False,
         native_input_stack: bool = False,
         native_input_stack_import_diagnostics: bool = False,
         native_thread_capabilities: bool = False,
@@ -60,10 +61,14 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             or (schema_call_diagnostic and (not harness_native
                 or any(path is None for path in (schema_inputs, stdlib, rpds))))):
         raise ValueError('schema-call diagnostic requires the whole native Harness and locked dependencies')
+    if (type(harness_app_schema_backend) is not bool
+            or (harness_app_schema_backend and (not harness_native or schema_call_diagnostic
+                or any(path is None for path in (schema_inputs, stdlib, rpds))))):
+        raise ValueError('App schema backend requires the whole native Harness and locked dependencies')
     app_data_mode = capability_projection or bundle_catalog or bundle_catalog_kernel
     if (bundle_catalog or bundle_catalog_kernel) != (bundle_cases is not None):
         raise ValueError('bundle catalog requires its separate original DATA input')
-    if bundle_catalog_kernel != (kernel_extension is not None):
+    if (bundle_catalog_kernel or harness_app_schema_backend) != (kernel_extension is not None):
         raise ValueError('separate kernel trial requires its actual extension build')
     if app_data_mode:
         if any(path is None for path in (schema_inputs, stdlib, rpds)):
@@ -129,6 +134,11 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         for path in (kernel_extension / 'extension-build.json',
                      kernel_extension / 'work/target/wasm32-wasip2/release/_tobkiri_schema_kernel.wasm'):
             identities[str(path)] = fingerprint(path, 4 * 1024 * 1024)
+    app_extension = None
+    if harness_app_schema_backend:
+        from app_schema_extension_inputs import verify_extension
+
+        app_extension = verify_extension(kernel_extension, ['app-schema-backend'])
         snapshots[str(HERE / 'schema_kernel')] = inventory(HERE / 'schema_kernel')
     empty = destination / 'empty-venv'
     empty.mkdir(mode=0o700)
@@ -156,6 +166,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         )
     elif native_input_stack:
         receipt_format = 'tobkiri.python313-native-input-stack-candidate/1'
+    elif harness_app_schema_backend:
+        receipt_format = 'tobkiri.python313-native-harness-app-frame/1'
     elif harness_native:
         receipt_format = ('tobkiri.python313-native-harness-schema-diagnostic/1'
                           if schema_call_diagnostic
@@ -199,6 +211,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     elif schema_call_diagnostic:
         receipt.update(diagnostic_only=True, whole_catalog_acceptance=False,
                        provider_substitution=False, baseline_component=False)
+    elif harness_app_schema_backend:
+        receipt.update(app_schema_backend=True, whole_catalog_acceptance=False,
+                       baseline_component=False)
     receipt_path = destination / 'components-build.json'
     if bundle_catalog_kernel:
         from bundle_catalog_kernel_inputs import component_name
@@ -216,6 +231,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         component_names = ('harness-input-stack-import-diagnostics',)
     elif native_input_stack:
         component_names = ('harness-input-stack',)
+    elif harness_app_schema_backend:
+        component_names = ('harness-native-app-frame',)
     elif harness_native:
         component_names = ('harness-native-schema-diagnostic' if schema_call_diagnostic
                            else 'harness-native',)
@@ -267,6 +284,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 plan_receipt = harness_native_dependencies.stage(
                     inputs, plan_receipt, dependency_inputs,
                     schema_inputs, stdlib, rpds,
+                    **({'app_extension': app_extension} if app_extension is not None else {}),
                 )
             snapshots[str(inputs)] = plan_receipt['files']
             control = output / 'control.json'
@@ -352,6 +370,7 @@ if __name__ == '__main__':
     mode.add_argument('--harness-setup', action='store_true')
     mode.add_argument('--harness-native', action='store_true')
     parser.add_argument('--schema-call-diagnostic', action='store_true')
+    parser.add_argument('--harness-app-schema-backend', action='store_true')
     mode.add_argument('--native-input-stack', action='store_true')
     mode.add_argument('--native-input-stack-import-diagnostics', action='store_true')
     mode.add_argument('--native-thread-capabilities', action='store_true')

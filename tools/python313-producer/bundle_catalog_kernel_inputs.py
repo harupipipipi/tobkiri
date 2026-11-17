@@ -3,11 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 
 from build_native import HERE, fingerprint
-from fetch_sdk import inventory
 from schema_kernel_translate import translate
 
 COMPONENT = 'harness-bundle-catalog-rust-kernel-native'
@@ -129,35 +127,16 @@ def derive(files: dict[str, bytes], entry: bytes, export: bytes,
            schema_progress: bool = False,
            schema_phases: bool = False) -> tuple[bytes, bytes, bytes, dict]:
     """Add only the actual kernel/adapter and declared pre-import translation."""
-    if (type(app_backend) is not bool
-            or os.environ.get('GITHUB_ACTIONS') != 'true'
-            or not extension_root.is_absolute()
-            or extension_root.resolve(strict=True) != extension_root):
-        raise ValueError('physical CI extension build required')
+    from app_schema_extension_inputs import APP_IMPORT, select_app_provider, verify_extension
+
     component_name(app_backend=app_backend, schema_progress=schema_progress,
                    schema_phases=schema_phases)
     features = ['app-schema-backend'] if app_backend else []
     if schema_phases:
         features.append('app-schema-phases')
+    artifact, report = verify_extension(extension_root, features)
     report_path = extension_root/'extension-build.json'
-    report = json.loads(report_path.read_bytes())
     source = HERE/'schema_kernel'
-    if (report.get('format') != 'tobkiri.app-schema-kernel-extension/1'
-            or report.get('outcome') != 'success'
-            or report.get('guest_executed') is not False
-            or report.get('production_enabled') is not False
-            or report.get('source_head') != os.environ.get('GITHUB_SHA')
-            or report.get('features') != features
-            or (schema_phases and set(report.get('compiled_features', ()))
-                != {'default', *features})
-            or report.get('source_files') != inventory(source)
-            or report.get('artifact_path')
-            != 'work/target/wasm32-wasip2/release/_tobkiri_schema_kernel.wasm'):
-        raise ValueError('actual source-built kernel derivation required')
-    artifact = extension_root/report['artifact_path']
-    if (artifact.resolve(strict=True) != artifact
-            or fingerprint(artifact, 4*1024*1024) != report['artifact']):
-        raise ValueError('actual Wasm kernel bytes differ')
     additions = ({} if schema_progress else {'bundle_catalog_kernel_runtime.py':
                  (HERE/'bundle_catalog/kernel_runtime.py').read_bytes()})
     changes = {}
@@ -178,11 +157,7 @@ def derive(files: dict[str, bytes], entry: bytes, export: bytes,
         additions['app_schema_model.py'] = (source/'app_schema_model.py').read_bytes()
         name = 'tobkiri_protocol/validation.py'
         original = files[name]
-        import_anchor = b'    from jsonschema import Draft202012Validator, FormatChecker, RefResolver\n'
-        replacement = b'    from app_schema_provider import AppSchemaProvider as Draft202012Validator\n    from jsonschema import FormatChecker, RefResolver\n'
-        if original.count(import_anchor) != 1:
-            raise ValueError('exact original App default selection anchor required')
-        derived = original.replace(import_anchor, replacement)
+        derived = select_app_provider(original)
         if schema_phases:
             additions['app_schema_phases.py'] = (
                 HERE/'bundle_catalog/schema_phases.py').read_bytes()
@@ -201,8 +176,8 @@ def derive(files: dict[str, bytes], entry: bytes, export: bytes,
                 'derived_sha256': identity(additions['app_schema_provider.py'])['sha256'],
             }
             derived = _replace_one(
-                derived, replacement,
-                replacement + b'    from app_schema_phases import bind_schema as _bind_schema\n')
+                derived, APP_IMPORT,
+                APP_IMPORT + b'    from app_schema_phases import bind_schema as _bind_schema\n')
             call = b'    try:\n        Draft202012Validator.check_schema(payload)\n'
             derived = _replace_one(derived, call,
                                    b'    _bind_schema(schema_name)\n' + call)

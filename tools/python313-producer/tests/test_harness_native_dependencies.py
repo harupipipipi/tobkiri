@@ -14,6 +14,7 @@ sys.path.insert(0, str(HERE))
 
 import component_inputs  # noqa: E402
 import build_components  # noqa: E402
+import app_schema_extension_inputs as app_schema  # noqa: E402
 import harness_native_dependencies as dependencies  # noqa: E402
 from fetch_sdk import inventory  # noqa: E402
 from schema_probe.captured_loader import Tree  # noqa: E402
@@ -75,6 +76,51 @@ def fixture(root):
 
 
 class NativeHarnessDependencyTests(unittest.TestCase):
+    def test_app_backend_stages_live_provider_and_only_derives_validation_and_index(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            stage = root / "native"
+            original = component_inputs.stage_harness_native(HERE.parents[1], stage)
+            before = {path: (stage / path).read_bytes() for path in original["files"]}
+            schema, stdlib, rpds, verified = fixture(root)
+            kernel = root / "kernel"
+            artifact = kernel / app_schema.ARTIFACT
+            artifact.parent.mkdir(parents=True)
+            artifact.write_bytes(b"\x00asm\x01\x00\x00\x00")
+            source_head = "source selected by CI"
+            extension_build = {"format": "tobkiri.app-schema-kernel-extension/1",
+                               "outcome": "success", "guest_executed": False,
+                               "production_enabled": False, "source_head": source_head,
+                               "features": ["app-schema-backend"],
+                               "compiled_features": ["app-schema-backend", "default"],
+                               "source_files": inventory(app_schema.SOURCE),
+                               "artifact_path": app_schema.ARTIFACT,
+                               "artifact": identity(artifact.read_bytes())}
+            (kernel / "extension-build.json").write_text(json.dumps(extension_build))
+            with patch.dict(app_schema.os.environ, {"GITHUB_ACTIONS": "true",
+                                                     "GITHUB_SHA": source_head}):
+                selected = app_schema.verify_extension(kernel, ["app-schema-backend"])
+                with self.assertRaisesRegex(ValueError, "source-built kernel derivation"):
+                    app_schema.verify_extension(kernel, ["app-schema-backend", "app-schema-phases"])
+                result = dependencies.stage(stage, original, verified, schema, stdlib, rpds,
+                                            app_extension=selected)
+                from harness_native_ci_inputs import verify_app_source_bindings
+
+                metadata = json.loads((stage / "python" / dependencies.METADATA).read_bytes())
+                source = {row["source"]: row for row in result["source_files"]}
+                verify_app_source_bindings({"harness_native_dependencies": metadata}, source)
+                bad_kernel = "python/" + app_schema.EXTENSION
+                with self.assertRaisesRegex(ValueError, "App dependency differs"):
+                    verify_app_source_bindings({"harness_native_dependencies": metadata},
+                                               {**source, bad_kernel: {**source[bad_kernel], "sha256": "wrong"}})
+            changed = {path for path, raw in before.items() if (stage / path).read_bytes() != raw}
+            self.assertEqual(changed, {"python/tobkiri_protocol/validation.py",
+                                       "python/harness_native_source_index.py", "plan.json"})
+            self.assertIn(b"from app_schema_provider import AppSchemaProvider as Draft202012Validator",
+                          (stage / "python/tobkiri_protocol/validation.py").read_bytes())
+            self.assertFalse(metadata["original_source_files_unchanged"])
+            self.assertFalse(metadata["app_schema_backend"]["validation_results_prepared"])
+
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")
         for enabled in (True, False):
