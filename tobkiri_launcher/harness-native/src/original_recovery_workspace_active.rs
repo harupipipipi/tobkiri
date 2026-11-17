@@ -6,6 +6,9 @@ use tobkiri_canon::{CoreBuffer, CoreValue};
 
 #[path = "original_recovery_profile_schema.rs"]
 mod profile_schema;
+#[path = "original_recovery_snapshot_graph.rs"]
+mod snapshot_graph;
+use snapshot_graph::{Snapshot, SnapshotRecords, View};
 
 pub(super) const POINTER_SCHEMA: &str = "io.tobkiri.defaultspack-active-pointer.v1";
 const ENVELOPE_SCHEMA: &str = "io.tobkiri.defaultspack-activation-envelope.v1";
@@ -58,16 +61,34 @@ pub(super) enum ProfileCheck {
     SourceUnavailable,
     ReferencesUnavailable,
     Validated,
+    #[cfg(test)]
     RecordsValidated,
+    NeedsArtifactReverification,
+    NeedsLegacySuccessor,
 }
 
 /// Read the selected records in the original order with the bound schema closure.
-pub(super) fn read<S: OriginalAuthorityOwner>(
+pub(super) fn read<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     state: &Directory,
     workspace_digest: &Digest,
     budget: &Arc<dyn AllocationBudget>,
     schemas: Option<BoundProfileSchemas>,
+    store: &crate::original_authority::io::Store<'_, '_, S>,
+    profile_id: &str,
+) -> Result<ActiveSnapshotPrefix> {
+    read_records(op, state, workspace_digest, budget, schemas, |snapshot| {
+        snapshot_graph::verify(op, store, budget, snapshot, profile_id)
+    })
+}
+
+fn read_records<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &Directory,
+    workspace_digest: &Digest,
+    budget: &Arc<dyn AllocationBudget>,
+    schemas: Option<BoundProfileSchemas>,
+    verify: impl FnOnce(Snapshot<'_>) -> Result<ProfileCheck>,
 ) -> Result<ActiveSnapshotPrefix> {
     let pointer = pending::read_state(op, state, Path::new("active.json"), "active pointer")?;
     if !exact(&pointer, pointer.root, &POINTER_KEYS) {
@@ -176,10 +197,22 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
         op,
         budget,
         schemas,
-        &profile,
-        &envelope,
-        [lock, plan, activation],
-        legacy,
+        SnapshotSelection {
+            profile: &profile,
+            envelope: &envelope,
+            pending: [lock, plan, activation],
+            legacy,
+        },
+        |records| {
+            verify(Snapshot {
+                records,
+                pointer: View {
+                    doc: &pointer,
+                    id: pointer.root,
+                },
+                legacy,
+            })
+        },
     )?;
     Ok(ActiveSnapshotPrefix {
         profile_schema: profile.name,
@@ -214,15 +247,26 @@ fn load_record_schema<S: OriginalAuthorityOwner>(
     Ok(data)
 }
 
+struct SnapshotSelection<'a> {
+    profile: &'a Record<'a>,
+    envelope: &'a Document,
+    pending: [usize; 3],
+    legacy: bool,
+}
+
 fn check_snapshot_records<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     schemas: Option<BoundProfileSchemas>,
-    profile: &Record<'_>,
-    envelope: &Document,
-    pending: [usize; 3],
-    legacy: bool,
+    selection: SnapshotSelection<'_>,
+    verify: impl FnOnce(SnapshotRecords<'_>) -> Result<ProfileCheck>,
 ) -> Result<ProfileCheck> {
+    let SnapshotSelection {
+        profile,
+        envelope,
+        pending,
+        legacy,
+    } = selection;
     let Some(schemas) = schemas else {
         return Ok(ProfileCheck::SourceUnavailable);
     };
@@ -237,12 +281,7 @@ fn check_snapshot_records<S: OriginalAuthorityOwner>(
     if schemas.get(LOCK_SCHEMAS[0].1).is_none() {
         return Ok(ProfileCheck::Validated);
     }
-    let mut all_legacy_versions = true;
-    for (id, kind) in
-        pending
-            .into_iter()
-            .zip([RecordKind::Lock, RecordKind::Plan, RecordKind::Activation])
-    {
+    let selected = |id, kind| {
         let record = select_record(op, budget, envelope, id, kind)?;
         let root = load_record_schema(op, budget, schemas, record.name)?;
         if matches!(kind, RecordKind::Plan) {
@@ -257,15 +296,25 @@ fn check_snapshot_records<S: OriginalAuthorityOwner>(
         } else {
             validate_record(op, budget, &record, &[&root, &common, &projection])?;
         }
-        all_legacy_versions &= record.legacy_version;
-    }
-    if legacy && !all_legacy_versions {
+        Ok::<_, OriginalAuthorityError>(record)
+    };
+    let [lock, plan, activation] = pending;
+    let lock = selected(lock, RecordKind::Lock)?;
+    let plan = selected(plan, RecordKind::Plan)?;
+    let activation = selected(activation, RecordKind::Activation)?;
+    if legacy && !(lock.legacy_version && plan.legacy_version && activation.legacy_version) {
         return Err(raw(
             APP_DENIED,
             "legacy activation versions do not form one record set",
         ));
     }
-    Ok(ProfileCheck::RecordsValidated)
+    drop((common, projection));
+    verify(SnapshotRecords {
+        profile: profile.view(),
+        lock: lock.view(),
+        plan: plan.view(),
+        activation: activation.view(),
+    })
 }
 
 fn validate_record<S: OriginalAuthorityOwner>(
@@ -358,6 +407,11 @@ impl Record<'_> {
             .as_deref()
             .map_or((self.envelope, self.id), |doc| (doc, doc.root))
     }
+
+    fn view(&self) -> View<'_> {
+        let (doc, id) = self.parts();
+        View { doc, id }
+    }
 }
 
 fn select_record<'a, S: OriginalAuthorityOwner>(
@@ -448,8 +502,12 @@ fn schema_failure(
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::original_authority::definitions::tests::{operation, with_source};
+    use crate::original_authority::definitions::tests::{
+        lock_free, operation, with_setup_source, with_source,
+    };
+    use rusqlite::{Connection, params};
     use serde_json::{Value, json};
+    use std::ops::ControlFlow;
 
     const NAME: &str = "selected.json";
 
@@ -589,7 +647,9 @@ pub(super) mod tests {
             schemas: Option<BoundProfileSchemas>,
         ) -> Result<ActiveSnapshotPrefix> {
             let state = Directory::capture(op, &self.directory, false)?;
-            read(op, &state, &self.workspace, budget, schemas)
+            read_records(op, &state, &self.workspace, budget, schemas, |_| {
+                Ok(ProfileCheck::RecordsValidated)
+            })
         }
     }
 
@@ -1004,6 +1064,105 @@ pub(super) mod tests {
         });
     }
 
+    fn with_snapshot(
+        records: &Value,
+        test: impl FnOnce(
+            &mut Fixture,
+            &Connection,
+            &mut dyn FnMut(&mut Fixture) -> Result<ActiveSnapshotPrefix>,
+        ),
+    ) {
+        let activation = &records["activation"];
+        let profile_id = activation["profile_id"].as_str().unwrap();
+        let lock_name = LockName::workspace(profile_id);
+        let schemas = RECOVERY_SCHEMAS
+            .bind(&Digest::parse(RECOVERY_SCHEMAS.component_sha256).unwrap())
+            .unwrap();
+        with_setup_source(|source, publication, cancellation, budget| {
+            let op = operation(publication, source, cancellation);
+            with_registered_store(&op, &source.root, |store| {
+                let workspace = source.root.join("workspaces").join(profile_id);
+                let mut fixture = Fixture::new(workspace.join("activation"));
+                let reader = super::super::recovery_workspace::RecoveryWorkspace::open(
+                    &op, &workspace, lock_name,
+                )?;
+                for field in ["profile", "lock", "plan", "activation"] {
+                    fixture.envelope[field] = records[field].clone();
+                }
+                fixture.pointer["activation_id"] = activation["activation_id"].clone();
+                let db = Connection::open(source.root.join("authority/v4.sqlite3")).unwrap();
+                db.execute(
+                    "INSERT INTO activation_reservations (
+                         reservation_id, activation_id, profile_id, plan_digest,
+                         profile_authority_digest, security_epoch, fencing_token,
+                         state, created_at, updated_at
+                     ) VALUES ('reservation:fixture', ?, ?, ?, ?, ?, ?, 'active', 1.0, 2.0)",
+                    params![
+                        activation["activation_id"].as_str().unwrap(),
+                        profile_id,
+                        activation["plan_digest"].as_str().unwrap(),
+                        activation["profile_authority_snapshot_digest"]
+                            .as_str()
+                            .unwrap(),
+                        activation["security_epoch"].as_i64().unwrap(),
+                        activation["fencing_token"].as_i64().unwrap(),
+                    ],
+                )
+                .unwrap();
+                db.execute(
+                    "UPDATE authority_meta SET value=? WHERE key='security_epoch'",
+                    [activation["security_epoch"].as_i64().unwrap().to_string()],
+                )
+                .unwrap();
+                let lock = fixture.directory.join(lock_name.text());
+                let mut capture = |saved: &mut Fixture| {
+                    let snapshot = reader.recover(&op, |state, digest, pending| {
+                        assert!(pending.is_none());
+                        assert!(!lock_free(&lock));
+                        saved.pointer["workspace_digest"] = json!(digest.as_str());
+                        saved.envelope["workspace_digest"] = json!(digest.as_str());
+                        saved.write();
+                        read(&op, state, digest, budget, Some(schemas), store, profile_id)
+                            .map(ControlFlow::<(), _>::Continue)
+                    });
+                    assert!(lock_free(&lock));
+                    snapshot.map(|result| result.continue_value().expect("active snapshot"))
+                };
+                test(&mut fixture, &db, &mut capture);
+                Ok(())
+            })
+            .unwrap();
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn verifies_frozen_legacy_records_with_the_live_store_and_epoch() {
+        let records: Value = serde_json::from_slice(include_bytes!(
+            "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
+        ))
+        .unwrap();
+        with_snapshot(&records, |fixture, db, capture| {
+            assert_eq!(
+                capture(fixture).unwrap().check,
+                ProfileCheck::NeedsLegacySuccessor
+            );
+            db.execute(
+                "UPDATE activation_reservations SET fencing_token=fencing_token+1",
+                [],
+            )
+            .unwrap();
+            assert_eq!(
+                capture(fixture).unwrap_err().message,
+                "legacy activation Authority record is unavailable"
+            );
+            db.execute("UPDATE authority_meta SET value=CAST(value AS INTEGER)+1 WHERE key='security_epoch'", []).unwrap();
+            assert_eq!(
+                capture(fixture).unwrap_err().message,
+                "legacy activation predecessor is stale or tampered"
+            );
+        });
+    }
+
     #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires current records from the original packaged Profile resolver"]
     async fn validates_original_packaged_profile_records_within_store_budget() {
@@ -1019,25 +1178,39 @@ pub(super) mod tests {
             let record = field.strip_suffix("_api_version").unwrap();
             assert_eq!(records[record][field], id);
         }
-        let schemas = RECOVERY_SCHEMAS
-            .bind(&Digest::parse(RECOVERY_SCHEMAS.component_sha256).unwrap())
-            .unwrap();
-        with_source(|source, read, cancellation, budget| {
-            let op = operation(read, source, cancellation);
-            let mut fixture = Fixture::new(source.root.join("activation"));
-            for field in ["profile", "lock", "plan", "activation"] {
-                fixture.envelope[field] = records[field].clone();
-            }
-            fixture.write();
+        with_snapshot(&records, |fixture, db, capture| {
             assert_eq!(
-                fixture
-                    .read_with_schemas(&op, budget, Some(schemas))
-                    .unwrap(),
+                capture(fixture).unwrap(),
                 ActiveSnapshotPrefix {
                     profile_schema: "profile_v5.schema.json",
                     legacy: false,
-                    check: ProfileCheck::RecordsValidated,
+                    check: ProfileCheck::NeedsArtifactReverification,
                 }
+            );
+            fixture.pointer["activation_id"] = json!("activation:different-candidate");
+            assert_eq!(
+                capture(fixture).unwrap_err().message,
+                "active pointer selects another activation"
+            );
+            fixture.pointer["activation_id"] = records["activation"]["activation_id"].clone();
+            for (record, field, message) in [
+                (
+                    "profile",
+                    "display_name",
+                    "ProfileLock or ResolvedPlan is stale",
+                ),
+                ("plan", "plan_digest", "ResolvedPlan digest is stale"),
+                ("lock", "lock_digest", "ProfileLock digest is stale"),
+            ] {
+                let old = fixture.envelope[record][field].take();
+                fixture.envelope[record][field] = json!(Digest::hash(b"different data").as_str());
+                assert_eq!(capture(fixture).unwrap_err().message, message);
+                fixture.envelope[record][field] = old;
+            }
+            db.execute("UPDATE authority_meta SET value=CAST(value AS INTEGER)+1 WHERE key='security_epoch'", []).unwrap();
+            assert_eq!(
+                capture(fixture).unwrap_err().message,
+                "active activation authority, fence, or SecurityEpoch is stale"
             );
         });
     }

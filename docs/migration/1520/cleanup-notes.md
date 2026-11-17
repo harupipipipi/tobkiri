@@ -3970,3 +3970,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   では42スキーマを最後まで読み、標本からRegistry約2.85億、URI約1.93億 fuelと推定した。
   同一Storeの実loaderでは既存Rust samplerとApp backendを一緒に検証する明示的なモードが
   必要。前回の `launcher-staging` は、fixtureが圧縮DATAを含む前の `22f6f0c74` で停止した。
+- 復旧の現行レコードはProfile・Plan・Lockの実digestから照合し、元の順序で内容投影、成果物の
+  選択集合、Authority bindings、Activation ID・予約・fencing token・SecurityEpochを確認する。
+  bindingごとにPlan全体を走査する元の処理を、重複を保持する予算付きの借用索引に置き換えた。
+  closure digestは2つの既存subtreeを順番にhashへ渡し、複製したJSON成果物を保持しない。
+  中立投影は退役時のdigest walkerを共用し、保持したディレクトリのハンドルから辿る。Pack由来投影は
+  署名済みの採用元と宣言されたファイル一覧の再検証が必要なため、その箇所で止める。
+  旧版も元のdigest、実SQLiteの予約、epochとAuthority参照を照合する。後続は旧版の
+  successor生成・発行と、現行のロック解放後の成果物再検証・Host公開。
+  現行の再検証後にはロックを取り直して4レコードとAuthorityの読み直しが必要。
+  既存の `RecoveryCatalogInputs` の成果物検査を再利用し、元の再承認例外と期限を保つ。
+  Rust本体190件とPython生成の現行fixture 1件を実行し、後者は実SQLite予約とロックも通過。
+  Pythonとの比較では3種のdigest不一致と、中立投影の内容変更・別名・symlinkの診断も一致した。

@@ -1,4 +1,4 @@
-//! Fixed neutral projection inventory for the original definition migration.
+//! Physical neutral projection inventory for migration and activation recovery.
 use super::*;
 use sha2::{Digest as _, Sha256};
 use std::{ffi::CStr, io::Read};
@@ -48,9 +48,15 @@ pub(super) const RETIREMENTS: [Retirement; 4] = [
 ];
 
 const ROOT_UNAVAILABLE: &str = "Profile projection root is unavailable";
+const UNSAFE_ROOT: &str = "Profile projection path is unsafe";
 const CHANGED: &str = "Profile projection changed while being read";
 const PATH_BYTES: usize = 8192;
 const DEPTH: usize = 128;
+
+enum RootStep<'a> {
+    Retirement,
+    Persisted(Option<&'a [u8]>),
+}
 
 pub(super) fn inventory<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
@@ -58,41 +64,136 @@ pub(super) fn inventory<S: OriginalAuthorityOwner>(
     directory: &str,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<(Digest, usize)> {
+    let (runtime, _paths) = selected_runtime(op, runtime)?;
+    let neutral = runtime.join("profile_projections");
+    let selected = neutral.join(directory);
+    inventory_at(
+        op,
+        &runtime,
+        &selected,
+        budget,
+        false,
+        |parent, inventory| {
+            with_root(
+                op,
+                parent,
+                &neutral,
+                c"profile_projections",
+                RootStep::Retirement,
+                |projection| {
+                    let name = CString::new(directory).map_err(capacity)?;
+                    with_root(
+                        op,
+                        projection,
+                        &selected,
+                        &name,
+                        RootStep::Retirement,
+                        |directory| inventory.walk(directory, 0),
+                    )
+                },
+            )
+        },
+    )
+}
+
+/// Verify a normalized neutral artifact root selected by a persisted activation.
+/// Only the original Host supplies `runtime`; artifact components never resolve links.
+pub(in crate::original_authority::io::publication) fn persisted_neutral_inventory<
+    S: OriginalAuthorityOwner,
+>(
+    op: &Operation<'_, S>,
+    runtime: &Path,
+    normalized_relative: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<(Digest, usize)> {
+    let relative = normalized_relative.as_os_str().as_bytes();
+    if relative.len() > PATH_BYTES {
+        return Err(capacity(()));
+    }
+    let components = relative.split(|byte| *byte == b'/');
+    if components.clone().next() != Some(b"profile_projections".as_slice())
+        || components
+            .clone()
+            .any(|part| part.is_empty() || part == b"." || part == b".." || part.contains(&0))
+    {
+        return Err(projection_error(UNSAFE_ROOT));
+    }
+    if components.clone().count() > DEPTH {
+        return Err(capacity(()));
+    }
+    let (runtime, _paths) = selected_runtime(op, runtime)?;
+    let selected = runtime.join(normalized_relative);
+    if selected.as_os_str().len() > PATH_BYTES {
+        return Err(capacity(()));
+    }
+    inventory_at(
+        op,
+        &runtime,
+        &selected,
+        budget,
+        true,
+        |parent, inventory| {
+            walk_roots(parent, &runtime, components.peekable(), inventory)?;
+            // Re-observe the canonical Host root as well as the relative roots
+            // checked while walk_roots unwinds its anchored descriptors.
+            op.check(OriginalAuthorityStage::Source)?;
+            let current = Parent::walk(&runtime, &op.cleanup)?;
+            let compare = (|| {
+                let observed = parent.metadata().map_err(|error| raw_io(error, None))?;
+                let current = current.metadata().map_err(|error| raw_io(error, None))?;
+                if identity(&observed) != identity(&current) {
+                    return Err(projection_error(CHANGED));
+                }
+                Ok(())
+            })();
+            finish_scope(
+                compare,
+                current.close().map_err(|error| raw_io(error, None)),
+            )
+        },
+    )
+}
+
+fn selected_runtime<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    runtime: &Path,
+) -> Result<(PathBuf, NativeSetupReservation)> {
     if runtime.as_os_str().len() > PATH_BYTES {
         return Err(capacity(()));
     }
-    let _paths = op.reserve(OriginalAuthorityStage::Source, 12 * PATH_BYTES)?;
+    let paths = op.reserve(OriginalAuthorityStage::Source, 12 * PATH_BYTES)?;
+    // As in the original module's RUNTIME_ROOT, resolve the Host path once
+    // before walking any projection component with O_NOFOLLOW.
     let runtime = fs::canonicalize(runtime).map_err(|error| raw_io(error, runtime.to_str()))?;
     if runtime.as_os_str().len() > PATH_BYTES {
         return Err(capacity(()));
     }
+    Ok((runtime, paths))
+}
+
+fn inventory_at<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    runtime: &Path,
+    selected: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+    skip_unreadable: bool,
+    visit: impl FnOnce(&TrackedFile, &mut Inventory<'_, '_, S>) -> Result<()>,
+) -> Result<(Digest, usize)> {
     let mut scratch = String::new();
     scratch.try_reserve_exact(PATH_BYTES).map_err(capacity)?;
     if scratch.capacity() != PATH_BYTES {
         return Err(capacity(()));
     }
-    let neutral = runtime.join("profile_projections");
-    let selected = neutral.join(directory);
     let mut inventory = Inventory {
         op,
         budget,
         files: CoreValue::array_builder_incremental(budget, MAX_BYTES).map_err(capacity)?,
         relative: scratch,
-        root: &selected,
+        root: selected,
+        skip_unreadable,
     };
-    let runtime = Parent::walk(&runtime, &op.cleanup)?;
-    let result = with_root(
-        op,
-        &runtime,
-        &neutral,
-        c"profile_projections",
-        |projection| {
-            let name = CString::new(directory).map_err(capacity)?;
-            with_root(op, projection, &selected, &name, |directory| {
-                inventory.walk(directory, 0)
-            })
-        },
-    );
+    let runtime = Parent::walk(runtime, &op.cleanup)?;
+    let result = visit(&runtime, &mut inventory);
     finish_scope(result, runtime.close().map_err(|error| raw_io(error, None)))?;
     let count = inventory.files.len();
     if count == 0 {
@@ -103,13 +204,40 @@ pub(super) fn inventory<S: OriginalAuthorityOwner>(
     Ok((digest, count))
 }
 
-fn with_root<S: OriginalAuthorityOwner, T>(
+fn walk_roots<'a, S: OriginalAuthorityOwner>(
+    parent: &TrackedFile,
+    path: &Path,
+    mut parts: std::iter::Peekable<impl Iterator<Item = &'a [u8]>>,
+    inventory: &mut Inventory<'_, '_, S>,
+) -> Result<()> {
+    let Some(part) = parts.next() else {
+        return inventory.walk(parent, 0);
+    };
+    let op = inventory.op;
+    let _stack = op.reserve(OriginalAuthorityStage::Source, 4096)?;
+    let length = path.as_os_str().len().saturating_add(part.len() + 1);
+    let _path = op.reserve(OriginalAuthorityStage::Source, length.saturating_mul(2))?;
+    let path = path.join(std::ffi::OsStr::from_bytes(part));
+    let name = CString::new(part).map_err(capacity)?;
+    let next = parts.peek().copied();
+    with_root(
+        op,
+        parent,
+        &path,
+        &name,
+        RootStep::Persisted(next),
+        |directory| walk_roots(directory, &path, parts, inventory),
+    )
+}
+
+fn with_root<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     parent: &TrackedFile,
     path: &Path,
     name: &CStr,
-    visit: impl FnOnce(&TrackedFile) -> Result<T>,
-) -> Result<T> {
+    step: RootStep<'_>,
+    visit: impl FnOnce(&TrackedFile) -> Result<()>,
+) -> Result<()> {
     op.check(OriginalAuthorityStage::Source)?;
     let stat = stat_at(parent, name).map_err(|error| {
         caused(
@@ -123,31 +251,77 @@ fn with_root<S: OriginalAuthorityOwner, T>(
         ));
     }
     if stat.st_mode & libc::S_IFMT != libc::S_IFDIR {
-        return Err(projection_error(ROOT_UNAVAILABLE));
+        let error = projection_error(ROOT_UNAVAILABLE);
+        return Err(match step {
+            // Python lstat accepts this leaf, then gets ENOTDIR at the next
+            // component. Preserve that inner error without opening the leaf.
+            RootStep::Persisted(Some(next)) => caused(
+                error,
+                raw_io(
+                    std::io::Error::from_raw_os_error(libc::ENOTDIR),
+                    path.join(std::ffi::OsStr::from_bytes(next)).to_str(),
+                ),
+            ),
+            _ => error,
+        });
     }
-    let dir = open_at(op, parent, name, libc::O_DIRECTORY).map_err(|error| {
-        caused(
-            projection_error(ROOT_UNAVAILABLE),
-            raw_io(error, path.to_str()),
-        )
-    })?;
+    let flags = if matches!(step, RootStep::Persisted(Some(_))) {
+        SEARCH_DIR
+    } else {
+        libc::O_DIRECTORY
+    };
+    let dir = match open_at(op, parent, name, flags) {
+        Ok(dir) => dir,
+        // The original rglob skips unreadable directories. Repeat lstat to
+        // distinguish an unchanged unreadable root from a replaced one.
+        Err(error)
+            if matches!(step, RootStep::Persisted(None))
+                && error.kind() == std::io::ErrorKind::PermissionDenied =>
+        {
+            let current = stat_at(parent, name)
+                .map_err(|error| caused(projection_error(CHANGED), raw_io(error, path.to_str())))?;
+            return unchanged_unreadable(&stat, &current);
+        }
+        Err(error) => {
+            let next_path = match step {
+                RootStep::Persisted(Some(next))
+                    if error.kind() == std::io::ErrorKind::PermissionDenied =>
+                {
+                    Some(path.join(std::ffi::OsStr::from_bytes(next)))
+                }
+                _ => None,
+            };
+            return Err(caused(
+                projection_error(ROOT_UNAVAILABLE),
+                raw_io(error, next_path.as_deref().unwrap_or(path).to_str()),
+            ));
+        }
+    };
     let outcome = (|| {
         let observed = dir
             .metadata()
             .map_err(|error| caused(projection_error(ROOT_UNAVAILABLE), raw_io(error, None)))?;
         check_directory_identity(&observed, &stat)?;
-        let output = visit(&dir)?;
+        visit(&dir)?;
         let current = stat_at(parent, name).map_err(|error| {
             caused(
                 projection_error(ROOT_UNAVAILABLE),
                 raw_io(error, path.to_str()),
             )
         })?;
-        check_directory_identity(&observed, &current)?;
-        Ok(output)
+        check_directory_identity(&observed, &current)
     })();
     finish_scope(outcome, dir.close().map_err(|error| raw_io(error, None)))
 }
+
+// lstat of a deeper path requires search permission, while inventory requires
+// opening the final directory for listing. Keep those permissions separate.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+const SEARCH_DIR: i32 = libc::O_PATH | libc::O_DIRECTORY;
+#[cfg(target_vendor = "apple")]
+const SEARCH_DIR: i32 = libc::O_SEARCH;
+#[cfg(not(any(target_os = "linux", target_os = "android", target_vendor = "apple")))]
+const SEARCH_DIR: i32 = libc::O_DIRECTORY;
 
 struct Inventory<'a, 'op, S> {
     op: &'a Operation<'op, S>,
@@ -155,6 +329,7 @@ struct Inventory<'a, 'op, S> {
     files: CoreArrayBuilder,
     relative: String,
     root: &'a Path,
+    skip_unreadable: bool,
 }
 
 impl<S: OriginalAuthorityOwner> Inventory<'_, '_, S> {
@@ -244,8 +419,18 @@ impl<S: OriginalAuthorityOwner> Inventory<'_, '_, S> {
         match stat.st_mode & libc::S_IFMT {
             libc::S_IFLNK => Err(projection_error("Profile projection contains a symlink")),
             libc::S_IFDIR => {
-                let child = open_at(self.op, directory, name, libc::O_DIRECTORY)
-                    .map_err(|error| self.changed(error, true))?;
+                let child = match open_at(self.op, directory, name, libc::O_DIRECTORY) {
+                    Ok(child) => child,
+                    Err(error)
+                        if self.skip_unreadable
+                            && error.kind() == std::io::ErrorKind::PermissionDenied =>
+                    {
+                        let current =
+                            stat_at(directory, name).map_err(|error| self.changed(error, true))?;
+                        return unchanged_unreadable(&stat, &current);
+                    }
+                    Err(error) => return Err(self.changed(error, true)),
+                };
                 let outcome = (|| {
                     let identity = child
                         .metadata()
@@ -417,6 +602,22 @@ fn check_directory_identity(opened: &fs::Metadata, current: &libc::stat) -> Resu
         || opened.ino() != current.st_ino
         || current.st_mode & libc::S_IFMT != libc::S_IFDIR
     {
+        return Err(projection_error(CHANGED));
+    }
+    Ok(())
+}
+
+fn unchanged_unreadable(before: &libc::stat, current: &libc::stat) -> Result<()> {
+    let identity = |stat: &libc::stat| {
+        (
+            stat.st_dev,
+            stat.st_ino,
+            stat.st_mode,
+            stat.st_ctime,
+            stat.st_ctime_nsec,
+        )
+    };
+    if identity(before) != identity(current) {
         return Err(projection_error(CHANGED));
     }
     Ok(())

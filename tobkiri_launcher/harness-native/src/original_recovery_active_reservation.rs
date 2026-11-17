@@ -1,6 +1,5 @@
 //! Read the original active reservation for publication recovery.
 use super::*;
-#[cfg(test)]
 use crate::original_authority::io::incomplete_reservations::{Row, own_row};
 use crate::original_authority::io::{ActiveReservation, Database, Store};
 use rusqlite::types::Value;
@@ -37,7 +36,6 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
 
 /// Read the five fields consumed by snapshot validation, in comparison order.
 /// An absent column remains distinct from a column containing SQL NULL.
-#[cfg(test)] // The production caller follows persisted snapshot record validation.
 pub(super) fn read_snapshot_binding<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     store: &Store<'_, '_, S>,

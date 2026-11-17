@@ -21,6 +21,8 @@ mod inactive_registration_ci;
 #[cfg(unix)]
 #[path = "original_profile_definitions_projection_io.rs"]
 mod projection_io;
+#[cfg(unix)]
+pub(super) use projection_io::persisted_neutral_inventory;
 #[cfg(all(test, unix))]
 #[path = "original_publication_begin_ci.rs"]
 mod publication_begin_ci;

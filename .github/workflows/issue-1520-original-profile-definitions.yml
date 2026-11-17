@@ -17,6 +17,8 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_recovery_authority.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace_active.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_snapshot_graph*.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_snapshot_projections.rs
       - tobkiri_launcher/harness-native/src/original_recovery_profile_schema.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending_reservation.rs
@@ -195,7 +197,7 @@ jobs:
       - name: Check the locked workspace active pointer and bound snapshot records
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 7 --
+          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 8 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::tests::
           -- --test-threads=1 --nocapture
@@ -216,6 +218,13 @@ jobs:
           --log "$RUNNER_TEMP/native-recovery-profile-schema.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::profile_schema::tests::
+          -- --test-threads=1 --nocapture
+      - name: Check recovered activation bindings and physical neutral projections
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-recovery-snapshot-graph.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::recovery_authority::workspace_active::snapshot_graph::
           -- --test-threads=1 --nocapture
       - name: Check atomic activation aborts and the authenticated audit chain
         run: >-
@@ -347,6 +356,7 @@ jobs:
             ${{ runner.temp }}/native-recovery-workspace.log*
             ${{ runner.temp }}/native-recovery-workspace-active.log*
             ${{ runner.temp }}/native-recovery-profile-schema.log*
+            ${{ runner.temp }}/native-recovery-snapshot-graph.log*
             ${{ runner.temp }}/native-recovery-active-reservation.log*
             ${{ runner.temp }}/native-recovery-schema-cause.log*
             ${{ runner.temp }}/native-recovery-incomplete.log*

@@ -20,7 +20,8 @@ pub(crate) enum RecoveryAuthorityReached {
     LoadActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     CheckActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     LoadActiveSnapshotLockSchema { legacy: bool },
-    ValidateActiveSnapshotRecordGraph { legacy: bool },
+    VerifyActiveSnapshotArtifact,
+    BuildLegacyActivationSuccessor,
     MissingPublishedAuthority,
     RecoveredNone,
     MatchedReservation,
@@ -128,7 +129,9 @@ impl PublicationRead {
                                 }
                                 let snapshot = read_snapshot
                                     .then(|| {
-                                        let snapshot = workspace_active::read(&op, state, workspace_digest, budget, profile_schemas)?;
+                                        let snapshot = workspace_active::read(
+                                            &op, state, workspace_digest, budget, profile_schemas, store, profile_id,
+                                        )?;
                                         let name = snapshot.profile_schema;
                                         let legacy = snapshot.legacy;
                                         Ok(match snapshot.check {
@@ -138,8 +141,13 @@ impl PublicationRead {
                                                 RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema { name, legacy },
                                             workspace_active::ProfileCheck::Validated =>
                                                 RecoveryAuthorityReached::LoadActiveSnapshotLockSchema { legacy },
+                                            workspace_active::ProfileCheck::NeedsArtifactReverification =>
+                                                RecoveryAuthorityReached::VerifyActiveSnapshotArtifact,
+                                            workspace_active::ProfileCheck::NeedsLegacySuccessor =>
+                                                RecoveryAuthorityReached::BuildLegacyActivationSuccessor,
+                                            #[cfg(test)]
                                             workspace_active::ProfileCheck::RecordsValidated =>
-                                                RecoveryAuthorityReached::ValidateActiveSnapshotRecordGraph { legacy },
+                                                unreachable!("production snapshot read uses the graph validator"),
                                         })
                                     })
                                     .transpose()?;
