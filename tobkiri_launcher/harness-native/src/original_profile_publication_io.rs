@@ -737,19 +737,31 @@ impl Directory {
         &self,
         op: &Operation<'_, S>,
     ) -> Result<()> {
-        let parent = self.parent(op, Path::new(JOURNAL))?;
+        self.unlink_if_present(op, Path::new(JOURNAL))
+    }
+
+    pub(super) fn unlink_if_present<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        relative: &Path,
+    ) -> Result<()> {
+        let parent = self.parent(op, relative)?;
         let result = (|| {
-            let directory = parent.files.last().expect("journal parent");
-            let Some(before) = Self::stat(directory, JOURNAL, false)? else {
+            let directory = parent.files.last().expect("entry parent");
+            let name = parent
+                .name
+                .to_str()
+                .map_err(|_| OriginalAuthorityError::unavailable())?;
+            let Some(before) = Self::stat(directory, name, false)? else {
                 return Ok(());
             };
-            let current = Self::stat(directory, JOURNAL, true)?.expect("required journal");
+            let current = Self::stat(directory, name, true)?.expect("required entry");
             if current.fingerprint != before.fingerprint {
                 return Err(secure_error("persistence entry changed before unlink"));
             }
             op.check(OriginalAuthorityStage::Source)?;
             if unsafe { libc::unlinkat(directory.as_raw_fd(), parent.name.as_ptr(), 0) } != 0 {
-                return Err(raw_io(std::io::Error::last_os_error(), Some(JOURNAL)));
+                return Err(raw_io(std::io::Error::last_os_error(), Some(name)));
             }
             // A failed fsync follows an actual unlink. It is neither rolled
             // back nor reported as a read-only/ordinary successful recovery.

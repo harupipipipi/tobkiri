@@ -1,13 +1,17 @@
 //! The AuthorityStore context at the original nonstale publication caller.
 use super::*;
 use crate::original_authority::io::incomplete_reservations;
+use tobkiri_canon::AllocationBudget;
 #[path = "original_recovery_active_reservation.rs"]
 mod active_reservation;
+#[path = "original_recovery_pending_reservation.rs"]
+mod pending_reservation;
 
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    ReadPendingActivationReservation,
+    LoadCommittedActivationEnvelope,
+    AbortPendingActivationReservation,
     WorkspaceRecovered,
     LoadActiveSnapshot,
     MissingPublishedAuthority,
@@ -23,6 +27,7 @@ impl PublicationRead {
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
+        budget: &Arc<dyn AllocationBudget>,
     ) -> Result<RecoveryAuthorityReached> {
         self.check_continuation_thread()?;
         let receipt = self.receipt();
@@ -74,7 +79,12 @@ impl PublicationRead {
                         &op,
                         &workspace.path,
                         workspace.lock_name,
-                        || {
+                        |state, journal| {
+                            if let Some(journal) = journal {
+                                return pending_reservation::recover(
+                                    &op, store, state, journal, profile_id, budget,
+                                );
+                            }
                             let rows = incomplete_reservations::read(&op, store, profile_id)?;
                             Ok(if rows.is_empty() {
                                 RecoveryAuthorityReached::WorkspaceRecovered
@@ -250,7 +260,7 @@ mod tests {
             ("dangling", RecoveryAuthorityReached::RecoveredNone),
             ("loop", RecoveryAuthorityReached::RecoveredNone),
         ] {
-            with_setup_source(|source, read, cancellation, _| {
+            with_setup_source(|source, read, cancellation, budget| {
                 enter(source, read, cancellation);
                 let workspace = source.root.join("workspaces").join(PROFILE_ID);
                 fs::create_dir(workspace.parent().unwrap()).unwrap();
@@ -263,7 +273,8 @@ mod tests {
                 }
                 assert!(!source.root.join("authority").exists());
                 assert_eq!(
-                    read.run_recovery_authority(source, cancellation).unwrap(),
+                    read.run_recovery_authority(source, cancellation, budget)
+                        .unwrap(),
                     expected
                 );
                 let db = Connection::open(source.root.join(DATABASE)).unwrap();
@@ -278,7 +289,10 @@ mod tests {
                 );
                 db.close().unwrap();
                 assert!(source.root.join("authority/v4.key").is_file());
-                assert!(read.run_recovery_authority(source, cancellation).is_err());
+                assert!(
+                    read.run_recovery_authority(source, cancellation, budget)
+                        .is_err()
+                );
                 verify_custody(
                     source,
                     read,
@@ -290,8 +304,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn recovery_authority_reaches_pending_reservation_and_preserves_publication_custody() {
-        with_setup_source(|source, read, cancellation, _| {
+    async fn recovery_authority_denies_a_missing_pending_row_without_touching_the_journal() {
+        with_setup_source(|source, read, cancellation, budget| {
             enter(source, read, cancellation);
             let workspace = source.root.join("workspaces").join(PROFILE_ID);
             let state = workspace.join("activation");
@@ -317,9 +331,13 @@ mod tests {
             fs::write(&pending, &data).unwrap();
             let lock = state.join(LockName::workspace(PROFILE_ID).text());
 
+            let error = read
+                .run_recovery_authority(source, cancellation, budget)
+                .unwrap_err();
+            assert_eq!(error.class, recovery_workspace::APP_DENIED);
             assert_eq!(
-                read.run_recovery_authority(source, cancellation).unwrap(),
-                RecoveryAuthorityReached::ReadPendingActivationReservation
+                error.message,
+                "pending authority reservation is unavailable"
             );
             assert_eq!(fs::read(pending).unwrap(), data);
             assert!(lock_free(&lock));
@@ -328,12 +346,140 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn pending_recovery_checks_live_binding_before_branching_or_unlinking() {
+        for (state, profile, fence, envelope, expected) in [
+            (
+                "active",
+                PROFILE_ID,
+                "+１",
+                "pinned.json",
+                Ok(RecoveryAuthorityReached::LoadCommittedActivationEnvelope),
+            ),
+            (
+                "committing",
+                PROFILE_ID,
+                "1",
+                "pinned.json",
+                Ok(RecoveryAuthorityReached::AbortPendingActivationReservation),
+            ),
+            (
+                "aborted",
+                PROFILE_ID,
+                "1",
+                "pinned.json",
+                Ok(RecoveryAuthorityReached::RecoveredNone),
+            ),
+            (
+                "active",
+                "another-profile",
+                "1",
+                "../pinned.json",
+                Err("pending activation authority binding changed"),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "2",
+                "../pinned.json",
+                Err("pending activation authority binding changed"),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "1",
+                "../pinned.json",
+                Err("pending activation envelope path is invalid"),
+            ),
+            (
+                "retired",
+                PROFILE_ID,
+                "1",
+                "pinned.json",
+                Err("pending activation has an invalid authority state"),
+            ),
+        ] {
+            with_setup_source(|source, read, cancellation, budget| {
+                enter(source, read, cancellation);
+                initialize(source, read, cancellation);
+                let workspace = source.root.join("workspaces").join(PROFILE_ID);
+                let state_root = workspace.join("activation");
+                fs::create_dir_all(state_root.join("activations")).unwrap();
+                let stored_envelope = state_root.join("activations").join("pinned.json");
+                let other_envelope = state_root.join("activations").join("different.json");
+                fs::write(
+                    &stored_envelope,
+                    b"only this envelope belongs to the pending activation",
+                )
+                .unwrap();
+                fs::write(&other_envelope, b"existing unrelated envelope").unwrap();
+                let lock = state_root.join(LockName::workspace(PROFILE_ID).text());
+                let digest = tobkiri_canon::digest(
+                    &object([(
+                        "workspace_root",
+                        CanonValue::Str(
+                            workspace
+                                .canonicalize()
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .to_owned(),
+                        ),
+                    )]),
+                    tobkiri_canon::Variant::StrictV1,
+                )
+                .unwrap();
+                let pending = state_root.join("pending.json");
+                let data = serde_json::to_vec(&serde_json::json!({
+                    "schema": "io.tobkiri.defaultspack-pending-activation.v1",
+                    "reservation_id": "reservation:1",
+                    "activation_id": ACTIVATION_ID,
+                    "envelope_path": envelope,
+                    "envelope_digest": null,
+                    "workspace_digest": digest.as_str(),
+                    "fencing_token": fence,
+                }))
+                .unwrap();
+                fs::write(&pending, &data).unwrap();
+                let db = Connection::open(source.root.join(DATABASE)).unwrap();
+                insert(&db, 1, ACTIVATION_ID, state);
+                db.execute("UPDATE activation_reservations SET profile_id=?", [profile])
+                    .unwrap();
+                db.close().unwrap();
+
+                let result = read.run_recovery_authority(source, cancellation, budget);
+                let cleared = expected == Ok(RecoveryAuthorityReached::RecoveredNone);
+                match expected {
+                    Ok(next) => assert_eq!(result.unwrap(), next),
+                    Err(message) => {
+                        let error = result.unwrap_err();
+                        assert_eq!(error.class, recovery_workspace::APP_DENIED);
+                        assert_eq!(error.message, message);
+                        assert!(error.cause.is_none());
+                    }
+                }
+                assert_eq!(stored_envelope.exists(), !cleared);
+                assert_eq!(
+                    fs::read(other_envelope).unwrap(),
+                    b"existing unrelated envelope"
+                );
+                if cleared {
+                    assert!(!pending.exists());
+                } else {
+                    assert_eq!(fs::read(pending).unwrap(), data);
+                }
+                assert!(lock_free(&lock));
+                verify_custody(source, read, cancellation, cleared);
+            });
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn recovery_authority_preserves_constructor_failure_and_closes_the_held_lock() {
-        with_setup_source(|source, read, cancellation, _| {
+        with_setup_source(|source, read, cancellation, budget| {
             enter(source, read, cancellation);
             fs::create_dir_all(source.root.join(DATABASE)).unwrap();
             assert_eq!(
-                read.run_recovery_authority(source, cancellation)
+                read.run_recovery_authority(source, cancellation, budget)
                     .unwrap_err()
                     .class,
                 "core_runtime.authority.store_contracts.AuthorityStoreError"
@@ -357,7 +503,7 @@ mod tests {
                 RecoveryAuthorityReached::ReadIncompleteActivationReservations,
             ),
         ] {
-            with_setup_source(|source, read, cancellation, _| {
+            with_setup_source(|source, read, cancellation, budget| {
                 enter(source, read, cancellation);
                 let workspace = source.root.join("workspaces").join(PROFILE_ID);
                 fs::create_dir_all(&workspace).unwrap();
@@ -372,7 +518,8 @@ mod tests {
                 db.close().unwrap();
 
                 assert_eq!(
-                    read.run_recovery_authority(source, cancellation).unwrap(),
+                    read.run_recovery_authority(source, cancellation, budget)
+                        .unwrap(),
                     expected
                 );
                 let lock = workspace
@@ -387,7 +534,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn recovery_authority_uses_exact_activation_id_and_active_state() {
         for matches in 0..=2 {
-            with_setup_source(|source, read, cancellation, _| {
+            with_setup_source(|source, read, cancellation, budget| {
                 enter(source, read, cancellation);
                 initialize(source, read, cancellation);
                 let db = Connection::open(source.root.join(DATABASE)).unwrap();
@@ -409,7 +556,7 @@ mod tests {
                     insert(&db, 20 + i, ACTIVATION_ID, "active");
                 }
                 db.close().unwrap();
-                let result = read.run_recovery_authority(source, cancellation);
+                let result = read.run_recovery_authority(source, cancellation, budget);
                 match matches {
                     0 => assert_eq!(result.unwrap(), RecoveryAuthorityReached::RecoveredNone),
                     1 => assert_eq!(
@@ -453,7 +600,7 @@ mod tests {
             (r#""activation_id": true, "#, false, Ok(MatchedReservation)),
             (r#""activation_id": null, "#, false, Ok(RecoveredNone)),
         ] {
-            with_setup_source(|source, read, cancellation, _| {
+            with_setup_source(|source, read, cancellation, budget| {
                 let candidate = format!(r#"{{{id}"profile_id": "{PROFILE_ID}"}}"#);
                 enter_candidate(source, read, cancellation, &candidate);
                 initialize(source, read, cancellation);
@@ -465,7 +612,7 @@ mod tests {
                 if workspace_exists {
                     fs::create_dir_all(workspace).unwrap();
                 }
-                let result = read.run_recovery_authority(source, cancellation);
+                let result = read.run_recovery_authority(source, cancellation, budget);
                 match expected {
                     Ok(expected) => assert_eq!(result.unwrap(), expected),
                     Err((class, message)) => {
@@ -490,7 +637,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn recovery_authority_wraps_a_sqlite_reservation_read_failure() {
-        with_setup_source(|source, read, cancellation, _| {
+        with_setup_source(|source, read, cancellation, budget| {
             enter(source, read, cancellation);
             initialize(source, read, cancellation);
             let db = Connection::open(source.root.join(DATABASE)).unwrap();
@@ -503,7 +650,7 @@ mod tests {
             .unwrap();
             db.close().unwrap();
             let error = read
-                .run_recovery_authority(source, cancellation)
+                .run_recovery_authority(source, cancellation, budget)
                 .unwrap_err();
             assert_eq!(error.stage, OriginalAuthorityStage::ActiveReservation);
             assert_eq!(

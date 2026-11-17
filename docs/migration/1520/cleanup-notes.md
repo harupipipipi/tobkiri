@@ -3838,3 +3838,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   錠を閉じてからactive予約を照合し、該当なしで未公開の場合はpublicationを復旧する。
   SQLiteの未使用列も元と同様に変換を確認し、後で読むIDとstateだけを確保する。
   pendingの予約照合、未完了予約のabort・監査、active snapshotの照合が残る。
+- `eb23f183e` は、検証済み実行定義の比較式とPackの所有を保ち、先行比較で指摘された
+  Clippy 2件を修正した。 `d0ff57263` は、組み込み文字列の `#` 参照で元のbaseと
+  CPythonの `ref[1:]` を直接使い、先行していたURI解析を省く。Unicode、単一文字の
+  同一性、本来調べないbaseを含む比較を155件から160件に増やした。実Wasmでの効果は未計測。
+- 保留記録の形を確認した後、同じactivation lockの内側で実Authorityの元の
+  `SELECT * WHERE reservation_id=?` と照合する。未完了一覧と同じ列変換を使い、
+  `fetchone` のタイミングを保ったまま後続処理で使う列だけを確保する。既に中止済みなら
+  元の順序で保留ファイルと対応するenvelopeだけを削除し、通常の復旧へ戻る。
+  中止のAuthority更新と監査、コミット済みenvelopeの照合、active snapshotは未移植。

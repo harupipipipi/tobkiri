@@ -563,6 +563,15 @@ struct Meter<'a, 'op, S> {
     op: &'a Operation<'op, S>,
     budget: &'a Arc<dyn AllocationBudget>,
 }
+/// Render a value from strict Authority JSON using the original built-in str().
+pub(in super::super) fn render_python_str<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    doc: &Document,
+    id: usize,
+) -> Result<tobkiri_canon::CoreBuffer> {
+    successor_selection::python_str(doc, id, &mut Meter { op, budget })
+}
 impl<S: OriginalAuthorityOwner> UnicodeWork for Meter<'_, '_, S> {
     type Error = OriginalAuthorityError;
     fn charge_work(&mut self, work: u64) -> Result<()> {

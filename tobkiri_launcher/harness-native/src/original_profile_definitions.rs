@@ -13,6 +13,8 @@ mod candidate_selection_tests;
 #[cfg(unix)]
 #[path = "original_profile_definitions_model.rs"]
 mod definitions_model;
+#[cfg(unix)]
+pub(super) use definitions_model::render_python_str;
 #[cfg(all(test, unix))]
 #[path = "original_inactive_registration_ci.rs"]
 mod inactive_registration_ci;

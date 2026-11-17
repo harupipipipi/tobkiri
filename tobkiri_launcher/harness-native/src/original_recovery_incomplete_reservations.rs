@@ -1,15 +1,21 @@
-//! The original fetchall before any activation recovery transitions.
+//! The original reservation queries before activation recovery transitions.
 use super::*;
 use rusqlite::ffi;
 use std::{ffi::CStr, ptr::NonNull};
 
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::IncompleteReservation;
+const PENDING: OriginalAuthorityStage = OriginalAuthorityStage::PendingReservation;
 const SQL: &CStr = c"SELECT * FROM activation_reservations WHERE profile_id=? AND state IN ('prepared', 'ready_without_authority', 'committing') ORDER BY fencing_token";
+const PENDING_SQL: &CStr = c"SELECT * FROM activation_reservations WHERE reservation_id=?";
+const INVENTORY_FIELDS: [&[u8]; 2] = [b"reservation_id", b"state"];
+pub(in crate::original_authority::io) const BINDING_FIELDS: [&str; 4] =
+    ["activation_id", "fencing_token", "profile_id", "state"];
 
 // Only these dictionary entries are used by _recover_locked. Keep SQLite
 // values intact until Python's subsequent str() calls are migrated. None means
 // the original dictionary has no such key, which is not a fetchall error.
 type Entry = [Option<Value>; 2]; // reservation_id, state
+pub(in crate::original_authority::io) type ReservationBinding = [Option<Value>; 4];
 
 #[derive(Default)]
 pub(in crate::original_authority::io) struct Inventory {
@@ -26,17 +32,6 @@ impl Inventory {
         op: &Operation<'_, S>,
         values: [Option<ValueRef<'_>>; 2],
     ) -> Result<()> {
-        let bytes = values
-            .iter()
-            .flatten()
-            .try_fold(0usize, |acc, item| {
-                acc.checked_add(match item {
-                    ValueRef::Text(text) | ValueRef::Blob(text) => text.len(),
-                    _ => 0,
-                })
-            })
-            .ok_or_else(|| OriginalAuthorityError::capacity(STAGE))?;
-        let capacity = op.reserve(STAGE, bytes)?;
         if self.rows.len() == self.rows.capacity() {
             let count = self
                 .rows
@@ -56,11 +51,7 @@ impl Inventory {
             }
             self.vector_capacity = Some(permit);
         }
-        let [id, state] = values.map(|value| value.map(own).transpose());
-        self.rows.push(Funded {
-            value: [id?, state?],
-            _capacity: capacity,
-        });
+        self.rows.push(own_row(op, STAGE, values)?);
         Ok(())
     }
 }
@@ -78,6 +69,35 @@ pub(in crate::original_authority::io) fn read<S: OriginalAuthorityOwner>(
         .map_err(|error| wrap_sqlite(error, "activation recovery inventory failed"))
 }
 
+pub(in crate::original_authority::io) fn read_pending<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    store: &Store<'_, '_, S>,
+    reservation_id: &str,
+) -> Result<Option<Funded<ReservationBinding>>> {
+    let db = store
+        .connection(PENDING)
+        .map_err(|error| wrap_sqlite(error, "authority database is unavailable"))?;
+    let row = (|| {
+        db.validate()?;
+        // The transient text binding is released with the statement.
+        let _binding = op.reserve(PENDING, reservation_id.len())?;
+        let mut query = Query::prepare(db.connection(), PENDING_SQL, PENDING)?;
+        query.bind_text(reservation_id)?;
+        let has_row = query.step()?;
+        let fields = query.fields(BINDING_FIELDS.map(str::as_bytes))?;
+        if !has_row {
+            return Ok(None);
+        }
+        let row = own_row(op, PENDING, query.convert_row(fields)?)?;
+        // CPython fetchone constructs the first row, then advances the
+        // statement once before returning it. It does not convert row two.
+        query.step()?;
+        Ok(Some(row))
+    })();
+    db.complete(row)
+        .map_err(|error| wrap_sqlite(error, "activation reservation read failed"))
+}
+
 fn fetch_all<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     db: &Database<'_, '_, '_, S>,
@@ -85,13 +105,13 @@ fn fetch_all<S: OriginalAuthorityOwner>(
 ) -> Result<Inventory> {
     db.validate()?;
     let connection = db.connection();
-    let query = Query::prepare(connection)?;
+    let query = Query::prepare(connection, SQL, STAGE)?;
     // Drop the SQLite transient copy before returning its capacity permit.
     let (_bind_capacity, mut query) = (op.reserve(STAGE, profile_id.len())?, query);
-    query.bind_profile(profile_id)?;
+    query.bind_text(profile_id)?;
     // CPython executes one step before it assembles the cursor description.
     let mut has_row = query.step()?;
-    let fields = query.fields()?;
+    let fields = query.fields(INVENTORY_FIELDS)?;
     let mut inventory = Inventory::default();
     while has_row {
         op.check(STAGE)?;
@@ -102,7 +122,33 @@ fn fetch_all<S: OriginalAuthorityOwner>(
     Ok(inventory)
 }
 
-fn own(value: ValueRef<'_>) -> Result<Value> {
+fn own_row<S: OriginalAuthorityOwner, const N: usize>(
+    op: &Operation<'_, S>,
+    stage: OriginalAuthorityStage,
+    values: [Option<ValueRef<'_>>; N],
+) -> Result<Funded<[Option<Value>; N]>> {
+    let bytes = values
+        .iter()
+        .flatten()
+        .try_fold(0usize, |acc, item| {
+            acc.checked_add(match item {
+                ValueRef::Text(text) | ValueRef::Blob(text) => text.len(),
+                _ => 0,
+            })
+        })
+        .ok_or_else(|| OriginalAuthorityError::capacity(stage))?;
+    let capacity = op.reserve(stage, bytes)?;
+    let mut row = std::array::from_fn(|_| None);
+    for (destination, source) in row.iter_mut().zip(values) {
+        *destination = source.map(|value| own(stage, value)).transpose()?;
+    }
+    Ok(Funded {
+        value: row,
+        _capacity: capacity,
+    })
+}
+
+fn own(stage: OriginalAuthorityStage, value: ValueRef<'_>) -> Result<Value> {
     Ok(match value {
         ValueRef::Null => Value::Null,
         ValueRef::Integer(value) => Value::Integer(value),
@@ -111,7 +157,7 @@ fn own(value: ValueRef<'_>) -> Result<Value> {
             let mut bytes = Vec::new();
             bytes
                 .try_reserve_exact(value.len())
-                .map_err(|_| OriginalAuthorityError::capacity(STAGE))?;
+                .map_err(|_| OriginalAuthorityError::capacity(stage))?;
             bytes.extend_from_slice(value);
             Value::Blob(bytes)
         }
@@ -119,7 +165,7 @@ fn own(value: ValueRef<'_>) -> Result<Value> {
             let value = std::str::from_utf8(value).expect("already validated SQLite row text");
             let mut text = String::new();
             text.try_reserve_exact(value.len())
-                .map_err(|_| OriginalAuthorityError::capacity(STAGE))?;
+                .map_err(|_| OriginalAuthorityError::capacity(stage))?;
             text.push_str(value);
             Value::Text(text)
         }
@@ -127,45 +173,56 @@ fn own(value: ValueRef<'_>) -> Result<Value> {
 }
 
 // Read name bytes without rusqlite::Statement::column_name, which panics if
-// a legacy/corrupt schema cannot decode as UTF-8. The one constant statement
+// a legacy/corrupt schema cannot decode as UTF-8. Each constant statement
 // stays on the guarded connection and the handle cannot escape this module.
 struct Query<'a> {
     connection: &'a Connection,
     statement: NonNull<ffi::sqlite3_stmt>,
+    stage: OriginalAuthorityStage,
 }
 impl<'a> Query<'a> {
-    fn prepare(connection: &'a Connection) -> Result<Self> {
+    fn prepare(
+        connection: &'a Connection,
+        sql: &'static CStr,
+        stage: OriginalAuthorityStage,
+    ) -> Result<Self> {
         let mut statement = std::ptr::null_mut();
         // SAFETY: The connection is live; SQL is a static, NUL-terminated C
         // string. SQLite sets the statement pointer to null on failure.
         let rc = unsafe {
             ffi::sqlite3_prepare_v2(
                 connection.handle(),
-                SQL.as_ptr(),
+                sql.as_ptr(),
                 -1,
                 &mut statement,
                 std::ptr::null_mut(),
             )
         };
         if rc != ffi::SQLITE_OK {
-            return Err(sql_error(connection, rc));
+            return Err(sql_error(stage, connection, rc));
         }
         Ok(Self {
             connection,
             statement: NonNull::new(statement).expect("fixed SQL is a statement"),
+            stage,
         })
     }
 
-    fn bind_profile(&self, profile_id: &str) -> Result<()> {
-        let size = i32::try_from(profile_id.len())
-            .map_err(|_| raw("builtins.OverflowError", "string longer than INT_MAX bytes"))?;
+    fn bind_text(&self, text: &str) -> Result<()> {
+        let size = i32::try_from(text.len()).map_err(|_| {
+            raw(
+                self.stage,
+                "builtins.OverflowError",
+                "string longer than INT_MAX bytes",
+            )
+        })?;
         // SAFETY: Statement is live during this call. SQLite immediately owns
         // its funded transient copy, including any interior NUL in the ID.
         let rc = unsafe {
             ffi::sqlite3_bind_text(
                 self.statement.as_ptr(),
                 1,
-                profile_id.as_ptr().cast(),
+                text.as_ptr().cast(),
                 size,
                 ffi::SQLITE_TRANSIENT(),
             )
@@ -173,7 +230,7 @@ impl<'a> Query<'a> {
         if rc == ffi::SQLITE_OK {
             Ok(())
         } else {
-            Err(sql_error(self.connection, rc))
+            Err(sql_error(self.stage, self.connection, rc))
         }
     }
 
@@ -183,7 +240,7 @@ impl<'a> Query<'a> {
         match unsafe { ffi::sqlite3_step(self.statement.as_ptr()) } {
             ffi::SQLITE_ROW => Ok(true),
             ffi::SQLITE_DONE => Ok(false),
-            rc => Err(sql_error(self.connection, rc)),
+            rc => Err(sql_error(self.stage, self.connection, rc)),
         }
     }
 
@@ -192,30 +249,35 @@ impl<'a> Query<'a> {
         unsafe { ffi::sqlite3_column_count(self.statement.as_ptr()) }
     }
 
-    fn fields(&self) -> Result<[Option<i32>; 2]> {
-        let mut fields = [None; 2];
+    fn fields<const N: usize>(&self, names: [&[u8]; N]) -> Result<[Option<i32>; N]> {
+        let mut fields = [None; N];
         for column in 0..self.columns() {
             let name = self.name(column)?;
             if let Err(error) = name.to_str() {
-                return Err(invalid_utf8(name.to_bytes(), error));
+                return Err(invalid_utf8(self.stage, name.to_bytes(), error));
             }
-            match name.to_bytes() {
-                b"reservation_id" => fields[0] = Some(column),
-                b"state" => fields[1] = Some(column),
-                _ => (),
+            if let Some(index) = names.iter().position(|&field| field == name.to_bytes()) {
+                fields[index] = Some(column);
             }
         }
         Ok(fields)
     }
 
-    fn convert_row(&self, fields: [Option<i32>; 2]) -> Result<[Option<ValueRef<'_>>; 2]> {
-        let mut selected = [None; 2];
+    fn convert_row<const N: usize>(
+        &self,
+        fields: [Option<i32>; N],
+    ) -> Result<[Option<ValueRef<'_>>; N]> {
+        let mut selected = [None; N];
         for column in 0..self.columns() {
             let value = self.value(column)?;
             if let ValueRef::Text(text) = value
                 && std::str::from_utf8(text).is_err()
             {
-                return Err(invalid_cell_text(self.name(column)?.to_bytes(), text));
+                return Err(invalid_cell_text(
+                    self.stage,
+                    self.name(column)?.to_bytes(),
+                    text,
+                ));
             }
             for (index, field) in fields.iter().enumerate() {
                 if *field == Some(column) {
@@ -231,7 +293,7 @@ impl<'a> Query<'a> {
         // live until the next step/finalize, both requiring exclusive ownership.
         let pointer = unsafe { ffi::sqlite3_column_name(self.statement.as_ptr(), column) };
         if pointer.is_null() {
-            return Err(raw("builtins.MemoryError", ""));
+            return Err(raw(self.stage, "builtins.MemoryError", ""));
         }
         Ok(unsafe { CStr::from_ptr(pointer) })
     }
@@ -256,7 +318,7 @@ impl<'a> Query<'a> {
                     if pointer.is_null()
                         && ffi::sqlite3_errcode(self.connection.handle()) == ffi::SQLITE_NOMEM
                     {
-                        return Err(raw("builtins.MemoryError", ""));
+                        return Err(raw(self.stage, "builtins.MemoryError", ""));
                     }
                     let len = ffi::sqlite3_column_bytes(statement, column);
                     let bytes = if len > 0 && !pointer.is_null() {
@@ -282,9 +344,13 @@ impl Drop for Query<'_> {
     }
 }
 
-fn sql_error(connection: &Connection, rc: i32) -> OriginalAuthorityError {
+fn sql_error(
+    stage: OriginalAuthorityStage,
+    connection: &Connection,
+    rc: i32,
+) -> OriginalAuthorityError {
     if rc & 0xff == ffi::SQLITE_NOMEM {
-        return raw("builtins.MemoryError", "");
+        return raw(stage, "builtins.MemoryError", "");
     }
     // SAFETY: The connection stays live and no intervening SQLite operation
     // invalidates the error string while it is copied.
@@ -294,11 +360,11 @@ fn sql_error(connection: &Connection, rc: i32) -> OriginalAuthorityError {
         let message = CStr::from_ptr(ffi::sqlite3_errmsg(handle));
         match message.to_str() {
             Ok(message) => (message.to_owned(), code),
-            Err(error) => return invalid_utf8(message.to_bytes(), error),
+            Err(error) => return invalid_utf8(stage, message.to_bytes(), error),
         }
     };
     OriginalAuthorityError::raw_sql(
-        STAGE,
+        stage,
         rusqlite::Error::SqliteFailure(
             ffi::Error::new(if code & 0xff == rc & 0xff { code } else { rc }),
             Some(message),
@@ -306,13 +372,21 @@ fn sql_error(connection: &Connection, rc: i32) -> OriginalAuthorityError {
     )
 }
 
-fn raw(class: &'static str, message: impl Into<String>) -> OriginalAuthorityError {
+fn raw(
+    stage: OriginalAuthorityStage,
+    class: &'static str,
+    message: impl Into<String>,
+) -> OriginalAuthorityError {
     let mut error = json::raw_error(class, message);
-    error.stage = STAGE;
+    error.stage = stage;
     error
 }
 
-fn invalid_cell_text(column: &[u8], text: &[u8]) -> OriginalAuthorityError {
+fn invalid_cell_text(
+    stage: OriginalAuthorityStage,
+    column: &[u8],
+    text: &[u8],
+) -> OriginalAuthorityError {
     // CPython's 200-byte buffer passes 199 to snprintf, then decodes ASCII
     // with replacement; both C string arguments terminate at their first NUL.
     let text = text.split(|&byte| byte == 0).next().unwrap_or_default();
@@ -334,10 +408,14 @@ fn invalid_cell_text(column: &[u8], text: &[u8]) -> OriginalAuthorityError {
         }
     })
     .collect();
-    raw("sqlite3.OperationalError", message)
+    raw(stage, "sqlite3.OperationalError", message)
 }
 
-fn invalid_utf8(bytes: &[u8], error: std::str::Utf8Error) -> OriginalAuthorityError {
+fn invalid_utf8(
+    stage: OriginalAuthorityStage,
+    bytes: &[u8],
+    error: std::str::Utf8Error,
+) -> OriginalAuthorityError {
     let start = error.valid_up_to();
     let (size, reason) = match error.error_len() {
         None => (bytes.len() - start, "unexpected end of data"),
@@ -361,7 +439,7 @@ fn invalid_utf8(bytes: &[u8], error: std::str::Utf8Error) -> OriginalAuthorityEr
             start + size - 1
         )
     };
-    raw("builtins.UnicodeDecodeError", message)
+    raw(stage, "builtins.UnicodeDecodeError", message)
 }
 
 fn wrap_sqlite(error: OriginalAuthorityError, message: &'static str) -> OriginalAuthorityError {
@@ -401,10 +479,10 @@ mod tests {
                     ('ok', 'prepared', 4, 'p', 'different-profile');",
             )
             .unwrap();
-        let mut query = Query::prepare(&connection).unwrap();
-        query.bind_profile("p\0q").unwrap();
+        let mut query = Query::prepare(&connection, SQL, STAGE).unwrap();
+        query.bind_text("p\0q").unwrap();
         assert!(query.step().unwrap());
-        let fields = query.fields().unwrap();
+        let fields = query.fields(INVENTORY_FIELDS).unwrap();
         for (id, state) in [
             (ValueRef::Integer(999), b"prepared".as_slice()),
             (ValueRef::Blob(b"\0\xfe"), b"committing"),
@@ -433,10 +511,10 @@ mod tests {
                     ('ok', 'prepared', 3, 'p', 'valid');",
             )
             .unwrap();
-        let mut query = Query::prepare(&connection).unwrap();
-        query.bind_profile("p").unwrap();
+        let mut query = Query::prepare(&connection, SQL, STAGE).unwrap();
+        query.bind_text("p").unwrap();
         assert!(query.step().unwrap());
-        let fields = query.fields().unwrap();
+        let fields = query.fields(INVENTORY_FIELDS).unwrap();
         assert_eq!(
             query.convert_row(fields).unwrap()[0],
             Some(ValueRef::Text(b"valid"))
@@ -471,8 +549,8 @@ mod tests {
                         'p' AS profile_id, 'r' AS reservation_id;",
             )
             .unwrap();
-        let mut query = Query::prepare(&connection).unwrap();
-        query.bind_profile("p").unwrap();
+        let mut query = Query::prepare(&connection, SQL, STAGE).unwrap();
+        query.bind_text("p").unwrap();
         let error = wrap_sqlite(
             query.step().unwrap_err(),
             "activation recovery inventory failed",

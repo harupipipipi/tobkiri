@@ -5,7 +5,8 @@ use tobkiri_canon::Variant;
 #[path = "original_recovery_pending.rs"]
 mod pending;
 
-const APP_DENIED: &str = "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied";
+pub(crate) const APP_DENIED: &str =
+    "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied";
 
 /// Run the reached activation recovery branch under the original App lock,
 /// while Authority and the publication guard are live.
@@ -13,16 +14,16 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     workspace: &Path,
     lock_name: LockName,
-    on_absent: impl FnOnce() -> Result<RecoveryAuthorityReached>,
+    on_state: impl FnOnce(&Directory, Option<&Document>) -> Result<RecoveryAuthorityReached>,
 ) -> Result<RecoveryAuthorityReached> {
     let (state, workspace_digest) = initialize(op, workspace)?;
     let mut guard = PublicationLock::acquire_named(op, &state, lock_name)?;
     let result = (|| {
-        if state.exists(op, pending::NAME)? {
-            pending::read(op, &state, &workspace_digest)?;
-            return Ok(RecoveryAuthorityReached::ReadPendingActivationReservation);
-        }
-        let reached = on_absent()?;
+        let pending = state
+            .exists(op, pending::NAME)?
+            .then(|| pending::read(op, &state, &workspace_digest))
+            .transpose()?;
+        let reached = on_state(&state, pending.as_deref())?;
         // The post-yield identity check runs only after normal completion of
         // the original body. Read boundaries and exceptions skip it.
         if reached == RecoveryAuthorityReached::WorkspaceRecovered {
@@ -115,7 +116,7 @@ mod tests {
         workspace: &Path,
         name: LockName,
     ) -> Result<RecoveryAuthorityReached> {
-        recover(op, workspace, name, || {
+        recover(op, workspace, name, |_, _| {
             Ok(RecoveryAuthorityReached::ReadIncompleteActivationReservations)
         })
     }
@@ -234,7 +235,7 @@ mod tests {
             let op = operation(read, source, cancellation);
 
             assert_eq!(
-                recover(&op, &workspace, name, || {
+                recover(&op, &workspace, name, |_, _| {
                     assert!(!lock_free(&lock));
                     Ok(RecoveryAuthorityReached::WorkspaceRecovered)
                 })
@@ -284,7 +285,7 @@ mod tests {
                 let data = serde_json::to_vec(&value).unwrap();
                 fs::write(&pending, &data).unwrap();
                 let error =
-                    recover(&op, &workspace, name, || panic!("journal exists")).unwrap_err();
+                    recover(&op, &workspace, name, |_, _| panic!("journal exists")).unwrap_err();
                 assert_eq!(error.class, APP_DENIED);
                 assert_eq!(error.message, "pending activation journal is invalid");
                 assert!(error.cause.is_none());
@@ -295,8 +296,12 @@ mod tests {
             let data = serde_json::to_vec(&valid).unwrap();
             fs::write(&pending, &data).unwrap();
             assert_eq!(
-                recover(&op, &workspace, name, || panic!("journal exists")).unwrap(),
-                RecoveryAuthorityReached::ReadPendingActivationReservation
+                recover(&op, &workspace, name, |_, journal| {
+                    assert!(journal.is_some());
+                    Ok(RecoveryAuthorityReached::LoadCommittedActivationEnvelope)
+                })
+                .unwrap(),
+                RecoveryAuthorityReached::LoadCommittedActivationEnvelope
             );
             assert_eq!(fs::read(&pending).unwrap(), data);
             assert_eq!(fs::read_dir(&state).unwrap().count(), 2);
@@ -332,7 +337,7 @@ mod tests {
             ] {
                 fs::write(&pending, data).unwrap();
                 let error =
-                    recover(&op, &workspace, name, || panic!("journal exists")).unwrap_err();
+                    recover(&op, &workspace, name, |_, _| panic!("journal exists")).unwrap_err();
                 assert_eq!(error.class, APP_DENIED);
                 assert_eq!(
                     error.message,
@@ -381,7 +386,7 @@ mod tests {
             fs::write(&pending, b"{}").unwrap();
             fs::set_permissions(&pending, fs::Permissions::from_mode(0o000)).unwrap();
 
-            let result = recover(&op, &workspace, name, || panic!("journal exists"));
+            let result = recover(&op, &workspace, name, |_, _| panic!("journal exists"));
             fs::set_permissions(&pending, fs::Permissions::from_mode(0o600)).unwrap();
             let error = result.unwrap_err();
             assert_eq!(error.class, APP_DENIED);

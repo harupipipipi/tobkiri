@@ -17,6 +17,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_recovery_authority.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_pending_reservation.rs
       - tobkiri_launcher/harness-native/src/original_recovery_incomplete_reservations.rs
       - tobkiri_launcher/harness-native/src/original_recovery_active_reservation.rs
       - tobkiri_launcher/harness-native/src/bootstrap_catalog.rs
@@ -160,7 +161,7 @@ jobs:
       - name: Check original Authority initialization and workspace recovery
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 7 --
+          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 8 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::tests::
           -- --test-threads=1 --nocapture

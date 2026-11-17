@@ -716,12 +716,16 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         bail!("recovery catalog was not replaced");
     }
     use crate::original_authority::RecoveryAuthorityReached;
-    let boundary = match review
-        .read
-        .run_recovery_authority(&pack.work.get().source, pack.cancellation)
-    {
-        Ok(RecoveryAuthorityReached::ReadPendingActivationReservation) => {
-            BootstrapReviewReachpoint::RecoveryPendingActivationReservationNotBound
+    let boundary = match review.read.run_recovery_authority(
+        &pack.work.get().source,
+        pack.cancellation,
+        pack.input_budget,
+    ) {
+        Ok(RecoveryAuthorityReached::LoadCommittedActivationEnvelope) => {
+            BootstrapReviewReachpoint::RecoveryCommittedActivationEnvelopeNotBound
+        }
+        Ok(RecoveryAuthorityReached::AbortPendingActivationReservation) => {
+            BootstrapReviewReachpoint::RecoveryAbortPendingActivationReservationNotBound
         }
         Ok(RecoveryAuthorityReached::ReadIncompleteActivationReservations) => {
             BootstrapReviewReachpoint::RecoveryAbortIncompleteActivationReservationsNotBound
@@ -878,6 +882,20 @@ async fn registry_failure<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     caller: ReviewCaller,
     error: crate::OriginalAuthorityError,
 ) -> Result<BootstrapReviewFailure> {
+    #[cfg(unix)]
+    if error.class == crate::original_authority::RECOVERY_APP_DENIED
+        && error.cause.is_none()
+        && error.context.is_none()
+    {
+        return review_continuation::denied(
+            review,
+            pack,
+            caller,
+            &error.message,
+            BootstrapDeniedRaise::Plain,
+        )
+        .await;
+    }
     let Some(cause) =
         recovery_cause::project(&error, &pack.work.get().invocation, pack.input_budget)?
     else {

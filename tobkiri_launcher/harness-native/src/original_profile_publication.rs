@@ -38,6 +38,8 @@ mod recovery_authority;
 mod recovery_workspace;
 #[cfg(unix)]
 pub(crate) use recovery_authority::RecoveryAuthorityReached;
+#[cfg(unix)]
+pub(crate) use recovery_workspace::APP_DENIED as RECOVERY_APP_DENIED;
 
 const JOURNAL: &str = "bootstrap-publication.json";
 const LOCK: &str = ".bootstrap-publication.lock";

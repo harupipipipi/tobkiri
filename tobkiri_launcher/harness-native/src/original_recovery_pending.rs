@@ -18,7 +18,7 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &Directory,
     workspace_digest: &Digest,
-) -> Result<()> {
+) -> Result<Funded<Document>> {
     let bytes = state
         .read(op, NAME)
         .map_err(|error| read_error(op, error))?;
@@ -33,8 +33,7 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
     {
         return Err(raw(APP_DENIED, "pending activation journal is invalid"));
     }
-    // The other values are interpreted after this shape check in the original.
-    Ok(())
+    Ok(doc)
 }
 
 fn read_error<S: OriginalAuthorityOwner>(

@@ -12,8 +12,6 @@ mod crypto;
 #[path = "original_authority_io.rs"]
 mod io;
 pub(crate) use io::AUTHORITY_PATH_DENIAL;
-#[cfg(unix)]
-pub(crate) use io::publication::RecoveryAuthorityReached;
 pub(crate) use io::publication::catalog;
 pub(crate) use io::publication::definitions;
 #[cfg(unix)]
@@ -21,6 +19,8 @@ pub(crate) use io::publication::external_catalog;
 pub(crate) use io::publication::{
     CandidateSelection, Prefix as PublicationPrefix, PublicationRead, ResolverAuthority,
 };
+#[cfg(unix)]
+pub(crate) use io::publication::{RECOVERY_APP_DENIED, RecoveryAuthorityReached};
 #[path = "original_authority_json.rs"]
 mod json;
 #[path = "original_authority_lease.rs"]
@@ -92,6 +92,7 @@ pub enum OriginalAuthorityStage {
     EpochRecord,
     Snapshot,
     ActiveReservation,
+    PendingReservation,
     IncompleteReservation,
     Close,
 }
