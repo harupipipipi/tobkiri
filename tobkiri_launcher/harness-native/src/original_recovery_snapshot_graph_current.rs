@@ -102,7 +102,7 @@ pub(super) fn verify<S: OriginalAuthorityOwner>(
     verify_bindings(edges, plan.field("bindings")?, op, budget)
 }
 
-fn closure_digest<S: OriginalAuthorityOwner>(
+pub(super) fn closure_digest<S: OriginalAuthorityOwner>(
     projections: View<'_>,
     effective: View<'_>,
     op: &Operation<'_, S>,

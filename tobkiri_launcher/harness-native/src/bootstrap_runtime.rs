@@ -56,6 +56,7 @@ const BOOTSTRAP_TEMPLATE_LOOKUP: u8 = 26;
 const BOOTSTRAP_RECOVERY_CATALOG: u8 = 27;
 const BOOTSTRAP_ADMITTED_CLOSURE_STEP: u8 = 28;
 const BOOTSTRAP_RECOVERY_FINISHED: u8 = 29;
+const RESOLVE_LEGACY_PROFILE: u8 = 30;
 const CATALOG_LOAD_SLOT: usize = 7;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
@@ -191,6 +192,7 @@ impl CiRetiredCall {
             RESOLVER_DYNAMIC_EDGES => "resolver-dynamic-edges",
             RESOLVER_VERIFIED_ARTIFACTS => "resolver-verified-artifacts",
             RESOLVE_PROFILE => "resolve-profile",
+            RESOLVE_LEGACY_PROFILE => "resolve-legacy-profile",
             BOOTSTRAP_PREDECESSOR_SOURCE => "bootstrap-predecessor-source",
             BOOTSTRAP_INACTIVE_SOURCE => "bootstrap-inactive-source",
             BOOTSTRAP_INACTIVE_EQUALITY => "bootstrap-inactive-equality",
@@ -480,7 +482,7 @@ fn inspect<S: BootstrapInputOwner>(
         }
         return catalog::inspect(context, work.clone(), phase);
     }
-    if phase == RESOLVE_PROFILE {
+    if matches!(phase, RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE) {
         return catalog::inspect(context, work.clone(), phase);
     }
     if !context.same_invocation(&state.invocation)
@@ -535,7 +537,7 @@ fn inspect_source_metadata<S: BootstrapInputOwner>(
             return Err(NativeDataIoError::Retired);
         }
         state.source.check_live()?;
-        if phase == RESOLVE_PROFILE {
+        if matches!(phase, RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE) {
             use crate::original_authority::catalog::CatalogIo;
 
             let shell_verified = state
@@ -624,7 +626,7 @@ fn inspect_source_metadata<S: BootstrapInputOwner>(
             BUNDLE_ROOT | REVIEW_BUNDLE_ROOT => {
                 let _ = state.first_bundle_resolution.set(resolved);
             }
-            RESOLVE_PROFILE => {
+            RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE => {
                 if state.phase.load(Ordering::Acquire) != phase {
                     return Err(NativeDataIoError::Retired);
                 }
@@ -1575,6 +1577,20 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
     ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
         // These private frames are constructed by their own Review caller.
         // The ordinary DATA describe API cannot select these operations.
+        if slot == RESOLVE_PROFILE_SLOT {
+            let frame = CoreValue::parse_guest(input.as_bytes(), self.input_budget)?;
+            let format = frame.get_key("format");
+            if !matches!(
+                (phase, format.as_ref().and_then(CoreValue::as_str)),
+                (RESOLVE_PROFILE, Some(resolver_edges::RESOLVE_REQUEST))
+                    | (
+                        RESOLVE_LEGACY_PROFILE,
+                        Some(catalog::LEGACY_RESOLVE_REQUEST)
+                    )
+            ) {
+                bail!("Profile resolution is outside the fixed Review reachpoint");
+            }
+        }
         if slot == 2 {
             match CoreValue::parse_guest(input.as_bytes(), self.input_budget) {
                 Ok(frame) => match frame.get_key("format").as_ref().and_then(CoreValue::as_str) {

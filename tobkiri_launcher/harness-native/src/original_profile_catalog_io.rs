@@ -71,7 +71,7 @@ pub(crate) struct CatalogIo {
     #[cfg(unix)]
     shell_file: Option<shell_file::ShellFile>,
     #[cfg(unix)]
-    shell_profile_id: Option<String>,
+    pack_resolve_source: Option<PackResolveSource>,
     #[cfg(unix)]
     shell_inputs: Option<shell_inputs::ShellInputs>,
     #[cfg(unix)]
@@ -152,6 +152,12 @@ enum PackResolve {
     ShellHeaderTail,
     ShellArtifactReady,
     Spent,
+}
+
+#[cfg(unix)]
+enum PackResolveSource {
+    Bundled(String),
+    Recovery(Option<CoreValue>),
 }
 
 struct CatalogRequest {
@@ -269,7 +275,7 @@ impl CatalogIo {
             #[cfg(unix)]
             shell_file: None,
             #[cfg(unix)]
-            shell_profile_id: None,
+            pack_resolve_source: None,
             #[cfg(unix)]
             shell_inputs: None,
             #[cfg(unix)]
@@ -850,6 +856,62 @@ impl CatalogIo {
     /// the completed loader. The resolver's separate bundle selection cannot
     /// replace this root.
     pub(crate) fn begin_pack_resolve(&mut self, profile_id: &str) -> Result<()> {
+        self.require_pack_resolve_available(profile_id)?;
+        #[cfg(unix)]
+        {
+            self.pack_resolve_source = Some(PackResolveSource::Bundled(profile_id.to_owned()));
+        }
+        self.pack_resolve = PackResolve::CheckSymlink;
+        Ok(())
+    }
+
+    /// Open the same finite reads for the Profile from the verified replacement catalog.
+    #[cfg(unix)]
+    pub(crate) fn begin_legacy_pack_resolve(
+        &mut self,
+        profile_id: &str,
+        profiles: &CoreValue,
+    ) -> Result<()> {
+        self.require_pack_resolve_available(profile_id)?;
+        if self.recovery_pack_pins.is_none() {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        self.pack_resolve = PackResolve::Spent;
+        // The Pack still reports a missing Profile before requesting any Shell paths.
+        let request = shell_inputs::registered_shell(profiles, profile_id, &self.budget)?;
+        self.pack_resolve_source = Some(PackResolveSource::Recovery(request));
+        self.pack_resolve = PackResolve::CheckSymlink;
+        Ok(())
+    }
+
+    /// Release the private state of a successful legacy resolver occurrence.
+    #[cfg(unix)]
+    pub(crate) fn finish_legacy_pack_resolve(&mut self) -> Result<()> {
+        if !matches!(
+            self.pack_resolve_source,
+            Some(PackResolveSource::Recovery(_))
+        ) || !self.pack_resolve_shell_artifact_completed()
+            || self.shell_file.is_some()
+        {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        self.pack_resolve_source = None;
+        self.shell_resolved_name = None;
+        self.shell_root_identity = None;
+        self.shell_tree_identity = None;
+        self.shell_artifact_identity = None;
+        self.shell_tree = shell_tree::ShellTree::default();
+        self.shell_leaf = None;
+        self.shell_entrypoint = None;
+        self.shell_entrypoint_resolution = None;
+        self.shell_macos = false;
+        self.shell_plist_parent = None;
+        self.shell_plist_file = None;
+        self.pack_resolve = PackResolve::Inactive;
+        Ok(())
+    }
+
+    fn require_pack_resolve_available(&self, profile_id: &str) -> Result<()> {
         if !cfg!(unix)
             || self.pack_resolve != PackResolve::Inactive
             || !self.completed()
@@ -861,11 +923,6 @@ impl CatalogIo {
         {
             return Err(OriginalAuthorityError::unavailable());
         }
-        #[cfg(unix)]
-        {
-            self.shell_profile_id = Some(profile_id.to_owned());
-        }
-        self.pack_resolve = PackResolve::CheckSymlink;
         Ok(())
     }
 

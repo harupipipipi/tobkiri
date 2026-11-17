@@ -225,7 +225,12 @@ impl CatalogIo {
                             let symlink = mode == Some(mode_bits(libc::S_IFLNK));
                             write_bool(&mut response, symlink)?;
                             if stage == PackResolve::ShellLeafSymlink {
-                                self.shell_inputs = None;
+                                if matches!(
+                                    self.pack_resolve_source,
+                                    Some(PackResolveSource::Bundled(_))
+                                ) {
+                                    self.shell_inputs = None;
+                                }
                                 if !symlink {
                                     self.shell_leaf = selected.clone();
                                     let selection = selection.expect("selected artifact");

@@ -753,6 +753,12 @@ class IdentityObservationTransportTests(unittest.TestCase):
 class ResolverSourceLookupTransportTests(unittest.TestCase):
     """Fixed resolver observations, live Python lookup and issued provenance."""
 
+    class ResolutionDenied(Exception):
+        pass
+
+    class ReconfirmationRequired(ResolutionDenied):
+        pass
+
     class Resolved:
         def __init__(self, profile, lock, plan):
             self.profile, self.lock, self.plan = profile, lock, plan
@@ -799,8 +805,10 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
              RecordType("bundled-catalog", self.Catalog, ("profiles",)),
              RecordType("resolved-default-profile", self.Resolved, ("profile", "lock", "plan")),
              RecordType("setup-activation-decision", self.Decision, ("confirmation", "response")),
+             RecordType("profile-resolution-denied", self.ResolutionDenied),
+             RecordType("profile-reconfirmation-required", self.ReconfirmationRequired),
              RecordType("key-error", KeyError), RecordType("type-error", TypeError)),
-            (KeyError, TypeError),
+            (KeyError, TypeError, self.ResolutionDenied, self.ReconfirmationRequired),
         ))
         self.dispatcher.init(self.frame("init"))
         self.registry = self.dispatcher._current().registry
@@ -882,6 +890,148 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
     def recovery_projector(self, catalog: Catalog, profiles: dict) -> Catalog:
         self.assertIs(catalog, self.runtime.catalog)
         return self.recovery_projector_clone(catalog, profiles)
+
+    def legacy_catalog(self) -> tuple[dict, dict]:
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        self.getter("fixture-id")
+        catalog = self.load()
+        profiles = [["fixture-id", {"profile_id": "fixture-id"}]]
+        return catalog, self.recovery_catalog(catalog, profiles)["root"]
+
+    def legacy_resolve(self, catalog: dict, **overrides: object) -> dict:
+        fields = {
+            "catalog": catalog, "profile_id": "fixture-id",
+            "snapshot": "sha256:" + "1" * 64, "epoch": "17", "bindings": [],
+        }
+        return wire.loads(self.dispatcher.call(
+            "resolve_profile", self.frame("resolver-legacy-recovery", **(fields | overrides)),
+        ))
+
+    def test_legacy_resolver_returns_witnessed_exact_data_on_the_replacement(self) -> None:
+        _, replacement = self.legacy_catalog()
+        catalog = self.registry.borrow(self.registry.reference(replacement))
+        catalog.packs.update({
+            "one": {"pack": {"artifact_digest": "sha256:one"}},
+            "two": {"pack": {"artifact_digest": "sha256:two"}},
+            "alias": {"pack": {"artifact_digest": "sha256:one"}},
+        })
+        rows = [
+            ["z-caller|provider|contract.v1|operation", "authority-ref:old.id_1"],
+            ["a-caller|provider|contract.v1|operation", "authority-ref:" + "a" * 64],
+        ]
+        successor = self.Resolved(
+            {"profile_id": "fixture-id", "nested": [None, {"value": False}]},
+            {"security_epoch": 17}, {"bindings": [{"authority_reference": rows[0][1]}]},
+        )
+        args = []
+        leaf = self.bridge.bind("fixture-root", "/fixture/shell")
+
+        def resolve(actual_catalog: Catalog, profile_id: str, **kwargs: object) -> object:
+            self.assertIs(actual_catalog, catalog)
+            self.assertEqual(profile_id, "fixture-id")
+            self.assertTrue(self.bridge._resolving_catalog)
+            self.assertEqual(kwargs, {
+                "approved_artifact_digests": {"sha256:one", "sha256:two"},
+                "authority_snapshot_digest": "sha256:" + "1" * 64,
+                "authority_bindings": dict(rows),
+                "security_epoch": 17,
+            })
+            self.assertIs(type(kwargs["security_epoch"]), int)
+            self.assertEqual(list(kwargs["authority_bindings"].items()), list(map(tuple, rows)))
+            args.append(kwargs["approved_artifact_digests"])
+            self.bridge._resolver_shell_leaf = leaf
+            self.bridge._resolver_header_closed = True
+            self.bridge._resolver_verified_artifact = leaf
+            return successor
+
+        self.runtime.resolve_profile = resolve
+        held = self.registry._objects.copy()
+        for _ in range(2):
+            self.assertEqual(self.legacy_resolve(replacement, bindings=rows), {
+                "format": PREFIX + "resolver-legacy-recovery-result.v1",
+                "scope": self.scope.wire(), "profile": successor.profile,
+                "lock": successor.lock, "plan": successor.plan,
+            })
+            self.assertFalse(self.bridge._resolving_catalog)
+            self.assertIsNone(self.bridge._resolver_verified_artifact)
+        self.assertIsNot(args[0], args[1])
+        self.assertEqual(self.registry._objects, held)
+        self.assertIsNone(self.registry._resolved_profile)
+
+    def test_legacy_resolver_requires_live_recovery_replacement_and_closed_frame(self) -> None:
+        old_catalog, replacement = self.legacy_catalog()
+        self.runtime.resolve_profile = lambda *a, **kw: self.fail("unexpected resolver call")
+        value = self.registry.borrow(self.registry.reference(replacement))
+        foreign = {**replacement, "scope": ["1", "2", "9", "4"]}
+        for invalid in (old_catalog, foreign, self.registry.retain(self.Catalog()).wire()):
+            with self.subTest(invalid=invalid), self.assertRaises(InvalidReference):
+                self.legacy_resolve(invalid)
+        edge = "caller|provider|contract.v1|operation"
+        for invalid_fields in (
+            {"additional_pack_ids": []}, {"epoch": "0"}, {"epoch": 17},
+            {"profile_id": "../profile"}, {"snapshot": "bogus"},
+            {"bindings": [[edge, "lease:12345678"]]},
+            {"bindings": [[edge, "authority-ref:short"]]},
+            {"bindings": [[edge, "authority-ref:abcdefgh"]] * 2},
+        ):
+            with self.subTest(fields=invalid_fields), self.assertRaises(InvalidFrame):
+                self.legacy_resolve(replacement, **invalid_fields)
+        self.dispatcher.describe_value(self.frame(
+            "bootstrap-recovery-finished", catalog=replacement,
+        ))
+        for invalid in (replacement, self.registry.retain(value).wire()):
+            with self.subTest(invalid=invalid), self.assertRaises(InvalidReference):
+                self.legacy_resolve(invalid)
+
+    def test_legacy_resolver_preserves_original_exception_and_reconfirmation_cause(self) -> None:
+        _, replacement = self.legacy_catalog()
+        missing_ref = self.ResolutionDenied(
+            "Authority Kernel reference is missing for edge c|p|contract.v1|operation",
+        )
+        other = self.ResolutionDenied("Profile is unavailable")
+
+        def fail(*args: object, **kwargs: object) -> None:
+            raise error
+
+        self.runtime.resolve_profile = fail
+        for error in (missing_ref, other):
+            with self.subTest(error=error), self.assertRaises(MethodRaised) as raised:
+                self.legacy_resolve(replacement)
+            data = wire.loads(raised.exception.details)
+            actual = self.registry.borrow(self.registry.reference(data["root"]))
+            view = self.view(data)
+            self.assertEqual(view["origin"], "resolver-legacy-recovery-raised")
+            if error is missing_ref:
+                self.assertIs(type(actual), self.ReconfirmationRequired)
+                self.assertEqual(
+                    str(actual), f"legacy activation requires explicit reconfirmation: {error}",
+                )
+                self.assertIs(actual.__cause__, error)
+                self.assertEqual(view["kind"], "profile-reconfirmation-required")
+                for edge in ("cause", "context"):
+                    cause = self.registry.reference(view["exception"][edge])
+                    self.assertIs(self.registry.borrow(cause), error)
+                self.assertTrue(view["exception"]["suppress_context"])
+            else:
+                self.assertIs(actual, error)
+                self.assertEqual(view["kind"], "profile-resolution-denied")
+            self.assertFalse(self.bridge._resolving_catalog)
+
+    def test_legacy_resolver_requires_bound_shell_and_keeps_unbound_packet(self) -> None:
+        _, replacement = self.legacy_catalog()
+        self.runtime.resolve_profile = lambda *a, **kw: self.Resolved({}, {}, {})
+        with self.assertRaises(UnsupportedValue):
+            self.legacy_resolve(replacement)
+
+        def unbound(*args: object, **kwargs: object) -> None:
+            raise _UnboundPlatformArtifacts()
+
+        self.runtime.resolve_profile = unbound
+        self.assertEqual(self.legacy_resolve(replacement), {
+            "format": PREFIX + "resolver-platform-artifacts-unbound.v1",
+            "scope": self.scope.wire(),
+        })
+        self.assertFalse(self.bridge._resolving_catalog)
 
     def admitted_closure_step(
         self, catalog: dict, pack_id: str, manifest: dict | None = None,

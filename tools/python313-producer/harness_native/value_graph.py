@@ -483,9 +483,16 @@ class Registry:
     def _record_recovery_catalog_replacement(self, catalog: Reference) -> None:
         self._replaced_recovery_catalog = catalog.object_id
 
-    def _finish_bootstrap_recovery(self, catalog: Reference) -> None:
-        if catalog.object_id != self._replaced_recovery_catalog:
+    def _current_recovery_replacement(self, catalog_ref: Reference) -> Any:
+        catalog = self.borrow(catalog_ref)
+        record = self._records.get(type(catalog))
+        if (catalog_ref.object_id != self._replaced_recovery_catalog
+                or record is None or record.kind != "bundled-catalog"):
             raise InvalidReference("reference is not the current recovery replacement")
+        return catalog
+
+    def _finish_bootstrap_recovery(self, catalog: Reference) -> None:
+        self._current_recovery_replacement(catalog)
         self._replaced_recovery_catalog = None
         self._resolver_stage = "awaiting-catalog"
         self.release([catalog])
@@ -779,7 +786,7 @@ class Registry:
             "resolver-source-lookup-returned", "resolver-source-lookup-raised",
             "resolver-static-edges-raised", "resolver-dynamic-edges-raised",
             "resolver-verified-artifacts-returned", "resolver-verified-artifacts-raised",
-            "resolver-profile-raised",
+            "resolver-profile-raised", "resolver-legacy-recovery-raised",
             "bootstrap-predecessor-source-raised",
             "bootstrap-inactive-source-raised", "bootstrap-inactive-equality-raised",
             "bootstrap-confirmation-raised",

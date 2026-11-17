@@ -35,6 +35,7 @@ def _load_bound_runtime(inputs) -> OriginalRuntime:
     )
     from ecosystem.defaultspack.domain._profile_runtime_records import (
         ActiveDefaultProfile,
+        ProfileReconfirmationRequired,
     )
     from tobkiri_protocol.bundle_catalog import (
         BundleIntegrityError,
@@ -55,6 +56,7 @@ def _load_bound_runtime(inputs) -> OriginalRuntime:
         ("default-profile-v4-error", DefaultProfileV4Error),
         ("bundle-integrity-error", BundleIntegrityError),
         ("profile-resolution-denied", ProfileResolutionDenied),
+        ("profile-reconfirmation-required", ProfileReconfirmationRequired),
     )
     records = (
         RecordType("native-path", NativePath, native_binding=True),

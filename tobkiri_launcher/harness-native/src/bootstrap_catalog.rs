@@ -27,6 +27,7 @@ pub(super) type RecoveryOutcome = Result<std::result::Result<(), BootstrapReview
 
 pub(super) const RECOVERY_FINISHED_REQUEST: &str =
     "io.tobkiri.native-bootstrap-recovery-finished.v1";
+pub(super) const LEGACY_RESOLVE_REQUEST: &str = "io.tobkiri.native-resolver-legacy-recovery.v1";
 
 pub(super) struct RootResolution {
     pub resolved: CoreBuffer,
@@ -56,7 +57,7 @@ pub(super) fn inspect<S: BootstrapInputOwner>(
         .context("catalog request is missing")?
         .clone();
     let request = CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())?;
-    if phase == RESOLVE_PROFILE
+    if matches!(phase, RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE)
         && request.get_key("format").and_then(|value| {
             value
                 .as_str()
@@ -120,7 +121,9 @@ fn dispatch<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 ) -> Result<CoreBuffer> {
     let result = match phase {
         CATALOG_LOAD => io.inspect(owner, invocation, request, budget),
-        RESOLVE_PROFILE => io.inspect_pack_resolve(owner, invocation, request, budget),
+        RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE => {
+            io.inspect_pack_resolve(owner, invocation, request, budget)
+        }
         _ => bail!("catalog call phase is unavailable"),
     };
     match result {
@@ -727,26 +730,45 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
     if denied::same_reference(&root, &original)? {
         bail!("recovery catalog was not replaced");
     }
-    use crate::original_authority::RecoveryAuthorityReached;
+    use crate::original_authority::{LEGACY_RESOLVER_INTERRUPTED, RecoveryAuthorityReached};
+    let mut resolver_fault = None;
     let reached = {
-        let work = pack.work.get();
+        let work = (*pack.work).clone();
+        let work = work.get();
+        let profiles = review
+            .actual
+            ._recovery_profile_definitions
+            .as_ref()
+            .context("replacement catalog Profile definitions are missing")?;
         let inputs = RecoveryCatalogAccess::new(
             &work.catalog,
-            review
-                .actual
-                ._recovery_profile_definitions
-                .as_ref()
-                .context("replacement catalog Profile definitions are missing")?,
+            profiles,
             review.actual._admitted_closure.as_ref(),
         )?;
+        let cancellation = (*pack.cancellation).clone();
+        let budget = Arc::clone(pack.input_budget);
+        let guest_failure = &mut review.actual.legacy_resolution_failure;
         review
             .read
             .run_recovery_authority(
                 &work.source,
-                pack.cancellation,
-                pack.input_budget,
+                &cancellation,
+                &budget,
                 inputs,
                 work.profile_schemas,
+                async |input| match resolve_legacy_profile(pack, &scope, &root, profiles, input)
+                    .await
+                {
+                    Ok(Ok(candidate)) => Ok(candidate),
+                    Ok(Err(failure)) => {
+                        *guest_failure = Some(failure);
+                        Err(crate::OriginalAuthorityError::legacy_resolver_interrupted())
+                    }
+                    Err(error) => {
+                        resolver_fault = Some(error);
+                        Err(crate::OriginalAuthorityError::legacy_resolver_interrupted())
+                    }
+                },
             )
             .await
     };
@@ -771,6 +793,9 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         }
         Ok(RecoveryAuthorityReached::BuildLegacyActivationSuccessor) => {
             BootstrapReviewReachpoint::RecoveryBuildLegacyActivationSuccessorNotBound
+        }
+        Ok(RecoveryAuthorityReached::VerifyLegacySuccessorArtifact) => {
+            BootstrapReviewReachpoint::RecoveryVerifyLegacySuccessorArtifactNotBound
         }
         Ok(RecoveryAuthorityReached::MissingPublishedAuthority) => {
             return Ok(Err(review_continuation::denied(
@@ -812,9 +837,89 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
             )
             .await?));
         }
+        Err(error) if error.class == LEGACY_RESOLVER_INTERRUPTED && error.context.is_none() => {
+            if let Some(error) = resolver_fault {
+                return Err(error);
+            }
+            let failure = review
+                .actual
+                .legacy_resolution_failure
+                .take()
+                .context("legacy resolver did not retain its actual failure")?;
+            return Ok(Err(handle_call_failure(
+                review, pack, caller, failure, false,
+            )
+            .await?));
+        }
         Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
     };
     Ok(Err(BootstrapReviewFailure::NotBound(boundary)))
+}
+
+#[cfg(unix)]
+async fn resolve_legacy_profile<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    pack: &mut ReviewPackBorrow<'_, S>,
+    scope: &CoreValue,
+    catalog: &CoreValue,
+    profiles: &CoreValue,
+    input: crate::original_authority::LegacyResolverInput,
+) -> Result<std::result::Result<Option<CoreValue>, BootstrapIdentityOutcome>> {
+    let profile_id = input.profile_id.clone();
+    let request = denied::frame(
+        pack,
+        LEGACY_RESOLVE_REQUEST,
+        [
+            ("catalog", catalog.clone()),
+            ("profile_id", input.profile_id),
+            ("snapshot", input.snapshot),
+            ("epoch", input.epoch),
+            ("bindings", input.bindings),
+        ],
+    )?;
+    pack.work
+        .get()
+        .catalog
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_mut()
+        .context("legacy recovery catalog loader is missing")?
+        .begin_legacy_pack_resolve(
+            profile_id
+                .as_str()
+                .context("legacy recovery Profile ID is missing")?,
+            profiles,
+        )?;
+    let result = match pack.observe_legacy_profile_resolution(&request).await? {
+        Ok(result) => result,
+        Err(failure) => return Ok(Err(failure)),
+    };
+    drop(request);
+    let candidate = CoreValue::parse_guest(result.as_bytes(), pack.input_budget)?;
+    drop(result);
+    let format = denied::field(&candidate, "format")?;
+    if !denied::same_scope(&denied::field(&candidate, "scope")?, scope) {
+        bail!("legacy resolver returned another scope");
+    }
+    if format.as_str() == Some("io.tobkiri.native-resolver-platform-artifacts-unbound.v1") {
+        denied::exact(&candidate, &["format", "scope"])?;
+        return Ok(Ok(None));
+    }
+    denied::exact(&candidate, &["format", "scope", "profile", "lock", "plan"])?;
+    if format.as_str() != Some("io.tobkiri.native-resolver-legacy-recovery-result.v1") {
+        bail!("legacy resolver result differs from the retained call");
+    }
+    if pack.work.get().source_occurrence.load(Ordering::Acquire) != SOURCE_COMPLETED {
+        bail!("legacy resolver did not complete projection source resolution");
+    }
+    pack.work
+        .get()
+        .catalog
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_mut()
+        .context("legacy recovery catalog loader is missing")?
+        .finish_legacy_pack_resolve()?;
+    Ok(Ok(Some(candidate)))
 }
 
 #[cfg(unix)]

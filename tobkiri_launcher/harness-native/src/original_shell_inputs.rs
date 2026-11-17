@@ -127,14 +127,16 @@ impl CatalogIo {
             .shell_inputs
             .as_ref()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let profile_id = self
-            .shell_profile_id
-            .as_deref()
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let profile = inputs
-            .find(Kind::Profile, "profile_id", profile_id, &self.budget)?
-            .ok_or_else(OriginalAuthorityError::unavailable)?;
-        let request = field(&profile, "shell")?;
+        let request = match &self.pack_resolve_source {
+            Some(PackResolveSource::Bundled(profile_id)) => {
+                let profile = inputs
+                    .find(Kind::Profile, "profile_id", profile_id, &self.budget)?
+                    .ok_or_else(OriginalAuthorityError::unavailable)?;
+                field(&profile, "shell")?
+            }
+            Some(PackResolveSource::Recovery(Some(request))) => request.share(),
+            _ => return Err(OriginalAuthorityError::unavailable().into()),
+        };
         let provider = field(&request, "provider_id")?;
         let shell = inputs
             .find(
@@ -476,7 +478,7 @@ fn unique_variant(mut matching: impl Iterator<Item = CoreValue>) -> Option<CoreV
     matching.next().is_none().then_some(first)
 }
 
-fn registered_shell(
+pub(super) fn registered_shell(
     profiles: &CoreValue,
     profile_id: &str,
     budget: &Arc<dyn AllocationBudget>,

@@ -1011,6 +1011,195 @@ fn shell_fd_steps(path: &Value) -> Value {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verified_occurrence() {
+    for reject in [false, true] {
+        with_source(false, |source, invocation, budget, io, cleanup| {
+            let parent = source.root.join("ecosystem/defaultspack");
+            let bundle = parent.join("v4");
+            let artifacts = parent.join("platform-artifacts");
+            fs::create_dir_all(&bundle).unwrap();
+            fs::create_dir(&artifacts).unwrap();
+            let shell = |architecture| {
+                json!({
+                    "provider_id":"fixture-shell", "pack_id":"fixture-pack", "contract_id":"fixture-contract",
+                    "platform":"linux", "architecture":architecture,
+                })
+            };
+            let profile = |id, architecture| json!({"profile_id":id, "shell":shell(architecture)});
+            let variants = [
+                ("arm64", "bundled"),
+                ("x86_64", "replacement"),
+            ].map(|(architecture, name)| {
+                fs::write(artifacts.join(name), b"\x7fELF Shell fixture").unwrap();
+                json!({"platform":"linux", "architecture":architecture, "relative_path":name, "entrypoint":name})
+            });
+            let entries = [
+                ("profile.json", "profile", profile("fixture-profile", "arm64")),
+                ("shell.json", "shell", json!({
+                    "provider_id":"fixture-shell", "pack_id":"fixture-pack", "contract_id":"fixture-contract",
+                    "availability":"verified", "launch":{"variants":variants},
+                })),
+            ].map(|(name, kind, document)| {
+                let bytes = serde_json::to_vec(&document).unwrap();
+                fs::write(bundle.join(name), &bytes).unwrap();
+                json!({"path":name, "kind":kind, "digest":Digest::hash(&bytes).as_str()})
+            });
+            let lock_path = bundle.join("bundle.lock.json");
+            fs::write(
+                &lock_path,
+                serde_json::to_vec(&json!({"entries":entries})).unwrap(),
+            )
+            .unwrap();
+            let profiles = CoreValue::parse_guest(
+                &serde_json::to_vec(&json!([
+                    ["fixture-profile", profile("fixture-profile", "x86_64")],
+                    ["recovery-only", profile("recovery-only", "arm64")],
+                ]))
+                .unwrap(),
+                budget,
+            )
+            .unwrap();
+            io.select_packaged(&bundle).unwrap();
+            io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+                .unwrap();
+            io.retain_recovery_pack_pins();
+            assert!(
+                io.begin_legacy_pack_resolve("fixture-profile", &profiles)
+                    .is_err()
+            );
+            let lock = json!([["join", "bundle.lock.json"]]);
+            let original = json!([["parent", ""], ["join", "platform-artifacts"]]);
+            let resolved = json!([["shell-resolved-root", ""]]);
+            let load = |io: &mut CatalogIo, operation, steps, args| {
+                call(io, source, invocation, budget, operation, steps, args)
+            };
+            load(
+                io,
+                "root",
+                json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+                json!([]),
+            );
+            load(io, "is-symlink", json!([]), json!([]));
+            load(io, "resolve", json!([]), json!([true]));
+            load(io, "is-symlink", lock.clone(), json!([]));
+            load(io, "read-bytes", lock.clone(), json!([]));
+            for name in ["profile.json", "shell.json"] {
+                let steps = json!([["join", name]]);
+                load(io, "resolve", steps.clone(), json!([true]));
+                load(io, "is-symlink", steps.clone(), json!([]));
+                load(io, "read-bytes", steps, json!([]));
+            }
+            load(io, "is-dir", original.clone(), json!([]));
+            load(io, "resolve", original.clone(), json!([true]));
+            let inspect = |io: &mut CatalogIo, operation, steps, args| {
+                io.inspect_pack_resolve(
+                    source,
+                    invocation,
+                    &packet(invocation, budget, operation, steps, args),
+                    budget,
+                )
+            };
+            if reject {
+                io.begin_legacy_pack_resolve("fixture-profile", &profiles)
+                    .unwrap();
+                inspect(io, "is-symlink", lock.clone(), json!([])).unwrap();
+                inspect(io, "is-file", lock.clone(), json!([])).unwrap();
+                fs::remove_file(&lock_path).unwrap();
+                assert!(inspect(io, "read-bytes", lock, json!([])).is_err());
+                assert!(io.finish_legacy_pack_resolve().is_err());
+                assert!(
+                    io.begin_legacy_pack_resolve("fixture-profile", &profiles)
+                        .is_err()
+                );
+                assert!(io.begin_pack_resolve("fixture-profile").is_err());
+                return;
+            }
+            for (id, name, legacy) in [
+                ("fixture-profile", "replacement", true),
+                ("recovery-only", "bundled", true),
+                ("fixture-profile", "bundled", false),
+            ] {
+                if legacy {
+                    io.begin_legacy_pack_resolve(id, &profiles).unwrap();
+                } else {
+                    io.begin_pack_resolve(id).unwrap();
+                }
+                assert!(io.finish_legacy_pack_resolve().is_err());
+                assert!(io.begin_legacy_pack_resolve(id, &profiles).is_err());
+                let step = |io: &mut CatalogIo, operation, steps, args| {
+                    inspect(io, operation, steps, args).unwrap();
+                };
+                for operation in ["is-symlink", "is-file", "read-bytes"] {
+                    step(io, operation, lock.clone(), json!([]));
+                }
+                step(io, "resolve", original.clone(), json!([true]));
+                step(io, "is-symlink", original.clone(), json!([]));
+                step(io, "is-dir", resolved.clone(), json!([]));
+                let other = if name == "replacement" {
+                    "bundled"
+                } else {
+                    "replacement"
+                };
+                assert!(
+                    inspect(
+                        io,
+                        "is-symlink",
+                        json!([["shell-resolved-root", ""], ["join", other]]),
+                        json!([])
+                    )
+                    .is_err()
+                );
+                let leaf = json!([["shell-resolved-root", ""], ["join", name]]);
+                step(io, "is-symlink", leaf.clone(), json!([]));
+                step(
+                    io,
+                    "is-symlink",
+                    json!([["shell-resolved-root", ""], ["join", name], ["parent", ""]]),
+                    json!([]),
+                );
+                step(io, "is-symlink", leaf.clone(), json!([]));
+                step(io, "is-file", leaf.clone(), json!([]));
+                let flags = json!([libc::O_RDONLY | libc::O_NOFOLLOW]);
+                step(io, "open", leaf.clone(), flags.clone());
+                let digest_file = |io: &mut CatalogIo, fd: &Value| {
+                    step(io, "seek", fd.clone(), json!([0, libc::SEEK_CUR]));
+                    step(io, "fstat", fd.clone(), json!([]));
+                    step(io, "read", fd.clone(), json!([8192]));
+                    step(io, "read", fd.clone(), json!([8192]));
+                    step(io, "fstat", fd.clone(), json!([]));
+                    step(io, "close", fd.clone(), json!([]));
+                };
+                digest_file(io, &shell_fd_steps(&leaf));
+                step(io, "resolve", leaf.clone(), json!([true]));
+                step(io, "resolve", leaf.clone(), json!([true]));
+                step(io, "is-symlink", leaf.clone(), json!([]));
+                step(io, "is-file", leaf.clone(), json!([]));
+                step(io, "open", leaf.clone(), flags.clone());
+                let mut fd = shell_fd_steps(&leaf);
+                fd[0][0] = json!("shell-entrypoint-file");
+                digest_file(io, &fd);
+                step(io, "open", leaf, flags);
+                fd[0][0] = json!("shell-header-file");
+                step(io, "fstat", fd.clone(), json!([]));
+                step(io, "read", fd.clone(), json!([64]));
+                step(io, "fstat", fd.clone(), json!([]));
+                step(io, "close", fd, json!([]));
+                assert!(io.pack_resolve_shell_artifact_completed());
+                assert!(cleanup.receipt().verified());
+                if legacy {
+                    io.finish_legacy_pack_resolve().unwrap();
+                    assert!(!io.pack_resolve_shell_artifact_completed());
+                    assert!(inspect(io, "is-symlink", lock.clone(), json!([])).is_err());
+                } else {
+                    assert!(io.finish_legacy_pack_resolve().is_err());
+                    assert!(io.begin_legacy_pack_resolve(id, &profiles).is_err());
+                }
+            }
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
     with_source(false, |source, invocation, budget, io, _| {
         let bundle = source.root.join("ecosystem/defaultspack/v4");

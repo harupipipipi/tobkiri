@@ -18,9 +18,15 @@ mod publish_active;
 #[path = "original_recovery_workspace_active.rs"]
 mod workspace_active;
 
-struct ActiveSnapshotChecks<Artifact, Definition> {
+struct ActiveSnapshotChecks<Artifact, Definition, Legacy> {
     artifact: Artifact,
     definition: Definition,
+    legacy: Legacy,
+}
+
+enum RecoveryPause {
+    Committed(PendingRepublish),
+    LegacyCompared(workspace_active::ActiveSnapshotPrefix),
 }
 
 /// The result needed by the original recovery caller at its next operation.
@@ -32,6 +38,7 @@ pub(crate) enum RecoveryAuthorityReached {
     RecoveredPublished,
     ActiveSnapshotReconfirmationRequired,
     BuildLegacyActivationSuccessor,
+    VerifyLegacySuccessorArtifact,
     MissingPublishedAuthority,
     RecoveredNone,
     MatchedReservation,
@@ -47,6 +54,7 @@ impl PublicationRead {
         budget: &Arc<dyn AllocationBudget>,
         recovery_catalog: RecoveryCatalogAccess<'_>,
         profile_schemas: Option<BoundProfileSchemas>,
+        resolve_legacy: impl AsyncFnMut(LegacyResolverInput) -> Result<Option<CoreValue>>,
     ) -> Result<RecoveryAuthorityReached> {
         self.run_recovery(
             owner,
@@ -74,6 +82,7 @@ impl PublicationRead {
                         catalog.verify_registered_definition(op, profile_id, digest)
                     })
                 },
+                legacy: resolve_legacy,
             },
         )
         .await
@@ -92,9 +101,10 @@ impl PublicationRead {
             PendingRepublish,
             &str,
         ) -> Result<()>,
-        checks: ActiveSnapshotChecks<
+        mut checks: ActiveSnapshotChecks<
             impl FnOnce(&Operation<'_, S>, &CoreValue, &str) -> Result<ActiveArtifactVerification>,
             impl FnOnce(&Operation<'_, S>, &str, &str) -> Result<()>,
+            impl AsyncFnMut(LegacyResolverInput) -> Result<Option<CoreValue>>,
         >,
     ) -> Result<RecoveryAuthorityReached> {
         self.check_continuation_thread()?;
@@ -153,7 +163,7 @@ impl PublicationRead {
                                     if let Some(pending) = pending_reservation::recover(
                                         &op, store, state, journal, profile_id, budget,
                                     )? {
-                                        return Ok(ControlFlow::Break(pending));
+                                        return Ok(ControlFlow::Break(RecoveryPause::Committed(pending)));
                                     }
                                 } else {
                                     pending_reservation::abort_incomplete(&op, store, profile_id)?;
@@ -167,23 +177,31 @@ impl PublicationRead {
                                             budget,
                                             profile_schemas,
                                             store,
-                                            profile_id,
+                                            (profile_id, &mut checks.legacy),
                                         )
                                         .await?,
                                     )
                                 } else {
                                     None
                                 };
-                                Ok(ControlFlow::Continue(snapshot))
+                                Ok(match snapshot {
+                                    Some(value) if value.prefix.check == workspace_active::ProfileCheck::LegacySuccessorCompared => {
+                                        ControlFlow::Break(RecoveryPause::LegacyCompared(value.prefix))
+                                    }
+                                    snapshot => ControlFlow::Continue(snapshot),
+                                })
                             })
                             .await?;
                         pending.check_thread()?;
                         match next {
                             ControlFlow::Continue(snapshot) => break Ok(snapshot),
-                            ControlFlow::Break(committed) => {
+                            ControlFlow::Break(RecoveryPause::Committed(committed)) => {
                                 // Keep the original Store and Host publication guard
                                 // while the workspace lock is released for verification.
                                 on_committed(&op, store, &activation, committed, profile_id)?;
+                            }
+                            ControlFlow::Break(RecoveryPause::LegacyCompared(prefix)) => {
+                                break Ok(Some(workspace_active::ActiveSnapshotRead {prefix, current: None}));
                             }
                         }
                     };
@@ -281,6 +299,9 @@ fn incomplete_snapshot(prefix: workspace_active::ActiveSnapshotPrefix) -> Recove
         ProfileCheck::NeedsLegacySuccessor => {
             RecoveryAuthorityReached::BuildLegacyActivationSuccessor
         }
+        ProfileCheck::LegacySuccessorCompared => {
+            RecoveryAuthorityReached::VerifyLegacySuccessorArtifact
+        }
         ProfileCheck::NeedsArtifactReverification => {
             unreachable!("complete snapshot retains its records")
         }
@@ -355,6 +376,7 @@ impl PublicationRead {
                 definition: |_: &Operation<'_, S>, _: &str, _: &str| {
                     unreachable!("no bound active snapshot schemas")
                 },
+                legacy: async |_| Ok(None),
             },
         ))
     }
@@ -821,6 +843,7 @@ mod tests {
                     definition: |_: &Operation<'_, Source>, _: &str, _: &str| {
                         unreachable!("no complete active snapshot schema closure")
                     },
+                    legacy: async |_| Ok(None),
                 }));
                 assert_eq!(
                     called,

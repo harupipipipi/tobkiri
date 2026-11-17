@@ -21,6 +21,17 @@ pub(crate) use io::publication::{
 };
 #[cfg(unix)]
 pub(crate) use io::publication::{RECOVERY_APP_DENIED, RecoveryAuthorityReached};
+#[cfg(unix)]
+pub(crate) const LEGACY_RESOLVER_INTERRUPTED: &str = "tobkiri.native.LegacyResolverInterrupted";
+
+/// DATA from the authenticated predecessor, under its workspace lock.
+#[cfg(unix)]
+pub(crate) struct LegacyResolverInput {
+    pub(crate) profile_id: tobkiri_canon::CoreValue,
+    pub(crate) snapshot: tobkiri_canon::CoreValue,
+    pub(crate) epoch: tobkiri_canon::CoreValue,
+    pub(crate) bindings: tobkiri_canon::CoreValue,
+}
 #[path = "original_authority_json.rs"]
 mod json;
 #[path = "original_authority_lease.rs"]
@@ -160,6 +171,17 @@ impl std::fmt::Display for OriginalAuthorityError {
 }
 impl std::error::Error for OriginalAuthorityError {}
 impl OriginalAuthorityError {
+    #[cfg(unix)]
+    pub(crate) fn legacy_resolver_interrupted() -> Self {
+        let mut error = Self::new(
+            OriginalAuthorityStage::Source,
+            "legacy Profile resolver interrupted",
+            None,
+        );
+        error.class = LEGACY_RESOLVER_INTERRUPTED;
+        error
+    }
+
     pub fn unavailable() -> Self {
         let mut error = Self::new(
             OriginalAuthorityStage::Source,

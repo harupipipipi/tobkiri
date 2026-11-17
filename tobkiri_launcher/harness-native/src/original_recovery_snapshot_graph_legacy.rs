@@ -1,6 +1,65 @@
 //! Verify the frozen predecessor before re-resolving a legacy activation.
 use super::*;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use tobkiri_canon::{CoreBuffer, MAX_BYTES};
+
+const EDGE_FIELDS: [&str; 4] = [
+    "caller_function_id",
+    "target_provider_id",
+    "contract_id",
+    "operation_id",
+];
+
+pub(in crate::original_authority::io::publication) fn resolver_input<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    records: SnapshotRecords<'_>,
+    profile_id: &str,
+) -> Result<LegacyResolverInput> {
+    let activation = records.activation;
+    let Node::Scalar(CanonValue::Int(epoch)) = activation.field("security_epoch")?.node() else {
+        return Err(OriginalAuthorityError::unavailable());
+    };
+    let _epoch = op.reserve(GRAPH, 32)?;
+    let snapshot = activation.field("profile_authority_snapshot_digest")?;
+    let snapshot = definitions::render_python_str(op, budget, snapshot.doc, snapshot.id)?;
+    let edges = records.profile.field("requested_edges")?;
+    let mut bindings =
+        CoreValue::array_builder_incremental(budget, MAX_BYTES).map_err(|_| capacity())?;
+    for &id in edges.items()? {
+        op.check(GRAPH)?;
+        let edge = edges.at(id);
+        let mut key = CoreBuffer::builder(budget, MAX_BYTES);
+        for (index, field) in EDGE_FIELDS.iter().enumerate() {
+            if index != 0 {
+                key.append(b"|").map_err(|_| capacity())?;
+            }
+            let part = edge.field(field)?;
+            let part = definitions::render_python_str(op, budget, part.doc, part.id)?;
+            key.append(part.as_bytes()).map_err(|_| capacity())?;
+        }
+        let key = key.finish().map_err(|_| capacity())?;
+        let key = CoreValue::string(key.as_str().map_err(|_| capacity())?, budget)
+            .map_err(|_| capacity())?;
+        let reference = edge.field("authority_reference")?;
+        let reference = definitions::render_python_str(op, budget, reference.doc, reference.id)?;
+        let reference = CoreValue::string(
+            reference.as_str().expect("strict authority reference"),
+            budget,
+        )
+        .map_err(|_| capacity())?;
+        let binding = CoreValue::array_shared([Ok(key), Ok(reference)].into_iter(), budget)
+            .map_err(|_| capacity())?;
+        bindings.push(binding).map_err(|_| capacity())?;
+    }
+    Ok(LegacyResolverInput {
+        profile_id: CoreValue::string(profile_id, budget).map_err(|_| capacity())?,
+        snapshot: CoreValue::string(snapshot.as_str().expect("strict snapshot digest"), budget)
+            .map_err(|_| capacity())?,
+        epoch: CoreValue::string(&epoch.to_string(), budget).map_err(|_| capacity())?,
+        bindings: bindings.finish().map_err(|_| capacity())?,
+    })
+}
 
 pub(super) fn verify<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,

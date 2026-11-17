@@ -426,8 +426,11 @@ class Dispatcher:
         if method not in METHODS:
             raise InvalidFrame("method is not a fixed original export")
         frame = self._load(payload)
-        if method == "resolve_profile" and frame.get("format") == PREFIX + "resolver-profile.v1":
-            return self._resolve_bundled_profile(state, frame)
+        if method == "resolve_profile":
+            if frame.get("format") == PREFIX + "resolver-profile.v1":
+                return self._resolve_bundled_profile(state, frame)
+            if frame.get("format") == PREFIX + "resolver-legacy-recovery.v1":
+                return self._resolve_legacy_recovery(state, frame)
         if method == "bootstrap_confirmation" and frame.get("format") == PREFIX + "bootstrap-fresh-confirmation.v1":
             return self._bootstrap_fresh_confirmation(state, frame)
         if method == "catalog_with_profiles" and frame.get("format") == PREFIX + "bootstrap-preview-catalog.v1":
@@ -523,18 +526,7 @@ class Dispatcher:
 
         def resolve_and_publish(*args, **kwargs):
             value = state.runtime.resolve_profile(*args, **kwargs)
-            bridge = root._bridge
-            record = registry._records.get(type(value))
-            if (record is None or record.kind != "resolved-default-profile"
-                    or not bridge._resolver_header_closed
-                    or type(bridge._resolver_verified_artifact) is not NativePath
-                    or bridge._resolver_verified_artifact._bridge is not bridge
-                    or bridge._resolver_verified_artifact is not bridge._resolver_shell_leaf):
-                raise UnsupportedValue("original resolved profile or Shell witness is not bound")
-            values = (value, value.profile, value.lock, value.plan)
-            if (any(type(item) is not dict for item in values[1:])
-                    or len({id(item) for item in values}) != len(values)):
-                raise UnsupportedValue("original resolved profile documents are not bound")
+            values = (value, *self._resolved_profile_documents(registry, root, value))
             created: list[tuple[Reference, int]] = []
             try:
                 refs = [registry._retain(item, created=created)[0] for item in values]
@@ -569,10 +561,115 @@ class Dispatcher:
             registry._resolver_dynamic_stage = "profile-resolution-returned"
             return payload
         except _UnboundPlatformArtifacts:
+            return self._resolver_platform_artifacts_unbound(registry)
+
+    @staticmethod
+    def _resolved_profile_documents(
+        registry: Registry, root: Any, value: Any,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        from .native_path import NativePath
+
+        bridge = root._bridge
+        record = registry._records.get(type(value))
+        artifact = bridge._resolver_verified_artifact
+        if (record is None or record.kind != "resolved-default-profile"
+                or not bridge._resolver_header_closed or type(artifact) is not NativePath
+                or artifact._bridge is not bridge
+                or artifact is not bridge._resolver_shell_leaf):
+            raise UnsupportedValue("original resolved profile or Shell witness is not bound")
+        documents = (value.profile, value.lock, value.plan)
+        if (any(type(document) is not dict for document in documents)
+                or len({id(document) for document in documents}) != len(documents)):
+            raise UnsupportedValue("original resolved profile documents are not bound")
+        return documents
+
+    @staticmethod
+    def _resolver_platform_artifacts_unbound(registry: Registry) -> str:
+        return wire.dumps({
+            "format": PREFIX + "resolver-platform-artifacts-unbound.v1",
+            "scope": registry.scope.wire(),
+        })
+
+    def _resolve_legacy_recovery(self, state: _State, frame: dict[str, Any]) -> str:
+        from .native_path import NativePath, _UnboundPlatformArtifacts
+        from tobkiri_protocol.errors import ProtocolError
+        from tobkiri_protocol.ids import OPAQUE_REFERENCE_PATTERN, validate_canonical_id
+
+        self._checked_frame(frame, "resolver-legacy-recovery", {
+            "catalog", "profile_id", "snapshot", "epoch", "bindings",
+        })
+        registry = state.registry
+        profile_id = frame["profile_id"]
+        snapshot, epoch = frame["snapshot"], frame["epoch"]
+        rows = frame["bindings"]
+        if (type(profile_id) is not str or type(snapshot) is not str
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", snapshot)
+                or type(epoch) is not str or len(epoch) > wire.MAX_INTEGER_DIGITS
+                or not re.fullmatch(r"[1-9][0-9]*", epoch) or type(rows) is not list):
+            raise InvalidFrame("invalid legacy recovery resolver arguments")
+        try:
+            validate_canonical_id(profile_id, field="profile_id")
+        except ProtocolError:
+            raise InvalidFrame("invalid legacy recovery Profile identity") from None
+        bindings: dict[str, str] = {}
+        for row in rows:
+            if (type(row) is not list or len(row) != 2
+                    or type(row[0]) is not str or row[0].count("|") != 3
+                    or row[0] in bindings or type(row[1]) is not str
+                    or not row[1].startswith("authority-ref:")
+                    or not OPAQUE_REFERENCE_PATTERN.fullmatch(row[1])):
+                raise InvalidFrame("invalid legacy recovery Authority binding")
+            bindings[row[0]] = row[1]
+        security_epoch = int(epoch)
+        catalog_ref = registry.reference(frame["catalog"])
+        catalog = registry._current_recovery_replacement(catalog_ref)
+        root = catalog.root
+        if type(root) is not NativePath:
+            raise UnsupportedValue("legacy recovery catalog root is outside the fixed ABI")
+
+        # Use the exact original classes registered by bootstrap, which also
+        # owns their finite exception observation. The frame names no class.
+        error_types = {registry._records[cls].kind: cls for cls in state.method_errors}
+        denied = error_types.get("profile-resolution-denied")
+        reconfirm = error_types.get("profile-reconfirmation-required")
+        if denied is None or reconfirm is None or not issubclass(reconfirm, denied):
+            raise UnsupportedValue("legacy recovery resolver errors are not bound")
+
+        def resolve_and_publish(approved: set[str]) -> str:
+            try:
+                value = state.runtime.resolve_profile(
+                    catalog, profile_id, approved_artifact_digests=approved,
+                    authority_snapshot_digest=snapshot, authority_bindings=bindings,
+                    security_epoch=security_epoch,
+                )
+            except denied as exc:
+                if str(exc).startswith("Authority Kernel reference is missing for edge "):
+                    raise reconfirm(
+                        f"legacy activation requires explicit reconfirmation: {exc}"
+                    ) from exc
+                raise
+            profile, lock, plan = self._resolved_profile_documents(registry, root, value)
             return wire.dumps({
-                "format": PREFIX + "resolver-platform-artifacts-unbound.v1",
+                "format": PREFIX + "resolver-legacy-recovery-result.v1",
                 "scope": registry.scope.wire(),
+                "profile": profile, "lock": lock, "plan": plan,
             })
+
+        def recover() -> str:
+            # The original legacy caller approves the actual replacement
+            # inventory, independently of both the old pins and Setup review.
+            approved = {
+                str(manifest["pack"]["artifact_digest"])
+                for manifest in catalog.packs.values()
+            }
+            return root._bridge._resolve_catalog(
+                resolve_and_publish, root, catalog.artifact_root, approved,
+            )
+
+        try:
+            return self._apply_original(recover, caller="resolver-legacy-recovery")
+        except _UnboundPlatformArtifacts:
+            return self._resolver_platform_artifacts_unbound(registry)
 
     def import_values(self, payload: str) -> str:
         """Import only builtin DATA and existing issued references."""

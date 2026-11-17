@@ -251,10 +251,25 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         &mut self,
         input: &CoreBuffer,
     ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
-        match self
-            .fixed_call(RESOLVE_PROFILE_SLOT, input, "resolver-profile")
-            .await?
-        {
+        self.observe_profile_resolution(input, "resolver-profile")
+            .await
+    }
+
+    #[cfg(unix)]
+    pub(super) async fn observe_legacy_profile_resolution(
+        &mut self,
+        input: &CoreBuffer,
+    ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
+        self.observe_profile_resolution(input, "resolver-legacy-recovery")
+            .await
+    }
+
+    async fn observe_profile_resolution(
+        &mut self,
+        input: &CoreBuffer,
+        origin: &'static str,
+    ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
+        match self.fixed_call(RESOLVE_PROFILE_SLOT, input, origin).await? {
             FixedCallOutput::Projection(boundary) => Ok(Ok(boundary)),
             FixedCallOutput::Identity(outcome) => Ok(Err(outcome)),
         }
@@ -304,7 +319,10 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                     BOOTSTRAP_ACTIVATION_DECISION_SLOT,
                     "bootstrap-activation-preflight" | "bootstrap-activation-match"
                 )
-                | (RESOLVE_PROFILE_SLOT, "resolver-profile")
+                | (
+                    RESOLVE_PROFILE_SLOT,
+                    "resolver-profile" | "resolver-legacy-recovery"
+                )
         ) {
             bail!("fixed original caller is unavailable");
         }
@@ -325,6 +343,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "resolver-dynamic-edges") => RESOLVER_DYNAMIC_EDGES,
             (REVIEW, "resolver-verified-artifacts") => RESOLVER_VERIFIED_ARTIFACTS,
             (REVIEW, "resolver-profile") => RESOLVE_PROFILE,
+            (REVIEW, "resolver-legacy-recovery") => RESOLVE_LEGACY_PROFILE,
             (REVIEW, "bootstrap-predecessor-source") => BOOTSTRAP_PREDECESSOR_SOURCE,
             (REVIEW, "bootstrap-inactive-source") => BOOTSTRAP_INACTIVE_SOURCE,
             (REVIEW, "bootstrap-inactive-equality") => BOOTSTRAP_INACTIVE_EQUALITY,
@@ -339,7 +358,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             _ => bail!("fixed original caller is outside review"),
         };
         self.work.get().source.check_live()?;
-        if matches!(slot, 3 | 4) || phase == RESOLVE_PROFILE {
+        if matches!(slot, 3 | 4) || matches!(phase, RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE) {
             self.work
                 .get()
                 .source_occurrence
@@ -397,6 +416,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             RESOLVER_STATIC_EDGES
                 | RESOLVER_DYNAMIC_EDGES
                 | RESOLVE_PROFILE
+                | RESOLVE_LEGACY_PROFILE
                 | BOOTSTRAP_PREDECESSOR_SOURCE
                 | BOOTSTRAP_INACTIVE_SOURCE
                 | BOOTSTRAP_INACTIVE_EQUALITY
@@ -681,7 +701,8 @@ fn error_catch(kind: &str) -> Result<BootstrapRecoveryCatch> {
         | "runtime-error"
         | "default-profile-v4-error"
         | "bundle-integrity-error"
-        | "profile-resolution-denied" => None,
+        | "profile-resolution-denied"
+        | "profile-reconfirmation-required" => None,
         _ => bail!("raw getter exception class is outside the registered ABI"),
     })
 }
@@ -735,6 +756,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
                 true
             )
             | (Some("resolver-profile-raised"), "resolver-profile", true)
+            | (
+                Some("resolver-legacy-recovery-raised"),
+                "resolver-legacy-recovery",
+                true
+            )
             | (
                 Some("bootstrap-predecessor-source-raised"),
                 "bootstrap-predecessor-source",

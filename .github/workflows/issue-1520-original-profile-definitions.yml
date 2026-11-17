@@ -19,6 +19,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_recovery_workspace_active.rs
       - tobkiri_launcher/harness-native/src/original_recovery_publish_active.rs
       - tobkiri_launcher/harness-native/src/original_recovery_snapshot_graph*.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_legacy_successor.rs
       - tobkiri_launcher/harness-native/src/original_recovery_snapshot_projections.rs
       - tobkiri_launcher/harness-native/src/original_recovery_profile_schema.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending.rs
@@ -225,7 +226,7 @@ jobs:
           TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-snapshot-graph.log" --expected-passed 4 --
+          --log "$RUNNER_TEMP/native-recovery-snapshot-graph.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::snapshot_graph::
           -- --test-threads=1 --nocapture

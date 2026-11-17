@@ -4038,8 +4038,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   カタログのmutexは同期のHost検証中だけ保持する。中断時も既存のdescriptorとロックの
   解放処理を共用する。Rust199件、strict Clippy、元Python生成の現行fixture 1件、
   固定旧ソースのレガシー移行・ドリフト拒否6件をローカルで実行した。
-  復旧専用のPack呼び出しは未接続。次は置換catalogからShell入力を選び、元のedge参照と
-  snapshotを同じStoreのresolverに渡す。実ファイル検証後の再解決と発行writeも残る。
+  復旧専用のPack呼び出しを接続した。検証済みの置換catalogからShell入力を選び、
+  保存済みのauthority-refと元のedge順、snapshotとepochを同じStoreのresolverに渡す。
+  後継候補のclosure digest、BaseとShell、principalのbinding、権限scopeをworkspace
+  lock内で比較し、元の再承認エラーを保持する。Rust 203件とPython 243件が通過した。
+  固定元ソース `1cf025f1e` が生成した46 Pack・176 bindingのレガシーfixtureでも、
+  同じAuthority Storeを読むRustテストが後継比較を通過した。実Wasmを通す復旧全体の
+  検証、後継artifactの検証後の再解決、workspace移行とHost公開が残る。
+  現在のresolver結果は `bootstrap_catalog.rs` でscopeと形式を確認し、
+  `original_recovery_legacy_successor.rs` で既存schema検証用に再エンコードする。
+  scopeの検証、確保量の追跡と元のschemaエラーを維持できれば、同じ解析結果を
+  schema検証へ渡して中間エンコードを省ける。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
   は同じrunで生成したWasmの検証済みセットを元のLauncherへ配置するテストに成功。

@@ -11,6 +11,10 @@ mod current;
 mod legacy;
 #[path = "original_recovery_snapshot_projections.rs"]
 mod projections;
+#[path = "original_recovery_legacy_successor.rs"]
+mod successor;
+pub(super) use legacy::resolver_input;
+pub(super) use successor::verify as verify_legacy_successor;
 
 const GRAPH: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 

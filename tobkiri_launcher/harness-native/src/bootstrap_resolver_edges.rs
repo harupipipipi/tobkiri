@@ -12,7 +12,7 @@ pub(super) const VERIFIED_ARTIFACTS_REQUEST: &str =
     "io.tobkiri.native-resolver-verified-artifacts.v1";
 const STATIC_RESPONSE: &str = "io.tobkiri.native-resolver-static-edges-result.v1";
 const DYNAMIC_RESPONSE: &str = "io.tobkiri.native-resolver-dynamic-edges-result.v1";
-const RESOLVE_REQUEST: &str = "io.tobkiri.native-resolver-profile.v1";
+pub(super) const RESOLVE_REQUEST: &str = "io.tobkiri.native-resolver-profile.v1";
 const RESOLVE_RESPONSE: &str = "io.tobkiri.native-resolver-profile-result.v1";
 const RESOLVED_FIELDS: [&str; 4] = ["resolved", "profile", "lock", "plan"];
 const SCHEMA: &str = "io.tobkiri.profile-authority-edge.v1";

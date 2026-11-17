@@ -129,6 +129,7 @@ pub(super) enum ProfileCheck {
     RecordsValidated,
     NeedsArtifactReverification,
     NeedsLegacySuccessor,
+    LegacySuccessorCompared,
 }
 
 /// Read the selected records in the original order with the bound schema closure.
@@ -139,7 +140,10 @@ pub(super) async fn read<S: crate::BootstrapReviewOwner>(
     budget: &Arc<dyn AllocationBudget>,
     schemas: Option<BoundProfileSchemas>,
     store: &crate::original_authority::io::Store<'_, '_, S>,
-    profile_id: &str,
+    (profile_id, resolve_legacy): (
+        &str,
+        impl AsyncFnOnce(LegacyResolverInput) -> Result<Option<CoreValue>>,
+    ),
 ) -> Result<ActiveSnapshotRead> {
     let mut current = None;
     let prefix = read_records(
@@ -152,6 +156,20 @@ pub(super) async fn read<S: crate::BootstrapReviewOwner>(
             let check = snapshot_graph::verify(op, store, budget, snapshot, profile_id)?;
             if check == ProfileCheck::NeedsArtifactReverification {
                 current = Some(snapshot_graph::retain_active(op, budget, snapshot.records)?);
+            }
+            if check == ProfileCheck::NeedsLegacySuccessor {
+                let input =
+                    snapshot_graph::resolver_input(op, budget, snapshot.records, profile_id)?;
+                if let Some(candidate) = resolve_legacy(input).await? {
+                    op.check(OriginalAuthorityStage::Source)?;
+                    snapshot_graph::verify_legacy_successor(
+                        op,
+                        budget,
+                        snapshot.records,
+                        candidate,
+                    )?;
+                    return Ok(ProfileCheck::LegacySuccessorCompared);
+                }
             }
             Ok(check)
         },
@@ -1249,9 +1267,58 @@ pub(super) mod tests {
                                 &published_envelope,
                             )
                             .unwrap();
-                            read(&op, state, digest, budget, Some(schemas), store, profile_id)
-                                .await
-                                .map(ControlFlow::<(), _>::Continue)
+                            read(
+                                &op,
+                                state,
+                                digest,
+                                budget,
+                                Some(schemas),
+                                store,
+                                (profile_id, async |input: LegacyResolverInput| {
+                                    assert!(!lock_free(&lock));
+                                    assert_eq!(input.profile_id.as_str(), Some(profile_id));
+                                    assert_eq!(
+                                        input.snapshot.as_str(),
+                                        activation["profile_authority_snapshot_digest"].as_str(),
+                                    );
+                                    let epoch =
+                                        activation["security_epoch"].as_i64().unwrap().to_string();
+                                    assert_eq!(input.epoch.as_str(), Some(epoch.as_str()));
+                                    let bindings = input.bindings.array().unwrap();
+                                    let edges =
+                                        records["profile"]["requested_edges"].as_array().unwrap();
+                                    assert_eq!(bindings.len(), edges.len());
+                                    for (binding, edge) in bindings.iter().zip(edges) {
+                                        let key = [
+                                            "caller_function_id",
+                                            "target_provider_id",
+                                            "contract_id",
+                                            "operation_id",
+                                        ]
+                                        .map(|field| edge[field].as_str().unwrap())
+                                        .join("|");
+                                        let binding = binding.array().unwrap();
+                                        assert_eq!(binding.len(), 2);
+                                        assert_eq!(
+                                            binding.get(0).unwrap().as_str(),
+                                            Some(key.as_str())
+                                        );
+                                        assert_eq!(
+                                            binding.get(1).unwrap().as_str(),
+                                            edge["authority_reference"].as_str()
+                                        );
+                                    }
+                                    Ok(records.get("legacy_successor").map(|candidate| {
+                                        CoreValue::parse_guest(
+                                            &serde_json::to_vec(candidate).unwrap(),
+                                            budget,
+                                        )
+                                        .unwrap()
+                                    }))
+                                }),
+                            )
+                            .await
+                            .map(ControlFlow::<(), _>::Continue)
                         },
                     ));
                     assert!(lock_free(&lock));
@@ -1339,15 +1406,22 @@ pub(super) mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn verifies_frozen_legacy_records_with_the_live_store_and_epoch() {
-        let records: Value = serde_json::from_slice(include_bytes!(
-            "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
-        ))
-        .unwrap();
+        let records: Value =
+            if let Some(path) = std::env::var_os("TOBKIRI_ORIGINAL_LEGACY_SUCCESSOR_FIXTURE") {
+                serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+            } else {
+                serde_json::from_slice(include_bytes!(
+                    "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
+                ))
+                .unwrap()
+            };
+        let expected = if records.get("legacy_successor").is_some() {
+            ProfileCheck::LegacySuccessorCompared
+        } else {
+            ProfileCheck::NeedsLegacySuccessor
+        };
         with_snapshot(&records, |fixture, db, _, capture, _| {
-            assert_eq!(
-                capture(fixture).unwrap().prefix.check,
-                ProfileCheck::NeedsLegacySuccessor
-            );
+            assert_eq!(capture(fixture).unwrap().prefix.check, expected);
             db.execute(
                 "UPDATE activation_reservations SET fencing_token=fencing_token+1",
                 [],

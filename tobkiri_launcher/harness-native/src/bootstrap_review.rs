@@ -74,6 +74,7 @@ pub enum BootstrapReviewReachpoint {
     },
     RecoverySurfaceActiveSnapshotReconfirmationNotBound,
     RecoveryBuildLegacyActivationSuccessorNotBound,
+    RecoveryVerifyLegacySuccessorArtifactNotBound,
     #[cfg(test)]
     RecoveryCompleted,
 }
@@ -165,6 +166,8 @@ pub(crate) struct ActualCustody {
     pub(crate) resolver_verified_artifacts: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) resolver_bindings: Option<CoreValue>,
     pub(crate) resolver_profile_result: Option<CoreBuffer>,
+    #[cfg(unix)]
+    pub(crate) legacy_resolution_failure: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) resolver_identity: Option<crate::bootstrap_runtime::ResolvedProfileIdentity>,
     pub(crate) predecessor_inputs:
         Option<crate::original_authority::definitions::BootstrapPredecessorInputs>,
