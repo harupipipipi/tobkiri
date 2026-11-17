@@ -2,11 +2,11 @@
 use super::*;
 use crate::bootstrap_metadata::BoundProfileSchemas;
 use crate::original_authority::io::Store;
-use catalog::RecoveryCatalogInputs;
+use catalog::{ActiveArtifactVerification, RecoveryCatalogInputs};
 use pending_reservation::PendingRepublish;
 use recovery_workspace::RecoveryWorkspace;
 use std::ops::ControlFlow;
-use tobkiri_canon::AllocationBudget;
+use tobkiri_canon::{AllocationBudget, CoreValue};
 #[path = "original_recovery_active_reservation.rs"]
 mod active_reservation;
 #[path = "original_recovery_pending_reservation.rs"]
@@ -14,13 +14,19 @@ mod pending_reservation;
 #[path = "original_recovery_workspace_active.rs"]
 mod workspace_active;
 
+struct ActiveSnapshotChecks<Artifact, Definition> {
+    artifact: Artifact,
+    definition: Definition,
+}
+
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
     LoadActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     CheckActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     LoadActiveSnapshotLockSchema { legacy: bool },
-    VerifyActiveSnapshotArtifact,
+    PublishActiveSnapshot,
+    ActiveSnapshotReconfirmationRequired,
     BuildLegacyActivationSuccessor,
     MissingPublishedAuthority,
     RecoveredNone,
@@ -50,6 +56,14 @@ impl PublicationRead {
                     recovery_catalog.require_committed_artifact_identity(op, profile, &identity)
                 })
             },
+            ActiveSnapshotChecks {
+                artifact: |op: &Operation<'_, S>, profile: &CoreValue, profile_id: &str| {
+                    recovery_catalog.verify_active_artifact(op, profile, profile_id)
+                },
+                definition: |op: &Operation<'_, S>, profile_id: &str, digest: &str| {
+                    recovery_catalog.verify_registered_definition(op, profile_id, digest)
+                },
+            },
         )
     }
 
@@ -66,6 +80,10 @@ impl PublicationRead {
             PendingRepublish,
             &str,
         ) -> Result<()>,
+        checks: ActiveSnapshotChecks<
+            impl FnOnce(&Operation<'_, S>, &CoreValue, &str) -> Result<ActiveArtifactVerification>,
+            impl FnOnce(&Operation<'_, S>, &str, &str) -> Result<()>,
+        >,
     ) -> Result<RecoveryAuthorityReached> {
         self.check_continuation_thread()?;
         let receipt = self.receipt();
@@ -129,26 +147,15 @@ impl PublicationRead {
                                 }
                                 let snapshot = read_snapshot
                                     .then(|| {
-                                        let snapshot = workspace_active::read(
-                                            &op, state, workspace_digest, budget, profile_schemas, store, profile_id,
-                                        )?;
-                                        let name = snapshot.profile_schema;
-                                        let legacy = snapshot.legacy;
-                                        Ok(match snapshot.check {
-                                            workspace_active::ProfileCheck::SourceUnavailable =>
-                                                RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema { name, legacy },
-                                            workspace_active::ProfileCheck::ReferencesUnavailable =>
-                                                RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema { name, legacy },
-                                            workspace_active::ProfileCheck::Validated =>
-                                                RecoveryAuthorityReached::LoadActiveSnapshotLockSchema { legacy },
-                                            workspace_active::ProfileCheck::NeedsArtifactReverification =>
-                                                RecoveryAuthorityReached::VerifyActiveSnapshotArtifact,
-                                            workspace_active::ProfileCheck::NeedsLegacySuccessor =>
-                                                RecoveryAuthorityReached::BuildLegacyActivationSuccessor,
-                                            #[cfg(test)]
-                                            workspace_active::ProfileCheck::RecordsValidated =>
-                                                unreachable!("production snapshot read uses the graph validator"),
-                                        })
+                                        workspace_active::read(
+                                            &op,
+                                            state,
+                                            workspace_digest,
+                                            budget,
+                                            profile_schemas,
+                                            store,
+                                            profile_id,
+                                        )
                                     })
                                     .transpose()?;
                                 Ok(ControlFlow::Continue(snapshot))
@@ -164,7 +171,14 @@ impl PublicationRead {
                     };
                     recover_activation(false)?;
                     if active_reservation::read(&op, store, &pending.intent)? {
-                        return Ok(recover_activation(true)?.expect("requested active snapshot"));
+                        let first = recover_activation(true)?.expect("requested active snapshot");
+                        return verify_active_snapshot(
+                            first,
+                            &pending.intent,
+                            |profile| (checks.artifact)(&op, profile, profile_id),
+                            || Ok(recover_activation(true)?.expect("requested active snapshot")),
+                            |digest| (checks.definition)(&op, profile_id, digest),
+                        );
                     }
                 } else if active_reservation::read(&op, store, &pending.intent)? {
                     return Ok(RecoveryAuthorityReached::MatchedReservation);
@@ -210,6 +224,72 @@ impl PublicationRead {
     }
 }
 
+fn incomplete_snapshot(prefix: workspace_active::ActiveSnapshotPrefix) -> RecoveryAuthorityReached {
+    use workspace_active::ProfileCheck;
+    let name = prefix.profile_schema;
+    let legacy = prefix.legacy;
+    match prefix.check {
+        ProfileCheck::SourceUnavailable => {
+            RecoveryAuthorityReached::LoadActiveSnapshotProfileSchema { name, legacy }
+        }
+        ProfileCheck::ReferencesUnavailable => {
+            RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema { name, legacy }
+        }
+        ProfileCheck::Validated => {
+            RecoveryAuthorityReached::LoadActiveSnapshotLockSchema { legacy }
+        }
+        ProfileCheck::NeedsLegacySuccessor => {
+            RecoveryAuthorityReached::BuildLegacyActivationSuccessor
+        }
+        ProfileCheck::NeedsArtifactReverification => {
+            unreachable!("complete snapshot retains its records")
+        }
+        #[cfg(test)]
+        ProfileCheck::RecordsValidated => {
+            unreachable!("production snapshot read uses the graph validator")
+        }
+    }
+}
+
+fn verify_active_snapshot(
+    first: workspace_active::ActiveSnapshotRead,
+    intent: &Intent,
+    verify_artifact: impl FnOnce(&CoreValue) -> Result<ActiveArtifactVerification>,
+    reread: impl FnOnce() -> Result<workspace_active::ActiveSnapshotRead>,
+    verify_definition: impl FnOnce(&str) -> Result<()>,
+) -> Result<RecoveryAuthorityReached> {
+    let Some(first) = first.current else {
+        return Ok(incomplete_snapshot(first.prefix));
+    };
+    // Only the Host publication and Authority lifecycle guards are held here.
+    // Hashes of selected package bytes must run outside the workspace lock.
+    if matches!(
+        verify_artifact(&first.artifact_profile)?,
+        ActiveArtifactVerification::SuccessorNeedsReconfirmation
+    ) {
+        return Ok(RecoveryAuthorityReached::ActiveSnapshotReconfirmationRequired);
+    }
+    let second = reread()?;
+    let Some(second) = second.current else {
+        return Ok(incomplete_snapshot(second.prefix));
+    };
+    if !first.is_same_activation(&second) {
+        return Err(raw(
+            recovery_workspace::APP_DENIED,
+            "active Profile changed during artifact verification",
+        ));
+    }
+    if !first.matches_candidate(intent)? {
+        return Err(raw(
+            recovery_workspace::APP_DENIED,
+            "Profile publication candidate changed",
+        ));
+    }
+    let digest = first.profile_definition_digest();
+    verify_definition(digest.as_str().expect("verified Profile definition digest"))?;
+    Ok(RecoveryAuthorityReached::PublishActiveSnapshot)
+}
+
 #[cfg(test)]
 impl PublicationRead {
     fn run_recovery_test<S: crate::BootstrapReviewOwner>(
@@ -225,6 +305,14 @@ impl PublicationRead {
             None,
             |op, store, workspace, pending, id| {
                 pending.publish(op, store, workspace, id, budget, |_| Ok(()))
+            },
+            ActiveSnapshotChecks {
+                artifact: |_: &Operation<'_, S>, _: &CoreValue, _: &str| {
+                    unreachable!("no bound active snapshot schemas")
+                },
+                definition: |_: &Operation<'_, S>, _: &str, _: &str| {
+                    unreachable!("no bound active snapshot schemas")
+                },
             },
         )
     }
@@ -684,6 +772,13 @@ mod tests {
                         }
                         Ok(())
                     })
+                }, ActiveSnapshotChecks {
+                    artifact: |_: &Operation<'_, Source>, _: &CoreValue, _: &str| {
+                        unreachable!("no complete active snapshot schema closure")
+                    },
+                    definition: |_: &Operation<'_, Source>, _: &str, _: &str| {
+                        unreachable!("no complete active snapshot schema closure")
+                    },
                 });
                 assert_eq!(
                     called,

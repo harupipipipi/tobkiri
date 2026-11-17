@@ -156,6 +156,26 @@ pub(super) fn capture<S: crate::BootstrapReviewOwner>(
     expected_parent: Identity,
     expected_shell: Option<(Identity, Identity)>,
 ) -> Result<ArtifactTreeIdentity> {
+    capture_for(
+        op,
+        budget,
+        root,
+        relative,
+        expected_parent,
+        expected_shell,
+        None,
+    )
+}
+
+fn capture_for<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    root: &Path,
+    relative: &str,
+    expected_parent: Identity,
+    expected_shell: Option<(Identity, Identity)>,
+    active_digest: Option<&str>,
+) -> Result<ArtifactTreeIdentity> {
     bounded(op, identity_timeout, |op| {
         let mut snapshot = ArtifactTreeIdentity {
             root_end: 0,
@@ -170,7 +190,7 @@ pub(super) fn capture<S: crate::BootstrapReviewOwner>(
             relative,
             expected_parent,
             expected_shell,
-            &mut Evidence::Capture(&mut snapshot),
+            &mut Evidence::Capture(&mut snapshot, active_digest),
         );
         if op.cleanup.uncertain.load(Ordering::Acquire) {
             return Err(OriginalAuthorityError::unavailable());
@@ -179,6 +199,35 @@ pub(super) fn capture<S: crate::BootstrapReviewOwner>(
         op.check(STAGE)?;
         Ok(snapshot)
     })
+}
+
+/// Verify a package outside the publication lock using the same rooted reads
+/// and member checks as committed recovery. The caller sets a shared deadline.
+pub(super) fn verify_active_package<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    root: &Path,
+    parent: Identity,
+    variant: &CoreValue,
+) -> Result<()> {
+    let relative = variant
+        .get_key("relative_path")
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    let relative = relative
+        .as_str()
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    charge_work(budget, (relative.len() as u64).saturating_mul(2))?;
+    if relative.starts_with('/') || relative_parts(relative).any(|part| part == "..") {
+        return Err(artifact_rejected("packaged artifact path escapes its root"));
+    }
+    let digest = variant
+        .get_key("artifact_digest")
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    let digest = digest
+        .as_str()
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    let identity = capture_for(op, budget, root, relative, parent, None, Some(digest))?;
+    SelectedPackage::new(root, relative, parent, &identity).verify(op, budget, variant)
 }
 
 /// Hash only the regular files named by the original rooted metadata pass.
@@ -197,15 +246,7 @@ pub(super) fn verify_tree_digest<S: crate::BootstrapReviewOwner>(
         || artifact_rejected("packaged artifact verification deadline exceeded"),
         |op| {
             op.check(STAGE)?;
-            let hex = digest.strip_prefix("sha256:").unwrap_or(digest).as_bytes();
-            if hex
-                .first()
-                .is_none_or(|first| hex.iter().all(|byte| byte == first))
-            {
-                return Err(artifact_rejected(
-                    "packaged artifact uses a sentinel digest",
-                ));
-            }
+            let hex = require_real_digest(digest)?;
             let mut scratch = Buffer::new(op)?;
             scratch.reserve(STREAM_CHUNK, budget)?;
             scratch.values.resize(STREAM_CHUNK, 0);
@@ -251,6 +292,19 @@ pub(super) fn verify_tree_digest<S: crate::BootstrapReviewOwner>(
     )
 }
 
+fn require_real_digest(digest: &str) -> Result<&[u8]> {
+    let hex = digest.strip_prefix("sha256:").unwrap_or(digest).as_bytes();
+    if hex
+        .first()
+        .is_none_or(|first| hex.iter().all(|byte| byte == first))
+    {
+        return Err(artifact_rejected(
+            "packaged artifact uses a sentinel digest",
+        ));
+    }
+    Ok(hex)
+}
+
 /// Compare exact evidence, with bounded work and no content reads.
 pub(super) fn require_same<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
@@ -289,7 +343,7 @@ fn compare<S: OriginalAuthorityOwner, T: PartialEq>(
     Ok(())
 }
 
-fn bounded<S, T>(
+pub(super) fn bounded<S, T>(
     op: &Operation<'_, S>,
     timeout: impl FnOnce() -> OriginalAuthorityError,
     run: impl FnOnce(&Operation<'_, S>) -> Result<T>,
@@ -368,11 +422,11 @@ fn walk_tree<S: crate::BootstrapReviewOwner>(
     };
 
     let anchor = walk.open_anchor(parent_path, expected_parent)?;
-    let stat = walk.stat(&anchor, root_name)?;
+    let stat = evidence.stat(walk.raw_stat(&anchor, root_name), PackageLocation::Root)?;
     let metadata = Metadata::from_stat(&stat);
     evidence.record(Role::Root, "", metadata, budget)?;
     if stat_mode(&stat) != mode_bits(libc::S_IFDIR) {
-        return Err(denied(ROOT_UNAVAILABLE));
+        return Err(evidence.unavailable(PackageLocation::Root));
     }
     if expected_shell.is_some_and(|(root, _)| root != stat_identity(&stat)) {
         return Err(denied(CHANGED));
@@ -405,10 +459,10 @@ fn walk_tree<S: crate::BootstrapReviewOwner>(
             return Err(exhausted());
         }
         walk.push_path(name)?;
-        let stat = walk.stat(parent, name)?;
+        let stat = evidence.stat(walk.raw_stat(parent, name), PackageLocation::Path)?;
         evidence.record(Role::Prefix, name, Metadata::from_stat(&stat), budget)?;
         if stat_mode(&stat) != mode_bits(libc::S_IFDIR) {
-            return Err(denied(PARENT_UNAVAILABLE));
+            return Err(evidence.unavailable(PackageLocation::Path));
         }
         parents.push(walk.open_directory(parent, name, &stat, false)?, budget)?;
     }
@@ -429,17 +483,77 @@ fn relative_parts(relative: &str) -> impl Iterator<Item = &str> {
 }
 
 enum Evidence<'a, 'snapshot> {
-    Capture(&'a mut ArtifactTreeIdentity),
+    Capture(&'a mut ArtifactTreeIdentity, Option<&'snapshot str>),
     Verify(&'a mut Verification<'snapshot>),
 }
 
+#[derive(Clone, Copy)]
+enum PackageLocation {
+    Root,
+    Path,
+    Selected,
+    Descendant,
+}
+
 impl Evidence<'_, '_> {
+    fn active_digest(&self) -> Option<&str> {
+        match self {
+            Self::Capture(_, digest) => *digest,
+            Self::Verify(_) => None,
+        }
+    }
+
+    fn stat(&self, result: Result<libc::stat>, location: PackageLocation) -> Result<libc::stat> {
+        let Some(digest) = self.active_digest() else {
+            return require_no_symlink(result.map_err(artifact_io)?);
+        };
+        match result {
+            Ok(stat) if is_symlink(&stat) => Err(artifact_rejected(match location {
+                PackageLocation::Root => "packaged artifact root must be a real directory",
+                PackageLocation::Path | PackageLocation::Selected => {
+                    "packaged artifact path contains a symlink"
+                }
+                PackageLocation::Descendant => "packaged artifact tree contains a symlink",
+            })),
+            Err(error)
+                if error.class == RAW_IO
+                    && !matches!(location, PackageLocation::Root)
+                    && matches!(&error.cause, Some(OriginalAuthorityCause::Io(io))
+                        if matches!(io.kind, std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory)) =>
+            {
+                Err(self.unavailable(location))
+            }
+            result => {
+                if matches!(location, PackageLocation::Selected) {
+                    require_real_digest(digest)?;
+                }
+                result
+            }
+        }
+    }
+
+    fn unavailable(&self, location: PackageLocation) -> OriginalAuthorityError {
+        if let Some(digest) = self.active_digest() {
+            if matches!(location, PackageLocation::Root) {
+                return artifact_rejected("packaged artifact root must be a real directory");
+            }
+            return require_real_digest(digest)
+                .err()
+                .unwrap_or_else(|| artifact_rejected("packaged artifact entry is unavailable"));
+        }
+        denied(match location {
+            PackageLocation::Root => ROOT_UNAVAILABLE,
+            PackageLocation::Path => PARENT_UNAVAILABLE,
+            PackageLocation::Selected | PackageLocation::Descendant => MEMBER_UNAVAILABLE,
+        })
+    }
+
     fn path(&mut self, root: &Path, path: &Path, budget: &Arc<dyn AllocationBudget>) -> Result<()> {
         let bytes = path.as_os_str().as_bytes();
         let root_end = root.as_os_str().len();
         charge_work(budget, bytes.len() as u64)?;
         match self {
-            Self::Capture(snapshot) => {
+            Self::Capture(snapshot, _) => {
                 snapshot.root_end = root_end;
                 snapshot.path_end = bytes.len();
                 snapshot.names.append(bytes, budget)
@@ -464,7 +578,7 @@ impl Evidence<'_, '_> {
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<()> {
         match self {
-            Self::Capture(snapshot) => snapshot.record(role, name, metadata, budget),
+            Self::Capture(snapshot, _) => snapshot.record(role, name, metadata, budget),
             Self::Verify(verification) => {
                 let expected = verification.expected;
                 let row = expected
@@ -551,13 +665,14 @@ impl<S: crate::BootstrapReviewOwner> Walk<'_, '_, S> {
     }
 
     fn stat(&self, parent: &TrackedFile, name: &str) -> Result<libc::stat> {
+        require_no_symlink(self.raw_stat(parent, name).map_err(artifact_io)?)
+    }
+
+    fn raw_stat(&self, parent: &TrackedFile, name: &str) -> Result<libc::stat> {
         charge_work(self.budget, (name.len() + size_of::<Metadata>()) as u64)?;
         let name = shell_root::checked_name(name)?;
-        let stat = stat_at(self.op, parent, &name, || self.path.clone()).map_err(artifact_io)?;
+        let stat = stat_at(self.op, parent, &name, || self.path.clone())?;
         self.op.check(STAGE)?;
-        if stat_mode(&stat) == mode_bits(libc::S_IFLNK) {
-            return Err(denied(SYMLINK));
-        }
         Ok(stat)
     }
 
@@ -656,7 +771,12 @@ impl<S: crate::BootstrapReviewOwner> Walk<'_, '_, S> {
         expected: Option<Identity>,
         evidence: &mut Evidence<'_, '_>,
     ) -> Result<Option<Frame>> {
-        let stat = self.stat(parent, name)?;
+        let location = if depth == 0 {
+            PackageLocation::Selected
+        } else {
+            PackageLocation::Descendant
+        };
+        let stat = evidence.stat(self.raw_stat(parent, name), location)?;
         if expected.is_some_and(|expected| expected != stat_identity(&stat)) {
             return Err(denied(CHANGED));
         }
@@ -677,7 +797,7 @@ impl<S: crate::BootstrapReviewOwner> Walk<'_, '_, S> {
             return Ok(None);
         }
         if kind != mode_bits(libc::S_IFDIR) {
-            return Err(denied(MEMBER_UNAVAILABLE));
+            return Err(evidence.unavailable(location));
         }
         let directory = self.open_directory(parent, name, &stat, true)?;
         let listing = self.list(&directory.file)?;
@@ -809,6 +929,17 @@ impl<S: crate::BootstrapReviewOwner> Walk<'_, '_, S> {
         }
         Ok(listing)
     }
+}
+
+fn is_symlink(stat: &libc::stat) -> bool {
+    stat_mode(stat) == mode_bits(libc::S_IFLNK)
+}
+
+fn require_no_symlink(stat: libc::stat) -> Result<libc::stat> {
+    if is_symlink(&stat) {
+        return Err(denied(SYMLINK));
+    }
+    Ok(stat)
 }
 
 fn denied(message: &'static str) -> OriginalAuthorityError {

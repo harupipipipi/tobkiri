@@ -25,6 +25,7 @@ pub(super) struct PackPins(Option<Funded<Vec<Option<PackPin>>>>);
 struct PackPin {
     id: CoreValue,
     digest: Digest,
+    shell: bool,
 }
 
 pub(super) struct SelectedShell {
@@ -193,19 +194,7 @@ impl CatalogIo {
         op: &Operation<'_, S>,
         profile: &CoreValue,
     ) -> Result<RecoveryShellVariant> {
-        op.check(OriginalAuthorityStage::Source)?;
-        if !self.completed()
-            || self.binding.is_none()
-            || !self.invocation.same_invocation(op.invocation)
-            || !self.cancellation.same_node(op.cancellation)
-            || !Arc::ptr_eq(&self.cleanup, &op.cleanup)
-        {
-            return Err(OriginalAuthorityError::unavailable());
-        }
-        let committed_shell = profile
-            .get_key("shell")
-            .filter(|shell| shell.object().is_some())
-            .ok_or_else(|| shell_denied("active Profile Shell binding is unavailable"))?;
+        let committed_shell = self.recovery_profile_shell(op, profile)?;
         let definition = self.recovery_shell_definition(&committed_shell)?;
         let unavailable = || shell_denied("active Profile Shell artifact is unavailable");
         let variants = field(&field(&definition, "launch")?, "variants")?;
@@ -246,6 +235,134 @@ impl CatalogIo {
         })
     }
 
+    /// Classify the binding before reading any files, as in active snapshot recovery.
+    pub(super) fn active_artifact_variant<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        profile_id: &str,
+        profiles: &CoreValue,
+        admitted_closure: Option<&CoreValue>,
+    ) -> Result<(CoreValue, ActiveArtifactVerification)> {
+        let shell = self.recovery_profile_shell(op, profile)?;
+        let definition = self.recovery_shell_definition(&shell)?;
+        if !text_is(&definition, "availability", "verified") {
+            return Err(shell_denied(
+                "active Profile Shell definition is unavailable",
+            ));
+        }
+        let variants = field(&field(&definition, "launch")?, "variants")?;
+        let variants = variants
+            .array()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let platform_matches = |variant: &CoreValue| {
+            same_text(variant, &shell, "platform") && same_text(variant, &shell, "architecture")
+        };
+        charge_work(&self.budget, (variants.len() as u64).saturating_mul(128))?;
+        let exact = unique_variant(variants.iter().filter(|variant| {
+            platform_matches(variant)
+                && text_matches(
+                    variant,
+                    "entrypoint_digest",
+                    &shell,
+                    "executable_artifact_digest",
+                )
+        }));
+        let unavailable = || shell_denied("active Profile Shell artifact is unavailable");
+        let registered =
+            registered_shell(profiles, profile_id, &self.budget)?.ok_or_else(unavailable)?;
+        if ![
+            "provider_id",
+            "pack_id",
+            "contract_id",
+            "platform",
+            "architecture",
+        ]
+        .into_iter()
+        .all(|key| same_text(&shell, &registered, key))
+        {
+            return Err(unavailable());
+        }
+        let pack = field(&shell, "pack_id")?;
+        let pack = pack.as_str().ok_or_else(unavailable)?;
+        let current_revision = same_text(&shell, &definition, "definition_revision");
+        if let Some(variant) = exact
+            && same_text(&shell, &registered, "executable_artifact_digest")
+            && current_revision
+            && self.recovery_pack_digest_matches(
+                pack,
+                field(&shell, "artifact_digest")?
+                    .as_str()
+                    .ok_or_else(unavailable)?,
+                admitted_closure,
+            )?
+        {
+            return if self.artifact_root.is_some() {
+                Ok((variant, ActiveArtifactVerification::Current))
+            } else {
+                Err(unavailable())
+            };
+        }
+        if self.artifact_root.is_none()
+            || current_revision
+            || !["provider_id", "pack_id", "contract_id"]
+                .into_iter()
+                .all(|key| same_text(&definition, &shell, key))
+        {
+            return Err(unavailable());
+        }
+        charge_work(&self.budget, (variants.len() as u64).saturating_mul(128))?;
+        let successor =
+            unique_variant(variants.iter().filter(platform_matches)).ok_or_else(unavailable)?;
+        // Only a bundled Shell can satisfy this check: the verified external
+        // closure permits normal_sandbox and application Pack manifests.
+        if !self.bundled_pack_pin(pack)?.is_some_and(|pin| pin.shell)
+            || !same_text(&registered, &successor, "artifact_digest")
+            || !text_matches(
+                &registered,
+                "executable_artifact_digest",
+                &successor,
+                "entrypoint_digest",
+            )
+            || !same_text(&registered, &definition, "definition_revision")
+            || !same_text(&definition, &successor, "artifact_digest")
+        {
+            return Err(unavailable());
+        }
+        Ok((
+            successor,
+            ActiveArtifactVerification::SuccessorNeedsReconfirmation,
+        ))
+    }
+
+    fn recovery_profile_shell<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+    ) -> Result<CoreValue> {
+        self.require_recovery_catalog(op)?;
+        profile
+            .get_key("shell")
+            .filter(|shell| shell.object().is_some())
+            .ok_or_else(|| shell_denied("active Profile Shell binding is unavailable"))
+    }
+
+    pub(super) fn require_recovery_catalog<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+    ) -> Result<()> {
+        op.check(OriginalAuthorityStage::Source)?;
+        if !self.completed()
+            || self.binding.is_none()
+            || !self.invocation.same_invocation(op.invocation)
+            || !self.cancellation.same_node(op.cancellation)
+            || !Arc::ptr_eq(&self.cleanup, &op.cleanup)
+        {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        Ok(())
+    }
+
     fn recovery_shell_definition(&self, committed_shell: &CoreValue) -> Result<CoreValue> {
         let unavailable = || shell_denied("active Profile Shell definition is unavailable");
         let provider = committed_shell
@@ -276,11 +393,8 @@ impl CatalogIo {
             ));
         }
         let unavailable = || shell_denied("active Profile Shell artifact is unavailable");
-        let registered = matching_row(profiles, profile_id, &self.budget)?
-            .and_then(|row| row.get_index(1))
-            .and_then(|profile| profile.get_key("shell"))
-            .filter(|shell| shell.object().is_some())
-            .ok_or_else(unavailable)?;
+        let registered =
+            registered_shell(profiles, profile_id, &self.budget)?.ok_or_else(unavailable)?;
         let shell = &selected.committed_shell;
         if ![
             "provider_id",
@@ -314,24 +428,8 @@ impl CatalogIo {
         digest: &str,
         admitted_closure: Option<&CoreValue>,
     ) -> Result<bool> {
-        let pins = &self
-            .recovery_pack_pins
-            .as_ref()
-            .ok_or_else(OriginalAuthorityError::unavailable)?
-            .0;
-        if let Some(pins) = pins {
-            charge_work(
-                &self.budget,
-                (pins.len() as u64).saturating_mul(id.len() as u64 + 1),
-            )?;
-            for pin in pins.iter() {
-                let pin = pin
-                    .as_ref()
-                    .ok_or_else(OriginalAuthorityError::unavailable)?;
-                if pin.id.as_str() == Some(id) {
-                    return Ok(pin.digest.as_str() == digest);
-                }
-            }
+        if let Some(pin) = self.bundled_pack_pin(id)? {
+            return Ok(pin.digest.as_str() == digest);
         }
         let Some(admitted_closure) = admitted_closure else {
             return Ok(false);
@@ -348,6 +446,52 @@ impl CatalogIo {
                 || text_is(&header, "kind", "application"))
             && text_is(&header, "artifact_digest", digest))
     }
+
+    fn bundled_pack_pin(&self, id: &str) -> Result<Option<&PackPin>> {
+        let pins = &self
+            .recovery_pack_pins
+            .as_ref()
+            .ok_or_else(OriginalAuthorityError::unavailable)?
+            .0;
+        if let Some(pins) = pins {
+            charge_work(
+                &self.budget,
+                (pins.len() as u64).saturating_mul(id.len() as u64 + 1),
+            )?;
+            for pin in pins.iter() {
+                let pin = pin
+                    .as_ref()
+                    .ok_or_else(OriginalAuthorityError::unavailable)?;
+                if pin.id.as_str() == Some(id) {
+                    return Ok(Some(pin));
+                }
+            }
+        }
+        Ok(None)
+    }
+}
+
+fn unique_variant(mut matching: impl Iterator<Item = CoreValue>) -> Option<CoreValue> {
+    let first = matching.next()?;
+    matching.next().is_none().then_some(first)
+}
+
+fn registered_shell(
+    profiles: &CoreValue,
+    profile_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<CoreValue>> {
+    Ok(registered_profile(profiles, profile_id, budget)?
+        .and_then(|profile| profile.get_key("shell"))
+        .filter(|shell| shell.object().is_some()))
+}
+
+pub(super) fn registered_profile(
+    profiles: &CoreValue,
+    profile_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<CoreValue>> {
+    Ok(matching_row(profiles, profile_id, budget)?.and_then(|row| row.get_index(1)))
 }
 
 fn funded_entries<S: OriginalAuthorityOwner, T>(
@@ -397,9 +541,10 @@ fn pack_pin(bytes: &[u8], budget: &Arc<dyn AllocationBudget>) -> Result<Option<P
         let id = header.get_key("id")?;
         let digest = header.get_key("artifact_digest")?;
         let digest = Digest::parse(digest.as_str()?).ok()?;
-        Some((id, digest))
+        let shell = text_is(&header, "kind", "shell");
+        Some((id, digest, shell))
     })();
-    let Some((id, digest)) = pin else {
+    let Some((id, digest, shell)) = pin else {
         return Ok(None);
     };
     let Some(id) = id.as_str() else {
@@ -408,7 +553,7 @@ fn pack_pin(bytes: &[u8], budget: &Arc<dyn AllocationBudget>) -> Result<Option<P
     // Copy only the Pack ID. Sharing the original field would retain the
     // entire manifest's graph through the recovery continuation.
     let id = CoreValue::string(id, budget).map_err(|_| source_capacity())?;
-    Ok(Some(PackPin { id, digest }))
+    Ok(Some(PackPin { id, digest, shell }))
 }
 
 fn matching_row(

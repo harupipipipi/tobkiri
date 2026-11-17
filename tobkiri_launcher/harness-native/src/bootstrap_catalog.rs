@@ -767,8 +767,11 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         Ok(RecoveryAuthorityReached::LoadActiveSnapshotLockSchema { legacy }) => {
             BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotLockSchemaNotBound { legacy }
         }
-        Ok(RecoveryAuthorityReached::VerifyActiveSnapshotArtifact) => {
-            BootstrapReviewReachpoint::RecoveryVerifyActiveSnapshotArtifactNotBound
+        Ok(RecoveryAuthorityReached::PublishActiveSnapshot) => {
+            BootstrapReviewReachpoint::RecoveryPublishActiveSnapshotNotBound
+        }
+        Ok(RecoveryAuthorityReached::ActiveSnapshotReconfirmationRequired) => {
+            BootstrapReviewReachpoint::RecoverySurfaceActiveSnapshotReconfirmationNotBound
         }
         Ok(RecoveryAuthorityReached::BuildLegacyActivationSuccessor) => {
             BootstrapReviewReachpoint::RecoveryBuildLegacyActivationSuccessorNotBound

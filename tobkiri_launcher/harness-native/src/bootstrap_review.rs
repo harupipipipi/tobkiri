@@ -72,7 +72,8 @@ pub enum BootstrapReviewReachpoint {
     RecoveryLoadActiveSnapshotLockSchemaNotBound {
         legacy: bool,
     },
-    RecoveryVerifyActiveSnapshotArtifactNotBound,
+    RecoveryPublishActiveSnapshotNotBound,
+    RecoverySurfaceActiveSnapshotReconfirmationNotBound,
     RecoveryBuildLegacyActivationSuccessorNotBound,
     #[cfg(test)]
     RecoveryCompleted,

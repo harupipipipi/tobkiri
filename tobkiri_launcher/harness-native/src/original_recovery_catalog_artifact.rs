@@ -2,6 +2,13 @@
 use super::*;
 use artifact_identity::ArtifactTreeIdentity;
 
+/// Result of checking the current catalog binding and the selected package bytes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ActiveArtifactVerification {
+    Current,
+    SuccessorNeedsReconfirmation,
+}
+
 pub(crate) struct RecoveryCatalogInputs<'a> {
     io: &'a CatalogIo,
     profiles: &'a CoreValue,
@@ -50,6 +57,85 @@ impl<'a> RecoveryCatalogInputs<'a> {
             .verify(op, &self.io.budget, selected.variant())?;
         self.require_committed_artifact_identity(op, profile, &identity)?;
         Ok(identity)
+    }
+
+    /// Verify the exact active package or classify a physically verified successor.
+    pub(in crate::original_authority::io::publication) fn verify_active_artifact<
+        S: crate::BootstrapReviewOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        profile_id: &str,
+    ) -> Result<ActiveArtifactVerification> {
+        let mut outcome = ActiveArtifactVerification::Current;
+        artifact_identity::bounded(
+            op,
+            || {
+                artifact_identity::artifact_rejected(
+                    "packaged artifact verification deadline exceeded",
+                )
+            },
+            |op| {
+                let (variant, classification) = self.io.active_artifact_variant(
+                    op,
+                    profile,
+                    profile_id,
+                    self.profiles,
+                    self.admitted,
+                )?;
+                outcome = classification;
+                let (root, parent) = self.artifact_anchor()?;
+                artifact_identity::verify_active_package(
+                    op,
+                    &self.io.budget,
+                    root,
+                    parent,
+                    &variant,
+                )?;
+                Ok(outcome)
+            },
+        )
+        .map_err(|mut error| {
+            if outcome == ActiveArtifactVerification::SuccessorNeedsReconfirmation
+                && let Some(OriginalAuthorityCause::Python {
+                    class: "tobkiri_protocol.errors.ProtocolError",
+                    message,
+                    ..
+                }) = &error.cause
+            {
+                error.message = format!("verified successor Shell artifact rejected: {message}");
+            }
+            error
+        })
+    }
+
+    /// Compare the publication candidate to the same registered definition the App loaded.
+    pub(in crate::original_authority::io::publication) fn verify_registered_definition<
+        S: crate::BootstrapReviewOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile_id: &str,
+        expected_digest: &str,
+    ) -> Result<()> {
+        self.io.require_recovery_catalog(op)?;
+        let changed = || {
+            raw(
+                recovery_workspace::APP_DENIED,
+                "Profile publication definition changed",
+            )
+        };
+        let source = shell_inputs::registered_profile(self.profiles, profile_id, &self.io.budget)?
+            .ok_or_else(changed)?;
+        let actual = source
+            .digest_guest(&self.io.budget)
+            .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
+        op.check(OriginalAuthorityStage::Source)?;
+        if actual.as_str() != expected_digest {
+            return Err(changed());
+        }
+        Ok(())
     }
 
     pub(in crate::original_authority::io::publication) fn require_committed_artifact_identity<

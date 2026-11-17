@@ -48,6 +48,16 @@ fn fixture_catalog(
     definition: Value,
     pack_digest: Option<Digest>,
 ) -> CatalogIo {
+    fixture_catalog_with_pack_kind(op, budget, definition, pack_digest, "shell")
+}
+
+fn fixture_catalog_with_pack_kind(
+    op: &Operation<'_, Source>,
+    budget: &Arc<dyn AllocationBudget>,
+    definition: Value,
+    pack_digest: Option<Digest>,
+    kind: &str,
+) -> CatalogIo {
     let runtime = &op.owner.root;
     fs::create_dir_all(runtime).unwrap();
     let mut io = CatalogIo::new(
@@ -74,7 +84,7 @@ fn fixture_catalog(
     if let Some(digest) = pack_digest {
         occurrences.push((
             "pack",
-            json!({"pack": {"id": PACK, "artifact_digest": digest}}),
+            json!({"pack": {"id": PACK, "artifact_digest": digest, "kind": kind}}),
         ));
     }
     let entries: Vec<_> = occurrences
@@ -96,6 +106,153 @@ fn fixture_catalog(
     io.loader = Loader::Done;
     assert!(io.completed());
     io
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn active_verification_distinguishes_current_and_verified_successor_artifacts() {
+    with_setup_source(|source, read, cancellation, budget| {
+        let op = operation(read, source, cancellation);
+        let root = source.root.join("platform-artifacts");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("Shell.AppImage");
+        let executable = b"\x7fELF\x02\x01\x01\x00\0\0\0\0\0\0\0\0\0\0>\0fixture";
+        fs::write(&artifact, executable).unwrap();
+        let mut tree = Sha256::new();
+        tree.update(b"\0");
+        tree.update(executable);
+        let artifact_digest = Digest::from_sha256(tree.finalize().into());
+        let entry_digest = Digest::hash(executable);
+        let revision = Digest::hash(b"current definition");
+        let variant = json!({
+            "platform": "linux", "architecture": "x86_64",
+            "relative_path": "Shell.AppImage", "entrypoint": "Shell.AppImage",
+            "artifact_digest": artifact_digest, "entrypoint_digest": entry_digest,
+        });
+        let definition = json!({
+            "provider_id": "shell.fixture", "pack_id": PACK, "contract_id": "app.shell.v1",
+            "availability": "verified", "definition_revision": revision,
+            "artifact_digest": artifact_digest, "launch": {"variants": [variant]},
+        });
+        let registered = json!({"shell": {
+            "provider_id": "shell.fixture", "pack_id": PACK, "contract_id": "app.shell.v1",
+            "platform": "linux", "architecture": "x86_64",
+            "definition_revision": revision, "artifact_digest": artifact_digest,
+            "executable_artifact_digest": entry_digest,
+        }});
+        let mut predecessor = registered.clone();
+        predecessor["shell"]["definition_revision"] = json!(Digest::hash(b"old definition"));
+        predecessor["shell"]["artifact_digest"] = json!(Digest::hash(b"old artifact"));
+        predecessor["shell"]["executable_artifact_digest"] = json!(Digest::hash(b"old entrypoint"));
+        let verify = |definition: &Value, registered: &Value, profile: &Value, digest, kind| {
+            let mut io =
+                fixture_catalog_with_pack_kind(&op, budget, definition.clone(), digest, kind);
+            io.artifact_parent_identity = Some(identity(&fs::metadata(&source.root).unwrap()));
+            let rows = guest(&json!([[PROFILE, registered]]), budget);
+            RecoveryCatalogInputs::new(&io, &rows, None).verify_active_artifact(
+                &op,
+                &guest(profile, budget),
+                PROFILE,
+            )
+        };
+        let verify_shell = |profile: &Value| {
+            verify(
+                &definition,
+                &registered,
+                profile,
+                Some(artifact_digest.clone()),
+                "shell",
+            )
+        };
+        assert_eq!(
+            verify_shell(&registered).unwrap(),
+            ActiveArtifactVerification::Current,
+        );
+        assert_eq!(
+            verify_shell(&predecessor).unwrap(),
+            ActiveArtifactVerification::SuccessorNeedsReconfirmation,
+        );
+        let registered_digest = Digest::hash(&serde_json::to_vec(&registered).unwrap());
+        let io = fixture_catalog_with_pack_kind(
+            &op,
+            budget,
+            definition.clone(),
+            Some(artifact_digest.clone()),
+            "shell",
+        );
+        let rows = guest(&json!([[PROFILE, registered]]), budget);
+        let registered_catalog = RecoveryCatalogInputs::new(&io, &rows, None);
+        registered_catalog
+            .verify_registered_definition(&op, PROFILE, registered_digest.as_str())
+            .unwrap();
+        for (id, digest) in [
+            ("missing-profile", &registered_digest),
+            (PROFILE, &revision),
+        ] {
+            assert_eq!(
+                registered_catalog
+                    .verify_registered_definition(&op, id, digest.as_str())
+                    .unwrap_err()
+                    .message,
+                "Profile publication definition changed",
+            );
+        }
+        drop((io, rows));
+        let unavailable = "active Profile Shell artifact is unavailable";
+        for (digest, kind) in [
+            (None, "shell"),
+            (Some(artifact_digest.clone()), "application"),
+        ] {
+            assert_eq!(
+                verify(&definition, &registered, &predecessor, digest, kind)
+                    .unwrap_err()
+                    .message,
+                unavailable
+            );
+        }
+        let mut ambiguous = definition.clone();
+        let mut alternative = variant.clone();
+        alternative["entrypoint_digest"] = json!(Digest::hash(b"other executable"));
+        ambiguous["launch"]["variants"] = json!([alternative, variant]);
+        let verify_ambiguous = |profile| {
+            verify(
+                &ambiguous,
+                &registered,
+                profile,
+                Some(artifact_digest.clone()),
+                "shell",
+            )
+        };
+        assert_eq!(
+            verify_ambiguous(&registered).unwrap(),
+            ActiveArtifactVerification::Current,
+        );
+        assert_eq!(
+            verify_ambiguous(&predecessor).unwrap_err().message,
+            unavailable
+        );
+
+        for (bytes, problem) in [
+            (None, "packaged artifact entry is unavailable"),
+            (
+                Some(b"replaced".as_slice()),
+                "packaged artifact digest does not match selected bytes",
+            ),
+        ] {
+            if let Some(bytes) = bytes {
+                fs::write(&artifact, bytes).unwrap();
+            } else {
+                fs::remove_file(&artifact).unwrap();
+            }
+            for (profile, prefix) in [
+                (&registered, "active Profile Shell artifact rejected"),
+                (&predecessor, "verified successor Shell artifact rejected"),
+            ] {
+                let error = verify_shell(profile).unwrap_err();
+                assert_eq!(error.class, RECOVERY_APP_DENIED);
+                assert_eq!(error.message, format!("{prefix}: {problem}"));
+            }
+        }
+    });
 }
 
 #[tokio::test(flavor = "current_thread")]

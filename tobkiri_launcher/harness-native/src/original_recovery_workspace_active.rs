@@ -56,6 +56,68 @@ pub(super) struct ActiveSnapshotPrefix {
     pub(super) check: ProfileCheck,
 }
 
+#[derive(Debug)]
+pub(super) struct ActiveSnapshot {
+    pub(super) artifact_profile: CoreValue,
+    records: [Digest; 4],
+    candidate: CoreValue,
+}
+
+impl ActiveSnapshot {
+    pub(super) fn is_same_activation(&self, other: &Self) -> bool {
+        self.records == other.records
+    }
+
+    pub(super) fn profile_definition_digest(&self) -> CoreValue {
+        self.candidate
+            .get_key("profile_definition_digest")
+            .expect("verified Profile definition digest")
+    }
+
+    pub(super) fn matches_candidate(&self, intent: &Intent) -> Result<bool> {
+        let id = subscript(&intent.doc, intent.payload, "candidate")?;
+        const FIELDS: [&str; 7] = [
+            "profile_id",
+            "profile_revision",
+            "activation_id",
+            "plan_digest",
+            "lock_digest",
+            "profile_definition_digest",
+            "security_epoch",
+        ];
+        if !exact(&intent.doc, id, &FIELDS) {
+            return Ok(false);
+        }
+        for field in FIELDS {
+            let actual = intent
+                .doc
+                .node(intent.doc.get(id, field).expect("exact candidate"));
+            let expected = self
+                .candidate
+                .get_key(field)
+                .expect("verified candidate field");
+            let matched = match actual {
+                Node::String(value) => expected.as_str().is_some_and(|text| value.is(text)),
+                Node::Scalar(CanonValue::Int(value)) => expected.as_i64() == Some(*value),
+                Node::Scalar(CanonValue::Bool(value)) => {
+                    expected.as_i64() == Some(i64::from(*value))
+                }
+                _ => false,
+            };
+            if !matched {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct ActiveSnapshotRead {
+    pub(super) prefix: ActiveSnapshotPrefix,
+    pub(super) current: Option<ActiveSnapshot>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ProfileCheck {
     SourceUnavailable,
@@ -76,10 +138,16 @@ pub(super) fn read<S: crate::BootstrapReviewOwner>(
     schemas: Option<BoundProfileSchemas>,
     store: &crate::original_authority::io::Store<'_, '_, S>,
     profile_id: &str,
-) -> Result<ActiveSnapshotPrefix> {
-    read_records(op, state, workspace_digest, budget, schemas, |snapshot| {
-        snapshot_graph::verify(op, store, budget, snapshot, profile_id)
-    })
+) -> Result<ActiveSnapshotRead> {
+    let mut current = None;
+    let prefix = read_records(op, state, workspace_digest, budget, schemas, |snapshot| {
+        let check = snapshot_graph::verify(op, store, budget, snapshot, profile_id)?;
+        if check == ProfileCheck::NeedsArtifactReverification {
+            current = Some(snapshot_graph::retain_active(op, budget, snapshot.records)?);
+        }
+        Ok(check)
+    })?;
+    Ok(ActiveSnapshotRead { prefix, current })
 }
 
 fn read_records<S: OriginalAuthorityOwner>(
@@ -1069,7 +1137,8 @@ pub(super) mod tests {
         test: impl FnOnce(
             &mut Fixture,
             &Connection,
-            &mut dyn FnMut(&mut Fixture) -> Result<ActiveSnapshotPrefix>,
+            &mut Intent,
+            &mut dyn FnMut(&mut Fixture) -> Result<ActiveSnapshotRead>,
         ),
     ) {
         let activation = &records["activation"];
@@ -1080,6 +1149,27 @@ pub(super) mod tests {
             .unwrap();
         with_setup_source(|source, publication, cancellation, budget| {
             let op = operation(publication, source, cancellation);
+            let signed_fields = json!({
+                "candidate": {
+                    "profile_id": records["profile"]["profile_id"],
+                    "profile_revision": records["plan"]["profile_revision"],
+                    "activation_id": activation["activation_id"],
+                    "plan_digest": records["plan"]["plan_digest"],
+                    "lock_digest": records["lock"]["lock_digest"],
+                    "profile_definition_digest": records["plan"]["profile_definition_digest"],
+                    "security_epoch": records["plan"]["security_epoch"],
+                }
+            });
+            let doc = json::decode_read_only_strict(
+                &serde_json::to_vec(&signed_fields).unwrap(),
+                &op,
+                budget,
+            )
+            .unwrap();
+            let mut intent = Intent {
+                payload: doc.root,
+                doc,
+            };
             with_registered_store(&op, &source.root, |store| {
                 let workspace = source.root.join("workspaces").join(profile_id);
                 let mut fixture = Fixture::new(workspace.join("activation"));
@@ -1128,7 +1218,7 @@ pub(super) mod tests {
                     assert!(lock_free(&lock));
                     snapshot.map(|result| result.continue_value().expect("active snapshot"))
                 };
-                test(&mut fixture, &db, &mut capture);
+                test(&mut fixture, &db, &mut intent, &mut capture);
                 Ok(())
             })
             .unwrap();
@@ -1141,9 +1231,9 @@ pub(super) mod tests {
             "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
         ))
         .unwrap();
-        with_snapshot(&records, |fixture, db, capture| {
+        with_snapshot(&records, |fixture, db, _, capture| {
             assert_eq!(
-                capture(fixture).unwrap().check,
+                capture(fixture).unwrap().prefix.check,
                 ProfileCheck::NeedsLegacySuccessor
             );
             db.execute(
@@ -1178,14 +1268,100 @@ pub(super) mod tests {
             let record = field.strip_suffix("_api_version").unwrap();
             assert_eq!(records[record][field], id);
         }
-        with_snapshot(&records, |fixture, db, capture| {
+        with_snapshot(&records, |fixture, db, intent, capture| {
             assert_eq!(
-                capture(fixture).unwrap(),
+                capture(fixture).unwrap().prefix,
                 ActiveSnapshotPrefix {
                     profile_schema: "profile_v5.schema.json",
                     legacy: false,
                     check: ProfileCheck::NeedsArtifactReverification,
                 }
+            );
+            use super::super::{RecoveryAuthorityReached, verify_active_snapshot};
+            use crate::original_authority::catalog::ActiveArtifactVerification;
+            let lock = fixture
+                .directory
+                .join(LockName::workspace("defaults").text());
+            let verify = |profile: &CoreValue| {
+                assert!(
+                    lock_free(&lock),
+                    "artifact verification runs outside the workspace lock"
+                );
+                assert!(profile.get_key("shell").is_some());
+                Ok(ActiveArtifactVerification::Current)
+            };
+            let verify_definition = |digest: &str| {
+                assert!(lock_free(&lock));
+                assert_eq!(
+                    digest,
+                    records["plan"]["profile_definition_digest"]
+                        .as_str()
+                        .unwrap()
+                );
+                Ok(())
+            };
+            assert_eq!(
+                verify_active_snapshot(
+                    capture(fixture).unwrap(),
+                    intent,
+                    verify,
+                    || capture(fixture),
+                    verify_definition
+                )
+                .unwrap(),
+                RecoveryAuthorityReached::PublishActiveSnapshot,
+            );
+            let first = capture(fixture).unwrap();
+            let changed = verify_active_snapshot(
+                first,
+                intent,
+                verify,
+                || {
+                    // A different but valid activation record must not reuse the first hash.
+                    let previous = fixture.envelope["activation"]["created_at"].take();
+                    fixture.envelope["activation"]["created_at"] = json!("2000-01-01T00:00:00Z");
+                    let reread = capture(fixture);
+                    fixture.envelope["activation"]["created_at"] = previous;
+                    reread
+                },
+                |_| panic!("changed records cannot reach the definition check"),
+            )
+            .unwrap_err();
+            assert_eq!(
+                changed.message,
+                "active Profile changed during artifact verification"
+            );
+            let candidate = intent.doc.get(intent.payload, "candidate").unwrap();
+            let epoch = intent.doc.get(candidate, "security_epoch").unwrap();
+            let old = std::mem::replace(
+                &mut intent.doc.nodes[epoch],
+                Node::Scalar(CanonValue::Int(-1)),
+            );
+            let wrong_intent = verify_active_snapshot(
+                capture(fixture).unwrap(),
+                intent,
+                verify,
+                || capture(fixture),
+                |_| panic!("different candidate cannot reach the definition check"),
+            )
+            .unwrap_err();
+            assert_eq!(
+                wrong_intent.message,
+                "Profile publication candidate changed"
+            );
+            intent.doc.nodes[epoch] = old;
+            assert_eq!(
+                verify_active_snapshot(
+                    capture(fixture).unwrap(),
+                    intent,
+                    |_| Ok(ActiveArtifactVerification::SuccessorNeedsReconfirmation),
+                    || panic!("verified successor requires reconfirmation before any reread"),
+                    |_| panic!(
+                        "verified successor requires reconfirmation before checking the definition"
+                    ),
+                )
+                .unwrap(),
+                RecoveryAuthorityReached::ActiveSnapshotReconfirmationRequired,
             );
             fixture.pointer["activation_id"] = json!("activation:different-candidate");
             assert_eq!(

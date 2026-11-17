@@ -237,6 +237,69 @@ pub(super) fn verify<S: crate::BootstrapReviewOwner>(
     Ok(ProfileCheck::NeedsArtifactReverification)
 }
 
+/// Retain the four canonical record identities and the small fields consumed
+/// after dropping the workspace lock. Only the Shell is read by artifact lookup.
+pub(super) fn retain_active<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    records: SnapshotRecords<'_>,
+) -> Result<ActiveSnapshot> {
+    let capacity = || OriginalAuthorityError::capacity(GRAPH);
+    let to_core = |value: View<'_>| {
+        let bytes = value.canonical(op, budget)?;
+        CoreValue::parse_guest(&bytes, budget).map_err(|_| capacity())
+    };
+    let verified_digest = |record: View<'_>, field| {
+        let value = record.field(field)?;
+        let rendered = definitions::render_python_str(op, budget, value.doc, value.id)?;
+        Digest::parse(rendered.as_str().expect("strict digest text"))
+            .map_err(|_| OriginalAuthorityError::unsupported(GRAPH, "verified activation digest"))
+    };
+    // The graph already checked these three seals against the exact records.
+    let seals = [
+        verified_digest(records.plan, "profile_revision")?,
+        verified_digest(records.lock, "lock_digest")?,
+        verified_digest(records.plan, "plan_digest")?,
+        records.activation.digest(None, op, budget)?,
+    ];
+    let artifact_profile = CoreValue::object_shared(
+        std::iter::once(Ok(("shell", to_core(records.profile.field("shell")?)?))),
+        budget,
+    )
+    .map_err(|_| capacity())?;
+    let candidate = CoreValue::object_shared(
+        [
+            Ok(("profile_id", to_core(records.profile.field("profile_id")?)?)),
+            Ok((
+                "profile_revision",
+                to_core(records.plan.field("profile_revision")?)?,
+            )),
+            Ok((
+                "activation_id",
+                to_core(records.activation.field("activation_id")?)?,
+            )),
+            Ok(("plan_digest", to_core(records.plan.field("plan_digest")?)?)),
+            Ok(("lock_digest", to_core(records.lock.field("lock_digest")?)?)),
+            Ok((
+                "profile_definition_digest",
+                to_core(records.plan.field("profile_definition_digest")?)?,
+            )),
+            Ok((
+                "security_epoch",
+                to_core(records.plan.field("security_epoch")?)?,
+            )),
+        ]
+        .into_iter(),
+        budget,
+    )
+    .map_err(|_| capacity())?;
+    Ok(ActiveSnapshot {
+        artifact_profile,
+        records: seals,
+        candidate,
+    })
+}
+
 fn epoch_matches<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     store: &Store<'_, '_, S>,
