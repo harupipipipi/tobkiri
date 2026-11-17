@@ -140,10 +140,22 @@ fn raw(class: &'static str, message: &'static str) -> OriginalAuthorityError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tobkiri_core::RuntimeOwner;
+    use tobkiri_gate::{CapacityLedger, GateError, NativeSetupLease};
 
     const CLOCK: f64 = 123.25;
     const BEFORE: f64 = 23.75;
+
+    // Match the publication recovery fixtures' portable allocation proof.
+    struct Portable;
+    impl NativeSetupLease for Portable {
+        fn validate(&self) -> std::result::Result<(), GateError> {
+            Ok(())
+        }
+
+        fn allocation_domain(&self) -> Digest {
+            Digest::hash(b"activation-abort-test-allocation")
+        }
+    }
 
     struct Source(PathBuf);
     impl OriginalAuthorityOwner for Source {
@@ -160,9 +172,12 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let source = Source(directory.path().join("selected"));
         fs::create_dir(&source.0).unwrap();
-        let owner = RuntimeOwner::open(directory.path().join("core")).unwrap();
-        let invocation = owner.begin_native_setup().unwrap();
-        let cancellation = CoreCancellation::new_with_control(invocation.control()).unwrap();
+        let control = CoreControl::default();
+        let account = CapacityLedger::new()
+            .native_setup_account(&control, || Ok(Arc::new(Portable)))
+            .unwrap();
+        let invocation = account.begin().unwrap();
+        let cancellation = CoreCancellation::new_with_control(&control).unwrap();
         let fixture = super::super::super::tests::Fixture {
             clock: CLOCK,
             mutation: BTreeMap::new(),
@@ -188,6 +203,8 @@ mod tests {
         })
         .unwrap();
         assert!(op.cleanup.verified());
+        let remaining = account.snapshot().unwrap();
+        assert_eq!((remaining.charged_bytes, remaining.reservations), (0, 0));
     }
 
     fn with_db<T>(store: &Store<'_, '_, Source>, body: impl FnOnce(&Connection) -> T) -> T {
