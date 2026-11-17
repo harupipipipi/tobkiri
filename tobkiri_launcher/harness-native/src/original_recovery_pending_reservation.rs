@@ -4,6 +4,9 @@ use crate::original_authority::io::{Store, incomplete_reservations};
 use recovery_workspace::{APP_DENIED, pending};
 use rusqlite::types::Value;
 
+#[path = "original_recovery_committed_activation.rs"]
+mod committed;
+
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::PendingReservation;
 
 pub(super) fn recover<S: OriginalAuthorityOwner>(
@@ -21,7 +24,13 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
         definitions::render_python_str(op, budget, journal, id)
     };
     let reservation = render("reservation_id")?;
-    let Some(row) = incomplete_reservations::read_pending(op, store, text(&reservation))? else {
+    let Some(row) = incomplete_reservations::read_pending(
+        op,
+        store,
+        text(&reservation),
+        incomplete_reservations::BINDING_FIELDS,
+    )?
+    else {
         return Err(raw(
             APP_DENIED,
             "pending authority reservation is unavailable",
@@ -59,10 +68,21 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
     }
     match column_text(state_col, state_key)? {
         "active" => {
-            with_envelope_path(op, name, |path| {
+            let envelope = with_envelope_path(op, name, |path| {
                 check_committed_envelope(op, state, path, journal, budget)
             })?;
-            Ok(RecoveryAuthorityReached::RevalidateCommittedActivationReservation)
+            committed::revalidate(
+                op,
+                store,
+                &envelope,
+                committed::Binding {
+                    reservation_id: text(&reservation),
+                    activation_id: text(&activation),
+                    profile_id,
+                    fencing_token: actual_fence,
+                },
+            )?;
+            Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact)
         }
         "prepared" | "ready_without_authority" | "committing" => {
             Ok(RecoveryAuthorityReached::AbortPendingActivationReservation)
@@ -100,7 +120,7 @@ fn check_committed_envelope<S: OriginalAuthorityOwner>(
     path: &Path,
     journal: &Document,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<()> {
+) -> Result<Funded<Document>> {
     let envelope = pending::read_state(op, state, path, "committed activation envelope")?;
     let changed = || raw(APP_DENIED, "committed activation envelope changed");
     if envelope.entries(envelope.root).is_none() {
@@ -119,10 +139,7 @@ fn check_committed_envelope<S: OriginalAuthorityOwner>(
     {
         return Err(changed());
     }
-    // The original fetches these arguments before it opens Authority again.
-    subscript(&envelope, envelope.root, "plan")?;
-    subscript(&envelope, envelope.root, "profile")?;
-    Ok(())
+    Ok(envelope)
 }
 
 fn text(buffer: &tobkiri_canon::CoreBuffer) -> &str {

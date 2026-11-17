@@ -10,7 +10,7 @@ mod pending_reservation;
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    RevalidateCommittedActivationReservation,
+    VerifyCommittedActivationArtifact,
     AbortPendingActivationReservation,
     WorkspaceRecovered,
     LoadActiveSnapshot,
@@ -353,7 +353,7 @@ mod tests {
                 PROFILE_ID,
                 "+１",
                 "pinned.json",
-                Ok(RecoveryAuthorityReached::RevalidateCommittedActivationReservation),
+                Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact),
             ),
             (
                 "committing",
@@ -405,6 +405,20 @@ mod tests {
                 Err("committed activation envelope is unavailable: missing.json"),
             ),
             (
+                "active",
+                PROFILE_ID,
+                "1",
+                "stale-epoch.json",
+                Err("activation reservation is stale immediately before publish"),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "1",
+                "different-plan.json",
+                Err("activation reservation is stale immediately before publish"),
+            ),
+            (
                 "retired",
                 PROFILE_ID,
                 "1",
@@ -420,11 +434,14 @@ mod tests {
                 fs::create_dir_all(state_root.join("activations")).unwrap();
                 let stored_envelope = state_root.join("activations").join("pinned.json");
                 let other_envelope = state_root.join("activations").join("different.json");
-                fs::write(
-                    &stored_envelope,
-                    br#"{ "profile": {}, "activation": { "state": "active" }, "plan": {} }"#,
-                )
-                .unwrap();
+                let contents =
+                    br#"{ "profile": { "profile_authority_snapshot_digest": "authority" },
+                    "activation": { "state": "active" },
+                    "plan": { "security_epoch": 2, "plan_digest": "plan" } }"#;
+                fs::write(&stored_envelope, contents).unwrap();
+                if matches!(envelope, "stale-epoch.json" | "different-plan.json") {
+                    fs::write(state_root.join("activations").join(envelope), contents).unwrap();
+                }
                 let unrelated =
                     br#"{"activation":{"state":"active"},"plan":{},"profile":{"revision":2}}"#;
                 fs::write(&other_envelope, unrelated).unwrap();
@@ -450,7 +467,7 @@ mod tests {
                     "reservation_id": "reservation:1",
                     "activation_id": ACTIVATION_ID,
                     "envelope_path": envelope,
-                    "envelope_digest": Digest::hash(br#"{"activation":{"state":"active"},"plan":{},"profile":{}}"#).as_str(),
+                    "envelope_digest": Digest::hash(br#"{"activation":{"state":"active"},"plan":{"plan_digest":"plan","security_epoch":2},"profile":{"profile_authority_snapshot_digest":"authority"}}"#).as_str(),
                     "workspace_digest": digest.as_str(),
                     "fencing_token": fence,
                 }))
@@ -460,6 +477,20 @@ mod tests {
                 insert(&db, 1, ACTIVATION_ID, state);
                 db.execute("UPDATE activation_reservations SET profile_id=?", [profile])
                     .unwrap();
+                if envelope == "different-plan.json" {
+                    db.execute("UPDATE activation_reservations SET plan_digest='other'", [])
+                        .unwrap();
+                }
+                let epoch = match envelope {
+                    "different-plan.json" => "invalid epoch that must not be read",
+                    "stale-epoch.json" => "1",
+                    _ => "2",
+                };
+                db.execute(
+                    "UPDATE authority_meta SET value=? WHERE key='security_epoch'",
+                    [epoch],
+                )
+                .unwrap();
                 db.close().unwrap();
 
                 let result = read.run_recovery_authority(source, cancellation, budget);

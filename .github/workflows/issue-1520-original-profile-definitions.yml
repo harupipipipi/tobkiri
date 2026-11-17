@@ -18,6 +18,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_recovery_workspace.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending.rs
       - tobkiri_launcher/harness-native/src/original_recovery_pending_reservation.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_committed_activation.rs
       - tobkiri_launcher/harness-native/src/original_recovery_incomplete_reservations.rs
       - tobkiri_launcher/harness-native/src/original_recovery_active_reservation.rs
       - tobkiri_launcher/harness-native/src/bootstrap_catalog.rs

@@ -5,8 +5,10 @@ use std::{ffi::CStr, ptr::NonNull};
 
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::IncompleteReservation;
 const PENDING: OriginalAuthorityStage = OriginalAuthorityStage::PendingReservation;
+const EPOCH: OriginalAuthorityStage = OriginalAuthorityStage::Epoch;
 const SQL: &CStr = c"SELECT * FROM activation_reservations WHERE profile_id=? AND state IN ('prepared', 'ready_without_authority', 'committing') ORDER BY fencing_token";
 const PENDING_SQL: &CStr = c"SELECT * FROM activation_reservations WHERE reservation_id=?";
+const EPOCH_SQL: &CStr = c"SELECT value FROM authority_meta WHERE key='security_epoch'";
 const INVENTORY_FIELDS: [&[u8]; 2] = [b"reservation_id", b"state"];
 pub(in crate::original_authority::io) const BINDING_FIELDS: [&str; 4] =
     ["activation_id", "fencing_token", "profile_id", "state"];
@@ -15,7 +17,7 @@ pub(in crate::original_authority::io) const BINDING_FIELDS: [&str; 4] =
 // values intact until Python's subsequent str() calls are migrated. None means
 // the original dictionary has no such key, which is not a fetchall error.
 type Entry = [Option<Value>; 2]; // reservation_id, state
-pub(in crate::original_authority::io) type ReservationBinding = [Option<Value>; 4];
+type Row<const N: usize> = Funded<[Option<Value>; N]>;
 
 #[derive(Default)]
 pub(in crate::original_authority::io) struct Inventory {
@@ -69,33 +71,84 @@ pub(in crate::original_authority::io) fn read<S: OriginalAuthorityOwner>(
         .map_err(|error| wrap_sqlite(error, "activation recovery inventory failed"))
 }
 
-pub(in crate::original_authority::io) fn read_pending<S: OriginalAuthorityOwner>(
+pub(in crate::original_authority::io) fn read_pending<S: OriginalAuthorityOwner, const N: usize>(
     op: &Operation<'_, S>,
     store: &Store<'_, '_, S>,
     reservation_id: &str,
-) -> Result<Option<Funded<ReservationBinding>>> {
+    fields: [&str; N],
+) -> Result<Option<Row<N>>> {
     let db = store
         .connection(PENDING)
         .map_err(|error| wrap_sqlite(error, "authority database is unavailable"))?;
-    let row = (|| {
-        db.validate()?;
-        // The transient text binding is released with the statement.
-        let _binding = op.reserve(PENDING, reservation_id.len())?;
-        let mut query = Query::prepare(db.connection(), PENDING_SQL, PENDING)?;
-        query.bind_text(reservation_id)?;
-        let has_row = query.step()?;
-        let fields = query.fields(BINDING_FIELDS.map(str::as_bytes))?;
-        if !has_row {
-            return Ok(None);
-        }
-        let row = own_row(op, PENDING, query.convert_row(fields)?)?;
-        // CPython fetchone constructs the first row, then advances the
-        // statement once before returning it. It does not convert row two.
-        query.step()?;
-        Ok(Some(row))
-    })();
+    let row = fetch_one(op, &db, PENDING, PENDING_SQL, Some(reservation_id), fields);
     db.complete(row)
         .map_err(|error| wrap_sqlite(error, "activation reservation read failed"))
+}
+
+pub(in crate::original_authority::io) fn read_epoch<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    store: &Store<'_, '_, S>,
+) -> Result<Funded<OriginalAuthorityEpoch>> {
+    let wrap = |error| wrap_sqlite(error, "security epoch read failed");
+    let db = store.connection(EPOCH).map_err(wrap)?;
+    let row = fetch_one(op, &db, EPOCH, EPOCH_SQL, None, ["value"]);
+    let row = db.complete(row).map_err(wrap)?;
+    let unavailable = || OriginalAuthorityError::new(EPOCH, "security epoch is unavailable", None);
+    let row = row.ok_or_else(unavailable)?;
+    let value = row[0]
+        .as_ref()
+        .ok_or_else(|| raw(EPOCH, "builtins.IndexError", "No item with that key"))?;
+    let reserve = |bytes| op.reserve(EPOCH, bytes);
+    let (value, capacity) = match value {
+        Value::Text(text) => {
+            let capacity = reserve(text.len().saturating_mul(10).saturating_add(256))?;
+            (integer(text, EPOCH)?, capacity)
+        }
+        Value::Integer(number) if *number > 0 => {
+            let capacity = reserve(32)?;
+            (OriginalAuthorityEpoch(number.to_string()), capacity)
+        }
+        Value::Integer(_) => return Err(unavailable()),
+        _ => {
+            return Err(OriginalAuthorityError::unsupported(
+                EPOCH,
+                "Authority epoch column type",
+            ));
+        }
+    };
+    Ok(Funded {
+        value,
+        _capacity: capacity,
+    })
+}
+
+fn fetch_one<S: OriginalAuthorityOwner, const N: usize>(
+    op: &Operation<'_, S>,
+    db: &Database<'_, '_, '_, S>,
+    stage: OriginalAuthorityStage,
+    sql: &'static CStr,
+    parameter: Option<&str>,
+    fields: [&str; N],
+) -> Result<Option<Row<N>>> {
+    db.validate()?;
+    // The transient text binding is released with the statement.
+    let _binding = parameter
+        .map(|text| op.reserve(stage, text.len()))
+        .transpose()?;
+    let mut query = Query::prepare(db.connection(), sql, stage)?;
+    if let Some(text) = parameter {
+        query.bind_text(text)?;
+    }
+    let has_row = query.step()?;
+    let fields = query.fields(fields.map(str::as_bytes))?;
+    if !has_row {
+        return Ok(None);
+    }
+    let row = own_row(op, stage, query.convert_row(fields)?)?;
+    // CPython fetchone constructs the first row, then advances the
+    // statement once before returning it. It does not convert row two.
+    query.step()?;
+    Ok(Some(row))
 }
 
 fn fetch_all<S: OriginalAuthorityOwner>(

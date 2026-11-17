@@ -3849,8 +3849,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   activeの予約は、既存の安全なディレクトリ読み取りと厳密JSONで対応するenvelopeを
   開き、canonical digest、activationのstate、planとprofileの参照を元の順序で確認する。
   元Pythonの復旧本体では中止済み・別Profile・古いtoken・別ファイルを含む8件の順序を確認。
-  中止のAuthority更新と監査、envelope検証後の予約とsecurity epochの再照合、
-  パッケージを別のロック保持区間で検証する処理、active snapshotは未移植。
+  さらにenvelope検証後に予約を別のSQLite接続で読み直し、plan、Profile authority、
+  fencing token、activationの状態と照合する。すべて一致するときだけ現在のSecurityEpochを
+  読む。原本の再照合を7ケースで確認し、別planではepochを読まないこと、古いepochを
+  拒否することを実Authorityの試験に追加した。中止のAuthority更新と監査、workspace
+  lockを解放した区間でのパッケージ検証と再公開、active snapshotが残る。
 - [原本比較 CI 44071483174](https://github.com/harupipipipi/tobkiri/actions/runs/44071483174)
   はURI 160件を含む比較に成功。全体の [macOS CI 44068320748](https://github.com/harupipipipi/tobkiri/actions/runs/44068320748)
   では、変更前の実componentがAuthorityの照合まで到達せず、実測30.24秒で元の期限に達した。

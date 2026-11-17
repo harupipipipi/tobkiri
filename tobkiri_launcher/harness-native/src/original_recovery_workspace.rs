@@ -298,10 +298,10 @@ mod tests {
             assert_eq!(
                 recover(&op, &workspace, name, |_, journal| {
                     assert!(journal.is_some());
-                    Ok(RecoveryAuthorityReached::RevalidateCommittedActivationReservation)
+                    Ok(RecoveryAuthorityReached::VerifyCommittedActivationArtifact)
                 })
                 .unwrap(),
-                RecoveryAuthorityReached::RevalidateCommittedActivationReservation
+                RecoveryAuthorityReached::VerifyCommittedActivationArtifact
             );
             assert_eq!(fs::read(&pending).unwrap(), data);
             assert_eq!(fs::read_dir(&state).unwrap().count(), 2);
