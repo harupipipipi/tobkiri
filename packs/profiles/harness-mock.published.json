@@ -285,7 +285,7 @@
     },
     {
       "id": "local.harness-prompt",
-      "sha256": "sha256:ea6ea87da8391ed292ce354160d7b91bd4bfa6031cd2bf28b1016a8a876050ea",
+      "sha256": "sha256:ca4beae858cabb22a1e1bd225e394f0ac74769da2a150a1ca3229c051f46a2d0",
       "source": "file:../local.harness-prompt",
       "version": "0.1.0"
     },

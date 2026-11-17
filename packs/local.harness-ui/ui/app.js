@@ -64,6 +64,9 @@ form.addEventListener("submit", async (event) => {
           const value = frame.value;
           if (value.kind === "delta") assistant.body.textContent += value.text ?? "";
           if (value.kind === "done") assistant.state.textContent = "保存を確認中";
+          if (value.kind === "error" && typeof value.text === "string") {
+            failureStatus = `会話を完了できませんでした。下書きを残しています。 ${value.text.slice(0, 512)}`;
+          }
         }
       }
       if (terminal) break;

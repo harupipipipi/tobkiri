@@ -86,6 +86,18 @@ struct Server {
 }
 impl Server {
     fn new(resume_first_response: mpsc::Receiver<()>) -> Result<Self> {
+        Self::with_response(resume_first_response, None)
+    }
+
+    fn error_response(status: u16, body: &str) -> Result<Self> {
+        let (_release, receiver) = mpsc::channel();
+        Self::with_response(receiver, Some((status, body.to_owned())))
+    }
+
+    fn with_response(
+        resume_first_response: mpsc::Receiver<()>,
+        error_response: Option<(u16, String)>,
+    ) -> Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", 0))?;
         let origin = format!("http://{}", listener.local_addr()?);
         let stop = Arc::new(AtomicBool::new(false));
@@ -162,6 +174,11 @@ impl Server {
                 metadata.header_bytes = body_start;
                 record(metadata);
                 let header = String::from_utf8_lossy(&input[..body_start]);
+                if header.lines().next() != Some("POST /v1/chat/completions HTTP/1.1") {
+                    metadata.error("request-path", None);
+                    record(metadata);
+                    continue;
+                }
                 let length = header
                     .lines()
                     .find_map(|line| {
@@ -217,6 +234,30 @@ impl Server {
                 captured.lock().unwrap().push(body);
                 metadata.send_start_us = Some(started.elapsed().as_micros());
                 record(metadata);
+                if let Some((status, body)) = &error_response {
+                    let content_type = if *status == 200 {
+                        "text/event-stream"
+                    } else {
+                        "application/json"
+                    };
+                    let headers = format!(
+                        "HTTP/1.1 {status} Test response\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len(),
+                    );
+                    let _ = metadata.write_result(
+                        "error-headers-write",
+                        headers.len(),
+                        stream.write_all(headers.as_bytes()),
+                    );
+                    let _ = metadata.write_result(
+                        "error-body-write",
+                        body.len(),
+                        stream.write_all(body.as_bytes()),
+                    );
+                    metadata.send_end_us = Some(started.elapsed().as_micros());
+                    record(metadata);
+                    continue;
+                }
                 let response_headers = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
                 if metadata
                     .write_result(
@@ -361,7 +402,27 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
     let (resume_first_response, wait_for_delta) = mpsc::channel();
     let server = Server::new(wait_for_delta)?;
     let mut resume_first_response = Some(resume_first_response);
-    let fixture = Fixture::new("harness-live", Some(&server.origin))?;
+    let mut fixture = Fixture::new("harness-live", Some(&server.origin))?;
+    fixture.replace_pack_json(
+        "local.openai-compat-provider",
+        "config.json",
+        &serde_json::json!({
+            "base_url": server.origin,
+            "model": "gemma3-1b-local",
+            "secret_name": null,
+            "timeout_ms": 300000,
+            "temperature": "0.4",
+        }),
+    )?;
+    fixture.replace_pack_json(
+        "local.harness-prompt",
+        "config.json",
+        &serde_json::json!({
+            "model": "gemma3-1b-local",
+            "system_prompt": "Answer in plain text. Be helpful and concise.",
+            "max_tokens": 2048,
+        }),
+    )?;
     let (_, session) = fixture.start().await?;
     fixture
         .host
@@ -432,6 +493,8 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0]["stream"], true);
         assert_eq!(requests[0]["model"], "gemma3-1b-local");
+        assert_eq!(requests[0]["max_tokens"], 2048);
+        assert_eq!(requests[0]["temperature"], 0.4);
         assert!(events.iter().any(
             |event| matches!(&event.kind,tobkiri_flow::RunEventKind::StepValue{step,..} if step=="save")
         ));
@@ -458,5 +521,124 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
             .and_then(|message| message["content"].as_str()),
         Some("Check saved conversation")
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn wasm_provider_keeps_http_diagnostics_in_failed_flow() -> Result<()> {
+    for (status, body, prefix, expected) in [
+        (
+            400,
+            r#"{"error":{"message":"Model missing-local-model was not found","code":"model_not_found","param":"model"}}"#,
+            "provider HTTP 400",
+            "missing-local-model",
+        ),
+        (
+            401,
+            r#"{"error":{"message":"Incorrect API key provided: sk-private-test-value","code":"invalid_api_key"}}"#,
+            "provider HTTP 401",
+            "invalid_api_key",
+        ),
+        (
+            200,
+            "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\ndata: {\"error\":{\"message\":\"Context window is full\",\"code\":\"context_length_exceeded\"}}\n\n",
+            "provider stream failed",
+            "context_length_exceeded",
+        ),
+    ] {
+        let server = Server::error_response(status, body)?;
+        let fixture = Fixture::new("harness-live", Some(&server.origin))?;
+        let (_, session) = fixture.start().await?;
+        fixture
+            .host
+            .lines
+            .lock()
+            .unwrap()
+            .push_back("Report API failure".into());
+        let input = within_session(
+            &session,
+            "network error: physical Input read",
+            session.read_input(
+                fixture.input.clone(),
+                fixture.shape.clone(),
+                fixture.input_operation.clone(),
+            ),
+        )
+        .await?;
+        let mut run = within_session(
+            &session,
+            "network error: NativeInput admission",
+            session.submit_native_input(input),
+        )
+        .await?;
+        assert_eq!(run.routes().len(), 1);
+        let plan_digest = run.routes()[0].target.plan_digest.clone();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let mut diagnostics = Vec::new();
+        let mut partial_text = Vec::new();
+        let mut failed = false;
+        while let Some(tagged) =
+            next_native_event(&mut run, "network error: Flow progress", deadline).await?
+        {
+            assert_eq!(tagged.route_index, 0);
+            assert_eq!(tagged.event.plan_digest, plan_digest);
+            match &tagged.event.kind {
+                RunEventKind::Emitted { shape, value } => {
+                    assert_eq!(shape.to_string(), "local.harness-chat.assistant-output@1.0");
+                    let text = value
+                        .get_key("text")
+                        .and_then(|text| text.as_str().map(str::to_owned))
+                        .expect("event text");
+                    match value
+                        .get_key("kind")
+                        .and_then(|kind| kind.as_str().map(str::to_owned))
+                        .as_deref()
+                    {
+                        Some("error") => diagnostics.push(text),
+                        Some("delta") => {
+                            assert!(diagnostics.is_empty(), "delta after error");
+                            partial_text.push(text);
+                        }
+                        kind => panic!("unexpected error-stream event: {kind:?}"),
+                    }
+                }
+                RunEventKind::StepFailed { step, error, .. } => {
+                    assert_eq!(step, "generate");
+                    // The existing Core stream facade closes guest pull errors
+                    // as component failures; only chat data carries diagnostics.
+                    assert_eq!(error.code, "component");
+                }
+                RunEventKind::Failed { error } => {
+                    failed = true;
+                    assert_eq!(error.code, "component");
+                }
+                RunEventKind::Completed { .. } => panic!("API failure completed the Flow"),
+                RunEventKind::StepValue { step, .. } if step == "save" => {
+                    panic!("API failure saved the turn")
+                }
+                _ => {}
+            }
+        }
+        assert_native_completion(
+            &native_completion(&mut run, "network error: NativeInput completion").await?,
+            NativeInputStatus::Failed,
+            &[NativeInputRouteStatus::Failed],
+        )?;
+        assert!(failed, "missing Flow failure event");
+        assert_eq!(diagnostics.len(), 1, "duplicate or missing error event");
+        if status == 200 {
+            assert_eq!(partial_text, ["partial"]);
+        } else {
+            assert!(partial_text.is_empty());
+        }
+        let diagnostic = diagnostics.join("; ");
+        assert!(diagnostic.contains(prefix), "{diagnostic}");
+        assert!(diagnostic.contains(expected), "{diagnostic}");
+        assert!(
+            !diagnostic.contains("sk-private-test-value"),
+            "{diagnostic}"
+        );
+        assert_eq!(server.requests.lock().unwrap().len(), 1);
+    }
     Ok(())
 }

@@ -201,6 +201,27 @@ test("an edited draft survives while the failed turn is removed", async (t) => {
   assert.deepEqual(ui.messages.children, []);
 });
 
+test("provider diagnostics survive a failed turn without saving messages or losing the draft", async (t) => {
+  let loads = 0;
+  const diagnostic = "provider HTTP 400: message: Model <missing-model> was not found";
+  const ui = await connect(t, (request, respond) => {
+    if (request.op === "load") {
+      loads++;
+      respond(value([]));
+    }
+    if (request.op === "submit") respond({ kind: "stream", handle: 1 });
+    if (request.type === "stream-pull") respond([output("error", diagnostic), terminal("failed")]);
+    if (request.type === "stream-cancel") respond(null);
+  });
+  await submit(ui);
+  assert.equal(loads, 1);
+  assert.match(ui.status.textContent, /会話を完了できませんでした/);
+  assert.ok(ui.status.textContent.endsWith(diagnostic));
+  assert.equal(ui.text.value, "draft");
+  assert.deepEqual(ui.messages.children, []);
+  assert.equal(ui.send.disabled, false);
+});
+
 test("a failed stop request leaves the outcome unconfirmed", async (t) => {
   const pulled = Promise.withResolvers();
   const ui = await connect(t, (request, respond) => {

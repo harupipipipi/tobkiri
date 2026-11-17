@@ -303,13 +303,13 @@
     },
     {
       "id": "local.harness-prompt",
-      "sha256": "sha256:ea6ea87da8391ed292ce354160d7b91bd4bfa6031cd2bf28b1016a8a876050ea",
+      "sha256": "sha256:ca4beae858cabb22a1e1bd225e394f0ac74769da2a150a1ca3229c051f46a2d0",
       "source": "file:../local.harness-prompt",
       "version": "0.1.0"
     },
     {
       "id": "local.openai-compat-provider",
-      "sha256": "sha256:f6e82894407436483c4487c3f39551511cae9eb670a25f8b3b1208d068d1a730",
+      "sha256": "sha256:04bcc3b6f789a1354b5e4ae868f342a88887cadd96dcaa04160f467dc6ab7647",
       "source": "file:../local.openai-compat-provider",
       "version": "0.1.0"
     },
