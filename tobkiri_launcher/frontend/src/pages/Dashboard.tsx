@@ -110,7 +110,7 @@ function profileLaunchFailure(error: unknown): ProfileLaunchFailure {
         && result.action === 'review_packs_and_retry'
       ) {
         return {
-          message: 'The Launcher could not prepare the Defaultspack runtime. Open Packs to review its status, then retry Launch. If this continues, restart the Launcher.',
+          message: 'The Launcher could not prepare Tobkiri Harness. Open Packs to review its status, then retry Launch. If this continues, restart the Launcher.',
           recovery: 'packs',
         };
       }

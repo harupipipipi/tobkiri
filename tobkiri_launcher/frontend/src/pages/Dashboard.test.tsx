@@ -373,7 +373,7 @@ test('Home keeps a failed Shell launch visible with phase-specific recovery acti
       alert = [...container.querySelectorAll('[role="alert"]')]
         .find((element) => element.textContent?.includes('Shell launch failed.'));
       assert.ok(alert);
-      assert.match(alert.textContent ?? '', /could not prepare the Defaultspack runtime/);
+      assert.match(alert.textContent ?? '', /could not prepare Tobkiri Harness/);
       assert.equal(alert.querySelector<HTMLAnchorElement>('a')?.getAttribute('href'), '/packs');
 
       await act(async () => launch.click());

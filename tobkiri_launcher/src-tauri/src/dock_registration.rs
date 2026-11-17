@@ -40,7 +40,7 @@ pub(crate) struct ShellRuntimeBackendUnavailable;
 impl std::fmt::Display for ShellRuntimeBackendUnavailable {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(
-            "Defaultspack runtime backend is unavailable; open Tobkiri Launcher > Packs to prepare PackVM",
+            "Tobkiri Harness runtime is unavailable. Open Tobkiri Launcher > Packs to prepare PackVM.",
         )
     }
 }
