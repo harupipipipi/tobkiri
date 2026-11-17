@@ -357,7 +357,21 @@ impl ReferenceState {
             };
             unquote.call1((suffix,))?
         };
-        let parts = decoded.call_method1("split", ("/",))?;
+        let parts = if decoded.is_exact_instance_of::<PyString>() {
+            let separator = PyString::new(py, "/");
+            // SAFETY: Both strings are bound exact Unicode objects. This uses
+            // the same split implementation and default maxsplit as str.split,
+            // returning a new list reference or NULL with a Python exception.
+            unsafe {
+                Bound::from_owned_ptr_or_err(
+                    py,
+                    ffi::PyUnicode_Split(decoded.as_ptr(), separator.as_ptr(), -1),
+                )?
+            }
+        } else {
+            // The live unquote callable may return an object with its own split.
+            decoded.call_method1("split", ("/",))?
+        };
         let mut segments = PyList::empty(py);
         let mut state = self.clone();
         for segment in parts.try_iter()? {

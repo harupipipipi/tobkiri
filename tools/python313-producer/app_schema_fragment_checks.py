@@ -298,6 +298,71 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         assert slice_events == [expected, expected]
         checks["pointer_slice_is_live_and_preserves_preselected_unquote"] = True
 
+        def pointer_split(mode):
+            def make(fixture, resource, specifications):
+                target = fixture["integer"]
+                fixture[""] = {"日本語": {"\ud800": {"": target}}}
+                state = basic("/integer", "bad", lambda f: f["integer"])(
+                    fixture, resource, specifications)
+                events = state["events"] = []
+                expected = f"$defs/{fixture_key}//日本語/\ud800/"
+                fault = RuntimeError("actual split descriptor failure")
+                if mode == "fault":
+                    del state["error_schema"]
+                    state["fault"] = fault
+
+                class SplitDescriptor:
+                    def __get__(self, receiver, owner):
+                        assert receiver is decoded and owner is type(decoded)
+                        events.append({"split_get": True})
+                        if mode == "fault":
+                            raise fault
+
+                        def replacement(*args):
+                            raise AssertionError("split descriptor was looked up twice")
+
+                        owner.split = replacement
+
+                        def split(separator):
+                            events.append({"split_call": separator})
+                            assert separator == "/"
+                            return expected.split(separator)
+
+                        return split
+
+                class DecodedString(str):
+                    split = SplitDescriptor()
+
+                class DecodedObject:
+                    split = SplitDescriptor()
+
+                if mode == "exact":
+                    decoded = expected
+                elif mode == "subclass":
+                    decoded = DecodedString(expected)
+                else:
+                    decoded = DecodedObject()
+
+                def unquote(value):
+                    if value == f"$defs/{fixture_key}/integer":
+                        events.append({"unquote": value})
+                        return decoded
+                    return saved_unquote(value)
+
+                def install(_state):
+                    _core.unquote = unquote
+
+                state["install"] = install
+                return state
+            return make
+
+        try:
+            for mode in ("exact", "subclass", "object", "fault"):
+                compare(pointer_split(mode), "native_pointers")
+        finally:
+            _core.unquote = saved_unquote
+        checks["pointer_split_preserves_unicode_and_live_descriptors"] = True
+
         def dynamic_anchor(fixture, resource, specifications):
             return {"meta": {"$id": root_uri, "$dynamicRef": core_uri + "#meta"},
                     "actual": {"$anchor": 0},
@@ -683,5 +748,5 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                             finally:
                                 selected.META_SCHEMA = saved_meta
 
-    assert len(checks) == 19 and all(value is True for value in checks.values())
+    assert len(checks) == 20 and all(value is True for value in checks.values())
     return checks
