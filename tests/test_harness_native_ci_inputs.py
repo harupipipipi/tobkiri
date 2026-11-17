@@ -1,6 +1,7 @@
 """CI binder mode/identity checks; fixtures never execute a component."""
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -13,8 +14,14 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/python313-producer"))
 sys.path.insert(0, str(ROOT / "scripts/wasm"))
+sys.path.insert(0, str(ROOT / "tools/python313-producer/tests"))
+import app_schema_extension_inputs as app_extension  # noqa: E402
+import component_inputs  # noqa: E402
 import harness_native_ci_inputs as binder  # noqa: E402
-from harness_native_dependencies import compress_sources  # noqa: E402
+import harness_native_dependencies as dependencies  # noqa: E402
+from harness_native import schema_diagnostic_stage as diagnostic_stage  # noqa: E402
+from fetch_sdk import inventory  # noqa: E402
+import test_harness_native_dependencies as dependency_fixtures  # noqa: E402
 import stage_harness_native as stage  # noqa: E402
 
 
@@ -27,49 +34,26 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         self.platform = patch.object(binder.sys, "platform", "darwin")
         self.platform.start()
         self.addCleanup(self.platform.stop)
-        self.actions = patch.dict(os.environ, {"GITHUB_ACTIONS": "true"})
+        self.actions = patch.dict(os.environ, {
+            "GITHUB_ACTIONS": "true", "GITHUB_SHA": "fixture source",
+        })
         self.actions.start()
         self.addCleanup(self.actions.stop)
 
-    def fixture(self, diagnostic):
-        files = stage.captured(schema_call_diagnostic=diagnostic)
-        plan = stage.plan_for(files)
-        original_plan = (json.dumps(plan, sort_keys=True, indent=2) + "\n").encode()
-        name = "harness-native-schema-diagnostic" if diagnostic else "harness-native"
+    def fixture(
+        self, diagnostic: bool, *, app_backend: bool = False, tamper: str | None = None,
+    ) -> tuple[Path, Path, dict]:
+        variant, name = dependencies.variant(diagnostic=diagnostic, app_backend=app_backend)
         component = self.root / name
         inputs, work = component / "inputs", component / "work"
-        inputs.mkdir(parents=True)
-        work.mkdir()
-        metadata = {
-            "format": binder.DIAGNOSTIC_FORMAT if diagnostic else binder.NORMAL_DEPENDENCIES,
-            "original_plan_sha256": hashlib.sha256(original_plan).hexdigest(),
-            "original_source_files_unchanged": not diagnostic,
-        }
-        if diagnostic:
-            metadata["diagnostic_only"] = True
-        schema_paths = (*binder.PROFILE_SCHEMA_PATHS.values(),
-                        *binder.PROFILE_REFERENCE_PATHS.values(),
-                        *binder.RECOVERY_SCHEMA_PATHS.values())
-        captured_schemas = compress_sources({
-            name: files["python/" + name] for name in schema_paths
-        })
-        generated_sources = {
-            binder.METADATA: json.dumps(metadata).encode(),
-            binder.CAPTURED_DATA: f"FILES = {captured_schemas!r}\n".encode(),
-        }
-        (inputs / "python").mkdir()
-        plan["entrypoint"] = binder.ENTRYPOINT
-        for destination, raw in generated_sources.items():
-            source = "python/" + destination
-            files[source] = raw
-            (inputs / source).write_bytes(raw)
-            plan["sources"].append({
-                "source": source,
-                "destination": destination,
-                "sha256": hashlib.sha256(raw).hexdigest(),
-            })
+        work.mkdir(parents=True)
+        if app_backend:
+            files, plan, metadata = self.app_fixture(inputs, diagnostic, tamper)
+        else:
+            files, plan, metadata = self.schema_fixture(inputs, diagnostic)
         raw_plan = (json.dumps(plan, sort_keys=True) + "\n").encode()
         (inputs / "plan.json").write_bytes(raw_plan)
+        files["plan.json"] = raw_plan
         (inputs / "provenance.json").write_bytes(files["provenance.json"])
         artifact = work / "component.wasm"
         # Only a hash-bound binder fixture. Runtime/ABI validity is NOT proved.
@@ -94,11 +78,12 @@ class DiagnosticInputBindingTests(unittest.TestCase):
             "compiler_executable_sha256": "fixture compiler",
             "producer_ci_receipt_sha256": "fixture receipt",
         }))
-        variant = "schema-diagnostic" if diagnostic else "candidate"
         (self.root / "components-build.json").write_text(json.dumps({
             "format": f"tobkiri.python313-native-harness-{variant}/1",
             "outcome": "success", "inputs_unchanged": True,
             "diagnostic_only": diagnostic, "production_enabled": False,
+            "app_schema_backend": app_backend, "provider_substitution": app_backend,
+            "whole_catalog_acceptance": False,
             "producer": {"sha256": "fixture compiler"},
             "producer_receipt": {"sha256": "fixture receipt"},
             "components": {name: {
@@ -119,6 +104,88 @@ class DiagnosticInputBindingTests(unittest.TestCase):
             }},
         }))
         return artifact, inputs, plan
+
+    def schema_fixture(self, inputs: Path, diagnostic: bool) -> tuple[dict, dict, dict]:
+        files = stage.captured(schema_call_diagnostic=diagnostic)
+        plan = stage.plan_for(files)
+        original_plan = (json.dumps(plan, sort_keys=True, indent=2) + "\n").encode()
+        metadata = {
+            "format": binder.DIAGNOSTIC_FORMAT if diagnostic else binder.NORMAL_DEPENDENCIES,
+            "original_plan_sha256": hashlib.sha256(original_plan).hexdigest(),
+            "original_source_files_unchanged": not diagnostic,
+        }
+        if diagnostic:
+            metadata["diagnostic_only"] = True
+        schema_paths = (*binder.PROFILE_SCHEMA_PATHS.values(),
+                        *binder.PROFILE_REFERENCE_PATHS.values(),
+                        *binder.RECOVERY_SCHEMA_PATHS.values())
+        captured_schemas = dependencies.compress_sources({
+            name: files["python/" + name] for name in schema_paths
+        })
+        generated_sources = {
+            binder.METADATA: json.dumps(metadata).encode(),
+            binder.CAPTURED_DATA: f"FILES = {captured_schemas!r}\n".encode(),
+        }
+        (inputs / "python").mkdir(parents=True)
+        plan["entrypoint"] = binder.ENTRYPOINT
+        for destination, raw in generated_sources.items():
+            source = "python/" + destination
+            files[source] = raw
+            (inputs / source).write_bytes(raw)
+            plan["sources"].append({
+                "source": source,
+                "destination": destination,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            })
+        return files, plan, metadata
+
+    def app_fixture(
+        self, inputs: Path, diagnostic: bool, tamper: str | None,
+    ) -> tuple[dict, dict, dict]:
+        extension = self.root / "extension" / app_extension.ARTIFACT
+        extension.parent.mkdir(parents=True)
+        extension.write_bytes(b"\x00asm\x01\x00\x00\x00")
+        extension_root = self.root / "extension"
+        extension_report = {
+            "format": "tobkiri.app-schema-kernel-extension/1",
+            "outcome": "success", "guest_executed": False,
+            "production_enabled": False, "source_head": os.environ["GITHUB_SHA"],
+            "features": ["app-schema-backend"],
+            "compiled_features": ["default", "app-schema-backend"],
+            "source_files": inventory(app_extension.SOURCE),
+            "artifact_path": app_extension.ARTIFACT,
+            "artifact": binder.fingerprint(extension),
+        }
+        (extension_root / "extension-build.json").write_text(json.dumps(extension_report))
+        original = component_inputs.stage_harness_native(
+            ROOT, inputs, schema_call_diagnostic=diagnostic,
+        )
+        schema, stdlib, rpds, verified = dependency_fixtures.fixture(self.root)
+        kernel = app_extension.verify_extension(extension_root, ["app-schema-backend"])
+        selected = dependencies.stage(
+            inputs, original, verified, schema, stdlib, rpds, app_extension=kernel,
+        )
+        plan = json.loads((inputs / "plan.json").read_bytes())
+        files = {path: (inputs / path).read_bytes() for path in selected["files"]}
+        metadata = json.loads(files["python/" + binder.METADATA])
+        if tamper:
+            if tamper == "extension":
+                member = "python/" + app_extension.EXTENSION
+                files[member] += b"foreign extension"
+            else:
+                self.assertEqual(tamper, "capture")
+                member = "python/" + binder.CAPTURED_DATA
+                table = ast.parse(files[member]).body[0].value
+                name = diagnostic_stage.VALIDATION.removeprefix("python/")
+                row, = (node for node in table.elts if node.elts[0].value == name)
+                old_row = repr(ast.literal_eval(row)).encode()
+                new_row, = dependencies.compress_sources({name: b"# foreign validation"})
+                self.assertEqual(files[member].count(old_row), 1)
+                files[member] = files[member].replace(old_row, repr(new_row).encode())
+            (inputs / member).write_bytes(files[member])
+            row, = (entry for entry in plan["sources"] if entry["source"] == member)
+            row["sha256"] = hashlib.sha256(files[member]).hexdigest()
+        return files, plan, metadata
 
     def test_baseline_binding_rejects_derived_source_without_explicit_mode(self):
         artifact, _, _ = self.fixture(True)
@@ -147,6 +214,8 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         self.assertFalse(report["whole_catalog_acceptance"])
         self.assertEqual(report["checkpoint_contract"]["tag_count"], 69)
         self.assertIn("CI_SCHEMA_TAG_COUNT: usize = 69",
+                      (self.root / "bound/module-index.rs").read_text())
+        self.assertIn("CI_SCHEMA_APP_BACKEND: bool = false",
                       (self.root / "bound/module-index.rs").read_text())
         self.assertIn("TOBKIRI_TEST_NATIVE_HARNESS_SCHEMA_DIAGNOSTIC=1\n",
                       self.environment.read_text())
@@ -181,6 +250,55 @@ class DiagnosticInputBindingTests(unittest.TestCase):
             expected = (ROOT / "tobkiri_runtime" / paths[key]).read_bytes()
             self.assertEqual(row, {"sha256": hashlib.sha256(expected).hexdigest(),
                                    "content": expected.decode("utf-8")})
+
+    def test_combined_app_diagnostic_requires_both_flags_and_cannot_stage_launcher(self) -> None:
+        artifact, inputs, _ = self.fixture(True, app_backend=True)
+        output = self.root / "bound"
+        for flags in ({}, {"app_backend": True}, {"schema_call_diagnostic": True}):
+            with self.subTest(flags=flags), self.assertRaises(ValueError):
+                binder.bind(artifact, output, self.environment, **flags)
+            self.assertFalse(output.exists())
+            self.assertFalse(self.environment.exists())
+        report = binder.bind(artifact, output, self.environment,
+                             schema_call_diagnostic=True, app_backend=True)
+        self.assertTrue(report["app_schema_backend"])
+        self.assertTrue(report["schema_call_diagnostic"])
+        self.assertFalse(report["whole_catalog_acceptance"])
+        self.assertEqual(report["app_schema_extension"],
+                         binder.fingerprint(self.root / "extension" / app_extension.ARTIFACT))
+        raw_index = (inputs / diagnostic_stage.INDEX).read_bytes()
+        actual_index = diagnostic_stage._index_values(raw_index)["INDEX_SHA256"]
+        validation = (inputs / diagnostic_stage.VALIDATION).read_bytes()
+        self.assertIn(app_extension.APP_IMPORT, validation)
+        self.assertIn(
+            b'    _schema_checkpoint("check-schema-start", schema_name)\n'
+            + diagnostic_stage._CHECK_ANCHOR
+            + b'    _schema_checkpoint("check-schema-end", schema_name)\n',
+            validation,
+        )
+        intermediate = json.loads((inputs / "provenance.json").read_bytes())
+        self.assertNotEqual(actual_index, intermediate["source_index"]["index_sha256"])
+        self.assertEqual(report["source_index_sha256"], actual_index)
+        self.assertIn("CI_SCHEMA_TAG_COUNT: usize = 69", (output / "module-index.rs").read_text())
+        self.assertIn("CI_SCHEMA_APP_BACKEND: bool = true", (output / "module-index.rs").read_text())
+        self.assertIn("TOBKIRI_TEST_NATIVE_HARNESS_SCHEMA_DIAGNOSTIC=1\n",
+                      self.environment.read_text())
+        self.assertFalse((output / "launcher-component.json").exists())
+        self.assertNotIn("launcher_component_receipt", report)
+
+    def test_combined_app_diagnostic_rejects_rehashed_foreign_extension(self) -> None:
+        artifact, _, _ = self.fixture(True, app_backend=True, tamper="extension")
+        with self.assertRaisesRegex(ValueError, "App dependency differs"):
+            binder.bind(artifact, self.root / "bound", self.environment,
+                        schema_call_diagnostic=True, app_backend=True)
+        self.assertFalse(self.environment.exists())
+
+    def test_combined_app_diagnostic_rejects_rehashed_foreign_loader_member(self) -> None:
+        artifact, _, _ = self.fixture(True, app_backend=True, tamper="capture")
+        with self.assertRaisesRegex(ValueError, "captured App diagnostic module differs"):
+            binder.bind(artifact, self.root / "bound", self.environment,
+                        schema_call_diagnostic=True, app_backend=True)
+        self.assertFalse(self.environment.exists())
 
     def test_self_consistent_rehashed_plan_cannot_substitute_validation_source(self):
         artifact, inputs, plan = self.fixture(True)

@@ -62,7 +62,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 or any(path is None for path in (schema_inputs, stdlib, rpds))))):
         raise ValueError('schema-call diagnostic requires the whole native Harness and locked dependencies')
     if (type(harness_app_schema_backend) is not bool
-            or (harness_app_schema_backend and (not harness_native or schema_call_diagnostic
+            or (harness_app_schema_backend and (not harness_native
                 or any(path is None for path in (schema_inputs, stdlib, rpds))))):
         raise ValueError('App schema backend requires the whole native Harness and locked dependencies')
     app_data_mode = capability_projection or bundle_catalog or bundle_catalog_kernel
@@ -145,6 +145,10 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     recipe = destination / 'componentize.sh'
     recipe.write_text('set -eu\n/usr/bin/python3 -I -B /driver.py\n')
     identities[str(recipe)] = fingerprint(recipe)
+    if harness_native:
+        harness_variant, harness_component = harness_native_dependencies.variant(
+            diagnostic=schema_call_diagnostic, app_backend=harness_app_schema_backend,
+        )
     if app_schema_phases:
         from bundle_catalog_kernel_inputs import PHASE_RECEIPT
         receipt_format = PHASE_RECEIPT
@@ -166,12 +170,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         )
     elif native_input_stack:
         receipt_format = 'tobkiri.python313-native-input-stack-candidate/1'
-    elif harness_app_schema_backend:
-        receipt_format = 'tobkiri.python313-native-harness-app-frame/1'
     elif harness_native:
-        receipt_format = ('tobkiri.python313-native-harness-schema-diagnostic/1'
-                          if schema_call_diagnostic
-                          else 'tobkiri.python313-native-harness-candidate/1')
+        receipt_format = f'tobkiri.python313-native-harness-{harness_variant}/1'
     elif harness_setup:
         receipt_format = 'tobkiri.python313-setup-candidate/1'
     else:
@@ -210,7 +210,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         receipt['diagnostic_outcome_must_fail'] = True
     elif schema_call_diagnostic:
         receipt.update(diagnostic_only=True, whole_catalog_acceptance=False,
-                       provider_substitution=False, baseline_component=False)
+                       provider_substitution=harness_app_schema_backend, baseline_component=False)
+        if harness_app_schema_backend:
+            receipt['app_schema_backend'] = True
     elif harness_app_schema_backend:
         receipt.update(app_schema_backend=True, whole_catalog_acceptance=False,
                        baseline_component=False)
@@ -231,11 +233,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         component_names = ('harness-input-stack-import-diagnostics',)
     elif native_input_stack:
         component_names = ('harness-input-stack',)
-    elif harness_app_schema_backend:
-        component_names = ('harness-native-app-frame',)
     elif harness_native:
-        component_names = ('harness-native-schema-diagnostic' if schema_call_diagnostic
-                           else 'harness-native',)
+        component_names = (harness_component,)
     elif harness_setup:
         component_names = ('harness-setup',)
     else:

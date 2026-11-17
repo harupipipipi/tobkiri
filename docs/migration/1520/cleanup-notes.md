@@ -3999,3 +3999,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   挙動を比較した。Launcher CI 44096178241は型付きSchemaValidationの網羅漏れで停止した。
   同じStore内で元のエラーに戻せない場合は、保持中のグラフをワーカー外へ渡さず型付きの
   detachment失敗を返す分岐を追加した。
+- `catalog-app-frame-diagnostic` を追加し、通常のApp schema拡張と実カタログのStoreで、
+  `load_schema` の前後を既存の固定checkpointsから記録できるようにした。2B fuel、
+  30秒、64MiB、139件の上限は共用する。ProducerとBinderはApp拡張と両方のsource変換に
+  加え実ローダーが使う圧縮内容を検証し、結果にはAppの利用を明示する。この経路から
+  Launcher用のレシートは発行しない。実際のfuel計測とRegistry・URI別の内訳は後続。

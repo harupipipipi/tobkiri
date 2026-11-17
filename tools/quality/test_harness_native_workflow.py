@@ -40,14 +40,15 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.native = job(self.workflow, "execute-original-native-bootstrap")
 
     def test_schema_diagnostic_is_an_explicit_separate_producer_and_binder(self) -> None:
-        self.assertIn("catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, launcher-staging]", self.workflow)
+        self.assertRegex(self.workflow, r"(?m)^        options: \[bootstrap,.*catalog-schema-diagnostic,")
         build = job(self.workflow, "build-whole-native-harness")
         producer = step(build, "Build the actual native Harness dispatcher and original module closure")
         self.assertIn("build_components.py --harness-native", producer)
-        self.assertIn("inputs.verification == 'catalog-schema-diagnostic' && '--schema-call-diagnostic' || ''", producer)
+        self.assertIn("inputs.verification == 'catalog-schema-diagnostic'", producer)
+        self.assertIn("&& '--schema-call-diagnostic' || ''", producer)
         binder = step(self.native, "Bind the actual component, original modules and native index")
         self.assertIn("--schema-call-diagnostic", binder)
-        self.assertIn('if [ "$SCHEMA_DIAGNOSTIC" = true ]; then', binder)
+        self.assertIn('elif [ "$SCHEMA_DIAGNOSTIC" = true ]; then', binder)
         for component in ("harness-native", "harness-native-schema-diagnostic"):
             self.assertIn(f'harness-built/harness-native/{component}/work/component.wasm', binder)
             for path in ("inputs/plan.json", "inputs/provenance.json", "work/component.wasm",
@@ -70,6 +71,47 @@ class NativeWorkflowContracts(unittest.TestCase):
         launcher = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
         self.assertIn("inputs.verification == 'launcher-staging'", launcher)
         self.assertNotIn("catalog-app-frame", launcher)
+
+    def test_app_diagnostic_uses_same_extension_and_only_the_actual_catalog_trace(self) -> None:
+        mode = "catalog-app-frame-diagnostic"
+        condition = f"inputs.verification == '{mode}'"
+        component = "harness-native-app-frame-diagnostic"
+        self.assertRegex(self.workflow, rf"(?m)^        options: \[bootstrap,.*\b{mode},")
+        self.assertIn("default: bootstrap", self.workflow)
+        build = job(self.workflow, "build-whole-native-harness")
+        extension = step(build, "Build the source-bound App schema extension offline")
+        self.assertIn(condition, extension)
+        self.assertNotIn("--schema-phases", extension)
+        producer = step(build, "Build the actual native Harness dispatcher and original module closure")
+        self.assertEqual(producer.count(condition), 2)
+        self.assertIn("--harness-app-schema-backend --kernel-extension", producer)
+        self.assertIn("&& '--schema-call-diagnostic' || ''", producer)
+        binder = step(self.native, "Bind the actual component, original modules and native index")
+        combined = binder.split('elif [ "$SCHEMA_DIAGNOSTIC" = true ]; then', 1)[0]
+        self.assertIn(condition, combined)
+        self.assertIn("--schema-call-diagnostic --app-backend", combined)
+        self.assertIn(f"{component}/work/component.wasm", combined)
+        for name in (
+            "Prepare independent original catalog resource fixtures",
+            "Observe actual catalog schema checkpoints without qualification",
+            "Retain resolved and actually compiled runtime features",
+        ):
+            self.assertIn(condition, step(self.native, name))
+        for name in (
+            "Execute the actual same-guard catalog to constructor entry",
+            "Observe original Profile replacement and Authority initialization",
+            "Independently compare actual catalog reachpoint and effects",
+            "Prepare fresh independent original nine-case catalog fixtures",
+            "Stage the verified same-run Wasm through the original Launcher",
+        ):
+            self.assertNotIn(condition, step(self.native, name))
+        for path in (
+            "inputs/plan.json", "inputs/provenance.json",
+            "inputs/python/harness-native-dependencies.json",
+            "inputs/python/harness_native_dependency_data.py",
+            "work/component.build.json", "work/component.wasm",
+        ):
+            self.assertIn(f"harness-native/{component}/{path}", build)
 
     def test_schema_diagnostic_keeps_fresh_originals_and_skips_baseline_acceptance(self) -> None:
         for name in (

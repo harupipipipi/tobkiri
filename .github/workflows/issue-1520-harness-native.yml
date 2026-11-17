@@ -40,7 +40,7 @@ on:
       verification:
         description: Original runtime regression, targeted comparison, or Launcher resource staging
         type: choice
-        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, launcher-staging]
+        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, catalog-app-frame-diagnostic, launcher-staging]
         default: bootstrap
 
 permissions:
@@ -114,9 +114,9 @@ jobs:
           python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
           python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
       - uses: dtolnay/rust-toolchain@1.94.0
-        if: ${{ inputs.verification == 'catalog-app-frame' }}
+        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' }}
       - name: Restore pinned cross compiler and locked App schema kernel archives
-        if: ${{ inputs.verification == 'catalog-app-frame' }}
+        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' }}
         run: |
           set -euo pipefail
           python3 -B tools/python313-producer/fetch_toolchain.py --destination "$RUNNER_TEMP/app-schema-rust"
@@ -141,7 +141,7 @@ jobs:
                                   archives, root / 'app-schema-vendor')
           PY
       - name: Build the source-bound App schema extension offline
-        if: ${{ inputs.verification == 'catalog-app-frame' }}
+        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' }}
         run: >-
           python3 -B tools/python313-producer/build_schema_kernel_extension.py --app-backend
           --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel"
@@ -152,14 +152,14 @@ jobs:
           --destination "$RUNNER_TEMP/app-schema-extension"
       - name: Build the actual native Harness dispatcher and original module closure
         env:
-          APP_SCHEMA_BACKEND: ${{ inputs.verification == 'catalog-app-frame' }}
+          APP_SCHEMA_BACKEND: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' }}
         run: |
           app_args=()
           if [ "$APP_SCHEMA_BACKEND" = true ]; then
             app_args+=(--harness-app-schema-backend --kernel-extension "$RUNNER_TEMP/app-schema-extension")
           fi
           python3 -B tools/python313-producer/build_components.py --harness-native \
-          ${{ inputs.verification == 'catalog-schema-diagnostic' && '--schema-call-diagnostic' || '' }} \
+          ${{ (inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame-diagnostic') && '--schema-call-diagnostic' || '' }} \
           --producer "$RUNNER_TEMP/harness-producer" \
           --validation "$RUNNER_TEMP/harness-validation" \
           --destination "$RUNNER_TEMP/harness-native" \
@@ -199,6 +199,14 @@ jobs:
             ${{ runner.temp }}/harness-native/harness-native-app-frame/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native-app-frame/work/generated-bindings/
             ${{ runner.temp }}/harness-native/harness-native-app-frame/work/component.wasm
+            ${{ runner.temp }}/harness-native/harness-native-app-frame-diagnostic/inputs/plan.json
+            ${{ runner.temp }}/harness-native/harness-native-app-frame-diagnostic/inputs/provenance.json
+            ${{ runner.temp }}/harness-native/harness-native-app-frame-diagnostic/inputs/python/harness-native-dependencies.json
+            ${{ runner.temp }}/harness-native/harness-native-app-frame-diagnostic/inputs/python/harness_native_dependency_data.py
+            ${{ runner.temp }}/harness-native/harness-native-app-frame-diagnostic/build/
+            ${{ runner.temp }}/harness-native/harness-native-app-frame-diagnostic/work/component.build.json
+            ${{ runner.temp }}/harness-native/harness-native-app-frame-diagnostic/work/generated-bindings/
+            ${{ runner.temp }}/harness-native/harness-native-app-frame-diagnostic/work/component.wasm
           if-no-files-found: warn
 
   execute-original-native-bootstrap:
@@ -235,8 +243,14 @@ jobs:
         env:
           SCHEMA_DIAGNOSTIC: ${{ inputs.verification == 'catalog-schema-diagnostic' }}
           APP_SCHEMA_BACKEND: ${{ inputs.verification == 'catalog-app-frame' }}
+          APP_SCHEMA_DIAGNOSTIC: ${{ inputs.verification == 'catalog-app-frame-diagnostic' }}
         run: |
-          if [ "$SCHEMA_DIAGNOSTIC" = true ]; then
+          if [ "$APP_SCHEMA_DIAGNOSTIC" = true ]; then
+            python3 -B tools/python313-producer/harness_native_ci_inputs.py \
+              --schema-call-diagnostic --app-backend \
+              --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native-app-frame-diagnostic/work/component.wasm" \
+              --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
+          elif [ "$SCHEMA_DIAGNOSTIC" = true ]; then
             python3 -B tools/python313-producer/harness_native_ci_inputs.py \
               --schema-call-diagnostic \
               --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native-schema-diagnostic/work/component.wasm" \
@@ -302,7 +316,7 @@ jobs:
           bootstrap_runtime::resolver_edges::tests::
           -- --test-threads=1 --nocapture
       - name: Checkout pinned original factory and identity references
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         uses: actions/checkout@v4
         with:
           ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
@@ -310,7 +324,7 @@ jobs:
           persist-credentials: false
       - name: Install original reference dependencies once
         id: original_reference_dependencies
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: |
           python3 -B tools/original_setup_review_reference.py requirements \
             --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
@@ -418,7 +432,7 @@ jobs:
           --output "$RUNNER_TEMP/original-publication-identity-reference/actual-default-comparison.json"
       - name: Prepare independent original catalog resource fixtures
         id: catalog_prefix_reference
-        if: ${{ !cancelled() && (inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame') && steps.original_reference_dependencies.conclusion == 'success' }}
+        if: ${{ !cancelled() && (inputs.verification == 'catalog-prefix' || inputs.verification == 'recovery-catalog' || inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic') && steps.original_reference_dependencies.conclusion == 'success' }}
         run: >-
           python3 -B tools/original_catalog_prefix_reference.py prepare
           --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
@@ -471,14 +485,14 @@ jobs:
           --observations "$RUNNER_TEMP/original-catalog-prefix/actual-catalog-observations.json"
           --output "$RUNNER_TEMP/original-catalog-prefix/actual-catalog-comparison.json"
       - name: Verify bounded Core fixed-import schema checkpoints
-        if: ${{ !cancelled() && inputs.verification == 'catalog-schema-diagnostic' && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && (inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/harness-native-schema-fixed-import.log" --expected-passed 6 --
           cargo test --locked -p tobkiri-wasm --lib --features bootstrap-ci
           native_fixed_import_ -- --nocapture
       - name: Verify bounded Host schema checkpoint state
-        if: ${{ !cancelled() && inputs.verification == 'catalog-schema-diagnostic' && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ !cancelled() && (inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/harness-native-schema-checkpoint.log" --expected-passed 7 --
@@ -486,7 +500,7 @@ jobs:
           ci_schema_checkpoint_ -- --nocapture
       - name: Observe actual catalog schema checkpoints without qualification
         id: catalog_schema_diagnostic_native
-        if: ${{ !cancelled() && inputs.verification == 'catalog-schema-diagnostic' && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' && steps.catalog_prefix_reference.conclusion == 'success' }}
+        if: ${{ !cancelled() && (inputs.verification == 'catalog-schema-diagnostic' || inputs.verification == 'catalog-app-frame-diagnostic') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' && steps.catalog_prefix_reference.conclusion == 'success' }}
         env:
           TOBKIRI_ORIGINAL_CATALOG_PREFIX_FIXTURES: ${{ runner.temp }}/original-catalog-prefix/summary.json
         # This driver intentionally fails as unqualified after retaining evidence.
@@ -529,15 +543,17 @@ jobs:
         # Each compared operation compiles and initializes under its own
         # original clock, one account and one actual Store.
         if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        env:
+          DIAGNOSTIC_COMPONENT: ${{ inputs.verification == 'catalog-app-frame-diagnostic' && 'harness-native-app-frame-diagnostic' || inputs.verification == 'catalog-schema-diagnostic' && 'harness-native-schema-diagnostic' || '' }}
         run: |
           evidence="$RUNNER_TEMP/harness-native-runtime-features"
           mkdir "$evidence"
           rustc --version --verbose > "$evidence/rustc.txt"
-          if [ "${{ inputs.verification }}" = catalog-schema-diagnostic ]; then
+          if [ -n "$DIAGNOSTIC_COMPONENT" ]; then
             cargo tree --locked --offline -p tobkiri-harness-native --features catalog-diagnostics-ci \
               --target aarch64-apple-darwin --edges features --invert wasmtime@47.0.4 \
               > "$evidence/resolved-wasmtime-features.txt"
-            cp "$RUNNER_TEMP/harness-built/harness-native/harness-native-schema-diagnostic/inputs/provenance.json" \
+            cp "$RUNNER_TEMP/harness-built/harness-native/$DIAGNOSTIC_COMPONENT/inputs/provenance.json" \
               "$evidence/schema-diagnostic-source-provenance.json"
           else
             cargo tree --locked --offline -p tobkiri-harness-native --features bootstrap-ci \
@@ -618,6 +634,8 @@ jobs:
             ${{ runner.temp }}/harness-native-inputs/
             ${{ runner.temp }}/harness-built/harness-native/harness-native-schema-diagnostic/inputs/plan.json
             ${{ runner.temp }}/harness-built/harness-native/harness-native-schema-diagnostic/inputs/provenance.json
+            ${{ runner.temp }}/harness-built/harness-native/harness-native-app-frame-diagnostic/inputs/plan.json
+            ${{ runner.temp }}/harness-built/harness-native/harness-native-app-frame-diagnostic/inputs/provenance.json
             ${{ runner.temp }}/harness-native-runtime.log*
             ${{ runner.temp }}/harness-native-source-metadata.log*
             ${{ runner.temp }}/harness-native-inspection-policy.log*

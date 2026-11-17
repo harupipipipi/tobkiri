@@ -580,7 +580,7 @@ async fn run_original_catalog_component_driver(
             output["schema_checkpoint_diagnostic"] = json!({
                 "enabled":true,"core_feature":"catalog-diagnostics-ci",
                 "unmeasured_catalog_gate":false,"observer_costs_in_same_original_limits":true,
-                "source_provider_substitution":false,
+                "source_provider_substitution":selected::CI_SCHEMA_APP_BACKEND,
                 "trace_file":schema_trace_file.as_ref().ok(),
                 "trace_write_error":schema_trace_file.as_ref().err().map(ToString::to_string)});
         }

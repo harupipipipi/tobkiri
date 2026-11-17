@@ -108,12 +108,15 @@ def run() -> None:
         schema_diagnostic = dependencies.get('schema_call_diagnostic', False)
         app_backend = dependencies.get('app_schema_backend', False)
         if (type(schema_diagnostic) is not bool or type(app_backend) is not bool
-                or (schema_diagnostic and app_backend)
                 or ('app_schema_backend' in dependency_evidence) is not app_backend
                 or (app_backend and dependency_evidence.get('original_source_files_unchanged') is not False)):
             raise ValueError('native schema producer selection differs from its source')
-        dependency_format = ('tobkiri.harness-native-schema-diagnostic-dependencies/1'
-                             if schema_diagnostic else 'tobkiri.harness-native-dependencies/1')
+        if schema_diagnostic and app_backend:
+            dependency_format = 'tobkiri.harness-native-app-frame-diagnostic-dependencies/1'
+        elif schema_diagnostic:
+            dependency_format = 'tobkiri.harness-native-schema-diagnostic-dependencies/1'
+        else:
+            dependency_format = 'tobkiri.harness-native-dependencies/1'
         if (dependency_evidence['format'] != dependency_format
                 or dependency_evidence['entrypoint'] != plan['entrypoint']
                 or dependency_evidence['original_plan_sha256']
@@ -125,12 +128,26 @@ def run() -> None:
         if schema_diagnostic and (
             dependency_evidence.get('diagnostic_only') is not True
             or dependency_evidence.get('original_source_files_unchanged') is not False
-            or dependency_evidence.get('staged_source_files_unchanged') is not True
+            or dependency_evidence.get('staged_source_files_unchanged') is not (not app_backend)
             or dependency_evidence.get('other_original_members_unchanged') is not True
-            or dependency_evidence.get('provider_substitution') is not False
+            or dependency_evidence.get('provider_substitution') is not app_backend
             or dependency_evidence.get('whole_catalog_acceptance') is not False
         ):
             raise ValueError('schema diagnostic dependency evidence overstates original equivalence')
+        if schema_diagnostic and app_backend:
+            app = dependency_evidence['app_schema_backend']
+            by_name = {str(name): raw for name, raw in captures}
+            extension = by_name['_tobkiri_schema_kernel.abi3.so']
+            artifact = app['extension_build']['artifact']
+            if (app.get('validation_results_prepared') is not False
+                    or app['derived_sources'] != {
+                        name: sdk.sha256(by_name[name]) for name in (
+                            'tobkiri_protocol/validation.py', 'harness_native_source_index.py',
+                        )
+                    }
+                    or len(extension) != artifact['bytes']
+                    or sdk.sha256(extension) != artifact['sha256']):
+                raise ValueError('App schema diagnostic component inputs differ')
     stage = Path('/work/stage')
     stage.mkdir()
     for name in ('home', 'tmp'):

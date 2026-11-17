@@ -16,8 +16,10 @@ import re
 import sys
 
 from build_native import fingerprint
-from harness_native_dependencies import DIAGNOSTIC_FORMAT, ENTRYPOINT, METADATA, _read
-from harness_native_dependencies import verify_component_receipt
+from harness_native_dependencies import (
+    APP_DIAGNOSTIC_FORMAT, DIAGNOSTIC_FORMAT, ENTRYPOINT, METADATA, _read,
+    variant, verify_component_receipt,
+)
 from schema_probe.captured_loader import Tree
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -65,15 +67,12 @@ def verify_producer_selection(
 ) -> None:
     """Bind this same-run component to its successful producer and all inputs."""
     bundle = artifact.parent.parent
-    if app_backend and diagnostic:
-        raise ValueError("App provider and schema diagnostics are separate Harness variants")
-    variant = "app-frame" if app_backend else "schema-diagnostic" if diagnostic else "candidate"
-    name = "harness-native" if variant == "candidate" else f"harness-native-{variant}"
+    suffix, name = variant(diagnostic=diagnostic, app_backend=app_backend)
     receipt_path = bundle.parent / "components-build.json"
     fingerprint(receipt_path, 4 * 1024**2)
     receipt = json.loads(receipt_path.read_bytes())
     if (
-        receipt.get("format") != f"tobkiri.python313-native-harness-{variant}/1"
+        receipt.get("format") != f"tobkiri.python313-native-harness-{suffix}/1"
         or receipt.get("outcome") != "success"
         or receipt.get("inputs_unchanged") is not True
         or receipt.get("production_enabled") is not False
@@ -83,6 +82,11 @@ def verify_producer_selection(
         or bundle.name != name
     ):
         raise ValueError("native Harness producer selection differs")
+    if diagnostic and app_backend and (
+        receipt.get("provider_substitution") is not True
+        or receipt.get("whole_catalog_acceptance") is not False
+    ):
+        raise ValueError("App schema diagnostic producer scope differs")
     member = receipt["components"][name]
     source = member["source"]
     inputs = bundle / "inputs"
@@ -106,8 +110,11 @@ def verify_producer_selection(
         raise ValueError("native Harness files differ from the successful producer")
     verify_component_receipt(build, source, inputs)
     dependencies = build["harness_native_dependencies"]
+    dependency_format = NORMAL_DEPENDENCIES
+    if diagnostic:
+        dependency_format = APP_DIAGNOSTIC_FORMAT if app_backend else DIAGNOSTIC_FORMAT
     if (
-        dependencies.get("format") != (DIAGNOSTIC_FORMAT if diagnostic else NORMAL_DEPENDENCIES)
+        dependencies.get("format") != dependency_format
         or dependencies.get("diagnostic_only", False) is not diagnostic
         or ("app_schema_backend" in dependencies) is not app_backend
         or dependencies.get("original_source_files_unchanged") is not (not diagnostic and not app_backend)
@@ -115,7 +122,9 @@ def verify_producer_selection(
         raise ValueError("native Harness dependency mode differs")
 
 
-def verify_app_source_bindings(build: dict, actual: dict) -> None:
+def verify_app_source_bindings(
+    build: dict, actual: dict, *, diagnostic_sources: dict[str, bytes] | None = None,
+) -> None:
     from app_schema_extension_inputs import EXTENSION, PROVIDER_FILES, SOURCE
     from app_schema_extension_inputs import derive_harness_entry, verify_report
 
@@ -133,12 +142,29 @@ def verify_app_source_bindings(build: dict, actual: dict) -> None:
         row = actual.get("python/" + name, {})
         if row.get("sha256") != digest or row.get("destination") != name:
             raise ValueError(f"native Harness App dependency differs: {name}")
+    if diagnostic_sources is not None:
+        if evidence.get("derived_sources") != {
+            name: hashlib.sha256(raw).hexdigest()
+            for name, raw in diagnostic_sources.items()
+        }:
+            raise ValueError("native Harness App diagnostic source derivation differs")
+        (extension,) = [
+            row for row in build["source_manifest"] if row["source"] == "python/" + EXTENSION
+        ]
+        if extension["bytes"] != report["artifact"]["bytes"]:
+            raise ValueError("native Harness App extension size differs")
+        loader = "harness_native_captured_loader.py"
+        expected_loader = fingerprint(ROOT / "tools/python313-producer/schema_probe/captured_loader.py")
+        row = actual.get("python/" + loader, {})
+        if row.get("sha256") != expected_loader["sha256"] or row.get("destination") != loader:
+            raise ValueError("native Harness App diagnostic loader differs")
 
 
-def _profile_schema_resources(
-    inputs: Path, base: dict[str, bytes], manifest: list[dict],
+def _captured_resources(
+    inputs: Path, manifest: list[dict], profile_sources: set[str],
+    diagnostic_sources: tuple[str, ...],
 ) -> dict[str, bytes]:
-    """Select the original Profile recovery schemas from captured DATA."""
+    """Read bounded fixed members from the exact captured-loader input."""
     def row_for(destination: str) -> dict:
         source = "python/" + destination
         rows = [row for row in manifest
@@ -155,26 +181,42 @@ def _profile_schema_resources(
                       for target in node.targets)]
     if len(tables) != 1 or not isinstance(tables[0], ast.Tuple):
         raise ValueError("native captured DATA must have one literal FILES table")
+    wanted = {*profile_sources, *diagnostic_sources}
+    selected = tuple(ast.literal_eval(row) for row in tables[0].elts
+                     if isinstance(row, ast.Tuple) and row.elts
+                     and isinstance(row.elts[0], ast.Constant)
+                     and row.elts[0].value in wanted)
+    if len(selected) != len(wanted) or {row[0] for row in selected} != wanted:
+        required = "fixed member" if diagnostic_sources else "Profile recovery schema"
+        raise ValueError(f"native captured DATA must contain each {required} once")
+    resources = Tree(selected, compressed=True)
+    result = {}
+    for name in wanted:
+        row = row_for(name)
+        raw, digest = resources.path(name)._read_verified_bytes()
+        if not raw or len(raw) != row["bytes"] or digest != row["sha256"]:
+            member = "Profile schema" if name in profile_sources else "App diagnostic module"
+            raise ValueError(f"captured {member} differs from original source: {name}")
+        result[name] = raw
+    return result
+
+
+def _profile_schema_resources(
+    inputs: Path, base: dict[str, bytes], manifest: list[dict], *,
+    diagnostic_sources: tuple[str, ...] = (),
+) -> dict[str, bytes]:
+    """Select original Profile schemas and verify any live diagnostic modules."""
     paths = {**PROFILE_SCHEMA_PATHS, **PROFILE_REFERENCE_PATHS, **RECOVERY_SCHEMA_PATHS}
     schema_ids = {
         **PROFILE_REFERENCE_IDS,
         **{key: f"https://schemas.tobkiri.local/io.tobkiri/{name}.schema.json"
            for key, name in RECOVERY_SCHEMA_IDS.items()},
     }
-    wanted = set(paths.values())
-    selected = tuple(ast.literal_eval(row) for row in tables[0].elts
-                     if isinstance(row, ast.Tuple) and row.elts
-                     and isinstance(row.elts[0], ast.Constant)
-                     and row.elts[0].value in wanted)
-    if len(selected) != len(wanted) or {row[0] for row in selected} != wanted:
-        raise ValueError("native captured DATA must contain each Profile recovery schema once")
-    resources = Tree(selected, compressed=True)
+    captured = _captured_resources(inputs, manifest, set(paths.values()), diagnostic_sources)
     result = {}
     for key, name in paths.items():
-        row = row_for(name)
-        raw, digest = resources.path(name)._read_verified_bytes()
-        if (not raw or len(raw) != row["bytes"] or digest != row["sha256"]
-                or raw != base.get(row["source"])):
+        raw = captured[name]
+        if raw != base.get("python/" + name):
             raise ValueError(f"captured Profile schema differs from original source: {name}")
         if key in schema_ids:
             document = json.loads(raw)
@@ -226,8 +268,6 @@ def bind(
     """Verify immutable source/build identities and emit data-only Rust bindings."""
     if type(schema_call_diagnostic) is not bool or type(app_backend) is not bool:
         raise TypeError("native Harness binding requires explicit variant booleans")
-    if schema_call_diagnostic and app_backend:
-        raise ValueError("App provider and schema diagnostics are separate Harness variants")
     if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("native Harness inputs are restricted to actual Mac CI")
     if not artifact.is_absolute() or artifact.resolve(strict=True) != artifact:
@@ -268,12 +308,22 @@ def bind(
     if derived.get("format") != (DIAGNOSTIC_SOURCE if schema_call_diagnostic else NORMAL_SOURCE):
         raise ValueError("native Harness source mode differs")
     original_plan = (json.dumps(stage.plan_for(base), sort_keys=True, indent=2) + "\n").encode()
+    diagnostic_sources = None
+    captured_diagnostic_sources = ()
     if app_backend:
-        from app_schema_extension_inputs import derive_harness_sources
+        from app_schema_extension_inputs import PROVIDER_FILES, derive_harness_sources
 
         changes = derive_harness_sources({name.removeprefix("python/"): raw
                                           for name, raw in base.items()})
         base.update({"python/" + name: raw for name, raw in changes.items()})
+        if schema_call_diagnostic:
+            from harness_native.schema_diagnostic_stage import HELPER
+
+            diagnostic_sources = changes
+            captured_diagnostic_sources = (
+                *changes, HELPER.removeprefix("python/"), *PROVIDER_FILES,
+                ENTRYPOINT + ".py", "harness_native_captured_loader.py",
+            )
     diagnostic_contract = None
     if schema_call_diagnostic:
         diagnostic_contract = derived.get("checkpoint_contract", {})
@@ -300,12 +350,27 @@ def bind(
     verify_producer_selection(artifact, build, plan, identity, diagnostic=schema_call_diagnostic,
                               app_backend=app_backend)
     if app_backend:
-        verify_app_source_bindings(build, actual)
-    if build["harness_native_dependencies"]["original_plan_sha256"] != hashlib.sha256(
+        verify_app_source_bindings(build, actual, diagnostic_sources=diagnostic_sources)
+    dependencies = build["harness_native_dependencies"]
+    if schema_call_diagnostic and app_backend and (
+        dependencies.get("schema_diagnostic_source_sha256") != hashlib.sha256(provenance).hexdigest()
+        or dependencies.get("source_index") != derived["source_index"]
+        or dependencies.get("validation_derivation") != derived["validation_derivation"]
+        or dependencies.get("checkpoint_contract") != diagnostic_contract
+        or dependencies.get("staged_source_files_unchanged") is not False
+        or dependencies.get("other_original_members_unchanged") is not True
+        or dependencies.get("provider_substitution") is not True
+        or dependencies.get("whole_catalog_acceptance") is not False
+    ):
+        raise ValueError("native Harness combined diagnostic provenance differs")
+    if dependencies["original_plan_sha256"] != hashlib.sha256(
         original_plan
     ).hexdigest():
         raise ValueError("native Harness original source plan differs")
-    profile_schemas = _profile_schema_resources(inputs, base, build["source_manifest"])
+    profile_schemas = _profile_schema_resources(
+        inputs, base, build["source_manifest"],
+        diagnostic_sources=captured_diagnostic_sources,
+    )
     tree = ast.parse(base["python/harness_native_source_index.py"])
     index = {row.targets[0].id: ast.literal_eval(row.value)
              for row in tree.body if isinstance(row, ast.Assign)}
@@ -337,6 +402,8 @@ def bind(
         header += (
             '#[cfg(feature = "catalog-diagnostics-ci")]\n'
             'pub const CI_SCHEMA_TAG_COUNT: usize = 69;\n'
+            '#[cfg(feature = "catalog-diagnostics-ci")]\n'
+            f'pub const CI_SCHEMA_APP_BACKEND: bool = {str(app_backend).lower()};\n'
         ).encode()
     if not output.is_absolute() or output.parent.resolve(strict=True) != output.parent:
         raise ValueError("new physical output directory required")
@@ -391,6 +458,8 @@ def bind(
     if app_backend:
         report.update(app_schema_backend=True, original_source_files_unchanged=False,
                       actual_derived_source_index_verified=True, whole_catalog_acceptance=False)
+        if schema_call_diagnostic:
+            report["app_schema_extension"] = dependencies["app_schema_backend"]["extension_build"]["artifact"]
     (output / "inputs.json").write_text(json.dumps(report, indent=2) + "\n")
     with github_env.open("a", encoding="utf-8") as stream:
         for name, value in env.items():

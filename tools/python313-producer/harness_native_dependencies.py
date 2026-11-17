@@ -20,6 +20,7 @@ import runtime_inputs
 ENTRYPOINT = "harness_native_entry"
 METADATA = "harness-native-dependencies.json"
 DIAGNOSTIC_FORMAT = "tobkiri.harness-native-schema-diagnostic-dependencies/1"
+APP_DIAGNOSTIC_FORMAT = "tobkiri.harness-native-app-frame-diagnostic-dependencies/1"
 MAX_FILE = 8 * 1024 * 1024
 MAX_TOTAL = 32 * 1024 * 1024
 EXPORTS = [
@@ -27,6 +28,19 @@ EXPORTS = [
     "tobkiri-ui:harness-native/transport@1.0.0",
 ]
 IMPORTS = ["tobkiri-native:harness/bindings@1.0.0"]
+
+
+def variant(*, diagnostic: bool, app_backend: bool) -> tuple[str, str]:
+    """Return the distinct producer receipt variant and component directory."""
+    if diagnostic and app_backend:
+        suffix = "app-frame-diagnostic"
+    elif diagnostic:
+        suffix = "schema-diagnostic"
+    elif app_backend:
+        suffix = "app-frame"
+    else:
+        return "candidate", "harness-native"
+    return suffix, f"harness-native-{suffix}"
 
 
 def selected(
@@ -195,7 +209,7 @@ def stage(
     *,
     app_extension: tuple[Path, dict] | None = None,
 ) -> dict:
-    """Extend only a freshly staged native plan; preserve all original bytes."""
+    """Extend a freshly staged native plan using its explicitly selected derivations."""
     if inventory(destination) != original["files"]:
         raise ValueError("original native source stage changed")
     raw_plan = _read(destination / "plan.json")
@@ -235,8 +249,6 @@ def stage(
         raise ValueError("diagnostic sources require the explicit diagnostic producer selection")
     app_sources = None
     if app_extension is not None:
-        if diagnostic:
-            raise ValueError("App provider and schema diagnostics are separate Harness variants")
         from app_schema_extension_inputs import derive_harness_sources
 
         app_sources = derive_harness_sources(files)
@@ -404,6 +416,15 @@ def stage(
     if app_extension is not None:
         proof["app_schema_backend"] = {"extension_build": extension_build,
                                        "validation_results_prepared": False}
+    if diagnostic and app_sources is not None:
+        proof.update(
+            format=APP_DIAGNOSTIC_FORMAT,
+            staged_source_files_unchanged=False,
+            provider_substitution=True,
+        )
+        proof["app_schema_backend"]["derived_sources"] = {
+            name: hashlib.sha256(raw).hexdigest() for name, raw in app_sources.items()
+        }
     metadata = (json.dumps(proof, sort_keys=True, indent=2) + "\n").encode()
     add(METADATA, metadata)
     if (

@@ -332,12 +332,39 @@ class SchemaCheckpointDiagnosticTests(unittest.TestCase):
                    "original_source_files_unchanged": False, "staged_source_files_unchanged": True,
                    "other_original_members_unchanged": True, "provider_substitution": False,
                    "whole_catalog_acceptance": False}
-        for flag, proof, accepted in ((False, baseline, True), (True, derived, True),
-                                      (False, derived, False), (True, baseline, False),
-                                      (1, derived, False)):
-            namespace = {"dependencies": {"schema_call_diagnostic": flag, "original_plan_sha256": "pin"},
-                         "dependency_evidence": proof, "plan": {"entrypoint": "entry"}}
-            with self.subTest(flag=flag, format=proof["format"]):
+        validation = diagnostic.VALIDATION.removeprefix("python/")
+        index = diagnostic.INDEX.removeprefix("python/")
+        extension = "_tobkiri_schema_kernel.abi3.so"
+        sources = {validation: b"combined validation", index: b"combined index"}
+        wasm = b"inert extension fixture"
+        app = {
+            "validation_results_prepared": False,
+            "derived_sources": {name: _digest(raw) for name, raw in sources.items()},
+            "extension_build": {"artifact": {"bytes": len(wasm), "sha256": _digest(wasm)}},
+        }
+        combined = {
+            **derived, "format": dependencies.APP_DIAGNOSTIC_FORMAT, "app_schema_backend": app,
+            "staged_source_files_unchanged": False, "provider_substitution": True,
+        }
+        changed_app = {**app, "derived_sources": {**app["derived_sources"], index: "foreign"}}
+        cases = (
+            (False, False, baseline, True), (True, False, derived, True),
+            (False, False, derived, False), (True, False, baseline, False),
+            (1, False, derived, False), (True, True, combined, True),
+            (False, True, combined, False), (True, False, combined, False),
+            (True, True, {**combined, "app_schema_backend": changed_app}, False),
+        )
+        for flag, app_flag, proof, accepted in cases:
+            namespace = {
+                "dependencies": {
+                    "schema_call_diagnostic": flag, "app_schema_backend": app_flag,
+                    "original_plan_sha256": "pin",
+                },
+                "dependency_evidence": proof, "plan": {"entrypoint": "entry"},
+                "captures": [*sources.items(), (extension, wasm)],
+                "sdk": SimpleNamespace(sha256=_digest),
+            }
+            with self.subTest(flag=flag, app_flag=app_flag, format=proof["format"]):
                 if accepted:
                     exec(code, namespace)
                 else:
