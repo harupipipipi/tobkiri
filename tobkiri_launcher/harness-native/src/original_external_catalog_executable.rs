@@ -19,10 +19,10 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
     expected_manifest: &CoreValue,
     digest: &str,
 ) -> Result<ClosureExecutable> {
-    if !expected_manifest
+    if expected_manifest
         .get_key("pack")
         .and_then(|pack| pack.get_key("artifact_digest"))
-        .is_some_and(|artifact_digest| artifact_digest.as_str() == Some(digest))
+        .is_none_or(|artifact_digest| artifact_digest.as_str() != Some(digest))
     {
         return Err(model::denied(MANIFEST_MISMATCH));
     }

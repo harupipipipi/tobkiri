@@ -2,6 +2,10 @@
 use super::*;
 use tobkiri_canon::Digest;
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Keep the retained Pack inline: boxing it would add an unbudgeted heap allocation"
+)]
 pub(super) enum PinnedPackSelection {
     Normal {
         registry: Funded<Document>,
