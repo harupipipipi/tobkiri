@@ -197,7 +197,7 @@ impl<'a> Query<'a> {
         for column in 0..self.columns() {
             let name = self.name(column)?;
             if let Err(error) = name.to_str() {
-                return Err(invalid_column_name(name.to_bytes(), error));
+                return Err(invalid_utf8(name.to_bytes(), error));
             }
             match name.to_bytes() {
                 b"reservation_id" => fields[0] = Some(column),
@@ -292,7 +292,10 @@ fn sql_error(connection: &Connection, rc: i32) -> OriginalAuthorityError {
         let handle = connection.handle();
         let code = ffi::sqlite3_extended_errcode(handle);
         let message = CStr::from_ptr(ffi::sqlite3_errmsg(handle));
-        (message.to_string_lossy().into_owned(), code)
+        match message.to_str() {
+            Ok(message) => (message.to_owned(), code),
+            Err(error) => return invalid_utf8(message.to_bytes(), error),
+        }
     };
     OriginalAuthorityError::raw_sql(
         STAGE,
@@ -334,7 +337,7 @@ fn invalid_cell_text(column: &[u8], text: &[u8]) -> OriginalAuthorityError {
     raw("sqlite3.OperationalError", message)
 }
 
-fn invalid_column_name(bytes: &[u8], error: std::str::Utf8Error) -> OriginalAuthorityError {
+fn invalid_utf8(bytes: &[u8], error: std::str::Utf8Error) -> OriginalAuthorityError {
     let start = error.valid_up_to();
     let (size, reason) = match error.error_len() {
         None => (bytes.len() - start, "unexpected end of data"),
@@ -455,5 +458,31 @@ mod tests {
         ));
         drop(query);
         connection.close().unwrap();
+    }
+
+    #[test]
+    fn inventory_preserves_original_error_for_invalid_utf8_in_sqlite_diagnostic() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE VIEW activation_reservations AS
+                 SELECT json_extract('{}', CAST(x'ff' AS TEXT)) AS audit_data,
+                        'prepared' AS state, 1 AS fencing_token,
+                        'p' AS profile_id, 'r' AS reservation_id;",
+            )
+            .unwrap();
+        let mut query = Query::prepare(&connection).unwrap();
+        query.bind_profile("p").unwrap();
+        let error = wrap_sqlite(
+            query.step().unwrap_err(),
+            "activation recovery inventory failed",
+        );
+        assert_eq!(error.stage, STAGE);
+        assert_eq!(error.class, "builtins.UnicodeDecodeError");
+        assert_eq!(
+            error.message,
+            "'utf-8' codec can't decode byte 0xff in position 16: invalid start byte"
+        );
+        assert!(error.cause.is_none());
     }
 }

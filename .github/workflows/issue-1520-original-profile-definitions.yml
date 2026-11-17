@@ -174,7 +174,7 @@ jobs:
       - name: Check ordered incomplete activation reservations with the original SQLite schema
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-incomplete.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/native-recovery-incomplete.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::incomplete_reservations::tests::
           -- --test-threads=1 --nocapture
