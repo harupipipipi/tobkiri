@@ -369,349 +369,6 @@ struct ArtifactDefinitions {
     receipt: external_catalog_receipt::Receipt,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::super::definitions::tests::{operation, with_source};
-    use super::*;
-    use serde_json::{Value, json};
-    use std::os::unix::fs::symlink;
-
-    fn stage(runtime: &Path, manifest: &Value) -> PathBuf {
-        let path = runtime.join(SOURCE_CATALOG);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, serde_json::to_vec(manifest).unwrap()).unwrap();
-        path
-    }
-
-    fn manifest() -> Value {
-        json!({
-            "catalog_api_version": SOURCE_VERSION,
-            "pack_ids": ["first", "second"],
-            "packs": [
-                {"pack_id": "second", "dependencies": {"first": {}}},
-                {"pack_id": "first", "dependencies": {}},
-            ],
-        })
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn external_catalog_reads_bundled_first_and_leaves_absent_owner_unchanged() {
-        with_source(|source, read, cancellation, budget| {
-            let runtime = source.root.join("test-runtime");
-            let op = operation(read, source, cancellation);
-            let path = stage(&runtime, &manifest());
-            let catalog = read_inputs(&op, &runtime, &source.root, budget).unwrap();
-            assert!(catalog.registry.raw.is_none());
-            assert_eq!(
-                catalog
-                    ._bundled
-                    ._ids
-                    .get_index(0)
-                    .as_ref()
-                    .and_then(CoreValue::as_str),
-                Some("first")
-            );
-            assert_eq!(
-                catalog
-                    ._bundled
-                    ._ids
-                    .get_index(1)
-                    .as_ref()
-                    .and_then(CoreValue::as_str),
-                Some("second")
-            );
-            assert!(!source.root.join("pack_control").exists());
-            assert_eq!(read.receipt().open_files, 0);
-            fs::remove_file(&path).unwrap();
-            let error = read_inputs(&op, &runtime, &source.root, budget)
-                .err()
-                .unwrap();
-            assert_eq!(error.class, BOUNDARY_ERROR);
-            assert!(
-                error
-                    .message
-                    .starts_with("canonical Pack v4 catalog is unavailable")
-            );
-            assert!(!source.root.join("pack_control").exists());
-        });
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn external_catalog_reads_one_regular_file_and_rejects_aliases() {
-        with_source(|source, read, cancellation, budget| {
-            let runtime = source.root.join("test-runtime");
-            let op = operation(read, source, cancellation);
-            stage(&runtime, &manifest());
-            let parent = source.root.join("pack_control");
-            fs::create_dir(&parent).unwrap();
-            let path = parent.join(REGISTRY);
-            let sample = br#"{"signature":"not-yet-validated"}"#;
-            fs::write(&path, sample).unwrap();
-            let catalog = read_inputs(&op, &runtime, &source.root, budget).unwrap();
-            assert_eq!(catalog.registry.raw.as_ref().unwrap().as_slice(), sample);
-            assert_eq!(fs::read(&path).unwrap(), sample);
-            assert!(!parent.join(".external_normal_pack_catalog_key").exists());
-            let second_name = parent.join("second-file");
-            fs::hard_link(&path, &second_name).unwrap();
-            let error = read_inputs(&op, &runtime, &source.root, budget)
-                .err()
-                .unwrap();
-            assert_eq!(error.class, EXTERNAL_ERROR);
-            assert_eq!(error.message, "Host JSON file identity is invalid");
-            fs::remove_file(&path).unwrap();
-            symlink(&second_name, &path).unwrap();
-            let error = read_inputs(&op, &runtime, &source.root, budget)
-                .err()
-                .unwrap();
-            assert_eq!(error.class, EXTERNAL_ERROR);
-            assert_eq!(
-                error.message,
-                "Host JSON file is unreadable: external_normal_pack_catalog.v4.json"
-            );
-            assert_eq!(read.receipt().open_files, 0);
-        });
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn ordinary_closure_rereads_the_original_signed_manifest_rows() {
-        let Some(path) = std::env::var_os("TOBKIRI_EXTERNAL_CLOSURE_FIXTURE") else {
-            return;
-        };
-        let bytes = fs::read(path).unwrap();
-        assert!(bytes.len() <= 2 * 1024 * 1024);
-        let fixture: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(
-            fixture["format"],
-            "io.tobkiri.original-external-closure-reference.v1"
-        );
-        let runtime = Path::new(fixture["runtime_dir"].as_str().unwrap());
-        let owner = Path::new(fixture["native_user_data"].as_str().unwrap());
-        let expected = &fixture["bootstrap"];
-        let requested = expected["requested"].as_array().unwrap();
-        assert_eq!(requested.len(), 2);
-        with_source(|source, read, cancellation, budget| {
-            let op = operation(read, source, cancellation);
-            let input = read_inputs(&op, runtime, owner, budget).unwrap();
-            let catalog = authenticate(&op, input, budget).unwrap();
-            let seed = catalog.closure_seed(budget).unwrap();
-            let ids = seed.array().unwrap();
-            assert_eq!(ids.len(), requested.len());
-            drop(catalog);
-            let mut selected = Vec::new();
-            for (id, expected_id) in ids.iter().zip(requested.iter()) {
-                assert_eq!(id.as_str(), expected_id.as_str());
-                let id = id.as_str().unwrap();
-                let ClosureManifest::External {
-                    manifest,
-                    artifact_digest,
-                } = read_manifest_from_catalogs(&op, runtime, owner, budget, id).unwrap()
-                else {
-                    panic!("missing original signed manifest row for {id}");
-                };
-                assert_eq!(artifact_digest.as_str(), fixture["pins"][id].as_str());
-                let bytes = manifest.encode_guest(budget).unwrap();
-                let observed: Value = serde_json::from_slice(bytes.as_bytes()).unwrap();
-                assert_eq!(observed, expected["project"][id]["pack"]);
-                selected.push((id.to_owned(), manifest, artifact_digest));
-                assert_eq!(read.receipt().open_files, 0);
-            }
-            for (id, manifest, artifact_digest) in selected {
-                let digest = artifact_digest.as_str().unwrap();
-                let ClosureExecutable::External(executable) = external_catalog_executable::read(
-                    &op, runtime, owner, budget, &id, &manifest, digest,
-                )
-                .unwrap() else {
-                    panic!("missing original signed executable row for {id}");
-                };
-                let executable = executable.encode_guest(budget).unwrap();
-                let executable: Value = serde_json::from_slice(executable.as_bytes()).unwrap();
-                assert_eq!(executable, expected["project"][&id]["executable_catalog"]);
-                assert_eq!(read.receipt().open_files, 0);
-            }
-        });
-        with_source(|source, read, cancellation, budget| {
-            let op = operation(read, source, cancellation);
-            let id = requested[0].as_str().unwrap();
-            let digest = fixture["pins"][id].as_str().unwrap();
-            let mut different = expected["project"][id]["pack"].clone();
-            different["pack"]["display_name"] = json!("A different manifest");
-            let different =
-                CoreValue::parse_guest(&serde_json::to_vec(&different).unwrap(), budget).unwrap();
-            let error = match external_catalog_executable::read(
-                &op, runtime, owner, budget, id, &different, digest,
-            ) {
-                Err(error) => error,
-                Ok(_) => panic!("a different manifest canonical digest was accepted"),
-            };
-            assert_eq!(error.class, EXTERNAL_ERROR);
-            assert_eq!(
-                error.message,
-                "external Pack executable catalog does not match the admitted manifest",
-            );
-            assert_eq!(read.receipt().open_files, 0);
-        });
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn external_catalog_matches_the_original_bundled_ids_and_authentication() {
-        let Some(path) = std::env::var_os("TOBKIRI_EXTERNAL_CATALOG_FIXTURE") else {
-            return;
-        };
-        let bytes = fs::read(path).unwrap();
-        assert!(bytes.len() <= 2 * 1024 * 1024);
-        let fixture: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(
-            fixture["format"],
-            "io.tobkiri.original-external-pack-catalog-reference.v1"
-        );
-        let cases = fixture["cases"].as_array().unwrap();
-        assert_eq!(cases.len(), 4);
-        for case in cases {
-            with_source(|source, read, cancellation, budget| {
-                let op = operation(read, source, cancellation);
-                let runtime = Path::new(case["runtime_dir"].as_str().unwrap());
-                let owner = Path::new(case["native_user_data"].as_str().unwrap());
-                let catalog = read_inputs(&op, runtime, owner, budget).unwrap();
-                let expected = case["bundled"]["ids"].as_array().unwrap();
-                let actual = catalog._bundled._ids.array().unwrap();
-                assert_eq!(actual.len(), expected.len());
-                for (actual, expected) in actual.iter().zip(expected) {
-                    assert_eq!(actual.as_str(), expected.as_str());
-                }
-                let observed = authenticate(&op, catalog, budget);
-                match case["expected"]["outcome"].as_str().unwrap() {
-                    "success" => {
-                        let observed = observed.unwrap();
-                        let expected = &case["expected"]["value"];
-                        if let Some(registry) = &observed._registry {
-                            let value = json::canonical(registry, None, &op).unwrap();
-                            let value: Value = serde_json::from_slice(&value).unwrap();
-                            assert_eq!(&value, expected);
-                        } else {
-                            assert_eq!(expected["entries"], json!({}));
-                            assert_eq!(expected["journal"], json!([]));
-                        }
-                        if case["name"] == "retained-version" {
-                            let inventory = observed.inventory.as_ref().unwrap();
-                            let registry = observed._registry.as_ref().unwrap();
-                            let retained = &case["retained_probe"];
-                            let ordered = retained["ordered"].as_array().unwrap();
-                            let records = registry
-                                .entries(registry.get(registry.root, "entries").unwrap())
-                                .unwrap();
-                            assert_eq!(ordered.len(), 2);
-                            assert_eq!(inventory._entries.len(), ordered.len());
-                            let mut selected = serde_json::Map::new();
-                            for (pack, expected) in inventory._entries.iter().zip(ordered) {
-                                let key = &records[pack._key].0;
-                                assert!(key.is(expected["key"].as_str().unwrap()));
-                                assert_eq!(
-                                    pack._artifact_digest.as_str(),
-                                    expected["artifact_digest"]
-                                );
-                                assert_eq!(
-                                    pack._content_digest.as_str(),
-                                    expected["content_digest"]
-                                );
-                                if pack._selected {
-                                    let id = registry_text(registry, pack._root.entry, "pack_id")
-                                        .utf8()
-                                        .unwrap();
-                                    selected
-                                        .insert(id, Value::from(pack._artifact_digest.as_str()));
-                                }
-                            }
-                            assert_eq!(Value::Object(selected), retained["selected"]);
-                            assert_eq!(
-                                inventory._revision.as_ref().unwrap().as_str(),
-                                retained["revision"]
-                            );
-                            assert_eq!(
-                                observed.verification_reachpoint(),
-                                crate::BootstrapReviewReachpoint::AdmittedPackClosureNotBound
-                            );
-                        } else if case["name"] == "admitted" {
-                            assert_eq!(case["artifact_probe"]["outcome"], "verified");
-                            let registry = observed._registry.as_ref().unwrap();
-                            let inventory = observed.inventory.as_ref().unwrap();
-                            assert_eq!(inventory._entries.len(), 1);
-                            let pack = &inventory._entries[0];
-                            let root = &pack._root;
-                            assert_eq!(
-                                pack._artifact_digest.as_str(),
-                                case["artifact_probe"]["artifact_digest"]
-                            );
-                            assert_eq!(
-                                pack._content_digest.as_str(),
-                                case["artifact_probe"]["content_digest"]
-                            );
-                            let compiled_prefix =
-                                read_artifact_definitions(&op, root, registry, budget).unwrap();
-                            assert_eq!(
-                                compiled_prefix._artifact_digest.as_str(),
-                                case["artifact_probe"]["artifact_digest"].as_str().unwrap()
-                            );
-                            assert_eq!(
-                                compiled_prefix.receipt._content_digest.as_str(),
-                                case["artifact_probe"]["content_digest"].as_str().unwrap()
-                            );
-                            assert!(!compiled_prefix.receipt.host_extension);
-                            let root_fd = Parent::walk(&root.path, &op.cleanup).unwrap();
-                            let mismatched_bytes = || {
-                                let input = read_artifact_definition(
-                                    &op,
-                                    &root_fd,
-                                    &root.path,
-                                    c"executables.v4.json",
-                                    budget,
-                                )?;
-                                let capacity =
-                                    op.reserve(OriginalAuthorityStage::Source, input.len() + 1)?;
-                                let mut bytes = Zeroizing::new(Vec::with_capacity(input.len() + 1));
-                                bytes.extend_from_slice(&input);
-                                bytes.push(b'\n');
-                                Ok(Funded {
-                                    value: bytes,
-                                    _capacity: capacity,
-                                })
-                            };
-                            let error = check_artifact_pins(
-                                &op,
-                                budget,
-                                &compiled_prefix._documents,
-                                mismatched_bytes,
-                            )
-                            .unwrap_err();
-                            assert!(matches!(error.cause,
-                                Some(OriginalAuthorityCause::Python { class: "tobkiri_host.errors.InvalidArtifactError", ref message, .. })
-                                    if message == "executable catalog artifact digest mismatch"
-                            ));
-                            root_fd.close().unwrap();
-                        } else {
-                            assert!(observed.inventory.is_none());
-                        }
-                    }
-                    "error" => {
-                        let error = observed
-                            .err()
-                            .expect("original authentication was rejected");
-                        assert_eq!(
-                            error.class,
-                            case["expected"]["error"]["type"].as_str().unwrap()
-                        );
-                        assert_eq!(
-                            error.message,
-                            case["expected"]["error"]["message"].as_str().unwrap()
-                        );
-                    }
-                    _ => panic!("unknown original fixture outcome"),
-                }
-                assert_eq!(read.receipt().open_files, 0);
-            });
-        }
-    }
-}
-
 pub(crate) fn read<S: crate::BootstrapReviewOwner>(
     publication: &PublicationRead,
     owner: &S,
@@ -2010,4 +1667,347 @@ fn charge<S: OriginalAuthorityOwner>(
 
 fn capacity(_: impl Sized) -> OriginalAuthorityError {
     OriginalAuthorityError::capacity(OriginalAuthorityStage::Source)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::definitions::tests::{operation, with_source};
+    use super::*;
+    use serde_json::{Value, json};
+    use std::os::unix::fs::symlink;
+
+    fn stage(runtime: &Path, manifest: &Value) -> PathBuf {
+        let path = runtime.join(SOURCE_CATALOG);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, serde_json::to_vec(manifest).unwrap()).unwrap();
+        path
+    }
+
+    fn manifest() -> Value {
+        json!({
+            "catalog_api_version": SOURCE_VERSION,
+            "pack_ids": ["first", "second"],
+            "packs": [
+                {"pack_id": "second", "dependencies": {"first": {}}},
+                {"pack_id": "first", "dependencies": {}},
+            ],
+        })
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn external_catalog_reads_bundled_first_and_leaves_absent_owner_unchanged() {
+        with_source(|source, read, cancellation, budget| {
+            let runtime = source.root.join("test-runtime");
+            let op = operation(read, source, cancellation);
+            let path = stage(&runtime, &manifest());
+            let catalog = read_inputs(&op, &runtime, &source.root, budget).unwrap();
+            assert!(catalog.registry.raw.is_none());
+            assert_eq!(
+                catalog
+                    ._bundled
+                    ._ids
+                    .get_index(0)
+                    .as_ref()
+                    .and_then(CoreValue::as_str),
+                Some("first")
+            );
+            assert_eq!(
+                catalog
+                    ._bundled
+                    ._ids
+                    .get_index(1)
+                    .as_ref()
+                    .and_then(CoreValue::as_str),
+                Some("second")
+            );
+            assert!(!source.root.join("pack_control").exists());
+            assert_eq!(read.receipt().open_files, 0);
+            fs::remove_file(&path).unwrap();
+            let error = read_inputs(&op, &runtime, &source.root, budget)
+                .err()
+                .unwrap();
+            assert_eq!(error.class, BOUNDARY_ERROR);
+            assert!(
+                error
+                    .message
+                    .starts_with("canonical Pack v4 catalog is unavailable")
+            );
+            assert!(!source.root.join("pack_control").exists());
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn external_catalog_reads_one_regular_file_and_rejects_aliases() {
+        with_source(|source, read, cancellation, budget| {
+            let runtime = source.root.join("test-runtime");
+            let op = operation(read, source, cancellation);
+            stage(&runtime, &manifest());
+            let parent = source.root.join("pack_control");
+            fs::create_dir(&parent).unwrap();
+            let path = parent.join(REGISTRY);
+            let sample = br#"{"signature":"not-yet-validated"}"#;
+            fs::write(&path, sample).unwrap();
+            let catalog = read_inputs(&op, &runtime, &source.root, budget).unwrap();
+            assert_eq!(catalog.registry.raw.as_ref().unwrap().as_slice(), sample);
+            assert_eq!(fs::read(&path).unwrap(), sample);
+            assert!(!parent.join(".external_normal_pack_catalog_key").exists());
+            let second_name = parent.join("second-file");
+            fs::hard_link(&path, &second_name).unwrap();
+            let error = read_inputs(&op, &runtime, &source.root, budget)
+                .err()
+                .unwrap();
+            assert_eq!(error.class, EXTERNAL_ERROR);
+            assert_eq!(error.message, "Host JSON file identity is invalid");
+            fs::remove_file(&path).unwrap();
+            symlink(&second_name, &path).unwrap();
+            let error = read_inputs(&op, &runtime, &source.root, budget)
+                .err()
+                .unwrap();
+            assert_eq!(error.class, EXTERNAL_ERROR);
+            assert_eq!(
+                error.message,
+                "Host JSON file is unreadable: external_normal_pack_catalog.v4.json"
+            );
+            assert_eq!(read.receipt().open_files, 0);
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ordinary_closure_rereads_the_original_signed_manifest_rows() {
+        let Some(path) = std::env::var_os("TOBKIRI_EXTERNAL_CLOSURE_FIXTURE") else {
+            return;
+        };
+        let bytes = fs::read(path).unwrap();
+        assert!(bytes.len() <= 2 * 1024 * 1024);
+        let fixture: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            fixture["format"],
+            "io.tobkiri.original-external-closure-reference.v1"
+        );
+        let runtime = Path::new(fixture["runtime_dir"].as_str().unwrap());
+        let owner = Path::new(fixture["native_user_data"].as_str().unwrap());
+        let expected = &fixture["bootstrap"];
+        let requested = expected["requested"].as_array().unwrap();
+        assert_eq!(requested.len(), 2);
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let input = read_inputs(&op, runtime, owner, budget).unwrap();
+            let catalog = authenticate(&op, input, budget).unwrap();
+            let seed = catalog.closure_seed(budget).unwrap();
+            let ids = seed.array().unwrap();
+            assert_eq!(ids.len(), requested.len());
+            drop(catalog);
+            let mut selected = Vec::new();
+            for (id, expected_id) in ids.iter().zip(requested.iter()) {
+                assert_eq!(id.as_str(), expected_id.as_str());
+                let id = id.as_str().unwrap();
+                let ClosureManifest::External {
+                    manifest,
+                    artifact_digest,
+                } = read_manifest_from_catalogs(&op, runtime, owner, budget, id).unwrap()
+                else {
+                    panic!("missing original signed manifest row for {id}");
+                };
+                assert_eq!(artifact_digest.as_str(), fixture["pins"][id].as_str());
+                let bytes = manifest.encode_guest(budget).unwrap();
+                let observed: Value = serde_json::from_slice(bytes.as_bytes()).unwrap();
+                assert_eq!(observed, expected["project"][id]["pack"]);
+                selected.push((id.to_owned(), manifest, artifact_digest));
+                assert_eq!(read.receipt().open_files, 0);
+            }
+            for (id, manifest, artifact_digest) in selected {
+                let digest = artifact_digest.as_str().unwrap();
+                let ClosureExecutable::External(executable) = external_catalog_executable::read(
+                    &op, runtime, owner, budget, &id, &manifest, digest,
+                )
+                .unwrap() else {
+                    panic!("missing original signed executable row for {id}");
+                };
+                let executable = executable.encode_guest(budget).unwrap();
+                let executable: Value = serde_json::from_slice(executable.as_bytes()).unwrap();
+                assert_eq!(executable, expected["project"][&id]["executable_catalog"]);
+                assert_eq!(read.receipt().open_files, 0);
+            }
+        });
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let id = requested[0].as_str().unwrap();
+            let digest = fixture["pins"][id].as_str().unwrap();
+            let mut different = expected["project"][id]["pack"].clone();
+            different["pack"]["display_name"] = json!("A different manifest");
+            let different =
+                CoreValue::parse_guest(&serde_json::to_vec(&different).unwrap(), budget).unwrap();
+            let error = match external_catalog_executable::read(
+                &op, runtime, owner, budget, id, &different, digest,
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("a different manifest canonical digest was accepted"),
+            };
+            assert_eq!(error.class, EXTERNAL_ERROR);
+            assert_eq!(
+                error.message,
+                "external Pack executable catalog does not match the admitted manifest",
+            );
+            assert_eq!(read.receipt().open_files, 0);
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn external_catalog_matches_the_original_bundled_ids_and_authentication() {
+        let Some(path) = std::env::var_os("TOBKIRI_EXTERNAL_CATALOG_FIXTURE") else {
+            return;
+        };
+        let bytes = fs::read(path).unwrap();
+        assert!(bytes.len() <= 2 * 1024 * 1024);
+        let fixture: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            fixture["format"],
+            "io.tobkiri.original-external-pack-catalog-reference.v1"
+        );
+        let cases = fixture["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 4);
+        for case in cases {
+            with_source(|source, read, cancellation, budget| {
+                let op = operation(read, source, cancellation);
+                let runtime = Path::new(case["runtime_dir"].as_str().unwrap());
+                let owner = Path::new(case["native_user_data"].as_str().unwrap());
+                let catalog = read_inputs(&op, runtime, owner, budget).unwrap();
+                let expected = case["bundled"]["ids"].as_array().unwrap();
+                let actual = catalog._bundled._ids.array().unwrap();
+                assert_eq!(actual.len(), expected.len());
+                for (actual, expected) in actual.iter().zip(expected) {
+                    assert_eq!(actual.as_str(), expected.as_str());
+                }
+                let observed = authenticate(&op, catalog, budget);
+                match case["expected"]["outcome"].as_str().unwrap() {
+                    "success" => {
+                        let observed = observed.unwrap();
+                        let expected = &case["expected"]["value"];
+                        if let Some(registry) = &observed._registry {
+                            let value = json::canonical(registry, None, &op).unwrap();
+                            let value: Value = serde_json::from_slice(&value).unwrap();
+                            assert_eq!(&value, expected);
+                        } else {
+                            assert_eq!(expected["entries"], json!({}));
+                            assert_eq!(expected["journal"], json!([]));
+                        }
+                        if case["name"] == "retained-version" {
+                            let inventory = observed.inventory.as_ref().unwrap();
+                            let registry = observed._registry.as_ref().unwrap();
+                            let retained = &case["retained_probe"];
+                            let ordered = retained["ordered"].as_array().unwrap();
+                            let records = registry
+                                .entries(registry.get(registry.root, "entries").unwrap())
+                                .unwrap();
+                            assert_eq!(ordered.len(), 2);
+                            assert_eq!(inventory._entries.len(), ordered.len());
+                            let mut selected = serde_json::Map::new();
+                            for (pack, expected) in inventory._entries.iter().zip(ordered) {
+                                let key = &records[pack._key].0;
+                                assert!(key.is(expected["key"].as_str().unwrap()));
+                                assert_eq!(
+                                    pack._artifact_digest.as_str(),
+                                    expected["artifact_digest"]
+                                );
+                                assert_eq!(
+                                    pack._content_digest.as_str(),
+                                    expected["content_digest"]
+                                );
+                                if pack._selected {
+                                    let id = registry_text(registry, pack._root.entry, "pack_id")
+                                        .utf8()
+                                        .unwrap();
+                                    selected
+                                        .insert(id, Value::from(pack._artifact_digest.as_str()));
+                                }
+                            }
+                            assert_eq!(Value::Object(selected), retained["selected"]);
+                            assert_eq!(
+                                inventory._revision.as_ref().unwrap().as_str(),
+                                retained["revision"]
+                            );
+                            assert_eq!(
+                                observed.verification_reachpoint(),
+                                crate::BootstrapReviewReachpoint::AdmittedPackClosureNotBound
+                            );
+                        } else if case["name"] == "admitted" {
+                            assert_eq!(case["artifact_probe"]["outcome"], "verified");
+                            let registry = observed._registry.as_ref().unwrap();
+                            let inventory = observed.inventory.as_ref().unwrap();
+                            assert_eq!(inventory._entries.len(), 1);
+                            let pack = &inventory._entries[0];
+                            let root = &pack._root;
+                            assert_eq!(
+                                pack._artifact_digest.as_str(),
+                                case["artifact_probe"]["artifact_digest"]
+                            );
+                            assert_eq!(
+                                pack._content_digest.as_str(),
+                                case["artifact_probe"]["content_digest"]
+                            );
+                            let compiled_prefix =
+                                read_artifact_definitions(&op, root, registry, budget).unwrap();
+                            assert_eq!(
+                                compiled_prefix._artifact_digest.as_str(),
+                                case["artifact_probe"]["artifact_digest"].as_str().unwrap()
+                            );
+                            assert_eq!(
+                                compiled_prefix.receipt._content_digest.as_str(),
+                                case["artifact_probe"]["content_digest"].as_str().unwrap()
+                            );
+                            assert!(!compiled_prefix.receipt.host_extension);
+                            let root_fd = Parent::walk(&root.path, &op.cleanup).unwrap();
+                            let mismatched_bytes = || {
+                                let input = read_artifact_definition(
+                                    &op,
+                                    &root_fd,
+                                    &root.path,
+                                    c"executables.v4.json",
+                                    budget,
+                                )?;
+                                let capacity =
+                                    op.reserve(OriginalAuthorityStage::Source, input.len() + 1)?;
+                                let mut bytes = Zeroizing::new(Vec::with_capacity(input.len() + 1));
+                                bytes.extend_from_slice(&input);
+                                bytes.push(b'\n');
+                                Ok(Funded {
+                                    value: bytes,
+                                    _capacity: capacity,
+                                })
+                            };
+                            let error = check_artifact_pins(
+                                &op,
+                                budget,
+                                &compiled_prefix._documents,
+                                mismatched_bytes,
+                            )
+                            .unwrap_err();
+                            assert!(matches!(error.cause,
+                                Some(OriginalAuthorityCause::Python { class: "tobkiri_host.errors.InvalidArtifactError", ref message, .. })
+                                    if message == "executable catalog artifact digest mismatch"
+                            ));
+                            root_fd.close().unwrap();
+                        } else {
+                            assert!(observed.inventory.is_none());
+                        }
+                    }
+                    "error" => {
+                        let error = observed
+                            .err()
+                            .expect("original authentication was rejected");
+                        assert_eq!(
+                            error.class,
+                            case["expected"]["error"]["type"].as_str().unwrap()
+                        );
+                        assert_eq!(
+                            error.message,
+                            case["expected"]["error"]["message"].as_str().unwrap()
+                        );
+                    }
+                    _ => panic!("unknown original fixture outcome"),
+                }
+                assert_eq!(read.receipt().open_files, 0);
+            });
+        }
+    }
 }
