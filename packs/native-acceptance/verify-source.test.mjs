@@ -3,7 +3,8 @@
  *  report classification and cleanup only, never actual browser denial. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
@@ -176,19 +177,25 @@ async function harness(options = {}) {
     report: () => JSON.parse(elements.get('#receipt').textContent) };
 }
 
-test('actual UI manifest hashes and canonical SDK/WIT copies match', () => {
-  const manifest = JSON.parse(readFileSync(`${fixture}/ui/pack.json`, 'utf8'));
+test('staged UI manifest hashes and canonical SDK/WIT sources match', (t) => {
+  const temp = mkdtempSync(`${tmpdir()}/native-acceptance-`);
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const ui = `${temp}/ui`;
+  const result = spawnSync(process.execPath, [`${fixture}/stage.mjs`, '--ui-only', ui], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).ui_manifest, 'sha256:13bbbf949a8fb3abf1d4cb312bbd702f7c81b4fbfe3596518eb943e750c99f55');
+  const manifest = JSON.parse(readFileSync(`${ui}/pack.json`, 'utf8'));
   assert.equal(manifest.files.length, 5);
   for (const file of manifest.files) {
-    const bytes = readFileSync(`${fixture}/ui/${file.path}`);
+    const bytes = readFileSync(`${ui}/${file.path}`);
     assert.equal(bytes.length, file.size);
     assert.equal(sha(bytes), file.sha256);
   }
   for (const [copy, original] of [
-    ['ui/ports.js', 'sdk/js/pack-ui/index.js'],
-    ['ui/float.js', 'sdk/js/pack-ui/float.js'],
-    ['provider/wit/deps/core.wit', 'crates/tobkiri-wit/wit/core/core.wit'],
-  ]) assert.deepEqual(readFileSync(`${fixture}/${copy}`), readFileSync(`${repo}/${original}`));
+    [`${ui}/ports.js`, 'sdk/js/pack-ui/index.js'],
+    [`${ui}/float.js`, 'sdk/js/pack-ui/float.js'],
+    [`${fixture}/provider/wit/deps/core.wit`, 'crates/tobkiri-wit/wit/core/core.wit'],
+  ]) assert.deepEqual(readFileSync(copy), readFileSync(`${repo}/${original}`));
   assert.deepEqual(manifest.permissions.network.origins, []);
   assert.equal(manifest.permissions.cross_profile_storage, false);
   assert.equal(manifest.permissions.native, false);
@@ -543,6 +550,28 @@ test('only the explicit source button requests the fixed Dangerous operation', a
   assert.equal(h.report().native_sheet_presentation, 'unobserved-by-this-fixture');
   assert.equal(h.report().peer_active_served_verified, false);
   assert.ok(Object.values(h.report().observations).every(({ detail }) => detail.length <= 256));
+});
+
+test('full staging binds canonical SDK bytes into a self-contained UI Pack', (t) => {
+  const temp = mkdtempSync(`${tmpdir()}/native-acceptance-full-`);
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  // The producer validates the component header only; this is not a usable component.
+  const component = `${temp}/header.wasm`;
+  writeFileSync(component, Buffer.from([0, 97, 115, 109, 13, 0, 1, 0]));
+  const output = `${temp}/stage`;
+  const result = spawnSync(process.execPath, [`${fixture}/stage.mjs`, '--component', component,
+    '--output', output], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(readFileSync(`${output}/stage-receipt.json`, 'utf8'));
+  const ui = `${output}/local.native-acceptance-ui`;
+  assert.equal(receipt.packs['local.native-acceptance-ui'],
+    'sha256:13bbbf949a8fb3abf1d4cb312bbd702f7c81b4fbfe3596518eb943e750c99f55');
+  for (const [asset, source] of [['ports.js', 'sdk/js/pack-ui/index.js'],
+    ['float.js', 'sdk/js/pack-ui/float.js']]) {
+    const bytes = readFileSync(`${repo}/${source}`);
+    assert.deepEqual(readFileSync(`${ui}/${asset}`), bytes);
+    assert.equal(receipt.sources[source], sha(bytes));
+  }
 });
 
 test('actual staging CLI rejects non-components before creating output', () => {

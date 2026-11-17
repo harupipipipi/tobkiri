@@ -5,12 +5,12 @@ MessageChannel and native approval paths. It adds no host command, capability,
 debug principal, approval flag, global IPC bridge or relaxed CSP. Source
 preparation does not establish native acceptance.
 
-`ui/pack.json` binds the actual UI asset bytes. The UI is a data Pack with one
+The staged UI `pack.json` binds the actual UI asset bytes. The UI is a data Pack with one
 declared provider Port and no filesystem, network, process, secret, native or
 cross-Profile storage permission. It deliberately has no HTML CSP meta tag:
 the network/IPC probes must observe the native host's enforced response CSP.
-The copied `ports.js`, `float.js` and generic core WIT must remain byte-identical
-to the reviewed SDK/core sources; the staging tool checks those copies.
+Staging takes `ports.js` and `float.js` directly from the reviewed SDK. The
+provider’s generic core WIT copy must match the reviewed core source; staging checks it.
 
 The separate provider is a Wasm Pack owning
 `local.native-acceptance-provider.review@1.0`. `ping` returns a fixed readiness
@@ -94,10 +94,10 @@ to 256 characters, and displays plain text. It reports sheet presentation as
 unobserved regardless of whether the provider call succeeds. A rejected Port
 call is `denied-or-failed`, not an invented proof of native cancellation.
 
-To refresh only the source UI manifest after a reviewed asset edit:
+To stage only the self-contained UI Pack in a new directory:
 
 ```sh
-node packs/native-acceptance/stage.mjs --ui-manifest-only
+node packs/native-acceptance/stage.mjs --ui-only "$NEW_UI_DIRECTORY"
 ```
 
 The light producer/source suite uses only Node's standard library:
@@ -107,6 +107,6 @@ node --experimental-vm-modules --test packs/native-acceptance/verify-source.test
 ```
 
 Its VM injects browser outcomes to test the report classification and explicit
-button dispatch. It also checks actual asset hashes/source copies and the real
+button dispatch. It also checks staged asset hashes and SDK/WIT sources and the real
 staging CLI's rejection of non-components before output creation. These tests
 do not establish actual browser isolation, CSP enforcement or native review.

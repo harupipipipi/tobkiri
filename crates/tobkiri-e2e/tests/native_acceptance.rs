@@ -1,6 +1,7 @@
 //! Verify native acceptance source assets without claiming a WebView execution.
 use anyhow::Result;
 use std::path::Path;
+use std::process::Command;
 use tobkiri_manifest::RuntimeSpec;
 
 #[test]
@@ -9,7 +10,14 @@ fn native_probe_ui_is_a_verified_pack_with_only_its_declared_port() -> Result<()
         .ancestors()
         .nth(2)
         .unwrap();
-    let ui = repo.join("packs/native-acceptance/ui");
+    let temp = tempfile::tempdir()?;
+    let ui = temp.path().join("ui");
+    let status = Command::new("node")
+        .arg(repo.join("packs/native-acceptance/stage.mjs"))
+        .arg("--ui-only")
+        .arg(&ui)
+        .status()?;
+    anyhow::ensure!(status.success(), "UI staging failed: {status}");
     let verified = tobkiri_manifest::verify_directory(&ui, &Default::default())?;
     assert_eq!(verified.manifest.id.as_str(), "local.native-acceptance-ui");
     assert!(matches!(verified.manifest.runtime, RuntimeSpec::Data));
@@ -50,7 +58,7 @@ fn native_probe_ui_is_a_verified_pack_with_only_its_declared_port() -> Result<()
         assert_eq!(
             verified.files.get(asset).unwrap().read()?,
             &std::fs::read(repo.join(source))?,
-            "native fixture SDK copy drifted: {asset}"
+            "staged native fixture SDK differs: {asset}"
         );
     }
     Ok(())

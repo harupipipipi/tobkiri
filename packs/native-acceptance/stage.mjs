@@ -43,8 +43,6 @@ async function bindFiles(directory, manifest, files) {
 }
 async function requireSourceCopies() {
   for (const [copy, original] of [
-    ['ui/ports.js', 'sdk/js/pack-ui/index.js'],
-    ['ui/float.js', 'sdk/js/pack-ui/float.js'],
     ['provider/wit/deps/core.wit', 'crates/tobkiri-wit/wit/core/core.wit'],
   ]) {
     if (!(await readFile(join(root, copy))).equals(await readFile(join(repo, original)))) {
@@ -59,14 +57,24 @@ function uiManifest() {
   return manifest;
 }
 
+const uiSources = Object.fromEntries(uiFiles.map((file) => [file,
+  file === 'ports.js' ? join(repo, 'sdk/js/pack-ui/index.js')
+    : file === 'float.js' ? join(repo, 'sdk/js/pack-ui/float.js') : join(root, 'ui', file)]));
+async function stageUi(output) {
+  const contents = await Promise.all(uiFiles.map((file) => readFile(uiSources[file])));
+  await mkdir(output);
+  for (const [i, file] of uiFiles.entries()) await writeFile(join(output, file), contents[i]);
+  return bindFiles(output, uiManifest(), uiFiles);
+}
+
 const args = process.argv.slice(2);
 await requireSourceCopies();
-if (args.length === 1 && args[0] === '--ui-manifest-only') {
-  const hash = await bindFiles(join(root, 'ui'), uiManifest(), uiFiles);
+if (args.length === 2 && args[0] === '--ui-only') {
+  const hash = await stageUi(resolve(args[1]));
   console.log(JSON.stringify({ ui_manifest: hash, component: 'not-built', native_execution: 'not-run' }));
 } else {
   if (args.length !== 4 || args[0] !== '--component' || args[2] !== '--output') {
-    throw new Error('Usage: node stage.mjs --ui-manifest-only | --component REAL.wasm --output NEW_DIRECTORY');
+    throw new Error('Usage: node stage.mjs --ui-only NEW_DIRECTORY | --component REAL.wasm --output NEW_DIRECTORY');
   }
   const component = await realpath(args[1]);
   const componentStat = await stat(component);
@@ -81,10 +89,16 @@ if (args.length === 1 && args[0] === '--ui-manifest-only') {
   const sourceBytes = new Map();
   for (const path of ['stage.mjs', 'provider/Cargo.toml', 'provider/Cargo.lock', 'provider/src/lib.rs',
     'provider/wit/pack.wit', 'provider/wit/deps/core.wit', 'provider/wit/review.shape.json',
-    ...uiFiles.map((file) => `ui/${file}`)]) {
+    ...uiFiles.filter((file) => !['ports.js', 'float.js'].includes(file)).map((file) => `ui/${file}`)]) {
     const content = await readFile(join(root, path));
     sources[path] = digest(content);
     sourceBytes.set(path, content);
+  }
+  for (const file of ['ports.js', 'float.js']) {
+    const content = await readFile(uiSources[file]);
+    const source = file === 'ports.js' ? 'sdk/js/pack-ui/index.js' : 'sdk/js/pack-ui/float.js';
+    sources[source] = digest(content);
+    sourceBytes.set(`ui/${file}`, content);
   }
   // A new directory only: staging cannot replace a running/previous fixture,
   // Profile, DataRoot, receipt or recovery artifact. All required inputs,
