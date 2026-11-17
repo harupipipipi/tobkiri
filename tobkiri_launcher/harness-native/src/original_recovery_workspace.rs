@@ -3,7 +3,7 @@ use super::*;
 use tobkiri_canon::Variant;
 
 #[path = "original_recovery_pending.rs"]
-mod pending;
+pub(super) mod pending;
 
 pub(crate) const APP_DENIED: &str =
     "ecosystem.defaultspack.domain.profile_resolution.ProfileResolutionDenied";
@@ -298,10 +298,10 @@ mod tests {
             assert_eq!(
                 recover(&op, &workspace, name, |_, journal| {
                     assert!(journal.is_some());
-                    Ok(RecoveryAuthorityReached::LoadCommittedActivationEnvelope)
+                    Ok(RecoveryAuthorityReached::RevalidateCommittedActivationReservation)
                 })
                 .unwrap(),
-                RecoveryAuthorityReached::LoadCommittedActivationEnvelope
+                RecoveryAuthorityReached::RevalidateCommittedActivationReservation
             );
             assert_eq!(fs::read(&pending).unwrap(), data);
             assert_eq!(fs::read_dir(&state).unwrap().count(), 2);

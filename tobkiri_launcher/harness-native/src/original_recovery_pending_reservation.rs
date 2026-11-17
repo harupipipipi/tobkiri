@@ -1,7 +1,7 @@
 //! Bind the held activation journal to its live Authority reservation.
 use super::*;
 use crate::original_authority::io::{Store, incomplete_reservations};
-use recovery_workspace::APP_DENIED;
+use recovery_workspace::{APP_DENIED, pending};
 use rusqlite::types::Value;
 
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::PendingReservation;
@@ -58,20 +58,18 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
         ));
     }
     match column_text(state_col, state_key)? {
-        "active" => Ok(RecoveryAuthorityReached::LoadCommittedActivationEnvelope),
+        "active" => {
+            with_envelope_path(op, name, |path| {
+                check_committed_envelope(op, state, path, journal, budget)
+            })?;
+            Ok(RecoveryAuthorityReached::RevalidateCommittedActivationReservation)
+        }
         "prepared" | "ready_without_authority" | "committing" => {
             Ok(RecoveryAuthorityReached::AbortPendingActivationReservation)
         }
         "aborted" => {
             unlink(op, state, Path::new("pending.json"))?;
-            let _path = op.reserve(STAGE, name.len().saturating_add(64))?;
-            let mut path = PathBuf::with_capacity(name.len().saturating_add(16));
-            path.push("activations");
-            path.push(name);
-            if path.as_os_str().as_encoded_bytes().contains(&0) {
-                return Err(value("embedded null byte"));
-            }
-            unlink(op, state, &path)?;
+            with_envelope_path(op, name, |path| unlink(op, state, path))?;
             Ok(RecoveryAuthorityReached::WorkspaceRecovered)
         }
         _ => Err(raw(
@@ -79,6 +77,52 @@ pub(super) fn recover<S: OriginalAuthorityOwner>(
             "pending activation has an invalid authority state",
         )),
     }
+}
+
+fn with_envelope_path<S: OriginalAuthorityOwner, T>(
+    op: &Operation<'_, S>,
+    name: &str,
+    use_path: impl FnOnce(&Path) -> Result<T>,
+) -> Result<T> {
+    let _path = op.reserve(STAGE, name.len().saturating_add(64))?;
+    let mut path = PathBuf::with_capacity(name.len().saturating_add(16));
+    path.push("activations");
+    path.push(name);
+    if path.as_os_str().as_encoded_bytes().contains(&0) {
+        return Err(value("embedded null byte"));
+    }
+    use_path(&path)
+}
+
+fn check_committed_envelope<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &Directory,
+    path: &Path,
+    journal: &Document,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    let envelope = pending::read_state(op, state, path, "committed activation envelope")?;
+    let changed = || raw(APP_DENIED, "committed activation envelope changed");
+    if envelope.entries(envelope.root).is_none() {
+        return Err(changed());
+    }
+    let bytes = json::canonical_subtree(&envelope, envelope.root, None, op, budget)?;
+    let digest = Digest::hash(&bytes);
+    let expected = journal
+        .get(journal.root, "envelope_digest")
+        .expect("verified journal keys");
+    if !journal.string_is(expected, digest.as_str())
+        || !envelope
+            .get(envelope.root, "activation")
+            .and_then(|id| envelope.get(id, "state"))
+            .is_some_and(|id| envelope.string_is(id, "active"))
+    {
+        return Err(changed());
+    }
+    // The original fetches these arguments before it opens Authority again.
+    subscript(&envelope, envelope.root, "plan")?;
+    subscript(&envelope, envelope.root, "profile")?;
+    Ok(())
 }
 
 fn text(buffer: &tobkiri_canon::CoreBuffer) -> &str {

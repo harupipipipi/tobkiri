@@ -3846,4 +3846,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `SELECT * WHERE reservation_id=?` と照合する。未完了一覧と同じ列変換を使い、
   `fetchone` のタイミングを保ったまま後続処理で使う列だけを確保する。既に中止済みなら
   元の順序で保留ファイルと対応するenvelopeだけを削除し、通常の復旧へ戻る。
-  中止のAuthority更新と監査、コミット済みenvelopeの照合、active snapshotは未移植。
+  activeの予約は、既存の安全なディレクトリ読み取りと厳密JSONで対応するenvelopeを
+  開き、canonical digest、activationのstate、planとprofileの参照を元の順序で確認する。
+  元Pythonの復旧本体では中止済み・別Profile・古いtoken・別ファイルを含む8件の順序を確認。
+  中止のAuthority更新と監査、envelope検証後の予約とsecurity epochの再照合、
+  パッケージを別のロック保持区間で検証する処理、active snapshotは未移植。
+- [原本比較 CI 44071483174](https://github.com/harupipipipi/tobkiri/actions/runs/44071483174)
+  はURI 160件を含む比較に成功。全体の [macOS CI 44068320748](https://github.com/harupipipipi/tobkiri/actions/runs/44068320748)
+  では、変更前の実componentがAuthorityの照合まで到達せず、実測30.24秒で元の期限に達した。
+  [実App Wasm CI 44071515666](https://github.com/harupipipipi/tobkiri/actions/runs/44071515666)で変更後を計測。

@@ -10,7 +10,7 @@ mod pending_reservation;
 /// The result needed by the original recovery caller at its next operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryAuthorityReached {
-    LoadCommittedActivationEnvelope,
+    RevalidateCommittedActivationReservation,
     AbortPendingActivationReservation,
     WorkspaceRecovered,
     LoadActiveSnapshot,
@@ -353,7 +353,7 @@ mod tests {
                 PROFILE_ID,
                 "+１",
                 "pinned.json",
-                Ok(RecoveryAuthorityReached::LoadCommittedActivationEnvelope),
+                Ok(RecoveryAuthorityReached::RevalidateCommittedActivationReservation),
             ),
             (
                 "committing",
@@ -391,6 +391,20 @@ mod tests {
                 Err("pending activation envelope path is invalid"),
             ),
             (
+                "active",
+                PROFILE_ID,
+                "1",
+                "different.json",
+                Err("committed activation envelope changed"),
+            ),
+            (
+                "active",
+                PROFILE_ID,
+                "1",
+                "missing.json",
+                Err("committed activation envelope is unavailable: missing.json"),
+            ),
+            (
                 "retired",
                 PROFILE_ID,
                 "1",
@@ -408,10 +422,12 @@ mod tests {
                 let other_envelope = state_root.join("activations").join("different.json");
                 fs::write(
                     &stored_envelope,
-                    b"only this envelope belongs to the pending activation",
+                    br#"{ "profile": {}, "activation": { "state": "active" }, "plan": {} }"#,
                 )
                 .unwrap();
-                fs::write(&other_envelope, b"existing unrelated envelope").unwrap();
+                let unrelated =
+                    br#"{"activation":{"state":"active"},"plan":{},"profile":{"revision":2}}"#;
+                fs::write(&other_envelope, unrelated).unwrap();
                 let lock = state_root.join(LockName::workspace(PROFILE_ID).text());
                 let digest = tobkiri_canon::digest(
                     &object([(
@@ -434,7 +450,7 @@ mod tests {
                     "reservation_id": "reservation:1",
                     "activation_id": ACTIVATION_ID,
                     "envelope_path": envelope,
-                    "envelope_digest": null,
+                    "envelope_digest": Digest::hash(br#"{"activation":{"state":"active"},"plan":{},"profile":{}}"#).as_str(),
                     "workspace_digest": digest.as_str(),
                     "fencing_token": fence,
                 }))
@@ -454,14 +470,21 @@ mod tests {
                         let error = result.unwrap_err();
                         assert_eq!(error.class, recovery_workspace::APP_DENIED);
                         assert_eq!(error.message, message);
-                        assert!(error.cause.is_none());
+                        if envelope == "missing.json" {
+                            assert!(matches!(
+                                error.cause,
+                                Some(OriginalAuthorityCause::Python {
+                                    class: "builtins.FileNotFoundError",
+                                    ..
+                                })
+                            ));
+                        } else {
+                            assert!(error.cause.is_none());
+                        }
                     }
                 }
                 assert_eq!(stored_envelope.exists(), !cleared);
-                assert_eq!(
-                    fs::read(other_envelope).unwrap(),
-                    b"existing unrelated envelope"
-                );
+                assert_eq!(fs::read(other_envelope).unwrap(), unrelated);
                 if cleared {
                     assert!(!pending.exists());
                 } else {

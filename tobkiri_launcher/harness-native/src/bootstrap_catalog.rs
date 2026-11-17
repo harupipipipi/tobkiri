@@ -721,8 +721,8 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         pack.cancellation,
         pack.input_budget,
     ) {
-        Ok(RecoveryAuthorityReached::LoadCommittedActivationEnvelope) => {
-            BootstrapReviewReachpoint::RecoveryCommittedActivationEnvelopeNotBound
+        Ok(RecoveryAuthorityReached::RevalidateCommittedActivationReservation) => {
+            BootstrapReviewReachpoint::RecoveryRevalidateCommittedActivationReservationNotBound
         }
         Ok(RecoveryAuthorityReached::AbortPendingActivationReservation) => {
             BootstrapReviewReachpoint::RecoveryAbortPendingActivationReservationNotBound
