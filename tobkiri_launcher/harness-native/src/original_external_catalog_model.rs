@@ -638,8 +638,10 @@ fn opaque_reference(value: &[u32]) -> bool {
 pub(super) enum SemanticPath {
     Root,
     ProfileRoot,
+    RecoveryRoot,
     Journal,
     Bindings,
+    VariantPins,
     Operations,
     Other,
 }
@@ -648,14 +650,16 @@ impl SemanticPath {
     fn child(self, key: &Text) -> Self {
         if matches!(self, Self::Root) && key.is("journal") {
             Self::Journal
+        } else if matches!(self, Self::RecoveryRoot) && key.is("variant_pins") {
+            Self::VariantPins
         } else if key.is("bindings")
             || suffix(&key.0, ".bindings")
-            || matches!(self, Self::ProfileRoot) && key.is("requested_edges")
+            || matches!(self, Self::ProfileRoot | Self::RecoveryRoot) && key.is("requested_edges")
         {
             Self::Bindings
         } else if key.is("operations")
             || suffix(&key.0, ".operations")
-            || matches!(self, Self::Root) && key.is("operation_catalog")
+            || matches!(self, Self::Root | Self::RecoveryRoot) && key.is("operation_catalog")
         {
             Self::Operations
         } else {
@@ -731,10 +735,27 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
                         }
                     }
                 }
+                SemanticPath::VariantPins => {
+                    let _capacity = reserve_set(op, items.len())?;
+                    let mut seen = HashSet::new();
+                    seen.try_reserve(items.len()).map_err(|_| capacity())?;
+                    for &id in items {
+                        if doc.entries(id).is_none() {
+                            continue;
+                        }
+                        let pack = binding_part(doc, doc.get(id, "pack_id"))?;
+                        let variant = binding_part(doc, doc.get(id, "variant_id"))?;
+                        charge(op, budget, pack.work() + variant.work())?;
+                        if !seen.insert((pack, variant)) {
+                            return Err(schema_error());
+                        }
+                    }
+                }
                 SemanticPath::Operations
                 | SemanticPath::Other
                 | SemanticPath::Root
-                | SemanticPath::ProfileRoot => {
+                | SemanticPath::ProfileRoot
+                | SemanticPath::RecoveryRoot => {
                     let fields = if matches!(path, SemanticPath::Operations) {
                         &["operation_id"][..]
                     } else {
@@ -785,6 +806,39 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
     Ok(())
 }
 
+fn record_semantics<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    record: usize,
+    path: SemanticPath,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
+    match validate_semantics(doc, record, path, op, budget) {
+        Ok(()) => Ok(true),
+        Err(error)
+            if error.class == "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied"
+                && error.message == SCHEMA_ERROR =>
+        {
+            Ok(false)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Check the original semantic predicates after a persisted Lock, Plan, or Activation shape passes.
+pub(in crate::original_authority::io::publication) fn validate_recovery_record_semantics<
+    S: OriginalAuthorityOwner,
+>(
+    doc: &Document,
+    record: usize,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
+    // Python dispatches the principal component digest check only for a standalone
+    // FunctionPrincipal schema. Plan bindings still check each digest's spelling.
+    record_semantics(doc, record, SemanticPath::RecoveryRoot, op, budget)
+}
+
 /// Check the original semantic predicates after the pinned Profile shape passes.
 pub(in crate::original_authority::io::publication) fn validate_profile_semantics<
     S: OriginalAuthorityOwner,
@@ -794,13 +848,8 @@ pub(in crate::original_authority::io::publication) fn validate_profile_semantics
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<bool> {
-    if let Err(error) = validate_semantics(doc, profile, SemanticPath::ProfileRoot, op, budget) {
-        if error.class == "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied"
-            && error.message == SCHEMA_ERROR
-        {
-            return Ok(false);
-        }
-        return Err(error);
+    if !record_semantics(doc, profile, SemanticPath::ProfileRoot, op, budget)? {
+        return Ok(false);
     }
     if !profile_fields_allowed(doc, profile, op, budget)? {
         return Ok(false);
@@ -1224,6 +1273,56 @@ mod tests {
     use serde_json::{Value, json};
 
     const KEY: &[u8] = b"original-external-catalog-fixture-key";
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recovery_record_semantics_use_variant_and_binding_pairs() {
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let checked = |record: &Value| {
+                let doc = json::decode_strict(&serde_json::to_vec(record).unwrap(), &op).unwrap();
+                validate_recovery_record_semantics(&doc, doc.root, &op, budget).unwrap()
+            };
+            let legacy: Value = serde_json::from_slice(include_bytes!(
+                "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
+            ))
+            .unwrap();
+            for field in ["lock", "plan", "activation"] {
+                assert!(checked(&legacy[field]), "legacy {field}");
+            }
+
+            let mut lock = json!({"variant_pins": [
+                {"pack_id": "local.pack", "variant_id": "first", "platform": "macos"},
+                {"pack_id": "local.pack", "variant_id": "second", "platform": "linux"}
+            ]});
+            assert!(checked(&lock));
+            lock["variant_pins"][1]["variant_id"] = json!("first");
+            assert!(!checked(&lock));
+
+            let mut first = legacy["plan"]["bindings"][0].clone();
+            first["function_principal"]["principal_digest"] = json!(revision('0'));
+            let mut second = first.clone();
+            second["function_principal"]["function_id"] = json!("other.provider");
+            let mut plan = json!({"bindings": [first, second]});
+            assert!(checked(&plan));
+            plan["bindings"][1]["function_principal"]["function_id"] =
+                first["function_principal"]["function_id"].clone();
+            assert!(!checked(&plan));
+            plan["bindings"][0]["caller_function_id"] = json!("caller.one");
+            plan["bindings"][1]["caller_function_id"] = json!("caller.two");
+            assert!(checked(&plan));
+            plan["bindings"][0]["authority_reference"] = json!("authority-ref:12345678");
+            assert!(checked(&plan));
+            plan["bindings"][0]["authority_reference"] = json!("authority-ref:12345678\n");
+            assert!(!checked(&plan));
+
+            let mut activation = legacy["activation"].clone();
+            activation["profile_id"] = json!("legacy.profile");
+            assert!(!checked(&activation));
+            activation["profile_id"] = legacy["activation"]["profile_id"].clone();
+            activation["plan_digest"] = json!(format!("{}\n", revision('0')));
+            assert!(!checked(&activation));
+        });
+    }
 
     fn resign(payload: &mut Value) {
         payload.as_object_mut().unwrap().remove("signature");

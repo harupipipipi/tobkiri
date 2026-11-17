@@ -44,6 +44,21 @@ PROFILE_REFERENCE_PATHS = {
 }
 
 
+# The order matches BootstrapProfileSchemas::recovery.
+RECOVERY_SCHEMA_IDS = {
+    "profile_lock_v4": "profile-lock.v4",
+    "profile_lock_v5": "profile-lock.v5",
+    "resolved_plan_v1": "resolved-plan.v1",
+    "resolved_plan_v2": "resolved-plan.v2",
+    "activation_record_v1": "activation-record.v1",
+    "activation_record_v2": "activation-record.v2",
+    "function_principal_v1": "function-principal.v1",
+}
+RECOVERY_SCHEMA_PATHS = {
+    key: f"tobkiri_protocol/schemas/{key}.schema.json" for key in RECOVERY_SCHEMA_IDS
+}
+
+
 def verify_producer_selection(
     artifact: Path, build: dict, plan: dict, identity: dict, *, diagnostic: bool,
     app_backend: bool = False,
@@ -123,7 +138,7 @@ def verify_app_source_bindings(build: dict, actual: dict) -> None:
 def _profile_schema_resources(
     inputs: Path, base: dict[str, bytes], manifest: list[dict],
 ) -> dict[str, bytes]:
-    """Select the original Profile roots and references from captured DATA."""
+    """Select the original Profile recovery schemas from captured DATA."""
     def row_for(destination: str) -> dict:
         source = "python/" + destination
         rows = [row for row in manifest
@@ -140,14 +155,19 @@ def _profile_schema_resources(
                       for target in node.targets)]
     if len(tables) != 1 or not isinstance(tables[0], ast.Tuple):
         raise ValueError("native captured DATA must have one literal FILES table")
-    paths = {**PROFILE_SCHEMA_PATHS, **PROFILE_REFERENCE_PATHS}
+    paths = {**PROFILE_SCHEMA_PATHS, **PROFILE_REFERENCE_PATHS, **RECOVERY_SCHEMA_PATHS}
+    schema_ids = {
+        **PROFILE_REFERENCE_IDS,
+        **{key: f"https://schemas.tobkiri.local/io.tobkiri/{name}.schema.json"
+           for key, name in RECOVERY_SCHEMA_IDS.items()},
+    }
     wanted = set(paths.values())
     selected = tuple(ast.literal_eval(row) for row in tables[0].elts
                      if isinstance(row, ast.Tuple) and row.elts
                      and isinstance(row.elts[0], ast.Constant)
                      and row.elts[0].value in wanted)
     if len(selected) != len(wanted) or {row[0] for row in selected} != wanted:
-        raise ValueError("native captured DATA must contain each Profile schema and reference once")
+        raise ValueError("native captured DATA must contain each Profile recovery schema once")
     resources = Tree(selected, compressed=True)
     result = {}
     for key, name in paths.items():
@@ -156,11 +176,11 @@ def _profile_schema_resources(
         if (not raw or len(raw) != row["bytes"] or digest != row["sha256"]
                 or raw != base.get(row["source"])):
             raise ValueError(f"captured Profile schema differs from original source: {name}")
-        if key in PROFILE_REFERENCE_IDS:
+        if key in schema_ids:
             document = json.loads(raw)
             if (not isinstance(document, dict)
-                    or document.get("$id") != PROFILE_REFERENCE_IDS[key]):
-                raise ValueError(f"captured Profile reference has an unexpected $id: {name}")
+                    or document.get("$id") != schema_ids[key]):
+                raise ValueError(f"captured Profile recovery schema has an unexpected $id: {name}")
         result[key] = raw
     return result
 
@@ -179,6 +199,9 @@ def _rust_profile_schemas(component_sha256: str, schemas: dict[str, bytes]) -> b
         "    references: Some([",
         *(f"        {literal(schemas[key])}," for key in PROFILE_REFERENCE_PATHS),
         "    ]),",
+        "    recovery: Some([",
+        *(f"        {literal(schemas[key])}," for key in RECOVERY_SCHEMA_PATHS),
+        "    ]),",
     ]
     return ("\n".join([*lines, "};", ""])).encode("ascii")
 
@@ -191,6 +214,7 @@ def _profile_schema_receipt(schemas: dict[str, bytes]) -> dict:
     return {
         **{version: row(version) for version in PROFILE_SCHEMA_PATHS},
         "references": {key: row(key) for key in PROFILE_REFERENCE_PATHS},
+        "recovery": {key: row(key) for key in RECOVERY_SCHEMA_PATHS},
     }
 
 

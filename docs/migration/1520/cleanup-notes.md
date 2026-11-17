@@ -3952,5 +3952,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   作業領域を解放することで従来の64MiB上限内で通った。元のPythonではv4・v5の成功例と
   3つの拒否例を照合し、10種のパターンは17,720例で元 `re.search` と一致した。
   構造・意味のいずれかが不一致の場合は復旧を止める。元の全診断文の再構成は後続。
-  次のLock v4/v5は現行の構造キーワードで扱える。Planは `function-principal.v1` と
-  そのルートへの固定参照、Activationには `date-time` と `activation:` IDのパターンが追加で必要。
+  Lock v4/v5・Plan v1/v2・Activation v1/v2とFunctionPrincipal v1を、同じWasmの
+  source manifestから既存レシートに追加した。共通スキーマとコンテンツ投影は1回読む。
+  Planの固定ルート参照とActivation IDパターンを扱い、Lockのvariant pinとPlanのbindingの
+  重複判定は既存の検証処理を共用した。Plan内のPrincipal digestを単体用の検査で再計算する
+  二重処理は省いた。固定された元Pythonの依存関係では `date-time` の検査器が未登録である
+  ことを確認し、元の文字列型検査を再現する。レガシーの混在判定は全レコード検証後に行う。
+  元のPythonパッケージ用fixture builderから生成した現行v5/v5/v2/v2の全レコードも照合し、
+  312 bindingsを含む約750KiBのデータをRust側の64MiB Store予算内で検査した。
+  組み込みの旧v4/v4/v1/v1 fixtureでは生オブジェクトと文字列を試した。
+  レコード間のdigest・投影・Authorityの照合と、元の全診断文は後続。
+- [実Wasm CI 44086657107](https://github.com/harupipipipi/tobkiri/actions/runs/44086657107)
+  の通常カタログは先頭export前に1,267,026,502 fuel、25.590秒で0。復旧は1,266,762,026、
+  27.107秒で0。比較9件のうち5件が一致し、残る4件は燃料切れで、全9件が後処理を完了した。
+  この実行モードはスキーマ詳細計測を飛ばした。別の
+  [cold exportの計測](https://github.com/harupipipipi/tobkiri/actions/runs/44072390698/artifacts/14322583595)
+  では42スキーマを最後まで読み、標本からRegistry約2.85億、URI約1.93億 fuelと推定した。
+  同一Storeの実loaderでは既存Rust samplerとApp backendを一緒に検証する明示的なモードが
+  必要。前回の `launcher-staging` は、fixtureが圧縮DATAを含む前の `22f6f0c74` で停止した。

@@ -1,4 +1,4 @@
-//! Structural predicates in the three bound Profile schema documents.
+//! Structural predicates in the bound persisted Profile and activation schemas.
 use super::*;
 use tobkiri_canon::{AllocationKind, AllocationRequest};
 
@@ -6,15 +6,28 @@ const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 const DIALECT: &str = "https://json-schema.org/draft/2020-12/schema";
 const PROFILE_V4: &str = "https://schemas.tobkiri.local/io.tobkiri/profile.v4.schema.json";
 const PROFILE_V5: &str = "https://schemas.tobkiri.local/io.tobkiri/profile.v5.schema.json";
+const LOCK_V4: &str = "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v4.schema.json";
+const LOCK_V5: &str = "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json";
+const PLAN_V1: &str = "https://schemas.tobkiri.local/io.tobkiri/resolved-plan.v1.schema.json";
+const PLAN_V2: &str = "https://schemas.tobkiri.local/io.tobkiri/resolved-plan.v2.schema.json";
+const ACTIVATION_V1: &str =
+    "https://schemas.tobkiri.local/io.tobkiri/activation-record.v1.schema.json";
+const ACTIVATION_V2: &str =
+    "https://schemas.tobkiri.local/io.tobkiri/activation-record.v2.schema.json";
 const COMMON: &str = "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json";
 const PROJECTION: &str =
     "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json";
+const FUNCTION_PRINCIPAL: &str =
+    "https://schemas.tobkiri.local/io.tobkiri/function-principal.v1.schema.json";
 const DEFS: &str = "#/$defs/";
 const MAX_SCHEMA_DEPTH: usize = 32;
 const MAX_EVALUATION_DEPTH: usize = 48;
 
 fn unsupported() -> OriginalAuthorityError {
-    OriginalAuthorityError::unsupported(STAGE, "original Profile structural schema closure")
+    OriginalAuthorityError::unsupported(
+        STAGE,
+        "original persisted record structural schema closure",
+    )
 }
 
 fn capacity() -> OriginalAuthorityError {
@@ -42,25 +55,28 @@ enum Instance<'a> {
 struct Validator<'a, 'inv, S> {
     op: &'a Operation<'inv, S>,
     budget: &'a Arc<dyn AllocationBudget>,
-    schemas: [&'a Document; 3],
-    profile: &'a Document,
+    schemas: &'a [&'a Document],
+    record: &'a Document,
 }
 
 /// Apply the supported structural assertions before any semantic diagnostics.
 pub(super) fn matches<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
-    schemas: [&Document; 3],
-    profile: &Document,
-    profile_id: usize,
+    schemas: &[&Document],
+    record: &Document,
+    record_id: usize,
 ) -> Result<bool> {
+    if !matches!(schemas.len(), 3 | 4) {
+        return Err(unsupported());
+    }
     let validator = Validator {
         op,
         budget,
         schemas,
-        profile,
+        record,
     };
-    for (index, doc) in schemas.into_iter().enumerate() {
+    for (index, doc) in schemas.iter().enumerate() {
         if doc.source_bytes() > 64 * 1024 || doc.node_count() > 8192 {
             return Err(unsupported());
         }
@@ -68,9 +84,19 @@ pub(super) fn matches<S: OriginalAuthorityOwner>(
             return Err(unsupported());
         };
         let expected: &[_] = match index {
-            0 => &[PROFILE_V4, PROFILE_V5],
+            0 => &[
+                PROFILE_V4,
+                PROFILE_V5,
+                LOCK_V4,
+                LOCK_V5,
+                PLAN_V1,
+                PLAN_V2,
+                ACTIVATION_V1,
+                ACTIVATION_V2,
+            ],
             1 => &[COMMON],
-            _ => &[PROJECTION],
+            2 => &[PROJECTION],
+            _ => &[FUNCTION_PRINCIPAL],
         };
         if !expected.iter().any(|value| doc.string_is(id, value))
             || !doc
@@ -92,7 +118,7 @@ pub(super) fn matches<S: OriginalAuthorityOwner>(
             document: 0,
             id: schemas[0].root,
         },
-        Instance::Value(profile_id),
+        Instance::Value(record_id),
         0,
     )
 }
@@ -114,6 +140,14 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
     fn resolve(&self, schema: Schema, reference: &Text) -> Result<Schema> {
         let mut buffer = [0; 256];
         let reference = ascii(reference, &mut buffer).ok_or_else(unsupported)?;
+        if reference == FUNCTION_PRINCIPAL {
+            let document = 3;
+            let doc = self.schemas.get(document).ok_or_else(unsupported)?;
+            return Ok(Schema {
+                document,
+                id: doc.root,
+            });
+        }
         let (document, fragment) = if reference.starts_with(DEFS) {
             (schema.document, reference)
         } else if let Some(fragment) = reference.strip_prefix(COMMON) {
@@ -208,6 +242,10 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
                 "pattern" => {
                     Pattern::read(string(node)?)?;
                 }
+                // The pinned Python distribution loads FormatChecker without
+                // the optional rfc3339_validator package. Its date-time format
+                // is unregistered, so the original checks only the string type.
+                "format" if doc.string_is(id, "date-time") => {}
                 "items" | "propertyNames" | "additionalProperties" | "if" | "then" | "not" => {
                     self.check_schema(schema.at(id), depth + 1)?;
                 }
@@ -236,7 +274,7 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
             return boolean(doc.node(schema.id));
         };
         let value = match instance {
-            Instance::Value(id) => Some(self.profile.node(id)),
+            Instance::Value(id) => Some(self.record.node(id)),
             Instance::PropertyName(_) => None,
         };
         let text = match (instance, value) {
@@ -259,7 +297,7 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
             let keyword = ascii(name, &mut keyword_buffer).ok_or_else(unsupported)?;
             let node = doc.node(id);
             let matched = match keyword {
-                "$id" | "$schema" | "$defs" | "title" | "then" => true,
+                "$id" | "$schema" | "$defs" | "title" | "then" | "format" => true,
                 "$ref" => {
                     self.evaluate(self.resolve(schema, string(node)?)?, instance, depth + 1)?
                 }
@@ -463,7 +501,7 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
             return Err(capacity());
         }
         for id in items {
-            let bytes = json::canonical_subtree(self.profile, *id, None, self.op, self.budget)?;
+            let bytes = json::canonical_subtree(self.record, *id, None, self.op, self.budget)?;
             self.work(bytes.len() + 1)?;
             by_digest.push((Digest::hash(&bytes), *id));
         }
@@ -475,10 +513,10 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
             if collisions.first().is_none_or(|(next, _)| digest != next) {
                 continue;
             }
-            let left = json::canonical_subtree(self.profile, *id, None, self.op, self.budget)?;
+            let left = json::canonical_subtree(self.record, *id, None, self.op, self.budget)?;
             for (_, right) in collisions.iter().take_while(|(next, _)| digest == next) {
                 let right =
-                    json::canonical_subtree(self.profile, *right, None, self.op, self.budget)?;
+                    json::canonical_subtree(self.record, *right, None, self.op, self.budget)?;
                 self.work(left.len().min(right.len()) + 1)?;
                 if left.as_slice() == right.as_slice() {
                     return Ok(false);
@@ -574,6 +612,7 @@ enum Pattern {
     Contract,
     Digest,
     AuthorityReference,
+    ActivationReference,
     OpaqueReference,
     Commit,
     Tree,
@@ -590,6 +629,7 @@ impl Pattern {
             Some(CONTRACT) => Ok(Self::Contract),
             Some(r"^sha256:[0-9a-f]{64}$") => Ok(Self::Digest),
             Some(r"^authority-ref:[a-z0-9][a-z0-9._-]{7,127}$") => Ok(Self::AuthorityReference),
+            Some(r"^activation:[a-z0-9][a-z0-9._-]{7,127}$") => Ok(Self::ActivationReference),
             Some(r"^(?:authority-ref|lease|handle):[a-z0-9][a-z0-9._-]{7,127}$") => {
                 Ok(Self::OpaqueReference)
             }
@@ -617,6 +657,9 @@ impl Pattern {
             Self::Digest => ascii_prefix(text, "sha256:").is_some_and(|text| hex(text, 64)),
             Self::AuthorityReference => {
                 ascii_prefix(text, "authority-ref:").is_some_and(reference_body)
+            }
+            Self::ActivationReference => {
+                ascii_prefix(text, "activation:").is_some_and(reference_body)
             }
             Self::OpaqueReference => ["authority-ref:", "lease:", "handle:"]
                 .iter()
@@ -777,7 +820,7 @@ mod tests {
                 matches(
                     &op,
                     budget,
-                    [schema, &common, &projection],
+                    &[schema, &common, &projection],
                     &profile,
                     profile.root,
                 )
@@ -858,7 +901,7 @@ mod tests {
                 matches(
                     &op,
                     budget,
-                    [&schema, &common, &projection],
+                    &[&schema, &common, &projection],
                     &value,
                     value.root,
                 )
@@ -906,7 +949,7 @@ mod tests {
                 let error = matches(
                     &op,
                     budget,
-                    [&schema, &common, &projection],
+                    &[&schema, &common, &projection],
                     &profile,
                     profile.root,
                 )

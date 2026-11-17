@@ -48,7 +48,8 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         if diagnostic:
             metadata["diagnostic_only"] = True
         schema_paths = (*binder.PROFILE_SCHEMA_PATHS.values(),
-                        *binder.PROFILE_REFERENCE_PATHS.values())
+                        *binder.PROFILE_REFERENCE_PATHS.values(),
+                        *binder.RECOVERY_SCHEMA_PATHS.values())
         captured_schemas = compress_sources({
             name: files["python/" + name] for name in schema_paths
         })
@@ -162,12 +163,21 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         self.assertEqual(receipt["format"], "io.tobkiri.launcher-setup-component.v2")
         self.assertEqual(receipt["component"], binder.fingerprint(artifact))
         self.assertTrue(receipt["modules"])
-        paths = {**binder.PROFILE_SCHEMA_PATHS, **binder.PROFILE_REFERENCE_PATHS}
+        self.assertLessEqual(receipt_path.stat().st_size, 64 * 1024)
+        paths = {
+            **binder.PROFILE_SCHEMA_PATHS,
+            **binder.PROFILE_REFERENCE_PATHS,
+            **binder.RECOVERY_SCHEMA_PATHS,
+        }
         schemas = receipt["profile_schemas"]
-        self.assertEqual(set(schemas), {"v4", "v5", "references"})
+        self.assertEqual(set(schemas), {"v4", "v5", "references", "recovery"})
         self.assertEqual(set(schemas["references"]), {"common", "content_projection"})
+        self.assertEqual(set(schemas["recovery"]), {
+            "profile_lock_v4", "profile_lock_v5", "resolved_plan_v1", "resolved_plan_v2",
+            "activation_record_v1", "activation_record_v2", "function_principal_v1",
+        })
         for key, row in {"v4": schemas["v4"], "v5": schemas["v5"],
-                         **schemas["references"]}.items():
+                         **schemas["references"], **schemas["recovery"]}.items():
             expected = (ROOT / "tobkiri_runtime" / paths[key]).read_bytes()
             self.assertEqual(row, {"sha256": hashlib.sha256(expected).hexdigest(),
                                    "content": expected.decode("utf-8")})

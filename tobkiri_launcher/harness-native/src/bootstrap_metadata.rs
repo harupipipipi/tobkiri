@@ -57,6 +57,9 @@ pub struct BootstrapProfileSchemas {
     pub v5: &'static [u8],
     /// The common and Profile content projection schemas in that order.
     pub references: Option<[&'static [u8]; 2]>,
+    /// ProfileLock v4/v5, ResolvedPlan v1/v2, ActivationRecord v1/v2 and
+    /// FunctionPrincipal v1, in that order.
+    pub recovery: Option<[&'static [u8]; 7]>,
 }
 
 #[derive(Clone, Copy)]
@@ -69,6 +72,7 @@ impl BootstrapProfileSchemas {
                 && [self.v4, self.v5]
                     .into_iter()
                     .chain(self.references.into_iter().flatten())
+                    .chain(self.recovery.into_iter().flatten())
                     .all(|bytes| (1..=MAX_BYTES).contains(&bytes.len())),
             "Profile schema resources do not match the selected Setup component"
         );
@@ -81,7 +85,19 @@ impl BoundProfileSchemas {
         match name {
             "profile_v4.schema.json" => Some(self.0.v4),
             "profile_v5.schema.json" => Some(self.0.v5),
-            _ => None,
+            _ => {
+                let index = match name {
+                    "profile_lock_v4.schema.json" => 0,
+                    "profile_lock_v5.schema.json" => 1,
+                    "resolved_plan_v1.schema.json" => 2,
+                    "resolved_plan_v2.schema.json" => 3,
+                    "activation_record_v1.schema.json" => 4,
+                    "activation_record_v2.schema.json" => 5,
+                    "function_principal_v1.schema.json" => 6,
+                    _ => return None,
+                };
+                Some(self.0.recovery?[index])
+            }
         }
     }
 

@@ -167,7 +167,7 @@ jobs:
           TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 17 --
+          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 18 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::external_catalog::
           -- --test-threads=1 --nocapture
@@ -192,10 +192,10 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::incomplete_reservations::tests::
           -- --test-threads=1 --nocapture
-      - name: Check the locked workspace active pointer and pinned envelope
+      - name: Check the locked workspace active pointer and bound snapshot records
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 6 --
+          --log "$RUNNER_TEMP/native-recovery-workspace-active.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::workspace_active::tests::
           -- --test-threads=1 --nocapture

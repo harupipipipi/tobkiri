@@ -14,6 +14,30 @@ const PROFILE_SCHEMAS: [(&str, &str); 2] = [
     ("io.tobkiri.profile.v4", "profile_v4.schema.json"),
     ("io.tobkiri.profile.v5", "profile_v5.schema.json"),
 ];
+const LOCK_SCHEMAS: [(&str, &str); 2] = [
+    ("io.tobkiri.profile-lock.v4", "profile_lock_v4.schema.json"),
+    ("io.tobkiri.profile-lock.v5", "profile_lock_v5.schema.json"),
+];
+const PLAN_SCHEMAS: [(&str, &str); 2] = [
+    (
+        "io.tobkiri.resolved-plan.v1",
+        "resolved_plan_v1.schema.json",
+    ),
+    (
+        "io.tobkiri.resolved-plan.v2",
+        "resolved_plan_v2.schema.json",
+    ),
+];
+const ACTIVATION_SCHEMAS: [(&str, &str); 2] = [
+    (
+        "io.tobkiri.activation-record.v1",
+        "activation_record_v1.schema.json",
+    ),
+    (
+        "io.tobkiri.activation-record.v2",
+        "activation_record_v2.schema.json",
+    ),
+];
 const POINTER_KEYS: [&str; 5] = [
     "schema",
     "activation_id",
@@ -34,9 +58,10 @@ pub(super) enum ProfileCheck {
     SourceUnavailable,
     ReferencesUnavailable,
     Validated,
+    RecordsValidated,
 }
 
-/// Read the first record and validate it when the component's schema closure is bound.
+/// Read the selected records in the original order with the bound schema closure.
 pub(super) fn read<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &Directory,
@@ -146,9 +171,18 @@ pub(super) fn read<S: OriginalAuthorityOwner>(
     if legacy && envelope.entries(profile).is_none() {
         return Err(raw(APP_DENIED, "legacy activation profile is invalid"));
     }
-    let (profile_schema, check) = select_profile_schema(op, budget, &envelope, profile, schemas)?;
+    let profile = select_record(op, budget, &envelope, profile, RecordKind::Profile)?;
+    let check = check_snapshot_records(
+        op,
+        budget,
+        schemas,
+        &profile,
+        &envelope,
+        [lock, plan, activation],
+        legacy,
+    )?;
     Ok(ActiveSnapshotPrefix {
-        profile_schema,
+        profile_schema: profile.name,
         legacy,
         check,
     })
@@ -160,7 +194,7 @@ fn field_is(doc: &Document, id: usize, key: &str, expected: &str) -> bool {
 }
 
 /// Load the already selected component's finite resource under the workspace lock.
-fn load_profile_schema<S: OriginalAuthorityOwner>(
+fn load_record_schema<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     schemas: BoundProfileSchemas,
@@ -169,7 +203,7 @@ fn load_profile_schema<S: OriginalAuthorityOwner>(
     let source = || {
         OriginalAuthorityError::unsupported(
             OriginalAuthorityStage::Source,
-            "selected Setup component Profile schema resource",
+            "selected Setup component record schema resource",
         )
     };
     let bytes = schemas.get(name).ok_or_else(source)?;
@@ -180,36 +214,90 @@ fn load_profile_schema<S: OriginalAuthorityOwner>(
     Ok(data)
 }
 
-fn validate_record<S: OriginalAuthorityOwner>(
+fn check_snapshot_records<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
-    name: &'static str,
-    doc: &Document,
-    profile: usize,
     schemas: Option<BoundProfileSchemas>,
+    profile: &Record<'_>,
+    envelope: &Document,
+    pending: [usize; 3],
+    legacy: bool,
 ) -> Result<ProfileCheck> {
     let Some(schemas) = schemas else {
         return Ok(ProfileCheck::SourceUnavailable);
     };
-    let root = load_profile_schema(op, budget, schemas, name)?;
+    let root = load_record_schema(op, budget, schemas, profile.name)?;
     let Some([common, projection]) = schemas.references() else {
         return Ok(ProfileCheck::ReferencesUnavailable);
     };
     let common = json::decode_read_only_strict(common, op, budget)?;
     let projection = json::decode_read_only_strict(projection, op, budget)?;
-    if !profile_schema::matches(op, budget, [&root, &common, &projection], doc, profile)? {
-        return Err(OriginalAuthorityError::unsupported(
-            OriginalAuthorityStage::Source,
-            "original Profile JSON Schema mismatch diagnostics",
+    validate_record(op, budget, profile, &[&root, &common, &projection])?;
+    drop(root);
+    if schemas.get(LOCK_SCHEMAS[0].1).is_none() {
+        return Ok(ProfileCheck::Validated);
+    }
+    let mut all_legacy_versions = true;
+    for (id, kind) in
+        pending
+            .into_iter()
+            .zip([RecordKind::Lock, RecordKind::Plan, RecordKind::Activation])
+    {
+        let record = select_record(op, budget, envelope, id, kind)?;
+        let root = load_record_schema(op, budget, schemas, record.name)?;
+        if matches!(kind, RecordKind::Plan) {
+            let principal =
+                load_record_schema(op, budget, schemas, "function_principal_v1.schema.json")?;
+            validate_record(
+                op,
+                budget,
+                &record,
+                &[&root, &common, &projection, &principal],
+            )?;
+        } else {
+            validate_record(op, budget, &record, &[&root, &common, &projection])?;
+        }
+        all_legacy_versions &= record.legacy_version;
+    }
+    if legacy && !all_legacy_versions {
+        return Err(raw(
+            APP_DENIED,
+            "legacy activation versions do not form one record set",
         ));
     }
-    if !external_catalog::validate_profile_semantics(doc, profile, op, budget)? {
-        return Err(OriginalAuthorityError::unsupported(
-            OriginalAuthorityStage::Source,
-            "original Profile semantic mismatch diagnostics",
-        ));
+    Ok(ProfileCheck::RecordsValidated)
+}
+
+fn validate_record<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    record: &Record<'_>,
+    schemas: &[&Document],
+) -> Result<()> {
+    let (doc, id) = record.parts();
+    let mismatch =
+        |message| OriginalAuthorityError::unsupported(OriginalAuthorityStage::Source, message);
+    let profile = matches!(record.kind, RecordKind::Profile);
+    if !profile_schema::matches(op, budget, schemas, doc, id)? {
+        return Err(mismatch(if profile {
+            "original Profile JSON Schema mismatch diagnostics"
+        } else {
+            "original activation record JSON Schema mismatch diagnostics"
+        }));
     }
-    Ok(ProfileCheck::Validated)
+    let valid = if profile {
+        external_catalog::validate_profile_semantics(doc, id, op, budget)?
+    } else {
+        external_catalog::validate_recovery_record_semantics(doc, id, op, budget)?
+    };
+    if !valid {
+        return Err(mismatch(if profile {
+            "original Profile semantic mismatch diagnostics"
+        } else {
+            "original activation record semantic mismatch diagnostics"
+        }));
+    }
+    Ok(())
 }
 
 fn record(doc: &Document, key: &str, invalid: &'static str) -> Result<usize> {
@@ -218,18 +306,72 @@ fn record(doc: &Document, key: &str, invalid: &'static str) -> Result<usize> {
         .ok_or_else(|| raw(APP_DENIED, invalid))
 }
 
-fn select_profile_schema<S: OriginalAuthorityOwner>(
+#[derive(Clone, Copy)]
+enum RecordKind {
+    Profile,
+    Lock,
+    Plan,
+    Activation,
+}
+
+impl RecordKind {
+    fn versioning(self) -> (&'static str, VersionedSchemas, &'static str) {
+        match self {
+            Self::Profile => (
+                "profile_api_version",
+                PROFILE_SCHEMAS,
+                "unsupported profile API version",
+            ),
+            Self::Lock => (
+                "lock_api_version",
+                LOCK_SCHEMAS,
+                "unsupported profile_lock API version",
+            ),
+            Self::Plan => (
+                "plan_api_version",
+                PLAN_SCHEMAS,
+                "unsupported resolved_plan API version",
+            ),
+            Self::Activation => (
+                "activation_api_version",
+                ACTIVATION_SCHEMAS,
+                "unsupported activation API version",
+            ),
+        }
+    }
+}
+
+type VersionedSchemas = [(&'static str, &'static str); 2];
+
+struct Record<'a> {
+    decoded: Option<Funded<Document>>,
+    envelope: &'a Document,
+    id: usize,
+    kind: RecordKind,
+    name: &'static str,
+    legacy_version: bool,
+}
+
+impl Record<'_> {
+    fn parts(&self) -> (&Document, usize) {
+        self.decoded
+            .as_deref()
+            .map_or((self.envelope, self.id), |doc| (doc, doc.root))
+    }
+}
+
+fn select_record<'a, S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
-    envelope: &Document,
-    profile: usize,
-    schemas: Option<BoundProfileSchemas>,
-) -> Result<(&'static str, ProfileCheck)> {
+    envelope: &'a Document,
+    id: usize,
+    kind: RecordKind,
+) -> Result<Record<'a>> {
     // The canonical envelope already proves an object child's canonical JSON
     // eligibility. Preserve its ordered arena. Serialized text requires an
     // independent strict parse before the version lookup.
-    let decoded = if matches!(envelope.node(profile), Node::String(_)) {
-        let text = definitions::render_python_str(op, budget, envelope, profile)?;
+    let decoded = if matches!(envelope.node(id), Node::String(_)) {
+        let text = definitions::render_python_str(op, budget, envelope, id)?;
         Some(
             match json::decode_read_only_strict(text.as_bytes(), op, budget) {
                 Ok(document) => document,
@@ -242,19 +384,24 @@ fn select_profile_schema<S: OriginalAuthorityOwner>(
     } else {
         None
     };
-    let (doc, profile) = decoded
+    let (doc, value) = decoded
         .as_deref()
-        .map_or((envelope, profile), |doc| (doc, doc.root));
-    let message = if doc.entries(profile).is_some() {
-        for (version, schema) in PROFILE_SCHEMAS {
-            if field_is(doc, profile, "profile_api_version", version) {
-                return Ok((
-                    schema,
-                    validate_record(op, budget, schema, doc, profile, schemas)?,
-                ));
+        .map_or((envelope, id), |doc| (doc, doc.root));
+    let (version_field, choices, unsupported_version) = kind.versioning();
+    let message = if doc.entries(value).is_some() {
+        for (index, (version, name)) in choices.into_iter().enumerate() {
+            if field_is(doc, value, version_field, version) {
+                return Ok(Record {
+                    decoded,
+                    envelope,
+                    id,
+                    kind,
+                    name,
+                    legacy_version: index == 0,
+                });
             }
         }
-        "unsupported profile API version"
+        unsupported_version
     } else {
         "serialized protocol document must be an object"
     };
@@ -315,6 +462,7 @@ pub(super) mod tests {
             "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_v5.schema.json"
         ),
         references: None,
+        recovery: None,
     };
     static SCHEMAS: crate::BootstrapProfileSchemas = PROFILE_ROOTS;
     static COMPLETE_SCHEMAS: crate::BootstrapProfileSchemas = crate::BootstrapProfileSchemas {
@@ -327,6 +475,32 @@ pub(super) mod tests {
             ),
         ]),
         ..PROFILE_ROOTS
+    };
+    static RECOVERY_SCHEMAS: crate::BootstrapProfileSchemas = crate::BootstrapProfileSchemas {
+        recovery: Some([
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_lock_v4.schema.json"
+            ),
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_lock_v5.schema.json"
+            ),
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/resolved_plan_v1.schema.json"
+            ),
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/resolved_plan_v2.schema.json"
+            ),
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/activation_record_v1.schema.json"
+            ),
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/activation_record_v2.schema.json"
+            ),
+            include_bytes!(
+                "../../../tobkiri_runtime/tobkiri_protocol/schemas/function_principal_v1.schema.json"
+            ),
+        ]),
+        ..COMPLETE_SCHEMAS
     };
 
     pub(in crate::original_authority::io::publication::recovery_authority) fn bound_fixture_schemas()
@@ -343,10 +517,10 @@ pub(super) mod tests {
         with_source(|source, read, cancellation, budget| {
             let op = operation(read, source, cancellation);
             for (_, name) in PROFILE_SCHEMAS {
-                load_profile_schema(&op, budget, schemas, name).unwrap();
+                load_record_schema(&op, budget, schemas, name).unwrap();
             }
             assert!(
-                load_profile_schema(&op, budget, schemas, "profile_lock_v5.schema.json").is_err()
+                load_record_schema(&op, budget, schemas, "profile_lock_v5.schema.json").is_err()
             );
         });
     }
@@ -752,6 +926,119 @@ pub(super) mod tests {
                     "{error:?}"
                 );
             }
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn validates_bound_recovery_records_in_original_order() {
+        let schemas = RECOVERY_SCHEMAS
+            .bind(&Digest::parse(RECOVERY_SCHEMAS.component_sha256).unwrap())
+            .unwrap();
+        let v4: Value = serde_json::from_slice(include_bytes!(
+            "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
+        ))
+        .unwrap();
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let mut fixture = Fixture::new(source.root.join("activation"));
+            for field in ["profile", "lock", "plan", "activation"] {
+                fixture.envelope[field] = v4[field].clone();
+            }
+            for legacy in [true, false] {
+                if !legacy {
+                    for field in ["lock", "plan", "activation"] {
+                        fixture.envelope[field] = json!(serde_json::to_string(&v4[field]).unwrap());
+                    }
+                }
+                fixture.write();
+                assert_eq!(
+                    fixture
+                        .read_with_schemas(&op, budget, Some(schemas))
+                        .unwrap(),
+                    ActiveSnapshotPrefix {
+                        profile_schema: "profile_v4.schema.json",
+                        legacy,
+                        check: ProfileCheck::RecordsValidated,
+                    }
+                );
+            }
+            fixture.envelope["lock"] = v4["lock"].clone();
+            fixture.envelope["plan"] = v4["plan"].clone();
+            fixture.envelope["activation"] = json!("broken later record");
+            fixture.envelope["lock"]["lock_api_version"] = json!("wrong-version");
+            fixture.envelope["plan"]["plan_api_version"] = json!("wrong-version");
+            for (field, expected) in [
+                ("lock", "unsupported profile_lock API version"),
+                ("plan", "unsupported resolved_plan API version"),
+            ] {
+                fixture.write();
+                let error = fixture
+                    .read_with_schemas(&op, budget, Some(schemas))
+                    .unwrap_err();
+                assert!(
+                    matches!(
+                        error.cause,
+                        Some(OriginalAuthorityCause::SchemaValidation { ref argument, .. })
+                        if argument.as_str().ok() == Some(expected)
+                    ),
+                    "{field}: {error:?}"
+                );
+                fixture.envelope[field] = v4[field].clone();
+            }
+
+            fixture.envelope["plan"]["bindings"][0]["function_principal"]["function_id"] =
+                json!("BAD ID");
+            fixture.write();
+            let error = fixture
+                .read_with_schemas(&op, budget, Some(schemas))
+                .unwrap_err();
+            assert!(
+                matches!(
+                    error.cause,
+                    Some(OriginalAuthorityCause::Unsupported(
+                        "original activation record JSON Schema mismatch diagnostics"
+                    ))
+                ),
+                "{error:?}"
+            );
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires current records from the original packaged Profile resolver"]
+    async fn validates_original_packaged_profile_records_within_store_budget() {
+        let path = std::env::var_os("TOBKIRI_ORIGINAL_CURRENT_ACTIVATION_FIXTURE")
+            .expect("path to the original packaged Profile, Lock, Plan and Activation records");
+        let records: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        for (field, id) in [
+            ("profile_api_version", "io.tobkiri.profile.v5"),
+            ("lock_api_version", "io.tobkiri.profile-lock.v5"),
+            ("plan_api_version", "io.tobkiri.resolved-plan.v2"),
+            ("activation_api_version", "io.tobkiri.activation-record.v2"),
+        ] {
+            let record = field.strip_suffix("_api_version").unwrap();
+            assert_eq!(records[record][field], id);
+        }
+        let schemas = RECOVERY_SCHEMAS
+            .bind(&Digest::parse(RECOVERY_SCHEMAS.component_sha256).unwrap())
+            .unwrap();
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let mut fixture = Fixture::new(source.root.join("activation"));
+            for field in ["profile", "lock", "plan", "activation"] {
+                fixture.envelope[field] = records[field].clone();
+            }
+            fixture.write();
+            assert_eq!(
+                fixture
+                    .read_with_schemas(&op, budget, Some(schemas))
+                    .unwrap(),
+                ActiveSnapshotPrefix {
+                    profile_schema: "profile_v5.schema.json",
+                    legacy: false,
+                    check: ProfileCheck::RecordsValidated,
+                }
+            );
         });
     }
 }

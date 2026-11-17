@@ -767,6 +767,9 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
         Ok(RecoveryAuthorityReached::LoadActiveSnapshotLockSchema { legacy }) => {
             BootstrapReviewReachpoint::RecoveryLoadActiveSnapshotLockSchemaNotBound { legacy }
         }
+        Ok(RecoveryAuthorityReached::ValidateActiveSnapshotRecordGraph { legacy }) => {
+            BootstrapReviewReachpoint::RecoveryValidateActiveSnapshotRecordGraphNotBound { legacy }
+        }
         Ok(RecoveryAuthorityReached::MissingPublishedAuthority) => {
             return Ok(Err(review_continuation::denied(
                 review,

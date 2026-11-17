@@ -24,7 +24,9 @@ mod external_catalog_variants;
 use external_catalog_compiler as compiler;
 use external_catalog_model as model;
 
-pub(in crate::original_authority::io::publication) use model::validate_profile_semantics;
+pub(in crate::original_authority::io::publication) use model::{
+    validate_profile_semantics, validate_recovery_record_semantics,
+};
 
 // The generated catalog describes packaged Pack IDs. It is distinct from the
 // selected bundle catalog and from user-installed Pack manifests.

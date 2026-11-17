@@ -20,6 +20,7 @@ pub(crate) enum RecoveryAuthorityReached {
     LoadActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     CheckActiveSnapshotProfileSchema { name: &'static str, legacy: bool },
     LoadActiveSnapshotLockSchema { legacy: bool },
+    ValidateActiveSnapshotRecordGraph { legacy: bool },
     MissingPublishedAuthority,
     RecoveredNone,
     MatchedReservation,
@@ -137,6 +138,8 @@ impl PublicationRead {
                                                 RecoveryAuthorityReached::CheckActiveSnapshotProfileSchema { name, legacy },
                                             workspace_active::ProfileCheck::Validated =>
                                                 RecoveryAuthorityReached::LoadActiveSnapshotLockSchema { legacy },
+                                            workspace_active::ProfileCheck::RecordsValidated =>
+                                                RecoveryAuthorityReached::ValidateActiveSnapshotRecordGraph { legacy },
                                         })
                                     })
                                     .transpose()?;

@@ -49,6 +49,7 @@ struct ProfileSchemas {
     v4: Schema,
     v5: Schema,
     references: Option<ProfileSchemaReferences>,
+    recovery: Option<ProfileRecoverySchemas>,
 }
 
 #[derive(Deserialize)]
@@ -56,6 +57,54 @@ struct ProfileSchemas {
 struct ProfileSchemaReferences {
     common: Schema,
     content_projection: Schema,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileRecoverySchemas {
+    profile_lock_v4: Schema,
+    profile_lock_v5: Schema,
+    resolved_plan_v1: Schema,
+    resolved_plan_v2: Schema,
+    activation_record_v1: Schema,
+    activation_record_v2: Schema,
+    function_principal_v1: Schema,
+}
+
+impl ProfileRecoverySchemas {
+    // Preserve the order of BootstrapProfileSchemas::recovery.
+    fn entries(&self) -> [(&Schema, &str); 7] {
+        [
+            (
+                &self.profile_lock_v4,
+                "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v4.schema.json",
+            ),
+            (
+                &self.profile_lock_v5,
+                "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json",
+            ),
+            (
+                &self.resolved_plan_v1,
+                "https://schemas.tobkiri.local/io.tobkiri/resolved-plan.v1.schema.json",
+            ),
+            (
+                &self.resolved_plan_v2,
+                "https://schemas.tobkiri.local/io.tobkiri/resolved-plan.v2.schema.json",
+            ),
+            (
+                &self.activation_record_v1,
+                "https://schemas.tobkiri.local/io.tobkiri/activation-record.v1.schema.json",
+            ),
+            (
+                &self.activation_record_v2,
+                "https://schemas.tobkiri.local/io.tobkiri/activation-record.v2.schema.json",
+            ),
+            (
+                &self.function_principal_v1,
+                "https://schemas.tobkiri.local/io.tobkiri/function-principal.v1.schema.json",
+            ),
+        ]
+    }
 }
 
 #[derive(Deserialize)]
@@ -98,6 +147,19 @@ fn rust_schema(out: &mut String, bytes: &[u8]) {
     out.push_str("\",\n");
 }
 
+fn rust_schema_group<const N: usize>(out: &mut String, name: &str, schemas: Option<[&Schema; N]>) {
+    if let Some(schemas) = schemas {
+        writeln!(out, "    {name}: Some([").expect("writing to String");
+        for schema in schemas {
+            out.push_str("        ");
+            rust_schema(out, schema.content.as_bytes());
+        }
+        out.push_str("    ]),\n");
+    } else {
+        writeln!(out, "    {name}: None,").expect("writing to String");
+    }
+}
+
 fn schema_receipt_objects(raw: &[u8]) -> bool {
     // serde's derived structs also accept arrays of positional fields. This
     // receipt format requires named JSON objects in every schema position.
@@ -113,6 +175,11 @@ fn schema_receipt_objects(raw: &[u8]) -> bool {
                 fields_are_objects(schemas, &["v4", "v5"])
                     && schemas.get("references").is_none_or(|references| {
                         fields_are_objects(references, &["common", "content_projection"])
+                    })
+                    && schemas.get("recovery").is_none_or(|recovery| {
+                        recovery
+                            .as_object()
+                            .is_some_and(|rows| rows.values().all(serde_json::Value::is_object))
                     })
             })
         })
@@ -210,6 +277,9 @@ pub fn stage(
                         "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json",
                         None,
                     )
+                })
+                && schemas.recovery.as_ref().is_none_or(|recovery| {
+                    recovery.entries().into_iter().all(|(schema, id)| schema.verified(id, None))
                 }) => {}
         _ => {
             return Err(invalid(
@@ -269,16 +339,22 @@ pub fn stage(
             write!(rust, "    {version}: ").expect("writing to String");
             rust_schema(&mut rust, schema.content.as_bytes());
         }
-        if let Some(references) = schemas.references {
-            rust.push_str("    references: Some([\n");
-            for schema in [references.common, references.content_projection] {
-                rust.push_str("        ");
-                rust_schema(&mut rust, schema.content.as_bytes());
-            }
-            rust.push_str("    ]),\n");
-        } else {
-            rust.push_str("    references: None,\n");
-        }
+        rust_schema_group(
+            &mut rust,
+            "references",
+            schemas
+                .references
+                .as_ref()
+                .map(|rows| [&rows.common, &rows.content_projection]),
+        );
+        rust_schema_group(
+            &mut rust,
+            "recovery",
+            schemas
+                .recovery
+                .as_ref()
+                .map(|rows| rows.entries().map(|(schema, _)| schema)),
+        );
         rust.push_str("};\n");
         (rust, "Some(&PROFILE_SCHEMAS)")
     } else {
@@ -404,6 +480,7 @@ mod tests {
         let component_digest = document["component"]["sha256"].as_str().unwrap();
         assert!(rust.contains("profile_schemas: Some(&PROFILE_SCHEMAS)"));
         assert!(rust.contains("references: None"));
+        assert!(rust.contains("recovery: None"));
         assert!(rust.contains(&format!("component_sha256: \"sha256:{component_digest}\"")));
         let decode_literal = |literal: &str| {
             literal
@@ -463,26 +540,119 @@ mod tests {
             &v2_references,
             &generated,
         )?;
-        let emitted = fs::read_to_string(&generated)?.replace("\\\n        ", "");
-        let literals = emitted
-            .split_once("    references: Some([\n")
-            .unwrap()
-            .1
-            .split_once("    ]),")
-            .unwrap()
-            .0;
-        let contents = literals
-            .lines()
-            .map(|line| {
-                decode_literal(
-                    line.strip_prefix("        b\"")
-                        .unwrap()
-                        .strip_suffix("\",")
-                        .unwrap(),
-                )
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(contents, [common.as_bytes(), projection.as_bytes()]);
+        let group_contents = |rust: &str, name: &str| {
+            let emitted = rust.replace("\\\n        ", "");
+            let literals = emitted
+                .split_once(&format!("    {name}: Some([\n"))
+                .unwrap()
+                .1
+                .split_once("    ]),")
+                .unwrap()
+                .0;
+            literals
+                .lines()
+                .map(|line| {
+                    decode_literal(
+                        line.strip_prefix("        b\"")
+                            .unwrap()
+                            .strip_suffix("\",")
+                            .unwrap(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let rust = fs::read_to_string(&generated)?;
+        assert_eq!(
+            group_contents(&rust, "references"),
+            [common.as_bytes(), projection.as_bytes()]
+        );
+        assert!(rust.contains("recovery: None"));
+
+        let v2_recovery = root.join("v2-recovery");
+        fs::create_dir(&v2_recovery)?;
+        let generated = v2_recovery.join(GENERATED);
+        let recovery = [
+            (
+                "profile_lock_v4",
+                include_str!("../../tobkiri_runtime/tobkiri_protocol/schemas/profile_lock_v4.schema.json"),
+            ),
+            (
+                "profile_lock_v5",
+                include_str!("../../tobkiri_runtime/tobkiri_protocol/schemas/profile_lock_v5.schema.json"),
+            ),
+            (
+                "resolved_plan_v1",
+                include_str!("../../tobkiri_runtime/tobkiri_protocol/schemas/resolved_plan_v1.schema.json"),
+            ),
+            (
+                "resolved_plan_v2",
+                include_str!("../../tobkiri_runtime/tobkiri_protocol/schemas/resolved_plan_v2.schema.json"),
+            ),
+            (
+                "activation_record_v1",
+                include_str!("../../tobkiri_runtime/tobkiri_protocol/schemas/activation_record_v1.schema.json"),
+            ),
+            (
+                "activation_record_v2",
+                include_str!("../../tobkiri_runtime/tobkiri_protocol/schemas/activation_record_v2.schema.json"),
+            ),
+            (
+                "function_principal_v1",
+                include_str!("../../tobkiri_runtime/tobkiri_protocol/schemas/function_principal_v1.schema.json"),
+            ),
+        ];
+        let recovery_rows: serde_json::Map<_, _> = recovery
+            .iter()
+            .map(|(key, content)| (key.to_string(), row(content)))
+            .collect();
+        let (key, raw) = recovery[0];
+        let mut missing = recovery_rows.clone();
+        missing.remove(key);
+        let mut extra = recovery_rows.clone();
+        extra.insert("other".to_owned(), row("{}"));
+        let mut wrong_id = recovery_rows.clone();
+        wrong_id.insert(key.to_owned(), recovery_rows[recovery[1].0].clone());
+        let mut wrong_digest = recovery_rows.clone();
+        wrong_digest.get_mut(key).unwrap()["content"] = raw.trim_end().into();
+        let mut positional_row = recovery_rows.clone();
+        positional_row.insert(
+            key.to_owned(),
+            serde_json::json!([recovery_rows[key]["sha256"], raw]),
+        );
+        for invalid in [
+            serde_json::Value::Null,
+            serde_json::Value::Array(recovery.iter().map(|(_, content)| row(content)).collect()),
+            missing.into(),
+            extra.into(),
+            wrong_id.into(),
+            wrong_digest.into(),
+            positional_row.into(),
+        ] {
+            document["profile_schemas"]["recovery"] = invalid;
+            assert!(stage(
+                &source,
+                &receipt,
+                &pin(&document)?,
+                &v2_recovery,
+                &generated
+            )
+            .is_err());
+        }
+        assert!(!generated.exists());
+        assert!(!v2_recovery.join(component::RESOURCE).exists());
+        document["profile_schemas"]["recovery"] = recovery_rows.into();
+        stage(
+            &source,
+            &receipt,
+            &pin(&document)?,
+            &v2_recovery,
+            &generated,
+        )?;
+        let rust = fs::read_to_string(&generated)?;
+        assert_eq!(
+            group_contents(&rust, "recovery"),
+            recovery.map(|(_, content)| content.as_bytes())
+        );
         Ok(())
     }
 }

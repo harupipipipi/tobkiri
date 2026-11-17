@@ -118,8 +118,12 @@ class HarnessNativeCIInputsTests(unittest.TestCase):
             with self.subTest(diagnostic=diagnostic), tempfile.TemporaryDirectory() as temporary:
                 self.check_variant(Path(temporary), diagnostic)
 
-    def test_only_original_profile_schema_bytes_from_verified_capture_bind(self):
-        paths = {**binding.PROFILE_SCHEMA_PATHS, **binding.PROFILE_REFERENCE_PATHS}
+    def test_only_original_profile_recovery_schema_bytes_from_verified_capture_bind(self):
+        paths = {
+            **binding.PROFILE_SCHEMA_PATHS,
+            **binding.PROFILE_REFERENCE_PATHS,
+            **binding.RECOVERY_SCHEMA_PATHS,
+        }
         originals = {
             name: (binding.ROOT / "tobkiri_runtime" / name).read_bytes()
             for name in paths.values()
@@ -150,25 +154,30 @@ class HarnessNativeCIInputsTests(unittest.TestCase):
                 return bytes.fromhex("".join(re.findall(r"\\x([0-9a-f]{2})", field)))
 
             receipt = binding._profile_schema_receipt(selected)
-            self.assertEqual(set(receipt), {"v4", "v5", "references"})
+            self.assertEqual(set(receipt), {"v4", "v5", "references", "recovery"})
             self.assertEqual(set(receipt["references"]), set(binding.PROFILE_REFERENCE_PATHS))
+            self.assertEqual(set(receipt["recovery"]), set(binding.RECOVERY_SCHEMA_PATHS))
             for version in binding.PROFILE_SCHEMA_PATHS:
                 field = re.search(rf'\b{version}: b"([^"]+)"', rust).group(1)
                 self.assertEqual(decode(field), selected[version])
-            references = rust.split("    references: Some([\n", 1)[1].split("    ]),", 1)[0]
-            self.assertEqual([decode(field) for field in re.findall(r'b"([^"]+)"', references)],
-                             [selected["common"], selected["content_projection"]])
-            for rows in (receipt, receipt["references"]):
-                for key in rows.keys() - {"references"}:
-                    self.assertEqual(rows[key]["content"].encode("utf-8"), selected[key])
-                    self.assertEqual(rows[key]["sha256"], hashlib.sha256(selected[key]).hexdigest())
+            for group, keys in (("references", binding.PROFILE_REFERENCE_PATHS),
+                                ("recovery", binding.RECOVERY_SCHEMA_PATHS)):
+                fields = rust.split(f"    {group}: Some([\n", 1)[1].split("    ]),", 1)[0]
+                self.assertEqual(
+                    [decode(field) for field in re.findall(r'b"([^"]+)"', fields)],
+                    [selected[key] for key in keys],
+                )
+            for key, row in {"v4": receipt["v4"], "v5": receipt["v5"],
+                             **receipt["references"], **receipt["recovery"]}.items():
+                self.assertEqual(row["content"].encode("utf-8"), selected[key])
+                self.assertEqual(row["sha256"], hashlib.sha256(selected[key]).hexdigest())
 
             capture.write_bytes(capture.read_bytes() + b"\n")
             with self.assertRaisesRegex(ValueError, "verified bytes"):
                 binding._profile_schema_resources(inputs, base, manifest)
-            for name in (paths["v4"], paths["common"], paths["content_projection"]):
+            for name in paths.values():
                 with self.subTest(name=name):
-                    with self.assertRaisesRegex(ValueError, "schema and reference once"):
+                    with self.assertRaisesRegex(ValueError, "each Profile recovery schema once"):
                         files = {key: raw for key, raw in captured.items() if key != name}
                         manifest = staged_manifest(files)
                         binding._profile_schema_resources(inputs, base, manifest)
@@ -179,12 +188,15 @@ class HarnessNativeCIInputsTests(unittest.TestCase):
                 manifest = staged_manifest(captured)
                 manifest[1]["sha256"] = manifest[2]["sha256"]
                 binding._profile_schema_resources(inputs, base, manifest)
-            with self.assertRaisesRegex(ValueError, r"unexpected \$id"):
-                common, projection = paths["common"], paths["content_projection"]
-                changed = {**originals, common: originals[projection]}
-                manifest = staged_manifest(changed, changed)
-                changed_base = {"python/" + name: raw for name, raw in changed.items()}
-                binding._profile_schema_resources(inputs, changed_base, manifest)
+            for key, other_key in (("common", "content_projection"),
+                                   ("profile_lock_v4", "profile_lock_v5"),
+                                   ("activation_record_v1", "activation_record_v2")):
+                with self.subTest(key=key):
+                    changed = {**originals, paths[key]: originals[paths[other_key]]}
+                    manifest = staged_manifest(changed, changed)
+                    changed_base = {"python/" + name: raw for name, raw in changed.items()}
+                    with self.assertRaisesRegex(ValueError, r"unexpected \$id"):
+                        binding._profile_schema_resources(inputs, changed_base, manifest)
 
 
 if __name__ == "__main__":
