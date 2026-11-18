@@ -9,6 +9,8 @@ import json
 from io import BytesIO
 from unittest.mock import MagicMock
 
+import pytest
+
 
 class TestCheckSetupStatus:
     """AppLifecycleManager.check_setup_status() のテスト"""
@@ -283,9 +285,12 @@ class TestCompleteSetup:
             {"error": "retired", "status_code": 410}
         )
 
-    def test_setup_pack_install_no_auth_required_only_during_initial_setup(self):
+    def test_setup_pack_install_no_auth_required_only_during_initial_setup(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from core_runtime.pack_api_server import PackAPIHandler
 
+        monkeypatch.setenv("TOBKIRI_NATIVE_FIRST_SETUP", "true")
         handler = object.__new__(PackAPIHandler)
         handler.path = "/api/setup/packs/install"
         handler.client_address = ("198.51.100.7", 12345)

@@ -324,7 +324,11 @@ class PanelAuthManager:
         self,
         session_id: str,
         binding: PanelAuthBinding,
+        *,
+        renew: bool = True,
     ) -> Optional[Dict[str, Any]]:
+        """Validate a session with optional renewal of its idle deadline."""
+
         if not session_id:
             return None
         now = time.time()
@@ -336,7 +340,8 @@ class PanelAuthManager:
                 return None
             if session_info.get("binding") != binding:
                 return None
-            session_info["expires_at"] = now + self._session_ttl_seconds
+            if renew:
+                session_info["expires_at"] = now + self._session_ttl_seconds
             return {
                 "session_id": session_info.get("journal_session", session_hash),
                 "csrf_token": session_info["csrf_token"],

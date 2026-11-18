@@ -126,6 +126,7 @@ class _SealedDispatchScope:
         "_environment_digest",
         "_target",
         "_packvm_bundle_binding",
+        "_native_first_setup",
     )
 
     def __init__(
@@ -137,6 +138,7 @@ class _SealedDispatchScope:
         environment_digest: str,
         target: Sequence[str],
         packvm_bundle_binding: Mapping[str, str] | None,
+        native_first_setup: bool = False,
     ) -> None:
         if constructor_token is not _SCOPE_CONSTRUCTOR_TOKEN:
             raise TypeError("sealed dispatch scope is bootstrap-private")
@@ -148,6 +150,9 @@ class _SealedDispatchScope:
         self._manifest_digest = manifest_digest
         self._environment_digest = environment_digest
         self._target = tuple(target)
+        if native_first_setup and self._target != ROLE_TARGETS["typed"]:
+            raise SealedBootstrapError("native-first Setup is limited to the Kernel role")
+        self._native_first_setup = native_first_setup
         if packvm_bundle_binding is not None:
             if tuple(packvm_bundle_binding) not in {
                 _PACKVM_BUNDLE_BINDING_KEYS, _PORTABLE_PACKVM_BINDING_KEYS
@@ -200,6 +205,11 @@ class _SealedDispatchScope:
 
         self.app_root_for(module_file)
         return self._packvm_bundle_binding
+
+    def native_first_setup_for(self, module_file: str | os.PathLike[str]) -> bool:
+        """Return the sealed Setup policy for the exact application target."""
+        self.app_root_for(module_file)
+        return self._native_first_setup
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -836,6 +846,7 @@ def _new_dispatch_scope(
     manifest: dict[str, Any],
     role: str,
     packvm_bundle_binding: Mapping[str, str] | None,
+    native_first_setup: bool,
 ) -> _SealedDispatchScope:
     """Create the process-private capability for one verified role target."""
     manifest_path = root / MANIFEST_NAME
@@ -851,6 +862,7 @@ def _new_dispatch_scope(
         str(manifest["environment_digest"]),
         ROLE_TARGETS[role],
         packvm_bundle_binding,
+        native_first_setup,
     )
 
 
@@ -1337,9 +1349,10 @@ def _attestation(
     sentinels: dict[str, str],
     sys_path: Sequence[str],
     overlay_binding: dict[str, str],
+    native_first_setup: bool,
 ) -> dict[str, Any]:
     executable, prefix, base_prefix = _validate_python_identity(root)
-    return {
+    evidence = {
         "schema": ATTESTATION_SCHEMA,
         "nonce": nonce,
         "role": role,
@@ -1355,6 +1368,9 @@ def _attestation(
         "outer_runtime_manifest_sha256": overlay_binding["outer_runtime_manifest_sha256"],
         "lifetime_lease": True,
     }
+    if native_first_setup:
+        evidence["native_first_setup"] = True
+    return evidence
 
 
 class _WindowsSharedLease:
@@ -1487,7 +1503,10 @@ def _prepare_role(module: Any, scope: _SealedDispatchScope) -> Any:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Tobkiri sealed Python bootstrap")
+    parser = argparse.ArgumentParser(
+        description="Tobkiri sealed Python bootstrap",
+        allow_abbrev=False,
+    )
     parser.add_argument(
         "--role",
         choices=tuple(ROLE_ENTRYPOINTS),
@@ -1503,6 +1522,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--packvm-provisioning-sha256", required=True)
     parser.add_argument("--packvm-helper-manifest-sha256", required=True)
     parser.add_argument("--packvm-helper-team-id", required=True)
+    parser.add_argument("--native-first-setup", action="store_true")
     return parser
 
 
@@ -1519,6 +1539,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Preload and verify one role, publish attestation, then dispatch it."""
     bootstrap_args, role_args = _split_arguments(list(argv) if argv is not None else sys.argv[1:])
     args = _parser().parse_args(bootstrap_args)
+    if args.native_first_setup and args.role != "typed":
+        raise SealedBootstrapError("native-first Setup is limited to the Kernel role")
     if len(args.nonce) != 64 or any(
         character not in "0123456789abcdef" for character in args.nonce
     ):
@@ -1549,6 +1571,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             manifest,
             args.role,
             packvm_bundle_binding,
+            args.native_first_setup,
         )
         role_module, target = _load_role(root, args.role)
         role_main = _prepare_role(role_module, scope)
@@ -1578,6 +1601,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             sentinels,
             sys_path,
             overlay_binding,
+            args.native_first_setup,
         )
         _publish_attestation(attestation_path, evidence)
         sealed_sys_path.freeze()

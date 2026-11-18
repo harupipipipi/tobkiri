@@ -75,7 +75,10 @@ impl PythonRole {
 }
 
 #[derive(Debug, Default)]
-pub struct RoleArguments(Vec<OsString>);
+pub struct RoleArguments {
+    application: Vec<OsString>,
+    native_first_setup: bool,
+}
 
 impl RoleArguments {
     pub fn defaultspack(values: impl IntoIterator<Item = OsString>) -> Result<Self> {
@@ -93,11 +96,26 @@ impl RoleArguments {
                 bail!("Defaultspack role arguments may not select an entrypoint or carry secrets");
             }
         }
-        Ok(Self(values))
+        Ok(Self {
+            application: values,
+            ..Self::default()
+        })
+    }
+
+    /// Request the native initial Setup route for this sealed Kernel launch.
+    pub(crate) fn kernel_native_first_setup() -> Self {
+        Self {
+            native_first_setup: true,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn requires_native_first_setup(&self) -> bool {
+        self.native_first_setup
     }
 
     pub(crate) fn into_values(self) -> Vec<OsString> {
-        self.0
+        self.application
     }
 }
 
@@ -356,6 +374,8 @@ struct StartupAttestation {
     runtime_overlay_sha256: String,
     outer_runtime_manifest_sha256: String,
     lifetime_lease: bool,
+    #[serde(default)]
+    native_first_setup: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -898,6 +918,7 @@ where
     let interpreter = fixed_interpreter(&verified.root);
     let mut command = process_utils::isolated_python(&interpreter);
     let packvm_bundle = packaged_packvm_bundle_binding(config)?;
+    let native_first_setup = role_arguments.requires_native_first_setup();
     append_launch_wire(
         &mut command,
         role,
@@ -979,7 +1000,14 @@ where
         else {
             unreachable!("new packaged child must retain process and environment ownership");
         };
-        wait_for_attestation(process, &attestation_path, &nonce, role, environment)
+        wait_for_attestation(
+            process,
+            &attestation_path,
+            &nonce,
+            role,
+            environment,
+            native_first_setup,
+        )
     };
     if let Err(error) = attestation_result {
         child.terminate_and_confirm_or_reap("startup attestation failure", true);
@@ -1016,33 +1044,39 @@ fn append_launch_wire(
     packvm_bundle: Option<&PackVMBundleBinding>,
     role_arguments: RoleArguments,
 ) -> Result<()> {
-    if role != PythonRole::Defaultspack && !role_arguments.0.is_empty() {
+    if role != PythonRole::Defaultspack && !role_arguments.application.is_empty() {
         bail!("only the fixed Defaultspack role accepts application arguments");
     }
+    if role != PythonRole::Kernel && role_arguments.native_first_setup {
+        bail!("only the sealed Kernel can require native initial Setup");
+    }
+    command.args(protocol::launch_arguments(
+        role.name(),
+        nonce,
+        attestation_path.as_os_str(),
+        manifest_path.as_os_str(),
+        environment_root.as_os_str(),
+        runtime_overlay_sha256,
+        outer_runtime_manifest_sha256,
+        packvm_bundle
+            .map(|binding| binding.root.as_os_str())
+            .unwrap_or_else(|| OsStr::new("")),
+        packvm_bundle
+            .map(|binding| binding.provisioning_sha256.as_str())
+            .unwrap_or(""),
+        packvm_bundle
+            .map(|binding| binding.helper_manifest_sha256.as_str())
+            .unwrap_or(""),
+        packvm_bundle
+            .map(|binding| binding.helper_team_id.as_str())
+            .unwrap_or(""),
+    ));
+    if role_arguments.native_first_setup {
+        command.arg("--native-first-setup");
+    }
     command
-        .args(protocol::launch_arguments(
-            role.name(),
-            nonce,
-            attestation_path.as_os_str(),
-            manifest_path.as_os_str(),
-            environment_root.as_os_str(),
-            runtime_overlay_sha256,
-            outer_runtime_manifest_sha256,
-            packvm_bundle
-                .map(|binding| binding.root.as_os_str())
-                .unwrap_or_else(|| OsStr::new("")),
-            packvm_bundle
-                .map(|binding| binding.provisioning_sha256.as_str())
-                .unwrap_or(""),
-            packvm_bundle
-                .map(|binding| binding.helper_manifest_sha256.as_str())
-                .unwrap_or(""),
-            packvm_bundle
-                .map(|binding| binding.helper_team_id.as_str())
-                .unwrap_or(""),
-        ))
         .arg(protocol::ARG_SEPARATOR)
-        .args(role_arguments.0);
+        .args(role_arguments.application);
     Ok(())
 }
 
@@ -2510,6 +2544,7 @@ fn wait_for_attestation(
     nonce: &str,
     role: PythonRole,
     verified: &VerifiedEnvironment,
+    native_first_setup: bool,
 ) -> Result<()> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     loop {
@@ -2536,7 +2571,7 @@ fn wait_for_attestation(
                 let bytes = read_attestation_file(path)?;
                 let attestation: StartupAttestation = serde_json::from_slice(&bytes)
                     .context("[PYTHON_SEALED_ATTESTATION_INVALID] malformed startup attestation")?;
-                validate_attestation(&attestation, nonce, role, verified)?;
+                validate_attestation(&attestation, nonce, role, verified, native_first_setup)?;
                 return Ok(());
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
@@ -2688,6 +2723,7 @@ fn validate_attestation(
     nonce: &str,
     role: PythonRole,
     verified: &VerifiedEnvironment,
+    native_first_setup: bool,
 ) -> Result<()> {
     let executable = fs::canonicalize(fixed_interpreter(&verified.root))?;
     let prefix = fs::canonicalize(verified.root.join(fixed_venv_prefix()))?;
@@ -2695,6 +2731,8 @@ fn validate_attestation(
     if value.schema != ATTESTATION_SCHEMA
         || value.nonce != nonce
         || value.role != role.name()
+        || value.native_first_setup != native_first_setup
+        || (value.native_first_setup && role != PythonRole::Kernel)
         || value.environment_digest != verified.manifest.environment_digest
         || fs::canonicalize(&value.executable).ok().as_deref() != Some(executable.as_path())
         || fs::canonicalize(&value.prefix).ok().as_deref() != Some(prefix.as_path())
@@ -4145,9 +4183,41 @@ mod tests {
             &digest('a'),
             &digest('b'),
             None,
-            RoleArguments(vec![OsString::from("unexpected")]),
+            RoleArguments::defaultspack([OsString::from("unexpected")]).unwrap(),
         )
         .is_err());
+    }
+
+    #[test]
+    fn native_first_setup_launch_argument_is_only_on_the_sealed_kernel_wire() {
+        let args = |role, role_args| {
+            let mut command = Command::new("python");
+            append_launch_wire(
+                &mut command,
+                role,
+                "nonce",
+                Path::new("attestation"),
+                Path::new("manifest"),
+                Path::new("environment"),
+                &digest('a'),
+                &digest('b'),
+                None,
+                role_args,
+            )?;
+            Ok::<_, anyhow::Error>(command.get_args().map(OsStr::to_owned).collect::<Vec<_>>())
+        };
+        let required = args(
+            PythonRole::Kernel,
+            RoleArguments::kernel_native_first_setup(),
+        )
+        .unwrap();
+        assert_eq!(required[required.len() - 2], "--native-first-setup");
+        assert_eq!(required[required.len() - 1], protocol::ARG_SEPARATOR);
+        let legacy = args(PythonRole::Kernel, RoleArguments::default()).unwrap();
+        assert!(!legacy.iter().any(|value| value == "--native-first-setup"));
+        for role in [PythonRole::Defaultspack, PythonRole::HostHelper] {
+            assert!(args(role, RoleArguments::kernel_native_first_setup()).is_err());
+        }
     }
 
     #[test]
@@ -4952,8 +5022,19 @@ mod tests {
                 .outer_manifest_sha256
                 .clone(),
             lifetime_lease: true,
+            native_first_setup: false,
         };
-        validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified).unwrap();
+        validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, false).unwrap();
+        assert!(
+            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, true)
+                .is_err()
+        );
+        attestation.native_first_setup = true;
+        validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, true).unwrap();
+        assert!(
+            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, false)
+                .is_err()
+        );
         attestation.role = protocol::ROLE_DEFAULTSPACK.into();
         attestation.sys_path.push(
             fs::canonicalize(root.join("app/ecosystem/defaultspack"))
@@ -4961,21 +5042,43 @@ mod tests {
                 .to_string_lossy()
                 .into_owned(),
         );
-        validate_attestation(&attestation, "nonce", PythonRole::Defaultspack, &verified).unwrap();
+        assert!(validate_attestation(
+            &attestation,
+            "nonce",
+            PythonRole::Defaultspack,
+            &verified,
+            true
+        )
+        .is_err());
+        attestation.native_first_setup = false;
+        validate_attestation(
+            &attestation,
+            "nonce",
+            PythonRole::Defaultspack,
+            &verified,
+            false,
+        )
+        .unwrap();
         attestation.sys_path.pop();
-        assert!(
-            validate_attestation(&attestation, "nonce", PythonRole::Defaultspack, &verified)
-                .is_err()
-        );
+        assert!(validate_attestation(
+            &attestation,
+            "nonce",
+            PythonRole::Defaultspack,
+            &verified,
+            false
+        )
+        .is_err());
         attestation.role = protocol::ROLE_TYPED.into();
         attestation.sys_path.push(attestation.sys_path[0].clone());
         assert!(
-            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified).is_err()
+            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, false)
+                .is_err()
         );
         attestation.sys_path.pop();
         attestation.environment_digest = digest('f');
         assert!(
-            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified).is_err()
+            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, false)
+                .is_err()
         );
         fs::remove_dir_all(root).ok();
     }

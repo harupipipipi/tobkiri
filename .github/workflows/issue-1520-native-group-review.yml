@@ -12,11 +12,15 @@ on:
       - 'tobkiri_launcher/src-tauri/src/core_host.rs'
       - 'tobkiri_launcher/src-tauri/src/legacy.rs'
       - 'tobkiri_launcher/src-tauri/src/kernel_manager.rs'
+      - 'tobkiri_launcher/src-tauri/src/sealed_python.rs'
+      - 'tobkiri_launcher/src-tauri/src/python_env.rs'
       - 'tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs'
       - 'tobkiri_launcher/src-tauri/src/native_harness_dispatch*.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_activation_decision.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
       - 'tobkiri_launcher/src-tauri/src/native_setup_review*.rs'
+      - 'tobkiri_launcher/src-tauri/src/native_setup_commands.rs'
+      - 'tobkiri_launcher/src-tauri/capabilities/native-first-setup.json'
       - 'tobkiri_launcher/src-tauri/tests/native_setup_review_webkit.rs'
       - 'tobkiri_launcher/src-tauri/build.rs'
       - 'tobkiri_launcher/src-tauri/setup_component_build.rs'
@@ -126,6 +130,10 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/tobkiri_launcher/src-tauri/target
         run: >-
           cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
-          --features native-harness-bootstrap,native-setup-review
+          --features native-first-setup
           --lib -- setup_display_requires_a_completed_listing_result
           setup_activation_requires_a_completed_publication_result native_setup_restart
+          native_setup_ipc_requires_the_exact_main_loopback_setup_route
+          native_first_setup_launch_argument attestation_binds_role_prefixes_paths_sentinels_and_digest
+          no_active_profile_publishes_only_a_distinct_bootstrap_contract
+          malformed_active_pointer_fails_closed_instead_of_falling_back_to_bootstrap

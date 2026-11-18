@@ -25,6 +25,8 @@ class _Scope:
         self.binding = binding
         self.app_root_calls: list[str | Path] = []
         self.binding_calls: list[str | Path] = []
+        self.native_first_setup = False
+        self.setup_policy_calls: list[str | Path] = []
 
     def app_root_for(self, module_file: str | Path) -> Path:
         self.app_root_calls.append(module_file)
@@ -33,6 +35,10 @@ class _Scope:
     def packvm_bundle_binding_for(self, module_file: str | Path) -> MappingProxyType:
         self.binding_calls.append(module_file)
         return self.binding
+
+    def native_first_setup_for(self, module_file: str | Path) -> bool:
+        self.setup_policy_calls.append(module_file)
+        return self.native_first_setup
 
 
 @pytest.fixture(autouse=True)
@@ -133,8 +139,10 @@ def test_kernel_and_defaultspack_sealed_hooks_install_the_same_binding(
     snapshot_app_root = tmp_path / "sealed-python" / "app"
     snapshot_app_root.mkdir(parents=True)
     scope = _Scope(snapshot_app_root, _binding(root))
+    scope.native_first_setup = True
     import_path_calls: list[None] = []
     monkeypatch.setattr(desktop_app, "_SEALED_SCOPE", None)
+    monkeypatch.setattr(app, "_SEALED_NATIVE_FIRST_SETUP", None)
     monkeypatch.setattr(
         desktop_app,
         "_ensure_import_path",
@@ -147,6 +155,13 @@ def test_kernel_and_defaultspack_sealed_hooks_install_the_same_binding(
     assert packvm_bundle_binding() is not None
     assert desktop_app._SEALED_SCOPE is scope
     assert import_path_calls == [None]
+    assert scope.setup_policy_calls == [app.__file__]
+    assert app._SEALED_NATIVE_FIRST_SETUP is True
+    scope.native_first_setup = False
+    with pytest.raises(RuntimeError, match="already established"):
+        app.prepare_for_sealed_dispatch(scope)
+    with pytest.raises(SystemExit):
+        app._parser().parse_args(["--native-first-setup"])
 
 
 @pytest.mark.parametrize("team_id", ("abcdefghij", "ABC123456", "ABCDEFGHIJ!"))

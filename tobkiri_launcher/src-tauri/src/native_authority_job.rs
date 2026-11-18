@@ -103,8 +103,8 @@ pub(crate) fn read_original_authority_snapshot(
                         Detachment::new(Some(invocation.clone())).native(&error, Stage::Admission),
                     )
                 })?;
-                let source =
-                    OriginalBootstrapInputs::new(app, custody, &invocation).map_err(|error| {
+                let source = OriginalBootstrapInputs::new(app, custody, &invocation, None)
+                    .map_err(|error| {
                         OriginalAuthorityJobFailure::Worker(
                             Detachment::new(Some(invocation.clone()))
                                 .native(&error, Stage::Admission),

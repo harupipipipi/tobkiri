@@ -23,6 +23,7 @@ mod development_owner_process;
 mod development_owner_startup;
 mod native_pack_onboarding_review;
 mod native_pack_review;
+mod native_setup_commands;
 mod native_plan_review;
 mod frontend_entry;
 mod health_check;
@@ -2902,7 +2903,33 @@ fn request_fresh_panel_session_code(
         .context("failed to load persisted panel bootstrap secret")?;
     kernel_manager::write_kernel_host_contract(config, &bootstrap_secret)
         .context("failed to publish verified panel Host contract")?;
-    request_panel_bootstrap_code_with_retry(config.kernel_port, &bootstrap_secret)
+    request_managed_panel_code(km, config.kernel_port, &bootstrap_secret)
+}
+
+fn request_managed_panel_code(
+    km: &Arc<Mutex<KernelManager>>,
+    port: u16,
+    bootstrap_secret: &str,
+) -> AnyResult<String> {
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    {
+        let peer = {
+            let mut manager = km.lock().map_err(|_| anyhow!("Kernel manager lock failed"))?;
+            if manager.requires_native_setup() {
+                let launch = manager.native_setup_launch().context("Kernel Setup launch retired")?;
+                let pid = manager.current_pid().context("Kernel Setup child unavailable")?;
+                Some((launch, pid))
+            } else {
+                None
+            }
+        };
+        if let Some((launch, pid)) = peer {
+            kernel_manager::verify_native_setup_listener(&launch, pid, port)?;
+        }
+    }
+    #[cfg(not(all(target_os = "macos", feature = "native-first-setup")))]
+    let _ = km;
+    request_panel_bootstrap_code_with_retry(port, bootstrap_secret)
 }
 
 fn navigate_window_to_panel_session(
@@ -3460,7 +3487,8 @@ fn spawn_kernel_exit_monitor(
                     KERNEL_HEALTH_STARTUP_TIMEOUT_SECS,
                 )
                 .and_then(|_| {
-                    request_panel_bootstrap_code_with_retry(
+                    request_managed_panel_code(
+                        &km,
                         config.kernel_port,
                         &panel_bootstrap_secret,
                     )
@@ -3734,7 +3762,7 @@ fn start_kernel_and_bootstrap(
             health_check::wait_for_healthy(port, KERNEL_HEALTH_STARTUP_TIMEOUT_SECS)?;
             Ok(())
         },
-        || request_panel_bootstrap_code_with_retry(port, bootstrap_secret),
+        || request_managed_panel_code(km, port, bootstrap_secret),
         |_| {
             let mut kernel = km
                 .lock()
@@ -4181,6 +4209,8 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             revoke_debug_approval,
             restart_kernel,
             reauthorize_panel_session,
+            native_setup_commands::native_setup_route,
+            native_setup_commands::start_native_setup_review,
             open_external_url,
             check_launcher_update,
             open_launcher_update_release,
@@ -4522,6 +4552,23 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
             "Checking for existing session...",
         );
         if let Ok(true) = health_check::check_authenticated_health(port, &panel_bootstrap_secret) {
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            if kernel_manager::native_first_setup_enabled(&config) {
+                match defaultspack_authority::has_verified_active_profile(&config) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        update_setup_progress(Some(&handle), &progress_arc,
+                            "Close the existing Tobkiri Launcher session before starting Setup.");
+                        return;
+                    }
+                    Err(error) => {
+                        let msg = startup_failure_message("Setup authority check", &error, &config);
+                        error!("{msg}");
+                        update_setup_progress(Some(&handle), &progress_arc, &msg);
+                        return;
+                    }
+                }
+            }
             info!("Existing authenticated kernel detected on port {port}, attempting fast-path bootstrap...");
             match request_panel_bootstrap_code_with_retry(port, &panel_bootstrap_secret) {
                 Ok(panel_code) => {

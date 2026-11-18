@@ -344,6 +344,9 @@ where
     if !config.is_dev_workspace() {
         return crate::sealed_python::spawn_packaged_role(config, role, role_arguments, configure);
     }
+    if role_arguments.requires_native_first_setup() {
+        bail!("native initial Setup requires a sealed Kernel launch");
+    }
     let preparation_started = Instant::now();
     let mut command = process_utils::isolated_python(config.venv_python());
     let portable = crate::defaultspack_authority::local_development_packvm_binding(config)?;

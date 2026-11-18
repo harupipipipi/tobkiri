@@ -15,15 +15,30 @@ import threading
 from collections.abc import Sequence
 from typing import Any
 
+_SEALED_NATIVE_FIRST_SETUP: bool | None = None
+
 
 def prepare_for_sealed_dispatch(scope: object) -> None:
-    """Capture the Launcher-issued PackVM bundle identity before startup."""
+    """Capture the Launcher-issued bundle identity and Setup policy."""
 
     from core_runtime.packaged_application_bundle import (
         install_packvm_bundle_binding_from_sealed_scope,
     )
 
+    global _SEALED_NATIVE_FIRST_SETUP
+    native_first_setup_for = getattr(scope, "native_first_setup_for", None)
+    if not callable(native_first_setup_for):
+        raise RuntimeError("sealed dispatch scope lacks the Kernel Setup policy")
+    native_first_setup = native_first_setup_for(__file__)
+    if not isinstance(native_first_setup, bool):
+        raise RuntimeError("sealed Kernel Setup policy is invalid")
+    if (
+        _SEALED_NATIVE_FIRST_SETUP is not None
+        and _SEALED_NATIVE_FIRST_SETUP != native_first_setup
+    ):
+        raise RuntimeError("sealed Kernel Setup policy was already established")
     install_packvm_bundle_binding_from_sealed_scope(scope, __file__)
+    _SEALED_NATIVE_FIRST_SETUP = native_first_setup
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -48,7 +63,9 @@ def _create_defaultspack_kernel() -> Any:
         create_defaultspack_kernel,
     )
 
-    return create_defaultspack_kernel()
+    return create_defaultspack_kernel(
+        native_first_setup=_SEALED_NATIVE_FIRST_SETUP is True,
+    )
 
 
 def _clear_restart_request() -> None:

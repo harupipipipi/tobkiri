@@ -145,9 +145,19 @@ def _fixture_sources(base: Path, target: str) -> tuple[Path, Path, Path]:
         "        raise RuntimeError('invalid sealed app root')\n"
         "    if scope.packvm_bundle_binding_for(__file__) is not None:\n"
         "        raise RuntimeError('unexpected PackVM bundle binding')\n"
+        "    global native_first_setup\n"
+        "    native_first_setup = scope.native_first_setup_for(__file__)\n"
+        "    try:\n"
+        "        scope.native_first_setup_for(__file__.replace('app.py', 'kernel_entry.py'))\n"
+        "    except RuntimeError:\n"
+        "        pass\n"
+        "    else:\n"
+        "        raise AssertionError('Setup policy escaped the exact target')\n"
         "def main(argv=None):\n"
         "    with open(os.environ['ROLE_MARKER'], 'a') as handle:\n"
         "        handle.write(json.dumps(['typed', list(argv or [])]) + '\\n')\n"
+        "        if native_first_setup:\n"
+        "            handle.write(json.dumps(['native_first_setup', True]) + '\\n')\n"
         "    return 7\n",
         encoding="utf-8",
     )
@@ -1459,9 +1469,11 @@ def test_runtime_link_materializer_rejects_outside_target(tmp_path: Path) -> Non
         )
 
 
+@pytest.mark.parametrize("native_first_setup", (False, True))
 def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    native_first_setup: bool,
 ) -> None:
     """The parent wire reaches each canonical role with exact argv/stdin."""
     output = _fixture_sources(tmp_path / "sealed", "x86_64-unknown-linux-gnu")[2]
@@ -1479,6 +1491,8 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
     old_stdin = sys.stdin
     old_stdout = sys.stdout
     old_env = os.environ.copy()
+    defaultspack_module = "tobkiri_packaged_defaultspack"
+    old_defaultspack = sys.modules.pop(defaultspack_module, None)
     clean_env = _clean_sealed_test_environment()
     os.environ.clear()
     os.environ.update(clean_env)
@@ -1501,7 +1515,7 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
         sys.path = _fixture_sys_path(output, include_missing_zip=True)
 
         for role, role_args, expected_return in (
-            ("typed", ("--health",), 7),
+            ("typed", ("--health", "--native-first-setup"), 7),
             ("defaultspack", ("--port", "8766"), 8),
             ("host_helper", (), 9),
         ):
@@ -1512,23 +1526,27 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
             if role == "host_helper":
                 sys.stdin = io.StringIO('{"function_id":"computer.observe"}')
                 sys.stdout = io.StringIO()
-            result = bootstrap.main(
-                [
-                    "--role",
-                    role,
-                    "--nonce",
-                    nonce,
-                    "--attestation",
-                    str(attestation),
-                    "--manifest",
-                    str(output / BUILDER.MANIFEST_FILENAME),
-                    "--environment-root",
-                    str(output),
-                    *overlay_arguments,
-                    "--",
-                    *role_args,
-                ]
-            )
+            parent_args = [
+                "--role",
+                role,
+                "--nonce",
+                nonce,
+                "--attestation",
+                str(attestation),
+                "--manifest",
+                str(output / BUILDER.MANIFEST_FILENAME),
+                "--environment-root",
+                str(output),
+                *overlay_arguments,
+            ]
+            if native_first_setup and role != "typed":
+                with pytest.raises(bootstrap.SealedBootstrapError, match="Kernel role"):
+                    bootstrap.main([*parent_args, "--native-first-setup", "--", *role_args])
+                assert not attestation.exists()
+            carries_native_policy = native_first_setup and role == "typed"
+            if carries_native_policy:
+                parent_args.append("--native-first-setup")
+            result = bootstrap.main([*parent_args, "--", *role_args])
             assert result == expected_return
             evidence = json.loads(attestation.read_text(encoding="utf-8"))
             assert list(evidence) == [
@@ -1546,7 +1564,10 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
                 "runtime_overlay_sha256",
                 "outer_runtime_manifest_sha256",
                 "lifetime_lease",
+                *(["native_first_setup"] if carries_native_policy else []),
             ]
+            if carries_native_policy:
+                assert evidence["native_first_setup"] is True
             assert evidence["role"] == role
             assert evidence["nonce"] == nonce
             assert evidence["lifetime_lease"] is True
@@ -1559,29 +1580,14 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
             assert list(sys.path) == evidence["sys_path"]
             if role == "typed":
                 with pytest.raises(bootstrap.SealedBootstrapError, match="already exists"):
-                    bootstrap.main(
-                        [
-                            "--role",
-                            role,
-                            "--nonce",
-                            nonce,
-                            "--attestation",
-                            str(attestation),
-                            "--manifest",
-                            str(output / BUILDER.MANIFEST_FILENAME),
-                            "--environment-root",
-                            str(output),
-                            *overlay_arguments,
-                            "--",
-                            *role_args,
-                        ]
-                    )
+                    bootstrap.main([*parent_args, "--", *role_args])
             sys.path = _fixture_sys_path(output, include_missing_zip=True)
             sys.stdin = old_stdin
             sys.stdout = old_stdout
         records = [json.loads(line) for line in marker.read_text().splitlines()]
         assert records == [
-            ["typed", ["--health"]],
+            ["typed", ["--health", "--native-first-setup"]],
+            *([["native_first_setup", True]] if native_first_setup else []),
             ["defaultspack", ["--port", "8766"]],
             ["host_helper", {"function_id": "computer.observe"}],
         ]
@@ -1596,6 +1602,9 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
         sys.stdout = old_stdout
         os.environ.clear()
         os.environ.update(old_env)
+        sys.modules.pop(defaultspack_module, None)
+        if old_defaultspack is not None:
+            sys.modules[defaultspack_module] = old_defaultspack
 
 
 def test_bootstrap_atomic_publish_is_readable_by_real_builder_subprocess(

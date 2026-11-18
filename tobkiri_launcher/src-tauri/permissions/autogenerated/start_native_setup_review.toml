@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-native-setup-review"
+description = "Enables the start_native_setup_review command without any pre-configured scope."
+commands.allow = ["start_native_setup_review"]
+
+[[permission]]
+identifier = "deny-start-native-setup-review"
+description = "Denies the start_native_setup_review command without any pre-configured scope."
+commands.deny = ["start_native_setup_review"]

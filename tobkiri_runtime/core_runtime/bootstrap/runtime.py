@@ -135,6 +135,7 @@ class Kernel:
             Callable[[], tuple[HTTPContractBinding, ...]] | None
         ) = None,
         runtime_surface_factory: RuntimeSurfaceFactory | None = None,
+        native_first_setup: bool = False,
     ) -> None:
         self._lock = RLock()
         self._server: PackAPIServer | None = None
@@ -147,6 +148,7 @@ class Kernel:
         self._application_presentation = application_presentation
         self._host_profile_bindings_factory = host_profile_bindings_factory
         self._runtime_surface_factory = runtime_surface_factory
+        self._native_first_setup = native_first_setup
         self._lifecycle = AppLifecycleManager(
             packvm_lifecycle=self._packvm_lifecycle,
             runtime_capture_factory=self._runtime_capture_factory,
@@ -271,6 +273,7 @@ class Kernel:
                     capability_snapshot_factory=self._capability_snapshot_factory,
                     application_presentation=self._application_presentation,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    native_first_setup=self._native_first_setup,
                 )
             except Exception:
                 close = getattr(self._dispatch_session, "close", None)
@@ -344,6 +347,7 @@ class Kernel:
                     capability_snapshot_factory=self._capability_snapshot_factory,
                     application_presentation=self._application_presentation,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    native_first_setup=self._native_first_setup,
                 )
             mark_runtime_ready()
             return {"status": "ok", "runtime_ready": True}

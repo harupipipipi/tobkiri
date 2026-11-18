@@ -86,13 +86,14 @@ class AuthGateMixin(_HTTPHandlerBase):
     def _check_panel_origin(self) -> bool:
         return bool(self._get_cors_origin(self.headers.get("Origin", "")))
 
-    def _check_panel_session(self, method: str) -> bool:
+    def _verify_panel_request_credential(
+        self, method: str, binding: PanelAuthBinding, *, renew: bool = True
+    ) -> tuple[Dict[str, Any], str, str] | None:
+        """Check the cookie and request proof against the supplied identity."""
+
         manager = self._panel_auth_manager
         if manager is None:
-            return False
-        binding = self._current_panel_auth_binding()
-        if binding is None:
-            return False
+            return None
         jar = self._parse_cookie_header()
         session_id = ""
         cookie_name = PANEL_SESSION_COOKIE
@@ -101,13 +102,13 @@ class AuthGateMixin(_HTTPHandlerBase):
             candidate = jar.get(name, "")
             if not candidate:
                 continue
-            session = manager.verify_session(candidate, binding)
+            session = manager.verify_session(candidate, binding, renew=renew)
             if session is not None:
                 session_id = candidate
                 cookie_name = name
                 break
         if session is None:
-            return False
+            return None
         if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
             csrf_header = self.headers.get("X-Rumi-CSRF", "")
             session_csrf = session.get("csrf_token")
@@ -117,7 +118,19 @@ class AuthGateMixin(_HTTPHandlerBase):
                 or not isinstance(session_csrf, str)
                 or not hmac.compare_digest(csrf_header, session_csrf)
             ):
-                return False
+                return None
+        return session, session_id, cookie_name
+
+    def _check_panel_session(self, method: str) -> bool:
+        if self._panel_auth_manager is None:
+            return False
+        binding = self._current_panel_auth_binding()
+        if binding is None:
+            return False
+        verified = self._verify_panel_request_credential(method, binding)
+        if verified is None:
+            return False
+        session, session_id, cookie_name = verified
         self._panel_session = session
         # Refresh under the same name the session arrived on: reissuing a
         # presenter session as ``rumi_panel_session`` in a shared store would

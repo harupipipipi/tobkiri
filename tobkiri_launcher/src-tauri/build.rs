@@ -390,6 +390,8 @@ fn build_legacy_tauri_manifest() {
             "revoke_debug_approval",
             "restart_kernel",
             "reauthorize_panel_session",
+            "native_setup_route",
+            "start_native_setup_review",
             "open_external_url",
             "check_launcher_update",
             "open_launcher_update_release",

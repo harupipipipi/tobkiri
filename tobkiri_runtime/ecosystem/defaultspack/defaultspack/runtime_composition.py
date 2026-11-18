@@ -408,6 +408,7 @@ def create_defaultspack_kernel(
         host_credential_store_factory
     ),
     generation_budget_template: NativeGenerationBudgetTemplate | None = None,
+    native_first_setup: bool = False,
 ) -> Kernel:
     """Compose the generic Host bootstrap with Defaultspack-owned services."""
 
@@ -457,6 +458,7 @@ def create_defaultspack_kernel(
         application_presentation=DefaultspackHTTPPresentation(),
         host_profile_bindings_factory=host_profile_control_bindings,
         runtime_surface_factory=create_runtime_surface_services,
+        native_first_setup=native_first_setup,
     )
 
 

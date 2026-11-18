@@ -868,6 +868,8 @@ class PackAPIHandler(
     _native_pack_key_ceremony: Any | None = None
     _native_pack_owner_binding: Any | None = None
     _native_pack_owner_composed = False
+    _native_first_setup = False
+    _native_setup_denial_binding: PanelAuthBinding | None = None
     _workspace_binding_resolver: WorkspaceBindingResolver | None = None
     _host_contract_snapshot: Mapping[str, Any] | None = None
     _instance_web_mounts: tuple[WebMountEntry, ...] | None = None
@@ -904,6 +906,7 @@ class PackAPIHandler(
         request_snapshot_owner: object | None = None,
         request_snapshot_generation: int | None = None,
         native_pack_owner_binding: Any | None = None,
+        native_first_setup: bool = False,
     ) -> type["PackAPIHandler"]:
         """Create an isolated handler bound to one captured runtime session."""
 
@@ -912,6 +915,11 @@ class PackAPIHandler(
         bound_key_ceremony = NativePackKeyVersionCeremony()
         bound_panel_auth = panel_auth_manager
         bound_dispatch = dispatch_session
+        native_setup_denial_binding = (
+            PackAPIHandler._panel_binding_from_capture(bound_dispatch)
+            if native_first_setup and bound_dispatch is not None
+            else None
+        )
         from .native_pack_owner_binding import capture_native_pack_owner_binding
 
         if native_pack_owner_binding is None:
@@ -981,6 +989,8 @@ class PackAPIHandler(
             _native_pack_key_ceremony = bound_key_ceremony
             _native_pack_owner_binding = bound_native_owner
             _native_pack_owner_composed = True
+            _native_first_setup = native_first_setup
+            _native_setup_denial_binding = native_setup_denial_binding
             _host_contract_snapshot = bound_host_contract
             _instance_web_mounts = bound_web_mounts
             _runtime_refresh = (
@@ -2337,6 +2347,23 @@ class PackAPIHandler(
             return None
         try:
             session.assert_current()
+        except (
+            AttributeError,
+            HostCoreError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return None
+        return cls._panel_binding_from_capture(session)
+
+    @staticmethod
+    def _panel_binding_from_capture(session: DispatchSession) -> PanelAuthBinding | None:
+        """Project the credential binding already carried by a captured session."""
+
+        try:
             security_epoch = int(getattr(session, "security_epoch"))
             if security_epoch < 1:
                 return None
@@ -2629,6 +2656,27 @@ class PackAPIHandler(
         except (OSError, RuntimeError, ValueError):
             logger.exception("Canonical setup state could not be verified")
             return False
+
+    def _reject_native_first_setup_install(self) -> None:
+        """Reject a legacy POST without recapturing Profile or Authority state."""
+
+        binding = self._native_setup_denial_binding
+        credential = (
+            self._verify_panel_request_credential("POST", binding, renew=False)
+            if binding is not None
+            else None
+        )
+        if credential is None or credential[0].get("request_scope"):
+            self._discard_request_body()
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        if self._parse_object_body() is not None:
+            self._send_mapping_result({
+                "error": "Complete Setup through Tobkiri Launcher",
+                "status_code": 409,
+                "state": "activation_denied",
+                "write_set": [],
+            })
 
     def _handle_setup_status(self) -> None:
         lifecycle = self.__class__.app_lifecycle_manager
@@ -3232,6 +3280,9 @@ class PackAPIHandler(
 
         self._reset_request_state()
         path = urlparse(self.path).path
+        if path == "/api/setup/packs/install" and self._native_first_setup:
+            self._reject_native_first_setup_install()
+            return
         from .native_host_handover_http import handle_native_host_handover
 
         if handle_native_host_handover(self, "POST", path):
@@ -3428,12 +3479,14 @@ class PackAPIServer:
         host_contract: Mapping[str, Any] | None = None,
         native_pack_owner_root: Path | None = None,
         native_pack_trust_store_path: Path | None = None,
+        native_first_setup: bool = False,
     ) -> None:
         self.config = RuntimeHTTPConfig.verify(host, port)
         self.host = self.config.host
         self.port = self.config.port
         self._panel_auth_manager = panel_auth_manager or get_panel_auth_manager()
         self._dispatch_session = dispatch_session
+        self._native_first_setup = native_first_setup
         from .native_pack_owner_binding import capture_native_pack_owner_binding
 
         self._native_pack_owner_binding = capture_native_pack_owner_binding(
@@ -3521,6 +3574,7 @@ class PackAPIServer:
                     request_snapshot_owner=self,
                     request_snapshot_generation=lifecycle_generation,
                     native_pack_owner_binding=self._native_pack_owner_binding,
+                    native_first_setup=self._native_first_setup,
                 )
                 server = _PackThreadingHTTPServer((self.host, self.port), handler)
             except Exception:
@@ -3939,6 +3993,7 @@ class PackAPIServer:
                     request_snapshot_owner=self,
                     request_snapshot_generation=published_generation,
                     native_pack_owner_binding=self._native_pack_owner_binding,
+                    native_first_setup=self._native_first_setup,
                 )
                 handler._runtime_port = self.port
                 self._dispatch_session = session
@@ -4156,6 +4211,7 @@ def initialize_pack_api_server(
     workspace_binding_resolver: WorkspaceBindingResolver | None = None,
     packvm_lifecycle: PackVMLifecyclePort | None = None,
     host_contract: Mapping[str, Any] | None = None,
+    native_first_setup: bool = False,
 ) -> PackAPIServer:
     """Replace the process-local server with one verified v4 instance."""
 
@@ -4176,6 +4232,7 @@ def initialize_pack_api_server(
         workspace_binding_resolver=workspace_binding_resolver,
         packvm_lifecycle=packvm_lifecycle,
         host_contract=host_contract,
+        native_first_setup=native_first_setup,
     )
     server.start()
     _api_server = server

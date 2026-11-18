@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-setup-route"
+description = "Enables the native_setup_route command without any pre-configured scope."
+commands.allow = ["native_setup_route"]
+
+[[permission]]
+identifier = "deny-native-setup-route"
+description = "Denies the native_setup_route command without any pre-configured scope."
+commands.deny = ["native_setup_route"]

@@ -2,6 +2,7 @@
 //!
 //! This opt-in constructor is not yet routed from the original production
 //! operation. Keep that route unchanged until actual component/flow parity.
+use crate::kernel_manager::NativeSetupLaunch;
 use crate::native_harness_host_inputs::{with_original_host_inputs, NativeHostSourceRole};
 use crate::native_runtime_jobs::{
     Finalization, JobTicket, Jobs, LifecycleError, SourceCustody, WorkerExit,
@@ -142,6 +143,7 @@ pub(crate) struct OriginalBootstrapInputs {
 }
 struct OriginalBootstrapOwner {
     app: AppHandle,
+    launch: Option<NativeSetupLaunch>,
     // Field order releases the actual AppHandle before publishing its receipt.
     _custody: SourceCustody,
 }
@@ -165,6 +167,7 @@ impl OriginalBootstrapInputs {
         app: AppHandle,
         custody: SourceCustody,
         invocation: &NativeSetupInvocation,
+        launch: Option<NativeSetupLaunch>,
     ) -> Result<Self> {
         let bytes =
             tobkiri_harness_native::OriginalSourceHandle::<OriginalBootstrapOwner>::storage_bytes::<
@@ -177,11 +180,25 @@ impl OriginalBootstrapInputs {
             owner: tobkiri_harness_native::OriginalSourceHandle::try_new_precharged(
                 OriginalBootstrapOwner {
                     app,
+                    launch,
                     _custody: custody,
                 },
                 funding,
             )?,
         })
+    }
+
+    fn check_kernel_launch(&self) -> std::result::Result<(), NativeDataIoError> {
+        if self
+            .owner
+            .get()
+            .launch
+            .as_ref()
+            .is_some_and(|launch| !launch.is_live())
+        {
+            return Err(NativeDataIoError::Retired);
+        }
+        Ok(())
     }
 }
 impl BootstrapInputOwner for OriginalBootstrapInputs {
@@ -194,6 +211,7 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
         &self,
         use_roots: impl for<'a> FnOnce(BootstrapRoots<'a>) -> R,
     ) -> std::result::Result<R, NativeDataIoError> {
+        self.check_kernel_launch()?;
         with_original_host_inputs(&self.owner.get().app, |inputs| {
             use_roots(BootstrapRoots {
                 runtime: inputs
@@ -209,6 +227,7 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
     }
 
     fn check_live(&self) -> std::result::Result<(), NativeDataIoError> {
+        self.check_kernel_launch()?;
         with_original_host_inputs(&self.owner.get().app, |_| ())
             .map_err(|_| NativeDataIoError::Retired)
     }
@@ -221,6 +240,8 @@ impl OriginalAuthorityOwner for OriginalBootstrapInputs {
         &self,
         operation: impl FnOnce(&std::path::Path) -> R,
     ) -> std::result::Result<R, OriginalAuthorityError> {
+        self.check_kernel_launch()
+            .map_err(|_| OriginalAuthorityError::unavailable())?;
         crate::native_harness_host_inputs::with_original_authority_source(
             &self.owner.get().app,
             |inputs| operation(inputs.internal_runtime_storage_parent()),
@@ -228,6 +249,8 @@ impl OriginalAuthorityOwner for OriginalBootstrapInputs {
         .map_err(|_| OriginalAuthorityError::unavailable())
     }
     fn check_original_owner(&self) -> std::result::Result<(), OriginalAuthorityError> {
+        self.check_kernel_launch()
+            .map_err(|_| OriginalAuthorityError::unavailable())?;
         with_original_host_inputs(&self.owner.get().app, |_| ())
             .map_err(|_| OriginalAuthorityError::unavailable())
     }
@@ -241,6 +264,8 @@ impl tobkiri_harness_native::BootstrapReviewOwner for OriginalBootstrapInputs {
         &self,
         operation: impl for<'host> FnOnce(tobkiri_harness_native::BootstrapCatalogSource<'host>) -> R,
     ) -> std::result::Result<R, OriginalAuthorityError> {
+        self.check_kernel_launch()
+            .map_err(|_| OriginalAuthorityError::unavailable())?;
         crate::native_harness_host_inputs::with_original_review_source(
             &self.owner.get().app,
             |inputs| operation(inputs.catalog_source()),
@@ -251,6 +276,8 @@ impl tobkiri_harness_native::BootstrapReviewOwner for OriginalBootstrapInputs {
         &self,
         use_root: impl FnOnce(&std::path::Path) -> R,
     ) -> std::result::Result<R, OriginalAuthorityError> {
+        self.check_kernel_launch()
+            .map_err(|_| OriginalAuthorityError::unavailable())?;
         crate::native_harness_host_inputs::with_original_review_source(
             &self.owner.get().app,
             |inputs| use_root(inputs.internal_runtime_storage_parent()),
@@ -458,6 +485,14 @@ mod selected_setup_component {
     }
     include!(concat!(env!("OUT_DIR"), "/setup_component.rs"));
 
+    #[cfg(feature = "native-first-setup")]
+    pub(super) fn supports_first_setup() -> bool {
+        COMPONENT
+            .as_ref()
+            .and_then(|component| component.profile_schemas)
+            .is_some_and(|schemas| schemas.references.is_some() && schemas.recovery.is_some())
+    }
+
     pub(super) fn open(app: &AppHandle) -> Result<Option<SelectedOriginalComponent>> {
         let Some(component) = &COMPONENT else {
             return Ok(None);
@@ -495,28 +530,32 @@ mod selected_setup_component {
     }
 }
 
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) fn native_first_setup_component_bound() -> bool {
+    selected_setup_component::supports_first_setup()
+}
+
 /// Review the existing Profile, publish the approval, and request a supervised
 /// restart of the same managed Kernel after publication and worker cleanup.
 /// A `Published` completion includes acceptance by the restart supervisor.
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 pub(crate) async fn prepare_setup_review(
     app: &AppHandle,
-    options: tobkiri_harness_native::BootstrapReviewOptions,
 ) -> Result<SetupReviewCompletion, SetupReviewStartError> {
-    use crate::kernel_manager::KernelManager;
+    use crate::kernel_manager::{verify_native_setup_listener, KernelManager};
     use crate::native_setup_review::owner::SetupReviewWindowState;
     let kernel = app
         .try_state::<Arc<Mutex<KernelManager>>>()
         .ok_or(SetupReviewStartError::Kernel)?
         .inner()
         .clone();
-    let generation = {
+    let (launch, pid) = {
         let mut manager = kernel.lock().map_err(|_| SetupReviewStartError::Kernel)?;
-        let generation = manager.launch_generation();
-        if generation == 0 || !manager.is_current_launch_generation(generation) {
-            return Err(SetupReviewStartError::Kernel);
-        }
-        generation
+        let launch = manager
+            .native_setup_launch()
+            .ok_or(SetupReviewStartError::Kernel)?;
+        let pid = manager.current_pid().ok_or(SetupReviewStartError::Kernel)?;
+        (launch, pid)
     };
     let window = app
         .get_webview_window("main")
@@ -528,6 +567,14 @@ pub(crate) async fn prepare_setup_review(
         .try_state::<crate::AppConfig>()
         .ok_or(SetupReviewStartError::Window)?
         .kernel_port;
+    let listener_launch = launch.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        verify_native_setup_listener(&listener_launch, pid, port)
+    })
+    .await
+    .map_err(|_| SetupReviewStartError::Kernel)?
+    .map_err(|_| SetupReviewStartError::Kernel)?;
+    let options = tobkiri_harness_native::BootstrapReviewOptions::default();
     let selected = selected_setup_component::open(app)
         .map_err(SetupReviewStartError::Component)?
         .ok_or(SetupReviewStartError::Unbound)?;
@@ -539,6 +586,7 @@ pub(crate) async fn prepare_setup_review(
         app.clone(),
         selected,
         OriginalOperation::ReviewListing(options.clone()),
+        launch.clone(),
     )
     .map(SetupReviewJob)
     .map_err(SetupReviewStartError::Worker)?;
@@ -549,10 +597,12 @@ pub(crate) async fn prepare_setup_review(
     let selected = selected_setup_component::open(app)
         .map_err(SetupReviewStartError::Component)?
         .ok_or(SetupReviewStartError::Unbound)?;
-    if !kernel
-        .lock()
-        .map_err(|_| SetupReviewStartError::Kernel)?
-        .is_current_launch_generation(generation)
+    let generation = launch.generation();
+    if !launch.is_live()
+        || !kernel
+            .lock()
+            .map_err(|_| SetupReviewStartError::Kernel)?
+            .is_current_launch_generation(generation)
     {
         return Err(SetupReviewStartError::Kernel);
     }
@@ -560,6 +610,7 @@ pub(crate) async fn prepare_setup_review(
         app.clone(),
         selected,
         OriginalOperation::ConfirmSetup(confirmed),
+        launch,
     )
     .map_err(SetupReviewStartError::Worker)?
     .result()
@@ -599,6 +650,7 @@ fn prepare_original_component(
     app: AppHandle,
     selected: SelectedOriginalComponent,
     operation: OriginalOperation,
+    launch: NativeSetupLaunch,
 ) -> std::result::Result<OriginalComponentJob, DetachedFailure> {
     // An unbound operation is an integration failure before owner/Engine/IO,
     // not a fabricated domain denial or a partial successful execution.
@@ -619,7 +671,7 @@ fn prepare_original_component(
         .spawn(move |job| {
             let outcome = catch_unwind(AssertUnwindSafe(|| {
                 tauri::async_runtime::block_on(run_original_job(
-                    runtime, app, job, selected, operation,
+                    runtime, app, job, selected, operation, launch,
                 ))
             }));
             let (result, cleanup_verified) = match outcome {
@@ -662,6 +714,7 @@ async fn run_original_job(
     job: JobTicket,
     selected: SelectedOriginalComponent,
     operation: dispatch::AdmittedOperation,
+    launch: NativeSetupLaunch,
 ) -> (Outcome, bool) {
     let SelectedOriginalComponent {
         artifact,
@@ -676,7 +729,9 @@ async fn run_original_job(
     let prepared = catch_unwind(AssertUnwindSafe(|| -> Result<_> {
         let invocation = runtime.begin(&app, &job)?;
         let parent = job.attach_invocation(&invocation)?;
-        let source = OriginalBootstrapInputs::new(app, job.source_custody()?, &invocation)?;
+        let source =
+            OriginalBootstrapInputs::new(app, job.source_custody()?, &invocation, Some(launch))?;
+        source.check_live()?;
         // Pre-admit the existing uncertain-IO ledger record before old-state
         // IO. Only actual source/unfinished IO can move into that ledger.
         let retention = if review {

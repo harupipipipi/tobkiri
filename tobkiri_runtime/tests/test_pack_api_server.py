@@ -1853,6 +1853,116 @@ def test_stopped_handler_generation_cannot_publish_runtime_capture() -> None:
     assert server.server is None
 
 
+def test_native_first_setup_refuses_legacy_install_across_handler_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Keep the native launch policy and deny without invoking old Setup."""
+
+    from core_runtime import app_lifecycle_manager
+    from core_runtime.bootstrap import profile_capture
+    from core_runtime.panel_auth import PanelAuthBinding
+    from core_runtime.validation import MAX_REQUEST_BODY_BYTES
+    from tobkiri_host import runtime as host_runtime
+
+    class SetupControl(_RefreshDispatch):
+        session_kind = "host_profile_control"
+
+        def assert_current(self) -> None:
+            raise AssertionError("rejected Setup must not recapture Authority")
+
+    def no_legacy_install(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("rejected Setup must not invoke legacy activation")
+
+    manager = PanelAuthManager(bootstrap_secret="verified-desktop")
+    lifecycle = _Lifecycle()
+    monkeypatch.setattr(profile_capture, "runtime_user_data_root", lambda: tmp_path)
+    monkeypatch.setattr(host_runtime, "install_dispatch_session", lambda *_args: None)
+    monkeypatch.setattr(app_lifecycle_manager, "mark_runtime_ready", lambda: None)
+    monkeypatch.setattr(PackAPIHandler, "_setup_install_pack", no_legacy_install)
+    monkeypatch.setattr(
+        PackAPIHandler, "_setup_list_packs", lambda _handler: {"state": "review"}
+    )
+    monkeypatch.setattr(lifecycle, "check_setup_status", lambda: {"needs_setup": True})
+    monkeypatch.setenv("TOBKIRI_NATIVE_FIRST_SETUP", "false")
+
+    initial = SetupControl("initial")
+    replacement = SetupControl("replacement")
+    replacement.plan_digest = "sha256:" + "b" * 64
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=manager,
+        dispatch_session=initial,  # type: ignore[arg-type]
+        app_lifecycle_manager=lifecycle,
+        runtime_capture_factory=_test_runtime_capture_inputs,
+        native_first_setup=True,
+    )
+    server.start()
+    try:
+        status, listing, _ = _request(server, "GET", "/api/setup/packs")
+        assert status == 200
+        assert listing["data"] == {"state": "review"}
+        monkeypatch.setattr(lifecycle, "check_setup_status", no_legacy_install)
+        monkeypatch.setattr(PackAPIHandler, "_setup_list_packs", no_legacy_install)
+        handler = server.handler_class
+        assert handler is not None
+        for session in (initial, replacement):
+            if session is replacement:
+                assert handler._runtime_refresh is not None
+                handler._runtime_refresh(replacement)  # type: ignore[arg-type]
+                assert server.handler_class is not handler
+            binding = PanelAuthBinding(
+                session.profile_id,
+                session.profile_revision,
+                session.activation_id,
+                session.plan_digest,
+                session.security_epoch,
+            )
+            code = manager.issue_login_code(binding)["code"]
+            credentials = manager.exchange_code(code, binding)
+            assert credentials is not None
+            headers = {
+                "Cookie": f"rumi_panel_session={credentials['session_id']}",
+                "X-Rumi-CSRF": credentials["csrf_token"],
+                "Origin": f"http://127.0.0.1:{server.port}",
+                "X-Tobkiri-Native-First-Setup": "false",
+            }
+            install = "/api/setup/packs/install"
+            for suffix in ("", "?include_source_additions=true", "?mode=legacy"):
+                status, payload, response_headers = _request(
+                    server,
+                    "POST",
+                    install + suffix,
+                    body={"native_first_setup": False, "install_defaults_profile": True},
+                    headers=headers,
+                )
+                assert status == 409
+                assert payload["data"] == {
+                    "state": "activation_denied",
+                    "write_set": [],
+                }
+                assert not any(key.lower() == "set-cookie" for key, _ in response_headers)
+            status, _, _ = _request(server, "POST", install, body={})
+            assert status == 401
+            status, _, _ = _request(
+                server,
+                "POST",
+                install,
+                body={},
+                headers={**headers, "Origin": "https://example.invalid"},
+            )
+            assert status == 401
+            status, _, _ = _request(
+                server,
+                "POST",
+                install,
+                headers={**headers, "Content-Length": str(MAX_REQUEST_BODY_BYTES + 1)},
+            )
+            assert status == 413
+    finally:
+        server.stop()
+
+
 def _prepare_refresh_race(
     server: PackAPIServer,
     monkeypatch: pytest.MonkeyPatch,

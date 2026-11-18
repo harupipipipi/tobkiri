@@ -11,6 +11,10 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -83,29 +87,6 @@ fn require_development_venv(config: &AppConfig) -> Result<()> {
     Ok(())
 }
 
-/// Resolve the durable active Application authority, if one has been
-/// completely committed.  A Host-contract file is never used as the source
-/// of this decision: it is only a projection of the independently verified
-/// Profile authority.
-fn verified_active_application_authority(
-    config: &AppConfig,
-) -> Result<Option<crate::defaultspack_authority::ApplicationAuthority>> {
-    if !crate::defaultspack_authority::has_verified_active_profile(config)
-        .context("failed to inspect durable active Profile authority")?
-    {
-        return Ok(None);
-    }
-    match crate::defaultspack_authority::resolve(config) {
-        Ok(authority) => Ok(Some(authority)),
-        Err(error) if requires_setup_reconfirmation(&error) => {
-            // The Python Host must verify and reconfirm the successor before
-            // publishing any active execution identity or contributions.
-            Ok(None)
-        }
-        Err(error) => Err(error).context("failed to resolve durable active Application authority"),
-    }
-}
-
 fn requires_setup_reconfirmation(error: &anyhow::Error) -> bool {
     error
         .downcast_ref::<crate::defaultspack_authority::ShellReconfirmationRequired>()
@@ -120,7 +101,30 @@ pub(crate) fn write_kernel_host_contract(
     config: &AppConfig,
     bootstrap_secret: &str,
 ) -> Result<PathBuf> {
-    match verified_active_application_authority(config)? {
+    write_kernel_launch_contract(config, bootstrap_secret).map(|(path, _)| path)
+}
+
+/// Inspect the durable Profile once for both the contract and first-Setup choice.
+fn write_kernel_launch_contract(
+    config: &AppConfig,
+    bootstrap_secret: &str,
+) -> Result<(PathBuf, bool)> {
+    let has_active = crate::defaultspack_authority::has_verified_active_profile(config)
+        .context("failed to inspect durable active Profile authority")?;
+    let authority = if has_active {
+        match crate::defaultspack_authority::resolve(config) {
+            Ok(authority) => Some(authority),
+            // Reconfirmation uses the bootstrap contract without being a
+            // first Setup. The verified active pointer still exists.
+            Err(error) if requires_setup_reconfirmation(&error) => None,
+            Err(error) => {
+                return Err(error).context("failed to resolve durable active Application authority")
+            }
+        }
+    } else {
+        None
+    };
+    let path = match authority {
         Some(authority) => {
             let identity = authority
                 .execution_identity()
@@ -150,6 +154,36 @@ pub(crate) fn write_kernel_host_contract(
             [("panel_bootstrap_secret", bootstrap_secret.to_owned())],
         )
         .context("failed to publish the bootstrap-only Host contract"),
+    }?;
+    Ok((path, !has_active))
+}
+
+/// A single attested Kernel generation admitted to native first Setup.
+#[cfg(feature = "native-harness-bootstrap")]
+#[derive(Clone)]
+pub(crate) struct NativeSetupLaunch {
+    #[cfg(all(
+        target_os = "macos",
+        feature = "native-harness-bootstrap",
+        feature = "native-setup-review"
+    ))]
+    generation: u64,
+    live: Arc<AtomicBool>,
+}
+
+#[cfg(feature = "native-harness-bootstrap")]
+impl NativeSetupLaunch {
+    #[cfg(all(
+        target_os = "macos",
+        feature = "native-harness-bootstrap",
+        feature = "native-setup-review"
+    ))]
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub(crate) fn is_live(&self) -> bool {
+        self.live.load(Ordering::Acquire)
     }
 }
 
@@ -207,6 +241,7 @@ pub struct KernelManager {
     /// Monotonically increasing successful-start generation used to fence
     /// background work from a Kernel process that has since restarted.
     launch_generation: u64,
+    native_setup_launch: Option<Arc<AtomicBool>>,
 }
 
 impl KernelManager {
@@ -220,6 +255,7 @@ impl KernelManager {
             restart_owed: false,
             restart_start_failures: 0,
             launch_generation: 0,
+            native_setup_launch: None,
         }
     }
 
@@ -280,15 +316,27 @@ impl KernelManager {
         );
 
         let dev_environment = cfg!(debug_assertions) || self.config.is_dev_workspace();
-        let host_contract_path =
-            write_kernel_host_contract(&self.config, &self.panel_bootstrap_secret)?;
+        let (host_contract_path, fresh_setup) =
+            write_kernel_launch_contract(&self.config, &self.panel_bootstrap_secret)?;
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        let native_first_setup = fresh_setup && native_first_setup_enabled(&self.config);
+        #[cfg(not(all(target_os = "macos", feature = "native-first-setup")))]
+        let native_first_setup = {
+            let _ = fresh_setup;
+            false
+        };
+        let setup_role_arguments = if native_first_setup {
+            crate::python_env::RoleArguments::kernel_native_first_setup()
+        } else {
+            crate::python_env::RoleArguments::default()
+        };
         let next_launch_generation = self.next_launch_generation()?;
 
         let kernel_log_for_spawn = std::sync::Arc::clone(&kernel_log);
         let child = crate::python_env::spawn_python_role(
             &self.config,
             crate::python_env::PythonRole::Kernel,
-            crate::python_env::RoleArguments::default(),
+            setup_role_arguments,
             |command| {
                 // The bounded drain attaches at spawn time inside
                 // `spawn_python_role`, so bootstrap output is consumed before
@@ -357,6 +405,7 @@ impl KernelManager {
         info!("Kernel started (pid {})", child.id());
         self.child = Some(child);
         self.launch_generation = next_launch_generation;
+        self.native_setup_launch = native_first_setup.then(|| Arc::new(AtomicBool::new(true)));
         self.last_exit_code = None;
         self.restart_owed = false;
         self.restart_start_failures = 0;
@@ -399,6 +448,32 @@ impl KernelManager {
     /// this Launcher process and therefore has no managed child handle.
     pub(crate) fn is_current_launch_generation(&mut self, generation: u64) -> bool {
         self.launch_generation == generation && (generation == 0 || self.is_running())
+    }
+
+    #[cfg(all(
+        target_os = "macos",
+        feature = "native-harness-bootstrap",
+        feature = "native-setup-review"
+    ))]
+    pub(crate) fn native_setup_launch(&mut self) -> Option<NativeSetupLaunch> {
+        let generation = self.launch_generation;
+        let launch = NativeSetupLaunch {
+            generation,
+            live: self.native_setup_launch.clone()?,
+        };
+        (generation != 0 && launch.is_live() && self.is_current_launch_generation(generation))
+            .then_some(launch)
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn requires_native_setup(&self) -> bool {
+        self.native_setup_launch.is_some()
+    }
+
+    fn retire_native_setup_launch(&self) {
+        if let Some(live) = &self.native_setup_launch {
+            live.store(false, Ordering::Release);
+        }
     }
 
     pub fn current_pid(&self) -> Option<u32> {
@@ -446,6 +521,7 @@ impl KernelManager {
 
     /// Stop the Kernel process.
     pub fn stop(&mut self) -> Result<()> {
+        self.retire_native_setup_launch();
         let child = match self.child.as_mut() {
             Some(c) => c,
             None => {
@@ -526,6 +602,7 @@ impl KernelManager {
             let code = status.code().unwrap_or(-1);
             self.last_exit_code = Some(code);
             self.child = None;
+            self.retire_native_setup_launch();
         }
 
         let restart = match self.last_exit_code.take() {
@@ -569,11 +646,13 @@ impl KernelManager {
                 Ok(Some(status)) => {
                     self.last_exit_code = status.code();
                     self.child = None;
+                    self.retire_native_setup_launch();
                     false
                 }
                 Ok(None) => true,
                 Err(e) => {
                     error!("try_wait error: {e}");
+                    self.retire_native_setup_launch();
                     false
                 }
             },
@@ -593,6 +672,28 @@ impl KernelManager {
             crate::shutdown_budget::KERNEL_GRACE,
         )
     }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) fn native_first_setup_enabled(config: &AppConfig) -> bool {
+    !config.is_dev_workspace()
+        && crate::native_harness_bootstrap::native_first_setup_component_bound()
+}
+
+#[cfg(all(
+    target_os = "macos",
+    feature = "native-setup-review",
+    feature = "native-harness-bootstrap"
+))]
+pub(crate) fn verify_native_setup_listener(
+    launch: &NativeSetupLaunch,
+    pid: u32,
+    port: u16,
+) -> Result<()> {
+    if detect_port_listener(port)?.is_some_and(|listener| listener.pid == pid) && launch.is_live() {
+        return Ok(());
+    }
+    bail!("the listening Tobkiri Kernel is not the attested Setup launch");
 }
 
 pub(crate) fn detect_port_listener(port: u16) -> Result<Option<PortListener>> {
@@ -1374,7 +1475,10 @@ mod tests {
     fn no_active_profile_publishes_only_a_distinct_bootstrap_contract() {
         let (root, config) = temporary_packaged_config("kernel-bootstrap-contract");
 
-        write_kernel_host_contract(&config, "bootstrap-secret").unwrap();
+        let (path, fresh_setup) =
+            write_kernel_launch_contract(&config, "bootstrap-secret").unwrap();
+        assert!(fresh_setup);
+        assert_eq!(path, crate::host_contract::contract_path(&config));
 
         let contract: serde_json::Value = serde_json::from_slice(
             &fs::read(crate::host_contract::contract_path(&config)).unwrap(),
@@ -1603,10 +1707,28 @@ mod tests {
         let child = command.spawn().unwrap();
         let pid = child.id();
         kernel.child = Some(crate::python_env::PythonChild::development(child));
+        let live = Arc::new(AtomicBool::new(true));
+        kernel.native_setup_launch = Some(live.clone());
+        #[cfg(all(
+            target_os = "macos",
+            feature = "native-harness-bootstrap",
+            feature = "native-setup-review"
+        ))]
+        assert!(
+            kernel.native_setup_launch().is_none(),
+            "generation zero has no native Setup"
+        );
         kernel.launch_generation = 2;
+        #[cfg(all(
+            target_os = "macos",
+            feature = "native-harness-bootstrap",
+            feature = "native-setup-review"
+        ))]
+        assert_eq!(kernel.native_setup_launch().unwrap().generation(), 2);
 
         let stale = kernel.request_native_setup_restart(1);
         let retained = kernel.current_pid();
+        let retained_setup = live.load(Ordering::Acquire);
         let requested = kernel.request_native_setup_restart(2);
         if requested.is_err() {
             let _ = kernel.stop();
@@ -1614,7 +1736,9 @@ mod tests {
 
         assert!(stale.is_err());
         assert_eq!(retained, Some(pid));
+        assert!(retained_setup);
         requested.unwrap();
+        assert!(!live.load(Ordering::Acquire));
         assert!(kernel.current_pid().is_none());
         assert_eq!(kernel.launch_generation(), 2);
         assert!(kernel.wait_and_handle_restart().unwrap());
