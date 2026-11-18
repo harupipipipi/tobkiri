@@ -325,10 +325,9 @@ test('Settings manages runtime target updates through the v4 host API', async ()
       autoUpdateSwitch.click();
     });
     await flush();
-    const settingsPost = requests.find(
-      (r) => r.method === 'POST' && r.path === '/api/v4/updates/settings'
-        && (r.body?.auto_update as Record<string, boolean> | undefined)?.tobkiri === true,
-    );
+    const settingsPost = requests.filter(
+      (r) => r.method === 'POST' && r.path === '/api/v4/updates/settings',
+    ).at(-1);
     assert.deepEqual(settingsPost?.body, {auto_update: {tobkiri: true}});
 
     // Apply is offered only for targets with an available update.

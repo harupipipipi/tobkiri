@@ -24,6 +24,12 @@ import {
   selectPresentation,
 } from '@/src/lib/desktopHost';
 import {fetchNamedProfiles, reconcileDefaultsRuntime} from '@/src/lib/hostClient';
+import {
+  fetchDesktopSetupRoute,
+  nativeSetupRejectionMessage,
+  startNativeSetupReview,
+  type DesktopSetupRoute,
+} from '@/src/lib/nativeSetup';
 import {refreshMountedRuntimeSurfaces} from '@/src/lib/runtimeSurfaceRefresh';
 import type {ApiPresentationSelection, ApiPresentationState} from '@/src/lib/apiTypes';
 import {
@@ -53,6 +59,12 @@ export function Setup() {
   const [includeSourceAdditions, setIncludeSourceAdditions] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const reviewGeneration = useRef(0);
+  const [desktopSetupRoute, setDesktopSetupRoute] = useState<DesktopSetupRoute | null>(null);
+  const [routeAttempt, setRouteAttempt] = useState(0);
+  const [nativeReviewPending, setNativeReviewPending] = useState(false);
+  const [nativeReviewFailed, setNativeReviewFailed] = useState(false);
+  const attemptedNativeReview = useRef<number | undefined>(undefined);
+  const mounted = useRef(false);
   const [activating, setActivating] = useState(false);
   const [activationPhase, setActivationPhase] = useState<'idle' | 'submitting' | 'verifying' | 'reconciling'>('idle');
   const [activationCommitted, setActivationCommitted] = useState(false);
@@ -76,6 +88,7 @@ export function Setup() {
   const handoverInFlightRef = useRef(false);
   const profileReconfirmationRequired = runtimeStatus === 'profile_reconfirmation_required';
   const desktopShell = isDesktopShellAvailable();
+  const setupRoute = desktopShell ? desktopSetupRoute : 'legacy';
   const handoverEligible = desktopShell
     && setup?.state === 'review_required'
     && !activationCommitted
@@ -91,6 +104,26 @@ export function Setup() {
   const activationAllowed = !desktopShell
     || profileRegistryActive === true
     || (profileRegistryActive === false && handoverChoiceComplete && !handoverBusy);
+  const nativeSlotGeneration = setupRoute === 'native'
+    && setup?.state === 'review_required' && !reviewLoading && !handoverBusy
+    && !activating && !activationCommitted
+    && (nativeReviewPending || (activationAllowed && !profileReconfirmationRequired))
+    ? reviewGeneration.current : undefined;
+  const setupControlsLocked = activating || nativeReviewPending || activationCommitted;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!desktopShell) return;
+    let live = true;
+    void fetchDesktopSetupRoute().then((route) => {
+      if (live) setDesktopSetupRoute(route);
+    });
+    return () => { live = false; };
+  }, [desktopShell, routeAttempt]);
 
   const completeBrowserSetup = useCallback(() => {
     setSetupDone(true);
@@ -158,11 +191,13 @@ export function Setup() {
   }, [completeBrowserSetup, desktopShell, loadPresentation]);
 
   const reloadSetupAuthority = () => {
+    if (activationInFlightRef.current || handoverInFlightRef.current) return;
     const generation = ++reviewGeneration.current;
     setSetup(null);
     setReviewed(false);
     setIncludeSourceAdditions(false);
     setSetupError(null);
+    setNativeReviewFailed(false);
     setProfileRegistryError(null);
     setReviewLoading(true);
     void Promise.all([fetchDefaultsSetupState(), fetchNamedProfiles()])
@@ -170,7 +205,10 @@ export function Setup() {
         if (generation !== reviewGeneration.current) return;
         setSetup(nextSetup);
         setProfileRegistryActive(registry.active_profile_id !== null);
-        if (nextSetup.state === 'active') setActivationCommitted(true);
+        if (nextSetup.state === 'active') {
+          setActivationCommitted(true);
+          void loadPresentation();
+        }
       })
       .catch((error) => {
         if (generation === reviewGeneration.current) {
@@ -300,9 +338,10 @@ export function Setup() {
     if (failure) addToast(failure, 'error');
   }, [addToast, completeBrowserSetup, desktopShell, loadPresentation]);
 
-  const recoverActivation = useCallback(async () => {
+  const recoverActivation = useCallback(async (activationCommitted: boolean) => {
     if (activationInFlightRef.current || handoverInFlightRef.current) return;
     activationInFlightRef.current = true;
+    if (activationCommitted) setActivationCommitted(true);
     setActivating(true);
     setActivationPhase('verifying');
     setSetupError(null);
@@ -310,18 +349,46 @@ export function Setup() {
       const result = await recoverDefaultsActivation({
         fetchAuthoritativeSetup: (remainingMs) => fetchDefaultsSetupState({waitForRestart: true, timeoutMs: remainingMs}),
         reconcileActiveRuntime,
-        onActiveStateVerified: () => setActivationPhase('reconciling'),
+        onActiveStateVerified: () => {
+          if (mounted.current) setActivationPhase('reconciling');
+        },
       }, {committedActivation: activationCommitted});
-      await applyRecoveryResult(result);
+      if (mounted.current) await applyRecoveryResult(result);
     } finally {
       activationInFlightRef.current = false;
-      setActivating(false);
-      setActivationPhase('idle');
+      if (mounted.current) {
+        setActivating(false);
+        setActivationPhase('idle');
+      }
     }
-  }, [activationCommitted, applyRecoveryResult, reconcileActiveRuntime]);
+  }, [applyRecoveryResult, reconcileActiveRuntime]);
+
+  useEffect(() => {
+    if (nativeSlotGeneration === undefined || nativeSlotGeneration !== reviewGeneration.current
+      || attemptedNativeReview.current === nativeSlotGeneration
+      || activationInFlightRef.current || handoverInFlightRef.current) return;
+    // Keep the anchor mounted throughout the isolated review. The shared lock
+    // also fences handover or proposal changes before React updates controls.
+    attemptedNativeReview.current = nativeSlotGeneration;
+    activationInFlightRef.current = true;
+    setNativeReviewPending(true);
+    void startNativeSetupReview().then((result) => {
+      if (!mounted.current) return;
+      activationInFlightRef.current = false;
+      setNativeReviewPending(false);
+      if (result.state === 'published' || result.state === 'verification_required') {
+        void recoverActivation(true);
+      } else if (nativeSlotGeneration === reviewGeneration.current) {
+        setNativeReviewFailed(true);
+        setSetupError(result.state === 'rejected'
+          ? nativeSetupRejectionMessage(result.response)
+          : 'The desktop Setup review is unavailable.');
+      }
+    });
+  }, [nativeSlotGeneration, recoverActivation]);
 
   const activate = async () => {
-    if (handoverInFlightRef.current || !activationAllowed
+    if (setupRoute !== 'legacy' || handoverInFlightRef.current || !activationAllowed
       || activationCommitted || !setup || setup.state !== 'review_required' || !reviewed) return;
     if (activationInFlightRef.current) return;
     activationInFlightRef.current = true;
@@ -397,7 +464,7 @@ export function Setup() {
           <p className="min-w-0 flex-1 break-words">{reconciliationError}</p>
           <CopyErrorButton label="Copy runtime reconciliation error" text={reconciliationError} />
         </div>
-        <div className="mt-4"><Button variant="outline" onClick={() => void recoverActivation()} loading={activating}>Retry runtime reconciliation</Button></div>
+        <div className="mt-4"><Button variant="outline" onClick={() => void recoverActivation(activationCommitted)} loading={activating}>Retry runtime reconciliation</Button></div>
       </div> : presentationLoading ? <div role="status" aria-busy="true" className="flex items-center gap-2 rounded-xl border border-border bg-bg-card p-6 text-sm text-text-muted">
         <TobkiriLoadingMark />
         Loading selected presentation…
@@ -433,7 +500,14 @@ export function Setup() {
     <Header />
     {desktopShell && profileRegistryError && <div role="alert" className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
       <p>{profileRegistryError}</p>
-      <Button className="mt-3" variant="outline" disabled={reviewLoading || activating} onClick={reloadSetupAuthority}>Retry Host Profile verification</Button>
+      <Button className="mt-3" variant="outline" disabled={reviewLoading || setupControlsLocked} onClick={reloadSetupAuthority}>Retry Host Profile verification</Button>
+    </div>}
+    {setupRoute === 'unavailable' && !activationCommitted && <div role="alert" className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+      <p>The desktop Setup route could not be verified.</p>
+      <Button className="mt-3" variant="outline" onClick={() => {
+        setDesktopSetupRoute(null);
+        setRouteAttempt((attempt) => attempt + 1);
+      }}>Check desktop Setup again</Button>
     </div>}
     {activating && <p role="status" className="mb-4 rounded-lg border border-border bg-bg-card p-4 text-sm text-text-muted">
       {activationPhase === 'reconciling'
@@ -443,7 +517,7 @@ export function Setup() {
           : 'Submitting the reviewed Harness Profile…'}
     </p>}
     {profileReconfirmationRequired && !activationCommitted && <label className="mb-6 flex items-start gap-3 rounded-xl border border-border p-4 text-sm text-text-main">
-      <input type="checkbox" checked={includeSourceAdditions} disabled={activating || reviewLoading}
+      <input type="checkbox" checked={includeSourceAdditions} disabled={setupControlsLocked || reviewLoading}
         onChange={(event) => void changeSourceAdditions(event.target.checked)} />
       <span>Include new bundled Profile Packs and operation bindings in this review.
         Existing selections and settings are retained. Review the updated details below before activating.</span>
@@ -452,19 +526,19 @@ export function Setup() {
       <h2 className="font-medium text-text-main">Choose how to start this Profile</h2>
       <p className="mt-2 text-sm text-text-muted">Choose before activation. Activating a Profile prevents importing data from a previous development Host.</p>
       <label className="mt-4 flex items-start gap-3 text-sm text-text-main">
-        <input type="radio" name="setup-handover-choice" checked={handoverChoice === 'fresh'} disabled={activating || handoverBusy || handoverAttempted || profileRegistryActive !== false || reviewLoading}
+        <input type="radio" name="setup-handover-choice" checked={handoverChoice === 'fresh'} disabled={setupControlsLocked || handoverBusy || handoverAttempted || profileRegistryActive !== false || reviewLoading}
           onChange={() => { if (!activationInFlightRef.current) { setHandoverFlowStarted(true); setHandoverChoice('fresh'); } }} />
         <span>Start fresh without importing previous Host data.</span>
       </label>
       <label className="mt-3 flex items-start gap-3 text-sm text-text-main">
-        <input type="radio" name="setup-handover-choice" checked={handoverChoice === 'migrate'} disabled={activating || handoverBusy || profileRegistryActive !== false || reviewLoading}
+        <input type="radio" name="setup-handover-choice" checked={handoverChoice === 'migrate'} disabled={setupControlsLocked || handoverBusy || profileRegistryActive !== false || reviewLoading}
           onChange={() => { if (!activationInFlightRef.current) { setHandoverFlowStarted(true); setHandoverChoice('migrate'); setReviewed(false); } }} />
         <span>Review and migrate data from a previous development Host first.</span>
       </label>
       {handoverChoice === 'migrate' && <div className="mt-4">
         <DevelopmentHostHandover
-          disabled={activating || activationCommitted || profileRegistryActive !== false || reviewLoading}
-          recoveryDisabled={activating || activationCommitted}
+          disabled={setupControlsLocked || profileRegistryActive !== false || reviewLoading}
+          recoveryDisabled={setupControlsLocked}
           isBlocked={(recover) => activationInFlightRef.current || activationCommitted
             || (!recover && (profileRegistryActive !== false || reviewLoading))}
           onBusyChange={handleHandoverBusyChange}
@@ -474,9 +548,7 @@ export function Setup() {
       </div>}
     </section>}
     <DefaultsReview
-      nativeSlotGeneration={desktopShell && setup?.state === 'review_required'
-        && !reviewLoading && !handoverBusy && !activating && !activationCommitted
-        ? reviewGeneration.current : undefined}
+      nativeSlotGeneration={nativeSlotGeneration}
       setup={setup}
       reviewed={reviewed}
       activating={activating}
@@ -487,10 +559,14 @@ export function Setup() {
       activationBlockedMessage={showHandoverChoice
         ? 'Choose to start fresh or review the previous Host migration before activation.'
         : undefined}
-      onRecover={() => void recoverActivation()}
-      onReviewedChange={setReviewed}
-      onActivate={() => void activate()}
+      onRecover={() => void recoverActivation(activationCommitted)}
+      onReviewedChange={setupRoute === 'legacy' ? setReviewed : undefined}
+      onActivate={setupRoute === 'legacy' ? () => void activate() : undefined}
     />
+    {nativeReviewFailed && !activationCommitted && <div className="mt-4">
+      <Button variant="outline" disabled={reviewLoading || setupControlsLocked || handoverBusy}
+        onClick={reloadSetupAuthority}>Refresh desktop Setup review</Button>
+    </div>}
   </div></div>;
 }
 

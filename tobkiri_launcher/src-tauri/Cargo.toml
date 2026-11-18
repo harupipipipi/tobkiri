@@ -38,7 +38,7 @@ tobkiri-gate = { path = "../../crates/tobkiri-gate", optional = true }
 tobkiri-harness-native = { path = "../harness-native", optional = true }
 tobkiri-wasm = { path = "../../crates/tobkiri-wasm", optional = true }
 async-trait = { version = "=0.1.92", optional = true }
-tokio = { version = "=1.53.3", features = ["sync", "time"], optional = true }
+tokio = { version = "=1.53.3", features = ["macros", "sync", "time"], optional = true }
 ulid = { version = "=1.2.1", optional = true }
 tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-dialog = "2.7.2"

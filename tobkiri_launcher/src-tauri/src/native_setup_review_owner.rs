@@ -12,8 +12,10 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tauri::Manager;
 
 const UI_HANDOFF_TIMEOUT: Duration = Duration::from_secs(2);
+const LAYOUT_REFRESH_INTERVAL: Duration = Duration::from_millis(200);
 
 /// Bind to a native-selected parent once. A worker result cannot name a window
 /// or reach the parent page's scripting bridge.
@@ -159,7 +161,53 @@ impl SetupReviewOwner {
     ) -> Result<SetupReviewConfirmation, SetupReviewOwnerError> {
         let (reply, wait) = tokio::sync::oneshot::channel();
         self.present(listing, reply).await?;
-        wait.await.map_err(|_| SetupReviewOwnerError::Retired)
+        let result = tokio::select! {
+            gesture = wait => gesture.map_err(|_| SetupReviewOwnerError::Retired),
+            error = self.watch_layout() => Err(error),
+        };
+        let state = self.window_state.clone();
+        let generation = self.generation;
+        let _ = self.window.app_handle().run_on_main_thread(move || {
+            if let Some(mtm) = MainThreadMarker::new() {
+                if state.0.get(mtm).borrow().generation == generation {
+                    state.retire(mtm);
+                }
+            }
+        });
+        result
+    }
+
+    async fn watch_layout(&self) -> SetupReviewOwnerError {
+        use SetupReviewOwnerError::{Retired, Schedule, TimedOut};
+
+        loop {
+            tokio::time::sleep(LAYOUT_REFRESH_INTERVAL).await;
+            let (reply, wait) = tokio::sync::oneshot::channel();
+            let state = self.window_state.clone();
+            let generation = self.generation;
+            if let Err(error) = self.window.app_handle().run_on_main_thread(move || {
+                if reply.is_closed() {
+                    return;
+                }
+                let current = MainThreadMarker::new().is_some_and(|mtm| {
+                    if state.0.get(mtm).borrow().generation != generation {
+                        return false;
+                    }
+                    state.refresh(mtm);
+                    true
+                });
+                let _ = reply.send(current);
+            }) {
+                return Schedule(error);
+            }
+            // Await each main-thread callback so a stalled window cannot
+            // accumulate refresh requests. Only the gesture can confirm.
+            match tokio::time::timeout(UI_HANDOFF_TIMEOUT, wait).await {
+                Ok(Ok(true)) => {}
+                Ok(_) => return Retired,
+                Err(_) => return TimedOut,
+            }
+        }
     }
 
     async fn present(

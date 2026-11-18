@@ -29,10 +29,13 @@ on:
       - 'tobkiri_launcher/frontend/src/lib/defaultsSetup*.ts'
       - 'tobkiri_launcher/frontend/src/lib/measureSetupReviewSlot*'
       - 'tobkiri_launcher/frontend/src/lib/nativeSetupConfirmation*'
+      - 'tobkiri_launcher/frontend/src/lib/nativeSetup.ts'
       - 'tobkiri_launcher/frontend/src/pages/Defaults*Review*.tsx'
       - 'tobkiri_launcher/frontend/src/pages/DefaultsConfirmationDetails.tsx'
       - 'tobkiri_launcher/frontend/src/pages/NativeSetupReview.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Setup.test.tsx'
+      - 'tobkiri_launcher/frontend/src/pages/Setup.handover.test.tsx'
+      - 'tobkiri_launcher/frontend/src/pages/Setup.sourceAdditions.test.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Setup.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Settings.tsx'
       - 'tobkiri_launcher/frontend/src/pages/Settings.test.tsx'
@@ -100,6 +103,7 @@ jobs:
           node --import tsx --test
           src/lib/defaultsSetup.test.ts src/lib/measureSetupReviewSlot.test.mjs
           src/lib/nativeSetupConfirmation.test.mjs src/pages/Setup.test.tsx
+          src/pages/Setup.handover.test.tsx src/pages/Setup.sourceAdditions.test.tsx
           src/pages/DefaultsReview.successor.test.tsx
           src/pages/DefaultsReview.packVersions.test.tsx
           src/pages/Settings.test.tsx
