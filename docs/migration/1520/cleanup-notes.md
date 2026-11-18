@@ -4488,6 +4488,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   invocationでRustの読取りを開始する。検証済み原文を序数付きで渡し、正規の
   `BundledCatalog` を構築して全行の消費を確認する。resolverに必要なShell・Pack pin・
   選択ルートの情報を同じ検証から保持し、照合用にファイルを余分に開かない。
+  [grouped版の実Wasm計測 44328024810](https://github.com/harupipipipi/tobkiri/actions/runs/44328024810)
+  は先行拒否5件が原本と一致した。読取りに進んだ4件は97・104・97・104文書で燃料を
+  使い切り、pin再読前で止まった。単独の正常系は99文書、復旧系は97文書に到達。正常系の
+  先頭27文書では同じ読取り区間が525,785,909から343,533,608 fuelに減った。9件とも期限内、
+  最大計上量59,498,497 Bで、退役後は0 B・0予約。正常系の終端ではCPythonのJSON復号に
+  燃料を使っていた。
+  `e79363f72` は `catalog-app-frame` のSetup検証で、選択した目録を同一呼び出しのRustから
+  読み、既存の `load_catalog` 内で順に渡す。ゲストは入手した原文から同じ種類別辞書を組み立て、
+  全行の受領後に完了を返す。この時点で同じロックと原文からresolver用の入力を保持する。
+  公開時の独立したロック再読と呼び出しの上限を維持した。物理fixtureでは305文書と148 pin、
+  読取り後に文書を取り除いても保持済み原文で完了すること、順序違反と未完了を拒否することを
+  確認した。固定原本との模擬応答比較では順序と辞書内容が一致。Rust 256件、カタログCI
+  ラッパー16件、strict Clippy、固定CPython 265件、producer 345件、CIスクリプト14件が通過。
+  OSエラーと単独CanonicalizationErrorは原本のcause/contextの同一性を維持する。入れ子の
+  ロック例外、一部の原本が受理するbindings、4MiB応答に収まらない単一文書は扱いが残る。
+  `adopt_owned_bundle` では保持したPackをpin用にもう一度パースする。独立した148件の物理再読と
+  候補ごとの保持条件を維持したうえで、検証中に抽出したpin情報を採用時に移すと重複処理を減らせる。
+  配布版Setupへの切替と、GUI承認・設定・会話の実機検証は後続。
   [定義CI 44320718878](https://github.com/harupipipipi/tobkiri/actions/runs/44320718878)
   は19件が通過後、旧期待件数18で失敗した。`b08f8c89d` で19に更新し、
   [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で
