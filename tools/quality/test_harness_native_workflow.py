@@ -344,6 +344,21 @@ class NativeWorkflowContracts(unittest.TestCase):
             self.native,
             "Run actual original Runtime.init Profile identity and opaque root getters",
         )
+        compiler_comparison = step(
+            self.native,
+            "Compare optimized host compiler on the same sealed component",
+        )
+        self.assertIn("inputs.verification == 'bootstrap-host-compiler'", compiler_comparison)
+        self.assertIn(
+            "profile.test.package.wasmtime-internal-cranelift.opt-level=2",
+            compiler_comparison,
+        )
+        test_name = (
+            "bootstrap_runtime::actual_ci::"
+            "actual_original_component_initializes_and_returns_original_profile_id"
+        )
+        self.assertIn(test_name, consumer)
+        self.assertIn(test_name, compiler_comparison)
         for override in (
             "NATIVE_SETUP_MEMORY_BYTES=",
             "NATIVE_SETUP_WALL=",
@@ -351,7 +366,8 @@ class NativeWorkflowContracts(unittest.TestCase):
             "--fuel",
             "--memory",
         ):
-            self.assertNotIn(override, consumer)
+            for actor in (consumer, compiler_comparison):
+                self.assertNotIn(override, actor)
 
     def test_preparation_cannot_start_a_fresh_clock_after_compilation(self) -> None:
         actual = (ROOT / "tobkiri_launcher/harness-native/src/bootstrap_actual_ci.rs").read_text(
