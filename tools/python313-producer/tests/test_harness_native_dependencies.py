@@ -3,6 +3,7 @@
 import ast
 import base64
 import hashlib
+import itertools
 import json
 from pathlib import Path
 import sys
@@ -24,6 +25,36 @@ from schema_probe.captured_loader import Tree  # noqa: E402
 
 def identity(raw):
     return {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+class CatalogWireDecoder(unittest.TestCase):
+    def test_staged_string_scan_preserves_json_rules_and_chunk_boundaries(self):
+        pack = HERE.parents[1] / "packs/local.ai-tool-bridge-ordered-python"
+        original = ModuleType("ordered_json")
+        exec(compile((pack / "ordered_json.py").read_bytes(), "<pinned-ordered-json>", "exec"),
+             original.__dict__)
+        derived = app_schema.derive_catalog_wire_decoder((pack / "ordered_json_v2.py").read_bytes())
+        codec = ModuleType("ordered_json_v2_app_catalog")
+        with patch.dict(sys.modules, ordered_json=original):
+            exec(compile(derived, "<app-catalog-wire>", "exec"), codec.__dict__)
+
+        alphabet = ('"', "\\", "A", "\n", "é", "😀")
+        for length in range(5):
+            for characters in itertools.product(alphabet, repeat=length):
+                text = "".join(characters)
+                self.assertEqual(
+                    codec._CATALOG_STRING_RUN.match(text).end(),
+                    original._STRING_RUN.match(text).end(),
+                )
+        original.STRING_CHUNK_SIZE = 7
+        for offset in range(7):
+            payload = "A" * (31 + offset) + '\\"line\n😀' + "x" * 33
+            frame = json.dumps({"payload": payload}, ensure_ascii=False)
+            self.assertEqual(codec.loads(frame), {"payload": payload})
+        for frame in ['{"payload":"' + "x" * 21 + '\n' + "x" * 21 + '"}',
+                      '{"payload":"\\ud800"}', '{"a":1,"a":2}']:
+            with self.assertRaises(original.OrderedJSONError):
+                codec.loads(frame)
 
 
 def fixture(root):
@@ -118,16 +149,20 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             changed = {path for path, raw in before.items() if (stage / path).read_bytes() != raw}
             self.assertEqual(changed, {"python/tobkiri_protocol/validation.py",
                                        "python/tobkiri_protocol/bundle_catalog.py",
+                                       "python/ordered_json_v2.py",
                                        "python/harness_native_source_index.py", "plan.json"})
             self.assertIn(b"from app_schema_provider import AppSchemaProvider as Draft202012Validator",
                           (stage / "python/tobkiri_protocol/validation.py").read_bytes())
             catalog = (stage / "python/tobkiri_protocol/bundle_catalog.py").read_bytes()
             self.assertIn(b"return cls._load_native_snapshot(root)", catalog)
+            self.assertIn(b'snapshot-byte-rows', catalog)
             self.assertIn(b"kind, value = path._read_catalog_entry(index)", catalog)
             self.assertIn(b"return path._read_catalog_pin_digest(index)", catalog)
             self.assertIn(b"document = json.loads(raw)", catalog)
             self.assertNotIn(b"_semantic_diagnostics", catalog)
             compile(catalog, "bundle_catalog.py", "exec")
+            self.assertIn(b"_CATALOG_STRING_RUN.match",
+                          (stage / "python/ordered_json_v2.py").read_bytes())
             self.assertFalse(metadata["original_source_files_unchanged"])
             self.assertFalse(metadata["app_schema_backend"]["validation_results_prepared"])
 
@@ -398,7 +433,7 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                             f"duplicate or missing pack identity: {pack_id!r}",
                         )
 
-    def test_derived_catalog_materializes_the_scoped_snapshot_in_lock_order(self):
+    def test_derived_catalog_materializes_snapshot_byte_rows_in_lock_order(self):
         repo = HERE.parents[1]
         runtime = repo / "tobkiri_runtime"
         source = runtime / "tobkiri_protocol/bundle_catalog.py"
@@ -427,16 +462,28 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                 "artifact_root": "/resolved/platform-artifacts",
                 "count": 6,
             }
-            first = {"kind": "snapshot-rows", "rows": [
-                ["pack", "z", '{"nested":{"z":-0,"a":"é"},"pack":{"id":"z"}}'],
-                ["base", "base", '{"pack_id":"base"}'],
-                ["shell", "shell", '{"provider_id":"shell"}'],
-            ]}
-            last = {"kind": "snapshot-rows", "rows": [
-                ["profile", "profile", '{"profile_id":"profile"}'],
-                ["executable_catalog", "a", '{"pack_id":"a"}'],
-                ["pack", "a", '{"pack":{"id":"a"}}'],
-            ]}
+            def byte_frame(raw: bytes) -> dict[str, str]:
+                return {"kind": "bytes", "value": base64.b64encode(raw).decode("ascii")}
+
+            def page(*rows: tuple[str, str, bytes]) -> dict:
+                return {
+                    "kind": "snapshot-byte-rows",
+                    "rows": [
+                        [kind, identity, byte_frame(raw)["value"]]
+                        for kind, identity, raw in rows
+                    ],
+                }
+
+            first = page(
+                ("pack", "z", '{"nested":{"z":-0,"a":"é"},"pack":{"id":"z"}}'.encode()),
+                ("base", "base", b'{"pack_id":"base"}'),
+                ("shell", "shell", b'{"provider_id":"shell"}'),
+            )
+            last = page(
+                ("profile", "profile", b'{"profile_id":"profile"}'),
+                ("executable_catalog", "a", b'{"pack_id":"a"}'),
+                ("pack", "a", b'{"pack":{"id":"a"}}'),
+            )
 
             def load(rows, *, decode_error=None):
                 scripted = [
@@ -470,8 +517,8 @@ class NativeHarnessDependencyTests(unittest.TestCase):
 
             catalog = load([
                 ("snapshot-open", [], opened),
-                ("snapshot-rows", [0], first),
-                ("snapshot-rows", [3], last),
+                ("snapshot-byte-rows", [0], first),
+                ("snapshot-byte-rows", [3], last),
                 ("snapshot-close", [6], {"kind": "unit"}),
             ])
             self.assertIs(type(catalog), module.BundledCatalog)
@@ -479,19 +526,17 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             self.assertEqual(list(catalog.packs["z"]), ["nested", "pack"])
             self.assertEqual(list(catalog.packs["z"]["nested"]), ["z", "a"])
             self.assertEqual(catalog.packs["z"]["nested"], {"z": 0, "a": "é"})
-            self.assertEqual(list(catalog.bases), ["base"])
-            self.assertEqual(list(catalog.shells), ["shell"])
-            self.assertEqual(list(catalog.profiles), ["profile"])
-            self.assertEqual(list(catalog.executable_catalogs), ["a"])
+            self.assertEqual(catalog.packs["a"], {"pack": {"id": "a"}})
+            self.assertEqual(catalog.bases, {"base": {"pack_id": "base"}})
+            self.assertEqual(catalog.shells, {"shell": {"provider_id": "shell"}})
+            self.assertEqual(catalog.profiles, {"profile": {"profile_id": "profile"}})
+            self.assertEqual(catalog.executable_catalogs, {"a": {"pack_id": "a"}})
             self.assertEqual(str(catalog.root), "/resolved/bundle")
             self.assertEqual(catalog.root._target(), {"binding": "root", "steps": []})
             self.assertEqual(str(catalog.artifact_root), "/resolved/platform-artifacts")
             self.assertEqual(catalog.artifact_root._target(), {
                 "binding": "root", "steps": [["parent", ""], ["join", "platform-artifacts"]],
             })
-
-            def byte_frame(raw: bytes) -> dict[str, str]:
-                return {"kind": "bytes", "value": base64.b64encode(raw).decode()}
 
             original_pack = runtime / (
                 "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
@@ -507,9 +552,9 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             self.assertLess(len(raw_frame["value"]), wire_max)
             with_bytes = load([
                 ("snapshot-open", [], {**opened, "count": 7}),
-                ("snapshot-rows", [0], first),
-                ("snapshot-rows", [3], raw_frame),
-                ("snapshot-rows", [4], last),
+                ("snapshot-byte-rows", [0], first),
+                ("snapshot-byte-rows", [3], raw_frame),
+                ("snapshot-byte-rows", [4], last),
                 ("snapshot-close", [7], {"kind": "unit"}),
             ])
             self.assertEqual(list(with_bytes.packs), ["z", "defaults-basepack", "a"])
@@ -528,15 +573,19 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                 with self.subTest(raw=raw), self.assertRaises(UnsupportedValue):
                     load([
                         ("snapshot-open", [], {**opened, "count": 4}),
-                        ("snapshot-rows", [0], first),
-                        ("snapshot-rows", [3], byte_frame(raw)),
+                        ("snapshot-byte-rows", [0], first),
+                        ("snapshot-byte-rows", [3], byte_frame(raw)),
                     ])
 
             for invalid in (
-                {"kind": "snapshot-rows", "rows": []},
+                page(),
                 first,
-                {"kind": "snapshot-rows", "rows": [["pack", "other", '{"pack":{"id":"z"}}']]},
-                {"kind": "snapshot-rows", "rows": [["pack", "z", "{"]]},
+                {"kind": "snapshot-rows", "rows": first["rows"][:1]},
+                page(("pack", "other", b'{"pack":{"id":"z"}}')),
+                page(("pack", "z", b"{")),
+                page(("pack", "z", b"[]")),
+                page(("pack", "z", b'{"pack":{"id":"z"},"invalid":"\xff"}')),
+                page(("pack", "z", '{"pack":{"id":"z"}}'.encode("utf-16"))),
             ):
                 with (
                     self.subTest(invalid=invalid),
@@ -544,12 +593,32 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                 ):
                     load([
                         ("snapshot-open", [], {**opened, "count": 1}),
-                        ("snapshot-rows", [0], invalid),
+                        ("snapshot-byte-rows", [0], invalid),
                     ])
+            for encoded in ("AA$=", "Y Q==", "YQ=", "YQ==YQ==", "é"):
+                with (
+                    self.subTest(encoded=encoded),
+                    self.assertRaisesRegex(UnsupportedValue, "invalid native byte result"),
+                ):
+                    load([
+                        ("snapshot-open", [], {**opened, "count": 2}),
+                        ("snapshot-byte-rows", [0], {
+                            "kind": "snapshot-byte-rows",
+                            "rows": [first["rows"][0], ["pack", "next", encoded]],
+                        }),
+                    ])
+            with self.assertRaisesRegex(UnsupportedValue, "snapshot identity"):
+                load([
+                    ("snapshot-open", [], {**opened, "count": 4}),
+                    ("snapshot-byte-rows", [0], first),
+                    ("snapshot-byte-rows", [3], {
+                        "kind": "snapshot-byte-rows", "rows": first["rows"][:1],
+                    }),
+                ])
             with self.assertRaises(UnsupportedValue):
                 load([
                     ("snapshot-open", [], {**opened, "count": 3}),
-                    ("snapshot-rows", [0], first),
+                    ("snapshot-byte-rows", [0], first),
                     ("snapshot-close", [3], {"kind": "unit", "unexpected": True}),
                 ])
 

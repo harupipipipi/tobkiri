@@ -218,7 +218,7 @@ async fn owned_catalog_delivery_adopts_only_a_consumed_snapshot() {
         );
         assert!(!io.completed());
         assert!(inspect(io, "snapshot-open", json!([])).is_err());
-        assert!(inspect(io, "snapshot-rows", json!([1])).is_err());
+        assert!(inspect(io, "snapshot-byte-rows", json!([1])).is_err());
         assert!(inspect(io, "snapshot-close", json!([rows.len()])).is_err());
 
         // Distribution and adoption must use the completed physical snapshot.
@@ -231,11 +231,11 @@ async fn owned_catalog_delivery_adopts_only_a_consumed_snapshot() {
                 source,
                 invocation,
                 budget,
-                "snapshot-rows",
+                "snapshot-byte-rows",
                 json!([]),
                 json!([offset]),
             );
-            assert_eq!(page["kind"], "snapshot-rows");
+            assert_eq!(page["kind"], "snapshot-byte-rows");
             let page = page["rows"].as_array().unwrap();
             assert!(!page.is_empty());
             for record in page {
@@ -252,7 +252,14 @@ async fn owned_catalog_delivery_adopts_only_a_consumed_snapshot() {
                 };
                 assert_eq!(record[0], kind);
                 assert_eq!(&record[1], id);
-                assert_eq!(record[2].as_str().unwrap().as_bytes(), expected);
+                assert_eq!(
+                    base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        record[2].as_str().unwrap(),
+                    )
+                    .unwrap(),
+                    expected
+                );
                 offset += 1;
             }
             pages += 1;
@@ -260,7 +267,7 @@ async fn owned_catalog_delivery_adopts_only_a_consumed_snapshot() {
         assert!(pages > 1);
         assert_eq!(offset, rows.len());
         assert!(!io.completed());
-        assert!(inspect(io, "snapshot-rows", json!([offset])).is_err());
+        assert!(inspect(io, "snapshot-byte-rows", json!([offset])).is_err());
         assert_eq!(
             call(
                 io,

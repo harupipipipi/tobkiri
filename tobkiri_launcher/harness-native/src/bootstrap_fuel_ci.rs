@@ -112,6 +112,7 @@ impl Samples {
             Some("read-pin-digest") => "read-pin-digest",
             Some("snapshot-open") => "snapshot-open",
             Some("snapshot-rows") => "snapshot-rows",
+            Some("snapshot-byte-rows") => "snapshot-byte-rows",
             Some("snapshot-close") => "snapshot-close",
             Some("snapshot-invalid-document-bytes") => "snapshot-invalid-document-bytes",
             Some("is-dir") => "is-dir",

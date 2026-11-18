@@ -109,10 +109,18 @@ impl CatalogIo {
                 write_bytes(&mut out, &bytes)?;
                 seal(op, out)
             }
-            ("snapshot-rows", Some(OwnedCatalogDelivery::Reading { bundle, next }))
-                if ordinal(args) == Some(*next) && *next < bundle.entry_count() =>
-            {
-                let emitted = write_rows(op, &mut out, bundle, *next, &self.budget)?;
+            (
+                "snapshot-rows" | "snapshot-byte-rows",
+                Some(OwnedCatalogDelivery::Reading { bundle, next }),
+            ) if ordinal(args) == Some(*next) && *next < bundle.entry_count() => {
+                let emitted = write_rows(
+                    op,
+                    &mut out,
+                    bundle,
+                    *next,
+                    operation == "snapshot-byte-rows",
+                    &self.budget,
+                )?;
                 let response = seal(op, out)?;
                 *next += emitted;
                 Ok(response)
@@ -241,9 +249,14 @@ fn write_rows<S: OriginalAuthorityOwner>(
     out: &mut CoreBufferBuilder,
     bundle: &NativeOwnedBundle,
     next: usize,
+    byte_rows: bool,
     budget: &Arc<dyn AllocationBudget>,
 ) -> anyhow::Result<usize> {
-    const ROWS_PREFIX: &[u8] = b"{\"kind\":\"snapshot-rows\",\"rows\":[";
+    let prefix: &[u8] = if byte_rows {
+        b"{\"kind\":\"snapshot-byte-rows\",\"rows\":["
+    } else {
+        b"{\"kind\":\"snapshot-rows\",\"rows\":["
+    };
     charge_work(budget, next as u64)?;
     let mut emitted = 0;
     for (kind, id, bytes) in bundle.entries().skip(next) {
@@ -253,20 +266,27 @@ fn write_rows<S: OriginalAuthorityOwner>(
             return Err(AllocationError::Limit.into());
         }
         // Include the result and response suffix and the page prefix or row comma.
-        let framing = out.len() + if first { ROWS_PREFIX.len() } else { 1 } + 3;
-        if !first && framing + bytes.len() > SOFT_FRAME_BYTES {
+        let framing = out.len() + if first { prefix.len() } else { 1 } + 3;
+        let content_minimum = if byte_rows {
+            4 * bytes.len().div_ceil(3)
+        } else {
+            bytes.len()
+        };
+        if !first && framing + content_minimum > SOFT_FRAME_BYTES {
             break;
         }
         let kind = label(kind);
         charge_work(budget, (kind.len() + id.len() + bytes.len()) as u64)?;
-        let text = std::str::from_utf8(bytes).map_err(|_| OriginalAuthorityError::unavailable())?;
-        let row_bytes = [kind, id, text]
-            .into_iter()
-            .try_fold(4usize, |total, value| {
-                total
-                    .checked_add(quoted_bytes(value)?)
-                    .ok_or(AllocationError::Limit)
-            })?;
+        let text = if byte_rows {
+            None
+        } else {
+            Some(std::str::from_utf8(bytes).map_err(|_| OriginalAuthorityError::unavailable())?)
+        };
+        let content_width = match text {
+            Some(text) => quoted_bytes(text)?,
+            None => content_minimum + 2,
+        };
+        let row_bytes = 4 + quoted_bytes(kind)? + quoted_bytes(id)? + content_width;
         let size = framing + row_bytes;
         if !first && size > SOFT_FRAME_BYTES {
             break;
@@ -278,14 +298,22 @@ fn write_rows<S: OriginalAuthorityOwner>(
             return Ok(1);
         }
         if first {
-            out.append(ROWS_PREFIX)?;
+            out.append(prefix)?;
         }
         out.append(if first { b"[" } else { b",[" })?;
         string_parts(out, [kind])?;
         out.append(b",")?;
         string_parts(out, [id])?;
         out.append(b",")?;
-        string_parts(out, [text])?;
+        if let Some(text) = text {
+            string_parts(out, [text])?;
+        } else {
+            // Preserve the verified UTF-8 bytes and avoid scanning escaped
+            // JSON strings twice on the guest's ordered wire decoder.
+            out.append(b"\"")?;
+            append_base64(out, bytes)?;
+            out.append(b"\"")?;
+        }
         out.append(b"]")?;
         emitted += 1;
     }

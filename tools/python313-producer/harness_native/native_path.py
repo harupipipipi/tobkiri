@@ -537,7 +537,7 @@ class NativePath:
             or bridge._catalog_snapshot_result is not None
             or operation not in {
                 "snapshot-open",
-                "snapshot-rows",
+                "snapshot-byte-rows",
                 "snapshot-close",
                 "snapshot-invalid-document-bytes",
             }

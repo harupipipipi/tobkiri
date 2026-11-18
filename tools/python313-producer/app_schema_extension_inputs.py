@@ -298,8 +298,9 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
         ordinal = 0
         count = opened["count"]
         while ordinal < count:
-            chunk = root._catalog_snapshot("snapshot-rows", [ordinal])
+            chunk = root._catalog_snapshot("snapshot-byte-rows", [ordinal])
             if chunk.get("kind") == "bytes":
+                # A large document can still arrive as an unlabelled single row.
                 raw = root._bridge._value(chunk, "bytes")
                 del chunk
                 kind, identity, document = cls._decode_snapshot_bytes(
@@ -313,7 +314,7 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
                 continue
             if (
                 set(chunk) != {"kind", "rows"}
-                or chunk["kind"] != "snapshot-rows"
+                or chunk["kind"] != "snapshot-byte-rows"
                 or type(chunk["rows"]) is not list
                 or not 0 < len(chunk["rows"]) <= count - ordinal
             ):
@@ -325,21 +326,18 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
                     or any(type(value) is not str for value in row)
                 ):
                     raise UnsupportedValue("invalid native catalog snapshot row")
-                kind, identity, text = row
+                kind, identity, encoded = row
                 if kind not in collections or identity in collections[kind]:
                     raise UnsupportedValue("invalid native catalog snapshot identity")
-                try:
-                    document = json.loads(text)
-                except json.JSONDecodeError:
-                    raise UnsupportedValue("invalid native catalog snapshot document") from None
-                if type(document) is not dict:
-                    raise UnsupportedValue("invalid native catalog snapshot document")
+                document = cls._parse_snapshot_document(
+                    root._bridge._value({"kind": "bytes", "value": encoded}, "bytes")
+                )
                 owner = document.get("pack") if kind == "pack" else document
                 if type(owner) is not dict or owner.get(identity_fields[kind]) != identity:
                     raise UnsupportedValue("native catalog snapshot identity differs")
                 collections[kind][identity] = document
             ordinal += len(chunk["rows"])
-            del chunk, row, text
+            del chunk, row, encoded
 
         catalog = cls(
             root=resolved,
@@ -354,17 +352,25 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
         return catalog
 
     @staticmethod
-    def _decode_snapshot_bytes(
-        raw: bytes, identity_fields: dict[str, str],
-    ) -> tuple[str, str, dict[str, Any]]:
+    def _parse_snapshot_document(raw: bytes) -> dict[str, Any]:
         from harness_native.value_graph import UnsupportedValue
 
         try:
-            document = json.loads(raw)
+            # The native snapshot already proved these exact UTF-8 bytes.
+            document = json.loads(raw.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise UnsupportedValue("invalid native catalog snapshot document") from None
         if type(document) is not dict:
             raise UnsupportedValue("invalid native catalog snapshot document")
+        return document
+
+    @classmethod
+    def _decode_snapshot_bytes(
+        cls, raw: bytes, identity_fields: dict[str, str],
+    ) -> tuple[str, str, dict[str, Any]]:
+        from harness_native.value_graph import UnsupportedValue
+
+        document = cls._parse_snapshot_document(raw)
 
         # Every supported snapshot schema requires its own version field and
         # disallows the other kinds' version fields at the document root.
@@ -396,6 +402,47 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
     return _replace_one(source, anchor, snapshot + anchor)
 
 
+def derive_catalog_wire_decoder(source: bytes) -> bytes:
+    """Keep v2 limits and JSON rules while scanning ordinary string runs."""
+    from bundle_catalog_kernel_inputs import _replace_one
+
+    source = _replace_one(source, b"import math\n", b"import math\nimport re\n")
+    source = _replace_one(
+        source,
+        b"OrderedJSONError = v1.OrderedJSONError\n",
+        rb'''OrderedJSONError = v1.OrderedJSONError
+# This matches the same maximal prefix as the v1 alternation.
+_CATALOG_STRING_RUN = re.compile(r'[^"\\]*(?:\\[\s\S][^"\\]*)*')
+''',
+    )
+    source = _replace_one(
+        source,
+        b"size += v1._utf8_size(chunk)\n",
+        b"size += len(chunk) if chunk.isascii() else v1._utf8_size(chunk)\n",
+    )
+    return _replace_one(
+        source,
+        b"""        position = 0
+        while position < len(chunk):
+            if in_string:
+                if escaped:
+                    position += 1
+                    escaped = False
+                match = v1._STRING_RUN.match(chunk, position)
+""",
+        rb'''        if in_string and not escaped and '"' not in chunk and '\\' not in chunk:
+            continue
+        position = 0
+        while position < len(chunk):
+            if in_string:
+                if escaped:
+                    position += 1
+                    escaped = False
+                match = _CATALOG_STRING_RUN.match(chunk, position)
+''',
+    )
+
+
 def derive_harness_sources(files: dict[str, bytes], *, catalog_shapes: bool = False) -> dict[str, bytes]:
     """Rebuild the native source index using exactly the derived runtime bytes."""
     from harness_native.schema_diagnostic_stage import _index_values, _source_index
@@ -416,7 +463,11 @@ def derive_harness_sources(files: dict[str, bytes], *, catalog_shapes: bool = Fa
         catalog = "tobkiri_protocol/bundle_catalog.py"
         changes[catalog] = derive_catalog_validation(files[catalog])
     runtime.update({"source-package/tobkiri_runtime/" + path: raw for path, raw in changes.items()})
-    return {**changes, index: _source_index(runtime)[0]}
+    result = {**changes, index: _source_index(runtime)[0]}
+    if catalog_shapes:
+        wire = "ordered_json_v2.py"
+        result[wire] = derive_catalog_wire_decoder(files[wire])
+    return result
 
 
 APP_PRELOAD = b'''if any(name == "jsonschema" or name.startswith("jsonschema.")
