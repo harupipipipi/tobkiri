@@ -4207,6 +4207,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ワークスペースからの照合済みの再読込に成功した。実Packのハッシュはこのテストでは
   専用の検証関数に置き換えてあり、実Launcherと発行処理への接続が残る。
   Rust 226件、原本データを含む追加の検証2件、strict Clippy、workflow補助22件が通過した。
+  `c09838e77` はShellの実ファイルの同一性取得、Packの指定と内容の照合、同一性の再検査を
+  既存復旧と初回activation用で共用した。初回の照合には、同じ再読込loaderが保持した
+  Pack pinと同梱Profileを渡す。先に同一性を記録し、別の5秒枠でPackを検証してから
+  再検査する。全段階で元の呼出期限も適用する。
+  実ファイルのテスト用Shellで、同梱Profileの指定が変わった場合と、内容が同じ別inode
+  へ照合後に置き換わった場合を拒否した。Rust 226件、Shell照合のCI相当5件、strict
+  Clippyが通過した。初回の入口はjournal・定義・workspace・最初のrecoverの後に
+  この検証を呼ぶ段階で接続する。検証済みの同一性は予約commitとpointer書込の前に再確認する。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
