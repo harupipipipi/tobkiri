@@ -244,10 +244,15 @@ jobs:
           export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
           export TOBKIRI_TEST_REGISTERED_OPENAI_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_openai_compat_provider.wasm"
           export TOBKIRI_TEST_SAVED_CONVERSATION_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_saved_conversation_rust.wasm"
+          status=0
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/registered-1b.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test model_registry -- --ignored --exact --nocapture \
-              registered_network::real_1b_saved_model_streams_through_admitted_ui
+              registered_network::real_1b_saved_model_streams_through_admitted_ui || status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 80 "$work/registered-server.log" >&2
+            exit "$status"
+          fi
       - name: Retain test receipt
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

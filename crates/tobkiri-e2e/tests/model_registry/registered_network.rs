@@ -454,7 +454,8 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
     const MODEL: &str = "gemma3-1b-local";
     const SELECTION: &str = "saved-gemma";
     const PROVIDER: &str = "gemma-loopback";
-    const CAP: u32 = 16;
+    // Keep this CPU-only probe within the provider fixture's 20-second budget.
+    const CAP: u32 = 6;
     let origin = std::env::var("TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN")
         .context("set TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN to the keyless llama.cpp origin")?;
     let address: SocketAddrV4 = origin
@@ -517,13 +518,7 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
         let reference = select_saved_model(&session, "gemma", 2).await?;
         ensure!(reference == SELECTION);
         let ui = admitted_ui(&session)?;
-        stream(
-            &session,
-            &ui,
-            &reference,
-            "Name two colors in a short sentence.",
-        )
-        .await
+        stream(&session, &ui, &reference, "Name a color.").await
     }
     .await;
     let closed = session.close().await;
