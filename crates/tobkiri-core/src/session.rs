@@ -842,6 +842,30 @@ impl Session {
         operation: OpName,
         args: &CanonValue,
     ) -> Result<tobkiri_canon::CoreBuffer, CoreError> {
+        self.call_user_port_inner(shape, operation, args, false)
+            .await
+    }
+
+    /// Invoke the same trusted User entry while retaining a native storage
+    /// failure observed as part of this exact invocation. Approvals, limits,
+    /// and terminal settlement are unchanged.
+    pub async fn call_user_port_with_storage_errors(
+        &self,
+        shape: ShapeRef,
+        operation: OpName,
+        args: &CanonValue,
+    ) -> Result<tobkiri_canon::CoreBuffer, CoreError> {
+        self.call_user_port_inner(shape, operation, args, true)
+            .await
+    }
+
+    async fn call_user_port_inner(
+        &self,
+        shape: ShapeRef,
+        operation: OpName,
+        args: &CanonValue,
+        preserve_storage_errors: bool,
+    ) -> Result<tobkiri_canon::CoreBuffer, CoreError> {
         self.ensure_started().await?;
         self.check_snapshot()?;
         let user_document = self.user_document.as_ref().ok_or_else(|| {
@@ -865,6 +889,11 @@ impl Session {
         let factory = self.execution_factory.as_ref().ok_or_else(|| {
             CoreError::Invalid("prepared User invocation is unavailable for this Session".into())
         })?;
+        let cx = if preserve_storage_errors {
+            cx.preserving_storage_errors()
+        } else {
+            cx
+        };
         let prepared = factory
             .prepare_user_invocation(&cx, &shape, &operation, user_document)
             .await?;

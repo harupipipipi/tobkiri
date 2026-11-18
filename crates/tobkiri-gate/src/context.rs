@@ -84,6 +84,7 @@ pub struct CallCx {
     limits: ResourceLimits,
     security_epoch: u64,
     interactive_approval: bool,
+    preserve_storage_errors: bool,
     revision: Option<Digest>,
     depth: u16,
     executing_pairs: std::sync::Arc<Vec<(PackId, PackHash)>>,
@@ -145,6 +146,7 @@ impl CallCx {
             limits,
             security_epoch: 0,
             interactive_approval: true,
+            preserve_storage_errors: false,
             revision: None,
             depth: 0,
             executing_pairs: std::sync::Arc::new(Vec::new()),
@@ -453,6 +455,7 @@ impl CallCx {
             limits,
             security_epoch: self.security_epoch,
             interactive_approval: self.interactive_approval,
+            preserve_storage_errors: self.preserve_storage_errors,
             revision: self.revision.clone(),
             depth: self.depth + 1,
             executing_pairs: self.executing_pairs.clone(),
@@ -621,6 +624,16 @@ impl CallCx {
     }
     pub fn without_interactive_approval(self) -> Self {
         self.with_interactive_approval(false)
+    }
+    /// Trusted callers can retain sealed native storage failures over a guest's
+    /// result. This flag does not grant an effect or renew an admission.
+    pub fn preserving_storage_errors(mut self) -> Self {
+        self.preserve_storage_errors = true;
+        self
+    }
+
+    pub fn preserves_storage_errors(&self) -> bool {
+        self.preserve_storage_errors
     }
     /// Core snapshots a policy epoch before dispatch. Guest code has no CallCx.
     pub fn with_security_epoch(mut self, epoch: u64) -> Self {

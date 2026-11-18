@@ -5,19 +5,34 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc, time::Duration};
 use support::registry::{PROVIDER_COMMIT, PROVIDER_CONFIGURATION as CONFIGURATION};
-use support::{Host, canon, physical_temp, registry};
-use tobkiri_core::{Core, CoreConfig, Session};
+use support::{Host, canon, physical_temp, registry, within_session};
+use tobkiri_core::{Core, CoreConfig, CoreError, Session};
+use tobkiri_gate::{EffectRequest, StoreOperation, StoreTier};
+use tobkiri_store::DataRoot;
 
 const PACK: &str = "local.provider-registry";
 const RESOURCE: &str = "local.provider-registry.resource@1.0";
 const MANAGE: &str = "local.provider-registry.manage@1.0";
 
+fn prepared_digest(plan: &Value) -> Result<String> {
+    Ok(tobkiri_canon::digest(&canon(plan)?, tobkiri_canon::Variant::StrictV1)?.to_string())
+}
+
 async fn call(session: &Session, shape: &str, operation: &str, arguments: Value) -> Result<Value> {
     let arguments = canon(&arguments)?;
-    let reply = tokio::time::timeout(
-        Duration::from_secs(30),
-        session.call_user_port(shape.parse()?, operation.parse()?, &arguments),
-    )
+    let shape_ref = shape.parse()?;
+    let operation_ref = operation.parse()?;
+    let reply = tokio::time::timeout(Duration::from_secs(30), async {
+        if shape == PROVIDER_COMMIT {
+            session
+                .call_user_port_with_storage_errors(shape_ref, operation_ref, &arguments)
+                .await
+        } else {
+            session
+                .call_user_port(shape_ref, operation_ref, &arguments)
+                .await
+        }
+    })
     .await
     .context("provider Registry operation timed out")?
     .with_context(|| format!("provider Registry {operation} failed"))?;
@@ -110,17 +125,15 @@ async fn verify_local_commit(
     profile_a: &str,
     profile_b: &str,
     request: Value,
+    data: &Path,
 ) -> Result<()> {
     let before_a = snapshot(sa, profile_a).await?;
     let before_b = snapshot(sb, profile_b).await?;
-    let digest_for = |plan: &Value| -> Result<String> {
-        Ok(tobkiri_canon::digest(&canon(plan)?, tobkiri_canon::Variant::StrictV1)?.to_string())
-    };
     let plan_a = call(sa, CONFIGURATION, "prepare-local", request.clone()).await?;
     let plan_b = call(sb, CONFIGURATION, "prepare-local", request.clone()).await?;
     ensure!(plan_a["expected_revision"] == plan_b["expected_revision"]);
-    let digest_a = digest_for(&plan_a)?;
-    let digest_b = digest_for(&plan_b)?;
+    let digest_a = prepared_digest(&plan_a)?;
+    let digest_b = prepared_digest(&plan_b)?;
     let args_a = json!({"request":request["request"],"plan-digest":digest_a});
     let args_b = json!({"request":request["request"],"plan-digest":digest_b});
     ensure!(
@@ -152,6 +165,9 @@ async fn verify_local_commit(
     ensure!(snapshot(sa, profile_a).await? == before_a);
     ensure!(snapshot(sb, profile_b).await? == before_b);
 
+    verify_pending_storage_move(sa, data, profile_a, &args_a).await?;
+    ensure!(snapshot(sa, profile_a).await? == before_a);
+
     let result = call(sa, PROVIDER_COMMIT, "execute-local", args_a.clone()).await?;
     ensure!(result == json!({"configured":true,"provider_instance_id":"provider.fixture"}));
     ensure!(
@@ -162,6 +178,109 @@ async fn verify_local_commit(
     let after = snapshot(sa, profile_a).await?;
     ensure!(after["revision"].as_u64() == before_a["revision"].as_u64().map(|r| r + 1));
     ensure!(snapshot(sb, profile_b).await? == before_b);
+    Ok(())
+}
+
+async fn verify_pending_storage_move(
+    session: &Session,
+    data: &Path,
+    profile: &str,
+    arguments: &Value,
+) -> Result<()> {
+    let catalog = data.join("profiles").join(profile).join("data/stores.meta");
+    let open_catalog = || {
+        rusqlite::Connection::open_with_flags(&catalog, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)
+    };
+    // The real Store fails closed when this isolated fixture's recovery
+    // journal is damaged. The component receives its normal WIT error.
+    open_catalog()?.execute(
+        "INSERT INTO data_moves(id, phase, body) VALUES (?1, 'prepared', x'00')",
+        ["0".repeat(64)],
+    )?;
+    let reported = call(session, PROVIDER_COMMIT, "execute-local", arguments.clone()).await;
+    let arguments = canon(arguments)?;
+    let ordinary = within_session(
+        session,
+        "ordinary commit with a damaged move journal",
+        session.call_user_port(
+            PROVIDER_COMMIT.parse()?,
+            "execute-local".parse()?,
+            &arguments,
+        ),
+    )
+    .await;
+    ensure!(open_catalog()?.execute("DELETE FROM data_moves WHERE id=?1", ["0".repeat(64)])? == 1);
+    let reported = reported.expect_err("damaged move journal blocked the actual commit");
+    ensure!(
+        matches!(reported.downcast_ref::<CoreError>(), Some(CoreError::Step(step))
+            if step.code == "storage-pending-data-move"
+                && step.message == "storage-pending-data-move: storage move requires explicit repair; do not replay"),
+        "{reported:#}"
+    );
+    ensure!(
+        matches!(ordinary, Err(CoreError::Step(step)) if step.code == "internal"),
+        "ordinary User calls keep the component's public error"
+    );
+    Ok(())
+}
+
+async fn verify_unknown_local_commit(
+    session: &Session,
+    data: &Path,
+    profile: &tobkiri_canon::ids::ProfileId,
+    previous_revision: u64,
+) -> Result<()> {
+    let request = local_request(&json!({
+        "connection_name":"unknown", "endpoint":"http://127.0.0.1:1234/v1"
+    }));
+    let plan = call(session, CONFIGURATION, "prepare-local", request.clone()).await?;
+    let arguments = json!({"request":request["request"],"plan-digest":prepared_digest(&plan)?});
+    let effect = EffectRequest::Storage {
+        profile: profile.clone(),
+        owner: PACK.parse()?,
+        store: "provider-registry".into(),
+        tier: StoreTier::Private,
+        operation: StoreOperation::SqlWrite,
+    }
+    .digest()?;
+    let audit = data.join(DataRoot::profile_relative(profile, "audit.sqlite")?);
+    let audit =
+        rusqlite::Connection::open_with_flags(audit, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    // Reject only the audit delivery after this real, already seeded Registry
+    // commits its conditional UPDATE. Admission and the SQLite write still run.
+    audit.execute_batch(&format!(
+        "CREATE TRIGGER registry_commit_outcome_fault BEFORE INSERT ON audit
+         WHEN json_extract(CAST(NEW.body AS TEXT), '$.kind') = 'outcome'
+          AND json_extract(CAST(NEW.body AS TEXT), '$.payload.outcome.status') = 'succeeded'
+          AND json_extract(CAST(NEW.body AS TEXT), '$.payload.effect_digest') = '{effect}'
+         BEGIN SELECT RAISE(FAIL, 'fixture SQL outcome delivery failure'); END;"
+    ))?;
+    let result = call(session, PROVIDER_COMMIT, "execute-local", arguments).await;
+    audit.execute_batch("DROP TRIGGER registry_commit_outcome_fault;")?;
+
+    let result = result.expect_err("acknowledgment failed after the SQLite commit");
+    ensure!(
+        matches!(result.downcast_ref::<CoreError>(), Some(CoreError::Step(step))
+            if step.code == "storage-sql-commit-unknown"
+                && step.message == "storage-sql-commit-unknown: operation may have committed; do not replay"),
+        "{result:#}"
+    );
+    let path = data.join(DataRoot::profile_relative(
+        profile,
+        &format!("data/{PACK}/private.sqlite"),
+    )?);
+    let db =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let document: String = db.query_row(
+        "SELECT document FROM provider_registry WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let document: Value = serde_json::from_str(&document)?;
+    ensure!(document["revision"] == previous_revision + 1);
+    ensure!(
+        document["providers"]["provider.unknown"]["provider_instance_id"] == "provider.unknown"
+    );
     Ok(())
 }
 
@@ -252,7 +371,7 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
             ensure!(provider.get("credential_handle").is_none());
             ensure!(provider.get("endpoint").is_none());
         }
-        verify_local_commit(&sa, &sb, &host, a.id.as_str(), b.id.as_str(), local).await?;
+        verify_local_commit(&sa, &sb, &host, a.id.as_str(), b.id.as_str(), local, &data).await?;
         Ok(())
     }
     .await;
@@ -263,13 +382,18 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
     closed_b.context("close Profile B")?;
     drop((sa, sb, core));
 
-    let core = Core::open(CoreConfig::for_test_data_root(data), host)?;
+    let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host)?;
     let reopened = core.start(&a.id).await.context("restart Profile A")?;
-    let persisted = snapshot(&reopened, a.id.as_str()).await;
-    reopened.close().await?;
-    let persisted = persisted?;
-    ensure!(persisted["providers"][0]["display_name"] == "Local A");
-    ensure!(persisted["revision"] == 2);
-    ensure!(persisted["providers"][1]["provider_instance_id"] == "provider.fixture");
+    let checked = async {
+        let persisted = snapshot(&reopened, a.id.as_str()).await?;
+        ensure!(persisted["providers"][0]["display_name"] == "Local A");
+        ensure!(persisted["revision"] == 2);
+        ensure!(persisted["providers"][1]["provider_instance_id"] == "provider.fixture");
+        verify_unknown_local_commit(&reopened, &data, &a.id, 2).await
+    }
+    .await;
+    let closed = reopened.close().await;
+    checked?;
+    closed?;
     Ok(())
 }

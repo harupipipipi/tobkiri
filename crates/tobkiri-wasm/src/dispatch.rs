@@ -455,6 +455,23 @@ impl PackHost {
                 nominal_core_error,
             )
             .await;
+        // This reads only the exact admitted provider operation. A guest's
+        // error or attempted reconciliation cannot override a native fact.
+        let preserve_storage = cx.preserves_storage_errors()
+            && matches!(origin, ProviderOrigin::UserInvocation { .. });
+        let storage_failure = preserve_storage
+            .then(|| frame.provider_operation().ok()?.storage_failure())
+            .flatten();
+        let result = match storage_failure {
+            Some(failure) => Err(failure.store_error().into()),
+            None => result,
+        };
+        let native_storage_error = preserve_storage
+            && result
+                .as_ref()
+                .err()
+                .and_then(crate::core_imports::storage_failure_metadata)
+                .is_some();
         let outcome = match &result {
             Ok(DispatchOutput::Typed { error: true, .. }) => Outcome::Failed {
                 code: "provider-error".into(),
@@ -468,10 +485,19 @@ impl PackHost {
                 code: step_audit_code(error).into(),
             },
         };
-        let receipt = terminal.finish(outcome).await?;
-        frame
-            .terminal_acknowledged(&receipt)
-            .map_err(anyhow::Error::new)?;
+        let receipt = async {
+            let receipt = terminal.finish(outcome).await?;
+            frame
+                .terminal_acknowledged(&receipt)
+                .map_err(anyhow::Error::new)?;
+            Ok::<_, anyhow::Error>(receipt)
+        }
+        .await;
+        let receipt = match receipt {
+            Ok(receipt) => receipt,
+            Err(_) if native_storage_error => return result,
+            Err(error) => return Err(error),
+        };
         if result
             .as_ref()
             .is_ok_and(|value| !matches!(value, DispatchOutput::Typed { error: true, .. }))

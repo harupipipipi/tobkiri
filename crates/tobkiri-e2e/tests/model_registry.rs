@@ -48,11 +48,19 @@ fn packs(root: &Path) -> Result<[RegistryPack; 2]> {
 
 async fn call(session: &Session, shape: &str, operation: &str, arguments: Value) -> Result<Value> {
     let arguments = canon(&arguments)?;
-    let output = within_session(
-        session,
-        operation,
-        session.call_user_port(shape.parse()?, operation.parse()?, &arguments),
-    )
+    let shape_ref = shape.parse()?;
+    let operation_ref = operation.parse()?;
+    let output = within_session(session, operation, async {
+        if shape == registry::PROVIDER_COMMIT {
+            session
+                .call_user_port_with_storage_errors(shape_ref, operation_ref, &arguments)
+                .await
+        } else {
+            session
+                .call_user_port(shape_ref, operation_ref, &arguments)
+                .await
+        }
+    })
     .await
     .with_context(|| format!("{shape} {operation} failed"))?;
     Ok(serde_json::from_slice(output.as_bytes())?)

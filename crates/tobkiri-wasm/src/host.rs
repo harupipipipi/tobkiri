@@ -580,6 +580,7 @@ struct ProviderOperationIdentity {
     // Only an admitted terminal-read owner sets this. It adds an exact native
     // completion wait to failed exports, never permission or a new task.
     host_io_read: AtomicBool,
+    storage_failure: std::sync::OnceLock<crate::core_imports::StorageFailure>,
     disposal: Arc<StoreDisposal>,
 }
 
@@ -597,6 +598,16 @@ pub struct ProviderOperationScope {
 impl ProviderOperationScope {
     pub fn execution_id(&self) -> &crate::NativeExecutionId {
         &self.inner.execution
+    }
+
+    pub(crate) fn record_storage_failure(&self, error: &anyhow::Error) {
+        if let Some(failure) = crate::core_imports::StorageFailure::from_error(error) {
+            let _ = self.inner.storage_failure.set(failure);
+        }
+    }
+
+    pub(crate) fn storage_failure(&self) -> Option<crate::core_imports::StorageFailure> {
+        self.inner.storage_failure.get().copied()
     }
 
     fn storage_bytes(generation: &NativeGenerationId) -> Result<u64> {
@@ -700,6 +711,7 @@ impl ProviderOperationScope {
                 index,
                 unknown,
                 host_io_read: AtomicBool::new(false),
+                storage_failure: std::sync::OnceLock::new(),
                 disposal,
             }),
             frame_control,
@@ -4665,6 +4677,30 @@ mod native_mailbox_tests {
             crate::ProviderBindAttempt::Uncertain(error) => assert_eq!(error.code, "unavailable"),
             _ => panic!("legacy bind failure must not classify busy"),
         }
+    }
+
+    #[test]
+    fn storage_failure_is_typed_and_bound_to_one_provider_operation() {
+        use crate::core_imports::{STORAGE_COMMIT_UNKNOWN_MESSAGE, StorageFailure};
+        use tobkiri_store::StoreError;
+
+        let control = CoreControl::default();
+        let lifetime = Arc::new(StdMutex::new(
+            GenerationLifetime::new(&control, None).unwrap(),
+        ));
+        let operation = indexed_operation(&control, &lifetime, 1);
+        let other_operation = indexed_operation(&control, &lifetime, 2);
+        operation.record_storage_failure(&anyhow::Error::msg(STORAGE_COMMIT_UNKNOWN_MESSAGE));
+        assert_eq!(operation.storage_failure(), None);
+
+        let native = anyhow::Error::new(StoreError::CommitUnknown).context("native diagnostic");
+        operation.record_storage_failure(&native);
+        operation.record_storage_failure(&anyhow::Error::new(StoreError::PendingDataMove));
+        assert_eq!(
+            operation.clone().storage_failure(),
+            Some(StorageFailure::CommitUnknown)
+        );
+        assert_eq!(other_operation.storage_failure(), None);
     }
 
     #[test]

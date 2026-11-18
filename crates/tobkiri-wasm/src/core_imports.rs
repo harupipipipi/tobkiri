@@ -151,6 +151,16 @@ pub(crate) fn link_core_and_ports(
                                                 Ok(())
                                             }
                                             Err(error) => {
+                                                // Retain the native fact before the WIT packet
+                                                // turns it into an ordinary guest error.
+                                                if interface == "storage"
+                                                    && store.data().cx.preserves_storage_errors()
+                                                    && let Some(frame) = &store.data().data.frame
+                                                    && let Ok(operation) =
+                                                        frame.provider_operation()
+                                                {
+                                                    operation.record_storage_failure(&error);
+                                                }
                                                 if results.len() == 1
                                                     && matches!(
                                                         ty.results().next(),
@@ -208,16 +218,39 @@ pub(crate) const STORAGE_COMMIT_UNKNOWN_MESSAGE: &str =
 pub(crate) const STORAGE_PENDING_MOVE_MESSAGE: &str =
     "storage-pending-data-move: storage move requires explicit repair; do not replay";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StorageFailure {
+    CommitUnknown,
+    PendingDataMove,
+}
+
+impl StorageFailure {
+    pub(crate) fn from_error(error: &anyhow::Error) -> Option<Self> {
+        match error.downcast_ref::<tobkiri_store::StoreError>() {
+            Some(tobkiri_store::StoreError::CommitUnknown) => Some(Self::CommitUnknown),
+            Some(tobkiri_store::StoreError::PendingDataMove) => Some(Self::PendingDataMove),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn store_error(self) -> tobkiri_store::StoreError {
+        match self {
+            Self::CommitUnknown => tobkiri_store::StoreError::CommitUnknown,
+            Self::PendingDataMove => tobkiri_store::StoreError::PendingDataMove,
+        }
+    }
+}
+
 /// Only sealed Store unit variants select stable public metadata. Never infer
 /// repair/commit status from a guest code, message, path or native diagnostic.
 pub(crate) fn storage_failure_metadata(
     error: &anyhow::Error,
 ) -> Option<(&'static str, &'static str)> {
-    match error.downcast_ref::<tobkiri_store::StoreError>() {
-        Some(tobkiri_store::StoreError::CommitUnknown) => {
+    match StorageFailure::from_error(error) {
+        Some(StorageFailure::CommitUnknown) => {
             Some(("storage-sql-commit-unknown", STORAGE_COMMIT_UNKNOWN_MESSAGE))
         }
-        Some(tobkiri_store::StoreError::PendingDataMove) => {
+        Some(StorageFailure::PendingDataMove) => {
             Some(("storage-pending-data-move", STORAGE_PENDING_MOVE_MESSAGE))
         }
         _ => None,

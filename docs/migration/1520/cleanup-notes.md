@@ -3928,6 +3928,30 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   2 Profileの同revisionで他方の計画、元のURL表記の変更、承認拒否、旧計画の再利用を拒否し、
   再起動後の記録を確認した。ローカルSSE試験は事前検証→承認済み保存→モデル保存→会話で使用。
   Wasm/Core 4件、component単体56件、strict Clippyが通過。実Gemmaの再起動経路も同じ保存に切替。
+  [実モデルCI 44378633570](https://github.com/harupipipipi/tobkiri/actions/runs/44378633570)
+  は準備、承認済み保存、モデル選択、Core再起動後のllama.cpp Gemma 3 1B、認証付き
+  loopbackのSSEが通過した。
+  RustのUser呼出しは、明示指定時に `core_imports.rs` の実Storeエラーを元のProvider
+  実行スコープに記録する。WITへ変換する前の型に限り、ゲストが返す文言は参照しない。
+  `dispatch.rs` では同じ承認済み呼出しの終端を処理し、不確定書込みとDATA移動の修復要求を
+  Coreの固定StepErrorコードへ返す。Wasm/Coreの4件が通過。隔離したProfileの試験で、
+  SQLiteの保存後に監査結果の記録だけを失敗させ、Registryのrevisionが1だけ進んだ状態で
+  保存不確定が返ることを確認した。破損した移動ジャーナルでは書込みが行われず、従来の
+  User呼出しには既存のWITエラーが返った。別の実行スコープや同文の一般エラーは検出対象外。
+  Wasmの全単体試験は物理一時ディレクトリ `/private/tmp` で282件通過、既存ignore 5件。
+  変更対象のstrict Clippyが通過。macOSの既定一時パスではAPFS試験がパス解決で失敗した。
+  製品GUIとの接続では、`launcherConnectionsConfigure.ts` の承認済み要求IDと
+  `PendingEffectController` の永続claim/dispatchを引き継ぐ必要がある。初回のCore呼出しは
+  新規IDを採番するため、タイムアウト後にそれを呼び直さない。Gate終端の確認は要求の終了を
+  示すので、再起動後にRegistry CASの確定を照合するには書込み固有の永続記録が別途必要。
+  現在の実行内マーカーは、成功したStore戻り値を受け取った後で応答全体を失った場合や、
+  native Store応答前に呼出し側が終了した場合までは照合できない。
+  製品の最初の置換点は、署名済み `/api/ai/provider-key` の
+  `ProviderRegistryHostFactoryV4.capture` 内のキー不要prepare。現在の設定・モデル読取りは
+  Profileの `provider_registry.store.json` に依存し、Wasmのprivate SQLiteとは別のため、
+  同じ正本を参照して二度読みとrevision競合を維持する接続が先に要る。保存を切り替える前に
+  そのCASの結果を同じ承認済み要求へ結び付け、認証ありの設定では既存Credential Brokerの
+  選択済みconsumerと世代予算を継承する。今回のCoreの保存試験はこの製品接続を含めていない。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と
