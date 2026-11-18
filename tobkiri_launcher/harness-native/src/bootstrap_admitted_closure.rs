@@ -8,7 +8,7 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     caller: ReviewCaller,
     seed: CoreValue,
     profiles: CoreValue,
-) -> RecoveryOutcome {
+) -> HostCatalogOutcome {
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
     let scope = actual_call_scope(pack)?;
@@ -201,7 +201,7 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     let verified = verified.finish()?;
     review.actual._admitted_closure = Some(verified.share());
     drop((external, plan_funding));
-    replace_recovery_profiles(review, pack, caller, profiles, Some(verified)).await
+    replace_host_profiles(review, pack, caller, profiles, Some(verified)).await
 }
 
 fn enqueue(

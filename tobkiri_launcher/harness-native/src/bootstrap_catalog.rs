@@ -30,6 +30,18 @@ pub(super) enum RecoveryCompletion {
 pub(super) type RecoveryOutcome =
     Result<std::result::Result<RecoveryCompletion, BootstrapReviewFailure>>;
 
+#[cfg(unix)]
+struct HostCatalog {
+    scope: CoreValue,
+    root: CoreValue,
+    caller: ReviewCaller,
+}
+
+#[cfg(not(unix))]
+type HostCatalog = std::convert::Infallible;
+
+type HostCatalogOutcome = Result<std::result::Result<HostCatalog, BootstrapReviewFailure>>;
+
 pub(super) const RECOVERY_FINISHED_REQUEST: &str =
     "io.tobkiri.native-bootstrap-recovery-finished.v1";
 pub(super) const LEGACY_RESOLVE_REQUEST: &str = "io.tobkiri.native-resolver-legacy-recovery.v1";
@@ -508,6 +520,23 @@ pub(super) async fn run_recovery<S: BootstrapInputOwner + crate::BootstrapReview
     pack: &mut ReviewPackBorrow<'_, S>,
 ) -> RecoveryOutcome {
     let caller = ReviewCaller::Recovery;
+    let materialized = match materialize_host_catalog(review, pack, caller).await? {
+        Ok(catalog) => catalog,
+        Err(error) => return Ok(Err(error)),
+    };
+    #[cfg(unix)]
+    return recover_published_authority(review, pack, materialized).await;
+    #[cfg(not(unix))]
+    match materialized {}
+}
+
+// The original host_profile_catalog finishes before ActivationStore recovery.
+// A confirmed initial publication also needs this catalog step on its own.
+async fn materialize_host_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
+) -> HostCatalogOutcome {
     if let Err(error) = load(review, pack, caller).await? {
         return Ok(Err(error));
     }
@@ -557,7 +586,7 @@ async fn bootstrap_template<S: BootstrapInputOwner + crate::BootstrapReviewOwner
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     store: definitions::BootstrapTemplateStore,
-) -> RecoveryOutcome {
+) -> HostCatalogOutcome {
     let caller = ReviewCaller::RecoveryTemplate;
     pack.require_same_runtime()?;
     let identity = match review_continuation::validated_identity(review, pack, caller).await? {
@@ -634,7 +663,7 @@ async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOw
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
     profiles: CoreValue,
-) -> RecoveryOutcome {
+) -> HostCatalogOutcome {
     review.actual._recovery_profile_definitions = Some(profiles.share());
     let catalog = match crate::original_authority::external_catalog::read(
         &review.read,
@@ -658,17 +687,17 @@ async fn read_admitted_catalog<S: BootstrapInputOwner + crate::BootstrapReviewOw
     if boundary != BootstrapReviewReachpoint::CatalogWithProfilesNotBound {
         return Ok(Err(BootstrapReviewFailure::NotBound(boundary)));
     }
-    replace_recovery_profiles(review, pack, caller, profiles, None).await
+    replace_host_profiles(review, pack, caller, profiles, None).await
 }
 
 #[cfg(unix)]
-async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+async fn replace_host_profiles<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
     profiles: CoreValue,
     external: Option<CoreValue>,
-) -> RecoveryOutcome {
+) -> HostCatalogOutcome {
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
     let scope = actual_call_scope(pack)?;
@@ -735,6 +764,23 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
     if denied::same_reference(&root, &original)? {
         bail!("recovery catalog was not replaced");
     }
+    Ok(Ok(HostCatalog {
+        scope,
+        root,
+        caller,
+    }))
+}
+
+#[cfg(unix)]
+async fn recover_published_authority<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    HostCatalog {
+        scope,
+        root,
+        caller,
+    }: HostCatalog,
+) -> RecoveryOutcome {
     use crate::original_authority::{LEGACY_RESOLVER_INTERRUPTED, RecoveryAuthorityReached};
     let mut resolver_fault = None;
     let confirmed = review.read.has_confirmed_recovery();
