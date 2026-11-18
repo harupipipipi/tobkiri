@@ -4151,6 +4151,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   正確な領域計測を使う既存decoderへ置き換え、同じ64MiB内でpending復旧まで検証した。
   `original_recovery_abort_transaction.rs` と新しいgeneral transitionはabortのCASと監査を一部重複して
   実装している。原本の不正row診断とrollbackを両方の経路で照合したら共用できる。
+- 初回Setupの保存は `profile_capture.py::_capture_bootstrap_profile` が発行lock内で原本を
+  再読込みし、journal、定義、workspace、activation、Host pointerの順に進める。
+  `974a31bbd` で4段階activation journalのID決定を呼出側へ移した。従来の移行callerは
+  同じmigration IDを生成し、初回IDの場合も同じjournal・pending・失敗時処理を使える。
+  成功と5つの中断箇所を両IDで検査した。初回の定義登録、workspace作成、発行は未接続。
+  `31ab3c755` は元のSetup decisionで一致したときに、同じresolverのProfile・Lock・Planを
+  Native workerへ返す。確認済みrevision、Authority snapshot、epoch、束のdigestを照合し、
+  Profile全体、LockとPlanの自己digestを除いた本文を既存の予算内で再hashする。
+  既存の確認lockとcleanupを維持する。Tauriの表示には従来の結果だけを返し、保存はまだ行わない。
+  Rust 220件、strict Clippy、Python 243件、workflow補助14件が通過した。
+  原本CIのjournal比較に、実Pythonが発行直前に使った3レコードとRustが受け取るcanonical bytesの
+  比較を追加した。既存のSetupからの採用、発行全体と64MiB内での実Wasm確認は後続。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
