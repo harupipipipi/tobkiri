@@ -4426,6 +4426,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   一致を確証できる型だけを処理する。Profile v4の有効な要求scopeにリスト型の識別要素を
   含む実例があるため、確証できなければ原本の意味検証へ渡す。148回の物理pin再読では
   同じ読み取りからdigestを返すことで、約1.08MBのbyte応答と再ハッシュを省ける。
+  `73a6ecac6` は構造検証済みの同じ文書で、同梱5種類の意味検証をRustに移した。Packと
+  Profileの禁止フィールドは既存の識別子・重複検査と同じ走査で確認し、Shellは元の
+  大小文字とハイフンの正規化に基づく禁止部分文字列も確認する。非ASCIIのShell keyや
+  表現できないbindingの文字列化は元のbytesとPython検証へ戻し、例外の順序を保つ。
+  永続化済みProfileでは従来どおりの検証順にする。Rustで同梱305件と変異を検証し、
+  固定CPython 3.13.16でID・承認項目・重複operationの拒否と、整数やobjectのbindingを持つ
+  有効な入力を照合した。Rust 248件、strict Clippy、Python 262件、producer 344件が通過。
+  [意味検証を含む実Wasm CI 44324536644](https://github.com/harupipipipi/tobkiri/actions/runs/44324536644)。
+  次の物理I/O統合では、最初のresolve、root外拒否、symlink検査、openの順序と、pin照合時の
+  独立したopenを維持する。固定CPythonのPathは区切りや末尾slashを正規化し、`..` を残す。
+  既存のRust canonicalizeは失敗時に原本と異なるパスを返す場合があり、is_symlinkも一部の
+  errnoを隠す。I/O統合の比較ではLockの生の表記、物理パス、例外のfilenameを照合する。
+  [定義CI 44320718878](https://github.com/harupipipipi/tobkiri/actions/runs/44320718878)
+  は19件が通過後、旧期待件数18で失敗した。`b08f8c89d` で19に更新し、
+  [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で再検証する。
+  `f88735b2e` はコードキャッシュ派生の旧参照を削除し、ソースと計上値をどちらもLoader
+  に束縛されたツリーから取る。原本の先行変更後に失敗していた専用6件を含めてproducer
+  344件が通過した。
   `f2fd7528a` は解決後の固定呼び出しで、登録revisionと実catalogの定義digestが一致したときに
   resolver側のrootでAuthorityを新たに開く。実Shellを再検証し、閉じた後に4つのactivation
   識別子を検証済みポインターと比較する。最初の登録済みSetup検証と同じ稼働記録読取りを共用し、
