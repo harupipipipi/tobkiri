@@ -4067,10 +4067,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   時だけ完了を返す。不明な終了はRuntimeOwnerを保持する。3件をmacOSの実Coreで確認した。
   Launcher管理状態を代替する分離検証では、生成済み `.tpk` の照合、同じCore上のWasm実行、
   型付き拒否、取消後の結果破棄、読み取りの前後のguardを実行した。
+  [DMG CI 44407663438](https://github.com/harupipipipi/tobkiri/actions/runs/44407663438)で
+  Launchの成果物検査10件が通過した。CIの期待件数が8件のままだったため後続へ進めず、
+  同じフィルターを実行するジョブの指定を10件に揃えた。修正後のCIラッパーを使うmacOS実行も通過した。
   次に通常Launcherと元のHostのリクエストを接続する。既存Host Brokerの接続認証は起動中の
   Profileまでを証明する。接続時に実listenerのPID・起動時刻とHTTPサーバの世代を照合し、
   元のleaseで逐次読み取りと取消を確認する。相互の物理終了と、1 MiB超の旧Registryとの
   互換動作も製品経路で確かめる。
+  分離したmacOSプロセス同士でUnix接続のUID・PIDを両方向から観測し、同じ環境で
+  Pythonの `monotonic_ns()` と `CLOCK_UPTIME_RAW` の時刻基準が一致することを確認した。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

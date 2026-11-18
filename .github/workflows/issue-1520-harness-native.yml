@@ -584,7 +584,7 @@ jobs:
         if: ${{ inputs.verification == 'launcher-snapshot-staging' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/harness-native-launch-artifacts.log" --expected-passed 8 --
+          --log "$RUNNER_TEMP/harness-native-launch-artifacts.log" --expected-passed 10 --
           cargo test --locked -p tobkiri-core --lib
           native_declared_artifact::tests -- --nocapture --test-threads=1
       - name: Install Node for the original Launcher staging check
