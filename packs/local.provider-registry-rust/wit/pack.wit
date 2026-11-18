@@ -51,6 +51,17 @@ interface configuration-commit {
   execute-local: func(request: local-connection, plan-digest: string) -> result<json, error>;
 }
 
+interface legacy-configuration {
+  use configuration.{local-connection};
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Read-only planning from the two observations of the old Profile Registry.
+  /// The native caller owns acquisition and provenance. This interface writes
+  /// neither Registry and does not authorize a save.
+  prepare-local: func(request: local-connection, snapshot: option<string>,
+                      preflight: option<string>) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
@@ -59,4 +70,5 @@ world pack {
   export routing;
   export configuration;
   export configuration-commit;
+  export legacy-configuration;
 }

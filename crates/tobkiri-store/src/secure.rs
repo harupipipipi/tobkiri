@@ -3,6 +3,7 @@ use crate::StoreError;
 use std::{
     ffi::CString,
     os::fd::{AsRawFd, FromRawFd},
+    os::unix::fs::MetadataExt,
 };
 use std::{
     fs::File,
@@ -16,6 +17,9 @@ use tobkiri_gate::ApprovalStore;
 #[cfg(all(test, unix))]
 #[path = "profile_inventory_tests.rs"]
 mod profile_inventory_tests;
+#[cfg(all(test, unix))]
+#[path = "secure_existing_file_tests.rs"]
+mod secure_existing_file_tests;
 
 /// Native stat fields differ in width and signedness across supported Unix
 /// platforms. Reject an unrepresentable field instead of truncating identity.
@@ -91,7 +95,16 @@ impl std::fmt::Debug for DataRoot {
 impl DataRoot {
     /// Open/create an absolute root, refusing a symlink in every path component.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
-        let path = path.as_ref();
+        Self::open_mode(path.as_ref(), true)
+    }
+
+    /// Pin an existing absolute directory without creating any path component.
+    /// A missing component returns `NotFound`. Symlinks are refused throughout.
+    pub fn open_existing(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+        Self::open_mode(path.as_ref(), false).map_err(existing_source_error)
+    }
+
+    fn open_mode(path: &Path, create: bool) -> Result<Self, StoreError> {
         if !path.is_absolute() {
             return Err(StoreError::Invalid("data root must be absolute".into()));
         }
@@ -114,7 +127,7 @@ impl DataRoot {
                         let s = s
                             .to_str()
                             .ok_or_else(|| StoreError::Invalid("non-UTF8 data root".into()))?;
-                        dir = open_dir(&dir, s, true)?
+                        dir = open_dir(&dir, s, create)?
                     }
                     _ => return Err(StoreError::Invalid("unsafe data root".into())),
                 }
@@ -126,7 +139,7 @@ impl DataRoot {
         }
         #[cfg(not(unix))]
         {
-            let _ = path;
+            let _ = (path, create);
             Err(StoreError::Unavailable(
                 "descriptor-relative nofollow storage is unsupported on this platform".into(),
             ))
@@ -477,6 +490,97 @@ impl DataRoot {
             ))
         }
     }
+
+    /// Read an existing regular file owned by the effective user for native
+    /// callers. The relative path is opened without creation or link traversal.
+    /// An absent source returns `NotFound`; an observed change during the read
+    /// returns `Conflict`. At most `max` bytes are returned.
+    pub fn read_existing_owned(
+        &self,
+        path: impl AsRef<Path>,
+        max: usize,
+    ) -> Result<Vec<u8>, StoreError> {
+        #[cfg(unix)]
+        {
+            let (directory, name) = self
+                .parent(path.as_ref(), false)
+                .map_err(existing_source_error)?;
+            let name = cstring(&name)?;
+            let entry = stat_entry(&directory, &name).map_err(existing_source_error)?;
+            let owner = unsafe { libc::geteuid() };
+            if entry.st_mode & libc::S_IFMT != libc::S_IFREG
+                || entry.st_uid != owner
+                || entry.st_nlink != 1
+            {
+                return Err(StoreError::Denied(
+                    "source must be an owned regular single-link file".into(),
+                ));
+            }
+            let identity = checked_file_identity(&entry)?;
+            // A nonregular entry may replace the checked name before openat.
+            // Keep FIFO opens nonblocking and prevent acquiring a terminal.
+            let fd = unsafe {
+                libc::openat(
+                    directory.as_raw_fd(),
+                    name.as_ptr(),
+                    libc::O_RDONLY
+                        | libc::O_NOFOLLOW
+                        | libc::O_CLOEXEC
+                        | libc::O_NONBLOCK
+                        | libc::O_NOCTTY,
+                )
+            };
+            if fd < 0 {
+                return Err(existing_source_recheck_error(
+                    std::io::Error::last_os_error().into(),
+                ));
+            }
+            let mut file = unsafe { File::from_raw_fd(fd) };
+            let before = file.metadata()?;
+            if (before.dev(), before.ino()) != identity
+                || !before.is_file()
+                || before.uid() != owner
+                || before.nlink() != 1
+            {
+                return Err(existing_source_changed());
+            }
+            let expected = usize::try_from(before.len())
+                .ok()
+                .filter(|length| *length <= max)
+                .ok_or(StoreError::Quota)?;
+            let mut bytes = Vec::new();
+            bytes
+                .try_reserve_exact(expected)
+                .map_err(|_| StoreError::Quota)?;
+            bytes.resize(expected, 0);
+            if let Err(error) = file.read_exact(&mut bytes) {
+                if error.kind() == std::io::ErrorKind::UnexpectedEof {
+                    return Err(existing_source_changed());
+                }
+                return Err(error.into());
+            }
+            match file.read_exact(&mut [0]) {
+                Ok(()) => return Err(existing_source_changed()),
+                Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => {}
+                Err(error) => return Err(error.into()),
+            }
+            let current = stat_entry(&directory, &name).map_err(existing_source_recheck_error)?;
+            if checked_file_identity(&current)? != identity
+                || !same_source_metadata(&before, &file.metadata()?)
+            {
+                return Err(existing_source_changed());
+            }
+            Ok(bytes)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (path, max);
+            Err(StoreError::Unavailable(
+                "nofollow existing file read unavailable".into(),
+            ))
+        }
+    }
+
     /// Return the size of a descriptor-relative regular file without reading
     /// its contents. Missing files stay distinguishable from unsafe objects so
     /// callers can inspect SQLite sidecars without following symlinks.
@@ -826,6 +930,56 @@ impl DataRoot {
         }
     }
 }
+
+fn existing_source_error(error: StoreError) -> StoreError {
+    match error {
+        StoreError::Io(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            StoreError::NotFound
+        }
+        error => error,
+    }
+}
+
+#[cfg(unix)]
+fn existing_source_recheck_error(error: StoreError) -> StoreError {
+    match existing_source_error(error) {
+        StoreError::NotFound => existing_source_changed(),
+        error => error,
+    }
+}
+
+#[cfg(unix)]
+fn existing_source_changed() -> StoreError {
+    StoreError::Conflict("source changed while being read".into())
+}
+
+#[cfg(unix)]
+fn stat_entry(directory: &File, name: &std::ffi::CStr) -> Result<libc::stat, StoreError> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    if unsafe {
+        libc::fstatat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            stat.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    } != 0
+    {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(unsafe { stat.assume_init() })
+}
+
+#[cfg(unix)]
+fn same_source_metadata(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
+    before.len() == after.len()
+        && before.mode() == after.mode()
+        && before.uid() == after.uid()
+        && before.nlink() == after.nlink()
+        && (before.mtime(), before.mtime_nsec()) == (after.mtime(), after.mtime_nsec())
+        && (before.ctime(), before.ctime_nsec()) == (after.ctime(), after.ctime_nsec())
+}
+
 #[cfg(unix)]
 fn cstring(s: &str) -> Result<CString, StoreError> {
     CString::new(s).map_err(|_| StoreError::Invalid("NUL in path".into()))

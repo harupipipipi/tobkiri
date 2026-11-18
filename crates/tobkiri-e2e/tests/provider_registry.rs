@@ -4,11 +4,14 @@ mod support;
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc, time::Duration};
-use support::registry::{PROVIDER_COMMIT, PROVIDER_CONFIGURATION as CONFIGURATION};
+use support::registry::{
+    PROVIDER_COMMIT, PROVIDER_CONFIGURATION as CONFIGURATION, PROVIDER_INTERFACES,
+    PROVIDER_LEGACY_CONFIGURATION as LEGACY_CONFIGURATION,
+};
 use support::{Host, canon, physical_temp, registry, within_session};
 use tobkiri_core::{Core, CoreConfig, CoreError, Session};
 use tobkiri_gate::{EffectRequest, StoreOperation, StoreTier};
-use tobkiri_store::DataRoot;
+use tobkiri_store::{DataRoot, StoreError};
 
 const PACK: &str = "local.provider-registry";
 const RESOURCE: &str = "local.provider-registry.resource@1.0";
@@ -115,6 +118,93 @@ async fn verify_local_preparation(session: &Session, profile: &str) -> Result<()
             }
         }
     }
+    Ok(())
+}
+
+async fn verify_legacy_preparation(
+    session: &Session,
+    unapproved: &Session,
+    profile: &str,
+    fixture: &Path,
+) -> Result<()> {
+    const HANDLE: &str = "credential:opaque-legacy-fixture";
+    let original = json!({
+        "connection_name":"authoritative", "endpoint":"http://127.0.0.1:1234/v1/"
+    });
+    let request = local_request(&original);
+    let existing = json!({
+        "version":"rumi.provider-registry.store.v1", "profile_id":profile, "revision":42,
+        "migration":null,
+        "providers":{"provider.cloud":{
+            "provider_instance_id":"provider.cloud", "adapter_id":"openai-compatible",
+            "credential_handle":HANDLE, "endpoint":"https://example.invalid/v1",
+            "display_name":"Existing", "enabled":true,
+            "record_revision":12
+        }}
+    });
+    let legacy_path = fixture.join("old-product");
+    std::fs::create_dir(&legacy_path)?;
+    let source = DataRoot::open_existing(legacy_path)?;
+    let path = format!(
+        "packs/rumi_provider_registry_pack/profiles/{profile}/provider_registry.store.json"
+    );
+    let observe = || -> Result<Option<String>> {
+        match source.read_existing_owned(&path, 1024 * 1024) {
+            Ok(bytes) => Ok(Some(String::from_utf8(bytes)?)),
+            Err(StoreError::NotFound) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    };
+    let arguments = |snapshot: Option<String>, preflight: Option<String>| json!({"request":request["request"],"snapshot":snapshot,"preflight":preflight});
+    let prepare = |first, second| {
+        call(
+            session,
+            LEGACY_CONFIGURATION,
+            "prepare-local",
+            arguments(first, second),
+        )
+    };
+    ensure!(prepare(observe()?, observe()?).await?["expected_revision"] == 0);
+    ensure!(observe()?.is_none());
+
+    let observed = existing.to_string();
+    source.write_atomic(&path, observed.as_bytes())?;
+    let verified = prepare(observe()?, observe()?).await?;
+    let mut expected = call(session, CONFIGURATION, "prepare-local", request.clone()).await?;
+    expected["expected_revision"] = json!(42);
+    ensure!(verified == expected);
+    ensure!(!verified.to_string().contains(HANDLE));
+    ensure!(observe()?.as_deref() == Some(observed.as_str()));
+    ensure!(
+        call(
+            unapproved,
+            LEGACY_CONFIGURATION,
+            "prepare-local",
+            arguments(observe()?, observe()?)
+        )
+        .await
+        .is_err()
+    );
+
+    let mut raced = existing.clone();
+    raced["revision"] = json!(43);
+    let before_replacement = observe()?;
+    source.write_atomic(&path, raced.to_string().as_bytes())?;
+    let conflict = prepare(before_replacement, observe()?)
+        .await
+        .expect_err("preflight rejected a new Registry revision");
+    ensure!(
+        matches!(conflict.downcast_ref::<CoreError>(), Some(CoreError::Step(step))
+        if step.code == "conflict")
+    );
+    let mut foreign = existing;
+    foreign["profile_id"] = json!("prof_provider_b");
+    ensure!(
+        prepare(Some(observed), Some(foreign.to_string()))
+            .await
+            .is_err()
+    );
+    ensure!(prepare(Some("{".into()), None).await.is_err());
     Ok(())
 }
 
@@ -294,19 +384,19 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         directory.path(),
         Path::new(&artifact),
         PACK,
-        &[
-            "resource",
-            "manage",
-            "routing",
-            "configuration",
-            "configuration-commit",
-        ],
+        PROVIDER_INTERFACES,
         &[],
     )?];
     let a = registry::profile(
         "prof_provider_a",
         &packs,
-        &[RESOURCE, MANAGE, CONFIGURATION, PROVIDER_COMMIT],
+        &[
+            RESOURCE,
+            MANAGE,
+            CONFIGURATION,
+            PROVIDER_COMMIT,
+            LEGACY_CONFIGURATION,
+        ],
     )?;
     let b = registry::profile(
         "prof_provider_b",
@@ -320,10 +410,10 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         (CONFIGURATION.into(), "prepare-local".into()),
     ]);
     host.approve_literal_user(&b)?;
-    host.utility_ports
-        .lock()
-        .unwrap()
-        .insert((PROVIDER_COMMIT.into(), "execute-local".into()));
+    host.utility_ports.lock().unwrap().extend([
+        (PROVIDER_COMMIT.into(), "execute-local".into()),
+        (LEGACY_CONFIGURATION.into(), "prepare-local".into()),
+    ]);
     host.approve_literal_user(&a)?;
     let data = directory.path().join("data");
     let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host.clone())?;
@@ -341,6 +431,7 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         let before = snapshot(&sa, a.id.as_str()).await?;
         ensure!(before["revision"] == 0);
         verify_local_preparation(&sa, a.id.as_str()).await?;
+        verify_legacy_preparation(&sa, &sb, a.id.as_str(), directory.path()).await?;
         ensure!(snapshot(&sa, a.id.as_str()).await? == before);
         let local = local_request(&json!({
             "connection_name":"fixture", "endpoint":"http://127.0.0.1:1234/v1"

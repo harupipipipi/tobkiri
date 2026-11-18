@@ -3952,6 +3952,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じ正本を参照して二度読みとrevision競合を維持する接続が先に要る。保存を切り替える前に
   そのCASの結果を同じ承認済み要求へ結び付け、認証ありの設定では既存Credential Brokerの
   選択済みconsumerと世代予算を継承する。今回のCoreの保存試験はこの製品接続を含めていない。
+  同じ既存Profileの二度読みを使う、独立した `legacy-configuration.prepare-local` を
+  Wasm Packに追加。最初の観測で得たrevisionを二度目の保存前検査へ渡し、現行Core Profileと
+  各文書のID、記録内容を既存Registry処理で検証する。保存計画に他の接続やハンドルは含めない。
+  設定計画で使うのはrevisionだけなので、`Registry::snapshot` の全接続コピーを外した。
+  `secure.rs` の既存ファイル専用読取りは、データrootの作成やリンク追跡をせず、上限内の
+  同一ユーザー所有ファイルだけを読む。不在と、読取り中に変化した場合を別に扱う。
+  Core統合のfixtureでは従来の相対pathから実ファイルを二度取得し、間の置換、別Profileの
+  文書、未承認呼出し、両方の保存先への書込みがないことを検証する。製品へ配線する際は、
+  署名済みLauncherが確認したroot、同じactivation、現行Profile、元の予算を二度の観測に束縛する。
+  この入口の計画は承認の証明を含まず、旧Registryの承認済み保存先はそのまま使う。
+  既存ファイル3件を含むStore単体134件、Registry単体56件、実Wasm/Core 4件、対象の
+  strict Clippyが通過。通常の設定に
+  適用する前に、観測の作業領域を元の世代予算に計上し、現行activationとProfileをread前後で
+  検証する製品側の接続が必要。通常Launcherの `NativeRuntimeState::adopt_core` にはまだ
+  製品用Sessionがないため、別の `core-host` アプリを有効にして代用しない。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

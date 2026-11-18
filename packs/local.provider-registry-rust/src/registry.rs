@@ -114,6 +114,10 @@ impl<S: DocumentStore, C: Clock> Registry<S, C> {
         Ok(())
     }
 
+    pub(crate) fn current_revision(&mut self) -> SourceResult<PyValue> {
+        Ok(required(&self.read()?, "revision")?.clone())
+    }
+
     pub fn snapshot(&mut self) -> SourceResult<PyValue> {
         let state = self.read()?;
         let mut providers = Self::providers(&state)

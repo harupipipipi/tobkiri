@@ -260,11 +260,7 @@ pub fn prepare_configuration<S: DocumentStore, C: Clock>(
     payload: &PyValue,
 ) -> SourceResult<PyValue> {
     let request = configuration_request(payload)?;
-    let snapshot = registry.snapshot()?;
-    let expected_revision = snapshot
-        .get("revision")
-        .expect("Registry snapshot contains revision")
-        .clone();
+    let expected_revision = registry.current_revision()?;
     // Match the source order: validate/normalize first, read the current
     // Registry revision second, then digest the original request spelling.
     let request_digest = canonical_digest(&request)?;

@@ -22,6 +22,13 @@ the credential port. The separately granted Wasm `configuration.prepare-local`
 port takes a typed proposal with no key or Profile selector. It reads the
 active Profile's private Registry and returns the base plan without a write.
 The existing GUI still applies its own generation budget and Broker lifecycle.
+The separately granted `legacy-configuration.prepare-local` plans against the
+existing Profile Registry. Its native caller supplies two independent read-only
+observations from the verified legacy source. The Pack validates both against
+the active Profile. A changed revision is rejected during preflight, and the
+result contains the base plan only. This path is exercised with actual legacy
+files in Core integration tests. Connecting the signed Launcher route and its
+generation budget remains part of the product cutover.
 The separate `configuration-commit.execute-local` port is exercised through
 the trusted Core User entry. It binds the request to the canonical base plan
 digest, stages the record, and returns success after the SQL compare-and-swap.

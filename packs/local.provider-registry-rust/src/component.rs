@@ -13,7 +13,7 @@ use crate::{
     host::{MANAGE_OPERATION, READONLY_RESOURCE_OPERATION, invoke_manage, invoke_readonly},
     registry::Registry,
     routing,
-    state::{Clock, object, put, text},
+    state::{Clock, DocumentStore, object, put, text},
 };
 use exports::local::provider_registry::configuration::LocalConnection;
 use ordered_python_compat::{CodecError, PyValue, dumps, loads};
@@ -115,6 +115,50 @@ impl exports::local::provider_registry::configuration_commit::Guest for Pack {
         ))?;
         registry.store_mut().commit().map_err(source_error)?;
         Ok(reply)
+    }
+}
+
+impl exports::local::provider_registry::legacy_configuration::Guest for Pack {
+    fn prepare_local(
+        request: LocalConnection,
+        snapshot: Option<String>,
+        preflight: Option<String>,
+    ) -> Result<String, Error> {
+        let observed = [snapshot.as_deref(), preflight.as_deref()].into_iter();
+        let profile = current_profile()?;
+        let mut registry = Registry::new(&text(profile), ObservedRegistry(observed), CoreClock)
+            .map_err(source_error)?;
+        let plan =
+            prepare_configuration(&mut registry, &local_request(request)).map_err(source_error)?;
+        encode_reply(&plan)
+    }
+}
+
+struct ObservedRegistry<'a>(std::array::IntoIter<Option<&'a str>, 2>);
+
+impl DocumentStore for ObservedRegistry<'_> {
+    fn read(&mut self) -> SourceResult<Option<PyValue>> {
+        // Same byte ceiling as the current Registry's private SQL document.
+        const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
+        self.0
+            .next()
+            .ok_or_else(|| SourceError::value("provider registry observation missing"))?
+            .map(|raw| {
+                if raw.len() > MAX_DOCUMENT_BYTES {
+                    return Err(SourceError::value(
+                        "provider registry observation is too large",
+                    ));
+                }
+                loads(raw)
+                    .map_err(|_| SourceError::value("provider registry observation is invalid"))
+            })
+            .transpose()
+    }
+
+    fn write(&mut self, _: &PyValue) -> SourceResult<()> {
+        Err(SourceError::permission(
+            "provider registry observations are read-only",
+        ))
     }
 }
 
