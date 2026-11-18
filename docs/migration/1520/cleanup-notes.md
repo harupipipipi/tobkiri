@@ -3995,6 +3995,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   リンク差し替えを拒否した。Launcherスクリプト163件（実DMGのfixtureを含む）が通過。
   実 `.tpk` 3個を入れたfixture DMGも読み取り専用でマウントし、receiptと各Packを検証した。
   旧フロントエンド試験のStart欄を、同ボタンが購読準備までdisabledである現行実装に揃えた。
+  非配布用DMGのRegistry Pack receiptに使ったSHA-256をLauncherのビルドに固定する。
+  既存Shellの明示的なLaunchで、署名済みApplication resolverが選んだ同梱ルートから
+  receiptと3つのアーカイブを照合する。既存のジョブ・準備期限・Core制御枠を用い、読取りの直後と
+  Shell引き渡し前に有効なv5実行IDを再確認する。
+  同じビルド・起動時の検証器を通す6件が成功し、生成済みの実 `.tpk` 3個も照合した。
+  次の置換候補は `rumi_provider_registry_pack.provider-configure.prepare` のキー不要分。
+  旧 `profile_grant` で到達する準備と `interactive_only` の保存は別操作として維持する。
+  実製品へ接続するには旧ActivationのAuthorityと選択済みPackを検証したうえで、
+  `local.provider-registry.legacy-configuration@1.0` に限った候補をCoreでレビューする。
+  製品のNative Sessionと保存権限の接続は引き続き未完了。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

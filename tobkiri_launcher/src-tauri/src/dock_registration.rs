@@ -483,7 +483,7 @@ pub(crate) fn prepare_defaultspack_shell_runtime_url(
     crate::health_check::validate_application_route(launch_route)?;
     with_defaultspack_launch_coordination(deadline, || {
         let (metadata, bootstrap_secret) =
-            ensure_defaultspack_desktop_ready(app, config, deadline)?;
+            ensure_defaultspack_desktop_ready(app, config, deadline, LaunchMetadataUse::Shell)?;
         // A panel-ready listener can still have a failed conversation backend.
         // Shell admission requires the authenticated runtime-ready transition.
         wait_for_shell_runtime_ready(metadata.port, &bootstrap_secret, deadline)?;
@@ -525,7 +525,7 @@ pub(crate) fn prepare_defaultspack_guardian_impl(
 ) -> AnyResult<()> {
     let deadline = Instant::now() + crate::preparation_budget::TIMEOUT;
     with_defaultspack_launch_coordination(deadline, || {
-        ensure_defaultspack_desktop_ready(app, config, deadline)?;
+        ensure_defaultspack_desktop_ready(app, config, deadline, LaunchMetadataUse::Supervision)?;
         crate::preparation_budget::check(deadline)?;
         Ok(())
     })
@@ -748,6 +748,7 @@ fn ensure_defaultspack_desktop_ready(
     app: &AppHandle,
     config: &AppConfig,
     deadline: Instant,
+    purpose: LaunchMetadataUse,
 ) -> AnyResult<(DefaultspackDesktopMetadata, String)> {
     crate::preparation_budget::check(deadline)?;
     let manager = app.state::<Arc<DefaultspackManager>>();
@@ -755,7 +756,7 @@ fn ensure_defaultspack_desktop_ready(
         .context("failed to read Viewer local auth token for Defaultspack launch")?;
     let panel_bootstrap_secret = read_panel_bootstrap_secret_from_config(config)?;
     let read_metadata = || read_launch_metadata(app, config, deadline);
-    let metadata = match read_metadata() {
+    let metadata = match read_launch_metadata_for(app, config, deadline, purpose) {
         Ok(m) => {
             info!("launch_defaultspack_desktop_impl: metadata loaded (port={}, entrypoint={}, argv_count={}, working_dir={})",
                 m.port, m.entrypoint.display(), m.argv.len(), m.app_working_dir.display());
@@ -1054,11 +1055,33 @@ pub(crate) fn read_launch_metadata(
     config: &AppConfig,
     deadline: Instant,
 ) -> AnyResult<DefaultspackDesktopMetadata> {
+    read_launch_metadata_for(app, config, deadline, LaunchMetadataUse::Supervision)
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum LaunchMetadataUse {
+    Shell,
+    Supervision,
+}
+
+fn read_launch_metadata_for(
+    app: &AppHandle,
+    config: &AppConfig,
+    deadline: Instant,
+    purpose: LaunchMetadataUse,
+) -> AnyResult<DefaultspackDesktopMetadata> {
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    if crate::kernel_manager::native_first_setup_enabled(config) {
-        return crate::native_harness_bootstrap::read_launch_metadata(app, deadline);
+    {
+        if crate::kernel_manager::native_first_setup_enabled(config) {
+            return crate::native_harness_bootstrap::read_launch_metadata(app, deadline, purpose);
+        }
+        if matches!(purpose, LaunchMetadataUse::Shell)
+            && crate::native_harness_bootstrap::registry_pack_receipt_bound()
+        {
+            bail!("bundled Registry Packs require the native Setup runtime");
+        }
     }
-    let _ = (app, deadline);
+    let _ = (app, deadline, purpose);
     read_defaultspack_desktop_metadata(config)
 }
 

@@ -38,6 +38,9 @@ mod host_contract;
 mod host_contract_contributions;
 #[cfg(all(feature = "native-source-inspection", unix))]
 mod native_declared_artifacts;
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+#[path = "../registry_pack_receipt.rs"]
+mod registry_pack_receipt;
 mod kernel_manager;
 #[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
 mod packvm_acceptance;

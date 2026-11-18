@@ -16,6 +16,9 @@ mod packaging_toolchain;
 mod packvm_bundle;
 #[path = "registry_pack_build.rs"]
 mod registry_pack_build;
+#[allow(dead_code)]
+#[path = "registry_pack_receipt.rs"]
+mod registry_pack_receipt;
 #[path = "src/runtime_resource_paths.rs"]
 mod runtime_resource_paths;
 #[path = "setup_component_build.rs"]
@@ -200,6 +203,9 @@ struct SourceProvenance<'a> {
 #[cfg(not(test))]
 fn main() {
     let registry_packs = configured_registry_packs().expect("invalid Registry Pack staging inputs");
+    if registry_packs.is_none() {
+        println!("cargo:rustc-env={}=", registry_pack_build::DIGEST_ENV);
+    }
     if cfg!(feature = "native-setup-review")
         && std::env::var_os("CARGO_CFG_TARGET_OS").is_some_and(|os| os == "macos")
     {
@@ -287,6 +293,10 @@ fn main() {
     let _runtime_stage_guard;
     let _debug_destination_guard;
     if unbundled_local_development {
+        assert!(
+            registry_packs.is_none(),
+            "Registry Packs require a staged runtime bundle"
+        );
         println!("cargo:rustc-env=TOBKIRI_LOCAL_DEV_WORKSPACE=1");
         println!(
             "cargo:warning=using the local development workspace runtime with a build-bound sealed authority stage"
@@ -300,6 +310,13 @@ fn main() {
             .expect("failed to reset the manifest-bound Tauri resource copy");
         _debug_destination_guard = prepare_debug_tauri_resource_destination()
             .expect("failed to prepare debug Tauri resource destination");
+        if let Some(registry_packs) = registry_packs.as_ref() {
+            println!(
+                "cargo:rustc-env={}={}",
+                registry_pack_build::DIGEST_ENV,
+                registry_packs.receipt_sha256()
+            );
+        }
     }
     build_legacy_tauri_manifest();
 }

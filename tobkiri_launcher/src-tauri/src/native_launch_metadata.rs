@@ -1,6 +1,7 @@
 //! Original Launch metadata, collected with the RuntimeOwner used during Setup.
 
 use std::{
+    io,
     panic::{catch_unwind, AssertUnwindSafe},
     sync::{atomic::Ordering, mpsc},
     time::{Duration, Instant},
@@ -11,15 +12,29 @@ use tauri::{AppHandle, Manager};
 
 use super::{JobTicket, NativeRuntimeState, WorkerExit};
 use crate::{
-    defaultspack_authority::{require_current_launch_identity, SignedApplicationResolver},
-    dock_registration::{assemble_defaultspack_desktop_metadata, DefaultspackDesktopMetadata},
+    defaultspack_authority::{
+        require_current_launch_identity, NativeSourceRoot, SignedApplicationResolver,
+    },
+    dock_registration::{
+        assemble_defaultspack_desktop_metadata, DefaultspackDesktopMetadata, LaunchMetadataUse,
+    },
     native_declared_artifacts::collect_for_native_launch,
-    preparation_budget, AppConfig, ShutdownState,
+    preparation_budget, registry_pack_receipt, AppConfig, ShutdownState,
 };
+
+const REGISTRY_RECEIPT_SHA256: &str = env!("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256");
+// Allow the bounded receipt decoder and streaming SHA-256 work to run only
+// when their fixed working set fits the real Launch job's control ledger.
+const REGISTRY_VERIFICATION_BYTES: u64 = 256 * 1024;
+
+pub(crate) fn registry_pack_receipt_bound() -> bool {
+    !REGISTRY_RECEIPT_SHA256.is_empty()
+}
 
 pub(crate) fn read_launch_metadata(
     app: &AppHandle,
     deadline: Instant,
+    purpose: LaunchMetadataUse,
 ) -> Result<DefaultspackDesktopMetadata> {
     preparation_budget::check(deadline)?;
     let runtime = app
@@ -35,7 +50,9 @@ pub(crate) fn read_launch_metadata(
     let (send, receive) = mpsc::sync_channel(1);
     jobs.spawn(move |job| {
         let (result, cleanup_verified) = catch_unwind(AssertUnwindSafe(|| {
-            tauri::async_runtime::block_on(collect_on_worker(&app, &runtime, &job, deadline))
+            tauri::async_runtime::block_on(collect_on_worker(
+                &app, &runtime, &job, deadline, purpose,
+            ))
         }))
         .unwrap_or_else(|_| (Err(anyhow!("native Launch metadata worker failed")), false));
         let _ = send.send(result);
@@ -64,6 +81,7 @@ async fn collect_on_worker(
     runtime: &NativeRuntimeState,
     job: &JobTicket,
     deadline: Instant,
+    purpose: LaunchMetadataUse,
 ) -> (Result<DefaultspackDesktopMetadata>, bool) {
     let admitted = (|| {
         preparation_budget::check(deadline)?;
@@ -94,6 +112,27 @@ async fn collect_on_worker(
     let metadata = result.and_then(|(sources, contributions)| {
         preparation_budget::check(deadline)?;
         require_current_launch_identity(&config, &identity)?;
+        if matches!(purpose, LaunchMetadataUse::Shell) && registry_pack_receipt_bound() {
+            let invocation = job
+                .invocation()
+                .context("native Launch job lost its runtime invocation")?;
+            let _funding = invocation.control().reserve(
+                tobkiri_gate::ControlKind::Frame,
+                REGISTRY_VERIFICATION_BYTES,
+            )?;
+            registry_pack_receipt::verify_installed(
+                sources.root(NativeSourceRoot::Application),
+                REGISTRY_RECEIPT_SHA256,
+                || {
+                    preparation_budget::check(deadline).map_err(io::Error::other)?;
+                    job.ensure_accepting(&runtime.0.jobs)
+                        .map_err(io::Error::other)
+                },
+            )
+            .context("bundled Registry Pack verification failed during Launch")?;
+            require_current_launch_identity(&config, &identity)?;
+            log::info!("verified the bundled Registry Packs for the active Shell launch");
+        }
         preparation_budget::check(deadline)?;
         job.ensure_accepting(&runtime.0.jobs)?;
         assemble_defaultspack_desktop_metadata(

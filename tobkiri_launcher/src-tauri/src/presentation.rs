@@ -761,6 +761,18 @@ fn launch_verified_target_once(
     {
         bail!("active Application or Shell binding changed during launch");
     }
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    if crate::native_harness_bootstrap::registry_pack_receipt_bound()
+        && crate::kernel_manager::native_first_setup_enabled(config)
+    {
+        crate::preparation_budget::check(deadline).context(ShellRuntimePreparationFailed)?;
+        crate::defaultspack_authority::require_current_launch_identity(
+            config,
+            &prepared_runtime.identity,
+        )
+        .context(ShellRuntimePreparationFailed)?;
+        crate::preparation_budget::check(deadline).context(ShellRuntimePreparationFailed)?;
+    }
     // A selection is a durable artifact preference until an active runtime is
     // captured. Persisting the exact identity here makes a restart or a second
     // Shell launch reject a stale selection instead of silently returning to

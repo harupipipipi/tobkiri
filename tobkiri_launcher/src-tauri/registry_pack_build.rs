@@ -4,11 +4,11 @@ use std::ffi::OsString;
 use std::io;
 use std::path::PathBuf;
 
-use super::valid_raw_sha256;
+use super::registry_pack_receipt::valid_raw_sha256;
 
 pub(super) const SOURCE_ENV: &str = "TOBKIRI_REGISTRY_PACK_SOURCE_DIR";
 pub(super) const DIGEST_ENV: &str = "TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256";
-pub(super) const DIRECTORY: &str = "native-registry-packs";
+pub(super) use super::registry_pack_receipt::DIRECTORY;
 
 #[cfg_attr(not(unix), allow(dead_code))]
 pub(super) struct Input {
@@ -42,9 +42,9 @@ impl Input {
             .filter(|digest| valid_raw_sha256(digest))
             .ok_or_else(|| invalid(format!("{DIGEST_ENV} must be a lowercase SHA-256")))?;
         if !source.is_absolute()
-            || !source
+            || source
                 .to_str()
-                .is_some_and(|path| !path.contains(['\n', '\r']))
+                .is_none_or(|path| path.contains(['\n', '\r']))
         {
             return Err(invalid(format!(
                 "{SOURCE_ENV} must be an absolute UTF-8 path"
@@ -54,6 +54,10 @@ impl Input {
             source,
             receipt_sha256,
         }))
+    }
+
+    pub(super) fn receipt_sha256(&self) -> &str {
+        &self.receipt_sha256
     }
 
     #[cfg(not(unix))]
@@ -68,159 +72,16 @@ fn invalid(message: impl Into<String>) -> io::Error {
 
 #[cfg(unix)]
 mod unix {
+    use super::super::registry_pack_receipt::{open_directory, read_verified_receipt, RECEIPT};
     use super::{invalid, Input, DIRECTORY};
-    use serde::Deserialize;
-    use sha2::{Digest, Sha256};
-    use std::ffi::{CString, OsString};
     use std::fs::{self, File, OpenOptions};
-    use std::io::{self, Read, Write};
-    use std::os::fd::{AsRawFd, FromRawFd};
-    use std::os::unix::fs::MetadataExt;
+    use std::io::{self, Write};
     use std::path::Path;
 
-    use super::super::{
-        core_directory_entries, open_staged_directory, raw_byte_digest, valid_raw_sha256,
-    };
-
-    const RECEIPT: &str = "receipt.json";
-    const RECEIPT_FORMAT: &str = "tobkiri.registry-packs/1";
-    const RECEIPT_LIMIT: u64 = 16 * 1024;
-    // The Pack authoring CLI's .tpk size ceiling.
-    const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
-    const PACK_IDS: [&str; 3] = [
-        "local.provider-registry",
-        "local.model-registry",
-        "local.saved-conversation",
-    ];
-
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Receipt {
-        format: String,
-        packs: [Pack; PACK_IDS.len()],
-    }
-
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Pack {
-        id: String,
-        version: String,
-        archive: String,
-        archive_bytes: u64,
-        archive_sha256: String,
-        manifest_sha256: String,
-    }
-
-    fn tagged_sha256(value: &str) -> bool {
-        value.strip_prefix("sha256:").is_some_and(valid_raw_sha256)
-    }
-
-    fn valid_version(version: &str) -> bool {
-        // Match tobkiri-manifest's three-part numeric Pack version grammar.
-        let parts: Vec<_> = version.split('.').collect();
-        parts.len() == 3
-            && parts.iter().all(|part| {
-                !part.is_empty()
-                    && !(part.len() > 1 && part.starts_with('0'))
-                    && part.bytes().all(|byte| byte.is_ascii_digit())
-            })
-    }
-
-    fn parse_receipt(raw: &[u8]) -> io::Result<Receipt> {
-        let document: serde_json::Value = serde_json::from_slice(raw)?;
-        // Derived structs also accept positional arrays. Require named objects.
-        if !document
-            .get("packs")
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|packs| packs.iter().all(serde_json::Value::is_object))
-        {
-            return Err(invalid(
-                "Registry Pack receipt must describe named Pack records",
-            ));
-        }
-        let receipt: Receipt = serde_json::from_slice(raw)?;
-        if receipt.format != RECEIPT_FORMAT {
-            return Err(invalid("Registry Pack receipt format is invalid"));
-        }
-        for (id, pack) in PACK_IDS.into_iter().zip(&receipt.packs) {
-            if pack.id != id
-                || pack.archive != format!("{id}.tpk")
-                || !valid_version(&pack.version)
-                || !(1..=ARCHIVE_LIMIT).contains(&pack.archive_bytes)
-                || !tagged_sha256(&pack.archive_sha256)
-                || !tagged_sha256(&pack.manifest_sha256)
-            {
-                return Err(invalid(format!(
-                    "Registry Pack receipt record for {id} is invalid"
-                )));
-            }
-        }
-        Ok(receipt)
-    }
-
-    fn open_input(
-        directory: &File,
-        name: &str,
-        sizes: std::ops::RangeInclusive<u64>,
-    ) -> io::Result<File> {
-        let name =
-            CString::new(name).map_err(|_| invalid("Registry Pack filename contains NUL"))?;
-        let fd = unsafe {
-            libc::openat(
-                directory.as_raw_fd(),
-                name.as_ptr(),
-                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
-            )
-        };
-        if fd == -1 {
-            return Err(io::Error::last_os_error());
-        }
-        let file = unsafe { File::from_raw_fd(fd) };
-        let metadata = file.metadata()?;
-        if !metadata.is_file() || metadata.nlink() != 1 || !sizes.contains(&metadata.len()) {
-            return Err(invalid(
-                "Registry Pack input must be a bounded, singly linked regular file",
-            ));
-        }
-        Ok(file)
-    }
+    use super::super::require_staged_owner;
 
     fn create_output(path: &Path) -> io::Result<File> {
         OpenOptions::new().write(true).create_new(true).open(path)
-    }
-
-    fn copy_archive(directory: &File, target: &Path, pack: &Pack) -> io::Result<()> {
-        let file = open_input(
-            directory,
-            &pack.archive,
-            pack.archive_bytes..=pack.archive_bytes,
-        )?;
-        let mut input = file.take(pack.archive_bytes + 1);
-        let mut output = create_output(&target.join(&pack.archive))?;
-        let mut hash = Sha256::new();
-        let mut total = 0;
-        let mut buffer = [0; 64 * 1024];
-        loop {
-            let count = input.read(&mut buffer)?;
-            if count == 0 {
-                break;
-            }
-            total += count as u64;
-            if total > pack.archive_bytes {
-                break;
-            }
-            hash.update(&buffer[..count]);
-            output.write_all(&buffer[..count])?;
-        }
-        if total != pack.archive_bytes
-            || format!("sha256:{:x}", hash.finalize()) != pack.archive_sha256
-        {
-            return Err(invalid(format!(
-                "Registry Pack archive differs from receipt: {}",
-                pack.id
-            )));
-        }
-        Ok(())
     }
 
     impl Input {
@@ -230,36 +91,18 @@ mod unix {
                     "Registry Pack source directory must be a physical path",
                 ));
             }
-            let directory = open_staged_directory(&self.source, "Registry Pack source directory")?;
-            let mut raw = Vec::new();
-            open_input(&directory, RECEIPT, 1..=RECEIPT_LIMIT)?
-                .take(RECEIPT_LIMIT + 1)
-                .read_to_end(&mut raw)?;
-            if raw.len() as u64 > RECEIPT_LIMIT || raw_byte_digest(&raw) != self.receipt_sha256 {
-                return Err(invalid(
-                    "Registry Pack receipt differs from the expected digest",
-                ));
-            }
-            let receipt = parse_receipt(&raw)?;
-            let mut expected = Vec::from([OsString::from(RECEIPT)]);
-            expected.extend(
-                receipt
-                    .packs
-                    .iter()
-                    .map(|pack| OsString::from(&pack.archive)),
-            );
-            expected.sort();
-            if core_directory_entries(&directory)? != expected {
-                return Err(invalid(
-                    "Registry Pack source directory has missing or unexpected entries",
-                ));
-            }
+            let directory = open_directory(&self.source)?;
+            require_staged_owner(&directory.metadata()?, "Registry Pack source directory")?;
+            let (receipt, raw) =
+                read_verified_receipt(&directory, &self.receipt_sha256, || Ok(()))?;
             let target = staged_root.join(DIRECTORY);
             fs::create_dir(&target)?;
             let result = (|| {
-                for pack in &receipt.packs {
-                    copy_archive(&directory, &target, pack)?;
-                }
+                receipt.verify_archives(
+                    &directory,
+                    |name| create_output(&target.join(name)),
+                    || Ok(()),
+                )?;
                 create_output(&target.join(RECEIPT))?.write_all(&raw)
             })();
             if let Err(error) = result {
@@ -278,9 +121,14 @@ mod unix {
 
     #[cfg(test)]
     mod tests {
+        use super::super::super::raw_byte_digest;
+        use super::super::super::registry_pack_receipt::{
+            verify_installed, ARCHIVE_LIMIT, PACK_IDS, RECEIPT_FORMAT,
+        };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
         use super::*;
         use serde_json::{json, Value};
+        use std::ffi::OsString;
         use std::os::unix::fs::symlink;
         use std::path::PathBuf;
 
@@ -382,6 +230,115 @@ mod unix {
                 assert_eq!(entry["size"], bytes.len());
                 assert_eq!(entry["sha256"], raw_byte_digest(&bytes));
             }
+            Ok(())
+        }
+
+        #[test]
+        fn verifies_the_installed_receipt_and_exact_inventory() -> io::Result<()> {
+            let fixture = Fixture::new()?;
+            let input = fixture.write_receipt(&fixture.document)?;
+            assert!(verify_installed(&fixture.stage, input.receipt_sha256(), || Ok(())).is_err());
+            input.stage(&fixture.stage)?;
+            let verify = || verify_installed(&fixture.stage, input.receipt_sha256(), || Ok(()));
+            verify()?;
+            assert!(verify_installed(&fixture.stage, &"2".repeat(64), || Ok(())).is_err());
+
+            let directory = fixture.stage.join(DIRECTORY);
+            let receipt_path = directory.join(RECEIPT);
+            let original_receipt = fs::read(&receipt_path)?;
+            let mut oversized_receipt = original_receipt.clone();
+            oversized_receipt.extend_from_slice(&[b' '; 16 * 1024]);
+            let oversized_pin = raw_byte_digest(&oversized_receipt);
+            fs::write(&receipt_path, &oversized_receipt)?;
+            assert!(verify_installed(&fixture.stage, &oversized_pin, || Ok(())).is_err());
+            fs::write(&receipt_path, original_receipt)?;
+
+            let archive = directory.join(format!("{}.tpk", PACK_IDS[0]));
+            fs::write(&archive, vec![0; PACK_IDS[0].len()])?;
+            assert!(verify().is_err());
+            fs::write(&archive, PACK_IDS[0].as_bytes())?;
+            fs::write(directory.join("unexpected"), b"extra")?;
+            assert!(verify().is_err());
+            fs::remove_file(directory.join("unexpected"))?;
+            fs::remove_file(&archive)?;
+            assert!(verify().is_err());
+            fs::write(&archive, PACK_IDS[0].as_bytes())?;
+            verify()?;
+            Ok(())
+        }
+
+        #[test]
+        fn rejects_installed_symlinks_and_hard_links() -> io::Result<()> {
+            let fixture = Fixture::new()?;
+            let input = fixture.write_receipt(&fixture.document)?;
+            input.stage(&fixture.stage)?;
+            let pin = input.receipt_sha256();
+
+            let alias = fixture.root.join("alias");
+            symlink(&fixture.root, &alias)?;
+            assert!(verify_installed(&alias.join("stage"), pin, || Ok(())).is_err());
+            fs::remove_file(&alias)?;
+            symlink(&fixture.stage, &alias)?;
+            assert!(verify_installed(&alias, pin, || Ok(())).is_err());
+
+            let directory = fixture.stage.join(DIRECTORY);
+            let outside = fixture.root.join("outside");
+            fs::rename(&directory, &outside)?;
+            symlink(&outside, &directory)?;
+            assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
+            fs::remove_file(&directory)?;
+            fs::rename(&outside, &directory)?;
+
+            for filename in [RECEIPT.to_owned(), format!("{}.tpk", PACK_IDS[0])] {
+                let current = directory.join(filename);
+                fs::rename(&current, &outside)?;
+                symlink(&outside, &current)?;
+                assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
+                fs::remove_file(&current)?;
+                fs::hard_link(&outside, &current)?;
+                assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
+                fs::remove_file(&outside)?;
+            }
+            verify_installed(&fixture.stage, pin, || Ok(()))
+        }
+
+        #[test]
+        fn checkpoints_before_access_and_between_archive_chunks() -> io::Result<()> {
+            let fixture = Fixture::new()?;
+            let interrupted = || io::Error::new(io::ErrorKind::Interrupted, "Launch cancelled");
+            let error = verify_installed(&fixture.stage, "", || Err(interrupted())).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::Interrupted);
+
+            let archive = vec![7; 3 * 64 * 1024];
+            let filename = format!("{}.tpk", PACK_IDS[0]);
+            fs::write(fixture.source.join(&filename), &archive)?;
+            let mut receipt = fixture.document.clone();
+            receipt["packs"][0]["archive_bytes"] = json!(archive.len());
+            receipt["packs"][0]["archive_sha256"] =
+                json!(format!("sha256:{}", raw_byte_digest(&archive)));
+            let input = fixture.write_receipt(&receipt)?;
+            input.stage(&fixture.stage)?;
+            let pin = input.receipt_sha256();
+
+            // Cancel on the checkpoint after hashing the first chunk. The invalid tail
+            // would otherwise make the archive fail its digest check.
+            let mut invalid_archive = archive;
+            *invalid_archive.last_mut().unwrap() ^= 1;
+            fs::write(
+                fixture.stage.join(DIRECTORY).join(filename),
+                &invalid_archive,
+            )?;
+            let mut checkpoints = 0;
+            let error = verify_installed(&fixture.stage, pin, || {
+                checkpoints += 1;
+                if checkpoints == 5 {
+                    return Err(interrupted());
+                }
+                Ok(())
+            })
+            .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::Interrupted);
+            assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
             Ok(())
         }
 
