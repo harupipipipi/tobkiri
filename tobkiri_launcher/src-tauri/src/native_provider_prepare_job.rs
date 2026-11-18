@@ -1,4 +1,4 @@
-//! Tracked, read-only Provider preparation and commit validation.
+//! Tracked Provider preparation, commit staging and native publication.
 
 use std::{
     panic::{catch_unwind, AssertUnwindSafe},
@@ -12,8 +12,8 @@ use std::{
 use anyhow::{anyhow, ensure, Context, Result};
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{
-    CoreBuffer, CoreValue, LegacyProviderRegistryRead, NativeArtifactError,
-    NativeArtifactInspection, MAX_BYTES,
+    AllocationBudget, CoreBuffer, CoreValue, LegacyProviderRegistryRead, NativeArtifactError,
+    NativeArtifactInspection, NativeProviderRegistryCommit, MAX_BYTES,
 };
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 use tobkiri_wasm::NativeDataIoError;
@@ -31,6 +31,19 @@ use crate::{
 };
 
 type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
+
+pub(crate) enum ProviderPlan {
+    Validate(Vec<u8>),
+    Publish(Vec<u8>),
+}
+
+impl ProviderPlan {
+    fn bytes(&self) -> &Vec<u8> {
+        match self {
+            Self::Validate(bytes) | Self::Publish(bytes) => bytes,
+        }
+    }
+}
 
 /// A running Provider can narrow its Host deadline when the Core begins.
 pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
@@ -111,7 +124,7 @@ impl Drop for PendingProviderPrepare {
 struct Request {
     listener: Arc<ProviderPrepareListener>,
     bytes: Vec<u8>,
-    plan: Option<Vec<u8>>,
+    plan: Option<ProviderPlan>,
     input_capacity: u64,
     deadline: Arc<ProviderPrepareDeadline>,
     read: LegacyProviderRegistryRead,
@@ -124,6 +137,11 @@ struct Prepared {
     result: Result<CoreBuffer>,
 }
 
+struct PreparedReply {
+    wire: CoreBuffer,
+    document: Option<CoreBuffer>,
+}
+
 /// Run the installed Provider planner or validate its frozen plan read-only.
 ///
 /// The trusted Host adapter owns the route, activation epoch, Registry reader,
@@ -132,7 +150,7 @@ pub(crate) fn start_provider_prepare(
     app: &AppHandle,
     listener: Arc<ProviderPrepareListener>,
     request: Vec<u8>,
-    plan: Option<Vec<u8>>,
+    plan: Option<ProviderPlan>,
     deadline: Arc<ProviderPrepareDeadline>,
     read: LegacyProviderRegistryRead,
     continue_current: ContinueCurrent,
@@ -140,11 +158,11 @@ pub(crate) fn start_provider_prepare(
     check_live(deadline.current(), None)?;
     let input_capacity = request
         .capacity()
-        .checked_add(plan.as_ref().map_or(0, Vec::capacity))
+        .checked_add(plan.as_ref().map_or(0, |plan| plan.bytes().capacity()))
         .context("native Provider preparation input capacity overflow")?;
     ensure!(
         !request.is_empty()
-            && plan.as_ref().is_none_or(|plan| !plan.is_empty())
+            && plan.as_ref().is_none_or(|plan| !plan.bytes().is_empty())
             && input_capacity <= MAX_BYTES,
         "native Provider preparation request exceeds its input envelope"
     );
@@ -273,14 +291,19 @@ async fn run(
         );
         checkpoint()
     };
+    let publishes = matches!(plan.as_ref(), Some(ProviderPlan::Publish(_)));
+    let publication = Arc::new(Mutex::new(None));
+    let publication_limit = Arc::new(AtomicBool::new(false));
     let outcome = {
         let prepare = caught(async {
             let graph = inspection.allocation_budget()?.clone();
             let input = CoreValue::parse_guest(&bytes, &graph)?;
             drop(bytes);
-            let plan = plan
-                .map(|bytes| CoreValue::parse_guest(&bytes, &graph))
+            let input_plan = plan
+                .as_ref()
+                .map(|plan| CoreValue::parse_guest(plan.bytes(), &graph))
                 .transpose()?;
+            drop(plan);
             let pack = reacquire_provider_prepare_pack(
                 &inspection,
                 listener.verified_source(),
@@ -290,16 +313,51 @@ async fn run(
             let read_manager = Arc::clone(&manager);
             let read_listener = Arc::clone(&listener);
             let continue_read = Arc::clone(&continue_current);
+            let continue_observing: ContinueCurrent = Arc::new(move || {
+                read_manager.require_provider_prepare_admission(&read_listener)?;
+                continue_read()
+            });
+            let read = if publishes {
+                let target = inspection
+                    .legacy_provider_commit(&config.user_data_dir, &identity.profile_id)?;
+                *publication
+                    .lock()
+                    .map_err(|_| anyhow!("Provider Registry lock unavailable"))? = Some(target);
+                read_for_publication(
+                    read,
+                    Arc::clone(&publication),
+                    Arc::clone(&publication_limit),
+                    Arc::clone(&continue_observing),
+                    cancellation.clone(),
+                    execution_deadline,
+                )
+            } else {
+                read
+            };
             let read = guarded_registry_read(
                 read,
-                Arc::new(move || {
-                    read_manager.require_provider_prepare_admission(&read_listener)?;
-                    continue_read()
-                }),
+                continue_observing,
                 cancellation.clone(),
                 execution_deadline,
             );
-            let output = match plan.as_ref() {
+            let output = match input_plan.as_ref() {
+                Some(plan) if publishes => {
+                    let staged = inspection
+                        .stage_live_legacy_provider_commit(
+                            &pack,
+                            &identity.profile_id,
+                            &input,
+                            plan,
+                            read,
+                        )
+                        .await;
+                    if let Err(NativeArtifactError::ProviderRejected(error)) = &staged {
+                        if error.code() == "limit-exceeded" {
+                            publication_limit.store(true, Ordering::Release);
+                        }
+                    }
+                    return decode_staged_reply(staged?, plan, &graph);
+                }
                 Some(plan) => {
                     inspection
                         .validate_live_legacy_provider_commit(
@@ -322,7 +380,10 @@ async fn run(
                         .await?
                 }
             };
-            Ok::<_, anyhow::Error>(output.encode_guest(&graph)?)
+            Ok::<_, anyhow::Error>(PreparedReply {
+                wire: output.encode_guest(&graph)?,
+                document: None,
+            })
         });
         tokio::pin!(prepare);
         tokio::select! {
@@ -339,7 +400,24 @@ async fn run(
         Ok(sources) => {
             drop(sources);
             (
-                revalidate().and_then(|()| outcome.map_err(|error| anyhow!(error))?),
+                revalidate().and_then(|()| {
+                    let outcome = outcome.map_err(|error| anyhow!(error))?;
+                    if outcome.is_err() && publication_limit.load(Ordering::Acquire) {
+                        return Err(NativeArtifactError::ProviderRegistryLimitBeforePublish.into());
+                    }
+                    let reply = outcome?;
+                    if let Some(document) = reply.document {
+                        let target = publication
+                            .lock()
+                            .map_err(|_| anyhow!("Provider Registry lock unavailable"))?
+                            .take()
+                            .context("native Provider staging lost its Registry lock")?;
+                        target.publish(document.as_bytes(), || {
+                            revalidate().map_err(publication_checkpoint_error)
+                        })?;
+                    }
+                    Ok(reply.wire)
+                }),
                 execution_returned,
             )
         }
@@ -352,6 +430,7 @@ async fn run(
         ) => (Err(error.into()), execution_returned),
         Err(error) => (Err(error.into()), false),
     };
+    drop(publication);
     drop(continue_current);
     drop(config);
     drop(app);
@@ -364,6 +443,86 @@ async fn run(
         }),
         cleanup_verified,
     )
+}
+
+fn decode_staged_reply(
+    staged: CoreValue,
+    plan: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<PreparedReply> {
+    let document = staged
+        .get_key("document")
+        .context("native Provider staging omitted its document")?;
+    let raw = document
+        .as_str()
+        .context("native Provider staged document is invalid")?;
+    let reply = staged
+        .get_key("result")
+        .context("native Provider staging omitted its result")?;
+    let expected = plan
+        .get_key("provider_instance_id")
+        .context("native Provider plan omitted its connection")?;
+    let configured = reply
+        .get_key("provider_instance_id")
+        .context("native Provider staging omitted its connection")?;
+    ensure!(
+        reply
+            .get_key("configured")
+            .and_then(|value| value.as_bool())
+            == Some(true)
+            && expected.as_str().is_some()
+            && configured.as_str() == expected.as_str()
+            && raw.ends_with('\n'),
+        "native Provider staging returned a different result"
+    );
+    Ok(PreparedReply {
+        wire: reply.encode_guest(budget)?,
+        document: Some(CoreBuffer::copy_from(raw.as_bytes(), budget)?),
+    })
+}
+
+fn read_for_publication(
+    mut read: LegacyProviderRegistryRead,
+    publication: Arc<Mutex<Option<NativeProviderRegistryCommit>>>,
+    publication_limit: Arc<AtomicBool>,
+    continue_current: ContinueCurrent,
+    cancellation: CoreCancellation,
+    deadline: Instant,
+) -> LegacyProviderRegistryRead {
+    let mut observations = 0;
+    Box::new(move |budget| {
+        observations += 1;
+        if observations < 4 {
+            return read(budget);
+        }
+        ensure!(
+            observations == 4,
+            "legacy Provider publication requested another read"
+        );
+        let mut publication = publication
+            .lock()
+            .map_err(|_| anyhow!("Provider Registry lock unavailable"))?;
+        let observed = publication
+            .as_mut()
+            .context("native Provider publication is unavailable")?
+            .observe_locked(budget, || {
+                check_live(deadline, Some(&cancellation))
+                    .and_then(|()| continue_current())
+                    .and_then(|()| check_live(deadline, Some(&cancellation)))
+                    .map_err(publication_checkpoint_error)
+            });
+        if matches!(
+            &observed,
+            Err(NativeArtifactError::ProviderRegistryLimitBeforePublish)
+        ) {
+            publication_limit.store(true, Ordering::Release);
+        }
+        Ok(observed?)
+    })
+}
+
+fn publication_checkpoint_error(error: anyhow::Error) -> NativeArtifactError {
+    error.downcast().unwrap_or(NativeArtifactError::Denied)
 }
 
 fn check_live(deadline: Instant, cancellation: Option<&CoreCancellation>) -> Result<()> {

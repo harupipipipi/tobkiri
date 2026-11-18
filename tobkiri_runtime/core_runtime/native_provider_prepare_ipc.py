@@ -21,6 +21,7 @@ from core_runtime.provider_prepare_native_v4 import (
     MINIMUM_PREPARE_MEMORY,
     NativeProviderPrepareBorrow,
     NativeProviderPreparePlanner,
+    NativeProviderRegistryRequiresLegacyRead,
 )
 from tobkiri_protocol.canonical import strict_loads
 
@@ -38,7 +39,7 @@ _INAPPLICABLE = 10
 _JSON_LIMIT = 16 * 1024
 _FAILURES = frozenset({
     b"denied", b"approval-required", b"cancelled", b"not-found", b"invalid",
-    b"limit-exceeded", b"conflict", b"unavailable", b"internal",
+    b"limit-exceeded", b"conflict", b"unavailable", b"internal", b"legacy-read-required",
 })
 _INBOUND_LIMITS = {
     _CHECK: 0,
@@ -160,7 +161,7 @@ def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> byt
     }
     frozen_plan = borrow.frozen_plan
     if frozen_plan is not None:
-        frame["plan"] = dict(frozen_plan)
+        frame["apply" if borrow.publishes else "plan"] = dict(frozen_plan)
     payload = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
     try:
         encoded = payload.encode("utf-8")
@@ -270,6 +271,11 @@ class _Exchange:
             tag, payload = self.receive(wait_seconds)
             if tag == _FAILURE and payload in _FAILURES:
                 self.terminal = True
+                if payload == b"legacy-read-required" and borrow.publishes:
+                    wait_seconds()
+                    raise NativeProviderRegistryRequiresLegacyRead(
+                        "Provider publication exceeds the native envelope before rename",
+                    )
                 raise _ProtocolError(
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
@@ -325,7 +331,10 @@ def _plan(
         except OSError:
             raise _ProtocolError(connection_error) from None
         _authenticate(connection, launcher)
-        result_limit = DOCUMENT_LIMIT if borrow.frozen_plan is not None else _JSON_LIMIT
+        result_limit = (
+            DOCUMENT_LIMIT
+            if borrow.frozen_plan is not None and not borrow.publishes else _JSON_LIMIT
+        )
         exchange = _Exchange(connection, result_limit=result_limit)
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds)

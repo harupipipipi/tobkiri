@@ -19,7 +19,7 @@ use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, PendingProviderPrepare, ProviderPrepareDeadline,
+        start_provider_prepare, PendingProviderPrepare, ProviderPlan, ProviderPrepareDeadline,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -51,6 +51,19 @@ struct Start<'a> {
     request: Request,
     #[serde(borrow, default, deserialize_with = "deserialize_plan")]
     plan: Option<&'a RawValue>,
+    #[serde(borrow, default, deserialize_with = "deserialize_plan")]
+    apply: Option<&'a RawValue>,
+}
+
+impl Start<'_> {
+    fn provider_plan(&self) -> Result<Option<ProviderPlan>> {
+        match (self.plan, self.apply) {
+            (None, None) => Ok(None),
+            (Some(plan), None) => Ok(Some(ProviderPlan::Validate(plan.get().as_bytes().to_vec()))),
+            (None, Some(plan)) => Ok(Some(ProviderPlan::Publish(plan.get().as_bytes().to_vec()))),
+            _ => bail!("a Provider connection has more than one operation"),
+        }
+    }
 }
 
 fn deserialize_plan<'de, D>(deserializer: D) -> std::result::Result<Option<&'de RawValue>, D::Error>
@@ -126,6 +139,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     read_exact(&mut stream, &mut bytes, start_deadline)?;
     let start: Start<'_> =
         serde_json::from_slice(&bytes).map_err(|_| anyhow!("invalid Provider prepare start"))?;
+    let plan = start.provider_plan()?;
     ensure!(
         start.runtime_instance.len() == 32
             && start
@@ -184,8 +198,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         "Provider prepare request exceeds its envelope"
     );
     // Keep the frozen plan's exact JSON for the Core's funded strict parser.
-    let plan = start.plan.map(|plan| plan.get().as_bytes().to_vec());
-    let result_limit = if plan.is_some() {
+    let result_limit = if matches!(plan.as_ref(), Some(ProviderPlan::Validate(_))) {
         DOCUMENT_LIMIT
     } else {
         JSON_LIMIT
@@ -431,6 +444,7 @@ impl Wire {
 
 fn failure_code(error: &anyhow::Error) -> &'static str {
     match error.downcast_ref::<NativeArtifactError>() {
+        Some(NativeArtifactError::ProviderRegistryLimitBeforePublish) => "legacy-read-required",
         Some(NativeArtifactError::ProviderRejected(error)) => error.code(),
         Some(NativeArtifactError::Execution(
             NativeDataIoError::Cancelled | NativeDataIoError::Deadline,
@@ -620,6 +634,13 @@ mod tests {
         let validate = start_frame(&format!(r#", "plan": {plan}"#));
         let validate: Start<'_> = serde_json::from_str(&validate).unwrap();
         assert_eq!(validate.plan.unwrap().get(), plan);
+
+        let apply = start_frame(&format!(r#", "apply": {plan}"#));
+        let apply: Start<'_> = serde_json::from_str(&apply).unwrap();
+        assert!(matches!(
+            apply.provider_plan().unwrap(),
+            Some(ProviderPlan::Publish(bytes)) if bytes == plan.as_bytes()
+        ));
     }
 
     #[test]
@@ -631,6 +652,8 @@ mod tests {
             r#","plan":42"#,
             r#","plan":{},"plan":{}"#,
             r#","plan":{},"approved":true"#,
+            r#","apply":null"#,
+            r#","apply":[] "#,
         ] {
             let payload = start_frame(extra);
             assert!(
@@ -638,6 +661,9 @@ mod tests {
                 "{extra}"
             );
         }
+        let both = start_frame(r#","plan":{},"apply":{}"#);
+        let both: Start<'_> = serde_json::from_str(&both).unwrap();
+        assert!(both.provider_plan().is_err());
     }
 
     #[test]

@@ -4946,21 +4946,28 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         with pytest.raises(PermissionError, match="reads are exhausted"):
             borrow.read_legacy_registry()
         if borrow.frozen_plan is not None:
+            assert borrow.publishes
             assert borrow.frozen_plan["request_digest"] == canonical_digest(connection)
             assert borrow.frozen_plan["expected_revision"] == 1
             if launcher_mode == "retired-publication":
                 with server._lifecycle_lock:
                     server._native_provider_prepare_instance = "0" * 32
-            return {
-                "expected_revision": 1,
-                "record": {
+
+            class FixturePublisher(ProviderRegistry):
+                def _write(self, state: Mapping[str, Any]) -> None:
+                    borrow.assert_current()
+                    super()._write(state)
+
+            FixturePublisher("defaults", user_data_root=root).save(
+                {
                     "provider_instance_id": "provider.fixture-local",
                     "adapter_id": "local-openai-compatible",
                     "endpoint": "http://127.0.0.1:11434/v1",
                     "credential_handle": None,
-                    "record_revision": 1,
                 },
-            }
+                expected_revision=1,
+            )
+            return {"configured": True, "provider_instance_id": "provider.fixture-local"}
         return {
             "profile_id": "defaults",
             "provider_instance_id": "provider.fixture-local",

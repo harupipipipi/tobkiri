@@ -1810,8 +1810,7 @@ def capture_production_dispatch(
     from ..provider_prepare_native_v4 import (
         NativeProviderRegistryRequiresLegacyRead,
         current_provider_prepare_http_scope,
-        invoke_native_provider_commit_validation,
-        save_validated_local_provider,
+        invoke_native_provider_commit,
     )
 
     launcher_provider_prepare = native_provider_prepare_planner is None
@@ -4145,10 +4144,10 @@ def capture_production_dispatch(
                 document_path=registry.path,
                 deadline_monotonic=envelope.deadline_monotonic,
                 resources=resources, guard=guard, runtime_instance=pinned_runtime[0],
-                frozen_plan=payload["plan"],
+                frozen_plan=payload["plan"], publishes=True,
             )
             try:
-                record, revision = invoke_native_provider_commit_validation(
+                return invoke_native_provider_commit(
                     planner, borrow, payload=request, normalized=normalized,
                 )
             except (
@@ -4156,11 +4155,6 @@ def capture_production_dispatch(
             ):
                 guard()
                 return contribution.invoke(operation_id, payload, invocation)
-            guard()
-            return save_validated_local_provider(
-                capture.profile_id, capture.user_data_root, record,
-                expected_revision=revision, guard=guard,
-            )
 
         return replace(contribution, invoke=invoke)
 

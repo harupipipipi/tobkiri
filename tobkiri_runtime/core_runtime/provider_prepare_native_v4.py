@@ -95,6 +95,7 @@ class NativeProviderPrepareBorrow:
         guard: Callable[[], None],
         runtime_instance: str | None = None,
         frozen_plan: Mapping[str, Any] | None = None,
+        publishes: bool = False,
     ) -> None:
         self._context = context
         self._request = MappingProxyType({
@@ -114,6 +115,7 @@ class NativeProviderPrepareBorrow:
             }) if frozen_plan is not None else None
         )
         self._read_limit = 3 if frozen_plan is not None else 2
+        self._publishes = publishes
         self._thread = threading.get_ident()
         self._active = True
         self._read_attempts = 0
@@ -160,6 +162,12 @@ class NativeProviderPrepareBorrow:
         """Borrow the exact approved base plan during commit validation."""
         self.assert_current()
         return self._frozen_plan
+
+    @property
+    def publishes(self) -> bool:
+        """Identify the approved request that delegates one native publication."""
+        self.assert_current()
+        return self._publishes
 
     def read_legacy_registry(self) -> str | None:
         """Read the fixed Profile Registry at the current observation."""
@@ -243,17 +251,17 @@ def _expected_plan(
     return expected
 
 
-def invoke_native_provider_commit_validation(
+def invoke_native_provider_commit(
     planner: NativeProviderPreparePlanner,
     borrow: NativeProviderPrepareBorrow,
     *,
     payload: Mapping[str, Any],
     normalized: Mapping[str, Any],
-) -> tuple[dict[str, Any], int]:
-    """Return a bounded keyless record tied to the request and its approved revision."""
+) -> dict[str, Any]:
+    """Run one approved native publication, with closed acknowledgement fields."""
     try:
         frozen = borrow.frozen_plan
-        if frozen is None:
+        if frozen is None or not borrow.publishes:
             raise PermissionError("native Provider commit requires an approved plan")
         revision = frozen.get("expected_revision")
         expected = _expected_plan(borrow.context, payload, normalized, revision)
@@ -261,71 +269,18 @@ def invoke_native_provider_commit_validation(
             expected["credential_scopes"] = tuple(expected["credential_scopes"])
         if type(revision) is not int or revision < 0 or dict(frozen) != expected:
             raise PermissionError("native Provider approved plan differs")
-        result = planner.plan(borrow)
+        result = dict(planner.plan(borrow))
         borrow.assert_current()
-        record = result.get("record")
-        result_revision = result.get("expected_revision")
+        configured = {
+            "configured": True,
+            "provider_instance_id": expected["provider_instance_id"],
+        }
         if (
             borrow._successful_reads != 3
-            or set(result) != {"record", "expected_revision"}
-            or type(result_revision) is not int
-            or result_revision != revision
-            or not isinstance(record, dict)
-            or record.get("provider_instance_id") != expected["provider_instance_id"]
-            or record.get("adapter_id") != expected["adapter_id"]
-            or record.get("endpoint") != expected["endpoint"]
-            or "credential_handle" not in record
-            or record["credential_handle"] is not None
+            or result.get("configured") is not True
+            or result != configured
         ):
-            raise ValueError("native Provider validation returned an invalid record")
-        return record, revision
+            raise ValueError("native Provider publication acknowledgement differs")
+        return configured
     finally:
         borrow._close()
-
-
-class _LocalSaveAuthorityLost(PermissionError):
-    """The approved lease expired before the Registry write started."""
-
-
-def save_validated_local_provider(
-    profile_id: str,
-    user_data_root: Path,
-    record: Mapping[str, Any],
-    *,
-    expected_revision: int,
-    guard: Callable[[], None],
-) -> dict[str, Any]:
-    """Save through the original Registry while rechecking authority under its lock."""
-    from ecosystem.rumi_provider_registry_pack.runtime.configuration import (
-        _connection_save_confirmed,
-        _save_snapshot,
-    )
-    from ecosystem.rumi_provider_registry_pack.runtime.registry import (
-        ProviderRegistry,
-        ProviderRegistryConflict,
-    )
-
-    class _GuardedRegistry(ProviderRegistry):
-        def _write(self, state: Mapping[str, Any]) -> None:
-            # The original save holds NamedLock at this final publication step.
-            try:
-                guard()
-            except Exception as error:
-                raise _LocalSaveAuthorityLost(
-                    "Provider save authority changed",
-                ) from error
-            super()._write(state)
-
-    registry = _GuardedRegistry(profile_id, user_data_root=user_data_root)
-    try:
-        registry.save(record, expected_revision=expected_revision)
-    except _LocalSaveAuthorityLost:
-        raise
-    except Exception as error:
-        if isinstance(error, (ValueError, ProviderRegistryConflict)) or not (
-            _connection_save_confirmed(
-                _save_snapshot(registry), record, expected_revision=expected_revision,
-            )
-        ):
-            raise RuntimeError("provider connection save was not confirmed") from None
-    return {"configured": True, "provider_instance_id": record["provider_instance_id"]}

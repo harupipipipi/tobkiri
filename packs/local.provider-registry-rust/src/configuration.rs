@@ -341,6 +341,24 @@ pub(crate) fn validate_legacy_local_configuration<S: DocumentStore, C: Clock>(
     ]))
 }
 
+/// Stage a save from the approved base plan using the original Registry
+/// mutation and its final independent read.
+#[cfg(feature = "component")]
+pub(crate) fn stage_legacy_local_configuration<S: DocumentStore, C: Clock>(
+    registry: &mut Registry<S, C>,
+    request_payload: &PyValue,
+    supplied_plan: &PyValue,
+) -> SourceResult<PyValue> {
+    let validated = validate_frozen_configuration(registry, request_payload, supplied_plan)?;
+    if validated.request.protocol != "local-openai-compatible" {
+        return Err(SourceError::permission(
+            "local provider configuration is required",
+        ));
+    }
+    registry.save(&validated.record, validated.expected_revision)?;
+    Ok(configured_result(&validated.record))
+}
+
 /// Execute one frozen provider setup. A failed/ambiguous credential create is
 /// never retried or compensated; only a new handle proven absent from a
 /// readable Registry snapshot may be revoked after a failed Registry save.

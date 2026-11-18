@@ -549,22 +549,62 @@ enum Part<'a> {
     Value(&'a PyValue, bool),
     Key(&'a str, bool),
     PythonJson(&'a PythonJson),
-    Text(&'static str),
+    Next,
+    Colon,
+    Close(&'static str, bool),
 }
 
-fn append(output: &mut String, text: &str) -> Result<(), CodecError> {
-    if text.len() > MAX_BYTES - output.len() {
-        return Err(CodecError::ByteLimit);
+struct Output {
+    text: String,
+    maximum: usize,
+    indent: Option<usize>,
+}
+
+impl Output {
+    fn append(&mut self, text: &str) -> Result<(), CodecError> {
+        if text.len() > self.maximum - self.text.len() {
+            return Err(CodecError::ByteLimit);
+        }
+        self.text
+            .try_reserve(text.len())
+            .map_err(|_| CodecError::Resource)?;
+        self.text.push_str(text);
+        Ok(())
     }
-    output
-        .try_reserve(text.len())
-        .map_err(|_| CodecError::Resource)?;
-    output.push_str(text);
-    Ok(())
+
+    fn line(&mut self) -> Result<(), CodecError> {
+        if let Some(mut depth) = self.indent {
+            const SPACES: &str = "                                                                ";
+            self.append("\n")?;
+            while depth >= SPACES.len() / 2 {
+                self.append(SPACES)?;
+                depth -= SPACES.len() / 2;
+            }
+            self.append(&SPACES[..depth * 2])?;
+        }
+        Ok(())
+    }
+
+    fn open(&mut self, delimiter: &str, nonempty: bool) -> Result<(), CodecError> {
+        self.append(delimiter)?;
+        if nonempty && let Some(depth) = &mut self.indent {
+            *depth += 1;
+            self.line()?;
+        }
+        Ok(())
+    }
+
+    fn close(&mut self, delimiter: &str, nonempty: bool) -> Result<(), CodecError> {
+        if nonempty && let Some(depth) = &mut self.indent {
+            *depth -= 1;
+            self.line()?;
+        }
+        self.append(delimiter)
+    }
 }
 
 struct StringSink<'a> {
-    output: &'a mut String,
+    output: &'a mut Output,
     failure: Option<CodecError>,
 }
 impl io::Write for StringSink<'_> {
@@ -572,7 +612,7 @@ impl io::Write for StringSink<'_> {
         // serde_json's string formatter writes valid UTF-8 fragments or ASCII
         // escapes. Its authoritative serializer still chooses every escape.
         let text = std::str::from_utf8(bytes).map_err(io::Error::other)?;
-        if let Err(error) = append(self.output, text) {
+        if let Err(error) = self.output.append(text) {
             self.failure = Some(error);
             return Err(io::Error::other("bounded JSON string output failed"));
         }
@@ -583,7 +623,7 @@ impl io::Write for StringSink<'_> {
     }
 }
 
-fn string(output: &mut String, value: &str) -> Result<(), CodecError> {
+fn string(output: &mut Output, value: &str) -> Result<(), CodecError> {
     let mut sink = StringSink {
         output,
         failure: None,
@@ -591,7 +631,7 @@ fn string(output: &mut String, value: &str) -> Result<(), CodecError> {
     serde_json::to_writer(&mut sink, value).map_err(|_| sink.failure.unwrap_or(CodecError::Invalid))
 }
 
-fn opaque_output_string(output: &mut String, value: &str) -> Result<(), CodecError> {
+fn opaque_output_string(output: &mut Output, value: &str) -> Result<(), CodecError> {
     let mut decoded = String::new();
     let mut characters = value.chars();
     while let Some(character) = characters.next() {
@@ -611,25 +651,46 @@ fn opaque_output_string(output: &mut String, value: &str) -> Result<(), CodecErr
 /// Encode ordered values with CPython's finite float spelling and UTF-8 JSON
 /// string escaping. This uses an explicit traversal stack, as does Python v2.
 pub fn dumps(value: &PyValue) -> Result<String, CodecError> {
-    encode(Part::Value(value, false))
+    dumps_bounded(value, MAX_BYTES)
+}
+
+/// Encode ordered compact JSON with a caller-supplied UTF-8 byte ceiling.
+pub fn dumps_bounded(value: &PyValue, maximum: usize) -> Result<String, CodecError> {
+    encode(Part::Value(value, false), maximum.min(MAX_BYTES), None)
+}
+
+/// Encode a UTF-8 file like Python's `json.dumps(ensure_ascii=False, indent=2)`
+/// plus one LF, using the ordered codec's finite scalar domain. Empty objects
+/// and arrays remain compact. The byte ceiling includes the final newline.
+pub fn dumps_pretty_document(value: &PyValue, maximum: usize) -> Result<String, CodecError> {
+    encode(Part::Value(value, false), maximum.min(MAX_BYTES), Some(0))
 }
 
 /// Encode mixed native and opaque Python-JSON subtrees in one ordered traversal.
 /// Surrogate, nonfinite, byte and node failures are selected only when their
 /// original output position is visited, after provider normalization succeeds.
 pub fn dumps_python_json(value: &PythonJson) -> Result<String, CodecError> {
-    encode(Part::PythonJson(value))
+    encode(Part::PythonJson(value), MAX_BYTES, None)
 }
 
-fn encode(first: Part<'_>) -> Result<String, CodecError> {
-    let mut output = String::new();
+fn encode(first: Part<'_>, maximum: usize, indent: Option<usize>) -> Result<String, CodecError> {
+    let mut output = Output {
+        text: String::new(),
+        maximum,
+        indent,
+    };
     let mut parts = Vec::new();
     parts.try_reserve(1).map_err(|_| CodecError::Resource)?;
     parts.push(first);
     let mut nodes = 0;
     while let Some(part) = parts.pop() {
         match part {
-            Part::Text(text) => append(&mut output, text)?,
+            Part::Next => {
+                output.append(",")?;
+                output.line()?;
+            }
+            Part::Colon => output.append(if indent.is_some() { ": " } else { ":" })?,
+            Part::Close(delimiter, nonempty) => output.close(delimiter, nonempty)?,
             Part::Key(key, opaque) => {
                 visit(&mut nodes)?;
                 if opaque {
@@ -649,12 +710,12 @@ fn encode(first: Part<'_>) -> Result<String, CodecError> {
                     parts
                         .try_reserve(2 * values.len() + 1)
                         .map_err(|_| CodecError::Resource)?;
-                    append(&mut output, "[")?;
-                    parts.push(Part::Text("]"));
+                    output.open("[", !values.is_empty())?;
+                    parts.push(Part::Close("]", !values.is_empty()));
                     for (index, value) in values.iter().enumerate().rev() {
                         parts.push(Part::PythonJson(value));
                         if index != 0 {
-                            parts.push(Part::Text(","));
+                            parts.push(Part::Next);
                         }
                     }
                 }
@@ -666,14 +727,14 @@ fn encode(first: Part<'_>) -> Result<String, CodecError> {
                     parts
                         .try_reserve(4 * entries.len() + 1)
                         .map_err(|_| CodecError::Resource)?;
-                    append(&mut output, "{")?;
-                    parts.push(Part::Text("}"));
+                    output.open("{", !entries.is_empty())?;
+                    parts.push(Part::Close("}", !entries.is_empty()));
                     for (index, (key, value)) in entries.iter().enumerate().rev() {
                         parts.push(Part::PythonJson(value));
-                        parts.push(Part::Text(":"));
+                        parts.push(Part::Colon);
                         parts.push(Part::Key(key, false));
                         if index != 0 {
-                            parts.push(Part::Text(","));
+                            parts.push(Part::Next);
                         }
                     }
                 }
@@ -681,16 +742,14 @@ fn encode(first: Part<'_>) -> Result<String, CodecError> {
             Part::Value(value, opaque) => {
                 visit(&mut nodes)?;
                 match value {
-                    PyValue::Null => append(&mut output, "null")?,
-                    PyValue::Bool(value) => {
-                        append(&mut output, if *value { "true" } else { "false" })?
-                    }
-                    PyValue::Int(value) => append(&mut output, &integer(value)?)?,
+                    PyValue::Null => output.append("null")?,
+                    PyValue::Bool(value) => output.append(if *value { "true" } else { "false" })?,
+                    PyValue::Int(value) => output.append(&integer(value)?)?,
                     PyValue::Float(value) => {
                         if !value.is_finite() {
                             return Err(CodecError::NonFinite);
                         }
-                        append(&mut output, &float_repr(*value))?;
+                        output.append(&float_repr(*value))?;
                     }
                     PyValue::String(value) => {
                         if opaque {
@@ -706,12 +765,12 @@ fn encode(first: Part<'_>) -> Result<String, CodecError> {
                         parts
                             .try_reserve(2 * values.len() + 1)
                             .map_err(|_| CodecError::Resource)?;
-                        append(&mut output, "[")?;
-                        parts.push(Part::Text("]"));
+                        output.open("[", !values.is_empty())?;
+                        parts.push(Part::Close("]", !values.is_empty()));
                         for (index, value) in values.iter().enumerate().rev() {
                             parts.push(Part::Value(value, opaque));
                             if index != 0 {
-                                parts.push(Part::Text(","));
+                                parts.push(Part::Next);
                             }
                         }
                     }
@@ -726,14 +785,14 @@ fn encode(first: Part<'_>) -> Result<String, CodecError> {
                         if entries.iter().any(|(key, _)| !keys.insert(key)) {
                             return Err(CodecError::Invalid);
                         }
-                        append(&mut output, "{")?;
-                        parts.push(Part::Text("}"));
+                        output.open("{", !entries.is_empty())?;
+                        parts.push(Part::Close("}", !entries.is_empty()));
                         for (index, (key, value)) in entries.iter().enumerate().rev() {
                             parts.push(Part::Value(value, opaque));
-                            parts.push(Part::Text(":"));
+                            parts.push(Part::Colon);
                             parts.push(Part::Key(key, opaque));
                             if index != 0 {
-                                parts.push(Part::Text(","));
+                                parts.push(Part::Next);
                             }
                         }
                     }
@@ -741,5 +800,8 @@ fn encode(first: Part<'_>) -> Result<String, CodecError> {
             }
         }
     }
-    Ok(output)
+    if indent.is_some() {
+        output.append("\n")?;
+    }
+    Ok(output.text)
 }

@@ -506,70 +506,7 @@ impl DataRoot {
                 .parent(path.as_ref(), false)
                 .map_err(existing_source_error)?;
             let name = cstring(&name)?;
-            let entry = stat_entry(&directory, &name).map_err(existing_source_error)?;
-            let owner = unsafe { libc::geteuid() };
-            if entry.st_mode & libc::S_IFMT != libc::S_IFREG
-                || entry.st_uid != owner
-                || entry.st_nlink != 1
-            {
-                return Err(StoreError::Denied(
-                    "source must be an owned regular single-link file".into(),
-                ));
-            }
-            let identity = checked_file_identity(&entry)?;
-            // A nonregular entry may replace the checked name before openat.
-            // Keep FIFO opens nonblocking and prevent acquiring a terminal.
-            let fd = unsafe {
-                libc::openat(
-                    directory.as_raw_fd(),
-                    name.as_ptr(),
-                    libc::O_RDONLY
-                        | libc::O_NOFOLLOW
-                        | libc::O_CLOEXEC
-                        | libc::O_NONBLOCK
-                        | libc::O_NOCTTY,
-                )
-            };
-            if fd < 0 {
-                return Err(existing_source_recheck_error(
-                    std::io::Error::last_os_error().into(),
-                ));
-            }
-            let mut file = unsafe { File::from_raw_fd(fd) };
-            let before = file.metadata()?;
-            if (before.dev(), before.ino()) != identity
-                || !before.is_file()
-                || before.uid() != owner
-                || before.nlink() != 1
-            {
-                return Err(existing_source_changed());
-            }
-            let expected = usize::try_from(before.len())
-                .ok()
-                .filter(|length| *length <= max)
-                .ok_or(StoreError::Quota)?;
-            let mut bytes = Vec::new();
-            bytes
-                .try_reserve_exact(expected)
-                .map_err(|_| StoreError::Quota)?;
-            bytes.resize(expected, 0);
-            if let Err(error) = file.read_exact(&mut bytes) {
-                if error.kind() == std::io::ErrorKind::UnexpectedEof {
-                    return Err(existing_source_changed());
-                }
-                return Err(error.into());
-            }
-            match file.read_exact(&mut [0]) {
-                Ok(()) => return Err(existing_source_changed()),
-                Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => {}
-                Err(error) => return Err(error.into()),
-            }
-            let current = stat_entry(&directory, &name).map_err(existing_source_recheck_error)?;
-            if checked_file_identity(&current)? != identity
-                || !same_source_metadata(&before, &file.metadata()?)
-            {
-                return Err(existing_source_changed());
-            }
+            let (bytes, _) = read_existing_owned_at(&directory, &name, max)?;
             Ok(bytes)
         }
         #[cfg(not(unix))]
@@ -954,7 +891,10 @@ fn existing_source_changed() -> StoreError {
 }
 
 #[cfg(unix)]
-fn stat_entry(directory: &File, name: &std::ffi::CStr) -> Result<libc::stat, StoreError> {
+pub(crate) fn stat_entry(
+    directory: &File,
+    name: &std::ffi::CStr,
+) -> Result<libc::stat, StoreError> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     if unsafe {
         libc::fstatat(
@@ -968,6 +908,104 @@ fn stat_entry(directory: &File, name: &std::ffi::CStr) -> Result<libc::stat, Sto
         return Err(std::io::Error::last_os_error().into());
     }
     Ok(unsafe { stat.assume_init() })
+}
+
+#[cfg(unix)]
+pub(crate) struct OwnedFileSnapshot {
+    file: File,
+    metadata: std::fs::Metadata,
+}
+
+#[cfg(unix)]
+impl OwnedFileSnapshot {
+    pub(crate) fn capture(file: File) -> Result<Self, StoreError> {
+        let metadata = file.metadata()?;
+        Ok(Self { file, metadata })
+    }
+
+    pub(crate) fn verify_current(
+        &self,
+        directory: &File,
+        name: &std::ffi::CStr,
+    ) -> Result<(), StoreError> {
+        let current = stat_entry(directory, name).map_err(existing_source_recheck_error)?;
+        if checked_file_identity(&current)? != self.identity()
+            || !same_source_metadata(&self.metadata, &self.file.metadata()?)
+        {
+            return Err(existing_source_changed());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn identity(&self) -> (u64, u64) {
+        (self.metadata.dev(), self.metadata.ino())
+    }
+}
+
+#[cfg(unix)]
+pub(crate) fn read_existing_owned_at(
+    directory: &File,
+    name: &std::ffi::CStr,
+    max: usize,
+) -> Result<(Vec<u8>, OwnedFileSnapshot), StoreError> {
+    let entry = stat_entry(directory, name).map_err(existing_source_error)?;
+    let owner = unsafe { libc::geteuid() };
+    if entry.st_mode & libc::S_IFMT != libc::S_IFREG || entry.st_uid != owner || entry.st_nlink != 1
+    {
+        return Err(StoreError::Denied(
+            "source must be an owned regular single-link file".into(),
+        ));
+    }
+    let identity = checked_file_identity(&entry)?;
+    // A nonregular entry may replace the checked name before openat.
+    // Keep FIFO opens nonblocking and prevent acquiring a terminal.
+    let fd = unsafe {
+        libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK | libc::O_NOCTTY,
+        )
+    };
+    if fd < 0 {
+        return Err(existing_source_recheck_error(
+            std::io::Error::last_os_error().into(),
+        ));
+    }
+    let mut file = unsafe { File::from_raw_fd(fd) };
+    let before = file.metadata()?;
+    if (before.dev(), before.ino()) != identity
+        || !before.is_file()
+        || before.uid() != owner
+        || before.nlink() != 1
+    {
+        return Err(existing_source_changed());
+    }
+    let expected = usize::try_from(before.len())
+        .ok()
+        .filter(|length| *length <= max)
+        .ok_or(StoreError::Quota)?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(expected)
+        .map_err(|_| StoreError::Quota)?;
+    bytes.resize(expected, 0);
+    if let Err(error) = file.read_exact(&mut bytes) {
+        if error.kind() == std::io::ErrorKind::UnexpectedEof {
+            return Err(existing_source_changed());
+        }
+        return Err(error.into());
+    }
+    match file.read_exact(&mut [0]) {
+        Ok(()) => return Err(existing_source_changed()),
+        Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => {}
+        Err(error) => return Err(error.into()),
+    }
+    let snapshot = OwnedFileSnapshot {
+        file,
+        metadata: before,
+    };
+    snapshot.verify_current(directory, name)?;
+    Ok((bytes, snapshot))
 }
 
 #[cfg(unix)]
@@ -985,7 +1023,7 @@ fn cstring(s: &str) -> Result<CString, StoreError> {
     CString::new(s).map_err(|_| StoreError::Invalid("NUL in path".into()))
 }
 #[cfg(unix)]
-fn open_dir(parent: &File, s: &str, create: bool) -> Result<File, StoreError> {
+pub(crate) fn open_dir(parent: &File, s: &str, create: bool) -> Result<File, StoreError> {
     let s = cstring(s)?;
     if create {
         let result = unsafe { libc::mkdirat(parent.as_raw_fd(), s.as_ptr(), 0o700) };
@@ -1008,7 +1046,12 @@ fn open_dir(parent: &File, s: &str, create: bool) -> Result<File, StoreError> {
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 #[cfg(unix)]
-fn open_file(parent: &File, s: &str, create: bool, exclusive: bool) -> Result<File, StoreError> {
+pub(crate) fn open_file(
+    parent: &File,
+    s: &str,
+    create: bool,
+    exclusive: bool,
+) -> Result<File, StoreError> {
     let s = cstring(s)?;
     let mut flags = libc::O_NOFOLLOW
         | libc::O_CLOEXEC
@@ -1030,7 +1073,7 @@ fn open_file(parent: &File, s: &str, create: bool, exclusive: bool) -> Result<Fi
     }
     Ok(file)
 }
-fn temporary_name() -> Result<String, StoreError> {
+pub(crate) fn temporary_name() -> Result<String, StoreError> {
     let mut random = [0; 16];
     getrandom::fill(&mut random).map_err(|e| StoreError::Unavailable(e.to_string()))?;
     Ok(format!(".tmp-{}", hex::encode(random)))

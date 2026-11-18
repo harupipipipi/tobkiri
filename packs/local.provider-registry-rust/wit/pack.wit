@@ -80,6 +80,16 @@ interface legacy-configuration-commit {
   validate-local: func(request: local-connection, plan: json, observe: callback-handle) -> result<json, error>;
 }
 
+interface legacy-configuration-apply {
+  use configuration.{local-connection};
+  use tobkiri:core/types@1.2.0.{callback-handle, json, error};
+
+  /// Stage the complete original Registry document without persisting it.
+  /// Read with JSON null four times on success, then ask for Unix seconds
+  /// with the JSON string "clock". The native caller owns the final read lock.
+  stage-local: func(request: local-connection, plan: json, observe: callback-handle) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
@@ -91,4 +101,5 @@ world pack {
   export legacy-configuration;
   export legacy-configuration-live;
   export legacy-configuration-commit;
+  export legacy-configuration-apply;
 }

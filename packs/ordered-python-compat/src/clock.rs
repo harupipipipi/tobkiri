@@ -3,9 +3,14 @@
 /// Convert Unix milliseconds to the original whole-second UTC format.
 /// Return None for years beyond its four-digit calendar range.
 pub fn utc_timestamp_from_millis(ms: u64) -> Option<String> {
+    utc_timestamp_from_seconds(ms / 1_000)
+}
+
+/// Convert Unix seconds to the original whole-second UTC format.
+/// Return None for years beyond its four-digit calendar range.
+pub fn utc_timestamp_from_seconds(seconds: u64) -> Option<String> {
     const SECONDS_PER_DAY: u64 = 86_400;
     const DAYS_PER_400_YEARS: u64 = 146_097;
-    let seconds = ms / 1_000;
     // March-based Gregorian eras put each leap day at the end of its year.
     let days = seconds / SECONDS_PER_DAY + 719_468;
     let era = days / DAYS_PER_400_YEARS;

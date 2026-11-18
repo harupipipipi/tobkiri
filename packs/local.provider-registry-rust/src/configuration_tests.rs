@@ -259,6 +259,85 @@ fn legacy_validation_compares_the_frozen_plan_before_the_final_registry_read() {
     assert_eq!(registry.store().document, None);
 }
 
+#[cfg(feature = "component")]
+#[test]
+fn legacy_stage_checks_the_fourth_observation_before_the_clock_and_write() {
+    use std::cell::RefCell;
+
+    struct StageStore<'a> {
+        events: &'a RefCell<Vec<&'static str>>,
+        reads: usize,
+        final_observation: Option<PyValue>,
+        staged: Option<PyValue>,
+    }
+
+    impl DocumentStore for StageStore<'_> {
+        fn read(&mut self) -> SourceResult<Option<PyValue>> {
+            self.events.borrow_mut().push("read");
+            self.reads += 1;
+            Ok((self.reads == 4)
+                .then(|| self.final_observation.take())
+                .flatten())
+        }
+
+        fn write(&mut self, document: &PyValue) -> SourceResult<()> {
+            self.events.borrow_mut().push("stage");
+            self.staged = Some(document.clone());
+            Ok(())
+        }
+    }
+
+    let request = local_request();
+    let plan = prepare_configuration(&mut registry(WriteBehavior::Normal), &request).unwrap();
+    let changed = object([
+        ("version", text(crate::state::STORE_VERSION)),
+        ("profile_id", text("defaults")),
+        ("revision", PyValue::Int("1".into())),
+        ("providers", object([])),
+        ("migration", PyValue::Null),
+    ]);
+    for final_observation in [Some(changed), None] {
+        let is_stale = final_observation.is_some();
+        let events = RefCell::new(Vec::new());
+        let store = StageStore {
+            events: &events,
+            reads: 0,
+            final_observation,
+            staged: None,
+        };
+        let clock = || {
+            events.borrow_mut().push("clock");
+            Ok("2026-10-22T00:00:00Z".to_owned())
+        };
+        let mut registry = Registry::new(&text("defaults"), store, clock).unwrap();
+        let result = stage_legacy_local_configuration(&mut registry, &request, &plan);
+        if is_stale {
+            assert_eq!(
+                result.unwrap_err().exception_class,
+                "ProviderRegistryConflict"
+            );
+            assert_eq!(*events.borrow(), ["read", "read", "read", "read"]);
+            assert!(registry.store().staged.is_none());
+        } else {
+            assert_eq!(
+                result.unwrap(),
+                object([
+                    ("configured", PyValue::Bool(true)),
+                    ("provider_instance_id", text("provider.local-fixture")),
+                ])
+            );
+            assert_eq!(
+                *events.borrow(),
+                ["read", "read", "read", "read", "clock", "stage"]
+            );
+            let staged = registry.store().staged.as_ref().unwrap();
+            assert_eq!(get(staged, "revision"), &PyValue::Int("1".into()));
+            let record = get(get(staged, "providers"), "provider.local-fixture");
+            assert_eq!(get(record, "updated_at"), &text("2026-10-22T00:00:00Z"));
+        }
+    }
+}
+
 #[test]
 fn typed_zeroizing_encoder_matches_canonical_reference_for_nonsecret_input() {
     let input = object([

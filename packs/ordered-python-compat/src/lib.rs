@@ -6,10 +6,10 @@ mod codec;
 mod coercion;
 mod unicode;
 
-pub use clock::utc_timestamp_from_millis;
+pub use clock::{utc_timestamp_from_millis, utc_timestamp_from_seconds};
 pub use codec::{
-    CodecError, MAX_BYTES, MAX_INTEGER_DIGITS, MAX_NODES, PythonJson, dumps, dumps_python_json,
-    loads, loads_python_json,
+    CodecError, MAX_BYTES, MAX_INTEGER_DIGITS, MAX_NODES, PythonJson, dumps, dumps_bounded,
+    dumps_pretty_document, dumps_python_json, loads, loads_python_json,
 };
 pub use coercion::{
     CoercionError, decimal_digit_count, pyfloat, pyint, pyrepr, pystr, pystrip, pytruthy,

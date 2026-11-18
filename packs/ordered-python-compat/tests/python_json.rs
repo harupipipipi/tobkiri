@@ -124,3 +124,42 @@ fn mixed_output_keeps_native_and_opaque_strings_separate() {
         r#"{"native":"\\ud800","opaque":{"literal":"\\ud800"}}"#
     );
 }
+#[test]
+fn pretty_document_preserves_cpython_whitespace_order_and_scalars() {
+    use ordered_python_compat::{dumps_bounded, dumps_pretty_document, loads};
+
+    let value =
+        loads(r#"{"z":[{},[],"雪\n\\\"\u0001",-0.0,1e+20,9007199254740993],"a":{"empty":null}}"#)
+            .unwrap();
+    // CPython json.dumps(value, ensure_ascii=False, indent=2) + "\n".
+    let expected = concat!(
+        "{\n",
+        "  \"z\": [\n",
+        "    {},\n",
+        "    [],\n",
+        r#"    "雪\n\\\"\u0001","#,
+        "\n",
+        "    -0.0,\n",
+        "    1e+20,\n",
+        "    9007199254740993\n",
+        "  ],\n",
+        "  \"a\": {\n",
+        "    \"empty\": null\n",
+        "  }\n",
+        "}\n",
+    );
+    assert_eq!(
+        dumps_pretty_document(&value, expected.len()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        dumps_pretty_document(&value, expected.len() - 1),
+        Err(CodecError::ByteLimit)
+    );
+    let compact = ordered_python_compat::dumps(&value).unwrap();
+    assert_eq!(dumps_bounded(&value, compact.len()).unwrap(), compact);
+    assert_eq!(
+        dumps_bounded(&value, compact.len() - 1),
+        Err(CodecError::ByteLimit)
+    );
+}

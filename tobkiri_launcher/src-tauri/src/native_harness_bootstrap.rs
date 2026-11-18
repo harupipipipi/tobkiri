@@ -49,7 +49,7 @@ pub(crate) use launch_metadata::{
 mod provider_prepare;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use provider_prepare::{
-    start_provider_prepare, PendingProviderPrepare, ProviderPrepareDeadline,
+    start_provider_prepare, PendingProviderPrepare, ProviderPlan, ProviderPrepareDeadline,
 };
 
 enum OwnedRuntime {

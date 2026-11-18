@@ -1,5 +1,8 @@
 //! Wasm boundary for Registry operations under Core authority.
 
+#[path = "component_legacy_stage.rs"]
+mod legacy_stage;
+
 wit_bindgen::generate!({
     path: ["../../crates/tobkiri-wit/wit/core-v1-2/core.wit", "wit"],
     world: "local:provider-registry/pack@1.0.0",
@@ -202,14 +205,18 @@ fn live_registry(
     observe: CallbackHandle,
 ) -> Result<Registry<LiveObservedRegistry, ObservationClock>, Error> {
     let profile = current_profile()?;
-    let store = LiveObservedRegistry {
-        observe,
-        read_error: None,
-    };
+    let store = LiveObservedRegistry::new(observe);
     Registry::new(&text(profile), store, ObservationClock).map_err(source_error)
 }
 
 impl LiveObservedRegistry {
+    fn new(observe: CallbackHandle) -> Self {
+        Self {
+            observe,
+            read_error: None,
+        }
+    }
+
     fn map_error(&self, error: SourceError) -> Error {
         match self.read_error {
             Some(code) => boundary_error(code, "provider registry observation failed"),

@@ -153,7 +153,7 @@ async fn verify_legacy_preparation(
     });
     let legacy_path = fixture.join("old-product");
     std::fs::create_dir(&legacy_path)?;
-    let source = DataRoot::open_existing(legacy_path)?;
+    let source = DataRoot::open_existing(&legacy_path)?;
     let path = format!(
         "packs/rumi_provider_registry_pack/profiles/{profile}/provider_registry.store.json"
     );
@@ -186,7 +186,7 @@ async fn verify_legacy_preparation(
             pack,
             profile,
             fixture,
-            (&request["request"], None),
+            (&request["request"], NativeLegacyCall::Prepare),
             observe.clone(),
             2
         )
@@ -208,7 +208,7 @@ async fn verify_legacy_preparation(
             pack,
             profile,
             fixture,
-            (&request["request"], None),
+            (&request["request"], NativeLegacyCall::Prepare),
             observe.clone(),
             2,
         )
@@ -222,7 +222,7 @@ async fn verify_legacy_preparation(
             pack,
             profile,
             fixture,
-            (&request["request"], Some(&plan)),
+            (&request["request"], NativeLegacyCall::Validate(&plan)),
             observe.clone(),
             3,
         )
@@ -264,7 +264,7 @@ async fn verify_legacy_preparation(
             pack,
             profile,
             fixture,
-            (&request["request"], Some(&edited)),
+            (&request["request"], NativeLegacyCall::Validate(&edited)),
             observe.clone(),
             2,
         )
@@ -291,7 +291,7 @@ async fn verify_legacy_preparation(
             pack,
             profile,
             fixture,
-            (&request["request"], Some(&plan)),
+            (&request["request"], NativeLegacyCall::Validate(&plan)),
             move || {
                 if read_count == 2 {
                     race_source.write_atomic(&race_path, race_document.as_bytes())?;
@@ -325,7 +325,7 @@ async fn verify_legacy_preparation(
                 pack,
                 profile,
                 fixture,
-                (submitted, None),
+                (submitted, NativeLegacyCall::Prepare),
                 observe.clone(),
                 reads,
             )
@@ -372,7 +372,7 @@ async fn verify_legacy_preparation(
             pack,
             profile,
             fixture,
-            (&request["request"], None),
+            (&request["request"], NativeLegacyCall::Prepare),
             move || {
                 let observed = original_reader()?;
                 // Replace the fixture between PREPARE's two observations.
@@ -404,6 +404,91 @@ async fn verify_legacy_preparation(
         matches!(conflict.downcast_ref::<CoreError>(), Some(CoreError::Step(step))
         if step.code == "conflict")
     );
+    #[cfg(unix)]
+    {
+        source.write_atomic(&path, observed.as_bytes())?;
+        let frozen = prepare(observe()?, observe()?).await?;
+        let checked = native_legacy_configuration(
+            core,
+            pack,
+            profile,
+            fixture,
+            (
+                &request["request"],
+                NativeLegacyCall::Publish {
+                    frozen: &frozen,
+                    user_data: &legacy_path,
+                    permitted: false,
+                },
+            ),
+            observe.clone(),
+            4,
+        )
+        .await
+        .expect_err("a retired approval reached atomic rename");
+        ensure!(matches!(
+            checked.downcast_ref::<NativeArtifactError>(),
+            Some(NativeArtifactError::Denied)
+        ));
+        ensure!(observe()?.as_deref() == Some(observed.as_str()));
+
+        let published = native_legacy_configuration(
+            core,
+            pack,
+            profile,
+            fixture,
+            (
+                &request["request"],
+                NativeLegacyCall::Publish {
+                    frozen: &frozen,
+                    user_data: &legacy_path,
+                    permitted: true,
+                },
+            ),
+            observe.clone(),
+            4,
+        )
+        .await?;
+        ensure!(
+            published == json!({"configured":true,"provider_instance_id":"provider.authoritative"})
+        );
+        let saved = observe()?.context("native writer omitted the original Registry")?;
+        ensure!(saved.ends_with('\n'));
+        let decoded: Value = serde_json::from_str(&saved)?;
+        ensure!(decoded["revision"] == 43);
+        ensure!(decoded["providers"]["provider.cloud"] == existing["providers"]["provider.cloud"]);
+        let local = &decoded["providers"]["provider.authoritative"];
+        ensure!(local["record_revision"] == 1 && local["credential_handle"].is_null());
+        ensure!(local["created_at"] == local["updated_at"]);
+        ensure!(
+            local["updated_at"]
+                .as_str()
+                .is_some_and(|time| time.len() == 20 && time.ends_with('Z'))
+        );
+        ensure!(!legacy_path.join(format!("packs/rumi_provider_registry_pack/profiles/{profile}/locks/provider-registry.lock")).exists());
+
+        let replayed = native_legacy_configuration(
+            core,
+            pack,
+            profile,
+            fixture,
+            (
+                &request["request"],
+                NativeLegacyCall::Publish {
+                    frozen: &frozen,
+                    user_data: &legacy_path,
+                    permitted: true,
+                },
+            ),
+            observe.clone(),
+            2,
+        )
+        .await
+        .expect_err("a stale frozen plan triggered a second save");
+        ensure!(matches!(replayed.downcast_ref::<NativeArtifactError>(),
+            Some(NativeArtifactError::ProviderRejected(error)) if error.code() == "denied"));
+        ensure!(observe()?.as_deref() == Some(saved.as_str()));
+    }
     let mut foreign = existing;
     foreign["profile_id"] = json!("prof_provider_b");
     ensure!(
@@ -416,12 +501,23 @@ async fn verify_legacy_preparation(
 }
 
 #[cfg(unix)]
+enum NativeLegacyCall<'a> {
+    Prepare,
+    Validate(&'a Value),
+    Publish {
+        frozen: &'a Value,
+        user_data: &'a Path,
+        permitted: bool,
+    },
+}
+
+#[cfg(unix)]
 async fn native_legacy_configuration(
     core: &Arc<Core>,
     expected: &tobkiri_profile::PackPin,
     profile: &str,
     root: &Path,
-    (request, frozen_plan): (&Value, Option<&Value>),
+    (request, operation): (&Value, NativeLegacyCall<'_>),
     mut observe: impl FnMut() -> Result<Option<String>> + Send + 'static,
     expected_reads: usize,
 ) -> Result<Value> {
@@ -455,9 +551,18 @@ async fn native_legacy_configuration(
         root: root.to_path_buf(),
         declarations: BTreeMap::new(),
     })?;
+    let budget = inspection.allocation_budget()?.clone();
+    let publication = if let NativeLegacyCall::Publish { user_data, .. } = &operation {
+        Some(Arc::new(std::sync::Mutex::new(Some(
+            inspection.legacy_provider_commit(user_data, profile)?,
+        ))))
+    } else {
+        None
+    };
+    let read_publication = publication.clone();
     let reads = Arc::new(AtomicUsize::new(0));
     let read_count = Arc::clone(&reads);
-    let outcome = async {
+    let outcome: Result<(CoreBuffer, Option<CoreBuffer>)> = async {
         let path = expected
             .source
             .strip_prefix("file:")
@@ -466,26 +571,55 @@ async fn native_legacy_configuration(
         let length = file.metadata()?.len();
         let pack = inspection.verify_pack_archive(&mut file, length)?;
         ensure!(pack.hash == expected.sha256);
-        let budget = inspection.allocation_budget()?.clone();
         let input = CoreValue::parse_guest(&serde_json::to_vec(request)?, &budget)?;
         let read: LegacyProviderRegistryRead = Box::new(move |budget| {
-            read_count.fetch_add(1, Ordering::Relaxed);
+            let count = read_count.fetch_add(1, Ordering::Relaxed) + 1;
+            if count == 4
+                && let Some(publication) = &read_publication
+            {
+                return publication
+                    .lock()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .observe_locked(budget, || Ok(()))
+                    .map_err(Into::into);
+            }
             Ok(observe()?
                 .map(|observation| CoreBuffer::copy_from(observation.as_bytes(), budget))
                 .transpose()?)
         });
-        let result = if let Some(plan) = frozen_plan {
-            let plan = CoreValue::parse_guest(&serde_json::to_vec(plan)?, &budget)?;
-            inspection
-                .validate_live_legacy_provider_commit(&pack, profile, &input, &plan, read)
-                .await?
-        } else {
-            inspection
-                .invoke_live_legacy_provider_prepare(&pack, profile, &input, read)
-                .await?
+        let output = match &operation {
+            NativeLegacyCall::Prepare => {
+                inspection
+                    .invoke_live_legacy_provider_prepare(&pack, profile, &input, read)
+                    .await?
+            }
+            NativeLegacyCall::Validate(plan) => {
+                let plan = CoreValue::parse_guest(&serde_json::to_vec(plan)?, &budget)?;
+                inspection
+                    .validate_live_legacy_provider_commit(&pack, profile, &input, &plan, read)
+                    .await?
+            }
+            NativeLegacyCall::Publish { frozen, .. } => {
+                let frozen = CoreValue::parse_guest(&serde_json::to_vec(frozen)?, &budget)?;
+                let staged = inspection
+                    .stage_live_legacy_provider_commit(&pack, profile, &input, &frozen, read)
+                    .await?;
+                let document = staged
+                    .get_key("document")
+                    .context("staging document missing")?;
+                let raw = document
+                    .as_str()
+                    .context("staged document is not a string")?;
+                let output = staged.get_key("result").context("staged result missing")?;
+                return Ok((
+                    output.encode_guest(&budget)?,
+                    Some(CoreBuffer::copy_from(raw.as_bytes(), &budget)?),
+                ));
+            }
         };
-        let output = result.encode_guest(&budget)?;
-        Ok(serde_json::from_slice(output.as_bytes())?)
+        Ok((output.encode_guest(&budget)?, None))
     }
     .await;
     inspection
@@ -497,7 +631,23 @@ async fn native_legacy_configuration(
         reads == expected_reads,
         "native Provider validation made {reads} Registry reads, expected {expected_reads}: {outcome:?}"
     );
-    outcome
+    let (output, document) = outcome?;
+    if let (NativeLegacyCall::Publish { permitted, .. }, Some(document)) = (operation, document) {
+        let publication = publication.context("expected publication transaction")?;
+        publication
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap()
+            .publish(document.as_bytes(), || {
+                if permitted {
+                    Ok(())
+                } else {
+                    Err(NativeArtifactError::Denied)
+                }
+            })?;
+    }
+    Ok(serde_json::from_slice(output.as_bytes())?)
 }
 
 async fn verify_local_commit(

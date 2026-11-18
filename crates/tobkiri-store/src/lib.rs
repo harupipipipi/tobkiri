@@ -5,6 +5,7 @@ mod data;
 mod data_custody;
 mod data_moves;
 mod disk_policy;
+mod legacy_provider_registry;
 #[cfg(test)]
 mod native_shared_state_capacity_tests;
 mod native_snapshot;
@@ -28,6 +29,9 @@ pub use approvals::*;
 pub use audit::*;
 pub use data::*;
 pub use disk_policy::*;
+pub use legacy_provider_registry::{
+    LegacyProviderRegistryPublishError, LegacyProviderRegistryTransaction,
+};
 pub use native_snapshot::{NativeFileSnapshot, NativeSnapshotSource};
 pub use owner::*;
 pub use profile_commit::ProfileCommitProgress;

@@ -74,6 +74,12 @@ pub enum NativeArtifactError {
     ProviderPrepare(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("native Provider commit validation failed")]
     ProviderCommitValidation(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("native Provider commit staging failed")]
+    ProviderCommitStaging(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("legacy Provider Registry exceeds its native publication envelope")]
+    ProviderRegistryLimitBeforePublish,
+    #[error("legacy Provider Registry publication is unconfirmed")]
+    ProviderRegistryPublicationUnconfirmed(#[source] tobkiri_store::StoreError),
     #[error("{0}")]
     ProviderRejected(#[from] LegacyProviderPrepareError),
 }
@@ -225,6 +231,23 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         Ok(store.allocation_owners().graph())
     }
 
+    /// Bind the original Host-selected user-data root to the fixed Registry
+    /// operation. The root and Profile come from the Launcher resolver.
+    pub fn legacy_provider_commit(
+        &self,
+        root: &Path,
+        profile_id: &str,
+    ) -> Result<crate::NativeProviderRegistryCommit, NativeArtifactError> {
+        self.require_ready()?;
+        let transaction = crate::NativeProviderRegistryCommit::open(
+            &self.work.get().invocation,
+            root,
+            profile_id,
+        )?;
+        self.require_ready()?;
+        Ok(transaction)
+    }
+
     /// Verify the trusted native adapter's exact archive stream using this
     /// inspection's control account and the unsigned local publisher policy.
     pub fn verify_pack_archive(
@@ -287,6 +310,31 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             |error| match error.downcast::<LegacyProviderPrepareError>() {
                 Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
                 Err(error) => NativeArtifactError::ProviderCommitValidation(error.into()),
+            },
+        )
+    }
+
+    /// Derive the exact would-be replacement from four ordered observations.
+    /// The caller supplies the final observation under the existing Registry
+    /// lock and retains sole responsibility for any later mutation.
+    pub async fn stage_live_legacy_provider_commit(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        request: &CoreValue,
+        plan: &CoreValue,
+        read: LegacyProviderRegistryRead,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.claim_provider_observation()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let staged = store
+            .stage_live_legacy_provider_commit(pack, profile_id, request, plan, read)
+            .await;
+        self.require_live()?;
+        staged.map_err(
+            |error| match error.downcast::<LegacyProviderPrepareError>() {
+                Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+                Err(error) => NativeArtifactError::ProviderCommitStaging(error.into()),
             },
         )
     }

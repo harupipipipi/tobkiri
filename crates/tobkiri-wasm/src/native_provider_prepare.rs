@@ -2,6 +2,7 @@
 use super::{NativeSetupStore, NativeState, entry::ensure_active};
 use crate::owned_values::core_to_val;
 use anyhow::{Context, Result, bail, ensure};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fmt, io, sync::Arc};
 use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, ids::ShapeRef};
 use tobkiri_gate::ControlKind;
@@ -35,6 +36,7 @@ struct LegacyProviderExport {
     function: &'static str,
     parameters: &'static [&'static str],
     reads: u8,
+    clock: bool,
 }
 
 const PREPARE: LegacyProviderExport = LegacyProviderExport {
@@ -43,6 +45,7 @@ const PREPARE: LegacyProviderExport = LegacyProviderExport {
     function: "prepare-local",
     parameters: &["request", "observe"],
     reads: 2,
+    clock: false,
 };
 const VALIDATE_COMMIT: LegacyProviderExport = LegacyProviderExport {
     shape: "local.provider-registry.legacy-configuration-commit@1.0",
@@ -50,7 +53,22 @@ const VALIDATE_COMMIT: LegacyProviderExport = LegacyProviderExport {
     function: "validate-local",
     parameters: &["request", "plan", "observe"],
     reads: 3,
+    clock: false,
 };
+const STAGE_COMMIT: LegacyProviderExport = LegacyProviderExport {
+    shape: "local.provider-registry.legacy-configuration-apply@1.0",
+    interface: "local:provider-registry/legacy-configuration-apply@1.0.0",
+    function: "stage-local",
+    parameters: &["request", "plan", "observe"],
+    reads: 4,
+    clock: true,
+};
+
+enum LegacyProviderOperation<'a> {
+    Prepare,
+    Validate(&'a CoreValue),
+    Stage(&'a CoreValue),
+}
 
 /// A closed domain error from the Legacy Provider planner. The guest's free
 /// text is discarded to keep Registry data out of public errors and logs.
@@ -81,6 +99,7 @@ pub(super) struct LiveObservations {
     read: LegacyProviderRegistryRead,
     count: u8,
     limit: u8,
+    clock_pending: bool,
 }
 
 impl<T: Send + 'static> NativeSetupStore<T> {
@@ -93,8 +112,14 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         request: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue> {
-        self.invoke_live_legacy_provider(pack, profile_id, request, None, read)
-            .await
+        self.invoke_live_legacy_provider(
+            pack,
+            profile_id,
+            request,
+            LegacyProviderOperation::Prepare,
+            read,
+        )
+        .await
     }
 
     /// Revalidate a frozen plan and its final prepare-save record using the
@@ -107,8 +132,35 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         plan: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue> {
-        self.invoke_live_legacy_provider(pack, profile_id, request, Some(plan), read)
-            .await
+        self.invoke_live_legacy_provider(
+            pack,
+            profile_id,
+            request,
+            LegacyProviderOperation::Validate(plan),
+            read,
+        )
+        .await
+    }
+
+    /// Stage the exact legacy document for a trusted writer that supplies the
+    /// fourth observation under the original Registry lock. The guest has no
+    /// publication capability. The writer owns the final lease and CAS check.
+    pub async fn stage_live_legacy_provider_commit(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        request: &CoreValue,
+        plan: &CoreValue,
+        read: LegacyProviderRegistryRead,
+    ) -> Result<CoreValue> {
+        self.invoke_live_legacy_provider(
+            pack,
+            profile_id,
+            request,
+            LegacyProviderOperation::Stage(plan),
+            read,
+        )
+        .await
     }
 
     async fn invoke_live_legacy_provider(
@@ -116,13 +168,13 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         pack: &VerifiedPack,
         profile_id: &str,
         request: &CoreValue,
-        plan: Option<&CoreValue>,
+        operation: LegacyProviderOperation<'_>,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue> {
-        let export = if plan.is_some() {
-            &VALIDATE_COMMIT
-        } else {
-            &PREPARE
+        let (export, plan) = match operation {
+            LegacyProviderOperation::Prepare => (&PREPARE, None),
+            LegacyProviderOperation::Validate(plan) => (&VALIDATE_COMMIT, Some(plan)),
+            LegacyProviderOperation::Stage(plan) => (&STAGE_COMMIT, Some(plan)),
         };
         let store = self
             .store
@@ -255,7 +307,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             }
         };
         store.host_allocation_budget(owners.component().clone());
-        let (reply, reads) =
+        let (reply, reads, clock_pending) =
             call_legacy_provider(store, &linker, &component, profile, values, read, export).await?;
         ensure_active(store.data_mut())?;
         let reply = decode_reply(
@@ -266,8 +318,8 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         ensure_active(store.data_mut())?;
         let reply = reply?;
         ensure!(
-            reads == export.reads,
-            "legacy Provider operation omitted a Registry observation"
+            reads == export.reads && !clock_pending,
+            "legacy Provider operation omitted a Registry or clock observation"
         );
         Ok(reply)
     }
@@ -428,7 +480,6 @@ fn observe_registry<T>(state: &mut NativeState<T>, args: &[Val], output: &mut [V
     };
     ensure!(
         matches!(handle.as_slice(), [(name, Val::U64(OBSERVE_ID))] if name.as_str() == "id")
-            && arguments.as_str() == "null"
             && state.provider_prepare_profile.is_none(),
         "legacy Provider observation is outside its admitted call"
     );
@@ -436,8 +487,22 @@ fn observe_registry<T>(state: &mut NativeState<T>, args: &[Val], output: &mut [V
         .provider_prepare_reads
         .take()
         .context("legacy Provider observations are unavailable")?;
+    if arguments.as_str() == "\"clock\"" {
+        ensure!(
+            observations.clock_pending && observations.count == observations.limit,
+            "legacy Provider clock is outside its admitted mutation staging"
+        );
+        let seconds = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+        let owner = state.owners.component();
+        let value = Val::String(BudgetedString::copy_from(&seconds.to_string(), owner, 1)?);
+        *result = Val::Result(Ok(Some(BudgetedBox::new(value, owner, 0)?)));
+        ensure_active(state)?;
+        observations.clock_pending = false;
+        state.provider_prepare_reads = Some(observations);
+        return Ok(());
+    }
     ensure!(
-        observations.count < observations.limit,
+        arguments.as_str() == "null" && observations.count < observations.limit,
         "legacy Provider observations are exhausted"
     );
     let document = (observations.read)(state.owners.graph())
@@ -583,7 +648,7 @@ async fn call_legacy_provider<T: Send + 'static>(
     parameters: &[Val],
     read: LegacyProviderRegistryRead,
     export: &LegacyProviderExport,
-) -> Result<(BudgetedVec<Val>, u8)> {
+) -> Result<(BudgetedVec<Val>, u8, bool)> {
     let instance = linker
         .instantiate_async(&mut *store, component)
         .await
@@ -602,14 +667,15 @@ async fn call_legacy_provider<T: Send + 'static>(
         read,
         count: 0,
         limit: export.reads,
+        clock_pending: export.clock,
     });
     let result = function.call_async_owned(&mut *store, parameters).await;
     let read_profile = store.data_mut().provider_prepare_profile.take().is_none();
-    let reads = store
+    let (reads, clock_pending) = store
         .data_mut()
         .provider_prepare_reads
         .take()
-        .map_or(0, |read| read.count);
+        .map_or((0, export.clock), |read| (read.count, read.clock_pending));
     let result = result
         .map_err(anyhow::Error::from)
         .context("execute verified legacy Provider prepare")?;
@@ -617,7 +683,7 @@ async fn call_legacy_provider<T: Send + 'static>(
         read_profile,
         "legacy Provider prepare omitted current-profile"
     );
-    Ok((result, reads))
+    Ok((result, reads, clock_pending))
 }
 
 fn decode_reply(

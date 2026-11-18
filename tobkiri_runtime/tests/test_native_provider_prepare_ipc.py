@@ -47,6 +47,7 @@ class _Borrow:
     }
     runtime_instance = "a" * 32
     frozen_plan = None
+    publishes = False
 
     def __init__(self, lifetime: float = 3.0) -> None:
         self.deadline_monotonic = time.monotonic() + lifetime
@@ -152,6 +153,29 @@ def test_approved_provider_validation_carries_a_larger_retained_model_policy(
     with _served(monkeypatch, serve) as planner:
         assert planner.plan(borrow) == result
         assert borrow.reads == 3
+
+
+def test_native_apply_has_a_separate_wire_operation_and_known_presave_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+    borrow.frozen_plan = {"expected_revision": 42}
+    borrow.publishes = True
+
+    def serve(peer: socket.socket) -> None:
+        tag, data = _receive(peer)
+        assert tag == 1
+        frame = json.loads(data)
+        assert frame["apply"] == borrow.frozen_plan
+        assert "plan" not in frame
+        _send(peer, 4)
+        assert _receive(peer)[0] == 5
+        _send(peer, 8, b"legacy-read-required")
+
+    with _served(monkeypatch, serve) as planner:
+        with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
+            planner.plan(borrow)
+        assert borrow.reads == 1
 
 
 def test_captured_launcher_borrow_preserves_raw_request_and_documents(
