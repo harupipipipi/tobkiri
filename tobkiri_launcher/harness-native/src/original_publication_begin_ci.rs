@@ -1,17 +1,9 @@
 //! Exact original journal encoding and persistence on CI-owned state.
-use super::super::*;
+use super::super::{publication_begin, *};
 use crate::BootstrapActivationCandidate;
 use hmac::{Hmac, Mac};
 use sha2::{Digest as _, Sha256};
 use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, MAX_BYTES};
-
-const SCHEMA: &str = "io.tobkiri.profile-publication-intent.v1";
-
-struct Target<'a> {
-    confirmation: &'a CoreValue,
-    definition: &'a Digest,
-    lock: &'a Digest,
-}
 
 fn capacity(_: AllocationError) -> OriginalAuthorityError {
     OriginalAuthorityError::capacity(OriginalAuthorityStage::Source)
@@ -20,6 +12,7 @@ fn capacity(_: AllocationError) -> OriginalAuthorityError {
 fn begin<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     scope: &RecoveryScope,
+    predecessor: Option<&active_profile::LoadedPointer>,
     candidate: &BootstrapActivationCandidate,
     read_published_source: impl FnOnce() -> Result<(CoreValue, Digest)>,
     budget: &Arc<dyn AllocationBudget>,
@@ -36,20 +29,17 @@ fn begin<S: OriginalAuthorityOwner>(
     }
     scope.validate(op)?;
     let directory = &scope.directory;
-    let target = Target {
-        confirmation: candidate.confirmation(),
-        definition: &definition,
-        lock: candidate.lock_digest(),
-    };
     drop(source);
     if directory.exists(op, JOURNAL)? {
         return Err(value(
             "Profile publication already has an unfinished intent",
         ));
     }
+    let payload = publication_begin::payload(op, predecessor, candidate, budget)?;
     let key_path = directory.publication_key_path();
     let mut generated = Zeroizing::new([0_u8; 64]);
-    let existing = if directory.exists(op, KEY)? {
+    op.check(OriginalAuthorityStage::Key)?;
+    let existing = if key_path.is_symlink() || key_path.exists() {
         Some(signing_key(op, &key_path)?)
     } else {
         let mut random = Zeroizing::new([0_u8; 32]);
@@ -73,88 +63,17 @@ fn begin<S: OriginalAuthorityOwner>(
     if key.as_slice() != expected {
         return Err(value("Profile publication signing key changed"));
     }
-    let intent = encode(op, None, target, &key, budget)?;
+    let intent = encode(op, payload, &key, budget)?;
     directory.create_publication_intent(op, intent.as_bytes())?;
     Ok(intent)
 }
 
 fn encode<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
-    predecessor: Option<&CoreValue>,
-    target: Target<'_>,
+    payload: CoreValue,
     key: &[u8],
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<CoreBuffer> {
-    let required = |name| {
-        target
-            .confirmation
-            .get_key(name)
-            .ok_or_else(|| value("confirmed publication identity is missing"))
-    };
-    let profile = required("profile_id")?;
-    let profile_id = profile
-        .as_str()
-        .ok_or_else(|| value("confirmed publication Profile is invalid"))?;
-    if profile_id.is_empty() || profile_id.len() > 128 {
-        return Err(value("confirmed publication Profile is invalid"));
-    }
-    let plan = required("plan_digest")?;
-    let digest = plan
-        .as_str()
-        .and_then(|text| Digest::parse(text).ok())
-        .ok_or_else(|| value("confirmed publication Plan is invalid"))?;
-    let mut activation = CoreBuffer::builder(budget, 160);
-    for part in ["activation:", profile_id, "-", &digest.as_str()[7..23]] {
-        activation.append(part.as_bytes()).map_err(capacity)?;
-    }
-    let activation = activation.finish().map_err(capacity)?;
-    let candidate = CoreValue::object_shared(
-        [
-            ("profile_id", profile),
-            ("profile_revision", required("profile_revision")?),
-            (
-                "activation_id",
-                CoreValue::string_from_utf8(&activation, budget).map_err(capacity)?,
-            ),
-            ("plan_digest", plan),
-            (
-                "lock_digest",
-                CoreValue::string(target.lock.as_str(), budget).map_err(capacity)?,
-            ),
-            (
-                "profile_definition_digest",
-                CoreValue::string(target.definition.as_str(), budget).map_err(capacity)?,
-            ),
-            ("security_epoch", required("security_epoch")?),
-        ]
-        .into_iter()
-        .map(Ok),
-        budget,
-    )
-    .map_err(capacity)?;
-    let confirmed = target.confirmation.digest_guest(budget).map_err(capacity)?;
-    let predecessor = match predecessor {
-        Some(pointer) => pointer.share(),
-        None => CoreValue::null(budget).map_err(capacity)?,
-    };
-    let payload = CoreValue::object_shared(
-        [
-            (
-                "schema",
-                CoreValue::string(SCHEMA, budget).map_err(capacity)?,
-            ),
-            ("predecessor", predecessor),
-            ("candidate", candidate),
-            (
-                "confirmation_digest",
-                CoreValue::string(confirmed.as_str(), budget).map_err(capacity)?,
-            ),
-        ]
-        .into_iter()
-        .map(Ok),
-        budget,
-    )
-    .map_err(capacity)?;
     let compact = payload.encode_guest(budget).map_err(capacity)?;
     let preimage = python_default_spacing(op, compact.as_bytes())?;
     let mut mac =
@@ -204,46 +123,39 @@ async fn original_publication_intent_bytes_match() {
         .iter()
         .find(|row| row["case"] == "authenticated-handover")
         .unwrap();
-    let matched = imported["publication_checks"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|row| row["case"] == "matched")
-        .unwrap();
-    let oracle = &matched["outcome"]["candidate"]["intent"];
-    let expected = &oracle["payload"];
-    let expected_sha256 = oracle["encoded_sha256"].as_str().unwrap();
-    let definition = Digest::parse(
-        expected["candidate"]["profile_definition_digest"]
-            .as_str()
-            .unwrap(),
-    )
-    .unwrap();
-    let lock = Digest::parse(expected["candidate"]["lock_digest"].as_str().unwrap()).unwrap();
-    let bundle = Digest::parse(oracle_digest(matched)).unwrap();
-    let plan = Digest::parse(expected["candidate"]["plan_digest"].as_str().unwrap()).unwrap();
+    let checks = imported["publication_checks"].as_array().unwrap();
     let fixture_root = path.with_file_name("inactive-registry-inputs");
-    let resolved =
-        fs::read(fixture_root.join("publication-matched/resolved-records.json")).unwrap();
-    assert!(resolved.len() <= MAX_BYTES);
-    assert_eq!(
-        &Digest::hash(&resolved).as_str()[7..],
-        matched["outcome"]["candidate"]["resolved_records_sha256"]
-            .as_str()
-            .unwrap()
-    );
-    let load_candidate = |budget: &Arc<dyn AllocationBudget>| {
+    let load_candidate = |case: &str, budget: &Arc<dyn AllocationBudget>| {
+        let matched = checks.iter().find(|row| row["case"] == case).unwrap();
+        let stored = &matched["outcome"]["candidate"];
+        let expected = &stored["intent"]["payload"]["candidate"];
+        let definition =
+            Digest::parse(expected["profile_definition_digest"].as_str().unwrap()).unwrap();
+        let lock = Digest::parse(expected["lock_digest"].as_str().unwrap()).unwrap();
+        let bundle = Digest::parse(oracle_digest(matched)).unwrap();
+        let plan = Digest::parse(expected["plan_digest"].as_str().unwrap()).unwrap();
+        let resolved =
+            fs::read(fixture_root.join(format!("publication-{case}/resolved-records.json")))
+                .unwrap();
+        assert!(resolved.len() <= MAX_BYTES);
+        assert_eq!(
+            &Digest::hash(&resolved).as_str()[7..],
+            stored["resolved_records_sha256"].as_str().unwrap()
+        );
         let source = fs::read(fixture_root.join("source-profile.json")).unwrap();
         let source = CoreValue::parse_guest(&source, budget).unwrap();
-        let confirmation = serde_json::to_vec(&imported["setup_review"]["confirmation"]).unwrap();
+        let confirmation = matched
+            .get("confirmation")
+            .unwrap_or(&imported["setup_review"]["confirmation"]);
+        let confirmation = serde_json::to_vec(confirmation).unwrap();
         let confirmation = CoreValue::parse_guest(&confirmation, budget).unwrap();
         let records = CoreValue::parse_guest(&resolved, budget).unwrap();
         let (candidate, admitted) = BootstrapActivationCandidate::fixture(
             confirmation,
             source,
             records,
-            bundle.clone(),
-            [definition.clone(), plan.clone(), lock.clone()],
+            bundle,
+            [definition, plan, lock],
             budget,
         )
         .unwrap();
@@ -262,36 +174,83 @@ async fn original_publication_intent_bytes_match() {
         ))
     };
 
-    with_source(|source, read, cancel, budget| {
-        use std::os::unix::fs::PermissionsExt;
+    for case in ["matched", "matched-with-predecessor"] {
+        let matched = checks.iter().find(|row| row["case"] == case).unwrap();
+        let oracle = &matched["outcome"]["candidate"]["intent"];
+        let expected = &oracle["payload"];
+        with_source(|source, read, cancel, budget| {
+            use std::os::unix::fs::PermissionsExt;
 
-        let op = operation(read, source, cancel);
-        let root = &source.root;
-        let profiles = root.join("profiles");
-        let candidate = load_candidate(budget);
-        let key = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let result = with_confirmed_predecessor(&op, root, budget, |scope, predecessor| {
-            assert!(predecessor.is_none());
-            let dir = &scope.directory;
+            let profiles = source.root.join("profiles");
+            if case == "matched-with-predecessor" {
+                let prior = &expected["predecessor"];
+                assert_ne!(prior["profile_id"], expected["candidate"]["profile_id"]);
+                let snapshot = Path::new(prior["activation_snapshot_path"].as_str().unwrap());
+                assert!(snapshot.starts_with("workspaces/prior-profile/activation/activations"));
+                assert!(
+                    snapshot
+                        .components()
+                        .all(|segment| matches!(segment, std::path::Component::Normal(_)))
+                );
+                let input = fixture_root.join(format!("publication-{case}/user-data"));
+                for relative in [Path::new("profiles/active.json"), snapshot] {
+                    let target = source.root.join(relative);
+                    fs::create_dir_all(target.parent().unwrap()).unwrap();
+                    fs::copy(input.join(relative), target).unwrap();
+                }
+            }
+            let candidate = load_candidate(case, budget);
+            assert_eq!(
+                read.begin_confirmed(source, cancel, candidate.confirmation().share(), budget)
+                    .unwrap(),
+                Prefix::NoIntent
+            );
             assert!(!lock_free(&profiles.join(LOCK)));
+            if case == "matched-with-predecessor" {
+                // A later selection change belongs to the final pointer CAS.
+                // Preparation must use the predecessor already verified at entry.
+                fs::rename(
+                    profiles.join("active.json"),
+                    profiles.join("prior-captured.json"),
+                )
+                .unwrap();
+            }
+            let payload = read
+                .prepare_initial_publication(source, cancel, &candidate, budget)
+                .unwrap();
+            let compact = payload.encode_guest(budget).unwrap();
+            assert_eq!(
+                &serde_json::from_slice::<Value>(compact.as_bytes()).unwrap(),
+                expected
+            );
+            assert!(!profiles.join(KEY).exists() && !profiles.join(JOURNAL).exists());
+            drop((payload, compact));
+            let op = operation(read, source, cancel);
+            let confirmed = read.confirmed.as_ref().unwrap();
+            let key = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
             fs::write(profiles.join(KEY), key).unwrap();
             fs::set_permissions(profiles.join(KEY), fs::Permissions::from_mode(0o600)).unwrap();
             let encoded = begin(
                 &op,
-                scope,
+                &confirmed.scope,
+                confirmed.predecessor.as_ref(),
                 &candidate,
                 || {
                     assert!(!lock_free(&profiles.join(LOCK)));
                     reread("matched", budget)
                 },
                 budget,
-            )?;
+            )
+            .unwrap();
             assert_eq!(
                 &Digest::hash(encoded.as_bytes()).as_str()[7..],
-                expected_sha256
+                oracle["encoded_sha256"].as_str().unwrap()
             );
             assert_eq!(
-                dir.create_publication_intent(&op, b"second intent")
+                confirmed
+                    .scope
+                    .directory
+                    .create_publication_intent(&op, b"second intent")
                     .unwrap_err()
                     .message,
                 "Profile publication already has an unfinished intent",
@@ -300,11 +259,27 @@ async fn original_publication_intent_bytes_match() {
             assert_eq!(stored, encoded.as_bytes());
             let envelope: Value = serde_json::from_slice(&stored).unwrap();
             assert_eq!(&envelope["payload"], expected);
-            assert!(read_intent(&op, &profiles)?.is_some());
-            Ok(())
+            assert!(read_intent(&op, &profiles).unwrap().is_some());
+            read.close_continuation().unwrap();
+            assert!(lock_free(&profiles.join(LOCK)));
         });
-        result.unwrap();
-        assert!(lock_free(&profiles.join(LOCK)));
+    }
+
+    with_source(|source, read, cancel, budget| {
+        let approved = CoreValue::parse_guest(br#"{"different":true}"#, budget).unwrap();
+        read.begin_confirmed(source, cancel, approved, budget)
+            .unwrap();
+        let candidate = load_candidate("matched", budget);
+        let error = read
+            .prepare_initial_publication(source, cancel, &candidate, budget)
+            .unwrap_err();
+        assert_eq!(
+            error.message,
+            "bootstrap activation confirmation is stale or tampered"
+        );
+        let profiles = source.root.join("profiles");
+        assert!(!profiles.join(KEY).exists() && !profiles.join(JOURNAL).exists());
+        read.close_continuation().unwrap();
     });
 
     // An absent key uses the original 64-character format. Reopening a later
@@ -315,15 +290,27 @@ async fn original_publication_intent_bytes_match() {
         let op = operation(read, source, cancel);
         let root = &source.root;
         let profiles = root.join("profiles");
-        let candidate = load_candidate(budget);
+        let candidate = load_candidate("matched", budget);
         with_confirmed_predecessor(&op, root, budget, |scope, predecessor| {
             assert!(predecessor.is_none());
             let dir = &scope.directory;
             let key = profiles.join(KEY);
             let journal = profiles.join(JOURNAL);
-            let begin = || begin(&op, scope, &candidate, || reread("matched", budget), budget);
+            let begin = || {
+                begin(
+                    &op,
+                    scope,
+                    predecessor,
+                    &candidate,
+                    || reread("matched", budget),
+                    budget,
+                )
+            };
             symlink("absent-key-target", &key).unwrap();
-            assert!(begin().is_err());
+            assert_eq!(
+                begin().unwrap_err().class,
+                "core_runtime.hmac_key_manager.SigningKeyError"
+            );
             assert!(key.is_symlink());
             assert!(!journal.exists());
             fs::remove_file(&key).unwrap();
@@ -357,12 +344,13 @@ async fn original_publication_intent_bytes_match() {
             let op = operation(read, source, cancel);
             let root = &source.root;
             let profiles = root.join("profiles");
-            let candidate = load_candidate(budget);
+            let candidate = load_candidate("matched", budget);
             let error = with_confirmed_predecessor(&op, root, budget, |scope, predecessor| {
                 assert!(predecessor.is_none());
                 begin(
                     &op,
                     scope,
+                    predecessor,
                     &candidate,
                     || {
                         assert!(!lock_free(&profiles.join(LOCK)));
@@ -396,13 +384,14 @@ async fn original_publication_intent_bytes_match() {
         let op = operation(read, source, cancel);
         let root = &source.root;
         let profiles = root.join("profiles");
-        let candidate = load_candidate(budget);
+        let candidate = load_candidate("matched", budget);
         let moved = root.join("moved-profiles");
         let error = with_confirmed_predecessor(&op, root, budget, |scope, predecessor| {
             assert!(predecessor.is_none());
             begin(
                 &op,
                 scope,
+                predecessor,
                 &candidate,
                 || {
                     let published = reread("matched", budget)?;

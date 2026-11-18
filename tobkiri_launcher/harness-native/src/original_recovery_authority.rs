@@ -367,7 +367,8 @@ impl PublicationRead {
                 let pending = self.pending.take().expect("completed confirmed recovery");
                 self.confirmed = Some(ConfirmedScope {
                     scope: pending.scope,
-                    _predecessor: predecessor,
+                    predecessor,
+                    confirmation: pending.confirmation,
                     thread: pending.thread,
                 });
                 self.fresh.record_confirmed_recovery(cancellation);

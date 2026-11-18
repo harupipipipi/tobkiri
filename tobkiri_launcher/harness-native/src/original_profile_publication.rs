@@ -7,6 +7,9 @@ use tobkiri_canon::verify_seal_hex;
 use zeroize::Zeroizing;
 
 #[cfg(unix)]
+#[path = "original_publication_begin.rs"]
+mod publication_begin;
+#[cfg(unix)]
 #[path = "original_profile_publication_io.rs"]
 mod publication_io;
 #[cfg(unix)]
@@ -153,7 +156,8 @@ impl PublicationRead {
             let entry = owner
                 .with_original_review_user_data(|root| confirmed_scope(&op, root, budget))??;
             match entry {
-                ConfirmedEntry::Ready(scope) => {
+                ConfirmedEntry::Ready(mut scope) => {
+                    scope.confirmation = Some(confirmation);
                     self.confirmed = Some(scope);
                     self.fresh.record_confirmed_recovery(cancellation);
                     Ok(Prefix::NoIntent)
@@ -748,7 +752,8 @@ impl Intent {
 #[cfg(unix)]
 struct ConfirmedScope {
     scope: RecoveryScope,
-    _predecessor: Option<active_profile::LoadedPointer>,
+    predecessor: Option<active_profile::LoadedPointer>,
+    confirmation: Option<tobkiri_canon::CoreValue>,
     thread: std::thread::ThreadId,
 }
 
@@ -840,7 +845,8 @@ fn confirmed_scope<S: OriginalAuthorityOwner>(
         }
         Ok((predecessor, None)) => Ok(ConfirmedEntry::Ready(ConfirmedScope {
             scope,
-            _predecessor: predecessor,
+            predecessor,
+            confirmation: None,
             thread: std::thread::current().id(),
         })),
         Err(error) => finish_scope(Err(error), scope.guard.close()),
@@ -856,7 +862,7 @@ fn with_confirmed_predecessor<S: OriginalAuthorityOwner, T>(
 ) -> Result<T> {
     let ConfirmedScope {
         mut scope,
-        _predecessor: predecessor,
+        predecessor,
         ..
     } = match confirmed_scope(op, root, budget)? {
         ConfirmedEntry::Ready(scope) => scope,

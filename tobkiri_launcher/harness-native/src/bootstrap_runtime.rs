@@ -1577,9 +1577,17 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
                 #[cfg(unix)]
                 return Ok(Err(
                     match catalog::publication::verify(review, pack, &candidate).await? {
-                        Ok(_) => crate::BootstrapReviewFailure::NotBound(
-                            crate::BootstrapReviewReachpoint::InitialPublicationJournalNotBound,
-                        ),
+                        Ok(_) => match review.read.prepare_initial_publication(
+                            &pack.work.get().source,
+                            pack.cancellation,
+                            &candidate,
+                            pack.input_budget,
+                        ) {
+                            Ok(_) => crate::BootstrapReviewFailure::NotBound(
+                                crate::BootstrapReviewReachpoint::InitialPublicationJournalNotBound,
+                            ),
+                            Err(error) => crate::bootstrap_review::original_failure(error),
+                        },
                         Err(error) => error,
                     },
                 ));

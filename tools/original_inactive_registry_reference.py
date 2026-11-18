@@ -16,6 +16,7 @@ from types import FrameType, SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
+from original_active_profile_fixtures import original_activation_writer
 from original_authority_reference import ORIGINAL_HEAD, error_graph, write_json
 from original_setup_candidate_selection_reference import _lock_free
 
@@ -54,15 +55,19 @@ KEY = "development-host-handover.key"
 REGISTRATION_TIME = 1_700_000_123
 
 
-def _inventory(root: Path, names: list[str]) -> dict[str, tuple]:
+def _inventory(
+    root: Path,
+    names: list[str],
+    directories: tuple[str, ...] = (),
+) -> dict[str, tuple]:
     paths = sorted(root.rglob("*"))
     actual = [path.relative_to(root).as_posix() for path in paths]
-    if actual != sorted(["profiles", *names]):
+    if actual != sorted(["profiles", *directories, *names]):
         raise AssertionError(("unexpected original fixture entries", actual))
     result = {}
     for name, path in [(".", root), *zip(actual, paths)]:
         info = path.lstat()
-        directory = name in {".", "profiles"}
+        directory = name in {".", "profiles", *directories}
         if directory:
             if not stat.S_ISDIR(info.st_mode):
                 raise AssertionError(("expected a real directory", name))
@@ -539,7 +544,7 @@ def observe_inactive_registry(
             if _inventory(root, files) != before:
                 raise AssertionError("original Setup review changed the import")
             row["publication_checks"] = _observe_publication_checks(
-                runtime, bundle, root, inputs, files,
+                original_runtime, runtime, bundle, root, inputs, files,
                 row["setup_review"]["confirmation"],
             )
             row["registration_cases"] = _observe_registration(
@@ -664,6 +669,7 @@ class _PublicationBoundary(BaseException):
 
 
 def _observe_publication_checks(
+    original_runtime: Path,
     runtime: Path,
     bundle: Path,
     seed: Path,
@@ -672,11 +678,16 @@ def _observe_publication_checks(
     confirmation: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Observe confirmed capture under the real lock up to the first intent."""
-    from core_runtime.active_profile_store_v4 import ActiveProfilePointer
+    from core_runtime.active_profile_store_v4 import (
+        ActiveProfilePointer,
+        ActiveProfileStore,
+    )
     from core_runtime.bootstrap import profile_capture as capture
     from core_runtime.bootstrap.profile_publication import ProfilePublicationJournal
     from core_runtime.profile_runtime_port import require_profile_runtime
-    from tobkiri_protocol.canonical import canonical_digest
+    from tobkiri_protocol import canonical
+
+    canonical_digest = canonical.canonical_digest
 
     port = require_profile_runtime()
     port_type = type(port)
@@ -692,8 +703,11 @@ def _observe_publication_checks(
     for method, relative in (
         (capture.capture_bootstrap_profile, CAPTURE_SOURCE),
         (capture._capture_bootstrap_profile, CAPTURE_SOURCE),
+        (capture._resolve_bootstrap_candidate, CAPTURE_SOURCE),
         (capture.host_profile_catalog, CAPTURE_SOURCE),
         (ProfilePublicationJournal.begin, PUBLICATION_SOURCE),
+        (ActiveProfileStore.commit_activation, ACTIVE_SOURCE),
+        (ActiveProfileStore.load, ACTIVE_SOURCE),
         (load, SETUP_RUNTIME_SOURCE),
     ):
         if Path(method.__code__.co_filename).resolve() != runtime / relative:
@@ -702,10 +716,18 @@ def _observe_publication_checks(
     rows = []
     for case in (
         "matched", "stale-confirmation", "changed-source", "changed-lock", "stale-intent",
+        "matched-with-predecessor",
     ):
         root = inputs / f"publication-{case}" / "user-data"
         shutil.copytree(seed, root)
         kept = list(files)
+        directories: tuple[str, ...] = ()
+        expected_predecessor = None
+        matched = case in {"matched", "matched-with-predecessor"}
+        environment = {
+            "TOBKIRI_USER_DATA": str(root), "RUMI_USER_DATA": str(root),
+            "RUMI_ENVIRONMENT": "production", "RUMI_APP_DIR": "",
+        }
         if case == "stale-intent":
             # Use the actual writer to authenticate a prior intent expecting a
             # Host pointer that is now absent. Confirmed recovery must keep it.
@@ -732,8 +754,32 @@ def _observe_publication_checks(
                 confirmation=confirmation,
             )
             kept.extend(("profiles/.publication-key", "profiles/bootstrap-publication.json"))
-        existing = _inventory(root, kept)
+        if case == "matched-with-predecessor":
+            write_activation = original_activation_writer(original_runtime, canonical)
+            activation, snapshot, relative = write_activation(
+                root, "prior-profile", "previous",
+            )
+            store = ActiveProfileStore(root, clock=lambda: REGISTRATION_TIME)
+            expected_predecessor = store.commit_activation(
+                activation,
+                activation_snapshot=snapshot,
+                activation_snapshot_path=relative,
+            )
+            if (
+                store.load(verify_snapshot=True) != expected_predecessor
+                or expected_predecessor.profile_id == confirmation["profile_id"]
+            ):
+                raise AssertionError("fixture lacks a verified predecessor from another Profile")
+            kept.extend(("profiles/active.json", "profiles/.active-profile.lock", relative))
+            directories = tuple(
+                parent.as_posix() for parent in Path(relative).parents if parent != Path(".")
+            )
+        existing = _inventory(root, kept, directories)
         approved = copy.deepcopy(confirmation)
+        if expected_predecessor is not None:
+            # An active Host pointer changes the original inactive-definition selection.
+            with patch.dict(os.environ, environment):
+                _, approved = capture._resolve_bootstrap_candidate()
         if case == "stale-confirmation":
             approved["confirmation_digest"] = "stale-fixture-digest"
         before = copy.deepcopy(approved)
@@ -779,10 +825,8 @@ def _observe_publication_checks(
                 reread_digest = "sha256:" + hashlib.sha256(result).hexdigest()
                 # Keep the final source and exact physical lock bytes for the
                 # separate Rust writer comparison. These stay on the CI runner.
-                from tobkiri_protocol.canonical import canonical_bytes
-
                 (root.parent / "reread-source.json").write_bytes(
-                    canonical_bytes(reread.profiles[confirmation["profile_id"]]),
+                    canonical.canonical_bytes(reread.profiles[confirmation["profile_id"]]),
                 )
                 (root.parent / "reread-bundle.lock.json").write_bytes(result)
             return result
@@ -803,10 +847,10 @@ def _observe_publication_checks(
         ) -> None:
             nonlocal candidate
             if (
-                case != "matched"
+                not matched
                 or journal.root != root / "profiles"
                 or _lock_free(root / publication_lock) is not False
-                or predecessor is not None
+                or predecessor != expected_predecessor
                 or confirmation is not approved
                 or reread is None
             ):
@@ -830,16 +874,17 @@ def _observe_publication_checks(
                 "plan_digest": plan_digest,
                 "activation_id": activation_id,
             }
-            from tobkiri_protocol.canonical import canonical_bytes
-
-            records = canonical_bytes({
+            records = canonical.canonical_bytes({
                 "profile": resolved.profile, "lock": resolved.lock, "plan": resolved.plan,
             })
             (root.parent / "resolved-records.json").write_bytes(records)
             candidate["resolved_records_sha256"] = hashlib.sha256(records).hexdigest()
             # Run the actual writer on a separate CI-only root. Its fixed test
             # key never enters the live capture fixture or uploaded metadata.
-            oracle_root = inputs / "publication-intent-oracle" / "user-data"
+            oracle_case = "publication-intent-oracle"
+            if expected_predecessor is not None:
+                oracle_case += "-matched-with-predecessor"
+            oracle_root = inputs / oracle_case / "user-data"
             (oracle_root / "profiles").mkdir(mode=0o700, parents=True)
             key = oracle_root / "profiles/.publication-key"
             key.touch(mode=0o600)
@@ -851,7 +896,12 @@ def _observe_publication_checks(
                     activation_id=activation_id, confirmation=confirmation,
                 )
                 payload = oracle.read()
-            if payload is None or not _lock_free(oracle_root / publication_lock):
+            predecessor_payload = predecessor.to_dict() if predecessor is not None else None
+            if (
+                payload is None
+                or payload["predecessor"] != predecessor_payload
+                or not _lock_free(oracle_root / publication_lock)
+            ):
                 raise AssertionError("original writer did not leave authenticated intent")
             candidate["intent"] = {
                 "payload": payload,
@@ -863,10 +913,7 @@ def _observe_publication_checks(
         host_catalog = capture.host_profile_catalog
         try:
             with (
-                patch.dict(os.environ, {
-                    "TOBKIRI_USER_DATA": str(root), "RUMI_USER_DATA": str(root),
-                    "RUMI_ENVIRONMENT": "production", "RUMI_APP_DIR": "",
-                }),
+                patch.dict(os.environ, environment),
                 patch.object(port_type, "load_catalog", load_catalog),
                 patch.object(capture, "host_profile_catalog", watch_host_catalog),
                 patch.object(Path, "read_bytes", watch_read),
@@ -880,7 +927,7 @@ def _observe_publication_checks(
                 "stale-confirmation": "bootstrap activation confirmation is stale or tampered",
                 "stale-intent": "Profile publication predecessor is stale",
             }.get(case, "bootstrap target changed after confirmation")
-            if case == "matched" or not port.is_resolution_denied(error) or str(error) != expected:
+            if matched or not port.is_resolution_denied(error) or str(error) != expected:
                 raise
             outcome = {"error": error_graph(error, root)}
         else:
@@ -888,7 +935,7 @@ def _observe_publication_checks(
         finally:
             if case == "changed-lock":
                 lock.write_bytes(lock_before)
-        after = _inventory(root, [*kept, publication_lock])
+        after = _inventory(root, [*kept, publication_lock], directories)
         same_entries = all(after[name] == existing[name] for name in kept)
         expected_events = [] if case == "stale-intent" else ["load-resolver-catalog"]
         expected_digest = None
@@ -899,7 +946,7 @@ def _observe_publication_checks(
             ])
             actual_lock = lock_before + b"\n" if case == "changed-lock" else lock_before
             expected_digest = "sha256:" + hashlib.sha256(actual_lock).hexdigest()
-        if case == "matched":
+        if matched:
             expected_events.append("before-first-publication-intent")
         if (
             events != expected_events or reread_digest != expected_digest
@@ -908,7 +955,10 @@ def _observe_publication_checks(
             or lock.read_bytes() != lock_before
         ):
             raise AssertionError((case, "capture altered its inputs or publication sequence"))
-        rows.append({"case": case, "events": events, "reread_bundle_digest": reread_digest, "outcome": outcome})
+        row = {"case": case, "events": events, "reread_bundle_digest": reread_digest, "outcome": outcome}
+        if expected_predecessor is not None:
+            row["confirmation"] = before
+        rows.append(row)
     return rows
 
 
