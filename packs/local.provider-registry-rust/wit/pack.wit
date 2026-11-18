@@ -1,0 +1,27 @@
+package local:provider-registry@1.0.0;
+
+interface data {
+  type registry-document = string;
+}
+
+interface %resource {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Read the current Profile's UI-safe provider connections.
+  snapshot: func(payload: json) -> result<json, error>;
+}
+
+interface manage {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Internal adapter operation: apply save, model_access.save, or delete
+  /// with an expected revision. Result records are for the adapter only.
+  apply: func(payload: json) -> result<json, error>;
+}
+
+world pack {
+  include tobkiri:core/pack-minimal@1.2.0;
+  import tobkiri:core/storage@1.2.0;
+  export %resource;
+  export manage;
+}

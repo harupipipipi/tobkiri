@@ -536,14 +536,13 @@ fn verify_source_closure(repository: &Path, receipt: &Value) -> Result<()> {
         );
         let current = read_beneath(repository, path, MAX_SOURCE_BYTES)
             .with_context(|| format!("verify captured source {path}"))?;
-        ensure!(
-            current.len() as u64 == expected_bytes,
-            "source size changed: {path}"
-        );
-        ensure!(
-            digest(&current) == expected_hash,
-            "source digest changed: {path}"
-        );
+        crate::source_evidence::verify_captured_bytes(
+            repository,
+            path,
+            &current,
+            Some(expected_bytes),
+            expected_hash,
+        )?;
     }
     verify_source_pin(repository, receipt, GENERATOR_PATH, PINNED_GENERATOR_SHA256)?;
     verify_source_pin(

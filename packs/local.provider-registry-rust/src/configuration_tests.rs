@@ -722,11 +722,14 @@ fn preparation_matches_authenticated_original_python_cases() {
         assert!(relative.starts_with("tobkiri_runtime/") || relative.starts_with("tools/quality/"));
         assert!(!relative.split('/').any(|part| part == ".."));
         let bytes = std::fs::read(root.join(relative)).unwrap();
-        assert_eq!(
-            format!("{:x}", Sha256::digest(&bytes)),
+        crate::source_evidence::verify_captured_bytes(
+            &root,
+            relative,
+            &bytes,
+            source["bytes"].as_u64(),
             source["sha256"].as_str().unwrap(),
-            "{relative}"
-        );
+        )
+        .unwrap();
     }
     let cases = fixture["cases"].as_array().unwrap();
     assert_eq!(cases.len(), 23);

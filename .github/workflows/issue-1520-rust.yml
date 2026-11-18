@@ -184,6 +184,7 @@ jobs:
           TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: 4f7e5d6e0f1cf047c7e5e55e62eaa12fd6feb944ac15ca963302082bb45a1272
           TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR: ${{ runner.temp }}/provider-registry-native
         run: |
+          git fetch --no-tags --depth=1 origin 98bb10ab67480d69fee041a08d1516cafb544ff3
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/provider-registry-units.log" --expected-passed 49 -- \
             cargo test --locked --manifest-path packs/Cargo.toml \
@@ -195,6 +196,21 @@ jobs:
             oracle_tests::provider_registry_decoded_source_consumer -- --ignored --exact
           cargo clippy --locked --manifest-path packs/Cargo.toml \
             -p tobkiri-pack-provider-registry-rust --all-targets -- -D warnings
+      - name: Provider Registry Wasm private storage and Profile isolation
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/provider-registry-component-units.log" -- \
+            cargo test --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-provider-registry-rust --features component --lib
+          cargo build --locked --release --target wasm32-wasip2 \
+            --manifest-path packs/Cargo.toml -p tobkiri-pack-provider-registry-rust \
+            --features component
+          export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/provider-registry-wasm.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test provider_registry -- \
+            provider_registry_uses_gated_private_storage_and_profile_revisions \
+            --ignored --exact --test-threads=1
       - name: Retain decoded Registry comparison evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -204,6 +220,8 @@ jobs:
             ${{ runner.temp }}/provider-registry-native/
             ${{ runner.temp }}/provider-registry-units.log*
             ${{ runner.temp }}/provider-registry-source.log*
+            ${{ runner.temp }}/provider-registry-component-units.log*
+            ${{ runner.temp }}/provider-registry-wasm.log*
           if-no-files-found: warn
       - name: Portable Wasm engine integration tests
         run: >-

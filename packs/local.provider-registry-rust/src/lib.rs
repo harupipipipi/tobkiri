@@ -1,9 +1,13 @@
 //! Additive translation of the original Python Provider Registry.
 //!
-//! Registry and configuration logic use caller-supplied decoded store, clock
-//! and credential ports. This crate opens no real Profile or credential store
-//! and supplies neither production routing nor proof of Rust/Wasm/GUI parity.
+//! The default build provides Registry and configuration logic for caller-supplied
+//! ports. The `component` feature wires the Registry to the current execution
+//! Profile and its private Core store.
 
+#[cfg(feature = "component")]
+mod component;
+#[cfg(feature = "component")]
+mod component_store;
 pub mod configuration;
 pub mod failure;
 pub mod host;
@@ -13,3 +17,5 @@ pub mod state;
 
 #[cfg(test)]
 mod oracle_tests;
+#[cfg(test)]
+mod source_evidence;

@@ -3751,11 +3751,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   接続先・Secret・モデルを獲得する箇所を一つの実Wasmターンに接続し、既存保存値と照合する。
   `frontend/src/lib/launcherConnections.ts::saveLauncherModelProfile` の既存入力は
   model_profile_id/model_id/provider_instance_idとRegistry revisionを送る。
-  `local.provider-registry-rust::configuration` のprepare/executeとCredentialPortは再利用候補だが、
-  現状はnative候補でWasm exportもCore contributionもない。DocumentStoreの実装もMemoryStore。
-  最初の接続単位は、既存設定契約をPack側adapterからprivate storageとCredential Brokerへ
-  結ぶこと。prompt/providerは同じ登録モデルsnapshotを読む必要がある。汎用の動的config getterは
-  まだなく、Hostのconfig mapや `Core::set_secret` 直呼びで既存の承認を置き換えない。
+  `local.provider-registry-rust` は、同じRegistryをWasmからCoreのPack専用ストアへつないだ。
+  Coreが実行中のProfileを決め、SQLiteで保存済み文書のハッシュを照合してから更新する。
+  応答がCoreのJSON形式で表現できることを検査した上で書き込む。保存時のSQLテキスト引数は
+  ハッシュ込みで1MiBまでで、実際の配送には呼び出し側の出力上限も適用される。ソースから
+  ビルドした実Wasmを使い、別Profileへの書き込み拒否、同じ接続IDの分離、古いrevisionの
+  拒否、UI向け読み取りでのendpointとcredential handleの除外、Core再起動後の復元を確認した。
+  Python原本との比較に使う4ファイルがLauncher変更で進んだため、採取時の `98bb10ab6` から
+  同じバイト列を取得し、受領済みのサイズとSHA-256を照合する。両比較の固定観測は更新していない。
+  Rustの単体52件、採取済みPython観測との比較81件、実WasmのCore統合試験、strict Clippyが通過。
+  このPackには旧Registryからの取込みとCredential Broker接続が残る。また、モデル登録と既存の
+  「普段使うモデル」を同じ会話ターンから読む経路が必要。設定を接続する際は従来の承認を使う。
 - A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
   旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
   現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。
@@ -4527,6 +4533,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rust 266件、strict Clippy、producer 346件、固定CPythonアダプター269件、
   CIスクリプト15件が通過。旧Tool Bridgeの事前目録は、既存Profile2ファイルの記録差分で
   検査1件が失敗する。
+  [Launcherステージング 44349700285](https://github.com/harupipipipi/tobkiri/actions/runs/44349700285)
+  は準備試験6件に成功した後、ラッパーの期待件数が5件のため止まった。`cc4cafcb4` で6件に合わせ、
+  [Launcherステージング 44355528195](https://github.com/harupipipipi/tobkiri/actions/runs/44355528195) と
+  [Base64版の実Wasm 44355527562](https://github.com/harupipipipi/tobkiri/actions/runs/44355527562) を開始した。
   `2535f6dbd` は `adopt_owned_bundle` のPack再パースを外し、構造と意味を検証した同じ文書からpin情報を抽出
   する。必要な候補だけPack ID・ハッシュ・種類・依存IDを保持し、全行受領後にロック順で採用。
   旧readerとの直接比較で、非ASCIIを含む依存ID順、設定なしと空の違い、欠損時の結果が一致した。

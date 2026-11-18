@@ -845,6 +845,7 @@ dependencies = [
  "sha2",
  "tobkiri-canon",
  "tobkiri-pack-provider-model-access-rust",
+ "wit-bindgen",
  "zeroize",
 ]
 
