@@ -126,6 +126,16 @@ mod tests {
 
     #[test]
     fn native_setup_ipc_requires_the_exact_main_loopback_setup_route() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/native-first-setup.json")).unwrap();
+        assert_eq!(capability["local"], false);
+        assert_eq!(capability["windows"], serde_json::json!(["main"]));
+        // Tauri's custom-protocol IPC checks the Origin header, which carries
+        // no route path. The live window checks below enforce the Setup path.
+        assert_eq!(
+            capability["remote"]["urls"],
+            serde_json::json!(["http://127.0.0.1:*/*", "http://localhost:*/*"])
+        );
         let setup = Url::parse("http://127.0.0.1:8765/panel/setup").unwrap();
         assert!(validate_setup_caller("main", &setup, 8765).is_ok());
         assert!(validate_setup_caller("secondary", &setup, 8765).is_err());

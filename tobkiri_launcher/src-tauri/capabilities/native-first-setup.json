@@ -1,11 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "native-first-setup",
-  "description": "Allows the main Tobkiri Setup panel to read the Launcher route and request an isolated review.",
+  "description": "Allows the main loopback panel to request the Setup review. Launcher verifies the exact live Setup URL.",
   "local": false,
   "windows": ["main"],
   "remote": {
-    "urls": ["http://127.0.0.1:*/panel/setup", "http://localhost:*/panel/setup"]
+    "urls": ["http://127.0.0.1:*/*", "http://localhost:*/*"]
   },
   "permissions": ["allow-native-setup-route", "allow-start-native-setup-review"]
 }
