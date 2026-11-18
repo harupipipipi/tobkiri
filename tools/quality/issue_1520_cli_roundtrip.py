@@ -172,11 +172,11 @@ def open_readonly(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
 
 
-def report_echo_save_failure(root: Path, identity: str) -> None:
-    """Print only the recent audit states for the failed fixture's save path."""
+def report_echo_store_failure(root: Path, identity: str) -> None:
+    """Print only the recent audit states for the failed fixture's store calls."""
     effects = {
-        json_digest({"kind": "port-call", "shape": STORE_SHAPE, "op": "append"}):
-        "append",
+        json_digest({"kind": "port-call", "shape": STORE_SHAPE, "op": operation}): operation
+        for operation in ("load", "append")
     }
     for operation in ("open", "sql-read", "sql-write"):
         effects[json_digest({
@@ -195,7 +195,7 @@ def report_echo_save_failure(root: Path, identity: str) -> None:
                       ORDER BY seq DESC LIMIT 64)
             """).fetchall()
     except sqlite3.Error:
-        print("Echo save audit unavailable", file=sys.stderr)
+        print("Echo store audit unavailable", file=sys.stderr)
         return
     states = []
     for effect, *fields in reversed(rows):
@@ -204,7 +204,7 @@ def report_echo_save_failure(root: Path, identity: str) -> None:
                 label if isinstance(label, str) and re.fullmatch(r"[a-z0-9-]{1,64}", label)
                 else None for label in fields
             )])
-    print(f"Echo save audit states: {json.dumps(states)}", file=sys.stderr)
+    print(f"Echo store audit states: {json.dumps(states)}", file=sys.stderr)
 
 
 def approve(
@@ -238,18 +238,22 @@ def approve(
     return identity
 
 
-def turn(cli: list[str], identity: str, marker: str) -> str:
+def turn(cli: list[str], root: Path, identity: str, marker: str) -> str:
     """Drive a real Echo input and return its terminal transcript."""
     command = cli + [
         "profile", "run", "--profile", identity, "--source", "local.echo-input",
         "--input-shape", "local.echo-chat.user-input@1.0", "--once",
     ]
-    with Terminal(command) as terminal:
-        assert terminal.expect(b"> ") == "", "unexpected output before the Echo input"
-        terminal.send(marker)
-        output = terminal.finish(success=True)
-        assert f"Echo: {marker}" in output, output
-        return output
+    try:
+        with Terminal(command) as terminal:
+            assert terminal.expect(b"> ") == "", "unexpected output before the Echo input"
+            terminal.send(marker)
+            output = terminal.finish(success=True)
+            assert f"Echo: {marker}" in output, output
+            return output
+    except AssertionError:
+        report_echo_store_failure(root, identity)
+        raise
 
 
 def messages(
@@ -356,7 +360,7 @@ def check_overlay_turn(
 ) -> None:
     """Observe the replacement output and verify the original append left no rows."""
     assert messages(root, identity) == []
-    output = turn(cli, identity, marker)
+    output = turn(cli, root, identity, marker)
     lines = output.splitlines()
     assert lines[-2] == OVERLAY_MARKER, output
     assert json.loads(lines[-1]) == {
@@ -408,11 +412,7 @@ def main(binary: str) -> None:
             "--name", "CLI source",
         ], pins, root)
         original = "cli-source-only-marker"
-        try:
-            turn(cli, source, original)
-        except AssertionError:
-            report_echo_save_failure(root, source)
-            raise
+        turn(cli, root, source, original)
         expected = [("user", original), ("assistant", f"Echo: {original}")]
         assert messages(root, source) == expected
 
@@ -436,7 +436,7 @@ def main(binary: str) -> None:
         assert imported not in {source, refused}
         assert messages(root, imported) == []
         marker = "cli-import-only-marker"
-        turn(cli, imported, marker)
+        turn(cli, root, imported, marker)
         assert messages(root, imported) == [
             ("user", marker), ("assistant", f"Echo: {marker}"),
         ]

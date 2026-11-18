@@ -72,7 +72,7 @@ jobs:
         run: |
           cargo build --locked -p tobkiri-cli --bin tobkiri
           python3 -B tools/quality/issue_1520_cli_roundtrip.py \
-            "$CARGO_TARGET_DIR/debug/tobkiri" | tee "$RUNNER_TEMP/actual-cli-publication.log"
+            "$CARGO_TARGET_DIR/debug/tobkiri" 2>&1 | tee "$RUNNER_TEMP/actual-cli-publication.log"
       - name: Retain test receipts
         if: always()
         uses: actions/upload-artifact@v4

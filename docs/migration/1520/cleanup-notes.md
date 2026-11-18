@@ -3680,6 +3680,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   許可・実行結果だけを読み、状態コードを出力する。限定出力はローカルの生成fixtureで確認し、
   [診断付きの再試験 44261610869](https://github.com/harupipipipi/tobkiri/actions/runs/44261610869)
   はEchoの保存・公開・再取込み・User overlayまで通過。最初の失敗は再現せず、原因は未特定。
+  [44368388797](https://github.com/harupipipipi/tobkiri/actions/runs/44368388797) では通常Profileの
+  実行・公開・再取込みは通過し、User overlayの初回ターンで元の `load` が `unavailable` で停止した。
+  保存時の既存監査レポートを全ターンに共用し、`load` と `append` を同じ上限付き抽出の対象に追加した。
+  stderrもCIの実行記録に保存する。ローカルのSQLite fixtureで両方の呼び出しが残り、
+  対象外イベントや任意のエラー文が出ないことを確認。既存の試験条件で再計測する。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
