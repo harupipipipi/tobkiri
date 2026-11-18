@@ -53,6 +53,8 @@ pub(crate) use recovery_authority::RecoveryAuthorityReached;
 #[cfg(unix)]
 pub(crate) use recovery_authority::initial_activation::InitialPublication;
 #[cfg(unix)]
+pub use recovery_authority::{OriginalActivationInspection, OriginalActiveProfile};
+#[cfg(unix)]
 pub(crate) use recovery_authority::{
     PredecessorActivation, PredecessorActivationReached, RegisteredCatalogPolicy,
     RegisteredCatalogSelection, RegisteredDefinitionCandidate, RegisteredPackClosure,

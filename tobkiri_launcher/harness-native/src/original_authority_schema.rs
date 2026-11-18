@@ -132,14 +132,58 @@ fn initialize_connection<S: OriginalAuthorityOwner>(
     store: &Store<'_, '_, S>,
     db: &Database<'_, '_, '_, S>,
 ) -> Result<()> {
+    // Keep each funded schema fetch alive for the original Setup scope.
+    let (version, _tables) = schema_version(db)?;
+    db.script(DDL)?;
+    db.execute("INSERT OR IGNORE INTO authority_meta(key, value) VALUES ('schema_version', '1'), ('security_epoch', '1')", [])?;
+    db.execute(
+        "INSERT OR IGNORE INTO authority_meta(key, value) VALUES (?, ?)",
+        params!["security_epoch_advanced_at", clock_string(store.clock())?],
+    )?;
+    db.execute(
+        "INSERT OR IGNORE INTO authority_meta(key, value) VALUES (?, ?)",
+        params![
+            "security_epoch_reason_digest",
+            Digest::hash(br#"{"reason":"genesis"}"#).as_str()
+        ],
+    )?;
+    db.execute(
+        "INSERT OR IGNORE INTO authority_meta(key, value) VALUES ('activation_fencing_token', '0')",
+        [],
+    )?;
+    let _lease_and_pending = verify_lease_and_pending(db, version)?;
+    verify_audit(store, db)?;
+    if version == Some("1") {
+        migrate(store, db)?;
+    } else {
+        db.execute("BEGIN IMMEDIATE", [])?;
+    }
+    db.execute("CREATE TABLE IF NOT EXISTS host_extension_registrations (registration_id TEXT PRIMARY KEY, encrypted_payload BLOB NOT NULL) STRICT", [])?;
+    let _registration = verify_registrations(db)?;
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS leases_request ON invocation_leases(request_id)",
+        [],
+    )?;
+    db.execute(
+        "UPDATE authority_meta SET value='4' WHERE key='schema_version'",
+        [],
+    )?;
+    db.commit()
+}
+
+#[cfg(unix)]
+fn schema_version<S: OriginalAuthorityOwner>(
+    db: &Database<'_, '_, '_, S>,
+) -> Result<(Option<&'static str>, Rows)> {
     let tables = db.query(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
         [],
     )?;
     let existing = names(&tables, 0)?;
-    let version = if existing.is_empty() {
-        None
-    } else {
+    if existing.is_empty() {
+        return Ok((None, tables));
+    }
+    let version = {
         if BASE.iter().any(|name| !existing.contains(name))
             || existing.iter().any(|name| {
                 !BASE.contains(name)
@@ -165,46 +209,35 @@ fn initialize_connection<S: OriginalAuthorityOwner>(
             .map(|row| text(row, 0))
             .transpose()?
             .ok_or_else(|| error("authority database schema version is missing"))?;
-        if !["1", "2", "3", "4"].contains(&value) {
-            return Err(error("authority database schema version is unsupported"));
-        }
-        Some(value.to_owned())
+        ["1", "2", "3", "4"]
+            .into_iter()
+            .find(|&version| version == value)
+            .ok_or_else(|| error("authority database schema version is unsupported"))?
     };
-    if version.as_deref().is_some_and(|version| {
-        (version == "4") != existing.contains("host_extension_registrations")
-    }) {
+    if (version == "4") != existing.contains("host_extension_registrations") {
         return Err(error(
             "authority registration schema is partial or inconsistent",
         ));
     }
-    if version.as_deref() == Some("4") && existing.len() != BASE.len() + 3 {
+    if version == "4" && existing.len() != BASE.len() + 3 {
         return Err(error(
             "authority database table set is partial or inconsistent",
         ));
     }
-    db.script(DDL)?;
-    db.execute("INSERT OR IGNORE INTO authority_meta(key, value) VALUES ('schema_version', '1'), ('security_epoch', '1')", [])?;
-    db.execute(
-        "INSERT OR IGNORE INTO authority_meta(key, value) VALUES (?, ?)",
-        params!["security_epoch_advanced_at", clock_string(store.clock())?],
-    )?;
-    db.execute(
-        "INSERT OR IGNORE INTO authority_meta(key, value) VALUES (?, ?)",
-        params![
-            "security_epoch_reason_digest",
-            Digest::hash(br#"{"reason":"genesis"}"#).as_str()
-        ],
-    )?;
-    db.execute(
-        "INSERT OR IGNORE INTO authority_meta(key, value) VALUES ('activation_fencing_token', '0')",
-        [],
-    )?;
+    Ok((Some(version), tables))
+}
+
+#[cfg(unix)]
+fn verify_lease_and_pending<S: OriginalAuthorityOwner>(
+    db: &Database<'_, '_, '_, S>,
+    version: Option<&str>,
+) -> Result<(Rows, Rows)> {
     let lease_columns = db.query("PRAGMA table_info(invocation_leases)", [])?;
     let actual = names(&lease_columns, 1)?;
     let expected: BTreeSet<_> = LEASE_COLUMNS
         .iter()
         .copied()
-        .filter(|name| version.as_deref() != Some("1") || *name != "request_id")
+        .filter(|name| version != Some("1") || *name != "request_id")
         .collect();
     if actual != expected {
         return Err(error(
@@ -227,28 +260,55 @@ fn initialize_connection<S: OriginalAuthorityOwner>(
             "authority database pending-effect schema is partial or inconsistent",
         ));
     }
-    verify_audit(store, db)?;
-    if version.as_deref() == Some("1") {
-        migrate(store, db)?;
-    } else {
-        db.execute("BEGIN IMMEDIATE", [])?;
-    }
-    db.execute("CREATE TABLE IF NOT EXISTS host_extension_registrations (registration_id TEXT PRIMARY KEY, encrypted_payload BLOB NOT NULL) STRICT", [])?;
+    Ok((lease_columns, pending))
+}
+
+#[cfg(unix)]
+fn verify_registrations<S: OriginalAuthorityOwner>(db: &Database<'_, '_, '_, S>) -> Result<Rows> {
     let registration = db.query("PRAGMA table_info(host_extension_registrations)", [])?;
     if names(&registration, 1)? != BTreeSet::from(["registration_id", "encrypted_payload"]) {
         return Err(error(
             "authority registration schema is partial or inconsistent",
         ));
     }
-    db.execute(
-        "CREATE INDEX IF NOT EXISTS leases_request ON invocation_leases(request_id)",
+    Ok(registration)
+}
+
+/// Authenticate the current schema and its audit chain in the caller's read transaction.
+#[cfg(unix)]
+pub(super) fn verify_existing<S: OriginalAuthorityOwner>(
+    store: &Store<'_, '_, S>,
+    db: &Database<'_, '_, '_, S>,
+) -> Result<()> {
+    let (version, _) = schema_version(db)?;
+    if version != Some("4") {
+        return Err(error("current authority database schema is required"));
+    }
+    verify_lease_and_pending(db, version)?;
+    verify_registrations(db)?;
+    store.assert_crypto()?;
+    // A read must authenticate this transaction's whole chain. The Setup tip
+    // cache assumes the earlier rows verified by a previous open stay intact.
+    verify_audit_snapshot(store, db)
+}
+
+#[cfg(unix)]
+fn verify_audit_snapshot<S: OriginalAuthorityOwner>(
+    store: &Store<'_, '_, S>,
+    db: &Database<'_, '_, '_, S>,
+) -> Result<()> {
+    let _capacity = store.op.reserve(OriginalAuthorityStage::Audit, 256)?;
+    let mut previous = zero_digest();
+    db.visit_rows(
+        "SELECT * FROM authority_audit ORDER BY sequence",
         [],
-    )?;
-    db.execute(
-        "UPDATE authority_meta SET value='4' WHERE key='schema_version'",
-        [],
-    )?;
-    db.commit()
+        |row| {
+            let (_, next) = verify_audit_row(store, &row, &previous)?;
+            previous.clear();
+            previous.push_str(next);
+            Ok(())
+        },
+    )
 }
 
 fn clock_string(now: f64) -> Result<String> {
@@ -352,39 +412,48 @@ fn verify_rows<S: OriginalAuthorityOwner>(
     let mut previous = previous.to_owned();
     let mut decoded_rows = Vec::new();
     for row in &rows.rows {
-        let payload = decoded(store, blob(row, 6)?)?;
-        let created = match row.get(7) {
-            Some(Value::Real(v)) => CanonValue::Float(*v),
-            Some(Value::Integer(v)) => CanonValue::Int(*v),
-            _ => return Err(error("authoritative audit chain is invalid")),
-        };
-        let encoded = json::canonical(
-            &payload,
-            Some(json::Audit {
-                id: text(row, 1)?,
-                kind: text(row, 2)?,
-                state: text(row, 3)?,
-                previous: &previous,
-                created: &created,
-            }),
-            store.op,
-        )?;
-        let expected = Digest::hash(&encoded);
-        if text(row, 4)? != previous
-            || !constant_eq(text(row, 5)?.as_bytes(), expected.as_str().as_bytes())
-        {
-            return Err(OriginalAuthorityError::new(
-                OriginalAuthorityStage::Audit,
-                "authoritative audit chain is invalid",
-                None,
-            ));
-        }
-        previous = text(row, 5)?.into();
-        // Source _verify_audit_rows retains decoded output until the entire
-        // fetchall has been checked; do not turn it into a streaming verifier.
+        let (payload, next) = verify_audit_row(store, row, &previous)?;
+        previous = next.into();
+        // Preserve the legacy Setup fetchall lifetime.
         decoded_rows.push(payload);
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn verify_audit_row<'row, S: OriginalAuthorityOwner>(
+    store: &Store<'_, '_, S>,
+    row: &'row [Value],
+    previous: &str,
+) -> Result<(Funded<json::Document>, &'row str)> {
+    let payload = decoded(store, blob(row, 6)?)?;
+    let created = match row.get(7) {
+        Some(Value::Real(v)) => CanonValue::Float(*v),
+        Some(Value::Integer(v)) => CanonValue::Int(*v),
+        _ => return Err(error("authoritative audit chain is invalid")),
+    };
+    let encoded = json::canonical(
+        &payload,
+        Some(json::Audit {
+            id: text(row, 1)?,
+            kind: text(row, 2)?,
+            state: text(row, 3)?,
+            previous,
+            created: &created,
+        }),
+        store.op,
+    )?;
+    let expected = Digest::hash(&encoded);
+    if text(row, 4)? != previous
+        || !constant_eq(text(row, 5)?.as_bytes(), expected.as_str().as_bytes())
+    {
+        return Err(OriginalAuthorityError::new(
+            OriginalAuthorityStage::Audit,
+            "authoritative audit chain is invalid",
+            None,
+        ));
+    }
+    Ok((payload, text(row, 5)?))
 }
 
 struct Tip {
@@ -487,8 +556,7 @@ fn verify_audit<S: OriginalAuthorityOwner>(
             verified: tip.verified,
         });
     let Some(tip) = cached else {
-        let rows = db.query("SELECT * FROM authority_audit ORDER BY sequence", [])?;
-        verify_rows(store, &rows, &zero_digest())?;
+        let rows = verify_full_audit(store, db)?;
         record_tip(store, &rows, rows.rows.len() as i64, None)?;
         return Ok(());
     };
@@ -556,9 +624,18 @@ fn verify_audit<S: OriginalAuthorityOwner>(
         .lock()
         .map_err(|_| OriginalAuthorityError::unavailable())?
         .remove(&key);
+    let rows = verify_full_audit(store, db)?;
+    record_tip(store, &rows, rows.rows.len() as i64, None)
+}
+
+#[cfg(unix)]
+fn verify_full_audit<S: OriginalAuthorityOwner>(
+    store: &Store<'_, '_, S>,
+    db: &Database<'_, '_, '_, S>,
+) -> Result<Rows> {
     let rows = db.query("SELECT * FROM authority_audit ORDER BY sequence", [])?;
     verify_rows(store, &rows, &zero_digest())?;
-    record_tip(store, &rows, rows.rows.len() as i64, None)
+    Ok(rows)
 }
 fn constant_eq(one: &[u8], two: &[u8]) -> bool {
     if one.len() != two.len() {

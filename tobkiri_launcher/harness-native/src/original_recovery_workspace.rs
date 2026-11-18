@@ -15,13 +15,33 @@ pub(super) struct RecoveryWorkspace {
     lock_name: LockName,
 }
 
+pub(super) struct ExistingRecoveryWorkspace(RecoveryWorkspace);
+
 impl RecoveryWorkspace {
     pub(super) fn open<S: OriginalAuthorityOwner>(
         op: &Operation<'_, S>,
         workspace: &Path,
         lock_name: LockName,
     ) -> Result<Self> {
-        let (state, workspace_digest) = initialize(op, workspace)?;
+        Self::open_with_mode(op, workspace, lock_name, false)
+    }
+
+    /// Capture an existing activation state directory for read-only inspection.
+    pub(super) fn open_existing<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        workspace: &Path,
+        lock_name: LockName,
+    ) -> Result<ExistingRecoveryWorkspace> {
+        Self::open_with_mode(op, workspace, lock_name, true).map(ExistingRecoveryWorkspace)
+    }
+
+    fn open_with_mode<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        workspace: &Path,
+        lock_name: LockName,
+        existing_only: bool,
+    ) -> Result<Self> {
+        let (state, workspace_digest) = initialize(op, workspace, existing_only)?;
         Ok(Self {
             state,
             workspace_digest,
@@ -45,7 +65,7 @@ impl RecoveryWorkspace {
             Ok(pending) => on_state(&self.state, &self.workspace_digest, pending).await,
             Err(error) => Err(error),
         };
-        self.finish_lock(op, guard, result)
+        self.finish_lock(op, guard, result, ControlFlow::is_continue)
     }
 
     fn read_pending<S: OriginalAuthorityOwner>(
@@ -64,27 +84,45 @@ impl RecoveryWorkspace {
         publish: impl FnOnce(&Directory, &Digest) -> Result<()>,
     ) -> Result<()> {
         let guard = PublicationLock::acquire_named(op, &self.state, self.lock_name)?;
-        let outcome = publish(&self.state, &self.workspace_digest).map(ControlFlow::<()>::Continue);
-        self.finish_lock(op, guard, outcome).map(|_| ())
+        let outcome = publish(&self.state, &self.workspace_digest);
+        self.finish_lock(op, guard, outcome, |_| true)
     }
 
-    fn finish_lock<S: OriginalAuthorityOwner, B, T>(
+    fn finish_lock<S: OriginalAuthorityOwner, T>(
         &self,
         op: &Operation<'_, S>,
         mut guard: PublicationLock,
-        outcome: Result<ControlFlow<B, T>>,
-    ) -> Result<ControlFlow<B, T>> {
+        outcome: Result<T>,
+        validate_success: impl FnOnce(&T) -> bool,
+    ) -> Result<T> {
         let result = outcome.and_then(|reached| {
-            if reached.is_continue() {
-                self.state.validate_file(
-                    op,
-                    self.lock_name.text(),
-                    guard.file.as_ref().expect("App lock"),
-                )?;
+            if validate_success(&reached) {
+                guard.validate(op, &self.state, self.lock_name)?;
             }
             Ok(reached)
         });
         finish_scope(result, guard.close())
+    }
+}
+
+impl ExistingRecoveryWorkspace {
+    /// Hold the original workspace lock while inspecting the current activation.
+    pub(super) async fn inspect_current<S: OriginalAuthorityOwner, T>(
+        &self,
+        op: &Operation<'_, S>,
+        inspect: impl AsyncFnOnce(&Directory, &Digest) -> Result<T>,
+    ) -> Result<T> {
+        let workspace = &self.0;
+        let guard = PublicationLock::acquire_existing(op, &workspace.state, workspace.lock_name)?;
+        let outcome = match workspace.state.exists(op, pending::NAME) {
+            Ok(false) => inspect(&workspace.state, &workspace.workspace_digest).await,
+            Ok(true) => Err(raw(
+                APP_DENIED,
+                "activation workspace has a pending journal",
+            )),
+            Err(error) => Err(error),
+        };
+        workspace.finish_lock(op, guard, outcome, |_| true)
     }
 }
 
@@ -121,6 +159,7 @@ pub(super) fn recover<S: OriginalAuthorityOwner, T>(
 fn initialize<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     workspace: &Path,
+    existing_only: bool,
 ) -> Result<(Directory, Digest)> {
     let stage = OriginalAuthorityStage::Path;
     let lexical_bytes = workspace
@@ -170,7 +209,12 @@ fn initialize<S: OriginalAuthorityOwner>(
     }
     // SecureDirectory captures the lexical activation path, not the resolved
     // workspace path. Redirected persistence ancestors must still be refused.
-    let state = Directory::capture(op, &state_root, true).map_err(|error| {
+    let state = if existing_only {
+        Directory::capture_existing_private(op, &state_root)
+    } else {
+        Directory::capture(op, &state_root, true)
+    };
+    let state = state.map_err(|error| {
         if error.class == SECURE_PERSISTENCE_ERROR {
             caused(raw(APP_DENIED, "activation state root is unsafe"), error)
         } else {
@@ -283,7 +327,10 @@ mod tests {
             .unwrap();
             let expected_digest = Digest::hash(&expected_bytes);
 
-            assert_eq!(initialize(&op, &workspace).unwrap().1, expected_digest);
+            assert_eq!(
+                initialize(&op, &workspace, false).unwrap().1,
+                expected_digest
+            );
             assert_eq!(fs::read_dir(&state_root).unwrap().count(), 0);
             assert_eq!(
                 fs::metadata(&state_root).unwrap().permissions().mode() & 0o777,
@@ -293,7 +340,7 @@ mod tests {
             let pending = state_root.join("pending.json");
             fs::write(&pending, b"existing bytes").unwrap();
             fs::set_permissions(&state_root, fs::Permissions::from_mode(0o755)).unwrap();
-            initialize(&op, &workspace).unwrap();
+            initialize(&op, &workspace, false).unwrap();
             assert_eq!(fs::read(&pending).unwrap(), b"existing bytes");
             assert_eq!(fs::read_dir(&state_root).unwrap().count(), 1);
             assert_eq!(
@@ -368,6 +415,206 @@ mod tests {
             ));
             assert_eq!(fs::read(&workspace_file).unwrap(), b"workspace file");
             assert_eq!(fs::read_dir(actual.join("profile")).unwrap().count(), 0);
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn existing_workspace_requires_the_state_directory_and_original_lock() {
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            let state_root = workspace.join("activation");
+            let op = operation(read, source, cancellation);
+            let name = LockName::workspace("profile");
+            let before = read.receipt();
+
+            let error = RecoveryWorkspace::open_existing(&op, &workspace, name)
+                .err()
+                .expect("missing workspace");
+            assert_eq!(error.class, RAW_IO);
+            assert!(!workspace.exists());
+
+            fs::create_dir_all(&workspace).unwrap();
+            let error = RecoveryWorkspace::open_existing(&op, &workspace, name)
+                .err()
+                .expect("missing activation state");
+            assert_eq!(error.message, "activation state root is unsafe");
+            assert!(!state_root.exists());
+
+            fs::create_dir(&state_root).unwrap();
+            fs::set_permissions(&state_root, fs::Permissions::from_mode(0o700)).unwrap();
+            let existing = RecoveryWorkspace::open_existing(&op, &workspace, name).unwrap();
+            let result: Result<()> = ready_test(
+                existing.inspect_current(&op, async |_, _| panic!("lock must already exist")),
+            );
+            assert_eq!(
+                result.unwrap_err().message,
+                "activation process lock is unavailable"
+            );
+            assert_eq!(fs::read_dir(&state_root).unwrap().count(), 0);
+            assert_eq!(read.receipt(), before);
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn existing_workspace_refuses_pending_without_reading_or_rewriting_it() {
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            let state_root = workspace.join("activation");
+            let op = operation(read, source, cancellation);
+            let name = LockName::workspace("profile");
+            let before = read.receipt();
+            fs::create_dir_all(&workspace).unwrap();
+            recover(&op, &workspace, name, |_, _| Ok(Some(()))).unwrap();
+            let journal = state_root.join(pending::NAME);
+            let lock = state_root.join(name.text());
+            fs::write(&journal, b"incomplete JSON").unwrap();
+            fs::set_permissions(&journal, fs::Permissions::from_mode(0o000)).unwrap();
+            let existing = RecoveryWorkspace::open_existing(&op, &workspace, name).unwrap();
+            let result: Result<()> = ready_test(
+                existing.inspect_current(&op, async |_, _| panic!("pending journal must stop us")),
+            );
+            assert_eq!(
+                result.unwrap_err().message,
+                "activation workspace has a pending journal"
+            );
+            assert_eq!(
+                fs::metadata(&journal).unwrap().permissions().mode() & 0o777,
+                0o000
+            );
+            fs::set_permissions(&journal, fs::Permissions::from_mode(0o600)).unwrap();
+            assert_eq!(fs::read(&journal).unwrap(), b"incomplete JSON");
+            assert!(lock_free(&lock));
+            assert_eq!(read.receipt(), before);
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn existing_workspace_preserves_state_and_lock_metadata_while_inspecting() {
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            let state_root = workspace.join("activation");
+            let op = operation(read, source, cancellation);
+            let name = LockName::workspace("profile");
+            let before = read.receipt();
+            fs::create_dir_all(&workspace).unwrap();
+            recover(&op, &workspace, name, |_, _| Ok(Some(()))).unwrap();
+            let record = state_root.join("active.json");
+            let lock = state_root.join(name.text());
+            fs::write(&record, b"existing activation").unwrap();
+            fs::write(&lock, b"existing lock").unwrap();
+            fs::set_permissions(&lock, fs::Permissions::from_mode(0o400)).unwrap();
+            fs::set_permissions(&state_root, fs::Permissions::from_mode(0o500)).unwrap();
+            let workspace_digest = Digest::hash(
+                &serde_json::to_vec(&serde_json::json!({
+                    "workspace_root": workspace.canonicalize().unwrap().to_str().unwrap(),
+                }))
+                .unwrap(),
+            );
+            let metadata = |path: &Path| {
+                let value = fs::metadata(path).unwrap();
+                (
+                    value.ino(),
+                    value.mode(),
+                    value.len(),
+                    value.mtime(),
+                    value.mtime_nsec(),
+                    value.ctime(),
+                    value.ctime_nsec(),
+                )
+            };
+            let tracked_paths = [&state_root, &record, &lock];
+            let before_metadata = tracked_paths.map(|path| metadata(path));
+            let observer = fs::File::open(&lock).unwrap();
+            let existing = RecoveryWorkspace::open_existing(&op, &workspace, name).unwrap();
+            ready_test(existing.inspect_current(&op, async |state, digest| {
+                assert_eq!(
+                    unsafe { libc::flock(observer.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+                    -1
+                );
+                assert_eq!(
+                    state.read(&op, "active.json")?.as_slice(),
+                    b"existing activation"
+                );
+                assert_eq!(digest, &workspace_digest);
+                Ok(())
+            }))
+            .unwrap();
+            assert_eq!(
+                unsafe { libc::flock(observer.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+                0
+            );
+            assert_eq!(
+                unsafe { libc::flock(observer.as_raw_fd(), libc::LOCK_UN) },
+                0
+            );
+            assert_eq!(fs::read(&lock).unwrap(), b"existing lock");
+            assert_eq!(tracked_paths.map(|path| metadata(path)), before_metadata);
+            assert_eq!(read.receipt(), before);
+            fs::set_permissions(&state_root, fs::Permissions::from_mode(0o700)).unwrap();
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn existing_workspace_refuses_unsafe_permissions_without_repairing_them() {
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            let state_root = workspace.join("activation");
+            let op = operation(read, source, cancellation);
+            let name = LockName::workspace("profile");
+            fs::create_dir_all(&workspace).unwrap();
+            recover(&op, &workspace, name, |_, _| Ok(Some(()))).unwrap();
+            let lock = state_root.join(name.text());
+
+            fs::set_permissions(&state_root, fs::Permissions::from_mode(0o755)).unwrap();
+            let error = RecoveryWorkspace::open_existing(&op, &workspace, name)
+                .err()
+                .expect("unsafe activation state permissions");
+            assert_eq!(error.message, "activation state root is unsafe");
+            assert_eq!(fs::metadata(&state_root).unwrap().mode() & 0o777, 0o755);
+            fs::set_permissions(&state_root, fs::Permissions::from_mode(0o700)).unwrap();
+
+            let existing = RecoveryWorkspace::open_existing(&op, &workspace, name).unwrap();
+            fs::set_permissions(&lock, fs::Permissions::from_mode(0o666)).unwrap();
+            let result: Result<()> = ready_test(
+                existing.inspect_current(&op, async |_, _| panic!("unsafe lock permissions")),
+            );
+            assert_eq!(
+                result.unwrap_err().message,
+                "activation process lock is unavailable"
+            );
+            assert_eq!(fs::metadata(&lock).unwrap().mode() & 0o777, 0o666);
+            assert!(lock_free(&lock));
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn existing_workspace_refuses_a_replaced_lock_and_releases_the_original() {
+        with_source(|source, read, cancellation, _| {
+            let workspace = source.root.join("workspace");
+            let state_root = workspace.join("activation");
+            let op = operation(read, source, cancellation);
+            let name = LockName::workspace("profile");
+            let before = read.receipt();
+            fs::create_dir_all(&workspace).unwrap();
+            recover(&op, &workspace, name, |_, _| Ok(Some(()))).unwrap();
+            let lock = state_root.join(name.text());
+            let moved = state_root.join("moved-lock");
+            let existing = RecoveryWorkspace::open_existing(&op, &workspace, name).unwrap();
+
+            let result = ready_test(existing.inspect_current(&op, async |_, _| {
+                assert!(!lock_free(&lock));
+                fs::rename(&lock, &moved).unwrap();
+                fs::write(&lock, b"replacement").unwrap();
+                fs::set_permissions(&lock, fs::Permissions::from_mode(0o600)).unwrap();
+                Ok(())
+            }));
+            assert_eq!(
+                result.unwrap_err().message,
+                "persistence open file identity changed"
+            );
+            assert_eq!(fs::read(&lock).unwrap(), b"replacement");
+            assert!(lock_free(&moved));
+            assert_eq!(read.receipt(), before);
         });
     }
 

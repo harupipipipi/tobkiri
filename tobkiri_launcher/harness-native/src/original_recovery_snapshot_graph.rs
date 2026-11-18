@@ -1,7 +1,10 @@
 //! Match the restored activation records while the App activation lock is held.
 use super::super::active_reservation;
 use super::*;
-use crate::original_authority::io::{Store, incomplete_reservations};
+use crate::original_authority::{
+    io::{Store, incomplete_reservations},
+    schema,
+};
 use rusqlite::types::Value;
 use tobkiri_canon::{AllocationKind, AllocationRequest};
 
@@ -197,6 +200,15 @@ pub(super) fn verify<S: crate::BootstrapReviewOwner>(
     profile_id: &str,
 ) -> Result<ProfileCheck> {
     let records = snapshot.records;
+    if store.is_read_only()
+        && (snapshot.legacy
+            || !records
+                .profile
+                .field("profile_api_version")?
+                .is("io.tobkiri.profile.v5"))
+    {
+        return Err(raw(APP_DENIED, "current v5 activation is required"));
+    }
     if snapshot.legacy {
         legacy::verify(
             op,
@@ -204,7 +216,11 @@ pub(super) fn verify<S: crate::BootstrapReviewOwner>(
             records,
             profile_id,
             |expected| epoch_matches(op, store, expected),
-            |activation| reservation_matches(op, store, budget, activation),
+            |activation| {
+                reservation_matches(op, budget, activation, |id| {
+                    active_reservation::read_snapshot_binding(op, store, id)
+                })
+            },
         )?;
         return Ok(ProfileCheck::NeedsLegacySuccessor);
     }
@@ -243,15 +259,83 @@ pub(super) fn verify<S: crate::BootstrapReviewOwner>(
             return Err(raw(APP_DENIED, "activation is stale or not active"));
         }
     }
-    if !reservation_matches(op, store, budget, records.activation)?
-        || !epoch_matches(op, store, records.activation.field("security_epoch")?)?
-    {
+    let authority_matches = if store.is_read_only() {
+        verify_existing_bindings(op, budget, records, profile_id)?;
+        existing_authority_matches(op, store, budget, records.activation, profile_id)?
+    } else {
+        reservation_matches(op, budget, records.activation, |id| {
+            active_reservation::read_snapshot_binding(op, store, id)
+        })? && epoch_matches(op, store, records.activation.field("security_epoch")?)?
+    };
+    if !authority_matches {
         return Err(raw(
             APP_DENIED,
             "active activation authority, fence, or SecurityEpoch is stale",
         ));
     }
     Ok(ProfileCheck::NeedsArtifactReverification)
+}
+
+fn verify_existing_bindings<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    records: SnapshotRecords<'_>,
+    profile_id: &str,
+) -> Result<()> {
+    for record in [
+        records.profile,
+        records.lock,
+        records.plan,
+        records.activation,
+    ] {
+        if !record.field("profile_id")?.is(profile_id) {
+            return Err(raw(
+                APP_DENIED,
+                "active Profile belongs to another workspace",
+            ));
+        }
+    }
+    // The resolved graph already ties the digest to Profile and Lock,
+    // and the SecurityEpoch to Lock.
+    for field in ["profile_authority_snapshot_digest", "security_epoch"] {
+        if !records
+            .activation
+            .field(field)?
+            .same(records.plan.field(field)?, op, budget)?
+        {
+            return Err(raw(APP_DENIED, "activation is stale or not active"));
+        }
+    }
+    Ok(())
+}
+
+fn existing_authority_matches<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    store: &Store<'_, '_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    activation: View<'_>,
+    profile_id: &str,
+) -> Result<bool> {
+    let db = store.connection(OriginalAuthorityStage::Initialize)?;
+    let outcome = (|| {
+        db.execute("BEGIN", [])?;
+        schema::verify_existing(store, &db)?;
+        if incomplete_reservations::has_incomplete_in(op, &db, profile_id)? {
+            return Err(raw(
+                APP_DENIED,
+                "activation workspace has incomplete authority reservations",
+            ));
+        }
+        if !reservation_matches(op, budget, activation, |id| {
+            active_reservation::read_snapshot_binding_in(op, &db, id)
+        })? {
+            return Ok(false);
+        }
+        let expected = activation.field("security_epoch")?;
+        let epoch = incomplete_reservations::read_epoch_in(op, &db)?;
+        Ok(epoch_equals(expected, &epoch))
+    })();
+    db.complete(outcome)
 }
 
 /// Validate the resolved graph independently of an activation or reservation.
@@ -266,12 +350,12 @@ pub(super) fn verify_resolved<S: crate::BootstrapReviewOwner>(
 }
 
 /// Retain the canonical record identities and data consumed after unlocking.
-/// Only registered Setup needs the complete Profile and Plan for its policy.
+/// Retain the complete records only for callers that review their policy.
 pub(super) fn retain_active<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     records: SnapshotRecords<'_>,
-    projection: SnapshotProjection,
+    projection: SnapshotProjection<'_>,
 ) -> Result<ActiveSnapshot> {
     let capacity = || OriginalAuthorityError::capacity(GRAPH);
     let to_core = |value: View<'_>| {
@@ -293,10 +377,15 @@ pub(super) fn retain_active<S: OriginalAuthorityOwner>(
     ];
     let review_records = match projection {
         SnapshotProjection::Identity => None,
-        SnapshotProjection::RegisteredReview => Some(ActiveReviewRecords {
-            profile: to_core(records.profile)?,
-            plan: to_core(records.plan)?,
-        }),
+        SnapshotProjection::RegisteredReview | SnapshotProjection::CurrentActivation(_) => {
+            Some(ActiveReviewRecords {
+                profile: to_core(records.profile)?,
+                plan: to_core(records.plan)?,
+                lock: matches!(projection, SnapshotProjection::CurrentActivation(_))
+                    .then(|| to_core(records.lock))
+                    .transpose()?,
+            })
+        }
     };
     let artifact_profile = if let Some(review) = &review_records {
         review.profile.share()
@@ -357,25 +446,23 @@ fn epoch_matches<S: OriginalAuthorityOwner>(
     expected: View<'_>,
 ) -> Result<bool> {
     let epoch = incomplete_reservations::read_epoch(op, store)?;
-    Ok(
-        matches!(expected.node(), Node::Scalar(CanonValue::Int(number))
-        if epoch.decimal().parse::<i64>() == Ok(*number)),
-    )
+    Ok(epoch_equals(expected, &epoch))
+}
+
+fn epoch_equals(expected: View<'_>, epoch: &OriginalAuthorityEpoch) -> bool {
+    matches!(expected.node(), Node::Scalar(CanonValue::Int(number))
+        if epoch.decimal().parse::<i64>() == Ok(*number))
 }
 
 fn reservation_matches<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
-    store: &Store<'_, '_, S>,
     budget: &Arc<dyn AllocationBudget>,
     activation: View<'_>,
+    read: impl FnOnce(&str) -> Result<Option<incomplete_reservations::Row<5>>>,
 ) -> Result<bool> {
     let id = activation.field("activation_id")?;
     let id = definitions::render_python_str(op, budget, id.doc, id.id)?;
-    let row = active_reservation::read_snapshot_binding(
-        op,
-        store,
-        id.as_str().expect("strict JSON activation ID"),
-    )?;
+    let row = read(id.as_str().expect("strict JSON activation ID"))?;
     // The original assembles the expected tuple even when no row exists.
     let expected = [
         activation.field("profile_id")?,

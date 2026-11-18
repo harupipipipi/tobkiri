@@ -195,6 +195,77 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             read.close_continuation().unwrap();
             assert!(lock_free(&lock));
 
+            let files = [
+                "profiles/active.json",
+                "workspaces/defaults/activation/active.json",
+                "authority/v4.sqlite3",
+                "authority/v4.key",
+                "authority/.v4.sqlite3.lifecycle.lock",
+            ];
+            let capture = || files.map(|path| fs::read(root.join(path)).unwrap());
+            let before = capture();
+            let observer = OriginalActivationInspection::new(&read.invocation).unwrap();
+            let schemas = &workspace_active::tests::RECOVERY_SCHEMAS;
+            let component = Digest::parse(schemas.component_sha256).unwrap();
+            let read_current =
+                || ready_test(observer.read(owner, cancellation, budget, schemas, &component));
+            let observed = read_current().unwrap_or_else(|error| panic!("{case}: {error:?}"));
+            assert_eq!(
+                observed
+                    .identity()
+                    .get_key("activation_id")
+                    .unwrap()
+                    .as_str(),
+                Some(activation_id)
+            );
+            let (profile, original_lock, plan) = observed.records();
+            assert_eq!(
+                profile.get_key("profile_id").unwrap().as_str(),
+                Some("defaults")
+            );
+            assert_eq!(
+                original_lock.get_key("lock_digest").unwrap().as_str(),
+                expected["lock_digest"].as_str()
+            );
+            assert_eq!(
+                plan.get_key("plan_digest").unwrap().as_str(),
+                expected["plan_digest"].as_str()
+            );
+            assert!(observer.close_receipt().verified());
+            assert_eq!(capture(), before);
+            for suffix in ["-wal", "-shm", "-journal"] {
+                assert!(!root.join(format!("authority/v4.sqlite3{suffix}")).exists());
+            }
+            drop(observed);
+
+            let pending = root.join("workspaces/defaults/activation/pending.json");
+            fs::write(&pending, b"pending work belongs to recovery").unwrap();
+            assert!(read_current().is_err());
+            assert!(observer.close_receipt().verified());
+            assert_eq!(
+                fs::read(&pending).unwrap(),
+                b"pending work belongs to recovery"
+            );
+            assert_eq!(capture(), before);
+            fs::remove_file(pending).unwrap();
+
+            let journal = root.join("authority/v4.sqlite3-wal");
+            fs::write(&journal, b"WAL requires the existing recovery path").unwrap();
+            let failure = read_current()
+                .err()
+                .expect("uncheckpointed database is refused");
+            assert_eq!(
+                failure.message,
+                "existing Authority database requires its normal recovery path"
+            );
+            assert!(observer.close_receipt().verified());
+            assert_eq!(
+                fs::read(&journal).unwrap(),
+                b"WAL requires the existing recovery path"
+            );
+            assert_eq!(capture(), before);
+            fs::remove_file(journal).unwrap();
+
             let host_pointer = fs::read(profiles.join("active.json")).unwrap();
             let workspace = root.join("workspaces/defaults/activation");
             let workspace_pointer = fs::read(workspace.join("active.json")).unwrap();

@@ -73,6 +73,17 @@ pub(in crate::original_authority::io) fn read<S: OriginalAuthorityOwner>(
         .map_err(|error| wrap_sqlite(error, "activation recovery inventory failed"))
 }
 
+/// Detect a reservation which the original recovery path would abort.
+pub(in crate::original_authority::io) fn has_incomplete_in<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    db: &Database<'_, '_, '_, S>,
+    profile_id: &str,
+) -> Result<bool> {
+    fetch_one(op, db, STAGE, SQL, Some(profile_id), [])
+        .map(|row| row.is_some())
+        .map_err(|error| wrap_sqlite(error, "activation recovery inventory failed"))
+}
+
 pub(in crate::original_authority::io) fn read_pending<S: OriginalAuthorityOwner, const N: usize>(
     op: &Operation<'_, S>,
     store: &Store<'_, '_, S>,
@@ -93,8 +104,32 @@ pub(in crate::original_authority::io) fn read_epoch<S: OriginalAuthorityOwner>(
 ) -> Result<Funded<OriginalAuthorityEpoch>> {
     let wrap = |error| wrap_sqlite(error, "security epoch read failed");
     let db = store.connection(EPOCH).map_err(wrap)?;
-    let row = fetch_one(op, &db, EPOCH, EPOCH_SQL, None, ["value"]);
+    let row = fetch_epoch(op, &db);
     let row = db.complete(row).map_err(wrap)?;
+    decode_epoch(op, row)
+}
+
+/// Read the current epoch within the caller's Authority transaction.
+pub(in crate::original_authority::io) fn read_epoch_in<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    db: &Database<'_, '_, '_, S>,
+) -> Result<Funded<OriginalAuthorityEpoch>> {
+    let row =
+        fetch_epoch(op, db).map_err(|error| wrap_sqlite(error, "security epoch read failed"))?;
+    decode_epoch(op, row)
+}
+
+fn fetch_epoch<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    db: &Database<'_, '_, '_, S>,
+) -> Result<Option<Row<1>>> {
+    fetch_one(op, db, EPOCH, EPOCH_SQL, None, ["value"])
+}
+
+fn decode_epoch<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    row: Option<Row<1>>,
+) -> Result<Funded<OriginalAuthorityEpoch>> {
     let unavailable = || OriginalAuthorityError::new(EPOCH, "security epoch is unavailable", None);
     let row = row.ok_or_else(unavailable)?;
     let value = row[0]

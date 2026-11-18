@@ -29,6 +29,8 @@ pub(crate) use io::publication::{
     RegisteredSnapshotReached, RegisteredSourceUpdate,
 };
 #[cfg(unix)]
+pub use io::publication::{OriginalActivationInspection, OriginalActiveProfile};
+#[cfg(unix)]
 pub(crate) const LEGACY_RESOLVER_INTERRUPTED: &str = "tobkiri.native.LegacyResolverInterrupted";
 
 /// DATA from the authenticated predecessor, under its workspace lock.

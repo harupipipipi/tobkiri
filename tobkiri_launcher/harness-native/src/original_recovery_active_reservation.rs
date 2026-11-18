@@ -41,23 +41,40 @@ pub(super) fn read_snapshot_binding<S: OriginalAuthorityOwner>(
     store: &Store<'_, '_, S>,
     activation_id: &str,
 ) -> Result<Option<Row<5>>> {
-    read_active(store, |db| {
-        db.active_reservation(
-            [
-                b"profile_id",
-                b"plan_digest",
-                b"profile_authority_digest",
-                b"security_epoch",
-                b"fencing_token",
-            ],
-            |query| {
-                let capacity = op.reserve(STAGE, activation_id.len())?;
-                query.bind_text(activation_id)?;
-                Ok(capacity)
-            },
-            |row| own_row(op, STAGE, row),
-        )
-    })
+    read_active(store, |db| fetch_snapshot_binding(op, db, activation_id))
+}
+
+/// Read the snapshot bindings within the caller's Authority transaction.
+pub(super) fn read_snapshot_binding_in<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    db: &Database<'_, '_, '_, S>,
+    activation_id: &str,
+) -> Result<Option<Row<5>>> {
+    let reservation = fetch_snapshot_binding(op, db, activation_id)
+        .map_err(|error| sqlite_read_error(error, "active activation read failed"))?;
+    sole(reservation)
+}
+
+fn fetch_snapshot_binding<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    db: &Database<'_, '_, '_, S>,
+    activation_id: &str,
+) -> Result<ActiveReservation<Row<5>>> {
+    db.active_reservation(
+        [
+            b"profile_id",
+            b"plan_digest",
+            b"profile_authority_digest",
+            b"security_epoch",
+            b"fencing_token",
+        ],
+        |query| {
+            let capacity = op.reserve(STAGE, activation_id.len())?;
+            query.bind_text(activation_id)?;
+            Ok(capacity)
+        },
+        |row| own_row(op, STAGE, row),
+    )
 }
 
 fn read_active<S: OriginalAuthorityOwner, T>(
@@ -68,10 +85,14 @@ fn read_active<S: OriginalAuthorityOwner, T>(
         .connection(STAGE)
         .map_err(|error| sqlite_read_error(error, "authority database is unavailable"))?;
     let reservation = fetch(&db);
-    match db
+    let reservation = db
         .complete(reservation)
-        .map_err(|error| sqlite_read_error(error, "active activation read failed"))?
-    {
+        .map_err(|error| sqlite_read_error(error, "active activation read failed"))?;
+    sole(reservation)
+}
+
+fn sole<T>(reservation: ActiveReservation<T>) -> Result<Option<T>> {
+    match reservation {
         ActiveReservation::Absent => Ok(None),
         ActiveReservation::Sole(row) => Ok(Some(row)),
         ActiveReservation::Multiple => Err(OriginalAuthorityError::new(

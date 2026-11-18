@@ -4002,7 +4002,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じビルド・起動時の検証器を通す6件が成功し、生成済みの実 `.tpk` 3個も照合した。
   次の置換候補は `rumi_provider_registry_pack.provider-configure.prepare` のキー不要分。
   旧 `profile_grant` で到達する準備と `interactive_only` の保存は別操作として維持する。
-  実製品へ接続するには旧ActivationのAuthorityと選択済みPackを検証したうえで、
+  `OriginalActivationInspection` は、既存のHost選択とワークスペースが指す同じv5
+  エンベロープを確認する。既存ロックの下で、Authorityの監査チェーン、アクティブ予約と
+  SecurityEpochを一つの読み取りトランザクションで照合し、現行Profile・Lock・Planを返す。
+  監査チェーンは行ごとに検証する。既存Setupの復旧では元のキャッシュと読取り順序を保持する。
+  読み取り対象はチェックポイント済みのDB。保留中のジャーナル、未完了予約、WALがある場合は
+  既存の復旧経路が必要になる。元のSetupが行う復旧と書込みは、元の入口で扱う。
+  native Harness 271件とstrict Clippyが通過した。既存の確認済みSetupのfixtureでも
+  発行直後のProfile・Lock・Planを読み、保留ジャーナルおよびWALの拒否、保存済みファイルの
+  バイト列と物理close結果を照合した。
+  製品への接続では、Launcherの既存ジョブで同じWasm Storeの予算を使い、選択済みPackを検証して、
   `local.provider-registry.legacy-configuration@1.0` に限った候補をCoreでレビューする。
   製品のNative Sessionと保存権限の接続は引き続き未完了。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の

@@ -16,6 +16,8 @@ mod init_diagnostic;
 mod init_trace;
 mod original_authority;
 mod preparation;
+#[cfg(unix)]
+pub use original_authority::{OriginalActivationInspection, OriginalActiveProfile};
 pub use original_authority::{
     OriginalAuthorityAdmission, OriginalAuthorityCause, OriginalAuthorityCleanup,
     OriginalAuthorityCloseReceipt, OriginalAuthorityEpoch, OriginalAuthorityError,

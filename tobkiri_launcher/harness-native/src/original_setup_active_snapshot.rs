@@ -1,6 +1,9 @@
 //! Load the registered Setup predecessor on the original native owner.
 use super::*;
+use crate::BootstrapProfileSchemas;
 use crate::original_authority::catalog::CatalogIo;
+use crate::original_authority::io::with_existing_store_async;
+use recovery_workspace::APP_DENIED;
 use std::sync::Mutex;
 use workspace_active::{
     ActiveReviewRecords, ActiveSnapshot, ActiveSnapshotRead, ProfileCheck, SnapshotProjection,
@@ -46,6 +49,143 @@ pub(crate) enum PredecessorActivationReached {
 const RECONFIRMATION_CLASS: &str =
     "ecosystem.defaultspack.domain.runtime_v4.service.ProfileReconfirmationRequired";
 const RECONFIRMATION_MESSAGE: &str = "active Profile Shell artifact identity was superseded by the verified packaged release; explicit reconfirmation is required";
+
+/// Authenticated, current v5 record data for the original owner. This proof is
+/// neither a compiled native Profile nor permission to dispatch a Pack.
+pub struct OriginalActiveProfile {
+    identity: CoreValue,
+    profile: CoreValue,
+    lock: CoreValue,
+    plan: CoreValue,
+}
+
+impl OriginalActiveProfile {
+    pub fn identity(&self) -> &CoreValue {
+        &self.identity
+    }
+
+    pub fn records(&self) -> (&CoreValue, &CoreValue, &CoreValue) {
+        (&self.profile, &self.lock, &self.plan)
+    }
+}
+
+/// Inspect a current activation on the existing funded invocation. The caller
+/// retains the actual selected owner and checks the cleanup receipt before
+/// publishing any result, including if the future is dropped.
+pub struct OriginalActivationInspection(PublicationRead);
+
+impl OriginalActivationInspection {
+    pub fn new(
+        invocation: &NativeSetupInvocation,
+    ) -> std::result::Result<Self, OriginalAuthorityAdmission> {
+        PublicationRead::new(invocation).map(Self)
+    }
+
+    pub fn close_receipt(&self) -> OriginalAuthorityCloseReceipt {
+        self.0.receipt()
+    }
+
+    pub async fn read<S: crate::BootstrapReviewOwner>(
+        &self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        budget: &Arc<dyn AllocationBudget>,
+        schemas: &'static BootstrapProfileSchemas,
+        component_digest: &Digest,
+    ) -> Result<OriginalActiveProfile> {
+        let unavailable = || raw(APP_DENIED, "current v5 Profile activation is unavailable");
+        let schemas = schemas.bind(component_digest).map_err(|_| unavailable())?;
+        let op =
+            PublicationRead::operation(&self.0.invocation, &self.0.cleanup, owner, cancellation)?;
+        op.check(OriginalAuthorityStage::Source)?;
+        let root = owner.with_original_review_user_data(|root| {
+            let capacity = op.reserve(
+                OriginalAuthorityStage::Path,
+                root.as_os_str().len().saturating_add(128),
+            )?;
+            Ok::<_, OriginalAuthorityError>(Funded {
+                value: root.to_path_buf(),
+                _capacity: capacity,
+            })
+        })??;
+        let before =
+            active_profile::load_existing_verified(&op, &root, budget)?.ok_or_else(unavailable)?;
+        let Node::String(snapshot_digest) = before
+            .doc
+            .node(before.pointer.field("activation_snapshot_digest"))
+        else {
+            return Err(unavailable());
+        };
+        let _identity_capacity = op.reserve(OriginalAuthorityStage::Source, 1024)?;
+        let profile_id = before.profile_id().utf8()?;
+        let workspace = workspace_path(&op, &root, &profile_id)?;
+        let workspace =
+            RecoveryWorkspace::open_existing(&op, &workspace, LockName::workspace(&profile_id))?;
+        let current = with_existing_store_async(&op, &root, async |store| {
+            workspace
+                .inspect_current(&op, async |state, digest| {
+                    let mut current = workspace_active::read_with_projection(
+                        &op,
+                        state,
+                        digest,
+                        budget,
+                        Some(schemas),
+                        store,
+                        (
+                            &profile_id,
+                            SnapshotProjection::CurrentActivation(snapshot_digest),
+                            async |_| Ok(None),
+                        ),
+                    )
+                    .await?
+                    .current
+                    .ok_or_else(unavailable)?;
+                    let after = active_profile::load_existing_verified(&op, &root, budget)?
+                        .ok_or_else(unavailable)?;
+                    let catalog_matches =
+                        match before.doc.node(before.pointer.field("catalog_revision")) {
+                            Node::String(expected) => current
+                                .catalog_revision
+                                .as_str()
+                                .is_some_and(|value| expected.is(value)),
+                            _ => false,
+                        };
+                    let records = current.review_records.take().ok_or_else(unavailable)?;
+                    let identity = current.into_candidate();
+                    if !before
+                        .pointer
+                        .matches(&before.doc, &after.pointer, &after.doc)
+                        || !matches_host_pointer(&identity, &before)
+                        || !catalog_matches
+                        || identity
+                            .get_key("profile_id")
+                            .is_none_or(|value| value.as_str() != Some(profile_id.as_str()))
+                    {
+                        return Err(raw(
+                            APP_DENIED,
+                            "active Profile changed during Authority inspection",
+                        ));
+                    }
+                    Ok(OriginalActiveProfile {
+                        identity,
+                        profile: records.profile,
+                        lock: records.lock.ok_or_else(unavailable)?,
+                        plan: records.plan,
+                    })
+                })
+                .await
+        })
+        .await?;
+        op.check(OriginalAuthorityStage::Source)?;
+        if !self.0.cleanup.verified() {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Close,
+                "existing activation inspection cleanup is uncertain",
+            ));
+        }
+        Ok(current)
+    }
+}
 
 impl PublicationRead {
     pub(crate) async fn review_registered_activation<S: crate::BootstrapReviewOwner>(
@@ -271,7 +411,7 @@ struct RegisteredActivation<'a, 'op, 'host, S> {
 }
 
 impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
-    async fn load_snapshot(&self, projection: SnapshotProjection) -> Result<Snapshot> {
+    async fn load_snapshot(&self, projection: SnapshotProjection<'_>) -> Result<Snapshot> {
         loop {
             let Some(first) = self.resume(self.read(projection).await?)? else {
                 continue;
@@ -319,7 +459,7 @@ impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
 
     async fn read(
         &self,
-        projection: SnapshotProjection,
+        projection: SnapshotProjection<'_>,
     ) -> Result<ControlFlow<PendingRepublish, ActiveSnapshotRead>> {
         self.workspace
             .recover_async(self.op, async |state, workspace_digest, journal| {

@@ -495,7 +495,7 @@ impl Parent {
         let before = before.identity;
         let opened = regular(
             &self
-                .open_file(name, libc::O_RDONLY, 0)?
+                .open_file(name, libc::O_RDONLY | libc::O_NONBLOCK, 0)?
                 .metadata()
                 .map_err(|e| {
                     io_error(
@@ -569,7 +569,7 @@ impl Parent {
             .stat(name, true)?
             .ok_or_else(|| secure("required file is unavailable"))?;
         let before_id = before.identity;
-        let file = self.open_file(name, libc::O_RDONLY, 0)?;
+        let file = self.open_file(name, libc::O_RDONLY | libc::O_NONBLOCK, 0)?;
         let opened = regular(&file.metadata().map_err(|e| {
             io_error(
                 OriginalAuthorityStage::Key,
@@ -732,24 +732,47 @@ pub(super) async fn with_registered_store_async<'a, 'host, S: OriginalAuthorityO
     finish_scope(outcome, store.close())
 }
 
+/// Observe the already registered Authority without running its constructor
+/// or acquiring a writable SQLite connection.
+#[cfg(unix)]
+pub(super) async fn with_existing_store_async<'a, 'host, S: OriginalAuthorityOwner, T>(
+    op: &'a Operation<'host, S>,
+    root: &Path,
+    body: impl AsyncFnOnce(&Store<'a, 'host, S>) -> Result<T>,
+) -> Result<T> {
+    let _paths = authority_path_capacity(op, root)?;
+    let mut store = Store::open_existing(op, canonical(&root.join("authority/v4.sqlite3"))?)?;
+    store.enter()?;
+    let outcome = body(&store).await;
+    finish_scope(outcome, store.close())
+}
+
 #[cfg(unix)]
 fn registered_store<'a, 'host, S: OriginalAuthorityOwner>(
     op: &'a Operation<'host, S>,
     root: &Path,
 ) -> Result<Funded<Store<'a, 'host, S>>> {
-    let path_bytes = root
-        .as_os_str()
-        .len()
-        .checked_mul(16)
-        .and_then(|bytes| bytes.checked_add(8192))
-        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
-    let paths = op.reserve(OriginalAuthorityStage::Path, path_bytes)?;
+    let paths = authority_path_capacity(op, root)?;
     let store = Store::open(op, canonical(&root.join("authority/v4.sqlite3"))?)?;
     store.enter()?;
     Ok(Funded {
         value: store,
         _capacity: paths,
     })
+}
+
+#[cfg(unix)]
+fn authority_path_capacity<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+) -> Result<NativeSetupReservation> {
+    let path_bytes = root
+        .as_os_str()
+        .len()
+        .checked_mul(16)
+        .and_then(|bytes| bytes.checked_add(8192))
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Path))?;
+    op.reserve(OriginalAuthorityStage::Path, path_bytes)
 }
 
 pub(super) fn read_selected<S: OriginalAuthorityOwner>(
@@ -802,10 +825,50 @@ pub(super) struct Store<'a, 'host, S> {
     guard: Identity,
     pub keys: crypto::Keys,
     pub closed: bool,
+    read_only: bool,
     _control: ControlReservation,
 }
 #[cfg(unix)]
 impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
+    fn open_existing(op: &'a Operation<'host, S>, path: PathBuf) -> Result<Self> {
+        op.check(OriginalAuthorityStage::Process)?;
+        verify_process(&op.cleanup)?;
+        let control = op
+            .invocation
+            .control()
+            .reserve(ControlKind::Context, 8192)
+            .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
+        let parent = Parent::open(&path, &op.cleanup)?;
+        if parent.identity.owner != unsafe { libc::getuid() } {
+            return Err(secure("parent is not owned by the current user"));
+        }
+        for name in ["v4.sqlite3", "v4.key", ".v4.sqlite3.lifecycle.lock"] {
+            parent.private(name)?;
+        }
+        let db = parent
+            .validate("v4.sqlite3", true, None)?
+            .ok_or_else(|| secure("required database is unavailable"))?;
+        let guard = parent
+            .validate(".v4.sqlite3.lifecycle.lock", true, None)?
+            .ok_or_else(|| secure("required lifecycle guard is unavailable"))?;
+        let (key_bytes, key) = parent.read(op, "v4.key", None)?;
+        let keys = crypto::Keys::parse(op, trim_key(&key_bytes))?;
+        parent.continuity()?;
+        Ok(Self {
+            op,
+            path,
+            parent: parent.identity,
+            key_parent: parent.identity,
+            db,
+            key,
+            guard,
+            keys,
+            closed: false,
+            read_only: true,
+            _control: control,
+        })
+    }
+
     fn open(op: &'a Operation<'host, S>, path: PathBuf) -> Result<Self> {
         op.check(OriginalAuthorityStage::Process)?;
         verify_process(&op.cleanup)?;
@@ -1129,6 +1192,7 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
             guard,
             keys,
             closed: false,
+            read_only: false,
             _control: control,
         };
         schema::initialize(&mut store)?;
@@ -1168,6 +1232,9 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
             ));
         }
         Ok(())
+    }
+    pub(super) fn is_read_only(&self) -> bool {
+        self.read_only
     }
     fn check_process(&self, stage: OriginalAuthorityStage) -> Result<()> {
         if std::process::id() != self.op.pid {
@@ -1215,9 +1282,42 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
     fn storage(&self) -> Result<()> {
         let parent = self.parent()?;
         parent.validate("v4.sqlite3", true, Some(self.db))?;
-        parent.validate("v4.sqlite3-wal", false, None)?;
-        parent.validate("v4.sqlite3-shm", false, None)?;
+        if self.read_only {
+            let guard = ".v4.sqlite3.lifecycle.lock";
+            parent.validate(guard, true, Some(self.guard))?;
+            parent.private(guard)?;
+            for name in ["v4.sqlite3-wal", "v4.sqlite3-shm", "v4.sqlite3-journal"] {
+                if parent.stat(name, false)?.is_some() {
+                    return Err(OriginalAuthorityError::new(
+                        OriginalAuthorityStage::Connect,
+                        "existing Authority database requires its normal recovery path",
+                        None,
+                    ));
+                }
+            }
+        } else {
+            parent.validate("v4.sqlite3-wal", false, None)?;
+            parent.validate("v4.sqlite3-shm", false, None)?;
+        }
         parent.continuity()
+    }
+
+    fn checkpointed_database(&self) -> Result<fs::Metadata> {
+        let parent = self.parent()?;
+        let file = parent.open_file("v4.sqlite3", libc::O_RDONLY | libc::O_NONBLOCK, 0)?;
+        let metadata = file.metadata().map_err(|error| {
+            io_error(
+                OriginalAuthorityStage::Connect,
+                "authority database is unavailable",
+                error,
+            )
+        })?;
+        if regular(&metadata)? != self.db || metadata.len() == 0 {
+            return Err(secure("checkpointed authority database identity is unsafe"));
+        }
+        parent.validate("v4.sqlite3", true, Some(self.db))?;
+        parent.continuity()?;
+        Ok(metadata)
     }
     pub fn identity(&self) -> Identity {
         self.db
@@ -1255,12 +1355,30 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
             cancellation: self.op.cancellation.clone(),
             deadline: self.op.deadline,
         });
-        let raw_connection = Connection::open_with_flags(
-            &self.path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE
-                | OpenFlags::SQLITE_OPEN_CREATE
-                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )
+        let checkpoint = if self.read_only {
+            Some(self.checkpointed_database()?)
+        } else {
+            None
+        };
+        let raw_connection = if self.read_only {
+            // A stock READ_ONLY connection can create WAL/SHM for an empty
+            // WAL-mode journal. Under the original lifecycle guard we have
+            // checked the exact DB and the absence of all recovery files.
+            Connection::open_with_flags(
+                immutable_sqlite_uri(&self.path),
+                OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | OpenFlags::SQLITE_OPEN_URI
+                    | OpenFlags::SQLITE_OPEN_NOFOLLOW
+                    | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+        } else {
+            Connection::open_with_flags(
+                &self.path,
+                OpenFlags::SQLITE_OPEN_READ_WRITE
+                    | OpenFlags::SQLITE_OPEN_CREATE
+                    | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+        }
         .map_err(|e| OriginalAuthorityError::sql(stage, "authority database is unavailable", e))?;
         self.op.cleanup.connections.fetch_add(1, Ordering::AcqRel);
         let connection = TrackedConnection {
@@ -1314,19 +1432,31 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
             connection: Some(connection),
             pinned: Vec::new(),
             guard: Some(guard),
+            checkpoint,
             stage,
         };
         db.pin(&before, &[""])?;
-        for sql in [
-            "PRAGMA foreign_keys=ON",
-            "PRAGMA journal_mode=WAL",
-            "PRAGMA synchronous=FULL",
-            "PRAGMA trusted_schema=OFF",
-            "SELECT count(*) FROM sqlite_schema",
-        ] {
+        let setup: &[_] = if self.read_only {
+            &[
+                "PRAGMA query_only=ON",
+                "PRAGMA trusted_schema=OFF",
+                "SELECT count(*) FROM sqlite_schema",
+            ]
+        } else {
+            &[
+                "PRAGMA foreign_keys=ON",
+                "PRAGMA journal_mode=WAL",
+                "PRAGMA synchronous=FULL",
+                "PRAGMA trusted_schema=OFF",
+                "SELECT count(*) FROM sqlite_schema",
+            ]
+        };
+        for sql in setup {
             db.raw(sql)?;
         }
-        db.pin(&BTreeMap::new(), &["-wal", "-shm"])?;
+        if !self.read_only {
+            db.pin(&BTreeMap::new(), &["-wal", "-shm"])?;
+        }
         self.storage()?;
         db.validate()?;
         // Existing native Host control safety setting, not an extra guest
@@ -1457,6 +1587,24 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
 }
 
 #[cfg(unix)]
+fn immutable_sqlite_uri(path: &Path) -> String {
+    use std::fmt::Write as _;
+
+    let bytes = path.as_os_str().as_bytes();
+    let mut uri = String::with_capacity(bytes.len().saturating_mul(3).saturating_add(32));
+    uri.push_str("file:");
+    for &byte in bytes {
+        if byte.is_ascii_alphanumeric() || b"/._-".contains(&byte) {
+            uri.push(char::from(byte));
+        } else {
+            write!(uri, "%{byte:02X}").expect("String formatting");
+        }
+    }
+    uri.push_str("?mode=ro&immutable=1");
+    uri
+}
+
+#[cfg(unix)]
 struct Pinned {
     suffix: &'static str,
     identity: Identity,
@@ -1468,6 +1616,7 @@ pub(super) struct Database<'s, 'a, 'host, S> {
     connection: Option<TrackedConnection>,
     pinned: Vec<Pinned>,
     guard: Option<Guard>,
+    checkpoint: Option<fs::Metadata>,
     stage: OriginalAuthorityStage,
 }
 #[cfg(unix)]
@@ -1619,14 +1768,39 @@ impl<S: OriginalAuthorityOwner> Database<'_, '_, '_, S> {
         Ok(())
     }
     pub fn query<P: Params>(&self, sql: &str, parameters: P) -> Result<Rows> {
-        self.validate()?;
-        let mut statement = self.connection().prepare(sql).map_err(|e| self.sql(e))?;
-        let columns = statement.column_count();
-        let mut cursor = statement.query(parameters).map_err(|e| self.sql(e))?;
         let mut output = Rows {
             rows: Vec::new(),
             _capacity: Vec::new(),
         };
+        self.visit_rows(sql, parameters, |row| {
+            // Admit the new vector storage before reallocation and retain the
+            // full result with the original fetchall lifetime.
+            if output.rows.len() == output.rows.capacity() {
+                let add = 16 * std::mem::size_of::<Vec<Value>>();
+                output
+                    ._capacity
+                    .push(self.store.op.reserve(self.stage, add)?);
+                output
+                    .rows
+                    .try_reserve_exact(16)
+                    .map_err(|_| OriginalAuthorityError::capacity(self.stage))?;
+            }
+            output.rows.push(row.value);
+            output._capacity.push(row._capacity);
+            Ok(())
+        })?;
+        Ok(output)
+    }
+    pub(super) fn visit_rows<P: Params>(
+        &self,
+        sql: &str,
+        parameters: P,
+        mut visit: impl FnMut(Funded<Vec<Value>>) -> Result<()>,
+    ) -> Result<()> {
+        self.validate()?;
+        let mut statement = self.connection().prepare(sql).map_err(|e| self.sql(e))?;
+        let columns = statement.column_count();
+        let mut cursor = statement.query(parameters).map_err(|e| self.sql(e))?;
         while let Some(row) = cursor.next().map_err(|e| self.sql(e))? {
             self.store.op.check(self.stage)?;
             let mut bytes = columns
@@ -1660,22 +1834,12 @@ impl<S: OriginalAuthorityOwner> Database<'_, '_, '_, S> {
                     ValueRef::Blob(v) => Value::Blob(v.into()),
                 });
             }
-            // Admit the new vector storage BEFORE reallocating; the previous
-            // record remains prepaid through the actual fetchall lifetime.
-            if output.rows.len() == output.rows.capacity() {
-                let add = 16 * std::mem::size_of::<Vec<Value>>();
-                output
-                    ._capacity
-                    .push(self.store.op.reserve(self.stage, add)?);
-                output
-                    .rows
-                    .try_reserve_exact(16)
-                    .map_err(|_| OriginalAuthorityError::capacity(self.stage))?;
-            }
-            output.rows.push(owned);
-            output._capacity.push(permit);
+            visit(Funded {
+                value: owned,
+                _capacity: permit,
+            })?;
         }
-        Ok(output)
+        Ok(())
     }
     pub(in crate::original_authority::io) fn active_reservation<const N: usize, B, T>(
         &self,
@@ -1722,7 +1886,7 @@ impl<S: OriginalAuthorityOwner> Database<'_, '_, '_, S> {
         }
     }
     fn finish(mut self, success: bool) -> Result<()> {
-        let transaction = if success {
+        let transaction = if success && !self.store.read_only {
             self.commit()
         } else if !self.connection().is_autocommit() {
             self.connection()
@@ -1735,8 +1899,27 @@ impl<S: OriginalAuthorityOwner> Database<'_, '_, '_, S> {
         let connection = self.connection.take().expect("live original connection");
         let closed = connection.close().map_err(|e| self.sql(e));
         let storage = self.store.storage();
+        let checkpoint = self.checkpoint.as_ref().map_or(Ok(()), |before| {
+            let after = self.store.checkpointed_database()?;
+            let stat = |value: &fs::Metadata| {
+                (
+                    value.len(),
+                    value.mode(),
+                    value.mtime(),
+                    value.mtime_nsec(),
+                    value.ctime(),
+                    value.ctime_nsec(),
+                )
+            };
+            if stat(before) != stat(&after) {
+                return Err(secure(
+                    "checkpointed authority database changed during inspection",
+                ));
+            }
+            Ok(())
+        });
         drop(self.guard.take());
-        for closed in [storage, closed, validation] {
+        for closed in [storage, checkpoint, closed, validation] {
             closed.map_err(|mut error| {
                 error.stage = OriginalAuthorityStage::Close;
                 error
@@ -1941,7 +2124,12 @@ fn acquire_guard<S: OriginalAuthorityOwner>(
     static LOCKS: OnceLock<Mutex<BTreeMap<Identity, std::sync::Weak<ThreadLock>>>> =
         OnceLock::new();
     let deadline = (Instant::now() + Duration::from_secs(15)).min(store.op.deadline);
-    let file = parent.open_file(".v4.sqlite3.lifecycle.lock", libc::O_RDWR, 0)?;
+    let flags = if store.read_only {
+        libc::O_RDONLY | libc::O_NONBLOCK
+    } else {
+        libc::O_RDWR
+    };
+    let file = parent.open_file(".v4.sqlite3.lifecycle.lock", flags, 0)?;
     parent.validate(".v4.sqlite3.lifecycle.lock", true, Some(store.guard))?;
     if regular(&file.metadata().map_err(|e| {
         io_error(

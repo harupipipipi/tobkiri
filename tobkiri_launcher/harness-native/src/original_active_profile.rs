@@ -61,7 +61,7 @@ pub(super) fn load<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     requested: &Path,
 ) -> Result<Option<LoadedPointer>> {
-    load_with_decoder(op, requested, None)
+    load_with_decoder(op, requested, None, true)
 }
 
 /// Verify the predecessor in recovery without the legacy wide JSON reservation.
@@ -70,15 +70,24 @@ pub(super) fn load_verified<S: OriginalAuthorityOwner>(
     requested: &Path,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<LoadedPointer>> {
-    load_with_decoder(op, requested, Some(budget))
+    load_with_decoder(op, requested, Some(budget), true)
+}
+
+pub(super) fn load_existing_verified<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    requested: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<LoadedPointer>> {
+    load_with_decoder(op, requested, Some(budget), false)
 }
 
 fn load_with_decoder<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     requested: &Path,
     budget: Option<&Arc<dyn AllocationBudget>>,
+    create: bool,
 ) -> Result<Option<LoadedPointer>> {
-    let (directory, user_directory) = directories(op, requested)?;
+    let (directory, user_directory) = directories(op, requested, create)?;
     let current = load_pointer(op, &directory)?;
     if let Some(LoadedPointer { doc, pointer }) = &current {
         verify_snapshot(op, &user_directory, doc, pointer, budget, false)?;
@@ -89,6 +98,7 @@ fn load_with_decoder<S: OriginalAuthorityOwner>(
 fn directories<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     requested: &Path,
+    create: bool,
 ) -> Result<(Directory, Directory)> {
     let _paths = op.reserve(
         OriginalAuthorityStage::Path,
@@ -122,9 +132,17 @@ fn directories<S: OriginalAuthorityOwner>(
         ));
     }
     // Both actual constructors precede load, including the missing-pointer branch.
-    let directory = Directory::capture(op, &profiles, true)?;
-    let user_directory = Directory::capture(op, &user_data, true)?;
-    Ok((directory, user_directory))
+    if create {
+        Ok((
+            Directory::capture(op, &profiles, true)?,
+            Directory::capture(op, &user_data, true)?,
+        ))
+    } else {
+        Ok((
+            Directory::capture_existing_private(op, &profiles)?,
+            Directory::capture_existing_private(op, &user_data)?,
+        ))
+    }
 }
 
 fn load_pointer<S: OriginalAuthorityOwner>(
@@ -170,7 +188,7 @@ pub(super) fn commit_verified<S: OriginalAuthorityOwner>(
     clock: impl FnOnce() -> Result<i64>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<()> {
-    let (directory, user_directory) = directories(op, root)?;
+    let (directory, user_directory) = directories(op, root, true)?;
     let request = REQUEST_FIELDS.map(|name| {
         request
             .get_key(name)

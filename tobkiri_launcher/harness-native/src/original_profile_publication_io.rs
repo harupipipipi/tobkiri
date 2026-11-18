@@ -159,12 +159,14 @@ fn link_bits(value: libc::nlink_t) -> u64 {
 pub(super) struct Directory {
     root: PathBuf,
     chain: Vec<FileIdentity>,
+    require_private_root: bool,
     _capacity: NativeSetupReservation,
 }
 
 #[cfg(unix)]
 enum DirectoryCapture {
     Existing,
+    ExistingPrivate,
     Private,
     Workspace,
 }
@@ -208,6 +210,14 @@ impl Directory {
         Self::capture_with_mode(op, path, mode)
     }
 
+    /// Capture a private persistence root without creating it or repairing its mode.
+    pub(super) fn capture_existing_private<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        path: &Path,
+    ) -> Result<Self> {
+        Self::capture_with_mode(op, path, DirectoryCapture::ExistingPrivate)
+    }
+
     /// Create the selected workspace and parents using the caller's umask.
     pub(super) fn create_workspace<S: OriginalAuthorityOwner>(
         op: &Operation<'_, S>,
@@ -222,10 +232,11 @@ impl Directory {
         mode: DirectoryCapture,
     ) -> Result<Self> {
         let create_mode = match mode {
-            DirectoryCapture::Existing => None,
+            DirectoryCapture::Existing | DirectoryCapture::ExistingPrivate => None,
             DirectoryCapture::Private => Some(0o700),
             DirectoryCapture::Workspace => Some(0o777),
         };
+        let require_private_root = matches!(mode, DirectoryCapture::ExistingPrivate);
         // The original platform helper only permits the OS-owned /var and /tmp
         // aliases. Reuse the Authority source's already audited normalization.
         let path = canonical(path)?;
@@ -304,6 +315,9 @@ impl Directory {
             if !metadata.is_dir() || metadata.uid() != unsafe { libc::getuid() } {
                 return Err(secure_error("persistence root is unsafe"));
             }
+            if require_private_root && metadata.mode() & 0o077 != 0 {
+                return Err(secure_error("persistence root permissions are unsafe"));
+            }
             if matches!(mode, DirectoryCapture::Private)
                 && unsafe { libc::fchmod(file.as_raw_fd(), 0o700) } != 0
             {
@@ -318,6 +332,7 @@ impl Directory {
         Ok(Self {
             root: path,
             chain,
+            require_private_root,
             _capacity: capacity,
         })
     }
@@ -357,6 +372,12 @@ impl Directory {
                 files.push(file);
                 if self.chain.get(index) != Some(&file_identity(&metadata)) {
                     return Err(secure_error("persistence ancestor identity changed"));
+                }
+                if self.require_private_root
+                    && index + 1 == self.chain.len()
+                    && (metadata.uid() != unsafe { libc::getuid() } || metadata.mode() & 0o077 != 0)
+                {
+                    return Err(secure_error("persistence root permissions are unsafe"));
                 }
             }
             Ok(())
@@ -902,9 +923,22 @@ impl Directory {
         name: &str,
         file: &TrackedFile,
     ) -> Result<()> {
+        self.validate_open_file(op, name, file, false)
+    }
+
+    fn validate_open_file<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        name: &str,
+        file: &TrackedFile,
+        require_private: bool,
+    ) -> Result<()> {
         let opened = file.metadata().map_err(|error| raw_io(error, None))?;
         if !owned_regular(&opened) {
             return Err(secure_error("persistence open file identity is unsafe"));
+        }
+        if require_private && opened.mode() & 0o077 != 0 {
+            return Err(secure_error("persistence lock permissions are unsafe"));
         }
         let files = self.open(op)?;
         let result =
@@ -1171,6 +1205,7 @@ fn lock_timeout() -> OriginalAuthorityError {
 pub(super) struct PublicationLock {
     pub(super) file: Option<TrackedFile>,
     locked: bool,
+    existing_only: bool,
     local: Option<ProcessGuard>,
 }
 #[cfg(unix)]
@@ -1185,6 +1220,24 @@ impl PublicationLock {
         op: &Operation<'_, S>,
         directory: &Directory,
         name: LockName,
+    ) -> Result<Self> {
+        Self::acquire_with_mode(op, directory, name, false)
+    }
+
+    /// Acquire the original lock through a read-only file descriptor.
+    pub(super) fn acquire_existing<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        directory: &Directory,
+        name: LockName,
+    ) -> Result<Self> {
+        Self::acquire_with_mode(op, directory, name, true)
+    }
+
+    fn acquire_with_mode<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        directory: &Directory,
+        name: LockName,
+        existing_only: bool,
     ) -> Result<Self> {
         let local = if name.is_workspace() {
             None
@@ -1203,15 +1256,21 @@ impl PublicationLock {
         })?;
         let result = (|| {
             let parent = files.last().expect("directory chain");
-            let before = Directory::stat(parent, name.text(), false)?;
-            let flags = libc::O_RDWR
-                | libc::O_NOFOLLOW
-                | libc::O_CLOEXEC
-                | if before.is_none() {
-                    libc::O_CREAT | libc::O_EXCL
-                } else {
-                    0
-                };
+            let before = Directory::stat(parent, name.text(), existing_only)?;
+            let access = if existing_only {
+                if before.as_ref().expect("existing lock").fingerprint.1 & 0o077 != 0 {
+                    return Err(secure_error("persistence lock permissions are unsafe"));
+                }
+                libc::O_RDONLY | libc::O_NONBLOCK
+            } else {
+                libc::O_RDWR
+                    | if before.is_none() {
+                        libc::O_CREAT | libc::O_EXCL
+                    } else {
+                        0
+                    }
+            };
+            let flags = access | libc::O_NOFOLLOW | libc::O_CLOEXEC;
             let descriptor =
                 unsafe { libc::openat(parent.as_raw_fd(), name.c_str().as_ptr(), flags, 0o600) };
             if descriptor < 0 {
@@ -1241,7 +1300,7 @@ impl PublicationLock {
                 {
                     return Err(secure_error("persistence lock identity is unsafe"));
                 }
-                if unsafe { libc::fchmod(file.as_raw_fd(), 0o600) } != 0 {
+                if !existing_only && unsafe { libc::fchmod(file.as_raw_fd(), 0o600) } != 0 {
                     return Err(raw_io(std::io::Error::last_os_error(), None));
                 }
                 Ok(())
@@ -1258,6 +1317,7 @@ impl PublicationLock {
         let mut guard = Self {
             file: Some(file),
             locked: false,
+            existing_only,
             local,
         };
         // Python starts the OS wait after its distinct process-lock wait.
@@ -1289,7 +1349,7 @@ impl PublicationLock {
                         .min(deadline.saturating_duration_since(Instant::now())),
                 );
             }
-            directory.validate_file(op, name.text(), guard.file.as_ref().expect("profile lock"))
+            guard.validate(op, directory, name)
         })();
         if let Err(error) = acquired {
             return if name.has_fixed_timeout() {
@@ -1302,6 +1362,21 @@ impl PublicationLock {
         }
         Ok(guard)
     }
+
+    pub(super) fn validate<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        directory: &Directory,
+        name: LockName,
+    ) -> Result<()> {
+        directory.validate_open_file(
+            op,
+            name.text(),
+            self.file.as_ref().expect("publication lock"),
+            self.existing_only,
+        )
+    }
+
     pub(super) fn close(&mut self) -> Result<()> {
         let Some(file) = self.file.take() else {
             return Ok(());

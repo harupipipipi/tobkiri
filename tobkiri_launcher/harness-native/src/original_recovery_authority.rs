@@ -27,6 +27,7 @@ mod registered_snapshot;
 pub(crate) use registered_pack_closure::{RegisteredPackClosure, RegisteredPackRoots};
 #[path = "original_recovery_workspace_active.rs"]
 mod workspace_active;
+pub use registered_snapshot::{OriginalActivationInspection, OriginalActiveProfile};
 pub(crate) use registered_snapshot::{
     PredecessorActivation, PredecessorActivationReached, RegisteredCatalogPolicy,
     RegisteredCatalogSelection, RegisteredDefinitionCandidate, RegisteredSnapshotReached,

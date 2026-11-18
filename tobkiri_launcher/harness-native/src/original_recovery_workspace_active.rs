@@ -70,12 +70,14 @@ pub(super) struct ActiveSnapshot {
 pub(super) struct ActiveReviewRecords {
     pub(super) profile: CoreValue,
     pub(super) plan: CoreValue,
+    pub(super) lock: Option<CoreValue>,
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum SnapshotProjection {
+pub(super) enum SnapshotProjection<'a> {
     Identity,
     RegisteredReview,
+    CurrentActivation(&'a Text),
 }
 
 impl ActiveSnapshot {
@@ -198,7 +200,7 @@ pub(super) async fn read_with_projection<S: crate::BootstrapReviewOwner>(
     store: &crate::original_authority::io::Store<'_, '_, S>,
     (profile_id, projection, resolve_legacy): (
         &str,
-        SnapshotProjection,
+        SnapshotProjection<'_>,
         impl AsyncFnOnce(LegacyResolverInput) -> Result<Option<CoreValue>>,
     ),
 ) -> Result<ActiveSnapshotRead> {
@@ -211,6 +213,17 @@ pub(super) async fn read_with_projection<S: crate::BootstrapReviewOwner>(
         budget,
         schemas,
         async |snapshot| {
+            if let SnapshotProjection::CurrentActivation(expected) = projection {
+                let pointer = snapshot.pointer;
+                let envelope = subscript(pointer.doc, pointer.id, "envelope_digest")?;
+                if !matches!(pointer.doc.node(envelope), Node::String(digest) if digest == expected)
+                {
+                    return Err(raw(
+                        APP_DENIED,
+                        "Host and workspace select different activation envelopes",
+                    ));
+                }
+            }
             let check = snapshot_graph::verify(op, store, budget, snapshot, profile_id)?;
             if check == ProfileCheck::NeedsArtifactReverification {
                 current = Some(snapshot_graph::retain_active(
@@ -740,7 +753,7 @@ pub(super) mod tests {
         ]),
         ..PROFILE_ROOTS
     };
-    static RECOVERY_SCHEMAS: crate::BootstrapProfileSchemas = crate::BootstrapProfileSchemas {
+    pub(in crate::original_authority::io::publication::recovery_authority) static RECOVERY_SCHEMAS: crate::BootstrapProfileSchemas = crate::BootstrapProfileSchemas {
         recovery: Some([
             include_bytes!(
                 "../../../tobkiri_runtime/tobkiri_protocol/schemas/profile_lock_v4.schema.json"
