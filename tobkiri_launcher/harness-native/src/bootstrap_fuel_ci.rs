@@ -1,11 +1,15 @@
 //! Fixed, copy-only samples of one actual native Setup Store.
 
 use serde_json::{Value, json};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+use tobkiri_canon::CoreValue;
 use tobkiri_gate::NativeSetupInvocation;
 use tobkiri_wasm::NativeDataObservation;
 
 use crate::init_trace::STAGES;
+
+// Covers the observed first-load failures without growing with the catalog.
+const MAX_CATALOG_IMPORT_SAMPLES: usize = 192;
 
 #[derive(Clone, Copy)]
 pub(super) struct Boundary {
@@ -54,6 +58,26 @@ impl CallReturn {
     }
 }
 
+#[derive(Clone, Copy)]
+struct CatalogImport {
+    operation: &'static str,
+    boundary: Boundary,
+}
+
+struct CatalogImports {
+    entries: [Option<CatalogImport>; MAX_CATALOG_IMPORT_SAMPLES],
+    seen: usize,
+}
+
+impl Default for CatalogImports {
+    fn default() -> Self {
+        Self {
+            entries: [None; MAX_CATALOG_IMPORT_SAMPLES],
+            seen: 0,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Samples {
     pub(super) before_instantiation: OnceLock<Boundary>,
@@ -63,9 +87,41 @@ pub(super) struct Samples {
     pub(super) after_runtime_init: OnceLock<CallReturn>,
     pub(super) before_first_catalog_export: OnceLock<Boundary>,
     pub(super) after_first_catalog_export: OnceLock<CallReturn>,
+    catalog_imports: Mutex<CatalogImports>,
 }
 
 impl Samples {
+    pub(super) fn catalog_import(&self, request: &CoreValue, boundary: Boundary) {
+        let format = request.get_key("format");
+        if format.as_ref().and_then(CoreValue::as_str)
+            != Some("io.tobkiri.native-catalog-request.v1")
+        {
+            return;
+        }
+        let operation = request.get_key("operation");
+        let operation = match operation.as_ref().and_then(CoreValue::as_str) {
+            Some("root") => "root",
+            Some("is-symlink") => "is-symlink",
+            Some("resolve") => "resolve",
+            Some("read-bytes") => "read-bytes",
+            Some("document-shape") => "document-shape",
+            Some("is-dir") => "is-dir",
+            _ => return,
+        };
+        let mut imports = self
+            .catalog_imports
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let index = imports.seen;
+        imports.seen = index.saturating_add(1);
+        if let Some(entry) = imports.entries.get_mut(index) {
+            *entry = Some(CatalogImport {
+                operation,
+                boundary,
+            });
+        }
+    }
+
     pub(super) fn initialization_observed(&self, remaining: u64) -> bool {
         let (Some(before), Some(after), Some(inventory), Some(init)) = (
             self.before_instantiation.get(),
@@ -104,6 +160,18 @@ impl Samples {
         let init_import_entries: [Value; STAGES.len()] = std::array::from_fn(
             |index| json!({"stage": STAGES[index], "sample": self.init_import_entries[index].get().map(Boundary::value)}),
         );
+        let imports = self
+            .catalog_imports
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let catalog_import_entries: Vec<_> = imports
+            .entries
+            .iter()
+            .flatten()
+            .map(|entry| json!({"operation": entry.operation, "sample": entry.boundary.value()}))
+            .collect();
+        let catalog_import_entries_omitted =
+            imports.seen.saturating_sub(catalog_import_entries.len());
         json!({
             "format": "io.tobkiri.native-setup-fuel-checkpoints.v1",
             "before_instantiation": self.before_instantiation.get().map(Boundary::value),
@@ -113,6 +181,8 @@ impl Samples {
             "after_runtime_init": self.after_runtime_init.get().map(CallReturn::value),
             "before_first_catalog_export": self.before_first_catalog_export.get().map(Boundary::value),
             "after_first_catalog_export": self.after_first_catalog_export.get().map(CallReturn::value),
+            "catalog_import_entries": catalog_import_entries,
+            "catalog_import_entries_omitted": catalog_import_entries_omitted,
         })
     }
 }

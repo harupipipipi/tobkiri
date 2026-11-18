@@ -85,6 +85,19 @@ pub(super) fn inspect<S: BootstrapInputOwner>(
         .context("catalog request is missing")?
         .clone();
     let request = CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())?;
+    #[cfg(all(
+        test,
+        feature = "bootstrap-ci",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    if phase == CATALOG_LOAD {
+        let state = work.get();
+        state.ci_fuel.catalog_import(
+            &request,
+            fuel_ci::Boundary::sample(&state.invocation, context.ci_fuel_at_import_entry()),
+        );
+    }
     if matches!(phase, RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE)
         && request.get_key("format").and_then(|value| {
             value
