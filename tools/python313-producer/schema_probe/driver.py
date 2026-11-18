@@ -181,19 +181,19 @@ def derive_preinit_code_cache_sources(
     loader = replace_once(
         loader,
         b"        return compile(\n"
-        b"            self.finder.tree.files[self.source],\n"
+        b"            self._source_tree.files[self.source],\n"
         b'            self.finder.root + "/" + self.source,\n'
         b'            "exec",\n'
         b"            dont_inherit=True,\n"
         b"        )\n",
-        b"        source = self.finder.tree.files[self.source]\n"
+        b"        source = self._source_tree.files[self.source]\n"
         b'        filename = self.finder.root + "/" + self.source\n'
         b"        return code_cache.get_code(\n"
         b"            fullname,\n"
         b"            self.source,\n"
         b"            source,\n"
         b"            filename,\n"
-        b"            self.finder.tree.accounted_bytes,\n"
+        b"            self._source_tree.accounted_bytes,\n"
         b"        )\n",
         "captured loader get_code",
     )
