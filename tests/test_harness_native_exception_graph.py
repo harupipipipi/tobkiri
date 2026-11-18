@@ -109,6 +109,47 @@ class NativeExceptionGraphTests(unittest.TestCase):
         self.assertIsNone(result.filename2)
         self.assertEqual(str(result), str(original))
 
+    def test_catalog_utf8_os_error_keeps_native_fields_display_and_identity(self) -> None:
+        kind = "file-not-found-error"
+        filename = "catalog/日本語🙌'\\\n"
+        filename2 = "dest/\"é'\u00a0\u2028\u200b\u0378\t"
+        original = OSError(2, "No such file or directory", filename, None, filename2)
+        display = (
+            r"""[Errno 2] No such file or directory: "catalog/日本語🙌'\\\n" """
+            r"""-> 'dest/"é\'\xa0\u2028\u200b\u0378\t'"""
+        )
+        self.assertEqual(str(original), display)
+        fields = {
+            "errno": original.errno,
+            "strerror": original.strerror,
+            "filename": filename,
+            "filename2": filename2,
+        }
+        details = _details([_node(kind, list(original.args), fields)])
+        store = exception_graph.ExceptionGraphStore(_catalog_paths=True)
+        result = store.materialize(kind, display, details)
+
+        self.assertIs(result, store.materialize(kind, display, details))
+        separate_store = exception_graph.ExceptionGraphStore(_catalog_paths=True)
+        rebound = separate_store.materialize(kind, display, details)
+        self.assertIsNot(rebound, result)
+        for error in (result, rebound):
+            self.assertIs(type(error), FileNotFoundError)
+            self.assertEqual(error.args, original.args)
+            for field, value in fields.items():
+                self.assertEqual(getattr(error, field), value)
+            self.assertEqual(str(error), display)
+
+        with self.assertRaises(exception_graph.UnsupportedNativeException):
+            self.store.materialize(kind, display, details)
+        with self.assertRaisesRegex(
+            exception_graph.UnsupportedNativeException, "root display",
+        ):
+            store.materialize(
+                kind, display.replace(r"\xa0", "\u00a0"),
+                _details([_node(kind, list(original.args), fields)], graph_id=2),
+            )
+
     def setUp(self) -> None:
         self.store = exception_graph.ExceptionGraphStore()
 

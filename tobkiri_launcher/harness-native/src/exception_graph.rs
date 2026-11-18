@@ -342,7 +342,7 @@ impl NativeErrorGraph {
         if code.as_str()? != kind.tag() {
             return Err(NativeErrorGraphError::Invalid);
         }
-        validate_message(&node, kind, message.as_str()?)?;
+        validate_message(&node, kind, message.as_str()?, policy, budget)?;
         // The original owner can retire/expire during parsing or validation.
         // Recheck before exposing the completed DATA graph to its caller.
         budget.reserve(AllocationRequest {
@@ -585,7 +585,13 @@ fn validate_json(fields: &CoreValue, argument: &CoreValue) -> Result<()> {
     }
     Ok(())
 }
-fn validate_message(node: &CoreValue, kind: NativeErrorKind, message: &str) -> Result<()> {
+fn validate_message(
+    node: &CoreValue,
+    kind: NativeErrorKind,
+    message: &str,
+    policy: GraphPolicy,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
     let args = field(node, "args")?;
     let first = args.get_index(0).ok_or(NativeErrorGraphError::Invalid)?;
     let message_only_os = kind.os() && args.array().is_some_and(|v| v.len() == 1);
@@ -599,35 +605,30 @@ fn validate_message(node: &CoreValue, kind: NativeErrorKind, message: &str) -> R
             "] ",
             text.as_str().ok_or(NativeErrorGraphError::Invalid)?,
         ];
-        let mut valid = true;
         for part in prefix {
-            if let Some(tail) = rest.strip_prefix(part) {
-                rest = tail;
-            } else {
-                valid = false;
-                break;
-            }
+            rest = rest
+                .strip_prefix(part)
+                .ok_or(NativeErrorGraphError::Invalid)?;
         }
         let fields = field(node, "fields")?;
         for (name, separator) in [("filename", ": "), ("filename2", " -> ")] {
             let value = field(&fields, name)?;
             if let Some(path) = value.as_str() {
-                if let Some(tail) = rest.strip_prefix(separator) {
-                    rest = tail;
+                rest = rest
+                    .strip_prefix(separator)
+                    .ok_or(NativeErrorGraphError::Invalid)?;
+                let tail = if path.is_ascii() {
+                    strip_ascii_repr(rest, path)
+                } else if matches!(policy, GraphPolicy::CatalogIo) {
+                    let repr = crate::unicode15_1::repr_utf8(path, budget)?;
+                    rest.strip_prefix(repr.as_str()?)
                 } else {
-                    valid = false;
-                    break;
-                }
-                match strip_ascii_repr(rest, path) {
-                    Some(tail) => rest = tail,
-                    None => {
-                        valid = false;
-                        break;
-                    }
-                }
+                    None
+                };
+                rest = tail.ok_or(NativeErrorGraphError::Invalid)?;
             }
         }
-        valid && rest.is_empty()
+        rest.is_empty()
     } else {
         first.as_str() == Some(message)
     };
@@ -641,12 +642,8 @@ fn validate_message(node: &CoreValue, kind: NativeErrorKind, message: &str) -> R
 fn nullable_path(value: &CoreValue) -> bool {
     matches!(value.inspect(), CoreRef::Null) || value.as_str().is_some()
 }
-// No allocation, coercion, or source permission. Non-ASCII exception filename
-// display is explicitly outside this finite native producer qualification.
+// Verify the ASCII spelling without allocating or widening graph policy.
 fn strip_ascii_repr<'a>(mut message: &'a str, value: &str) -> Option<&'a str> {
-    if !value.is_ascii() {
-        return None;
-    }
     let quote = if value.contains('\'') && !value.contains('"') {
         '"'
     } else {

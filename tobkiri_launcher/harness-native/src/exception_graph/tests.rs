@@ -219,6 +219,86 @@ fn existing_catalog_path_policy_survives_rebind_without_becoming_public() {
 }
 
 #[test]
+fn catalog_io_checks_exact_utf8_filename_display_on_its_existing_budget() {
+    let concrete = Arc::new(Budget::default());
+    let budget: Arc<dyn AllocationBudget> = concrete.clone();
+    let kind = NativeErrorKind::FileNotFoundError;
+    let filename = "catalog/日本語🙌'\\\n";
+    let filename2 = "dest/\"é'\u{a0}\u{2028}\u{200b}\u{378}\t";
+    let value = frame(json!([node(
+        kind.tag(),
+        json!([2, "No such file or directory"]),
+        json!({"errno":2,"strerror":"No such file or directory",
+               "filename":filename,"filename2":filename2})
+    )]));
+    // CPython 3.13.16 OSError(2, strerror(2), filename, None, filename2).
+    let message = r#"[Errno 2] No such file or directory: "catalog/日本語🙌'\\\n" -> 'dest/"é\'\xa0\u2028\u200b\u0378\t'"#;
+    let code = CoreBuffer::copy_from(kind.tag().as_bytes(), &budget).unwrap();
+    let display = CoreBuffer::copy_from(message.as_bytes(), &budget).unwrap();
+    let details = CoreBuffer::copy_from(&serde_json::to_vec(&value).unwrap(), &budget).unwrap();
+    let graph = NativeErrorGraph::decode_catalog_io(
+        code.clone(),
+        display.clone(),
+        details.clone(),
+        &budget,
+    )
+    .unwrap();
+    let rebound = graph.try_copy_to(&budget).unwrap();
+    let root = rebound.root();
+    assert_eq!(root.kind(), kind);
+    let fields = root.fields();
+    for (name, expected) in [("filename", filename), ("filename2", filename2)] {
+        assert_eq!(fields.get_key(name).unwrap().as_str(), Some(expected));
+    }
+    assert_eq!(rebound.message().as_str().unwrap(), message);
+    assert_eq!(graph.details().as_bytes(), rebound.details().as_bytes());
+
+    assert!(matches!(
+        NativeErrorGraph::decode(code.clone(), display.clone(), details.clone(), &budget),
+        Err(NativeErrorGraphError::Unsupported)
+    ));
+    assert!(matches!(
+        NativeErrorGraph::decode_host_recovery(
+            code.clone(),
+            display.clone(),
+            details.clone(),
+            &budget
+        ),
+        Err(NativeErrorGraphError::Invalid)
+    ));
+    let wrong_display = message.replace(r"\xa0", "\u{a0}");
+    assert!(matches!(
+        NativeErrorGraph::decode_catalog_io(
+            code.clone(),
+            CoreBuffer::copy_from(wrong_display.as_bytes(), &budget).unwrap(),
+            details.clone(),
+            &budget,
+        ),
+        Err(NativeErrorGraphError::Invalid)
+    ));
+    let lone_surrogate = details.as_str().unwrap().replace("日本語🙌", r"\udcff");
+    assert!(
+        NativeErrorGraph::decode_catalog_io(
+            code.clone(),
+            display.clone(),
+            CoreBuffer::copy_from(lone_surrogate.as_bytes(), &budget).unwrap(),
+            &budget,
+        )
+        .is_err()
+    );
+
+    let live_bytes = concrete.bytes.load(Ordering::SeqCst);
+    concrete.refused.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        validate_message(&root.value, kind, message, GraphPolicy::CatalogIo, &budget),
+        Err(NativeErrorGraphError::Allocation(AllocationError::Limit))
+    ));
+    assert_eq!(concrete.bytes.load(Ordering::SeqCst), live_bytes);
+    drop((fields, root, rebound, graph, code, display, details));
+    assert_eq!(concrete.bytes.load(Ordering::SeqCst), 0);
+}
+
+#[test]
 fn original_formatted_schema_args_and_diagnostics_are_preserved_without_reformatting() {
     let budget = Arc::new(Budget::default());
     let b: Arc<dyn AllocationBudget> = budget.clone();

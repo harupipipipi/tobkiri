@@ -4,14 +4,17 @@
 //! implementation. There are no identifier, namespace or diagnostic policies
 //! here. The caller retains its original invocation, prepays and verifies the
 //! actual scratch allocation, and supplies its original work/deadline meter.
-//! No heap allocation or owning normalized/repr string is produced here.
+//! The UTF-8 repr wrapper funds its output with the caller's allocation budget.
 
 use crate::unicode15_1_data::{
     CANONICAL_DECOMP_INDEX, CCC, COMPOSITION, DECOMP_DATA, LOWER_CHANGED_RANGES,
     MAX_CANONICAL_EXPANSION, PRINTABLE_RANGES,
 };
-use std::cmp::Ordering;
-use tobkiri_canon::{AllocationError, CoreBufferBuilder};
+use std::{cmp::Ordering, sync::Arc};
+use tobkiri_canon::{
+    AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CoreBuffer,
+    CoreBufferBuilder,
+};
 
 #[cfg(test)]
 #[path = "unicode15_1_tests.rs"]
@@ -290,10 +293,56 @@ pub(crate) fn write_python_repr<M: UnicodeWork + ?Sized>(
     output: &mut CoreBufferBuilder,
     work: &mut M,
 ) -> Result<(), M::Error> {
+    write_repr(input.iter().copied(), output, work)
+}
+
+/// The same pinned repr for UTF-8 input, without allocating code-point scratch.
+pub(crate) fn repr_utf8(
+    input: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> std::result::Result<CoreBuffer, AllocationError> {
+    struct Meter<'a>(&'a dyn AllocationBudget);
+    impl UnicodeWork for Meter<'_> {
+        type Error = AllocationError;
+
+        fn charge_work(&mut self, work: u64) -> std::result::Result<(), Self::Error> {
+            self.0.reserve(AllocationRequest {
+                kind: AllocationKind::Temporary,
+                bytes: 0,
+                elements: 0,
+                depth: 0,
+                work,
+            })
+        }
+    }
+
+    let maximum = input
+        .len()
+        .checked_mul(10)
+        .and_then(|bytes| bytes.checked_add(2))
+        .ok_or(AllocationError::Overflow)?;
+    let mut output = CoreBuffer::builder(budget, maximum);
+    write_repr(
+        input.chars().map(u32::from),
+        &mut output,
+        &mut Meter(budget.as_ref()),
+    )
+    .map_err(|error| match error {
+        UnicodeError::Work(error) | UnicodeError::Allocation(error) => error,
+        _ => AllocationError::Invalid,
+    })?;
+    output.finish()
+}
+
+fn write_repr<M: UnicodeWork + ?Sized>(
+    input: impl Iterator<Item = u32> + Clone,
+    output: &mut CoreBufferBuilder,
+    work: &mut M,
+) -> Result<(), M::Error> {
     charge(work, 0)?;
     let mut single_quote = false;
     let mut double_quote = false;
-    for &cp in input {
+    for cp in input.clone() {
         charge(work, 1)?;
         validate(cp)?;
         single_quote |= cp == u32::from(b'\'');
@@ -305,7 +354,7 @@ pub(crate) fn write_python_repr<M: UnicodeWork + ?Sized>(
         b'\''
     };
     append(output, &[quote], work)?;
-    for &cp in input {
+    for cp in input {
         charge(work, 1)?;
         if cp == u32::from(quote) || cp == u32::from(b'\\') {
             append(output, &[b'\\', cp as u8], work)?;

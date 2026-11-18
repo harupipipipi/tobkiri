@@ -1338,20 +1338,17 @@ impl CatalogIo {
             libc::ECHILD => "child-process-error",
             _ => "os-error",
         };
-        // libc's actual errno display is the same source used by CPython's
-        // OSError constructors. No native Error Display suffix is parsed.
-        let strerror = unsafe { std::ffi::CStr::from_ptr(libc::strerror(errno)) }.to_str()?;
-        let mut message = format!("[Errno {errno}] {strerror}");
+        use crate::original_authority::{ERROR_TEXT_BYTES, os_text};
+        // Use the invocation's private path scratch for the bounded libc copy.
+        charge_work(budget, ERROR_TEXT_BYTES as u64)?;
+        let mut error_text = [0; ERROR_TEXT_BYTES];
+        let strerror = os_text(errno, &mut error_text)?;
+        let mut message = CoreBuffer::builder(budget, MAX_BYTES);
+        message.append(format!("[Errno {errno}] ").as_bytes())?;
+        message.append(strerror.as_bytes())?;
         if let Some(filename) = &io.filename {
-            if !filename.is_ascii() {
-                return Err(OriginalAuthorityError::unsupported(
-                    OriginalAuthorityStage::Source,
-                    "non-ASCII catalog OSError filename display",
-                )
-                .into());
-            }
-            message.push_str(": ");
-            message.push_str(&json::repr_text(&Text::from_str(filename)));
+            message.append(b": ")?;
+            message.append(crate::unicode15_1::repr_utf8(filename, budget)?.as_bytes())?;
         }
         self.error_id = self
             .error_id
@@ -1375,7 +1372,7 @@ impl CatalogIo {
         )?;
         Ok(crate::NativeErrorGraph::decode_catalog_io(
             CoreBuffer::copy_from(kind.as_bytes(), budget)?,
-            CoreBuffer::copy_from(message.as_bytes(), budget)?,
+            message.finish()?,
             out.finish()?,
             budget,
         )?)

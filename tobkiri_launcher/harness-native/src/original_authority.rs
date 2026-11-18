@@ -258,6 +258,29 @@ impl OriginalAuthorityError {
         }
     }
 }
+pub(crate) const ERROR_TEXT_BYTES: usize = 4096;
+
+#[cfg(unix)]
+pub(crate) fn os_text(errno: i32, buffer: &mut [u8; ERROR_TEXT_BYTES]) -> anyhow::Result<&str> {
+    // Same native strerror source used by CPython, never parsed from Display.
+    // Caller consumes this Store's work before buffer init/scan/copy/UTF-8.
+    let pointer = unsafe { libc::strerror(errno) };
+    anyhow::ensure!(!pointer.is_null(), "native strerror is unavailable");
+    let length = unsafe { libc::strnlen(pointer, buffer.len()) };
+    anyhow::ensure!(
+        length < buffer.len(),
+        "native strerror exceeds its finite envelope"
+    );
+    // Copy immediately, as CPython does. No borrowed libc buffer or synthetic
+    // 'static string survives another strerror call or escapes in the graph.
+    unsafe { std::ptr::copy_nonoverlapping(pointer.cast::<u8>(), buffer.as_mut_ptr(), length) };
+    Ok(std::str::from_utf8(&buffer[..length])?)
+}
+#[cfg(not(unix))]
+pub(crate) fn os_text(_: i32, _: &mut [u8; ERROR_TEXT_BYTES]) -> anyhow::Result<&str> {
+    anyhow::bail!("native recovery OS class is not bound on this platform")
+}
+
 fn sqlite_class(code: i32) -> &'static str {
     match code & 255 {
         2 | 12 => "sqlite3.InternalError",

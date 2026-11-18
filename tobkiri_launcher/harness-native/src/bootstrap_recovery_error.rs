@@ -1,6 +1,7 @@
 //! Fixed APP projection of causes produced by the native recovery body.
 //! No Guest class/ref is constructed. Only the immediate native definitions
 //! failure caller may turn this DATA into the Host's explicit-from edge.
+use crate::original_authority::{ERROR_TEXT_BYTES, os_text};
 use crate::{NativeErrorGraph, NativeErrorKind, OriginalAuthorityCause, OriginalAuthorityError};
 use anyhow::{Context, ensure};
 use std::sync::Arc;
@@ -23,7 +24,6 @@ mod tests;
 mod actual_ci;
 
 const MAX_NODES: usize = 64;
-const ERROR_TEXT_BYTES: usize = 4096;
 pub(super) const MESSAGE: &str = "Profile publication recovery failed closed";
 const SECURE: &str = "tobkiri_protocol.secure_persistence.SecurePersistenceError";
 const ACTIVE: &str = "core_runtime.active_profile_store_v4.ActiveProfileStoreError";
@@ -214,27 +214,6 @@ fn quoted_path(out: &mut CoreBufferBuilder, path: &str) -> anyhow::Result<()> {
     out.append(&[quote])?;
     Ok(())
 }
-#[cfg(unix)]
-fn os_text(errno: i32, buffer: &mut [u8; ERROR_TEXT_BYTES]) -> anyhow::Result<&str> {
-    // Same native strerror source used by CPython, never parsed from Display.
-    // Caller consumes this Store's work before buffer init/scan/copy/UTF-8.
-    let pointer = unsafe { libc::strerror(errno) };
-    ensure!(!pointer.is_null(), "native strerror is unavailable");
-    let length = unsafe { libc::strnlen(pointer, buffer.len()) };
-    ensure!(
-        length < buffer.len(),
-        "native strerror exceeds its finite envelope"
-    );
-    // Copy immediately, as CPython does. No borrowed libc buffer or synthetic
-    // 'static string survives another strerror call or escapes in the graph.
-    unsafe { std::ptr::copy_nonoverlapping(pointer.cast::<u8>(), buffer.as_mut_ptr(), length) };
-    Ok(std::str::from_utf8(&buffer[..length])?)
-}
-#[cfg(not(unix))]
-fn os_text(_: i32, _: &mut [u8; ERROR_TEXT_BYTES]) -> anyhow::Result<&str> {
-    anyhow::bail!("native recovery OS class is not bound on this platform")
-}
-
 fn message(node: &Planned<'_>, budget: &Arc<dyn AllocationBudget>) -> anyhow::Result<CoreBuffer> {
     let mut out = CoreBuffer::builder(budget, MAX_BYTES);
     match node.source {

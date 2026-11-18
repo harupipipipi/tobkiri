@@ -5,6 +5,9 @@ use serde_json::{Value, json};
 use tobkiri_canon::Digest;
 use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupLease};
 
+#[path = "original_grouped_catalog_fixture_tests.rs"]
+mod grouped_fixture;
+
 struct Portable;
 impl NativeSetupLease for Portable {
     fn validate(&self) -> std::result::Result<(), GateError> {
@@ -1565,6 +1568,10 @@ async fn grouped_catalog_reports_original_path_failures_in_order() {
         ("outside-link", Rejected("escape")),
         ("missing/component", Io(libc::ENOENT, "missing")),
         ("missing/\0", Io(libc::ENOENT, "missing")),
+        (
+            "未作成💬\u{a0}'/member",
+            Io(libc::ENOENT, "未作成💬\u{a0}'"),
+        ),
         ("plain/component", Io(libc::ENOTDIR, "plain")),
         ("tail-link", Io(libc::ENOTDIR, "plain")),
         ("loop", Io(libc::ELOOP, "loop")),
@@ -1637,10 +1644,27 @@ async fn grouped_catalog_reports_original_path_failures_in_order() {
                         .downcast::<OriginalAuthorityError>()
                         .unwrap();
                     assert!(
-                        matches!(error.cause, Some(OriginalAuthorityCause::Io(error))
+                        matches!(&error.cause, Some(OriginalAuthorityCause::Io(error))
                         if error.errno == Some(errno) && error.filename.as_deref() == expected.to_str()),
                         "{relative:?}"
                     );
+                    if !prefix.is_ascii() {
+                        let graph = io.error_graph(&error, budget).unwrap();
+                        assert_eq!(graph.code().as_str().unwrap(), "file-not-found-error");
+                        let details: Value =
+                            serde_json::from_slice(graph.details().as_bytes()).unwrap();
+                        assert_eq!(
+                            details["nodes"][0]["fields"]["filename"],
+                            expected.to_str().unwrap()
+                        );
+                        assert!(
+                            graph
+                                .message()
+                                .as_str()
+                                .unwrap()
+                                .ends_with("/未作成💬\\xa0'\"")
+                        );
+                    }
                 }
                 Capacity => {
                     let error = result
