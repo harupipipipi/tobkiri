@@ -1,6 +1,7 @@
 //! Ordered delivery of the verified catalog within the original Review call.
 use super::*;
 use crate::bootstrap_metadata::string_parts;
+use document_shapes::byte_frame_fits;
 use native_bundled_catalog::{NativeBundleError, NativeOwnedBundle, label};
 use tobkiri_canon::{AllocationError, CoreArray};
 
@@ -204,11 +205,20 @@ fn write_rows<S: OriginalAuthorityOwner>(
     next: usize,
     budget: &Arc<dyn AllocationBudget>,
 ) -> anyhow::Result<usize> {
-    out.append(b"{\"kind\":\"snapshot-rows\",\"rows\":[")?;
+    const ROWS_PREFIX: &[u8] = b"{\"kind\":\"snapshot-rows\",\"rows\":[";
     charge_work(budget, next as u64)?;
     let mut emitted = 0;
     for (kind, id, bytes) in bundle.entries().skip(next) {
         op.check(STAGE)?;
+        let first = emitted == 0;
+        if first && !byte_frame_fits(out, bytes.len()) {
+            return Err(AllocationError::Limit.into());
+        }
+        // Include the result and response suffix and the page prefix or row comma.
+        let framing = out.len() + if first { ROWS_PREFIX.len() } else { 1 } + 3;
+        if !first && framing + bytes.len() > SOFT_FRAME_BYTES {
+            break;
+        }
         let kind = label(kind);
         charge_work(budget, (kind.len() + id.len() + bytes.len()) as u64)?;
         let text = std::str::from_utf8(bytes).map_err(|_| OriginalAuthorityError::unavailable())?;
@@ -219,16 +229,20 @@ fn write_rows<S: OriginalAuthorityOwner>(
                     .checked_add(quoted_bytes(value)?)
                     .ok_or(AllocationError::Limit)
             })?;
-        // Include the next comma and the result and response suffix. A row
-        // above the soft limit gets its own frame under the hard limit.
-        let size = out.len() + usize::from(emitted != 0) + row_bytes + 3;
-        if emitted != 0 && size > SOFT_FRAME_BYTES {
+        let size = framing + row_bytes;
+        if !first && size > SOFT_FRAME_BYTES {
             break;
         }
         if size > MAX_BYTES {
-            return Err(AllocationError::Limit.into());
+            // The original byte envelope fits even when escaping the source
+            // text would exceed MAX_BYTES. It carries this single occurrence.
+            write_bytes(out, bytes)?;
+            return Ok(1);
         }
-        out.append(if emitted == 0 { b"[" } else { b",[" })?;
+        if first {
+            out.append(ROWS_PREFIX)?;
+        }
+        out.append(if first { b"[" } else { b",[" })?;
         string_parts(out, [kind])?;
         out.append(b",")?;
         string_parts(out, [id])?;

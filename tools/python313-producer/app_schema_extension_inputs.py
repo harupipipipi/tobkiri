@@ -277,6 +277,18 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
         count = opened["count"]
         while ordinal < count:
             chunk = root._catalog_snapshot("snapshot-rows", [ordinal])
+            if chunk.get("kind") == "bytes":
+                raw = root._bridge._value(chunk, "bytes")
+                del chunk
+                kind, identity, document = cls._decode_snapshot_bytes(
+                    raw, identity_fields,
+                )
+                del raw
+                if identity in collections[kind]:
+                    raise UnsupportedValue("invalid native catalog snapshot identity")
+                collections[kind][identity] = document
+                ordinal += 1
+                continue
             if (
                 set(chunk) != {"kind", "rows"}
                 or chunk["kind"] != "snapshot-rows"
@@ -318,6 +330,45 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
         )
         root._finish_catalog_snapshot(count, catalog)
         return catalog
+
+    @staticmethod
+    def _decode_snapshot_bytes(
+        raw: bytes, identity_fields: dict[str, str],
+    ) -> tuple[str, str, dict[str, Any]]:
+        from harness_native.value_graph import UnsupportedValue
+
+        try:
+            document = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise UnsupportedValue("invalid native catalog snapshot document") from None
+        if type(document) is not dict:
+            raise UnsupportedValue("invalid native catalog snapshot document")
+
+        # Every supported snapshot schema requires its own version field and
+        # disallows the other kinds' version fields at the document root.
+        versions = (
+            ("pack", "pack_api_version", ("io.tobkiri.pack.v4",)),
+            ("executable_catalog", "catalog_api_version",
+             ("io.tobkiri.executable-catalog.v4",)),
+            ("base", "base_api_version", ("io.tobkiri.base.v4",)),
+            ("shell", "shell_api_version",
+             ("io.tobkiri.shell.v4", "io.tobkiri.shell.v5")),
+            ("profile", "profile_api_version",
+             ("io.tobkiri.profile.v4", "io.tobkiri.profile.v5")),
+        )
+        kind = None
+        for candidate, field, allowed in versions:
+            if field in document:
+                if kind is not None or document[field] not in allowed:
+                    raise UnsupportedValue("invalid native catalog snapshot version")
+                kind = candidate
+        if kind is None:
+            raise UnsupportedValue("invalid native catalog snapshot version")
+        owner = document.get("pack") if kind == "pack" else document
+        identity = owner.get(identity_fields[kind]) if type(owner) is dict else None
+        if type(identity) is not str or not identity:
+            raise UnsupportedValue("invalid native catalog snapshot identity")
+        return kind, identity, document
 
 '''
     return _replace_one(source, anchor, snapshot + anchor)

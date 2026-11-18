@@ -221,11 +221,17 @@ impl CatalogIo {
         target_os = "macos",
         target_arch = "aarch64"
     ))]
-    pub(crate) fn ci_progress(&self) -> (&'static str, usize, usize, usize) {
-        if let Some(owned_catalog_delivery::OwnedCatalogDelivery::Reading { bundle, .. }) =
+    pub(crate) fn ci_progress(&self) -> (&'static str, usize, usize, usize, Option<usize>) {
+        if let Some(owned_catalog_delivery::OwnedCatalogDelivery::Reading { bundle, next }) =
             &self.owned_delivery
         {
-            return ("snapshot-delivery", bundle.entry_count(), 0, bundle.pins);
+            return (
+                "snapshot-delivery",
+                bundle.entry_count(),
+                0,
+                bundle.pins,
+                Some(*next),
+            );
         }
         let stage = match self.loader {
             Loader::Root => "root",
@@ -240,7 +246,7 @@ impl CatalogIo {
             Loader::Done => "done",
             Loader::Rejected => "rejected",
         };
-        (stage, self.entry, self.walk, self.pins)
+        (stage, self.entry, self.walk, self.pins, None)
     }
 
     pub(crate) fn new<S: crate::BootstrapReviewOwner>(

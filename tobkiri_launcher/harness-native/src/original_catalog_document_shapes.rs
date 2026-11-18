@@ -322,7 +322,7 @@ fn finish_checked_read<S: crate::BootstrapReviewOwner>(
     Ok(out.finish()?)
 }
 
-fn byte_frame_fits(out: &CoreBufferBuilder, len: usize) -> bool {
+pub(super) fn byte_frame_fits(out: &CoreBufferBuilder, len: usize) -> bool {
     const RAW_FRAME: usize = b"{\"kind\":\"bytes\",\"value\":\"\"}}".len();
     out.len() + RAW_FRAME + 4 * len.div_ceil(3) <= MAX_BYTES
 }

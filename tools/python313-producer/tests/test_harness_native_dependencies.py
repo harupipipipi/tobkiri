@@ -486,6 +486,48 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                 "binding": "root", "steps": [["parent", ""], ["join", "platform-artifacts"]],
             })
 
+            def byte_frame(raw: bytes) -> dict[str, str]:
+                return {"kind": "bytes", "value": base64.b64encode(raw).decode()}
+
+            original_pack = runtime / (
+                "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
+            )
+            oversized = json.loads(original_pack.read_bytes())
+            oversized["pack"]["description"] = "é" + '\\"\n' * 450_000
+            source_text = json.dumps(oversized, ensure_ascii=False)
+            raw_frame = byte_frame(source_text.encode())
+            wire_max = 4 * 1024 * 1024
+            self.assertGreater(
+                len(json.dumps(source_text, ensure_ascii=False).encode()), wire_max,
+            )
+            self.assertLess(len(raw_frame["value"]), wire_max)
+            with_bytes = load([
+                ("snapshot-open", [], {**opened, "count": 7}),
+                ("snapshot-rows", [0], first),
+                ("snapshot-rows", [3], raw_frame),
+                ("snapshot-rows", [4], last),
+                ("snapshot-close", [7], {"kind": "unit"}),
+            ])
+            self.assertEqual(list(with_bytes.packs), ["z", "defaults-basepack", "a"])
+            decoded = with_bytes.packs["defaults-basepack"]
+            self.assertEqual(list(decoded), list(oversized))
+            self.assertEqual(list(decoded["pack"]), list(oversized["pack"]))
+            self.assertTrue(decoded == oversized)
+
+            for raw in (
+                b'{"pack_api_version":"io.tobkiri.pack.v5","pack":{"id":"z"}}',
+                b'{"pack_api_version":"io.tobkiri.pack.v4",'
+                b'"base_api_version":"io.tobkiri.base.v4"}',
+                b'{"pack_api_version":"io.tobkiri.pack.v4","pack":{}}',
+                b'{"pack_api_version":"io.tobkiri.pack.v4","pack":{"id":"z"}}',
+            ):
+                with self.subTest(raw=raw), self.assertRaises(UnsupportedValue):
+                    load([
+                        ("snapshot-open", [], {**opened, "count": 4}),
+                        ("snapshot-rows", [0], first),
+                        ("snapshot-rows", [3], byte_frame(raw)),
+                    ])
+
             for invalid in (
                 {"kind": "snapshot-rows", "rows": []},
                 first,
@@ -574,7 +616,7 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                     "kind": "snapshot-error",
                     "error": "lock-json-source",
                     "message": "native parser diagnostic",
-                    "cause": {"kind": "bytes", "value": base64.b64encode(raw).decode()},
+                    "cause": byte_frame(raw),
                 })]
 
             for raw, nested_type, attributes in (

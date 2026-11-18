@@ -288,6 +288,83 @@ async fn owned_catalog_delivery_adopts_only_a_consumed_snapshot() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn owned_catalog_delivery_preserves_a_row_that_overflows_when_escaped() {
+    let shipped = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tobkiri_runtime/ecosystem/defaultspack/v4");
+    let pack = fs::read(shipped.join("packs/defaults-basepack.pack.v4.json")).unwrap();
+    let mut base = fs::read(shipped.join("defaults-basepack.base.v1.json")).unwrap();
+    // Whitespace changes the lock digest and preserves the Base revision.
+    // The outer string escapes each LF as six bytes.
+    base.resize(base.len() + 700_000, b'\n');
+
+    with_source(false, |source, invocation, budget, io, _| {
+        let bundle = source.root.join("ecosystem/defaultspack/v4");
+        fs::create_dir_all(&bundle).unwrap();
+        fs::write(bundle.join("pack.json"), &pack).unwrap();
+        fs::write(bundle.join("base.json"), &base).unwrap();
+        let lock = json!({
+            "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+            "entries": [
+                {"path": "pack.json", "kind": "pack", "digest": Digest::hash(&pack).as_str()},
+                {"path": "base.json", "kind": "base", "digest": Digest::hash(&base).as_str()},
+            ],
+        });
+        fs::write(
+            bundle.join("bundle.lock.json"),
+            serde_json::to_vec(&lock).unwrap(),
+        )
+        .unwrap();
+        io.select_packaged(&bundle).unwrap();
+        io.enable_owned_catalog();
+        io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+            .unwrap();
+
+        call(
+            io,
+            source,
+            invocation,
+            budget,
+            "root",
+            json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+            json!([]),
+        );
+        let inspect = |io: &mut CatalogIo, operation, args| {
+            let request = packet(invocation, budget, operation, json!([]), args);
+            io.inspect(source, invocation, &request, budget)
+        };
+        let result = |io: &mut CatalogIo, operation, args| {
+            let output = inspect(io, operation, args).unwrap();
+            assert!(output.len() <= MAX_BYTES);
+            let mut frame: Value = serde_json::from_slice(output.as_bytes()).unwrap();
+            frame["result"].take()
+        };
+        assert_eq!(result(io, "snapshot-open", json!([]))["count"], 2);
+        let ordinary = result(io, "snapshot-rows", json!([0]));
+        assert_eq!(ordinary["kind"], "snapshot-rows");
+        assert_eq!(ordinary["rows"].as_array().unwrap().len(), 1);
+        assert_eq!(ordinary["rows"][0][2].as_str().unwrap().as_bytes(), pack);
+        assert!(inspect(io, "snapshot-close", json!([2])).is_err());
+
+        let oversized = result(io, "snapshot-rows", json!([1]));
+        assert_eq!(oversized["kind"], "bytes");
+        assert_eq!(
+            base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                oversized["value"].as_str().unwrap(),
+            )
+            .unwrap(),
+            base
+        );
+        assert!(inspect(io, "snapshot-rows", json!([1])).is_err());
+        assert_eq!(
+            result(io, "snapshot-close", json!([2])),
+            json!({"kind": "unit"})
+        );
+        assert!(io.completed());
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn owned_catalog_lock_sends_exact_invalid_source_once() {
     for raw in [b"{".as_slice(), &[0xff]] {
         with_source(false, |source, invocation, budget, io, cleanup| {
