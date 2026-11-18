@@ -4524,11 +4524,10 @@ mod tests {
         }
 
         let (root, config) = fixture("actual-native-core-declared-artifacts");
+        let physical_root = root.canonicalize().unwrap();
         let core = Arc::new(
             Core::open(
-                CoreConfig::for_test_data_root(
-                    root.canonicalize().unwrap().join("native-core-data"),
-                ),
+                CoreConfig::for_test_data_root(physical_root.join("native-core-data")),
                 Arc::new(NoEffects),
             )
             .unwrap(),
@@ -4593,7 +4592,13 @@ mod tests {
 
         #[cfg(feature = "native-harness-bootstrap")]
         {
-            let owner = tobkiri_core::RuntimeOwner::open(config.user_data_dir.join("core")).unwrap();
+            // macOS can report the fixture temp root through /var. Core opens
+            // every component without following symlinks.
+            let relative_user_data = config.user_data_dir.strip_prefix(&root).unwrap();
+            let owner = tobkiri_core::RuntimeOwner::open(
+                physical_root.join(relative_user_data).join("core"),
+            )
+            .unwrap();
             let invocation = owner.begin_native_setup().unwrap();
             let cancellation =
                 tobkiri_gate::CoreCancellation::new_with_control(invocation.control()).unwrap();
@@ -4604,10 +4609,13 @@ mod tests {
                     signed,
                     invocation,
                     &cancellation,
+                    false,
+                    async |_| panic!("native metadata inspection did not request activation"),
                 )
                 .await;
             assert!(cleanup_verified);
-            let (signed, contributions) = inspected.unwrap();
+            let (signed, contributions, proof): (_, _, Option<()>) = inspected.unwrap();
+            assert!(proof.is_none());
             let metadata = crate::dock_registration::assemble_defaultspack_desktop_metadata(
                 &config,
                 signed.into_authority(),

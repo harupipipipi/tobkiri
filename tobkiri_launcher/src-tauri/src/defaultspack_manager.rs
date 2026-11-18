@@ -109,6 +109,53 @@ fn application_instance_matches(
     current.matches(requested)
 }
 
+/// The exact listener observed before the authenticated runtime identity
+/// probe. The caller keeps this private evidence until the Shell receipt.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProviderPrepareListener {
+    proof: crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch,
+    process: crate::shell_handoff::LauncherProcessIdentity,
+    application: ApplicationInstanceKey,
+    port: u16,
+    generation: Option<u64>,
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl ProviderPrepareListener {
+    pub(crate) fn observe(
+        proof: crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch,
+        metadata: &DefaultspackDesktopMetadata,
+        pid: u32,
+    ) -> Option<Self> {
+        if !proof.identity.matches(metadata.execution_identity())
+            || proof.catalog_revision != metadata.catalog_revision()
+        {
+            return None;
+        }
+        let process = crate::shell_handoff::process_identity(pid).ok()?;
+        Some(Self {
+            proof,
+            process,
+            application: application_instance_key(metadata),
+            port: metadata.port(),
+            generation: None,
+        })
+    }
+
+    pub(crate) fn owns_socket(&self) -> bool {
+        self.process_is_current()
+            && crate::kernel_manager::detect_port_listener(self.port)
+                .is_ok_and(|listen| listen.is_some_and(|listen| listen.pid == self.process.pid))
+            && self.process_is_current()
+    }
+
+    fn process_is_current(&self) -> bool {
+        crate::shell_handoff::process_identity(self.process.pid)
+            .is_ok_and(|observed| observed == self.process)
+    }
+}
+
 /// Tracks one Application child started by this Launcher instance.
 pub(crate) struct ApplicationProcessManager {
     config: AppConfig,
@@ -176,6 +223,10 @@ struct ApplicationProcessState {
     started_at: Option<Instant>,
     active_run_id: Option<String>,
     active_guardian_pid: Option<u32>,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    provider_prepare: Option<Arc<ProviderPrepareListener>>,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    provider_listener_generation: u64,
 }
 
 /// Compatibility alias for the existing Launcher composition root.
@@ -209,6 +260,90 @@ impl ApplicationProcessManager {
             debug_approval,
             state: Mutex::new(ApplicationProcessState::default()),
         }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn capture_provider_listener(
+        &self,
+        mut candidate: ProviderPrepareListener,
+    ) -> Result<Option<ProviderPrepareListener>> {
+        let state = self.lock_state()?;
+        candidate.generation = Some(state.provider_listener_generation);
+        Ok((!self.shutdown_requested.load(Ordering::Acquire)
+            && state.matches_provider_listener(&candidate)
+            && self.has_provider_guardian(&state, &candidate))
+        .then_some(candidate))
+    }
+
+    /// Publish evidence only for the listener still owned after a foreground
+    /// Shell handoff. Keeping one slot avoids carrying eligibility into retries.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn admit_provider_prepare(
+        &self,
+        listener: Option<ProviderPrepareListener>,
+    ) -> Result<()> {
+        let mut state = self.lock_state()?;
+        state.provider_prepare = listener
+            .filter(|candidate| {
+                !self.shutdown_requested.load(Ordering::Acquire)
+                    && state.matches_provider_listener(candidate)
+                    && candidate.process_is_current()
+                    && self.has_provider_guardian(&state, candidate)
+            })
+            .map(Arc::new);
+        Ok(())
+    }
+
+    /// Recheck the exact admitted listener against live ownership before
+    /// borrowing its verification evidence for a separately authorized request.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn admitted_provider_prepare(
+        &self,
+        identity: &crate::host_contract::ExecutionProfileIdentity,
+    ) -> Result<Option<crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch>> {
+        let candidate = {
+            let state = self.lock_state()?;
+            state
+                .provider_prepare
+                .as_ref()
+                .filter(|candidate| {
+                    candidate.proof.identity.matches(identity)
+                        && state.matches_provider_listener(candidate)
+                })
+                .cloned()
+        };
+        let Some(candidate) = candidate.filter(|candidate| candidate.owns_socket()) else {
+            return Ok(None);
+        };
+        let state = self.lock_state()?;
+        Ok((!self.shutdown_requested.load(Ordering::Acquire)
+            && state
+                .provider_prepare
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, &candidate))
+            && state.matches_provider_listener(&candidate)
+            && candidate.process_is_current()
+            && self.has_provider_guardian(&state, &candidate))
+        .then(|| candidate.proof.clone()))
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn has_provider_guardian(
+        &self,
+        state: &ApplicationProcessState,
+        candidate: &ProviderPrepareListener,
+    ) -> bool {
+        self.debug_approval
+            .current_guardian()
+            .is_ok_and(|guardian| {
+                let identity = &candidate.proof.identity;
+                state.active_run_id.as_deref() == Some(guardian.run_id.as_str())
+                    && guardian.http_port == candidate.port
+                    && guardian.profile_id == identity.profile_id
+                    && guardian.profile_revision == identity.profile_revision
+                    && guardian.activation_id == identity.activation_id
+                    && guardian.plan_digest == identity.plan_digest
+            })
     }
 
     /// Start Defaultspack when this Launcher does not already own a live child.
@@ -257,6 +392,7 @@ impl ApplicationProcessManager {
                         );
                         replaced_child = state.child.take();
                         replaced_run_id = state.active_run_id.take();
+                        state.retire_provider_prepare();
                         state.active_guardian_pid = None;
                         state.launch_metadata = None;
                         state.owned_process_groups.retain(|entry| {
@@ -288,6 +424,7 @@ impl ApplicationProcessManager {
                     // metadata so the in-flight spawn is discarded and the
                     // next respawn publishes the active Host contract.
                     state.launch_metadata = Some(metadata.clone());
+                    state.retire_provider_prepare();
                     info!(
                         "Defaultspack restart is in progress for a superseded execution Profile; adopting the active one"
                     );
@@ -305,6 +442,7 @@ impl ApplicationProcessManager {
                 return Ok(());
             }
 
+            state.retire_provider_prepare();
             state.launch_metadata = Some(metadata.clone());
             state.next_restart_at = None;
             state.restart_in_progress = true;
@@ -370,6 +508,7 @@ impl ApplicationProcessManager {
         let (child, owned_process_groups, active_run_id, adopted_listener) = {
             let mut state = self.lock_state()?;
             state.stop_requested = true;
+            state.retire_provider_prepare();
             let adopted_listener = state.active_guardian_pid.take().and_then(|pid| {
                 state
                     .adopted_listener_port
@@ -873,23 +1012,28 @@ impl ApplicationProcessManager {
         process_id: u32,
         executable_identity: String,
     ) -> Result<()> {
-        let (run_id, old_run_id) = {
-            let mut state = self.lock_state()?;
-            if state.active_guardian_pid == Some(process_id)
-                && state
-                    .launch_metadata
-                    .as_ref()
-                    .is_some_and(|current| application_metadata_matches(current, metadata))
-            {
-                return Ok(());
-            }
-            let old_run_id = state.active_run_id.take();
-            let run_id = old_run_id
-                .clone()
-                .unwrap_or_else(managed_defaultspack_run_id);
-            state.active_guardian_pid = None;
-            (run_id, old_run_id)
-        };
+        // Keep the same manager -> debug approval lock order used by spawn.
+        // Shutdown or a replacement must not interleave with this transfer.
+        let mut state = self.lock_state()?;
+        anyhow::ensure!(
+            !self.shutdown_requested.load(Ordering::Acquire),
+            "Defaultspack listener registration was requested during shutdown"
+        );
+        if state.active_guardian_pid == Some(process_id)
+            && state.active_run_id.is_some()
+            && state
+                .launch_metadata
+                .as_ref()
+                .is_some_and(|current| application_metadata_matches(current, metadata))
+        {
+            return Ok(());
+        }
+        let old_run_id = state.active_run_id.take();
+        state.retire_provider_prepare();
+        let run_id = old_run_id
+            .clone()
+            .unwrap_or_else(managed_defaultspack_run_id);
+        state.active_guardian_pid = None;
         if let Some(old_run_id) = old_run_id.as_deref() {
             self.debug_approval.unregister_guardian(old_run_id);
         }
@@ -909,7 +1053,6 @@ impl ApplicationProcessManager {
             .map_err(|error| {
                 anyhow!("failed to register authenticated Defaultspack listener: {error}")
             })?;
-        let mut state = self.lock_state()?;
         state.active_run_id = Some(run_id);
         state.remember_adopted_listener(process_id, metadata.port());
         state.launch_metadata = Some(metadata.clone());
@@ -1129,6 +1272,34 @@ fn managed_defaultspack_run_id() -> String {
 }
 
 impl ApplicationProcessState {
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn matches_provider_listener(&self, candidate: &ProviderPrepareListener) -> bool {
+        !self.stop_requested
+            && !self.restart_in_progress
+            && self.provider_listener_generation != u64::MAX
+            && candidate.generation == Some(self.provider_listener_generation)
+            && self.active_run_id.is_some()
+            && self.active_guardian_pid == Some(candidate.process.pid)
+            && self
+                .adopted_listener_port
+                .is_none_or(|port| port == candidate.port)
+            && self.launch_metadata.as_ref().is_some_and(|metadata| {
+                candidate
+                    .application
+                    .matches(&application_instance_key(metadata))
+                    && candidate.proof.catalog_revision == metadata.catalog_revision()
+                    && candidate.port == metadata.port()
+            })
+    }
+
+    fn retire_provider_prepare(&mut self) {
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        {
+            self.provider_prepare = None;
+            self.provider_listener_generation = self.provider_listener_generation.saturating_add(1);
+        }
+    }
+
     fn remember_adopted_listener(&mut self, pid: u32, port: u16) {
         self.active_guardian_pid = Some(pid);
         self.adopted_listener_port = Some(port);
@@ -1137,6 +1308,7 @@ impl ApplicationProcessState {
     }
 
     fn record_unexpected_exit(&mut self, _status: ExitStatus) -> Duration {
+        self.retire_provider_prepare();
         if self
             .started_at
             .is_some_and(|started_at| started_at.elapsed() >= DEFAULTSPACK_STABLE_RUN_WINDOW)
@@ -1777,6 +1949,50 @@ mod tests {
         ));
         assert!(!application_instance_matches(&current, &different_artifact));
         assert!(!application_instance_matches(&current, &unknown_activation));
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
+    fn provider_prepare_evidence_is_bound_to_the_current_listener_and_generation() {
+        let identity = test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-test",
+            &"b".repeat(64),
+        );
+        let metadata = DefaultspackDesktopMetadata::test_metadata(identity.clone());
+        let proof = crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch::test_proof(
+            identity,
+            metadata.catalog_revision(),
+        );
+        let mut candidate = ProviderPrepareListener::observe(proof, &metadata, std::process::id())
+            .expect("fixture must use the actual test process");
+        let mut state = DefaultspackState {
+            active_guardian_pid: Some(candidate.process.pid),
+            active_run_id: Some("fixture".into()),
+            launch_metadata: Some(metadata),
+            ..DefaultspackState::default()
+        };
+        assert!(!state.matches_provider_listener(&candidate));
+        candidate.generation = Some(state.provider_listener_generation);
+        assert!(state.matches_provider_listener(&candidate));
+
+        state.adopted_listener_port = Some(candidate.port + 1);
+        assert!(!state.matches_provider_listener(&candidate));
+        state.adopted_listener_port = Some(candidate.port);
+        state.stop_requested = true;
+        assert!(!state.matches_provider_listener(&candidate));
+        state.stop_requested = false;
+        state.provider_prepare = Some(Arc::new(candidate.clone()));
+        state.retire_provider_prepare();
+        assert!(state.provider_prepare.is_none());
+        assert!(!state.matches_provider_listener(&candidate));
+
+        // Even the same PID, port, run ID and Profile need a fresh observation.
+        candidate.generation = Some(state.provider_listener_generation);
+        assert!(state.matches_provider_listener(&candidate));
+        candidate.application.artifact_digest = Some("sha256:other".into());
+        assert!(!state.matches_provider_listener(&candidate));
     }
 
     #[cfg(target_os = "linux")]
@@ -2546,7 +2762,10 @@ mod tests {
         assert!(contents.contains("[stdout pid="));
         assert!(contents.contains("[stderr pid="));
         // Secret-shaped values are redacted before reaching durable storage.
-        assert!(!contents.contains("tok123"), "leaked stdout token: {contents}");
+        assert!(
+            !contents.contains("tok123"),
+            "leaked stdout token: {contents}"
+        );
         assert!(
             !contents.contains("hunter2"),
             "leaked stderr password: {contents}"
@@ -2554,10 +2773,7 @@ mod tests {
         assert!(contents.contains("[REDACTED]"));
         // The previous generation rotated to .prev, and the stale .prev was
         // dropped so at most two bounded generations persist.
-        assert_eq!(
-            fs::read_to_string(&prev_path).unwrap(),
-            "prior generation"
-        );
+        assert_eq!(fs::read_to_string(&prev_path).unwrap(), "prior generation");
         fs::remove_dir_all(&dir).ok();
     }
 
@@ -2569,9 +2785,8 @@ mod tests {
         let log_path = dir.join("defaultspack.log");
 
         // Emit well over the 8MiB persistence cap plus a marker at the end.
-        let mut child = spawn_shell_child(
-            "head -c 9000000 /dev/zero | tr '\\0' 'x'; printf 'tail-marker'",
-        );
+        let mut child =
+            spawn_shell_child("head -c 9000000 /dev/zero | tr '\\0' 'x'; printf 'tail-marker'");
         let pid = child.id();
 
         manager.drain_child_output(&mut child, pid).unwrap();

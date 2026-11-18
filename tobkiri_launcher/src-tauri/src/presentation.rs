@@ -817,11 +817,65 @@ fn launch_verified_target_once(
         receipt_deadline,
         shell_environment.as_deref(),
     ) {
-        Ok(status) => Ok(status),
+        Ok(status) => {
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            admit_shell_provider_prepare(app, deadline, prepared_runtime, status);
+            Ok(status)
+        }
         Err(error) => {
             crate::shell_handoff::discard_shell_handoff(&ticket);
             Err(error)
         }
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+fn admit_shell_provider_prepare(
+    app: &AppHandle,
+    deadline: Instant,
+    runtime: crate::dock_registration::PreparedShellRuntime,
+    status: crate::shell_handoff::ShellHandoffReceiptStatus,
+) {
+    use tauri::Manager as _;
+
+    let Some(manager) =
+        app.try_state::<std::sync::Arc<crate::defaultspack_manager::DefaultspackManager>>()
+    else {
+        return;
+    };
+    let Some(config) = app.try_state::<AppConfig>() else {
+        return;
+    };
+    let identity = runtime.identity;
+    let listener = runtime.native_provider_prepare.filter(|_| {
+        status == crate::shell_handoff::ShellHandoffReceiptStatus::BindingAdmitted
+            && crate::preparation_budget::check(deadline).is_ok()
+            && crate::defaultspack_authority::require_current_launch_identity(&config, &identity)
+                .is_ok()
+            && crate::preparation_budget::check(deadline).is_ok()
+    });
+    let expected = listener.is_some();
+    let verified = manager.admit_provider_prepare(listener).and_then(|()| {
+        if expected {
+            let proof = manager.admitted_provider_prepare(&identity)?;
+            if proof.is_some()
+                && crate::preparation_budget::check(deadline).is_ok()
+                && crate::defaultspack_authority::require_current_launch_identity(
+                    &config, &identity,
+                )
+                .is_ok()
+            {
+                log::debug!(
+                    "verified native Provider prepare evidence for the admitted Shell listener"
+                );
+            } else {
+                manager.admit_provider_prepare(None)?;
+            }
+        }
+        Ok(())
+    });
+    if verified.is_err() {
+        log::warn!("native Provider prepare evidence was unavailable after Shell admission");
     }
 }
 

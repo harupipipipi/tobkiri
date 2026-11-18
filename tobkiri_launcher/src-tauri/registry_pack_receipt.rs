@@ -69,6 +69,10 @@ mod unix {
             self.archive_bytes
         }
 
+        pub(crate) fn archive_sha256(&self) -> &str {
+            &self.archive_sha256
+        }
+
         pub(crate) fn manifest_sha256(&self) -> &str {
             &self.manifest_sha256
         }
@@ -139,7 +143,7 @@ mod unix {
         });
         let result = reader.checkpoint_error.take().map_or(result, Err)?;
         if reader.bytes_read != pack.archive_bytes
-            || format!("sha256:{:x}", reader.sha256.finalize()) != pack.archive_sha256
+            || format!("sha256:{:x}", reader.sha256.finalize()) != pack.archive_sha256()
         {
             return Err(archive_mismatch(pack));
         }

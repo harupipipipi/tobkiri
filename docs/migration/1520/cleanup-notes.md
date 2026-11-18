@@ -4048,9 +4048,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   引数は、既存利用先を移してから削除できる。実 `.tpk` の E2E 4件で、初回なし・有効なRegistryで
   各2回、不正な要求で0回、壊れたJSONと `null` で各1回の読取り、実ファイルのrevision差による
   競合、Registryの内容を変更しないことを確かめた。
-  通常Launcherからこの接続点をRustに渡す経路と、1 MiBを超える既存Registryの互換動作が残る。
-  既存Host Brokerの接続認証は起動中のProfileまでを証明する。リクエスト単位のleaseと物理終了の
-  対応、転送上限、実行中の子プロセスに結び付いた登録の失効を確認する。
+  `native_launch_metadata.rs` は3つの同梱アーカイブと旧Providerの選択を照合し、元の
+  AuthorityとStoreのcloseを確認してから、Profile・epochとreceiptのdigestを返す。
+  `dock_registration.rs` がこの値を監視用メタデータから取り出し、元の認証済みlistenerに結び付ける。
+  `presentation.rs` はShellの `BindingAdmitted` を受けた後だけ登録する。managerは同じ
+  listenerのPID・起動時刻・port・Application・Profileを確認し、停止・再起動・listener交代で
+  登録を破棄する。確認値はこのプロセスのメモリに保持される。元の選択試験4件と、
+  macOSのプロセス観測を代替した分離テスト2件が通過した。
+  [DMG CI 44392237715](https://github.com/harupipipipi/tobkiri/actions/runs/44392237715)の
+  `actual_resolved_source_reaches_core_worker_and_preserves_desktop_metadata` だけが失敗した。
+  Coreがパスの各要素をsymlink追従なしで開く際、macOSのテスト用パスに含まれる `/var` などを
+  拒んだ。fixtureの実体パスに設定と同じ相対配置を適用した。macOSのCoreで元の失敗を再現し、
+  修正後のrootで `RuntimeOwner::open` と `begin_native_setup` の成功を確認した。
+  通常LauncherからRustの呼出しへこの登録を渡す経路と、1 MiB超の旧Registryとの互換動作が残る。
+  既存Host Brokerの接続認証は起動中のProfileまでを証明する。リクエスト単位のlease、同一
+  プロセス内のHTTPサーバ再生成、物理終了までの取消と転送上限を後続の接続で確認する。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

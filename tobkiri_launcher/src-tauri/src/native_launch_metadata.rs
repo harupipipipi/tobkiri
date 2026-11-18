@@ -16,7 +16,8 @@ use tobkiri_core::{
 };
 use tobkiri_gate::{ControlKind, CoreCancellation};
 use tobkiri_harness_native::{
-    OriginalActivationInspection, OriginalActiveProfile, OriginalProviderPrepareSelection,
+    OriginalActivationInspection, OriginalActiveProfile, OriginalProviderPreparePin,
+    OriginalProviderPrepareSelection,
 };
 
 use super::{
@@ -40,6 +41,67 @@ const REGISTRY_RECEIPT_SHA256: &str = env!("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256
 // Allow the bounded receipt decoder and streaming SHA-256 work to run only
 // when their fixed working set fits the real Launch job's control ledger.
 const REGISTRY_VERIFICATION_BYTES: u64 = 256 * 1024;
+
+/// Detached launch evidence for the verified legacy route and its bundled Wasm Pack.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VerifiedProviderPrepareLaunch {
+    pub(crate) identity: ExecutionProfileIdentity,
+    pub(crate) security_epoch: u64,
+    pub(crate) catalog_revision: String,
+    pub(crate) coordinator: VerifiedLegacyProviderPreparePin,
+    pub(crate) provider: VerifiedLegacyProviderPreparePin,
+    pub(crate) archive_sha256: String,
+    pub(crate) archive_bytes: u64,
+    pub(crate) manifest_sha256: String,
+}
+
+/// Exact legacy binding digests confirmed against the activation and signed Bundle.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VerifiedLegacyProviderPreparePin {
+    pub(crate) artifact_digest: String,
+    pub(crate) executable_catalog_digest: String,
+    pub(crate) contract_revision_digest: String,
+    pub(crate) function_implementation_digest: String,
+    pub(crate) authority_reference: String,
+    pub(crate) requested_scope_digest: String,
+}
+
+impl From<&OriginalProviderPreparePin> for VerifiedLegacyProviderPreparePin {
+    fn from(pin: &OriginalProviderPreparePin) -> Self {
+        Self {
+            artifact_digest: pin.artifact_digest().to_owned(),
+            executable_catalog_digest: pin.executable_catalog_digest().to_owned(),
+            contract_revision_digest: pin.contract_revision_digest().to_owned(),
+            function_implementation_digest: pin.function_implementation_digest().to_owned(),
+            authority_reference: pin.authority_reference().to_owned(),
+            requested_scope_digest: pin.requested_scope_digest().to_owned(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl VerifiedProviderPrepareLaunch {
+    pub(crate) fn test_proof(identity: ExecutionProfileIdentity, catalog_revision: &str) -> Self {
+        let pin = VerifiedLegacyProviderPreparePin {
+            artifact_digest: "sha256:artifact".into(),
+            executable_catalog_digest: "sha256:catalog".into(),
+            contract_revision_digest: "sha256:contract".into(),
+            function_implementation_digest: "sha256:implementation".into(),
+            authority_reference: "authority-ref:fixture".into(),
+            requested_scope_digest: "sha256:scope".into(),
+        };
+        Self {
+            identity,
+            security_epoch: 7,
+            catalog_revision: catalog_revision.to_owned(),
+            coordinator: pin.clone(),
+            provider: pin,
+            archive_sha256: "sha256:archive".into(),
+            archive_bytes: 512,
+            manifest_sha256: "sha256:manifest".into(),
+        }
+    }
+}
 
 pub(crate) fn registry_pack_receipt_bound() -> bool {
     !REGISTRY_RECEIPT_SHA256.is_empty()
@@ -145,17 +207,23 @@ async fn collect_on_worker(
             }
         }
     };
-    let metadata = result.and_then(|(sources, contributions)| {
+    let metadata = result.and_then(|(sources, contributions, proof)| {
         preparation_budget::check(deadline)?;
         require_current_launch_identity(&config, &identity)?;
         preparation_budget::check(deadline)?;
         job.ensure_accepting(&runtime.0.jobs)?;
-        assemble_defaultspack_desktop_metadata(
+        let mut metadata = assemble_defaultspack_desktop_metadata(
             &config,
             sources.into_authority(),
             identity,
             contributions,
-        )
+        )?;
+        if cleanup_verified && proof.is_some() {
+            preparation_budget::check(deadline)?;
+            job.ensure_accepting(&runtime.0.jobs)?;
+            metadata.native_provider_prepare = proof;
+        }
+        Ok(metadata)
     });
     (metadata, cleanup_verified)
 }
@@ -174,7 +242,7 @@ impl LaunchActivationObserver<'_> {
     async fn read(
         &self,
         inspection: &NativeArtifactInspection<NativeApplicationSources>,
-    ) -> (Result<()>, bool) {
+    ) -> (Result<Option<VerifiedProviderPrepareLaunch>>, bool) {
         let Self {
             app,
             runtime,
@@ -247,7 +315,7 @@ impl LaunchActivationObserver<'_> {
         &self,
         inspection: &NativeArtifactInspection<NativeApplicationSources>,
         active: Option<&OriginalActiveProfile>,
-    ) -> Result<()> {
+    ) -> Result<Option<VerifiedProviderPrepareLaunch>> {
         let checkpoint = || {
             preparation_budget::check(self.deadline)?;
             self.job.ensure_accepting(&self.runtime.0.jobs)?;
@@ -272,32 +340,59 @@ impl LaunchActivationObserver<'_> {
                     &sources.authority().catalog_revision,
                 )?;
             }
-            let locked_prepare = selection
-                .as_ref()
-                .map(|selection| sources.provider_prepare_bundle(selection, budget))
+            let locked_prepare = active
+                .zip(selection.as_ref())
+                .map(|(active, selection)| {
+                    let security_epoch = active
+                        .identity()
+                        .get_key("security_epoch")
+                        .and_then(|value| value.as_i64())
+                        .and_then(|epoch| u64::try_from(epoch).ok())
+                        .context("native Authority activation has an invalid security epoch")?;
+                    Ok::<_, anyhow::Error>((
+                        sources.provider_prepare_bundle(selection, budget)?,
+                        selection,
+                        security_epoch,
+                        sources.authority().catalog_revision.clone(),
+                    ))
+                })
                 .transpose()?;
             Ok::<_, anyhow::Error>((
                 sources.root(NativeSourceRoot::Application).to_path_buf(),
                 locked_prepare,
             ))
         })??;
-        if let Some(locked_prepare) = locked_prepare {
+        if let Some((locked_prepare, selection, security_epoch, catalog_revision)) = locked_prepare
+        {
             locked_prepare.verify(checkpoint)?;
-            registry_pack_receipt::verify_installed_with_provider(
+            let proof = registry_pack_receipt::verify_installed_with_provider(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
                 || checkpoint().map_err(io::Error::other),
-                |receipt, input| verify_provider_prepare_archive(inspection, receipt, input),
+                |receipt, input| {
+                    verify_provider_prepare_archive(inspection, receipt, input)?;
+                    Ok(VerifiedProviderPrepareLaunch {
+                        identity: self.identity.clone(),
+                        security_epoch,
+                        catalog_revision,
+                        coordinator: selection.coordinator().into(),
+                        provider: selection.provider().into(),
+                        archive_sha256: receipt.archive_sha256().to_owned(),
+                        archive_bytes: receipt.archive_bytes(),
+                        manifest_sha256: receipt.manifest_sha256().to_owned(),
+                    })
+                },
             )
             .context("bundled Provider prepare archive verification failed during Launch")?;
             log::info!("verified the selected old Provider prepare and its bundled Wasm replacement for this activation");
+            Ok(Some(proof))
         } else {
             registry_pack_receipt::verify_installed(&app_root, REGISTRY_RECEIPT_SHA256, || {
                 checkpoint().map_err(io::Error::other)
             })
             .context("bundled Registry Pack verification failed during Launch")?;
+            Ok(None)
         }
-        Ok(())
     }
 }
 

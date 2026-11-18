@@ -112,6 +112,9 @@ pub(crate) struct DefaultspackDesktopMetadata {
     shell_entrypoint_digest: String,
     frontend_entry: crate::frontend_entry::VerifiedFrontendEntry,
     host_contract_contributions: crate::host_contract_contributions::HostContractContributionValues,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) native_provider_prepare:
+        Option<crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch>,
 }
 
 impl DefaultspackDesktopMetadata {
@@ -125,6 +128,11 @@ impl DefaultspackDesktopMetadata {
 
     pub(crate) fn execution_identity(&self) -> &crate::host_contract::ExecutionProfileIdentity {
         &self.execution_identity
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn catalog_revision(&self) -> &str {
+        &self.catalog_revision
     }
 
     pub(crate) fn application_id(&self) -> &str {
@@ -174,6 +182,8 @@ impl DefaultspackDesktopMetadata {
                     system_pack_descriptors: "[]".into(),
                     update_target_descriptors: "[]".into(),
                 },
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare: None,
         }
     }
 
@@ -194,6 +204,16 @@ pub(crate) struct PreparedShellRuntime {
     pub(crate) catalog_revision: String,
     pub(crate) base_pack_id: String,
     pub(crate) shell: PreparedShellArtifact,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) native_provider_prepare:
+        Option<crate::defaultspack_manager::ProviderPrepareListener>,
+}
+
+struct ReadyDefaultspack {
+    metadata: DefaultspackDesktopMetadata,
+    bootstrap_secret: String,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    native_provider_prepare: Option<crate::defaultspack_manager::ProviderPrepareListener>,
 }
 
 #[derive(Debug, Clone)]
@@ -482,8 +502,10 @@ pub(crate) fn prepare_defaultspack_shell_runtime_url(
     let launch_route = &frontend_entry.entry.route;
     crate::health_check::validate_application_route(launch_route)?;
     with_defaultspack_launch_coordination(deadline, || {
-        let (metadata, bootstrap_secret) =
+        let ready =
             ensure_defaultspack_desktop_ready(app, config, deadline, LaunchMetadataUse::Shell)?;
+        let metadata = ready.metadata;
+        let bootstrap_secret = ready.bootstrap_secret;
         // A panel-ready listener can still have a failed conversation backend.
         // Shell admission requires the authenticated runtime-ready transition.
         wait_for_shell_runtime_ready(metadata.port, &bootstrap_secret, deadline)?;
@@ -513,6 +535,10 @@ pub(crate) fn prepare_defaultspack_shell_runtime_url(
                 artifact_digest: metadata.shell_artifact_digest.clone(),
                 entrypoint_digest: metadata.shell_entrypoint_digest.clone(),
             },
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare: ready
+                .native_provider_prepare
+                .filter(|listener| listener.owns_socket()),
         })
     })
 }
@@ -749,7 +775,7 @@ fn ensure_defaultspack_desktop_ready(
     config: &AppConfig,
     deadline: Instant,
     purpose: LaunchMetadataUse,
-) -> AnyResult<(DefaultspackDesktopMetadata, String)> {
+) -> AnyResult<ReadyDefaultspack> {
     crate::preparation_budget::check(deadline)?;
     let manager = app.state::<Arc<DefaultspackManager>>();
     let api_token = read_desktop_api_token_from_config(config)
@@ -766,6 +792,12 @@ fn ensure_defaultspack_desktop_ready(
             error!("launch_defaultspack_desktop_impl: failed to read defaultspack metadata: {e:#}");
             return Err(e);
         }
+    };
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    let (metadata, verified_provider) = {
+        let mut metadata = metadata;
+        let verified_provider = metadata.native_provider_prepare.take();
+        (metadata, verified_provider)
     };
     publish_active_host_contract(
         config,
@@ -901,6 +933,14 @@ fn ensure_defaultspack_desktop_ready(
     if !is_launcher_owned_defaultspack_listener(&manager, &listener, &metadata)? {
         bail!("replacement Defaultspack listener is not owned by this Launcher");
     }
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    let native_provider_prepare = verified_provider.and_then(|proof| {
+        crate::defaultspack_manager::ProviderPrepareListener::observe(
+            proof,
+            &metadata,
+            listener.pid,
+        )
+    });
     let observed_identity = crate::health_check::authenticated_runtime_identity_until(
         metadata.port,
         &panel_bootstrap_secret,
@@ -935,7 +975,15 @@ fn ensure_defaultspack_desktop_ready(
     // Registration and its mandatory audit finish together, even if the
     // admission budget expires during that safety finalization.
     crate::preparation_budget::check(deadline)?;
-    Ok((metadata, panel_bootstrap_secret))
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    let native_provider_prepare = native_provider_prepare
+        .and_then(|listener| manager.capture_provider_listener(listener).ok().flatten());
+    Ok(ReadyDefaultspack {
+        metadata,
+        bootstrap_secret: panel_bootstrap_secret,
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        native_provider_prepare,
+    })
 }
 
 fn write_guardian_ready_audit(
@@ -1163,6 +1211,8 @@ pub(crate) fn assemble_defaultspack_desktop_metadata(
         application_id: authority.application_id,
         base_pack_id: authority.base_pack_id,
         shell_provider_id: authority.shell_provider_id,
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        native_provider_prepare: None,
     })
 }
 

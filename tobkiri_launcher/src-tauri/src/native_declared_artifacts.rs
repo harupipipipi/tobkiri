@@ -55,24 +55,27 @@ pub(crate) async fn collect_for_resolved_application(
     core: &Arc<Core>,
     sources: NativeApplicationSources,
 ) -> Result<(NativeApplicationSources, HostContractContributionValues)> {
-    collect(
+    let (sources, values, _) = collect(
         sources,
         |sources| core.inspect_declared_artifacts(sources),
         false,
-        async |_| (Ok(()), true),
+        async |_| (Ok(None::<()>), true),
     )
     .await
-    .0
+    .0?;
+    Ok((sources, values))
 }
 
 #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap"))]
-pub(crate) async fn collect_for_native_launch(
+pub(crate) async fn collect_for_native_launch<T>(
     sources: NativeApplicationSources,
     invocation: tobkiri_core::NativeSetupInvocation,
     cancellation: &tobkiri_gate::CoreCancellation,
     observe_activation: bool,
-    observe: impl AsyncFnOnce(&NativeArtifactInspection<NativeApplicationSources>) -> (Result<()>, bool),
-) -> (Collection, bool) {
+    observe: impl AsyncFnOnce(
+        &NativeArtifactInspection<NativeApplicationSources>,
+    ) -> (Result<Option<T>>, bool),
+) -> (Collection<T>, bool) {
     collect(
         sources,
         |sources| NativeArtifactInspection::from_invocation(sources, invocation, cancellation),
@@ -82,9 +85,13 @@ pub(crate) async fn collect_for_native_launch(
     .await
 }
 
-type Collection = Result<(NativeApplicationSources, HostContractContributionValues)>;
+type Collection<T> = Result<(
+    NativeApplicationSources,
+    HostContractContributionValues,
+    Option<T>,
+)>;
 
-async fn collect(
+async fn collect<T>(
     sources: NativeApplicationSources,
     inspect: impl FnOnce(
         NativeApplicationSources,
@@ -93,8 +100,10 @@ async fn collect(
         NativeArtifactError,
     >,
     observe_activation: bool,
-    observe: impl AsyncFnOnce(&NativeArtifactInspection<NativeApplicationSources>) -> (Result<()>, bool),
-) -> (Collection, bool) {
+    observe: impl AsyncFnOnce(
+        &NativeArtifactInspection<NativeApplicationSources>,
+    ) -> (Result<Option<T>>, bool),
+) -> (Collection<T>, bool) {
     let declared = match declared_artifact_for_role(
         &sources.authority().verified_artifacts,
         CONTRIBUTION_PATH,
@@ -105,7 +114,10 @@ async fn collect(
         Err(error) => return (Err(error), true),
     };
     if !declared && !observe_activation {
-        return (Ok((sources, HostContractContributionValues::empty())), true);
+        return (
+            Ok((sources, HostContractContributionValues::empty(), None)),
+            true,
+        );
     }
     let mut inspection = match inspect(sources) {
         Ok(inspection) => inspection,
@@ -114,12 +126,14 @@ async fn collect(
     let (activation, activation_cleanup_verified) = if observe_activation {
         observe(&inspection).await
     } else {
-        (Ok(()), true)
+        (Ok(None), true)
     };
     let values = match activation {
         Err(error) => Err(error),
-        Ok(()) if declared => collect_from_inspection(&mut inspection).await,
-        Ok(()) => Ok(HostContractContributionValues::empty()),
+        Ok(activation) if declared => collect_from_inspection(&mut inspection)
+            .await
+            .map(|values| (values, activation)),
+        Ok(activation) => Ok((HostContractContributionValues::empty(), activation)),
     };
     // Retire and join before reporting either the value or the parser error.
     let sources = inspection.finish().await;
@@ -194,12 +208,12 @@ async fn read_declared_json_artifact(
     parse_json_artifact(bytes.as_bytes(), label).map(Some)
 }
 
-fn finish_collection(
-    values: Result<HostContractContributionValues>,
+fn finish_collection<T>(
+    values: Result<(HostContractContributionValues, Option<T>)>,
     sources: Result<NativeApplicationSources>,
-) -> Result<(NativeApplicationSources, HostContractContributionValues)> {
+) -> Collection<T> {
     match (values, sources) {
-        (Ok(values), Ok(sources)) => Ok((sources, values)),
+        (Ok((values, activation)), Ok(sources)) => Ok((sources, values, activation)),
         (Err(error), Ok(_)) => Err(error),
         (Ok(_), Err(error)) => Err(error),
         (Err(error), Err(cleanup_error)) => Err(error).with_context(|| {
@@ -214,7 +228,7 @@ mod tests {
 
     #[test]
     fn read_failure_remains_the_source_when_cleanup_also_fails() {
-        let error = finish_collection(
+        let error = finish_collection::<()>(
             Err(anyhow::anyhow!("original declared artifact read failure")),
             Err(anyhow::anyhow!("physical cleanup failure")),
         )
@@ -228,9 +242,9 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_failure_prevents_publishing_parsed_contributions() {
+    fn cleanup_failure_prevents_publishing_contributions_and_activation() {
         let error = finish_collection(
-            Ok(HostContractContributionValues::empty()),
+            Ok((HostContractContributionValues::empty(), Some("activation"))),
             Err(anyhow::anyhow!("physical cleanup failure")),
         )
         .err()
