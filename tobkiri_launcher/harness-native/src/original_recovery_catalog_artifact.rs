@@ -1,6 +1,7 @@
 //! The completed loader and the exact replacement rows used by recovery.
 use super::*;
 pub(in crate::original_authority::io::publication) use artifact_identity::ArtifactTreeIdentity;
+use shell_inputs::RecoveryShellVariant;
 use std::sync::Mutex;
 
 /// Result of checking the current catalog binding and the selected package bytes.
@@ -87,27 +88,15 @@ impl<'a> RecoveryCatalogInputs<'a> {
         profile: &CoreValue,
         profile_id: &str,
     ) -> Result<ArtifactTreeIdentity> {
-        let selected = self.io.recovery_identity_variant(op, profile)?;
-        let (root, parent) = self.artifact_anchor()?;
-        let identity = artifact_identity::capture(
-            op,
-            &self.io.budget,
-            root,
-            selected.relative(),
-            parent,
-            None,
-        )?;
-        self.io.verify_recovery_shell_binding(
-            op,
-            &selected,
-            profile_id,
-            self.profiles,
-            self.admitted,
-        )?;
-        artifact_identity::SelectedPackage::new(root, selected.relative(), parent, &identity)
-            .verify(op, &self.io.budget, selected.variant())?;
-        self.require_committed_artifact_identity(op, profile, &identity)?;
-        Ok(identity)
+        self.io.verify_exact_artifact(op, profile, |op, selected| {
+            self.io.verify_recovery_shell_binding(
+                op,
+                selected,
+                profile_id,
+                self.profiles,
+                self.admitted,
+            )
+        })
     }
 
     /// Verify the exact active package or classify a physically verified successor.
@@ -136,7 +125,7 @@ impl<'a> RecoveryCatalogInputs<'a> {
                     self.admitted,
                 )?;
                 outcome = classification;
-                let (root, parent) = self.artifact_anchor()?;
+                let (root, parent) = self.io.artifact_anchor()?;
                 artifact_identity::verify_active_package(
                     op,
                     &self.io.budget,
@@ -197,27 +186,97 @@ impl<'a> RecoveryCatalogInputs<'a> {
         profile: &CoreValue,
         expected: &ArtifactTreeIdentity,
     ) -> Result<()> {
-        let selected = self.io.recovery_identity_variant(op, profile)?;
-        let (root, parent) = self.artifact_anchor()?;
-        let current = artifact_identity::capture(
+        self.io
+            .require_exact_artifact_identity(op, profile, expected)
+    }
+}
+
+impl CatalogIo {
+    // The ordinary activation caller will enter this only after its first
+    // workspace recovery and resolved record checks. Exercise it with physical
+    // package fixtures until that caller runs the full transaction.
+    #[cfg(test)]
+    pub(in crate::original_authority::io::publication) fn verify_initial_artifact<
+        S: crate::BootstrapReviewOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        profile_id: &str,
+        source_profile: &CoreValue,
+    ) -> Result<ArtifactTreeIdentity> {
+        self.verify_exact_artifact(op, profile, |op, selected| {
+            self.verify_initial_shell_binding(op, selected, profile_id, source_profile)
+        })
+    }
+
+    fn verify_exact_artifact<S: crate::BootstrapReviewOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        check_binding: impl FnOnce(&Operation<'_, S>, &RecoveryShellVariant) -> Result<()>,
+    ) -> Result<ArtifactTreeIdentity> {
+        let (selected, identity) =
+            artifact_identity::bounded(op, artifact_identity::identity_timeout, |op| {
+                self.capture_exact_artifact(op, profile)
+            })?;
+        artifact_identity::bounded(
             op,
-            &self.io.budget,
-            root,
-            selected.relative(),
-            parent,
-            None,
+            || {
+                artifact_identity::artifact_rejected(
+                    "packaged artifact verification deadline exceeded",
+                )
+            },
+            |op| {
+                check_binding(op, &selected)?;
+                let (root, parent) = self.artifact_anchor()?;
+                artifact_identity::SelectedPackage::new(
+                    root,
+                    selected.relative(),
+                    parent,
+                    &identity,
+                )
+                .verify(op, &self.budget, selected.variant())
+            },
         )?;
-        artifact_identity::require_same(op, &self.io.budget, expected, &current)
+        self.require_exact_artifact_identity(op, profile, &identity)?;
+        Ok(identity)
+    }
+
+    pub(in crate::original_authority::io::publication) fn require_exact_artifact_identity<
+        S: crate::BootstrapReviewOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        expected: &ArtifactTreeIdentity,
+    ) -> Result<()> {
+        artifact_identity::bounded(op, artifact_identity::identity_timeout, |op| {
+            let (_, current) = self.capture_exact_artifact(op, profile)?;
+            artifact_identity::require_same(op, &self.budget, expected, &current)
+        })
+    }
+
+    fn capture_exact_artifact<S: crate::BootstrapReviewOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+    ) -> Result<(RecoveryShellVariant, ArtifactTreeIdentity)> {
+        let selected = self.recovery_identity_variant(op, profile)?;
+        let (root, parent) = self.artifact_anchor()?;
+        let current =
+            artifact_identity::capture(op, &self.budget, root, selected.relative(), parent, None)?;
+        Ok((selected, current))
     }
 
     fn artifact_anchor(&self) -> Result<(&Path, Identity)> {
-        let root = self.io.artifact_root.as_deref().ok_or_else(|| {
+        let root = self.artifact_root.as_deref().ok_or_else(|| {
             raw(
                 recovery_workspace::APP_DENIED,
                 "active Profile Shell artifact is unavailable",
             )
         })?;
-        let parent = self.io.artifact_parent_identity.ok_or_else(|| {
+        let parent = self.artifact_parent_identity.ok_or_else(|| {
             OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Path,
                 "committed recovery artifact parent is not held",

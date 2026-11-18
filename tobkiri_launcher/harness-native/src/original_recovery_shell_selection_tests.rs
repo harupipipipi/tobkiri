@@ -48,7 +48,7 @@ fn fixture_catalog(
     definition: Value,
     pack_digest: Option<Digest>,
 ) -> CatalogIo {
-    fixture_catalog_with_pack_kind(op, budget, definition, pack_digest, "shell")
+    fixture_catalog_with_pack_kind(op, budget, definition, pack_digest, "shell", None)
 }
 
 fn fixture_catalog_with_pack_kind(
@@ -57,6 +57,7 @@ fn fixture_catalog_with_pack_kind(
     definition: Value,
     pack_digest: Option<Digest>,
     kind: &str,
+    bundled_profile: Option<Value>,
 ) -> CatalogIo {
     let runtime = &op.owner.root;
     fs::create_dir_all(runtime).unwrap();
@@ -71,13 +72,19 @@ fn fixture_catalog_with_pack_kind(
     .unwrap();
     io.select_packaged(&runtime.join("fixture-catalog"))
         .unwrap();
-    io.retain_recovery_pack_pins();
+    if bundled_profile.is_some() {
+        io.retain_publication_inputs();
+    } else {
+        io.retain_recovery_pack_pins();
+    }
     io.bind_loader(CoreValue::string("fixture-catalog", budget).unwrap())
         .unwrap();
     let mut occurrences = vec![
         (
             "profile",
-            json!({"profile_id": PROFILE, "shell": {"contract_id": "bundled.template"}}),
+            bundled_profile.unwrap_or_else(
+                || json!({"profile_id": PROFILE, "shell": {"contract_id": "bundled.template"}}),
+            ),
         ),
         ("shell", definition),
     ];
@@ -145,7 +152,7 @@ async fn active_verification_distinguishes_current_and_verified_successor_artifa
         predecessor["shell"]["executable_artifact_digest"] = json!(Digest::hash(b"old entrypoint"));
         let verify = |definition: &Value, registered: &Value, profile: &Value, digest, kind| {
             let mut io =
-                fixture_catalog_with_pack_kind(&op, budget, definition.clone(), digest, kind);
+                fixture_catalog_with_pack_kind(&op, budget, definition.clone(), digest, kind, None);
             io.artifact_parent_identity = Some(identity(&fs::metadata(&source.root).unwrap()));
             let rows = guest(&json!([[PROFILE, registered]]), budget);
             RecoveryCatalogInputs::new(&io, &rows, None).verify_active_artifact(
@@ -178,6 +185,7 @@ async fn active_verification_distinguishes_current_and_verified_successor_artifa
             definition.clone(),
             Some(artifact_digest.clone()),
             "shell",
+            None,
         );
         let rows = guest(&json!([[PROFILE, registered]]), budget);
         let registered_catalog = RecoveryCatalogInputs::new(&io, &rows, None);
@@ -286,9 +294,20 @@ async fn recovery_catalog_verifies_the_selected_package_and_refuses_replaced_byt
         variant["bundle_identity"] = json!("io.tobkiri.fixture");
         let mut profile = committed_profile();
         profile["shell"]["executable_artifact_digest"] = json!(Digest::hash(mach_o));
-        let verify = |shell, profile: &Value| {
-            let mut io = fixture_catalog(&op, budget, shell, Some(Digest::hash(b"committed Pack")));
+        let catalog = |shell, bundled_profile| {
+            let mut io = fixture_catalog_with_pack_kind(
+                &op,
+                budget,
+                shell,
+                Some(Digest::hash(b"committed Pack")),
+                "shell",
+                bundled_profile,
+            );
             io.artifact_parent_identity = Some(identity(&fs::metadata(&source.root).unwrap()));
+            io
+        };
+        let verify = |shell, profile: &Value| {
+            let io = catalog(shell, None);
             let rows = guest(&json!([[PROFILE, profile]]), budget);
             RecoveryCatalogInputs::new(&io, &rows, None)
                 .verify_committed_artifact(&op, &guest(profile, budget), PROFILE)
@@ -335,6 +354,54 @@ async fn recovery_catalog_verifies_the_selected_package_and_refuses_replaced_byt
             changed_shell["launch"]["variants"][1][key] = value;
             assert_denied(verify(changed_shell, &changed_profile), message);
         }
+
+        let mut reread = profile.clone();
+        reread["shell"]["definition_revision"] = json!(Digest::hash(b"source revision"));
+        reread["shell"]["artifact_digest"] = json!(Digest::hash(b"source Pack"));
+        let resolved = guest(&profile, budget);
+        let source_profile = |io: &CatalogIo| {
+            io.shell_inputs
+                .as_ref()
+                .unwrap()
+                .find(Kind::Profile, "profile_id", PROFILE, budget)
+                .unwrap()
+                .unwrap()
+        };
+        let io = catalog(shell.clone(), Some(reread.clone()));
+        let captured = io
+            .verify_initial_artifact(&op, &resolved, PROFILE, &source_profile(&io))
+            .unwrap();
+
+        // Recovery's checked replacement may still match the resolved Shell
+        // when the independent bundled source no longer does.
+        reread["shell"]["executable_artifact_digest"] = json!(Digest::hash(b"other entrypoint"));
+        let mismatched = catalog(shell.clone(), Some(reread));
+        let error = mismatched
+            .verify_initial_artifact(&op, &resolved, PROFILE, &source_profile(&mismatched))
+            .err()
+            .unwrap();
+        assert_eq!(error.class, RECOVERY_APP_DENIED);
+        assert_eq!(
+            error.message,
+            "active Profile Shell artifact is unavailable"
+        );
+        let rows = guest(&json!([[PROFILE, profile]]), budget);
+        RecoveryCatalogInputs::new(&mismatched, &rows, None)
+            .verify_committed_artifact(&op, &resolved, PROFILE)
+            .unwrap();
+
+        let replacement = source.root.join("replacement-entrypoint");
+        fs::write(&replacement, mach_o).unwrap();
+        fs::rename(&replacement, &binary).unwrap();
+        let error = io
+            .require_exact_artifact_identity(&op, &resolved, &captured)
+            .unwrap_err();
+        assert_eq!(error.class, RECOVERY_APP_DENIED);
+        assert_eq!(
+            error.message,
+            "active Profile Shell artifact changed after verification"
+        );
+
         fs::write(&binary, b"the replaced bytes").unwrap();
         assert_denied(
             verify(shell, &profile),

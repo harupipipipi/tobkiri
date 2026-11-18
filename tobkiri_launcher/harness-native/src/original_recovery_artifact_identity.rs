@@ -948,7 +948,7 @@ fn denied(message: &'static str) -> OriginalAuthorityError {
     raw(RECOVERY_APP_DENIED, message)
 }
 
-fn identity_timeout() -> OriginalAuthorityError {
+pub(super) fn identity_timeout() -> OriginalAuthorityError {
     raw(
         "ecosystem.defaultspack.domain._profile_runtime_records.ActivationLockTimeout",
         "artifact identity verification deadline exceeded",

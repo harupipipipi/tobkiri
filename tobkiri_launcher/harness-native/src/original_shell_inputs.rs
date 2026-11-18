@@ -388,6 +388,35 @@ impl CatalogIo {
         profiles: &CoreValue,
         admitted_closure: Option<&CoreValue>,
     ) -> Result<()> {
+        self.verify_current_shell_binding(op, selected, admitted_closure, || {
+            registered_shell(profiles, profile_id, &self.budget)
+        })
+    }
+
+    /// The independent publication loader supplies both the source Profile
+    /// and the bundled Pack pin for the selected Shell.
+    #[cfg(test)]
+    pub(super) fn verify_initial_shell_binding<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        selected: &RecoveryShellVariant,
+        profile_id: &str,
+        source_profile: &CoreValue,
+    ) -> Result<()> {
+        self.verify_current_shell_binding(op, selected, None, || {
+            Ok(source_profile.get_key("shell").filter(|shell| {
+                text_is(source_profile, "profile_id", profile_id) && shell.object().is_some()
+            }))
+        })
+    }
+
+    fn verify_current_shell_binding<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        selected: &RecoveryShellVariant,
+        admitted_closure: Option<&CoreValue>,
+        source_shell: impl FnOnce() -> Result<Option<CoreValue>>,
+    ) -> Result<()> {
         op.check(OriginalAuthorityStage::Source)?;
         if !text_is(&selected.definition, "availability", "verified") {
             return Err(shell_denied(
@@ -395,8 +424,7 @@ impl CatalogIo {
             ));
         }
         let unavailable = || shell_denied("active Profile Shell artifact is unavailable");
-        let registered =
-            registered_shell(profiles, profile_id, &self.budget)?.ok_or_else(unavailable)?;
+        let source_shell = source_shell()?.ok_or_else(unavailable)?;
         let shell = &selected.committed_shell;
         if ![
             "provider_id",
@@ -407,7 +435,7 @@ impl CatalogIo {
             "executable_artifact_digest",
         ]
         .into_iter()
-        .all(|key| same_text(shell, &registered, key))
+        .all(|key| same_text(shell, &source_shell, key))
             || !same_text(shell, &selected.definition, "definition_revision")
         {
             return Err(unavailable());
