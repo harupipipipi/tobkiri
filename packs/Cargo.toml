@@ -6,6 +6,7 @@ members = [
   "local.provider-model-access-rust",
   "local.provider-registry-rust",
   "local.model-registry-rust",
+  "local.saved-conversation-rust",
   "local.ai-usage-cost-rust",
   "local.ai-stream-normalizer-rust",
   "local.ai-gateway-finalizer-rust",

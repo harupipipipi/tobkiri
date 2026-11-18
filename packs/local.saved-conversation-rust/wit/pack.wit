@@ -1,0 +1,19 @@
+package local:saved-conversation@1.0.0;
+
+interface data {
+  /// Original conversation owner document retained in private DATA.
+  type owner-document = string;
+}
+
+interface model {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Read the conversation's stored model at the exact expected revision.
+  select: func(conversation-id: string, conversation-revision: u64) -> result<string, error>;
+}
+
+world pack {
+  include tobkiri:core/pack-minimal@1.2.0;
+  import tobkiri:core/storage@1.2.0;
+  export model;
+}

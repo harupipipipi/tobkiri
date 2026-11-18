@@ -243,13 +243,21 @@ jobs:
             --features component
           cargo build --locked --release --target wasm32-wasip2 \
             --manifest-path packs/Cargo.toml -p tobkiri-pack-openai-compat-provider
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/model-registry-conversation-owner.log" --expected-passed 4 -- \
+            cargo test --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-saved-conversation-rust --features component --lib
+          cargo build --locked --release --target wasm32-wasip2 \
+            --manifest-path packs/Cargo.toml -p tobkiri-pack-saved-conversation-rust \
+            --features component
           export TOBKIRI_TEST_MODEL_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_model_registry_rust.wasm"
           export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
           export TOBKIRI_TEST_REGISTERED_OPENAI_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_openai_compat_provider.wasm"
+          export TOBKIRI_TEST_SAVED_CONVERSATION_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_saved_conversation_rust.wasm"
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/model-registry-wasm.log" --expected-passed 3 -- \
             cargo test --locked -p tobkiri-e2e --test model_registry -- \
-            --ignored --test-threads=1
+            --ignored --test-threads=1 --skip registered_network::real_1b_saved_model_streams_through_admitted_ui
       - name: Retain Model Registry runtime evidence
         if: always()
         uses: actions/upload-artifact@v4

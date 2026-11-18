@@ -5,10 +5,11 @@ use std::{
     collections::BTreeMap,
     fs,
     io::{BufRead, BufReader, Read, Write},
-    net::TcpListener,
+    net::{Ipv4Addr, SocketAddrV4, TcpListener},
     thread,
     time::{Duration, Instant},
 };
+use tobkiri_canon::ids::ProfileId;
 use tobkiri_core::UiAttachment;
 use tobkiri_manifest::{
     PackManifest, PortDeclaration, Ports, RuntimeConfig, RuntimeSpec, ShapeDefinition, ShapeKind,
@@ -18,6 +19,10 @@ use tobkiri_manifest::{
 const LLM: &str = "local.harness-chat.llm-provider@1.0";
 const MODEL_ROUTE: &str = "local.model-registry.routing@1.0";
 const PROVIDER_ROUTE: &str = "local.provider-registry.routing@1.0";
+const SAVED_PACK: &str = "local.saved-conversation";
+const SAVED_MODEL: &str = "local.saved-conversation.model@1.0";
+const SAVED_DATA: &str = "local.saved-conversation.data@1.0";
+const CONVERSATION_FIXTURE: &str = include_str!("../../fixtures/saved-conversation-owner.json");
 const UI: &str = "local.harness-chat";
 
 fn ports(shape: &str) -> Result<PortDeclaration> {
@@ -29,7 +34,10 @@ fn ports(shape: &str) -> Result<PortDeclaration> {
     })
 }
 
-fn manifest(id: &str, runtime: RuntimeSpec) -> Result<PackManifest> {
+fn manifest(id: &str, runtime: RuntimeSpec, wall_ms: u64) -> Result<PackManifest> {
+    let mut permissions = registry::store_permissions();
+    permissions.wasm.wall_ms = wall_ms;
+    permissions.loops.max_wall_ms = wall_ms;
     Ok(PackManifest {
         format: "tobkiri.pack/1".into(),
         id: id.parse()?,
@@ -42,19 +50,19 @@ fn manifest(id: &str, runtime: RuntimeSpec) -> Result<PackManifest> {
         flows: vec![],
         overlays: vec![],
         stores: vec![],
-        permissions: registry::store_permissions(),
+        permissions,
         ui: None,
         files: vec![],
     })
 }
 
-fn streaming_packs(root: &Path, origins: &[String]) -> Result<[RegistryPack; 2]> {
+fn streaming_packs(root: &Path, origins: &[String], wall_ms: u64) -> Result<[RegistryPack; 2]> {
     let artifact = std::env::var_os("TOBKIRI_TEST_REGISTERED_OPENAI_COMPONENT")
         .context("source-built registered OpenAI component required")?;
     let repository = support::repo();
     let chat_wit = fs::read(repository.join("packs/shapes/harness-chat.wit"))?;
     let core = fs::read(repository.join("crates/tobkiri-wit/wit/core/core.wit"))?;
-    let mut ui = manifest(UI, RuntimeSpec::Data)?;
+    let mut ui = manifest(UI, RuntimeSpec::Data, wall_ms)?;
     let llm = ports(LLM)?;
     ui.shapes.push(ShapeDefinition {
         name: llm.shape.clone(),
@@ -84,7 +92,6 @@ fn streaming_packs(root: &Path, origins: &[String]) -> Result<[RegistryPack; 2]>
             ),
         ]),
     )?;
-
     let mut openai = manifest(
         "local.openai-compat-provider",
         RuntimeSpec::Wasm {
@@ -96,6 +103,7 @@ fn streaming_packs(root: &Path, origins: &[String]) -> Result<[RegistryPack; 2]>
                 shape: None,
             }),
         },
+        wall_ms,
     )?;
     openai.ports.provides.push(llm);
     openai.ports.consumes = vec![ports(MODEL_ROUTE)?, ports(PROVIDER_ROUTE)?];
@@ -200,9 +208,135 @@ fn api(listener: TcpListener) -> Result<(String, Value)> {
     Ok((path, request))
 }
 
-async fn stream(session: &Session, ui: &UiAttachment, reference: &str) -> Result<()> {
+async fn registered_core(
+    root: &Path,
+    origins: &[String],
+    wall_ms: u64,
+) -> Result<(Core, ProfileId)> {
+    let [model, provider] = packs(root)?;
+    let [ui, openai] = streaming_packs(root, origins, wall_ms)?;
+    let artifact = std::env::var_os("TOBKIRI_TEST_SAVED_CONVERSATION_COMPONENT")
+        .context("source-built saved conversation component required")?;
+    let saved = registry::pack(root, Path::new(&artifact), SAVED_PACK, &["model"], &[])?;
+    let owner = saved.pin.clone();
+    let mut profile = registry::profile(
+        "prof_registered_conversation",
+        &[model, provider, ui, openai, saved],
+        &[SETTINGS, PROVIDER_MANAGE, SAVED_MODEL],
+    )?;
+    profile.startup.ui = Some(UI.parse()?);
+    profile
+        .ceiling
+        .network
+        .origins
+        .extend(origins.iter().cloned());
+    profile.ceiling.wasm.wall_ms = wall_ms;
+    profile.ceiling.loops.max_wall_ms = wall_ms;
+    let user = profile
+        .user_permissions
+        .as_mut()
+        .context("missing User permissions")?;
+    user.wasm.wall_ms = wall_ms;
+    user.loops.max_wall_ms = wall_ms;
+    let host = Arc::new(Host::default());
+    *host.ui_enabled.lock().unwrap() = true;
+    host.utility_ports.lock().unwrap().extend([
+        (SETTINGS.into(), "list-models".into()),
+        (SETTINGS.into(), "save-model".into()),
+        (PROVIDER_MANAGE.into(), "apply".into()),
+        (SAVED_MODEL.into(), "select".into()),
+    ]);
+    host.approve_literal_user(&profile)?;
+    let data = root.join("data");
+    let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host)?;
+    let id = profile.id.clone();
+    core.save_profile(profile, None).await?;
+    let stores = TieredStore::open(&DataRoot::open(data)?, &id)?;
+    // The file is the output of the original Python ConversationStore; the
+    // test import keeps its bytes and does not manufacture a current model.
+    stores.register(
+        &owner.id,
+        "saved-conversation",
+        StoreTier::Private,
+        SAVED_DATA,
+    )?;
+    let seed = canon(&json!({"document":CONVERSATION_FIXTURE}))?;
+    stores.apply_seed(&owner.id, "saved-conversation", &owner.sha256, &seed)?;
+    Ok((core, id))
+}
+
+async fn select_saved_model(
+    session: &Session,
+    conversation: &str,
+    revision: u64,
+) -> Result<String> {
+    let selected = call(
+        session,
+        SAVED_MODEL,
+        "select",
+        json!({
+            "conversation-id":conversation, "conversation-revision":revision,
+        }),
+    )
+    .await?;
+    Ok(selected
+        .as_str()
+        .context("conversation owner returned no model")?
+        .to_owned())
+}
+
+fn admitted_ui(session: &Session) -> Result<UiAttachment> {
+    session.bind_ui_generation(7)?;
+    let [ui] = session
+        .ui_attachments()?
+        .try_into()
+        .ok()
+        .context("expected one admitted chat UI")?;
+    Ok(ui)
+}
+
+async fn save_connection(
+    session: &Session,
+    profile: &ProfileId,
+    provider: &str,
+    display_name: &str,
+    origin: &str,
+    revision: u64,
+) -> Result<u64> {
+    let connection = call(
+        session,
+        PROVIDER_MANAGE,
+        "apply",
+        json!({"payload": {
+            "operation": "save",
+            "profile_id": profile.as_str(),
+            "expected_revision": revision,
+            "record": {
+                "provider_instance_id": provider,
+                "adapter_id": "local-openai-compatible",
+                "display_name": display_name,
+                "endpoint": format!("{origin}/v1"),
+                "credential_handle": null,
+                "enabled": true
+            }
+        }}),
+    )
+    .await?;
+    let saved_revision = connection["store_revision"]
+        .as_u64()
+        .context("missing Provider Registry revision")?;
+    ensure!(connection["action"] == "saved" && saved_revision == revision + 1);
+    Ok(saved_revision)
+}
+
+async fn stream(
+    session: &Session,
+    ui: &UiAttachment,
+    reference: &str,
+    message: &str,
+) -> Result<Vec<Value>> {
     let arguments = canon(&json!({"prompt":{
-        "model":reference, "max-tokens":512, "messages":[{"role":"user","content":"Hello"}]
+        "model":reference, "max-tokens":512, "messages":[{"role":"user","content":message}]
     }}))?;
     let opened = within_session(
         session,
@@ -217,7 +351,8 @@ async fn stream(session: &Session, ui: &UiAttachment, reference: &str) -> Result
             &arguments,
         ),
     )
-    .await?;
+    .await
+    .with_context(|| format!("open registered stream for {reference}"))?;
     let opened: Value = serde_json::from_slice(opened.as_bytes())?;
     ensure!(opened["kind"] == "stream");
     let handle = opened["handle"].as_u64().context("stream handle")?;
@@ -228,20 +363,15 @@ async fn stream(session: &Session, ui: &UiAttachment, reference: &str) -> Result
             "pull registered stream",
             session.ui_stream_pull_buffer(&ui.session, handle, 8),
         )
-        .await?;
+        .await
+        .with_context(|| format!("pull registered stream for {reference}"))?;
         let batch: Vec<Value> = serde_json::from_slice(chunk.as_bytes())?;
         if batch.is_empty() {
             break;
         }
         output.extend(batch);
     }
-    ensure!(
-        output
-            .iter()
-            .any(|row| row["kind"] == "delta" && row["text"] == "local reply")
-    );
-    ensure!(output.iter().any(|row| row["kind"] == "done"));
-    Ok(())
+    Ok(output)
 }
 
 #[tokio::test]
@@ -257,53 +387,52 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
     let servers = listeners.map(|listener| thread::spawn(move || api(listener)));
     let root = physical_temp()?;
-    let [model, provider] = packs(root.path())?;
-    let [ui, openai] = streaming_packs(root.path(), &origins)?;
-    let mut profile = registry::profile(
-        "prof_registered_network",
-        &[model, provider, ui, openai],
-        &[SETTINGS, PROVIDER_MANAGE],
-    )?;
-    profile.startup.ui = Some(UI.parse()?);
-    profile
-        .ceiling
-        .network
-        .origins
-        .extend(origins.iter().cloned());
-    let host = Arc::new(Host::default());
-    *host.ui_enabled.lock().unwrap() = true;
-    host.utility_ports.lock().unwrap().extend([
-        (SETTINGS.into(), "save-model".into()),
-        (PROVIDER_MANAGE.into(), "apply".into()),
-    ]);
-    host.approve_literal_user(&profile)?;
-    let core = Core::open(
-        CoreConfig::for_test_data_root(root.path().join("data")),
-        host,
-    )?;
-    core.save_profile(profile.clone(), None).await?;
-    let session = core.start(&profile.id).await?;
+    let (core, profile) = registered_core(root.path(), &origins, 10_000).await?;
+    let session = core.start(&profile).await?;
     let checked = async {
-        for (revision, (origin, (route, cap))) in origins.iter().zip([("one",128),("two",256)]).enumerate() {
-            call(&session, PROVIDER_MANAGE, "apply", json!({"payload":{
-                "operation":"save", "profile_id":profile.id.as_str(), "expected_revision":revision,
-                "record":{"provider_instance_id":route,"adapter_id":"local-openai-compatible","display_name":route,
-                    "endpoint":format!("{origin}/v1"),"credential_handle":null,"enabled":true}
-            }})).await?;
-            save_model(&session, &json!({
-                "model_profile_id":format!("registered-{route}"),"model_id":format!("llama/{route}"),
-                "provider_instance_id":route,"display_name":route,"expected_revision":revision,
-                "provider_registry_revision":revision+1,"max_output_tokens":cap
-            })).await?;
+        for (origin, (route, cap, revision)) in
+            origins.iter().zip([("one", 128, 0), ("two", 256, 1)])
+        {
+            let provider_revision =
+                save_connection(&session, &profile, route, route, origin, revision).await?;
+            let model = json!({
+                "model_profile_id": format!("registered-{route}"),
+                "model_id": format!("llama/{route}"),
+                "provider_instance_id": route,
+                "display_name": route,
+                "expected_revision": revision,
+                "provider_registry_revision": provider_revision,
+                "max_output_tokens": cap
+            });
+            save_model(&session, &model).await?;
         }
-        session.bind_ui_generation(7)?;
-        let attachments = session.ui_attachments()?;
-        let [ui] = attachments.as_slice() else { anyhow::bail!("expected one admitted chat UI") };
-        ensure!(stream(&session, ui, "unregistered").await.is_err(), "unregistered model sent a request");
-        stream(&session, ui, "registered-one").await?;
-        stream(&session, ui, "registered-two").await?;
+        let ui = admitted_ui(&session)?;
+        ensure!(
+            stream(&session, &ui, "unregistered", "Hello")
+                .await
+                .is_err(),
+            "unregistered model sent a request"
+        );
+        let stale = select_saved_model(&session, "one", 1)
+            .await
+            .expect_err("stale model selection");
+        rejected(&stale, "conflict")?;
+        ensure!(call(&session, SAVED_MODEL, "select", json!({
+            "conversation-id":"one", "conversation-revision":2, "model-reference":"registered-two",
+        })).await.is_err(), "a request supplied its own model reference");
+        for conversation in ["one", "two"] {
+            let reference = select_saved_model(&session, conversation, 2).await?;
+            let events = stream(&session, &ui, &reference, "Hello").await?;
+            ensure!(
+                events
+                    .iter()
+                    .any(|row| row["kind"] == "delta" && row["text"] == "local reply")
+            );
+            ensure!(events.iter().any(|row| row["kind"] == "done"));
+        }
         Ok::<_, anyhow::Error>(())
-    }.await;
+    }
+    .await;
     let closed = session.close().await;
     checked?;
     closed?;
@@ -316,5 +445,125 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
         ensure!(request["max_tokens"] == cap);
         ensure!(request["messages"] == json!([{"role":"user","content":"Hello"}]));
     }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires source-built Wasm Packs and TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN"]
+async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
+    const MODEL: &str = "gemma3-1b-local";
+    const SELECTION: &str = "saved-gemma";
+    const PROVIDER: &str = "gemma-loopback";
+    const CAP: u32 = 16;
+    let origin = std::env::var("TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN")
+        .context("set TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN to the keyless llama.cpp origin")?;
+    let address: SocketAddrV4 = origin
+        .strip_prefix("http://")
+        .context("llama.cpp requires an HTTP loopback origin")?
+        .parse()
+        .context("llama.cpp origin must use a literal IPv4 address and port")?;
+    ensure!(
+        *address.ip() == Ipv4Addr::LOCALHOST
+            && address.port() >= 1024
+            && origin == format!("http://{address}"),
+        "llama.cpp requires a canonical http://127.0.0.1 origin with an unprivileged port"
+    );
+    let root = physical_temp()?;
+    let (core, profile) =
+        registered_core(root.path(), std::slice::from_ref(&origin), 30_000).await?;
+    let expected = json!({
+        "profiles": [{
+            "profile_id": SELECTION,
+            "display_name": "Gemma 3 1B",
+            "model_id": MODEL,
+            "provider_id": PROVIDER,
+            "route_configured": true,
+            "max_output_tokens": CAP
+        }],
+        "count": 1,
+        "registry_revision": 1
+    });
+    let session = core.start(&profile).await?;
+    let saved = async {
+        let provider_revision =
+            save_connection(&session, &profile, PROVIDER, "Local llama.cpp", &origin, 0).await?;
+        let model = json!({
+            "model_profile_id": SELECTION,
+            "model_id": MODEL,
+            "provider_instance_id": PROVIDER,
+            "display_name": "Gemma 3 1B",
+            "expected_revision": 0,
+            "provider_registry_revision": provider_revision,
+            "max_output_tokens": CAP
+        });
+        ensure!(
+            save_model(&session, &model).await? == expected,
+            "saved model differs from the selected route"
+        );
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    let closed = session.close().await;
+    saved?;
+    closed?;
+    drop(session);
+
+    let session = core.start(&profile).await?;
+    let streamed = async {
+        ensure!(
+            list(&session).await? == expected,
+            "saved model did not survive Session restart"
+        );
+        let reference = select_saved_model(&session, "gemma", 2).await?;
+        ensure!(reference == SELECTION);
+        let ui = admitted_ui(&session)?;
+        stream(
+            &session,
+            &ui,
+            &reference,
+            "Name two colors in a short sentence.",
+        )
+        .await
+    }
+    .await;
+    let closed = session.close().await;
+    let events = streamed?;
+    closed?;
+
+    let (done, deltas) = events
+        .split_last()
+        .context("registered stream returned no events")?;
+    ensure!(
+        done["kind"] == "done",
+        "registered stream ended without completion"
+    );
+    let mut text = String::new();
+    let mut delta_count = 0;
+    for event in deltas {
+        match event["kind"].as_str() {
+            Some("delta") => {
+                let delta = event["text"]
+                    .as_str()
+                    .filter(|text| !text.is_empty())
+                    .context("registered stream returned an empty text delta")?;
+                text.push_str(delta);
+                delta_count += 1;
+            }
+            Some("usage") => {}
+            _ => anyhow::bail!("unexpected registered stream event kind: {}", event["kind"]),
+        }
+    }
+    ensure!(
+        !text.trim().is_empty(),
+        "registered model returned no visible text"
+    );
+    ensure!(
+        done["text"] == text,
+        "completion text differs from the streamed deltas"
+    );
+    println!(
+        "registered real-1b receipt: selection={SELECTION} model={MODEL} plan_digest={} registry_revision=1 streamed_deltas={delta_count} done=true",
+        session.plan_digest()
+    );
     Ok(())
 }

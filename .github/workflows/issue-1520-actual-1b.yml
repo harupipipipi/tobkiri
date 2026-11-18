@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/issue-1520-actual-1b.yml'
       - 'crates/tobkiri-e2e/tests/llama.rs'
+      - 'crates/tobkiri-e2e/tests/model_registry/**'
+      - 'crates/tobkiri-e2e/fixtures/saved-conversation-owner.json'
+      - 'packs/local.saved-conversation-rust/**'
       - 'packs/local.openai-compat-provider/src/**'
       - 'packs/local.harness-prompt/**'
   workflow_dispatch:
@@ -39,7 +42,16 @@ jobs:
           targets: wasm32-wasip2
       - name: Build current verified Wasm Packs
         run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+      - name: Build the saved model and provider Registry components
+        id: registered_model_build
+        run: >-
+          cargo build --locked --release --target wasm32-wasip2
+          --manifest-path packs/Cargo.toml
+          -p tobkiri-pack-model-registry-rust -p tobkiri-pack-provider-registry-rust
+          -p tobkiri-pack-saved-conversation-rust -p tobkiri-pack-openai-compat-provider
+          --features tobkiri-pack-model-registry-rust/component,tobkiri-pack-provider-registry-rust/component,tobkiri-pack-saved-conversation-rust/component
       - name: Fetch the pinned upstream server and model on the runner
+        id: registered_model_assets
         shell: bash
         run: |
           umask 077
@@ -188,6 +200,47 @@ jobs:
             --log "$RUNNER_TEMP/actual-1b.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test llama -- --ignored --exact --nocapture \
               real_1b_input_flow_wasm_stream_persist_and_cancel
+
+      - name: Run the real 1B model selected by the saved Registries
+        if: ${{ !cancelled() && steps.registered_model_assets.conclusion == 'success' && steps.registered_model_build.conclusion == 'success' }}
+        shell: bash
+        run: |
+          umask 077
+          work="$RUNNER_TEMP/tobkiri-1b"
+          server="$work/server/llama-b11146/llama-server"
+          "$server" --model "$work/model.gguf" --offline --host 127.0.0.1 --port 18081 \
+            --ctx-size 4096 --parallel 1 --threads 4 --batch-size 512 --ubatch-size 128 \
+            --n-gpu-layers 0 --jinja --alias gemma3-1b-local --no-webui \
+            --log-verbosity 2 --log-colors off > "$work/registered-server.log" 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          ready=false
+          for attempt in {1..90}; do
+            kill -0 "$server_pid"
+            if curl --fail --silent --max-time 2 http://127.0.0.1:18081/health > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:18081/v1/models | \
+            python3 -B -c 'import json,sys; assert [m["id"] for m in json.load(sys.stdin)["data"]] == ["gemma3-1b-local"]'
+          export TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN=http://127.0.0.1:18081
+          export TOBKIRI_TEST_MODEL_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_model_registry_rust.wasm"
+          export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
+          export TOBKIRI_TEST_REGISTERED_OPENAI_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_openai_compat_provider.wasm"
+          export TOBKIRI_TEST_SAVED_CONVERSATION_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_saved_conversation_rust.wasm"
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/registered-1b.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test model_registry -- --ignored --exact --nocapture \
+              registered_network::real_1b_saved_model_streams_through_admitted_ui
       - name: Retain test receipt
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -196,4 +249,6 @@ jobs:
           path: |
             ${{ runner.temp }}/actual-1b.log
             ${{ runner.temp }}/actual-1b.receipt.json
+            ${{ runner.temp }}/registered-1b.log
+            ${{ runner.temp }}/registered-1b.receipt.json
           if-no-files-found: warn

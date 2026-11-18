@@ -861,6 +861,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-saved-conversation-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "serde_json",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-terminal-input"
 version = "0.1.0"
 dependencies = [
