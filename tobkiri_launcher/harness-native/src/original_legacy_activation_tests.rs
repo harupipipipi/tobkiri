@@ -19,15 +19,32 @@ fn read_json(path: &Path) -> Json {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
 }
 
+fn selected_id(resolved: &CoreValue, migration: bool) -> String {
+    let plan = field(resolved, "plan").unwrap();
+    let digest = field(&plan, "plan_digest").unwrap();
+    let digest = Digest::parse(digest.as_str().unwrap()).unwrap();
+    format!(
+        "activation:defaults-{}{}",
+        if migration { "migration-" } else { "" },
+        &digest.as_str()[7..23],
+    )
+}
+
 #[tokio::test(flavor = "current_thread")]
-async fn legacy_commit_preserves_original_phases_pending_digests_and_cleanup() {
-    for failure in [
-        None,
-        Some("prepared"),
-        Some("ready_without_authority"),
-        Some("committing"),
-        Some("before_authority_commit"),
-        Some("after_authority_commit"),
+async fn explicit_activation_ids_preserve_original_phases_pending_digests_and_cleanup() {
+    for (migration, failure) in [
+        (true, None),
+        (true, Some("prepared")),
+        (true, Some("ready_without_authority")),
+        (true, Some("committing")),
+        (true, Some("before_authority_commit")),
+        (true, Some("after_authority_commit")),
+        (false, None),
+        (false, Some("prepared")),
+        (false, Some("ready_without_authority")),
+        (false, Some("committing")),
+        (false, Some("before_authority_commit")),
+        (false, Some("after_authority_commit")),
     ] {
         with_setup_source(|source, publication, cancellation, budget| {
             let op = operation(publication, source, cancellation);
@@ -37,6 +54,7 @@ async fn legacy_commit_preserves_original_phases_pending_digests_and_cleanup() {
             let lock_name = LockName::workspace("defaults");
             let mut guard = PublicationLock::acquire_named(&op, &state, lock_name).unwrap();
             let resolved = candidate(budget);
+            let activation_id = selected_id(&resolved, migration);
             let created_at = string("2026-11-18T01:02:03Z", budget).unwrap();
             let digest = Digest::hash(b"workspace");
             let mut gates = 0;
@@ -51,6 +69,7 @@ async fn legacy_commit_preserves_original_phases_pending_digests_and_cleanup() {
                     budget,
                     Input {
                         profile_id: "defaults",
+                        activation_id: &activation_id,
                         resolved: &resolved,
                         created_at: &created_at,
                         schemas: workspace_active::tests::bound_recovery_schemas(),
@@ -71,6 +90,8 @@ async fn legacy_commit_preserves_original_phases_pending_digests_and_cleanup() {
                                 .join("activations")
                                 .join(pending["envelope_path"].as_str().unwrap());
                             let envelope = read_json(&envelope_path);
+                            assert_eq!(pending["activation_id"], activation_id);
+                            assert_eq!(envelope["activation"]["activation_id"], activation_id);
                             let (state, generation, authority_state) = match phase {
                                 "prepared" => ("prepared", 1, "prepared"),
                                 "ready_without_authority" => {
@@ -132,12 +153,7 @@ async fn legacy_commit_preserves_original_phases_pending_digests_and_cleanup() {
                     assert_eq!(authority_state, "active");
                     assert!(!directory_path.join("pending.json").exists());
                     let pointer = read_json(&directory_path.join("active.json"));
-                    let plan_digest = Digest::hash(b"legacy successor");
-                    let digest_suffix = &plan_digest.as_str()[7..23];
-                    assert_eq!(
-                        pointer["activation_id"],
-                        format!("activation:defaults-migration-{digest_suffix}")
-                    );
+                    assert_eq!(pointer["activation_id"], activation_id);
                     assert_eq!(pointer["workspace_digest"], digest.as_str());
                     let envelope_path = directory_path
                         .join("activations")
@@ -192,6 +208,7 @@ async fn identity_gates_preserve_precommit_abort_and_postcommit_pending() {
                 PublicationLock::acquire_named(&op, &state, LockName::workspace("defaults"))
                     .unwrap();
             let resolved = candidate(budget);
+            let activation_id = selected_id(&resolved, true);
             let created_at = string("2026-11-18T01:02:03Z", budget).unwrap();
             let mut gates = 0;
             let error = with_registered_store(&op, &source.root, |store| {
@@ -203,6 +220,7 @@ async fn identity_gates_preserve_precommit_abort_and_postcommit_pending() {
                     budget,
                     Input {
                         profile_id: "defaults",
+                        activation_id: &activation_id,
                         resolved: &resolved,
                         created_at: &created_at,
                         schemas: workspace_active::tests::bound_recovery_schemas(),
@@ -250,6 +268,7 @@ async fn postcommit_epoch_change_preserves_committed_pending_and_old_pointer() {
         let mut guard =
             PublicationLock::acquire_named(&op, &state, LockName::workspace("defaults")).unwrap();
         let resolved = candidate(budget);
+        let activation_id = selected_id(&resolved, true);
         let created_at = string("2026-11-18T01:02:03Z", budget).unwrap();
         let mut gates = 0;
         let error = with_registered_store(&op, &source.root, |store| {
@@ -261,6 +280,7 @@ async fn postcommit_epoch_change_preserves_committed_pending_and_old_pointer() {
                 budget,
                 Input {
                     profile_id: "defaults",
+                    activation_id: &activation_id,
                     resolved: &resolved,
                     created_at: &created_at,
                     schemas: workspace_active::tests::bound_recovery_schemas(),

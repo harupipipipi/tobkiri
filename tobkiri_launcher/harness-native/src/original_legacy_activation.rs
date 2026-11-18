@@ -1,4 +1,4 @@
-//! The original `_activate_locked` commit for a verified legacy successor.
+//! The original `_activate_locked` workspace journal for a verified candidate.
 use super::*;
 use crate::original_authority::io::{activation_authority, incomplete_reservations};
 use rusqlite::types::Value;
@@ -12,6 +12,9 @@ const PENDING_SCHEMA: &str = "io.tobkiri.defaultspack-pending-activation.v1";
 
 pub(super) struct Input<'a> {
     pub(super) profile_id: &'a str,
+    /// The caller's validated ID, derived from this resolved Plan. ID policy
+    /// belongs to the fresh, migration, or reconciliation caller.
+    pub(super) activation_id: &'a str,
     pub(super) resolved: &'a CoreValue,
     pub(super) created_at: &'a CoreValue,
     pub(super) schemas: BoundProfileSchemas,
@@ -21,8 +24,8 @@ pub(super) struct Input<'a> {
 ///
 /// The caller must first perform the original `_recover_locked` again under
 /// this lock, including incomplete-reservation cleanup. The candidate must
-/// have been freshly resolved and compared with the legacy records here, and
-/// its selected artifact must already have been verified outside this lock.
+/// have been validated by its caller, including any predecessor comparison,
+/// and its selected artifact must already have been verified outside this lock.
 pub(super) fn activate<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     store: &Store<'_, '_, S>,
@@ -61,18 +64,11 @@ fn activate_with_fault<S: OriginalAuthorityOwner>(
     let plan_digest = field(&plan, "plan_digest")?;
     let authority_digest = field(&profile, "profile_authority_snapshot_digest")?;
     let epoch = field(&plan, "security_epoch")?;
-    let _id_capacity = op.reserve(STAGE, input.profile_id.len().saturating_add(128))?;
-    let activation_id = format!(
-        "activation:{}-migration-{}",
-        input.profile_id,
-        &text(&plan_digest)?
-            .strip_prefix("sha256:")
-            .unwrap_or(text(&plan_digest)?)[..16],
-    );
+    let activation_id = input.activation_id;
     let reservation = activation_authority::reserve(
         store,
         activation_authority::ReservationInput {
-            activation_id: &activation_id,
+            activation_id,
             profile_id: input.profile_id,
             plan_digest: text(&plan_digest)?,
             profile_authority_digest: text(&authority_digest)?,
@@ -88,7 +84,7 @@ fn activate_with_fault<S: OriginalAuthorityOwner>(
     let envelope_path = Path::new("activations").join(&envelope_name);
     let binding = pending_reservation::Binding {
         reservation_id: &reservation.reservation_id,
-        activation_id: &activation_id,
+        activation_id,
         profile_id: input.profile_id,
         fencing_token: reservation.fencing_token,
     };
@@ -114,7 +110,7 @@ fn activate_with_fault<S: OriginalAuthorityOwner>(
                 input.schemas,
                 [&profile, &lock, &plan],
                 RecordState {
-                    activation_id: &activation_id,
+                    activation_id,
                     state: next,
                     generation,
                     fencing_token: reservation.fencing_token,
@@ -149,7 +145,7 @@ fn activate_with_fault<S: OriginalAuthorityOwner>(
             input.schemas,
             [&profile, &lock, &plan],
             RecordState {
-                activation_id: &activation_id,
+                activation_id,
                 state: "active",
                 generation: 4,
                 fencing_token: reservation.fencing_token,
@@ -189,7 +185,7 @@ fn activate_with_fault<S: OriginalAuthorityOwner>(
             budget,
             [
                 ("schema", string(workspace_active::POINTER_SCHEMA, budget)?),
-                ("activation_id", string(&activation_id, budget)?),
+                ("activation_id", string(activation_id, budget)?),
                 ("envelope_path", string(&envelope_name, budget)?),
                 ("envelope_digest", string(envelope_digest.as_str(), budget)?),
                 (

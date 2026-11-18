@@ -241,6 +241,14 @@ impl PublicationRead {
                                     }
                                     let schemas =
                                         profile_schemas.expect("validated legacy record schemas");
+                                    let _id_capacity = op.reserve(
+                                        OriginalAuthorityStage::Source,
+                                        profile_id.len().saturating_add(128),
+                                    )?;
+                                    let activation_id = format!(
+                                        "activation:{profile_id}-migration-{}",
+                                        &successor.plan_digest.as_str()[7..23],
+                                    );
                                     legacy_activation::activate(
                                         &op,
                                         store,
@@ -249,6 +257,7 @@ impl PublicationRead {
                                         budget,
                                         legacy_activation::Input {
                                             profile_id,
+                                            activation_id: &activation_id,
                                             resolved: &successor.resolved,
                                             created_at: &successor.created_at,
                                             schemas,
