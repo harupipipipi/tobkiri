@@ -172,6 +172,41 @@ def open_readonly(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
 
 
+def report_echo_save_failure(root: Path, identity: str) -> None:
+    """Print only the recent audit states for the failed fixture's save path."""
+    effects = {
+        json_digest({"kind": "port-call", "shape": STORE_SHAPE, "op": "append"}):
+        "append",
+    }
+    for operation in ("open", "sql-read", "sql-write"):
+        effects[json_digest({
+            "kind": "storage", "profile": identity, "owner": "local.echo-store",
+            "store": "conversations", "tier": "private", "operation": operation,
+        })] = operation
+    path = root / "profiles" / identity / "audit.sqlite"
+    try:
+        with closing(open_readonly(path)) as connection:
+            rows = connection.execute("""
+                SELECT json_extract(body, '$.payload.effect_digest'),
+                       json_extract(body, '$.kind'),
+                       json_extract(body, '$.payload.outcome.status'),
+                       json_extract(body, '$.payload.outcome.code')
+                FROM (SELECT CAST(body AS TEXT) AS body FROM audit
+                      ORDER BY seq DESC LIMIT 64)
+            """).fetchall()
+    except sqlite3.Error:
+        print("Echo save audit unavailable", file=sys.stderr)
+        return
+    states = []
+    for effect, *fields in reversed(rows):
+        if effect in effects:
+            states.append([effects[effect], *(
+                label if isinstance(label, str) and re.fullmatch(r"[a-z0-9-]{1,64}", label)
+                else None for label in fields
+            )])
+    print(f"Echo save audit states: {json.dumps(states)}", file=sys.stderr)
+
+
 def approve(
     command: list[str], pins: dict[str, str], root: Path,
     *, user_policy: dict[str, Any] | None = None,
@@ -373,7 +408,11 @@ def main(binary: str) -> None:
             "--name", "CLI source",
         ], pins, root)
         original = "cli-source-only-marker"
-        turn(cli, source, original)
+        try:
+            turn(cli, source, original)
+        except AssertionError:
+            report_echo_save_failure(root, source)
+            raise
         expected = [("user", original), ("assistant", f"Echo: {original}")]
         assert messages(root, source) == expected
 
