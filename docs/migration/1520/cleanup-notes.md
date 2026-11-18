@@ -4454,6 +4454,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   非UTF-8のUnix名は別途surrogateescapeに対応する伝送が必要。305文書すべての原文、
   独立した148件のpinとartifact rootを、同じ物理fixtureの呼び出し期限内で検証し、確保量は0に戻った。
   Rust 251件、strict Clippy、固定CPythonテスト263件、CIスクリプト14件が通過した。
+  `9f359850b` はダイジェスト・構造・意味を照合した同じ文書で、Base/Shellのrevisionを
+  指定フィールドを除いたcanonical bytesから照合する。検証済み応答ではゲストの再計算を
+  省き、古いrevisionや一時領域不足では元の文書を返して同じ制限下の原本診断へつなぐ。
+  実行目録の事前検査をRustに実装し、Packの存在、source identity、canonical digest、
+  manifestのpin件数を原本順に確認。末尾LFを含めpinの生表記を保持し、物理再読のdigestと
+  Lock・manifestを照合した。現行の実行目録側は物理試験で検証し、製品経路への接続は後続。
+  同梱3 revision・148実行目録、失敗順、古いBaseの同一バイト応答を確認した。
+  Rust 253件、strict Clippy、固定CPython 263件、producer 344件、CIスクリプト14件が通過。
   製品側でPythonのcatalog loaderを外す位置は`bootstrap_catalog.rs::load_bundle`のsource ownerと
   実manifest確認の後。Rustが全5種類の順序付き目録を所有し、文書の識別子重複、Base/Shellの
   canonical revision、実行目録のsource identity・canonical digest・pinを確認してから渡す必要がある。
@@ -4464,6 +4472,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   19件は通過。後続の両OSで旧Profile schemaパスの指定が0件に一致して失敗した。
   `9bfc0076e` で移動後のテストを指定し、全定義CIのフィルターと現行の件数を照合して
   Shell選択、Setup候補、物理カタログの期待件数も修正。4つの変更済みゲートをローカルで通過。
+  [修正後の定義CI 44328203667](https://github.com/harupipipipi/tobkiri/actions/runs/44328203667)
+  はLinuxとmacOSで通過。
   `f88735b2e` はコードキャッシュ派生の旧参照を削除し、ソースと計上値をどちらもLoader
   に束縛されたツリーから取る。原本の先行変更後に失敗していた専用6件を含めてproducer
   344件が通過した。
