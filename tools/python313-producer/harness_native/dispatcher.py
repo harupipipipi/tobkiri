@@ -818,6 +818,7 @@ class Dispatcher:
         digest = self._apply_original(lookup, caller="bootstrap-predecessor-source")
         packet = wire.dumps({"format": PREFIX + "bootstrap-predecessor-source-result.v1",
                              "scope": registry.scope.wire(), "digest": digest})
+        registry._bootstrap_predecessor_digest = digest
         registry._resolver_dynamic_stage = "bootstrap-predecessor-returned"
         return packet
 
@@ -858,7 +859,7 @@ class Dispatcher:
 
     def _bootstrap_fresh_confirmation(self, state: _State, frame: dict[str, Any]) -> str:
         registry = state.registry
-        if (set(frame) != {
+        if (set(frame) - {"pack_pin_predecessor"} != {
                     "format", "scope", "resolved", "profile_id", "snapshot", "epoch",
                     "definition_predecessor",
                 }
@@ -875,17 +876,32 @@ class Dispatcher:
                 "shell_definition_revision",
         }):
             raise InvalidFrame("invalid fixed bootstrap predecessor definition")
+        pin = frame.get("pack_pin_predecessor")
+        if pin is not None and (
+            type(pin) is not dict or set(pin) != {
+                "schema", "pointer_digest", "profile_id", "profile_revision", "activation_id",
+                "plan_digest", "lock_digest", "generation", "active_definition_digest",
+                "registry_profile_revision", "registry_store_generation", "registry_snapshot_digest",
+            }
+            or pin["schema"] != "io.tobkiri.defaults-pack-pin-predecessor.v1"
+            or type(pin["registry_profile_revision"]) is not str
+        ):
+            raise InvalidFrame("invalid fixed bootstrap Pack pin predecessor")
         resolved, profile_id, snapshot, security_epoch = registry._begin_bootstrap_confirmation(
             registry.reference(frame["resolved"]), registry.reference(frame["profile_id"]),
-            snapshot, epoch, has_predecessor=predecessor is not None,
+            snapshot, epoch, has_predecessor=predecessor is not None, pack_pin=pin,
         )
 
         def confirm():
             # The original outer caller makes this same shallow copy.
-            return dict(state.runtime.bootstrap_confirmation(
-                resolved=resolved, profile_id=profile_id, authority_snapshot_digest=snapshot,
-                security_epoch=security_epoch, definition_predecessor=predecessor,
-            ))
+            arguments = {
+                "resolved": resolved, "profile_id": profile_id,
+                "authority_snapshot_digest": snapshot, "security_epoch": security_epoch,
+                "definition_predecessor": predecessor,
+            }
+            if pin is not None:
+                arguments["pack_pin_predecessor"] = pin
+            return dict(state.runtime.bootstrap_confirmation(**arguments))
 
         confirmation = self._apply_original(confirm, caller="bootstrap-confirmation")
         created: list[tuple[Reference, int]] = []

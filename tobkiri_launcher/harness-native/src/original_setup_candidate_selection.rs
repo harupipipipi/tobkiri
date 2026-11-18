@@ -88,6 +88,8 @@ enum Progress {
     SnapshotStarted,
     PredecessorStarted,
     #[cfg(unix)]
+    PredecessorActivationStarted,
+    #[cfg(unix)]
     InactivePredecessorStarted,
     #[cfg(unix)]
     InactiveRegistryStarted,
@@ -100,7 +102,8 @@ impl Progress {
         match self {
             Self::Resolving | Self::SnapshotStarted | Self::PredecessorStarted => true,
             #[cfg(unix)]
-            Self::InactivePredecessorStarted
+            Self::PredecessorActivationStarted
+            | Self::InactivePredecessorStarted
             | Self::InactiveRegistryStarted
             | Self::InactiveJournalStarted => true,
             _ => false,
@@ -433,7 +436,33 @@ impl PublicationRead {
         }
     }
 
-    /// Recheck the original paths after the Pack pin predecessor returned None.
+    #[cfg(unix)]
+    pub(super) fn enter_predecessor_activation<S: OriginalAuthorityOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+    ) -> Result<()> {
+        self.check_resolver_root(owner, cancellation)?;
+        if self.fresh.progress != Progress::PredecessorStarted || !self.candidate_io_verified() {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Guard,
+                "Pack pin predecessor is outside the resolved candidate",
+            ));
+        }
+        self.fresh.progress = Progress::PredecessorActivationStarted;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    pub(super) fn predecessor_activation_root(&self) -> &Path {
+        self.fresh
+            .resolver_root
+            .as_ref()
+            .expect("resolver root")
+            .as_path()
+    }
+
+    /// Recheck the original inactive paths after the Pack pin predecessor check.
     #[cfg(unix)]
     pub(crate) fn inactive_predecessor_has_registry<S: OriginalAuthorityOwner>(
         &mut self,
@@ -442,7 +471,11 @@ impl PublicationRead {
         profile_id: &str,
     ) -> Result<bool> {
         self.check_resolver_root(owner, cancellation)?;
-        if self.fresh.progress != Progress::PredecessorStarted || !self.candidate_io_verified() {
+        if !matches!(
+            self.fresh.progress,
+            Progress::PredecessorStarted | Progress::PredecessorActivationStarted
+        ) || !self.candidate_io_verified()
+        {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Guard,
                 "inactive predecessor is outside the resolved candidate",

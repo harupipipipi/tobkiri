@@ -4,13 +4,19 @@ use super::*;
 const CONFIRM_REQUEST: &str = "io.tobkiri.native-bootstrap-fresh-confirmation.v1";
 const CONFIRM_RESPONSE: &str = "io.tobkiri.native-bootstrap-fresh-confirmation-result.v1";
 
+#[derive(Clone, Copy, Default)]
+pub(super) struct Predecessors<'a> {
+    pub(super) definition: Option<&'a CoreValue>,
+    pub(super) pack_pin: Option<&'a CoreValue>,
+}
+
 pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
     catalog: &catalog::ResolverCatalog,
     profile_id: &str,
-    predecessor: Option<&CoreValue>,
+    predecessors: Predecessors<'_>,
 ) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
@@ -35,6 +41,10 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         .resolver_authority
         .as_ref()
         .context("actual resolver Authority snapshot missing")?;
+    let nullable = |value: Option<&CoreValue>| match value {
+        Some(value) => Ok(value.share()),
+        None => CoreValue::null(pack.input_budget),
+    };
     let request = denied::frame(
         pack,
         CONFIRM_REQUEST,
@@ -49,13 +59,8 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
                 "epoch",
                 CoreValue::string(authority.security_epoch().decimal(), pack.input_budget)?,
             ),
-            (
-                "definition_predecessor",
-                match predecessor {
-                    Some(value) => value.share(),
-                    None => CoreValue::null(pack.input_budget)?,
-                },
-            ),
+            ("definition_predecessor", nullable(predecessors.definition)?),
+            ("pack_pin_predecessor", nullable(predecessors.pack_pin)?),
         ],
     )?;
     drop(resolved);
@@ -91,7 +96,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         profile_id,
         authority.snapshot_digest(),
         authority.security_epoch().decimal(),
-        predecessor,
+        predecessors,
         pack.input_budget,
     )?;
     let plan = &review
@@ -115,7 +120,7 @@ fn validate_confirmation(
     profile_id: &str,
     snapshot: &Digest,
     epoch: &str,
-    predecessor: Option<&CoreValue>,
+    predecessors: Predecessors<'_>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<()> {
     denied::exact(value, &["format", "scope", "root", "owned", "confirmation"])?;
@@ -127,7 +132,7 @@ fn validate_confirmation(
     let root = denied::field(value, "root")?;
     denied::reference(&root, scope)?;
     denied::ownership(value, &root, true)?;
-    const KEYS: [&str; 12] = [
+    let mut keys = [
         "confirmation_api_version",
         "operation_id",
         "profile_id",
@@ -140,23 +145,28 @@ fn validate_confirmation(
         "shell",
         "bindings",
         "definition_predecessor",
+        "pack_pin_predecessor",
     ];
-    let keys = if predecessor.is_some() {
-        &KEYS[..]
-    } else {
-        &KEYS[..KEYS.len() - 1]
-    };
     let confirmation = denied::field(value, "confirmation")?;
+    let mut fields = keys.len() - 2;
+    for (key, predecessor) in [
+        ("definition_predecessor", predecessors.definition),
+        ("pack_pin_predecessor", predecessors.pack_pin),
+    ] {
+        if let Some(predecessor) = predecessor {
+            if !denied::field(&confirmation, key)?.eq_guest(predecessor, budget)? {
+                bail!("bootstrap confirmation {key} differs");
+            }
+            keys[fields] = key;
+            fields += 1;
+        }
+    }
+    let keys = &keys[..fields];
     if confirmation
         .object()
         .is_none_or(|object| object.len() != keys.len() + 1)
     {
         bail!("bootstrap confirmation fields differ");
-    }
-    if let Some(predecessor) = predecessor
-        && !denied::field(&confirmation, "definition_predecessor")?.eq_guest(predecessor, budget)?
-    {
-        bail!("bootstrap confirmation definition predecessor differs");
     }
     for (key, expected) in [
         (
@@ -244,7 +254,7 @@ mod tests {
             "root": {"scope": ["1","2","3","4"], "object": "a"},
             "owned": ["a"], "confirmation": confirmation,
         });
-        let validate = |packet: &Value, predecessor| {
+        let validate = |packet: &Value, definition, pack_pin| {
             let value = CoreValue::parse_guest(&serde_json::to_vec(packet)?, budget)?;
             validate_confirmation(
                 &value,
@@ -252,11 +262,14 @@ mod tests {
                 "defaults",
                 &snapshot,
                 "1",
-                predecessor,
+                Predecessors {
+                    definition,
+                    pack_pin,
+                },
                 budget,
             )
         };
-        validate(&packet, None)?;
+        validate(&packet, None, None)?;
         for (path, invalid) in [
             ("/scope/3", json!("5")),
             ("/owned", json!([])),
@@ -266,25 +279,34 @@ mod tests {
         ] {
             let mut changed = packet.clone();
             *changed.pointer_mut(path).context("test path missing")? = invalid;
-            assert!(validate(&changed, None).is_err(), "{path}");
+            assert!(validate(&changed, None, None).is_err(), "{path}");
         }
-        let mut handover = packet;
-        let mut add_predecessor = |predecessor: Value| -> Result<()> {
-            let confirmation = &mut handover["confirmation"];
+        let mut handover = packet.clone();
+        let add_predecessor = |packet: &mut Value, name: &str, predecessor: Value| -> Result<()> {
+            let confirmation = &mut packet["confirmation"];
             confirmation
                 .as_object_mut()
                 .unwrap()
                 .remove("confirmation_digest");
-            confirmation["definition_predecessor"] = predecessor;
+            confirmation[name] = predecessor;
             let body = CoreValue::parse_guest(&serde_json::to_vec(confirmation)?, budget)?;
             confirmation["confirmation_digest"] = json!(body.digest_guest(budget)?.as_str());
             Ok(())
         };
         let binding = json!({"pack_ids": ["one", "two"], "store_generation": 2});
         let expected = CoreValue::parse_guest(&serde_json::to_vec(&binding)?, budget)?;
-        add_predecessor(binding)?;
-        validate(&handover, Some(&expected))?;
-        assert!(validate(&handover, None).is_err());
+        add_predecessor(&mut handover, "definition_predecessor", binding)?;
+        validate(&handover, Some(&expected), None)?;
+        assert!(validate(&handover, None, None).is_err());
+        let binding = json!({"activation_id": "fixture", "store_generation": 3});
+        let pin = CoreValue::parse_guest(&serde_json::to_vec(&binding)?, budget)?;
+        let mut pin_only = packet;
+        add_predecessor(&mut pin_only, "pack_pin_predecessor", binding.clone())?;
+        validate(&pin_only, None, Some(&pin))?;
+        assert!(validate(&pin_only, None, None).is_err());
+        add_predecessor(&mut handover, "pack_pin_predecessor", binding)?;
+        validate(&handover, Some(&expected), Some(&pin))?;
+        assert!(validate(&handover, None, Some(&pin)).is_err());
         let confirmation = &mut handover["confirmation"];
         confirmation
             .as_object_mut()
@@ -293,7 +315,7 @@ mod tests {
         confirmation["definition_predecessor"]["pack_ids"] = json!(["two", "one"]);
         let body = CoreValue::parse_guest(&serde_json::to_vec(confirmation)?, budget)?;
         confirmation["confirmation_digest"] = json!(body.digest_guest(budget)?.as_str());
-        assert!(validate(&handover, Some(&expected)).is_err());
+        assert!(validate(&handover, Some(&expected), Some(&pin)).is_err());
         if let Some(path) = std::env::var_os("TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE") {
             let source = std::fs::read(path)?;
             anyhow::ensure!(
@@ -339,7 +361,10 @@ mod tests {
                     .context("original review Profile ID missing")?,
                 &snapshot,
                 &epoch,
-                Some(&predecessor),
+                Predecessors {
+                    definition: Some(&predecessor),
+                    pack_pin: None,
+                },
                 budget,
             )?;
         }

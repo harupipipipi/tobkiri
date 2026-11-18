@@ -1,5 +1,6 @@
 //! Replay the packaged proposals for one verified interrupted source update.
 use super::*;
+use definitions::equal_except;
 use tobkiri_canon::{CoreArray, CoreRef};
 
 const EDGE_KEYS: &[&str] = &[
@@ -309,35 +310,6 @@ fn rows(value: &CoreValue) -> Result<CoreArray<'_>> {
     value
         .array()
         .ok_or_else(OriginalAuthorityError::unavailable)
-}
-
-fn equal_except(
-    left: &CoreValue,
-    right: &CoreValue,
-    omitted: &str,
-    budget: &Arc<dyn AllocationBudget>,
-) -> Result<bool> {
-    let left = left
-        .object()
-        .ok_or_else(OriginalAuthorityError::unavailable)?;
-    let right = right
-        .object()
-        .ok_or_else(OriginalAuthorityError::unavailable)?;
-    let count = |object: &tobkiri_canon::CoreObject<'_>| {
-        object.len() - usize::from(object.get(omitted).is_some())
-    };
-    if count(&left) != count(&right) {
-        return Ok(false);
-    }
-    let left = left.iter().filter(|(key, _)| *key != omitted);
-    let right = right.iter().filter(|(key, _)| *key != omitted);
-    for ((left_key, left), (right_key, right)) in left.zip(right) {
-        charge(budget, left_key.len() + 1)?;
-        if left_key != right_key || !definitions::python_equal(&left, &right, budget)? {
-            return Ok(false);
-        }
-    }
-    Ok(true)
 }
 
 fn set(

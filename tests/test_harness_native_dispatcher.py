@@ -2144,12 +2144,33 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 self.setUp()
                 self.check_predecessor_review(equal=True, overlay_id=first_profile_id)
 
+    def test_review_binds_only_the_pack_pin_for_the_observed_predecessor_profile(self) -> None:
+        self.check_predecessor_review(equal=True, overlay_id="fixture-id", pack_pin=True)
+
     def check_predecessor_review(
-        self, equal: bool, *, overlay_id: str | None = None,
+        self, equal: bool, *, overlay_id: str | None = None, pack_pin: bool = False,
     ) -> tuple[dict, dict]:
         activation_calls = []
         listings = []
+        candidate = {
+            "requested_edges": [], "profile_id": "fixture-id", "fixture_flag": True,
+        }
+        pin = None
+        if pack_pin:
+            from tobkiri_protocol.canonical import canonical_digest
+
+            pin = {
+                "schema": "io.tobkiri.defaults-pack-pin-predecessor.v1",
+                "pointer_digest": "sha256:" + "1" * 64, "profile_id": "fixture-id",
+                "profile_revision": "sha256:" + "2" * 64, "activation_id": "activation:fixture",
+                "plan_digest": "sha256:" + "3" * 64, "lock_digest": "sha256:" + "4" * 64,
+                "generation": 1, "active_definition_digest": "sha256:" + "5" * 64,
+                "registry_profile_revision": canonical_digest(candidate),
+                "registry_store_generation": 2, "registry_snapshot_digest": "sha256:" + "6" * 64,
+            }
         body = {"confirmation": {"bindings": [], "profile_id": "fixture-id"}}
+        if pin is not None:
+            body["confirmation"]["pack_pin_predecessor"] = pin
         preflight = self.frame("bootstrap-activation-preflight", body=body)
         match = self.frame("bootstrap-activation-match")
 
@@ -2172,9 +2193,6 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         })
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("setup_activation_decision", preflight)
-        candidate = {
-            "requested_edges": [], "profile_id": "fixture-id", "fixture_flag": True,
-        }
         if overlay_id is not None:
             self.runtime.catalog_with_profiles = self.recovery_projector
             replaced = {**candidate, "profile_id": overlay_id}
@@ -2204,7 +2222,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.dynamic_edges(catalog, profile_id, source)
         artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
         lookup = self.frame("bootstrap-predecessor-source", catalog=catalog,
-                            profile_id=profile_id, needs_digest=False)
+                            profile_id=profile_id, needs_digest=pack_pin)
         with self.assertRaises(InvalidReference):
             self.dispatcher.describe_value(lookup)
         leaf = self.bridge.bind("fixture-root", "/fixture/shell")
@@ -2236,12 +2254,13 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         class LiveProfiles(dict):
             def get(self, key):
                 calls.append(key)
-                return {"changed_after_resolve": object()}
+                return candidate if pack_pin else {"changed_after_resolve": object()}
 
         current_catalog.profiles = LiveProfiles()
         self.assertEqual(wire.loads(self.dispatcher.describe_value(lookup)), {
             "format": PREFIX + "bootstrap-predecessor-source-result.v1",
-            "scope": self.scope.wire(), "digest": None,
+            "scope": self.scope.wire(),
+            "digest": None if pin is None else pin["registry_profile_revision"],
         })
         self.assertEqual(len(calls), 1)
         self.assertIs(calls[0], self.registry.borrow(self.registry.reference(profile_id)))
@@ -2291,9 +2310,25 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 self.dispatcher.call("bootstrap_confirmation", wire.dumps(bound_call))
         else:
             call = wire.dumps(bound_call)
+        if pin is not None:
+            with_pin = wire.loads(call)
+            for key, mismatch in (
+                ("registry_profile_revision", "sha256:" + "7" * 64),
+                ("profile_id", "wrong-profile"),
+            ):
+                with_pin["pack_pin_predecessor"] = {**pin, key: mismatch}
+                with self.assertRaises(InvalidReference):
+                    self.dispatcher.call("bootstrap_confirmation", wire.dumps(with_pin))
+            with_pin["pack_pin_predecessor"] = {**pin, "extra": True}
+            with self.assertRaises(InvalidFrame):
+                self.dispatcher.call("bootstrap_confirmation", wire.dumps(with_pin))
+            with_pin["pack_pin_predecessor"] = pin
+            call = wire.dumps(with_pin)
 
         nested = []
         returned = {"bindings": nested, "profile_id": "fixture-id"}
+        if pin is not None:
+            returned["pack_pin_predecessor"] = pin
 
         def confirm(**kwargs):
             self.assertIs(kwargs["resolved"], resolved)
@@ -2301,7 +2336,10 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             self.assertIs(kwargs["authority_snapshot_digest"], captured["authority_snapshot_digest"])
             self.assertIs(kwargs["security_epoch"], captured["security_epoch"])
             self.assertEqual(kwargs["definition_predecessor"], None if equal else predecessor)
-            self.assertNotIn("pack_pin_predecessor", kwargs)
+            if pin is None:
+                self.assertNotIn("pack_pin_predecessor", kwargs)
+            else:
+                self.assertEqual(kwargs["pack_pin_predecessor"], pin)
             return returned
 
         self.runtime.bootstrap_confirmation = confirm

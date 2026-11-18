@@ -1578,6 +1578,15 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             if confirmed {
                 #[cfg(unix)]
                 {
+                    if candidate
+                        .confirmation()
+                        .get_key("pack_pin_predecessor")
+                        .is_some()
+                    {
+                        return Ok(Err(crate::BootstrapReviewFailure::NotBound(
+                            crate::BootstrapReviewReachpoint::ActiveCandidateAuthorityNotBound,
+                        )));
+                    }
                     let source_profile =
                         match catalog::publication::verify(review, pack, &candidate).await? {
                             Ok(source) => source,

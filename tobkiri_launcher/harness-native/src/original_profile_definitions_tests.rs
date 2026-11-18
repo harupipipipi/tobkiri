@@ -60,6 +60,13 @@ pub(in crate::original_authority::io::publication) fn with_setup_source(
         runtime: root.join("runtime"),
         root,
     };
+    with_existing_setup_source(&source, run);
+}
+
+pub(in crate::original_authority::io::publication) fn with_existing_setup_source<T>(
+    source: &Source,
+    run: impl FnOnce(&Source, &mut PublicationRead, &CoreCancellation, &Arc<dyn AllocationBudget>) -> T,
+) -> T {
     let control = CoreControl::default();
     let account = CapacityLedger::new()
         .native_setup_account(&control, || Ok(Arc::new(Portable)))
@@ -70,13 +77,14 @@ pub(in crate::original_authority::io::publication) fn with_setup_source(
     let cancellation = store.cancellation().clone();
     let budget = store.allocation_owners().graph().clone();
     let mut read = PublicationRead::new(&invocation).unwrap();
-    run(&source, &mut read, &cancellation, &budget);
+    let result = run(source, &mut read, &cancellation, &budget);
     assert!(read.receipt().verified());
     // Every owned diagnostic produced by the test body is gone before Read.
     drop((read, budget, store, cancellation, invocation, engine));
     tobkiri_wasm::reap_allocation_owners().unwrap();
     let remaining = account.snapshot().unwrap();
     assert_eq!((remaining.charged_bytes, remaining.reservations), (0, 0));
+    result
 }
 pub(in crate::original_authority::io::publication) fn operation<'a>(
     read: &'a PublicationRead,

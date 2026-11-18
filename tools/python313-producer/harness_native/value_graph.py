@@ -174,6 +174,7 @@ class Registry:
         self._resolver_verified_artifacts: int | None = None
         self._resolved_profile: int | None = None
         self._resolver_authority: tuple[str, str, int] | None = None
+        self._bootstrap_predecessor_digest: str | None = None
         self._bootstrap_confirmation: int | None = None
         self._bootstrap_preview_catalog: int | None = None
         self._bootstrap_activation_started = False
@@ -388,6 +389,7 @@ class Registry:
         self._resolver_verified_artifacts = None
         self._resolved_profile = None
         self._resolver_authority = None
+        self._bootstrap_predecessor_digest = None
         self._bootstrap_confirmation = None
         self._bootstrap_preview_catalog = None
         self._bootstrap_activation_listing = None
@@ -726,7 +728,7 @@ class Registry:
 
     def _begin_bootstrap_confirmation(
         self, resolved: Reference, profile_id: Reference, snapshot: str, epoch: str,
-        *, has_predecessor: bool,
+        *, has_predecessor: bool, pack_pin: dict[str, Any] | None,
     ) -> tuple[Any, str, str, int]:
         value = self.borrow(resolved)
         identity = self.borrow(profile_id, str)
@@ -736,6 +738,10 @@ class Registry:
                     "inactive-unequal-returned",
                 }
                 or (has_predecessor and self._resolver_dynamic_stage != "inactive-unequal-returned")
+                or (pack_pin is not None and (
+                    pack_pin["profile_id"] != identity
+                    or pack_pin["registry_profile_revision"] != self._bootstrap_predecessor_digest
+                ))
                 or resolved.object_id != self._resolved_profile
                 or profile_id.object_id != self._resolver_profile_id
                 or authority is None or authority[:2] != (snapshot, epoch)):

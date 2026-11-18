@@ -1015,6 +1015,7 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
     enum Scenario {
         LegacyAndBundled,
         LegacyMissingLock,
+        BundledReview,
         RegisteredSameId,
         RegisteredDifferentId,
         RegisteredMissingShell,
@@ -1023,6 +1024,7 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
     for scenario in [
         Scenario::LegacyAndBundled,
         Scenario::LegacyMissingLock,
+        Scenario::BundledReview,
         Scenario::RegisteredSameId,
         Scenario::RegisteredDifferentId,
         Scenario::RegisteredMissingShell,
@@ -1053,6 +1055,8 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                 })
             };
             let candidate = profile("fixture-profile", "fixture-shell", "x86_64");
+            let pinned_digest = Digest::hash(b"test artifact pin");
+            let pack = |id, kind| json!({"pack":{"id":id,"kind":kind,"artifact_digest":pinned_digest.as_str()}});
             // The other ID has its own leaf so accidentally using either Profile
             // version from the first getter fails the physical path check.
             let documents = [
@@ -1082,6 +1086,18 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                     "shell",
                     definition("other-shell", json!([variant("arm64", "other")])),
                 ),
+                ("sandbox.json", "pack", pack("sandbox", "normal_sandbox")),
+                (
+                    "extension.json",
+                    "pack",
+                    pack("extension", "host_extension"),
+                ),
+                (
+                    "application.json",
+                    "pack",
+                    pack("application", "application"),
+                ),
+                ("shell-pack.json", "pack", pack("shell", "shell")),
             ];
             let entries = documents.each_ref().map(|&(name, kind, ref document)| {
                 let bytes = serde_json::to_vec(document).unwrap();
@@ -1157,6 +1173,25 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
             }
             load(io, "is-dir", original.clone(), json!([]));
             load(io, "resolve", original.clone(), json!([true]));
+            let op = io.operation(source, invocation, &io.cancellation).unwrap();
+            assert!(io.resolved_review_profile(&op, "fixture-profile").is_err());
+            for (id, is_provider) in [
+                ("sandbox", true),
+                ("extension", true),
+                ("application", false),
+                ("shell", false),
+                ("missing", false),
+            ] {
+                assert_eq!(
+                    io.bundled_review_provider_pin_matches(id, pinned_digest.as_str())
+                        .unwrap(),
+                    is_provider,
+                );
+            }
+            assert!(
+                !io.bundled_review_provider_pin_matches("sandbox", Digest::hash(b"wrong").as_str())
+                    .unwrap()
+            );
             let inspect = |io: &mut CatalogIo, operation, steps, args| {
                 io.inspect_pack_resolve(
                     source,
@@ -1186,13 +1221,16 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                     ("recovery-only", Some("bundled"), true),
                     ("fixture-profile", Some("bundled"), false),
                 ],
+                Scenario::BundledReview => &[("fixture-profile", Some("bundled"), false)],
                 Scenario::RegisteredSameId => &[("fixture-profile", Some("replacement"), false)],
                 Scenario::RegisteredDifferentId => &[("other-profile", Some("other"), false)],
                 Scenario::RegisteredMissingShell => &[("fixture-profile", None, false)],
                 Scenario::LegacyMissingLock => unreachable!(),
             };
             for &(id, name, legacy) in occurrences {
-                if !legacy_scenario {
+                if matches!(scenario, Scenario::BundledReview) {
+                    io.begin_pack_resolve(id).unwrap();
+                } else if !legacy_scenario {
                     io.begin_registered_pack_resolve(id, &candidate).unwrap();
                 } else if legacy {
                     io.begin_legacy_pack_resolve(id, &profiles).unwrap();
@@ -1269,6 +1307,33 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                 step(io, "close", fd, json!([]));
                 assert!(io.pack_resolve_shell_artifact_completed());
                 assert!(cleanup.receipt().verified());
+                let op = io.operation(source, invocation, &io.cancellation).unwrap();
+                if legacy_scenario {
+                    assert!(io.resolved_review_profile(&op, id).is_err());
+                } else {
+                    fs::write(bundle.join("profile.json"), b"{}").unwrap();
+                    fs::write(bundle.join("other-profile.json"), b"{}").unwrap();
+                    let expected = match scenario {
+                        Scenario::BundledReview => profile(id, "fixture-shell", "arm64"),
+                        Scenario::RegisteredSameId => profile(id, "fixture-shell", "x86_64"),
+                        Scenario::RegisteredDifferentId => profile(id, "other-shell", "arm64"),
+                        _ => unreachable!(),
+                    };
+                    let expected =
+                        CoreValue::parse_guest(&serde_json::to_vec(&expected).unwrap(), budget)
+                            .unwrap();
+                    let retained = io.resolved_review_profile(&op, id).unwrap();
+                    assert_eq!(
+                        retained.digest_guest(budget).unwrap(),
+                        expected.digest_guest(budget).unwrap(),
+                    );
+                    let wrong_id = if id == "fixture-profile" {
+                        "other-profile"
+                    } else {
+                        "fixture-profile"
+                    };
+                    assert!(io.resolved_review_profile(&op, wrong_id).is_err());
+                }
                 if legacy {
                     io.finish_legacy_pack_resolve().unwrap();
                     assert!(!io.pack_resolve_shell_artifact_completed());

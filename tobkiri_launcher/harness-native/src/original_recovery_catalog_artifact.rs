@@ -182,6 +182,7 @@ impl CatalogIo {
         })
     }
 
+    /// Classify and verify the physical Shell against the exact selected source Profile.
     pub(in crate::original_authority::io::publication) fn verify_initial_active_artifact<
         S: crate::BootstrapReviewOwner,
     >(
@@ -231,7 +232,7 @@ impl CatalogIo {
         })
     }
 
-    /// Verify the Shell for the exact independently reread bundled Profile.
+    /// Verify the physical Shell for the exact selected source Profile.
     pub(in crate::original_authority::io::publication) fn verify_initial_artifact<
         S: crate::BootstrapReviewOwner,
     >(

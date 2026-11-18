@@ -85,6 +85,8 @@ pub(crate) struct CatalogIo {
     #[cfg(unix)]
     pack_resolve_source: Option<PackResolveSource>,
     #[cfg(unix)]
+    retain_resolved_review_inputs: bool,
+    #[cfg(unix)]
     shell_inputs: Option<shell_inputs::ShellInputs>,
     #[cfg(unix)]
     recovery_pack_pins: Option<shell_inputs::PackPins>,
@@ -171,7 +173,7 @@ enum PackResolve {
 #[cfg(unix)]
 enum PackResolveSource {
     Bundled(String),
-    Registered(Option<CoreValue>),
+    Registered(CoreValue),
     Recovery(Option<CoreValue>),
 }
 
@@ -291,6 +293,8 @@ impl CatalogIo {
             shell_file: None,
             #[cfg(unix)]
             pack_resolve_source: None,
+            #[cfg(unix)]
+            retain_resolved_review_inputs: false,
             #[cfg(unix)]
             shell_inputs: None,
             #[cfg(unix)]
@@ -436,9 +440,10 @@ impl CatalogIo {
         self.recovery_pack_pins = Some(shell_inputs::PackPins::default());
     }
 
-    /// Retain the Pack dependency keys for the registered Setup candidate pass.
+    /// Keep the Pack dependencies and original catalog for the Setup review.
     #[cfg(unix)]
     pub(crate) fn retain_review_pack_dependencies(&mut self) {
+        self.retain_resolved_review_inputs = true;
         self.recovery_pack_pins = Some(shell_inputs::PackPins::with_dependencies());
     }
 
@@ -927,10 +932,7 @@ impl CatalogIo {
             return self.begin_pack_resolve(profile_id);
         }
         self.require_pack_resolve_available(profile_id)?;
-        let shell = candidate
-            .get_key("shell")
-            .filter(|value| value.object().is_some());
-        self.pack_resolve_source = Some(PackResolveSource::Registered(shell));
+        self.pack_resolve_source = Some(PackResolveSource::Registered(candidate.share()));
         self.pack_resolve = PackResolve::CheckSymlink;
         Ok(())
     }

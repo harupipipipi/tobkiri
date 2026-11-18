@@ -24,6 +24,11 @@ mod definitions_model;
 pub(super) use definitions_model::python_equal;
 #[cfg(unix)]
 pub(super) use definitions_model::render_python_str;
+#[cfg(unix)]
+#[path = "original_bootstrap_pack_pin.rs"]
+mod bootstrap_pack_pin;
+#[cfg(unix)]
+pub(super) use bootstrap_pack_pin::equal_except;
 #[cfg(all(test, unix))]
 #[path = "original_inactive_registration_ci.rs"]
 mod inactive_registration_ci;

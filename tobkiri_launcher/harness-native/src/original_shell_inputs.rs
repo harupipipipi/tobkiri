@@ -37,8 +37,15 @@ impl PackPins {
 struct PackPin {
     id: CoreValue,
     digest: Digest,
-    shell: bool,
+    kind: PackPinKind,
     dependencies: Option<CoreValue>,
+}
+
+#[derive(PartialEq, Eq)]
+enum PackPinKind {
+    Shell,
+    Provider,
+    Other,
 }
 
 pub(super) struct SelectedShell {
@@ -147,10 +154,11 @@ impl CatalogIo {
                     .ok_or_else(OriginalAuthorityError::unavailable)?;
                 field(&profile, "shell")?
             }
-            Some(
-                PackResolveSource::Registered(Some(request))
-                | PackResolveSource::Recovery(Some(request)),
-            ) => request.share(),
+            Some(PackResolveSource::Registered(candidate)) => candidate
+                .get_key("shell")
+                .filter(|shell| shell.object().is_some())
+                .ok_or_else(OriginalAuthorityError::unavailable)?,
+            Some(PackResolveSource::Recovery(Some(request))) => request.share(),
             _ => return Err(OriginalAuthorityError::unavailable().into()),
         };
         let provider = field(&request, "provider_id")?;
@@ -307,6 +315,34 @@ impl CatalogIo {
             .ok_or_else(|| raw("builtins.KeyError", format!("'{profile_id}'")))
     }
 
+    /// Reuse the source selected by the finished Setup resolver occurrence.
+    pub(in crate::original_authority::io::publication) fn resolved_review_profile<
+        S: OriginalAuthorityOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile_id: &str,
+    ) -> Result<CoreValue> {
+        self.require_recovery_catalog(op)?;
+        if !self.retain_resolved_review_inputs
+            || !self.pack_resolve_shell_artifact_completed()
+            || self.shell_file.is_some()
+        {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        match &self.pack_resolve_source {
+            Some(PackResolveSource::Bundled(id)) if id == profile_id => self
+                .bundled_source_profile(profile_id)?
+                .ok_or_else(OriginalAuthorityError::unavailable),
+            Some(PackResolveSource::Registered(candidate))
+                if text_is(candidate, "profile_id", profile_id) =>
+            {
+                Ok(candidate.share())
+            }
+            _ => Err(OriginalAuthorityError::unavailable()),
+        }
+    }
+
     fn bundled_source_profile(&self, profile_id: &str) -> Result<Option<CoreValue>> {
         let Some(inputs) = self.shell_inputs.as_ref() else {
             return Ok(None);
@@ -392,7 +428,9 @@ impl CatalogIo {
             unique_variant(variants.iter().filter(platform_matches)).ok_or_else(unavailable)?;
         // Only a bundled Shell can satisfy this check: the verified external
         // closure permits normal_sandbox and application Pack manifests.
-        if !self.bundled_pack_pin(pack)?.is_some_and(|pin| pin.shell)
+        if !self
+            .bundled_pack_pin(pack)?
+            .is_some_and(|pin| pin.kind == PackPinKind::Shell)
             || !same_text(&registered, &successor, "artifact_digest")
             || !text_matches(
                 &registered,
@@ -566,6 +604,16 @@ impl CatalogIo {
         Ok(self.bundled_pack_pin(id)?.map(|pin| pin.digest.as_str()))
     }
 
+    pub(in crate::original_authority::io::publication) fn bundled_review_provider_pin_matches(
+        &self,
+        id: &str,
+        digest: &str,
+    ) -> Result<bool> {
+        Ok(self
+            .bundled_pack_pin(id)?
+            .is_some_and(|pin| pin.kind == PackPinKind::Provider && pin.digest.as_str() == digest))
+    }
+
     /// Read the dependency keys after the caller verifies this catalog's custody.
     pub(in crate::original_authority::io::publication) fn bundled_review_dependencies(
         &self,
@@ -680,10 +728,14 @@ fn pack_pin(
         let id = header.get_key("id")?;
         let digest = header.get_key("artifact_digest")?;
         let digest = Digest::parse(digest.as_str()?).ok()?;
-        let shell = text_is(&header, "kind", "shell");
-        Some((id, digest, shell))
+        let kind = match header.get_key("kind").as_ref().and_then(CoreValue::as_str) {
+            Some("shell") => PackPinKind::Shell,
+            Some("normal_sandbox" | "host_extension") => PackPinKind::Provider,
+            _ => PackPinKind::Other,
+        };
+        Some((id, digest, kind))
     })();
-    let Some((id, digest, shell)) = pin else {
+    let Some((id, digest, kind)) = pin else {
         return Ok(None);
     };
     let Some(id) = id.as_str() else {
@@ -699,7 +751,7 @@ fn pack_pin(
     Ok(Some(PackPin {
         id,
         digest,
-        shell,
+        kind,
         dependencies,
     }))
 }

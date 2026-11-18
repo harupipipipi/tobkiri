@@ -2,7 +2,9 @@
 use super::*;
 use crate::original_authority::catalog::CatalogIo;
 use std::sync::Mutex;
-use workspace_active::{ActiveSnapshot, ActiveSnapshotRead, ProfileCheck, SnapshotProjection};
+use workspace_active::{
+    ActiveReviewRecords, ActiveSnapshot, ActiveSnapshotRead, ProfileCheck, SnapshotProjection,
+};
 
 #[path = "original_setup_active_catalog_policy.rs"]
 mod active_catalog_policy;
@@ -26,6 +28,24 @@ pub(crate) struct RegisteredCatalogPolicy {
     pub(crate) active_plan: Option<CoreValue>,
     pub(crate) verified_definition_digest: CoreValue,
 }
+
+pub(crate) struct PredecessorActivation<'a> {
+    pub(crate) inputs: &'a definitions::BootstrapPredecessorInputs,
+    pub(crate) source_digest: &'a Digest,
+    pub(crate) profile_id: &'a str,
+    pub(crate) loader: &'a Mutex<Option<CatalogIo>>,
+    pub(crate) schemas: Option<BoundProfileSchemas>,
+}
+
+pub(crate) enum PredecessorActivationReached {
+    Binding(Option<CoreValue>),
+    SnapshotSchemas,
+    LegacySuccessor,
+}
+
+const RECONFIRMATION_CLASS: &str =
+    "ecosystem.defaultspack.domain.runtime_v4.service.ProfileReconfirmationRequired";
+const RECONFIRMATION_MESSAGE: &str = "active Profile Shell artifact identity was superseded by the verified packaged release; explicit reconfirmation is required";
 
 impl PublicationRead {
     pub(crate) async fn review_registered_activation<S: crate::BootstrapReviewOwner>(
@@ -56,8 +76,9 @@ impl PublicationRead {
                 loader,
                 profile_id,
                 schemas,
+                source: ShellSource::Bundled,
             }
-            .load_snapshot()
+            .load_snapshot(SnapshotProjection::RegisteredReview)
             .await
         })
         .await?;
@@ -71,11 +92,9 @@ impl PublicationRead {
         // The original compares the previously held Host pointer only after
         // the Authority context exits, even when Shell drift was verified.
         match reached {
-            Snapshot::Verified {
-                identity,
-                active_profile,
-                active_plan,
-            } => {
+            Snapshot::Verified(active) => {
+                let records = active.records.expect("registered review records");
+                let identity = active.identity;
                 let verified_definition_digest = identity
                     .get_key("profile_definition_digest")
                     .filter(|digest| digest.as_str().is_some());
@@ -90,41 +109,154 @@ impl PublicationRead {
                 Ok(RegisteredSnapshotReached::CatalogPolicy(
                     RegisteredCatalogPolicy {
                         registered_profile: candidate.registered.review_profile(&op, budget)?,
-                        active_profile,
-                        active_plan,
+                        active_profile: records.profile,
+                        // The old Plan participates only on the current path.
+                        active_plan: (active.verification == ActiveArtifactVerification::Current)
+                            .then_some(records.plan),
                         verified_definition_digest,
                     },
                 ))
             }
-            Snapshot::Boundary(reached) => Ok(reached),
+            Snapshot::Boundary(SnapshotBoundary::LegacySuccessor) => {
+                Ok(RegisteredSnapshotReached::LegacySuccessor)
+            }
+            Snapshot::Boundary(SnapshotBoundary::Schemas) => {
+                Ok(RegisteredSnapshotReached::SnapshotSchemas)
+            }
         }
+    }
+
+    pub(crate) async fn review_predecessor_activation<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        budget: &Arc<dyn AllocationBudget>,
+        predecessor: PredecessorActivation<'_>,
+    ) -> Result<PredecessorActivationReached> {
+        let PredecessorActivation {
+            inputs,
+            source_digest,
+            profile_id,
+            loader,
+            schemas,
+        } = predecessor;
+        if !inputs.needs_source_digest(profile_id) || !inputs.matches_source_digest(source_digest) {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        let pointer = inputs
+            .verified_pointer()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        self.enter_predecessor_activation(owner, cancellation)?;
+        let root = self.predecessor_activation_root();
+        let op = self.candidate_operation(owner, cancellation)?;
+        let receipt = self.receipt();
+        let workspace = workspace_path(&op, root, profile_id)?;
+        let mut reconfirmation = None;
+        let reached = with_registered_store_async(&op, root, async |store| {
+            let workspace =
+                RecoveryWorkspace::open(&op, &workspace, LockName::workspace(profile_id))?;
+            let observed = RegisteredActivation {
+                op: &op,
+                store,
+                workspace,
+                budget,
+                loader,
+                profile_id,
+                schemas,
+                source: ShellSource::Resolved(source_digest),
+            }
+            .load_snapshot(SnapshotProjection::Identity)
+            .await?;
+            match observed {
+                Snapshot::Verified(active)
+                    if active.verification
+                        == ActiveArtifactVerification::SuccessorNeedsReconfirmation =>
+                {
+                    reconfirmation = Some(active);
+                    // This caller recognizes reconfirmation outside the Authority
+                    // context. A failing close retains the original exception.
+                    Err(raw(RECONFIRMATION_CLASS, RECONFIRMATION_MESSAGE))
+                }
+                other => Ok(other),
+            }
+        })
+        .await;
+        let reached = match reached {
+            Ok(observed) => observed,
+            Err(error) if error.class == RECONFIRMATION_CLASS && reconfirmation.is_some() => {
+                Snapshot::Verified(reconfirmation.expect("actual verified reconfirmation"))
+            }
+            Err(error) => return Err(error),
+        };
+        if self.receipt() != receipt {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Close,
+                "Pack pin predecessor Authority cleanup is uncertain",
+            ));
+        }
+        op.check(OriginalAuthorityStage::Source)?;
+        let identity = match reached {
+            Snapshot::Verified(active) => active.identity,
+            Snapshot::Boundary(SnapshotBoundary::Schemas) => {
+                return Ok(PredecessorActivationReached::SnapshotSchemas);
+            }
+            Snapshot::Boundary(SnapshotBoundary::LegacySuccessor) => {
+                return Ok(PredecessorActivationReached::LegacySuccessor);
+            }
+        };
+        if !matches_host_pointer(&identity, pointer) {
+            return Err(raw(
+                "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict",
+                "Pack pin review does not match the verified active pointer",
+            ));
+        }
+        let active_digest = identity
+            .get_key("profile_definition_digest")
+            .and_then(|digest| Digest::parse(digest.as_str()?).ok())
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        if &active_digest == source_digest {
+            return Ok(PredecessorActivationReached::Binding(None));
+        }
+        let loader = loader.lock().unwrap_or_else(|error| error.into_inner());
+        let catalog = loader
+            .as_ref()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        Ok(PredecessorActivationReached::Binding(
+            inputs.pack_pin_predecessor(&op, profile_id, &active_digest, catalog, budget)?,
+        ))
     }
 }
 
 enum Snapshot {
-    Verified {
-        identity: CoreValue,
-        active_profile: CoreValue,
-        active_plan: Option<CoreValue>,
-    },
-    Boundary(RegisteredSnapshotReached),
+    Verified(VerifiedSnapshot),
+    Boundary(SnapshotBoundary),
+}
+
+struct VerifiedSnapshot {
+    identity: CoreValue,
+    records: Option<ActiveReviewRecords>,
+    verification: ActiveArtifactVerification,
 }
 
 impl Snapshot {
     fn verified(mut active: ActiveSnapshot, verification: ActiveArtifactVerification) -> Self {
-        let records = active
-            .review_records
-            .take()
-            .expect("first registered Setup snapshot has review records");
-        Self::Verified {
+        let records = active.review_records.take();
+        Self::Verified(VerifiedSnapshot {
             identity: active.into_candidate(),
-            active_profile: records.profile,
-            // The original reconfirmation error carries the Profile and
-            // identities. The old Plan participates only on the current path.
-            active_plan: (verification == ActiveArtifactVerification::Current)
-                .then_some(records.plan),
-        }
+            records,
+            verification,
+        })
     }
+}
+
+enum SnapshotBoundary {
+    Schemas,
+    LegacySuccessor,
+}
+
+enum ShellSource<'a> {
+    Bundled,
+    Resolved(&'a Digest),
 }
 
 struct RegisteredActivation<'a, 'op, 'host, S> {
@@ -135,26 +267,34 @@ struct RegisteredActivation<'a, 'op, 'host, S> {
     loader: &'a Mutex<Option<CatalogIo>>,
     profile_id: &'a str,
     schemas: Option<BoundProfileSchemas>,
+    source: ShellSource<'a>,
 }
 
 impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
-    async fn load_snapshot(&self) -> Result<Snapshot> {
+    async fn load_snapshot(&self, projection: SnapshotProjection) -> Result<Snapshot> {
         loop {
-            let Some(first) =
-                self.resume(self.read(SnapshotProjection::RegisteredReview).await?)?
-            else {
+            let Some(first) = self.resume(self.read(projection).await?)? else {
                 continue;
             };
             let Some(active) = first.current else {
                 return Ok(Self::boundary(first));
             };
             // Hash outside the workspace lock. The store remains entered.
-            let verified = self.with_catalog(|io| {
-                io.verify_bundled_active_artifact(
+            let verified = self.with_catalog(|io| match self.source {
+                ShellSource::Bundled => io.verify_bundled_active_artifact(
                     self.op,
                     &active.artifact_profile,
                     self.profile_id,
-                )
+                ),
+                ShellSource::Resolved(digest) => {
+                    let source = self.resolved_source(io, digest)?;
+                    io.verify_initial_active_artifact(
+                        self.op,
+                        &active.artifact_profile,
+                        self.profile_id,
+                        &source,
+                    )
+                }
             })?;
             if verified == ActiveArtifactVerification::SuccessorNeedsReconfirmation {
                 return Ok(Snapshot::verified(active, verified));
@@ -172,8 +312,8 @@ impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
 
     fn boundary(read: ActiveSnapshotRead) -> Snapshot {
         Snapshot::Boundary(match read.prefix.check {
-            ProfileCheck::NeedsLegacySuccessor => RegisteredSnapshotReached::LegacySuccessor,
-            _ => RegisteredSnapshotReached::SnapshotSchemas,
+            ProfileCheck::NeedsLegacySuccessor => SnapshotBoundary::LegacySuccessor,
+            _ => SnapshotBoundary::Schemas,
         })
     }
 
@@ -217,8 +357,21 @@ impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
         match read {
             ControlFlow::Continue(read) => Ok(Some(read)),
             ControlFlow::Break(pending) => {
-                let identity = self.with_catalog(|io| {
-                    io.verify_bundled_pending_artifact(self.op, &pending.profile, self.profile_id)
+                let identity = self.with_catalog(|io| match self.source {
+                    ShellSource::Bundled => io.verify_bundled_pending_artifact(
+                        self.op,
+                        &pending.profile,
+                        self.profile_id,
+                    ),
+                    ShellSource::Resolved(digest) => {
+                        let source = self.resolved_source(io, digest)?;
+                        io.verify_initial_artifact(
+                            self.op,
+                            &pending.profile,
+                            self.profile_id,
+                            &source,
+                        )
+                    }
                 })?;
                 pending.publish(
                     self.op,
@@ -235,6 +388,17 @@ impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
                 Ok(None)
             }
         }
+    }
+
+    fn resolved_source(&self, io: &CatalogIo, digest: &Digest) -> Result<CoreValue> {
+        let source = io.resolved_review_profile(self.op, self.profile_id)?;
+        let actual = source
+            .digest_guest(self.budget)
+            .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
+        if &actual != digest {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        Ok(source)
     }
 
     fn with_catalog<T>(&self, run: impl FnOnce(&CatalogIo) -> Result<T>) -> Result<T> {

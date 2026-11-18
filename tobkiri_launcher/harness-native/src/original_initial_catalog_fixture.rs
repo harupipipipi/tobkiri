@@ -16,6 +16,33 @@ pub(in crate::original_authority::io::publication) fn load<S: crate::BootstrapRe
     witness: &Path,
     artifact_release: &Path,
 ) -> Result<CatalogIo> {
+    load_catalog(op, budget, witness, artifact_release, false)
+}
+
+pub(in crate::original_authority::io::publication) fn resolved_review<
+    S: crate::BootstrapReviewOwner,
+>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    witness: &Path,
+    artifact_release: &Path,
+    candidate: &CoreValue,
+) -> Result<CatalogIo> {
+    let mut io = load_catalog(op, budget, witness, artifact_release, true)?;
+    io.begin_registered_pack_resolve("defaults", candidate)?;
+    // The fixture supplies the earlier resolver occurrence. The caller under
+    // test still reopens and verifies the original physical Shell separately.
+    io.pack_resolve = PackResolve::ShellArtifactReady;
+    Ok(io)
+}
+
+fn load_catalog<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    witness: &Path,
+    artifact_release: &Path,
+    resolved_review: bool,
+) -> Result<CatalogIo> {
     const PATH: OriginalAuthorityStage = OriginalAuthorityStage::Path;
     let witness_len = witness.as_os_str().len();
     let release_len = artifact_release.as_os_str().len();
@@ -48,7 +75,11 @@ pub(in crate::original_authority::io::publication) fn load<S: crate::BootstrapRe
         budget,
     )?;
     io.select_packaged(&selected)?;
-    io.retain_publication_inputs();
+    if resolved_review {
+        io.retain_review_pack_dependencies();
+    } else {
+        io.retain_publication_inputs();
+    }
     io.bind_loader(
         CoreValue::string("initial-publication-oracle", budget)
             .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?,

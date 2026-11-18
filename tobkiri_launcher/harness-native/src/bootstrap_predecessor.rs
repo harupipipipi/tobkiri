@@ -70,22 +70,65 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     };
     let value = CoreValue::parse_guest(response.as_bytes(), pack.input_budget)?;
     let digest = source_digest(&value, scope, needs_digest)?;
+    drop((value, response, request));
     let inputs = review
         .actual
         .predecessor_inputs
         .as_ref()
         .expect("actual predecessor inputs");
-    if digest
-        .as_ref()
-        .is_some_and(|digest| inputs.matches_source_digest(digest))
-    {
-        return Ok(Err(BootstrapReviewFailure::NotBound(
-            BootstrapReviewReachpoint::BootstrapPredecessorActivationNotBound,
-        )));
-    }
+    let pack_pin_predecessor = match digest.filter(|digest| inputs.matches_source_digest(digest)) {
+        #[cfg(unix)]
+        Some(digest) => {
+            use crate::original_authority::{PredecessorActivation, PredecessorActivationReached};
+            let work = pack.work.get();
+            let reached = review
+                .read
+                .review_predecessor_activation(
+                    &work.source,
+                    pack.cancellation,
+                    pack.input_budget,
+                    PredecessorActivation {
+                        inputs,
+                        source_digest: &digest,
+                        profile_id,
+                        loader: &work.catalog,
+                        schemas: work.profile_schemas,
+                    },
+                )
+                .await;
+            match reached {
+                Ok(PredecessorActivationReached::Binding(binding)) => binding,
+                Ok(
+                    PredecessorActivationReached::SnapshotSchemas
+                    | PredecessorActivationReached::LegacySuccessor,
+                ) => {
+                    return Ok(Err(BootstrapReviewFailure::NotBound(
+                        BootstrapReviewReachpoint::BootstrapPredecessorActivationNotBound,
+                    )));
+                }
+                Err(error) => return Ok(Err(original_failure(error))),
+            }
+        }
+        #[cfg(not(unix))]
+        Some(_) => {
+            return Ok(Err(BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::BootstrapPredecessorActivationNotBound,
+            )));
+        }
+        None => None,
+    };
     drop(review.actual.predecessor_inputs.take());
-    drop((value, response, request));
-    inactive(review, pack, scope, catalog, profile_id).await
+    caller.check(review, pack)?;
+    pack.require_same_runtime()?;
+    inactive(
+        review,
+        pack,
+        scope,
+        catalog,
+        profile_id,
+        pack_pin_predecessor.as_ref(),
+    )
+    .await
 }
 
 async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
@@ -94,6 +137,7 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
     scope: &CoreValue,
     catalog: &catalog::ResolverCatalog,
     profile_id: &str,
+    pack_pin_predecessor: Option<&CoreValue>,
 ) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     let source = catalog::returned(
@@ -136,7 +180,20 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         profile_id,
         pack.input_budget,
     ) {
-        Ok(None) => return confirmation::run(review, pack, scope, catalog, profile_id, None).await,
+        Ok(None) => {
+            return confirmation::run(
+                review,
+                pack,
+                scope,
+                catalog,
+                profile_id,
+                confirmation::Predecessors {
+                    definition: None,
+                    pack_pin: pack_pin_predecessor,
+                },
+            )
+            .await;
+        }
         Ok(Some(registry)) => registry,
         Err(error) => return Ok(Err(original_failure(error))),
     };
@@ -197,7 +254,10 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         scope,
         catalog,
         profile_id,
-        definition_predecessor.as_ref(),
+        confirmation::Predecessors {
+            definition: definition_predecessor.as_ref(),
+            pack_pin: pack_pin_predecessor,
+        },
     )
     .await
 }

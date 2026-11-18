@@ -1,7 +1,7 @@
 use super::*;
 use crate::original_authority::catalog::initial_catalog_fixture;
 use crate::original_authority::definitions::tests::{
-    Source, lock_free, operation, with_setup_source,
+    Source, lock_free, operation, with_existing_setup_source, with_setup_source,
 };
 use rusqlite::Connection;
 use serde_json::Value;
@@ -232,6 +232,24 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             let bundled_successor = root.join("successor-catalog");
             seed_successor_catalog(&witness, &bundled_successor);
             check_snapshot(&bundled_successor, true);
+            let resolved_source = witness.join("reread-source.json");
+            assert!(
+                read_post_resolve_predecessor(owner, &resolved_source, &witness, artifacts)
+                    .unwrap()
+            );
+            let Err(error) = read_post_resolve_predecessor(
+                owner,
+                &resolved_source,
+                &bundled_successor,
+                artifacts,
+            ) else {
+                panic!("the retained overlay still pins the old Shell definition");
+            };
+            assert_eq!(error.class, recovery_workspace::APP_DENIED);
+            assert_eq!(
+                error.message,
+                "active Profile Shell artifact is unavailable"
+            );
             assert_eq!(
                 fs::read(profiles.join("active.json")).unwrap(),
                 host_pointer
@@ -247,6 +265,19 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             assert_eq!(
                 error.message,
                 "bootstrap review does not match the verified active definition"
+            );
+            let Err(error) =
+                read_post_resolve_predecessor(owner, &resolved_source, &witness, artifacts)
+            else {
+                panic!("the independently loaded Authority must reject the replacement pointer");
+            };
+            assert_eq!(
+                error.class,
+                "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict"
+            );
+            assert_eq!(
+                error.message,
+                "Pack pin review does not match the verified active pointer"
             );
             assert_eq!(fs::read(profiles.join("active.json")).unwrap(), predecessor);
             assert_eq!(
@@ -331,6 +362,73 @@ fn read_registered(
     }
     assert!(listing.receipt().verified());
     outcome
+}
+
+fn read_post_resolve_predecessor(
+    owner: &Source,
+    resolved_source: &Path,
+    witness: &Path,
+    artifacts: &Path,
+) -> Result<bool> {
+    with_existing_setup_source(owner, |owner, listing, cancellation, budget| {
+        for discard in [true, false] {
+            assert_eq!(
+                listing.enter_recovery(owner, cancellation, discard)?,
+                Prefix::NoJournal
+            );
+        }
+        listing.acquire_candidate_root(owner, cancellation)?;
+        assert!(matches!(
+            listing.candidate_selection(owner, cancellation, "defaults", false, budget)?,
+            CandidateSelection::ActiveAuthority
+        ));
+        // This fixture starts after the earlier resolved candidate. In particular
+        // it allows the Host pointer to change independently of the active graph.
+        listing.enter_registered_candidate()?;
+        listing.select_registered_resolver_catalog()?;
+        listing.acquire_resolver_root(owner, cancellation)?;
+        assert!(
+            listing
+                .resolver_authority_snapshot(owner, cancellation, Digest::hash(b"resolved bundle"))?
+                .is_some()
+        );
+        let definition = load_document(resolved_source, budget);
+        let source_digest = definition.digest_guest(budget).unwrap();
+        let inputs =
+            listing.bootstrap_predecessor_inputs(owner, cancellation, "defaults", budget)?;
+        assert!(
+            inputs.needs_source_digest("defaults") && inputs.matches_source_digest(&source_digest)
+        );
+        let op = operation(listing, owner, cancellation);
+        let loader = Mutex::new(Some(initial_catalog_fixture::resolved_review(
+            &op,
+            budget,
+            witness,
+            artifacts,
+            &definition,
+        )?));
+        let outcome = ready_test(listing.review_predecessor_activation(
+            owner,
+            cancellation,
+            budget,
+            PredecessorActivation {
+                inputs: &inputs,
+                source_digest: &source_digest,
+                profile_id: "defaults",
+                loader: &loader,
+                schemas: Some(workspace_active::tests::bound_recovery_schemas()),
+            },
+        ));
+        assert!(listing.receipt().verified());
+        if outcome.is_ok() {
+            assert!(!listing.inactive_predecessor_has_registry(owner, cancellation, "defaults")?);
+        }
+        assert!(lock_free(
+            &owner.root.join("authority/.v4.sqlite3.lifecycle.lock")
+        ));
+        listing.close_continuation()?;
+        outcome.map(|reached| matches!(reached, PredecessorActivationReached::Binding(None)))
+    })
 }
 
 fn replace_host_selection(root: &Path, predecessor: &[u8], budget: &Arc<dyn AllocationBudget>) {

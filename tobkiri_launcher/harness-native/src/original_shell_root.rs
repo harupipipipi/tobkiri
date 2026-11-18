@@ -225,13 +225,15 @@ impl CatalogIo {
                             let symlink = mode == Some(mode_bits(libc::S_IFLNK));
                             write_bool(&mut response, symlink)?;
                             if stage == PackResolve::ShellLeafSymlink {
-                                if matches!(
-                                    self.pack_resolve_source,
-                                    Some(
-                                        PackResolveSource::Bundled(_)
-                                            | PackResolveSource::Registered(_)
+                                if !self.retain_resolved_review_inputs
+                                    && matches!(
+                                        self.pack_resolve_source,
+                                        Some(
+                                            PackResolveSource::Bundled(_)
+                                                | PackResolveSource::Registered(_)
+                                        )
                                     )
-                                ) {
+                                {
                                     self.shell_inputs = None;
                                 }
                                 if !symlink {
