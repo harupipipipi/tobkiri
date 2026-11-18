@@ -11,7 +11,10 @@ use support::registry::{
 use support::{Host, canon, physical_temp, registry, within_session};
 use tobkiri_core::{Core, CoreConfig, CoreError, Session};
 #[cfg(unix)]
-use tobkiri_core::{CoreValue, NativeArtifactDeclaration, NativeDeclaredArtifactSource};
+use tobkiri_core::{
+    CoreBuffer, CoreValue, LegacyProviderRegistryRead, NativeArtifactDeclaration,
+    NativeArtifactError, NativeDeclaredArtifactSource,
+};
 use tobkiri_gate::{EffectRequest, StoreOperation, StoreTier};
 use tobkiri_store::{DataRoot, StoreError};
 
@@ -152,11 +155,15 @@ async fn verify_legacy_preparation(
     let path = format!(
         "packs/rumi_provider_registry_pack/profiles/{profile}/provider_registry.store.json"
     );
-    let observe = || -> Result<Option<String>> {
-        match source.read_existing_owned(&path, 1024 * 1024) {
-            Ok(bytes) => Ok(Some(String::from_utf8(bytes)?)),
-            Err(StoreError::NotFound) => Ok(None),
-            Err(error) => Err(error.into()),
+    let observe = {
+        let source = source.clone();
+        let path = path.clone();
+        move || -> Result<Option<String>> {
+            match source.read_existing_owned(&path, 1024 * 1024) {
+                Ok(bytes) => Ok(Some(String::from_utf8(bytes)?)),
+                Err(StoreError::NotFound) => Ok(None),
+                Err(error) => Err(error.into()),
+            }
         }
     };
     let arguments = |snapshot: Option<String>, preflight: Option<String>| json!({"request":request["request"],"snapshot":snapshot,"preflight":preflight});
@@ -168,7 +175,22 @@ async fn verify_legacy_preparation(
             arguments(first, second),
         )
     };
-    ensure!(prepare(observe()?, observe()?).await?["expected_revision"] == 0);
+    let initial = prepare(observe()?, observe()?).await?;
+    ensure!(initial["expected_revision"] == 0);
+    #[cfg(unix)]
+    ensure!(
+        native_legacy_prepare(
+            core,
+            pack,
+            profile,
+            fixture,
+            &request["request"],
+            observe.clone(),
+            2
+        )
+        .await?
+            == initial
+    );
     ensure!(observe()?.is_none());
 
     let observed = existing.to_string();
@@ -184,11 +206,44 @@ async fn verify_legacy_preparation(
             pack,
             profile,
             fixture,
-            arguments(observe()?, observe()?),
+            &request["request"],
+            observe.clone(),
+            2,
         )
         .await?;
         ensure!(plan == expected);
         ensure!(!plan.to_string().contains(HANDLE));
+        ensure!(observe()?.as_deref() == Some(observed.as_str()));
+
+        let mut invalid_request = request["request"].clone();
+        invalid_request["endpoint"] = json!("https://example.invalid/v1");
+        for (submitted, document, reads) in [
+            (&invalid_request, observed.as_str(), 0),
+            (&request["request"], "{", 1),
+            (&request["request"], "null", 1),
+        ] {
+            source.write_atomic(&path, document.as_bytes())?;
+            let error = native_legacy_prepare(
+                core,
+                pack,
+                profile,
+                fixture,
+                submitted,
+                observe.clone(),
+                reads,
+            )
+            .await
+            .expect_err("native PREPARE accepted an invalid request or Registry document");
+            ensure!(
+                matches!(
+                    error.downcast_ref::<NativeArtifactError>(),
+                    Some(NativeArtifactError::ProviderRejected(error)) if error.code() == "invalid"
+                ),
+                "{error:#}"
+            );
+            ensure!(observe()?.as_deref() == Some(document));
+        }
+        source.write_atomic(&path, observed.as_bytes())?;
     }
     #[cfg(not(unix))]
     let _ = (core, pack);
@@ -207,26 +262,44 @@ async fn verify_legacy_preparation(
 
     let mut raced = existing.clone();
     raced["revision"] = json!(43);
+    let raced = raced.to_string();
     let before_replacement = observe()?;
-    source.write_atomic(&path, raced.to_string().as_bytes())?;
-    let after_replacement = observe()?;
     #[cfg(unix)]
     {
+        let original_reader = observe.clone();
+        let replacement_source = source.clone();
+        let replacement_path = path.clone();
+        let mut replacement = Some(raced.clone());
         let result = native_legacy_prepare(
             core,
             pack,
             profile,
             fixture,
-            arguments(before_replacement.clone(), after_replacement.clone()),
+            &request["request"],
+            move || {
+                let observed = original_reader()?;
+                // Replace the fixture between PREPARE's two observations.
+                if let Some(document) = replacement.take() {
+                    replacement_source.write_atomic(&replacement_path, document.as_bytes())?;
+                }
+                Ok(observed)
+            },
+            2,
         )
         .await
         .expect_err("native PREPARE must reject a changed Registry revision");
-        ensure!(matches!(
-            result.downcast_ref::<tobkiri_core::NativeArtifactError>(),
-            Some(tobkiri_core::NativeArtifactError::ProviderRejected(error)) if error.code() == "conflict"
-        ));
-        ensure!(observe()? == after_replacement);
+        ensure!(
+            matches!(
+                result.downcast_ref::<NativeArtifactError>(),
+                Some(NativeArtifactError::ProviderRejected(error)) if error.code() == "conflict"
+            ),
+            "{result:#}"
+        );
     }
+    #[cfg(not(unix))]
+    source.write_atomic(&path, raced.as_bytes())?;
+    let after_replacement = observe()?;
+    ensure!(after_replacement.as_deref() == Some(raced.as_str()));
     let conflict = prepare(before_replacement, after_replacement)
         .await
         .expect_err("preflight rejected a new Registry revision");
@@ -251,9 +324,12 @@ async fn native_legacy_prepare(
     expected: &tobkiri_profile::PackPin,
     profile: &str,
     root: &Path,
-    arguments: Value,
+    request: &Value,
+    mut observe: impl FnMut() -> Result<Option<String>> + Send + 'static,
+    expected_reads: usize,
 ) -> Result<Value> {
     use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     enum NoDeclaration {}
     impl NativeArtifactDeclaration for NoDeclaration {
@@ -282,6 +358,8 @@ async fn native_legacy_prepare(
         root: root.to_path_buf(),
         declarations: BTreeMap::new(),
     })?;
+    let reads = Arc::new(AtomicUsize::new(0));
+    let read_count = Arc::clone(&reads);
     let outcome = async {
         let path = expected
             .source
@@ -292,9 +370,15 @@ async fn native_legacy_prepare(
         let pack = inspection.verify_pack_archive(&mut file, length)?;
         ensure!(pack.hash == expected.sha256);
         let budget = inspection.allocation_budget()?.clone();
-        let input = CoreValue::parse_guest(&serde_json::to_vec(&arguments)?, &budget)?;
+        let input = CoreValue::parse_guest(&serde_json::to_vec(request)?, &budget)?;
+        let read: LegacyProviderRegistryRead = Box::new(move |budget| {
+            read_count.fetch_add(1, Ordering::Relaxed);
+            Ok(observe()?
+                .map(|observation| CoreBuffer::copy_from(observation.as_bytes(), budget))
+                .transpose()?)
+        });
         let result = inspection
-            .invoke_legacy_provider_prepare(&pack, profile, &input)
+            .invoke_live_legacy_provider_prepare(&pack, profile, &input, read)
             .await?;
         let output = result.encode_guest(&budget)?;
         Ok(serde_json::from_slice(output.as_bytes())?)
@@ -304,6 +388,11 @@ async fn native_legacy_prepare(
         .finish()
         .await
         .context("finish native Provider preparation")?;
+    let reads = reads.load(Ordering::Relaxed);
+    ensure!(
+        reads == expected_reads,
+        "native PREPARE made {reads} Registry reads, expected {expected_reads}: {outcome:?}"
+    );
     outcome
 }
 

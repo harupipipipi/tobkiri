@@ -62,6 +62,15 @@ interface legacy-configuration {
                       preflight: option<string>) -> result<json, error>;
 }
 
+interface legacy-configuration-live {
+  use configuration.{local-connection};
+  use tobkiri:core/types@1.2.0.{callback-handle, json, error};
+
+  /// Read each observation when the planner reaches it. The native caller
+  /// binds the callback to the active Profile's old Registry.
+  prepare-local: func(request: local-connection, observe: callback-handle) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
@@ -71,4 +80,5 @@ world pack {
   export configuration;
   export configuration-commit;
   export legacy-configuration;
+  export legacy-configuration-live;
 }

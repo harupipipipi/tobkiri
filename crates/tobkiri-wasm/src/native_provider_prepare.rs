@@ -2,21 +2,23 @@
 use super::{NativeSetupStore, NativeState, entry::ensure_active};
 use crate::owned_values::core_to_val;
 use anyhow::{Context, Result, bail, ensure};
-use std::fmt;
-use tobkiri_canon::{AllocationError, CoreBuffer, CoreRef, CoreValue, ids::ShapeRef};
+use std::{fmt, io, sync::Arc};
+use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, ids::ShapeRef};
 use tobkiri_gate::ControlKind;
 use tobkiri_manifest::{RuntimeSpec, ShapeKind, VerifiedPack, WitType};
 use wasmtime::component::types::{ComponentFunc, ComponentInstance, ComponentItem, Type};
-use wasmtime::component::{BudgetedBox, BudgetedString, Component, Linker, Val};
+use wasmtime::component::{BudgetedBox, BudgetedString, BudgetedVec, Component, Linker, Val};
 use wasmtime::{Engine, Store};
 
 const PACK_ID: &str = "local.provider-registry";
-const SHAPE: &str = "local.provider-registry.legacy-configuration@1.0";
-const INTERFACE: &str = "local:provider-registry/legacy-configuration@1.0.0";
+const SHAPE: &str = "local.provider-registry.legacy-configuration-live@1.0";
+const INTERFACE: &str = "local:provider-registry/legacy-configuration-live@1.0.0";
 const FUNCTION: &str = "prepare-local";
 const FLOW: &str = "tobkiri:core/flow@1.2.0";
 const PROFILE: &str = "current-profile";
-const PARAMETERS: [&str; 3] = ["request", "snapshot", "preflight"];
+const CALLBACK: &str = "invoke-callback";
+const OBSERVE_ID: u64 = 1;
+const PARAMETERS: [&str; 2] = ["request", "observe"];
 const ERROR_CODES: [&str; 9] = [
     "denied",
     "approval-required",
@@ -51,16 +53,25 @@ impl fmt::Display for LegacyProviderPrepareError {
 
 impl std::error::Error for LegacyProviderPrepareError {}
 
+/// Trusted native reader of the original Profile's fixed legacy Registry.
+/// The supplied budget owns the bytes returned to the isolated guest.
+pub type LegacyProviderRegistryRead =
+    Box<dyn FnMut(&Arc<dyn AllocationBudget>) -> Result<Option<CoreBuffer>> + Send>;
+
+pub(super) struct LiveObservations {
+    read: LegacyProviderRegistryRead,
+    count: u8,
+}
+
 impl<T: Send + 'static> NativeSetupStore<T> {
-    /// Run the receipt-verified Provider Pack's fixed keyless planner once.
-    /// Trusted nativeKit binds the active Profile and both immutable reads;
-    /// the guest sees only those DATA and the private `current-profile` reply.
-    /// The caller retains source/activation custody and retires this Store.
-    pub async fn invoke_legacy_provider_prepare(
+    /// Read each original Registry document only when the fixed planner has
+    /// reached that read. The reader never receives a guest path or operation.
+    pub async fn invoke_live_legacy_provider_prepare(
         &mut self,
         pack: &VerifiedPack,
         profile_id: &str,
-        arguments: &CoreValue,
+        request: &CoreValue,
+        read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue> {
         let store = self
             .store
@@ -127,39 +138,13 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         );
         ensure!(
             request_abi(&function.params[0].1)
-                && function.params[1..]
-                    .iter()
-                    .all(|(_, ty)| optional_string(ty))
+                && function.params[1].1 == WitType::CallbackHandle
                 && valid_declared_result(function.result.as_ref()),
             "legacy Provider declared prepare ABI differs"
         );
 
         let owners = state.owners.clone();
         let profile = profile_input(profile_id, &owners)?;
-        let object = arguments
-            .object()
-            .context("legacy Provider prepare arguments must be a record")?;
-        ensure!(
-            object.len() == PARAMETERS.len(),
-            "legacy Provider prepare argument count differs"
-        );
-        let encode = |index: usize| -> Result<Val> {
-            let (name, ty) = &function.params[index];
-            let value = object
-                .get(name)
-                .context("legacy Provider prepare parameter missing")?;
-            if index != 0 {
-                ensure!(
-                    matches!(value.inspect(), CoreRef::Null)
-                        || value
-                            .as_str()
-                            .is_some_and(|document| document.len() <= MAX_DOCUMENT_BYTES),
-                    "legacy Provider observation must be absent or a bounded document"
-                );
-            }
-            core_to_val(&value, ty, &owners)
-        };
-
         let artifact = pack
             .files
             .get(component)
@@ -194,9 +179,13 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         // Validate both the hashed WIT shape and the actual executable's type
         // before instantiating anything or accepting an invocation of the host.
         let linker = prepare_linker(engine, &component, &function.params, &owners)?;
-        let parameters = [encode(0)?, encode(1)?, encode(2)?];
+        let values = [
+            core_to_val(request, &function.params[0].1, &owners)?,
+            observe_handle(&owners)?,
+        ];
         store.host_allocation_budget(owners.component().clone());
-        let reply = call_prepare(store, &linker, &component, profile, &parameters).await?;
+        let (reply, reads) =
+            call_prepare(store, &linker, &component, profile, &values, read).await?;
         ensure_active(store.data_mut())?;
         let reply = decode_reply(
             reply.as_slice(),
@@ -204,8 +193,26 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             &owners,
         );
         ensure_active(store.data_mut())?;
-        reply
+        let reply = reply?;
+        ensure!(
+            reads == 2,
+            "legacy Provider prepare omitted a Registry observation"
+        );
+        Ok(reply)
     }
+}
+
+fn observe_handle(owners: &crate::AllocationOwners) -> Result<Val> {
+    let owner = owners.component();
+    let field = (
+        BudgetedString::copy_from("id", owner, 1)?,
+        Val::U64(OBSERVE_ID),
+    );
+    Ok(Val::Record(BudgetedVec::from_iter(
+        [field].into_iter(),
+        owner,
+        0,
+    )?))
 }
 
 fn profile_input(profile_id: &str, owners: &crate::AllocationOwners) -> Result<CoreBuffer> {
@@ -259,7 +266,7 @@ fn prepare_linker<T: Send + 'static>(
         "legacy Provider current-profile ABI differs"
     );
     ensure!(
-        prepare.params().len() == PARAMETERS.len() && valid_result(&prepare),
+        prepare.params().len() == parameters.len() && valid_result(&prepare),
         "legacy Provider prepare ABI differs"
     );
     for ((name, actual), (declared_name, declared_type)) in prepare.params().zip(parameters) {
@@ -268,6 +275,17 @@ fn prepare_linker<T: Send + 'static>(
             "legacy Provider prepare parameter ABI differs"
         );
     }
+    let callback = function_type(flow.get_export(engine, CALLBACK).map(|item| item.ty))?;
+    let mut arguments = callback.params();
+    ensure!(
+        arguments
+            .next()
+            .is_some_and(|(name, ty)| name == "c" && is_callback_handle(&ty))
+            && arguments.next() == Some(("args", Type::String))
+            && arguments.next().is_none()
+            && valid_result(&callback),
+        "legacy Provider observation callback ABI differs"
+    );
     let mut linker = Linker::new(engine);
     linker.define_unknown_imports_as_traps(component)?;
     // Replace only the exact flow instance, keeping the other import traps.
@@ -303,6 +321,16 @@ fn prepare_linker<T: Send + 'static>(
                     },
                 )?;
             }
+            ComponentItem::ComponentFunc(_) if name == CALLBACK => {
+                replacement.func_new_owned(
+                    name,
+                    owners.component(),
+                    |mut cx, _, args, output| {
+                        observe_registry(cx.data_mut(), args, output)
+                            .map_err(wasmtime::Error::from_anyhow)
+                    },
+                )?;
+            }
             ComponentItem::ComponentFunc(_) => {
                 replacement.func_new_owned(name, owners.component(), |_, _, _, _| {
                     Err(wasmtime::Error::msg(
@@ -315,6 +343,56 @@ fn prepare_linker<T: Send + 'static>(
         }
     }
     Ok(linker)
+}
+
+fn observe_registry<T>(state: &mut NativeState<T>, args: &[Val], output: &mut [Val]) -> Result<()> {
+    ensure_active(state)?;
+    let ([Val::Record(handle), Val::String(arguments)], [result]) = (args, output) else {
+        bail!("legacy Provider observation arguments differ");
+    };
+    ensure!(
+        matches!(handle.as_slice(), [(name, Val::U64(OBSERVE_ID))] if name.as_str() == "id")
+            && arguments.as_str() == "null"
+            && state.provider_prepare_profile.is_none(),
+        "legacy Provider observation is outside its admitted call"
+    );
+    let mut observations = state
+        .provider_prepare_reads
+        .take()
+        .context("legacy Provider observations are unavailable")?;
+    ensure!(
+        observations.count < 2,
+        "legacy Provider observations are exhausted"
+    );
+    let document = (observations.read)(state.owners.graph())
+        .map_err(|_| anyhow::anyhow!("legacy Provider Registry read failed"))?;
+    ensure_active(state)?;
+    let owner = state.owners.component();
+    let value = match document {
+        Some(document) => {
+            ensure!(
+                document.len() <= MAX_DOCUMENT_BYTES,
+                "legacy Provider observation exceeds its limit"
+            );
+            // JSON quoting keeps an absent file distinct from a present raw
+            // document containing null, and preserves raw order and syntax.
+            let mut encoded = CoreBuffer::builder(state.owners.graph(), document.len() * 6 + 2);
+            let text = document.as_str()?;
+            encoded.write_chunk(document.len() * 6 + 2, |output| {
+                let mut writer = io::Cursor::new(output);
+                serde_json::to_writer(&mut writer, text).map_err(|_| AllocationError::Invalid)?;
+                usize::try_from(writer.position()).map_err(|_| AllocationError::Overflow)
+            })?;
+            let encoded = encoded.finish()?;
+            BudgetedString::copy_from(encoded.as_str()?, owner, 1)?
+        }
+        None => BudgetedString::copy_from("null", owner, 1)?,
+    };
+    *result = Val::Result(Ok(Some(BudgetedBox::new(Val::String(value), owner, 0)?)));
+    ensure_active(state)?;
+    observations.count += 1;
+    state.provider_prepare_reads = Some(observations);
+    Ok(())
 }
 
 fn instance_type(item: Option<ComponentItem>) -> Result<ComponentInstance> {
@@ -405,6 +483,7 @@ fn valid_parameter(actual: &Type, declared: &WitType) -> bool {
             valid_parameter(&actual.ty(), declared)
         }
         (Type::List(actual), WitType::List(declared)) => valid_parameter(&actual.ty(), declared),
+        (actual, WitType::CallbackHandle) => is_callback_handle(actual),
         (Type::Record(actual), WitType::Record(declared)) => {
             let fields = actual.fields();
             fields.len() == declared.len()
@@ -416,13 +495,18 @@ fn valid_parameter(actual: &Type, declared: &WitType) -> bool {
     }
 }
 
+fn is_callback_handle(ty: &Type) -> bool {
+    matches!(ty, Type::Record(record) if record.fields().map(|f| (f.name, f.ty)).eq([("id", Type::U64)]))
+}
+
 async fn call_prepare<T: Send + 'static>(
     store: &mut Store<NativeState<T>>,
     linker: &Linker<NativeState<T>>,
     component: &Component,
     profile: CoreBuffer,
-    parameters: &[Val; 3],
-) -> Result<wasmtime::component::BudgetedVec<Val>> {
+    parameters: &[Val; 2],
+    read: LegacyProviderRegistryRead,
+) -> Result<(BudgetedVec<Val>, u8)> {
     let instance = linker
         .instantiate_async(&mut *store, component)
         .await
@@ -437,8 +521,14 @@ async fn call_prepare<T: Send + 'static>(
         .context("legacy Provider prepare function export missing")?;
     ensure_active(store.data_mut())?;
     store.data_mut().provider_prepare_profile = Some(profile);
+    store.data_mut().provider_prepare_reads = Some(LiveObservations { read, count: 0 });
     let result = function.call_async_owned(&mut *store, parameters).await;
     let read_profile = store.data_mut().provider_prepare_profile.take().is_none();
+    let reads = store
+        .data_mut()
+        .provider_prepare_reads
+        .take()
+        .map_or(0, |read| read.count);
     let result = result
         .map_err(anyhow::Error::from)
         .context("execute verified legacy Provider prepare")?;
@@ -446,7 +536,7 @@ async fn call_prepare<T: Send + 'static>(
         read_profile,
         "legacy Provider prepare omitted current-profile"
     );
-    Ok(result)
+    Ok((result, reads))
 }
 
 fn decode_reply(

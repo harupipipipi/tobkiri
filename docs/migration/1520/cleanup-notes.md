@@ -4040,9 +4040,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   OpenRouter専用ポリシーによるローカル設定の拒否を確認した。実Wasm E2Eは4件、
   macOSの `SecureDirectory` は29件が通過した。元のコミットでも、既存のProvider設定試験2件は
   この隔離ポリシーによる503を返す。
-  通常Launcherからこの接続点をRustに渡す経路が残る。接続前に、初回観測が失敗した時の二度目の
-  読み取り順序と、1 MiBを超える既存Registryの互換動作を確定する。既存Host Brokerの接続認証は
-  起動中のProfileまでを証明する。リクエスト単位のleaseと実作業終了の対応、観測値の転送上限も確認する。
+  `legacy-configuration-live.prepare-local` は既存の `flow.invoke-callback` を、同じStoreで
+  発行した固定の読取りhandleに束縛する。Wasmの設定計画が旧Registryの読取りに達した時だけ
+  ホストを呼ぶため、要求や初回の文書が不正な場合は以降の読取りを行わない。欠落ファイルと
+  既存ファイルの `null` は区別する。Launcher同梱Packの照合では従来の操作とこの追加操作を確認する。
+  Native Storeはライブ読取りに一本化した。同じWasmの旧exportにある二つのスナップショットの
+  引数は、既存利用先を移してから削除できる。実 `.tpk` の E2E 4件で、初回なし・有効なRegistryで
+  各2回、不正な要求で0回、壊れたJSONと `null` で各1回の読取り、実ファイルのrevision差による
+  競合、Registryの内容を変更しないことを確かめた。
+  通常Launcherからこの接続点をRustに渡す経路と、1 MiBを超える既存Registryの互換動作が残る。
+  既存Host Brokerの接続認証は起動中のProfileまでを証明する。リクエスト単位のleaseと物理終了の
+  対応、転送上限、実行中の子プロセスに結び付いた登録の失効を確認する。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

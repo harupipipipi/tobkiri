@@ -45,7 +45,7 @@ pub use imports::{
     NativeImportBinding, NativeImportContext, NativeImportInput, NativeImportOperation,
     NativeImportState,
 };
-pub use provider_prepare::LegacyProviderPrepareError;
+pub use provider_prepare::{LegacyProviderPrepareError, LegacyProviderRegistryRead};
 
 struct NativePhysical {
     reservation: NativeSetupReservation,
@@ -133,6 +133,7 @@ struct NativeState<T: 'static> {
     io_claimed: bool,
     provider_prepare_claimed: bool,
     provider_prepare_profile: Option<tobkiri_canon::CoreBuffer>,
+    provider_prepare_reads: Option<provider_prepare::LiveObservations>,
     #[cfg(test)]
     import_trace: Option<entry::import_trace::NativeImportTrace>,
     #[cfg(test)]
@@ -254,6 +255,7 @@ impl WasmEngine {
             io_claimed: false,
             provider_prepare_claimed: false,
             provider_prepare_profile: None,
+            provider_prepare_reads: None,
             #[cfg(test)]
             import_trace: None,
             #[cfg(test)]

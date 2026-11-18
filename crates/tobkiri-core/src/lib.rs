@@ -76,8 +76,8 @@ pub use filesystem_registry::{FilesystemRights, FilesystemRoot};
 pub use journal::AuditRunJournal;
 #[cfg(unix)]
 pub use native_declared_artifact::{
-    NativeArtifactDeclaration, NativeArtifactError, NativeArtifactInspection,
-    NativeDeclaredArtifactSource,
+    LegacyProviderRegistryRead, NativeArtifactDeclaration, NativeArtifactError,
+    NativeArtifactInspection, NativeDeclaredArtifactSource,
 };
 pub use process_catalog::ProcessRegistrationError;
 pub use profile_review::{

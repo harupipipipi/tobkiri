@@ -19,8 +19,11 @@ use exports::local::provider_registry::configuration::LocalConnection;
 use ordered_python_compat::{CodecError, PyValue, dumps, loads};
 use tobkiri::core::{
     clock, flow,
-    types::{Error, ErrorCode},
+    types::{CallbackHandle, Error, ErrorCode},
 };
+
+// Same byte ceiling as the current Registry's private SQL document.
+const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
 
 struct Pack;
 
@@ -134,24 +137,33 @@ impl exports::local::provider_registry::legacy_configuration::Guest for Pack {
     }
 }
 
+impl exports::local::provider_registry::legacy_configuration_live::Guest for Pack {
+    fn prepare_local(request: LocalConnection, observe: CallbackHandle) -> Result<String, Error> {
+        let profile = current_profile()?;
+        let store = LiveObservedRegistry {
+            observe,
+            read_error: None,
+        };
+        let mut registry = Registry::new(&text(profile), store, CoreClock).map_err(source_error)?;
+        let plan =
+            prepare_configuration(&mut registry, &local_request(request)).map_err(|error| {
+                match registry.store().read_error {
+                    Some(code) => boundary_error(code, "provider registry observation failed"),
+                    None => source_error(error),
+                }
+            })?;
+        encode_reply(&plan)
+    }
+}
+
 struct ObservedRegistry<'a>(std::array::IntoIter<Option<&'a str>, 2>);
 
 impl DocumentStore for ObservedRegistry<'_> {
     fn read(&mut self) -> SourceResult<Option<PyValue>> {
-        // Same byte ceiling as the current Registry's private SQL document.
-        const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
         self.0
             .next()
             .ok_or_else(|| SourceError::value("provider registry observation missing"))?
-            .map(|raw| {
-                if raw.len() > MAX_DOCUMENT_BYTES {
-                    return Err(SourceError::value(
-                        "provider registry observation is too large",
-                    ));
-                }
-                loads(raw)
-                    .map_err(|_| SourceError::value("provider registry observation is invalid"))
-            })
+            .map(decode_observation)
             .transpose()
     }
 
@@ -160,6 +172,44 @@ impl DocumentStore for ObservedRegistry<'_> {
             "provider registry observations are read-only",
         ))
     }
+}
+
+struct LiveObservedRegistry {
+    observe: CallbackHandle,
+    read_error: Option<ErrorCode>,
+}
+
+impl DocumentStore for LiveObservedRegistry {
+    fn read(&mut self) -> SourceResult<Option<PyValue>> {
+        let reply = flow::invoke_callback(self.observe, "null").map_err(|error| {
+            self.read_error = Some(error.code);
+            SourceError::value("provider registry observation failed")
+        })?;
+        // The envelope can escape each raw byte as six ASCII bytes, plus quotes.
+        if reply.len() > 6 * MAX_DOCUMENT_BYTES + 2 {
+            return Err(SourceError::value(
+                "provider registry observation is too large",
+            ));
+        }
+        let raw = serde_json::from_str::<Option<String>>(&reply)
+            .map_err(|_| SourceError::value("provider registry observation reply is invalid"))?;
+        raw.as_deref().map(decode_observation).transpose()
+    }
+
+    fn write(&mut self, _: &PyValue) -> SourceResult<()> {
+        Err(SourceError::permission(
+            "provider registry observations are read-only",
+        ))
+    }
+}
+
+fn decode_observation(raw: &str) -> SourceResult<PyValue> {
+    if raw.len() > MAX_DOCUMENT_BYTES {
+        return Err(SourceError::value(
+            "provider registry observation is too large",
+        ));
+    }
+    loads(raw).map_err(|_| SourceError::value("provider registry observation is invalid"))
 }
 
 fn local_request(request: LocalConnection) -> PyValue {

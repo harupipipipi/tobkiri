@@ -28,6 +28,8 @@ use tobkiri_wasm::{
     NativeSetupStore,
 };
 
+pub use tobkiri_wasm::LegacyProviderRegistryRead;
+
 #[path = "native_artifact_open_unix.rs"]
 mod opening;
 use opening::{OpenFailure, OpenedArtifact};
@@ -237,15 +239,16 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         verified.map_err(|error| NativeArtifactError::Core(error.into()))
     }
 
-    /// Execute the fixed read-only Provider planning operation as the last
-    /// action on this Store. The host owns the selected Profile and both old
-    /// Registry observations, and still finishes this inspection on error.
-    /// The resulting plan carries no permission to save or execute it.
-    pub async fn invoke_legacy_provider_prepare(
+    /// Execute read-only preparation in the same Store, obtaining original
+    /// Registry observations in the order required by the fixed Wasm planner.
+    /// The caller owns the activated Profile and must finish the inspection,
+    /// even on failure. The plan carries no permission to save or execute it.
+    pub async fn invoke_live_legacy_provider_prepare(
         &mut self,
         pack: &VerifiedPack,
         profile_id: &str,
-        arguments: &CoreValue,
+        request: &CoreValue,
+        read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
         self.require_ready()?;
         self.work
@@ -255,7 +258,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             .map_err(|_| NativeDataIoError::Busy)?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let plan = store
-            .invoke_legacy_provider_prepare(pack, profile_id, arguments)
+            .invoke_live_legacy_provider_prepare(pack, profile_id, request, read)
             .await;
         self.require_live()?;
         plan.map_err(

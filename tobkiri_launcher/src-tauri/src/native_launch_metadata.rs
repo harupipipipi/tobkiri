@@ -315,21 +315,26 @@ fn verify_provider_prepare_archive(
                 && matches!(&pack.manifest.runtime, RuntimeSpec::Wasm { .. }),
             "Provider Pack manifest differs from the bundled receipt"
         );
-        let shape = ShapeRef::parse("local.provider-registry.legacy-configuration@1.0")?;
         let prepare = OpName::parse("prepare-local")?;
-        ensure!(
-            pack.manifest.ports.provides.iter().any(|port| {
-                port.shape == shape.name && port.version == shape.version && !port.optional
-            }) && pack.shapes.iter().any(|definition| {
-                definition.reference == shape
-                    && definition.kind == ShapeKind::Port
-                    && definition.functions.len() == 1
-                    && definition.functions.contains_key(&prepare)
-                    && definition.streams.is_empty()
-                    && definition.callbacks.is_empty()
-            }),
-            "bundled Provider Pack has no exact legacy prepare-local port"
-        );
+        for name in [
+            "local.provider-registry.legacy-configuration@1.0",
+            "local.provider-registry.legacy-configuration-live@1.0",
+        ] {
+            let shape = ShapeRef::parse(name)?;
+            ensure!(
+                pack.manifest.ports.provides.iter().any(|port| {
+                    port.shape == shape.name && port.version == shape.version && !port.optional
+                }) && pack.shapes.iter().any(|definition| {
+                    definition.reference == shape
+                        && definition.kind == ShapeKind::Port
+                        && definition.functions.len() == 1
+                        && definition.functions.contains_key(&prepare)
+                        && definition.streams.is_empty()
+                        && definition.callbacks.is_empty()
+                }),
+                "bundled Provider Pack has no exact legacy prepare-local port {name}"
+            );
+        }
         Ok::<_, anyhow::Error>(())
     })()
     .map_err(io::Error::other)
