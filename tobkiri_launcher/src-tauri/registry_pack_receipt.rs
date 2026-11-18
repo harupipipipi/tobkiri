@@ -47,13 +47,104 @@ mod unix {
 
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
-    struct Pack {
+    pub(crate) struct Pack {
         id: String,
         version: String,
         archive: String,
         archive_bytes: u64,
         archive_sha256: String,
         manifest_sha256: String,
+    }
+
+    impl Pack {
+        pub(crate) fn id(&self) -> &str {
+            &self.id
+        }
+
+        pub(crate) fn version(&self) -> &str {
+            &self.version
+        }
+
+        pub(crate) fn archive_bytes(&self) -> u64 {
+            self.archive_bytes
+        }
+
+        pub(crate) fn manifest_sha256(&self) -> &str {
+            &self.manifest_sha256
+        }
+    }
+
+    struct ArchiveReader<'a, C> {
+        input: io::Take<File>,
+        receipt: &'a Pack,
+        checkpoint: &'a mut C,
+        checkpoint_error: Option<io::Error>,
+        sha256: Sha256,
+        bytes_read: u64,
+    }
+
+    impl<C: FnMut() -> io::Result<()>> Read for ArchiveReader<'_, C> {
+        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+            if self.checkpoint_error.is_none() {
+                self.checkpoint_error = (self.checkpoint)().err();
+            }
+            if self.checkpoint_error.is_some() {
+                // `io::copy` and Pack parsing may retry an interrupted read.
+                return Err(io::Error::other(
+                    "Registry Pack inspection checkpoint failed",
+                ));
+            }
+            let count = self.input.read(output)?;
+            self.bytes_read += count as u64;
+            if self.bytes_read > self.receipt.archive_bytes {
+                return Err(archive_mismatch(self.receipt));
+            }
+            self.sha256.update(&output[..count]);
+            Ok(count)
+        }
+    }
+
+    fn archive_mismatch(pack: &Pack) -> io::Error {
+        invalid(format!(
+            "Registry Pack archive differs from receipt: {}",
+            pack.id
+        ))
+    }
+
+    fn inspect_archive<T>(
+        directory: &File,
+        pack: &Pack,
+        checkpoint: &mut impl FnMut() -> io::Result<()>,
+        inspect: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<T>,
+    ) -> io::Result<T> {
+        checkpoint()?;
+        let file = open_input(
+            directory,
+            &pack.archive,
+            pack.archive_bytes..=pack.archive_bytes,
+        )?;
+        let mut reader = ArchiveReader {
+            input: file.take(pack.archive_bytes + 1),
+            receipt: pack,
+            checkpoint,
+            checkpoint_error: None,
+            sha256: Sha256::new(),
+            bytes_read: 0,
+        };
+        // The visitor may stop at the end of a format member. Include the
+        // entire physical archive in the receipt hash before accepting its data.
+        let result = inspect(pack, &mut reader).and_then(|result| {
+            io::copy(&mut reader, &mut io::sink())?;
+            Ok(result)
+        });
+        let result = reader.checkpoint_error.take().map_or(result, Err)?;
+        if reader.bytes_read != pack.archive_bytes
+            || format!("sha256:{:x}", reader.sha256.finalize()) != pack.archive_sha256
+        {
+            return Err(archive_mismatch(pack));
+        }
+        checkpoint()?;
+        Ok(result)
     }
 
     fn tagged_sha256(value: &str) -> bool {
@@ -263,39 +354,10 @@ mod unix {
             mut open_output: impl FnMut(&str) -> io::Result<W>,
             mut checkpoint: impl FnMut() -> io::Result<()>,
         ) -> io::Result<()> {
-            let mut buffer = [0; 64 * 1024];
             for pack in &self.packs {
-                checkpoint()?;
-                let file = open_input(
-                    directory,
-                    &pack.archive,
-                    pack.archive_bytes..=pack.archive_bytes,
-                )?;
-                let mut input = file.take(pack.archive_bytes + 1);
-                let mut output = open_output(&pack.archive)?;
-                let mut hash = Sha256::new();
-                let mut total = 0;
-                loop {
-                    checkpoint()?;
-                    let count = input.read(&mut buffer)?;
-                    if count == 0 {
-                        break;
-                    }
-                    total += count as u64;
-                    if total > pack.archive_bytes {
-                        break;
-                    }
-                    hash.update(&buffer[..count]);
-                    output.write_all(&buffer[..count])?;
-                }
-                if total != pack.archive_bytes
-                    || format!("sha256:{:x}", hash.finalize()) != pack.archive_sha256
-                {
-                    return Err(invalid(format!(
-                        "Registry Pack archive differs from receipt: {}",
-                        pack.id
-                    )));
-                }
+                inspect_archive(directory, pack, &mut checkpoint, |pack, input| {
+                    io::copy(input, &mut open_output(&pack.archive)?).map(|_| ())
+                })?;
             }
             checkpoint()
         }
@@ -305,13 +367,33 @@ mod unix {
     pub(crate) fn verify_installed(
         app_root: &Path,
         expected_sha256: &str,
-        mut checkpoint: impl FnMut() -> io::Result<()>,
+        checkpoint: impl FnMut() -> io::Result<()>,
     ) -> io::Result<()> {
+        verify_installed_with_provider(app_root, expected_sha256, checkpoint, |_, input| {
+            io::copy(input, &mut io::sink()).map(|_| ())
+        })
+    }
+
+    /// Inspect the exact Provider archive stream and publish its result only
+    /// after all installed archives have matched their receipt entries.
+    pub(crate) fn verify_installed_with_provider<T>(
+        app_root: &Path,
+        expected_sha256: &str,
+        mut checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<T>,
+    ) -> io::Result<T> {
         checkpoint()?;
         let app = open_directory(app_root)?;
         let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
         let directory = open_child_directory(&app, &name)?;
         let (receipt, _) = read_verified_receipt(&directory, expected_sha256, &mut checkpoint)?;
-        receipt.verify_archives(&directory, |_| Ok(io::sink()), checkpoint)
+        let [provider, model, conversation] = &receipt.packs;
+        let result = inspect_archive(&directory, provider, &mut checkpoint, inspect_provider)?;
+        for pack in [model, conversation] {
+            inspect_archive(&directory, pack, &mut checkpoint, |_, input| {
+                io::copy(input, &mut io::sink()).map(|_| ())
+            })?;
+        }
+        Ok(result)
     }
 }

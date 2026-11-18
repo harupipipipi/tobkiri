@@ -648,9 +648,21 @@ pub fn verify_tpk_file_in_catalog(
     if !metadata.is_file() {
         return Err(invalid("package artifact is not a regular file"));
     }
-    verify_tpk_reader_in_catalog(
-        &mut file,
-        metadata.len(),
+    check_archive_bound(metadata.len(), MAX_PACKAGE_BYTES)?;
+    verify_tpk_snapshot_in_catalog(&mut file, None, MAX_PACKAGE_BYTES, publishers, catalog)
+}
+
+/// Verify a forward-only archive with an exact known byte length in the caller's
+/// source catalog. The reader is consumed through EOF on success.
+pub fn verify_tpk_reader_in_catalog(
+    input: &mut dyn Read,
+    metadata_bytes: u64,
+    publishers: &BTreeMap<String, String>,
+    catalog: &SourceCatalog,
+) -> Result<VerifiedPack, ManifestError> {
+    verify_tpk_snapshot_in_catalog(
+        input,
+        Some(metadata_bytes),
         MAX_PACKAGE_BYTES,
         publishers,
         catalog,
@@ -747,31 +759,44 @@ fn verify_tpk_reader(
     publishers: &BTreeMap<String, String>,
 ) -> Result<VerifiedPack, ManifestError> {
     let catalog = SourceCatalog::new(&tobkiri_gate::CoreControl::default())?;
-    verify_tpk_reader_in_catalog(input, metadata_bytes, maximum, publishers, &catalog)
+    check_archive_bound(metadata_bytes, maximum)?;
+    verify_tpk_snapshot_in_catalog(input, None, maximum, publishers, &catalog)
 }
 
-fn verify_tpk_reader_in_catalog(
-    input: &mut impl Read,
-    metadata_bytes: u64,
+fn check_archive_bound(bytes: u64, maximum: u64) -> Result<(), ManifestError> {
+    if bytes > maximum {
+        return Err(invalid("package exceeds 512 MiB"));
+    }
+    Ok(())
+}
+
+fn verify_tpk_snapshot_in_catalog(
+    input: &mut (impl Read + ?Sized),
+    expected_bytes: Option<u64>,
     maximum: u64,
     publishers: &BTreeMap<String, String>,
     catalog: &SourceCatalog,
 ) -> Result<VerifiedPack, ManifestError> {
-    if metadata_bytes > maximum {
-        return Err(invalid("package exceeds 512 MiB"));
-    }
+    let read_bound = expected_bytes.unwrap_or(maximum);
+    check_archive_bound(read_bound, maximum)?;
     let state = InputSnapshot::default();
     let mut source = SnapshotInput {
         input,
         state: &state,
-        maximum,
+        maximum: read_bound,
     };
     let mut staging = catalog.begin_snapshot()?;
-    let captured = staging.append(&mut source, maximum);
-    if state.bytes.get() > maximum {
-        return Err(invalid("package exceeds 512 MiB"));
+    let captured = staging.append(&mut source, read_bound);
+    let bytes = state.bytes.get();
+    check_archive_bound(bytes, maximum)?;
+    let wrong_length = || invalid("package archive length differs from its declared length");
+    if bytes > read_bound {
+        return Err(wrong_length());
     }
     let range = captured?;
+    if expected_bytes.is_some_and(|expected| bytes != expected) {
+        return Err(wrong_length());
+    }
     let snapshot = staging.finish()?;
     let raw_package = snapshot.artifact(&range)?;
     let mut entries = raw_package.inspect(|reader| {
@@ -1074,6 +1099,41 @@ mod file_tests {
             BTreeMap::new()
         };
         (bytes, files, publishers)
+    }
+
+    #[test]
+    fn exact_length_reader_keeps_the_archive_bound_and_publisher_policy() {
+        let (bytes, _, publishers) = sample(b"exact archive", true);
+        let catalog = SourceCatalog::new(&tobkiri_gate::CoreControl::default()).unwrap();
+        let archive_bytes = bytes.len() as u64;
+        let mut input = Cursor::new(&bytes);
+        let verified =
+            verify_tpk_reader_in_catalog(&mut input, archive_bytes, &publishers, &catalog).unwrap();
+        assert_eq!(input.position(), archive_bytes);
+        assert_eq!(verified.hash, verify_tpk(&bytes, &publishers).unwrap().hash);
+        assert!(
+            verify_tpk_reader_in_catalog(
+                &mut Cursor::new(&bytes),
+                archive_bytes,
+                &BTreeMap::new(),
+                &catalog,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("publisher has no Profile key binding")
+        );
+        for wrong_archive_bytes in [archive_bytes - 2, archive_bytes + 1] {
+            let mut input = Cursor::new(&bytes);
+            let error = verify_tpk_reader_in_catalog(
+                &mut input,
+                wrong_archive_bytes,
+                &publishers,
+                &catalog,
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("archive length differs"));
+            assert_eq!(input.position(), archive_bytes.min(wrong_archive_bytes + 1));
+        }
     }
 
     #[test]

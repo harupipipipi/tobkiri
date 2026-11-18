@@ -9,9 +9,15 @@ use std::{
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use tauri::{AppHandle, Manager};
-use tobkiri_core::{NativeArtifactInspection, NativeSetupInvocation};
+use tobkiri_core::{
+    ids::{OpName, ShapeRef},
+    pack::{RuntimeSpec, ShapeKind},
+    NativeArtifactInspection, NativeSetupInvocation,
+};
 use tobkiri_gate::{ControlKind, CoreCancellation};
-use tobkiri_harness_native::{OriginalActivationInspection, OriginalActiveProfile};
+use tobkiri_harness_native::{
+    OriginalActivationInspection, OriginalActiveProfile, OriginalProviderPrepareSelection,
+};
 
 use super::{
     authority, caught, selected_setup_component, JobTicket, NativeRuntimeState,
@@ -142,26 +148,6 @@ async fn collect_on_worker(
     let metadata = result.and_then(|(sources, contributions)| {
         preparation_budget::check(deadline)?;
         require_current_launch_identity(&config, &identity)?;
-        if observe_activation {
-            let invocation = job
-                .invocation()
-                .context("native Launch job lost its runtime invocation")?;
-            let _funding = invocation
-                .control()
-                .reserve(ControlKind::Frame, REGISTRY_VERIFICATION_BYTES)?;
-            registry_pack_receipt::verify_installed(
-                sources.root(NativeSourceRoot::Application),
-                REGISTRY_RECEIPT_SHA256,
-                || {
-                    preparation_budget::check(deadline).map_err(io::Error::other)?;
-                    job.ensure_accepting(&runtime.0.jobs)
-                        .map_err(io::Error::other)
-                },
-            )
-            .context("bundled Registry Pack verification failed during Launch")?;
-            require_current_launch_identity(&config, &identity)?;
-            log::info!("verified the bundled Registry Packs for the active Shell launch");
-        }
         preparation_budget::check(deadline)?;
         job.ensure_accepting(&runtime.0.jobs)?;
         assemble_defaultspack_desktop_metadata(
@@ -195,8 +181,8 @@ impl LaunchActivationObserver<'_> {
             job,
             invocation,
             cancellation,
-            identity,
             deadline,
+            ..
         } = *self;
         let admitted = (|| {
             preparation_budget::check(deadline)?;
@@ -242,7 +228,7 @@ impl LaunchActivationObserver<'_> {
         }
 
         let active = match observed {
-            Ok(Ok(active)) => active,
+            Ok(Ok(active)) => Some(active),
             Ok(Err(error)) => {
                 // The original Host remains responsible for pending recovery.
                 // Only a successful observation can supply native activation data.
@@ -250,25 +236,103 @@ impl LaunchActivationObserver<'_> {
                     "current v5 Authority observation is unavailable at {:?}",
                     error.stage
                 );
-                return (Ok(()), true);
+                None
             }
             Err(error) => return (Err(anyhow!(error)), false),
         };
-        let result = (|| {
-            preparation_budget::check(deadline)?;
-            job.ensure_accepting(&runtime.0.jobs)?;
-            inspection.with_source(|sources| {
-                validate_observed_activation(
-                    &active,
-                    identity,
-                    &sources.authority().catalog_revision,
-                )
-            })??;
-            log::info!("verified current v5 Profile Authority with the native Shell Launch Store");
-            Ok(())
-        })();
-        (result, true)
+        (self.verify_registry(inspection, active.as_ref()), true)
     }
+
+    fn verify_registry(
+        &self,
+        inspection: &NativeArtifactInspection<NativeApplicationSources>,
+        active: Option<&OriginalActiveProfile>,
+    ) -> Result<()> {
+        let checkpoint = || {
+            preparation_budget::check(self.deadline)?;
+            self.job.ensure_accepting(&self.runtime.0.jobs)?;
+            inspection.allocation_budget()?;
+            Ok(())
+        };
+        checkpoint()?;
+        let budget = inspection.allocation_budget()?;
+        let _funding = self
+            .invocation
+            .control()
+            .reserve(ControlKind::Frame, REGISTRY_VERIFICATION_BYTES)?;
+        let selection = active
+            .map(|active| OriginalProviderPrepareSelection::select(active, budget))
+            .transpose()?
+            .flatten();
+        let (app_root, locked_prepare) = inspection.with_source(|sources| {
+            if let Some(active) = active {
+                validate_observed_activation(
+                    active,
+                    self.identity,
+                    &sources.authority().catalog_revision,
+                )?;
+            }
+            let locked_prepare = selection
+                .as_ref()
+                .map(|selection| sources.provider_prepare_bundle(selection, budget))
+                .transpose()?;
+            Ok::<_, anyhow::Error>((
+                sources.root(NativeSourceRoot::Application).to_path_buf(),
+                locked_prepare,
+            ))
+        })??;
+        if let Some(locked_prepare) = locked_prepare {
+            locked_prepare.verify(checkpoint)?;
+            registry_pack_receipt::verify_installed_with_provider(
+                &app_root,
+                REGISTRY_RECEIPT_SHA256,
+                || checkpoint().map_err(io::Error::other),
+                |receipt, input| verify_provider_prepare_archive(inspection, receipt, input),
+            )
+            .context("bundled Provider prepare archive verification failed during Launch")?;
+            log::info!("verified the selected old Provider prepare and its bundled Wasm replacement for this activation");
+        } else {
+            registry_pack_receipt::verify_installed(&app_root, REGISTRY_RECEIPT_SHA256, || {
+                checkpoint().map_err(io::Error::other)
+            })
+            .context("bundled Registry Pack verification failed during Launch")?;
+        }
+        Ok(())
+    }
+}
+
+fn verify_provider_prepare_archive(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+) -> io::Result<()> {
+    (|| {
+        let pack = inspection.verify_pack_archive(input, receipt.archive_bytes())?;
+        ensure!(
+            pack.manifest.id.as_str() == receipt.id()
+                && pack.manifest.version == receipt.version()
+                && pack.hash.as_str() == receipt.manifest_sha256()
+                && matches!(&pack.manifest.runtime, RuntimeSpec::Wasm { .. }),
+            "Provider Pack manifest differs from the bundled receipt"
+        );
+        let shape = ShapeRef::parse("local.provider-registry.legacy-configuration@1.0")?;
+        let prepare = OpName::parse("prepare-local")?;
+        ensure!(
+            pack.manifest.ports.provides.iter().any(|port| {
+                port.shape == shape.name && port.version == shape.version && !port.optional
+            }) && pack.shapes.iter().any(|definition| {
+                definition.reference == shape
+                    && definition.kind == ShapeKind::Port
+                    && definition.functions.len() == 1
+                    && definition.functions.contains_key(&prepare)
+                    && definition.streams.is_empty()
+                    && definition.callbacks.is_empty()
+            }),
+            "bundled Provider Pack has no exact legacy prepare-local port"
+        );
+        Ok::<_, anyhow::Error>(())
+    })()
+    .map_err(io::Error::other)
 }
 
 fn validate_observed_activation(

@@ -1,8 +1,11 @@
 //! In-process Core and Session facade shared by desktop and terminal hosts.
 
+#[cfg(unix)]
+pub use tobkiri_canon::files::read_relative_with;
 pub use tobkiri_canon::{
-    AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CanonValue, CoreBuffer,
-    CoreBufferBuilder, CoreRef, CoreValue, Digest, MAX_BYTES, Variant, digest, encode, ids, parse,
+    AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CanonError, CanonValue,
+    CoreBuffer, CoreBufferBuilder, CoreRef, CoreValue, Digest, MAX_BYTES, Variant, digest, encode,
+    ids, parse,
 };
 pub use tobkiri_flow::{CoreStream, RunEvent, RunEventKind, RunHandle, StepError};
 pub use tobkiri_gate::{
@@ -13,8 +16,8 @@ pub use tobkiri_store::ProfileCommitProgress;
 /// Generic Pack authoring and verification functions exposed by Core.
 pub mod pack {
     pub use tobkiri_manifest::{
-        PackManifest, PackSignature, build_tpk, generate_manifest, parse_manifest, sign_manifest,
-        verify_directory, verify_tpk,
+        PackManifest, PackSignature, RuntimeSpec, ShapeKind, build_tpk, generate_manifest,
+        parse_manifest, sign_manifest, verify_directory, verify_tpk,
     };
 }
 /// Structural Profile parsing exposed by the Core facade.

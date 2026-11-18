@@ -15,6 +15,8 @@ mod exception_graph;
 mod init_diagnostic;
 mod init_trace;
 mod original_authority;
+#[cfg(unix)]
+mod original_provider_prepare_selection;
 mod preparation;
 #[cfg(unix)]
 pub use original_authority::{OriginalActivationInspection, OriginalActiveProfile};
@@ -24,6 +26,11 @@ pub use original_authority::{
     OriginalAuthorityIoError, OriginalAuthorityMaterial, OriginalAuthorityOwner,
     OriginalAuthorityRead, OriginalAuthoritySnapshot, OriginalAuthorityStage,
     read_original_authority,
+};
+#[cfg(unix)]
+pub use original_provider_prepare_selection::{
+    OriginalProviderPreparePin, OriginalProviderPrepareSelection,
+    OriginalProviderPrepareSelectionError,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

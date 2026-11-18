@@ -228,6 +228,14 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             assert!(observer.close_receipt().verified());
             assert_eq!(capture(), before);
             let observed = read_current().unwrap_or_else(|error| panic!("{case}: {error:?}"));
+            let prepare = crate::OriginalProviderPrepareSelection::select(&observed, budget)
+                .expect("authenticate the selected Provider prepare binding")
+                .expect("confirmed Profile selects the bundled Provider prepare");
+            assert_eq!(prepare.provider().pack_id(), "rumi_provider_registry_pack");
+            assert_eq!(
+                prepare.provider().operation_id(),
+                "rumi_provider_registry_pack.provider-configure-prepare"
+            );
             assert_eq!(
                 observed
                     .identity()

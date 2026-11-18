@@ -4017,9 +4017,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   close結果を確認する。照合できない状態では、従来のHostが復旧を扱う。
   Core 305件、native Harness 271件、strict Clippyが通過した。Storeの単一取得、キャンセル後の
   予算の停止、元のSetupが作成した実データを期限切れのLauncher検査が変更せずに拒否することを確認した。
-  次の処理では、実際に選択された旧Providerのvariantと署名カタログ、同梱 `.tpk` を照合して
-  `local.provider-registry.legacy-configuration@1.0` の候補を確認する。
-  製品のNative Sessionと保存権限の接続は引き続き未完了。
+  `OriginalProviderPrepareSelection` は有効なProfile・Lock・Planから、選択済みShellと
+  coordinatorを経由する旧Provider設定の `profile_grant`、Authority参照、スコープと
+  FunctionPrincipal、variantを照合する。対応する旧Packと実行カタログは元のBundleで
+  検証されたパスとdigestを使って、同じ起動ジョブの予算で確かめる。
+  同梱 `.tpk` の検証はレシートで照合する同じファイルの読取りをCoreの標準verifierへ渡す。
+  manifestのID・版・digest、Wasm runtimeと、`local.provider-registry.legacy-configuration@1.0`
+  の唯一の `prepare-local` 操作を確認する。レシート照合はverifierが途中で読取りを終えても
+  最後のバイトまで行う。旧版で有効な別variantや別スコープは元の設定経路で扱う。
+  Core 306件、native Harness 275件、Pack manifest 23件、strict Clippyが通過した。
+  確認済みSetupが作るProfileから旧準備操作を選んだ。生成済み `.tpk` の読取りと改変・取消の
+  3件、実WasmのProvider・Model Registry 4件も成功した。
+  製品の設定実行には、元のPOSTで有効なBrokerのlease・scope・期限・キャンセルを保持する
+  Native Sessionとの接続が残る。実際のProvider操作は元のGenerationBudgetと承認を維持する。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

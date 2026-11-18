@@ -123,7 +123,8 @@ mod unix {
     mod tests {
         use super::super::super::raw_byte_digest;
         use super::super::super::registry_pack_receipt::{
-            verify_installed, ARCHIVE_LIMIT, PACK_IDS, RECEIPT_FORMAT,
+            verify_installed, verify_installed_with_provider, ARCHIVE_LIMIT, PACK_IDS,
+            RECEIPT_FORMAT,
         };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
         use super::*;
@@ -201,6 +202,42 @@ mod unix {
                 Input::configure(Some(source.clone()), Some("A".repeat(64).into()), true).is_err()
             );
             assert!(Input::configure(Some(source), Some(pin), true)?.is_some());
+            Ok(())
+        }
+
+        #[test]
+        fn provider_visitor_only_returns_data_after_the_entire_archive_is_checked() -> io::Result<()>
+        {
+            let fixture = Fixture::new()?;
+            let input = fixture.write_receipt(&fixture.document)?;
+            input.stage(&fixture.stage)?;
+            let read_prefix = |pack: &super::super::super::registry_pack_receipt::Pack,
+                               source: &mut dyn std::io::Read| {
+                assert_eq!(pack.id(), PACK_IDS[0]);
+                assert_eq!(pack.version(), "0.1.0");
+                assert_eq!(pack.archive_bytes(), PACK_IDS[0].len() as u64);
+                assert_eq!(pack.manifest_sha256(), format!("sha256:{}", "1".repeat(64)));
+                let mut first = [0];
+                source.read_exact(&mut first)?;
+                Ok(first[0])
+            };
+            let verify = || {
+                verify_installed_with_provider(
+                    &fixture.stage,
+                    input.receipt_sha256(),
+                    || Ok(()),
+                    read_prefix,
+                )
+            };
+            assert_eq!(verify()?, b'l');
+            let archive = fixture
+                .stage
+                .join(DIRECTORY)
+                .join(format!("{}.tpk", PACK_IDS[0]));
+            let mut bytes = fs::read(&archive)?;
+            *bytes.last_mut().unwrap() ^= 1;
+            fs::write(&archive, bytes)?;
+            assert!(verify().is_err());
             Ok(())
         }
 

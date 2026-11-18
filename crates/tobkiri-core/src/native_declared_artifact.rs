@@ -22,6 +22,7 @@ use tobkiri_gate::{
     CapacityKind, ControlKind, ControlReservation, CoreCancellation, NativeSetupInvocation,
     NativeSetupReservation,
 };
+use tobkiri_manifest::{VerifiedPack, source::SourceCatalog, verify_tpk_reader_in_catalog};
 use tobkiri_wasm::{NativeDataIo, NativeDataIoError, NativeInspectionOutput, NativeSetupStore};
 
 #[path = "native_artifact_open_unix.rs"]
@@ -211,6 +212,22 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         self.require_ready()?;
         let store = self.store.as_ref().ok_or(NativeDataIoError::Retired)?;
         Ok(store.allocation_owners().graph())
+    }
+
+    /// Verify the trusted native adapter's exact archive stream using this
+    /// inspection's control account and the unsigned local publisher policy.
+    pub fn verify_pack_archive(
+        &self,
+        input: &mut dyn Read,
+        metadata_bytes: u64,
+    ) -> Result<VerifiedPack, NativeArtifactError> {
+        self.require_ready()?;
+        let verified =
+            SourceCatalog::new(self.work.get().invocation.control()).and_then(|catalog| {
+                verify_tpk_reader_in_catalog(input, metadata_bytes, &BTreeMap::new(), &catalog)
+            });
+        self.require_ready()?;
+        verified.map_err(|error| NativeArtifactError::Core(error.into()))
     }
 
     fn require_ready(&self) -> Result<(), NativeArtifactError> {

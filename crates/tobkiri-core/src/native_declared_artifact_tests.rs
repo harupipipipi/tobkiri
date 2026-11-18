@@ -281,6 +281,72 @@ async fn native_owner_cancellation_rejects_inspection_budget_access_and_allocati
 }
 
 #[tokio::test]
+async fn archive_verification_uses_the_inspection_control_and_observes_late_cancellation() {
+    let (_temp, physical, source) = source_fixture();
+    let owner = RuntimeOwner::open(physical.join("data")).unwrap();
+    let parent = CoreCancellation::new_with_control(owner.control()).unwrap();
+    let inspection = NativeArtifactInspection::from_invocation(
+        source,
+        owner.begin_native_setup().unwrap(),
+        &parent,
+    )
+    .unwrap();
+    let manifest = tobkiri_manifest::PackManifest {
+        format: "tobkiri.pack/1".into(),
+        id: tobkiri_manifest::PackId::parse("local.archive-inspection").unwrap(),
+        version: "1.0.0".into(),
+        publisher_key: None,
+        runtime: tobkiri_manifest::RuntimeSpec::Data,
+        shapes: vec![],
+        ports: Default::default(),
+        inputs: vec![],
+        flows: vec![],
+        overlays: vec![],
+        stores: vec![],
+        permissions: Default::default(),
+        ui: None,
+        files: vec![],
+    };
+    let bytes = tobkiri_manifest::build_tpk(&manifest, &BTreeMap::new(), None).unwrap();
+    let archive_bytes = bytes.len() as u64;
+    let control_before = owner.control().usage();
+    let verified = inspection
+        .verify_pack_archive(&mut bytes.as_slice(), archive_bytes)
+        .unwrap();
+    assert_eq!(verified.manifest.id, manifest.id);
+    assert!(owner.control().usage().bytes > control_before.bytes);
+    drop(verified);
+    assert_eq!(owner.control().usage().bytes, control_before.bytes);
+
+    struct CancelAtEof<'a> {
+        input: &'a [u8],
+        parent: &'a CoreCancellation,
+    }
+    impl Read for CancelAtEof<'_> {
+        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+            let count = self.input.read(output)?;
+            if count == 0 {
+                self.parent.cancel();
+            }
+            Ok(count)
+        }
+    }
+    let mut cancelling = CancelAtEof {
+        input: &bytes,
+        parent: &parent,
+    };
+    assert!(matches!(
+        inspection.verify_pack_archive(&mut cancelling, archive_bytes),
+        Err(NativeArtifactError::Execution(NativeDataIoError::Cancelled))
+    ));
+    assert_eq!(owner.control().usage().bytes, control_before.bytes);
+    assert!(matches!(
+        inspection.finish().await,
+        Err(NativeArtifactError::Execution(NativeDataIoError::Cancelled))
+    ));
+}
+
+#[tokio::test]
 async fn native_owner_cancellation_during_finish_waits_for_physical_cleanup() {
     let (_temp, physical, source) = source_fixture();
     let dropped = source.dropped.clone();

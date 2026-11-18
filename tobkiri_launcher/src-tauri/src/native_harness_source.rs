@@ -9,6 +9,10 @@
 use super::{ApplicationAuthority, VerifiedBundleLock};
 use std::path::{Path, PathBuf};
 
+#[cfg(all(unix, feature = "native-harness-bootstrap"))]
+#[path = "native_locked_provider.rs"]
+mod native_locked_provider;
+
 /// Distinct original root roles. Equal path values never merge these roles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NativeSourceRoot {
