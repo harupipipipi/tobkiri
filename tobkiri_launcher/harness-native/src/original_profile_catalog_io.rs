@@ -419,7 +419,7 @@ impl CatalogIo {
         Ok(())
     }
 
-    /// Keep the Pack pins from the actual recovery loader occurrences.
+    /// Keep the Pack pins from the actual loader occurrences.
     #[cfg(unix)]
     pub(crate) fn retain_recovery_pack_pins(&mut self) {
         self.recovery_pack_pins = Some(shell_inputs::PackPins::default());
@@ -438,8 +438,12 @@ impl CatalogIo {
         self.read_raw_lock_digest(owner, invocation, &self.selected)
     }
 
-    pub(crate) fn retain_publication_root(&mut self) {
+    /// Retain the lexical root for the raw lock reread and the Pack pins for
+    /// activation against this independent bundled catalog.
+    pub(crate) fn retain_publication_inputs(&mut self) {
         self.retain_publication_root = true;
+        #[cfg(unix)]
+        self.retain_recovery_pack_pins();
     }
 
     /// The confirmed capture reopens the lexical lock after the loader and

@@ -1217,7 +1217,9 @@ async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
         io.select_packaged(&selected).unwrap();
         io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
             .unwrap();
-        io.retain_publication_root();
+        io.retain_publication_inputs();
+        #[cfg(unix)]
+        assert!(io.recovery_pack_pins.is_some());
         assert!(io.publication_lock_digest(source, invocation).is_err());
         call(
             io,

@@ -207,7 +207,7 @@ async fn load_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         io.retain_recovery_pack_pins();
     }
     if reread {
-        io.retain_publication_root();
+        io.retain_publication_inputs();
     }
     io.bind_loader(CoreValue::string(binding.as_str()?, pack.input_budget)?)?;
     {
