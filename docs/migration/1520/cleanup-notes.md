@@ -3762,6 +3762,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rustの単体52件、採取済みPython観測との比較81件、実WasmのCore統合試験、strict Clippyが通過。
   このPackには旧Registryからの取込みとCredential Broker接続が残る。また、モデル登録と既存の
   「普段使うモデル」を同じ会話ターンから読む経路が必要。設定を接続する際は従来の承認を使う。
+  モデル登録の読み取りは `local.model-registry-rust` に移植した。元のModel Registryの
+  一覧・完全一致・一段のalias解決と、既存の `/api/ai/profiles` が使う表示変換を共用する。
+  旧文書の浮動小数点・大きな整数はPack専用DATAの内側に保持し、表示用に絞った結果を
+  Core JSONへ変換する。既存の出力上限と登録revisionを照合し、無効なモデルと非公開項目は
+  元の表示と同じように除外する。原本の16ファイルを固定し、25ケースで原本と比較した。
+  実Wasmでは、採取した文書をテストのCore専用ストアへ格納して、一覧の一致、空のProfile、
+  別Profileの文書の拒否を確認した。旧文書の自動取込み、既存HTTPの接続、保存と会話への
+  接続が残る。旧版が作れた文字列以外の辞書キーとCore JSONで表せない表示revisionは
+  現時点の表現上限に当たる。ソース単体10件、Coreの実Wasm試験2件、strict Clippyが通過。
 - A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
   旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
   現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。

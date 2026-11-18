@@ -1,0 +1,19 @@
+package local:model-registry@1.0.0;
+
+interface data {
+  /// Original model registry JSON held as UTF-8 text in the private store.
+  type model-document = string;
+}
+
+interface settings {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// The existing Settings projection for the authenticated Profile.
+  list-models: func() -> result<json, error>;
+}
+
+world pack {
+  include tobkiri:core/pack-minimal@1.2.0;
+  import tobkiri:core/storage@1.2.0;
+  export settings;
+}

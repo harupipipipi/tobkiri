@@ -1,6 +1,7 @@
 //! Test-only host and actual Pack fixtures. No production test gate is enabled.
 
 #![allow(dead_code)]
+pub(crate) mod registry;
 pub(crate) mod shared_modules;
 
 use anyhow::{Context, Result};

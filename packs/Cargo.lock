@@ -804,6 +804,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-model-registry-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "serde_json",
+ "sha2",
+ "tobkiri-canon",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-openai-compat-provider"
 version = "0.1.0"
 dependencies = [
