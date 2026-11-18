@@ -63,6 +63,42 @@ pub(in super::super) fn prepare_bootstrap_template<S: OriginalAuthorityOwner>(
     now: i64,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<CoreBuffer> {
+    prepare_first_revision(
+        op,
+        state,
+        template,
+        profile_id,
+        now,
+        FirstRevision::Template,
+        budget,
+    )
+}
+
+pub(in super::super) enum FirstRevision {
+    Template,
+    #[cfg(test)]
+    Ordinary {
+        expected_generation: i64,
+    },
+}
+
+pub(in super::super) fn prepare_first_revision<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &State,
+    template: &CoreValue,
+    profile_id: &Text,
+    now: i64,
+    creation: FirstRevision,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer> {
+    #[cfg(test)]
+    if let FirstRevision::Ordinary {
+        expected_generation,
+    } = creation
+        && registration_generation(state) != expected_generation
+    {
+        return Err(raw(CONFLICT, "Profile store generation is stale"));
+    }
     let id = template
         .get_key("profile_id")
         .expect("validated template ID");
@@ -144,11 +180,19 @@ pub(in super::super) fn prepare_bootstrap_template<S: OriginalAuthorityOwner>(
     appended.push(row).map_err(canonical_error)?;
     let profiles = appended.finish().map_err(canonical_error)?;
 
-    let available = CoreValue::string("template_available", budget).map_err(capacity_error)?;
+    let (bootstrap_state, template_revision) = match creation {
+        FirstRevision::Template => ("template_available", revision),
+        #[cfg(test)]
+        FirstRevision::Ordinary { .. } => (
+            "not_required",
+            CoreValue::null(budget).map_err(capacity_error)?,
+        ),
+    };
+    let bootstrap_state = CoreValue::string(bootstrap_state, budget).map_err(capacity_error)?;
     let bootstrap = CoreValue::object_shared(
         [
-            ("state", available),
-            ("template_profile_revision", revision),
+            ("state", bootstrap_state),
+            ("template_profile_revision", template_revision),
         ]
         .into_iter()
         .map(Ok),

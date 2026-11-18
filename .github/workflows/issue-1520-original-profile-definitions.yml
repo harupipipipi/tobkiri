@@ -48,6 +48,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_authority_json.rs
       - tobkiri_launcher/harness-native/src/original_authority_schema.rs
       - tobkiri_launcher/harness-native/src/original_profile_definitions*.rs
+      - tobkiri_launcher/harness-native/src/original_bootstrap_registration.rs
       - tobkiri_launcher/harness-native/src/original_external_catalog*.rs
       - tobkiri_launcher/harness-native/src/original_profile_catalog*.rs
       - tobkiri_launcher/harness-native/src/original_shell_*.rs
@@ -126,6 +127,13 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           bootstrap_runtime::catalog::tests::bootstrap_template_data_requires_same_catalog_getter_and_profile_key
           -- --exact
+      - name: Verify ordinary bootstrap registration and generation checks
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-bootstrap-registration.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::definitions::bootstrap_registration::tests::
+          -- --test-threads=1
       - name: Verify native definition constructors and held journal lock mechanics
         env:
           TOBKIRI_DISPLAY_NAME_REPAIR_FIXTURE: ${{ runner.temp }}/original-profile-display-name

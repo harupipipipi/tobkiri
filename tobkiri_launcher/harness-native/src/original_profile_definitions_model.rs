@@ -6,6 +6,8 @@ use tobkiri_canon::{AllocationError, CoreBuffer, CoreValue};
 
 #[path = "original_profile_definitions_bootstrap.rs"]
 mod bootstrap;
+#[cfg(test)]
+pub(super) use bootstrap::{FirstRevision, prepare_first_revision};
 pub(super) use bootstrap::{
     bootstrap_template_id, normalize_bootstrap_template, prepare_bootstrap_template,
 };
@@ -981,18 +983,82 @@ pub(super) fn find_entry<S: OriginalAuthorityOwner>(
     Ok(None)
 }
 
+#[cfg(test)]
+// Both inputs were admitted as strict, depth-bounded JSON. Object equality
+// ignores key order and the original Python allows bool/int equality.
+pub(super) fn python_equal(
+    left: &CoreValue,
+    right: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
+    use tobkiri_canon::{AllocationKind, AllocationRequest, CoreRef};
+    let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
+    budget
+        .reserve(AllocationRequest {
+            kind: AllocationKind::Temporary,
+            bytes: 0,
+            elements: 0,
+            depth: 0,
+            work: 1,
+        })
+        .map_err(capacity)?;
+    Ok(match (left.inspect(), right.inspect()) {
+        (CoreRef::Int(a), CoreRef::Bool(b)) | (CoreRef::Bool(b), CoreRef::Int(a)) => {
+            a == i64::from(b)
+        }
+        (CoreRef::Arr(a), CoreRef::Arr(b)) => {
+            if a.len() != b.len() {
+                return Ok(false);
+            }
+            for (left, right) in a.iter().zip(b.iter()) {
+                if !python_equal(&left, &right, budget)? {
+                    return Ok(false);
+                }
+            }
+            true
+        }
+        (CoreRef::Obj(a), CoreRef::Obj(b)) => {
+            if a.len() != b.len() {
+                return Ok(false);
+            }
+            for ((ak, av), (bk, bv)) in a.iter().zip(b.iter()) {
+                budget
+                    .reserve(AllocationRequest {
+                        kind: AllocationKind::Temporary,
+                        bytes: 0,
+                        elements: 0,
+                        depth: 0,
+                        work: ak.len() as u64,
+                    })
+                    .map_err(capacity)?;
+                if ak != bk || !python_equal(&av, &bv, budget)? {
+                    return Ok(false);
+                }
+            }
+            true
+        }
+        _ => left.eq_guest(right, budget).map_err(capacity)?,
+    })
+}
+
+#[cfg(test)]
+pub(super) fn registration_generation(state: &State) -> i64 {
+    let doc = &state.doc;
+    integer(doc, field(doc, doc.root, "generation"))
+}
+
 /// Validate the generation and current revision again under the update lock.
 #[cfg(test)]
 pub(super) fn require_registration_cas<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
-    state: &mut State,
+    state: &State,
     profile_id: &str,
     generation: i64,
     revision: &str,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<usize> {
     let doc = &state.doc;
-    if integer(doc, field(doc, doc.root, "generation")) != generation {
+    if registration_generation(state) != generation {
         return Err(raw(CONFLICT, "Profile store generation is stale"));
     }
     let _id = op.reserve(
@@ -1024,6 +1090,18 @@ pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
     now: i64,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<CoreBuffer> {
+    prepare_registration_with_clock(op, state, entry, source, || Ok(now), budget)
+}
+
+#[cfg(test)]
+pub(super) fn prepare_registration_with_clock<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &State,
+    entry: usize,
+    source: &CoreValue,
+    clock: impl FnOnce() -> Result<i64>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer> {
     let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
     let source_id = source
         .get_key("profile_id")
@@ -1043,7 +1121,8 @@ pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
     }) {
         return Err(integrity("Profile display_name must be a non-empty string"));
     }
-    let timestamp = CoreValue::int(now, budget).map_err(capacity)?;
+    let revision = source.digest_guest(budget).map_err(capacity)?;
+    let timestamp = CoreValue::int(clock()?, budget).map_err(capacity)?;
     let doc = &state.doc;
     // One funded copy of the validated snapshot admits shared links to all
     // existing rows. The source, new revision and changed counters are the
@@ -1061,7 +1140,7 @@ pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
     let row = profiles
         .get(entry_position)
         .expect("selected registry entry");
-    let row = append_successor(&row, source, &timestamp, budget)?;
+    let row = append_successor_with_digest(&row, source, &timestamp, revision, budget)?;
     let profiles = CoreValue::array_shared(
         profiles.iter().enumerate().map(|(index, value)| {
             Ok(if index == entry_position {
@@ -1084,6 +1163,17 @@ fn append_successor(
 ) -> Result<CoreValue> {
     let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
     let revision = source.digest_guest(budget).map_err(capacity)?;
+    append_successor_with_digest(row, source, timestamp, revision, budget)
+}
+
+fn append_successor_with_digest(
+    row: &CoreValue,
+    source: &CoreValue,
+    timestamp: &CoreValue,
+    revision: Digest,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
     let revision = CoreValue::string(revision.as_str(), budget).map_err(capacity)?;
     let parent = row.get_key("current_revision").expect("validated revision");
     let successor = CoreValue::object_shared(

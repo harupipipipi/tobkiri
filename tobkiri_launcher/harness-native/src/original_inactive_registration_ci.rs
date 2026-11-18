@@ -41,7 +41,7 @@ fn revalidate<S: OriginalAuthorityOwner>(
     registry.serialize_definition(op, budget)?;
     let existing = CoreValue::parse_guest(registry.definition(), budget).map_err(capacity)?;
     drop(registry.serialized_definition.take());
-    if python_equal(&existing, source, budget)? {
+    if definitions_model::python_equal(&existing, source, budget)? {
         return Err(stale());
     }
     drop(existing);
@@ -56,62 +56,6 @@ fn revalidate<S: OriginalAuthorityOwner>(
 
 fn capacity(_: tobkiri_canon::AllocationError) -> OriginalAuthorityError {
     OriginalAuthorityError::capacity(OriginalAuthorityStage::Source)
-}
-
-// Both inputs were admitted as strict, depth-bounded JSON. Object equality
-// ignores key order and the original Python allows bool/int equality.
-fn python_equal(
-    left: &CoreValue,
-    right: &CoreValue,
-    budget: &Arc<dyn AllocationBudget>,
-) -> Result<bool> {
-    use tobkiri_canon::CoreRef;
-    budget
-        .reserve(tobkiri_canon::AllocationRequest {
-            kind: tobkiri_canon::AllocationKind::Temporary,
-            bytes: 0,
-            elements: 0,
-            depth: 0,
-            work: 1,
-        })
-        .map_err(capacity)?;
-    Ok(match (left.inspect(), right.inspect()) {
-        (CoreRef::Int(a), CoreRef::Bool(b)) | (CoreRef::Bool(b), CoreRef::Int(a)) => {
-            a == i64::from(b)
-        }
-        (CoreRef::Arr(a), CoreRef::Arr(b)) => {
-            if a.len() != b.len() {
-                return Ok(false);
-            }
-            for (left, right) in a.iter().zip(b.iter()) {
-                if !python_equal(&left, &right, budget)? {
-                    return Ok(false);
-                }
-            }
-            true
-        }
-        (CoreRef::Obj(a), CoreRef::Obj(b)) => {
-            if a.len() != b.len() {
-                return Ok(false);
-            }
-            for ((ak, av), (bk, bv)) in a.iter().zip(b.iter()) {
-                budget
-                    .reserve(tobkiri_canon::AllocationRequest {
-                        kind: tobkiri_canon::AllocationKind::Temporary,
-                        bytes: 0,
-                        elements: 0,
-                        depth: 0,
-                        work: ak.len() as u64,
-                    })
-                    .map_err(capacity)?;
-                if ak != bk || !python_equal(&av, &bv, budget)? {
-                    return Ok(false);
-                }
-            }
-            true
-        }
-        _ => left.eq_guest(right, budget).map_err(capacity)?,
-    })
 }
 
 struct ReviewedRegistration<'a> {
@@ -202,10 +146,10 @@ fn with_registration<S: OriginalAuthorityOwner, T>(
         before_cas();
         let mut definition = store.lock(op)?;
         let result = (|| {
-            let mut state = store.read_state(op, budget)?;
+            let state = store.read_state(op, budget)?;
             let entry = definitions_model::require_registration_cas(
                 op,
-                &mut state,
+                &state,
                 review.profile_id,
                 generation,
                 revision,
