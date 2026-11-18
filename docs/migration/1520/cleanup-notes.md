@@ -3692,6 +3692,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ホストは `init` 成功後にのみハンドラーを実行する。以降の `load` は既存のSELECTのみ、
   `append` は2行をまとめる既存のINSERTのみを行う。2つのWasmと関連Profile 14件を再生成。
   実Wasmの通常Flow、Core再起動後の履歴、承認したFlow変更を含むローカル4件が通過。
+  ローカル実CLIもProfile作成・公開・拒否・新規取込みと、User overlayの取込み・実行・再公開まで通過。
+  [実CLI再試験44375207375](https://github.com/harupipipipi/tobkiri/actions/runs/44375207375) と
+  [実1B再試験44375207327](https://github.com/harupipipipi/tobkiri/actions/runs/44375207327) を実行中。
   SQL書込み全体の競合原因はこの監査コードだけでは特定できず、承認・commit fenceと再試行の
   条件は維持する。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
@@ -4640,6 +4643,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   自動再起動中に前景で採用された新しいProfileを古い結果で上書きしない回帰試験をmacOS CIに追加。
   終了時は読取りを待つ起動元を解除し、ワーカーの物理後処理は既存の管理下に残す。
   Pythonプロセスの起動と通常画面のRegistry・会話の接続は後続。
+  [直前のLauncherステージング44368885897](https://github.com/harupipipipi/tobkiri/actions/runs/44368885897)
+  は成功。監視を接続した `dc4e5c4d8` はパッケージ契約25件とワークフロー16件が通過し、
+  [新しいDMG CI 44374630677](https://github.com/harupipipipi/tobkiri/actions/runs/44374630677) を実行中。
   `2535f6dbd` は `adopt_owned_bundle` のPack再パースを外し、構造と意味を検証した同じ文書からpin情報を抽出
   する。必要な候補だけPack ID・ハッシュ・種類・依存IDを保持し、全行受領後にロック順で採用。
   旧readerとの直接比較で、非ASCIIを含む依存ID順、設定なしと空の違い、欠損時の結果が一致した。
