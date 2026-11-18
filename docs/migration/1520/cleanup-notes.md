@@ -4245,6 +4245,43 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   portable契約の各ジョブで通過した。
   [原本のSetup resolverと初回発行 44241344745](https://github.com/harupipipipi/tobkiri/actions/runs/44241344745)
   はLinuxとmacOSで通過した。
+  `195d99fc0` は封印済みKernelの起動証明で初回Setup経路を照合する。macOSの明示的な
+  `native-first-setup` ビルドで完全な同梱レシートがあり、検証済みactive Profileが存在しない
+  場合だけ選ぶ。起動時のnonceと実子プロセスの監督を再利用し、パネル用コードの取得前と
+  確認開始前にポートを保持するPIDを照合する。子の停止や失効はワーカーの既存所有者検査へ届く。
+  Python側は同じ起動で選択を保持し、旧確定要求には既存cookie・Origin・CSRFを検証した上で
+  `activation_denied` と空のwrite setを返す。GETは従来どおり。Host契約への値追加は不要になった。
+  実HTTPの旧Setup拒否とhandler更新、旧Setup API、封印ランチャーの組合せをクリーンな
+  チェックアウトで50件確認。通常配布では、GUIと実Wasmの一連の検証が終わるまで機能を選ばない。
+  [macOSの起動・境界回帰 44245333980](https://github.com/harupipipipi/tobkiri/actions/runs/44245333980)
+  は元Launcherの9件と実WebKit、portable契約が通過した。
+  `3fcf6c5ac` は既存Setup画面で元の選択を終えた後に隔離レビューを起動する。親画面は
+  確認アンカーを保持し、旧確定操作はLauncherが明示した旧経路だけで有効にする。
+  IPC応答喪失と発行済み結果の両方を従来の読み取り専用復旧へ渡し、失敗時の再レビューは
+  新しいアンカーを使う。隔離ビューは待機中に表示位置を更新し、結果を得たレビューだけを
+  終了する。確認が済むまでの操作回数は元のまま。画面・設定・Launch・接続のNode 99件と
+  型検査が通過した。[統合のmacOS回帰 44246338408](https://github.com/harupipipipi/tobkiri/actions/runs/44246338408)
+  も通過した。`40a26c614` はTauriのIPCがパスのないOriginで照合する通信経路に対応した。
+  許可はmainのloopbackに限定し、正確な `/panel/setup` とポートを実WebViewで検証する。
+  [境界修正のmacOS回帰 44246956670](https://github.com/harupipipipi/tobkiri/actions/runs/44246956670)
+  も通過した。実DMGでSetupから会話まで通す検証は残る。
+  実コンポーネント [44236773225](https://github.com/harupipipipi/tobkiri/actions/runs/44236773225)
+  では普通版Wasmの準備が20.82秒、`Runtime.init` 終了が23.38秒、残fuelが約14.37億だった。
+  原本の承認後再読を保持するため、レビュー時と確定時でワーカーはそれぞれ初期化する。
+  同一呼び出しで初期化を繰り返してはいない。guestのカタログ処理の燃料と、Hostコンパイルの
+  所要時間は別の制約なので、`217860f53` で同一予算内のsource読み取り・照合と
+  `Component::new` の区間を測る。ローカルの準備テスト5件が通過し、
+  実測の初回はworkflow内の呼出順チェックが引数追加前の文字列を要求して停止した。
+  `51fcde445` で実際の世代検査を順序チェックに含め、workflow・archiveの19件が通過。
+  [通常版Wasmの再計測 44245976443](https://github.com/harupipipipi/tobkiri/actions/runs/44245976443)
+  は取得・照合0.159秒、コンパイル20.343秒、`Runtime.init` 終了22.767秒だった。
+  原本Profile IDとroot getterを取得して正しく後処理し、カタログはこの試験では実行しない。
+  25,123,780バイトの照合済み成果物は、core data約17.53MB、core code約6.76MB、
+  名前のcustom section約0.47MB。名前の削除やソース容量の微調整は準備時間の主因に届かない。
+  `c09245233` はホスト側 `wasmtime-internal-cranelift` のテストビルドだけを最適化し、
+  同じrunner、封印済みWasm、ゲスト `OptLevel::None`、30秒・2B fuel・64MiBで比較する。
+  [同一成果物でのコンパイル比較 44256380358](https://github.com/harupipipipi/tobkiri/actions/runs/44256380358)
+  を実行中。通常配布のLauncher用Cargoプロファイルは別途検証する。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
