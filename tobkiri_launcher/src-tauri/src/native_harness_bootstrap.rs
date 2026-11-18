@@ -322,6 +322,78 @@ fn setup_listing(outcome: Outcome) -> Result<String, DetachedFailure> {
     ))
 }
 
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SetupReviewCompletion {
+    Published,
+    Rejected(String),
+}
+
+#[cfg(all(target_os = "macos", feature = "native-setup-review"))]
+fn setup_activation_result(outcome: Outcome) -> Result<SetupReviewCompletion, DetachedFailure> {
+    use serde_json::Value;
+    if let Value::Object(mut fields) = outcome? {
+        if fields.len() == 2 {
+            if let (Some(Value::String(decision)), Some(data)) =
+                (fields.remove("setup_decision"), fields.remove("data"))
+            {
+                match (decision.as_str(), data) {
+                    ("published" | "recovered", Value::Null) => {
+                        return Ok(SetupReviewCompletion::Published);
+                    }
+                    ("rejected", Value::String(response)) => {
+                        return Ok(SetupReviewCompletion::Rejected(response));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    Err(DetachedFailure::integration(
+        crate::native_worker_failure::IntegrationFailure::InvalidValueResult,
+    ))
+}
+
+#[cfg(all(test, target_os = "macos", feature = "native-setup-review"))]
+#[test]
+fn setup_activation_requires_a_completed_publication_result() {
+    use serde_json::json;
+    for decision in ["published", "recovered"] {
+        let result = json!({"setup_decision": decision, "data": null});
+        assert_eq!(
+            setup_activation_result(Ok(result.clone())).unwrap(),
+            SetupReviewCompletion::Published,
+        );
+        let cleanup_failure = crate::native_worker_failure::complete(
+            Ok(result),
+            Some(DetachedFailure::condition(
+                Stage::Finish,
+                Condition::NativePanic,
+            )),
+            true,
+        );
+        assert!(matches!(
+            setup_activation_result(cleanup_failure),
+            Err(DetachedFailure::Cleanup { .. }),
+        ));
+    }
+    let rejection = r#"{"error":"candidate changed"}"#;
+    assert_eq!(
+        setup_activation_result(Ok(json!({"setup_decision": "rejected", "data": rejection})))
+            .unwrap(),
+        SetupReviewCompletion::Rejected(rejection.into()),
+    );
+    for invalid in [
+        json!({"setup_decision": "matched", "data": null}),
+        json!({"setup_decision": "published", "data": {}}),
+        json!({"setup_decision": "recovered"}),
+        json!({"setup_decision": "published", "data": null, "unexpected": true}),
+        json!({"setup_decision": "rejected", "data": null}),
+    ] {
+        assert!(setup_activation_result(Ok(invalid)).is_err());
+    }
+}
+
 #[cfg(all(test, target_os = "macos", feature = "native-setup-review"))]
 #[test]
 fn setup_display_requires_a_completed_listing_result() {
@@ -423,14 +495,29 @@ mod selected_setup_component {
     }
 }
 
-/// Review the existing Profile and run the original decision for its gesture.
-/// A matched decision is DATA for the subsequent locked activation transaction.
+/// Review the existing Profile, publish the approval, and request a supervised
+/// restart of the same managed Kernel after publication and worker cleanup.
+/// A `Published` completion includes acceptance by the restart supervisor.
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 pub(crate) async fn prepare_setup_review(
     app: &AppHandle,
     options: tobkiri_harness_native::BootstrapReviewOptions,
-) -> Result<serde_json::Value, SetupReviewStartError> {
+) -> Result<SetupReviewCompletion, SetupReviewStartError> {
+    use crate::kernel_manager::KernelManager;
     use crate::native_setup_review::owner::SetupReviewWindowState;
+    let kernel = app
+        .try_state::<Arc<Mutex<KernelManager>>>()
+        .ok_or(SetupReviewStartError::Kernel)?
+        .inner()
+        .clone();
+    let generation = {
+        let mut manager = kernel.lock().map_err(|_| SetupReviewStartError::Kernel)?;
+        let generation = manager.launch_generation();
+        if generation == 0 || !manager.is_current_launch_generation(generation) {
+            return Err(SetupReviewStartError::Kernel);
+        }
+        generation
+    };
     let window = app
         .get_webview_window("main")
         .ok_or(SetupReviewStartError::Window)?;
@@ -462,24 +549,48 @@ pub(crate) async fn prepare_setup_review(
     let selected = selected_setup_component::open(app)
         .map_err(SetupReviewStartError::Component)?
         .ok_or(SetupReviewStartError::Unbound)?;
-    prepare_original_component(
+    if !kernel
+        .lock()
+        .map_err(|_| SetupReviewStartError::Kernel)?
+        .is_current_launch_generation(generation)
+    {
+        return Err(SetupReviewStartError::Kernel);
+    }
+    let outcome = prepare_original_component(
         app.clone(),
         selected,
         OriginalOperation::ConfirmSetup(confirmed),
     )
     .map_err(SetupReviewStartError::Worker)?
     .result()
-    .await
-    .map_err(SetupReviewStartError::Worker)
+    .await;
+    let result = setup_activation_result(outcome).map_err(SetupReviewStartError::Activation)?;
+    if matches!(result, SetupReviewCompletion::Published) {
+        tauri::async_runtime::spawn_blocking(move || {
+            kernel
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Kernel manager lock failed"))?
+                .request_native_setup_restart(generation)
+        })
+        .await
+        .map_err(|error| SetupReviewStartError::Restart(error.into()))?
+        .map_err(SetupReviewStartError::Restart)?;
+    }
+    Ok(result)
 }
 
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 pub(crate) enum SetupReviewStartError {
+    Kernel,
     Window,
     Unbound,
     Component(anyhow::Error),
     Worker(DetachedFailure),
     Review(SetupReviewDisplayError),
+    // After dispatch, a failure can occur following a durable write.
+    Activation(DetachedFailure),
+    // Publication succeeded. The client can only recover by reading state.
+    Restart(anyhow::Error),
 }
 
 /// Execute only the current closed bound subset. No caller receives Bootstrap,

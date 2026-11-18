@@ -479,6 +479,42 @@ impl KernelManager {
         self.start()
     }
 
+    /// Queue the supervised cold handoff for the Kernel that served Setup.
+    #[cfg(any(
+        test,
+        all(
+            target_os = "macos",
+            feature = "native-harness-bootstrap",
+            feature = "native-setup-review"
+        )
+    ))]
+    pub(crate) fn request_native_setup_restart(&mut self, expected_generation: u64) -> Result<()> {
+        if expected_generation == 0 || self.launch_generation != expected_generation {
+            bail!("the managed Kernel generation for Setup changed");
+        }
+        if !self.is_running() {
+            if self.child.is_none() {
+                match self.last_exit_code {
+                    Some(RESTART_EXIT_CODE) => {
+                        self.wait_and_handle_restart()?;
+                        return Ok(());
+                    }
+                    None if self.restart_owed => return Ok(()),
+                    _ => {}
+                }
+            }
+            bail!("the managed Kernel for Setup is no longer available for restart");
+        }
+
+        self.next_launch_generation()?;
+        self.stop()?;
+        self.last_exit_code = None;
+        self.restart_count = 0;
+        self.restart_start_failures = 0;
+        self.restart_owed = true;
+        Ok(())
+    }
+
     /// Consume the last exit status and decide whether to auto-restart.
     ///
     /// Returns `true` if the caller should call `start()` again. The decision
@@ -1526,6 +1562,62 @@ mod tests {
         // the monitor must still observe the owed restart.
         assert!(km.wait_and_handle_restart().unwrap());
         assert!(km.restart_owed());
+    }
+
+    #[test]
+    fn native_setup_restart_only_accepts_debt_for_its_managed_generation() {
+        let config = test_config();
+        let mut kernel = KernelManager::new(&config, "test-bootstrap".into());
+        assert!(kernel.request_native_setup_restart(0).is_err());
+
+        kernel.launch_generation = 2;
+        kernel.last_exit_code = Some(0);
+        assert!(kernel.request_native_setup_restart(2).is_err());
+        assert!(!kernel.wait_and_handle_restart().unwrap());
+        assert!(kernel.request_native_setup_restart(2).is_err());
+
+        kernel.last_exit_code = Some(RESTART_EXIT_CODE);
+        kernel.restart_count = 1;
+        assert!(kernel.request_native_setup_restart(1).is_err());
+        assert_eq!(kernel.last_exit_code, Some(RESTART_EXIT_CODE));
+        assert!(!kernel.restart_owed());
+
+        kernel.request_native_setup_restart(2).unwrap();
+        assert!(kernel.restart_owed());
+        assert_eq!(kernel.last_exit_code, None);
+        assert_eq!(kernel.restart_count, 0);
+        assert_eq!(kernel.record_restart_start_failure(), 1);
+        kernel.request_native_setup_restart(2).unwrap();
+        assert_eq!(kernel.restart_start_failures, 1);
+        assert!(kernel.wait_and_handle_restart().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_setup_restart_stops_only_the_confirmed_child_and_leaves_launch_to_the_monitor() {
+        let config = test_config();
+        let mut kernel = KernelManager::new(&config, "test-bootstrap".into());
+        let mut command = process_utils::command("/bin/sleep");
+        command.arg("30");
+        crate::dock_registration::configure_defaultspack_process_group(&mut command);
+        let child = command.spawn().unwrap();
+        let pid = child.id();
+        kernel.child = Some(crate::python_env::PythonChild::development(child));
+        kernel.launch_generation = 2;
+
+        let stale = kernel.request_native_setup_restart(1);
+        let retained = kernel.current_pid();
+        let requested = kernel.request_native_setup_restart(2);
+        if requested.is_err() {
+            let _ = kernel.stop();
+        }
+
+        assert!(stale.is_err());
+        assert_eq!(retained, Some(pid));
+        requested.unwrap();
+        assert!(kernel.current_pid().is_none());
+        assert_eq!(kernel.launch_generation(), 2);
+        assert!(kernel.wait_and_handle_restart().unwrap());
     }
 
     #[test]
