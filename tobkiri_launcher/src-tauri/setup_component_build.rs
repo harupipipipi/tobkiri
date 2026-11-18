@@ -18,6 +18,7 @@ pub const GENERATED: &str = "setup_component.rs";
 const RECEIPT_LIMIT: u64 = 64 * 1024;
 const RECEIPT_V1: &str = "io.tobkiri.launcher-setup-component.v1";
 const RECEIPT_V2: &str = "io.tobkiri.launcher-setup-component.v2";
+const RECEIPT_V3: &str = "io.tobkiri.launcher-setup-component.v3";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -50,6 +51,31 @@ struct ProfileSchemas {
     v5: Schema,
     references: Option<ProfileSchemaReferences>,
     recovery: Option<ProfileRecoverySchemas>,
+}
+
+impl ProfileSchemas {
+    fn verified(&self) -> bool {
+        self.v4.verified(
+            "https://schemas.tobkiri.local/io.tobkiri/profile.v4.schema.json",
+            Some("io.tobkiri.profile.v4"),
+        ) && self.v5.verified(
+            "https://schemas.tobkiri.local/io.tobkiri/profile.v5.schema.json",
+            Some("io.tobkiri.profile.v5"),
+        ) && self.references.as_ref().is_none_or(|references| {
+            references.common.verified(
+                "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json",
+                None,
+            ) && references.content_projection.verified(
+                "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json",
+                None,
+            )
+        }) && self.recovery.as_ref().is_none_or(|recovery| {
+            recovery
+                .entries()
+                .into_iter()
+                .all(|(schema, id)| schema.verified(id, None))
+        })
+    }
 }
 
 #[derive(Deserialize)]
@@ -257,36 +283,25 @@ pub fn stage(
         ));
     }
     let receipt: Receipt = serde_json::from_slice(&raw).map_err(io::Error::other)?;
-    match (receipt.format.as_str(), &receipt.profile_schemas) {
-        (RECEIPT_V1, None) => {}
-        (RECEIPT_V2, Some(schemas))
-            if schema_receipt_objects(&raw)
-                && schemas.v4.verified(
-                    "https://schemas.tobkiri.local/io.tobkiri/profile.v4.schema.json",
-                    Some("io.tobkiri.profile.v4"),
-                )
-                && schemas.v5.verified(
-                    "https://schemas.tobkiri.local/io.tobkiri/profile.v5.schema.json",
-                    Some("io.tobkiri.profile.v5"),
-                )
-                && schemas.references.as_ref().is_none_or(|references| {
-                    references.common.verified(
-                        "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json",
-                        None,
-                    ) && references.content_projection.verified(
-                        "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json",
-                        None,
-                    )
-                })
-                && schemas.recovery.as_ref().is_none_or(|recovery| {
-                    recovery.entries().into_iter().all(|(schema, id)| schema.verified(id, None))
-                }) => {}
+    let verified_schemas =
+        |schemas: &ProfileSchemas| schema_receipt_objects(&raw) && schemas.verified();
+    let catalog_delivery = match (receipt.format.as_str(), &receipt.profile_schemas) {
+        (RECEIPT_V1, None) => "OriginalReads",
+        (RECEIPT_V2, Some(schemas)) if verified_schemas(schemas) => "OriginalReads",
+        // The receipt format itself binds the catalog protocol to this Wasm.
+        (RECEIPT_V3, Some(schemas))
+            if schemas.references.is_some()
+                && schemas.recovery.is_some()
+                && verified_schemas(schemas) =>
+        {
+            "OwnedSnapshotV1"
+        }
         _ => {
             return Err(invalid(
                 "Setup component receipt has invalid Profile schemas or format",
             ))
         }
-    }
+    };
     let mut modules = BTreeSet::new();
     if !valid_digest(&receipt.component.sha256)
         || !(1..=component::MAX_COMPONENT_BYTES).contains(&receipt.component.bytes)
@@ -362,7 +377,7 @@ pub fn stage(
     };
     writeln!(
         rust,
-        "static COMPONENT: Option<SetupComponent> = Some(SetupComponent {{ sha256: {:?}, profile_schemas: {schemas_ref}, index: &BootstrapModuleIndex {{ sha256: {:?}, modules: &[",
+        "static COMPONENT: Option<SetupComponent> = Some(SetupComponent {{ sha256: {:?}, catalog_delivery: BootstrapCatalogDelivery::{catalog_delivery}, profile_schemas: {schemas_ref}, index: &BootstrapModuleIndex {{ sha256: {:?}, modules: &[",
         component_digest, receipt.source_index_sha256,
     )
     .expect("writing to String");
@@ -435,6 +450,7 @@ mod tests {
         assert!(rust.contains("module: \"a.b\", relative_file: \"a/b.py\""));
         assert!(rust.contains("profile_schemas: None"));
         assert!(!rust.contains("static PROFILE_SCHEMAS"));
+        assert!(rust.contains("catalog_delivery: BootstrapCatalogDelivery::OriginalReads"));
 
         let v2 = root.join("v2");
         fs::create_dir(&v2)?;
@@ -481,6 +497,7 @@ mod tests {
         assert!(rust.contains("profile_schemas: Some(&PROFILE_SCHEMAS)"));
         assert!(rust.contains("references: None"));
         assert!(rust.contains("recovery: None"));
+        assert!(rust.contains("catalog_delivery: BootstrapCatalogDelivery::OriginalReads"));
         assert!(rust.contains(&format!("component_sha256: \"sha256:{component_digest}\"")));
         let decode_literal = |literal: &str| {
             literal
@@ -649,6 +666,64 @@ mod tests {
             &generated,
         )?;
         let rust = fs::read_to_string(&generated)?;
+        assert_eq!(
+            group_contents(&rust, "recovery"),
+            recovery.map(|(_, content)| content.as_bytes())
+        );
+        assert!(rust.contains("catalog_delivery: BootstrapCatalogDelivery::OriginalReads"));
+
+        let v3 = root.join("v3");
+        fs::create_dir(&v3)?;
+        let generated = v3.join(GENERATED);
+        let legacy_pin = pin(&document)?;
+        document["format"] = RECEIPT_V3.into();
+        let expected = pin(&document)?;
+        assert!(stage(&source, &receipt, &legacy_pin, &v3, &generated).is_err());
+
+        for schema_path in [
+            "/profile_schemas",
+            "/profile_schemas/v4",
+            "/profile_schemas/v5",
+            "/profile_schemas/references",
+            "/profile_schemas/references/content_projection",
+            "/profile_schemas/recovery",
+            "/profile_schemas/recovery/function_principal_v1",
+        ] {
+            let mut incomplete = document.clone();
+            let (parent, field) = schema_path.rsplit_once('/').unwrap();
+            incomplete
+                .pointer_mut(parent)
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(
+                stage(&source, &receipt, &pin(&incomplete)?, &v3, &generated).is_err(),
+                "v3 receipt accepted missing {schema_path}"
+            );
+        }
+
+        let mut altered = document.clone();
+        altered["profile_schemas"]["recovery"]["function_principal_v1"]["sha256"] =
+            "0".repeat(64).into();
+        assert!(stage(&source, &receipt, &pin(&altered)?, &v3, &generated).is_err());
+        let mut open_format = document.clone();
+        open_format["catalog_delivery"] = "owned-snapshot-v1".into();
+        assert!(stage(&source, &receipt, &pin(&open_format)?, &v3, &generated).is_err());
+        assert_eq!(pin(&document)?, expected);
+        let linked_receipt = root.join("linked-receipt.json");
+        std::os::unix::fs::symlink(&receipt, &linked_receipt)?;
+        assert!(stage(&source, &linked_receipt, &expected, &v3, &generated).is_err());
+        assert!(!generated.exists());
+        assert!(!v3.join(component::RESOURCE).exists());
+        stage(&source, &receipt, &expected, &v3, &generated)?;
+        assert_eq!(fs::read(v3.join(component::RESOURCE))?, wasm);
+        let rust = fs::read_to_string(&generated)?;
+        assert!(rust.contains("catalog_delivery: BootstrapCatalogDelivery::OwnedSnapshotV1"));
+        assert_eq!(
+            group_contents(&rust, "references"),
+            [common.as_bytes(), projection.as_bytes()]
+        );
         assert_eq!(
             group_contents(&rust, "recovery"),
             recovery.map(|(_, content)| content.as_bytes())

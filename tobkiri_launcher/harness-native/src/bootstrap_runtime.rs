@@ -5,7 +5,7 @@
 //! only when composition explicitly admits their fixed module operation.
 //! Initialization permits bounded failure observations, never filesystem IO.
 use crate::bootstrap_metadata::{
-    self, BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, Scope,
+    self, BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, Scope, SetupCatalog,
 };
 use crate::init_trace::{InitTrace, InitializationRejection, checkpoint_sequence};
 use anyhow::{Context, Result, bail};
@@ -228,6 +228,8 @@ struct Work<S> {
     inspections: AtomicU64,
     index: &'static BootstrapModuleIndex,
     profile_schemas: Option<bootstrap_metadata::BoundProfileSchemas>,
+    #[cfg(unix)]
+    catalog_delivery: crate::BootstrapCatalogDelivery,
     metadata_policy: Option<&'static crate::ModuleMetadataPolicy>,
     source_occurrence: AtomicU8,
     result_identity: AtomicU64,
@@ -735,7 +737,16 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         source: S,
         index: &'static BootstrapModuleIndex,
     ) -> Result<std::result::Result<Self, NativeDataError>> {
-        Self::prepare_inner(engine, component, invocation, source, index, None, None).await
+        Self::prepare_inner(
+            engine,
+            component,
+            invocation,
+            source,
+            index,
+            SetupCatalog::original_reads(None).with_legacy_ci_delivery(),
+            None,
+        )
+        .await
     }
 
     /// Retain the actual preparation lineage; cancellation conveys no IO rights.
@@ -745,7 +756,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         invocation: NativeSetupInvocation,
         source: S,
         index: &'static BootstrapModuleIndex,
-        profile_schemas: Option<bootstrap_metadata::BoundProfileSchemas>,
+        setup_catalog: SetupCatalog,
         parent: &CoreCancellation,
     ) -> Result<std::result::Result<Self, NativeDataError>> {
         Self::prepare_inner(
@@ -754,7 +765,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             invocation,
             source,
             index,
-            profile_schemas,
+            setup_catalog,
             Some(parent),
         )
         .await
@@ -766,7 +777,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         invocation: NativeSetupInvocation,
         source: S,
         index: &'static BootstrapModuleIndex,
-        profile_schemas: Option<bootstrap_metadata::BoundProfileSchemas>,
+        setup_catalog: SetupCatalog,
         parent: Option<&CoreCancellation>,
     ) -> Result<std::result::Result<Self, NativeDataError>> {
         source.check_live()?;
@@ -782,7 +793,9 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 phase: AtomicU8::new(CONSTRUCTING),
                 inspections: AtomicU64::new(0),
                 index,
-                profile_schemas,
+                profile_schemas: setup_catalog.profile_schemas,
+                #[cfg(unix)]
+                catalog_delivery: setup_catalog.delivery,
                 metadata_policy,
                 source_occurrence: AtomicU8::new(SOURCE_UNUSED),
                 result_identity: AtomicU64::new(1),

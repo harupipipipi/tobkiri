@@ -25,13 +25,13 @@ mod member_index;
 #[cfg(unix)]
 #[path = "original_catalog_member_path.rs"]
 mod member_path;
-#[cfg(all(test, unix))]
+#[cfg(unix)]
 #[path = "original_native_bundle_lock.rs"]
 mod native_bundle_lock;
-#[cfg(all(test, unix))]
+#[cfg(unix)]
 #[path = "original_native_bundled_catalog.rs"]
 mod native_bundled_catalog;
-#[cfg(all(test, unix))]
+#[cfg(unix)]
 #[path = "original_owned_catalog_delivery.rs"]
 mod owned_catalog_delivery;
 #[cfg(unix)]
@@ -122,7 +122,7 @@ pub(crate) struct CatalogIo {
     lock: Option<Funded<Document>>,
     #[cfg(unix)]
     document_shapes: Option<document_shapes::DocumentChecks>,
-    #[cfg(all(test, unix))]
+    #[cfg(unix)]
     owned_delivery: Option<owned_catalog_delivery::OwnedCatalogDelivery>,
     entry: usize,
     walk: usize,
@@ -344,7 +344,7 @@ impl CatalogIo {
             lock: None,
             #[cfg(unix)]
             document_shapes: None,
-            #[cfg(all(test, unix))]
+            #[cfg(unix)]
             owned_delivery: None,
             entry: 0,
             walk: 0,
@@ -464,7 +464,7 @@ impl CatalogIo {
         Ok(())
     }
 
-    #[cfg(all(test, unix))]
+    #[cfg(unix)]
     pub(crate) fn enable_owned_catalog(&mut self) {
         self.owned_delivery = Some(owned_catalog_delivery::OwnedCatalogDelivery::Armed);
     }
@@ -474,7 +474,7 @@ impl CatalogIo {
         out: &mut CoreBufferBuilder,
         budget: &Arc<dyn AllocationBudget>,
     ) -> anyhow::Result<()> {
-        #[cfg(all(test, unix))]
+        #[cfg(unix)]
         if self.owned_delivery.is_some() {
             return self.write_owned_root(out, budget);
         }
@@ -726,7 +726,7 @@ impl CatalogIo {
                 self.loader = Loader::RootSymlink;
                 true
             }
-            #[cfg(all(test, unix))]
+            #[cfg(unix)]
             Loader::RootSymlink if self.owned_delivery.is_some() => {
                 return self.inspect_owned_delivery(&op, output, operation, &steps_array, &args);
             }

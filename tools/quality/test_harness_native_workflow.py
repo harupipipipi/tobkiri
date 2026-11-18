@@ -72,6 +72,36 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn("inputs.verification == 'launcher-staging'", launcher)
         self.assertNotIn("catalog-app-frame", launcher)
 
+    def test_launcher_snapshot_stages_the_attested_app_component(self) -> None:
+        mode = "inputs.verification == 'launcher-snapshot-staging'"
+        self.assertRegex(self.workflow, r"(?m)^        options: \[bootstrap,.*launcher-snapshot-staging\]")
+        self.assertIn("default: bootstrap", self.workflow)
+        self.assertIn(mode + " && '-launcher-snapshot' || ''", self.workflow)
+        build = job(self.workflow, "build-whole-native-harness")
+        for name in (
+            "Restore pinned cross compiler and locked App schema kernel archives",
+            "Build the source-bound App schema extension offline",
+            "Build the actual native Harness dispatcher and original module closure",
+        ):
+            self.assertIn(mode, step(build, name))
+        binder = step(self.native, "Bind the actual component, original modules and native index")
+        self.assertIn(mode, binder)
+        self.assertIn("harness-native-app-frame/work/component.wasm", binder)
+        stage = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
+        for required in (
+            mode, "features=native-first-setup", "--features \"$features\"",
+            'TOBKIRI_SETUP_COMPONENT_SOURCE="$TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT"',
+            'TOBKIRI_SETUP_COMPONENT_RECEIPT="$bound/launcher-component.json"',
+            'TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$pin"',
+            "selected_setup_component::staged_snapshot_receipt_selects_native_setup",
+            "-- --ignored --exact", "verify_runtime_resource_manifest", "fingerprint(copied",
+        ):
+            self.assertIn(required, stage)
+        self.assertNotIn("TOBKIRI_TEST_NATIVE_OWNED_CATALOG", stage)
+        self.assertNotIn(mode, step(self.native, "Observe actual catalog schema checkpoints without qualification"))
+        evidence = step(self.native, "Retain actual native execution evidence")
+        self.assertIn("harness-native-launcher-snapshot.log*", evidence)
+
     def test_app_diagnostic_uses_same_extension_and_only_the_actual_catalog_trace(self) -> None:
         mode = "catalog-app-frame-diagnostic"
         condition = f"inputs.verification == '{mode}'"
@@ -230,7 +260,8 @@ class NativeWorkflowContracts(unittest.TestCase):
             'TOBKIRI_SETUP_COMPONENT_SOURCE="$TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT"',
             'TOBKIRI_SETUP_COMPONENT_RECEIPT="$bound/launcher-component.json"',
             'TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$pin"',
-            "--features native-harness-bootstrap,native-setup-review",
+            "features=native-harness-bootstrap,native-setup-review",
+            '--features "$features"',
             "verify_runtime_resource_manifest(stage)",
             'name = "native-setup/component.wasm"',
             "fingerprint(copied, 32 * 1024**2) != expected",
@@ -374,6 +405,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         adapter = (ROOT / "tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs").read_text()
         actual = (ROOT / "tobkiri_launcher/harness-native/src/bootstrap_actual_ci.rs").read_text()
         shared = (ROOT / "tobkiri_launcher/harness-native/src/preparation.rs").read_text()
+        metadata = (ROOT / "tobkiri_launcher/harness-native/src/bootstrap_metadata.rs").read_text()
         fixtures = '\n#[cfg(all(test, target_os = "macos"))]\n'
         self.assertEqual(shared.count(fixtures), 1)
         shared = shared.split(fixtures, 1)[0]
@@ -389,7 +421,7 @@ class NativeWorkflowContracts(unittest.TestCase):
             "source.check_live()?",
             "NativeComponentPreparation::new_with_cancellation_parent(",
             ".compile(artifact,&expected)?",
-            "letinitialize=prepared.initialize_with_profile_schemas(index,profile_schemas);",
+            "letinitialize=prepared.initialize_with_setup_catalog(index,profile_schemas,catalog_delivery);",
             "caught(initialize).await",
         )]
         self.assertEqual(positions, sorted(positions))
@@ -406,7 +438,7 @@ class NativeWorkflowContracts(unittest.TestCase):
             "bytes.try_reserve_exact(size)?",
             "input.read_exact(&mutbytes)?",
             "&Digest::hash(&bytes)==expected",
-            "schemas.bind(&self.component_digest)",
+            "SetupCatalog::bind(&self.component_digest,profile_schemas,delivery)",
             "Component::new(self.engine.engine(),&bytes)",
             "drop(bytes);", "drop(payload);", "drop(permit);",
         ):
@@ -415,7 +447,8 @@ class NativeWorkflowContracts(unittest.TestCase):
                         compact.index("bytes.try_reserve_exact(size)?"))
         self.assertLess(compact.index("Component::new("), compact.index("drop(bytes);"))
         self.assertLess(compact.index("drop(bytes);"), compact.index("drop(payload);"))
-        self.assertLess(compact.index("schemas.bind(&self.component_digest)"),
+        self.assertIn("schemas.bind(component)", metadata)
+        self.assertLess(compact.index("SetupCatalog::bind(&self.component_digest,profile_schemas,delivery)"),
                         compact.index("NativeBootstrap::prepare_with_cancellation_parent("))
         self.assertIn("self.invocation.deadline()? == self.deadline", shared)
         self.assertIn("self.preparation.invocation", shared)

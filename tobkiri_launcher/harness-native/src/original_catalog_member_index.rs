@@ -113,7 +113,6 @@ impl CatalogMemberIndex {
         }
     }
 
-    #[cfg(test)]
     pub(super) fn entries(&self) -> impl Iterator<Item = (CatalogDocumentKind, &str)> {
         self.members.iter().map(|entry| {
             let id = std::str::from_utf8(&entry.id[..entry.length]).expect("stored ASCII identity");

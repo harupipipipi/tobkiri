@@ -124,6 +124,7 @@ impl NativeOwnedBundle {
 }
 
 impl CatalogIo {
+    #[cfg(test)]
     pub(super) fn read_owned_bundle<S: crate::BootstrapReviewOwner>(
         &self,
         owner: &S,

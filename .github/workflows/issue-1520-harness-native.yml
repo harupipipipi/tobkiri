@@ -40,7 +40,7 @@ on:
       verification:
         description: Original runtime regression, targeted comparison, or Launcher resource staging
         type: choice
-        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, catalog-app-frame-diagnostic, launcher-staging]
+        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, catalog-app-frame-diagnostic, launcher-staging, launcher-snapshot-staging]
         default: bootstrap
 
 permissions:
@@ -48,7 +48,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: issue-1520-harness-native-${{ github.ref }}
+  group: issue-1520-harness-native-${{ github.ref }}${{ inputs.verification == 'launcher-snapshot-staging' && '-launcher-snapshot' || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -114,9 +114,9 @@ jobs:
           python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
           python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
       - uses: dtolnay/rust-toolchain@1.94.0
-        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' }}
+        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' || inputs.verification == 'launcher-snapshot-staging' }}
       - name: Restore pinned cross compiler and locked App schema kernel archives
-        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' }}
+        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' || inputs.verification == 'launcher-snapshot-staging' }}
         run: |
           set -euo pipefail
           python3 -B tools/python313-producer/fetch_toolchain.py --destination "$RUNNER_TEMP/app-schema-rust"
@@ -141,7 +141,7 @@ jobs:
                                   archives, root / 'app-schema-vendor')
           PY
       - name: Build the source-bound App schema extension offline
-        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' }}
+        if: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' || inputs.verification == 'launcher-snapshot-staging' }}
         run: >-
           python3 -B tools/python313-producer/build_schema_kernel_extension.py --app-backend
           --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel"
@@ -152,7 +152,7 @@ jobs:
           --destination "$RUNNER_TEMP/app-schema-extension"
       - name: Build the actual native Harness dispatcher and original module closure
         env:
-          APP_SCHEMA_BACKEND: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' }}
+          APP_SCHEMA_BACKEND: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'catalog-app-frame-diagnostic' || inputs.verification == 'launcher-snapshot-staging' }}
         run: |
           app_args=()
           if [ "$APP_SCHEMA_BACKEND" = true ]; then
@@ -243,7 +243,7 @@ jobs:
         id: native_inputs
         env:
           SCHEMA_DIAGNOSTIC: ${{ inputs.verification == 'catalog-schema-diagnostic' }}
-          APP_SCHEMA_BACKEND: ${{ inputs.verification == 'catalog-app-frame' }}
+          APP_SCHEMA_BACKEND: ${{ inputs.verification == 'catalog-app-frame' || inputs.verification == 'launcher-snapshot-staging' }}
           APP_SCHEMA_DIAGNOSTIC: ${{ inputs.verification == 'catalog-app-frame-diagnostic' }}
         run: |
           if [ "$APP_SCHEMA_DIAGNOSTIC" = true ]; then
@@ -575,35 +575,48 @@ jobs:
           cargo test --locked -p tobkiri-core --lib
           core::runtime_owner_tests:: -- --nocapture
       - name: Install Node for the original Launcher staging check
-        if: ${{ inputs.verification == 'launcher-staging' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ (inputs.verification == 'launcher-staging' || inputs.verification == 'launcher-snapshot-staging') && steps.native_inputs.conclusion == 'success' }}
         uses: actions/setup-node@v4
         with:
           node-version: '22.22.0'
       - name: Build the isolated Setup assets used by the original Launcher
-        if: ${{ inputs.verification == 'launcher-staging' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ (inputs.verification == 'launcher-staging' || inputs.verification == 'launcher-snapshot-staging') && steps.native_inputs.conclusion == 'success' }}
         working-directory: tobkiri_launcher/frontend
         run: |
           npm ci
           npm run build:setup-review
       - name: Build and seal the original debug Pack Shell for Launcher staging
-        if: ${{ inputs.verification == 'launcher-staging' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ (inputs.verification == 'launcher-staging' || inputs.verification == 'launcher-snapshot-staging') && steps.native_inputs.conclusion == 'success' }}
         run: |
           cargo build --locked --manifest-path pack-shell/Cargo.toml --target aarch64-apple-darwin
           python3 -B .github/scripts/seal_pack_shell.py --target aarch64-apple-darwin
       - name: Stage the verified same-run Wasm through the original Launcher
-        if: ${{ inputs.verification == 'launcher-staging' && steps.native_inputs.conclusion == 'success' }}
+        if: ${{ (inputs.verification == 'launcher-staging' || inputs.verification == 'launcher-snapshot-staging') && steps.native_inputs.conclusion == 'success' }}
+        env:
+          SNAPSHOT_SETUP: ${{ inputs.verification == 'launcher-snapshot-staging' }}
         run: |
           set -euo pipefail
           bound="$RUNNER_TEMP/harness-native-inputs"
           pin="$(python3 -B -c 'import json, sys; print(json.load(sys.stdin)["launcher_component_receipt"]["sha256"])' < "$bound/inputs.json")"
-          TOBKIRI_SETUP_COMPONENT_SOURCE="$TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT" \
-          TOBKIRI_SETUP_COMPONENT_RECEIPT="$bound/launcher-component.json" \
-          TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$pin" \
+          features=native-harness-bootstrap,native-setup-review
+          if [ "$SNAPSHOT_SETUP" = true ]; then
+            features=native-first-setup
+          fi
+          export TOBKIRI_SETUP_COMPONENT_SOURCE="$TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT"
+          export TOBKIRI_SETUP_COMPONENT_RECEIPT="$bound/launcher-component.json"
+          export TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$pin"
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/harness-native-launcher-staging.log" --expected-passed 1 -- \
             cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
-            --target aarch64-apple-darwin --features native-harness-bootstrap,native-setup-review \
+            --target aarch64-apple-darwin --features "$features" \
             --lib native_harness_bootstrap::setup_display_requires_a_completed_listing_result -- --exact
+          if [ "$SNAPSHOT_SETUP" = true ]; then
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
+              --log "$RUNNER_TEMP/harness-native-launcher-snapshot.log" --expected-passed 1 -- \
+              cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+              --target aarch64-apple-darwin --features "$features" \
+              --lib native_harness_bootstrap::selected_setup_component::staged_snapshot_receipt_selects_native_setup -- --ignored --exact
+          fi
           python3 -B - "$bound/inputs.json" <<'PY'
           import json
           import os
@@ -642,6 +655,7 @@ jobs:
             ${{ runner.temp }}/harness-native-inspection-policy.log*
             ${{ runner.temp }}/harness-native-preparation.log*
             ${{ runner.temp }}/harness-native-launcher-staging.log*
+            ${{ runner.temp }}/harness-native-launcher-snapshot.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
             ${{ runner.temp }}/harness-native-runtime-features/
             ${{ runner.temp }}/harness-native-denied-factory.log*

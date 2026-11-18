@@ -20,9 +20,10 @@ use std::{
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{Core, Digest, HostIo, NativeSetupInvocation, RuntimeOwner};
 use tobkiri_harness_native::{
-    BootstrapInputOwner, BootstrapModuleIndex, BootstrapProfileSchemas, BootstrapRoots,
-    ModuleMetadataPolicy, NativeBootstrap, NativeComponentPreparation, OriginalAuthorityError,
-    OriginalAuthorityMaterial, OriginalAuthorityOwner, ORIGINAL_PROFILE_SOURCE_METADATA,
+    BootstrapCatalogDelivery, BootstrapInputOwner, BootstrapModuleIndex, BootstrapProfileSchemas,
+    BootstrapRoots, ModuleMetadataPolicy, NativeBootstrap, NativeComponentPreparation,
+    OriginalAuthorityError, OriginalAuthorityMaterial, OriginalAuthorityOwner,
+    ORIGINAL_PROFILE_SOURCE_METADATA,
 };
 use tobkiri_wasm::NativeDataIoError;
 
@@ -466,13 +467,14 @@ struct SelectedOriginalComponent {
     expected: Digest,
     index: &'static BootstrapModuleIndex,
     profile_schemas: Option<&'static BootstrapProfileSchemas>,
+    catalog_delivery: BootstrapCatalogDelivery,
 }
 
 #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
 mod selected_setup_component {
     use super::{
-        setup_component_path, AppHandle, BootstrapModuleIndex, BootstrapProfileSchemas, Digest,
-        Manager, Result, SelectedOriginalComponent,
+        setup_component_path, AppHandle, BootstrapCatalogDelivery, BootstrapModuleIndex,
+        BootstrapProfileSchemas, Digest, Manager, Result, SelectedOriginalComponent,
     };
     use std::fs::OpenOptions;
     use std::os::unix::fs::OpenOptionsExt;
@@ -482,6 +484,7 @@ mod selected_setup_component {
         sha256: &'static str,
         index: &'static BootstrapModuleIndex,
         profile_schemas: Option<&'static BootstrapProfileSchemas>,
+        catalog_delivery: BootstrapCatalogDelivery,
     }
     include!(concat!(env!("OUT_DIR"), "/setup_component.rs"));
 
@@ -491,6 +494,24 @@ mod selected_setup_component {
             .as_ref()
             .and_then(|component| component.profile_schemas)
             .is_some_and(|schemas| schemas.references.is_some() && schemas.recovery.is_some())
+    }
+
+    #[cfg(all(test, feature = "native-first-setup"))]
+    #[test]
+    #[ignore = "requires the verified App component and v3 Setup receipt at build time"]
+    fn staged_snapshot_receipt_selects_native_setup() {
+        let component = COMPONENT.as_ref().expect("staged Setup component");
+        assert_eq!(
+            component.catalog_delivery,
+            BootstrapCatalogDelivery::OwnedSnapshotV1
+        );
+        let schemas = component.profile_schemas.expect("pinned Profile schemas");
+        assert_eq!(schemas.component_sha256, component.sha256);
+        assert!(!schemas.v4.is_empty());
+        assert!(!schemas.v5.is_empty());
+        assert!(schemas.references.is_some());
+        assert!(schemas.recovery.is_some());
+        assert!(supports_first_setup());
     }
 
     pub(super) fn open(app: &AppHandle) -> Result<Option<SelectedOriginalComponent>> {
@@ -526,6 +547,7 @@ mod selected_setup_component {
             expected: Digest::parse(component.sha256)?,
             index: component.index,
             profile_schemas: component.profile_schemas,
+            catalog_delivery: component.catalog_delivery,
         }))
     }
 }
@@ -721,6 +743,7 @@ async fn run_original_job(
         expected,
         index,
         profile_schemas,
+        catalog_delivery,
     } = selected;
     // No Store/IO exists during these synchronous stages. Owner creation is
     // already represented by the registered worker before reaching this code.
@@ -767,7 +790,8 @@ async fn run_original_job(
         }
     };
     let (prepared, source, invocation, cancellation, retention) = prepared;
-    let initialize = prepared.initialize_with_profile_schemas(index, profile_schemas);
+    let initialize =
+        prepared.initialize_with_setup_catalog(index, profile_schemas, catalog_delivery);
     let runner = match caught(initialize).await {
         Ok(Ok(Ok(runner))) => runner,
         Ok(Ok(Err(domain))) => {

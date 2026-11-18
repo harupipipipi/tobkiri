@@ -15,7 +15,6 @@ pub(super) fn definition_revision_matches<S: OriginalAuthorityOwner>(
 }
 
 /// A failed executable catalog check before the independent physical reread.
-#[cfg(test)]
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum ExecutableCatalogIssue {
     MissingPackManifest,
@@ -27,7 +26,6 @@ pub(super) enum ExecutableCatalogIssue {
 
 /// Return the manifest pin text for the executable's Pack, selected by its ID.
 /// Preserve the text verbatim for comparison after the physical reread.
-#[cfg(test)]
 pub(super) fn executable_pin<'a, S: OriginalAuthorityOwner>(
     executable: &Document,
     manifest: Option<&'a Document>,

@@ -30,6 +30,7 @@ NORMAL_SOURCE = "io.tobkiri.harness-native-component-source.v1"
 DIAGNOSTIC_SOURCE = "io.tobkiri.harness-native-schema-call-diagnostic-source.v1"
 NORMAL_DEPENDENCIES = "tobkiri.harness-native-dependencies/1"
 CAPTURED_DATA = "harness_native_dependency_data.py"
+CAPTURED_LOADER = "harness_native_captured_loader.py"
 PROFILE_SCHEMA_PATHS = {
     version: f"tobkiri_protocol/schemas/profile_{version}.schema.json"
     for version in ("v4", "v5")
@@ -140,6 +141,8 @@ def verify_app_source_bindings(
                 ENTRYPOINT + ".py": hashlib.sha256(wrapper).hexdigest()}
     expected.update({name: report["source_files"][member]["sha256"]
                      for name, member in PROVIDER_FILES.items()})
+    loader = SOURCE.parent / "schema_probe/captured_loader.py"
+    expected[CAPTURED_LOADER] = fingerprint(loader)["sha256"]
     for name, digest in expected.items():
         row = actual.get("python/" + name, {})
         if row.get("sha256") != digest or row.get("destination") != name:
@@ -150,21 +153,11 @@ def verify_app_source_bindings(
             for name, raw in diagnostic_sources.items()
         }:
             raise ValueError("native Harness App diagnostic source derivation differs")
-        (extension,) = [
-            row for row in build["source_manifest"] if row["source"] == "python/" + EXTENSION
-        ]
-        if extension["bytes"] != report["artifact"]["bytes"]:
-            raise ValueError("native Harness App extension size differs")
-        loader = "harness_native_captured_loader.py"
-        expected_loader = fingerprint(ROOT / "tools/python313-producer/schema_probe/captured_loader.py")
-        row = actual.get("python/" + loader, {})
-        if row.get("sha256") != expected_loader["sha256"] or row.get("destination") != loader:
-            raise ValueError("native Harness App diagnostic loader differs")
 
 
 def _captured_resources(
     inputs: Path, manifest: list[dict], profile_sources: set[str],
-    diagnostic_sources: tuple[str, ...],
+    app_sources: tuple[str, ...],
 ) -> dict[str, bytes]:
     """Read bounded fixed members from the exact captured-loader input."""
     def row_for(destination: str) -> dict:
@@ -183,13 +176,13 @@ def _captured_resources(
                       for target in node.targets)]
     if len(tables) != 1 or not isinstance(tables[0], ast.Tuple):
         raise ValueError("native captured DATA must have one literal FILES table")
-    wanted = {*profile_sources, *diagnostic_sources}
+    wanted = {*profile_sources, *app_sources}
     selected = tuple(ast.literal_eval(row) for row in tables[0].elts
                      if isinstance(row, ast.Tuple) and row.elts
                      and isinstance(row.elts[0], ast.Constant)
                      and row.elts[0].value in wanted)
     if len(selected) != len(wanted) or {row[0] for row in selected} != wanted:
-        required = "fixed member" if diagnostic_sources else "Profile recovery schema"
+        required = "fixed member" if app_sources else "Profile recovery schema"
         raise ValueError(f"native captured DATA must contain each {required} once")
     resources = Tree(selected, compressed=True)
     result = {}
@@ -197,7 +190,7 @@ def _captured_resources(
         row = row_for(name)
         raw, digest = resources.path(name)._read_verified_bytes()
         if not raw or len(raw) != row["bytes"] or digest != row["sha256"]:
-            member = "Profile schema" if name in profile_sources else "App diagnostic module"
+            member = "Profile schema" if name in profile_sources else "App source"
             raise ValueError(f"captured {member} differs from original source: {name}")
         result[name] = raw
     return result
@@ -205,16 +198,16 @@ def _captured_resources(
 
 def _profile_schema_resources(
     inputs: Path, base: dict[str, bytes], manifest: list[dict], *,
-    diagnostic_sources: tuple[str, ...] = (),
+    app_sources: tuple[str, ...] = (),
 ) -> dict[str, bytes]:
-    """Select original Profile schemas and verify any live diagnostic modules."""
+    """Select original Profile schemas and verify the captured App source hooks."""
     paths = {**PROFILE_SCHEMA_PATHS, **PROFILE_REFERENCE_PATHS, **RECOVERY_SCHEMA_PATHS}
     schema_ids = {
         **PROFILE_REFERENCE_IDS,
         **{key: f"https://schemas.tobkiri.local/io.tobkiri/{name}.schema.json"
            for key, name in RECOVERY_SCHEMA_IDS.items()},
     }
-    captured = _captured_resources(inputs, manifest, set(paths.values()), diagnostic_sources)
+    captured = _captured_resources(inputs, manifest, set(paths.values()), app_sources)
     result = {}
     for key, name in paths.items():
         raw = captured[name]
@@ -311,23 +304,25 @@ def bind(
         raise ValueError("native Harness source mode differs")
     original_plan = (json.dumps(stage.plan_for(base), sort_keys=True, indent=2) + "\n").encode()
     diagnostic_sources = None
-    captured_diagnostic_sources = ()
+    captured_app_sources = ()
     if app_backend:
-        from app_schema_extension_inputs import PROVIDER_FILES, derive_harness_sources
+        from app_schema_extension_inputs import (
+            EXTENSION, PROVIDER_FILES, derive_harness_sources,
+        )
 
         changes = derive_harness_sources(
             {name.removeprefix("python/"): raw for name, raw in base.items()},
             catalog_shapes=not schema_call_diagnostic,
         )
         base.update({"python/" + name: raw for name, raw in changes.items()})
+        captured_app_sources = (
+            *changes, *PROVIDER_FILES, ENTRYPOINT + ".py", CAPTURED_LOADER,
+        )
         if schema_call_diagnostic:
             from harness_native.schema_diagnostic_stage import HELPER
 
             diagnostic_sources = changes
-            captured_diagnostic_sources = (
-                *changes, HELPER.removeprefix("python/"), *PROVIDER_FILES,
-                ENTRYPOINT + ".py", "harness_native_captured_loader.py",
-            )
+            captured_app_sources += (HELPER.removeprefix("python/"),)
     diagnostic_contract = None
     if schema_call_diagnostic:
         diagnostic_contract = derived.get("checkpoint_contract", {})
@@ -353,9 +348,16 @@ def bind(
             raise ValueError(f"actual component lacks current original source: {name}")
     verify_producer_selection(artifact, build, plan, identity, diagnostic=schema_call_diagnostic,
                               app_backend=app_backend)
+    dependencies = build["harness_native_dependencies"]
     if app_backend:
         verify_app_source_bindings(build, actual, diagnostic_sources=diagnostic_sources)
-    dependencies = build["harness_native_dependencies"]
+        (extension,) = [
+            row for row in build["source_manifest"]
+            if row["source"] == "python/" + EXTENSION
+        ]
+        app_artifact = dependencies["app_schema_backend"]["extension_build"]["artifact"]
+        if extension["bytes"] != app_artifact["bytes"]:
+            raise ValueError("native Harness App extension size differs")
     if schema_call_diagnostic and app_backend and (
         dependencies.get("schema_diagnostic_source_sha256") != hashlib.sha256(provenance).hexdigest()
         or dependencies.get("source_index") != derived["source_index"]
@@ -373,7 +375,7 @@ def bind(
         raise ValueError("native Harness original source plan differs")
     profile_schemas = _profile_schema_resources(
         inputs, base, build["source_manifest"],
-        diagnostic_sources=captured_diagnostic_sources,
+        app_sources=captured_app_sources,
     )
     tree = ast.parse(base["python/harness_native_source_index.py"])
     index = {row.targets[0].id: ast.literal_eval(row.value)
@@ -415,12 +417,13 @@ def bind(
     index_path = output / "module-index.rs"
     index_path.write_bytes(header)
     launcher_receipt = None
-    if not schema_call_diagnostic and not app_backend:
+    if not schema_call_diagnostic:
         # Data only. A separately pinned copy of this receipt can be consumed
         # by the Launcher build; this CI verification does not enable release.
+        receipt_version = "v3" if app_backend else "v2"
         launcher_receipt = output / "launcher-component.json"
         launcher_receipt.write_text(json.dumps({
-            "format": "io.tobkiri.launcher-setup-component.v2",
+            "format": f"io.tobkiri.launcher-setup-component.{receipt_version}",
             "component": identity,
             "source_index_sha256": index["INDEX_SHA256"],
             "modules": [

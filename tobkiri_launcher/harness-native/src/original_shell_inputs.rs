@@ -185,7 +185,6 @@ impl CatalogIo {
     }
 
     /// Capture a compact pin from the already validated native Pack document.
-    #[cfg(test)]
     pub(super) fn prepare_owned_pack_pin<S: crate::BootstrapReviewOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -198,7 +197,6 @@ impl CatalogIo {
     }
 
     /// Keep a prepared pin at the native loader's current Pack occurrence.
-    #[cfg(test)]
     pub(super) fn retain_owned_pack_pin<S: crate::BootstrapReviewOwner>(
         &mut self,
         op: &Operation<'_, S>,
@@ -985,7 +983,6 @@ fn project_pack_pin(
     }))
 }
 
-#[cfg(test)]
 fn project_owned_pack_pin<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     document: &Document,
@@ -1029,7 +1026,6 @@ fn project_owned_pack_pin<S: OriginalAuthorityOwner>(
     }))
 }
 
-#[cfg(test)]
 fn owned_pack_dependency_ids<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     entries: &[(Text, usize)],
@@ -1059,7 +1055,6 @@ fn owned_pack_dependency_ids<S: OriginalAuthorityOwner>(
     ids.finish().map_err(capacity)
 }
 
-#[cfg(test)]
 fn copy_pack_pin_text(text: &Text, budget: &Arc<dyn AllocationBudget>) -> Result<CoreValue> {
     charge_work(budget, (text.0.len() as u64).saturating_mul(2))?;
     let chars = || {

@@ -1,7 +1,11 @@
 //! One original invocation for Engine creation, source reading and compilation.
 //! Source handles/digests prove no authorization; the caller must supply its
 //! actually admitted source and retain that original input owner's custody.
-use crate::{BootstrapInputOwner, BootstrapModuleIndex, BootstrapProfileSchemas, NativeBootstrap};
+use crate::bootstrap_metadata::SetupCatalog;
+use crate::{
+    BootstrapCatalogDelivery, BootstrapInputOwner, BootstrapModuleIndex, BootstrapProfileSchemas,
+    NativeBootstrap,
+};
 use anyhow::{Result, ensure};
 use std::{fs::File, io::Read, time::Instant};
 use tobkiri_canon::{CoreBuffer, Digest};
@@ -287,9 +291,39 @@ impl<S: NativeComponentOwner> PreparedNativeComponent<S> {
         S: BootstrapInputOwner,
     {
         self.preparation.check_live()?;
-        let profile_schemas = profile_schemas
-            .map(|schemas| schemas.bind(&self.component_digest))
-            .transpose()?;
+        let catalog = SetupCatalog::bind(
+            &self.component_digest,
+            profile_schemas,
+            BootstrapCatalogDelivery::OriginalReads,
+        )?
+        .with_legacy_ci_delivery();
+        self.initialize_catalog(index, catalog).await
+    }
+
+    /// Initialize with the catalog transport and schema resources from the
+    /// verified receipt of this prepared Setup component.
+    pub async fn initialize_with_setup_catalog(
+        self,
+        index: &'static BootstrapModuleIndex,
+        profile_schemas: Option<&'static BootstrapProfileSchemas>,
+        delivery: BootstrapCatalogDelivery,
+    ) -> Result<std::result::Result<NativeBootstrap<S>, NativeDataError>>
+    where
+        S: BootstrapInputOwner,
+    {
+        self.preparation.check_live()?;
+        let catalog = SetupCatalog::bind(&self.component_digest, profile_schemas, delivery)?;
+        self.initialize_catalog(index, catalog).await
+    }
+
+    async fn initialize_catalog(
+        self,
+        index: &'static BootstrapModuleIndex,
+        catalog: SetupCatalog,
+    ) -> Result<std::result::Result<NativeBootstrap<S>, NativeDataError>>
+    where
+        S: BootstrapInputOwner,
+    {
         let cancellation = self.preparation.cancellation;
         let result = NativeBootstrap::prepare_with_cancellation_parent(
             &self.preparation.engine,
@@ -297,7 +331,7 @@ impl<S: NativeComponentOwner> PreparedNativeComponent<S> {
             self.preparation.invocation,
             self.preparation.source,
             index,
-            profile_schemas,
+            catalog,
             &cancellation,
         )
         .await;
@@ -500,6 +534,53 @@ mod tests {
         assert_eq!(Arc::strong_count(&retired), 2);
         drop(prepared);
         assert_eq!(Arc::strong_count(&retired), 1);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn owned_catalog_rejects_invalid_schema_metadata_before_claiming_store() -> Result<()> {
+        static INDEX: BootstrapModuleIndex = BootstrapModuleIndex {
+            sha256: "",
+            modules: &[],
+        };
+        static WRONG_COMPONENT: BootstrapProfileSchemas = BootstrapProfileSchemas {
+            component_sha256: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            v4: b"{}",
+            v5: b"{}",
+            references: Some([b"{}"; 2]),
+            recovery: Some([b"{}"; 7]),
+        };
+        let temporary = tempfile::tempdir()?;
+        let root = temporary.path().canonicalize()?;
+        let owner = RuntimeOwner::open(root.join("data"))?;
+        let retired = Arc::new(AtomicBool::new(false));
+        let bytes = wat::parse_str("(component)")?;
+        let path = root.join("component.wasm");
+        File::create(&path)?.write_all(&bytes)?;
+        for (schemas, expected) in [
+            (None, "require complete Profile schema resources"),
+            (
+                Some(&WRONG_COMPONENT),
+                "do not match the selected Setup component",
+            ),
+        ] {
+            let invocation = owner.begin_native_setup()?;
+            let prepared =
+                NativeComponentPreparation::new(invocation.clone(), source(&root, &retired)?)?
+                    .compile(File::open(&path)?, &Digest::hash(&bytes))?;
+            let error = prepared
+                .initialize_with_setup_catalog(
+                    &INDEX,
+                    schemas,
+                    BootstrapCatalogDelivery::OwnedSnapshotV1,
+                )
+                .await
+                .err()
+                .ok_or_else(|| anyhow::anyhow!("invalid Setup catalog configuration admitted"))?;
+            assert!(error.to_string().contains(expected), "{error:#}");
+            assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
+            invocation.claim_store()?;
+        }
         Ok(())
     }
 

@@ -49,6 +49,15 @@ pub struct BootstrapModuleIndex {
     pub modules: &'static [BootstrapModule],
 }
 
+/// Catalog transport selected by the verified receipt for this Setup component.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BootstrapCatalogDelivery {
+    /// Serve the original loader's individual reads.
+    OriginalReads,
+    /// Serve the ordered, native-owned catalog snapshot.
+    OwnedSnapshotV1,
+}
+
 /// Immutable source data from the receipt of the selected Setup component.
 /// These bytes confer no filesystem access or record authority.
 pub struct BootstrapProfileSchemas {
@@ -64,6 +73,60 @@ pub struct BootstrapProfileSchemas {
 
 #[derive(Clone, Copy)]
 pub(crate) struct BoundProfileSchemas(&'static BootstrapProfileSchemas);
+
+/// Catalog configuration bound before claiming the Setup Store.
+pub(super) struct SetupCatalog {
+    pub(super) profile_schemas: Option<BoundProfileSchemas>,
+    #[cfg(unix)]
+    pub(super) delivery: BootstrapCatalogDelivery,
+}
+
+impl SetupCatalog {
+    pub(super) fn bind(
+        component: &Digest,
+        profile_schemas: Option<&'static BootstrapProfileSchemas>,
+        delivery: BootstrapCatalogDelivery,
+    ) -> anyhow::Result<Self> {
+        let profile_schemas = profile_schemas
+            .map(|schemas| schemas.bind(component))
+            .transpose()?;
+        if delivery == BootstrapCatalogDelivery::OwnedSnapshotV1 {
+            anyhow::ensure!(cfg!(unix), "owned Setup catalog snapshots require Unix");
+            anyhow::ensure!(
+                profile_schemas.is_some_and(|schemas| {
+                    schemas.0.references.is_some() && schemas.0.recovery.is_some()
+                }),
+                "owned Setup catalog snapshots require complete Profile schema resources"
+            );
+        }
+        Ok(Self {
+            profile_schemas,
+            #[cfg(unix)]
+            delivery,
+        })
+    }
+
+    pub(super) fn original_reads(profile_schemas: Option<BoundProfileSchemas>) -> Self {
+        Self {
+            profile_schemas,
+            #[cfg(unix)]
+            delivery: BootstrapCatalogDelivery::OriginalReads,
+        }
+    }
+
+    /// Preserve the existing actual-component CI entry points. Read the test
+    /// switch once when binding the Store, before any review or confirmation.
+    pub(super) fn with_legacy_ci_delivery(self) -> Self {
+        #[cfg(all(test, feature = "bootstrap-ci", unix))]
+        if std::env::var("TOBKIRI_TEST_NATIVE_OWNED_CATALOG").as_deref() == Ok("1") {
+            return Self {
+                delivery: BootstrapCatalogDelivery::OwnedSnapshotV1,
+                ..self
+            };
+        }
+        self
+    }
+}
 
 impl BootstrapProfileSchemas {
     pub(crate) fn bind(&'static self, component: &Digest) -> anyhow::Result<BoundProfileSchemas> {

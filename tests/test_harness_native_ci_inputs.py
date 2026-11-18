@@ -173,15 +173,23 @@ class DiagnosticInputBindingTests(unittest.TestCase):
                 member = "python/" + app_extension.EXTENSION
                 files[member] += b"foreign extension"
             else:
-                self.assertEqual(tamper, "capture")
                 member = "python/" + binder.CAPTURED_DATA
                 table = ast.parse(files[member]).body[0].value
-                name = diagnostic_stage.VALIDATION.removeprefix("python/")
+                if tamper == "missing-recovery-schema":
+                    name = binder.RECOVERY_SCHEMA_PATHS["function_principal_v1"]
+                    replacement = b""
+                else:
+                    self.assertEqual(tamper, "capture")
+                    name = (diagnostic_stage.VALIDATION.removeprefix("python/")
+                            if diagnostic else "tobkiri_protocol/bundle_catalog.py")
+                    (new_row,) = dependencies.compress_sources(
+                        {name: b"# foreign source"}
+                    )
+                    replacement = repr(new_row).encode() + b",\n"
                 row, = (node for node in table.elts if node.elts[0].value == name)
-                old_row = repr(ast.literal_eval(row)).encode()
-                new_row, = dependencies.compress_sources({name: b"# foreign validation"})
+                old_row = repr(ast.literal_eval(row)).encode() + b",\n"
                 self.assertEqual(files[member].count(old_row), 1)
-                files[member] = files[member].replace(old_row, repr(new_row).encode())
+                files[member] = files[member].replace(old_row, replacement)
             (inputs / member).write_bytes(files[member])
             row, = (entry for entry in plan["sources"] if entry["source"] == member)
             row["sha256"] = hashlib.sha256(files[member]).hexdigest()
@@ -222,7 +230,7 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         self.assertFalse((self.root / "bound/launcher-component.json").exists())
         self.assertNotIn("launcher_component_receipt", report)
 
-    def test_only_normal_binding_emits_launcher_receipt(self):
+    def test_normal_binding_emits_v2_launcher_receipt(self) -> None:
         artifact, _, _ = self.fixture(False)
         output = self.root / "bound"
         report = binder.bind(artifact, output, self.environment)
@@ -233,12 +241,14 @@ class DiagnosticInputBindingTests(unittest.TestCase):
         self.assertEqual(receipt["component"], binder.fingerprint(artifact))
         self.assertTrue(receipt["modules"])
         self.assertLessEqual(receipt_path.stat().st_size, 64 * 1024)
+        self.assert_complete_profile_inventory(receipt["profile_schemas"])
+
+    def assert_complete_profile_inventory(self, schemas: dict) -> None:
         paths = {
             **binder.PROFILE_SCHEMA_PATHS,
             **binder.PROFILE_REFERENCE_PATHS,
             **binder.RECOVERY_SCHEMA_PATHS,
         }
-        schemas = receipt["profile_schemas"]
         self.assertEqual(set(schemas), {"v4", "v5", "references", "recovery"})
         self.assertEqual(set(schemas["references"]), {"common", "content_projection"})
         self.assertEqual(set(schemas["recovery"]), {
@@ -250,6 +260,75 @@ class DiagnosticInputBindingTests(unittest.TestCase):
             expected = (ROOT / "tobkiri_runtime" / paths[key]).read_bytes()
             self.assertEqual(row, {"sha256": hashlib.sha256(expected).hexdigest(),
                                    "content": expected.decode("utf-8")})
+
+    def test_app_binding_emits_v3_launcher_receipt_for_owned_snapshot(self) -> None:
+        artifact, inputs, _ = self.fixture(False, app_backend=True)
+        output = self.root / "bound"
+        with self.assertRaisesRegex(ValueError, "current original source"):
+            binder.bind(artifact, output, self.environment)
+        self.assertFalse(output.exists())
+        self.assertFalse(self.environment.exists())
+
+        report = binder.bind(artifact, output, self.environment, app_backend=True)
+        receipt_path = output / "launcher-component.json"
+        receipt = json.loads(receipt_path.read_bytes())
+        self.assertEqual(set(receipt), {
+            "format", "component", "source_index_sha256", "modules", "profile_schemas",
+        })
+        self.assertEqual(receipt["format"], "io.tobkiri.launcher-setup-component.v3")
+        self.assertEqual(
+            report["launcher_component_receipt"], binder.fingerprint(receipt_path),
+        )
+        self.assertEqual(receipt["component"], binder.fingerprint(artifact))
+        self.assertEqual(report["component"], receipt["component"])
+        self.assertTrue(report["app_schema_backend"])
+        self.assertFalse(report["component_init_verified"])
+        self.assertFalse(report["production_enabled"])
+        self.assertLessEqual(receipt_path.stat().st_size, 64 * 1024)
+
+        catalog = inputs / "python/tobkiri_protocol/bundle_catalog.py"
+        self.assertIn(b"return cls._load_native_snapshot(root)", catalog.read_bytes())
+        raw_index = (inputs / diagnostic_stage.INDEX).read_bytes()
+        index = diagnostic_stage._index_values(raw_index)
+        self.assertEqual(receipt["source_index_sha256"], index["INDEX_SHA256"])
+        self.assertEqual(report["source_index_sha256"], receipt["source_index_sha256"])
+        base = json.loads((inputs / "provenance.json").read_bytes())
+        self.assertNotEqual(
+            receipt["source_index_sha256"], base["source_index"]["index_sha256"],
+        )
+        paths = {module: path.removeprefix("tobkiri_runtime/")
+                 for module, path, _ in index["MODULES"]}
+        self.assertEqual(receipt["modules"], [
+            {"module": name, "relative_file": paths[name]}
+            for name in index["PATH_MODULES"]
+        ])
+        self.assert_complete_profile_inventory(receipt["profile_schemas"])
+
+    def test_app_receipt_rejects_rehashed_foreign_extension(self) -> None:
+        artifact, _, _ = self.fixture(False, app_backend=True, tamper="extension")
+        output = self.root / "bound"
+        with self.assertRaisesRegex(ValueError, "App dependency differs"):
+            binder.bind(artifact, output, self.environment, app_backend=True)
+        self.assertFalse(output.exists())
+        self.assertFalse(self.environment.exists())
+
+    def test_app_receipt_rejects_rehashed_foreign_snapshot_capture(self) -> None:
+        artifact, _, _ = self.fixture(False, app_backend=True, tamper="capture")
+        output = self.root / "bound"
+        with self.assertRaisesRegex(ValueError, "captured App source differs"):
+            binder.bind(artifact, output, self.environment, app_backend=True)
+        self.assertFalse(output.exists())
+        self.assertFalse(self.environment.exists())
+
+    def test_app_receipt_requires_complete_recovery_inventory(self) -> None:
+        artifact, _, _ = self.fixture(
+            False, app_backend=True, tamper="missing-recovery-schema",
+        )
+        output = self.root / "bound"
+        with self.assertRaisesRegex(ValueError, "contain each fixed member once"):
+            binder.bind(artifact, output, self.environment, app_backend=True)
+        self.assertFalse(output.exists())
+        self.assertFalse(self.environment.exists())
 
     def test_combined_app_diagnostic_requires_both_flags_and_cannot_stage_launcher(self) -> None:
         artifact, inputs, _ = self.fixture(True, app_backend=True)
@@ -295,7 +374,7 @@ class DiagnosticInputBindingTests(unittest.TestCase):
 
     def test_combined_app_diagnostic_rejects_rehashed_foreign_loader_member(self) -> None:
         artifact, _, _ = self.fixture(True, app_backend=True, tamper="capture")
-        with self.assertRaisesRegex(ValueError, "captured App diagnostic module differs"):
+        with self.assertRaisesRegex(ValueError, "captured App source differs"):
             binder.bind(artifact, self.root / "bound", self.environment,
                         schema_call_diagnostic=True, app_backend=True)
         self.assertFalse(self.environment.exists())
