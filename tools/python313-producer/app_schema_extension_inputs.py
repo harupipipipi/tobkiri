@@ -403,10 +403,12 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
 
 
 def derive_catalog_wire_decoder(source: bytes) -> bytes:
-    """Keep v2 limits and JSON rules while scanning ordinary string runs."""
+    """Keep v2 limits and JSON rules without re-encoding decoded strings."""
     from bundle_catalog_kernel_inputs import _replace_one
 
-    source = _replace_one(source, b"import math\n", b"import math\nimport re\n")
+    source = _replace_one(
+        source, b"import math\n", b"import math\nimport re\nfrom itertools import chain\n",
+    )
     source = _replace_one(
         source,
         b"OrderedJSONError = v1.OrderedJSONError\n",
@@ -420,7 +422,7 @@ _CATALOG_STRING_RUN = re.compile(r'[^"\\]*(?:\\[\s\S][^"\\]*)*')
         b"size += v1._utf8_size(chunk)\n",
         b"size += len(chunk) if chunk.isascii() else v1._utf8_size(chunk)\n",
     )
-    return _replace_one(
+    source = _replace_one(
         source,
         b"""        position = 0
         while position < len(chunk):
@@ -440,6 +442,45 @@ _CATALOG_STRING_RUN = re.compile(r'[^"\\]*(?:\\[\s\S][^"\\]*)*')
                     escaped = False
                 match = _CATALOG_STRING_RUN.match(chunk, position)
 ''',
+    )
+    source = _replace_one(
+        source,
+        b"def loads(text: str) -> Any:\n",
+        b'''def _validate_decoded(value: Any) -> None:
+    # The JSON parser and its hooks produce an acyclic tree of native values
+    # with finite numbers, bounded integers, and unique string keys. Check the
+    # remaining invariants without encoding or copying ordinary ASCII strings.
+    nodes = 0
+    stack = [iter((value,))]
+    while stack:
+        for item in stack[-1]:
+            nodes += 1
+            if nodes > MAX_NODES:
+                raise OrderedJSONError("JSON node count exceeds 100000")
+            kind = type(item)
+            if kind is list or kind is dict:
+                minimum_children = len(item) * (2 if kind is dict else 1)
+                if minimum_children > MAX_NODES - nodes:
+                    raise OrderedJSONError("JSON node count exceeds 100000")
+                children = chain.from_iterable(item.items()) if kind is dict else iter(item)
+                stack.append(children)
+                break
+            if kind is str and not item.isascii():
+                # Escapes can introduce lone surrogates during JSON parsing.
+                # Keep the original bounded UTF-8 check and its error details.
+                for offset in range(0, len(item), v1.STRING_CHUNK_SIZE):
+                    v1._utf8_size(item[offset : offset + v1.STRING_CHUNK_SIZE])
+        else:
+            stack.pop()
+
+
+def loads(text: str) -> Any:
+''',
+    )
+    return _replace_one(
+        source,
+        b"    for _ in _iterencode(value, _Budget(), 0):\n        pass\n",
+        b"    _validate_decoded(value)\n",
     )
 
 

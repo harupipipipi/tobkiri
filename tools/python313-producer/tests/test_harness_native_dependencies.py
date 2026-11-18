@@ -28,33 +28,76 @@ def identity(raw):
 
 
 class CatalogWireDecoder(unittest.TestCase):
-    def test_staged_string_scan_preserves_json_rules_and_chunk_boundaries(self):
+    def setUp(self):
         pack = HERE.parents[1] / "packs/local.ai-tool-bridge-ordered-python"
-        original = ModuleType("ordered_json")
+        self.v1 = ModuleType("ordered_json")
         exec(compile((pack / "ordered_json.py").read_bytes(), "<pinned-ordered-json>", "exec"),
-             original.__dict__)
-        derived = app_schema.derive_catalog_wire_decoder((pack / "ordered_json_v2.py").read_bytes())
-        codec = ModuleType("ordered_json_v2_app_catalog")
-        with patch.dict(sys.modules, ordered_json=original):
-            exec(compile(derived, "<app-catalog-wire>", "exec"), codec.__dict__)
+             self.v1.__dict__)
+        source = (pack / "ordered_json_v2.py").read_bytes()
+        derived = app_schema.derive_catalog_wire_decoder(source)
+        self.original = ModuleType("ordered_json_v2")
+        self.codec = ModuleType("ordered_json_v2_app_catalog")
+        with patch.dict(sys.modules, ordered_json=self.v1):
+            exec(compile(source, "<pinned-ordered-json-v2>", "exec"), self.original.__dict__)
+            exec(compile(derived, "<app-catalog-wire>", "exec"), self.codec.__dict__)
 
+    def assert_matches_error(self, frame):
+        with self.assertRaises(self.v1.OrderedJSONError) as original:
+            self.original.loads(frame)
+        with self.assertRaises(self.v1.OrderedJSONError) as derived:
+            self.codec.loads(frame)
+        self.assertEqual(derived.exception.args, original.exception.args)
+        expected = original.exception.__cause__
+        observed = derived.exception.__cause__
+        self.assertIs(type(observed), type(expected))
+        if expected is not None:
+            self.assertEqual(observed.args, expected.args)
+
+    def test_staged_string_scan_preserves_json_rules_and_chunk_boundaries(self):
         alphabet = ('"', "\\", "A", "\n", "é", "😀")
         for length in range(5):
             for characters in itertools.product(alphabet, repeat=length):
                 text = "".join(characters)
                 self.assertEqual(
-                    codec._CATALOG_STRING_RUN.match(text).end(),
-                    original._STRING_RUN.match(text).end(),
+                    self.codec._CATALOG_STRING_RUN.match(text).end(),
+                    self.v1._STRING_RUN.match(text).end(),
                 )
-        original.STRING_CHUNK_SIZE = 7
+        self.v1.STRING_CHUNK_SIZE = 7
         for offset in range(7):
             payload = "A" * (31 + offset) + '\\"line\n😀' + "x" * 33
             frame = json.dumps({"payload": payload}, ensure_ascii=False)
-            self.assertEqual(codec.loads(frame), {"payload": payload})
+            self.assertEqual(self.codec.loads(frame), self.original.loads(frame))
         for frame in ['{"payload":"' + "x" * 21 + '\n' + "x" * 21 + '"}',
                       '{"payload":"\\ud800"}', '{"a":1,"a":2}']:
-            with self.assertRaises(original.OrderedJSONError):
-                codec.loads(frame)
+            self.assert_matches_error(frame)
+
+    def test_decoded_validation_preserves_numeric_and_unicode_errors(self):
+        self.v1.STRING_CHUNK_SIZE = 7
+        frame = r'{"é":[{"\ud83d\ude00":"\u2603"},-0.0,true,null]}'
+        self.assertEqual(self.codec.loads(frame), self.original.loads(frame))
+        for frame in (r'{"data":[{"abcdefg\udfff":"value"}]}',
+                      r'{"data":[{"key":"abcdefg\ud800"}]}',
+                      '{"data":[1e999]}', '{"data":[NaN]}',
+                      '{"data":[' + '1' * 4301 + ']}'):
+            with self.subTest(frame=frame[:100]):
+                self.assert_matches_error(frame)
+
+    def test_decoded_validation_counts_container_keys_and_values(self):
+        frame = '{"data":[{"a":"b","c":"d"},{"e":"f"}]}'
+        self.original.MAX_NODES = self.codec.MAX_NODES = 11
+        self.assertEqual(self.codec.loads(frame), self.original.loads(frame))
+        self.original.MAX_NODES = self.codec.MAX_NODES = 10
+        self.assert_matches_error(frame)
+        # Isolate the second node check from the token preflight.
+        with patch.object(self.original, "_preflight"), patch.object(self.codec, "_preflight"):
+            self.assert_matches_error(frame)
+
+    def test_catalog_page_decode_does_not_reencode_base64(self):
+        encoded = base64.b64encode(b"catalog document bytes" * 12000).decode("ascii")
+        frame = json.dumps({"kind": "snapshot-byte-rows", "rows": [["pack", "test", encoded]]})
+        expected = self.original.loads(frame)
+        with patch.object(self.v1, "encode_basestring", side_effect=AssertionError):
+            self.assertEqual(self.codec.loads(frame), expected)
 
 
 def fixture(root):
