@@ -4505,13 +4505,26 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   JSON構文・UTF-8の失敗時は判定済みのロック原文を一度渡し、固定原本のparserで外側の診断と
   入れ子の例外を再現する。ファイル再読なしで例外の型・引数・同一性・抑制フラグを照合した。
   不正な応答や再試行を拒否し、失敗応答後に確保が元へ戻ることをRust 257件、カタログCI
-  ラッパー17件、producer 345件、CIスクリプト14件で検証した。一部の原本が受理するbindingsと
-  4MiB応答に収まらない単一文書は扱いが残る。
+  ラッパー17件、producer 345件、CIスクリプト14件で検証した。一部の原本が受理するbindingsは
+  扱いが残る。
   [新しい目録配送を含むSetup実Wasm CI 44340854329](https://github.com/harupipipipi/tobkiri/actions/runs/44340854329)
   は `438c14db7` を計測する。入れ子のロック診断修正はこの計測より後。
-  `adopt_owned_bundle` では保持したPackをpin用にもう一度パースする。独立した148件の物理再読と
-  候補ごとの保持条件を維持したうえで、検証中に抽出したpin情報を採用時に移すと重複処理を減らせる。
-  配布版Setupへの切替と、GUI承認・設定・会話の実機検証は後続。
+  `2535f6dbd` は `adopt_owned_bundle` のPack再パースを外し、構造と意味を検証した同じ文書からpin情報を抽出
+  する。必要な候補だけPack ID・ハッシュ・種類・依存IDを保持し、全行受領後にロック順で採用。
+  旧readerとの直接比較で、非ASCIIを含む依存ID順、設定なしと空の違い、欠損時の結果が一致した。
+  独立した148件のファイル再読は従来の段階で実施する。
+  `05ec1bebf` はエスケープ後に4MiBを超える文書を、既存のbytes応答で一件だけ送る。元の生バイト上限を
+  共用し、ゲストは検証済みの版フィールドとIDから種類別辞書の同じ位置へ格納する。固定原本
+  が受理した702,348 BのBase原文はテキスト応答4,202,970 B、旧bytes応答936,580 Bだった。
+  Rustの物理fixtureとproducerで、前後の順序、不正応答、再試行と早い完了の拒否を確認。
+  実Wasmの観測では物理文書数に加え、送信済みの序数を分けて記録する。
+  Rust 260件、カタログCIラッパー18件、strict Clippy、固定CPythonのproducer 345件、
+  CIスクリプト14件が通過。
+  既存Launcherの `native-first-setup` はレビューと承認後の独立した確定ワーカーで
+  `bootstrap_catalog.rs::select_bundle` を共用する。新しい配送の製品候補には
+  `harness_native_ci_inputs.py` と `setup_component_build.rs` の固定されたWasm/レシート検証を
+  通して配送方式を両ワーカーに伝える必要がある。現行producerはApp版のLauncher用レシートを
+  出力しない。配布版の初回Setup、専用承認、設定、会話は同じDMGの一連の実機試験で照合する。
   [定義CI 44320718878](https://github.com/harupipipipi/tobkiri/actions/runs/44320718878)
   は19件が通過後、旧期待件数18で失敗した。`b08f8c89d` で19に更新し、
   [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で
