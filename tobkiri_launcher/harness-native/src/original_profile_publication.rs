@@ -21,6 +21,9 @@ use model::{Pointer, validate_pointer};
 #[path = "original_active_profile.rs"]
 mod active_profile;
 #[cfg(unix)]
+#[path = "original_bundled_catalog_checks.rs"]
+mod bundled_catalog_checks;
+#[cfg(unix)]
 #[path = "original_bundled_schema.rs"]
 pub(in crate::original_authority) mod bundled_schema;
 #[path = "original_setup_candidate_selection.rs"]

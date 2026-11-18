@@ -148,8 +148,13 @@ class NativeHarnessDependencyTests(unittest.TestCase):
         def digest(content: bytes) -> str:
             return "sha256:" + hashlib.sha256(content).hexdigest()
 
-        def make_lock(content: bytes, executable_content: bytes | None = None) -> bytes:
-            entries = [{"path": relative, "kind": "pack", "digest": digest(content)}]
+        def make_lock(
+            content: bytes,
+            executable_content: bytes | None = None,
+            *,
+            kind: str = "pack",
+        ) -> bytes:
+            entries = [{"path": relative, "kind": kind, "digest": digest(content)}]
             if executable_content is not None:
                 entries.append({
                     "path": executable_relative,
@@ -315,6 +320,41 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                         root,
                     )
                     self.assertEqual(reads, [])
+
+                    relative = "defaults-basepack.base.v1.json"
+                    base_raw = (packs.parent / relative).read_bytes()
+                    base = json.loads(base_raw)
+                    stale_base = json.dumps({
+                        **base, "definition_revision": "sha256:" + "0" * 64,
+                    }).encode()
+                    validate.reset_mock()
+                    with patch.object(module, "canonical_digest",
+                                      wraps=module.canonical_digest) as revision_digest:
+                        lock = make_lock(base_raw, kind="base")
+                        reply = {"kind": "document", "value": base_raw.decode()}
+                        loaded = bridge._load_catalog(catalog.load, root)
+                        self.assertEqual(loaded.bases[base["pack_id"]], base)
+                        validate.assert_not_called()
+                        revision_digest.assert_not_called()
+
+                        lock = make_lock(stale_base, kind="base")
+                        reply = {
+                            "kind": "bytes",
+                            "value": base64.b64encode(stale_base).decode(),
+                        }
+                        with self.assertRaises(module.BundleIntegrityError) as error:
+                            bridge._load_catalog(catalog.load, root)
+                        self.assertEqual(
+                            str(error.exception),
+                            "base definition revision is stale or tampered: "
+                            f"{relative}",
+                        )
+                        validate.assert_called_once_with(stale_base, "base")
+                        revision_digest.assert_called_once_with({
+                            key: value
+                            for key, value in base.items()
+                            if key != "definition_revision"
+                        })
 
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")

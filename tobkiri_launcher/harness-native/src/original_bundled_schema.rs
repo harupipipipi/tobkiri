@@ -19,7 +19,7 @@ pub(super) struct CatalogSchemas {
 }
 
 impl CatalogSchemas {
-    /// Prove the structure and semantics of the exact digest-checked bytes.
+    #[cfg(test)]
     pub(super) fn validate_document<S: OriginalAuthorityOwner>(
         &mut self,
         op: &Operation<'_, S>,
@@ -27,6 +27,17 @@ impl CatalogSchemas {
         kind: CatalogDocumentKind,
         raw: &[u8],
     ) -> Result<bool> {
+        Ok(self.prove_document(op, budget, kind, raw)?.is_some())
+    }
+
+    /// Prove the structure and semantics of the exact digest-checked bytes.
+    pub(super) fn prove_document<S: OriginalAuthorityOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+        kind: CatalogDocumentKind,
+        raw: &[u8],
+    ) -> Result<Option<Funded<Document>>> {
         op.check(OriginalAuthorityStage::Source)?;
         let document = match json::decode_read_only_strict(raw, op, budget) {
             Ok(document) => document,
@@ -36,12 +47,12 @@ impl CatalogSchemas {
                     "tobkiri_protocol.errors.CanonicalizationError" | "builtins.ValueError"
                 ) || matches!(error.cause, Some(OriginalAuthorityCause::Unsupported(_))) =>
             {
-                return Ok(false);
+                return Ok(None);
             }
             Err(error) => return Err(error),
         };
         let Some(schema) = SchemaResource::select(kind, &document) else {
-            return Ok(false);
+            return Ok(None);
         };
         let uses_projection = matches!(
             schema,
@@ -73,11 +84,16 @@ impl CatalogSchemas {
             document.root,
         );
         match result {
-            Ok(true) => external_catalog::validate_bundled_semantics(&document, kind, op, budget),
-            Err(error) if matches!(error.cause, Some(OriginalAuthorityCause::Unsupported(_))) => {
-                Ok(false)
+            Ok(true) => {
+                let proven =
+                    external_catalog::validate_bundled_semantics(&document, kind, op, budget)?;
+                Ok(proven.then_some(document))
             }
-            result => result,
+            Ok(false) => Ok(None),
+            Err(error) if matches!(error.cause, Some(OriginalAuthorityCause::Unsupported(_))) => {
+                Ok(None)
+            }
+            Err(error) => Err(error),
         }
     }
 

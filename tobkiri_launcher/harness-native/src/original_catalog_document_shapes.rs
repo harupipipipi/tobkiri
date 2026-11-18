@@ -164,15 +164,33 @@ impl CatalogIo {
             // The original loader reports the actual and expected digests.
             return Ok(false);
         }
-        if !self
+        let Some(checked) = self
             .document_shapes
             .as_mut()
             .expect("selected document schemas")
-            .validate_document(op, &self.budget, schema, bytes)?
-        {
+            .prove_document(op, &self.budget, schema, bytes)?
+        else {
             // The original validator owns strict, schema and semantic errors.
             return Ok(false);
+        };
+        if matches!(
+            schema,
+            CatalogDocumentKind::Base | CatalogDocumentKind::Shell
+        ) {
+            match bundled_catalog_checks::definition_revision_matches(&checked, op, &self.budget) {
+                Ok(true) => (),
+                Ok(false) => return Ok(false),
+                Err(error) if matches!(error.cause, Some(OriginalAuthorityCause::Capacity)) => {
+                    // A speculative proof may need more native scratch than
+                    // the original byte response. Keep the same budget and
+                    // let the original validator decide from these bytes.
+                    op.check(OriginalAuthorityStage::Source)?;
+                    return Ok(false);
+                }
+                Err(error) => return Err(error.into()),
+            }
         }
+        drop(checked);
         let document =
             std::str::from_utf8(bytes).map_err(|_| OriginalAuthorityError::unavailable())?;
         const PREFIX: &[u8] = b"{\"kind\":\"document\",\"value\":";

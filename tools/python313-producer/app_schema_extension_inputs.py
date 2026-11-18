@@ -143,13 +143,18 @@ def derive_catalog_validation(source: bytes) -> bytes:
                 )
 '''
     replacement = b'''                if native_document:
-                    # The fixed read proved the digest, strict JSON, schema and semantics.
+                    # The fixed read also proved the Base and Shell definition revisions.
                     document = json.loads(raw)
                 else:
 '''
     source = _replace_one(source, validation, replacement + b"".join(
         b"    " + line for line in validation.splitlines(keepends=True)
     ))
+    source = _replace_one(
+        source,
+        b'            if kind in {"base", "shell"}:\n',
+        b'            if not native_document and kind in {"base", "shell"}:\n',
+    )
     return _replace_one(
         source,
         b"            catalog_raw_digest = 'sha256:' + hashlib.sha256(catalog_raw).hexdigest()\n",
