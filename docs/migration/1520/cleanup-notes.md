@@ -3665,6 +3665,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [実1B CI44130220058](https://github.com/harupipipipi/tobkiri/actions/runs/44130220058)は、固定した
   llama.cpp b11146とGemma 3 1B Q4_K_Mを使い、認証付きloopback APIへの実Wasm入力・Flow・
   stream・保存・cancelの1件を73.35秒で通過した。元Launcher GUI全体の合格を表すものではない。
+- B-8 の `262108ccc` はHarness prompt Packだけで履歴のUTF-8サイズを制限する。既定2,048
+  バイトを超えた分は古いターン単位で省き、システム文と新しい入力、モデルと出力上限は
+  そのままProviderへ渡す。保存済み会話や画面の履歴を削除しない。既存設定の項目省略も同じ
+  既定値で動く。Packと5つの開発Profileを実Wasmのdigestへ更新した。Packテスト5件、実Wasmの
+  Flowとloopback APIの2件がローカルで通過。保存された2行が残った上で長い前ターンだけが
+  次回リクエストから消えることを確認した。ストアの最大1,000行の既存読取りは今回の範囲外。
+  [実Flow・UI 44259160857](https://github.com/harupipipipi/tobkiri/actions/runs/44259160857) と
+  [実1B 44259160901](https://github.com/harupipipipi/tobkiri/actions/runs/44259160901) を実行中。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
@@ -4277,11 +4285,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   は取得・照合0.159秒、コンパイル20.343秒、`Runtime.init` 終了22.767秒だった。
   原本Profile IDとroot getterを取得して正しく後処理し、カタログはこの試験では実行しない。
   25,123,780バイトの照合済み成果物は、core data約17.53MB、core code約6.76MB、
-  名前のcustom section約0.47MB。名前の削除やソース容量の微調整は準備時間の主因に届かない。
+  名前のcustom section約0.47MB。読取・照合は準備時間の1%未満。名前の除去による
+  コンパイラ区間の効果は未計測。
   `c09245233` はホスト側 `wasmtime-internal-cranelift` のテストビルドだけを最適化し、
   同じrunner、封印済みWasm、ゲスト `OptLevel::None`、30秒・2B fuel・64MiBで比較する。
   [同一成果物でのコンパイル比較 44256380358](https://github.com/harupipipipi/tobkiri/actions/runs/44256380358)
-  を実行中。通常配布のLauncher用Cargoプロファイルは別途検証する。
+  では `Component::new` が20.825秒から12.428秒へ40.3%短縮。初期化終了は24.260秒から
+  14.585秒、両方で残fuelは1,436,785,285、準備のピーク計上は25,127,094バイトだった。
+  原本getterと後処理も通過。`1d28af0fd` は計測済みの設定を通常テストとLauncher側の
+  開発・配布ビルドへ適用し、比較用の一時workflow分岐を削除した。
+  [通常カタログの再計測 44259276687](https://github.com/harupipipipi/tobkiri/actions/runs/44259276687)
+  を実行中。通常配布用プロファイルの実測と、カタログ全体の完走は未確認。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
