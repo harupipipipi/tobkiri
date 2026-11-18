@@ -298,7 +298,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         commands = (
             (
                 "Verify shared component preparation preserves source funding and custody",
-                "--expected-passed 5 --",
+                "--expected-passed 6 --",
                 "cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib",
                 "preparation::tests::",
             ),
