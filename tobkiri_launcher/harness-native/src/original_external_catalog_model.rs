@@ -4,6 +4,7 @@
 use crate::original_authority::{
     Funded, Operation, OriginalAuthorityCause, OriginalAuthorityError, OriginalAuthorityOwner,
     OriginalAuthorityStage, Result,
+    bundled_schema::CatalogDocumentKind,
     json::{self, Document, Node, Text},
 };
 use std::{
@@ -19,6 +20,7 @@ const VERSION: &str = "io.tobkiri.external-normal-pack-catalog.v4";
 const ENTRY_VERSION: &str = "io.tobkiri.external-normal-pack-catalog-entry.v4";
 const EVENT: &str = "external_normal_pack_admitted";
 const SCHEMA_ERROR: &str = "external Pack catalog schema validation failed";
+const BINDING_COERCION_UNSUPPORTED: &str = "external Pack catalog nested binding identity coercion";
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 
 pub(super) fn denied(message: &'static str) -> OriginalAuthorityError {
@@ -668,10 +670,106 @@ impl SemanticPath {
     }
 }
 
+const FORBIDDEN_AUTHORITY_KEYS: [&str; 12] = [
+    "approved",
+    "approval",
+    "approvals",
+    "grant",
+    "grants",
+    "invocation_lease",
+    "provider_authority",
+    "provider_authority_record",
+    "secret_material",
+    "raw_secret",
+    "host_execution",
+    "rumi_allow_host_execution",
+];
+
+const SHELL_FORBIDDEN_FRAGMENTS: [&[u8]; 7] = [
+    b"authority",
+    b"grant",
+    b"permission",
+    b"policy",
+    b"host_effect",
+    b"host_execution",
+    b"pack_execution",
+];
+
+#[derive(Clone, Copy)]
+enum SemanticKeys {
+    Common,
+    PackOrProfile,
+    Shell,
+}
+
+#[derive(Clone, Copy)]
+struct SemanticRules {
+    keys: SemanticKeys,
+    bundled: bool,
+}
+
+impl SemanticKeys {
+    fn work_per_point(self) -> u64 {
+        4 + match self {
+            Self::Common => 0,
+            Self::PackOrProfile => FORBIDDEN_AUTHORITY_KEYS.len() as u64,
+            Self::Shell => {
+                1 + SHELL_FORBIDDEN_FRAGMENTS.len() as u64 * b"host_execution".len() as u64
+            }
+        }
+    }
+
+    fn allows(self, key: &Text) -> bool {
+        match self {
+            Self::Common => true,
+            Self::PackOrProfile => !FORBIDDEN_AUTHORITY_KEYS.iter().any(|name| key.is(name)),
+            // The closed Shell schemas fix every object key to ASCII. Defer
+            // to Python if a key would require Unicode case conversion.
+            Self::Shell => {
+                key.0.iter().all(|&point| point <= 127)
+                    && !SHELL_FORBIDDEN_FRAGMENTS.iter().any(|fragment| {
+                        key.0.windows(fragment.len()).any(|window| {
+                            window.iter().zip(*fragment).all(|(&point, &expected)| {
+                                let byte = point as u8;
+                                let normalized = if byte == b'-' {
+                                    b'_'
+                                } else {
+                                    byte.to_ascii_lowercase()
+                                };
+                                normalized == expected
+                            })
+                        })
+                    })
+            }
+        }
+    }
+}
+
 pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
     doc: &Document,
     id: usize,
     path: SemanticPath,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    validate_semantics_with_rules(
+        doc,
+        id,
+        path,
+        SemanticRules {
+            keys: SemanticKeys::Common,
+            bundled: false,
+        },
+        op,
+        budget,
+    )
+}
+
+fn validate_semantics_with_rules<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    id: usize,
+    path: SemanticPath,
+    rules: SemanticRules,
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<()> {
@@ -681,7 +779,14 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
     match doc.node(id) {
         Node::Object(fields) => {
             for (key, child) in fields {
-                charge(op, budget, (key.0.len() as u64 + 1) * 4)?;
+                charge(
+                    op,
+                    budget,
+                    (key.0.len() as u64 + 1) * rules.keys.work_per_point(),
+                )?;
+                if !rules.keys.allows(key) {
+                    return Err(schema_error());
+                }
                 if let Some(value) = text(doc, *child) {
                     let value = &value.0;
                     if IDS.into_iter().any(|name| key.is(name)) && !canonical_id(value)
@@ -695,7 +800,7 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
                         return Err(schema_error());
                     }
                 }
-                validate_semantics(doc, *child, path.child(key), op, budget)?;
+                validate_semantics_with_rules(doc, *child, path.child(key), rules, op, budget)?;
             }
         }
         Node::Array(items) => {
@@ -724,7 +829,7 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
                             doc.get(id, "contract_id"),
                             doc.get(id, "operation_id"),
                         ]
-                        .map(|field| binding_part(doc, field));
+                        .map(|field| binding_part(doc, field, rules.bundled));
                         let [a, b, c, d] = binding;
                         let binding = [a?, b?, c?, d?];
                         for part in &binding {
@@ -743,8 +848,8 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
                         if doc.entries(id).is_none() {
                             continue;
                         }
-                        let pack = binding_part(doc, doc.get(id, "pack_id"))?;
-                        let variant = binding_part(doc, doc.get(id, "variant_id"))?;
+                        let pack = binding_part(doc, doc.get(id, "pack_id"), rules.bundled)?;
+                        let variant = binding_part(doc, doc.get(id, "variant_id"), rules.bundled)?;
                         charge(op, budget, pack.work() + variant.work())?;
                         if !seen.insert((pack, variant)) {
                             return Err(schema_error());
@@ -798,7 +903,7 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
                 }
             }
             for &id in items {
-                validate_semantics(doc, id, SemanticPath::Other, op, budget)?;
+                validate_semantics_with_rules(doc, id, SemanticPath::Other, rules, op, budget)?;
             }
         }
         _ => (),
@@ -810,10 +915,11 @@ fn record_semantics<S: OriginalAuthorityOwner>(
     doc: &Document,
     record: usize,
     path: SemanticPath,
+    rules: SemanticRules,
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<bool> {
-    match validate_semantics(doc, record, path, op, budget) {
+    match validate_semantics_with_rules(doc, record, path, rules, op, budget) {
         Ok(()) => Ok(true),
         Err(error)
             if error.class == "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied"
@@ -822,6 +928,53 @@ fn record_semantics<S: OriginalAuthorityOwner>(
             Ok(false)
         }
         Err(error) => Err(error),
+    }
+}
+
+/// Prove semantics after the matching bundled schema and strict decoding pass.
+pub(in crate::original_authority::io::publication) fn validate_bundled_semantics<
+    S: OriginalAuthorityOwner,
+>(
+    doc: &Document,
+    kind: CatalogDocumentKind,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
+    // The four closed non-Profile roots cannot have a journal, requested
+    // edges or variant pins. The Pack root can have an operation catalog.
+    let (path, keys) = match kind {
+        CatalogDocumentKind::Profile => (SemanticPath::ProfileRoot, SemanticKeys::PackOrProfile),
+        CatalogDocumentKind::Pack => (SemanticPath::Root, SemanticKeys::PackOrProfile),
+        CatalogDocumentKind::Shell => (SemanticPath::Root, SemanticKeys::Shell),
+        CatalogDocumentKind::Base | CatalogDocumentKind::ExecutableCatalog => {
+            (SemanticPath::Root, SemanticKeys::Common)
+        }
+    };
+    match record_semantics(
+        doc,
+        doc.root,
+        path,
+        SemanticRules {
+            keys,
+            bundled: true,
+        },
+        op,
+        budget,
+    ) {
+        Ok(true) if matches!(kind, CatalogDocumentKind::Profile) => {
+            profile_security(doc, doc.root, op, budget)
+        }
+        Err(error)
+            if matches!(
+                error.cause,
+                Some(OriginalAuthorityCause::Unsupported(
+                    BINDING_COERCION_UNSUPPORTED
+                ))
+            ) =>
+        {
+            Ok(false)
+        }
+        result => result,
     }
 }
 
@@ -836,7 +989,17 @@ pub(in crate::original_authority::io::publication) fn validate_recovery_record_s
 ) -> Result<bool> {
     // Python dispatches the principal component digest check only for a standalone
     // FunctionPrincipal schema. Plan bindings still check each digest's spelling.
-    record_semantics(doc, record, SemanticPath::RecoveryRoot, op, budget)
+    record_semantics(
+        doc,
+        record,
+        SemanticPath::RecoveryRoot,
+        SemanticRules {
+            keys: SemanticKeys::Common,
+            bundled: false,
+        },
+        op,
+        budget,
+    )
 }
 
 /// Check the original semantic predicates after the pinned Profile shape passes.
@@ -848,12 +1011,29 @@ pub(in crate::original_authority::io::publication) fn validate_profile_semantics
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<bool> {
-    if !record_semantics(doc, profile, SemanticPath::ProfileRoot, op, budget)? {
+    if !record_semantics(
+        doc,
+        profile,
+        SemanticPath::ProfileRoot,
+        SemanticRules {
+            keys: SemanticKeys::Common,
+            bundled: false,
+        },
+        op,
+        budget,
+    )? || !profile_fields_allowed(doc, profile, op, budget)?
+    {
         return Ok(false);
     }
-    if !profile_fields_allowed(doc, profile, op, budget)? {
-        return Ok(false);
-    }
+    profile_security(doc, profile, op, budget)
+}
+
+fn profile_security<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    profile: usize,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
     let [
         Some(snapshot),
         Some(state),
@@ -921,6 +1101,40 @@ pub(in crate::original_authority::io::publication) fn validate_profile_semantics
     edge_references_listed(doc, edges, &listed, op, budget)
 }
 
+fn profile_fields_allowed<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    id: usize,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
+    charge(op, budget, 1)?;
+    match doc.node(id) {
+        Node::Object(fields) => {
+            for (key, child) in fields {
+                charge(
+                    op,
+                    budget,
+                    (key.0.len() as u64 + 1) * FORBIDDEN_AUTHORITY_KEYS.len() as u64,
+                )?;
+                if !SemanticKeys::PackOrProfile.allows(key)
+                    || !profile_fields_allowed(doc, *child, op, budget)?
+                {
+                    return Ok(false);
+                }
+            }
+        }
+        Node::Array(items) => {
+            for &child in items {
+                if !profile_fields_allowed(doc, child, op, budget)? {
+                    return Ok(false);
+                }
+            }
+        }
+        _ => (),
+    }
+    Ok(true)
+}
+
 fn edge_references_listed<S: OriginalAuthorityOwner>(
     doc: &Document,
     id: usize,
@@ -962,54 +1176,6 @@ fn edge_references_listed<S: OriginalAuthorityOwner>(
     Ok(true)
 }
 
-fn profile_fields_allowed<S: OriginalAuthorityOwner>(
-    doc: &Document,
-    id: usize,
-    op: &Operation<'_, S>,
-    budget: &Arc<dyn AllocationBudget>,
-) -> Result<bool> {
-    const FORBIDDEN: [&str; 12] = [
-        "approved",
-        "approval",
-        "approvals",
-        "grant",
-        "grants",
-        "invocation_lease",
-        "provider_authority",
-        "provider_authority_record",
-        "secret_material",
-        "raw_secret",
-        "host_execution",
-        "rumi_allow_host_execution",
-    ];
-    charge(op, budget, 1)?;
-    match doc.node(id) {
-        Node::Object(fields) => {
-            for (key, child) in fields {
-                charge(
-                    op,
-                    budget,
-                    (key.0.len() as u64 + 1) * FORBIDDEN.len() as u64,
-                )?;
-                if FORBIDDEN.into_iter().any(|name| key.is(name))
-                    || !profile_fields_allowed(doc, *child, op, budget)?
-                {
-                    return Ok(false);
-                }
-            }
-        }
-        Node::Array(items) => {
-            for &child in items {
-                if !profile_fields_allowed(doc, child, op, budget)? {
-                    return Ok(false);
-                }
-            }
-        }
-        _ => (),
-    }
-    Ok(true)
-}
-
 #[derive(Eq, Hash, PartialEq)]
 enum BindingPart<'a> {
     Text(&'a [u32]),
@@ -1025,21 +1191,23 @@ impl BindingPart<'_> {
     }
 }
 
-fn binding_part(doc: &Document, id: Option<usize>) -> Result<BindingPart<'_>> {
+fn binding_part(doc: &Document, id: Option<usize>, bundled: bool) -> Result<BindingPart<'_>> {
     let value = match id.map(|id| doc.node(id)) {
         None
         | Some(Node::Scalar(CanonValue::Null | CanonValue::Bool(false) | CanonValue::Int(0))) => {
             BindingPart::Text(&[])
         }
-        Some(Node::Scalar(CanonValue::Bool(true))) => BindingPart::True,
-        Some(Node::Scalar(CanonValue::Int(value))) => BindingPart::Number(*value),
+        // Python's str(value or "") can equate a truthy number or boolean
+        // with a string. Only prove the bundled subset that needs no coercion.
+        Some(Node::Scalar(CanonValue::Bool(true))) if !bundled => BindingPart::True,
+        Some(Node::Scalar(CanonValue::Int(value))) if !bundled => BindingPart::Number(*value),
         Some(Node::String(value)) => BindingPart::Text(&value.0),
         Some(Node::Array(items)) if items.is_empty() => BindingPart::Text(&[]),
         Some(Node::Object(items)) if items.is_empty() => BindingPart::Text(&[]),
         _ => {
             return Err(OriginalAuthorityError::unsupported(
                 STAGE,
-                "external Pack catalog nested binding identity coercion",
+                BINDING_COERCION_UNSUPPORTED,
             ));
         }
     };

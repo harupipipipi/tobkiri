@@ -1,4 +1,4 @@
-//! Compare the bounded structural evaluator against the shipped bundle inventory.
+//! Compare the bounded document evaluator against the shipped bundle inventory.
 use super::*;
 use crate::original_authority::bundled_schema::{CatalogDocumentKind, CatalogSchemas};
 use crate::original_authority::definitions::tests::{operation, with_source};
@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 
 #[tokio::test(flavor = "current_thread")]
-async fn applies_original_structural_schemas_to_every_bundled_document() {
+async fn applies_original_validation_to_every_bundled_document() {
     with_source(|source, read, cancellation, budget| {
         let op = operation(read, source, cancellation);
         let runtime = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tobkiri_runtime");
@@ -33,14 +33,16 @@ async fn applies_original_structural_schemas_to_every_bundled_document() {
             };
             assert!(
                 schemas
-                    .validate_shape(&op, budget, kind, &bytes)
+                    .validate_document(&op, budget, kind, &bytes)
                     .unwrap_or_else(|error| panic!("{path}: {error}")),
                 "{path}"
             );
             if let Some(invalid) = invalid_structure(path, &bytes) {
                 let bytes = serde_json::to_vec(&invalid).unwrap();
                 assert!(
-                    !schemas.validate_shape(&op, budget, kind, &bytes).unwrap(),
+                    !schemas
+                        .validate_document(&op, budget, kind, &bytes)
+                        .unwrap(),
                     "{path}"
                 );
             }
@@ -61,7 +63,7 @@ async fn structural_eligibility_declines_wrong_kind_version_and_strict_json_erro
         let bytes = serde_json::to_vec(&profile).unwrap();
         assert!(
             schemas
-                .validate_shape(&op, budget, CatalogDocumentKind::Profile, &bytes)
+                .validate_document(&op, budget, CatalogDocumentKind::Profile, &bytes)
                 .unwrap()
         );
         for kind in [
@@ -70,7 +72,11 @@ async fn structural_eligibility_declines_wrong_kind_version_and_strict_json_erro
             CatalogDocumentKind::Base,
             CatalogDocumentKind::Shell,
         ] {
-            assert!(!schemas.validate_shape(&op, budget, kind, &bytes).unwrap());
+            assert!(
+                !schemas
+                    .validate_document(&op, budget, kind, &bytes)
+                    .unwrap()
+            );
         }
         profile["profile_api_version"] = json!("io.tobkiri.profile.v6");
         let wrong_version = serde_json::to_vec(&profile).unwrap();
@@ -83,10 +89,48 @@ async fn structural_eligibility_declines_wrong_kind_version_and_strict_json_erro
         ] {
             assert!(
                 !schemas
-                    .validate_shape(&op, budget, CatalogDocumentKind::Profile, invalid)
+                    .validate_document(&op, budget, CatalogDocumentKind::Profile, invalid)
                     .unwrap()
             );
         }
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn semantic_proof_declines_invalid_and_unrepresented_pack_data() {
+    with_source(|source, read, cancellation, budget| {
+        let op = operation(read, source, cancellation);
+        let mut schemas = CatalogSchemas::default();
+        let kind = CatalogDocumentKind::Pack;
+        let raw = include_bytes!(
+            "../../../tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
+        );
+        let mut pack: Value = serde_json::from_slice(raw).unwrap();
+        for network in [
+            json!({"id": "legacy.provider"}),
+            json!({"grant": null}),
+            json!({"matrix.operations": [{"operation_id": "read"}, {"operation_id": "read"}]}),
+            // Python accepts these single bindings through its string coercion.
+            json!({"matrix.bindings": [{"caller_function_id": 7}]}),
+            json!({"matrix.bindings": [{"caller_function_id": {"part": "caller"}}]}),
+        ] {
+            pack["requirements"]["network"] = network;
+            let bytes = serde_json::to_vec(&pack).unwrap();
+            assert!(
+                !schemas
+                    .validate_document(&op, budget, kind, &bytes)
+                    .unwrap(),
+                "{pack}"
+            );
+        }
+        pack["requirements"]["network"] =
+            json!({"matrix.bindings": [{"caller_function_id": "caller"}]});
+        let bytes = serde_json::to_vec(&pack).unwrap();
+        assert!(
+            schemas
+                .validate_document(&op, budget, kind, &bytes)
+                .unwrap()
+        );
     });
 }
 

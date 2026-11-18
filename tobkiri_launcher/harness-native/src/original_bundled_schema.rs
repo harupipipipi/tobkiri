@@ -1,5 +1,5 @@
-//! Structural verification of the original bundled catalog document families.
-use super::{json, profile_schema, *};
+//! Verification of the original bundled catalog document families.
+use super::{external_catalog, json, profile_schema, *};
 use tobkiri_canon::AllocationBudget;
 
 /// The original bundle lock's finite document kinds.
@@ -19,8 +19,8 @@ pub(super) struct CatalogSchemas {
 }
 
 impl CatalogSchemas {
-    /// Evaluate structural predicates on the exact bytes from a digest-checked read.
-    pub(super) fn validate_shape<S: OriginalAuthorityOwner>(
+    /// Prove the structure and semantics of the exact digest-checked bytes.
+    pub(super) fn validate_document<S: OriginalAuthorityOwner>(
         &mut self,
         op: &Operation<'_, S>,
         budget: &Arc<dyn AllocationBudget>,
@@ -73,6 +73,7 @@ impl CatalogSchemas {
             document.root,
         );
         match result {
+            Ok(true) => external_catalog::validate_bundled_semantics(&document, kind, op, budget),
             Err(error) if matches!(error.cause, Some(OriginalAuthorityCause::Unsupported(_))) => {
                 Ok(false)
             }

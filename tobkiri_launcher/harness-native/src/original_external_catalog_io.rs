@@ -34,7 +34,7 @@ pub(in crate::original_authority::io::publication) use external_catalog_content_
 };
 pub(in crate::original_authority::io::publication) use external_catalog_registered_closure::read_registered_closure_manifest;
 pub(in crate::original_authority::io::publication) use model::{
-    validate_profile_semantics, validate_recovery_record_semantics,
+    validate_bundled_semantics, validate_profile_semantics, validate_recovery_record_semantics,
 };
 
 // The generated catalog describes packaged Pack IDs. It is distinct from the

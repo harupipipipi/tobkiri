@@ -1,4 +1,4 @@
-//! Structural validation of a first physical, digest-checked bundle read.
+//! Validation of a first physical, digest-checked bundle read.
 use super::*;
 use crate::original_authority::bundled_schema::CatalogDocumentKind;
 pub(super) use crate::original_authority::bundled_schema::CatalogSchemas;
@@ -53,7 +53,7 @@ impl CatalogIo {
             .document_shapes
             .as_mut()
             .expect("selected document schemas")
-            .validate_shape(op, &self.budget, schema, bytes)?
+            .validate_document(op, &self.budget, schema, bytes)?
         {
             // The original validator owns strict, schema and semantic errors.
             return Ok(false);

@@ -124,7 +124,7 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             catalog = (stage / "python/tobkiri_protocol/bundle_catalog.py").read_bytes()
             self.assertIn(b"return candidate._read_catalog_document()", catalog)
             self.assertIn(b"document = json.loads(raw)", catalog)
-            self.assertIn(b'_semantic_diagnostics(document, schema_name, True)', catalog)
+            self.assertNotIn(b"_semantic_diagnostics", catalog)
             compile(catalog, "bundle_catalog.py", "exec")
             self.assertFalse(metadata["original_source_files_unchanged"])
             self.assertFalse(metadata["app_schema_backend"]["validation_results_prepared"])
@@ -135,18 +135,24 @@ class NativeHarnessDependencyTests(unittest.TestCase):
         source = runtime / "tobkiri_protocol/bundle_catalog.py"
         module = ModuleType("tobkiri_protocol._catalog_routing_test")
         module.__package__ = "tobkiri_protocol"
-        pack = runtime / "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
+        pack = (
+            runtime / "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
+        )
         raw = pack.read_bytes()
         text = raw.decode()
         document = json.loads(text)
-        lock = json.dumps({
-            "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
-            "entries": [{
-                "path": "pack.json",
-                "kind": "pack",
-                "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
-            }],
-        }).encode()
+
+        def make_lock(content: bytes) -> bytes:
+            return json.dumps({
+                "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+                "entries": [{
+                    "path": "pack.json",
+                    "kind": "pack",
+                    "digest": "sha256:" + hashlib.sha256(content).hexdigest(),
+                }],
+            }).encode()
+
+        lock = make_lock(raw)
         reply = {"kind": "document", "value": text}
 
         def inspect(payload: str) -> str:
@@ -156,7 +162,9 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             steps = target["steps"]
             if operation in {"root", "resolve"}:
                 value = "/bundle/pack.json" if steps else "/bundle"
-                result = {"kind": "path", "binding": "root", "steps": steps, "value": value}
+                result = {
+                    "kind": "path", "binding": "root", "steps": steps, "value": value,
+                }
             elif operation in {"is-symlink", "is-dir"}:
                 result = {"kind": "bool", "value": False}
             elif operation == "read-bytes":
@@ -176,40 +184,61 @@ class NativeHarnessDependencyTests(unittest.TestCase):
         ):
             from harness_native.native_path import PathBridge
             from harness_native.value_graph import Scope
+            from tobkiri_protocol import validation
 
-            exec(compile(app_schema.derive_catalog_validation(source.read_bytes()),
-                         str(source), "exec"), module.__dict__)
             bridge = PathBridge(Scope(1, 2, 3, 4), "posix", inspect,
                                 os_flags={"O_RDONLY": 0})
             root = bridge.bind("root", "/bundle")
-            module.Path = bridge.module_path(str(source), root)
-            catalog = module.BundledCatalog
-            with (
-                patch.object(module, "strict_loads", wraps=module.strict_loads) as strict,
-                patch.object(module, "_semantic_diagnostics",
-                             wraps=module._semantic_diagnostics) as semantic,
-                patch.object(module, "validate_document",
-                             side_effect=AssertionError("schema validation reached")),
-            ):
-                loaded = bridge._load_catalog(catalog.load, root)
-                self.assertEqual(loaded.packs[document["pack"]["id"]], document)
-                strict.assert_called_once_with(lock)
-                semantic.assert_called_once_with(document, "pack", True)
+            with patch.object(validation, "_semantic_diagnostics",
+                              wraps=validation._semantic_diagnostics) as semantic:
+                exec(compile(app_schema.derive_catalog_validation(source.read_bytes()),
+                             str(source), "exec"), module.__dict__)
+                module.Path = bridge.module_path(str(source), root)
+                catalog = module.BundledCatalog
+                with (
+                    patch.object(module, "strict_loads",
+                                 wraps=module.strict_loads) as strict,
+                    patch.object(module, "validate_document",
+                                 wraps=module.validate_document) as validate,
+                ):
+                    loaded = bridge._load_catalog(catalog.load, root)
+                    self.assertEqual(loaded.packs[document["pack"]["id"]], document)
+                    strict.assert_called_once_with(lock)
+                    validate.assert_not_called()
+                    semantic.assert_not_called()
 
-                reply = {"kind": "bytes", "value": base64.b64encode(b"invalid").decode()}
-                with self.assertRaisesRegex(module.BundleIntegrityError,
-                                            "bundle artifact digest changed: pack.json"):
-                    bridge._load_catalog(catalog.load, root)
+                    bad_raw = b'{"pack": {}, "pack": {}}'
+                    reply = {
+                        "kind": "bytes", "value": base64.b64encode(bad_raw).decode(),
+                    }
+                    with self.assertRaisesRegex(
+                        module.BundleIntegrityError,
+                        "bundle artifact digest changed: pack.json",
+                    ):
+                        bridge._load_catalog(catalog.load, root)
+                    validate.assert_not_called()
 
-                for value in (text, document):
-                    with self.subTest(kind=type(value)), self.assertRaises(TypeError):
-                        bridge._load_catalog(
-                            lambda selected: catalog.load_from_reader(
-                                lock, entry_reader=lambda *_: value, root=selected,
-                                artifact_root_resolver=lambda: None,
-                            ),
-                            root,
-                        )
+                    lock = make_lock(bad_raw)
+                    with self.assertRaisesRegex(
+                        module.BundleIntegrityError, "invalid pack document pack.json",
+                    ) as error:
+                        bridge._load_catalog(catalog.load, root)
+                    validate.assert_called_once_with(bad_raw, "pack")
+                    self.assertEqual(error.exception.__cause__.diagnostics,
+                                     ("duplicate JSON object key: 'pack'",))
+
+                    for value in (text, document):
+                        with (
+                            self.subTest(kind=type(value)),
+                            self.assertRaises(TypeError),
+                        ):
+                            bridge._load_catalog(
+                                lambda selected: catalog.load_from_reader(
+                                    lock, entry_reader=lambda *_: value, root=selected,
+                                    artifact_root_resolver=lambda: None,
+                                ),
+                                root,
+                            )
 
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")

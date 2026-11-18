@@ -58,18 +58,10 @@ def select_app_provider(source: bytes) -> bytes:
 
 
 def derive_catalog_validation(source: bytes) -> bytes:
-    """Use the fixed reader's digest-checked document while preserving semantics."""
+    """Decode the document proved by the fixed native read."""
     from bundle_catalog_kernel_inputs import _replace_one
 
     source = _replace_one(source, b"import hashlib\n", b"import hashlib\nimport json\n")
-    source = _replace_one(
-        source, b"from .validation import validate_document\n",
-        b"from .validation import (\n"
-        b"    _semantic_diagnostics,\n"
-        b"    _versioned_schema_name,\n"
-        b"    validate_document,\n"
-        b")\n",
-    )
     source = _replace_one(
         source, b"        def read_native_entry(index: int, relative: str, reread: bool) -> bytes:\n",
         b"        from harness_native.native_path import NativePath\n\n"
@@ -140,14 +132,8 @@ def derive_catalog_validation(source: bytes) -> bytes:
                 )
 '''
     replacement = b'''                if native_document:
-                    # The fixed read already checked the digest, strict JSON and schema.
+                    # The fixed read proved the digest, strict JSON, schema and semantics.
                     document = json.loads(raw)
-                    schema_name = _versioned_schema_name(document, kind)
-                    diagnostics = _semantic_diagnostics(document, schema_name, True)
-                    if diagnostics:
-                        raise SchemaValidationError(
-                            f"{schema_name} validation failed", diagnostics=tuple(diagnostics)
-                        )
                 else:
 '''
     return _replace_one(source, validation, replacement + b"".join(
