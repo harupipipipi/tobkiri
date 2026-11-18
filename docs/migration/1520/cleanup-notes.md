@@ -4215,6 +4215,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   へ照合後に置き換わった場合を拒否した。Rust 226件、Shell照合のCI相当5件、strict
   Clippyが通過した。初回の入口はjournal・定義・workspace・最初のrecoverの後に
   この検証を呼ぶ段階で接続する。検証済みの同一性は予約commitとpointer書込の前に再確認する。
+  `f3e0a5b7b` は承認済みの初回Setupを、同じ発行lock内で署名journal、通常・非アクティブ
+  定義登録、workspace、Authority、Shell照合、4相activation、Host pointer CASまでつないだ。
+  初回recoverと予約直前のrecoverを既存処理と共用し、確定済みpendingはworkspace lockを
+  解放した後に照合する。Host pointerの切り替えは照合済みsnapshotの再読と候補一致の後。
+  原本が解決したProfile・Lock・Plan、再読したShell定義・Pack pin、実ディスク上のShellを
+  使い、非アクティブ定義更新、前任pointer付きの通常登録、Shell欠落、既存定義競合を検証した。
+  通常登録のfixtureは、前任Profileは有効で、対象の定義がまだ登録されていない状態を作る。
+  エラー時は署名journalを保持し、前任のpointerと予約状態を保つ。Rust 226件、原本比較3件、
+  strict Clippy、workflow補助22件が通過。通常のLauncher画面からの呼び出し、実Wasmでの
+  全体実行、既存active/ソース更新、並行して旧版snapshotに切り替わった場合の原本同等の復旧は残る。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
