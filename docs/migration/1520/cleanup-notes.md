@@ -4328,8 +4328,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `maxItems` を追加した。同じ予算下の読み取り専用decoderで、同梱ロックの305件すべてを
   1件ずつ検査した。日付・実行パス・Shellの3変異も、CPython 3.13.16の固定原本と同様に拒否。
   Profile v4の `requested_edges` は入れ子のauthority参照も既存の許可リストに照合する。
-  CatalogIoとの接続には、同じ物理読取り結果への結合、同梱専用の意味検証と例外詳細の比較が必要。
-  実Wasmのカタログ入口は引き続き元の検証を使い、同じ上限での再計測は接続後に行う。
+  `7b332e9e7` は`catalog-app-frame`の実Wasm比較経路に限定し、CatalogIoが実際に得た
+  ダイジェスト照合済みの初回読取りに、Rustの構造検証結果を結び付ける。対象は元の9スキーマを
+  使う5種類。元のslot・invocation・lock順、種類・digestを同じ読取りで照合し、結果を1回だけ
+  返す。別の文書と後続pinの独立再読には転用できない。スキーマの確保も同じ予算に計上する。
+  対応する構造は元の意味検証を引き続き実行し、対象外の構造は元の検証で例外詳細を得る。
+  固定CPython上の比較は全305文書と453回の読取り、構造・意味・digest・pinの各失敗で一致。
+  Rustの実ファイル試験は読取り後の差し替え、別序数・種類・digest、結果の再利用を拒否した。
+  [実Wasmの同一上限での比較 44304950274](https://github.com/harupipipipi/tobkiri/actions/runs/44304950274)
+  を実行中。製品入口は、この比較と文書エラーの実コンポーネント側の証明を待つ。
   `029093528` は登録済みのactive ProfileをSetupレビューで読み、既存のAuthorityと
   workspace復旧を共用する。同じ初回ロードで取得した同梱のProfile、Shell、Pack pinを使う。
   ロック外でShellを検証し、変更なしの場合はスナップショットを再読する。Authorityを閉じた
@@ -4351,6 +4358,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   登録済みの全pinと依存をまとめて検証する接続、定義の更新方針、任意Packの過去の承認照合は後続。
   macOSのRust 231件とstrict Clippy、固定原本の物理Shell／Authority fixtureが通過した。
   原本SetupのLinux CIにも、同梱文書の構造検証と登録済みカタログ選択の各2件を加えた。
+  `b7edfdb4e` は同梱catalogの登録済み定義を、認証済みactive側の定義digestと照合する。
+  不一致時だけレジストリを再読し、固定した同梱Profileを使って元の2種類の更新提案を再現する。
+  直接の親と、その親の実データと更新結果のdigestがすべて一致するときに限り中断更新と認識。
+  数値と真偽値を含むPythonのdict比較を共用する。正確なPack pin、任意Packの承認、最終候補への
+  適用は各後続経路。Rust 235件、strict Clippy、物理Shell fixture、原本の再承認19件が成功。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
