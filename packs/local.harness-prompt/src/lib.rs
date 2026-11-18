@@ -9,12 +9,25 @@ use tobkiri::core::types::{Error, ErrorCode};
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Settings {
-    model: String,
+    // Old profiles can still require the provider to match an explicit model.
+    #[serde(default, deserialize_with = "deserialize_model")]
+    model: Option<String>,
     system_prompt: String,
     max_tokens: u32,
     // Counts the UTF-8 role and content bytes of saved messages. Zero omits history.
     #[serde(default = "default_max_history_bytes")]
     max_history_bytes: u32,
+}
+
+fn deserialize_model<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let model = <String as serde::Deserialize>::deserialize(deserializer)?;
+    if model.is_empty() {
+        return Err(serde::de::Error::custom("explicit model must be nonempty"));
+    }
+    Ok(Some(model))
 }
 
 fn default_max_history_bytes() -> u32 {
@@ -53,10 +66,10 @@ impl lifecycle::Guest for Pack {
             code: ErrorCode::Invalid,
             message: "prompt settings invalid".into(),
         })?;
-        if c.model.is_empty() || c.max_tokens == 0 {
+        if c.max_tokens == 0 {
             return Err(Error {
                 code: ErrorCode::Invalid,
-                message: "explicit model and bounded tokens required".into(),
+                message: "bounded tokens required".into(),
             });
         }
         SETTINGS.with_borrow_mut(|s| *s = Some(c));
@@ -91,7 +104,7 @@ impl Guest for Pack {
             });
             Ok(Prompt {
                 messages,
-                model: c.model.clone(),
+                model: c.model.clone().unwrap_or_default(),
                 max_tokens: c.max_tokens,
             })
         })
@@ -230,5 +243,32 @@ mod tests {
             history_start(&history, config.max_history_bytes as usize),
             history.len(),
         );
+    }
+
+    #[test]
+    fn packaged_prompt_leaves_model_selection_to_the_bound_provider() {
+        <Pack as lifecycle::Guest>::init(include_str!("../config.json").into()).unwrap();
+        let prompt = <Pack as Guest>::build(
+            Context {
+                conversation: "chat".into(),
+                messages: vec![],
+            },
+            Input {
+                conversation: "chat".into(),
+                text: "next".into(),
+            },
+        )
+        .unwrap();
+        assert!(prompt.model.is_empty());
+        <Pack as lifecycle::Guest>::shutdown();
+
+        for explicit_model in [serde_json::Value::Null, "".into(), 1.into()] {
+            let config = serde_json::json!({
+                "model": explicit_model,
+                "system_prompt": "system",
+                "max_tokens": 128,
+            });
+            assert!(<Pack as lifecycle::Guest>::init(config.to_string()).is_err());
+        }
     }
 }

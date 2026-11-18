@@ -399,6 +399,7 @@ impl Drop for Server {
 
 #[tokio::test]
 async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() -> Result<()> {
+    let provider_model = "selected-local-model";
     let (resume_first_response, wait_for_delta) = mpsc::channel();
     let server = Server::new(wait_for_delta)?;
     let mut resume_first_response = Some(resume_first_response);
@@ -408,7 +409,7 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         "config.json",
         &serde_json::json!({
             "base_url": server.origin,
-            "model": "gemma3-1b-local",
+            "model": provider_model,
             "secret_name": null,
             "timeout_ms": 300000,
             "temperature": "0.4",
@@ -418,7 +419,6 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         "local.harness-prompt",
         "config.json",
         &serde_json::json!({
-            "model": "gemma3-1b-local",
             "system_prompt": "Answer in plain text. Be helpful and concise.",
             "max_tokens": 2048,
         }),
@@ -496,7 +496,7 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         let requests = server.requests.lock().unwrap();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0]["stream"], true);
-        assert_eq!(requests[0]["model"], "gemma3-1b-local");
+        assert_eq!(requests[0]["model"], provider_model);
         assert_eq!(requests[0]["max_tokens"], 2048);
         assert_eq!(requests[0]["temperature"], 0.4);
         assert_eq!(requests[0]["messages"][1]["content"], oversized_history);

@@ -2,18 +2,18 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:61f3a33a20792eddff1cdf94b0c2af8e0c1d1aec52401b106163cbf405511639",
+      "sha256": "sha256:d51e8286dea1c5b14cf427fe3c75fc5a932666df3c4fcd9a273ba0b11ea64f8d",
       "size": 1435
     },
     {
       "path": "component.wasm",
-      "sha256": "sha256:dbd083cbb15724e2c7a01f4ca27963f1f14a2263b1bff4f953d1575c32a951ec",
-      "size": 343825
+      "sha256": "sha256:36fa5de0b6ed88a513982a7deefb594329ef21678ed996d5b1f79610a5298380",
+      "size": 349355
     },
     {
       "path": "config.json",
-      "sha256": "sha256:928bebd00098bc50ff65d0f61aa9bb743a820a84bb73b89de0bbfd2dce6aa905",
-      "size": 151
+      "sha256": "sha256:fac2d0a2516fa1c3910fd88439be79194b3cf194411d61b85ae90fc0ffab7712",
+      "size": 121
     },
     {
       "path": "wit/deps/core.wit",

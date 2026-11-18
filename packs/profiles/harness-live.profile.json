@@ -303,7 +303,7 @@
     },
     {
       "id": "local.harness-prompt",
-      "sha256": "sha256:8f46fe266f8502df373ad983d0141f3b86907074b9a72424aeca39b414df77f7",
+      "sha256": "sha256:efdb656ef78d58cfee9e7aa85b53e16d72600a3ac5e122f55f5714615bd3241e",
       "source": "file:../local.harness-prompt",
       "version": "0.1.0"
     },
