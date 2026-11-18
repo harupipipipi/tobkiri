@@ -21,6 +21,8 @@ mod candidate_selection_tests;
 #[path = "original_profile_definitions_model.rs"]
 mod definitions_model;
 #[cfg(unix)]
+pub(super) use definitions_model::python_equal;
+#[cfg(unix)]
 pub(super) use definitions_model::render_python_str;
 #[cfg(all(test, unix))]
 #[path = "original_inactive_registration_ci.rs"]
@@ -299,6 +301,29 @@ impl RegisteredProfile {
         )?;
         CoreValue::parse_guest(&bytes, budget)
             .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))
+    }
+
+    /// Read the original second registry snapshot and project its direct predecessor.
+    pub(super) fn review_source_predecessor<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        root: &Path,
+        current_digest: &Digest,
+        verified_digest: &str,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<CoreValue>> {
+        let state = Store::new(op, root)?.snapshot(op, budget)?;
+        let Node::String(profile_id) = self.state.doc.node(self.profile.references[0]) else {
+            unreachable!("validated registry Profile ID");
+        };
+        definitions_model::review_source_predecessor(
+            op,
+            &state,
+            profile_id,
+            current_digest,
+            verified_digest,
+            budget,
+        )
     }
 }
 

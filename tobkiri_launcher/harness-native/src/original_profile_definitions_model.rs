@@ -982,9 +982,50 @@ pub(super) fn find_entry<S: OriginalAuthorityOwner>(
     Ok(None)
 }
 
+/// Match the retained review decision against the newly read, validated history.
+pub(super) fn review_source_predecessor<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    state: &State,
+    profile_id: &Text,
+    current_digest: &Digest,
+    verified_digest: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<CoreValue>> {
+    let Some(entry) = find_entry(op, state, profile_id, budget)? else {
+        return Ok(None);
+    };
+    let doc = &state.doc;
+    if boolean(doc, field(doc, entry, "tombstone")) != Some(false)
+        || !doc.string_is(
+            field(doc, entry, "current_revision"),
+            current_digest.as_str(),
+        )
+    {
+        return Ok(None);
+    }
+    let revisions = array(doc, field(doc, entry, "revisions")).expect("validated history");
+    let [.., previous, current] = revisions else {
+        return Ok(None);
+    };
+    if !doc.string_is(field(doc, *current, "parent_revision"), verified_digest)
+        || !doc.string_is(field(doc, *previous, "profile_revision"), verified_digest)
+    {
+        return Ok(None);
+    }
+    // Validated history already checks the parent chain. Project the complete
+    // predecessor, including any user-added fields, for the replay digest.
+    let bytes = json::canonical_subtree(doc, field(doc, *previous, "profile"), None, op, budget)?;
+    let capacity = |_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source);
+    let previous = CoreValue::parse_guest(&bytes, budget).map_err(capacity)?;
+    Ok(
+        (previous.digest_guest(budget).map_err(capacity)?.as_str() == verified_digest)
+            .then_some(previous),
+    )
+}
+
 // Both inputs were admitted as strict, depth-bounded JSON. Object equality
 // ignores key order and the original Python allows bool/int equality.
-pub(super) fn python_equal(
+pub(in crate::original_authority::io::publication) fn python_equal(
     left: &CoreValue,
     right: &CoreValue,
     budget: &Arc<dyn AllocationBudget>,

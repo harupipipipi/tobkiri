@@ -273,12 +273,29 @@ impl CatalogIo {
     }
 
     fn bundled_source_shell(&self, profile_id: &str) -> Result<Option<CoreValue>> {
+        Ok(self
+            .bundled_source_profile(profile_id)?
+            .and_then(|source| initial_source_shell(&source, profile_id)))
+    }
+
+    /// Return the full Profile from the completed, invocation-bound review catalog.
+    pub(in crate::original_authority::io::publication) fn bundled_review_profile<
+        S: OriginalAuthorityOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile_id: &str,
+    ) -> Result<CoreValue> {
+        self.require_recovery_catalog(op)?;
+        self.bundled_source_profile(profile_id)?
+            .ok_or_else(|| raw("builtins.KeyError", format!("'{profile_id}'")))
+    }
+
+    fn bundled_source_profile(&self, profile_id: &str) -> Result<Option<CoreValue>> {
         let Some(inputs) = self.shell_inputs.as_ref() else {
             return Ok(None);
         };
-        Ok(inputs
-            .find(Kind::Profile, "profile_id", profile_id, &self.budget)?
-            .and_then(|source| initial_source_shell(&source, profile_id)))
+        inputs.find(Kind::Profile, "profile_id", profile_id, &self.budget)
     }
 
     fn select_active_variant<S: OriginalAuthorityOwner>(

@@ -44,7 +44,9 @@ pub(crate) use recovery_authority::RecoveryAuthorityReached;
 #[cfg(unix)]
 pub(crate) use recovery_authority::initial_activation::InitialPublication;
 #[cfg(unix)]
-pub(crate) use recovery_authority::{RegisteredCatalogSelection, RegisteredSnapshotReached};
+pub(crate) use recovery_authority::{
+    RegisteredCatalogSelection, RegisteredDefinitionSelection, RegisteredSnapshotReached,
+};
 #[cfg(unix)]
 pub(crate) use recovery_workspace::APP_DENIED as RECOVERY_APP_DENIED;
 

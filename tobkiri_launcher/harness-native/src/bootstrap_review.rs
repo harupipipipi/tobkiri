@@ -56,9 +56,16 @@ pub enum BootstrapReviewReachpoint {
     ActiveCandidateSnapshotSchemasNotBound,
     ActiveCandidateLegacySuccessorNotBound,
     ActiveCandidateAdmittedClosureNotBound,
-    ActiveCandidateDefinitionPolicyNotBound {
+    ActiveCandidatePackPinPredecessorNotBound,
+    ActiveCandidateSourceUpdateNotBound {
         successor_required: bool,
         binding_renewal_required: bool,
+        include_source_additions: bool,
+        interrupted_source_update: bool,
+    },
+    ActiveCandidateAdditionalPacksNotBound {
+        binding_renewal_required: bool,
+        interrupted_source_update: bool,
     },
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,

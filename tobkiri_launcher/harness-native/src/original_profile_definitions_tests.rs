@@ -139,6 +139,63 @@ pub(in crate::original_authority::io::publication) fn lock_free(path: &Path) -> 
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn registered_source_predecessor_requires_the_current_direct_parent_in_a_fresh_snapshot() {
+    with_source(|owner, read, cancellation, budget| {
+        let op = operation(read, owner, cancellation);
+        let mut row = entry("defaults", 0);
+        let previous = row["revisions"][0]["profile"].clone();
+        let previous_digest = digest(&previous);
+        let append = |row: &mut Value, name| {
+            let profile = json!({"profile_id":"defaults", "display_name":name});
+            let revision = digest(&profile);
+            let parent = row["current_revision"].clone();
+            row["revisions"].as_array_mut().unwrap().push(json!({
+                "profile_revision":revision, "parent_revision":parent, "profile":profile,
+                "created_at":10,"updated_at":10,"tombstone":false
+            }));
+            row["current_revision"] = json!(revision);
+        };
+        append(&mut row, "pending");
+        write_index(owner, &sealed(state(vec![row.clone()])));
+        let registered = get_profile(&op, &owner.root, &Text::from_str("defaults"), budget)
+            .unwrap()
+            .unwrap();
+        let current = registered
+            .review_profile(&op, budget)
+            .unwrap()
+            .digest_guest(budget)
+            .unwrap();
+        let check = |digest: &str| {
+            registered
+                .review_source_predecessor(&op, &owner.root, &current, digest, budget)
+                .unwrap()
+        };
+        assert_eq!(
+            check(&previous_digest)
+                .unwrap()
+                .digest_guest(budget)
+                .unwrap()
+                .as_str(),
+            previous_digest,
+        );
+        assert!(check(current.as_str()).is_none());
+
+        // The prior result no longer holds after another valid revision commits.
+        append(&mut row, "new edit");
+        let changed = sealed(state(vec![row]));
+        write_index(owner, &changed);
+        assert!(check(&previous_digest).is_none());
+        assert!(lock_free(
+            &owner.root.join("profiles/.profile-definition.lock")
+        ));
+        assert_eq!(
+            fs::read(owner.root.join("profiles").join(INDEX)).unwrap(),
+            changed
+        );
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn registry_constructor_and_first_list_create_only_original_directories_and_lock() {
     with_source(|source, read, cancel, budget| {
         assert_eq!(

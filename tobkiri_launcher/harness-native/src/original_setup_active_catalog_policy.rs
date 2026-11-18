@@ -2,6 +2,9 @@
 use super::*;
 use tobkiri_canon::{AllocationKind, AllocationRequest, CoreRef};
 
+#[path = "original_setup_source_predecessor.rs"]
+mod source_predecessor;
+
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 const CONFLICT: &str = "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict";
 
@@ -9,6 +12,13 @@ const CONFLICT: &str = "core_runtime.profile_definition_store_v4.ProfileDefiniti
 pub(crate) enum RegisteredCatalogSelection {
     Bundled { binding_renewal_required: bool },
     AdmittedClosure,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RegisteredDefinitionSelection {
+    Current,
+    InterruptedSourcePredecessor,
+    PackPinPredecessor,
 }
 
 impl PublicationRead {
@@ -35,6 +45,72 @@ impl PublicationRead {
             records.active_plan.as_ref(),
             |id| io.bundled_review_pack_digest(id),
         )
+    }
+
+    /// Authenticate the definition base before any change to the candidate catalog.
+    pub(crate) fn review_registered_definition<S: crate::BootstrapReviewOwner>(
+        &self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        budget: &Arc<dyn AllocationBudget>,
+        loader: &Mutex<Option<CatalogIo>>,
+        records: &RegisteredCatalogPolicy,
+        include_source_additions: bool,
+    ) -> Result<RegisteredDefinitionSelection> {
+        let op = self.candidate_operation(owner, cancellation)?;
+        op.check(STAGE)?;
+        let current_digest = records
+            .registered_profile
+            .digest_guest(budget)
+            .map_err(capacity)?;
+        let verified_digest = records
+            .verified_definition_digest
+            .as_str()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        if current_digest.as_str() == verified_digest {
+            return Ok(RegisteredDefinitionSelection::Current);
+        }
+
+        let (root, candidate) = self.registered_candidate();
+        let profile_id = candidate
+            .workspace
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("verified workspace Profile ID");
+        let predecessor = candidate.registered.review_source_predecessor(
+            &op,
+            root,
+            &current_digest,
+            verified_digest,
+            budget,
+        )?;
+        // As in the original call, the source lookup follows the independent
+        // registry snapshot and uses the catalog loaded for this invocation.
+        let source = loader
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .ok_or_else(OriginalAuthorityError::unavailable)?
+            .bundled_review_profile(&op, profile_id)?;
+        if let Some(predecessor) = predecessor
+            && source_predecessor::matches(
+                &op,
+                &predecessor,
+                &source,
+                &current_digest,
+                records.active_plan.is_none(),
+                budget,
+            )?
+        {
+            return Ok(RegisteredDefinitionSelection::InterruptedSourcePredecessor);
+        }
+        if include_source_additions {
+            return Ok(RegisteredDefinitionSelection::PackPinPredecessor);
+        }
+        Err(raw(
+            CONFLICT,
+            "bootstrap review does not match a verified interrupted source update",
+        ))
     }
 }
 

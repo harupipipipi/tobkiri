@@ -318,7 +318,9 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
 ) -> BootstrapReviewFailure {
-    use crate::original_authority::{RegisteredCatalogSelection, RegisteredSnapshotReached};
+    use crate::original_authority::{
+        RegisteredCatalogSelection, RegisteredDefinitionSelection, RegisteredSnapshotReached,
+    };
     let work = pack.work.get();
     let reached = review
         .read
@@ -339,14 +341,43 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
                 &work.catalog,
                 &records,
             );
-            let _verified_definition_digest = records.verified_definition_digest;
             match selected {
                 Ok(RegisteredCatalogSelection::Bundled {
                     binding_renewal_required,
-                }) => BootstrapReviewReachpoint::ActiveCandidateDefinitionPolicyNotBound {
-                    successor_required: records.active_plan.is_none(),
-                    binding_renewal_required,
-                },
+                }) => {
+                    let definition = match review.read.review_registered_definition(
+                        &work.source,
+                        pack.cancellation,
+                        pack.input_budget,
+                        &work.catalog,
+                        &records,
+                        review.include_source_additions,
+                    ) {
+                        Ok(RegisteredDefinitionSelection::PackPinPredecessor) => {
+                            return BootstrapReviewFailure::NotBound(
+                                BootstrapReviewReachpoint::ActiveCandidatePackPinPredecessorNotBound,
+                            );
+                        }
+                        Ok(definition) => definition,
+                        Err(error) => return original_failure(error),
+                    };
+                    let interrupted_source_update =
+                        definition == RegisteredDefinitionSelection::InterruptedSourcePredecessor;
+                    let successor_required = records.active_plan.is_none();
+                    if successor_required || review.include_source_additions {
+                        BootstrapReviewReachpoint::ActiveCandidateSourceUpdateNotBound {
+                            successor_required,
+                            binding_renewal_required,
+                            include_source_additions: review.include_source_additions,
+                            interrupted_source_update,
+                        }
+                    } else {
+                        BootstrapReviewReachpoint::ActiveCandidateAdditionalPacksNotBound {
+                            binding_renewal_required,
+                            interrupted_source_update,
+                        }
+                    }
+                }
                 Ok(RegisteredCatalogSelection::AdmittedClosure) => {
                     BootstrapReviewReachpoint::ActiveCandidateAdmittedClosureNotBound
                 }
