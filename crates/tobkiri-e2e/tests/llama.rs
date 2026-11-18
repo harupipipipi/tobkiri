@@ -177,7 +177,7 @@ async fn real_1b_input_flow_wasm_stream_persist_and_cancel() -> Result<()> {
         .await?;
     let mut run = session.submit_native_input(input).await?;
     assert_eq!(run.routes().len(), 1);
-    let mut first_delta = false;
+    let mut stopped_at = None;
     let mut cancelled_events = Vec::new();
     while let Some(tagged) =
         tokio::time::timeout(Duration::from_secs(30), run.events.recv()).await?
@@ -185,7 +185,7 @@ async fn real_1b_input_flow_wasm_stream_persist_and_cancel() -> Result<()> {
         assert_eq!(tagged.route_index, 0);
         let event = tagged.event;
         if delta_text(&event).is_some() {
-            first_delta = true;
+            stopped_at = Some(tokio::time::Instant::now());
             run.cancel.cancel();
             cancelled_events.push(event);
             break;
@@ -195,7 +195,7 @@ async fn real_1b_input_flow_wasm_stream_persist_and_cancel() -> Result<()> {
         }
         cancelled_events.push(event);
     }
-    anyhow::ensure!(first_delta, "real Flow ended before a cancellation delta");
+    let stopped_at = stopped_at.context("real Flow ended before a cancellation delta")?;
     assert_eq!(
         loaded_message_count(&cancelled_events),
         Some(2),
@@ -226,26 +226,46 @@ async fn real_1b_input_flow_wasm_stream_persist_and_cancel() -> Result<()> {
     ))?;
     authorization.set_sensitive(true);
     let client = reqwest::Client::new();
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    let probe_started = tokio::time::Instant::now();
+    let deadline = probe_started + Duration::from_secs(3);
+    println!(
+        "llama flow settled after cancel in {} ms",
+        (probe_started - stopped_at).as_millis()
+    );
+    let mut polls = 0;
     loop {
-        let slots: serde_json::Value = client
-            .get("http://127.0.0.1:18080/slots")
-            .header("authorization", authorization.clone())
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+        let slots: serde_json::Value = tokio::time::timeout_at(deadline, async {
+            client
+                .get("http://127.0.0.1:18080/slots")
+                .header("authorization", authorization.clone())
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await
+        })
+        .await
+        .with_context(|| {
+            format!("llama idle slot was not observed after {polls} completed polls")
+        })??;
+        polls += 1;
         if slots.as_array().is_some_and(|slots| {
             !slots.is_empty() && slots.iter().all(|slot| slot["is_processing"] == false)
         }) {
+            println!(
+                "llama idle after {} ms across {polls} polls",
+                probe_started.elapsed().as_millis()
+            );
             break;
         }
         anyhow::ensure!(
             tokio::time::Instant::now() < deadline,
-            "llama server still processes after cancellation"
+            "llama server still processes after cancellation ({polls} polls)"
         );
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep_until(
+            (tokio::time::Instant::now() + Duration::from_millis(50)).min(deadline),
+        )
+        .await;
     }
     assert_no_plaintext(&fixture.data_root(), &secret)?;
     assert_secret_dispatch_receipts(&fixture, 2)?;

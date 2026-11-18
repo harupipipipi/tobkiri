@@ -15,8 +15,10 @@ use std::{
 use support::*;
 use tobkiri_core::{NativeInputRouteStatus, NativeInputStatus};
 use tobkiri_flow::RunEventKind;
+use tokio::sync::oneshot;
 
 const FIRST_DELTA: &str = "Hello";
+const PEER_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Default)]
 struct RequestDiagnostics {
@@ -84,20 +86,55 @@ struct Server {
     diagnostics: Arc<Mutex<ServerDiagnostics>>,
     thread: Option<thread::JoinHandle<()>>,
 }
+
+enum Response {
+    ResumeAfterFirstDelta(mpsc::Receiver<()>),
+    ObserveCancellation {
+        requested: mpsc::Receiver<Instant>,
+        peer_close: Option<oneshot::Sender<io::Result<Instant>>>,
+    },
+    Error(u16, String),
+}
+
+fn observe_peer_close(
+    stream: &mut TcpStream,
+    requested: &mpsc::Receiver<Instant>,
+) -> io::Result<Instant> {
+    let cancellation = requested
+        .recv_timeout(Duration::from_secs(30))
+        .map_err(|error| {
+            let kind = match error {
+                mpsc::RecvTimeoutError::Timeout => io::ErrorKind::TimedOut,
+                mpsc::RecvTimeoutError::Disconnected => io::ErrorKind::BrokenPipe,
+            };
+            io::Error::new(kind, error)
+        })?;
+    let remaining = PEER_CLOSE_TIMEOUT.saturating_sub(cancellation.elapsed());
+    if remaining.is_zero() {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    stream.set_read_timeout(Some(remaining))?;
+    match stream.read(&mut [0]) {
+        Ok(0) => Ok(Instant::now()),
+        Err(error) if error.kind() == io::ErrorKind::ConnectionReset => Ok(Instant::now()),
+        Err(error) => Err(error),
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "expected the HTTP peer to close the unfinished response",
+        )),
+    }
+}
+
 impl Server {
     fn new(resume_first_response: mpsc::Receiver<()>) -> Result<Self> {
-        Self::with_response(resume_first_response, None)
+        Self::with_response(Response::ResumeAfterFirstDelta(resume_first_response))
     }
 
     fn error_response(status: u16, body: &str) -> Result<Self> {
-        let (_release, receiver) = mpsc::channel();
-        Self::with_response(receiver, Some((status, body.to_owned())))
+        Self::with_response(Response::Error(status, body.to_owned()))
     }
 
-    fn with_response(
-        resume_first_response: mpsc::Receiver<()>,
-        error_response: Option<(u16, String)>,
-    ) -> Result<Self> {
+    fn with_response(mut response: Response) -> Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", 0))?;
         let origin = format!("http://{}", listener.local_addr()?);
         let stop = Arc::new(AtomicBool::new(false));
@@ -234,7 +271,7 @@ impl Server {
                 captured.lock().unwrap().push(body);
                 metadata.send_start_us = Some(started.elapsed().as_micros());
                 record(metadata);
-                if let Some((status, body)) = &error_response {
+                if let Response::Error(status, body) = &response {
                     let content_type = if *status == 200 {
                         "text/event-stream"
                     } else {
@@ -258,7 +295,13 @@ impl Server {
                     record(metadata);
                     continue;
                 }
-                let response_headers = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
+                let response_headers: &[u8] = if request_index == 0
+                    && matches!(&response, Response::ObserveCancellation { .. })
+                {
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+                } else {
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+                };
                 if metadata
                     .write_result(
                         "response-headers-write",
@@ -319,19 +362,41 @@ impl Server {
                     {
                         break;
                     }
-                    if request_index == 0
-                        && chunk_index == 0
-                        && let Err(error) =
-                            resume_first_response.recv_timeout(Duration::from_secs(20))
-                    {
-                        let kind = match error {
-                            mpsc::RecvTimeoutError::Timeout => io::ErrorKind::TimedOut,
-                            mpsc::RecvTimeoutError::Disconnected => io::ErrorKind::BrokenPipe,
-                        };
-                        metadata.error("wait-for-first-flow-delta", Some(kind));
-                        metadata.send_end_us = Some(started.elapsed().as_micros());
-                        record(metadata);
-                        continue 'connections;
+                    if request_index == 0 && chunk_index == 0 {
+                        match &mut response {
+                            Response::ResumeAfterFirstDelta(resume) => {
+                                if let Err(error) = resume.recv_timeout(Duration::from_secs(20)) {
+                                    let kind = match error {
+                                        mpsc::RecvTimeoutError::Timeout => io::ErrorKind::TimedOut,
+                                        mpsc::RecvTimeoutError::Disconnected => {
+                                            io::ErrorKind::BrokenPipe
+                                        }
+                                    };
+                                    metadata.error("wait-for-first-flow-delta", Some(kind));
+                                    metadata.send_end_us = Some(started.elapsed().as_micros());
+                                    record(metadata);
+                                    continue 'connections;
+                                }
+                            }
+                            Response::ObserveCancellation {
+                                requested,
+                                peer_close,
+                            } => {
+                                // Leave this response unfinished and the socket open during the read.
+                                metadata.send_end_us = Some(started.elapsed().as_micros());
+                                record(metadata);
+                                let result = observe_peer_close(&mut stream, requested);
+                                if let Err(error) = &result {
+                                    metadata.error("peer-close-read", Some(error.kind()));
+                                    record(metadata);
+                                }
+                                if let Some(peer_close) = peer_close.take() {
+                                    let _ = peer_close.send(result);
+                                }
+                                continue 'connections;
+                            }
+                            Response::Error(..) => unreachable!("error response already sent"),
+                        }
                     }
                 }
                 let _ = metadata.write_result(
@@ -527,6 +592,121 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         ]),
         "old turns stay persisted and fit in the prompt only when within the history budget",
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn wasm_external_provider_closes_unfinished_sse_when_flow_is_cancelled() -> Result<()> {
+    let (server, request_cancellation, peer_closed) = {
+        let (request_cancellation, requested) = mpsc::channel();
+        let (peer_close, peer_closed) = oneshot::channel();
+        let server = Server::with_response(Response::ObserveCancellation {
+            requested,
+            peer_close: Some(peer_close),
+        })?;
+        (server, request_cancellation, peer_closed)
+    };
+    let fixture = Fixture::new("harness-live", Some(&server.origin))?;
+    let (_, session) = fixture.start().await?;
+    let first_prompt = "Cancel this unfinished turn";
+    fixture
+        .host
+        .lines
+        .lock()
+        .unwrap()
+        .push_back(first_prompt.into());
+    let input = within_session(
+        &session,
+        "network cancellation: physical Input read",
+        session.read_input(
+            fixture.input.clone(),
+            fixture.shape.clone(),
+            fixture.input_operation.clone(),
+        ),
+    )
+    .await?;
+    let mut run = within_session(
+        &session,
+        "network cancellation: NativeInput admission",
+        session.submit_native_input(input),
+    )
+    .await?;
+    assert_eq!(run.routes().len(), 1);
+    let plan_digest = run.routes()[0].target.plan_digest.clone();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    let mut events = Vec::new();
+    let cancellation = loop {
+        let tagged = next_native_event(&mut run, "network cancellation: first delta", deadline)
+            .await?
+            .with_context(|| {
+                format!(
+                    "Flow ended before cancellation: {:?}",
+                    failure_events(&events)
+                )
+            })?;
+        assert_eq!(tagged.route_index, 0);
+        assert_eq!(tagged.event.plan_digest, plan_digest);
+        let delta = delta_text(&tagged.event);
+        events.push(tagged.event);
+        if let Some(delta) = delta {
+            assert_eq!(delta, FIRST_DELTA);
+            let cancellation = Instant::now();
+            run.cancel.cancel();
+            request_cancellation
+                .send(cancellation)
+                .context("server closed the cancellation gate")?;
+            break cancellation;
+        }
+    };
+    let disconnect_deadline = tokio::time::Instant::from_std(cancellation + PEER_CLOSE_TIMEOUT);
+    let closed = tokio::time::timeout_at(disconnect_deadline, peer_closed)
+        .await
+        .context("HTTP peer did not close within 3 seconds of Flow cancellation")?
+        .context("server ended without observing the HTTP peer")?
+        .context("server did not read HTTP peer EOF or reset")?;
+    assert!(closed.duration_since(cancellation) <= PEER_CLOSE_TIMEOUT);
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while let Some(tagged) = next_native_event(
+        &mut run,
+        "network cancellation: drain original run",
+        deadline,
+    )
+    .await?
+    {
+        assert_eq!(tagged.route_index, 0);
+        assert_eq!(tagged.event.plan_digest, plan_digest);
+        events.push(tagged.event);
+    }
+    assert_native_completion(
+        &native_completion(&mut run, "network cancellation: NativeInput completion").await?,
+        NativeInputStatus::Cancelled,
+        &[NativeInputRouteStatus::Cancelled],
+    )?;
+    assert_eq!(deltas(&events), [FIRST_DELTA]);
+    assert!(!events.iter().any(|event| {
+        matches!(&event.kind, RunEventKind::StepValue { step, .. } if step == "save")
+            || matches!(&event.kind, RunEventKind::Completed { .. })
+    }));
+
+    let follow_up = fixture.turn(&session, "Check the conversation").await?;
+    assert_eq!(
+        loaded_message_count(&follow_up),
+        Some(0),
+        "cancelled turn was persisted into the next turn"
+    );
+    {
+        let requests = server.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0]["stream"], true);
+        assert_eq!(requests[0]["messages"][1]["content"], first_prompt);
+    }
+    within_session(
+        &session,
+        "network cancellation: Session close",
+        session.close(),
+    )
+    .await?;
     Ok(())
 }
 

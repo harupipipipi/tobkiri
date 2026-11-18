@@ -11,6 +11,7 @@ on:
       - 'packs/local.saved-conversation-rust/**'
       - 'packs/local.openai-compat-provider/src/**'
       - 'packs/local.harness-prompt/**'
+      - 'tools/quality/issue_1520_llama_cancel_probe.py'
   workflow_dispatch:
 
 permissions:
@@ -195,11 +196,17 @@ jobs:
           else:
               raise AssertionError("direct diagnostic did not leave the model idle")
           PY
+          test_status=0
           TOBKIRI_TEST_LLAMA=1 TOBKIRI_TEST_LLAMA_KEY_FILE="$work/api-key" \
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/actual-1b.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test llama -- --ignored --exact --nocapture \
-              real_1b_input_flow_wasm_stream_persist_and_cancel
+              real_1b_input_flow_wasm_stream_persist_and_cancel || test_status=$?
+          python3 -B tools/quality/issue_1520_llama_cancel_probe.py \
+            --origin http://127.0.0.1:18080 --key-file "$work/api-key" \
+            > "$RUNNER_TEMP/direct-1b-cancel-probe.log" 2>&1 || true
+          cat "$RUNNER_TEMP/direct-1b-cancel-probe.log"
+          exit "$test_status"
 
       - name: Run the real 1B model selected by the saved Registries
         if: ${{ !cancelled() && steps.registered_model_assets.conclusion == 'success' && steps.registered_model_build.conclusion == 'success' }}
@@ -249,6 +256,7 @@ jobs:
           path: |
             ${{ runner.temp }}/actual-1b.log
             ${{ runner.temp }}/actual-1b.receipt.json
+            ${{ runner.temp }}/direct-1b-cancel-probe.log
             ${{ runner.temp }}/registered-1b.log
             ${{ runner.temp }}/registered-1b.receipt.json
           if-no-files-found: warn

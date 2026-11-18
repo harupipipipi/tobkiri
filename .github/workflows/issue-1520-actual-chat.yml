@@ -55,7 +55,7 @@ jobs:
       - name: Stream through the verified Wasm provider and local test API
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/actual-network.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/actual-network.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-e2e --test network
       - name: Check the Pack UI port and stream boundary inside Core
         run: >-
