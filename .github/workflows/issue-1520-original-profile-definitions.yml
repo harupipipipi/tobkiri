@@ -264,7 +264,7 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/native-recovery-profile-schema.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-harness-native --lib
-          original_authority::io::publication::recovery_authority::workspace_active::profile_schema::tests::
+          original_authority::io::publication::profile_schema::tests::
           -- --test-threads=1 --nocapture
       - name: Check recovered activation bindings and physical content projections
         env:
@@ -299,7 +299,7 @@ jobs:
       - name: Check committed and active Shell selection against the replacement catalog
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-shell-selection.log" --expected-passed 5 --
+          --log "$RUNNER_TEMP/native-recovery-shell-selection.log" --expected-passed 6 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::catalog::shell_inputs::recovery_tests::
           -- --test-threads=1 --nocapture
@@ -352,14 +352,14 @@ jobs:
       - name: Check fresh Setup root custody and original pointer errors
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-setup-candidate-unit.log" --expected-passed 12 --
+          --log "$RUNNER_TEMP/native-setup-candidate-unit.log" --expected-passed 14 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::definitions::candidate_selection_tests
           -- --test-threads=1 --nocapture
       - name: Check physical catalog binding and the fresh resolver reread
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-catalog-resources-unit.log" --expected-passed 8 --
+          --log "$RUNNER_TEMP/native-catalog-resources-unit.log" --expected-passed 10 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::catalog::tests
           -- --test-threads=1 --nocapture
