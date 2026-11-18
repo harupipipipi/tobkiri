@@ -10,6 +10,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use tobkiri_canon::AllocationError;
 
 struct NoEffects;
 #[async_trait::async_trait]
@@ -217,11 +218,27 @@ async fn native_owner_inspection_preserves_the_single_store_claim_and_parent() {
     let parent = CoreCancellation::new_with_control(owner.control()).unwrap();
     let mut inspection =
         NativeArtifactInspection::from_invocation(source, invocation.clone(), &parent).unwrap();
+    let budget = inspection.allocation_budget().unwrap().clone();
+    assert!(Arc::ptr_eq(
+        &budget,
+        inspection
+            .store
+            .as_ref()
+            .unwrap()
+            .allocation_owners()
+            .graph(),
+    ));
     assert_eq!(
         inspection.read("member").await.unwrap().as_bytes(),
         b"declared bytes"
     );
+    let processed = CoreBuffer::copy_from(b"processed DATA", &budget).unwrap();
     let source = inspection.finish().await.unwrap();
+    assert_eq!(processed.as_bytes(), b"processed DATA");
+    assert!(matches!(
+        CoreBuffer::copy_from(b"late DATA", &budget),
+        Err(AllocationError::Unavailable)
+    ));
     assert_eq!(
         source.root.as_os_str().as_encoded_bytes().as_ptr(),
         root_pointer
@@ -232,6 +249,34 @@ async fn native_owner_inspection_preserves_the_single_store_claim_and_parent() {
         Err(NativeArtifactError::Execution(
             NativeDataIoError::Unavailable
         ))
+    ));
+}
+
+#[tokio::test]
+async fn native_owner_cancellation_rejects_inspection_budget_access_and_allocations() {
+    let (_temp, physical, source) = source_fixture();
+    let owner = RuntimeOwner::open(physical.join("data")).unwrap();
+    let parent = CoreCancellation::new_with_control(owner.control()).unwrap();
+    let inspection = NativeArtifactInspection::from_invocation(
+        source,
+        owner.begin_native_setup().unwrap(),
+        &parent,
+    )
+    .unwrap();
+    let budget = inspection.allocation_budget().unwrap().clone();
+
+    parent.cancel();
+    assert!(matches!(
+        inspection.allocation_budget(),
+        Err(NativeArtifactError::Execution(NativeDataIoError::Cancelled))
+    ));
+    assert!(matches!(
+        CoreBuffer::copy_from(b"late DATA", &budget),
+        Err(AllocationError::Unavailable)
+    ));
+    assert!(matches!(
+        inspection.finish().await,
+        Err(NativeArtifactError::Execution(NativeDataIoError::Cancelled))
     ));
 }
 

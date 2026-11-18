@@ -4011,8 +4011,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   native Harness 271件とstrict Clippyが通過した。既存の確認済みSetupのfixtureでも
   発行直後のProfile・Lock・Planを読み、保留ジャーナルおよびWALの拒否、保存済みファイルの
   バイト列と物理close結果を照合した。
-  製品への接続では、Launcherの既存ジョブで同じWasm Storeの予算を使い、選択済みPackを検証して、
-  `local.provider-registry.legacy-configuration@1.0` に限った候補をCoreでレビューする。
+  非配布用DMGの明示的なShell起動からこの検査を呼ぶ。既存のLauncherジョブに結び付いた
+  AppConfigを保持し、同梱Setupのschemaと、宣言済み成果物の読み取りに使う同じWasm Storeの
+  予算を使う。照合結果は署名済みShellの実行IDとカタログrevisionに照らし、ジョブの期限と実IOの
+  close結果を確認する。照合できない状態では、従来のHostが復旧を扱う。
+  Core 305件、native Harness 271件、strict Clippyが通過した。Storeの単一取得、キャンセル後の
+  予算の停止、元のSetupが作成した実データを期限切れのLauncher検査が変更せずに拒否することを確認した。
+  次の処理では、実際に選択された旧Providerのvariantと署名カタログ、同梱 `.tpk` を照合して
+  `local.provider-registry.legacy-configuration@1.0` の候補を確認する。
   製品のNative Sessionと保存権限の接続は引き続き未完了。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。

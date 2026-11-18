@@ -501,6 +501,18 @@ mod selected_setup_component {
             .is_some_and(|schemas| schemas.references.is_some() && schemas.recovery.is_some())
     }
 
+    #[cfg(feature = "native-first-setup")]
+    pub(super) fn activation_schemas() -> Result<(&'static BootstrapProfileSchemas, Digest)> {
+        let component = COMPONENT
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("native Setup component binding is missing"))?;
+        let schemas = component
+            .profile_schemas
+            .filter(|schemas| schemas.references.is_some() && schemas.recovery.is_some())
+            .ok_or_else(|| anyhow::anyhow!("native Setup Profile schema binding is incomplete"))?;
+        Ok((schemas, Digest::parse(component.sha256)?))
+    }
+
     #[cfg(all(test, feature = "native-first-setup"))]
     #[test]
     #[ignore = "requires the verified App component and v3 Setup receipt at build time"]

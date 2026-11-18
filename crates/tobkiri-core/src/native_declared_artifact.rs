@@ -17,7 +17,7 @@ use std::{
         atomic::{AtomicU8, Ordering},
     },
 };
-use tobkiri_canon::{ControlHandle, CoreBuffer, Digest, MAX_BYTES};
+use tobkiri_canon::{AllocationBudget, ControlHandle, CoreBuffer, Digest, MAX_BYTES};
 use tobkiri_gate::{
     CapacityKind, ControlKind, ControlReservation, CoreCancellation, NativeSetupInvocation,
     NativeSetupReservation,
@@ -202,6 +202,15 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         drop(owned);
         self.require_ready()?;
         Ok(result)
+    }
+
+    /// Borrow the inspection Store's graph budget for DATA processing in the
+    /// same native read-only operation. Clones share the original capacity,
+    /// deadline, cancellation, and retirement.
+    pub fn allocation_budget(&self) -> Result<&Arc<dyn AllocationBudget>, NativeArtifactError> {
+        self.require_ready()?;
+        let store = self.store.as_ref().ok_or(NativeDataIoError::Retired)?;
+        Ok(store.allocation_owners().graph())
     }
 
     fn require_ready(&self) -> Result<(), NativeArtifactError> {

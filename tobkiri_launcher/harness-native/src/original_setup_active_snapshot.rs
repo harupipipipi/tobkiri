@@ -85,6 +85,10 @@ impl OriginalActivationInspection {
         self.0.receipt()
     }
 
+    pub fn uncertain_cleanup(&self) -> Option<OriginalAuthorityCleanup> {
+        self.0.uncertain_cleanup()
+    }
+
     pub async fn read<S: crate::BootstrapReviewOwner>(
         &self,
         owner: &S,
@@ -92,11 +96,13 @@ impl OriginalActivationInspection {
         budget: &Arc<dyn AllocationBudget>,
         schemas: &'static BootstrapProfileSchemas,
         component_digest: &Digest,
+        deadline: Instant,
     ) -> Result<OriginalActiveProfile> {
         let unavailable = || raw(APP_DENIED, "current v5 Profile activation is unavailable");
         let schemas = schemas.bind(component_digest).map_err(|_| unavailable())?;
-        let op =
+        let mut op =
             PublicationRead::operation(&self.0.invocation, &self.0.cleanup, owner, cancellation)?;
+        op.deadline = op.deadline.min(deadline);
         op.check(OriginalAuthorityStage::Source)?;
         let root = owner.with_original_review_user_data(|root| {
             let capacity = op.reserve(

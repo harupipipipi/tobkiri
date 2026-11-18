@@ -8,6 +8,7 @@
 //! The original Launcher can use its own registered native invocation at Launch.
 
 use std::collections::BTreeMap;
+use std::ops::AsyncFnOnce;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -54,9 +55,14 @@ pub(crate) async fn collect_for_resolved_application(
     core: &Arc<Core>,
     sources: NativeApplicationSources,
 ) -> Result<(NativeApplicationSources, HostContractContributionValues)> {
-    collect(sources, |sources| core.inspect_declared_artifacts(sources))
-        .await
-        .0
+    collect(
+        sources,
+        |sources| core.inspect_declared_artifacts(sources),
+        false,
+        async |_| (Ok(()), true),
+    )
+    .await
+    .0
 }
 
 #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap"))]
@@ -64,10 +70,15 @@ pub(crate) async fn collect_for_native_launch(
     sources: NativeApplicationSources,
     invocation: tobkiri_core::NativeSetupInvocation,
     cancellation: &tobkiri_gate::CoreCancellation,
+    observe_activation: bool,
+    observe: impl AsyncFnOnce(&NativeArtifactInspection<NativeApplicationSources>) -> (Result<()>, bool),
 ) -> (Collection, bool) {
-    collect(sources, |sources| {
-        NativeArtifactInspection::from_invocation(sources, invocation, cancellation)
-    })
+    collect(
+        sources,
+        |sources| NativeArtifactInspection::from_invocation(sources, invocation, cancellation),
+        observe_activation,
+        observe,
+    )
     .await
 }
 
@@ -81,22 +92,35 @@ async fn collect(
         NativeArtifactInspection<NativeApplicationSources>,
         NativeArtifactError,
     >,
+    observe_activation: bool,
+    observe: impl AsyncFnOnce(&NativeArtifactInspection<NativeApplicationSources>) -> (Result<()>, bool),
 ) -> (Collection, bool) {
-    match declared_artifact_for_role(
+    let declared = match declared_artifact_for_role(
         &sources.authority().verified_artifacts,
         CONTRIBUTION_PATH,
         CONTRIBUTION_ARTIFACT_ROLE,
         "Host contract contribution",
     ) {
-        Ok(Some(_)) => {}
-        Ok(None) => return (Ok((sources, HostContractContributionValues::empty())), true),
+        Ok(value) => value.is_some(),
         Err(error) => return (Err(error), true),
+    };
+    if !declared && !observe_activation {
+        return (Ok((sources, HostContractContributionValues::empty())), true);
     }
     let mut inspection = match inspect(sources) {
         Ok(inspection) => inspection,
         Err(error) => return (Err(error.into()), true),
     };
-    let values = collect_from_inspection(&mut inspection).await;
+    let (activation, activation_cleanup_verified) = if observe_activation {
+        observe(&inspection).await
+    } else {
+        (Ok(()), true)
+    };
+    let values = match activation {
+        Err(error) => Err(error),
+        Ok(()) if declared => collect_from_inspection(&mut inspection).await,
+        Ok(()) => Ok(HostContractContributionValues::empty()),
+    };
     // Retire and join before reporting either the value or the parser error.
     let sources = inspection.finish().await;
     let cleanup_verified = match &sources {
@@ -109,7 +133,7 @@ async fn collect(
     };
     (
         finish_collection(values, sources.map_err(Into::into)),
-        cleanup_verified,
+        cleanup_verified && activation_cleanup_verified,
     )
 }
 

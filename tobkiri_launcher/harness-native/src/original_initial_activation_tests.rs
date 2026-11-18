@@ -207,8 +207,26 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             let observer = OriginalActivationInspection::new(&read.invocation).unwrap();
             let schemas = &workspace_active::tests::RECOVERY_SCHEMAS;
             let component = Digest::parse(schemas.component_sha256).unwrap();
-            let read_current =
-                || ready_test(observer.read(owner, cancellation, budget, schemas, &component));
+            let read_until = |deadline| {
+                ready_test(observer.read(
+                    owner,
+                    cancellation,
+                    budget,
+                    schemas,
+                    &component,
+                    deadline,
+                ))
+            };
+            let read_current = || read_until(read.invocation.deadline().unwrap());
+            let expired = read_until(Instant::now())
+                .err()
+                .expect("expired Launch is refused");
+            assert!(matches!(
+                expired.cause,
+                Some(OriginalAuthorityCause::Deadline)
+            ));
+            assert!(observer.close_receipt().verified());
+            assert_eq!(capture(), before);
             let observed = read_current().unwrap_or_else(|error| panic!("{case}: {error:?}"));
             assert_eq!(
                 observed

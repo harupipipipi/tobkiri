@@ -7,17 +7,25 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use tauri::{AppHandle, Manager};
+use tobkiri_core::{NativeArtifactInspection, NativeSetupInvocation};
+use tobkiri_gate::{ControlKind, CoreCancellation};
+use tobkiri_harness_native::{OriginalActivationInspection, OriginalActiveProfile};
 
-use super::{JobTicket, NativeRuntimeState, WorkerExit};
+use super::{
+    authority, caught, selected_setup_component, JobTicket, NativeRuntimeState,
+    OriginalBootstrapInputs, WorkerExit,
+};
 use crate::{
     defaultspack_authority::{
-        require_current_launch_identity, NativeSourceRoot, SignedApplicationResolver,
+        require_current_launch_identity, NativeApplicationSources, NativeSourceRoot,
+        SignedApplicationResolver,
     },
     dock_registration::{
         assemble_defaultspack_desktop_metadata, DefaultspackDesktopMetadata, LaunchMetadataUse,
     },
+    host_contract::ExecutionProfileIdentity,
     native_declared_artifacts::collect_for_native_launch,
     preparation_budget, registry_pack_receipt, AppConfig, ShutdownState,
 };
@@ -55,6 +63,9 @@ pub(crate) fn read_launch_metadata(
             ))
         }))
         .unwrap_or_else(|_| (Err(anyhow!("native Launch metadata worker failed")), false));
+        if !cleanup_verified {
+            runtime.0.jobs.cleanup_failed();
+        }
         let _ = send.send(result);
         WorkerExit { cleanup_verified }
     })?;
@@ -99,27 +110,45 @@ async fn collect_on_worker(
         Ok(admitted) => admitted,
         Err(error) => return (Err(error), true),
     };
-    let collection = collect_for_native_launch(sources, invocation, &cancellation);
-    tokio::pin!(collection);
-    let (result, cleanup_verified) = tokio::select! {
-        result = &mut collection => result,
-        () = tokio::time::sleep_until(deadline.into()) => {
-            cancellation.cancel();
-            // Keep the original worker and descriptors until physical cleanup.
-            collection.await
+    let observe_activation =
+        matches!(purpose, LaunchMetadataUse::Shell) && registry_pack_receipt_bound();
+    let (result, cleanup_verified) = {
+        let observer = LaunchActivationObserver {
+            app,
+            runtime,
+            job,
+            invocation: &invocation,
+            cancellation: &cancellation,
+            identity: &identity,
+            deadline,
+        };
+        let collection = collect_for_native_launch(
+            sources,
+            invocation.clone(),
+            &cancellation,
+            observe_activation,
+            async |inspection| observer.read(inspection).await,
+        );
+        tokio::pin!(collection);
+        tokio::select! {
+            result = &mut collection => result,
+            () = tokio::time::sleep_until(deadline.into()) => {
+                cancellation.cancel();
+                // Keep the original worker and descriptors until physical cleanup.
+                collection.await
+            }
         }
     };
     let metadata = result.and_then(|(sources, contributions)| {
         preparation_budget::check(deadline)?;
         require_current_launch_identity(&config, &identity)?;
-        if matches!(purpose, LaunchMetadataUse::Shell) && registry_pack_receipt_bound() {
+        if observe_activation {
             let invocation = job
                 .invocation()
                 .context("native Launch job lost its runtime invocation")?;
-            let _funding = invocation.control().reserve(
-                tobkiri_gate::ControlKind::Frame,
-                REGISTRY_VERIFICATION_BYTES,
-            )?;
+            let _funding = invocation
+                .control()
+                .reserve(ControlKind::Frame, REGISTRY_VERIFICATION_BYTES)?;
             registry_pack_receipt::verify_installed(
                 sources.root(NativeSourceRoot::Application),
                 REGISTRY_RECEIPT_SHA256,
@@ -143,4 +172,128 @@ async fn collect_on_worker(
         )
     });
     (metadata, cleanup_verified)
+}
+
+struct LaunchActivationObserver<'a> {
+    app: &'a AppHandle,
+    runtime: &'a NativeRuntimeState,
+    job: &'a JobTicket,
+    invocation: &'a NativeSetupInvocation,
+    cancellation: &'a CoreCancellation,
+    identity: &'a ExecutionProfileIdentity,
+    deadline: Instant,
+}
+
+impl LaunchActivationObserver<'_> {
+    async fn read(
+        &self,
+        inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    ) -> (Result<()>, bool) {
+        let Self {
+            app,
+            runtime,
+            job,
+            invocation,
+            cancellation,
+            identity,
+            deadline,
+        } = *self;
+        let admitted = (|| {
+            preparation_budget::check(deadline)?;
+            job.ensure_accepting(&runtime.0.jobs)?;
+            let budget = inspection.allocation_budget()?;
+            let (schemas, digest) = selected_setup_component::activation_schemas()?;
+            let read = OriginalActivationInspection::new(invocation)?;
+            let control = invocation.control().reserve(
+                ControlKind::Registration,
+                (2 * std::mem::size_of::<authority::Retained>() + 1024) as u64,
+            )?;
+            let source =
+                OriginalBootstrapInputs::new(app.clone(), job.source_custody()?, invocation, None)?;
+            Ok::<_, anyhow::Error>((source, read, control, budget, schemas, digest))
+        })();
+        let (source, read, control, budget, schemas, digest) = match admitted {
+            Ok(admitted) => admitted,
+            Err(error) => return (Err(error), true),
+        };
+
+        let observed =
+            caught(read.read(&source, cancellation, budget, schemas, &digest, deadline)).await;
+        let receipt = read.close_receipt();
+        if let Some(cleanup) = read.uncertain_cleanup() {
+            runtime
+                .0
+                .retained_authority
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(authority::Retained::new(
+                    cleanup,
+                    source,
+                    invocation.clone(),
+                    cancellation.clone(),
+                    control,
+                ));
+        }
+        if !receipt.verified() {
+            return (
+                Err(anyhow!("native Launch Authority cleanup is uncertain")),
+                false,
+            );
+        }
+
+        let active = match observed {
+            Ok(Ok(active)) => active,
+            Ok(Err(error)) => {
+                // The original Host remains responsible for pending recovery.
+                // Only a successful observation can supply native activation data.
+                log::debug!(
+                    "current v5 Authority observation is unavailable at {:?}",
+                    error.stage
+                );
+                return (Ok(()), true);
+            }
+            Err(error) => return (Err(anyhow!(error)), false),
+        };
+        let result = (|| {
+            preparation_budget::check(deadline)?;
+            job.ensure_accepting(&runtime.0.jobs)?;
+            inspection.with_source(|sources| {
+                validate_observed_activation(
+                    &active,
+                    identity,
+                    &sources.authority().catalog_revision,
+                )
+            })??;
+            log::info!("verified current v5 Profile Authority with the native Shell Launch Store");
+            Ok(())
+        })();
+        (result, true)
+    }
+}
+
+fn validate_observed_activation(
+    active: &OriginalActiveProfile,
+    identity: &ExecutionProfileIdentity,
+    catalog_revision: &str,
+) -> Result<()> {
+    let (_, _, plan) = active.records();
+    ensure!(
+        [
+            ("profile_id", identity.profile_id.as_str()),
+            ("profile_revision", identity.profile_revision.as_str()),
+            ("activation_id", identity.activation_id.as_str()),
+            ("plan_digest", identity.plan_digest.as_str()),
+        ]
+        .into_iter()
+        .all(|(field, expected)| {
+            active
+                .identity()
+                .get_key(field)
+                .is_some_and(|value| value.as_str() == Some(expected))
+        }) && plan
+            .get_key("catalog_revision")
+            .is_some_and(|value| value.as_str() == Some(catalog_revision)),
+        "native Authority activation differs from the signed Shell selection"
+    );
+    Ok(())
 }
