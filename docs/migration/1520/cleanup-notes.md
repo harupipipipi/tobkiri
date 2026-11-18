@@ -4445,10 +4445,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ファイル差し替え後にそのdigestが変わることを確認した。旧8,192バイトのパス上限と
   旧byte応答の上限を検証し、試行した初回readとpin数を別々に燃料計測へ出力する。
   305文書と148ピンの順序は模擬応答で固定原本と一致。Rust 249件、strict Clippy、Python
-  262件、producer 344件、CIスクリプト14件が通過した。OSエラーのファイル名の伝送は既存の
-  ASCII範囲に残る。UTF-8対応には既存の固定Unicode repr writerを生成側と照合側で共用し、
-  非UTF-8はsurrogateescapeを扱える別の伝送が必要。
+  262件、producer 344件、CIスクリプト14件が通過した。
   [物理I/Oをまとめた実Wasm CI 44328024810](https://github.com/harupipipipi/tobkiri/actions/runs/44328024810)。
+  `94a26fbf8` はCatalogIoの専用OSエラーで、固定CPythonのUTF-8ファイル名reprを生成側と
+  照合側で共用する。コードポイント用の配列は作らず、既存予算で走査と出力を計上する。
+  libcのエラー文字列も既存の有限コピーを共用する。実際の日本語・絵文字・NBSPを含む
+  欠落パスと、引用符・制御文字を含む例外の型、表示、ファイル名、ポリシー、確保の返却を確認。
+  非UTF-8のUnix名は別途surrogateescapeに対応する伝送が必要。305文書すべての原文、
+  独立した148件のpinとartifact rootを、同じ物理fixtureの呼び出し期限内で検証し、確保量は0に戻った。
+  Rust 251件、strict Clippy、固定CPythonテスト263件、CIスクリプト14件が通過した。
+  製品側でPythonのcatalog loaderを外す位置は`bootstrap_catalog.rs::load_bundle`のsource ownerと
+  実manifest確認の後。Rustが全5種類の順序付き目録を所有し、文書の識別子重複、Base/Shellの
+  canonical revision、実行目録のsource identity・canonical digest・pinを確認してから渡す必要がある。
+  復旧はnative目録合成後にAuthorityを開き、新規Setupのresolverは従来のAuthority snapshotに依存する。
   [定義CI 44320718878](https://github.com/harupipipipi/tobkiri/actions/runs/44320718878)
   は19件が通過後、旧期待件数18で失敗した。`b08f8c89d` で19に更新し、
   [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で
