@@ -4,13 +4,13 @@ mod support;
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc, time::Duration};
+use support::registry::{PROVIDER_COMMIT, PROVIDER_CONFIGURATION as CONFIGURATION};
 use support::{Host, canon, physical_temp, registry};
 use tobkiri_core::{Core, CoreConfig, Session};
 
 const PACK: &str = "local.provider-registry";
 const RESOURCE: &str = "local.provider-registry.resource@1.0";
 const MANAGE: &str = "local.provider-registry.manage@1.0";
-const CONFIGURATION: &str = "local.provider-registry.configuration@1.0";
 
 async fn call(session: &Session, shape: &str, operation: &str, arguments: Value) -> Result<Value> {
     let arguments = canon(&arguments)?;
@@ -103,6 +103,68 @@ async fn verify_local_preparation(session: &Session, profile: &str) -> Result<()
     Ok(())
 }
 
+async fn verify_local_commit(
+    sa: &Session,
+    sb: &Session,
+    host: &Host,
+    profile_a: &str,
+    profile_b: &str,
+    request: Value,
+) -> Result<()> {
+    let before_a = snapshot(sa, profile_a).await?;
+    let before_b = snapshot(sb, profile_b).await?;
+    let digest_for = |plan: &Value| -> Result<String> {
+        Ok(tobkiri_canon::digest(&canon(plan)?, tobkiri_canon::Variant::StrictV1)?.to_string())
+    };
+    let plan_a = call(sa, CONFIGURATION, "prepare-local", request.clone()).await?;
+    let plan_b = call(sb, CONFIGURATION, "prepare-local", request.clone()).await?;
+    ensure!(plan_a["expected_revision"] == plan_b["expected_revision"]);
+    let digest_a = digest_for(&plan_a)?;
+    let digest_b = digest_for(&plan_b)?;
+    let args_a = json!({"request":request["request"],"plan-digest":digest_a});
+    let args_b = json!({"request":request["request"],"plan-digest":digest_b});
+    ensure!(
+        call(sb, PROVIDER_COMMIT, "execute-local", args_b.clone())
+            .await
+            .is_err()
+    );
+    ensure!(
+        call(sa, PROVIDER_COMMIT, "execute-local", args_b)
+            .await
+            .is_err()
+    );
+    let mut edited = args_a.clone();
+    edited["request"]["endpoint"] = json!("http://127.0.0.1:1234/v1/");
+    ensure!(
+        call(sa, PROVIDER_COMMIT, "execute-local", edited)
+            .await
+            .is_err()
+    );
+
+    let permission = (PROVIDER_COMMIT.into(), "execute-local".into());
+    host.utility_ports.lock().unwrap().remove(&permission);
+    let denied = call(sa, PROVIDER_COMMIT, "execute-local", args_a.clone()).await;
+    host.utility_ports.lock().unwrap().insert(permission);
+    ensure!(
+        denied.is_err(),
+        "the trusted prompt denied the exact commit"
+    );
+    ensure!(snapshot(sa, profile_a).await? == before_a);
+    ensure!(snapshot(sb, profile_b).await? == before_b);
+
+    let result = call(sa, PROVIDER_COMMIT, "execute-local", args_a.clone()).await?;
+    ensure!(result == json!({"configured":true,"provider_instance_id":"provider.fixture"}));
+    ensure!(
+        call(sa, PROVIDER_COMMIT, "execute-local", args_a)
+            .await
+            .is_err()
+    );
+    let after = snapshot(sa, profile_a).await?;
+    ensure!(after["revision"].as_u64() == before_a["revision"].as_u64().map(|r| r + 1));
+    ensure!(snapshot(sb, profile_b).await? == before_b);
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires a source-built provider Registry Wasm component"]
 async fn provider_registry_uses_gated_private_storage_and_profile_revisions() -> Result<()> {
@@ -113,25 +175,36 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         directory.path(),
         Path::new(&artifact),
         PACK,
-        &["resource", "manage", "routing", "configuration"],
+        &[
+            "resource",
+            "manage",
+            "routing",
+            "configuration",
+            "configuration-commit",
+        ],
         &[],
     )?];
     let a = registry::profile(
         "prof_provider_a",
         &packs,
+        &[RESOURCE, MANAGE, CONFIGURATION, PROVIDER_COMMIT],
+    )?;
+    let b = registry::profile(
+        "prof_provider_b",
+        &packs,
         &[RESOURCE, MANAGE, CONFIGURATION],
     )?;
-    let b = registry::profile("prof_provider_b", &packs, &[RESOURCE, MANAGE])?;
     let host = Arc::new(Host::default());
     host.utility_ports.lock().unwrap().extend([
         (RESOURCE.into(), "snapshot".into()),
         (MANAGE.into(), "apply".into()),
+        (CONFIGURATION.into(), "prepare-local".into()),
     ]);
     host.approve_literal_user(&b)?;
     host.utility_ports
         .lock()
         .unwrap()
-        .insert((CONFIGURATION.into(), "prepare-local".into()));
+        .insert((PROVIDER_COMMIT.into(), "execute-local".into()));
     host.approve_literal_user(&a)?;
     let data = directory.path().join("data");
     let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host.clone())?;
@@ -153,14 +226,8 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         let local = local_request(&json!({
             "connection_name":"fixture", "endpoint":"http://127.0.0.1:1234/v1"
         }));
-        ensure!(
-            call(&sb, CONFIGURATION, "prepare-local", local.clone())
-                .await
-                .is_err(),
-            "Profile B did not grant the preparation port"
-        );
         save(&sa, a.id.as_str(), "Local A", 0).await?;
-        let plan = call(&sa, CONFIGURATION, "prepare-local", local).await?;
+        let plan = call(&sa, CONFIGURATION, "prepare-local", local.clone()).await?;
         ensure!(plan["expected_revision"] == 1 && plan["profile_id"] == a.id.as_str());
         let stale = save(&sa, a.id.as_str(), "Stale A", 0).await.unwrap_err();
         ensure!(
@@ -185,6 +252,7 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
             ensure!(provider.get("credential_handle").is_none());
             ensure!(provider.get("endpoint").is_none());
         }
+        verify_local_commit(&sa, &sb, &host, a.id.as_str(), b.id.as_str(), local).await?;
         Ok(())
     }
     .await;
@@ -201,6 +269,7 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
     reopened.close().await?;
     let persisted = persisted?;
     ensure!(persisted["providers"][0]["display_name"] == "Local A");
-    ensure!(persisted["revision"] == 1);
+    ensure!(persisted["revision"] == 2);
+    ensure!(persisted["providers"][1]["provider_instance_id"] == "provider.fixture");
     Ok(())
 }

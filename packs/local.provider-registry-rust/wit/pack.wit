@@ -42,6 +42,15 @@ interface configuration {
   prepare-local: func(request: local-connection) -> result<json, error>;
 }
 
+interface configuration-commit {
+  use configuration.{local-connection};
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// This operation requires a separate grant. The digest binds the
+  /// canonical base plan returned by prepare-local.
+  execute-local: func(request: local-connection, plan-digest: string) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
@@ -49,4 +58,5 @@ world pack {
   export manage;
   export routing;
   export configuration;
+  export configuration-commit;
 }

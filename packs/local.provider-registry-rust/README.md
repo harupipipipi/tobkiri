@@ -22,6 +22,12 @@ the credential port. The separately granted Wasm `configuration.prepare-local`
 port takes a typed proposal with no key or Profile selector. It reads the
 active Profile's private Registry and returns the base plan without a write.
 The existing GUI still applies its own generation budget and Broker lifecycle.
+The separate `configuration-commit.execute-local` port is exercised through
+the trusted Core User entry. It binds the request to the canonical base plan
+digest, stages the record, and returns success after the SQL compare-and-swap.
+It does not retry or infer that an unconfirmed write succeeded. The existing
+GUI's approved-operation status and credential transport still need to be
+wired to the new runtime.
 Local known policy/CAS failures short-circuit before a
 snapshot read; remote failures retain the original compensation evidence order.
 
@@ -33,7 +39,8 @@ cargo test --locked --manifest-path packs/Cargo.toml \
 ```
 
 Build the component and verify local preparation against the original Python
-plans, plus save, conflict, Profile isolation, and recovery through Core:
+plans, plus the separately approved save, stale-plan refusal, Profile
+isolation, and recovery through Core:
 
 ```sh
 cargo build --locked --manifest-path packs/Cargo.toml \

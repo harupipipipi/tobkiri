@@ -55,7 +55,7 @@ jobs:
           -p tobkiri-pack-model-registry-rust -p tobkiri-pack-provider-registry-rust
           -p tobkiri-pack-saved-conversation-rust -p tobkiri-pack-openai-compat-provider
           --features tobkiri-pack-model-registry-rust/component,tobkiri-pack-provider-registry-rust/component,tobkiri-pack-saved-conversation-rust/component
-      - name: Verify local provider preparation in the bound Wasm Registry
+      - name: Verify local provider preparation and approved save in the Wasm Registry
         shell: bash
         run: |
           export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"

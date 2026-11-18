@@ -15,6 +15,8 @@ use tobkiri_profile::{PackPin, Profile};
 pub(crate) const PROVIDER_PACK: &str = "local.provider-registry";
 pub(crate) const PROVIDER_RESOURCE: &str = "local.provider-registry.resource@1.0";
 pub(crate) const PROVIDER_MANAGE: &str = "local.provider-registry.manage@1.0";
+pub(crate) const PROVIDER_CONFIGURATION: &str = "local.provider-registry.configuration@1.0";
+pub(crate) const PROVIDER_COMMIT: &str = "local.provider-registry.configuration-commit@1.0";
 
 pub(crate) struct RegistryPack {
     pub(crate) pin: PackPin,

@@ -9,6 +9,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use support::registry::{PROVIDER_COMMIT, PROVIDER_CONFIGURATION};
 use tobkiri_canon::ids::ProfileId;
 use tobkiri_core::UiAttachment;
 use tobkiri_manifest::{
@@ -222,7 +223,12 @@ async fn registered_core(
     let mut profile = registry::profile(
         "prof_registered_conversation",
         &[model, provider, ui, openai, saved],
-        &[SETTINGS, PROVIDER_MANAGE, SAVED_MODEL],
+        &[
+            SETTINGS,
+            PROVIDER_CONFIGURATION,
+            PROVIDER_COMMIT,
+            SAVED_MODEL,
+        ],
     )?;
     profile.startup.ui = Some(UI.parse()?);
     profile
@@ -243,7 +249,8 @@ async fn registered_core(
     host.utility_ports.lock().unwrap().extend([
         (SETTINGS.into(), "list-models".into()),
         (SETTINGS.into(), "save-model".into()),
-        (PROVIDER_MANAGE.into(), "apply".into()),
+        (PROVIDER_CONFIGURATION.into(), "prepare-local".into()),
+        (PROVIDER_COMMIT.into(), "execute-local".into()),
         (SAVED_MODEL.into(), "select".into()),
     ]);
     host.approve_literal_user(&profile)?;
@@ -298,35 +305,42 @@ fn admitted_ui(session: &Session) -> Result<UiAttachment> {
 async fn save_connection(
     session: &Session,
     profile: &ProfileId,
-    provider: &str,
+    name: &str,
     display_name: &str,
     origin: &str,
     revision: u64,
 ) -> Result<u64> {
-    let connection = call(
+    let request = json!({
+        "connection-name":name,
+        "endpoint":format!("{origin}/v1"),
+        "display-name":display_name,
+        "catalog-provider-id":null,
+        "capabilities":null
+    });
+    let plan = call(
         session,
-        PROVIDER_MANAGE,
-        "apply",
-        json!({"payload": {
-            "operation": "save",
-            "profile_id": profile.as_str(),
-            "expected_revision": revision,
-            "record": {
-                "provider_instance_id": provider,
-                "adapter_id": "local-openai-compatible",
-                "display_name": display_name,
-                "endpoint": format!("{origin}/v1"),
-                "credential_handle": null,
-                "enabled": true
-            }
-        }}),
+        PROVIDER_CONFIGURATION,
+        "prepare-local",
+        json!({"request":request}),
     )
     .await?;
-    let saved_revision = connection["store_revision"]
-        .as_u64()
-        .context("missing Provider Registry revision")?;
-    ensure!(connection["action"] == "saved" && saved_revision == revision + 1);
-    Ok(saved_revision)
+    ensure!(plan["profile_id"] == profile.as_str() && plan["expected_revision"] == revision);
+    let digest = tobkiri_canon::digest(&canon(&plan)?, tobkiri_canon::Variant::StrictV1)?;
+    let connection = call(
+        session,
+        PROVIDER_COMMIT,
+        "execute-local",
+        json!({"request":request,"plan-digest":digest.to_string()}),
+    )
+    .await?;
+    ensure!(
+        connection
+            == json!({
+                "configured":true, "provider_instance_id":format!("provider.{name}")
+            })
+    );
+    // save_model independently checks this revision against the Provider Registry.
+    Ok(revision + 1)
 }
 
 async fn stream(
@@ -398,7 +412,7 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
             let model = json!({
                 "model_profile_id": format!("registered-{route}"),
                 "model_id": format!("llama/{route}"),
-                "provider_instance_id": route,
+                "provider_instance_id": format!("provider.{route}"),
                 "display_name": route,
                 "expected_revision": revision,
                 "provider_registry_revision": provider_revision,
@@ -453,7 +467,8 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
 async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
     const MODEL: &str = "gemma3-1b-local";
     const SELECTION: &str = "saved-gemma";
-    const PROVIDER: &str = "gemma-loopback";
+    const PROVIDER_NAME: &str = "gemma-loopback";
+    const PROVIDER: &str = "provider.gemma-loopback";
     // Keep this CPU-only probe within the provider fixture's 20-second budget.
     const CAP: u32 = 6;
     let origin = std::env::var("TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN")
@@ -486,8 +501,15 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
     });
     let session = core.start(&profile).await?;
     let saved = async {
-        let provider_revision =
-            save_connection(&session, &profile, PROVIDER, "Local llama.cpp", &origin, 0).await?;
+        let provider_revision = save_connection(
+            &session,
+            &profile,
+            PROVIDER_NAME,
+            "Local llama.cpp",
+            &origin,
+            0,
+        )
+        .await?;
         let model = json!({
             "model_profile_id": SELECTION,
             "model_id": MODEL,

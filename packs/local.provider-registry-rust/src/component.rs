@@ -8,7 +8,7 @@ wit_bindgen::generate!({
 
 use crate::{
     component_store::SqlDocumentStore,
-    configuration::prepare_configuration,
+    configuration::{configured_result, prepare_configuration, stage_local_configuration},
     failure::{SourceError, SourceResult},
     host::{MANAGE_OPERATION, READONLY_RESOURCE_OPERATION, invoke_manage, invoke_readonly},
     registry::Registry,
@@ -77,33 +77,72 @@ impl exports::local::provider_registry::routing::Guest for Pack {
 
 impl exports::local::provider_registry::configuration::Guest for Pack {
     fn prepare_local(request: LocalConnection) -> Result<String, Error> {
-        let mut payload = object([
-            ("connection_name", PyValue::String(request.connection_name)),
-            ("endpoint", PyValue::String(request.endpoint)),
-            ("protocol", text("local-openai-compatible")),
-            ("key_value", text("")),
-        ]);
-        if let Some(catalog_id) = request.catalog_provider_id {
-            put(
-                &mut payload,
-                "catalog_provider_id",
-                PyValue::String(catalog_id),
-            );
-        }
-        if let Some(display_name) = request.display_name {
-            put(&mut payload, "display_name", PyValue::String(display_name));
-        }
-        if let Some(capabilities) = request.capabilities {
-            put(
-                &mut payload,
-                "capabilities",
-                PyValue::Array(capabilities.into_iter().map(PyValue::String).collect()),
-            );
-        }
         let mut registry = open_registry(&current_profile()?)?;
+        let payload = local_request(request);
         let plan = prepare_configuration(&mut registry, &payload).map_err(source_error)?;
         encode_reply(&plan)
     }
+}
+
+impl exports::local::provider_registry::configuration_commit::Guest for Pack {
+    fn execute_local(request: LocalConnection, plan_digest: String) -> Result<String, Error> {
+        let expected = tobkiri_canon::Digest::parse(&plan_digest).map_err(|_| {
+            boundary_error(
+                ErrorCode::Invalid,
+                "provider configuration digest is invalid",
+            )
+        })?;
+        let mut registry = open_registry(&current_profile()?)?;
+        let payload = local_request(request);
+        let plan = prepare_configuration(&mut registry, &payload).map_err(source_error)?;
+        let plan_bytes = dumps(&plan).map_err(codec_error)?;
+        let canonical = core_json(&plan_bytes)?;
+        let current = tobkiri_canon::digest(&canonical, tobkiri_canon::Variant::StrictV1)
+            .map_err(canon_error)?;
+        if current != expected {
+            return Err(boundary_error(
+                ErrorCode::Denied,
+                "provider configuration changed after preparation",
+            ));
+        }
+        let saved =
+            stage_local_configuration(&mut registry, &payload, &plan).map_err(source_error)?;
+        // Check the new record and revision, as in manage.apply, before
+        // dispatching the consumed pending write.
+        encode_reply(&saved)?;
+        let reply = encode_reply(&configured_result(
+            saved.get("provider").expect("a staged save has a provider"),
+        ))?;
+        registry.store_mut().commit().map_err(source_error)?;
+        Ok(reply)
+    }
+}
+
+fn local_request(request: LocalConnection) -> PyValue {
+    let mut payload = object([
+        ("connection_name", PyValue::String(request.connection_name)),
+        ("endpoint", PyValue::String(request.endpoint)),
+        ("protocol", text("local-openai-compatible")),
+        ("key_value", text("")),
+    ]);
+    if let Some(catalog_id) = request.catalog_provider_id {
+        put(
+            &mut payload,
+            "catalog_provider_id",
+            PyValue::String(catalog_id),
+        );
+    }
+    if let Some(display_name) = request.display_name {
+        put(&mut payload, "display_name", PyValue::String(display_name));
+    }
+    if let Some(capabilities) = request.capabilities {
+        put(
+            &mut payload,
+            "capabilities",
+            PyValue::Array(capabilities.into_iter().map(PyValue::String).collect()),
+        );
+    }
+    payload
 }
 
 export!(Pack);
@@ -143,19 +182,25 @@ fn open_registry(profile: &str) -> Result<Registry<SqlDocumentStore, CoreClock>,
 
 fn encode_reply(value: &PyValue) -> Result<String, Error> {
     let encoded = dumps(value).map_err(codec_error)?;
-    tobkiri_canon::parse(encoded.as_bytes(), tobkiri_canon::Variant::StrictV1).map_err(
-        |error| match error {
-            tobkiri_canon::Error::Limit(_) => boundary_error(
-                ErrorCode::LimitExceeded,
-                "provider registry reply exceeds Core JSON limits",
-            ),
-            _ => boundary_error(
-                ErrorCode::Invalid,
-                "provider registry reply is outside the Core JSON domain",
-            ),
-        },
-    )?;
+    core_json(&encoded)?;
     Ok(encoded)
+}
+
+fn core_json(encoded: &str) -> Result<tobkiri_canon::CanonValue, Error> {
+    tobkiri_canon::parse(encoded.as_bytes(), tobkiri_canon::Variant::StrictV1).map_err(canon_error)
+}
+
+fn canon_error(error: tobkiri_canon::Error) -> Error {
+    match error {
+        tobkiri_canon::Error::Limit(_) => boundary_error(
+            ErrorCode::LimitExceeded,
+            "provider registry reply exceeds Core JSON limits",
+        ),
+        _ => boundary_error(
+            ErrorCode::Invalid,
+            "provider registry reply is outside the Core JSON domain",
+        ),
+    }
 }
 
 fn codec_error(error: CodecError) -> Error {

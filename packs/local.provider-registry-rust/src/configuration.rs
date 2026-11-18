@@ -448,7 +448,7 @@ fn connection_record(request: &Request<'_>, plan: &PyValue, handle: PyValue) -> 
     record
 }
 
-fn configured_result(record: &PyValue) -> PyValue {
+pub(crate) fn configured_result(record: &PyValue) -> PyValue {
     object([
         ("configured", PyValue::Bool(true)),
         (
@@ -459,6 +459,29 @@ fn configured_result(record: &PyValue) -> PyValue {
                 .clone(),
         ),
     ])
+}
+
+/// Stage a local configuration whose canonical plan has already been checked.
+/// The caller must confirm the store's commit before returning success.
+#[cfg(feature = "component")]
+pub(crate) fn stage_local_configuration<S: DocumentStore, C: Clock>(
+    registry: &mut Registry<S, C>,
+    request_payload: &PyValue,
+    plan: &PyValue,
+) -> SourceResult<PyValue> {
+    let request = configuration_request(request_payload)?;
+    if request.protocol != "local-openai-compatible" {
+        return Err(SourceError::permission("local provider configuration is required"));
+    }
+    let revision = get(plan, "expected_revision");
+    // The next persisted revision must still be readable by Core's StrictV1.
+    if !matches!(revision, PyValue::Int(value)
+        if value.parse::<u64>().is_ok_and(|n| n < tobkiri_canon::MAX_SAFE_INTEGER))
+    {
+        return Err(SourceError::value("provider registry revision is outside the Core JSON domain"));
+    }
+    let record = registry.prepare_save(&connection_record(&request, plan, PyValue::Null), revision)?;
+    registry.save(&record, revision)
 }
 
 fn save_snapshot<S: DocumentStore, C: Clock>(

@@ -3918,6 +3918,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   component有効のstrict Clippyが通過。実1B CIに同じ検証を追加。
   通常GUIは旧Registryの正本と世代予算を使っており、この読み取り専用Wasmを接続するには
   その正本の二度読み・revision競合の扱いを保つHost側の結線が要る。
+  キー不要の保存は別の `configuration-commit.execute-local` に分けた。試験はCoreの
+  信頼済みUser入口を使い、読取りだけのProfileには書込みを付与しない。事前検証内容を
+  正規化JSONのdigestで固定し、実行中Profileの現行revisionで再検証する。応答がCoreの
+  JSONで表せることを確認し、条件付きSQLite書込みが1行を確定した後だけ成功を返す。
+  不確定な書込みは繰り返さず、状態の一致だけから今回の承認が確定したと扱わない。
+  既存のWITの一般エラーではCore内部の不確定書込み理由が外側に残らず、通常GUIの
+  approved operation statusへの接続時に実行固有の確定・不確定を保持する必要がある。
+  2 Profileの同revisionで他方の計画、元のURL表記の変更、承認拒否、旧計画の再利用を拒否し、
+  再起動後の記録を確認した。ローカルSSE試験は事前検証→承認済み保存→モデル保存→会話で使用。
+  Wasm/Core 4件、component単体56件、strict Clippyが通過。実Gemmaの再起動経路も同じ保存に切替。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と
