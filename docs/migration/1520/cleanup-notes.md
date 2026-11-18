@@ -4587,6 +4587,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   文字列・キーのUTF-8検証、ノード・サイズ上限、重複キー・数値の検査と例外を維持する。
   固定CPython 3.13.16で実物305文書・24ページの結果が一致し、11回の中央値は
   13.730 msから7.465 ms。producer 349件が通過。Wasm上の復旧は同じ実行上限で再計測する。
+  [3fd83202b のmacOS実Wasm 44364569859](https://github.com/harupipipipi/tobkiri/actions/runs/44364569859)
+  は、固定原本の結果を照合しながら、同じStoreで復旧時のProfile表の入替えとAuthority DBの初期化を
+  通過した。次の確認は、この派生Appコンポーネントを封印済みLauncherへ組み込む段階。
+  既存 `desktop-installers.yml` のCI用DMGは `.app` をビルド後に署名・検証して包む。
+  現行の冷起動試験はKernelとパネルまで。実DMGのSetup確認・公開・Launchには別の検証が要る。
   `2535f6dbd` は `adopt_owned_bundle` のPack再パースを外し、構造と意味を検証した同じ文書からpin情報を抽出
   する。必要な候補だけPack ID・ハッシュ・種類・依存IDを保持し、全行受領後にロック順で採用。
   旧readerとの直接比較で、非ASCIIを含む依存ID順、設定なしと空の違い、欠損時の結果が一致した。
