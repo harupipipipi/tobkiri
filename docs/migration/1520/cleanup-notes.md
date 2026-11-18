@@ -4404,7 +4404,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rust 242件、strict Clippy、Python 255件、初回確定の物理fixtureが通過した。固定原本で153
   Packと物理macOS Shellを読み、登録済み候補から確認文書とpreviewを得る原本側の試験も通過。
   [実Wasmの燃料計測 44310299404](https://github.com/harupipipipi/tobkiri/actions/runs/44310299404)
-  は `994b070e9` の読取り境界を測る。成果物生成は成功し、macOSの9件比較を実行中。
+  は `994b070e9` を計測した。先行拒否5件が一致し、読取りに進む4件は燃料を使い切った。
+  9件とも退役後の確保は0、最大58,631,132 B。同梱正常系の単独計測では305文書の28件目を
+  読み終え、pin再読へは進まなかった。catalog export直前の残燃料は1,262,410,526。
+  完了した27文書でread→shapeは385,870,206、shape→次のresolveは332,895,039を消費し、
+  合計はexport内の約57%。これはインポート入口間の差分で、ゲスト側の応答復号、digest計算、
+  構造確認後のstrict parse・意味検証、次の要求を含む。次は同じ物理read・序数・digestを検証する
+  Rust側で構造検証時の文書を意味検証と投影に共用し、base64の往復と二重パースを減らす。
+  root→最初のis-symlinkは238,292,598、ロックread→最初のresolveは112,678,538。懸念される
+  遅延importの内訳は切り分けて測る。上限は2B・30秒・64MiBのまま。
   `f2fd7528a` は解決後の固定呼び出しで、登録revisionと実catalogの定義digestが一致したときに
   resolver側のrootでAuthorityを新たに開く。実Shellを再検証し、閉じた後に4つのactivation
   識別子を検証済みポインターと比較する。最初の登録済みSetup検証と同じ稼働記録読取りを共用し、
@@ -4419,6 +4427,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   物理macOS fixtureで変更なし、古いShell指定、別activationに切り替えられたポインターを比較。
   一つのfixture内の別レビューには個別のinvocationを使い、各回の確保量が0へ戻ることを確認した。
   固定CPython上で元の実resolverと確認を呼び、Pack pin単独と旧定義情報を併用したdigestを照合。
+  `b353a181c` は登録済みSetupで、同梱と一致しない Normal/Application Pack の読み取りを接続。
+  active PackとBase/ShellからID順に探索し、登録定義のpinを登録順で検証する。対象の単一pinで
+  署名済みrootを独立再取得し、物理manifestと実行目録を読み直す。実行目録の再読はID順、元の
+  `catalog_with_packs` が受け取る追加は探索順、置換は旧位置。同じ初回getterに結び付いた中間
+  カタログを更新判断より前に作り、依存・binding・後継pinの確認に同じ有効なメタデータを使う。
+  Pack pin復旧では登録順に別の探索を行い、最新レジストリで既存Provider pinだけの直接の後継を
+  証明した場合に登録済み定義を使う。確認が必要なPackや実行権限はこの段階で付与しない。
+  同梱物理rootのフォールバック、Host Extensionの互換性検証、任意Packの承認再照合、確定済み
+  置換の保存は後続。復旧用探索と共用できるのは既存の物理readと検証で、入口のpinと順序を残す。
+  Rust 247件、Python 260件、strict Clippy、固定原本の署名済み2版を使う比較、物理Shell fixtureが
+  通過。前回[Ubuntu CI 44316484721](https://github.com/harupipipipi/tobkiri/actions/runs/44316484721)
+  ではfixture内の独立した複数レビューが一つの30秒期限を共有して失敗した。この比較では独立した
+  レビューごとに同じ上限のinvocationを使い、ローカルで各回の後処理と結果を確認した。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
