@@ -4184,6 +4184,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   getter呼出は後続。journal作成以降の保存と実Wasm上の連続実行は未検証。
   Rust 221件とstrict Clippy、PythonのHarness Native 248件が通過した。解決後に親のaliasが
   変わる場合、同じ要求の再実行、古い参照、参照解放、元のKeyErrorを確認した。
+  `bfa524be0` は同じ発行lockの内側で照合済みの候補と最初の承認を比較し、保持したHost
+  pointerを含めて初回journalのpayloadを組み立てる。別Profileを選択済みの場合も、
+  ロック取得時のpointerを参照する。元Pythonを固定コミットから実行して得た署名済み
+  journalと、前任なし・別Profileありの両方でハッシュとpayloadが一致した。
+  現在の本番経路はpayload構築までで、鍵・journalの書き込みはテスト経路で検証した。
+  `b6f049a63` は通常の定義登録をテスト経路に移し、既存の初回作成・世代CAS・比較・
+  履歴追記を共用した。同一内容の再実行、作成競合後の再読、未変更テンプレート以外の
+  更新拒否を確認した。初回のjournal、通常・inactive定義登録、workspaceを既存の
+  activation処理とつなぐ段階が残る。Rust 225件、原本比較1件、strict Clippy、
+  workflow補助22件が通過した。ローカル原本比較にはPython 3.13.9を使用した。
   初回保存も既存の4相writerとHost pointer発行を再利用できる。保存前にProfile→Lock→Planの
   schema検証を行い、既存のrecord graph検査からActivationに依存しない部分を共有できる。
   仮のActivationを作らず、原本どおりrecover後、artifactの検証と予約の前で3レコードを検証する。
