@@ -1,6 +1,10 @@
 mod artifact_integrity;
 mod ci_e2e_app_data;
 mod config;
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+mod native_provider_prepare_ipc;
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+mod native_provider_prepare_service;
 mod native_harness_host_inputs;
 #[cfg(feature = "native-harness-bootstrap")]
 mod native_harness_bootstrap;
@@ -4489,6 +4493,26 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     app.manage(AllowedNavigationPorts(Arc::clone(
         &ctx.allowed_navigation_ports,
     )));
+    #[cfg(feature = "native-harness-bootstrap")]
+    let native_runtime =
+        native_harness_bootstrap::NativeRuntimeState::new(Arc::clone(&shutdown_flag));
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    let native_runtime = {
+        let mut runtime = native_runtime;
+        if kernel_manager::native_first_setup_enabled(&config)
+            && native_harness_bootstrap::registry_pack_receipt_bound()
+        {
+            match native_provider_prepare_service::ProviderPrepareService::start(app.handle().clone())
+            {
+                Ok((service, endpoint)) => {
+                    runtime.attach_provider_socket(service)?;
+                    config.native_provider_prepare_endpoint = Some(endpoint);
+                }
+                Err(_) => log::warn!("native Provider preparation socket is unavailable"),
+            }
+        }
+        runtime
+    };
     let km = Arc::new(Mutex::new(KernelManager::new(
         &config,
         panel_bootstrap_secret.clone(),
@@ -4519,9 +4543,7 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     }
     app.manage(config.clone());
     #[cfg(feature = "native-harness-bootstrap")]
-    app.manage(native_harness_bootstrap::NativeRuntimeState::new(
-        Arc::clone(&shutdown_flag),
-    ));
+    app.manage(native_runtime);
     #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap", feature = "native-setup-review"))]
     if let Some(mtm) = objc2::MainThreadMarker::new() {
         app.manage(SetupReviewWindowState::new(mtm));

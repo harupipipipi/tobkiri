@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 import threading
@@ -12,7 +14,11 @@ from typing import Any
 from tobkiri_host.admission import ResourceAmount
 from tobkiri_host.models import RequestContext
 from tobkiri_protocol.canonical import canonical_digest
-from tobkiri_protocol.secure_persistence import SecureDirectory, SecurePersistenceError
+from tobkiri_protocol.secure_persistence import (
+    SecureDirectory,
+    SecurePersistenceError,
+    SecurePersistenceLimitError,
+)
 
 
 FUNCTION = "rumi_provider_registry_pack.provider-configure.prepare"
@@ -21,6 +27,31 @@ OPERATION = "rumi_provider_registry_pack.provider-configure-prepare"
 DOCUMENT_LIMIT = 1024 * 1024
 # Two decoded Python strings can each occupy four bytes per source byte.
 MINIMUM_PREPARE_MEMORY = 10 * DOCUMENT_LIMIT
+
+_http_scope: ContextVar[tuple[str, Callable[[], None]] | None] = ContextVar(
+    "provider_prepare_http_scope", default=None,
+)
+
+
+class NativeProviderRegistryRequiresLegacyRead(RuntimeError):
+    """The fixed Provider Registry exceeds the native observation envelope."""
+
+
+@contextmanager
+def bind_provider_prepare_http_scope(
+    instance: str, check: Callable[[], None],
+) -> Iterator[None]:
+    """Bind the currently serving Host capture through nested Broker work."""
+    token = _http_scope.set((instance, check))
+    try:
+        yield
+    finally:
+        _http_scope.reset(token)
+
+
+def current_provider_prepare_http_scope() -> tuple[str, Callable[[], None]] | None:
+    """Borrow the original HTTP server lifecycle and its live capture check."""
+    return _http_scope.get()
 
 
 def is_keyless_local(payload: Mapping[str, Any]) -> bool:
@@ -60,6 +91,7 @@ class NativeProviderPrepareBorrow:
         deadline_monotonic: float,
         resources: ResourceAmount,
         guard: Callable[[], None],
+        runtime_instance: str | None = None,
     ) -> None:
         self._context = context
         self._request = MappingProxyType({
@@ -71,6 +103,7 @@ class NativeProviderPrepareBorrow:
         self._deadline = deadline_monotonic
         self._resources = resources
         self._guard = guard
+        self._runtime_instance = runtime_instance
         self._thread = threading.get_ident()
         self._active = True
         self._read_attempts = 0
@@ -101,6 +134,12 @@ class NativeProviderPrepareBorrow:
         return self._deadline
 
     @property
+    def runtime_instance(self) -> str | None:
+        """Identify the live original HTTP server owning the request."""
+        self.assert_current()
+        return self._runtime_instance
+
+    @property
     def resources(self) -> ResourceAmount:
         """Return the capacity reserved by the original Broker admission."""
         self.assert_current()
@@ -129,6 +168,10 @@ class NativeProviderPrepareBorrow:
             if opened:
                 raise
             content = None
+        except SecurePersistenceLimitError:
+            raise NativeProviderRegistryRequiresLegacyRead(
+                "Provider Registry exceeds the native observation envelope",
+            ) from None
         except SecurePersistenceError as error:
             if opened or not isinstance(error.__cause__, FileNotFoundError):
                 raise

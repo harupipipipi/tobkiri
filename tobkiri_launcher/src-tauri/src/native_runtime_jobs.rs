@@ -516,6 +516,19 @@ impl JobJoin {
         Ok(())
     }
 
+    /// Poll physical cleanup while the fixed Provider connection services its peer.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn try_join(&self) -> Result<bool> {
+        self.jobs.reap_joined(Some(self.id))?;
+        let state = self
+            .jobs
+            .0
+            .state
+            .lock()
+            .map_err(|_| LifecycleError("native jobs are poisoned"))?;
+        self.check_joined(&state)
+    }
+
     /// Prove that this specific thread joined and released its source. A
     /// timeout leaves the original registration and owner in the tracker.
     pub(crate) fn join_until(&self, deadline: Instant) -> Result<()> {
@@ -527,17 +540,8 @@ impl JobJoin {
                 .state
                 .lock()
                 .map_err(|_| LifecycleError("native jobs are poisoned"))?;
-            let Some(job) = state.jobs.iter().find(|job| job.id == self.id) else {
+            if self.check_joined(&state)? {
                 return Ok(());
-            };
-            if job.joined {
-                ensure!(
-                    job.cleanup_verified,
-                    LifecycleError("native job cleanup was not verified")
-                );
-                if !job.source.live.load(Ordering::Acquire) {
-                    return Ok(());
-                }
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
             ensure!(
@@ -552,6 +556,20 @@ impl JobJoin {
                     .map_err(|_| LifecycleError("native job join is poisoned"))?,
             );
         }
+    }
+
+    fn check_joined(&self, state: &State) -> Result<bool> {
+        let Some(job) = state.jobs.iter().find(|job| job.id == self.id) else {
+            return Ok(true);
+        };
+        if !job.joined {
+            return Ok(false);
+        }
+        ensure!(
+            job.cleanup_verified,
+            LifecycleError("native job cleanup was not verified")
+        );
+        Ok(!job.source.live.load(Ordering::Acquire))
     }
 }
 

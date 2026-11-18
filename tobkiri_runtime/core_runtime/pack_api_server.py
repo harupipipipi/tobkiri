@@ -1289,9 +1289,27 @@ class PackAPIHandler(
         """Dispatch one contract request with one explicit capture scope."""
 
         from .bootstrap.profile_capture import profile_capture_scope
+        from .provider_prepare_native_v4 import bind_provider_prepare_http_scope
 
         with profile_capture_scope():
-            return self._handle_contract_request_scoped(method)
+            instance = self._current_native_provider_prepare_instance()
+            if instance is None:
+                return self._handle_contract_request_scoped(method)
+
+            def check() -> None:
+                if self._current_native_provider_prepare_instance() != instance:
+                    raise PermissionError("Provider preparation HTTP capture changed")
+
+            with bind_provider_prepare_http_scope(instance, check):
+                return self._handle_contract_request_scoped(method)
+
+    def _current_native_provider_prepare_instance(self) -> str | None:
+        """Return the nonce of the still-published original HTTP handler."""
+        source = self._request_snapshot_source
+        instance = getattr(self._request_snapshot_owner, "_native_provider_prepare_instance", None)
+        if not isinstance(instance, str) or source is None or source() is not type(self):
+            return None
+        return instance
 
     def _handle_contract_request_scoped(self, method: str) -> bool:
         """Resolve, authenticate, and dispatch one exact frontend operation."""
@@ -2311,6 +2329,9 @@ class PackAPIHandler(
         )
         if challenge_response:
             health["desktop_challenge_response"] = challenge_response
+            instance = self._current_native_provider_prepare_instance()
+            if identity is not None and instance is not None:
+                health["native_provider_prepare_instance"] = instance
         self._send_response(APIResponse(True, data=health))
 
     @classmethod
@@ -3529,6 +3550,7 @@ class PackAPIServer:
         self._runtime_capture_condition = threading.Condition(self._lifecycle_lock)
         self._active_runtime_captures = 0
         self._lifecycle_generation = 0
+        self._native_provider_prepare_instance = None
         self._runtime_refresh_sequence = 0
         self._lifecycle_state = "stopped"
         self._stop_complete = threading.Event()
@@ -3549,6 +3571,9 @@ class PackAPIServer:
                 return
             self._lifecycle_generation += 1
             lifecycle_generation = self._lifecycle_generation
+            self._native_provider_prepare_instance = (
+                uuid.uuid4().hex if os.environ.get("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET") else None
+            )
             self._lifecycle_state = "starting"
             self._stop_complete.clear()
             self._stop_failed = False

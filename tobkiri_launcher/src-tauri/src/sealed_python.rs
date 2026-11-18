@@ -253,6 +253,16 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
     let Some(key) = key.to_str() else {
         return false;
     };
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack)
+        && matches!(
+            key,
+            crate::native_provider_prepare_service::SOCKET_ENV
+                | crate::native_provider_prepare_service::OWNER_ENV
+        )
+    {
+        return true;
+    }
     let common = [
         "RUMI_HOME",
         "RUMI_USER_DATA",

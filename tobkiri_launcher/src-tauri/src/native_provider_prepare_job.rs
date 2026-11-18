@@ -4,7 +4,7 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc,
+        mpsc, Arc, Mutex,
     },
     time::Instant,
 };
@@ -26,18 +26,36 @@ use super::{
 use crate::{
     defaultspack_authority::{require_current_launch_identity, SignedApplicationResolver},
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
-    host_contract::ExecutionProfileIdentity,
     native_runtime_jobs::{JobJoin, JobTicket, WorkerExit},
     AppConfig,
 };
 
 type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
 
+/// A running Provider can narrow its Host deadline when the Core begins.
+pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
+
+impl ProviderPrepareDeadline {
+    pub(crate) fn new(deadline: Instant) -> Self {
+        Self(Mutex::new(deadline))
+    }
+
+    pub(crate) fn current(&self) -> Instant {
+        *self.0.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn restrict(&self, core_deadline: Instant) -> Instant {
+        let mut deadline = self.0.lock().unwrap_or_else(|error| error.into_inner());
+        *deadline = (*deadline).min(core_deadline);
+        *deadline
+    }
+}
+
 /// Single-result handle for an admitted Provider worker and its physical Join.
 pub(crate) struct PendingProviderPrepare {
     join: JobJoin,
     receive: mpsc::Receiver<Result<Prepared>>,
-    deadline: Instant,
+    deadline: Arc<ProviderPrepareDeadline>,
     continue_current: ContinueCurrent,
     cancelled: AtomicBool,
 }
@@ -52,6 +70,11 @@ impl PendingProviderPrepare {
     /// Wait for physical worker and source cleanup independently of result receipt.
     pub(crate) fn join_until(&self, deadline: Instant) -> Result<()> {
         self.join.join_until(deadline)
+    }
+
+    /// Poll for verified physical cleanup without blocking peer handling.
+    pub(crate) fn try_join(&self) -> Result<bool> {
+        self.join.try_join()
     }
 
     /// Take one terminal result after the actual worker and its sources have ended.
@@ -75,7 +98,7 @@ impl PendingProviderPrepare {
         if self.cancelled.load(Ordering::Acquire) {
             return Err(NativeArtifactError::from(NativeDataIoError::Cancelled).into());
         }
-        check_live(self.deadline, None)
+        check_live(self.deadline.current(), None)
     }
 }
 
@@ -86,10 +109,9 @@ impl Drop for PendingProviderPrepare {
 }
 
 struct Request {
-    identity: ExecutionProfileIdentity,
-    security_epoch: u64,
+    listener: Arc<ProviderPrepareListener>,
     bytes: Vec<u8>,
-    deadline: Instant,
+    deadline: Arc<ProviderPrepareDeadline>,
     read: LegacyProviderRegistryRead,
     continue_current: ContinueCurrent,
 }
@@ -106,19 +128,18 @@ struct Prepared {
 /// and continuing eligibility. The guest receives the bounded typed payload.
 pub(crate) fn start_provider_prepare(
     app: &AppHandle,
-    identity: ExecutionProfileIdentity,
-    security_epoch: u64,
+    listener: Arc<ProviderPrepareListener>,
     request: Vec<u8>,
-    deadline: Instant,
+    deadline: Arc<ProviderPrepareDeadline>,
     read: LegacyProviderRegistryRead,
     continue_current: ContinueCurrent,
 ) -> Result<PendingProviderPrepare> {
-    check_live(deadline, None)?;
+    check_live(deadline.current(), None)?;
     ensure!(
         !request.is_empty() && request.capacity() <= MAX_BYTES,
         "native Provider preparation request exceeds its input envelope"
     );
-    identity.validate()?;
+    listener.verified_source().identity.validate()?;
     let runtime = app
         .try_state::<NativeRuntimeState>()
         .context("native Provider preparation runtime owner is unavailable")?
@@ -126,10 +147,9 @@ pub(crate) fn start_provider_prepare(
         .clone();
     let jobs = runtime.0.jobs.clone();
     let request = Request {
-        identity,
-        security_epoch,
+        listener,
         bytes: request,
-        deadline,
+        deadline: Arc::clone(&deadline),
         read,
         continue_current: Arc::clone(&continue_current),
     };
@@ -164,18 +184,18 @@ async fn run(
     request: Request,
 ) -> (Result<Prepared>, bool) {
     let Request {
-        identity,
-        security_epoch,
+        listener,
         bytes,
         deadline,
         read,
         continue_current,
     } = request;
+    let identity = &listener.verified_source().identity;
     let admitted = (|| {
-        check_live(deadline, None)?;
+        check_live(deadline.current(), None)?;
         job.ensure_accepting(&runtime.0.jobs)?;
         continue_current()?;
-        check_live(deadline, None)?;
+        check_live(deadline.current(), None)?;
         let config = app
             .try_state::<AppConfig>()
             .context("native Provider preparation configuration is unavailable")?;
@@ -184,10 +204,11 @@ async fn run(
             .context("native Provider preparation Application manager is unavailable")?
             .inner()
             .clone();
-        let listener = admitted_listener(&config, &manager, &identity, security_epoch)?;
+        require_current_launch_identity(&config, identity)?;
+        manager.require_provider_prepare_admission(&listener)?;
         let invocation = runtime.begin(&app, &job)?;
         let cancellation = job.attach_invocation(&invocation)?;
-        let execution_deadline = deadline.min(invocation.deadline()?);
+        let execution_deadline = deadline.restrict(invocation.deadline()?);
         check_live(execution_deadline, Some(&cancellation))?;
         let custody = job.source_custody()?;
         let sources = SignedApplicationResolver::resolve_sources(&config)?;
@@ -203,7 +224,6 @@ async fn run(
         Ok::<_, anyhow::Error>((
             config,
             manager,
-            listener,
             cancellation,
             execution_deadline,
             custody,
@@ -215,7 +235,6 @@ async fn run(
     let (
         config,
         manager,
-        listener,
         cancellation,
         execution_deadline,
         custody,
@@ -235,7 +254,7 @@ async fn run(
     let revalidate = || {
         checkpoint()?;
         continue_current()?;
-        require_current_launch_identity(&config, &identity)?;
+        require_current_launch_identity(&config, identity)?;
         ensure!(
             listener.owns_socket(),
             "native Provider preparation listener lost its socket"
@@ -316,23 +335,6 @@ async fn run(
     )
 }
 
-fn admitted_listener(
-    config: &AppConfig,
-    manager: &ApplicationProcessManager,
-    identity: &ExecutionProfileIdentity,
-    security_epoch: u64,
-) -> Result<Arc<ProviderPrepareListener>> {
-    require_current_launch_identity(config, identity)?;
-    let listener = manager
-        .admitted_provider_prepare(identity)?
-        .context("native Provider preparation has no current Shell admission")?;
-    ensure!(
-        listener.verified_source().security_epoch == security_epoch,
-        "native Provider preparation security epoch differs from the admitted launch"
-    );
-    Ok(listener)
-}
-
 fn check_live(deadline: Instant, cancellation: Option<&CoreCancellation>) -> Result<()> {
     if Instant::now() >= deadline {
         return Err(NativeArtifactError::from(NativeDataIoError::Deadline).into());
@@ -379,6 +381,25 @@ mod tests {
     }
 
     #[test]
+    fn polling_does_not_report_cleanup_for_a_running_worker() {
+        let jobs = crate::native_runtime_jobs::Jobs::new(Arc::new(AtomicBool::new(false)));
+        let (release, wait) = mpsc::sync_channel(0);
+        let join = jobs
+            .spawn_joinable(move |_| {
+                wait.recv().unwrap();
+                WorkerExit {
+                    cleanup_verified: true,
+                }
+            })
+            .unwrap();
+        assert!(!join.try_join().unwrap());
+        release.send(()).unwrap();
+        join.join_until(Instant::now() + Duration::from_secs(10))
+            .unwrap();
+        assert!(join.try_join().unwrap());
+    }
+
+    #[test]
     fn cancellation_after_physical_join_still_discards_the_buffered_result() {
         let jobs = crate::native_runtime_jobs::Jobs::new(Arc::new(AtomicBool::new(false)));
         let (send, receive) = mpsc::sync_channel(1);
@@ -394,7 +415,7 @@ mod tests {
         let pending = PendingProviderPrepare {
             join,
             receive,
-            deadline,
+            deadline: Arc::new(ProviderPrepareDeadline::new(deadline)),
             continue_current: Arc::new(|| Ok(())),
             cancelled: AtomicBool::new(false),
         };

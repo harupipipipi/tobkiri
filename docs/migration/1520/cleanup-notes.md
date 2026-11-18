@@ -4076,6 +4076,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   互換動作も製品経路で確かめる。
   分離したmacOSプロセス同士でUnix接続のUID・PIDを両方向から観測し、同じ環境で
   Pythonの `monotonic_ns()` と `CLOCK_UPTIME_RAW` の時刻基準が一致することを確認した。
+  `native_provider_prepare_service.rs` と `native_provider_prepare_ipc.py` を元のLauncherと
+  署名済みHTTP HostのPREPAREへ接続した。管理対象の実プロセス、Profileの4識別子と
+  security epoch、HTTPサーバの世代を照合し、元のHTTP captureとleaseが有効な間だけ
+  Registryを読む。結果は実Wasmジョブが終了してから返し、承認と保存は既存の経路で行う。
+  1 MiB超の既存Registryは、制限の判定と実ジョブの終了を確認してから、同じguardで元の
+  読み取りを実行する。追加メモリを確保できない場合は、作業を始める前に既存の予約で
+  入場を試みる。署名済みの予約、承認、Generation Budgetはいずれも既存の経路を通す。
+  分離したmacOSの実プロセスで、実Pythonの読み取りと実Rustのソケット、固定レシートの
+  Wasmを使い、Registryなし・既存revision・サーバ世代の不一致・1 MiB超と取消を確認した。
+  Launcherの管理状態とroot解決は分離検証用fixture。Rustはこの実通信と回帰の9件、
+  Pythonは署名済みHTTP 5件を含む43件が通過した。Windows固有の3件はmacOSでは対象外。
+  Launcherの通常ターゲットでもジョブと通信の回帰8件を実行するようCIを更新した。
+  通常のリリースworkflowは検証済み
+  SetupとRegistryの入力を取り込む段階が残る。署名済みCI検証Appで配布時の流れを調べる。
+  Registryと元の呼出しをRustで担える段階で、Pythonからの同期借用、ソケット、稼働世代の
+  引き渡しを削除し、現在のlease確認と物理終了証明をNative側の同じ所有者に集約できる。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

@@ -4844,20 +4844,34 @@ def test_audio_provider_configuration_http_preserves_explicit_approval_and_exact
     _exercise_provider_configuration_http(production_server, tmp_path, monkeypatch, audio=True)
 
 
-@pytest.mark.parametrize("openrouter_only", [False, True])
+@pytest.mark.parametrize(
+    ("openrouter_only", "launcher_mode"),
+    [
+        (False, "available"),
+        (False, "inapplicable"),
+        (False, "oversized-registry"),
+        (False, "unfunded"),
+        (True, None),
+    ],
+)
 def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, openrouter_only: bool,
+    launcher_mode: str | None,
 ) -> None:
     """The signed request can borrow a planner only while its prepare lease runs."""
     from core_runtime.authority.ui_operator import sign_ui_operator
     from core_runtime.bootstrap import production_v4
+    from core_runtime import native_provider_prepare_ipc
     from core_runtime.provider_prepare_native_v4 import (
+        DOCUMENT_LIMIT,
         MINIMUM_PREPARE_MEMORY,
         NativeProviderPrepareBorrow,
         NativeProviderPreparePlanner,
     )
     from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.admission import DurableResourceLedger, ResourceAmount, ResourceReservation
     from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.errors import ResourceExhaustedError
     from tobkiri_protocol.canonical import canonical_digest
 
     if not openrouter_only:
@@ -4873,7 +4887,21 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         "key_value": "",
         "capabilities": ["ai.stream", "ai.generate"],
     }
-    borrowed = []
+    borrowed: list[NativeProviderPrepareBorrow] = []
+    rejected_native_amounts: list[int] = []
+    if launcher_mode == "unfunded":
+        reserve = DurableResourceLedger.reserve
+
+        def reserve_with_legacy_capacity(
+            ledger: DurableResourceLedger, profile_id: str, amount: ResourceAmount,
+            *, detached: bool = False,
+        ) -> ResourceReservation:
+            if amount.memory_bytes >= MINIMUM_PREPARE_MEMORY:
+                rejected_native_amounts.append(amount.memory_bytes)
+                raise ResourceExhaustedError("test Profile resource ceiling")
+            return reserve(ledger, profile_id, amount, detached=detached)
+
+        monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_with_legacy_capacity)
 
     def plan(borrow: NativeProviderPrepareBorrow) -> Mapping[str, object]:
         borrow.assert_current()
@@ -4884,12 +4912,17 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         }
         assert borrow.context.profile_id == "defaults"
         assert borrow.resources.memory_bytes >= MINIMUM_PREPARE_MEMORY
+        if launcher_mode is not None:
+            assert borrow.runtime_instance == server._native_provider_prepare_instance
+            assert len(borrow.runtime_instance) == 32
+        borrowed.append(borrow)
+        if launcher_mode == "inapplicable":
+            raise native_provider_prepare_ipc.NativeProviderPrepareUnavailable()
         observations = [json.loads(borrow.read_legacy_registry()) for _ in range(2)]
         assert [document["revision"] for document in observations] == [1, 1]
         assert observations[0] == observations[1]
         with pytest.raises(PermissionError, match="reads are exhausted"):
             borrow.read_legacy_registry()
-        borrowed.append(borrow)
         return {
             "profile_id": "defaults",
             "provider_instance_id": "provider.fixture-local",
@@ -4900,12 +4933,16 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
             "credential_scopes": ["ai.generate", "ai.stream"],
         }
 
+    planner = NativeProviderPreparePlanner(MINIMUM_PREPARE_MEMORY, plan)
+    if launcher_mode is not None:
+        monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/provider.sock")
+        monkeypatch.setattr(
+            native_provider_prepare_ipc, "capture_launcher_provider_prepare_planner", lambda: planner,
+        )
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch,
         credential_store_factory=host_credential_store_factory,
-        native_provider_prepare_planner=NativeProviderPreparePlanner(
-            MINIMUM_PREPARE_MEMORY, plan,
-        ),
+        native_provider_prepare_planner=planner if launcher_mode is None else None,
     ) as (server, _session, _authority):
         registry = ProviderRegistry("defaults", user_data_root=root)
         registry.save({
@@ -4913,6 +4950,10 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
             "adapter_id": "local-openai-compatible",
             "endpoint": "http://127.0.0.1:11435/v1",
         }, expected_revision=0)
+        if launcher_mode == "oversized-registry":
+            # JSON whitespace preserves this original-format document and its revision.
+            with registry.path.open("ab") as stream:
+                stream.write(b" " * DOCUMENT_LIMIT)
         before = registry.path.read_bytes()
         cookie, csrf, origin = _authenticate(server)
 
@@ -4934,9 +4975,13 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
             "request": connection,
         })
         assert registry.path.read_bytes() == before
-        assert len(borrowed) == 1
-        with pytest.raises(PermissionError, match="borrow is unavailable"):
-            borrowed[0].assert_current()
+        expected_borrows = 0 if launcher_mode == "unfunded" else 1
+        assert len(borrowed) == expected_borrows
+        if launcher_mode == "unfunded":
+            assert rejected_native_amounts == [MINIMUM_PREPARE_MEMORY]
+        else:
+            with pytest.raises(PermissionError, match="borrow is unavailable"):
+                borrowed[0].assert_current()
         if openrouter_only:
             assert status == 503, response
             assert response["data"]["state"] == "error"
@@ -4971,7 +5016,7 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         assert snapshot["revision"] == 2
         assert snapshot["providers"][1]["credential_handle"] is None
         assert not (root / "credentials/material-store/credentials.store.json").exists()
-        assert len(borrowed) == 1
+        assert len(borrowed) == expected_borrows
 
 
 @pytest.mark.parametrize("text_blocks", [False, True])

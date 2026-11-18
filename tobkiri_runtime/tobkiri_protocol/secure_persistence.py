@@ -19,6 +19,10 @@ class SecurePersistenceError(OSError):
     """Raised when a persistence root or entry cannot be used safely."""
 
 
+class SecurePersistenceLimitError(SecurePersistenceError):
+    """Raised when a bounded persistence read exceeds its byte limit."""
+
+
 _Identity = tuple[int, int]
 _Fingerprint = tuple[int, int, int, int, int, int]
 _ReadFingerprint = tuple[int, int, int, int, int, int, int, int]
@@ -591,7 +595,7 @@ class SecureDirectory:
             before = self._stat_entry(parent, name, required=True)
             assert before is not None
             if max_bytes is not None and before.st_size > max_bytes:
-                raise SecurePersistenceError("persistence entry exceeds read limit")
+                raise SecurePersistenceLimitError("persistence entry exceeds read limit")
             try:
                 descriptor = os.open(
                     name,
@@ -618,7 +622,7 @@ class SecureDirectory:
                         break
                     total += len(chunk)
                     if max_bytes is not None and total > max_bytes:
-                        raise SecurePersistenceError("persistence entry exceeds read limit")
+                        raise SecurePersistenceLimitError("persistence entry exceeds read limit")
                     chunks.append(chunk)
                 after_open = os.fstat(descriptor)
                 after_name = self._stat_entry(parent, name, required=True)
@@ -650,7 +654,7 @@ class SecureDirectory:
                 if not _owned_regular(opened):
                     raise SecurePersistenceError("persistence entry identity is unsafe")
                 if max_bytes is not None and opened.st_size > max_bytes:
-                    raise SecurePersistenceError("persistence entry exceeds read limit")
+                    raise SecurePersistenceLimitError("persistence entry exceeds read limit")
                 if verify_open_file is not None:
                     verify_open_file(parent / name, descriptor)
                 chunks: list[bytes] = []
@@ -661,7 +665,7 @@ class SecureDirectory:
                         break
                     total += len(chunk)
                     if max_bytes is not None and total > max_bytes:
-                        raise SecurePersistenceError("persistence entry exceeds read limit")
+                        raise SecurePersistenceLimitError("persistence entry exceeds read limit")
                     chunks.append(chunk)
                 if (
                     _read_fingerprint(os.fstat(descriptor)) != _read_fingerprint(opened)

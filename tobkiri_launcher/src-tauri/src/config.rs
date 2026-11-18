@@ -35,6 +35,9 @@ pub struct AppConfig {
     pub dev_workspace_root: Option<PathBuf>,
     /// In-memory current Launcher broker capture for private Host contracts.
     pub(crate) host_broker_contract: Option<crate::host_contract::HostBrokerContractValues>,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) native_provider_prepare_endpoint:
+        Option<crate::native_provider_prepare_service::ProviderPrepareEndpoint>,
 }
 
 impl AppConfig {
@@ -147,6 +150,8 @@ impl AppConfig {
             kernel_port: 8765,
             dev_workspace_root,
             host_broker_contract: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare_endpoint: None,
         })
     }
 
@@ -653,6 +658,8 @@ mod tests {
             kernel_port: 8765,
             dev_workspace_root: Some(workspace_root),
             host_broker_contract: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare_endpoint: None,
         };
         let state_root = PathBuf::from("/tmp/owned-debug-supervisor");
 

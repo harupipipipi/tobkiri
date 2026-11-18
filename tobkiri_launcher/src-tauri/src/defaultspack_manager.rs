@@ -119,6 +119,7 @@ pub(crate) struct ProviderPrepareListener {
     application: ApplicationInstanceKey,
     port: u16,
     generation: Option<u64>,
+    runtime_instance: Option<String>,
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -127,6 +128,22 @@ impl ProviderPrepareListener {
         &self,
     ) -> &crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch {
         &self.proof
+    }
+
+    pub(crate) fn matches_process(
+        &self,
+        process: &crate::shell_handoff::LauncherProcessIdentity,
+    ) -> bool {
+        &self.process == process
+    }
+
+    pub(crate) fn matches_runtime_instance(&self, instance: &str) -> bool {
+        self.runtime_instance.as_deref() == Some(instance)
+    }
+
+    pub(crate) fn bind_runtime_instance(mut self, instance: String) -> Self {
+        self.runtime_instance = Some(instance);
+        self
     }
 
     pub(crate) fn observe(
@@ -146,6 +163,7 @@ impl ProviderPrepareListener {
             application: application_instance_key(metadata),
             port: metadata.port(),
             generation: None,
+            runtime_instance: None,
         })
     }
 
@@ -338,6 +356,26 @@ impl ApplicationProcessManager {
         anyhow::ensure!(
             self.provider_prepare_still_admitted(&state, candidate),
             "the admitted Provider prepare source changed"
+        );
+        Ok(())
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn require_provider_prepare_peer(
+        &self,
+        identity: &crate::host_contract::ExecutionProfileIdentity,
+        peer: &crate::shell_handoff::LauncherProcessIdentity,
+    ) -> Result<()> {
+        let state = self.lock_state()?;
+        anyhow::ensure!(
+            !self.shutdown_requested.load(Ordering::Acquire)
+                && state.provider_prepare.as_ref().is_some_and(|candidate| {
+                    candidate.proof.identity.matches(identity)
+                        && candidate.matches_process(peer)
+                        && state.matches_provider_slot(candidate)
+                        && candidate.process_is_current()
+                }),
+            "Provider preparation peer does not own the admitted listener"
         );
         Ok(())
     }
@@ -1805,6 +1843,8 @@ mod tests {
             kernel_port: 8765,
             dev_workspace_root: None,
             host_broker_contract: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare_endpoint: None,
         }
     }
 

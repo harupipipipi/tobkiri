@@ -34,6 +34,8 @@ struct HealthPayload {
     profile_revision: Option<String>,
     activation_id: Option<String>,
     plan_digest: Option<String>,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    native_provider_prepare_instance: Option<String>,
 }
 
 const DESKTOP_HEALTH_CHALLENGE_HEADER: &str = "X-Rumi-Desktop-Health-Challenge";
@@ -184,6 +186,29 @@ pub(crate) fn authenticated_runtime_identity_until(
         contract_namespace,
         Some(deadline),
     )
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) fn authenticated_provider_prepare_instance_until(
+    port: u16,
+    bootstrap_secret: &str,
+    identity: &ExecutionProfileIdentity,
+    deadline: Instant,
+) -> Result<Option<String>> {
+    let Some(health) =
+        fetch_authenticated_health_with_deadline(port, bootstrap_secret, Some(deadline))?
+    else {
+        return Ok(None);
+    };
+    if !identity_from_health(&health)?.is_some_and(|current| current.matches(identity)) {
+        return Ok(None);
+    }
+    Ok(health.native_provider_prepare_instance.filter(|value| {
+        value.len() == 32
+            && value
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    }))
 }
 
 fn authenticated_runtime_identity_with_deadline(
@@ -705,6 +730,8 @@ mod tests {
             runtime_ready: Some(true),
             runtime_status: Some("runtime_ready".into()),
             desktop_challenge_response: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare_instance: None,
             profile_id: Some("profile-a".into()),
             profile_revision: Some(format!("sha256:{}", "a".repeat(64))),
             activation_id: Some("activation:profile-a-2026".into()),
@@ -722,6 +749,8 @@ mod tests {
             runtime_ready: Some(true),
             runtime_status: Some("runtime_ready".into()),
             desktop_challenge_response: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare_instance: None,
             profile_id: Some("profile-a".into()),
             profile_revision: Some(format!("sha256:{}", "a".repeat(64))),
             activation_id: None,

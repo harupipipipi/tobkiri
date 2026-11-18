@@ -62,7 +62,7 @@ from tobkiri_host.contracts import (
     StructuralAdapter,
 )
 from tobkiri_host.effects import InMemoryReconciliationStore
-from tobkiri_host.errors import BackendUnavailableError
+from tobkiri_host.errors import BackendUnavailableError, ResourceExhaustedError
 from tobkiri_host.interactive_effects import (
     LateBoundInteractiveEffectPort,
     PendingEffectController,
@@ -382,6 +382,18 @@ class _NoAdapterExecution:
         raise RuntimeError(f"unexpected structural adapter: {adapter.adapter_id}")
 
 
+@dataclass(frozen=True)
+class _PlanAdmissionEstimate(AdmissionEstimate):
+    """Keep the signed binding's original charge available before any native work."""
+
+    native_floor_bytes: int = 0
+
+    def preferred_charge(self) -> ResourceAmount:
+        if self.native_floor_bytes <= self.backend_overhead_bytes:
+            return self.charge()
+        return replace(self, backend_overhead_bytes=self.native_floor_bytes).charge()
+
+
 class _PlanAdmission(RequestAdmissionPort):
     """Plan-bound Host admission with measured, durable reservations."""
 
@@ -491,13 +503,14 @@ class _PlanAdmission(RequestAdmissionPort):
         backend_overhead = _nonnegative_int(
             policy.get("backend_overhead_bytes"), default=0,
         )
+        native_floor_bytes = 0
         if (
             self._native_prepare is not None
             and binding == self._native_prepare[0]
             and self._native_prepare[2](context, payload)
         ):
-            backend_overhead = max(backend_overhead, self._native_prepare[1])
-        return AdmissionEstimate(
+            native_floor_bytes = self._native_prepare[1]
+        return _PlanAdmissionEstimate(
             measured_p95_bytes=measured,
             declared_minimum_bytes=_nonnegative_int(
                 policy.get("declared_minimum_bytes"),
@@ -516,6 +529,7 @@ class _PlanAdmission(RequestAdmissionPort):
             concurrency=_positive_int(policy.get("concurrency"), default=1),
             disk_bytes=_nonnegative_int(policy.get("disk_bytes"), default=0),
             detached=binding.variant.execution_kind is ExecutionKind.PACK_VM,
+            native_floor_bytes=native_floor_bytes,
         )
 
     def acquire(
@@ -526,12 +540,26 @@ class _PlanAdmission(RequestAdmissionPort):
     ) -> AdmissionTicket:
         if wait_timeout_seconds <= 0:
             raise TimeoutError("admission deadline expired")
-        reservation = self._queue.admit(
-            scope,
-            estimate.charge(),
-            wait_timeout_seconds=wait_timeout_seconds,
-            detached=estimate.detached,
+        original = estimate.charge()
+        preferred = (
+            estimate.preferred_charge()
+            if isinstance(estimate, _PlanAdmissionEstimate)
+            else original
         )
+
+        def admit(amount: ResourceAmount) -> ResourceReservation:
+            return self._queue.admit(
+                scope, amount,
+                wait_timeout_seconds=wait_timeout_seconds,
+                detached=estimate.detached,
+            )
+
+        try:
+            reservation = admit(preferred)
+        except ResourceExhaustedError:
+            if preferred == original:
+                raise
+            reservation = admit(original)
         if scope.binding_id == self._native_binding_id:
             with self._native_lock:
                 self._native_reservations[reservation.reservation_id] = reservation
@@ -547,12 +575,8 @@ class _PlanAdmission(RequestAdmissionPort):
         """Borrow the current prepare ticket's admitted capacity."""
         with self._native_lock:
             reservation = self._native_reservations.get(reservation_id or "")
-        if (
-            reservation is None
-            or self._native_prepare is None
-            or reservation.amount.memory_bytes < self._native_prepare[1]
-        ):
-            raise AuthorityDenied("native Provider preparation is not funded")
+        if reservation is None:
+            raise AuthorityDenied("Provider preparation admission is unavailable")
         return reservation.amount
 
 
@@ -1777,6 +1801,19 @@ def capture_production_dispatch(
     ) = None,
 ) -> V4DispatchSession:
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
+
+    from ..native_provider_prepare_ipc import (
+        NativeProviderPrepareUnavailable,
+        capture_launcher_provider_prepare_planner,
+    )
+    from ..provider_prepare_native_v4 import (
+        NativeProviderRegistryRequiresLegacyRead,
+        current_provider_prepare_http_scope,
+    )
+
+    launcher_provider_prepare = native_provider_prepare_planner is None
+    if launcher_provider_prepare:
+        native_provider_prepare_planner = capture_launcher_provider_prepare_planner()
 
     authority_path = authority_store.path.resolve()
     if authority_path.name != "v4.sqlite3" or authority_path.parent.name != "authority":
@@ -3872,6 +3909,8 @@ def capture_production_dispatch(
     ) -> bool:
         if native_prepare_edges is None or not is_keyless_local(payload):
             return False
+        if launcher_provider_prepare and current_provider_prepare_http_scope() is None:
+            return False
         shell_edge, _ = native_prepare_edges
         parent = parent_invocation_scopes.lookup(context.caller_session_id)
         if parent is None:
@@ -3930,12 +3969,21 @@ def capture_production_dispatch(
             registry = ProviderRegistry(
                 capture.profile_id, user_data_root=capture.user_data_root,
             )
+            http_scope = (
+                current_provider_prepare_http_scope() if launcher_provider_prepare else None
+            )
+            reservation_id = envelope.resource_reservation_id
+            resources = production_admission.native_prepare_resources(reservation_id)
 
             def guard() -> None:
                 invocation.assert_current()
-                production_admission.native_prepare_resources(
-                    envelope.resource_reservation_id,
-                )
+                if http_scope is not None:
+                    http_scope[1]()
+                production_admission.native_prepare_resources(reservation_id)
+
+            if resources.memory_bytes < planner.memory_bytes:
+                guard()
+                return contribution.invoke(operation_id, payload, invocation)
 
             borrow = NativeProviderPrepareBorrow(
                 context=envelope.context,
@@ -3943,14 +3991,18 @@ def capture_production_dispatch(
                 user_data_root=capture.user_data_root,
                 document_path=registry.path,
                 deadline_monotonic=envelope.deadline_monotonic,
-                resources=production_admission.native_prepare_resources(
-                    envelope.resource_reservation_id,
-                ),
+                resources=resources,
                 guard=guard,
+                runtime_instance=http_scope[0] if http_scope is not None else None,
             )
-            plan = invoke_native_provider_prepare(
-                planner, borrow, payload=payload, normalized=normalized,
-            )
+            try:
+                plan = invoke_native_provider_prepare(
+                    planner, borrow, payload=payload, normalized=normalized,
+                )
+            except (NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead):
+                # The Launcher adapter propagates a Registry limit only after Join.
+                guard()
+                return contribution.invoke(operation_id, payload, invocation)
             guard()
             budget = capture.generation_budget_port
             if budget is not None:

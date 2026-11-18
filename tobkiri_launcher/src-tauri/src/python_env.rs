@@ -341,6 +341,21 @@ pub fn spawn_python_role<F>(
 where
     F: FnOnce(&mut RoleCommand<'_>) -> Result<()>,
 {
+    let configure = |command: &mut RoleCommand<'_>| {
+        configure(command)?;
+        command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET");
+        command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER");
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
+            if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
+                use crate::native_provider_prepare_service::{OWNER_ENV, SOCKET_ENV};
+                command
+                    .env(SOCKET_ENV, &endpoint.socket)
+                    .env(OWNER_ENV, &endpoint.owner);
+            }
+        }
+        Ok(())
+    };
     if !config.is_dev_workspace() {
         return crate::sealed_python::spawn_packaged_role(config, role, role_arguments, configure);
     }

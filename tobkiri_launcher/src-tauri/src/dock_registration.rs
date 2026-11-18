@@ -976,8 +976,20 @@ fn ensure_defaultspack_desktop_ready(
     // admission budget expires during that safety finalization.
     crate::preparation_budget::check(deadline)?;
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    let native_provider_prepare = native_provider_prepare
-        .and_then(|listener| manager.capture_provider_listener(listener).ok().flatten());
+    let native_provider_prepare = native_provider_prepare.and_then(|listener| {
+        let instance = crate::health_check::authenticated_provider_prepare_instance_until(
+            metadata.port,
+            &panel_bootstrap_secret,
+            metadata.execution_identity(),
+            deadline,
+        )
+        .ok()
+        .flatten()?;
+        manager
+            .capture_provider_listener(listener.bind_runtime_instance(instance))
+            .ok()
+            .flatten()
+    });
     Ok(ReadyDefaultspack {
         metadata,
         bootstrap_secret: panel_bootstrap_secret,
@@ -1570,6 +1582,8 @@ mod tests {
             kernel_port: 8765,
             dev_workspace_root: None,
             host_broker_contract: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare_endpoint: None,
         }
     }
 

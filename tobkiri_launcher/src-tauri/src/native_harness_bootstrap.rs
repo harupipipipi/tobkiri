@@ -48,7 +48,9 @@ pub(crate) use launch_metadata::{
 #[path = "native_provider_prepare_job.rs"]
 mod provider_prepare;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) use provider_prepare::{start_provider_prepare, PendingProviderPrepare};
+pub(crate) use provider_prepare::{
+    start_provider_prepare, PendingProviderPrepare, ProviderPrepareDeadline,
+};
 
 enum OwnedRuntime {
     Unopened,
@@ -71,6 +73,8 @@ struct RuntimeState {
     jobs: Jobs,
     finalization: Finalization,
     retained_authority: Mutex<Vec<authority::Retained>>,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    provider_socket: Option<crate::native_provider_prepare_service::ProviderPrepareService>,
 }
 
 impl NativeRuntimeState {
@@ -80,7 +84,24 @@ impl NativeRuntimeState {
             jobs: Jobs::new(shutdown),
             finalization: Finalization::default(),
             retained_authority: Mutex::new(Vec::new()),
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            provider_socket: None,
         }))
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn attach_provider_socket(
+        &mut self,
+        service: crate::native_provider_prepare_service::ProviderPrepareService,
+    ) -> Result<()> {
+        let state = Arc::get_mut(&mut self.0)
+            .ok_or_else(|| anyhow::anyhow!("native runtime owner was already shared"))?;
+        anyhow::ensure!(
+            state.provider_socket.is_none(),
+            "Provider socket was already attached"
+        );
+        state.provider_socket = Some(service);
+        Ok(())
     }
 
     fn begin(&self, app: &AppHandle, job: &JobTicket) -> Result<NativeSetupInvocation> {
@@ -135,7 +156,15 @@ impl NativeRuntimeState {
     /// All real preparation/IO Joins precede dropping this same owner. There
     /// are no product Sessions here yet; none are fabricated to obtain close.
     pub(crate) fn stop_until(&self, deadline: Instant) -> Result<()> {
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        if let Some(service) = self.0.provider_socket.as_ref() {
+            service.request_stop();
+        }
         self.0.jobs.drain_until(deadline)?;
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        if let Some(service) = self.0.provider_socket.as_ref() {
+            service.join_until(deadline)?;
+        }
         self.0.finalization.run_until(deadline, || {
             let owner = {
                 let mut owner = self.0.owner.lock().map_err(|_| {

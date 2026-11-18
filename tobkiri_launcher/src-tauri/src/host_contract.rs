@@ -632,6 +632,8 @@ mod tests {
             kernel_port: 8765,
             dev_workspace_root: None,
             host_broker_contract: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare_endpoint: None,
         }
     }
 }

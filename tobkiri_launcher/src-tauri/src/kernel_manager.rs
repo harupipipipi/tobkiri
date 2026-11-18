@@ -1246,6 +1246,8 @@ mod tests {
             kernel_port: listener.local_addr().unwrap().port(),
             dev_workspace_root: None,
             host_broker_contract: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare_endpoint: None,
         };
         let (stop_server, stop_requested) = mpsc::channel();
         let server = std::thread::spawn(move || {
