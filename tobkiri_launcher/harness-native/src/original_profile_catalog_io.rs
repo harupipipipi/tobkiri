@@ -31,6 +31,9 @@ mod native_bundle_lock;
 #[cfg(all(test, unix))]
 #[path = "original_native_bundled_catalog.rs"]
 mod native_bundled_catalog;
+#[cfg(all(test, unix))]
+#[path = "original_owned_catalog_delivery.rs"]
+mod owned_catalog_delivery;
 #[cfg(unix)]
 #[path = "original_recovery_catalog_artifact.rs"]
 mod recovery_artifact;
@@ -119,6 +122,8 @@ pub(crate) struct CatalogIo {
     lock: Option<Funded<Document>>,
     #[cfg(unix)]
     document_shapes: Option<document_shapes::DocumentChecks>,
+    #[cfg(all(test, unix))]
+    owned_delivery: Option<owned_catalog_delivery::OwnedCatalogDelivery>,
     entry: usize,
     walk: usize,
     pins: usize,
@@ -217,6 +222,11 @@ impl CatalogIo {
         target_arch = "aarch64"
     ))]
     pub(crate) fn ci_progress(&self) -> (&'static str, usize, usize, usize) {
+        if let Some(owned_catalog_delivery::OwnedCatalogDelivery::Reading { bundle, .. }) =
+            &self.owned_delivery
+        {
+            return ("snapshot-delivery", bundle.entry_count(), 0, bundle.pins);
+        }
         let stage = match self.loader {
             Loader::Root => "root",
             Loader::RootSymlink => "root-symlink",
@@ -328,6 +338,8 @@ impl CatalogIo {
             lock: None,
             #[cfg(unix)]
             document_shapes: None,
+            #[cfg(all(test, unix))]
+            owned_delivery: None,
             entry: 0,
             walk: 0,
             pins: 0,
@@ -444,6 +456,29 @@ impl CatalogIo {
         }
         self.binding = Some(binding);
         Ok(())
+    }
+
+    #[cfg(all(test, unix))]
+    pub(crate) fn enable_owned_catalog(&mut self) {
+        self.owned_delivery = Some(owned_catalog_delivery::OwnedCatalogDelivery::Armed);
+    }
+
+    fn write_loader_root(
+        &self,
+        out: &mut CoreBufferBuilder,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> anyhow::Result<()> {
+        #[cfg(all(test, unix))]
+        if self.owned_delivery.is_some() {
+            return self.write_owned_root(out, budget);
+        }
+        write_path(
+            out,
+            self.binding.as_ref().expect("bound loader"),
+            &self.selected,
+            None,
+            budget,
+        )
     }
 
     /// Keep the Pack pins from the actual loader occurrences.
@@ -681,15 +716,13 @@ impl CatalogIo {
                         return Err(OriginalAuthorityError::unavailable().into());
                     }
                 }
-                write_path(
-                    &mut output,
-                    self.binding.as_ref().expect("bound loader"),
-                    &self.selected,
-                    None,
-                    budget,
-                )?;
+                self.write_loader_root(&mut output, budget)?;
                 self.loader = Loader::RootSymlink;
                 true
+            }
+            #[cfg(all(test, unix))]
+            Loader::RootSymlink if self.owned_delivery.is_some() => {
+                return self.inspect_owned_delivery(&op, output, operation, &steps_array, &args);
             }
             Loader::RootSymlink
                 if operation == "is-symlink" && args.is_empty() && steps_array.is_empty() =>

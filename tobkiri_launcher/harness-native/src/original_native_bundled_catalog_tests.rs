@@ -2,6 +2,24 @@
 use super::*;
 use crate::original_authority::bundled_schema::CatalogDocumentKind;
 
+fn copy_bundle(shipped: &Path, bundle: &Path, lock: &[u8], rows: &[Value]) {
+    fs::create_dir_all(bundle).unwrap();
+    fs::write(bundle.join("bundle.lock.json"), lock).unwrap();
+    for row in rows {
+        let relative = row["path"].as_str().unwrap();
+        assert!(
+            Path::new(relative)
+                .components()
+                .all(|part| matches!(part, Component::Normal(_)))
+        );
+        let original = shipped.join(relative);
+        let destination = bundle.join(relative);
+        assert!(fs::symlink_metadata(&original).unwrap().is_file());
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::copy(original, destination).unwrap();
+    }
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn native_owned_bundle_preserves_physical_members_pins_and_artifacts() {
     let shipped = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -14,22 +32,8 @@ async fn native_owned_bundle_preserves_physical_members_pins_and_artifacts() {
     with_source(false, |source, invocation, _, io, cleanup| {
         let bundle = source.root.join("ecosystem/defaultspack/v4");
         let artifacts = bundle.parent().unwrap().join("platform-artifacts");
-        fs::create_dir_all(&bundle).unwrap();
+        copy_bundle(&shipped, &bundle, &lock_bytes, rows);
         fs::create_dir(&artifacts).unwrap();
-        fs::write(bundle.join("bundle.lock.json"), &lock_bytes).unwrap();
-        for row in rows {
-            let relative = row["path"].as_str().unwrap();
-            assert!(
-                Path::new(relative)
-                    .components()
-                    .all(|part| matches!(part, Component::Normal(_)))
-            );
-            let original = shipped.join(relative);
-            let destination = bundle.join(relative);
-            assert!(fs::symlink_metadata(&original).unwrap().is_file());
-            fs::create_dir_all(destination.parent().unwrap()).unwrap();
-            fs::copy(original, destination).unwrap();
-        }
         io.select_packaged(&bundle).unwrap();
         let selected = fs::canonicalize(&bundle).unwrap();
         let artifacts = fs::canonicalize(&artifacts).unwrap();
@@ -155,6 +159,130 @@ async fn native_owned_bundle_preserves_physical_members_pins_and_artifacts() {
             Err(NativeBundleError::Integrity(message)) if
                 message == "executable catalog has no bundled Pack manifest: defaultspack"
         ));
+        assert!(cleanup.verified());
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn owned_catalog_delivery_adopts_only_a_consumed_snapshot() {
+    let shipped = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tobkiri_runtime/ecosystem/defaultspack/v4");
+    let lock_bytes = fs::read(shipped.join("bundle.lock.json")).unwrap();
+    let lock: Value = serde_json::from_slice(&lock_bytes).unwrap();
+    let rows = lock["entries"].as_array().unwrap();
+    with_source(false, |source, invocation, budget, io, cleanup| {
+        let bundle = source.root.join("ecosystem/defaultspack/v4");
+        let artifacts = bundle.parent().unwrap().join("platform-artifacts");
+        copy_bundle(&shipped, &bundle, &lock_bytes, rows);
+        fs::create_dir(&artifacts).unwrap();
+        io.select_packaged(&bundle).unwrap();
+        io.enable_owned_catalog();
+        io.retain_review_pack_dependencies();
+        io.retain_publication_inputs();
+        io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+            .unwrap();
+
+        let request = |operation, args| packet(invocation, budget, operation, json!([]), args);
+        let inspect = |io: &mut CatalogIo, operation, args| {
+            io.inspect(source, invocation, &request(operation, args), budget)
+        };
+        assert!(inspect(io, "snapshot-open", json!([])).is_err());
+        let root = call(
+            io,
+            source,
+            invocation,
+            budget,
+            "root",
+            json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+            json!([]),
+        );
+        assert_eq!(root["kind"], "snapshot-root");
+        assert!(inspect(io, "is-symlink", json!([])).is_err());
+        let opened = call(
+            io,
+            source,
+            invocation,
+            budget,
+            "snapshot-open",
+            json!([]),
+            json!([]),
+        );
+        assert_eq!(
+            opened,
+            json!({
+                "kind": "snapshot-open",
+                "root": fs::canonicalize(&bundle).unwrap().to_str().unwrap(),
+                "artifact_root": fs::canonicalize(&artifacts).unwrap().to_str().unwrap(),
+                "count": rows.len(),
+            })
+        );
+        assert!(!io.completed());
+        assert!(inspect(io, "snapshot-open", json!([])).is_err());
+        assert!(inspect(io, "snapshot-rows", json!([1])).is_err());
+        assert!(inspect(io, "snapshot-close", json!([rows.len()])).is_err());
+
+        // Distribution and adoption must use the completed physical snapshot.
+        fs::remove_file(bundle.join(rows[0]["path"].as_str().unwrap())).unwrap();
+        let mut offset = 0;
+        let mut pages = 0;
+        while offset < rows.len() {
+            let page = call(
+                io,
+                source,
+                invocation,
+                budget,
+                "snapshot-rows",
+                json!([]),
+                json!([offset]),
+            );
+            assert_eq!(page["kind"], "snapshot-rows");
+            let page = page["rows"].as_array().unwrap();
+            assert!(!page.is_empty());
+            for record in page {
+                let row = &rows[offset];
+                let expected = fs::read(shipped.join(row["path"].as_str().unwrap())).unwrap();
+                let document: Value = serde_json::from_slice(&expected).unwrap();
+                let kind = row["kind"].as_str().unwrap();
+                let id = match kind {
+                    "pack" => &document["pack"]["id"],
+                    "base" | "executable_catalog" => &document["pack_id"],
+                    "shell" => &document["provider_id"],
+                    "profile" => &document["profile_id"],
+                    _ => panic!("unexpected kind: {kind}"),
+                };
+                assert_eq!(record[0], kind);
+                assert_eq!(&record[1], id);
+                assert_eq!(record[2].as_str().unwrap().as_bytes(), expected);
+                offset += 1;
+            }
+            pages += 1;
+        }
+        assert!(pages > 1);
+        assert_eq!(offset, rows.len());
+        assert!(!io.completed());
+        assert!(inspect(io, "snapshot-rows", json!([offset])).is_err());
+        assert_eq!(
+            call(
+                io,
+                source,
+                invocation,
+                budget,
+                "snapshot-close",
+                json!([]),
+                json!([offset])
+            ),
+            json!({"kind":"unit"})
+        );
+        assert!(io.completed());
+        assert_eq!(io.pins, 148);
+        assert!(io.recovery_pack_pins.is_some());
+        assert!(io.shell_inputs.is_some());
+        assert!(io.artifact_parent_identity.is_some());
+        assert_eq!(
+            io.publication_lock_digest(source, invocation).unwrap(),
+            Digest::hash(&lock_bytes)
+        );
+        assert!(inspect(io, "snapshot-close", json!([offset])).is_err());
         assert!(cleanup.verified());
     });
 }

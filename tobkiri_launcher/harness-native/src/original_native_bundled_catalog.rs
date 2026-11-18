@@ -86,12 +86,17 @@ pub(super) struct NativeOwnedBundle {
     pub(super) artifact_root: Option<PathBuf>,
     pub(super) pins: usize,
     pub(super) artifact_parent: Option<Identity>,
+    lock: Funded<Document>,
     identities: CatalogMemberIndex,
     members: Funded<Vec<OwnedMember>>,
     _paths: NativeSetupReservation,
 }
 
 impl NativeOwnedBundle {
+    pub(super) fn entry_count(&self) -> usize {
+        self.members.len()
+    }
+
     pub(super) fn entries(&self) -> impl Iterator<Item = (CatalogDocumentKind, &str, &[u8])> {
         self.identities
             .entries()
@@ -114,37 +119,51 @@ impl CatalogIo {
         {
             return Err(OriginalAuthorityError::unavailable().into());
         }
+        self.compose_owned_bundle(&op)
+    }
+
+    /// Build the native snapshot for the already selected catalog scope.
+    pub(super) fn compose_owned_bundle<S: crate::BootstrapReviewOwner>(
+        &self,
+        op: &Operation<'_, S>,
+    ) -> NativeBundleResult<NativeOwnedBundle> {
+        if !self.invocation.same_invocation(op.invocation)
+            || !Arc::ptr_eq(&self.cleanup, &op.cleanup)
+            || self.selected.as_os_str().is_empty()
+        {
+            return Err(OriginalAuthorityError::unavailable().into());
+        }
         let budget = &self.budget;
-        if metadata(&op, budget, &self.selected, false)?.is_some_and(|value| value.is_symlink()) {
+        if metadata(op, budget, &self.selected, false)?.is_some_and(|value| value.is_symlink()) {
             return Err(integrity("bundle root must not be a symlink"));
         }
-        let root = member_path::resolve_member(&op, budget, &self.selected)?;
+        let root = member_path::resolve_member(op, budget, &self.selected)?;
         let lock_path = root.join("bundle.lock.json");
-        if metadata(&op, budget, &lock_path, false)?.is_some_and(|value| value.is_symlink()) {
+        if metadata(op, budget, &lock_path, false)?.is_some_and(|value| value.is_symlink()) {
             return Err(integrity("bundle lock must not be a symlink"));
         }
-        let lock = read_lock(&op, budget, &lock_path)?;
+        let lock = read_lock(op, budget, &lock_path)?;
         let rows = lock_entries(&lock)?;
-        let mut identities = CatalogMemberIndex::new(&op, rows.len())?;
-        let mut members = member_storage(&op, rows.len())?;
+        let mut identities = CatalogMemberIndex::new(op, rows.len())?;
+        let mut members = member_storage(op, rows.len())?;
         let mut schemas = CatalogSchemas::default();
         for ordinal in 0..rows.len() {
-            let row = member_at(&lock, rows, ordinal, &op, budget)?;
+            let row = member_at(&lock, rows, ordinal, op, budget)?;
             let lexical = lexical(&root, &row.relative)?;
-            let candidate = member_path::resolve_member(&op, budget, &lexical)?;
+            let candidate = member_path::resolve_member(op, budget, &lexical)?;
             if candidate == root || !candidate.starts_with(&root) {
                 return Err(integrity(format!(
                     "bundle entry escapes root: {}",
                     row.relative
                 )));
             }
-            if member_path::member_has_symlink(&op, budget, &root, &row.relative)? {
+            if member_path::member_has_symlink(op, budget, &root, &row.relative)? {
                 return Err(integrity(format!(
                     "bundle entry contains a symlink: {}",
                     row.relative
                 )));
             }
-            let bytes = read_file(&op, &candidate, budget)?;
+            let bytes = read_file(op, &candidate, budget)?;
             charge_work(budget, bytes.len() as u64)?;
             let actual = Digest::hash(&bytes);
             if actual != row.expected {
@@ -156,12 +175,12 @@ impl CatalogIo {
                 )));
             }
             let document = schemas
-                .prove_document(&op, budget, row.kind, &bytes)?
+                .prove_document(op, budget, row.kind, &bytes)?
                 .ok_or(NativeBundleError::UnrepresentedDocument)?;
             if matches!(
                 row.kind,
                 CatalogDocumentKind::Base | CatalogDocumentKind::Shell
-            ) && !definition_revision_matches(&document, &op, budget)?
+            ) && !definition_revision_matches(&document, op, budget)?
             {
                 return Err(integrity(format!(
                     "{} definition revision is stale or tampered: {}",
@@ -169,7 +188,7 @@ impl CatalogIo {
                     row.relative
                 )));
             }
-            if !identities.insert(row.kind, ordinal, &document, &op, budget)? {
+            if !identities.insert(row.kind, ordinal, &document, op, budget)? {
                 let displayed = document_identity(&document, row.kind)
                     .map_or_else(|| "None".to_owned(), json::repr_text);
                 return Err(integrity(format!(
@@ -179,13 +198,13 @@ impl CatalogIo {
             }
             members.value.push(OwnedMember { row, bytes });
         }
-        drop((schemas, lock));
-        let pins = verify_pins(&op, budget, &root, &identities, &members)?;
+        drop(schemas);
+        let pins = verify_pins(op, budget, &root, &identities, &members)?;
         let artifact_path = root.parent().unwrap_or(&root).join("platform-artifacts");
         let (artifact_root, artifact_parent) =
-            if metadata(&op, budget, &artifact_path, true)?.is_some_and(|value| value.is_dir()) {
-                let path = member_path::resolve_member(&op, budget, &artifact_path)?;
-                let parent = shell_root::artifact_parent_identity(&op, &root, &path, budget)?;
+            if metadata(op, budget, &artifact_path, true)?.is_some_and(|value| value.is_dir()) {
+                let path = member_path::resolve_member(op, budget, &artifact_path)?;
+                let parent = shell_root::artifact_parent_identity(op, &root, &path, budget)?;
                 (Some(path), parent)
             } else {
                 (None, None)
@@ -196,10 +215,71 @@ impl CatalogIo {
             artifact_root,
             pins,
             artifact_parent,
+            lock,
             identities,
             members,
             _paths: op.reserve(STAGE, paths)?,
         })
+    }
+
+    /// Retain the original loader inputs after the same-scope snapshot is consumed.
+    pub(super) fn adopt_owned_bundle<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        bundle: NativeOwnedBundle,
+    ) -> Result<()> {
+        op.check(STAGE)?;
+        if !self.invocation.same_invocation(op.invocation)
+            || !Arc::ptr_eq(&self.cleanup, &op.cleanup)
+            || self.binding.is_none()
+            || self.selected.as_os_str().is_empty()
+            || self.lock_bytes.is_some()
+            || self.lock.is_some()
+            || self.entry != 0
+            || self.walk != 0
+            || self.pins != 0
+            || self.candidate.is_some()
+            || self.selected_before_resolve.is_some()
+            || self.artifact_root.is_some()
+            || self.artifact_parent_identity.is_some()
+            || self.shell_inputs.is_some()
+            || self.pack_resolve != PackResolve::Inactive
+        {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+
+        let NativeOwnedBundle {
+            root,
+            artifact_root,
+            pins,
+            artifact_parent,
+            lock,
+            identities,
+            members,
+            _paths,
+        } = bundle;
+        drop(identities);
+        self.lock = Some(lock);
+        let Funded {
+            value: members,
+            _capacity: _member_capacity,
+        } = members;
+        for OwnedMember { bytes, .. } in members {
+            self.retain_pack_pin(op, &bytes)?;
+            self.retain_shell_input(op, bytes)?;
+            self.entry += 1;
+        }
+        op.check(STAGE)?;
+        self.pins = pins;
+        self.artifact_parent_identity = artifact_parent;
+        self.artifact_root = artifact_root;
+        // The existing CatalogIo path reservation covers the adopted paths.
+        if self.retain_publication_root {
+            self.selected_before_resolve = Some(std::mem::replace(&mut self.selected, root));
+        } else {
+            self.selected = root;
+        }
+        Ok(())
     }
 }
 
@@ -362,7 +442,7 @@ fn integrity(message: impl Into<String>) -> NativeBundleError {
     NativeBundleError::Integrity(message.into())
 }
 
-fn label(kind: CatalogDocumentKind) -> &'static str {
+pub(super) fn label(kind: CatalogDocumentKind) -> &'static str {
     match kind {
         CatalogDocumentKind::Pack => "pack",
         CatalogDocumentKind::Base => "base",

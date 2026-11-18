@@ -81,6 +81,8 @@ class PathBridge:
         # fixed REVIEW caller selects/adopts the real controller independently;
         # changing this guest field cannot enable any native operation.
         self._catalog_root: NativePath | None = None
+        self._catalog_snapshot_root: NativePath | None = None
+        self._catalog_snapshot_result: Any = None
         self._resolving_catalog = False
         self._verified_catalog_rows: Iterator | None = None
         self._resolver_artifact_root: NativePath | None = None
@@ -99,12 +101,29 @@ class PathBridge:
         if (self._catalog_root is not None or self._resolving_catalog
                 or root._bridge is not self):
             raise UnsupportedValue("nested or foreign catalog call")
-        selected = self._value(self._catalog_request(root._target(), "root", []), "path", catalog=True)
+        row = self._catalog_request(root._target(), "root", [])
+        if row.get("kind") == "snapshot-root":
+            if set(row) != {"kind", "binding", "value"} or row["binding"] != root._binding:
+                raise UnsupportedValue("invalid native catalog snapshot root")
+            selected = self.bind(row["binding"], row["value"])
+            if not selected.is_absolute():
+                raise UnsupportedValue("invalid native catalog snapshot root")
+            self._catalog_snapshot_root = selected
+        else:
+            selected = self._value(row, "path", catalog=True)
         self._catalog_root = selected
         try:
-            return target(selected)
+            result = target(selected)
+            if self._catalog_snapshot_root is not None and (
+                self._catalog_snapshot_result is None
+                or result is not self._catalog_snapshot_result
+            ):
+                raise UnsupportedValue("native catalog snapshot was not materialized")
+            return result
         finally:
             self._catalog_root = None
+            self._catalog_snapshot_root = None
+            self._catalog_snapshot_result = None
 
     def _with_verified_catalog_rows(self, rows, target):
         if (self._verified_catalog_rows is not None or self._catalog_root is not None
@@ -235,17 +254,20 @@ class PathBridge:
                 or frame.get("scope") != self.scope.wire()):
             raise UnsupportedValue("invalid or foreign native inspection response")
         if set(frame) == {"format", "scope", "error"}:
-            if self._decode_error is None:
-                raise UnsupportedValue("native error disclosure is not connected")
-            error = self._decode_error(frame["error"])
-            if (not isinstance(error, Exception)
-                    or isinstance(error, (MemoryError, RecursionError))):
-                raise UnsupportedValue("native execution failures cannot be domain DATA")
-            raise error
+            raise self._catalog_error(frame["error"])
         if (set(frame) != {"format", "scope", "result"}
                 or type(frame["result"]) is not dict):
             raise UnsupportedValue("invalid native inspection result")
         return frame["result"]
+
+    def _catalog_error(self, row: Any) -> Exception:
+        if self._decode_error is None:
+            raise UnsupportedValue("native error disclosure is not connected")
+        error = self._decode_error(row)
+        if (not isinstance(error, Exception)
+                or isinstance(error, (MemoryError, RecursionError))):
+            raise UnsupportedValue("native execution failures cannot be domain DATA")
+        return error
 
     def _value(self, row: dict, kind: str, *, catalog: bool = False) -> Any:
         if row.get("kind") != kind:
@@ -506,6 +528,20 @@ class NativePath:
         ):
             raise UnsupportedValue("invalid native catalog pin digest result")
         return row["value"]
+
+    def _catalog_snapshot(self, operation: str, args: list) -> dict:
+        bridge = self._bridge
+        if (
+            self is not bridge._catalog_snapshot_root
+            or self is not bridge._catalog_root
+            or bridge._catalog_snapshot_result is not None
+        ):
+            raise UnsupportedValue("catalog snapshot outside its fixed call")
+        return bridge._catalog_request(self._target(), operation, args)
+
+    def _finish_catalog_snapshot(self, count: int, value: Any) -> None:
+        self._bridge._value(self._catalog_snapshot("snapshot-close", [count]), "unit")
+        self._bridge._catalog_snapshot_result = value
 
     def lstat(self) -> _Stat:
         return self._effect("lstat", "stat")

@@ -63,8 +63,20 @@ def derive_catalog_validation(source: bytes) -> bytes:
 
     source = _replace_one(source, b"import hashlib\n", b"import hashlib\nimport json\n")
     source = _replace_one(
+        source, b"        requested_root = Path(root)\n",
+        b'''        from harness_native.native_path import NativePath
+
+        if (
+            artifact_root is None
+            and type(root) is NativePath
+            and root is root._bridge._catalog_snapshot_root
+        ):
+            return cls._load_native_snapshot(root)
+        requested_root = Path(root)
+''',
+    )
+    source = _replace_one(
         source, b"        def read_native_entry(index: int, relative: str, reread: bool) -> bytes:\n",
-        b"        from harness_native.native_path import NativePath\n\n"
         b"        native = type(root) is NativePath and root._bridge._catalog_root is not None\n\n"
         b'''        def read_native_entry(index: int, relative: str, reread: bool) -> bytes | str:
             if native:
@@ -171,6 +183,7 @@ def derive_catalog_validation(source: bytes) -> bytes:
             ):
 ''',
     )
+    source = _derive_catalog_snapshot(source)
     return _replace_one(
         source,
         b"            catalog_raw_digest = 'sha256:' + hashlib.sha256(catalog_raw).hexdigest()\n",
@@ -181,6 +194,115 @@ def derive_catalog_validation(source: bytes) -> bytes:
             )
 ''',
     )
+
+
+def _derive_catalog_snapshot(source: bytes) -> bytes:
+    from bundle_catalog_kernel_inputs import _replace_one
+
+    anchor = b"    @classmethod\n    def load_from_reader(\n"
+    snapshot = b'''    @classmethod
+    def _load_native_snapshot(cls, root: Any) -> "BundledCatalog":
+        from harness_native.value_graph import UnsupportedValue
+        from .errors import CanonicalizationError
+
+        opened = root._catalog_snapshot("snapshot-open", [])
+        if opened.get("kind") == "snapshot-error":
+            error = opened.get("error")
+            message = opened.get("message")
+            fields = {"kind", "error", "message"}
+            if error in ("lock-io", "lock-json"):
+                fields.add("cause")
+            if set(opened) != fields or type(message) is not str:
+                raise UnsupportedValue("invalid native catalog snapshot error")
+            if error == "integrity":
+                raise BundleIntegrityError(message)
+            if error == "type-error":
+                raise TypeError(message)
+            if error == "value-error":
+                raise ValueError(message)
+            if error == "lock-io" and type(opened["cause"]) is dict:
+                cause = root._bridge._catalog_error(opened["cause"])
+                if not isinstance(cause, OSError):
+                    raise UnsupportedValue("invalid native catalog snapshot error")
+            elif error == "lock-json" and type(opened["cause"]) is str:
+                cause = CanonicalizationError(opened["cause"])
+            else:
+                raise UnsupportedValue("invalid native catalog snapshot error")
+            try:
+                raise cause
+            except (OSError, CanonicalizationError) as caught:
+                raise BundleIntegrityError(message) from caught
+
+        if (
+            set(opened) != {"kind", "root", "artifact_root", "count"}
+            or opened["kind"] != "snapshot-open"
+            or type(opened["root"]) is not str
+            or (opened["artifact_root"] is not None and type(opened["artifact_root"]) is not str)
+            or type(opened["count"]) is not int
+            or opened["count"] < 1
+        ):
+            raise UnsupportedValue("invalid native catalog snapshot")
+        resolved = root._bridge.bind(root._binding, opened["root"])
+        artifact = None
+        if opened["artifact_root"] is not None:
+            artifact = root._bridge.bind(root._binding, opened["artifact_root"])
+            artifact._steps = (("parent", ""), ("join", "platform-artifacts"))
+        if not resolved.is_absolute() or (artifact is not None and not artifact.is_absolute()):
+            raise UnsupportedValue("invalid native catalog snapshot path")
+
+        identity_fields = {
+            "pack": "id", "base": "pack_id", "shell": "provider_id",
+            "profile": "profile_id", "executable_catalog": "pack_id",
+        }
+        collections = {kind: {} for kind in identity_fields}
+        ordinal = 0
+        count = opened["count"]
+        while ordinal < count:
+            chunk = root._catalog_snapshot("snapshot-rows", [ordinal])
+            if (
+                set(chunk) != {"kind", "rows"}
+                or chunk["kind"] != "snapshot-rows"
+                or type(chunk["rows"]) is not list
+                or not 0 < len(chunk["rows"]) <= count - ordinal
+            ):
+                raise UnsupportedValue("invalid native catalog snapshot chunk")
+            for row in chunk["rows"]:
+                if (
+                    type(row) is not list
+                    or len(row) != 3
+                    or any(type(value) is not str for value in row)
+                ):
+                    raise UnsupportedValue("invalid native catalog snapshot row")
+                kind, identity, text = row
+                if kind not in collections or identity in collections[kind]:
+                    raise UnsupportedValue("invalid native catalog snapshot identity")
+                try:
+                    document = json.loads(text)
+                except json.JSONDecodeError:
+                    raise UnsupportedValue("invalid native catalog snapshot document") from None
+                if type(document) is not dict:
+                    raise UnsupportedValue("invalid native catalog snapshot document")
+                owner = document.get("pack") if kind == "pack" else document
+                if type(owner) is not dict or owner.get(identity_fields[kind]) != identity:
+                    raise UnsupportedValue("native catalog snapshot identity differs")
+                collections[kind][identity] = document
+            ordinal += len(chunk["rows"])
+            del chunk, row, text
+
+        catalog = cls(
+            root=resolved,
+            packs=collections["pack"],
+            bases=collections["base"],
+            shells=collections["shell"],
+            profiles=collections["profile"],
+            artifact_root=artifact,
+            executable_catalogs=collections["executable_catalog"],
+        )
+        root._finish_catalog_snapshot(count, catalog)
+        return catalog
+
+'''
+    return _replace_one(source, anchor, snapshot + anchor)
 
 
 def derive_harness_sources(files: dict[str, bytes], *, catalog_shapes: bool = False) -> dict[str, bytes]:

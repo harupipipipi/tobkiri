@@ -122,6 +122,7 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             self.assertIn(b"from app_schema_provider import AppSchemaProvider as Draft202012Validator",
                           (stage / "python/tobkiri_protocol/validation.py").read_bytes())
             catalog = (stage / "python/tobkiri_protocol/bundle_catalog.py").read_bytes()
+            self.assertIn(b"return cls._load_native_snapshot(root)", catalog)
             self.assertIn(b"kind, value = path._read_catalog_entry(index)", catalog)
             self.assertIn(b"return path._read_catalog_pin_digest(index)", catalog)
             self.assertIn(b"document = json.loads(raw)", catalog)
@@ -396,6 +397,177 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                             str(error.exception),
                             f"duplicate or missing pack identity: {pack_id!r}",
                         )
+
+    def test_derived_catalog_materializes_the_scoped_snapshot_in_lock_order(self):
+        repo = HERE.parents[1]
+        runtime = repo / "tobkiri_runtime"
+        source = runtime / "tobkiri_protocol/bundle_catalog.py"
+        module = ModuleType("tobkiri_protocol._catalog_snapshot_test")
+        module.__package__ = "tobkiri_protocol"
+        with (
+            patch.object(sys, "path", [str(runtime),
+                         str(repo / "packs/local.ai-tool-bridge-ordered-python"), *sys.path]),
+            patch.dict(sys.modules, {module.__name__: module}),
+        ):
+            from harness_native.exception_graph import ExceptionGraphStore
+            from harness_native.native_path import PathBridge
+            from harness_native.value_graph import Scope, UnsupportedValue
+            from tobkiri_protocol.errors import CanonicalizationError
+
+            exec(compile(app_schema.derive_catalog_validation(source.read_bytes()),
+                         str(source), "exec"), module.__dict__)
+            scope = Scope(1, 2, 3, 4)
+            opened = {
+                "kind": "snapshot-open",
+                "root": "/resolved/bundle",
+                "artifact_root": "/resolved/platform-artifacts",
+                "count": 6,
+            }
+            first = {"kind": "snapshot-rows", "rows": [
+                ["pack", "z", '{"nested":{"z":-0,"a":"é"},"pack":{"id":"z"}}'],
+                ["base", "base", '{"pack_id":"base"}'],
+                ["shell", "shell", '{"provider_id":"shell"}'],
+            ]}
+            last = {"kind": "snapshot-rows", "rows": [
+                ["profile", "profile", '{"profile_id":"profile"}'],
+                ["executable_catalog", "a", '{"pack_id":"a"}'],
+                ["pack", "a", '{"pack":{"id":"a"}}'],
+            ]}
+
+            def load(rows, *, decode_error=None):
+                scripted = [
+                    ("root", [], {"kind": "snapshot-root", "binding": "root", "value": "/bundle"}),
+                    *rows,
+                ]
+
+                def inspect(payload: str) -> str:
+                    request = json.loads(payload)
+                    operation, args, result = scripted.pop(0)
+                    self.assertEqual(request, {
+                        "format": "io.tobkiri.native-catalog-request.v1",
+                        "scope": scope.wire(),
+                        "target": {"binding": "root", "steps": []},
+                        "operation": operation,
+                        "args": args,
+                    })
+                    return json.dumps({"format": "io.tobkiri.native-inspection-response.v1",
+                                       "scope": scope.wire(), "result": result})
+
+                bridge = PathBridge(scope, "posix", inspect, os_flags={"O_RDONLY": 0},
+                                    decode_error=decode_error)
+                root = bridge.bind("root", "/bundle")
+                module.Path = bridge.module_path(str(source), root)
+                try:
+                    return bridge._load_catalog(module.BundledCatalog.load, root)
+                finally:
+                    self.assertEqual(scripted, [])
+                    self.assertIsNone(bridge._catalog_snapshot_root)
+                    self.assertIsNone(bridge._catalog_snapshot_result)
+
+            catalog = load([
+                ("snapshot-open", [], opened),
+                ("snapshot-rows", [0], first),
+                ("snapshot-rows", [3], last),
+                ("snapshot-close", [6], {"kind": "unit"}),
+            ])
+            self.assertIs(type(catalog), module.BundledCatalog)
+            self.assertEqual(list(catalog.packs), ["z", "a"])
+            self.assertEqual(list(catalog.packs["z"]), ["nested", "pack"])
+            self.assertEqual(list(catalog.packs["z"]["nested"]), ["z", "a"])
+            self.assertEqual(catalog.packs["z"]["nested"], {"z": 0, "a": "é"})
+            self.assertEqual(list(catalog.bases), ["base"])
+            self.assertEqual(list(catalog.shells), ["shell"])
+            self.assertEqual(list(catalog.profiles), ["profile"])
+            self.assertEqual(list(catalog.executable_catalogs), ["a"])
+            self.assertEqual(str(catalog.root), "/resolved/bundle")
+            self.assertEqual(catalog.root._target(), {"binding": "root", "steps": []})
+            self.assertEqual(str(catalog.artifact_root), "/resolved/platform-artifacts")
+            self.assertEqual(catalog.artifact_root._target(), {
+                "binding": "root", "steps": [["parent", ""], ["join", "platform-artifacts"]],
+            })
+
+            for invalid in (
+                {"kind": "snapshot-rows", "rows": []},
+                first,
+                {"kind": "snapshot-rows", "rows": [["pack", "other", '{"pack":{"id":"z"}}']]},
+                {"kind": "snapshot-rows", "rows": [["pack", "z", "{"]]},
+            ):
+                with (
+                    self.subTest(invalid=invalid),
+                    self.assertRaises(UnsupportedValue),
+                ):
+                    load([
+                        ("snapshot-open", [], {**opened, "count": 1}),
+                        ("snapshot-rows", [0], invalid),
+                    ])
+            with self.assertRaises(UnsupportedValue):
+                load([
+                    ("snapshot-open", [], {**opened, "count": 3}),
+                    ("snapshot-rows", [0], first),
+                    ("snapshot-close", [3], {"kind": "unit", "unexpected": True}),
+                ])
+
+            for tag, error_type in (
+                ("integrity", module.BundleIntegrityError),
+                ("type-error", TypeError),
+                ("value-error", ValueError),
+            ):
+                with self.subTest(tag=tag), self.assertRaises(error_type) as exc:
+                    load([("snapshot-open", [], {
+                        "kind": "snapshot-error", "error": tag, "message": "original message",
+                    })])
+                self.assertEqual(str(exc.exception), "original message")
+                self.assertIsNone(exc.exception.__cause__)
+
+            invalid_json = "duplicate JSON object key: 'entries'"
+
+            def immediate_cause(error: BaseException) -> BaseException:
+                cause = error.__cause__
+                self.assertIsNotNone(cause)
+                self.assertIs(error.__context__, cause)
+                self.assertTrue(error.__suppress_context__)
+                self.assertIsNone(cause.__cause__)
+                self.assertIsNone(cause.__context__)
+                self.assertFalse(cause.__suppress_context__)
+                return cause
+
+            with self.assertRaises(module.BundleIntegrityError) as exc:
+                load([("snapshot-open", [], {
+                    "kind": "snapshot-error", "error": "lock-json", "cause": invalid_json,
+                    "message": f"cannot read bundle lock: {invalid_json}",
+                })])
+            cause = immediate_cause(exc.exception)
+            self.assertIs(type(cause), CanonicalizationError)
+            self.assertEqual(str(cause), invalid_json)
+            self.assertEqual(str(exc.exception), f"cannot read bundle lock: {invalid_json}")
+
+            original = FileNotFoundError(2, "missing", "/resolved/bundle/bundle.lock.json")
+            graph = {
+                "code": "file-not-found-error",
+                "message": str(original),
+                "details": json.dumps({
+                    "format": "tobkiri.native-exception/1",
+                    "graph_id": 1,
+                    "root": 0,
+                    "nodes": [{
+                        "kind": "file-not-found-error", "args": list(original.args),
+                        "fields": {"errno": original.errno, "strerror": original.strerror,
+                                   "filename": original.filename, "filename2": None},
+                        "cause": None, "context": None, "suppress_context": False,
+                    }],
+                }),
+            }
+            store = ExceptionGraphStore(_catalog_paths=True)
+            with self.assertRaises(module.BundleIntegrityError) as exc:
+                load([("snapshot-open", [], {
+                    "kind": "snapshot-error", "error": "lock-io", "cause": graph,
+                    "message": f"cannot read bundle lock: {original}",
+                })], decode_error=lambda row: store.materialize(**row))
+            cause = immediate_cause(exc.exception)
+            self.assertIs(cause, store.materialize(**graph))
+            self.assertIs(type(cause), FileNotFoundError)
+            self.assertEqual((cause.args, cause.filename), (original.args, original.filename))
+            self.assertEqual(str(exc.exception), f"cannot read bundle lock: {original}")
 
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")

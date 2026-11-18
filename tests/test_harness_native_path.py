@@ -394,6 +394,37 @@ class NativePathAdapterTests(unittest.TestCase):
                         root,
                     )
 
+    def test_catalog_snapshot_requires_the_exact_root_and_acknowledged_result(self):
+        selected = {"kind": "snapshot-root", "binding": "root", "value": "/bundle"}
+        bridge, port = self.bridge([("root", selected), ("root", selected)])
+        root = bridge.bind("root", "/bundle")
+
+        def ignore_snapshot(owned_root):
+            alias = bridge.path(owned_root)
+            self.assertEqual(alias, owned_root)
+            self.assertIsNot(alias, owned_root)
+            with self.assertRaisesRegex(UnsupportedValue, "outside its fixed call"):
+                alias._catalog_snapshot("snapshot-open", [])
+            return None
+
+        for target in (ignore_snapshot, lambda _: object()):
+            with self.assertRaisesRegex(UnsupportedValue, "was not materialized"):
+                bridge._load_catalog(target, root)
+            self.assertIsNone(bridge._catalog_snapshot_root)
+            self.assertIsNone(bridge._catalog_root)
+        self.assertEqual([row["operation"] for row in port.requests], ["root", "root"])
+
+    def test_catalog_snapshot_refuses_foreign_scope_and_binding(self):
+        selected = {"kind": "snapshot-root", "binding": "root", "value": "/bundle"}
+        foreign = ScriptedPort(Scope(2, 2, 3, 4), [("root", selected)])
+        bridge = PathBridge(self.scope, "posix", foreign, os_flags={"O_RDONLY": 0})
+        with self.assertRaisesRegex(UnsupportedValue, "foreign native inspection response"):
+            bridge._load_catalog(self.fail, bridge.bind("root", "/bundle"))
+
+        bridge, _ = self.bridge([("root", {**selected, "binding": "wrong"})])
+        with self.assertRaisesRegex(UnsupportedValue, "invalid native catalog snapshot root"):
+            bridge._load_catalog(self.fail, bridge.bind("root", "/bundle"))
+
     def setUp(self):
         self.scope = Scope(1, 2, 3, 4)
 

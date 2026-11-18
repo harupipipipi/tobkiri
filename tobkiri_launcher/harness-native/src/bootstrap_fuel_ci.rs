@@ -110,6 +110,9 @@ impl Samples {
             Some("read-bytes") => "read-bytes",
             Some("read-entry") => "read-entry",
             Some("read-pin-digest") => "read-pin-digest",
+            Some("snapshot-open") => "snapshot-open",
+            Some("snapshot-rows") => "snapshot-rows",
+            Some("snapshot-close") => "snapshot-close",
             Some("is-dir") => "is-dir",
             _ => return,
         };
