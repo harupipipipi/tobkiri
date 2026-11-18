@@ -4171,6 +4171,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   発行済みの結果はSetupの再実行を起こさず返す。失敗時は既存の終了処理でlockを解放する。
   Rust 221件とstrict Clippy、Python dispatcher 87件、workflow補助14件が通過した。
   既存Launcherからの採用、初回の発行全体と64MiB内での実Wasm確認は後続。
+  `df0674b38` は `bootstrap_catalog.rs` のHost catalog構築をAuthority復旧から独立させた。
+  定義、Pack依存、同じRuntimeで置換されたcatalogの検証を共用でき、既存復旧は同じ参照と
+  呼出元のままAuthorityへ進む。Rust 221件とstrict Clippyが通過した。
+  初回発行への接続では `host_profile_catalog` の完了後に元Bundleを別にロードし、元Pythonの
+  `profiles[profile_id]` と解決前パスからのLock生バイト読み取りを再現する。既存resolverの
+  `.get` と読み取り順序が異なるため、同じ関数への統合は両者の例外と順序を確認してから行う。
   初回保存も既存の4相writerとHost pointer発行を再利用できる。保存前にProfile→Lock→Planの
   schema検証を行い、既存のrecord graph検査からActivationに依存しない部分を共有できる。
   仮のActivationを作らず、原本どおりrecover後、artifactの検証と予約の前で3レコードを検証する。
