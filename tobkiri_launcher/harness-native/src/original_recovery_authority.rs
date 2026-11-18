@@ -302,6 +302,7 @@ impl PublicationRead {
                                     .expect("requested active snapshot"))
                             },
                             |digest| (checks.definition)(&op, profile_id, digest),
+                            pending.confirmation.as_ref().map(|value| (value, budget)),
                             |active| {
                                 publish_active::publish(
                                     &op,
@@ -353,15 +354,52 @@ impl PublicationRead {
             reached,
             RecoveryAuthorityReached::RecoveredNone | RecoveryAuthorityReached::RecoveredPublished
         ) {
-            let pending = self.pending.take().expect("completed publication recovery");
-            pending
-                .scope
-                .finish(&op, Ok(Prefix::RecoveredNone))
-                .map_err(recovery_error)?;
-            self.fresh.record_recovery(cancellation);
+            let pending = self
+                .pending
+                .as_ref()
+                .expect("completed publication recovery");
+            if pending.confirmation.is_some() && reached == RecoveryAuthorityReached::RecoveredNone
+            {
+                // The nested original recovery returns None. Capture the
+                // predecessor afresh for Setup without releasing the outer lock.
+                pending.scope.validate(&op).map_err(recovery_error)?;
+                let predecessor = active_profile::load_verified(&op, &pending.root, budget)?;
+                let pending = self.pending.take().expect("completed confirmed recovery");
+                self.confirmed = Some(ConfirmedScope {
+                    scope: pending.scope,
+                    _predecessor: predecessor,
+                    thread: pending.thread,
+                });
+                self.fresh.record_confirmed_recovery(cancellation);
+            } else {
+                let pending = self.pending.take().expect("completed publication recovery");
+                pending
+                    .scope
+                    .finish(&op, Ok(Prefix::RecoveredNone))
+                    .map_err(recovery_error)?;
+                self.fresh.record_recovery(cancellation);
+            }
         }
         Ok(reached)
     }
+}
+
+fn verify_recovery_confirmation(
+    intent: &Intent,
+    confirmation: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    let digest = confirmation
+        .digest_guest(budget)
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))?;
+    let expected = subscript(&intent.doc, intent.payload, "confirmation_digest")?;
+    if !intent.doc.string_is(expected, digest.as_str()) {
+        return Err(raw(
+            recovery_workspace::APP_DENIED,
+            "Profile publication confirmation changed",
+        ));
+    }
+    Ok(())
 }
 
 fn incomplete_snapshot(prefix: workspace_active::ActiveSnapshotPrefix) -> RecoveryAuthorityReached {
@@ -400,6 +438,7 @@ async fn verify_active_snapshot(
     verify_artifact: impl FnOnce(&CoreValue) -> Result<ActiveArtifactVerification>,
     reread: impl AsyncFnOnce() -> Result<workspace_active::ActiveSnapshotRead>,
     verify_definition: impl FnOnce(&str) -> Result<()>,
+    confirmation: Option<(&CoreValue, &Arc<dyn AllocationBudget>)>,
     publish: impl FnOnce(&workspace_active::ActiveSnapshot) -> Result<()>,
 ) -> Result<RecoveryAuthorityReached> {
     let Some(first) = first.current else {
@@ -431,6 +470,9 @@ async fn verify_active_snapshot(
     }
     let digest = first.candidate_field("profile_definition_digest");
     verify_definition(digest.as_str().expect("verified Profile definition digest"))?;
+    if let Some((confirmation, budget)) = confirmation {
+        verify_recovery_confirmation(intent, confirmation, budget)?;
+    }
     publish(&first)?;
     Ok(RecoveryAuthorityReached::RecoveredPublished)
 }
@@ -524,13 +566,24 @@ mod tests {
         candidate: &str,
         profile_id: &str,
     ) {
+        write_intent(source, candidate, "null");
+        assert_eq!(
+            read.enter_recovery(source, cancellation, true).unwrap(),
+            Prefix::BootstrapProfileIdNotBound
+        );
+        read.construct_workspace(source, cancellation, profile_id)
+            .unwrap();
+        assert!(!lock_free(&source.root.join(LOCK_PATH)));
+    }
+
+    fn write_intent(source: &Source, candidate: &str, confirmation_digest: &str) {
         let profiles = source.root.join("profiles");
         fs::create_dir_all(&profiles).unwrap();
         let key = [b'k'; 32];
         fs::write(profiles.join(KEY), key).unwrap();
         fs::set_permissions(profiles.join(KEY), fs::Permissions::from_mode(0o600)).unwrap();
         let payload = format!(
-            r#"{{"candidate": {candidate}, "confirmation_digest": null, "predecessor": null, "schema": "io.tobkiri.profile-publication-intent.v1"}}"#
+            r#"{{"candidate": {candidate}, "confirmation_digest": {confirmation_digest}, "predecessor": null, "schema": "io.tobkiri.profile-publication-intent.v1"}}"#
         );
         let mut mac = Hmac::<Sha256>::new_from_slice(&key).unwrap();
         mac.update(payload.as_bytes());
@@ -546,13 +599,50 @@ mod tests {
         )
         .unwrap();
         fs::set_permissions(journal, fs::Permissions::from_mode(0o600)).unwrap();
-        assert_eq!(
-            read.enter_recovery(source, cancellation, true).unwrap(),
-            Prefix::BootstrapProfileIdNotBound
-        );
-        read.construct_workspace(source, cancellation, profile_id)
-            .unwrap();
-        assert!(!lock_free(&source.root.join(LOCK_PATH)));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn confirmed_recovery_reuses_the_outer_lock_after_clearing_uncommitted_work() {
+        with_setup_source(|source, read, cancellation, budget| {
+            let confirmation = CoreValue::parse_guest(br#"{"review":"accepted"}"#, budget).unwrap();
+            let digest = confirmation.digest_guest(budget).unwrap();
+            write_intent(
+                source,
+                r#"{"activation_id": "activation:recovery", "profile_id": "recovery-profile"}"#,
+                &format!("\"{}\"", digest.as_str()),
+            );
+            assert_eq!(
+                read.begin_confirmed(source, cancellation, confirmation.share(), budget)
+                    .unwrap(),
+                Prefix::BootstrapProfileIdNotBound
+            );
+            let pending = read.pending.as_ref().unwrap();
+            assert!(!lock_free(&source.root.join(LOCK_PATH)));
+            verify_recovery_confirmation(&pending.intent, &confirmation, budget).unwrap();
+            let changed = CoreValue::parse_guest(br#"{"review":"changed"}"#, budget).unwrap();
+            assert_eq!(
+                verify_recovery_confirmation(&pending.intent, &changed, budget)
+                    .unwrap_err()
+                    .message,
+                "Profile publication confirmation changed"
+            );
+            read.construct_workspace(source, cancellation, PROFILE_ID)
+                .unwrap();
+            assert_eq!(
+                read.run_recovery_test(source, cancellation, budget)
+                    .unwrap(),
+                RecoveryAuthorityReached::RecoveredNone
+            );
+            assert!(!source.root.join("profiles").join(JOURNAL).exists());
+            assert!(!source.root.join("workspaces").join(PROFILE_ID).exists());
+            assert!(!lock_free(&source.root.join(LOCK_PATH)));
+            read.acquire_candidate_root(source, cancellation).unwrap();
+            read.verify_confirmed(source, cancellation).unwrap();
+            read.close_continuation().unwrap();
+            assert!(lock_free(&source.root.join(LOCK_PATH)));
+            assert_eq!(read.receipt().open_files, 0);
+            assert_eq!(read.receipt().open_connections, 0);
+        });
     }
 
     fn initialize(source: &Source, read: &PublicationRead, cancellation: &CoreCancellation) {

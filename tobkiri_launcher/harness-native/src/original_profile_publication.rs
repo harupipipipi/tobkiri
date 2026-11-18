@@ -134,8 +134,9 @@ impl PublicationRead {
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
+        confirmation: tobkiri_canon::CoreValue,
         budget: &Arc<dyn tobkiri_canon::AllocationBudget>,
-    ) -> Result<()> {
+    ) -> Result<Prefix> {
         #[cfg(unix)]
         {
             if self.calls != 0 {
@@ -149,16 +150,24 @@ impl PublicationRead {
             self.calls = 2;
             let op = Self::operation(&self.invocation, &self.cleanup, owner, cancellation)?;
             op.check(OriginalAuthorityStage::Source)?;
-            self.confirmed = Some(
-                owner
-                    .with_original_review_user_data(|root| confirmed_scope(&op, root, budget))??,
-            );
-            self.fresh.record_confirmed_recovery(cancellation);
-            Ok(())
+            let entry = owner
+                .with_original_review_user_data(|root| confirmed_scope(&op, root, budget))??;
+            match entry {
+                ConfirmedEntry::Ready(scope) => {
+                    self.confirmed = Some(scope);
+                    self.fresh.record_confirmed_recovery(cancellation);
+                    Ok(Prefix::NoIntent)
+                }
+                ConfirmedEntry::Pending(mut pending) => {
+                    pending.confirmation = Some(confirmation);
+                    self.pending = Some(pending);
+                    Ok(Prefix::BootstrapProfileIdNotBound)
+                }
+            }
         }
         #[cfg(not(unix))]
         {
-            let _ = (owner, cancellation, budget);
+            let _ = (owner, cancellation, confirmation, budget);
             Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Source,
                 "Windows confirmed publication persistence/ACL",
@@ -281,6 +290,12 @@ impl PublicationRead {
     }
     pub(crate) fn receipt(&self) -> OriginalAuthorityCloseReceipt {
         self.cleanup.receipt()
+    }
+    #[cfg(unix)]
+    pub(crate) fn has_confirmed_recovery(&self) -> bool {
+        self.pending
+            .as_ref()
+            .is_some_and(|pending| pending.confirmation.is_some())
     }
     pub(crate) fn uncertain_cleanup(&self) -> Option<OriginalAuthorityCleanup> {
         (!self.cleanup.verified()).then(|| OriginalAuthorityCleanup(self.cleanup.clone()))
@@ -561,6 +576,7 @@ fn prefix<S: OriginalAuthorityOwner>(
                     _expected: expected,
                     workspace: None,
                     authority_attempted: false,
+                    confirmation: None,
                     cancellation: op.cancellation.clone(),
                     thread: std::thread::current().id(),
                 });
@@ -594,6 +610,7 @@ struct PendingRecoveryScope {
     _expected: Option<Pointer>,
     workspace: Option<RecoveryWorkspace>,
     authority_attempted: bool,
+    confirmation: Option<tobkiri_canon::CoreValue>,
     cancellation: CoreCancellation,
     thread: std::thread::ThreadId,
 }
@@ -710,11 +727,21 @@ struct ConfirmedScope {
 }
 
 #[cfg(unix)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "The held publication scope and funded recovery state stay inline"
+)]
+enum ConfirmedEntry {
+    Ready(ConfirmedScope),
+    Pending(PendingRecoveryScope),
+}
+
+#[cfg(unix)]
 fn confirmed_scope<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
     budget: &Arc<dyn tobkiri_canon::AllocationBudget>,
-) -> Result<ConfirmedScope> {
+) -> Result<ConfirmedEntry> {
     if let Some(handover) = development_handover::read_optional(op, root, budget)?
         && !handover
             .payload
@@ -725,7 +752,7 @@ fn confirmed_scope<S: OriginalAuthorityOwner>(
             "Development Host handover requires recovery before activation",
         ));
     }
-    let _paths = op.reserve(
+    let paths = op.reserve(
         OriginalAuthorityStage::Path,
         root.as_os_str()
             .len()
@@ -756,20 +783,40 @@ fn confirmed_scope<S: OriginalAuthorityOwner>(
                         "Profile publication predecessor is stale",
                     ));
                 }
-                return Err(OriginalAuthorityError::unsupported(
-                    OriginalAuthorityStage::Source,
-                    "confirmed publication recovery still requires activation store",
-                ));
+                let candidate = intent
+                    .doc
+                    .get(intent.payload, "candidate")
+                    .expect("intent payload");
+                let profile_id = subscript(&intent.doc, candidate, "profile_id")?;
+                return Ok((current, Some((intent, expected, profile_id))));
             }
         }
-        active_profile::load_verified(op, root, budget)
+        Ok((active_profile::load_verified(op, root, budget)?, None))
     })();
     match result {
-        Ok(predecessor) => Ok(ConfirmedScope {
+        Ok((current, Some((intent, expected, profile_id)))) => {
+            Ok(ConfirmedEntry::Pending(PendingRecoveryScope {
+                scope,
+                root: Funded {
+                    value: root.to_path_buf(),
+                    _capacity: paths,
+                },
+                intent,
+                profile_id,
+                _current: current,
+                _expected: expected,
+                workspace: None,
+                authority_attempted: false,
+                confirmation: None,
+                cancellation: op.cancellation.clone(),
+                thread: std::thread::current().id(),
+            }))
+        }
+        Ok((predecessor, None)) => Ok(ConfirmedEntry::Ready(ConfirmedScope {
             scope,
             _predecessor: predecessor,
             thread: std::thread::current().id(),
-        }),
+        })),
         Err(error) => finish_scope(Err(error), scope.guard.close()),
     }
 }
@@ -785,7 +832,15 @@ fn with_confirmed_predecessor<S: OriginalAuthorityOwner, T>(
         mut scope,
         _predecessor: predecessor,
         ..
-    } = confirmed_scope(op, root, budget)?;
+    } = match confirmed_scope(op, root, budget)? {
+        ConfirmedEntry::Ready(scope) => scope,
+        ConfirmedEntry::Pending(mut pending) => {
+            return finish_scope(
+                Err(OriginalAuthorityError::unavailable()),
+                pending.scope.guard.close(),
+            );
+        }
+    };
     let result = inspect(&scope, predecessor.as_ref());
     let result = if result.is_ok() {
         finish_scope(result, scope.validate(op))

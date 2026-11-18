@@ -1224,12 +1224,18 @@ pub(super) mod tests {
         });
     }
 
+    struct RecoveryWitness<'a> {
+        intent: &'a mut Intent,
+        confirmation: &'a CoreValue,
+        budget: &'a Arc<dyn AllocationBudget>,
+    }
+
     fn with_snapshot(
         records: &Value,
         test: impl FnOnce(
             &mut Fixture,
             &Connection,
-            &mut Intent,
+            RecoveryWitness<'_>,
             &mut dyn FnMut(&mut Fixture) -> Result<ActiveSnapshotRead>,
             &mut dyn FnMut(&ActiveSnapshot) -> Result<()>,
         ),
@@ -1242,6 +1248,8 @@ pub(super) mod tests {
             .unwrap();
         with_setup_source(|source, publication, cancellation, budget| {
             let op = operation(publication, source, cancellation);
+            let confirmation = CoreValue::parse_guest(br#"{"review":"accepted"}"#, budget).unwrap();
+            let confirmation_digest = confirmation.digest_guest(budget).unwrap();
             let signed_fields = json!({
                 "candidate": {
                     "profile_id": records["profile"]["profile_id"],
@@ -1251,7 +1259,8 @@ pub(super) mod tests {
                     "lock_digest": records["lock"]["lock_digest"],
                     "profile_definition_digest": records["plan"]["profile_definition_digest"],
                     "security_epoch": records["plan"]["security_epoch"],
-                }
+                },
+                "confirmation_digest": confirmation_digest.as_str(),
             });
             let doc = json::decode_read_only_strict(
                 &serde_json::to_vec(&signed_fields).unwrap(),
@@ -1388,7 +1397,17 @@ pub(super) mod tests {
                         &signed_fields["candidate"],
                     )
                 };
-                test(&mut fixture, &db, &mut intent, &mut capture, &mut publish);
+                test(
+                    &mut fixture,
+                    &db,
+                    RecoveryWitness {
+                        intent: &mut intent,
+                        confirmation: &confirmation,
+                        budget,
+                    },
+                    &mut capture,
+                    &mut publish,
+                );
                 Ok(())
             })
             .unwrap();
@@ -1508,7 +1527,12 @@ pub(super) mod tests {
             let record = field.strip_suffix("_api_version").unwrap();
             assert_eq!(records[record][field], id);
         }
-        with_snapshot(&records, |fixture, db, intent, capture, publish| {
+        with_snapshot(&records, |fixture, db, witness, capture, publish| {
+            let RecoveryWitness {
+                intent,
+                confirmation,
+                budget,
+            } = witness;
             assert_eq!(
                 capture(fixture).unwrap().prefix,
                 ActiveSnapshotPrefix {
@@ -1540,6 +1564,21 @@ pub(super) mod tests {
                 );
                 Ok(())
             };
+            let changed = CoreValue::parse_guest(br#"{"review":"changed"}"#, budget).unwrap();
+            let different_confirmation = ready_test(verify_active_snapshot(
+                capture(fixture).unwrap(),
+                intent,
+                verify,
+                async || capture(fixture),
+                verify_definition,
+                Some((&changed, budget)),
+                |_| panic!("different confirmation cannot publish the activation"),
+            ))
+            .unwrap_err();
+            assert_eq!(
+                different_confirmation.message,
+                "Profile publication confirmation changed"
+            );
             assert_eq!(
                 ready_test(verify_active_snapshot(
                     capture(fixture).unwrap(),
@@ -1547,6 +1586,7 @@ pub(super) mod tests {
                     verify,
                     async || capture(fixture),
                     verify_definition,
+                    Some((confirmation, budget)),
                     publish,
                 ))
                 .unwrap(),
@@ -1566,6 +1606,7 @@ pub(super) mod tests {
                     reread
                 },
                 |_| panic!("changed records cannot reach the definition check"),
+                Some((confirmation, budget)),
                 |_| panic!("changed records cannot be published"),
             ))
             .unwrap_err();
@@ -1585,6 +1626,7 @@ pub(super) mod tests {
                 verify,
                 async || capture(fixture),
                 |_| panic!("different candidate cannot reach the definition check"),
+                Some((confirmation, budget)),
                 |_| panic!("different candidate cannot be published"),
             ))
             .unwrap_err();
@@ -1602,6 +1644,7 @@ pub(super) mod tests {
                     |_| panic!(
                         "verified successor requires reconfirmation before checking the definition"
                     ),
+                    Some((confirmation, budget)),
                     |_| panic!("verified successor cannot be published before reconfirmation"),
                 ))
                 .unwrap(),

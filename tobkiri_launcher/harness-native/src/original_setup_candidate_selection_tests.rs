@@ -170,12 +170,17 @@ async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
                 },
                 calls: AtomicUsize::new(if case == "candidate-root" { 2 } else { 1 }),
             };
-            read.begin_confirmed(&owner, cancel, budget).unwrap();
+            let confirmation = CoreValue::parse_guest(b"{}", budget).unwrap();
+            read.begin_confirmed(&owner, cancel, confirmation.share(), budget)
+                .unwrap();
             let lock = source.root.join("profiles").join(LOCK);
             assert!(!lock_free(&lock));
             assert_eq!(read.receipt().open_files, 1);
             assert!(read.enter_recovery(&owner, cancel, true).is_err());
-            assert!(read.begin_confirmed(&owner, cancel, budget).is_err());
+            assert!(
+                read.begin_confirmed(&owner, cancel, confirmation, budget)
+                    .is_err()
+            );
             let candidate_root = read.acquire_candidate_root(&owner, cancel);
             let mut held = lock.clone();
             if case == "candidate-root" {

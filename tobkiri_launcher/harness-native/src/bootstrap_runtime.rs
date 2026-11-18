@@ -1508,7 +1508,12 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 ) -> Result<std::result::Result<SetupOutput, crate::BootstrapReviewFailure>> {
     use activation_decision::Decision;
     let decide = activation.is_some();
-    let confirmed = activation.as_ref().is_some_and(|input| input.confirmed);
+    let confirmation = activation
+        .as_ref()
+        .filter(|input| input.confirmed)
+        .map(|input| denied::field(&input.body, "confirmation"))
+        .transpose()?;
+    let confirmed = confirmation.is_some();
     if let Some(input) = activation {
         match activation_decision::run(pack, Some(&input.body), None).await? {
             Ok(Decision::Continue) => {}
@@ -1521,8 +1526,13 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             Err(error) => return Ok(Err(error)),
         }
     }
-    let listing = match review_continuation::run(review, pack, confirmed).await? {
-        Ok(listing) => listing,
+    let listing = match review_continuation::run(review, pack, confirmation).await? {
+        Ok(review_continuation::SetupReview::Listing(listing)) => listing,
+        Ok(review_continuation::SetupReview::RecoveredPublication) => {
+            return Ok(Ok(SetupOutput::Decision(
+                BootstrapActivationDecision::RecoveredPublication,
+            )));
+        }
         Err(error) => return Ok(Err(error)),
     };
     if !decide {

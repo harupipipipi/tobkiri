@@ -233,9 +233,12 @@ impl DispatchOutput {
             }
             #[cfg(all(target_os = "macos", feature = "native-setup-review"))]
             Self::SetupDecision(decision) => {
-                use tobkiri_harness_native::BootstrapActivationDecision::{Matched, Rejected};
+                use tobkiri_harness_native::BootstrapActivationDecision::{
+                    Matched, RecoveredPublication, Rejected,
+                };
                 let (decision, data) = match decision {
                     Matched(..) => ("matched", serde_json::Value::Null),
+                    RecoveredPublication => ("recovered", serde_json::Value::Null),
                     Rejected(response) => (
                         "rejected",
                         serde_json::Value::String(detachment.description(response)?),

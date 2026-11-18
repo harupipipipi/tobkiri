@@ -11,6 +11,8 @@ use crate::BootstrapReviewFailure;
 )]
 pub enum BootstrapActivationDecision {
     Rejected(CoreBuffer),
+    /// The previously journaled activation was verified and published.
+    RecoveredPublication,
     /// Candidate identity and its exact resolved Profile, Lock and Plan.
     Matched(BootstrapActivationCandidate, CoreValue),
 }

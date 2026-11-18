@@ -132,18 +132,23 @@ impl ReviewCaller {
     }
 }
 
+pub(super) enum SetupReview {
+    Listing(CoreValue),
+    RecoveredPublication,
+}
+
 pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-    confirmed: bool,
-) -> super::listing::Outcome {
+    confirmation: Option<CoreValue>,
+) -> Result<std::result::Result<SetupReview, BootstrapReviewFailure>> {
     if review.attempted {
         return Ok(Err(BootstrapReviewFailure::Admission(
             crate::OriginalAuthorityAdmission::AlreadyAttempted,
         )));
     }
     review.attempted = true;
-    if confirmed {
+    if let Some(confirmation) = confirmation {
         // The original source-update precheck must run before lock acquisition.
         // Its active candidate path is a separate continuation.
         if review.include_source_additions {
@@ -151,14 +156,28 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
                 BootstrapReviewReachpoint::ActiveCandidateAuthorityNotBound,
             )));
         }
-        if let Err(error) = review.read.begin_confirmed(
+        match review.read.begin_confirmed(
             &pack.work.get().source,
             pack.cancellation,
+            confirmation,
             pack.input_budget,
         ) {
-            return Ok(Err(original_failure(error)));
+            Err(error) => return Ok(Err(original_failure(error))),
+            Ok(PublicationPrefix::NoIntent) => {}
+            Ok(PublicationPrefix::BootstrapProfileIdNotBound) => {
+                match nonstale(review, pack).await? {
+                    Err(error) => return Ok(Err(error)),
+                    Ok(catalog::RecoveryCompletion::NoActivation) => {}
+                    Ok(catalog::RecoveryCompletion::Published) => {
+                        return Ok(Ok(SetupReview::RecoveredPublication));
+                    }
+                }
+            }
+            Ok(_) => bail!("confirmed publication entered an unexpected recovery state"),
         }
-        return fresh_candidate(review, pack).await;
+        return Ok(fresh_candidate(review, pack)
+            .await?
+            .map(SetupReview::Listing));
     }
     for discard in [true, false] {
         match review.read.enter_recovery_metered(
@@ -186,7 +205,9 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             }
         }
     }
-    fresh_candidate(review, pack).await
+    Ok(fresh_candidate(review, pack)
+        .await?
+        .map(SetupReview::Listing))
 }
 
 async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(

@@ -22,8 +22,13 @@ pub(super) const BOOTSTRAP_TEMPLATE_REQUEST: &str =
 pub(super) const ADMITTED_CLOSURE_REQUEST: &str =
     "io.tobkiri.native-bootstrap-admitted-closure-step.v1";
 
-// A successful recovery here returns the original None, after the journal lock closes.
-pub(super) type RecoveryOutcome = Result<std::result::Result<(), BootstrapReviewFailure>>;
+pub(super) enum RecoveryCompletion {
+    NoActivation,
+    Published,
+}
+
+pub(super) type RecoveryOutcome =
+    Result<std::result::Result<RecoveryCompletion, BootstrapReviewFailure>>;
 
 pub(super) const RECOVERY_FINISHED_REQUEST: &str =
     "io.tobkiri.native-bootstrap-recovery-finished.v1";
@@ -732,6 +737,7 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
     }
     use crate::original_authority::{LEGACY_RESOLVER_INTERRUPTED, RecoveryAuthorityReached};
     let mut resolver_fault = None;
+    let confirmed = review.read.has_confirmed_recovery();
     let reached = {
         let work = (*pack.work).clone();
         let work = work.get();
@@ -804,8 +810,14 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
             )
             .await?));
         }
+        Ok(RecoveryAuthorityReached::RecoveredPublished) if confirmed => {
+            // A confirmed recovery returns the published result immediately.
+            // Only callers that keep using the guest need to reset its catalog.
+            return Ok(Ok(RecoveryCompletion::Published));
+        }
         Ok(
-            RecoveryAuthorityReached::RecoveredNone | RecoveryAuthorityReached::RecoveredPublished,
+            reached @ (RecoveryAuthorityReached::RecoveredNone
+            | RecoveryAuthorityReached::RecoveredPublished),
         ) => {
             let request = denied::frame(pack, RECOVERY_FINISHED_REQUEST, [("catalog", root)])?;
             let response = pack
@@ -822,7 +834,10 @@ async fn replace_recovery_profiles<S: BootstrapInputOwner + crate::BootstrapRevi
             {
                 bail!("original completed recovery acknowledgement differs");
             }
-            return Ok(Ok(()));
+            return Ok(Ok(match reached {
+                RecoveryAuthorityReached::RecoveredNone => RecoveryCompletion::NoActivation,
+                _ => RecoveryCompletion::Published,
+            }));
         }
         Ok(RecoveryAuthorityReached::MatchedReservation) => {
             return Ok(Err(review_continuation::denied(
