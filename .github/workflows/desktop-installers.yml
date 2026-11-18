@@ -2,6 +2,14 @@ name: Desktop Installers
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      native_setup:
+        type: boolean
+        required: true
+      native_setup_receipt_sha256:
+        type: string
+        required: true
   push:
     branches: [master, soon]
     paths:
@@ -45,7 +53,7 @@ on:
       - "tobkiri_launcher/**"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ inputs.native_setup && format('native-setup-installer-{0}', github.run_id) || format('{0}-{1}', github.workflow, github.event.pull_request.number || github.ref) }}
   cancel-in-progress: true
 
 permissions:
@@ -221,7 +229,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ inputs.native_setup && '3.13.16' || '3.13' }}
           cache: pip
           cache-dependency-path: |
             tobkiri_runtime/requirements.txt
@@ -488,12 +496,60 @@ jobs:
           /usr/bin/codesign --force --sign - "$artifact"
           /usr/bin/codesign --verify --deep --strict --verbose=2 "$artifact"
 
+      - name: Download the same-run Harness component for the CI installer
+        if: inputs.native_setup
+        uses: actions/download-artifact@v4
+        with:
+          name: whole-native-harness-component
+          path: ${{ runner.temp }}/harness-built
+
+      - name: Bind the installer to the verified Launcher staging receipt
+        if: inputs.native_setup
+        shell: bash
+        env:
+          EXPECTED_LAUNCHER_RECEIPT_SHA256: ${{ inputs.native_setup_receipt_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_LAUNCHER_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          component="$RUNNER_TEMP/harness-built/harness-native/harness-native-app-frame/work/component.wasm"
+          bound="$RUNNER_TEMP/harness-native-inputs"
+          python -B tools/python313-producer/harness_native_ci_inputs.py \
+            --app-backend --artifact "$component" --output "$bound" \
+            --github-env "$RUNNER_TEMP/harness-native-test.env"
+          python -B - "$bound/inputs.json" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          report = json.loads(Path(sys.argv[1]).read_bytes())
+          if report["launcher_component_receipt"]["sha256"] != os.environ["EXPECTED_LAUNCHER_RECEIPT_SHA256"]:
+              raise SystemExit("installer receipt differs from the verified Launcher staging receipt")
+          component = report["component"]
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              print(f"TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_SHA256={component['sha256']}", file=output)
+              print(f"TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_BYTES={component['bytes']}", file=output)
+          PY
+
       - name: Build non-publishable macOS CI/E2E application
         if: runner.os == 'macOS'
         working-directory: tobkiri_launcher
+        shell: bash
         env:
           TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
-        run: python -B scripts/run_tauri_build.py build --target ${{ matrix.target }} --config src-tauri/tauri.macos.ci-e2e.conf.json --bundles app --ci ${{ matrix.signing_args }}
+          NATIVE_SETUP: ${{ inputs.native_setup || false }}
+          EXPECTED_LAUNCHER_RECEIPT_SHA256: ${{ inputs.native_setup_receipt_sha256 }}
+        run: |
+          set -euo pipefail
+          build_args=(--config src-tauri/tauri.macos.ci-e2e.conf.json --bundles app --ci
+            ${{ matrix.signing_args }})
+          if [[ "$NATIVE_SETUP" == true ]]; then
+            export TOBKIRI_SETUP_COMPONENT_SOURCE="$RUNNER_TEMP/harness-built/harness-native/harness-native-app-frame/work/component.wasm"
+            export TOBKIRI_SETUP_COMPONENT_RECEIPT="$RUNNER_TEMP/harness-native-inputs/launcher-component.json"
+            export TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$EXPECTED_LAUNCHER_RECEIPT_SHA256"
+            build_args+=(--features native-first-setup)
+          fi
+          python -B scripts/run_tauri_build.py build --target ${{ matrix.target }} "${build_args[@]}"
 
       - name: Stage authenticated macOS PackVM VZ helper
         if: runner.os == 'macOS'
@@ -601,23 +657,36 @@ jobs:
             --output-dir "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg" \
             2>&1 | tee "$RUNNER_TEMP/tobkiri-macos-dmg-${{ matrix.target }}.log"
 
-      - name: Verify mounted macOS installer packaged Python
+      - name: Verify mounted macOS installer resources
+        id: verified_dmg
         if: runner.os == 'macOS'
         working-directory: tobkiri_launcher
+        shell: bash
+        env:
+          NATIVE_SETUP: ${{ inputs.native_setup || false }}
         run: |
-          dmg="$(find "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
-          test -n "$dmg"
-          bash scripts/verify_packaged_python_dmg.sh \
-            --dmg "$dmg" \
-            --target '${{ matrix.target }}' \
-            --expected-manifest-sha256 "$TOBKIRI_PACKAGED_PYTHON_INVENTORY_SHA256"
+          set -euo pipefail
+          shopt -s nullglob
+          set -- "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg/"*.dmg
+          if [[ $# -ne 1 ]]; then
+            echo 'Expected a single macOS CI installer DMG' >&2
+            exit 1
+          fi
+          dmg="$1"
+          verify_args=(--dmg "$dmg" --target '${{ matrix.target }}'
+            --expected-manifest-sha256 "$TOBKIRI_PACKAGED_PYTHON_INVENTORY_SHA256")
+          if [[ "$NATIVE_SETUP" == true ]]; then
+            verify_args+=(--expected-native-setup-component-sha256 "$TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_SHA256"
+              --expected-native-setup-component-bytes "$TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_BYTES")
+          fi
+          bash scripts/verify_packaged_python_dmg.sh "${verify_args[@]}"
+          printf 'path=%s\n' "$dmg" >> "$GITHUB_OUTPUT"
 
       - name: Upload desktop installer
         uses: actions/upload-artifact@v4
         with:
-          name: tobkiri-non-publishable-ci-e2e-${{ matrix.artifact_suffix }}-${{ steps.checked_out_source.outputs.source_revision }}
-          path: |
-            ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          name: tobkiri-non-publishable-ci-e2e${{ inputs.native_setup && '-native-setup' || '' }}-${{ matrix.artifact_suffix }}-${{ steps.checked_out_source.outputs.source_revision }}
+          path: ${{ steps.verified_dmg.outputs.path }}
           if-no-files-found: error
 
       - name: Destroy ephemeral macOS CI signing identity

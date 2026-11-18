@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/issue-1520-harness-native.yml"
+INSTALLERS = ROOT / ".github/workflows/desktop-installers.yml"
 
 
 def job(source: str, name: str) -> str:
@@ -101,6 +102,45 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertNotIn(mode, step(self.native, "Observe actual catalog schema checkpoints without qualification"))
         evidence = step(self.native, "Retain actual native execution evidence")
         self.assertIn("harness-native-launcher-snapshot.log*", evidence)
+
+    def test_snapshot_dmg_opt_in_carries_the_verified_same_run_receipt_to_the_mount(self) -> None:
+        self.assertRegex(self.workflow, r"package_launcher_dmg:\n[^\n]*\n        type: boolean\n        default: false")
+        staging = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
+        self.assertIn("steps.launcher_staging.outputs.receipt_sha256", self.native)
+        self.assertLess(staging.index("fingerprint(copied"), staging.index('>> "$GITHUB_OUTPUT"'))
+        package = job(self.workflow, "package-native-setup-dmg")
+        for required in (
+            "inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg",
+            "needs: execute-original-native-bootstrap", "uses: ./.github/workflows/desktop-installers.yml",
+            "native_setup: true", "needs.execute-original-native-bootstrap.outputs.launcher_receipt_sha256",
+        ):
+            self.assertIn(required, package)
+
+        installer = job(INSTALLERS.read_text(encoding="utf-8"), "build-installer")
+        artifact = step(installer, "Download the same-run Harness component for the CI installer")
+        self.assertIn("if: inputs.native_setup", artifact)
+        self.assertIn("name: whole-native-harness-component", artifact)
+        self.assertNotIn("run-id:", artifact)
+        bind = step(installer, "Bind the installer to the verified Launcher staging receipt")
+        self.assertIn("harness_native_ci_inputs.py", bind)
+        self.assertIn("--app-backend", bind)
+        self.assertIn('report["launcher_component_receipt"]["sha256"] !=', bind)
+        self.assertIn("--github-env \"$RUNNER_TEMP/harness-native-test.env\"", bind)
+        app = step(installer, "Build non-publishable macOS CI/E2E application")
+        self.assertIn("--features native-first-setup", app)
+        self.assertIn("TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256", app)
+        self.assertIn("--bundles app --ci", app)
+        shell = step(installer, "Build verified Tauri Shell artifact")
+        self.assertNotIn("TOBKIRI_SETUP_COMPONENT", shell)
+        self.assertNotIn("native-first-setup", shell)
+        mounted = step(installer, "Verify mounted macOS installer resources")
+        self.assertIn("verify_packaged_python_dmg.sh", mounted)
+        self.assertIn("--expected-native-setup-component-sha256", mounted)
+        self.assertIn("--expected-native-setup-component-bytes", mounted)
+        self.assertIn('>> "$GITHUB_OUTPUT"', mounted)
+        upload = step(installer, "Upload desktop installer")
+        self.assertIn("non-publishable-ci-e2e", upload)
+        self.assertIn("steps.verified_dmg.outputs.path", upload)
 
     def test_app_diagnostic_uses_same_extension_and_only_the_actual_catalog_trace(self) -> None:
         mode = "catalog-app-frame-diagnostic"

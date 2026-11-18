@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Verify a packaged Python runtime through an identity-bound DMG mount."""
+"""Verify packaged resources through an identity-bound DMG mount."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import plistlib
 import re
@@ -14,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
@@ -21,6 +23,8 @@ from types import FrameType
 
 MOUNT_PREFIX = ".tobkiri-dmg-verify."
 DEVICE_PATTERN = re.compile(r"^/dev/disk[0-9]+(?:s[0-9]+)?$")
+NATIVE_SETUP_COMPONENT = Path("Contents/Resources/app/native-setup/component.wasm")
+MAX_NATIVE_SETUP_COMPONENT_BYTES = 32 * 1024 * 1024
 ALLOWED_SYSTEM_ALIASES = {
     Path("/var"): Path("/private/var"),
     Path("/tmp"): Path("/private/tmp"),
@@ -316,6 +320,56 @@ class MountedDmg:
         self.verify_mounted()
         return app_bundle
 
+    def verify_native_setup_component(
+        self, app_bundle: Path, expected_bytes: int, expected_sha256: str
+    ) -> None:
+        """Hash the fixed physical Wasm resource from the held mounted root."""
+        self.verify_mounted()
+        assert self.mounted_fd is not None
+        assert self.mounted_identity is not None
+        volume_device = self.mounted_identity.device
+        try:
+            with ExitStack() as opened:
+                directory = self.mounted_fd
+                for part in (app_bundle.name, *NATIVE_SETUP_COMPONENT.parent.parts):
+                    directory = os.open(part, _directory_flags(), dir_fd=directory)
+                    opened.callback(os.close, directory)
+                    if os.fstat(directory).st_dev != volume_device:
+                        raise DmgVerificationError("native Setup resource left the DMG")
+                descriptor = os.open(
+                    NATIVE_SETUP_COMPONENT.name,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                    dir_fd=directory,
+                )
+                opened.callback(os.close, descriptor)
+                metadata = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_dev != volume_device
+                    or metadata.st_nlink != 1
+                ):
+                    raise DmgVerificationError(
+                        "native Setup Wasm is not a physical regular file on the DMG"
+                    )
+                if metadata.st_size != expected_bytes:
+                    raise DmgVerificationError("native Setup Wasm size differs")
+                digest = hashlib.sha256()
+                size = 0
+                while block := os.read(descriptor, 64 * 1024):
+                    size += len(block)
+                    if size > expected_bytes:
+                        raise DmgVerificationError("native Setup Wasm size differs")
+                    digest.update(block)
+                if size != expected_bytes:
+                    raise DmgVerificationError("native Setup Wasm size differs")
+                if digest.hexdigest() != expected_sha256:
+                    raise DmgVerificationError("native Setup Wasm SHA-256 differs")
+        except OSError as error:
+            raise DmgVerificationError(
+                "native Setup Wasm is missing or could not be read without following links"
+            ) from error
+        self.verify_mounted()
+
     def detach(self) -> None:
         """Detach only the device established by the successful attach plist."""
         if self.device is None or self.detached:
@@ -380,6 +434,12 @@ def verify_dmg(args: argparse.Namespace) -> None:
     try:
         mount.attach()
         app_bundle = mount.application_bundle()
+        if args.expected_native_setup_component_sha256 is not None:
+            mount.verify_native_setup_component(
+                app_bundle,
+                args.expected_native_setup_component_bytes,
+                args.expected_native_setup_component_sha256,
+            )
         for executable, arguments in (
             (
                 python,
@@ -431,6 +491,8 @@ def verify_dmg(args: argparse.Namespace) -> None:
         finally:
             mount.close()
     print(f"Verified mounted DMG packaged Python: {dmg}")
+    if args.expected_native_setup_component_sha256 is not None:
+        print(f"Verified mounted DMG native Setup Wasm: {dmg}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -439,7 +501,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo-root", required=True, type=Path)
     parser.add_argument("--target", required=True)
     parser.add_argument("--expected-manifest-sha256", required=True)
-    return parser.parse_args()
+    parser.add_argument("--expected-native-setup-component-sha256")
+    parser.add_argument("--expected-native-setup-component-bytes")
+    args = parser.parse_args()
+    sha256 = args.expected_native_setup_component_sha256
+    size = args.expected_native_setup_component_bytes
+    if (sha256 is None) != (size is None):
+        parser.error("native Setup Wasm SHA-256 and byte count must be supplied together")
+    if sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        parser.error("expected native Setup Wasm SHA-256 is invalid")
+    if size is not None:
+        if not re.fullmatch(r"[1-9][0-9]{0,7}", size) or (
+            int(size) > MAX_NATIVE_SETUP_COMPONENT_BYTES
+        ):
+            parser.error("expected native Setup Wasm byte count is out of range")
+        args.expected_native_setup_component_bytes = int(size)
+    return args
 
 
 def _raise_for_signal(signum: int, _frame: FrameType | None) -> None:

@@ -42,6 +42,10 @@ on:
         type: choice
         options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, catalog-app-frame-diagnostic, launcher-staging, launcher-snapshot-staging]
         default: bootstrap
+      package_launcher_dmg:
+        description: Verify and retain a non-publishable Launcher DMG after launcher-snapshot-staging
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -213,6 +217,8 @@ jobs:
     needs: build-whole-native-harness
     runs-on: macos-15
     timeout-minutes: 45
+    outputs:
+      launcher_receipt_sha256: ${{ steps.launcher_staging.outputs.receipt_sha256 }}
     env:
       CARGO_BUILD_JOBS: '1'
       CARGO_INCREMENTAL: '0'
@@ -591,6 +597,7 @@ jobs:
           cargo build --locked --manifest-path pack-shell/Cargo.toml --target aarch64-apple-darwin
           python3 -B .github/scripts/seal_pack_shell.py --target aarch64-apple-darwin
       - name: Stage the verified same-run Wasm through the original Launcher
+        id: launcher_staging
         if: ${{ (inputs.verification == 'launcher-staging' || inputs.verification == 'launcher-snapshot-staging') && steps.native_inputs.conclusion == 'success' }}
         env:
           SNAPSHOT_SETUP: ${{ inputs.verification == 'launcher-snapshot-staging' }}
@@ -639,6 +646,7 @@ jobs:
               raise SystemExit("Tauri resource copy differs from the verified Wasm")
           print("Verified the original Launcher resource seal and Tauri Wasm copy")
           PY
+          printf 'receipt_sha256=%s\n' "$pin" >> "$GITHUB_OUTPUT"
       - name: Retain actual native execution evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -695,3 +703,11 @@ jobs:
             ${{ runner.temp }}/original-catalog-nine-prefix/actual-catalog-nine-observations.json
             ${{ runner.temp }}/original-catalog-nine-prefix/actual-catalog-nine-comparison.json
           if-no-files-found: warn
+
+  package-native-setup-dmg:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg }}
+    needs: execute-original-native-bootstrap
+    uses: ./.github/workflows/desktop-installers.yml
+    with:
+      native_setup: true
+      native_setup_receipt_sha256: ${{ needs.execute-original-native-bootstrap.outputs.launcher_receipt_sha256 }}

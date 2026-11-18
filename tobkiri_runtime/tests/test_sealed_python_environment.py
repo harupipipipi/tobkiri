@@ -3803,10 +3803,13 @@ def test_all_tauri_build_callsites_are_mac_release_gated() -> None:
         assert "x86_64-pc-windows-msvc" not in workflow
         assert "x86_64-unknown-linux-gnu" not in workflow
         assert "if: runner.os != 'macOS'" not in workflow
-        assert "--features" not in workflow
         for line in workflow.splitlines():
             if bound_needle in line:
                 assert "${{ matrix.target }}" in line
+
+    for step in release_build.split("\n      - name: "):
+        if bound_needle in step:
+            assert "--features" not in step
 
     helper = (ROOT / "scripts/build-and-sign.sh").read_text(encoding="utf-8")
     guard = 'if [[ "$mode" == "production" && "$presentation_platform" != "macos" ]]'

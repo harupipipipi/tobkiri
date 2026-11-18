@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -358,11 +359,49 @@ def test_primary_error_wins_over_cleanup_error(
         repo_root=repository,
         target="aarch64-apple-darwin",
         expected_manifest_sha256="a" * 64,
+        expected_native_setup_component_bytes=None,
+        expected_native_setup_component_sha256=None,
     )
 
     with pytest.raises(MODULE.DmgVerificationError, match="primary attach failure"):
         MODULE.verify_dmg(args)
     assert "cleanup also failed: cleanup failure" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("digest", "size", "error"),
+    [
+        ("a" * 64, None, "must be supplied together"),
+        (None, "1", "must be supplied together"),
+        ("A" * 64, "1", "SHA-256 is invalid"),
+        ("a" * 64, str(32 * 1024 * 1024 + 1), "byte count is out of range"),
+        ("a" * 64, "0", "byte count is out of range"),
+        ("a" * 64, " 1", "byte count is out of range"),
+    ],
+)
+def test_expected_setup_component_requires_a_valid_pin_and_size(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    digest: str | None,
+    size: str | None,
+    error: str,
+) -> None:
+    argv = [
+        os.fspath(SCRIPT),
+        "--dmg", "fixture.dmg",
+        "--repo-root", ".",
+        "--target", "aarch64-apple-darwin",
+        "--expected-manifest-sha256", "b" * 64,
+    ]
+    if digest is not None:
+        argv.extend(("--expected-native-setup-component-sha256", digest))
+    if size is not None:
+        argv.extend(("--expected-native-setup-component-bytes", size))
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit, match="2"):
+        MODULE.parse_args()
+    assert error in capsys.readouterr().err
 
 
 @pytest.mark.skipif(
@@ -380,6 +419,11 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
     (sealed_root / BUILDER.MANIFEST_FILENAME).write_text(
         "fixture", encoding="utf-8"
     )
+    component = app / MODULE.NATIVE_SETUP_COMPONENT
+    component.parent.mkdir()
+    component_bytes = b"fixed Wasm fixture"
+    component.write_bytes(component_bytes)
+    component_digest = hashlib.sha256(component_bytes).hexdigest()
     dmg = tmp_path / "fixture.dmg"
     subprocess.run(
         [
@@ -402,7 +446,13 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
         mount.attach()
         mounted_app = mount.application_bundle()
         assert mounted_app.name == "Fixture.app"
-        mount.verify_mounted()
+        mount.verify_native_setup_component(
+            mounted_app, len(component_bytes), component_digest
+        )
+        with pytest.raises(MODULE.DmgVerificationError, match="Wasm size differs"):
+            mount.verify_native_setup_component(
+                mounted_app, len(component_bytes) + 1, component_digest
+            )
         mounted_sealed_root = mounted_app / "Contents/Resources/app/python-runtime"
         before = tuple(
             (path.relative_to(mounted_app).as_posix(), path.lstat().st_mode)
@@ -430,6 +480,27 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
             subprocess.run(["hdiutil", "detach", str(mount.device)], check=False)
         mount.close()
     assert tempfile_parent.startswith("/var/")
+
+    mismatch_mount = MODULE.MountedDmg(dmg)
+    monkeypatch.setattr(MODULE, "MountedDmg", lambda _dmg: mismatch_mount)
+    args = MODULE.argparse.Namespace(
+        dmg=dmg,
+        repo_root=ROOT,
+        target="aarch64-apple-darwin",
+        expected_manifest_sha256="a" * 64,
+        expected_native_setup_component_bytes=len(component_bytes),
+        expected_native_setup_component_sha256="b" * 64,
+    )
+    try:
+        with pytest.raises(MODULE.DmgVerificationError, match="Wasm SHA-256 differs"):
+            MODULE.verify_dmg(args)
+        assert mismatch_mount.detached
+        assert not mismatch_mount.path.exists()
+    finally:
+        if mismatch_mount.device is not None and not mismatch_mount.detached:
+            subprocess.run(
+                ["hdiutil", "detach", str(mismatch_mount.device)], check=False
+            )
 
 
 def tempfile_parent_value() -> str:
