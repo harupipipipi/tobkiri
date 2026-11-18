@@ -5,6 +5,82 @@ use tobkiri_canon::AllocationError;
 #[cfg(test)]
 #[path = "original_recovery_shell_selection_tests.rs"]
 mod recovery_tests;
+#[cfg(test)]
+mod owned_pin_tests {
+    use super::*;
+    use crate::original_authority::definitions::tests::{operation, with_source};
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn native_pin_matches_guest_projection_and_dependency_order() {
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let digest = Digest::hash(b"Pack artifact");
+            for (kind, requirements, expected_ids) in [
+                ("shell", "", None),
+                (
+                    "normal_sandbox",
+                    r#", "requirements": {"pack_dependencies": {}}"#,
+                    Some("[]"),
+                ),
+                (
+                    "host_extension",
+                    r#", "requirements": {"pack_dependencies": {"\ud800\udc00":"1","z":"2","\u0800":"3","é":"4","a":"5"}}"#,
+                    Some(r#"["a","z","é","ࠀ","𐀀"]"#),
+                ),
+                (
+                    "other",
+                    r#", "requirements": {"pack_dependencies": []}"#,
+                    None,
+                ),
+            ] {
+                let raw = format!(
+                    r#"{{"pack":{{"id":"example.pack","kind":"{kind}","artifact_digest":"{digest}"}}{requirements}}}"#,
+                );
+                let document = json::decode_read_only_strict(raw.as_bytes(), &op, budget).unwrap();
+                for enabled in [false, true] {
+                    let native = project_owned_pack_pin(&op, &document, enabled, budget)
+                        .unwrap()
+                        .unwrap();
+                    let guest = pack_pin(raw.as_bytes(), enabled, budget).unwrap().unwrap();
+                    assert_eq!(native.id.as_str(), guest.id.as_str());
+                    assert_eq!(native.digest, guest.digest);
+                    assert!(native.kind == guest.kind);
+                    let encode =
+                        |ids: Option<CoreValue>| ids.map(|ids| ids.encode_guest(budget).unwrap());
+                    let native = encode(native.dependencies);
+                    let guest = encode(guest.dependencies);
+                    let native_bytes = native.as_ref().map(CoreBuffer::as_bytes);
+                    assert_eq!(native_bytes, guest.as_ref().map(CoreBuffer::as_bytes));
+                    assert_eq!(
+                        native_bytes,
+                        expected_ids.filter(|_| enabled).map(str::as_bytes)
+                    );
+                }
+            }
+        });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn native_pin_matches_absent_guest_projection() {
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let digest = Digest::hash(b"Pack artifact");
+            for raw in [
+                r#"{}"#.to_owned(),
+                format!(r#"{{"pack":{{"id":42,"artifact_digest":"{digest}"}}}}"#),
+                r#"{"pack":{"id":"example.pack","artifact_digest":"invalid"}}"#.to_owned(),
+            ] {
+                let document = json::decode_read_only_strict(raw.as_bytes(), &op, budget).unwrap();
+                assert!(
+                    project_owned_pack_pin(&op, &document, true, budget)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(pack_pin(raw.as_bytes(), true, budget).unwrap().is_none());
+            }
+        });
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -35,7 +111,8 @@ impl PackPins {
     }
 }
 
-struct PackPin {
+/// Pack identity and dependency keys retained for later resolution.
+pub(super) struct PackPin {
     id: CoreValue,
     digest: Digest,
     kind: PackPinKind,
@@ -47,6 +124,18 @@ enum PackPinKind {
     Shell,
     Provider,
     Other,
+}
+
+impl PackPinKind {
+    fn classify(is: impl Fn(&str) -> bool) -> Self {
+        if is("shell") {
+            Self::Shell
+        } else if is("normal_sandbox") || is("host_extension") {
+            Self::Provider
+        } else {
+            Self::Other
+        }
+    }
 }
 
 pub(super) struct SelectedShell {
@@ -90,6 +179,39 @@ impl CatalogIo {
         op: &Operation<'_, S>,
         bytes: &[u8],
     ) -> Result<()> {
+        self.retain_pack_pin_with(op, |dependencies, budget| {
+            pack_pin(bytes, dependencies, budget)
+        })
+    }
+
+    /// Capture a compact pin from the already validated native Pack document.
+    #[cfg(test)]
+    pub(super) fn prepare_owned_pack_pin<S: crate::BootstrapReviewOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        document: &Document,
+    ) -> Result<Option<PackPin>> {
+        let Some(pins) = &self.recovery_pack_pins else {
+            return Ok(None);
+        };
+        project_owned_pack_pin(op, document, pins.retain_dependencies, &self.budget)
+    }
+
+    /// Keep a prepared pin at the native loader's current Pack occurrence.
+    #[cfg(test)]
+    pub(super) fn retain_owned_pack_pin<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        pin: Option<PackPin>,
+    ) -> Result<()> {
+        self.retain_pack_pin_with(op, |_, _| Ok(pin))
+    }
+
+    fn retain_pack_pin_with<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        capture: impl FnOnce(bool, &Arc<dyn AllocationBudget>) -> Result<Option<PackPin>>,
+    ) -> Result<()> {
         let Some(pins) = self.recovery_pack_pins.as_ref() else {
             return Ok(());
         };
@@ -107,7 +229,7 @@ impl CatalogIo {
         } else {
             None
         };
-        let pin = pack_pin(bytes, pins.retain_dependencies, &self.budget)?;
+        let pin = capture(pins.retain_dependencies, &self.budget)?;
         let pins = &mut self
             .recovery_pack_pins
             .as_mut()
@@ -837,11 +959,9 @@ fn project_pack_pin(
         let id = header.get_key("id")?;
         let digest = header.get_key("artifact_digest")?;
         let digest = Digest::parse(digest.as_str()?).ok()?;
-        let kind = match header.get_key("kind").as_ref().and_then(CoreValue::as_str) {
-            Some("shell") => PackPinKind::Shell,
-            Some("normal_sandbox" | "host_extension") => PackPinKind::Provider,
-            _ => PackPinKind::Other,
-        };
+        let kind = header.get_key("kind");
+        let kind = kind.as_ref().and_then(CoreValue::as_str);
+        let kind = PackPinKind::classify(|expected| kind == Some(expected));
         Some((id, digest, kind))
     })();
     let Some((id, digest, kind)) = pin else {
@@ -863,6 +983,102 @@ fn project_pack_pin(
         kind,
         dependencies,
     }))
+}
+
+#[cfg(test)]
+fn project_owned_pack_pin<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    document: &Document,
+    retain_dependencies: bool,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<PackPin>> {
+    let pin = (|| {
+        let header = document.get(document.root, "pack")?;
+        let Node::String(id) = document.node(document.get(header, "id")?) else {
+            return None;
+        };
+        let digest = native_bundle_lock::parse_digest(
+            document.node(document.get(header, "artifact_digest")?),
+        )?;
+        let kind = document.get(header, "kind");
+        let kind = PackPinKind::classify(|expected| {
+            kind.is_some_and(|kind| document.string_is(kind, expected))
+        });
+        Some((id, digest, kind))
+    })();
+    let Some((id, digest, kind)) = pin else {
+        return Ok(None);
+    };
+    let id = copy_pack_pin_text(id, budget)?;
+    let dependencies = if retain_dependencies {
+        let entries = document
+            .get(document.root, "requirements")
+            .and_then(|requirements| document.get(requirements, "pack_dependencies"))
+            .and_then(|dependencies| document.entries(dependencies));
+        entries
+            .map(|entries| owned_pack_dependency_ids(op, entries, budget))
+            .transpose()?
+    } else {
+        None
+    };
+    Ok(Some(PackPin {
+        id,
+        digest,
+        kind,
+        dependencies,
+    }))
+}
+
+#[cfg(test)]
+fn owned_pack_dependency_ids<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    entries: &[(Text, usize)],
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    charge_work(budget, entries.len() as u64)?;
+    let max_width = entries
+        .iter()
+        .map(|(key, _)| key.0.len())
+        .max()
+        .unwrap_or(0);
+    let sort_work = entries
+        .len()
+        .saturating_mul(max_width.saturating_add(1))
+        .saturating_mul(usize::BITS as usize);
+    charge_work(budget, sort_work as u64)?;
+    let mut order = funded_entries::<_, &Text>(op, entries.len())?;
+    order.value.extend(entries.iter().map(|(key, _)| key));
+    // Strict Unicode scalar order matches CoreObject's UTF-8 key order.
+    order.value.sort_unstable();
+    let capacity = |_| source_capacity();
+    let mut ids = CoreValue::array_builder(budget, entries.len()).map_err(capacity)?;
+    for key in order.iter() {
+        ids.push(copy_pack_pin_text(key, budget)?)
+            .map_err(capacity)?;
+    }
+    ids.finish().map_err(capacity)
+}
+
+#[cfg(test)]
+fn copy_pack_pin_text(text: &Text, budget: &Arc<dyn AllocationBudget>) -> Result<CoreValue> {
+    charge_work(budget, (text.0.len() as u64).saturating_mul(2))?;
+    let chars = || {
+        text.0
+            .iter()
+            .map(|&point| char::from_u32(point).expect("strict Pack string"))
+    };
+    let capacity = |_| source_capacity();
+    let utf8 = CoreBuffer::write_exact(chars().map(char::len_utf8).sum(), budget, |bytes| {
+        let mut offset = 0;
+        for character in chars() {
+            let end = offset + character.len_utf8();
+            character.encode_utf8(&mut bytes[offset..end]);
+            offset = end;
+        }
+        Ok(())
+    })
+    .map_err(capacity)?;
+    CoreValue::string_from_utf8(&utf8, budget).map_err(capacity)
 }
 
 fn registered_pack_pin(row: &CoreValue, budget: &Arc<dyn AllocationBudget>) -> Result<PackPin> {

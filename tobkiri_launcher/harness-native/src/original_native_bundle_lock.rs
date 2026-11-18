@@ -163,7 +163,8 @@ fn path_length(path: &Text, budget: &Arc<dyn AllocationBudget>) -> NativeBundleR
     Ok(length)
 }
 
-fn parse_digest(node: &Node) -> Option<Digest> {
+/// Read a strict document digest without allocating a temporary string.
+pub(super) fn parse_digest(node: &Node) -> Option<Digest> {
     let Node::String(text) = node else {
         return None;
     };

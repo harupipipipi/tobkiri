@@ -83,6 +83,7 @@ pub(super) type NativeBundleResult<T> = std::result::Result<T, NativeBundleError
 struct OwnedMember {
     row: LockMember,
     bytes: Funded<Zeroizing<Vec<u8>>>,
+    pack_pin: Option<shell_inputs::PackPin>,
 }
 
 pub(super) struct NativeOwnedBundle {
@@ -200,7 +201,16 @@ impl CatalogIo {
                     label(row.kind)
                 )));
             }
-            members.value.push(OwnedMember { row, bytes });
+            let pack_pin = if row.kind == CatalogDocumentKind::Pack {
+                self.prepare_owned_pack_pin(op, &document)?
+            } else {
+                None
+            };
+            members.value.push(OwnedMember {
+                row,
+                bytes,
+                pack_pin,
+            });
         }
         drop(schemas);
         let pins = verify_pins(op, budget, &root, &identities, &members)?;
@@ -268,8 +278,15 @@ impl CatalogIo {
             value: members,
             _capacity: _member_capacity,
         } = members;
-        for OwnedMember { bytes, .. } in members {
-            self.retain_pack_pin(op, &bytes)?;
+        for OwnedMember {
+            row,
+            bytes,
+            pack_pin,
+        } in members
+        {
+            if row.kind == CatalogDocumentKind::Pack {
+                self.retain_owned_pack_pin(op, pack_pin)?;
+            }
             self.retain_shell_input(op, bytes)?;
             self.entry += 1;
         }
