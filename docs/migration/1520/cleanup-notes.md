@@ -4177,6 +4177,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   初回発行への接続では `host_profile_catalog` の完了後に元Bundleを別にロードし、元Pythonの
   `profiles[profile_id]` と解決前パスからのLock生バイト読み取りを再現する。既存resolverの
   `.get` と読み取り順序が異なるため、同じ関数への統合は両者の例外と順序を確認してから行う。
+  `c31ededfa` は確認後のHost catalog構築、別のBundle load、元Profileの添字取得と
+  生Lockの再読、確認済み定義とBundleの両digest照合を同じ発行lock内へ接続した。
+  保存先の再取得がlockと異なる場合は定義操作前に止め、復旧時の例外変換は従来の復旧に適用する。
+  一回限りの読み直しには現在の原本で同値のresolver getter IDを使う。capture先頭の独立した
+  getter呼出は後続。journal作成以降の保存と実Wasm上の連続実行は未検証。
+  Rust 221件とstrict Clippy、PythonのHarness Native 248件が通過した。解決後に親のaliasが
+  変わる場合、同じ要求の再実行、古い参照、参照解放、元のKeyErrorを確認した。
   初回保存も既存の4相writerとHost pointer発行を再利用できる。保存前にProfile→Lock→Planの
   schema検証を行い、既存のrecord graph検査からActivationに依存しない部分を共有できる。
   仮のActivationを作らず、原本どおりrecover後、artifactの検証と予約の前で3レコードを検証する。
