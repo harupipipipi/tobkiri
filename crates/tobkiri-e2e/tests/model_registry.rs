@@ -34,7 +34,7 @@ fn packs(root: &Path) -> Result<[RegistryPack; 2]> {
             root,
             Path::new(&provider),
             PROVIDER_PACK,
-            &["resource", "manage", "routing"],
+            &["resource", "manage", "routing", "configuration"],
             &[],
         )?,
     ])

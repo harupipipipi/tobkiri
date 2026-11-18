@@ -7,9 +7,12 @@ on:
       - '.github/workflows/issue-1520-actual-1b.yml'
       - 'crates/tobkiri-e2e/tests/llama.rs'
       - 'crates/tobkiri-e2e/tests/model_registry/**'
+      - 'crates/tobkiri-e2e/tests/model_registry.rs'
+      - 'crates/tobkiri-e2e/tests/provider_registry.rs'
       - 'crates/tobkiri-e2e/fixtures/saved-conversation-owner.json'
       - 'packs/local.saved-conversation-rust/**'
       - 'packs/local.openai-compat-provider/src/**'
+      - 'packs/local.provider-registry-rust/**'
       - 'packs/local.harness-prompt/**'
       - 'packs/local.harness-conversation-store/**'
       - 'tools/quality/issue_1520_llama_cancel_probe.py'
@@ -52,6 +55,14 @@ jobs:
           -p tobkiri-pack-model-registry-rust -p tobkiri-pack-provider-registry-rust
           -p tobkiri-pack-saved-conversation-rust -p tobkiri-pack-openai-compat-provider
           --features tobkiri-pack-model-registry-rust/component,tobkiri-pack-provider-registry-rust/component,tobkiri-pack-saved-conversation-rust/component
+      - name: Verify local provider preparation in the bound Wasm Registry
+        shell: bash
+        run: |
+          export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/registered-provider.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test provider_registry -- \
+              provider_registry_uses_gated_private_storage_and_profile_revisions --ignored --exact --test-threads=1
       - name: Fetch the pinned upstream server and model on the runner
         id: registered_model_assets
         shell: bash
@@ -265,4 +276,6 @@ jobs:
             ${{ runner.temp }}/direct-1b-cancel-probe.log
             ${{ runner.temp }}/registered-1b.log
             ${{ runner.temp }}/registered-1b.receipt.json
+            ${{ runner.temp }}/registered-provider.log
+            ${{ runner.temp }}/registered-provider.receipt.json
           if-no-files-found: warn

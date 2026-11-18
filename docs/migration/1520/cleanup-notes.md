@@ -3908,6 +3908,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `component_store.rs` の段階書込みは現行の結果検証用で、実際のCASが後から実行されるため、
   設定の保存確認・不確定応答・資格情報回収にはそのまま使えない。承認済み経路で一つの
   Registryへ確定し、実際のCAS結果を設定処理に返すまで、製品設定の切替は未実施。
+  Rust RegistryのWasmに独立した `configuration.prepare-local` を追加。型付き入力には
+  接続名とendpoint、任意の表示名・カタログID・capabilitiesだけを持たせる。実行中のProfileと
+  Pack専用ストアのrevisionを用い、キー不要の旧制約、送信時のURL表記のdigest、正規化先を
+  既存の `prepare_configuration` で計算する。保存やCredential Brokerは呼ばない。
+  Coreに個別に承認されたProfileで、固定Python原本のIPv4・末尾スラッシュ・IPv6の計画が一致。
+  外部endpoint、キーとProfileの入力、ポート未承認を拒否し、事前検証前後のRegistryが一致した。
+  通常の試験用保存が進んだ後のrevisionも同じStoreから読んだ。ローカル56件、実Wasm/Core 4件、
+  component有効のstrict Clippyが通過。実1B CIに同じ検証を追加。
+  通常GUIは旧Registryの正本と世代予算を使っており、この読み取り専用Wasmを接続するには
+  その正本の二度読み・revision競合の扱いを保つHost側の結線が要る。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

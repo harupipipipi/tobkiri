@@ -18,7 +18,11 @@ original canonical digest, normalized endpoint and Registry revision.
 An unknown create acknowledgement is neither retried nor compensated. After a
 failed connection save, only a newly created handle proven absent from a
 readable snapshot may be revoked. Credentialless local connections never call
-the credential port. Local known policy/CAS failures short-circuit before a
+the credential port. The separately granted Wasm `configuration.prepare-local`
+port takes a typed proposal with no key or Profile selector. It reads the
+active Profile's private Registry and returns the base plan without a write.
+The existing GUI still applies its own generation budget and Broker lifecycle.
+Local known policy/CAS failures short-circuit before a
 snapshot read; remote failures retain the original compensation evidence order.
 
 Run the focused native tests from the repository root:
@@ -28,8 +32,8 @@ cargo test --locked --manifest-path packs/Cargo.toml \
   -p tobkiri-pack-provider-registry-rust --features component --lib
 ```
 
-Build the component and verify save, conflict, Profile isolation, and recovery
-through Core:
+Build the component and verify local preparation against the original Python
+plans, plus save, conflict, Profile isolation, and recovery through Core:
 
 ```sh
 cargo build --locked --manifest-path packs/Cargo.toml \

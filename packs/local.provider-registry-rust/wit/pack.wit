@@ -26,10 +26,27 @@ interface routing {
   resolve-local: func(provider: string) -> result<json, error>;
 }
 
+interface configuration {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Local connection proposal. The provider kind is fixed and no key is accepted.
+  record local-connection {
+    connection-name: string,
+    endpoint: string,
+    catalog-provider-id: option<string>,
+    display-name: option<string>,
+    capabilities: option<list<string>>,
+  }
+
+  /// Prepare against the current Profile's private Registry without writing it.
+  prepare-local: func(request: local-connection) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
   export %resource;
   export manage;
   export routing;
+  export configuration;
 }

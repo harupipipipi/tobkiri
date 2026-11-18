@@ -10,9 +10,10 @@ use tobkiri_core::{Core, CoreConfig, Session};
 const PACK: &str = "local.provider-registry";
 const RESOURCE: &str = "local.provider-registry.resource@1.0";
 const MANAGE: &str = "local.provider-registry.manage@1.0";
+const CONFIGURATION: &str = "local.provider-registry.configuration@1.0";
 
-async fn call(session: &Session, shape: &str, operation: &str, payload: Value) -> Result<Value> {
-    let arguments = canon(&json!({"payload": payload}))?;
+async fn call(session: &Session, shape: &str, operation: &str, arguments: Value) -> Result<Value> {
+    let arguments = canon(&arguments)?;
     let reply = tokio::time::timeout(
         Duration::from_secs(30),
         session.call_user_port(shape.parse()?, operation.parse()?, &arguments),
@@ -24,7 +25,13 @@ async fn call(session: &Session, shape: &str, operation: &str, payload: Value) -
 }
 
 async fn snapshot(session: &Session, profile: &str) -> Result<Value> {
-    call(session, RESOURCE, "snapshot", json!({"profile_id":profile})).await
+    call(
+        session,
+        RESOURCE,
+        "snapshot",
+        json!({"payload":{"profile_id":profile}}),
+    )
+    .await
 }
 
 async fn save(session: &Session, profile: &str, name: &str, revision: u64) -> Result<Value> {
@@ -32,16 +39,68 @@ async fn save(session: &Session, profile: &str, name: &str, revision: u64) -> Re
         session,
         MANAGE,
         "apply",
-        json!({
+        json!({"payload":{
             "operation":"save", "profile_id":profile, "expected_revision":revision,
             "record":{
                 "provider_instance_id":"conn-local", "adapter_id":"local-openai-compatible",
                 "display_name":name, "endpoint":"http://127.0.0.1:24580/v1",
                 "credential_handle":null, "enabled":true
             }
-        }),
+        }}),
     )
     .await
+}
+
+fn local_request(original: &Value) -> Value {
+    json!({"request":{
+        "connection-name":original["connection_name"],
+        "endpoint":original["endpoint"],
+        "catalog-provider-id":original["catalog_provider_id"],
+        "display-name":original["display_name"],
+        "capabilities":original["capabilities"]
+    }})
+}
+
+async fn verify_local_preparation(session: &Session, profile: &str) -> Result<()> {
+    let oracle: Value = serde_json::from_str(include_str!(
+        "../../../packs/local.provider-registry-rust/evidence/configuration-prepare-python.json"
+    ))?;
+    let cases = oracle["cases"]
+        .as_array()
+        .context("missing prepare cases")?;
+    for id in ["local", "local-slash", "local-ipv6", "local-nonloopback"] {
+        let case = cases
+            .iter()
+            .find(|case| case["id"] == id)
+            .with_context(|| format!("missing prepare case {id}"))?;
+        let request = local_request(&case["request"]);
+        let plan = call(session, CONFIGURATION, "prepare-local", request.clone()).await;
+        if case.get("error").is_some() {
+            let error = plan.expect_err("a non-loopback endpoint was prepared");
+            ensure!(
+                format!("{error:#}").contains("provider reported invalid input"),
+                "{error:#}"
+            );
+            continue;
+        }
+        let mut expected = case["result"].clone();
+        expected["profile_id"] = json!(profile);
+        ensure!(plan? == expected, "configuration plan differs for {id}");
+
+        if id == "local" {
+            for extra in ["key-value", "profile-id"] {
+                let mut invalid = request.clone();
+                invalid["request"][extra] = json!("untrusted-selection");
+                ensure!(
+                    call(session, CONFIGURATION, "prepare-local", invalid)
+                        .await
+                        .is_err(),
+                    "the typed request accepted {extra}"
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 #[tokio::test]
@@ -54,18 +113,26 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         directory.path(),
         Path::new(&artifact),
         PACK,
-        &["resource", "manage", "routing"],
+        &["resource", "manage", "routing", "configuration"],
         &[],
     )?];
-    let a = registry::profile("prof_provider_a", &packs, &[RESOURCE, MANAGE])?;
+    let a = registry::profile(
+        "prof_provider_a",
+        &packs,
+        &[RESOURCE, MANAGE, CONFIGURATION],
+    )?;
     let b = registry::profile("prof_provider_b", &packs, &[RESOURCE, MANAGE])?;
     let host = Arc::new(Host::default());
     host.utility_ports.lock().unwrap().extend([
         (RESOURCE.into(), "snapshot".into()),
         (MANAGE.into(), "apply".into()),
     ]);
-    host.approve_literal_user(&a)?;
     host.approve_literal_user(&b)?;
+    host.utility_ports
+        .lock()
+        .unwrap()
+        .insert((CONFIGURATION.into(), "prepare-local".into()));
+    host.approve_literal_user(&a)?;
     let data = directory.path().join("data");
     let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host.clone())?;
     core.save_profile(a.clone(), None).await?;
@@ -79,8 +146,22 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         }
     };
     let checked = async {
-        ensure!(snapshot(&sa, a.id.as_str()).await?["revision"] == 0);
+        let before = snapshot(&sa, a.id.as_str()).await?;
+        ensure!(before["revision"] == 0);
+        verify_local_preparation(&sa, a.id.as_str()).await?;
+        ensure!(snapshot(&sa, a.id.as_str()).await? == before);
+        let local = local_request(&json!({
+            "connection_name":"fixture", "endpoint":"http://127.0.0.1:1234/v1"
+        }));
+        ensure!(
+            call(&sb, CONFIGURATION, "prepare-local", local.clone())
+                .await
+                .is_err(),
+            "Profile B did not grant the preparation port"
+        );
         save(&sa, a.id.as_str(), "Local A", 0).await?;
+        let plan = call(&sa, CONFIGURATION, "prepare-local", local).await?;
+        ensure!(plan["expected_revision"] == 1 && plan["profile_id"] == a.id.as_str());
         let stale = save(&sa, a.id.as_str(), "Stale A", 0).await.unwrap_err();
         ensure!(
             format!("{stale:#}").contains("provider reported a conflict"),
