@@ -4231,9 +4231,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   後処理失敗や未確定の結果からは再起動を要求しない。発行後の再起動失敗は状態の再読込が必要。
   この入口はまだ通常のSetup画面に公開していない。実Wasmの実行上限内での確認と、同じ
   管理対象起動で旧HTTP確定を制限してRendererからの別経路を閉じる作業が残る。
+  切替の判断は `KernelManager::start` の管理対象世代にひも付ける。初回と既存Profileの
+  再確認は同じbootstrap契約を使う場合があるので、選択は検証済みの永続Profileの有無で行う。
+  `host_contract.json` は同じProfileで値を引き継ぐため、起動ごとの選択は保持させない。
+  `sealed_python` のKernel専用起動引数と既存の起動証明を使い、Python側と選択を一致させる。
+  世代0の再利用Kernelと、承認中に管理対象を失った世代はネイティブ確定の対象外。
+  確認済み処理中の失効は、KernelManagerのlockをまたぐ形で判定せず、既存の
+  `OriginalBootstrapInputs` の生存・所有者検査に世代の失効を伝える形を検討する。
   元のSetupと隔離確認のフロントエンド25件、整形と差分の検査が通過した。
+  クリーンな一時チェックアウトのPython 3.13.9で旧Setup APIの47件が通過した。
   [macOSの再起動・完了結果テスト 44242425667](https://github.com/harupipipipi/tobkiri/actions/runs/44242425667)
-  で実子プロセスと発行結果の回帰試験を実行する。
+  は実WebKitでの隔離レビューと、実子プロセスの再起動引き継ぎを含む元Launcherの4件、
+  portable契約の各ジョブで通過した。
   [原本のSetup resolverと初回発行 44241344745](https://github.com/harupipipipi/tobkiri/actions/runs/44241344745)
   はLinuxとmacOSで通過した。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
