@@ -3679,7 +3679,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ローカルで通過。原因は未確定。`d36f7ef3f` はCIで再発時に既存の監査DBから保存に関係する
   許可・実行結果だけを読み、状態コードを出力する。限定出力はローカルの生成fixtureで確認し、
   [診断付きの再試験 44261610869](https://github.com/harupipipipi/tobkiri/actions/runs/44261610869)
-  を開始した。
+  はEchoの保存・公開・再取込み・User overlayまで通過。最初の失敗は再現せず、原因は未特定。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
@@ -3735,8 +3735,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 - D-5 は `69fe1c9dd` で、Launcherの登録とHarnessの「普段使うモデル」の
   適用範囲を日英の表示に追加した。[表示 CI 43604721250](https://github.com/harupipipipi/tobkiri/actions/runs/43604721250)が、画面試験とmacOSのAppKit/WebKit試験で成功。
-  B-6 のWasmプロンプトとProviderには同じモデル名が独立したPackデータとして保存され、
-  Providerは不一致を拒否する。Launcher側の既存のモデル登録はそのWasm設定に接続されていない。
+  B-6 の `71e7f56d1` は、Harness promptの既定設定からモデル名の複製を外した。Wasmの
+  OpenAI互換Providerは、同じFlowで選ばれたProvider自身の承認済みモデルをリクエストに使う。
+  旧Profileが明示したモデルは引き続きProviderで照合する。空文字、null、数値の指定は拒否する。
+  Promptの6件と、既定値と異なるProviderモデルで実Wasmからloopback APIまで通す試験を含む
+  networkの2件がローカルで通過。実Wasmと5つのProfileのpinを照合した。Launcher側の既存の
+  モデル登録はそのWasm設定への接続が残る。
   接続先・Secret・モデルを獲得する箇所を一つの実Wasmターンに接続し、既存保存値と照合する。
   `frontend/src/lib/launcherConnections.ts::saveLauncherModelProfile` の既存入力は
   model_profile_id/model_id/provider_instance_idとRegistry revisionを送る。
@@ -4301,8 +4305,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   14.585秒、両方で残fuelは1,436,785,285、準備のピーク計上は25,127,094バイトだった。
   原本getterと後処理も通過。`1d28af0fd` は計測済みの設定を通常テストとLauncher側の
   開発・配布ビルドへ適用し、比較用の一時workflow分岐を削除した。
+  [最適化後のLauncher・WebKit回帰 44259277046](https://github.com/harupipipipi/tobkiri/actions/runs/44259277046)
+  はmacOSとportableで通過。配布用ビルドの実測は残る。
   [通常カタログの再計測 44259276687](https://github.com/harupipipipi/tobkiri/actions/runs/44259276687)
-  を実行中。通常配布用プロファイルの実測と、カタログ全体の完走は未確認。
+  は、単独ケースで初期化12.971秒、先頭export前に1,307,611,853 fuel、18.278秒で燃料切れ。
+  9件中、早期拒否の5件は原本と一致し、カタログを読む4件は17.141〜26.198秒で同じ
+  `catalog-load` の燃料切れだった。全件で後処理を確認、最大計上量は56,383,736 / 67,108,864 B。
+  停止区間は `packs/defaults-basepack.pack.v4.json` の読取り後から次のファイルを読む前まで。
+  この間に `bundle_catalog.py` が元のdigestを照合し、`validation.py` が文書スキーマと全参照用の
+  `_schema_store()` を初期化する。区間内の各処理の燃料は未計測。
+  `original_external_catalog_compiler.rs` のRust構造・意味検証を同梱カタログに再利用する候補がある。
+  外部CAS専用の承認と例外は同梱処理へ持ち込まず、同梱用のエラー詳細と順序を原本と比較する。
+  読取順、ダイジェスト、pinの独立再読、既存上限と後処理を維持して実カタログを再検証する。
   `029093528` は登録済みのactive ProfileをSetupレビューで読み、既存のAuthorityと
   workspace復旧を共用する。同じ初回ロードで取得した同梱のProfile、Shell、Pack pinを使う。
   ロック外でShellを検証し、変更なしの場合はスナップショットを再読する。Authorityを閉じた
@@ -4311,7 +4325,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   拒否を確認した。両ポインタに書込みは発生しなかった。アクティブ定義の比較方針には
   認証済みのProfile全体とPlanが必要で、カタログ更新、旧形式移行、確定処理は後続。
   [原本と現行スナップショット 44261201051](https://github.com/harupipipipi/tobkiri/actions/runs/44261201051)
-  はmacOSで通過。既存Profileの製品画面からの切替は引き続き検証対象。
+  はmacOS・Linuxで通過。`6ca80213d` は、登録済み定義、認証済みの完全なProfile、定義digestを
+  次の判断に渡す。元のShellを確認できたときだけ、2回目の読取りの照合後に最初の完全なPlanを
+  渡し、Shellの再承認が必要ならPlanは渡さない。別経路と再読の記録は従来どおり小さい投影を使う。
+  ローカルでRust 227件、strict Clippy、固定原本とCPython 3.13.16によるmacOS fixtureが通過。
+  完全なProfile・PlanとShell再承認、異なるHost pointerの拒否、64MiBの共通上限に計上した予約の
+  解放を確認した。Pack pinと追加Packの照合を含むカタログ判断と、製品画面の切替は後続。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
