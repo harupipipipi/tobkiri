@@ -38,14 +38,20 @@ pub(super) fn abort_incomplete<S: OriginalAuthorityOwner>(
     Ok(())
 }
 
-pub(super) fn recover<S: OriginalAuthorityOwner>(
+/// Apply one original `_recover_locked` occurrence to the journal just read
+/// under the workspace lock. Committed work must be verified after unlock.
+pub(super) fn recover_pending_locked<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     store: &Store<'_, '_, S>,
     state: &Directory,
-    journal: Funded<Document>,
+    journal: Option<Funded<Document>>,
     profile_id: &str,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<PendingRepublish>> {
+    let Some(journal) = journal else {
+        abort_incomplete(op, store, profile_id)?;
+        return Ok(None);
+    };
     let render = |key| {
         let id = journal
             .get(journal.root, key)

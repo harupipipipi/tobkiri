@@ -177,16 +177,12 @@ impl PublicationRead {
                         pending.check_thread()?;
                         let next = activation
                             .recover_async(&op, async |state, workspace_digest, journal| {
-                                if let Some(journal) = journal {
-                                    if let Some(pending) = pending_reservation::recover(
-                                        &op, store, state, journal, profile_id, budget,
-                                    )? {
-                                        return Ok(ControlFlow::Break(RecoveryPause::Committed(
-                                            pending,
-                                        )));
-                                    }
-                                } else {
-                                    pending_reservation::abort_incomplete(&op, store, profile_id)?;
+                                if let Some(pending) = pending_reservation::recover_pending_locked(
+                                    &op, store, state, journal, profile_id, budget,
+                                )? {
+                                    return Ok(ControlFlow::Break(RecoveryPause::Committed(
+                                        pending,
+                                    )));
                                 }
                                 if !read_snapshot {
                                     return Ok(ControlFlow::Continue(None));
@@ -221,23 +217,24 @@ impl PublicationRead {
                                     };
                                     // _activate_locked repeats recovery while holding this
                                     // same lock, before reserving its next activation.
-                                    if state.exists(&op, recovery_workspace::pending::NAME)? {
-                                        let journal = recovery_workspace::pending::read(
-                                            &op,
-                                            state,
-                                            workspace_digest,
-                                        )?;
-                                        if let Some(pending) = pending_reservation::recover(
+                                    let journal =
+                                        if state.exists(&op, recovery_workspace::pending::NAME)? {
+                                            Some(recovery_workspace::pending::read(
+                                                &op,
+                                                state,
+                                                workspace_digest,
+                                            )?)
+                                        } else {
+                                            None
+                                        };
+                                    if let Some(pending) =
+                                        pending_reservation::recover_pending_locked(
                                             &op, store, state, journal, profile_id, budget,
-                                        )? {
-                                            return Ok(ControlFlow::Break(
-                                                RecoveryPause::Committed(pending),
-                                            ));
-                                        }
-                                    } else {
-                                        pending_reservation::abort_incomplete(
-                                            &op, store, profile_id,
-                                        )?;
+                                        )?
+                                    {
+                                        return Ok(ControlFlow::Break(RecoveryPause::Committed(
+                                            pending,
+                                        )));
                                     }
                                     let schemas =
                                         profile_schemas.expect("validated legacy record schemas");
