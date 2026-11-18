@@ -1,7 +1,8 @@
 //! Old CAS Pack v4 definition checks and the opening steps of the artifact compiler.
 use super::charge;
 use super::external_catalog_model::{
-    self as model, SemanticPath, digest_syntax, id_syntax, validate_semantics,
+    self as model, SemanticPath, digest_syntax, id_syntax, validate_pack_semantics,
+    validate_semantics,
 };
 use crate::original_authority::{
     Funded, Operation, OriginalAuthorityCause, OriginalAuthorityError, OriginalAuthorityOwner,
@@ -248,12 +249,15 @@ fn read_document<S: OriginalAuthorityOwner>(
         op,
         budget,
     };
-    if !validation.check(doc.root, rule)?
-        || !validation.check_semantic_fields(doc.root, name == "pack")?
-    {
+    if !validation.check(doc.root, rule)? {
         return Err(schema_diagnostics_unavailable(name));
     }
-    validate_semantics(&doc, doc.root, SemanticPath::Root, op, budget).map_err(|error| {
+    let semantics = if name == "pack" {
+        validate_pack_semantics(&doc, op, budget)
+    } else {
+        validate_semantics(&doc, doc.root, SemanticPath::Root, op, budget)
+    };
+    semantics.map_err(|error| {
         if error.class == "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied" {
             schema_diagnostics_unavailable(name)
         } else {
@@ -902,68 +906,6 @@ impl<S: OriginalAuthorityOwner> Validation<'_, '_, S> {
             _ => Ok(false),
         }
     }
-
-    fn check_semantic_fields(&self, id: usize, is_pack: bool) -> Result<bool> {
-        charge(self.op, self.budget, 1)?;
-        match self.doc.node(id) {
-            Node::Object(fields) => {
-                for (key, child) in fields {
-                    charge(self.op, self.budget, 16 + key.0.len())?;
-                    if is_pack && forbidden_authority_field(key) {
-                        return Ok(false);
-                    }
-                    // The legacy check coerces binding identities with Python str().
-                    if let Node::Array(items) = self.doc.node(*child)
-                        && !items.is_empty()
-                        && (key.is("bindings") || ends_with(&key.0, ".bindings"))
-                    {
-                        return Err(OriginalAuthorityError::unsupported(
-                            STAGE,
-                            "original CAS nested binding identity",
-                        ));
-                    }
-                    if !self.check_semantic_fields(*child, is_pack)? {
-                        return Ok(false);
-                    }
-                }
-            }
-            Node::Array(items) => {
-                for &id in items {
-                    if !self.check_semantic_fields(id, is_pack)? {
-                        return Ok(false);
-                    }
-                }
-            }
-            _ => (),
-        }
-        Ok(true)
-    }
-}
-
-fn forbidden_authority_field(key: &Text) -> bool {
-    [
-        "approved",
-        "approval",
-        "approvals",
-        "grant",
-        "grants",
-        "invocation_lease",
-        "provider_authority",
-        "provider_authority_record",
-        "secret_material",
-        "raw_secret",
-        "host_execution",
-        "rumi_allow_host_execution",
-    ]
-    .into_iter()
-    .any(|name| key.is(name))
-}
-
-fn ends_with(points: &[u32], value: &str) -> bool {
-    points
-        .len()
-        .checked_sub(value.len())
-        .is_some_and(|start| point_eq(&points[start..], value))
 }
 
 fn point_eq(points: &[u32], value: &str) -> bool {
@@ -1075,6 +1017,40 @@ mod tests {
             panic!("original exception cause missing");
         };
         assert_eq!(message, expected);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cas_readers_accept_original_binding_identities_and_keep_pack_field_checks() {
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let mut manifest: Value = serde_json::from_slice(MANIFEST_BYTES).unwrap();
+            let bindings = serde_json::json!([
+                {"caller_function_id": ["nested", true]},
+                {"caller_function_id": ["nested", 1]}
+            ]);
+            manifest["requirements"]["network"]["matrix.bindings"] = bindings.clone();
+            let bytes = serde_json::to_vec(&manifest).unwrap();
+            assert!(read_manifest(&bytes, &op, budget).is_ok());
+
+            manifest["requirements"]["network"]["matrix.bindings"][0]["extra"] =
+                serde_json::json!({"grant": false});
+            let bytes = serde_json::to_vec(&manifest).unwrap();
+            assert!(read_manifest(&bytes, &op, budget).is_err());
+
+            let mut executable: Value = serde_json::from_slice(EXECUTABLE_BYTES).unwrap();
+            let input = &mut executable["variants"][0]["operations"][0]["input_schema"];
+            input["x.bindings"] = bindings;
+            assert!(
+                read_executable(&serde_json::to_vec(&executable).unwrap(), &op, budget).is_ok()
+            );
+            let list = executable["variants"][0]["operations"][0]["input_schema"]["x.bindings"]
+                .as_array_mut()
+                .unwrap();
+            list[1] = list[0].clone();
+            assert!(
+                read_executable(&serde_json::to_vec(&executable).unwrap(), &op, budget).is_err()
+            );
+        });
     }
 
     #[tokio::test(flavor = "current_thread")]

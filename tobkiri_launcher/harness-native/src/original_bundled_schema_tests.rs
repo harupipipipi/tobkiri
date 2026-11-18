@@ -97,7 +97,7 @@ async fn structural_eligibility_declines_wrong_kind_version_and_strict_json_erro
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn semantic_proof_declines_invalid_and_unrepresented_pack_data() {
+async fn semantic_proof_checks_original_pack_binding_identities() {
     with_source(|source, read, cancellation, budget| {
         let op = operation(read, source, cancellation);
         let mut schemas = CatalogSchemas::default();
@@ -106,29 +106,63 @@ async fn semantic_proof_declines_invalid_and_unrepresented_pack_data() {
             "../../../tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
         );
         let mut pack: Value = serde_json::from_slice(raw).unwrap();
-        for network in [
-            json!({"id": "legacy.provider"}),
-            json!({"grant": null}),
-            json!({"matrix.operations": [{"operation_id": "read"}, {"operation_id": "read"}]}),
-            // Python accepts these single bindings through its string coercion.
-            json!({"matrix.bindings": [{"caller_function_id": 7}]}),
-            json!({"matrix.bindings": [{"caller_function_id": {"part": "caller"}}]}),
+        for (network, accepted) in [
+            (json!({"id": "legacy.provider"}), false),
+            (json!({"grant": null}), false),
+            (
+                json!({"matrix.operations": [{"operation_id": "read"}, {"operation_id": "read"}]}),
+                false,
+            ),
+            (
+                json!({"matrix.bindings": [{"caller_function_id": "caller"}]}),
+                true,
+            ),
+            (
+                json!({"matrix.bindings": [{"caller_function_id": 7}]}),
+                true,
+            ),
+            (
+                json!({"matrix.bindings": [{"caller_function_id": {"part": "caller"}}]}),
+                true,
+            ),
+            (
+                json!({"matrix.bindings": [{"caller_function_id": [true]}, {"caller_function_id": [1]}]}),
+                true,
+            ),
+            (
+                json!({"matrix.bindings": [{"caller_function_id": {"part": "caller"}}, {"caller_function_id": {"part": "caller"}}]}),
+                false,
+            ),
+            (
+                json!({"matrix.bindings": [{}, {"caller_function_id": []}]}),
+                false,
+            ),
+            (
+                json!({"matrix.bindings": [
+                    {"target_provider_id": "provider.a", "function_principal": {}},
+                    {"target_provider_id": "provider.b", "function_principal": {}}
+                ]}),
+                false,
+            ),
         ] {
             pack["requirements"]["network"] = network;
             let bytes = serde_json::to_vec(&pack).unwrap();
-            assert!(
-                !schemas
+            assert_eq!(
+                schemas
                     .validate_document(&op, budget, kind, &bytes)
                     .unwrap(),
+                accepted,
                 "{pack}"
             );
         }
-        pack["requirements"]["network"] =
-            json!({"matrix.bindings": [{"caller_function_id": "caller"}]});
-        let bytes = serde_json::to_vec(&pack).unwrap();
+        pack["requirements"]["network"] = json!({"matrix.bindings": "BINDING_FIXTURE_ORDER"});
+        let ordered = serde_json::to_string(&pack).unwrap().replace(
+            "\"BINDING_FIXTURE_ORDER\"",
+            r#"[{"caller_function_id":{"z":0,"a":1}},{"caller_function_id":{"a":1,"z":0}}]"#,
+        );
         assert!(
             schemas
-                .validate_document(&op, budget, kind, &bytes)
+                .validate_document(&op, budget, kind, ordered.as_bytes())
                 .unwrap()
         );
     });

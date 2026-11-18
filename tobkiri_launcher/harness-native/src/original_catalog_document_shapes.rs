@@ -252,12 +252,18 @@ impl CatalogIo {
             .document_shapes
             .as_mut()
             .expect("selected document checks");
-        let Some(checked) = checks
+        let checked = match checks
             .schemas
-            .prove_document(op, &self.budget, schema, bytes)?
-        else {
+            .prove_document(op, &self.budget, schema, bytes)
+        {
+            Ok(Some(checked)) => checked,
             // The original validator owns strict, schema and semantic errors.
-            return Ok(false);
+            Ok(None) => return Ok(false),
+            Err(error) if matches!(error.cause, Some(OriginalAuthorityCause::Capacity)) => {
+                op.check(OriginalAuthorityStage::Source)?;
+                return Ok(false);
+            }
+            Err(error) => return Err(error.into()),
         };
         if matches!(
             schema,

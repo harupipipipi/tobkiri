@@ -292,6 +292,10 @@ async fn owned_catalog_delivery_preserves_a_row_that_overflows_when_escaped() {
     let shipped = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tobkiri_runtime/ecosystem/defaultspack/v4");
     let pack = fs::read(shipped.join("packs/defaults-basepack.pack.v4.json")).unwrap();
+    let mut pack: Value = serde_json::from_slice(&pack).unwrap();
+    pack["requirements"]["network"] =
+        json!({"matrix.bindings": [{"caller_function_id": {"part": ["caller", false, 0]}}]});
+    let pack = serde_json::to_vec(&pack).unwrap();
     let mut base = fs::read(shipped.join("defaults-basepack.base.v1.json")).unwrap();
     // Whitespace changes the lock digest and preserves the Base revision.
     // The outer string escapes each LF as six bytes.

@@ -3,6 +3,8 @@ use super::*;
 use std::os::unix::fs::OpenOptionsExt;
 use tobkiri_canon::{AllocationBudget, AllocationKind, AllocationRequest, CoreValue, MAX_BYTES};
 
+#[path = "original_catalog_binding_identity.rs"]
+mod catalog_binding_identity;
 #[path = "original_external_catalog_compiler.rs"]
 mod external_catalog_compiler;
 #[path = "original_external_catalog_content_source.rs"]

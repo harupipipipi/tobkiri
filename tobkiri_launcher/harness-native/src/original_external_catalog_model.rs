@@ -1,6 +1,7 @@
 //! Original external Normal Pack catalog DATA at 1cf025f1e.
 //! The installed registry seal is separate from the install-event hash chain
 //! and from later verification of each visible Pack in the quarantine CAS.
+use super::catalog_binding_identity::binding_identity;
 use crate::original_authority::{
     Funded, Operation, OriginalAuthorityCause, OriginalAuthorityError, OriginalAuthorityOwner,
     OriginalAuthorityStage, Result,
@@ -20,7 +21,6 @@ const VERSION: &str = "io.tobkiri.external-normal-pack-catalog.v4";
 const ENTRY_VERSION: &str = "io.tobkiri.external-normal-pack-catalog-entry.v4";
 const EVENT: &str = "external_normal_pack_admitted";
 const SCHEMA_ERROR: &str = "external Pack catalog schema validation failed";
-const BINDING_COERCION_UNSUPPORTED: &str = "external Pack catalog nested binding identity coercion";
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 
 pub(super) fn denied(message: &'static str) -> OriginalAuthorityError {
@@ -702,12 +702,6 @@ enum SemanticKeys {
     Shell,
 }
 
-#[derive(Clone, Copy)]
-struct SemanticRules {
-    keys: SemanticKeys,
-    bundled: bool,
-}
-
 impl SemanticKeys {
     fn work_per_point(self) -> u64 {
         4 + match self {
@@ -752,14 +746,20 @@ pub(super) fn validate_semantics<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<()> {
+    validate_semantics_with_rules(doc, id, path, SemanticKeys::Common, op, budget)
+}
+
+/// Check a strict Pack manifest, including its original forbidden authority keys.
+pub(super) fn validate_pack_semantics<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
     validate_semantics_with_rules(
         doc,
-        id,
-        path,
-        SemanticRules {
-            keys: SemanticKeys::Common,
-            bundled: false,
-        },
+        doc.root,
+        SemanticPath::Root,
+        SemanticKeys::PackOrProfile,
         op,
         budget,
     )
@@ -769,7 +769,7 @@ fn validate_semantics_with_rules<S: OriginalAuthorityOwner>(
     doc: &Document,
     id: usize,
     path: SemanticPath,
-    rules: SemanticRules,
+    keys: SemanticKeys,
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<()> {
@@ -779,12 +779,8 @@ fn validate_semantics_with_rules<S: OriginalAuthorityOwner>(
     match doc.node(id) {
         Node::Object(fields) => {
             for (key, child) in fields {
-                charge(
-                    op,
-                    budget,
-                    (key.0.len() as u64 + 1) * rules.keys.work_per_point(),
-                )?;
-                if !rules.keys.allows(key) {
+                charge(op, budget, (key.0.len() as u64 + 1) * keys.work_per_point())?;
+                if !keys.allows(key) {
                     return Err(schema_error());
                 }
                 if let Some(value) = text(doc, *child) {
@@ -800,7 +796,7 @@ fn validate_semantics_with_rules<S: OriginalAuthorityOwner>(
                         return Err(schema_error());
                     }
                 }
-                validate_semantics_with_rules(doc, *child, path.child(key), rules, op, budget)?;
+                validate_semantics_with_rules(doc, *child, path.child(key), keys, op, budget)?;
             }
         }
         Node::Array(items) => {
@@ -829,7 +825,7 @@ fn validate_semantics_with_rules<S: OriginalAuthorityOwner>(
                             doc.get(id, "contract_id"),
                             doc.get(id, "operation_id"),
                         ]
-                        .map(|field| binding_part(doc, field, rules.bundled));
+                        .map(|field| binding_identity(doc, field, op, budget));
                         let [a, b, c, d] = binding;
                         let binding = [a?, b?, c?, d?];
                         for part in &binding {
@@ -848,8 +844,8 @@ fn validate_semantics_with_rules<S: OriginalAuthorityOwner>(
                         if doc.entries(id).is_none() {
                             continue;
                         }
-                        let pack = binding_part(doc, doc.get(id, "pack_id"), rules.bundled)?;
-                        let variant = binding_part(doc, doc.get(id, "variant_id"), rules.bundled)?;
+                        let pack = binding_identity(doc, doc.get(id, "pack_id"), op, budget)?;
+                        let variant = binding_identity(doc, doc.get(id, "variant_id"), op, budget)?;
                         charge(op, budget, pack.work() + variant.work())?;
                         if !seen.insert((pack, variant)) {
                             return Err(schema_error());
@@ -903,7 +899,7 @@ fn validate_semantics_with_rules<S: OriginalAuthorityOwner>(
                 }
             }
             for &id in items {
-                validate_semantics_with_rules(doc, id, SemanticPath::Other, rules, op, budget)?;
+                validate_semantics_with_rules(doc, id, SemanticPath::Other, keys, op, budget)?;
             }
         }
         _ => (),
@@ -915,11 +911,11 @@ fn record_semantics<S: OriginalAuthorityOwner>(
     doc: &Document,
     record: usize,
     path: SemanticPath,
-    rules: SemanticRules,
+    keys: SemanticKeys,
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<bool> {
-    match validate_semantics_with_rules(doc, record, path, rules, op, budget) {
+    match validate_semantics_with_rules(doc, record, path, keys, op, budget) {
         Ok(()) => Ok(true),
         Err(error)
             if error.class == "core_runtime.external_pack_catalog_v4.ExternalPackCatalogDenied"
@@ -950,29 +946,9 @@ pub(in crate::original_authority::io::publication) fn validate_bundled_semantics
             (SemanticPath::Root, SemanticKeys::Common)
         }
     };
-    match record_semantics(
-        doc,
-        doc.root,
-        path,
-        SemanticRules {
-            keys,
-            bundled: true,
-        },
-        op,
-        budget,
-    ) {
+    match record_semantics(doc, doc.root, path, keys, op, budget) {
         Ok(true) if matches!(kind, CatalogDocumentKind::Profile) => {
             profile_security(doc, doc.root, op, budget)
-        }
-        Err(error)
-            if matches!(
-                error.cause,
-                Some(OriginalAuthorityCause::Unsupported(
-                    BINDING_COERCION_UNSUPPORTED
-                ))
-            ) =>
-        {
-            Ok(false)
         }
         result => result,
     }
@@ -993,10 +969,7 @@ pub(in crate::original_authority::io::publication) fn validate_recovery_record_s
         doc,
         record,
         SemanticPath::RecoveryRoot,
-        SemanticRules {
-            keys: SemanticKeys::Common,
-            bundled: false,
-        },
+        SemanticKeys::Common,
         op,
         budget,
     )
@@ -1015,10 +988,7 @@ pub(in crate::original_authority::io::publication) fn validate_profile_semantics
         doc,
         profile,
         SemanticPath::ProfileRoot,
-        SemanticRules {
-            keys: SemanticKeys::Common,
-            bundled: false,
-        },
+        SemanticKeys::Common,
         op,
         budget,
     )? || !profile_fields_allowed(doc, profile, op, budget)?
@@ -1174,44 +1144,6 @@ fn edge_references_listed<S: OriginalAuthorityOwner>(
         _ => (),
     }
     Ok(true)
-}
-
-#[derive(Eq, Hash, PartialEq)]
-enum BindingPart<'a> {
-    Text(&'a [u32]),
-    Number(i64),
-    True,
-}
-impl BindingPart<'_> {
-    fn work(&self) -> u64 {
-        match self {
-            Self::Text(value) => value.len() as u64 + 1,
-            _ => 16,
-        }
-    }
-}
-
-fn binding_part(doc: &Document, id: Option<usize>, bundled: bool) -> Result<BindingPart<'_>> {
-    let value = match id.map(|id| doc.node(id)) {
-        None
-        | Some(Node::Scalar(CanonValue::Null | CanonValue::Bool(false) | CanonValue::Int(0))) => {
-            BindingPart::Text(&[])
-        }
-        // Python's str(value or "") can equate a truthy number or boolean
-        // with a string. Only prove the bundled subset that needs no coercion.
-        Some(Node::Scalar(CanonValue::Bool(true))) if !bundled => BindingPart::True,
-        Some(Node::Scalar(CanonValue::Int(value))) if !bundled => BindingPart::Number(*value),
-        Some(Node::String(value)) => BindingPart::Text(&value.0),
-        Some(Node::Array(items)) if items.is_empty() => BindingPart::Text(&[]),
-        Some(Node::Object(items)) if items.is_empty() => BindingPart::Text(&[]),
-        _ => {
-            return Err(OriginalAuthorityError::unsupported(
-                STAGE,
-                BINDING_COERCION_UNSUPPORTED,
-            ));
-        }
-    };
-    Ok(value)
 }
 
 /// Authenticate with the bytes of the key returned by the original Host key
@@ -1705,6 +1637,34 @@ mod tests {
                 },
             }
         })
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn external_catalog_uses_original_coercion_for_opaque_network_bindings() {
+        with_source(|source, read, cancellation, budget| {
+            let op = operation(read, source, cancellation);
+            let mut data = with_journal(json!([]));
+            data["entries"] = json!({"local.fixture": committed("local.fixture")});
+            let network = "/entries/local.fixture/catalog_record/network";
+            let original_bindings = json!({"matrix.bindings": [
+                {"caller_function_id": {"grant": [true]}},
+                {"caller_function_id": {"grant": [1]}}
+            ]});
+            *data.pointer_mut(network).unwrap() = original_bindings;
+            resign(&mut data);
+            let mut doc = parse_envelope(&serde_json::to_vec(&data).unwrap(), &op, budget).unwrap();
+            authenticate_and_validate_journal(&mut doc, KEY, &op, budget).unwrap();
+
+            let bindings = data.pointer_mut(network).unwrap()["matrix.bindings"]
+                .as_array_mut()
+                .unwrap();
+            bindings[1] = bindings[0].clone();
+            resign(&mut data);
+            let error = parse_envelope(&serde_json::to_vec(&data).unwrap(), &op, budget)
+                .err()
+                .unwrap();
+            assert_eq!(error.message, SCHEMA_ERROR);
+        });
     }
 
     #[tokio::test(flavor = "current_thread")]

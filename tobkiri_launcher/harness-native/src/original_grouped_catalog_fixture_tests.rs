@@ -246,13 +246,11 @@ async fn grouped_catalog_invalidates_member_index_without_disabling_typed_reads(
         "../../../tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaultspack.pack.v4.json"
     )
     .as_slice();
-    let mut unsupported_pack: Value = serde_json::from_slice(include_bytes!(
+    let mut oversized_pack = include_bytes!(
         "../../../tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
-    ))
-    .unwrap();
-    unsupported_pack["requirements"]["network"] =
-        json!({"matrix.bindings": [{"caller_function_id": {"part": "caller"}}]});
-    let unsupported_pack = serde_json::to_vec(&unsupported_pack).unwrap();
+    )
+    .to_vec();
+    oversized_pack.resize(oversized_pack.len() + 700_000, b'\n');
 
     for (case, files, first) in [
         (
@@ -261,10 +259,10 @@ async fn grouped_catalog_invalidates_member_index_without_disabling_typed_reads(
             (CatalogDocumentKind::Base, "defaults-basepack"),
         ),
         (
-            "unsupported Pack",
+            "Pack requiring the bytes response",
             [
                 ("pack", pack),
-                ("pack", unsupported_pack.as_slice()),
+                ("pack", oversized_pack.as_slice()),
                 ("base", base),
             ],
             (CatalogDocumentKind::Pack, "defaultspack"),
