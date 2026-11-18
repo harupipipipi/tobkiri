@@ -322,10 +322,11 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
     pack: &mut ReviewPackBorrow<'_, S>,
 ) -> super::listing::Outcome {
     use crate::original_authority::{
-        RegisteredCatalogSelection, RegisteredDefinitionCandidate, RegisteredSnapshotReached,
-        RegisteredSourceUpdate,
+        RegisteredCatalogSelection, RegisteredDefinitionCandidate, RegisteredPackRoots,
+        RegisteredSnapshotReached, RegisteredSourceUpdate,
     };
-    let work = pack.work.get();
+    let work = (*pack.work).clone();
+    let work = work.get();
     let reached = review
         .read
         .review_registered_activation(
@@ -361,9 +362,20 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
             binding_renewal_required,
         }) => binding_renewal_required,
         Ok(RegisteredCatalogSelection::AdmittedClosure) => {
-            return Ok(Err(BootstrapReviewFailure::NotBound(
-                BootstrapReviewReachpoint::ActiveCandidateAdmittedClosureNotBound,
-            )));
+            if let Err(error) =
+                extend_candidate_packs(review, pack, &records, RegisteredPackRoots::Active).await?
+            {
+                return Ok(Err(error));
+            }
+            match review.read.review_registered_binding_renewal(
+                &work.source,
+                pack.cancellation,
+                &work.catalog,
+                &records,
+            ) {
+                Ok(renewal) => renewal,
+                Err(error) => return Ok(Err(original_failure(error))),
+            }
         }
         Err(error) => return Ok(Err(original_failure(error))),
     };
@@ -380,9 +392,22 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
     ) {
         Ok(RegisteredDefinitionCandidate::Profile(candidate)) => candidate,
         Ok(RegisteredDefinitionCandidate::PackPinPredecessor) => {
-            return Ok(Err(BootstrapReviewFailure::NotBound(
-                BootstrapReviewReachpoint::ActiveCandidatePackPinPredecessorNotBound,
-            )));
+            if let Err(error) =
+                extend_candidate_packs(review, pack, &records, RegisteredPackRoots::Declared)
+                    .await?
+            {
+                return Ok(Err(error));
+            }
+            match review.read.review_registered_pin_predecessor(
+                &work.source,
+                pack.cancellation,
+                pack.input_budget,
+                &work.catalog,
+                &records,
+            ) {
+                Ok(candidate) => candidate,
+                Err(error) => return Ok(Err(original_failure(error))),
+            }
         }
         Ok(RegisteredDefinitionCandidate::SourceAdditionsConflict(error)) => {
             let cause = NativeErrorGraph::from_source_additions_conflict(
@@ -439,6 +464,39 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
         return Ok(Err(original_failure(error)));
     }
     resolve_candidate(review, pack, &catalog).await
+}
+
+#[cfg(unix)]
+async fn extend_candidate_packs<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    records: &crate::original_authority::RegisteredCatalogPolicy,
+    roots: crate::original_authority::RegisteredPackRoots,
+) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
+    use crate::original_authority::RegisteredPackClosure;
+    let work = pack.work.get();
+    let rows = match review.read.read_registered_pack_closure(
+        &work.source,
+        pack.cancellation,
+        pack.input_budget,
+        &work.catalog,
+        records,
+        roots,
+    ) {
+        Ok(RegisteredPackClosure::Rows(rows)) => rows,
+        Ok(RegisteredPackClosure::BundledSource) => {
+            return Ok(Err(BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::ClosureBundledPackRootNotBound,
+            )));
+        }
+        Ok(RegisteredPackClosure::HostExtension) => {
+            return Ok(Err(BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::AdmittedHostExtensionProjectionNotBound,
+            )));
+        }
+        Err(error) => return Ok(Err(original_failure(error))),
+    };
+    super::catalog::extend_registered_packs(review, pack, rows).await
 }
 
 async fn resolve_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(

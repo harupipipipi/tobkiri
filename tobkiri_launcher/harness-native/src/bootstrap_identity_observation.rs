@@ -234,9 +234,10 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         origin: &'static str,
     ) -> Result<std::result::Result<CoreBuffer, BootstrapIdentityOutcome>> {
         let slot = match origin {
-            "bootstrap-preview" | "bootstrap-recovery-catalog" | "bootstrap-registered-catalog" => {
-                BOOTSTRAP_PREVIEW_SLOT
-            }
+            "bootstrap-preview"
+            | "bootstrap-recovery-catalog"
+            | "bootstrap-registered-catalog"
+            | "bootstrap-registered-packs" => BOOTSTRAP_PREVIEW_SLOT,
             "bootstrap-listing" => BOOTSTRAP_LISTING_SLOT,
             "bootstrap-activation-preflight" | "bootstrap-activation-match" => {
                 BOOTSTRAP_ACTIVATION_DECISION_SLOT
@@ -324,6 +325,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-preview")
                 | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-recovery-catalog")
                 | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-registered-catalog")
+                | (BOOTSTRAP_PREVIEW_SLOT, "bootstrap-registered-packs")
                 | (BOOTSTRAP_LISTING_SLOT, "bootstrap-listing")
                 | (
                     BOOTSTRAP_ACTIVATION_DECISION_SLOT,
@@ -364,6 +366,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "bootstrap-preview") => BOOTSTRAP_PREVIEW,
             (REVIEW, "bootstrap-recovery-catalog") => BOOTSTRAP_RECOVERY_CATALOG,
             (REVIEW, "bootstrap-registered-catalog") => BOOTSTRAP_REGISTERED_CATALOG,
+            (REVIEW, "bootstrap-registered-packs") => BOOTSTRAP_REGISTERED_PACKS,
             (REVIEW, "bootstrap-listing") => BOOTSTRAP_LISTING,
             (REVIEW, "bootstrap-activation-preflight") => BOOTSTRAP_ACTIVATION_PREFLIGHT,
             (REVIEW, "bootstrap-activation-match") => BOOTSTRAP_ACTIVATION_MATCH,
@@ -445,6 +448,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | BOOTSTRAP_PREVIEW
                 | BOOTSTRAP_RECOVERY_CATALOG
                 | BOOTSTRAP_REGISTERED_CATALOG
+                | BOOTSTRAP_REGISTERED_PACKS
                 | BOOTSTRAP_LISTING
                 | BOOTSTRAP_TEMPLATE_LOOKUP
                 | BOOTSTRAP_ADMITTED_CLOSURE_STEP
@@ -814,6 +818,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (
                 Some("bootstrap-registered-catalog-raised"),
                 "bootstrap-registered-catalog",
+                true
+            )
+            | (
+                Some("bootstrap-registered-packs-raised"),
+                "bootstrap-registered-packs",
                 true
             )
             | (Some("bootstrap-listing-raised"), "bootstrap-listing", true)

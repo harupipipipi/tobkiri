@@ -23,6 +23,7 @@ pub(super) struct ShellInputs(Funded<Vec<Entry>>);
 pub(super) struct PackPins {
     pins: Option<Funded<Vec<Option<PackPin>>>>,
     retain_dependencies: bool,
+    registered: Option<Funded<Vec<PackPin>>>,
 }
 
 impl PackPins {
@@ -41,7 +42,7 @@ struct PackPin {
     dependencies: Option<CoreValue>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum PackPinKind {
     Shell,
     Provider,
@@ -604,14 +605,103 @@ impl CatalogIo {
         Ok(self.bundled_pack_pin(id)?.map(|pin| pin.digest.as_str()))
     }
 
+    /// Keep the changed Pack metadata after the registered catalog accepts the verified rows.
+    pub(in crate::original_authority::io::publication) fn record_registered_review_packs<
+        S: OriginalAuthorityOwner,
+    >(
+        &mut self,
+        op: &Operation<'_, S>,
+        rows: &CoreValue,
+    ) -> Result<()> {
+        self.require_recovery_catalog(op)?;
+        if !self.retain_resolved_review_inputs {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        let pins = self
+            .recovery_pack_pins
+            .as_mut()
+            .filter(|pins| pins.retain_dependencies)
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        let rows = rows
+            .array()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        if rows.is_empty() {
+            return Ok(());
+        }
+
+        let previous = pins.registered.as_deref().map(Vec::as_slice).unwrap_or(&[]);
+        let count = previous
+            .len()
+            .checked_add(rows.len())
+            .ok_or_else(source_capacity)?;
+        let mut updated = funded_entries(op, count)?;
+        for row in rows.iter() {
+            op.check(OriginalAuthorityStage::Source)?;
+            let pin = registered_pack_pin(&row, &self.budget)?;
+            if registered_pin(
+                &updated,
+                pin.id.as_str().expect("checked Pack ID"),
+                &self.budget,
+            )?
+            .is_some()
+            {
+                return Err(OriginalAuthorityError::unavailable());
+            }
+            updated.push(pin);
+        }
+        let changed = updated.len();
+        for pin in previous {
+            op.check(OriginalAuthorityStage::Source)?;
+            let id = pin.id.as_str().expect("checked Pack ID");
+            if registered_pin(&updated[..changed], id, &self.budget)?.is_none() {
+                updated.push(PackPin {
+                    id: pin.id.share(),
+                    digest: pin.digest.clone(),
+                    kind: pin.kind,
+                    dependencies: pin.dependencies.as_ref().map(CoreValue::share),
+                });
+            }
+        }
+        pins.registered = Some(updated);
+        Ok(())
+    }
+
+    /// Look up the effective Pack pin after the caller verifies catalog custody.
+    pub(in crate::original_authority::io::publication) fn review_pack_digest(
+        &self,
+        id: &str,
+    ) -> Result<Option<&str>> {
+        if let Some(pin) = self.registered_review_pack_pin(id)? {
+            return Ok(Some(pin.digest.as_str()));
+        }
+        self.bundled_review_pack_digest(id)
+    }
+
     pub(in crate::original_authority::io::publication) fn bundled_review_provider_pin_matches(
         &self,
         id: &str,
         digest: &str,
     ) -> Result<bool> {
-        Ok(self
-            .bundled_pack_pin(id)?
+        let pin = match self.registered_review_pack_pin(id)? {
+            Some(pin) => Some(pin),
+            None => self.bundled_pack_pin(id)?,
+        };
+        Ok(pin
             .is_some_and(|pin| pin.kind == PackPinKind::Provider && pin.digest.as_str() == digest))
+    }
+
+    /// Read the effective dependency keys after the caller verifies catalog custody.
+    pub(in crate::original_authority::io::publication) fn review_pack_dependencies(
+        &self,
+        id: &str,
+    ) -> Result<&CoreValue> {
+        if let Some(pin) = self.registered_review_pack_pin(id)? {
+            return pin
+                .dependencies
+                .as_ref()
+                .ok_or_else(OriginalAuthorityError::unavailable);
+        }
+        self.bundled_review_dependencies(id)
     }
 
     /// Read the dependency keys after the caller verifies this catalog's custody.
@@ -645,6 +735,17 @@ impl CatalogIo {
             }
         }
         Ok(None)
+    }
+
+    fn registered_review_pack_pin(&self, id: &str) -> Result<Option<&PackPin>> {
+        let Some(pins) = self
+            .recovery_pack_pins
+            .as_ref()
+            .and_then(|pins| pins.registered.as_ref())
+        else {
+            return Ok(None);
+        };
+        registered_pin(pins, id, &self.budget)
     }
 }
 
@@ -723,6 +824,14 @@ fn pack_pin(
         Err(AllocationError::Invalid | AllocationError::Depth) => return Ok(None),
         Err(_) => return Err(source_capacity()),
     };
+    project_pack_pin(&manifest, retain_dependencies, budget)
+}
+
+fn project_pack_pin(
+    manifest: &CoreValue,
+    retain_dependencies: bool,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<PackPin>> {
     let pin = (|| {
         let header = manifest.get_key("pack")?;
         let id = header.get_key("id")?;
@@ -745,7 +854,7 @@ fn pack_pin(
     // manifest's graph through the recovery continuation.
     let id = CoreValue::string(id, budget).map_err(|_| source_capacity())?;
     let dependencies = retain_dependencies
-        .then(|| pack_dependency_ids(&manifest, budget))
+        .then(|| pack_dependency_ids(manifest, budget))
         .transpose()?
         .flatten();
     Ok(Some(PackPin {
@@ -754,6 +863,36 @@ fn pack_pin(
         kind,
         dependencies,
     }))
+}
+
+fn registered_pack_pin(row: &CoreValue, budget: &Arc<dyn AllocationBudget>) -> Result<PackPin> {
+    let invalid = OriginalAuthorityError::unavailable;
+    if row.array().is_none_or(|row| row.len() != 3)
+        || row
+            .get_index(2)
+            .is_none_or(|value| value.object().is_none())
+    {
+        return Err(invalid());
+    }
+    let id = row.get_index(0).ok_or_else(invalid)?;
+    let manifest = row.get_index(1).ok_or_else(invalid)?;
+    let pin = project_pack_pin(&manifest, true, budget)?.ok_or_else(invalid)?;
+    if pin.id.as_str() != id.as_str() || pin.dependencies.is_none() {
+        return Err(invalid());
+    }
+    Ok(pin)
+}
+
+fn registered_pin<'a>(
+    pins: &'a [PackPin],
+    id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<&'a PackPin>> {
+    charge_work(
+        budget,
+        (pins.len() as u64).saturating_mul(id.len() as u64 + 1),
+    )?;
+    Ok(pins.iter().find(|pin| pin.id.as_str() == Some(id)))
 }
 
 fn pack_dependency_ids(

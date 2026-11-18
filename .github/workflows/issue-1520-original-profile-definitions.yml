@@ -50,6 +50,7 @@ name: Issue 1520 original Profile definition prefix
       - tobkiri_launcher/harness-native/src/original_profile_definitions*.rs
       - tobkiri_launcher/harness-native/src/original_bootstrap_registration.rs
       - tobkiri_launcher/harness-native/src/original_external_catalog*.rs
+      - tobkiri_launcher/harness-native/src/original_registered_pack_closure.rs
       - tobkiri_launcher/harness-native/src/original_profile_catalog*.rs
       - tobkiri_launcher/harness-native/src/original_shell_*.rs
       - tobkiri_launcher/harness-native/src/original_profile_successor_selection*.rs
@@ -184,9 +185,17 @@ jobs:
           TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 20 --
+          --log "$RUNNER_TEMP/native-external-io.log" --expected-passed 21 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::external_catalog::
+          -- --test-threads=1 --nocapture
+      - name: Verify registered Setup traversal of the exact signed revision
+        env:
+          TOBKIRI_EXTERNAL_CATALOG_FIXTURE: ${{ runner.temp }}/original-external-catalog/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-registered-pack-closure.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib registered_pack_closure::tests::
           -- --test-threads=1 --nocapture
       - name: Check original Authority initialization and confirmed workspace recovery
         run: >-
@@ -410,6 +419,7 @@ jobs:
             ${{ runner.temp }}/native-definitions-json.log*
             ${{ runner.temp }}/native-template-data.log*
             ${{ runner.temp }}/native-external-io.log*
+            ${{ runner.temp }}/native-registered-pack-closure.log*
             ${{ runner.temp }}/native-definitions-reference.log*
             ${{ runner.temp }}/native-setup-candidate-unit.log*
             ${{ runner.temp }}/native-catalog-resources-unit.log*

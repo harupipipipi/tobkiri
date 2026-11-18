@@ -33,7 +33,7 @@ impl PublicationRead {
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         io.require_recovery_catalog(&op)?;
         select(&op, budget, active_profile, candidate, |id| {
-            io.bundled_review_dependencies(id)
+            io.review_pack_dependencies(id)
         })
     }
 }

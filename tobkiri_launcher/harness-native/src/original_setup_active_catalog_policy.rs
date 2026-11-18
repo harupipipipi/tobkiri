@@ -53,6 +53,57 @@ impl PublicationRead {
         )
     }
 
+    pub(crate) fn review_registered_binding_renewal<S: crate::BootstrapReviewOwner>(
+        &self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        loader: &Mutex<Option<CatalogIo>>,
+        records: &RegisteredCatalogPolicy,
+    ) -> Result<bool> {
+        self.registered_pack_closure_root(owner, cancellation)?;
+        let Some(plan) = &records.active_plan else {
+            return Ok(false);
+        };
+        let op = self.candidate_operation(owner, cancellation)?;
+        let io = loader.lock().unwrap_or_else(|error| error.into_inner());
+        let io = io
+            .as_ref()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        io.require_recovery_catalog(&op)?;
+        binding_renewal(&op, plan, |id| io.review_pack_digest(id))
+    }
+
+    pub(crate) fn review_registered_pin_predecessor<S: crate::BootstrapReviewOwner>(
+        &self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        budget: &Arc<dyn AllocationBudget>,
+        loader: &Mutex<Option<CatalogIo>>,
+        records: &RegisteredCatalogPolicy,
+    ) -> Result<CoreValue> {
+        let root = self.registered_pack_closure_root(owner, cancellation)?;
+        let op = self.candidate_operation(owner, cancellation)?;
+        let loader = loader.lock().unwrap_or_else(|error| error.into_inner());
+        let catalog = loader
+            .as_ref()
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        catalog.require_recovery_catalog(&op)?;
+        let active_digest = records
+            .verified_definition_digest
+            .as_str()
+            .and_then(|digest| Digest::parse(digest).ok())
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        definitions::verify_pack_pin_registry_candidate(
+            &op,
+            root,
+            &records.registered_profile,
+            &active_digest,
+            catalog,
+            budget,
+        )?;
+        Ok(records.registered_profile.share())
+    }
+
     /// Build the original review candidate from the authenticated definition base.
     pub(crate) fn review_registered_definition_candidate<S: crate::BootstrapReviewOwner>(
         &self,

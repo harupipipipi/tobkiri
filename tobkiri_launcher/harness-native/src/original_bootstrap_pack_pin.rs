@@ -39,26 +39,17 @@ impl BootstrapPredecessorInputs {
             return Ok(None);
         }
         let current = registered.review_profile(op, budget)?;
-        let current_digest = current.digest_guest(budget).map_err(capacity)?;
-        let Node::String(id) = registered.state.doc.node(id) else {
-            unreachable!("verified registry Profile ID");
-        };
-        let Some(previous) = direct_predecessor(
+        let Some(current_digest) = verified_successor_digest(
             op,
             &self._snapshot,
-            id,
-            &current_digest,
+            &current,
             active_definition,
+            catalog,
             budget,
         )?
         else {
             return Ok(None);
         };
-        if !only_provider_pins_changed(op, &previous, &current, budget, |id, digest| {
-            catalog.bundled_review_provider_pin_matches(id, digest)
-        })? {
-            return Ok(None);
-        }
         project_binding(
             op,
             pointer,
@@ -70,6 +61,62 @@ impl BootstrapPredecessorInputs {
         )
         .map(Some)
     }
+}
+
+pub(in crate::original_authority::io::publication) fn verify_registry_candidate<
+    S: crate::BootstrapReviewOwner,
+>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    current: &CoreValue,
+    active_definition: &Digest,
+    catalog: &CatalogIo,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    let snapshot = Store::new(op, root)?.snapshot(op, budget)?;
+    if verified_successor_digest(op, &snapshot, current, active_definition, catalog, budget)?
+        .is_none()
+    {
+        return Err(raw(
+            "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict",
+            "bootstrap review does not match a verified Pack pin update",
+        ));
+    }
+    Ok(())
+}
+
+fn verified_successor_digest<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    snapshot: &definitions_model::State,
+    current: &CoreValue,
+    active_definition: &Digest,
+    catalog: &CatalogIo,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<Digest>> {
+    let id = current
+        .get_key("profile_id")
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    let id = id
+        .as_str()
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    let _id_funding = op.reserve(STAGE, id.len().saturating_mul(size_of::<u32>()))?;
+    let id = Text::from_str(id);
+    let current_digest = current.digest_guest(budget).map_err(capacity)?;
+    let Some(previous) = direct_predecessor(
+        op,
+        snapshot,
+        &id,
+        &current_digest,
+        active_definition,
+        budget,
+    )?
+    else {
+        return Ok(None);
+    };
+    let verified = only_provider_pins_changed(op, &previous, current, budget, |id, digest| {
+        catalog.bundled_review_provider_pin_matches(id, digest)
+    })?;
+    Ok(verified.then_some(current_digest))
 }
 
 fn direct_predecessor<S: OriginalAuthorityOwner>(

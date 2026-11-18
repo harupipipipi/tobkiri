@@ -72,13 +72,24 @@ pub(super) fn exact_position<S: OriginalAuthorityOwner>(
     id: &str,
     digest: &Digest,
 ) -> Result<(Option<usize>, bool)> {
+    exact_position_text(op, budget, registry, inventory, id, digest.as_str())
+}
+
+pub(super) fn exact_position_text<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    registry: &Document,
+    inventory: &VerifiedInventory,
+    id: &str,
+    digest: &str,
+) -> Result<(Option<usize>, bool)> {
     let mut retained_for_id = false;
     let mut selected = None;
     for (position, pack) in inventory._entries.iter().enumerate() {
         charge(op, budget, id.len().saturating_add(1))?;
         if registry_text(registry, pack._root.entry, "pack_id").is(id) {
             retained_for_id = true;
-            if &pack._artifact_digest == digest {
+            if pack._artifact_digest.as_str() == digest {
                 // Identical duplicate entries may survive the authenticated
                 // scan. Python's assignment keeps the last matching key.
                 selected = Some(position);

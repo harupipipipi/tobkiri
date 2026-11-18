@@ -55,8 +55,6 @@ pub enum BootstrapReviewReachpoint {
     ActiveCandidateAuthorityNotBound,
     ActiveCandidateSnapshotSchemasNotBound,
     ActiveCandidateLegacySuccessorNotBound,
-    ActiveCandidateAdmittedClosureNotBound,
-    ActiveCandidatePackPinPredecessorNotBound,
     ActiveCandidateOptionalReceiptsNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
@@ -155,6 +153,10 @@ pub(crate) struct ActualCustody {
     pub(crate) registered_candidate: Option<(CoreValue, CoreValue)>,
     #[cfg(unix)]
     pub(crate) registered_catalog: Option<CoreBuffer>,
+    #[cfg(unix)]
+    pub(crate) registered_pack_results: [Option<CoreBuffer>; 2],
+    #[cfg(unix)]
+    pub(crate) registered_pack_catalog: Option<CoreValue>,
     #[cfg(unix)]
     pub(crate) _recovery_catalog: Option<CoreBuffer>,
     #[cfg(unix)]

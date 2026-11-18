@@ -21,6 +21,8 @@ mod external_catalog_pinned;
 mod external_catalog_projection;
 #[path = "original_external_catalog_receipt.rs"]
 mod external_catalog_receipt;
+#[path = "original_external_catalog_registered_closure.rs"]
+mod external_catalog_registered_closure;
 #[path = "original_external_catalog_variants.rs"]
 mod external_catalog_variants;
 pub(in crate::original_authority::io::publication) use compiler::date as calendar_date;
@@ -30,6 +32,7 @@ use external_catalog_model as model;
 pub(in crate::original_authority::io::publication) use external_catalog_content_source::{
     ProjectionPackSource, resolve_projection_pack, with_projection_manifest,
 };
+pub(in crate::original_authority::io::publication) use external_catalog_registered_closure::read_registered_closure_manifest;
 pub(in crate::original_authority::io::publication) use model::{
     validate_profile_semantics, validate_recovery_record_semantics,
 };
@@ -121,6 +124,29 @@ pub(crate) enum ClosureManifest {
 pub(crate) enum ClosureExecutable {
     External(CoreValue),
     HostExtension,
+}
+
+/// Reread the executable catalog for the admitted registered Setup manifest.
+pub(in crate::original_authority::io::publication) fn read_registered_closure_executable<
+    S: crate::BootstrapReviewOwner,
+>(
+    op: &Operation<'_, S>,
+    runtime: &Path,
+    user_data: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+    id: &str,
+    expected_manifest: &CoreValue,
+    digest: &str,
+) -> Result<ClosureExecutable> {
+    external_catalog_executable::read(
+        op,
+        runtime,
+        user_data,
+        budget,
+        id,
+        expected_manifest,
+        digest,
+    )
 }
 
 /// Load the executable selected by the detached manifest from the current closure.
@@ -232,7 +258,16 @@ fn read_manifest_from_catalogs<S: OriginalAuthorityOwner>(
             format!("Pack is absent from the Host v4 catalog: {id}"),
         ));
     };
-    let root = &pack._root;
+    read_normal_closure_manifest(op, budget, &pack._root, id, Some(&digest))
+}
+
+fn read_normal_closure_manifest<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    root: &PackRoot,
+    id: &str,
+    expected_digest: Option<&tobkiri_canon::Digest>,
+) -> Result<ClosureManifest> {
     let directory = Parent::walk(&root.path, &op.cleanup)
         .map_err(|error| closure_manifest_failure("Pack v4 manifest is unavailable", error))?;
     let row = (|| {
@@ -254,6 +289,8 @@ fn read_manifest_from_catalogs<S: OriginalAuthorityOwner>(
             doc.get(at, field)
                 .is_some_and(|value_id| doc.string_is(value_id, value))
         };
+        let digest = expected_digest
+            .ok_or_else(|| closure_error("Pack v4 manifest identity is inconsistent"))?;
         if !is(pack, "id", id)
             || !is(pack, "artifact_digest", digest.as_str())
             || !(is(pack, "kind", "normal_sandbox") || is(pack, "kind", "application"))
@@ -446,6 +483,15 @@ fn authenticate_external<S: OriginalAuthorityOwner>(
     input: CatalogInputs,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<ExternalPackRead> {
+    authenticate_external_with(op, input, budget, |_, _| Ok(()))
+}
+
+fn authenticate_external_with<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    input: CatalogInputs,
+    budget: &Arc<dyn AllocationBudget>,
+    check_pins: impl FnOnce(&Document, &VerifiedInventory) -> Result<()>,
+) -> Result<ExternalPackRead> {
     let Some((registry, mut inventory)) = authenticate_registry(op, input.registry, budget)? else {
         return Ok(ExternalPackRead {
             _bundled: input._bundled,
@@ -453,6 +499,9 @@ fn authenticate_external<S: OriginalAuthorityOwner>(
             inventory: None,
         });
     };
+    if !inventory.host_extension_pending {
+        check_pins(&registry, &inventory)?;
+    }
     inventory.finish_revision(&registry, op, budget)?;
     Ok(ExternalPackRead {
         _bundled: input._bundled,
@@ -519,6 +568,13 @@ fn reject_bundled_collisions<S: OriginalAuthorityOwner>(
             }
         }
     }
+    reject_collisions(op, collisions)
+}
+
+fn reject_collisions<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    collisions: Vec<&Text>,
+) -> Result<()> {
     if collisions.is_empty() {
         return Ok(());
     }

@@ -24,7 +24,8 @@ pub(crate) use io::publication::{
 #[cfg(unix)]
 pub(crate) use io::publication::{
     InitialPublication, PredecessorActivation, PredecessorActivationReached, RECOVERY_APP_DENIED,
-    RecoveryAuthorityReached, RegisteredCatalogSelection, RegisteredDefinitionCandidate,
+    RecoveryAuthorityReached, RegisteredCatalogPolicy, RegisteredCatalogSelection,
+    RegisteredDefinitionCandidate, RegisteredPackClosure, RegisteredPackRoots,
     RegisteredSnapshotReached, RegisteredSourceUpdate,
 };
 #[cfg(unix)]

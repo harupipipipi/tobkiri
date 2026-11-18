@@ -1192,6 +1192,84 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                 !io.bundled_review_provider_pin_matches("sandbox", Digest::hash(b"wrong").as_str())
                     .unwrap()
             );
+            let cancellation = io.cancellation.clone();
+            let op = io.operation(source, invocation, &cancellation).unwrap();
+            let parse_rows = |value: Value| {
+                CoreValue::parse_guest(&serde_json::to_vec(&value).unwrap(), budget).unwrap()
+            };
+            if legacy_scenario {
+                assert!(
+                    io.record_registered_review_packs(&op, &parse_rows(json!([])))
+                        .is_err()
+                );
+            }
+            if matches!(scenario, Scenario::RegisteredSameId) {
+                let row = |id, kind, digest: &Digest, dependency: &str| {
+                    json!([id, {
+                        "pack": {"id": id, "kind": kind, "artifact_digest": digest.as_str()},
+                        "requirements": {"pack_dependencies": {(dependency): "*"}},
+                    }, {}])
+                };
+                let first = Digest::hash(b"first signed revision");
+                let second = Digest::hash(b"second signed revision");
+                let delta = parse_rows(json!([
+                    row("sandbox", "normal_sandbox", &first, "new-pack"),
+                    row("new-pack", "normal_sandbox", &first, "shell"),
+                ]));
+                io.record_registered_review_packs(&op, &delta).unwrap();
+                drop(delta);
+                assert_eq!(
+                    io.review_pack_digest("sandbox").unwrap(),
+                    Some(first.as_str())
+                );
+                assert!(
+                    io.bundled_review_provider_pin_matches("sandbox", first.as_str())
+                        .unwrap()
+                );
+                assert!(
+                    !io.bundled_review_provider_pin_matches("sandbox", pinned_digest.as_str())
+                        .unwrap()
+                );
+
+                let changed = row("sandbox", "application", &second, "extension");
+                let malformed = parse_rows(json!([&changed, ["invalid", {}, {}]]));
+                assert!(io.record_registered_review_packs(&op, &malformed).is_err());
+                assert_eq!(
+                    io.review_pack_digest("sandbox").unwrap(),
+                    Some(first.as_str())
+                );
+
+                io.record_registered_review_packs(&op, &parse_rows(json!([changed])))
+                    .unwrap();
+                assert_eq!(
+                    io.review_pack_digest("sandbox").unwrap(),
+                    Some(second.as_str())
+                );
+                assert_eq!(
+                    io.review_pack_dependencies("sandbox")
+                        .unwrap()
+                        .get_index(0)
+                        .unwrap()
+                        .as_str(),
+                    Some("extension")
+                );
+                assert!(
+                    !io.bundled_review_provider_pin_matches("sandbox", second.as_str())
+                        .unwrap()
+                );
+                assert_eq!(
+                    io.review_pack_digest("new-pack").unwrap(),
+                    Some(first.as_str())
+                );
+                assert_eq!(
+                    io.review_pack_digest("shell").unwrap(),
+                    Some(pinned_digest.as_str())
+                );
+                assert_eq!(
+                    io.bundled_review_pack_digest("sandbox").unwrap(),
+                    Some(pinned_digest.as_str())
+                );
+            }
             let inspect = |io: &mut CatalogIo, operation, steps, args| {
                 io.inspect_pack_resolve(
                     source,

@@ -169,6 +169,7 @@ class Registry:
         self._resolver_stage = "awaiting-catalog"
         self._resolver_catalog: int | None = None
         self._resolver_first_profile_id: int | None = None
+        self._registered_pack_overlays = 0
         self._resolver_profile_id: int | None = None
         self._resolver_source: int | None = None
         self._resolver_verified_artifacts: int | None = None
@@ -381,6 +382,7 @@ class Registry:
         self._resolver_stage = "closed"
         self._resolver_catalog = None
         self._resolver_first_profile_id = None
+        self._registered_pack_overlays = 0
         self._resolver_profile_id = None
         self._clear_resolver_source()
 
@@ -509,19 +511,43 @@ class Registry:
         if self._bootstrap_publication_stage == "host-loading":
             self._bootstrap_publication_stage = "host-materialized"
 
-    def _begin_bootstrap_registered_catalog(
-        self, catalog_ref: Reference, profile_id_ref: Reference, candidate_id: str,
+    def _registered_catalog_inputs(
+        self, catalog_ref: Reference, profile_id_ref: Reference,
     ) -> tuple[Any, str]:
         catalog = self.borrow(catalog_ref)
         profile_id = self.borrow(profile_id_ref, str)
         record = self._records.get(type(catalog))
-        if (self._resolver_stage != "awaiting-second-getter"
+        if (self._resolver_stage not in ("awaiting-second-getter", "registered-packs-ready")
                 or catalog_ref.object_id != self._resolver_catalog
                 or profile_id_ref.object_id != self._resolver_first_profile_id
-                or self._bootstrap_identity.get(catalog_ref.object_id) != "catalog-returned"
+                or self._bootstrap_identity.get(catalog_ref.object_id) not in (
+                    "catalog-returned", "bootstrap-registered-packs-returned",
+                )
                 or self._bootstrap_identity.get(profile_id_ref.object_id) != "getter-returned"
                 or record is None or record.kind != "bundled-catalog"):
             raise InvalidReference("references have no current registered Setup origins")
+        return catalog, profile_id
+
+    def _begin_bootstrap_registered_packs(
+        self, catalog_ref: Reference, profile_id_ref: Reference,
+    ) -> Any:
+        catalog, _ = self._registered_catalog_inputs(catalog_ref, profile_id_ref)
+        # The original may compose the active closure, then the pin-recovery closure.
+        if self._registered_pack_overlays == 2:
+            raise InvalidReference("registered Setup Pack overlays were already composed")
+        self._resolver_stage = "registered-packs-pending"
+        return catalog
+
+    def _record_registered_packs_replacement(self, catalog: Reference) -> None:
+        self._bootstrap_identity[catalog.object_id] = "bootstrap-registered-packs-returned"
+        self._resolver_catalog = catalog.object_id
+        self._registered_pack_overlays += 1
+        self._resolver_stage = "registered-packs-ready"
+
+    def _begin_bootstrap_registered_catalog(
+        self, catalog_ref: Reference, profile_id_ref: Reference, candidate_id: str,
+    ) -> tuple[Any, str]:
+        catalog, profile_id = self._registered_catalog_inputs(catalog_ref, profile_id_ref)
         if candidate_id != profile_id:
             raise InvalidFrame("registered Setup candidate differs from the first getter")
         # Once the original call starts, a throw or failed result consumes it.
@@ -904,6 +930,7 @@ class Registry:
             "manifest-returned", "manifest-raised",
             "bootstrap-template-lookup-raised",
             "bootstrap-recovery-catalog-raised",
+            "bootstrap-registered-packs-raised",
             "bootstrap-registered-catalog-raised",
             "resolver-source-lookup-returned", "resolver-source-lookup-raised",
             "resolver-static-edges-raised", "resolver-dynamic-edges-raised",

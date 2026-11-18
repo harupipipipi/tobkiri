@@ -895,6 +895,185 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             candidate=candidate, **fields,
         )))
 
+    def registered_packs(
+        self, catalog: dict, profile_id: dict, rows: list, **fields: object,
+    ) -> dict:
+        return wire.loads(self.dispatcher.call("catalog_with_profiles", self.frame(
+            "bootstrap-registered-packs", catalog=catalog, profile_id=profile_id,
+            external=rows, **fields,
+        )))
+
+    @staticmethod
+    def external_catalog_row(pack_id: str, digit: str) -> list:
+        return [pack_id, {
+            "pack": {
+                "id": pack_id, "kind": "normal_sandbox",
+                "artifact_digest": "sha256:" + digit * 64,
+            },
+            "requirements": {"execution_boundary": "sandbox", "pack_dependencies": {}},
+            "integrity": {"source_identity": digit},
+        }, {"pack_id": pack_id, "source_identity": digit}]
+
+    def test_registered_pack_replacement_runs_original_pack_and_profile_calls(self) -> None:
+        from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+            DefaultspackProfileRuntime,
+        )
+
+        original = self.runtime.catalog
+        before, old, after, newest, added, another = [
+            self.external_catalog_row(pack_id, digit)
+            for pack_id, digit in (("before", "1"), ("same", "2"), ("after", "3"),
+                                    ("same", "4"), ("z-last", "5"), ("a-first", "6"))
+        ]
+        for pack_id, manifest, executable in (before, old, after):
+            original.packs[pack_id] = manifest
+            original.executable_catalogs[pack_id] = executable
+        original.profiles["fixture-id"] = {"profile_id": "fixture-id"}
+        values = []
+        calls = []
+        delivered = {}
+
+        def construct_catalog(**fields: object) -> object:
+            catalog = self.Catalog()
+            catalog.__dict__.update(fields)
+            values.append(catalog)
+            return catalog
+
+        def take_executable(pack_id: str, manifest: dict, **fields: object) -> dict:
+            calls.append(pack_id)
+            executable = self.bridge._take_verified_executable(pack_id, manifest, **fields)
+            delivered[pack_id] = (manifest, executable)
+            return executable
+
+        runtime = DefaultspackProfileRuntime()
+        self.runtime.catalog_with_packs = runtime.catalog_with_packs
+        self.runtime.catalog_with_profiles = runtime.catalog_with_profiles
+        base = self.load()
+        first = self.getter("fixture-id")
+        modules = {
+            "ecosystem.defaultspack.domain.runtime_v4.service": SimpleNamespace(
+                BundledCatalog=construct_catalog,
+            ),
+            "core_runtime.external_pack_catalog_v4": SimpleNamespace(
+                load_verified_pack_executable_catalog=take_executable,
+            ),
+        }
+        with patch.dict(sys.modules, modules):
+            wrong_getter = self.registry.retain("different").wire()
+            with self.assertRaises(InvalidReference):
+                self.registered_packs(base, wrong_getter, [])
+            with self.assertRaises(InvalidFrame):
+                self.registered_packs(base, first, [], candidate={})
+            result = self.registered_packs(base, first, [added, newest, another])
+            intermediate = result["root"]
+            self.assertEqual(result, {
+                "format": PREFIX + "bootstrap-registered-packs-result.v1",
+                "scope": self.scope.wire(), "root": intermediate,
+                "owned": [intermediate["object"]],
+            })
+            with self.assertRaises(InvalidReference):
+                self.registered_packs(base, first, [])
+            with self.assertRaises(InvalidReference):
+                self.registered_catalog(base, first, {"profile_id": "fixture-id"})
+            self.assertEqual(calls, ["a-first", "same", "z-last"])
+            first_catalog = values[0]
+            self.assertIs(
+                first_catalog, self.registry.borrow(self.registry.reference(intermediate)),
+            )
+            self.assertEqual(
+                list(first_catalog.packs), ["before", "same", "after", "z-last", "a-first"],
+            )
+            self.assertEqual(
+                list(first_catalog.executable_catalogs),
+                ["before", "same", "after", "a-first", "z-last"],
+            )
+            self.assertIs(first_catalog.packs["before"], before[1])
+            self.assertIs(first_catalog.packs["after"], after[1])
+            self.assertIs(first_catalog.executable_catalogs["before"], before[2])
+            self.assertIs(first_catalog.executable_catalogs["after"], after[2])
+            self.assertIs(first_catalog.packs["same"], delivered["same"][0])
+            self.assertIs(first_catalog.executable_catalogs["same"], delivered["same"][1])
+            self.assertIs(original.packs["same"], old[1])
+            self.assertIs(original.executable_catalogs["same"], old[2])
+            self.assertIs(first_catalog.profiles, original.profiles)
+
+            # The pin-recovery branch can perform a genuine Pack call with no
+            # changed manifests or executable reads.
+            current = self.registered_packs(intermediate, first, [])["root"]
+            self.assertEqual(calls, ["a-first", "same", "z-last"])
+            with self.assertRaises(InvalidReference):
+                self.registered_packs(current, first, [])
+            candidate = {"profile_id": "fixture-id", "requested_edges": []}
+            final = self.registered_catalog(current, first, candidate)["root"]
+            self.assertIs(values[2].packs, values[1].packs)
+            self.assertIs(values[2].executable_catalogs, values[1].executable_catalogs)
+            self.assertEqual(values[2].profiles["fixture-id"], candidate)
+        second = self.getter("fixture-id")
+        result = self.lookup(final, second)
+        self.assertIs(
+            self.registry.borrow(self.registry.reference(result["root"])),
+            values[2].profiles["fixture-id"],
+        )
+
+    def test_registered_pack_overlay_rejects_invalid_verified_rows(self) -> None:
+        old = self.external_catalog_row("same", "1")
+        replacement = self.external_catalog_row("same", "2")
+        bad_boundary = self.external_catalog_row("same", "3")
+        bad_boundary[1]["requirements"]["execution_boundary"] = "host_brokered"
+        wrong_source = self.external_catalog_row("added", "4")
+        wrong_source[2]["source_identity"] = "different"
+
+        for rows in ([old], [replacement, replacement], [bad_boundary], [wrong_source]):
+            with self.subTest(rows=rows):
+                self.setUp()
+                self.runtime.catalog.packs["same"] = old[1]
+                calls = []
+                self.runtime.catalog_with_packs = lambda *args: calls.append(args)
+                base = self.load()
+                first = self.getter("fixture-id")
+                with self.assertRaises(UnsupportedValue):
+                    self.registered_packs(base, first, rows)
+                self.assertEqual(calls, [])
+                with self.assertRaises(InvalidReference):
+                    self.registered_packs(base, first, [])
+                with self.assertRaises(InvalidReference):
+                    self.registered_catalog(base, first, {"profile_id": "fixture-id"})
+
+    def test_registered_pack_overlay_rejects_retaining_stale_executable(self) -> None:
+        _, old_manifest, old_executable = self.external_catalog_row("same", "1")
+        self.runtime.catalog.packs["same"] = old_manifest
+        self.runtime.catalog.executable_catalogs["same"] = old_executable
+        reads = []
+
+        def catalog_with_stale_executable(catalog: Catalog, packs: dict) -> Catalog:
+            reads.append(self.bridge._take_verified_executable("same", packs["same"]))
+            value = self.recovery_projector_clone(catalog, catalog.profiles)
+            value.profiles = catalog.profiles
+            value.packs = dict(packs)
+            value.executable_catalogs = dict(catalog.executable_catalogs)
+            return value
+
+        self.runtime.catalog_with_packs = catalog_with_stale_executable
+        base = self.load()
+        first = self.getter("fixture-id")
+        replacement = self.external_catalog_row("same", "2")
+        with self.assertRaises(UnsupportedValue):
+            self.registered_packs(base, first, [replacement])
+        self.assertEqual(reads, [replacement[2]])
+        self.assertIs(self.runtime.catalog.executable_catalogs["same"], old_executable)
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(base, first, {"profile_id": "fixture-id"})
+
+    def test_recovery_pack_overlay_rejects_registered_same_id_replacement(self) -> None:
+        self.runtime.catalog.packs["same"] = self.external_catalog_row("same", "1")[1]
+        calls = []
+        self.runtime.catalog_with_packs = lambda *args: calls.append(args)
+        self.getter("fixture-id")
+        base = self.load()
+        with self.assertRaises(UnsupportedValue):
+            self.recovery_catalog(base, [], external=[self.external_catalog_row("same", "2")])
+        self.assertEqual(calls, [])
+
     def test_registered_catalog_runs_the_original_overlay_before_second_getter(self) -> None:
         first_value = "".join(("fixture", "-id"))
         second_value = "".join(("fixture-", "id"))

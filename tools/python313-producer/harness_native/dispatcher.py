@@ -451,6 +451,9 @@ class Dispatcher:
         if method == "catalog_with_profiles" and frame.get("format") == PREFIX + "bootstrap-recovery-catalog.v1":
             return self._bootstrap_recovery_catalog(state, frame)
         if (method == "catalog_with_profiles"
+                and frame.get("format") == PREFIX + "bootstrap-registered-packs.v1"):
+            return self._bootstrap_registered_packs(state, frame)
+        if (method == "catalog_with_profiles"
                 and frame.get("format") == PREFIX + "bootstrap-registered-catalog.v1"):
             return self._bootstrap_registered_catalog(state, frame)
         if method == "setup_listing" and frame.get("format") == PREFIX + "bootstrap-setup-listing.v1":
@@ -978,20 +981,30 @@ class Dispatcher:
             "pack_id": pack_id, "kind": kind, "dependencies": dependencies,
         })
 
-    def _extend_recovery_catalog(self, state, catalog, rows):
+    def _compose_verified_packs(
+        self, state: _State, catalog: Any, rows: Any, *, registered: bool = False,
+    ) -> Any:
         from .native_path import NativePath
 
         if (type(rows) is not list or type(catalog.root) is not NativePath
                 or type(catalog.packs) is not dict or type(catalog.executable_catalogs) is not dict):
             raise UnsupportedValue("verified external catalog arguments differ")
-        packs = dict(catalog.packs)
+        original_packs = catalog.packs
+        original_executables = catalog.executable_catalogs
+        pack_rows = tuple(original_packs.items())
+        executable_rows = tuple(original_executables.items())
+        shared_fields = ("root", "bases", "shells", "profiles", "artifact_root")
+        shared_values = tuple(getattr(catalog, name) for name in shared_fields)
+        packs = dict(pack_rows)
+        seen = set()
         checked = []
         for row in rows:
             if (type(row) is not list or len(row) != 3 or type(row[0]) is not str
-                    or row[0] in packs
+                    or row[0] in seen or (not registered and row[0] in original_packs)
                     or type(row[1]) is not dict or type(row[2]) is not dict):
                 raise InvalidFrame("invalid verified external Pack row")
             pack_id, manifest, executable = row
+            seen.add(pack_id)
             header = manifest.get("pack")
             integrity = manifest.get("integrity")
             if (type(header) is not dict or header.get("id") != pack_id
@@ -1000,22 +1013,49 @@ class Dispatcher:
                     or type(integrity.get("source_identity")) is not str
                     or executable.get("source_identity") != integrity["source_identity"]):
                 raise UnsupportedValue("verified external Pack identity differs")
+            if registered:
+                digest = header.get("artifact_digest")
+                requirements = manifest.get("requirements")
+                if (type(digest) is not str
+                        or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+                        or type(requirements) is not dict
+                        or requirements.get("execution_boundary")
+                        not in ("sandbox", "declarative_only")):
+                    raise UnsupportedValue("verified registered Pack manifest differs")
+                if pack_id in original_packs:
+                    previous_digest = original_packs[pack_id]["pack"]["artifact_digest"]
+                    if digest == previous_digest:
+                        raise UnsupportedValue("verified registered Pack pin did not change")
             packs[pack_id] = manifest
             checked.append((pack_id, manifest, executable))
 
+        ordered = sorted(checked, key=lambda row: row[0])
+        expected_packs = tuple(packs.items())
+        executables = dict(executable_rows)
+        for pack_id, _, executable in ordered:
+            executables[pack_id] = executable
+        expected_executables = tuple(executables.items())
+
+        def matches(mapping: Any, expected: tuple[tuple[str, Any], ...]) -> bool:
+            return (type(mapping) is dict and len(mapping) == len(expected)
+                    and all(key == wanted and item is entry
+                            for (key, item), (wanted, entry)
+                            in zip(mapping.items(), expected)))
+
         value = catalog.root._bridge._with_verified_catalog_rows(
-            sorted(checked, key=lambda row: row[0]), lambda: state.runtime.catalog_with_packs(catalog, packs),
+            ordered, lambda: state.runtime.catalog_with_packs(catalog, packs),
         )
         if (type(value) is not type(catalog) or value is catalog
-                or type(value.packs) is not dict or tuple(value.packs) != tuple(packs)
-                or any(value.packs[key] is not entry for key, entry in packs.items())
-                or type(value.executable_catalogs) is not dict
-                or len(value.executable_catalogs) != len(catalog.executable_catalogs) + len(checked)
-                or any(value.executable_catalogs.get(key) is not item
-                       for key, item in catalog.executable_catalogs.items())
-                or any(value.executable_catalogs.get(key) is not item for key, _, item in checked)
-                or any(getattr(value, name) is not getattr(catalog, name)
-                       for name in ("root", "bases", "shells", "profiles", "artifact_root"))):
+                or catalog.packs is not original_packs or value.packs is original_packs
+                or catalog.executable_catalogs is not original_executables
+                or value.executable_catalogs is original_executables
+                or not matches(original_packs, pack_rows)
+                or not matches(original_executables, executable_rows)
+                or not matches(value.packs, expected_packs)
+                or not matches(value.executable_catalogs, expected_executables)
+                or any(getattr(value, name) is not original
+                       or getattr(catalog, name) is not original
+                       for name, original in zip(shared_fields, shared_values))):
             raise UnsupportedValue("original external Pack catalog is not bound")
         return value
 
@@ -1042,7 +1082,7 @@ class Dispatcher:
         catalog = registry._begin_bootstrap_recovery_catalog(catalog_ref)
         if "external" in frame:
             catalog = self._apply_original(
-                lambda: self._extend_recovery_catalog(state, catalog, frame["external"]),
+                lambda: self._compose_verified_packs(state, catalog, frame["external"]),
                 caller="bootstrap-recovery-catalog",
             )
         value = self._apply_original(
@@ -1069,6 +1109,35 @@ class Dispatcher:
                                "scope": registry.scope.wire(), "root": root.wire(),
                                "owned": [format(ref.object_id, "x") for ref, _ in created]})
             registry._record_recovery_catalog_replacement(root)
+            return response
+        except BaseException:
+            registry._rollback(created)
+            raise
+
+    def _bootstrap_registered_packs(self, state: _State, frame: dict[str, Any]) -> str:
+        caller = "bootstrap-registered-packs"
+        self._checked_frame(frame, caller, {"catalog", "profile_id", "external"})
+        registry = state.registry
+        catalog = registry._begin_bootstrap_registered_packs(
+            registry.reference(frame["catalog"]), registry.reference(frame["profile_id"]),
+        )
+        value = self._apply_original(
+            lambda: self._compose_verified_packs(
+                state, catalog, frame["external"], registered=True,
+            ),
+            caller=caller,
+        )
+        created: list[tuple[Reference, int]] = []
+        try:
+            root, fresh = registry._retain(value, created=created)
+            if not fresh:
+                raise UnsupportedValue("original registered Setup Pack catalog was already issued")
+            response = wire.dumps({
+                "format": PREFIX + "bootstrap-registered-packs-result.v1",
+                "scope": registry.scope.wire(), "root": root.wire(),
+                "owned": [format(ref.object_id, "x") for ref, _ in created],
+            })
+            registry._record_registered_packs_replacement(root)
             return response
         except BaseException:
             registry._rollback(created)

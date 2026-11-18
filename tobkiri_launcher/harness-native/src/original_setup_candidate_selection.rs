@@ -265,6 +265,21 @@ impl PublicationRead {
         (root.as_path(), candidate)
     }
 
+    #[cfg(unix)]
+    pub(super) fn registered_pack_closure_root<S: crate::BootstrapReviewOwner>(
+        &self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+    ) -> Result<&Path> {
+        self.check_candidate_root(owner, cancellation)?;
+        if self.fresh.progress != Progress::RegisteredAuthorityStarted
+            || !self.candidate_io_verified()
+        {
+            return Err(OriginalAuthorityError::unavailable());
+        }
+        Ok(self.registered_candidate().0)
+    }
+
     #[cfg(all(unix, test))]
     fn registered_activation_authority<S: crate::BootstrapReviewOwner, T>(
         &mut self,

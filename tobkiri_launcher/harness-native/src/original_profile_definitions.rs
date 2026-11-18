@@ -29,6 +29,8 @@ pub(super) use definitions_model::render_python_str;
 mod bootstrap_pack_pin;
 #[cfg(unix)]
 pub(super) use bootstrap_pack_pin::equal_except;
+#[cfg(unix)]
+pub(super) use bootstrap_pack_pin::verify_registry_candidate as verify_pack_pin_registry_candidate;
 #[cfg(all(test, unix))]
 #[path = "original_inactive_registration_ci.rs"]
 mod inactive_registration_ci;

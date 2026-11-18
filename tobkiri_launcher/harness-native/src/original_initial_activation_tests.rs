@@ -199,34 +199,32 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             let workspace = root.join("workspaces/defaults/activation");
             let workspace_pointer = fs::read(workspace.join("active.json")).unwrap();
             let check_snapshot = |witness: &Path, successor_required: bool| {
-                let RegisteredSnapshotReached::CatalogPolicy(records) =
-                    read_registered(owner, read, cancellation, budget, witness, artifacts).unwrap()
-                else {
-                    panic!("expected the authenticated catalog policy inputs");
-                };
-                let assert_record = |actual: &CoreValue, expected: &CoreValue| {
-                    assert_eq!(
-                        actual.encode_guest(budget).unwrap().as_bytes(),
-                        expected.encode_guest(budget).unwrap().as_bytes()
-                    );
-                };
-                assert_record(&records.registered_profile, &definition);
-                assert_record(
-                    &records.active_profile,
-                    &original_resolved.get_key("profile").unwrap(),
-                );
-                assert_eq!(
-                    records.verified_definition_digest.as_str(),
-                    Some(definition_digest.as_str())
-                );
-                if successor_required {
-                    assert!(records.active_plan.is_none());
-                } else {
+                read_registered(owner, witness, artifacts, |records, budget| {
+                    let assert_record = |actual: &CoreValue, expected: &CoreValue| {
+                        assert_eq!(
+                            actual.encode_guest(budget).unwrap().as_bytes(),
+                            expected.encode_guest(budget).unwrap().as_bytes()
+                        );
+                    };
+                    assert_record(&records.registered_profile, &definition);
                     assert_record(
-                        &records.active_plan.unwrap(),
-                        &original_resolved.get_key("plan").unwrap(),
+                        &records.active_profile,
+                        &original_resolved.get_key("profile").unwrap(),
                     );
-                }
+                    assert_eq!(
+                        records.verified_definition_digest.as_str(),
+                        Some(definition_digest.as_str())
+                    );
+                    if successor_required {
+                        assert!(records.active_plan.is_none());
+                    } else {
+                        assert_record(
+                            &records.active_plan.unwrap(),
+                            &original_resolved.get_key("plan").unwrap(),
+                        );
+                    }
+                })
+                .unwrap();
             };
             check_snapshot(&witness, false);
             let bundled_successor = root.join("successor-catalog");
@@ -254,10 +252,14 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
                 fs::read(profiles.join("active.json")).unwrap(),
                 host_pointer
             );
-            replace_host_selection(root, &host_pointer, budget);
+            with_existing_setup_source(owner, |_, _, _, budget| {
+                replace_host_selection(root, &host_pointer, budget);
+            });
             let predecessor = fs::read(profiles.join("active.json")).unwrap();
-            let error = read_registered(owner, read, cancellation, budget, &witness, artifacts)
-                .unwrap_err();
+            let error = read_registered(owner, &witness, artifacts, |_, _| {
+                panic!("the first read must reject the replacement pointer");
+            })
+            .unwrap_err();
             assert_eq!(
                 error.class,
                 "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict",
@@ -317,51 +319,52 @@ fn seed_successor_catalog(original: &Path, successor: &Path) {
 
 fn read_registered(
     owner: &Source,
-    read: &PublicationRead,
-    cancellation: &CoreCancellation,
-    budget: &Arc<dyn AllocationBudget>,
     witness: &Path,
     artifacts: &Path,
-) -> Result<RegisteredSnapshotReached> {
-    let mut listing = PublicationRead::new(&read.invocation).unwrap();
-    for discard in [true, false] {
-        assert_eq!(
+    check: impl FnOnce(RegisteredCatalogPolicy, &Arc<dyn AllocationBudget>),
+) -> Result<()> {
+    with_existing_setup_source(owner, |owner, listing, cancellation, budget| {
+        for discard in [true, false] {
+            assert_eq!(
+                listing
+                    .enter_recovery(owner, cancellation, discard)
+                    .unwrap(),
+                Prefix::NoJournal
+            );
+        }
+        listing.acquire_candidate_root(owner, cancellation).unwrap();
+        assert!(matches!(
             listing
-                .enter_recovery(owner, cancellation, discard)
+                .candidate_selection(owner, cancellation, "defaults", false, budget)
                 .unwrap(),
-            Prefix::NoJournal
-        );
-    }
-    listing.acquire_candidate_root(owner, cancellation).unwrap();
-    assert!(matches!(
-        listing
-            .candidate_selection(owner, cancellation, "defaults", false, budget)
-            .unwrap(),
-        CandidateSelection::ActiveAuthority
-    ));
-    let op = operation(&listing, owner, cancellation);
-    let loader = Mutex::new(Some(
-        initial_catalog_fixture::load(&op, budget, witness, artifacts).unwrap(),
-    ));
-    let outcome = ready_test(listing.review_registered_activation(
-        owner,
-        cancellation,
-        budget,
-        &loader,
-        Some(workspace_active::tests::bound_recovery_schemas()),
-    ));
-    if let Ok(RegisteredSnapshotReached::CatalogPolicy(records)) = &outcome {
+            CandidateSelection::ActiveAuthority
+        ));
+        let op = operation(listing, owner, cancellation);
+        let loader = Mutex::new(Some(
+            initial_catalog_fixture::load(&op, budget, witness, artifacts).unwrap(),
+        ));
+        let outcome = ready_test(listing.review_registered_activation(
+            owner,
+            cancellation,
+            budget,
+            &loader,
+            Some(workspace_active::tests::bound_recovery_schemas()),
+        ));
+        assert!(listing.receipt().verified());
+        let RegisteredSnapshotReached::CatalogPolicy(records) = outcome? else {
+            panic!("expected the authenticated catalog policy inputs");
+        };
         // This publication fixture exports only the Shell Pack manifest.
         // That retained pin cannot substitute for the missing active closure.
         assert_eq!(
             listing
-                .review_registered_catalog(owner, cancellation, budget, &loader, records)
+                .review_registered_catalog(owner, cancellation, budget, &loader, &records)
                 .unwrap(),
             RegisteredCatalogSelection::AdmittedClosure
         );
-    }
-    assert!(listing.receipt().verified());
-    outcome
+        check(records, budget);
+        listing.close_continuation()
+    })
 }
 
 fn read_post_resolve_predecessor(

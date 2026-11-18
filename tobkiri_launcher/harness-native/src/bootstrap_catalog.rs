@@ -32,6 +32,12 @@ pub(super) const PUBLICATION_SOURCE_REQUEST: &str =
     "io.tobkiri.native-bootstrap-publication-source.v1";
 pub(super) const REGISTERED_CATALOG_REQUEST: &str =
     "io.tobkiri.native-bootstrap-registered-catalog.v1";
+pub(super) const REGISTERED_PACKS_REQUEST: &str = "io.tobkiri.native-bootstrap-registered-packs.v1";
+#[cfg(unix)]
+const REGISTERED_CATALOG_RESPONSE: &str =
+    "io.tobkiri.native-bootstrap-registered-catalog-result.v1";
+#[cfg(unix)]
+const REGISTERED_PACKS_RESPONSE: &str = "io.tobkiri.native-bootstrap-registered-packs-result.v1";
 
 pub(super) enum RecoveryCompletion {
     NoActivation,
@@ -313,27 +319,89 @@ async fn load_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 }
 
 #[cfg(unix)]
-pub(super) async fn replace_registered_profile<
+pub(super) async fn extend_registered_packs<
     S: BootstrapInputOwner + crate::BootstrapReviewOwner,
 >(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> Result<std::result::Result<CoreValue, BootstrapReviewFailure>> {
+    rows: CoreValue,
+) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
     let caller = ReviewCaller::Candidate;
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
-    let scope = actual_call_scope(pack)?;
-    let original = result_root(
+    let (scope, original, profile_id) = registered_catalog_inputs(review, pack)?;
+    let position = review
+        .actual
+        .registered_pack_results
+        .iter()
+        .position(Option::is_none)
+        .context("registered Pack overlays already consumed")?;
+    let request = denied::frame(
         pack,
-        returned(
-            review
-                .actual
-                .catalog
-                .as_ref()
-                .context("actual catalog missing")?,
-        )?,
-        &scope,
+        REGISTERED_PACKS_REQUEST,
+        [
+            ("catalog", original.share()),
+            ("profile_id", profile_id.share()),
+            ("external", rows.share()),
+        ],
     )?;
+    match pack
+        .observe_fixed_projection(&request, "bootstrap-registered-packs")
+        .await?
+    {
+        Ok(data) => review.actual.registered_pack_results[position] = Some(data),
+        Err(error) => {
+            caller.check(review, pack)?;
+            return Ok(Err(
+                handle_call_failure(review, pack, caller, error, false).await?
+            ));
+        }
+    }
+    caller.check(review, pack)?;
+    pack.require_same_runtime()?;
+    let response = review.actual.registered_pack_results[position]
+        .as_ref()
+        .expect("actual registered Pack overlay");
+    review.actual.registered_pack_catalog = Some(registered_catalog_root(
+        response,
+        REGISTERED_PACKS_RESPONSE,
+        &scope,
+        pack.input_budget,
+        &original,
+        &profile_id,
+    )?);
+    let work = pack.work.get();
+    if let Err(error) = review.read.record_registered_review_packs(
+        &work.source,
+        pack.cancellation,
+        &work.catalog,
+        &rows,
+    ) {
+        return Ok(Err(original_failure(error)));
+    }
+    Ok(Ok(()))
+}
+
+#[cfg(unix)]
+fn registered_catalog_inputs<S: BootstrapInputOwner>(
+    review: &Review,
+    pack: &ReviewPackBorrow<'_, S>,
+) -> Result<(CoreValue, CoreValue, CoreValue)> {
+    let scope = actual_call_scope(pack)?;
+    let original = match &review.actual.registered_pack_catalog {
+        Some(root) => root.share(),
+        None => result_root(
+            pack,
+            returned(
+                review
+                    .actual
+                    .catalog
+                    .as_ref()
+                    .context("actual catalog missing")?,
+            )?,
+            &scope,
+        )?,
+    };
     let profile_id = result_root(
         pack,
         returned(
@@ -345,6 +413,20 @@ pub(super) async fn replace_registered_profile<
         )?,
         &scope,
     )?;
+    Ok((scope, original, profile_id))
+}
+
+#[cfg(unix)]
+pub(super) async fn replace_registered_profile<
+    S: BootstrapInputOwner + crate::BootstrapReviewOwner,
+>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+) -> Result<std::result::Result<CoreValue, BootstrapReviewFailure>> {
+    let caller = ReviewCaller::Candidate;
+    caller.check(review, pack)?;
+    pack.require_same_runtime()?;
+    let (scope, original, profile_id) = registered_catalog_inputs(review, pack)?;
     let (candidate, _) = review
         .actual
         .registered_candidate
@@ -380,6 +462,7 @@ pub(super) async fn replace_registered_profile<
         .expect("actual registered catalog");
     Ok(Ok(registered_catalog_root(
         response,
+        REGISTERED_CATALOG_RESPONSE,
         &scope,
         pack.input_budget,
         &original,
@@ -390,17 +473,13 @@ pub(super) async fn replace_registered_profile<
 #[cfg(unix)]
 fn registered_catalog_root(
     response: &CoreBuffer,
+    format: &str,
     scope: &CoreValue,
     budget: &Arc<dyn AllocationBudget>,
     original: &CoreValue,
     profile_id: &CoreValue,
 ) -> Result<CoreValue> {
-    let packet = denied::result(
-        response,
-        "io.tobkiri.native-bootstrap-registered-catalog-result.v1",
-        scope,
-        budget,
-    )?;
+    let packet = denied::result(response, format, scope, budget)?;
     let root = denied::field(&packet, "root")?;
     denied::ownership(&packet, &root, true)?;
     if denied::same_reference(&root, original)? || denied::same_reference(&root, profile_id)? {
@@ -1224,7 +1303,14 @@ mod tests {
         let scope = parse(&scope)?;
         let root = |packet: &Value| -> Result<CoreValue> {
             let reply = CoreBuffer::copy_from(&serde_json::to_vec(packet)?, &budget)?;
-            registered_catalog_root(&reply, &scope, &budget, &catalog, &getter)
+            registered_catalog_root(
+                &reply,
+                REGISTERED_CATALOG_RESPONSE,
+                &scope,
+                &budget,
+                &catalog,
+                &getter,
+            )
         };
         assert_eq!(
             denied::field(&root(&packet)?, "object")?.as_str(),

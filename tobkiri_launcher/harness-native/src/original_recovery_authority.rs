@@ -20,13 +20,17 @@ mod legacy_activation;
 mod pending_reservation;
 #[path = "original_recovery_publish_active.rs"]
 mod publish_active;
+#[path = "original_registered_pack_closure.rs"]
+mod registered_pack_closure;
 #[path = "original_setup_active_snapshot.rs"]
 mod registered_snapshot;
+pub(crate) use registered_pack_closure::{RegisteredPackClosure, RegisteredPackRoots};
 #[path = "original_recovery_workspace_active.rs"]
 mod workspace_active;
 pub(crate) use registered_snapshot::{
-    PredecessorActivation, PredecessorActivationReached, RegisteredCatalogSelection,
-    RegisteredDefinitionCandidate, RegisteredSnapshotReached, RegisteredSourceUpdate,
+    PredecessorActivation, PredecessorActivationReached, RegisteredCatalogPolicy,
+    RegisteredCatalogSelection, RegisteredDefinitionCandidate, RegisteredSnapshotReached,
+    RegisteredSourceUpdate,
 };
 
 struct ActiveSnapshotChecks<Artifact, Definition, Legacy, LegacyArtifact, LegacyIdentity> {
