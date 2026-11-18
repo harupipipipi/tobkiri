@@ -30,6 +30,8 @@ pub(super) const PUBLICATION_REREAD_REQUEST: &str =
     "io.tobkiri.native-bootstrap-publication-reread.v1";
 pub(super) const PUBLICATION_SOURCE_REQUEST: &str =
     "io.tobkiri.native-bootstrap-publication-source.v1";
+pub(super) const REGISTERED_CATALOG_REQUEST: &str =
+    "io.tobkiri.native-bootstrap-registered-catalog.v1";
 
 pub(super) enum RecoveryCompletion {
     NoActivation,
@@ -266,22 +268,128 @@ async fn load_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     Ok(Ok(()))
 }
 
+#[cfg(unix)]
+pub(super) async fn replace_registered_profile<
+    S: BootstrapInputOwner + crate::BootstrapReviewOwner,
+>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+) -> Result<std::result::Result<CoreValue, BootstrapReviewFailure>> {
+    let caller = ReviewCaller::Candidate;
+    caller.check(review, pack)?;
+    pack.require_same_runtime()?;
+    let scope = actual_call_scope(pack)?;
+    let original = result_root(
+        pack,
+        returned(
+            review
+                .actual
+                .catalog
+                .as_ref()
+                .context("actual catalog missing")?,
+        )?,
+        &scope,
+    )?;
+    let profile_id = result_root(
+        pack,
+        returned(
+            review
+                .actual
+                .getter
+                .as_ref()
+                .context("actual first Profile ID missing")?,
+        )?,
+        &scope,
+    )?;
+    let (candidate, _) = review
+        .actual
+        .registered_candidate
+        .as_ref()
+        .context("verified registered candidate missing")?;
+    let request = denied::frame(
+        pack,
+        REGISTERED_CATALOG_REQUEST,
+        [
+            ("catalog", original.share()),
+            ("profile_id", profile_id.share()),
+            ("candidate", candidate.share()),
+        ],
+    )?;
+    match pack
+        .observe_fixed_projection(&request, "bootstrap-registered-catalog")
+        .await?
+    {
+        Ok(data) => review.actual.registered_catalog = Some(data),
+        Err(error) => {
+            caller.check(review, pack)?;
+            return Ok(Err(
+                handle_call_failure(review, pack, caller, error, false).await?
+            ));
+        }
+    }
+    caller.check(review, pack)?;
+    pack.require_same_runtime()?;
+    let response = review
+        .actual
+        .registered_catalog
+        .as_ref()
+        .expect("actual registered catalog");
+    Ok(Ok(registered_catalog_root(
+        response,
+        &scope,
+        pack.input_budget,
+        &original,
+        &profile_id,
+    )?))
+}
+
+#[cfg(unix)]
+fn registered_catalog_root(
+    response: &CoreBuffer,
+    scope: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+    original: &CoreValue,
+    profile_id: &CoreValue,
+) -> Result<CoreValue> {
+    let packet = denied::result(
+        response,
+        "io.tobkiri.native-bootstrap-registered-catalog-result.v1",
+        scope,
+        budget,
+    )?;
+    let root = denied::field(&packet, "root")?;
+    denied::ownership(&packet, &root, true)?;
+    if denied::same_reference(&root, original)? || denied::same_reference(&root, profile_id)? {
+        bail!("registered catalog was not freshly issued");
+    }
+    Ok(root)
+}
+
 pub(super) async fn resolver_source_profile<
     S: BootstrapInputOwner + crate::BootstrapReviewOwner,
 >(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    registered_catalog: Option<CoreValue>,
 ) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
-    let catalog = returned(
-        review
-            .actual
-            .catalog
-            .as_ref()
-            .context("actual catalog missing")?,
-    )?;
+    let scope = actual_call_scope(pack)?;
+    let catalog = match registered_catalog {
+        Some(root) => root,
+        None => result_root(
+            pack,
+            returned(
+                review
+                    .actual
+                    .catalog
+                    .as_ref()
+                    .context("actual catalog missing")?,
+            )?,
+            &scope,
+        )?,
+    };
     let profile_id = returned(
         review
             .actual
@@ -289,7 +397,14 @@ pub(super) async fn resolver_source_profile<
             .as_ref()
             .context("actual second Profile ID missing")?,
     )?;
-    let input = resolver_source_lookup_call(pack, catalog, profile_id)?;
+    let input = denied::frame(
+        pack,
+        "io.tobkiri.native-resolver-source-lookup.v1",
+        [
+            ("catalog", catalog),
+            ("profile_id", result_root(pack, profile_id, &scope)?),
+        ],
+    )?;
     review.actual.resolver_source_profile = Some(
         pack.observe_fixed_call(2, &input, "resolver-source-lookup")
             .await?,
@@ -321,22 +436,6 @@ pub(super) async fn resolver_source_profile<
         BootstrapBuiltinKind::Dict => Ok(Ok(())),
         _ => bail!("actual bundled Profile has an unrepresented concrete type"),
     }
-}
-
-fn resolver_source_lookup_call<S: BootstrapInputOwner>(
-    pack: &ReviewPackBorrow<'_, S>,
-    catalog: &BootstrapIdentityValue,
-    profile_id: &BootstrapIdentityValue,
-) -> Result<CoreBuffer> {
-    let scope = actual_call_scope(pack)?;
-    denied::frame(
-        pack,
-        "io.tobkiri.native-resolver-source-lookup.v1",
-        [
-            ("catalog", result_root(pack, catalog, &scope)?),
-            ("profile_id", result_root(pack, profile_id, &scope)?),
-        ],
-    )
 }
 
 pub(super) fn actual_call_scope<S: BootstrapInputOwner>(
@@ -1075,6 +1174,51 @@ mod tests {
         }
 
         fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn registered_catalog_requires_a_fresh_issued_root_in_the_same_run() -> Result<()> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let parse =
+            |value: &Value| CoreValue::parse_guest(&serde_json::to_vec(value).unwrap(), &budget);
+        let scope = json!(["1", "2", "3", "4"]);
+        let catalog = parse(&json!({"scope": scope, "object": "1"}))?;
+        let getter = parse(&json!({"scope": scope, "object": "2"}))?;
+        let packet = json!({
+            "format": "io.tobkiri.native-bootstrap-registered-catalog-result.v1",
+            "scope": scope,
+            "root": {"scope": scope, "object": "3"},
+            "owned": ["3"],
+        });
+        let scope = parse(&scope)?;
+        let root = |packet: &Value| -> Result<CoreValue> {
+            let reply = CoreBuffer::copy_from(&serde_json::to_vec(packet)?, &budget)?;
+            registered_catalog_root(&reply, &scope, &budget, &catalog, &getter)
+        };
+        assert_eq!(
+            denied::field(&root(&packet)?, "object")?.as_str(),
+            Some("3")
+        );
+        for object in ["1", "2"] {
+            let mut changed = packet.clone();
+            changed["root"]["object"] = json!(object);
+            changed["owned"] = json!([object]);
+            assert!(root(&changed).is_err());
+        }
+        for (field, value) in [
+            ("/scope/0", json!("5")),
+            ("/root/scope/0", json!("5")),
+            (
+                "/format",
+                json!("io.tobkiri.native-bootstrap-recovery-catalog-result.v1"),
+            ),
+            ("/owned", json!([])),
+        ] {
+            let mut changed = packet.clone();
+            *changed.pointer_mut(field).context("fixture field")? = value;
+            assert!(root(&changed).is_err(), "{field}");
+        }
+        Ok(())
     }
 
     #[test]

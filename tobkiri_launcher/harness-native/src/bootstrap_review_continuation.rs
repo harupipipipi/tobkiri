@@ -418,23 +418,50 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
         Ok(optional) => optional,
         Err(error) => return Ok(Err(original_failure(error))),
     };
-    let reachpoint = if optional
+    let has_optional_roots = !optional
         .array()
         .context("verified optional Setup Pack IDs must be an array")?
-        .is_empty()
-    {
-        BootstrapReviewReachpoint::ActiveCandidateCatalogTransportNotBound
-    } else {
-        BootstrapReviewReachpoint::ActiveCandidateOptionalReceiptsNotBound
+        .is_empty();
+    review.actual.registered_candidate = Some((candidate, optional));
+    if has_optional_roots {
+        return Ok(Err(BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::ActiveCandidateOptionalReceiptsNotBound,
+        )));
+    }
+    let catalog = match super::catalog::replace_registered_profile(review, pack).await? {
+        Ok(catalog) => catalog,
+        Err(error) => return Ok(Err(error)),
     };
-    review.actual._registered_candidate = Some((candidate, optional));
-    Ok(Err(BootstrapReviewFailure::NotBound(reachpoint)))
+    if let Err(error) = review.read.select_registered_resolver_catalog() {
+        return Ok(Err(original_failure(error)));
+    }
+    let mut ascii = [0_u8; 128];
+    if let Err(error) = resolve_source_profile(review, pack, Some(catalog), &mut ascii).await? {
+        return Ok(Err(error));
+    }
+    Ok(Err(BootstrapReviewFailure::NotBound(
+        BootstrapReviewReachpoint::ActiveCandidateResolverEdgesNotBound,
+    )))
 }
 
 async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
 ) -> super::listing::Outcome {
+    let mut ascii = [0_u8; 128];
+    let profile_id = match resolve_source_profile(review, pack, None, &mut ascii).await? {
+        Ok(profile_id) => profile_id,
+        Err(error) => return Ok(Err(error)),
+    };
+    super::resolver_edges::bind_bundled_edges(review, pack, profile_id).await
+}
+
+async fn resolve_source_profile<'id, S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    registered_catalog: Option<CoreValue>,
+    ascii: &'id mut [u8; 128],
+) -> Result<std::result::Result<&'id str, BootstrapReviewFailure>> {
     let source = &pack.work.get().source;
     if let Err(error) = review.read.acquire_resolver_root(source, pack.cancellation) {
         return Ok(Err(original_failure(error)));
@@ -463,20 +490,18 @@ async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         }
         Err(error) => return Ok(Err(original_failure(error))),
     }
-    match validated_identity(review, pack, caller).await? {
-        // The original validator returns the same exact string. Keep that
-        // getter ref, and let the original catalog do its live mapping lookup.
-        Ok(identity) => {
-            let mut ascii = [0_u8; 128];
-            let profile_id = identity.ascii_identity(&mut ascii)?;
-            drop(identity);
-            match super::catalog::resolver_source_profile(review, pack).await? {
-                Ok(()) => super::resolver_edges::bind_bundled_edges(review, pack, profile_id).await,
-                Err(error) => Ok(Err(error)),
-            }
-        }
-        Err(error) => Ok(Err(error)),
-    }
+    let identity = match validated_identity(review, pack, caller).await? {
+        Ok(identity) => identity,
+        Err(error) => return Ok(Err(error)),
+    };
+    let profile_id = identity.ascii_identity(ascii)?;
+    drop(identity);
+    // The live lookup consumes the second getter's exact reference.
+    Ok(
+        super::catalog::resolver_source_profile(review, pack, registered_catalog)
+            .await?
+            .map(|()| profile_id),
+    )
 }
 
 pub(super) async fn validated_identity<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(

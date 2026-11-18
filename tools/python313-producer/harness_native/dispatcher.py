@@ -450,6 +450,9 @@ class Dispatcher:
             return self._bootstrap_preview_catalog(state, frame)
         if method == "catalog_with_profiles" and frame.get("format") == PREFIX + "bootstrap-recovery-catalog.v1":
             return self._bootstrap_recovery_catalog(state, frame)
+        if (method == "catalog_with_profiles"
+                and frame.get("format") == PREFIX + "bootstrap-registered-catalog.v1"):
+            return self._bootstrap_registered_catalog(state, frame)
         if method == "setup_listing" and frame.get("format") == PREFIX + "bootstrap-setup-listing.v1":
             return self._bootstrap_setup_listing(state, frame)
         if method == "setup_activation_decision":
@@ -1050,6 +1053,57 @@ class Dispatcher:
                                "scope": registry.scope.wire(), "root": root.wire(),
                                "owned": [format(ref.object_id, "x") for ref, _ in created]})
             registry._record_recovery_catalog_replacement(root)
+            return response
+        except BaseException:
+            registry._rollback(created)
+            raise
+
+    def _bootstrap_registered_catalog(self, state: _State, frame: dict[str, Any]) -> str:
+        self._checked_frame(frame, "bootstrap-registered-catalog", {
+            "catalog", "profile_id", "candidate",
+        })
+        candidate = frame["candidate"]
+        if type(candidate) is not dict or type(candidate.get("profile_id")) is not str:
+            raise InvalidFrame("invalid fixed registered Setup candidate")
+        registry = state.registry
+        catalog, profile_id = registry._begin_bootstrap_registered_catalog(
+            registry.reference(frame["catalog"]), registry.reference(frame["profile_id"]),
+            candidate["profile_id"],
+        )
+
+        fields = ("root", "packs", "bases", "shells", "artifact_root", "executable_catalogs")
+        original_fields = tuple(getattr(catalog, name) for name in fields)
+        original_profiles = catalog.profiles
+
+        def overlay() -> tuple[Any, dict[str, Any], tuple[tuple[str, Any], ...]]:
+            profiles = {**original_profiles, profile_id: candidate}
+            rows = tuple(profiles.items())
+            return state.runtime.catalog_with_profiles(catalog, profiles), profiles, rows
+
+        value, profiles, rows = self._apply_original(
+            overlay, caller="bootstrap-registered-catalog",
+        )
+        if (type(value) is not type(catalog) or value is catalog
+                or type(value.profiles) is not dict
+                or value.profiles is original_profiles or value.profiles is profiles
+                or len(value.profiles) != len(rows)
+                or any(key != expected or entry is not profile
+                       for (key, entry), (expected, profile)
+                       in zip(value.profiles.items(), rows))
+                or any(getattr(value, name) is not original
+                       for name, original in zip(fields, original_fields))):
+            raise UnsupportedValue("original registered Setup catalog is not bound")
+        created: list[tuple[Reference, int]] = []
+        try:
+            root, fresh = registry._retain(value, created=created)
+            if not fresh:
+                raise UnsupportedValue("original registered Setup catalog was already issued")
+            response = wire.dumps({
+                "format": PREFIX + "bootstrap-registered-catalog-result.v1",
+                "scope": registry.scope.wire(), "root": root.wire(),
+                "owned": [format(ref.object_id, "x") for ref, _ in created],
+            })
+            registry._record_registered_catalog_replacement(root)
             return response
         except BaseException:
             registry._rollback(created)

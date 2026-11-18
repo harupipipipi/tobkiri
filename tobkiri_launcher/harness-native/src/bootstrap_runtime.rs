@@ -60,6 +60,7 @@ const RESOLVE_LEGACY_PROFILE: u8 = 30;
 const BOOTSTRAP_PUBLICATION_HOST_START: u8 = 31;
 const BOOTSTRAP_PUBLICATION_REREAD: u8 = 32;
 const BOOTSTRAP_PUBLICATION_SOURCE: u8 = 33;
+const BOOTSTRAP_REGISTERED_CATALOG: u8 = 34;
 const CATALOG_LOAD_SLOT: usize = 7;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
@@ -211,6 +212,7 @@ impl CiRetiredCall {
             BOOTSTRAP_PUBLICATION_HOST_START => "bootstrap-publication-host-start",
             BOOTSTRAP_PUBLICATION_REREAD => "bootstrap-publication-reread",
             BOOTSTRAP_PUBLICATION_SOURCE => "bootstrap-publication-source",
+            BOOTSTRAP_REGISTERED_CATALOG => "bootstrap-registered-catalog",
             _ => "unknown",
         }
     }
@@ -1651,6 +1653,14 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 bail!("Profile resolution is outside the fixed Review reachpoint");
             }
         }
+        if slot == BOOTSTRAP_PREVIEW_SLOT && phase == BOOTSTRAP_REGISTERED_CATALOG {
+            let frame = CoreValue::parse_guest(input.as_bytes(), self.input_budget)?;
+            if frame.get_key("format").as_ref().and_then(CoreValue::as_str)
+                != Some(catalog::REGISTERED_CATALOG_REQUEST)
+            {
+                bail!("registered catalog is outside the fixed Review reachpoint");
+            }
+        }
         if slot == 2 {
             match CoreValue::parse_guest(input.as_bytes(), self.input_budget) {
                 Ok(frame) => match frame.get_key("format").as_ref().and_then(CoreValue::as_str) {
@@ -1730,7 +1740,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (BOOTSTRAP_CONFIRMATION_SLOT, BOOTSTRAP_CONFIRMATION)
                 | (
                     BOOTSTRAP_PREVIEW_SLOT,
-                    BOOTSTRAP_PREVIEW | BOOTSTRAP_RECOVERY_CATALOG
+                    BOOTSTRAP_PREVIEW | BOOTSTRAP_RECOVERY_CATALOG | BOOTSTRAP_REGISTERED_CATALOG
                 )
                 | (BOOTSTRAP_LISTING_SLOT, BOOTSTRAP_LISTING)
                 | (

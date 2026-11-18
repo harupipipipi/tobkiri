@@ -1039,6 +1039,42 @@ async fn registered_snapshot_opens_authority_and_workspace_before_reading_catalo
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn registered_resolver_reselects_authority_after_the_catalog_overlay() {
+    with_setup_source(|source, read, cancel, budget| {
+        seed_candidate(source, true);
+        let later = source.root.with_file_name("later-user-data");
+        let owner = ChangingOwner {
+            first: &source.root,
+            next: &later,
+            calls: AtomicUsize::new(0),
+        };
+        selected_setup(read, &owner, cancel, false, budget);
+        assert!(read.select_registered_resolver_catalog().is_err());
+        read.with_registered_activation_authority(&owner, cancel, |_| Ok(()))
+            .unwrap();
+        assert!(read.acquire_resolver_root(&owner, cancel).is_err());
+        read.select_registered_resolver_catalog().unwrap();
+        assert!(read.select_registered_resolver_catalog().is_err());
+        read.acquire_resolver_root(&owner, cancel).unwrap();
+        let digest = Digest::hash(b"second physical lock");
+        let authority = read
+            .resolver_authority_snapshot(&owner, cancel, digest.clone())
+            .unwrap()
+            .unwrap();
+        let (material, _, bundle_lock) = authority.observation();
+        assert!(matches!(
+            material,
+            OriginalAuthorityMaterial::Genesis { .. }
+        ));
+        assert_eq!(*bundle_lock, digest);
+        assert_eq!(owner.calls.load(Ordering::Relaxed), 4);
+        assert!(source.root.join(DATABASE).is_file());
+        assert!(!later.exists());
+        read.close_continuation().unwrap();
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn registered_authority_initializes_genesis_on_the_held_root_before_the_body() {
     for additions in [false, true] {
         with_setup_source(|source, read, cancel, budget| {

@@ -887,6 +887,209 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             "bootstrap-recovery-catalog", catalog=catalog, profiles=profiles, **fields,
         )))
 
+    def registered_catalog(
+        self, catalog: dict, profile_id: dict, candidate: object, **fields: object,
+    ) -> dict:
+        return wire.loads(self.dispatcher.call("catalog_with_profiles", self.frame(
+            "bootstrap-registered-catalog", catalog=catalog, profile_id=profile_id,
+            candidate=candidate, **fields,
+        )))
+
+    def test_registered_catalog_runs_the_original_overlay_before_second_getter(self) -> None:
+        first_value = "".join(("fixture", "-id"))
+        second_value = "".join(("fixture-", "id"))
+        self.assertIsNot(first_value, second_value)
+        original = self.runtime.catalog
+        before, replaced, after = object(), {"profile_id": first_value}, object()
+        original.profiles.update({"before": before, first_value: replaced, "after": after})
+        original.packs["pack"] = {"pack": {"artifact_digest": "fixture-artifact"}}
+        candidate = {"profile_id": first_value, "requested_edges": []}
+        captured = []
+
+        def overlay(catalog, profiles):
+            self.assertIs(catalog, original)
+            self.assertEqual(tuple(profiles), ("before", first_value, "after"))
+            self.assertIs(profiles["before"], before)
+            self.assertIs(profiles["after"], after)
+            self.assertIsNot(profiles[first_value], candidate)
+            self.assertEqual(profiles[first_value], candidate)
+            captured.append(profiles[first_value])
+            return self.recovery_projector_clone(catalog, profiles)
+
+        self.runtime.catalog_with_profiles = overlay
+        base = self.load()
+        first = self.getter(first_value)
+        result = self.registered_catalog(base, first, candidate)
+        current = result["root"]
+        self.assertEqual(result, {
+            "format": PREFIX + "bootstrap-registered-catalog-result.v1",
+            "scope": self.scope.wire(), "root": current, "owned": [current["object"]],
+        })
+        self.assertNotEqual(base, current)
+        self.assertIs(original.profiles[first_value], replaced)
+        self.assertEqual(len(captured), 1)
+        with self.assertRaises(InvalidReference):
+            self.lookup(current, first)
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(base, first, candidate)
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(current, first, candidate)
+        with self.assertRaises(InvalidReference):
+            self.recovery_catalog(current, [])
+        with self.assertRaises(InvalidReference):
+            self.view(result)
+        second = self.getter(second_value)
+        with self.assertRaises(InvalidReference):
+            self.lookup(current, first)
+        with self.assertRaises(InvalidReference):
+            self.lookup(base, second)
+        self.dispatcher.release_values(self.frame("values-release", refs=[base, first]))
+        source = self.lookup(current, second)["root"]
+        self.assertIs(self.registry.borrow(self.registry.reference(source)), captured[0])
+        self.assertEqual(self.static_edges(source)["rows"], [])
+        self.assertEqual(self.dynamic_edges(current, second, source)["rows"], [])
+        actual = self.registry.borrow(self.registry.reference(current))
+        self.assertIs(self.runtime.dynamic_calls[0][0], actual)
+        self.assertIs(self.runtime.dynamic_calls[0][1], second_value)
+        artifacts = self.verified_artifacts(current, second, source)["root"]
+        self.assertEqual(self.registry.borrow(self.registry.reference(artifacts)),
+                         {"fixture-artifact"})
+
+    def test_registered_catalog_refuses_unissued_getter_and_recovery_origins(self) -> None:
+        candidate = {"profile_id": "fixture-id"}
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        base = self.load()
+        alien = self.registry.retain("".join(("fixture", "-id"))).wire()
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(base, alien, candidate)
+        first = self.getter(candidate["profile_id"])
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(base, alien, candidate)
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(self.registry.retain(self.Catalog()).wire(), first,
+                                    candidate)
+        with self.assertRaises(InvalidFrame):
+            self.registered_catalog(base, first, candidate, extra=True)
+        for invalid in ([], {}, {"profile_id": True}, {"profile_id": "other"}):
+            with self.subTest(invalid=invalid), self.assertRaises(InvalidFrame):
+                self.registered_catalog(base, first, invalid)
+        self.getter(candidate["profile_id"])
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(base, first, candidate)
+
+        self.setUp()
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        self.runtime.catalog.profiles[candidate["profile_id"]] = candidate
+        self.getter(candidate["profile_id"])
+        recovery = self.load()
+        template_getter = self.getter(candidate["profile_id"])
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(recovery, template_getter, candidate)
+        self.template(recovery, template_getter)
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(recovery, template_getter, candidate)
+        replacement = self.recovery_catalog(recovery, [])
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(replacement["root"], template_getter, candidate)
+
+    def test_registered_catalog_refuses_wrong_identity_or_modified_inventory(self) -> None:
+        candidate = {"profile_id": "fixture-id"}
+        for invalid in ("base", "issued", "field", "reorder", "replaced", "same-map"):
+            with self.subTest(invalid=invalid):
+                self.setUp()
+                original = self.runtime.catalog
+                original.profiles.update({"other": {}, "fixture-id": {}})
+                already_issued = self.recovery_projector_clone(original, {})
+                self.registry.retain(already_issued)
+                base = self.load()
+                first = self.getter(candidate["profile_id"])
+
+                def overlay(catalog, profiles):
+                    if invalid == "base":
+                        return catalog
+                    if invalid == "issued":
+                        already_issued.root = catalog.root
+                        already_issued.profiles = dict(profiles)
+                        return already_issued
+                    value = self.recovery_projector_clone(catalog, profiles)
+                    if invalid == "field":
+                        value.packs = dict(catalog.packs)
+                    elif invalid == "reorder":
+                        value.profiles = dict(reversed(profiles.items()))
+                    elif invalid == "replaced":
+                        value.profiles["other"] = dict(profiles["other"])
+                    elif invalid == "same-map":
+                        value.profiles = profiles
+                    return value
+
+                self.runtime.catalog_with_profiles = overlay
+                before = set(self.registry._objects)
+                with self.assertRaises(UnsupportedValue):
+                    self.registered_catalog(base, first, candidate)
+                self.assertEqual(set(self.registry._objects), before)
+                with self.assertRaises(InvalidReference):
+                    self.registered_catalog(base, first, candidate)
+
+    def test_registered_catalog_serialization_failure_rolls_back_and_consumes_call(self) -> None:
+        candidate = {"profile_id": "fixture-id"}
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        base = self.load()
+        first = self.getter(candidate["profile_id"])
+        request = self.frame("bootstrap-registered-catalog", catalog=base,
+                             profile_id=first, candidate=candidate)
+        before = set(self.registry._objects)
+        with patch.object(wire, "dumps", side_effect=MemoryError):
+            with self.assertRaises(MemoryError):
+                self.dispatcher.call("catalog_with_profiles", request)
+        self.assertEqual(set(self.registry._objects), before)
+        self.assertEqual(set(self.registry._bootstrap_identity),
+                         {int(base["object"], 16), int(first["object"], 16)})
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.call("catalog_with_profiles", request)
+        second = self.getter(candidate["profile_id"])
+        with self.assertRaises(InvalidReference):
+            self.lookup(base, second)
+
+    def test_registered_catalog_preserves_original_throw_and_consumes_call(self) -> None:
+        candidate = {"profile_id": "fixture-id"}
+        base = self.load()
+        first = self.getter(candidate["profile_id"])
+        original = KeyError("original overlay failure")
+
+        def overlay(_catalog, _profiles):
+            raise original
+
+        self.runtime.catalog_with_profiles = overlay
+        with self.assertRaises(MethodRaised) as caught:
+            self.registered_catalog(base, first, candidate)
+        error = wire.loads(caught.exception.details)
+        ref = self.registry.reference(error["root"])
+        self.assertIs(self.registry.borrow(ref), original)
+        self.assertEqual(self.view(error)["origin"], "bootstrap-registered-catalog-raised")
+        with self.assertRaises(InvalidReference):
+            self.registered_catalog(base, first, candidate)
+
+    def test_registered_catalog_requires_a_live_successful_first_getter(self) -> None:
+        candidate = {"profile_id": "fixture-id"}
+        for invalid in ("throw", "different-kind", "release"):
+            with self.subTest(invalid=invalid):
+                self.setUp()
+                self.runtime.catalog_with_profiles = self.recovery_projector
+                base = self.load()
+                if invalid == "throw":
+                    self.runtime.failure = KeyError("original getter failure")
+                    with self.assertRaises(MethodRaised):
+                        self.getter(candidate["profile_id"])
+                    self.runtime.failure = None
+                    first = self.getter(candidate["profile_id"])
+                elif invalid == "different-kind":
+                    first = self.getter(7)
+                else:
+                    first = self.getter(candidate["profile_id"])
+                    self.dispatcher.release_values(self.frame("values-release", refs=[first]))
+                with self.assertRaises(InvalidReference):
+                    self.registered_catalog(base, first, candidate)
+
     def recovery_projector(self, catalog: Catalog, profiles: dict) -> Catalog:
         self.assertIs(catalog, self.runtime.catalog)
         return self.recovery_projector_clone(catalog, profiles)
@@ -1935,7 +2138,12 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 self.setUp()
                 self.check_predecessor_review(equal)
 
-    def check_predecessor_review(self, equal: bool) -> tuple[dict, dict]:
+    def test_registered_catalog_keeps_the_resolver_and_preview_sequence(self) -> None:
+        self.check_predecessor_review(equal=True, registered=True)
+
+    def check_predecessor_review(
+        self, equal: bool, *, registered: bool = False,
+    ) -> tuple[dict, dict]:
         activation_calls = []
         listings = []
         body = {"confirmation": {"bindings": [], "profile_id": "fixture-id"}}
@@ -1961,9 +2169,20 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         })
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("setup_activation_decision", preflight)
-        catalog, profile_id, source = self.source({
+        candidate = {
             "requested_edges": [], "profile_id": "fixture-id", "fixture_flag": True,
-        })
+        }
+        if registered:
+            self.runtime.catalog_with_profiles = self.recovery_projector
+            base = self.load()
+            first = self.getter(candidate["profile_id"])
+            catalog = self.registered_catalog(base, first, candidate)["root"]
+            profile_id = self.getter(candidate["profile_id"])
+            self.assertEqual(profile_id, first)
+            source = self.lookup(catalog, profile_id)["root"]
+        else:
+            catalog, profile_id, source = self.source(candidate)
+        current_catalog = self.registry.borrow(self.registry.reference(catalog))
         self.static_edges(source)
         self.dynamic_edges(catalog, profile_id, source)
         artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
@@ -1980,6 +2199,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         resolved.lock["lock_digest"] = "fixture-lock"
 
         def resolve(*args, **kwargs):
+            self.assertIs(args[0], current_catalog)
             captured.update(kwargs)
             self.bridge._resolver_shell_leaf = leaf
             self.bridge._resolver_header_closed = True
@@ -1999,7 +2219,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 calls.append(key)
                 return {"changed_after_resolve": object()}
 
-        self.runtime.catalog.profiles = LiveProfiles()
+        current_catalog.profiles = LiveProfiles()
         self.assertEqual(wire.loads(self.dispatcher.describe_value(lookup)), {
             "format": PREFIX + "bootstrap-predecessor-source-result.v1",
             "scope": self.scope.wire(), "digest": None,
@@ -2074,13 +2294,12 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("bootstrap_confirmation", call)
 
-        original_catalog = self.runtime.catalog
-        original_catalog.profiles = {"other": {}, "fixture-id": {}}
+        current_catalog.profiles = {"other": {}, "fixture-id": {}}
         resolved.profile["profile_id"] = "fixture-id"
         preview_catalog = self.Catalog()
 
         def make_preview(catalog, profiles):
-            self.assertIs(catalog, original_catalog)
+            self.assertIs(catalog, current_catalog)
             self.assertEqual(list(profiles), list(catalog.profiles))
             self.assertIs(profiles["other"], catalog.profiles["other"])
             self.assertIs(profiles["fixture-id"], resolved.profile)

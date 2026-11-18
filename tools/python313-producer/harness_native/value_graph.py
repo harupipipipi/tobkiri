@@ -168,6 +168,7 @@ class Registry:
         # Track the resolver position separately from the identity of its DATA.
         self._resolver_stage = "awaiting-catalog"
         self._resolver_catalog: int | None = None
+        self._resolver_first_profile_id: int | None = None
         self._resolver_profile_id: int | None = None
         self._resolver_source: int | None = None
         self._resolver_verified_artifacts: int | None = None
@@ -342,6 +343,8 @@ class Registry:
                 self._replaced_recovery_catalog = None
             if number == self._bootstrap_template_profile_id:
                 self._clear_bootstrap_template_inputs()
+            if number == self._resolver_first_profile_id:
+                self._resolver_first_profile_id = None
             if number == self._resolver_catalog or number == self._resolver_profile_id:
                 self._clear_resolver_inputs()
             elif number == self._resolver_source:
@@ -376,6 +379,7 @@ class Registry:
         self._replaced_recovery_catalog = None
         self._resolver_stage = "closed"
         self._resolver_catalog = None
+        self._resolver_first_profile_id = None
         self._resolver_profile_id = None
         self._clear_resolver_source()
 
@@ -421,6 +425,7 @@ class Registry:
         if self._resolver_stage == "awaiting-first-getter":
             self._resolver_stage = "first-getter-pending"
         elif self._resolver_stage == "awaiting-second-getter":
+            self._resolver_first_profile_id = None
             self._resolver_stage = "second-getter-pending"
         elif self._resolver_catalog is not None:
             self._clear_resolver_inputs()
@@ -447,6 +452,10 @@ class Registry:
                 self._bootstrap_template_profile_id = reference.object_id
                 self._bootstrap_template_stage = "ready"
             if self._resolver_stage == "first-getter-pending":
+                # Recovery's post-catalog template getter cannot authorize an overlay.
+                if (self._bootstrap_template_stage == "closed"
+                        and type(self.borrow(reference)) is str):
+                    self._resolver_first_profile_id = reference.object_id
                 self._resolver_stage = "awaiting-second-getter"
             elif self._resolver_stage == "second-getter-pending":
                 self._resolver_profile_id = reference.object_id
@@ -498,6 +507,31 @@ class Registry:
         if self._bootstrap_publication_stage == "host-loading":
             self._bootstrap_publication_stage = "host-materialized"
 
+    def _begin_bootstrap_registered_catalog(
+        self, catalog_ref: Reference, profile_id_ref: Reference, candidate_id: str,
+    ) -> tuple[Any, str]:
+        catalog = self.borrow(catalog_ref)
+        profile_id = self.borrow(profile_id_ref, str)
+        record = self._records.get(type(catalog))
+        if (self._resolver_stage != "awaiting-second-getter"
+                or catalog_ref.object_id != self._resolver_catalog
+                or profile_id_ref.object_id != self._resolver_first_profile_id
+                or self._bootstrap_identity.get(catalog_ref.object_id) != "catalog-returned"
+                or self._bootstrap_identity.get(profile_id_ref.object_id) != "getter-returned"
+                or record is None or record.kind != "bundled-catalog"):
+            raise InvalidReference("references have no current registered Setup origins")
+        if candidate_id != profile_id:
+            raise InvalidFrame("registered Setup candidate differs from the first getter")
+        # Once the original call starts, a throw or failed result consumes it.
+        self._resolver_first_profile_id = None
+        self._resolver_stage = "registered-catalog-pending"
+        return catalog, profile_id
+
+    def _record_registered_catalog_replacement(self, catalog: Reference) -> None:
+        self._bootstrap_identity[catalog.object_id] = "bootstrap-registered-catalog-returned"
+        self._resolver_catalog = catalog.object_id
+        self._resolver_stage = "awaiting-second-getter"
+
     def _current_recovery_replacement(self, catalog_ref: Reference) -> Any:
         catalog = self.borrow(catalog_ref)
         record = self._records.get(type(catalog))
@@ -519,17 +553,21 @@ class Registry:
         catalog = self.borrow(catalog_ref)
         profile_id = self.borrow(profile_id_ref)
         record = self._records.get(type(catalog))
-        catalog_origin = self._bootstrap_identity.get(catalog_ref.object_id)
         profile_id_origin = self._bootstrap_identity.get(profile_id_ref.object_id)
         if (self._resolver_stage != "ready"
                 or catalog_ref.object_id != self._resolver_catalog
                 or profile_id_ref.object_id != self._resolver_profile_id
-                or catalog_origin != "catalog-returned"
+                or not self._has_resolver_catalog_origin(catalog_ref.object_id)
                 or profile_id_origin != "getter-returned"
                 or record is None or record.cls is not type(catalog)
                 or record.kind != "bundled-catalog" or type(profile_id) is not str):
             raise InvalidReference("reference has no fixed resolver source origin")
         return catalog, profile_id
+
+    def _has_resolver_catalog_origin(self, object_id: int) -> bool:
+        return self._bootstrap_identity.get(object_id) in {
+            "catalog-returned", "bootstrap-registered-catalog-returned",
+        }
 
     def _resolver_source_inputs(
         self, catalog_ref: Reference, profile_id_ref: Reference,
@@ -552,8 +590,7 @@ class Registry:
         source = self._current_resolver_source(root)
         catalog, profile_id = self._resolver_catalog, self._resolver_profile_id
         if (self._resolver_stage != "ready"
-                or catalog is None or self._bootstrap_identity.get(catalog)
-                != "catalog-returned"
+                or catalog is None or not self._has_resolver_catalog_origin(catalog)
                 or profile_id is None or self._bootstrap_identity.get(profile_id)
                 != "getter-returned"):
             raise InvalidReference("reference has no current resolver static edge origin")
@@ -861,6 +898,7 @@ class Registry:
             "manifest-returned", "manifest-raised",
             "bootstrap-template-lookup-raised",
             "bootstrap-recovery-catalog-raised",
+            "bootstrap-registered-catalog-raised",
             "resolver-source-lookup-returned", "resolver-source-lookup-raised",
             "resolver-static-edges-raised", "resolver-dynamic-edges-raised",
             "resolver-verified-artifacts-returned", "resolver-verified-artifacts-raised",

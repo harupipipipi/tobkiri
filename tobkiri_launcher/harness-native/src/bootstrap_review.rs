@@ -58,7 +58,7 @@ pub enum BootstrapReviewReachpoint {
     ActiveCandidateAdmittedClosureNotBound,
     ActiveCandidatePackPinPredecessorNotBound,
     ActiveCandidateOptionalReceiptsNotBound,
-    ActiveCandidateCatalogTransportNotBound,
+    ActiveCandidateResolverEdgesNotBound,
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
     LegacySuccessorBuilderNotBound,
@@ -153,7 +153,9 @@ pub(crate) struct ActualCustody {
     pub(crate) publication_template_getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) _recovery_profile_definitions: Option<CoreValue>,
     #[cfg(unix)]
-    pub(crate) _registered_candidate: Option<(CoreValue, CoreValue)>,
+    pub(crate) registered_candidate: Option<(CoreValue, CoreValue)>,
+    #[cfg(unix)]
+    pub(crate) registered_catalog: Option<CoreBuffer>,
     #[cfg(unix)]
     pub(crate) _recovery_catalog: Option<CoreBuffer>,
     #[cfg(unix)]

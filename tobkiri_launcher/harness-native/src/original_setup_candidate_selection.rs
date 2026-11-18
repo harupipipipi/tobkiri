@@ -82,6 +82,8 @@ enum Progress {
     SelectedRegistered,
     #[cfg(unix)]
     RegisteredAuthorityStarted,
+    #[cfg(unix)]
+    RegisteredCatalogSelected,
     Resolving,
     SnapshotStarted,
     PredecessorStarted,
@@ -313,17 +315,34 @@ impl PublicationRead {
         self.registered_activation_authority(owner, cancellation, body, Some(&fixture))
     }
 
+    #[cfg(unix)]
+    pub(crate) fn select_registered_resolver_catalog(&mut self) -> Result<()> {
+        if self.fresh.progress != Progress::RegisteredAuthorityStarted {
+            return Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Guard,
+                "registered Setup Authority was not reviewed",
+            ));
+        }
+        self.fresh.progress = Progress::RegisteredCatalogSelected;
+        Ok(())
+    }
+
     /// The original resolver captures user-data again before its bundle call.
     pub(crate) fn acquire_resolver_root<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
     ) -> Result<()> {
-        if self.fresh.progress != Progress::SelectedBundled {
-            return Err(OriginalAuthorityError::unsupported(
-                OriginalAuthorityStage::Guard,
-                "bundled Setup candidate is not held",
-            ));
+        match self.fresh.progress {
+            Progress::SelectedBundled => {}
+            #[cfg(unix)]
+            Progress::RegisteredCatalogSelected => {}
+            _ => {
+                return Err(OriginalAuthorityError::unsupported(
+                    OriginalAuthorityStage::Guard,
+                    "Setup resolver candidate is not held",
+                ));
+            }
         }
         let op = self.candidate_operation(owner, cancellation)?;
         let root = read_root(&op)?;
