@@ -20,6 +20,9 @@ mod document_shapes;
 #[path = "original_initial_catalog_fixture.rs"]
 pub(in crate::original_authority::io::publication) mod initial_catalog_fixture;
 #[cfg(unix)]
+#[path = "original_catalog_member_index.rs"]
+mod member_index;
+#[cfg(unix)]
 #[path = "original_catalog_member_path.rs"]
 mod member_path;
 #[cfg(unix)]
@@ -109,7 +112,7 @@ pub(crate) struct CatalogIo {
     lock_bytes: Option<Funded<Zeroizing<Vec<u8>>>>,
     lock: Option<Funded<Document>>,
     #[cfg(unix)]
-    document_shapes: Option<document_shapes::CatalogSchemas>,
+    document_shapes: Option<document_shapes::DocumentChecks>,
     entry: usize,
     walk: usize,
     pins: usize,
@@ -744,11 +747,9 @@ impl CatalogIo {
             Loader::Entries if grouped && self.document_shapes.is_some() => {
                 self.ensure_lock(&op)?;
                 if operation == "read-entry" {
-                    self.read_checked_entry(&op, &mut output, &steps_array, &args)?;
-                } else {
-                    self.read_checked_pin(&op, &mut output, &steps_array, &args)?;
+                    return self.read_checked_entry(&op, output, &steps_array, &args);
                 }
-                true
+                return self.read_checked_pin(&op, output, &steps_array, &args);
             }
             Loader::Entries if operation == "resolve" && strict(&args) => {
                 self.ensure_lock(&op)?;
@@ -814,6 +815,9 @@ impl CatalogIo {
                 {
                     self.retain_pack_pin(&op, &bytes.value)?;
                     self.retain_shell_input(&op, bytes)?;
+                    if let Some(checks) = &mut self.document_shapes {
+                        checks.record_raw();
+                    }
                 }
                 self.candidate = None;
                 self.entry += 1;
@@ -848,16 +852,16 @@ impl CatalogIo {
                             .ok_or_else(OriginalAuthorityError::unavailable)?
                             .join("platform-artifacts") =>
             {
-                #[cfg(unix)]
-                {
-                    self.document_shapes = None;
-                }
                 self.ensure_lock(&op)?;
                 if self.entry != self.entry_count()? || self.pin_index(self.pins).is_some() {
                     return Err(OriginalAuthorityError::unavailable().into());
                 }
                 let is_dir = path.is_dir();
                 write_bool(&mut output, is_dir)?;
+                #[cfg(unix)]
+                if let Some(checks) = &mut self.document_shapes {
+                    checks.release_schemas();
+                }
                 self.loader = if is_dir {
                     Loader::ArtifactResolve
                 } else {

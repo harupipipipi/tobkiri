@@ -86,6 +86,7 @@ async fn grouped_catalog_reads_entire_shipped_bundle_and_executable_pins() {
         let op = io.operation(source, invocation, &cancellation).unwrap();
         let mut manifests = BTreeMap::new();
         let mut checked_revisions = 0;
+        let mut expected_index = Vec::with_capacity(entries.len());
         for (index, entry) in entries.iter().enumerate() {
             let relative = entry["path"].as_str().unwrap();
             let expected = fs::read(shipped.join(relative)).unwrap();
@@ -112,24 +113,45 @@ async fn grouped_catalog_reads_entire_shipped_bundle_and_executable_pins() {
                 "document bytes differ at {index}: {relative}"
             );
             assert_eq!(io.entry, index + 1);
-            match entry["kind"].as_str().unwrap() {
-                "pack" => {
-                    let manifest: Value = serde_json::from_slice(&expected).unwrap();
-                    let id = manifest["pack"]["id"].as_str().unwrap();
-                    assert!(manifests.insert(id.to_owned(), relative).is_none(), "{id}");
-                }
-                "base" | "shell" => {
-                    let document = json::decode_read_only_strict(&expected, &op, budget).unwrap();
-                    assert!(
-                        definition_revision_matches(&document, &op, budget).unwrap(),
-                        "{relative}"
-                    );
-                    checked_revisions += 1;
-                }
-                _ => (),
+            use CatalogDocumentKind::{Base, ExecutableCatalog, Pack, Profile, Shell};
+            let document: Value = serde_json::from_slice(&expected).unwrap();
+            let (kind, id) = match entry["kind"].as_str().unwrap() {
+                "pack" => (Pack, &document["pack"]["id"]),
+                "executable_catalog" => (ExecutableCatalog, &document["pack_id"]),
+                "base" => (Base, &document["pack_id"]),
+                "shell" => (Shell, &document["provider_id"]),
+                "profile" => (Profile, &document["profile_id"]),
+                _ => panic!("unexpected lock kind: {relative}"),
+            };
+            let id = id.as_str().unwrap();
+            expected_index.push((kind, id.to_owned()));
+            if kind == Pack {
+                assert!(manifests.insert(id.to_owned(), relative).is_none(), "{id}");
+            }
+            if matches!(kind, Base | Shell) {
+                let document = json::decode_read_only_strict(&expected, &op, budget).unwrap();
+                assert!(
+                    definition_revision_matches(&document, &op, budget).unwrap(),
+                    "{relative}"
+                );
+                checked_revisions += 1;
             }
         }
         assert_eq!(checked_revisions, 3);
+        let assert_index = |io: &CatalogIo| {
+            let expected: Vec<_> = expected_index
+                .iter()
+                .map(|(kind, id)| (*kind, id.as_str()))
+                .collect();
+            assert_eq!(
+                io.checked_member_index()
+                    .unwrap()
+                    .entries()
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        };
+        assert_index(io);
 
         let mut successful_pins = 0;
         for (index, entry) in entries.iter().enumerate() {
@@ -200,6 +222,7 @@ async fn grouped_catalog_reads_entire_shipped_bundle_and_executable_pins() {
                 "value": resolved.to_str().unwrap(), "steps": artifact_steps})
         );
         assert!(io.completed());
+        assert_index(io);
         assert_eq!(io.artifact_root.as_deref(), Some(resolved.as_path()));
         assert!(io.artifact_parent_identity.is_some());
         assert!(cleanup.verified());
@@ -209,6 +232,139 @@ async fn grouped_catalog_reads_entire_shipped_bundle_and_executable_pins() {
             invocation.started_at().elapsed()
         );
     });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn grouped_catalog_invalidates_member_index_without_disabling_typed_reads() {
+    let base: Value = serde_json::from_slice(include_bytes!(
+        "../../../tobkiri_runtime/ecosystem/defaultspack/v4/defaults-basepack.base.v1.json"
+    ))
+    .unwrap();
+    let base = serde_json::to_vec(&base).unwrap();
+    let base = base.as_slice();
+    let pack = include_bytes!(
+        "../../../tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaultspack.pack.v4.json"
+    )
+    .as_slice();
+    let mut unsupported_pack: Value = serde_json::from_slice(include_bytes!(
+        "../../../tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
+    ))
+    .unwrap();
+    unsupported_pack["requirements"]["network"] =
+        json!({"matrix.bindings": [{"caller_function_id": {"part": "caller"}}]});
+    let unsupported_pack = serde_json::to_vec(&unsupported_pack).unwrap();
+
+    for (case, files, first) in [
+        (
+            "duplicate Base",
+            [("base", base), ("base", base), ("pack", pack)],
+            (CatalogDocumentKind::Base, "defaults-basepack"),
+        ),
+        (
+            "unsupported Pack",
+            [
+                ("pack", pack),
+                ("pack", unsupported_pack.as_slice()),
+                ("base", base),
+            ],
+            (CatalogDocumentKind::Pack, "defaultspack"),
+        ),
+    ] {
+        with_source(false, |source, invocation, budget, io, _| {
+            let bundle = source.root.join("ecosystem/defaultspack/v4");
+            fs::create_dir_all(&bundle).unwrap();
+            let paths = ["first.json", "fallback.json", "last.json"];
+            let entries: Vec<_> = paths
+                .iter()
+                .zip(files)
+                .map(|(path, (kind, bytes))| {
+                    fs::write(bundle.join(path), bytes).unwrap();
+                    json!({"path": path, "kind": kind, "digest": Digest::hash(bytes).as_str()})
+                })
+                .collect();
+            let lock = serde_json::to_vec(&json!({
+                "schema": "io.tobkiri.defaultspack-bundle-lock.v1", "entries": entries
+            }))
+            .unwrap();
+            fs::write(bundle.join("bundle.lock.json"), &lock).unwrap();
+            assert_eq!(
+                open_grouped_catalog(io, source, invocation, budget, &bundle),
+                lock
+            );
+            if first.0 == CatalogDocumentKind::Base {
+                let cancellation = io.cancellation.clone();
+                let op = io.operation(source, invocation, &cancellation).unwrap();
+                io.ensure_lock(&op).unwrap();
+                let steps = CoreValue::parse_guest(br#"[["join","first.json"]]"#, budget).unwrap();
+                let args = CoreValue::parse_guest(b"[0]", budget).unwrap();
+                let typed = json!({"kind":"document", "value": std::str::from_utf8(base).unwrap()});
+                // Fit the inner result but reject the final enclosing brace.
+                let limit = serde_json::to_vec(&typed).unwrap().len();
+                let error = io
+                    .read_checked_entry(
+                        &op,
+                        CoreBuffer::builder(budget, limit),
+                        &steps.array().unwrap(),
+                        &args.array().unwrap(),
+                    )
+                    .unwrap_err();
+                assert!(matches!(
+                    error.downcast_ref::<tobkiri_canon::AllocationError>(),
+                    Some(tobkiri_canon::AllocationError::Limit)
+                ));
+                assert_eq!(io.entry, 0);
+                assert_eq!(io.checked_member_index().unwrap().entries().count(), 0);
+            }
+
+            for (index, (path, (_, expected))) in paths.iter().zip(files).enumerate() {
+                let reply = call(
+                    io,
+                    source,
+                    invocation,
+                    budget,
+                    "read-entry",
+                    json!([["join", path]]),
+                    json!([index]),
+                );
+                let value = reply["value"].as_str().unwrap();
+                if index == 1 {
+                    assert_eq!(reply["kind"], "bytes", "{case}");
+                    assert_eq!(
+                        base64::engine::general_purpose::STANDARD
+                            .decode(value)
+                            .unwrap(),
+                        expected,
+                        "{case}"
+                    );
+                } else {
+                    assert_eq!(reply["kind"], "document", "{case}");
+                    assert_eq!(value.as_bytes(), expected, "{case}");
+                }
+                if index == 0 {
+                    assert!(
+                        io.checked_member_index().unwrap().entries().eq([first]),
+                        "{case}"
+                    );
+                } else {
+                    assert!(io.checked_member_index().is_none(), "{case}");
+                }
+            }
+            assert_eq!(
+                call(
+                    io,
+                    source,
+                    invocation,
+                    budget,
+                    "is-dir",
+                    json!(ARTIFACT_ROOT_STEPS),
+                    json!([])
+                ),
+                json!({"kind": "bool", "value": false})
+            );
+            assert!(io.completed(), "{case}");
+            assert!(io.checked_member_index().is_none(), "{case}");
+        });
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]

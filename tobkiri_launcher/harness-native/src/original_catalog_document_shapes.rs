@@ -1,7 +1,7 @@
 //! Grouped inspection of exact bundle lock occurrences.
 use super::*;
-use crate::original_authority::bundled_schema::CatalogDocumentKind;
-pub(super) use crate::original_authority::bundled_schema::CatalogSchemas;
+use crate::original_authority::bundled_schema::{CatalogDocumentKind, CatalogSchemas};
+use member_index::CatalogMemberIndex;
 
 const SHAPES: [(&str, CatalogDocumentKind); 5] = [
     ("pack", CatalogDocumentKind::Pack),
@@ -11,11 +11,66 @@ const SHAPES: [(&str, CatalogDocumentKind); 5] = [
     ("profile", CatalogDocumentKind::Profile),
 ];
 
+#[derive(Default)]
+pub(super) struct DocumentChecks {
+    schemas: CatalogSchemas,
+    index: MemberIndexState,
+}
+
+#[derive(Default)]
+enum MemberIndexState {
+    #[default]
+    Empty,
+    Collecting(CatalogMemberIndex),
+    Incomplete,
+}
+
+impl DocumentChecks {
+    pub(super) fn release_schemas(&mut self) {
+        self.schemas = CatalogSchemas::default();
+    }
+
+    pub(super) fn record_raw(&mut self) {
+        self.index = MemberIndexState::Incomplete;
+    }
+
+    fn record<S: OriginalAuthorityOwner>(
+        &mut self,
+        kind: CatalogDocumentKind,
+        ordinal: usize,
+        entry_count: usize,
+        document: &Document,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<bool> {
+        if matches!(self.index, MemberIndexState::Empty) {
+            self.index = MemberIndexState::Collecting(CatalogMemberIndex::new(op, entry_count)?);
+        }
+        match &mut self.index {
+            MemberIndexState::Collecting(index) => {
+                index.insert(kind, ordinal, document, op, budget)
+            }
+            // An earlier raw response left an unknown identity. Shapes and
+            // revisions can still be checked for subsequent documents.
+            MemberIndexState::Incomplete => Ok(true),
+            MemberIndexState::Empty => unreachable!("member index selected"),
+        }
+    }
+}
+
 impl CatalogIo {
     /// Select the exact experiment before the original loader starts reading.
     #[cfg(test)]
     pub(crate) fn enable_document_shapes(&mut self) {
-        self.document_shapes = Some(CatalogSchemas::default());
+        self.document_shapes = Some(DocumentChecks::default());
+    }
+
+    #[cfg(test)]
+    pub(super) fn checked_member_index(&self) -> Option<&CatalogMemberIndex> {
+        match &self.document_shapes.as_ref()?.index {
+            MemberIndexState::Collecting(index) => Some(index),
+            _ => None,
+        }
     }
 
     fn member_path(
@@ -65,10 +120,10 @@ impl CatalogIo {
     pub(super) fn read_checked_entry<S: crate::BootstrapReviewOwner>(
         &mut self,
         op: &Operation<'_, S>,
-        out: &mut CoreBufferBuilder,
+        mut out: CoreBufferBuilder,
         steps: &tobkiri_canon::CoreArray<'_>,
         args: &tobkiri_canon::CoreArray<'_>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<CoreBuffer> {
         let relative = self.member_path(self.entry, steps, args)?;
         let lexical = member_path::lexical_member(&self.selected, &relative);
         let candidate = match member_path::resolve_member(op, &self.budget, &lexical) {
@@ -76,41 +131,68 @@ impl CatalogIo {
                 if error.class == "builtins.ValueError"
                     && error.message == "lstat: embedded null character in path" =>
             {
-                return self.reject_member(out, "null-byte");
+                return self.reject_member(op, out, "null-byte");
             }
             result => result?,
         };
         if candidate == self.selected || !candidate.starts_with(&self.selected) {
-            return self.reject_member(out, "escape");
+            return self.reject_member(op, out, "escape");
         }
         if member_path::member_has_symlink(op, &self.budget, &self.selected, &relative)? {
-            return self.reject_member(out, "symlink");
+            return self.reject_member(op, out, "symlink");
         }
         let bytes = read_file(op, &candidate, &self.budget)?;
-        if !self.write_checked_document(op, out, &bytes.value)? {
-            write_bytes(out, &bytes.value)?;
+        let result = (|| {
+            let typed = self.write_checked_document(op, &mut out, &bytes.value)?;
+            if !typed {
+                write_bytes(&mut out, &bytes.value)?;
+            }
+            let response = finish_checked_read(op, out)?;
+            self.retain_pack_pin(op, &bytes.value)?;
+            self.retain_shell_input(op, bytes)?;
+            Ok::<_, anyhow::Error>((typed, response))
+        })();
+        let checks = self
+            .document_shapes
+            .as_mut()
+            .expect("selected document checks");
+        let (typed, response) = match result {
+            Ok(result) => result,
+            Err(error) => {
+                if let MemberIndexState::Collecting(index) = &mut checks.index {
+                    index.rollback_pending(self.entry);
+                }
+                return Err(error);
+            }
+        };
+        if !typed {
+            checks.record_raw();
         }
-        self.retain_pack_pin(op, &bytes.value)?;
-        self.retain_shell_input(op, bytes)?;
         self.entry += 1;
-        Ok(())
+        Ok(response)
     }
 
-    fn reject_member(&mut self, out: &mut CoreBufferBuilder, reason: &str) -> anyhow::Result<()> {
+    fn reject_member<S: crate::BootstrapReviewOwner>(
+        &mut self,
+        op: &Operation<'_, S>,
+        mut out: CoreBufferBuilder,
+        reason: &str,
+    ) -> anyhow::Result<CoreBuffer> {
         out.append(b"{\"kind\":\"catalog-path-rejection\",\"value\":")?;
-        crate::bootstrap_metadata::string_parts(out, [reason])?;
+        crate::bootstrap_metadata::string_parts(&mut out, [reason])?;
         out.append(b"}")?;
+        let response = finish_checked_read(op, out)?;
         self.loader = Loader::Rejected;
-        Ok(())
+        Ok(response)
     }
 
     pub(super) fn read_checked_pin<S: crate::BootstrapReviewOwner>(
         &mut self,
         op: &Operation<'_, S>,
-        out: &mut CoreBufferBuilder,
+        mut out: CoreBufferBuilder,
         steps: &tobkiri_canon::CoreArray<'_>,
         args: &tobkiri_canon::CoreArray<'_>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<CoreBuffer> {
         if self.entry != self.entry_count()? {
             return Err(OriginalAuthorityError::unavailable().into());
         }
@@ -122,16 +204,17 @@ impl CatalogIo {
         // This is an independent read of the original lexical path. The
         // original caller deliberately does not resolve or walk it again.
         let bytes = read_file(op, &lexical, &self.budget)?;
-        if !byte_frame_fits(out, bytes.value.len()) {
+        if !byte_frame_fits(&out, bytes.value.len()) {
             return Err(tobkiri_canon::AllocationError::Limit.into());
         }
         charge_work(&self.budget, bytes.value.len() as u64)?;
         let digest = Digest::hash(&bytes.value);
         out.append(b"{\"kind\":\"catalog-pin-digest\",\"value\":")?;
-        crate::bootstrap_metadata::string_parts(out, [digest.as_str()])?;
+        crate::bootstrap_metadata::string_parts(&mut out, [digest.as_str()])?;
         out.append(b"}")?;
+        let response = finish_checked_read(op, out)?;
         self.pins += 1;
-        Ok(())
+        Ok(response)
     }
 
     fn write_checked_document<S: crate::BootstrapReviewOwner>(
@@ -146,6 +229,7 @@ impl CatalogIo {
             return Ok(false);
         }
         let (lock, entries) = self.entries()?;
+        let entry_count = entries.len();
         let entry = *entries
             .get(self.entry)
             .ok_or_else(OriginalAuthorityError::unavailable)?;
@@ -164,10 +248,12 @@ impl CatalogIo {
             // The original loader reports the actual and expected digests.
             return Ok(false);
         }
-        let Some(checked) = self
+        let checks = self
             .document_shapes
             .as_mut()
-            .expect("selected document schemas")
+            .expect("selected document checks");
+        let Some(checked) = checks
+            .schemas
             .prove_document(op, &self.budget, schema, bytes)?
         else {
             // The original validator owns strict, schema and semantic errors.
@@ -190,7 +276,6 @@ impl CatalogIo {
                 Err(error) => return Err(error.into()),
             }
         }
-        drop(checked);
         let document =
             std::str::from_utf8(bytes).map_err(|_| OriginalAuthorityError::unavailable())?;
         const PREFIX: &[u8] = b"{\"kind\":\"document\",\"value\":";
@@ -211,11 +296,30 @@ impl CatalogIo {
             };
             remaining = left;
         }
+        match checks.record(schema, self.entry, entry_count, &checked, op, &self.budget) {
+            Ok(true) => (),
+            Ok(false) => return Ok(false),
+            Err(error) if matches!(error.cause, Some(OriginalAuthorityCause::Capacity)) => {
+                op.check(OriginalAuthorityStage::Source)?;
+                return Ok(false);
+            }
+            Err(error) => return Err(error.into()),
+        }
+        drop(checked);
         out.append(PREFIX)?;
         crate::bootstrap_metadata::string_parts(out, [document])?;
         out.append(b"}")?;
         Ok(true)
     }
+}
+
+fn finish_checked_read<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    mut out: CoreBufferBuilder,
+) -> anyhow::Result<CoreBuffer> {
+    op.check(OriginalAuthorityStage::Source)?;
+    out.append(b"}")?;
+    Ok(out.finish()?)
 }
 
 fn byte_frame_fits(out: &CoreBufferBuilder, len: usize) -> bool {

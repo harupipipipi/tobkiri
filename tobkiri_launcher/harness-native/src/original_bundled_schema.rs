@@ -3,7 +3,7 @@ use super::{external_catalog, json, profile_schema, *};
 use tobkiri_canon::AllocationBudget;
 
 /// The original bundle lock's finite document kinds.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CatalogDocumentKind {
     Pack,
     ExecutableCatalog,

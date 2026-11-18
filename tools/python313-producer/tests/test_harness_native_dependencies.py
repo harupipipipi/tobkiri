@@ -356,6 +356,47 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                             if key != "definition_revision"
                         })
 
+                    def load_pack_entries(*responses: bytes | str) -> list[str]:
+                        entries = [{
+                            "path": f"pack-{index}.json",
+                            "kind": "pack",
+                            "digest": digest(
+                                response.encode() if type(response) is str else response
+                            ),
+                        } for index, response in enumerate(responses)]
+                        identity_lock = json.dumps({
+                            "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+                            "entries": entries,
+                        }).encode()
+                        loaded = catalog._load_from_reader(
+                            identity_lock,
+                            entry_reader=lambda i, _path, _reread: responses[i],
+                            root=root,
+                            artifact_root_resolver=lambda: None,
+                            native_reads=True,
+                        )
+                        return list(loaded.packs)
+
+                    other_pack = (packs / "defaults-basepack.pack.v4.json").read_bytes()
+                    self.assertEqual(
+                        load_pack_entries(text, other_pack.decode()),
+                        [pack_id, "defaults-basepack"],
+                    )
+                    self.assertEqual(
+                        load_pack_entries(text, other_pack),
+                        [pack_id, "defaults-basepack"],
+                    )
+                    for responses in ((text, raw), (text, other_pack, text)):
+                        with (
+                            self.subTest(occurrences=len(responses)),
+                            self.assertRaises(module.BundleIntegrityError) as error,
+                        ):
+                            load_pack_entries(*responses)
+                        self.assertEqual(
+                            str(error.exception),
+                            f"duplicate or missing pack identity: {pack_id!r}",
+                        )
+
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")
         for enabled in (True, False):

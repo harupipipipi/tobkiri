@@ -132,6 +132,7 @@ def derive_catalog_validation(source: bytes) -> bytes:
         source, digest,
         b"            native_document = native_reads and type(raw) is str\n"
         b"            if not native_document:\n"
+        b"                native_identity_prefix = False\n"
         + b"".join(b"    " + line for line in digest.splitlines(keepends=True)),
     )
     validation = b'''                document = (
@@ -154,6 +155,21 @@ def derive_catalog_validation(source: bytes) -> bytes:
         source,
         b'            if kind in {"base", "shell"}:\n',
         b'            if not native_document and kind in {"base", "shell"}:\n',
+    )
+    source = _replace_one(
+        source,
+        b"        for index, entry in enumerate(entries):\n",
+        b"        native_identity_prefix = native_reads\n"
+        b"        for index, entry in enumerate(entries):\n",
+    )
+    source = _replace_one(
+        source,
+        b"            if not isinstance(identity, str) or identity in collections[kind]:\n",
+        b'''            # A raw entry ends native uniqueness proof for the rest of the load.
+            if not isinstance(identity, str) or (
+                not native_identity_prefix and identity in collections[kind]
+            ):
+''',
     )
     return _replace_one(
         source,
