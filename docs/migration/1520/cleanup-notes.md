@@ -4413,6 +4413,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rust側で構造検証時の文書を意味検証と投影に共用し、base64の往復と二重パースを減らす。
   root→最初のis-symlinkは238,292,598、ロックread→最初のresolveは112,678,538。懸念される
   遅延importの内訳は切り分けて測る。上限は2B・30秒・64MiBのまま。
+  `802b7dc6e` は比較経路の初回物理readにdigestとRustの構造検証をまとめた。成功時は同じ
+  UTF-8原文を文字列で渡し、Pythonの厳密検証、base64、digest再計算と別のshape呼び出しを省く。
+  オブジェクトの順序と元の意味検証は維持する。検証対象外は同じreadのbytesを返して
+  元の例外と診断を出す。応答の4MiB上限と旧byte応答で許された入力サイズを維持し、
+  executable pinは毎回ファイルを独立して読み直す。Rust 247件、strict Clippy、
+  Python 262件とproducer依存テスト6件が通過。固定CPython 3.13.16で応答を模擬した比較では
+  305文書と453回の読取り順が一致し、digest・スキーマ・重複キーの失敗診断も一致した。
+  [実Wasmの再計測 44322944319](https://github.com/harupipipipi/tobkiri/actions/runs/44322944319)
+  は同じ2B・30秒・64MiBで実行する。意味検証では文書全体の2回の走査をRustで共用できる。
+  外部Catalogの意味検証を使う際はShellの禁止キーを補い、Pythonが文字列化する入れ子bindingsは
+  一致を確証できる型だけを処理する。Profile v4の有効な要求scopeにリスト型の識別要素を
+  含む実例があるため、確証できなければ原本の意味検証へ渡す。148回の物理pin再読では
+  同じ読み取りからdigestを返すことで、約1.08MBのbyte応答と再ハッシュを省ける。
   `f2fd7528a` は解決後の固定呼び出しで、登録revisionと実catalogの定義digestが一致したときに
   resolver側のrootでAuthorityを新たに開く。実Shellを再検証し、閉じた後に4つのactivation
   識別子を検証済みポインターと比較する。最初の登録済みSetup検証と同じ稼働記録読取りを共用し、
