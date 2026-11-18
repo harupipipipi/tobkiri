@@ -1786,6 +1786,8 @@ mod tests {
                     system_pack_descriptors: "[]".into(),
                     update_target_descriptors: "[]".into(),
                 },
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare: None,
         };
         let owned = PortListener {
             pid: 101,
@@ -1872,6 +1874,8 @@ mod tests {
                     system_pack_descriptors: "[]".into(),
                     update_target_descriptors: "[]".into(),
                 },
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare: None,
         };
         let prior_bundle = PortListener {
             pid: 303,
@@ -2196,6 +2200,8 @@ mod tests {
                     system_pack_descriptors: "[]".into(),
                     update_target_descriptors: "[]".into(),
                 },
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            native_provider_prepare: None,
         };
 
         write_guardian_ready_audit(&config, &metadata).unwrap();

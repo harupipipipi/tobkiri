@@ -10,6 +10,7 @@ on:
       - 'tobkiri_launcher/core-host/src/native_contract.rs'
       - 'tobkiri_launcher/core-host/src/runtime.rs'
       - 'tobkiri_launcher/src-tauri/src/core_host.rs'
+      - 'tobkiri_launcher/src-tauri/src/dock_registration.rs'
       - 'tobkiri_launcher/src-tauri/src/legacy.rs'
       - 'tobkiri_launcher/src-tauri/src/kernel_manager.rs'
       - 'tobkiri_launcher/src-tauri/src/sealed_python.rs'
