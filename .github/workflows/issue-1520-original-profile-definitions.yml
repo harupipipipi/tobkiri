@@ -179,10 +179,10 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::external_catalog::
           -- --test-threads=1 --nocapture
-      - name: Check original Authority initialization and workspace recovery
+      - name: Check original Authority initialization and confirmed workspace recovery
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 8 --
+          --log "$RUNNER_TEMP/native-recovery-authority.log" --expected-passed 9 --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::io::publication::recovery_authority::tests::
           -- --test-threads=1 --nocapture
