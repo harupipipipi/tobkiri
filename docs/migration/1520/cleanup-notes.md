@@ -4473,10 +4473,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   確証できない有効なPack、応答末尾の上限超過を検証。Rust 254件、物理カタログ14件の
   CIラッパー、strict Clippy、固定CPython 263件、producer 344件、CIスクリプト14件が通過。
   [revision・ID索引込みの実Wasm CI 44334991562](https://github.com/harupipipipi/tobkiri/actions/runs/44334991562)。
+  `996aba9c6` は選択済みsourceからRustでロックを読み、305文書と独立した148 pin再読を
+  行ってからartifact rootを解決し、順序付きの原文目録を所有する。読取済みPackは保持した
+  原文から照合し、pinだけ元の字句パスからファイルを開き直す。ロック、文書、索引、パスは
+  同じinvocationに計上し、目録を落とすと読取り前のbytes・予約数に戻る。固定原本と照合した
+  欠落ロック、長いパス上の型・digestエラー、重複Base、Pack不在を物理試験で確認した。
+  Rust 255件、カタログCIラッパー15件、strict Clippy、CIスクリプト14件が通過。
+  この直接読取りはテスト経路で検証した。未表現のschema診断と、Launcherからの接続は後続。
   製品側でPythonのcatalog loaderを外す位置は`bootstrap_catalog.rs::load_bundle`のsource ownerと
   実manifest確認の後。Rustが全5種類の順序付き目録を所有し、文書の識別子重複、Base/Shellの
   canonical revision、実行目録のsource identity・canonical digest・pinを確認してから渡す必要がある。
   復旧はnative目録合成後にAuthorityを開き、新規Setupのresolverは従来のAuthority snapshotに依存する。
+  接続時は既存Runtimeの遅延import・永続化ガードの後、固定catalog入口から同じbindingと
+  invocationでRustの読取りを開始する。検証済み原文を序数付きで渡し、正規の
+  `BundledCatalog` を構築して全行の消費を確認する。resolverに必要なShell・Pack pin・
+  選択ルートの情報を同じ検証から保持し、照合用にファイルを余分に開かない。
   [定義CI 44320718878](https://github.com/harupipipipi/tobkiri/actions/runs/44320718878)
   は19件が通過後、旧期待件数18で失敗した。`b08f8c89d` で19に更新し、
   [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で
