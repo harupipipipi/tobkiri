@@ -1,4 +1,4 @@
-//! Structural predicates in the bound persisted Profile and activation schemas.
+//! Structural predicates in the bound original protocol schemas.
 use super::*;
 use tobkiri_canon::{AllocationKind, AllocationRequest};
 
@@ -19,6 +19,16 @@ const PROJECTION: &str =
     "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json";
 const FUNCTION_PRINCIPAL: &str =
     "https://schemas.tobkiri.local/io.tobkiri/function-principal.v1.schema.json";
+const PERSISTED_ROOTS: &[&str] = &[
+    PROFILE_V4,
+    PROFILE_V5,
+    LOCK_V4,
+    LOCK_V5,
+    PLAN_V1,
+    PLAN_V2,
+    ACTIVATION_V1,
+    ACTIVATION_V2,
+];
 const DEFS: &str = "#/$defs/";
 const MAX_SCHEMA_DEPTH: usize = 32;
 const MAX_EVALUATION_DEPTH: usize = 48;
@@ -70,6 +80,17 @@ pub(super) fn matches<S: OriginalAuthorityOwner>(
     if !matches!(schemas.len(), 3 | 4) {
         return Err(unsupported());
     }
+    matches_shape(op, budget, schemas, PERSISTED_ROOTS, record, record_id)
+}
+
+fn matches_shape<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    schemas: &[&Document],
+    root_ids: &[&str],
+    record: &Document,
+    record_id: usize,
+) -> Result<bool> {
     let validator = Validator {
         op,
         budget,
@@ -84,16 +105,7 @@ pub(super) fn matches<S: OriginalAuthorityOwner>(
             return Err(unsupported());
         };
         let expected: &[_] = match index {
-            0 => &[
-                PROFILE_V4,
-                PROFILE_V5,
-                LOCK_V4,
-                LOCK_V5,
-                PLAN_V1,
-                PLAN_V2,
-                ACTIVATION_V1,
-                ACTIVATION_V2,
-            ],
+            0 => root_ids,
             1 => &[COMMON],
             2 => &[PROJECTION],
             _ => &[FUNCTION_PRINCIPAL],
@@ -228,7 +240,7 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
                         string(doc.node(*id))?;
                     }
                 }
-                "minLength" | "maxLength" | "minItems" | "maxProperties" => {
+                "minLength" | "maxLength" | "minItems" | "maxItems" | "maxProperties" => {
                     limit(node)?;
                 }
                 "minimum" => {
@@ -242,10 +254,9 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
                 "pattern" => {
                     Pattern::read(string(node)?)?;
                 }
-                // The pinned Python distribution loads FormatChecker without
-                // the optional rfc3339_validator package. Its date-time format
-                // is unregistered, so the original checks only the string type.
-                "format" if doc.string_is(id, "date-time") => {}
+                // The pinned FormatChecker always checks date. The optional
+                // rfc3339_validator is absent, so date-time is an annotation.
+                "format" if doc.string_is(id, "date-time") || doc.string_is(id, "date") => {}
                 "items" | "propertyNames" | "additionalProperties" | "if" | "then" | "not" => {
                     self.check_schema(schema.at(id), depth + 1)?;
                 }
@@ -297,7 +308,11 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
             let keyword = ascii(name, &mut keyword_buffer).ok_or_else(unsupported)?;
             let node = doc.node(id);
             let matched = match keyword {
-                "$id" | "$schema" | "$defs" | "title" | "then" | "format" => true,
+                "$id" | "$schema" | "$defs" | "title" | "then" => true,
+                "format" => {
+                    !doc.string_is(id, "date")
+                        || text.is_none_or(|text| super::external_catalog::calendar_date(&text.0))
+                }
                 "$ref" => {
                     self.evaluate(self.resolve(schema, string(node)?)?, instance, depth + 1)?
                 }
@@ -334,6 +349,9 @@ impl<S: OriginalAuthorityOwner> Validator<'_, '_, S> {
                 }
                 "minItems" => {
                     items.is_none_or(|items| items.len() >= limit(node).expect("checked length"))
+                }
+                "maxItems" => {
+                    items.is_none_or(|items| items.len() <= limit(node).expect("checked length"))
                 }
                 "maxProperties" => {
                     fields.is_none_or(|fields| fields.len() <= limit(node).expect("checked length"))
@@ -606,6 +624,7 @@ impl ValueType {
 const ID: &str = r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$";
 const CONTRACT: &str = r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\.v[1-9][0-9]*$";
 const SEMVER: &str = r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$";
+const RELATIVE_PATH: &str = r"^(?!/)(?!.*(?:^|/)\.\.(?:/|$)).+$";
 
 enum Pattern {
     Id,
@@ -619,6 +638,7 @@ enum Pattern {
     Semver,
     ArtifactRoot,
     ProjectionRoot,
+    RelativePath,
 }
 
 impl Pattern {
@@ -638,6 +658,7 @@ impl Pattern {
             Some(SEMVER) => Ok(Self::Semver),
             Some(r"^[a-z0-9][a-z0-9._/-]*$") => Ok(Self::ArtifactRoot),
             Some(r"^profile_projections/[a-z0-9][a-z0-9._/-]*$") => Ok(Self::ProjectionRoot),
+            Some(RELATIVE_PATH) => Ok(Self::RelativePath),
             _ => Err(unsupported()),
         }
     }
@@ -673,6 +694,14 @@ impl Pattern {
             Self::ArtifactRoot => artifact_root(text),
             Self::ProjectionRoot => {
                 ascii_prefix(text, "profile_projections/").is_some_and(artifact_root)
+            }
+            Self::RelativePath => {
+                !text.is_empty()
+                    && text[0] != u32::from(b'/')
+                    && !text.contains(&u32::from(b'\n'))
+                    && text
+                        .split(|&point| point == u32::from(b'/'))
+                        .all(|part| part != [46, 46])
             }
         }
     }
@@ -773,6 +802,10 @@ fn semver(text: &[u32]) -> bool {
             .is_some_and(|part| part == [u32::from(b'0')] || nonzero_integer(part))
     }) && fields.next().is_none()
 }
+
+#[cfg(test)]
+#[path = "original_bundled_schema_tests.rs"]
+mod bundled_tests;
 
 #[cfg(test)]
 mod tests {

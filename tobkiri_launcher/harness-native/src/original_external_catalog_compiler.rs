@@ -1013,7 +1013,8 @@ fn semver(value: &[u32]) -> bool {
     })
 }
 
-fn date(value: &[u32]) -> bool {
+/// Recognize the ISO calendar date used by the protocol schemas.
+pub(in crate::original_authority::io::publication) fn date(value: &[u32]) -> bool {
     let [_, _, _, _, 45, _, _, 45, _, _] = value else {
         return false;
     };

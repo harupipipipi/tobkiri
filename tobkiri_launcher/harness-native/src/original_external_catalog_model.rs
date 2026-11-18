@@ -915,20 +915,49 @@ pub(in crate::original_authority::io::publication) fn validate_profile_semantics
         charge(op, budget, key.0.len() as u64 + 1)?;
         listed.insert(key.0.as_slice());
     }
-    let Node::Array(edges) = doc.node(edges) else {
+    if !matches!(doc.node(edges), Node::Array(_)) {
         return Ok(false);
-    };
-    for &edge in edges {
-        charge(op, budget, 1)?;
-        if let Some(reference) = doc
-            .get(edge, "authority_reference")
-            .and_then(|id| text(doc, id))
-        {
-            charge(op, budget, reference.0.len() as u64 + 1)?;
-            if !listed.contains(reference.0.as_slice()) {
-                return Ok(false);
+    }
+    edge_references_listed(doc, edges, &listed, op, budget)
+}
+
+fn edge_references_listed<S: OriginalAuthorityOwner>(
+    doc: &Document,
+    id: usize,
+    listed: &HashSet<&[u32]>,
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<bool> {
+    charge(op, budget, 1)?;
+    match doc.node(id) {
+        Node::Object(fields) => {
+            for (key, child) in fields {
+                charge(op, budget, key.0.len() as u64 + 1)?;
+                if key.is("authority_reference") {
+                    match doc.node(*child) {
+                        Node::Scalar(CanonValue::Null) => (),
+                        Node::String(reference) => {
+                            charge(op, budget, reference.0.len() as u64 + 1)?;
+                            if !listed.contains(reference.0.as_slice()) {
+                                return Ok(false);
+                            }
+                        }
+                        _ => return Ok(false),
+                    }
+                }
+                if !edge_references_listed(doc, *child, listed, op, budget)? {
+                    return Ok(false);
+                }
             }
         }
+        Node::Array(items) => {
+            for &child in items {
+                if !edge_references_listed(doc, child, listed, op, budget)? {
+                    return Ok(false);
+                }
+            }
+        }
+        _ => (),
     }
     Ok(true)
 }

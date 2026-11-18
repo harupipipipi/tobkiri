@@ -23,6 +23,7 @@ mod external_catalog_projection;
 mod external_catalog_receipt;
 #[path = "original_external_catalog_variants.rs"]
 mod external_catalog_variants;
+pub(in crate::original_authority::io::publication) use compiler::date as calendar_date;
 use external_catalog_compiler as compiler;
 use external_catalog_model as model;
 
