@@ -4438,6 +4438,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   固定CPython 3.13.16でID・承認項目・重複operationの拒否と、整数やobjectのbindingを持つ
   有効な入力を照合した。Rust 248件、strict Clippy、Python 262件、producer 344件が通過。
   [意味検証を含む実Wasm CI 44324536644](https://github.com/harupipipipi/tobkiri/actions/runs/44324536644)。
+  同梱正常系と復旧の単独計測は58件（315,462 B）まで進んだ。最初の27件の同一区間では
+  733,349,666から525,785,909 fuelへ減少し、9ケース中の読取り4件は58・62・57・63件で
+  上限に達した。pin再読前、期限超過なし、最大58,238,454 B、全9件で退役後の確保は0。
+  先行拒否5件は原本と一致した。計測対象は`f88735b2e`。
   `d1d9dd599` は同梱比較経路で、ロックの生パスと序数を照合してから初回のパス解決、
   root外拒否、symlink検査、open、文書検証を一度の呼び出しで行う。固定CPythonに合わせて
   区切りや末尾slashを正規化し、`..` を残す。中間パス欠落、ENOTDIR、ループ、NUL到達時の
@@ -4462,6 +4466,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Lock・manifestを照合した。現行の実行目録側は物理試験で検証し、製品経路への接続は後続。
   同梱3 revision・148実行目録、失敗順、古いBaseの同一バイト応答を確認した。
   Rust 253件、strict Clippy、固定CPython 263件、producer 344件、CIスクリプト14件が通過。
+  `a67b2ba45` は検証済みの種類別IDを物理ロックの順で保持する。ロック件数に基づき
+  同じ予算で領域を確保し、別種類で同じIDを許容する。生バイト応答が出ると索引を破棄し、
+  後続の型付き文書も元の重複検索に通す。フレーム確定に失敗した場合は追加済みIDを戻し、
+  同じ序数を再読できる。実ファイル305件でID順とartifact root後の索引を照合し、重複、
+  確証できない有効なPack、応答末尾の上限超過を検証。Rust 254件、物理カタログ14件の
+  CIラッパー、strict Clippy、固定CPython 263件、producer 344件、CIスクリプト14件が通過。
+  [revision・ID索引込みの実Wasm CI 44334991562](https://github.com/harupipipipi/tobkiri/actions/runs/44334991562)。
   製品側でPythonのcatalog loaderを外す位置は`bootstrap_catalog.rs::load_bundle`のsource ownerと
   実manifest確認の後。Rustが全5種類の順序付き目録を所有し、文書の識別子重複、Base/Shellの
   canonical revision、実行目録のsource identity・canonical digest・pinを確認してから渡す必要がある。
