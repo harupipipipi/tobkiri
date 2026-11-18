@@ -2139,10 +2139,13 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 self.check_predecessor_review(equal)
 
     def test_registered_catalog_keeps_the_resolver_and_preview_sequence(self) -> None:
-        self.check_predecessor_review(equal=True, registered=True)
+        for first_profile_id in ("fixture-id", "overlay-id"):
+            with self.subTest(first_profile_id=first_profile_id):
+                self.setUp()
+                self.check_predecessor_review(equal=True, overlay_id=first_profile_id)
 
     def check_predecessor_review(
-        self, equal: bool, *, registered: bool = False,
+        self, equal: bool, *, overlay_id: str | None = None,
     ) -> tuple[dict, dict]:
         activation_calls = []
         listings = []
@@ -2172,17 +2175,31 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         candidate = {
             "requested_edges": [], "profile_id": "fixture-id", "fixture_flag": True,
         }
-        if registered:
+        if overlay_id is not None:
             self.runtime.catalog_with_profiles = self.recovery_projector
+            replaced = {**candidate, "profile_id": overlay_id}
+            different_getter = overlay_id != candidate["profile_id"]
+            if different_getter:
+                self.runtime.catalog.profiles[candidate["profile_id"]] = candidate
             base = self.load()
-            first = self.getter(candidate["profile_id"])
-            catalog = self.registered_catalog(base, first, candidate)["root"]
+            first = self.getter(overlay_id)
+            catalog = self.registered_catalog(base, first, replaced)["root"]
             profile_id = self.getter(candidate["profile_id"])
-            self.assertEqual(profile_id, first)
+            if different_getter:
+                self.assertNotEqual(profile_id, first)
+                with self.assertRaises(InvalidReference):
+                    self.lookup(catalog, first)
+            else:
+                self.assertEqual(profile_id, first)
+            with self.assertRaises(InvalidReference):
+                self.lookup(base, profile_id)
             source = self.lookup(catalog, profile_id)["root"]
+            if different_getter:
+                self.assertIs(self.registry.borrow(self.registry.reference(source)), candidate)
         else:
             catalog, profile_id, source = self.source(candidate)
         current_catalog = self.registry.borrow(self.registry.reference(catalog))
+        preview_profiles = {"other": {}, **current_catalog.profiles}
         self.static_edges(source)
         self.dynamic_edges(catalog, profile_id, source)
         artifacts = self.verified_artifacts(catalog, profile_id, source)["root"]
@@ -2200,6 +2217,8 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
 
         def resolve(*args, **kwargs):
             self.assertIs(args[0], current_catalog)
+            self.assertIs(args[1], self.registry.borrow(self.registry.reference(profile_id)))
+            self.assertEqual(kwargs["additional_pack_ids"], ())
             captured.update(kwargs)
             self.bridge._resolver_shell_leaf = leaf
             self.bridge._resolver_header_closed = True
@@ -2294,14 +2313,16 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("bootstrap_confirmation", call)
 
-        current_catalog.profiles = {"other": {}, "fixture-id": {}}
+        current_catalog.profiles = preview_profiles
         resolved.profile["profile_id"] = "fixture-id"
         preview_catalog = self.Catalog()
 
         def make_preview(catalog, profiles):
             self.assertIs(catalog, current_catalog)
             self.assertEqual(list(profiles), list(catalog.profiles))
-            self.assertIs(profiles["other"], catalog.profiles["other"])
+            for key, value in catalog.profiles.items():
+                if key != "fixture-id":
+                    self.assertIs(profiles[key], value)
             self.assertIs(profiles["fixture-id"], resolved.profile)
             self.assertIsNot(profiles, catalog.profiles)
             preview_catalog.profiles = dict(profiles)

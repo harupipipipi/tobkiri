@@ -1012,35 +1012,79 @@ fn shell_fd_steps(path: &Value) -> Value {
 
 #[tokio::test(flavor = "current_thread")]
 async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verified_occurrence() {
-    for reject in [false, true] {
+    enum Scenario {
+        LegacyAndBundled,
+        LegacyMissingLock,
+        RegisteredSameId,
+        RegisteredDifferentId,
+        RegisteredMissingShell,
+    }
+
+    for scenario in [
+        Scenario::LegacyAndBundled,
+        Scenario::LegacyMissingLock,
+        Scenario::RegisteredSameId,
+        Scenario::RegisteredDifferentId,
+        Scenario::RegisteredMissingShell,
+    ] {
         with_source(false, |source, invocation, budget, io, cleanup| {
             let parent = source.root.join("ecosystem/defaultspack");
             let bundle = parent.join("v4");
             let artifacts = parent.join("platform-artifacts");
             fs::create_dir_all(&bundle).unwrap();
             fs::create_dir(&artifacts).unwrap();
-            let shell = |architecture| {
+            let profile = |id, provider, architecture| {
                 json!({
-                    "provider_id":"fixture-shell", "pack_id":"fixture-pack", "contract_id":"fixture-contract",
-                    "platform":"linux", "architecture":architecture,
+                    "profile_id":id,
+                    "shell":{
+                        "provider_id":provider, "pack_id":"fixture-pack", "contract_id":"fixture-contract",
+                        "platform":"linux", "architecture":architecture,
+                    },
                 })
             };
-            let profile = |id, architecture| json!({"profile_id":id, "shell":shell(architecture)});
-            let variants = [
-                ("arm64", "bundled"),
-                ("x86_64", "replacement"),
-            ].map(|(architecture, name)| {
+            let variant = |architecture, name| {
                 fs::write(artifacts.join(name), b"\x7fELF Shell fixture").unwrap();
                 json!({"platform":"linux", "architecture":architecture, "relative_path":name, "entrypoint":name})
-            });
-            let entries = [
-                ("profile.json", "profile", profile("fixture-profile", "arm64")),
-                ("shell.json", "shell", json!({
-                    "provider_id":"fixture-shell", "pack_id":"fixture-pack", "contract_id":"fixture-contract",
+            };
+            let definition = |provider, variants| {
+                json!({
+                    "provider_id":provider, "pack_id":"fixture-pack", "contract_id":"fixture-contract",
                     "availability":"verified", "launch":{"variants":variants},
-                })),
-            ].map(|(name, kind, document)| {
-                let bytes = serde_json::to_vec(&document).unwrap();
+                })
+            };
+            let candidate = profile("fixture-profile", "fixture-shell", "x86_64");
+            // The other ID has its own leaf so accidentally using either Profile
+            // version from the first getter fails the physical path check.
+            let documents = [
+                (
+                    "profile.json",
+                    "profile",
+                    profile("fixture-profile", "fixture-shell", "arm64"),
+                ),
+                (
+                    "shell.json",
+                    "shell",
+                    definition(
+                        "fixture-shell",
+                        json!([
+                            variant("arm64", "bundled"),
+                            variant("x86_64", "replacement")
+                        ]),
+                    ),
+                ),
+                (
+                    "other-profile.json",
+                    "profile",
+                    profile("other-profile", "other-shell", "arm64"),
+                ),
+                (
+                    "other-shell.json",
+                    "shell",
+                    definition("other-shell", json!([variant("arm64", "other")])),
+                ),
+            ];
+            let entries = documents.each_ref().map(|&(name, kind, ref document)| {
+                let bytes = serde_json::to_vec(document).unwrap();
                 fs::write(bundle.join(name), &bytes).unwrap();
                 json!({"path":name, "kind":kind, "digest":Digest::hash(&bytes).as_str()})
             });
@@ -1052,19 +1096,41 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
             .unwrap();
             let profiles = CoreValue::parse_guest(
                 &serde_json::to_vec(&json!([
-                    ["fixture-profile", profile("fixture-profile", "x86_64")],
-                    ["recovery-only", profile("recovery-only", "arm64")],
+                    ["fixture-profile", &candidate],
+                    [
+                        "recovery-only",
+                        profile("recovery-only", "fixture-shell", "arm64")
+                    ],
                 ]))
                 .unwrap(),
                 budget,
             )
             .unwrap();
+            let candidate = if matches!(scenario, Scenario::RegisteredMissingShell) {
+                json!({"profile_id":"fixture-profile"})
+            } else {
+                candidate
+            };
+            let candidate =
+                CoreValue::parse_guest(&serde_json::to_vec(&candidate).unwrap(), budget).unwrap();
             io.select_packaged(&bundle).unwrap();
             io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
                 .unwrap();
-            io.retain_recovery_pack_pins();
+            let legacy_scenario = matches!(
+                scenario,
+                Scenario::LegacyAndBundled | Scenario::LegacyMissingLock
+            );
+            if legacy_scenario {
+                io.retain_recovery_pack_pins();
+            } else {
+                io.retain_review_pack_dependencies();
+            }
             assert!(
                 io.begin_legacy_pack_resolve("fixture-profile", &profiles)
+                    .is_err()
+            );
+            assert!(
+                io.begin_registered_pack_resolve("fixture-profile", &candidate)
                     .is_err()
             );
             let lock = json!([["join", "bundle.lock.json"]]);
@@ -1083,7 +1149,7 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
             load(io, "resolve", json!([]), json!([true]));
             load(io, "is-symlink", lock.clone(), json!([]));
             load(io, "read-bytes", lock.clone(), json!([]));
-            for name in ["profile.json", "shell.json"] {
+            for (name, _, _) in documents {
                 let steps = json!([["join", name]]);
                 load(io, "resolve", steps.clone(), json!([true]));
                 load(io, "is-symlink", steps.clone(), json!([]));
@@ -1099,7 +1165,7 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                     budget,
                 )
             };
-            if reject {
+            if matches!(scenario, Scenario::LegacyMissingLock) {
                 io.begin_legacy_pack_resolve("fixture-profile", &profiles)
                     .unwrap();
                 inspect(io, "is-symlink", lock.clone(), json!([])).unwrap();
@@ -1114,18 +1180,28 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                 assert!(io.begin_pack_resolve("fixture-profile").is_err());
                 return;
             }
-            for (id, name, legacy) in [
-                ("fixture-profile", "replacement", true),
-                ("recovery-only", "bundled", true),
-                ("fixture-profile", "bundled", false),
-            ] {
-                if legacy {
+            let occurrences: &[(&str, Option<&str>, bool)] = match scenario {
+                Scenario::LegacyAndBundled => &[
+                    ("fixture-profile", Some("replacement"), true),
+                    ("recovery-only", Some("bundled"), true),
+                    ("fixture-profile", Some("bundled"), false),
+                ],
+                Scenario::RegisteredSameId => &[("fixture-profile", Some("replacement"), false)],
+                Scenario::RegisteredDifferentId => &[("other-profile", Some("other"), false)],
+                Scenario::RegisteredMissingShell => &[("fixture-profile", None, false)],
+                Scenario::LegacyMissingLock => unreachable!(),
+            };
+            for &(id, name, legacy) in occurrences {
+                if !legacy_scenario {
+                    io.begin_registered_pack_resolve(id, &candidate).unwrap();
+                } else if legacy {
                     io.begin_legacy_pack_resolve(id, &profiles).unwrap();
                 } else {
                     io.begin_pack_resolve(id).unwrap();
                 }
                 assert!(io.finish_legacy_pack_resolve().is_err());
                 assert!(io.begin_legacy_pack_resolve(id, &profiles).is_err());
+                assert!(io.begin_registered_pack_resolve(id, &candidate).is_err());
                 let step = |io: &mut CatalogIo, operation, steps, args| {
                     inspect(io, operation, steps, args).unwrap();
                 };
@@ -1135,20 +1211,27 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                 step(io, "resolve", original.clone(), json!([true]));
                 step(io, "is-symlink", original.clone(), json!([]));
                 step(io, "is-dir", resolved.clone(), json!([]));
-                let other = if name == "replacement" {
-                    "bundled"
-                } else {
-                    "replacement"
+                for other in ["bundled", "replacement", "other"] {
+                    if name != Some(other) {
+                        assert!(
+                            inspect(
+                                io,
+                                "is-symlink",
+                                json!([["shell-resolved-root", ""], ["join", other]]),
+                                json!([])
+                            )
+                            .is_err()
+                        );
+                    }
+                }
+                let Some(name) = name else {
+                    assert!(!io.pack_resolve_shell_artifact_completed());
+                    assert!(io.finish_legacy_pack_resolve().is_err());
+                    assert!(io.begin_pack_resolve(id).is_err());
+                    assert!(io.begin_registered_pack_resolve(id, &candidate).is_err());
+                    assert!(cleanup.receipt().verified());
+                    continue;
                 };
-                assert!(
-                    inspect(
-                        io,
-                        "is-symlink",
-                        json!([["shell-resolved-root", ""], ["join", other]]),
-                        json!([])
-                    )
-                    .is_err()
-                );
                 let leaf = json!([["shell-resolved-root", ""], ["join", name]]);
                 step(io, "is-symlink", leaf.clone(), json!([]));
                 step(
@@ -1193,6 +1276,8 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
                 } else {
                     assert!(io.finish_legacy_pack_resolve().is_err());
                     assert!(io.begin_legacy_pack_resolve(id, &profiles).is_err());
+                    assert!(io.begin_pack_resolve(id).is_err());
+                    assert!(io.begin_registered_pack_resolve(id, &candidate).is_err());
                 }
             }
         });

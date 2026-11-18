@@ -171,6 +171,7 @@ enum PackResolve {
 #[cfg(unix)]
 enum PackResolveSource {
     Bundled(String),
+    Registered(Option<CoreValue>),
     Recovery(Option<CoreValue>),
 }
 
@@ -905,6 +906,31 @@ impl CatalogIo {
         {
             self.pack_resolve_source = Some(PackResolveSource::Bundled(profile_id.to_owned()));
         }
+        self.pack_resolve = PackResolve::CheckSymlink;
+        Ok(())
+    }
+
+    /// Select the immutable Shell request from the previously verified overlay.
+    #[cfg(unix)]
+    pub(crate) fn begin_registered_pack_resolve(
+        &mut self,
+        profile_id: &str,
+        candidate: &CoreValue,
+    ) -> Result<()> {
+        let overlay_id = candidate.get_key("profile_id");
+        let overlay_id = overlay_id
+            .as_ref()
+            .and_then(CoreValue::as_str)
+            .ok_or_else(OriginalAuthorityError::unavailable)?;
+        if overlay_id != profile_id {
+            // The second getter may select a different, untouched Profile.
+            return self.begin_pack_resolve(profile_id);
+        }
+        self.require_pack_resolve_available(profile_id)?;
+        let shell = candidate
+            .get_key("shell")
+            .filter(|value| value.object().is_some());
+        self.pack_resolve_source = Some(PackResolveSource::Registered(shell));
         self.pack_resolve = PackResolve::CheckSymlink;
         Ok(())
     }

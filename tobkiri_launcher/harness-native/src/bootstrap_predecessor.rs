@@ -18,6 +18,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
+    catalog: &catalog::ResolverCatalog,
     profile_id: &str,
 ) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
@@ -35,13 +36,6 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     let needs_digest = inputs.needs_source_digest(profile_id);
     review.actual.predecessor_inputs = Some(inputs);
 
-    let catalog = catalog::returned(
-        review
-            .actual
-            .catalog
-            .as_ref()
-            .context("actual catalog missing")?,
-    )?;
     let id = catalog::returned(
         review
             .actual
@@ -53,7 +47,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
         pack,
         SOURCE_REQUEST,
         [
-            ("catalog", catalog::result_root(pack, catalog, scope)?),
+            ("catalog", catalog.reference(review, pack, scope)?),
             ("profile_id", catalog::result_root(pack, id, scope)?),
             (
                 "needs_digest",
@@ -91,13 +85,14 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     }
     drop(review.actual.predecessor_inputs.take());
     drop((value, response, request));
-    inactive(review, pack, scope, profile_id).await
+    inactive(review, pack, scope, catalog, profile_id).await
 }
 
 async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
+    catalog: &catalog::ResolverCatalog,
     profile_id: &str,
 ) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
@@ -141,7 +136,7 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         profile_id,
         pack.input_budget,
     ) {
-        Ok(None) => return confirmation::run(review, pack, scope, profile_id, None).await,
+        Ok(None) => return confirmation::run(review, pack, scope, catalog, profile_id, None).await,
         Ok(Some(registry)) => registry,
         Err(error) => return Ok(Err(original_failure(error))),
     };
@@ -200,6 +195,7 @@ async fn inactive<S: BootstrapInputOwner + BootstrapReviewOwner>(
         review,
         pack,
         scope,
+        catalog,
         profile_id,
         definition_predecessor.as_ref(),
     )

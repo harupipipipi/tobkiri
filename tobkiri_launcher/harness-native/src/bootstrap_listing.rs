@@ -14,18 +14,12 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
+    catalog: &catalog::ResolverCatalog,
     confirmation: &CoreValue,
 ) -> Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
-    let original = catalog::returned(
-        review
-            .actual
-            .catalog
-            .as_ref()
-            .context("actual catalog missing")?,
-    )?;
-    let original = catalog::result_root(pack, original, scope)?;
+    let original = catalog.reference(review, pack, scope)?;
     let resolved = CoreValue::parse_guest(
         review
             .actual

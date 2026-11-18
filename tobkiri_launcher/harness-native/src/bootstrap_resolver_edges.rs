@@ -1,8 +1,9 @@
-//! Edge references in the original fresh bundled Setup resolver. These are retained
-//! candidate DATA; only the later original resolution can consume them.
+//! Edge references in the original Setup resolver for bundled Pack inventories.
+//! These are retained candidate DATA for the original resolution.
 use super::*;
 use crate::BootstrapReviewOwner;
 use crate::bootstrap_review::Review;
+use catalog::ResolverCatalog;
 use review_continuation::ReviewCaller;
 use tobkiri_canon::{AllocationKind, AllocationRequest, Digest};
 
@@ -25,9 +26,10 @@ pub(crate) struct ResolvedProfileIdentity {
     pub(super) lock: Digest,
 }
 
-pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
+pub(super) async fn bind_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    catalog: &ResolverCatalog,
     profile_id_text: &str,
 ) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
@@ -84,20 +86,20 @@ pub(super) async fn bind_bundled_edges<S: BootstrapInputOwner + BootstrapReviewO
         pack.input_budget,
     )?);
     drop((rows, request));
-    observe_bundled_dynamic_edges(review, pack, &scope, source, profile_id_text).await
+    observe_dynamic_edges(review, pack, &scope, catalog, source, profile_id_text).await
 }
 
-async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
+async fn observe_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
+    catalog_selection: &ResolverCatalog,
     source: CoreValue,
     profile_id_text: &str,
 ) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     let actual = &review.actual;
-    let catalog = catalog::returned(actual.catalog.as_ref().context("actual catalog missing")?)?;
     let profile_id = catalog::returned(
         actual
             .resolver_getter
@@ -105,7 +107,7 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
             .context("actual second Profile ID missing")?,
     )?;
     let references = [
-        ("catalog", catalog::result_root(pack, catalog, scope)?),
+        ("catalog", catalog_selection.reference(review, pack, scope)?),
         ("profile_id", catalog::result_root(pack, profile_id, scope)?),
         ("source_profile", source),
     ];
@@ -133,8 +135,8 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
         pack.input_budget,
     )?;
     validate_bundled_dynamic_rows(&rows, scope, &references)?;
-    // The actual Pack returned an empty tuple for the fresh bundled candidate.
-    // The original loop makes no updates to the retained authority bindings.
+    // The actual Pack returned an empty tuple, so the original loop makes no
+    // updates to the retained authority bindings.
     drop((rows, request));
     let request = denied::frame(pack, VERIFIED_ARTIFACTS_REQUEST, references.clone())?;
     review.actual.resolver_verified_artifacts = Some(
@@ -193,26 +195,50 @@ async fn observe_bundled_dynamic_edges<S: BootstrapInputOwner + BootstrapReviewO
             ("bindings", bindings.clone()),
         ],
     )?;
-    resolve_profile(review, pack, scope, &request, profile_id_text).await
+    resolve_profile(
+        review,
+        pack,
+        scope,
+        catalog_selection,
+        &request,
+        profile_id_text,
+    )
+    .await
 }
 
 async fn resolve_profile<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
+    catalog: &ResolverCatalog,
     request: &CoreBuffer,
     profile_id: &str,
 ) -> listing::Outcome {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
-    pack.work
-        .get()
-        .catalog
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .as_mut()
-        .context("completed original catalog controller missing")?
-        .begin_pack_resolve(profile_id)?;
+    {
+        let mut controller = pack
+            .work
+            .get()
+            .catalog
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let io = controller
+            .as_mut()
+            .context("completed original catalog controller missing")?;
+        match catalog {
+            ResolverCatalog::Bundled => io.begin_pack_resolve(profile_id)?,
+            #[cfg(unix)]
+            ResolverCatalog::Registered(_) => {
+                let (candidate, _) = review
+                    .actual
+                    .registered_candidate
+                    .as_ref()
+                    .context("verified registered candidate missing")?;
+                io.begin_registered_pack_resolve(profile_id, candidate)?;
+            }
+        }
+    }
     match pack.observe_resolver_profile(request).await? {
         Ok(result) => review.actual.resolver_profile_result = Some(result),
         Err(failure) => {
@@ -249,7 +275,7 @@ async fn resolve_profile<S: BootstrapInputOwner + BootstrapReviewOwner>(
     }
     review.actual.resolver_identity = Some(identity);
     drop(result);
-    predecessor::run(review, pack, scope, profile_id).await
+    predecessor::run(review, pack, scope, catalog, profile_id).await
 }
 
 fn validate_resolved_profile(
@@ -349,7 +375,7 @@ fn validate_bundled_dynamic_rows(
         .array()
         .is_none_or(|rows| !rows.is_empty())
     {
-        bail!("fresh bundled Setup returned unbound dynamic edges");
+        bail!("Setup without optional Packs returned unbound dynamic edges");
     }
     Ok(())
 }

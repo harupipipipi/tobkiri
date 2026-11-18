@@ -41,6 +41,37 @@ pub(super) enum RecoveryCompletion {
 pub(super) type RecoveryOutcome =
     Result<std::result::Result<RecoveryCompletion, BootstrapReviewFailure>>;
 
+pub(super) enum ResolverCatalog {
+    Bundled,
+    #[cfg(unix)]
+    Registered(CoreValue),
+}
+
+impl ResolverCatalog {
+    pub(super) fn reference<S: BootstrapInputOwner>(
+        &self,
+        review: &Review,
+        pack: &ReviewPackBorrow<'_, S>,
+        scope: &CoreValue,
+    ) -> Result<CoreValue> {
+        match self {
+            Self::Bundled => result_root(
+                pack,
+                returned(
+                    review
+                        .actual
+                        .catalog
+                        .as_ref()
+                        .context("actual catalog missing")?,
+                )?,
+                scope,
+            ),
+            #[cfg(unix)]
+            Self::Registered(root) => Ok(root.share()),
+        }
+    }
+}
+
 #[cfg(unix)]
 struct HostCatalog {
     scope: CoreValue,
@@ -383,26 +414,13 @@ pub(super) async fn resolver_source_profile<
 >(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-    registered_catalog: Option<CoreValue>,
+    catalog: &ResolverCatalog,
 ) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
     let caller = ReviewCaller::Resolver;
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
     let scope = actual_call_scope(pack)?;
-    let catalog = match registered_catalog {
-        Some(root) => root,
-        None => result_root(
-            pack,
-            returned(
-                review
-                    .actual
-                    .catalog
-                    .as_ref()
-                    .context("actual catalog missing")?,
-            )?,
-            &scope,
-        )?,
-    };
+    let catalog = catalog.reference(review, pack, &scope)?;
     let profile_id = returned(
         review
             .actual

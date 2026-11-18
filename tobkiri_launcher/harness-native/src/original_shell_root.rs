@@ -227,7 +227,10 @@ impl CatalogIo {
                             if stage == PackResolve::ShellLeafSymlink {
                                 if matches!(
                                     self.pack_resolve_source,
-                                    Some(PackResolveSource::Bundled(_))
+                                    Some(
+                                        PackResolveSource::Bundled(_)
+                                            | PackResolveSource::Registered(_)
+                                    )
                                 ) {
                                     self.shell_inputs = None;
                                 }

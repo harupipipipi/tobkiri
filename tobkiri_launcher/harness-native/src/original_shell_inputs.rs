@@ -147,7 +147,10 @@ impl CatalogIo {
                     .ok_or_else(OriginalAuthorityError::unavailable)?;
                 field(&profile, "shell")?
             }
-            Some(PackResolveSource::Recovery(Some(request))) => request.share(),
+            Some(
+                PackResolveSource::Registered(Some(request))
+                | PackResolveSource::Recovery(Some(request)),
+            ) => request.share(),
             _ => return Err(OriginalAuthorityError::unavailable().into()),
         };
         let provider = field(&request, "provider_id")?;

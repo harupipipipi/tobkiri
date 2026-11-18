@@ -8,6 +8,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     scope: &CoreValue,
+    catalog: &catalog::ResolverCatalog,
     profile_id: &str,
     predecessor: Option<&CoreValue>,
 ) -> listing::Outcome {
@@ -105,7 +106,7 @@ pub(super) async fn run<S: BootstrapInputOwner + BootstrapReviewOwner>(
     }
     let confirmation = denied::field(&value, "root")?;
     drop((document, value));
-    listing::run(review, pack, scope, &confirmation).await
+    listing::run(review, pack, scope, catalog, &confirmation).await
 }
 
 fn validate_confirmation(

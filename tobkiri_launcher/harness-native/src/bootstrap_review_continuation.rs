@@ -1,5 +1,6 @@
 //! Original recovery and fresh Setup candidate callers on the same Pack Store.
 //! Recovery and confirmed capture retain their respective publication guards.
+use super::catalog::ResolverCatalog;
 use super::*;
 use crate::app_bootstrap_identity::{BootstrapIdentityInput, validate_bootstrap_identity};
 use crate::bootstrap_review::{Review, original_failure};
@@ -295,7 +296,9 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     );
     drop(identity);
     Ok(Err(match selection {
-        Ok(CandidateSelection::BundledCatalog) => return resolve_bundled(review, pack).await,
+        Ok(CandidateSelection::BundledCatalog) => {
+            return resolve_candidate(review, pack, &ResolverCatalog::Bundled).await;
+        }
         #[cfg(unix)]
         Ok(CandidateSelection::ActiveAuthority) if !confirmed => {
             pack.require_same_runtime()?;
@@ -429,37 +432,32 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
         )));
     }
     let catalog = match super::catalog::replace_registered_profile(review, pack).await? {
-        Ok(catalog) => catalog,
+        Ok(catalog) => ResolverCatalog::Registered(catalog),
         Err(error) => return Ok(Err(error)),
     };
     if let Err(error) = review.read.select_registered_resolver_catalog() {
         return Ok(Err(original_failure(error)));
     }
-    let mut ascii = [0_u8; 128];
-    if let Err(error) = resolve_source_profile(review, pack, Some(catalog), &mut ascii).await? {
-        return Ok(Err(error));
-    }
-    Ok(Err(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::ActiveCandidateResolverEdgesNotBound,
-    )))
+    resolve_candidate(review, pack, &catalog).await
 }
 
-async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+async fn resolve_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    catalog: &ResolverCatalog,
 ) -> super::listing::Outcome {
     let mut ascii = [0_u8; 128];
-    let profile_id = match resolve_source_profile(review, pack, None, &mut ascii).await? {
+    let profile_id = match resolve_source_profile(review, pack, catalog, &mut ascii).await? {
         Ok(profile_id) => profile_id,
         Err(error) => return Ok(Err(error)),
     };
-    super::resolver_edges::bind_bundled_edges(review, pack, profile_id).await
+    super::resolver_edges::bind_edges(review, pack, catalog, profile_id).await
 }
 
 async fn resolve_source_profile<'id, S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-    registered_catalog: Option<CoreValue>,
+    catalog: &ResolverCatalog,
     ascii: &'id mut [u8; 128],
 ) -> Result<std::result::Result<&'id str, BootstrapReviewFailure>> {
     let source = &pack.work.get().source;
@@ -498,7 +496,7 @@ async fn resolve_source_profile<'id, S: BootstrapInputOwner + crate::BootstrapRe
     drop(identity);
     // The live lookup consumes the second getter's exact reference.
     Ok(
-        super::catalog::resolver_source_profile(review, pack, registered_catalog)
+        super::catalog::resolver_source_profile(review, pack, catalog)
             .await?
             .map(|()| profile_id),
     )
