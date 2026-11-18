@@ -337,46 +337,60 @@ class NativePathAdapterTests(unittest.TestCase):
         with self.assertRaises(UnsupportedValue):
             bridge._value({**path("existing_module", "/app/bundle"), "steps": []}, "path")
 
-    def test_catalog_document_read_keeps_text_opaque_and_can_fall_back_to_bytes(self):
+    def test_catalog_reads_keep_opaque_text_path_status_and_separate_pin_digest(self):
         document = ' { "z": "\\u00e9", "a": -0 }\n'
+        digest = "sha256:" + hashlib.sha256(b"pin reread").hexdigest()
         bridge, port = self.bridge([
             ("root", path("root", "/bundle")),
-            ("read-document", {"kind": "document", "value": document}),
-            ("read-document", blob(b"raw fallback")),
-            ("read-bytes", blob(b"pin reread")),
+            ("read-entry", {"kind": "document", "value": document}),
+            ("read-entry", blob(b"raw fallback")),
+            ("read-entry", {"kind": "catalog-path-rejection", "value": "escape"}),
+            ("read-pin-digest", {"kind": "catalog-pin-digest", "value": digest}),
         ])
         root = bridge.bind("root", "/bundle")
 
         def load(selected):
-            candidate = selected / "entry.json"
-            self.assertEqual(candidate._read_catalog_document(), document)
-            self.assertEqual(candidate._read_catalog_document(), b"raw fallback")
-            self.assertEqual(candidate.read_bytes(), b"pin reread")
+            candidate = selected / "./entry.json"
+            self.assertEqual(candidate._read_catalog_entry(2), ("document", document))
+            self.assertEqual(candidate._read_catalog_entry(3), ("bytes", b"raw fallback"))
+            self.assertEqual(candidate._read_catalog_entry(4),
+                             ("catalog-path-rejection", "escape"))
+            self.assertEqual(candidate._read_catalog_pin_digest(2), digest)
 
         with self.assertRaises(UnsupportedValue):
-            root._read_catalog_document()
+            root._read_catalog_entry(0)
+        with self.assertRaises(UnsupportedValue):
+            root._read_catalog_pin_digest(0)
         bridge._load_catalog(load, root)
-        for request in port.requests[1:]:
+        for request, index in zip(port.requests[1:], [2, 3, 4, 2], strict=True):
             self.assertEqual(request["format"], "io.tobkiri.native-catalog-request.v1")
             self.assertEqual(request["target"], {
-                "binding": "root", "steps": [["join", "entry.json"]],
+                "binding": "root", "steps": [["join", "./entry.json"]],
             })
-            self.assertEqual(request["args"], [])
+            self.assertEqual(request["args"], [index])
 
-    def test_catalog_document_read_rejects_nested_objects_or_extra_fields(self):
-        for response in (
-            {"kind": "document", "value": {}},
-            {"kind": "document", "value": "{}", "verified": True},
+    def test_catalog_reads_reject_unmodeled_result_values(self):
+        for operation, method, response in (
+            ("read-entry", "_read_catalog_entry", {"kind": "document", "value": {}}),
+            ("read-entry", "_read_catalog_entry",
+             {"kind": "document", "value": "{}", "verified": True}),
+            ("read-entry", "_read_catalog_entry",
+             {"kind": "catalog-path-rejection", "value": "unknown"}),
+            ("read-pin-digest", "_read_catalog_pin_digest",
+             {"kind": "catalog-pin-digest", "value": "sha256:" + "A" * 64}),
+            ("read-pin-digest", "_read_catalog_pin_digest",
+             {"kind": "catalog-pin-digest", "value": "sha256:" + "0" * 63}),
+            ("read-pin-digest", "_read_catalog_pin_digest", blob(b"raw bytes")),
         ):
             with self.subTest(response=response):
                 bridge, _ = self.bridge([
                     ("root", path("root", "/bundle")),
-                    ("read-document", response),
+                    (operation, response),
                 ])
                 root = bridge.bind("root", "/bundle")
                 with self.assertRaises(UnsupportedValue):
                     bridge._load_catalog(
-                        lambda selected: (selected / "entry.json")._read_catalog_document(),
+                        lambda selected: getattr(selected / "entry.json", method)(2),
                         root,
                     )
 

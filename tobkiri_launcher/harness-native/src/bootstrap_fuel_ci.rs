@@ -67,6 +67,8 @@ struct CatalogImport {
 struct CatalogImports {
     entries: [Option<CatalogImport>; MAX_CATALOG_IMPORT_SAMPLES],
     seen: usize,
+    entry_reads: usize,
+    pin_rereads: usize,
 }
 
 impl Default for CatalogImports {
@@ -74,6 +76,8 @@ impl Default for CatalogImports {
         Self {
             entries: [None; MAX_CATALOG_IMPORT_SAMPLES],
             seen: 0,
+            entry_reads: 0,
+            pin_rereads: 0,
         }
     }
 }
@@ -104,7 +108,8 @@ impl Samples {
             Some("is-symlink") => "is-symlink",
             Some("resolve") => "resolve",
             Some("read-bytes") => "read-bytes",
-            Some("read-document") => "read-document",
+            Some("read-entry") => "read-entry",
+            Some("read-pin-digest") => "read-pin-digest",
             Some("is-dir") => "is-dir",
             _ => return,
         };
@@ -114,6 +119,11 @@ impl Samples {
             .unwrap_or_else(|error| error.into_inner());
         let index = imports.seen;
         imports.seen = index.saturating_add(1);
+        match operation {
+            "read-entry" => imports.entry_reads = imports.entry_reads.saturating_add(1),
+            "read-pin-digest" => imports.pin_rereads = imports.pin_rereads.saturating_add(1),
+            _ => (),
+        }
         if let Some(entry) = imports.entries.get_mut(index) {
             *entry = Some(CatalogImport {
                 operation,
@@ -183,6 +193,8 @@ impl Samples {
             "after_first_catalog_export": self.after_first_catalog_export.get().map(CallReturn::value),
             "catalog_import_entries": catalog_import_entries,
             "catalog_import_entries_omitted": catalog_import_entries_omitted,
+            "catalog_entry_read_attempts": imports.entry_reads,
+            "catalog_pin_reread_attempts": imports.pin_rereads,
         })
     }
 }

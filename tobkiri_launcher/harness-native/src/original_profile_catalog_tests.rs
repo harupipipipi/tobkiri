@@ -1439,12 +1439,13 @@ async fn catalog_document_is_bound_to_the_digest_checked_first_physical_read() {
     ] {
         with_source(false, |source, invocation, budget, io, _| {
             let bundle = source.root.join("ecosystem/defaultspack/v4");
-            fs::create_dir_all(&bundle).unwrap();
-            let member = bundle.join("catalog.json");
+            fs::create_dir_all(bundle.join("nested")).unwrap();
+            let relative = "nested//./catalog.json/";
+            let member = bundle.join("nested/catalog.json");
             fs::write(&member, bytes).unwrap();
             let lock = json!({
                 "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
-                "entries": [{"path": "catalog.json", "kind": "executable_catalog",
+                "entries": [{"path": relative, "kind": "executable_catalog",
                              "digest": expected.as_str()}],
             });
             fs::write(
@@ -1456,12 +1457,12 @@ async fn catalog_document_is_bound_to_the_digest_checked_first_physical_read() {
             io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
                 .unwrap();
             let lock = json!([["join", "bundle.lock.json"]]);
-            let entry = json!([["join", "catalog.json"]]);
-            let inspect_document = |io: &mut CatalogIo, steps: Value, args: Value| {
-                let request = packet(invocation, budget, "read-document", steps, args);
+            let entry = json!([["join", relative]]);
+            let inspect = |io: &mut CatalogIo, operation, steps: Value, args: Value| {
+                let request = packet(invocation, budget, operation, steps, args);
                 io.inspect(source, invocation, &request, budget)
             };
-            assert!(inspect_document(io, entry.clone(), json!([])).is_err());
+            assert!(inspect(io, "read-entry", entry.clone(), json!([0])).is_err());
             for (operation, steps, args) in [
                 (
                     "root",
@@ -1472,23 +1473,30 @@ async fn catalog_document_is_bound_to_the_digest_checked_first_physical_read() {
                 ("resolve", json!([]), json!([true])),
                 ("is-symlink", lock.clone(), json!([])),
                 ("read-bytes", lock, json!([])),
-                ("resolve", entry.clone(), json!([true])),
-                ("is-symlink", entry.clone(), json!([])),
             ] {
                 call(io, source, invocation, budget, operation, steps, args);
             }
-            assert!(inspect_document(io, entry.clone(), json!([])).is_err());
+            assert!(inspect(io, "read-entry", entry.clone(), json!([0])).is_err());
             io.enable_document_shapes();
-            assert!(inspect_document(io, entry.clone(), json!([0])).is_err());
-            assert!(inspect_document(io, json!([["join", "other.json"]]), json!([])).is_err());
+            assert!(inspect(io, "read-pin-digest", entry.clone(), json!([0])).is_err());
+            assert!(inspect(io, "read-entry", entry.clone(), json!([1])).is_err());
+            assert!(
+                inspect(
+                    io,
+                    "read-entry",
+                    json!([["join", "nested/catalog.json"]]),
+                    json!([0])
+                )
+                .is_err()
+            );
             let first = call(
                 io,
                 source,
                 invocation,
                 budget,
-                "read-document",
+                "read-entry",
                 entry.clone(),
-                json!([]),
+                json!([0]),
             );
             let value = first["value"].as_str().unwrap();
             if checked {
@@ -1503,25 +1511,149 @@ async fn catalog_document_is_bound_to_the_digest_checked_first_physical_read() {
                     bytes
                 );
             }
-            fs::write(&member, b"changed after first read").unwrap();
-            assert!(inspect_document(io, entry.clone(), json!([])).is_err());
+            if checked {
+                fs::File::create(&member)
+                    .unwrap()
+                    .set_len((MAX_BYTES * 3 / 4) as u64)
+                    .unwrap();
+                let error = inspect(io, "read-pin-digest", entry.clone(), json!([0])).unwrap_err();
+                assert!(matches!(
+                    error.downcast_ref::<tobkiri_canon::AllocationError>(),
+                    Some(tobkiri_canon::AllocationError::Limit)
+                ));
+                assert_eq!(io.pins, 0);
+            }
+            let replacement = bundle.join("replacement.json");
+            fs::write(&replacement, b"changed after first read").unwrap();
+            fs::remove_file(&member).unwrap();
+            std::os::unix::fs::symlink(&replacement, &member).unwrap();
+            assert!(inspect(io, "read-entry", entry.clone(), json!([0])).is_err());
+            assert!(inspect(io, "read-pin-digest", entry.clone(), json!([1])).is_err());
             let pin = call(
                 io,
                 source,
                 invocation,
                 budget,
-                "read-bytes",
+                "read-pin-digest",
                 entry.clone(),
-                json!([]),
+                json!([0]),
             );
-            assert_eq!(pin["kind"], "bytes");
+            assert_eq!(pin["kind"], "catalog-pin-digest");
             assert_eq!(
-                base64::engine::general_purpose::STANDARD
-                    .decode(pin["value"].as_str().unwrap())
-                    .unwrap(),
-                b"changed after first read",
+                pin["value"],
+                Digest::hash(b"changed after first read").as_str()
             );
-            assert!(inspect_document(io, entry, json!([])).is_err());
+            assert!(inspect(io, "read-pin-digest", entry, json!([0])).is_err());
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn grouped_catalog_reports_original_path_failures_in_order() {
+    use std::os::unix::fs::symlink;
+
+    enum Expected {
+        Rejected(&'static str),
+        Io(i32, &'static str),
+        Capacity,
+    }
+    use Expected::*;
+    let overlong = "./".repeat(4090) + "plain";
+    for (relative, expected) in [
+        (".", Rejected("escape")),
+        ("inside-link", Rejected("symlink")),
+        ("outside-link", Rejected("escape")),
+        ("missing/component", Io(libc::ENOENT, "missing")),
+        ("missing/\0", Io(libc::ENOENT, "missing")),
+        ("plain/component", Io(libc::ENOTDIR, "plain")),
+        ("tail-link", Io(libc::ENOTDIR, "plain")),
+        ("loop", Io(libc::ELOOP, "loop")),
+        ("nested/\0", Rejected("null-byte")),
+        (&overlong, Capacity),
+    ] {
+        with_source(false, |source, invocation, budget, io, _| {
+            let bundle = source.root.join("ecosystem/defaultspack/v4");
+            fs::create_dir_all(bundle.join("nested")).unwrap();
+            fs::write(bundle.join("plain"), b"{}").unwrap();
+            let outside = source.root.join("outside");
+            fs::write(&outside, b"{}").unwrap();
+            symlink("plain", bundle.join("inside-link")).unwrap();
+            symlink("plain/", bundle.join("tail-link")).unwrap();
+            symlink("loop", bundle.join("loop")).unwrap();
+            symlink(outside, bundle.join("outside-link")).unwrap();
+            let lock = json!({
+                "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+                "entries": [{"path": relative, "kind": "pack",
+                             "digest": Digest::hash(b"{}").as_str()}],
+            });
+            fs::write(
+                bundle.join("bundle.lock.json"),
+                serde_json::to_vec(&lock).unwrap(),
+            )
+            .unwrap();
+            io.select_packaged(&bundle).unwrap();
+            io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+                .unwrap();
+            io.enable_document_shapes();
+            let lock = json!([["join", "bundle.lock.json"]]);
+            for (operation, steps, args) in [
+                (
+                    "root",
+                    json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+                    json!([]),
+                ),
+                ("is-symlink", json!([]), json!([])),
+                ("resolve", json!([]), json!([true])),
+                ("is-symlink", lock.clone(), json!([])),
+                ("read-bytes", lock, json!([])),
+            ] {
+                call(io, source, invocation, budget, operation, steps, args);
+            }
+            let request = packet(
+                invocation,
+                budget,
+                "read-entry",
+                json!([["join", relative]]),
+                json!([0]),
+            );
+            let result = io.inspect(source, invocation, &request, budget);
+            assert_eq!(io.entry, 0);
+            match expected {
+                Rejected(rejection) => {
+                    let response: Value =
+                        serde_json::from_slice(result.unwrap().as_bytes()).unwrap();
+                    assert_eq!(
+                        response["result"],
+                        json!({
+                            "kind": "catalog-path-rejection", "value": rejection
+                        })
+                    );
+                    assert!(io.inspect(source, invocation, &request, budget).is_err());
+                }
+                Io(errno, prefix) => {
+                    let expected = fs::canonicalize(&bundle).unwrap().join(prefix);
+                    let error = result
+                        .unwrap_err()
+                        .downcast::<OriginalAuthorityError>()
+                        .unwrap();
+                    assert!(
+                        matches!(error.cause, Some(OriginalAuthorityCause::Io(error))
+                        if error.errno == Some(errno) && error.filename.as_deref() == expected.to_str()),
+                        "{relative:?}"
+                    );
+                }
+                Capacity => {
+                    let error = result
+                        .unwrap_err()
+                        .downcast::<OriginalAuthorityError>()
+                        .unwrap();
+                    assert!(matches!(
+                        error.cause,
+                        Some(OriginalAuthorityCause::Capacity)
+                    ));
+                    assert!(matches!(error.stage, OriginalAuthorityStage::Path));
+                }
+            }
         });
     }
 }

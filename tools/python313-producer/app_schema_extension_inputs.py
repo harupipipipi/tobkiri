@@ -66,13 +66,24 @@ def derive_catalog_validation(source: bytes) -> bytes:
         source, b"        def read_native_entry(index: int, relative: str, reread: bool) -> bytes:\n",
         b"        from harness_native.native_path import NativePath\n\n"
         b"        native = type(root) is NativePath and root._bridge._catalog_root is not None\n\n"
-        b"        def read_native_entry(index: int, relative: str, reread: bool) -> bytes | str:\n",
-    )
-    source = _replace_one(
-        source, b"            return candidate.read_bytes()\n",
-        b"            if native:\n"
-        b"                return candidate._read_catalog_document()\n"
-        b"            return candidate.read_bytes()\n",
+        b'''        def read_native_entry(index: int, relative: str, reread: bool) -> bytes | str:
+            if native:
+                path = root / relative
+                if reread:
+                    return path._read_catalog_pin_digest(index)
+                kind, value = path._read_catalog_entry(index)
+                if kind == "catalog-path-rejection":
+                    if value == "null-byte":
+                        raise ValueError("lstat: embedded null character in path")
+                    if value == "escape":
+                        raise BundleIntegrityError(
+                            f"bundle entry escapes root: {relative}"
+                        )
+                    raise BundleIntegrityError(
+                        f"bundle entry contains a symlink: {relative}"
+                    )
+                return value
+''',
     )
     source = _replace_one(
         source, b"        return cls.load_from_reader(\n",
@@ -82,7 +93,7 @@ def derive_catalog_validation(source: bytes) -> bytes:
                 entry_reader=read_native_entry,
                 root=root,
                 artifact_root_resolver=resolve_native_artifact_root,
-                native_documents=True,
+                native_reads=True,
             )
         return cls.load_from_reader(
 ''',
@@ -104,7 +115,7 @@ def derive_catalog_validation(source: bytes) -> bytes:
         entry_reader: Callable[[int, str, bool], bytes | str],
         root: Any,
         artifact_root_resolver: Callable[[], Any],
-        native_documents: bool = False,
+        native_reads: bool = False,
     ) -> "BundledCatalog":
         try:
             lock = strict_loads(lock_bytes)
@@ -119,7 +130,7 @@ def derive_catalog_validation(source: bytes) -> bytes:
 '''
     source = _replace_one(
         source, digest,
-        b"            native_document = native_documents and type(raw) is str\n"
+        b"            native_document = native_reads and type(raw) is str\n"
         b"            if not native_document:\n"
         + b"".join(b"    " + line for line in digest.splitlines(keepends=True)),
     )
@@ -136,9 +147,19 @@ def derive_catalog_validation(source: bytes) -> bytes:
                     document = json.loads(raw)
                 else:
 '''
-    return _replace_one(source, validation, replacement + b"".join(
+    source = _replace_one(source, validation, replacement + b"".join(
         b"    " + line for line in validation.splitlines(keepends=True)
     ))
+    return _replace_one(
+        source,
+        b"            catalog_raw_digest = 'sha256:' + hashlib.sha256(catalog_raw).hexdigest()\n",
+        b'''            catalog_raw_digest = (
+                catalog_raw
+                if native_reads
+                else 'sha256:' + hashlib.sha256(catalog_raw).hexdigest()
+            )
+''',
+    )
 
 
 def derive_harness_sources(files: dict[str, bytes], *, catalog_shapes: bool = False) -> dict[str, bytes]:

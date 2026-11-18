@@ -24,6 +24,7 @@ from .value_graph import Scope, UnsupportedValue
 
 _PREFIX = "io.tobkiri.native-inspection-"
 _CATALOG_REQUEST = "io.tobkiri.native-catalog-request.v1"
+_CATALOG_PIN_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 class _UnboundPlatformArtifacts(BaseException):
@@ -475,16 +476,36 @@ class NativePath:
     def read_bytes(self) -> bytes:
         return self._effect("read-bytes", "bytes")
 
-    def _read_catalog_document(self) -> bytes | str:
+    def _catalog_read(self, operation: str, index: int) -> dict:
         bridge = self._bridge
         if bridge._catalog_root is None:
-            raise UnsupportedValue("catalog document DATA outside its fixed call")
-        row = bridge._catalog_request(self._target(), "read-document", [])
-        if row.get("kind") == "document":
-            if set(row) != {"kind", "value"} or type(row["value"]) is not str:
-                raise UnsupportedValue("invalid native catalog document result")
-            return row["value"]
-        return bridge._value(row, "bytes")
+            raise UnsupportedValue("catalog read outside its fixed call")
+        return bridge._catalog_request(self._target(), operation, [index])
+
+    def _read_catalog_entry(self, index: int) -> tuple[str, bytes | str]:
+        row = self._catalog_read("read-entry", index)
+        kind = row.get("kind")
+        if kind == "bytes":
+            return kind, self._bridge._value(row, "bytes")
+        if set(row) != {"kind", "value"} or type(row["value"]) is not str:
+            raise UnsupportedValue("invalid native catalog entry result")
+        value = row["value"]
+        if kind == "document" or (
+            kind == "catalog-path-rejection" and value in {"escape", "symlink", "null-byte"}
+        ):
+            return kind, value
+        raise UnsupportedValue("invalid native catalog entry result")
+
+    def _read_catalog_pin_digest(self, index: int) -> str:
+        row = self._catalog_read("read-pin-digest", index)
+        if (
+            set(row) != {"kind", "value"}
+            or row["kind"] != "catalog-pin-digest"
+            or type(row["value"]) is not str
+            or _CATALOG_PIN_DIGEST.fullmatch(row["value"]) is None
+        ):
+            raise UnsupportedValue("invalid native catalog pin digest result")
+        return row["value"]
 
     def lstat(self) -> _Stat:
         return self._effect("lstat", "stat")

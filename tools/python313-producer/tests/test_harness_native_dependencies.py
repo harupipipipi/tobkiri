@@ -122,7 +122,8 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             self.assertIn(b"from app_schema_provider import AppSchemaProvider as Draft202012Validator",
                           (stage / "python/tobkiri_protocol/validation.py").read_bytes())
             catalog = (stage / "python/tobkiri_protocol/bundle_catalog.py").read_bytes()
-            self.assertIn(b"return candidate._read_catalog_document()", catalog)
+            self.assertIn(b"kind, value = path._read_catalog_entry(index)", catalog)
+            self.assertIn(b"return path._read_catalog_pin_digest(index)", catalog)
             self.assertIn(b"document = json.loads(raw)", catalog)
             self.assertNotIn(b"_semantic_diagnostics", catalog)
             compile(catalog, "bundle_catalog.py", "exec")
@@ -135,25 +136,36 @@ class NativeHarnessDependencyTests(unittest.TestCase):
         source = runtime / "tobkiri_protocol/bundle_catalog.py"
         module = ModuleType("tobkiri_protocol._catalog_routing_test")
         module.__package__ = "tobkiri_protocol"
-        pack = (
-            runtime / "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
-        )
-        raw = pack.read_bytes()
+        packs = runtime / "ecosystem/defaultspack/v4/packs"
+        pack_id = "rumi_discord_connector_pack"
+        raw = (packs / f"{pack_id}.pack.v4.json").read_bytes()
+        executable = (packs / f"{pack_id}.executables.v4.json").read_bytes()
         text = raw.decode()
         document = json.loads(text)
+        relative = "./pack.json"
+        executable_relative = "packs//catalog.json"
 
-        def make_lock(content: bytes) -> bytes:
+        def digest(content: bytes) -> str:
+            return "sha256:" + hashlib.sha256(content).hexdigest()
+
+        def make_lock(content: bytes, executable_content: bytes | None = None) -> bytes:
+            entries = [{"path": relative, "kind": "pack", "digest": digest(content)}]
+            if executable_content is not None:
+                entries.append({
+                    "path": executable_relative,
+                    "kind": "executable_catalog",
+                    "digest": digest(executable_content),
+                })
             return json.dumps({
                 "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
-                "entries": [{
-                    "path": "pack.json",
-                    "kind": "pack",
-                    "digest": "sha256:" + hashlib.sha256(content).hexdigest(),
-                }],
+                "entries": entries,
             }).encode()
 
         lock = make_lock(raw)
         reply = {"kind": "document", "value": text}
+        executable_text = executable.decode()
+        pin_digest = digest(executable)
+        reads = []
 
         def inspect(payload: str) -> str:
             request = json.loads(payload)
@@ -161,19 +173,31 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             target = request["target"]
             steps = target["steps"]
             if operation in {"root", "resolve"}:
-                value = "/bundle/pack.json" if steps else "/bundle"
-                result = {
-                    "kind": "path", "binding": "root", "steps": steps, "value": value,
-                }
-            elif operation in {"is-symlink", "is-dir"}:
+                self.assertEqual(steps, [])
+                result = {"kind": "path", "binding": "root", "value": "/bundle"}
+            elif operation == "is-symlink":
+                self.assertIn(steps, [[], [["join", "bundle.lock.json"]]])
+                result = {"kind": "bool", "value": False}
+            elif operation == "is-dir":
+                self.assertEqual(steps, [["parent", ""], ["join", "platform-artifacts"]])
                 result = {"kind": "bool", "value": False}
             elif operation == "read-bytes":
                 self.assertEqual(steps, [["join", "bundle.lock.json"]])
                 result = {"kind": "bytes", "value": base64.b64encode(lock).decode()}
             else:
-                self.assertEqual((operation, steps, request["args"]),
-                                 ("read-document", [["join", "pack.json"]], []))
-                result = reply
+                index, = request["args"]
+                reads.append((operation, index))
+                if operation == "read-entry" and index == 0:
+                    self.assertEqual(steps, [["join", relative]])
+                    result = reply
+                else:
+                    self.assertEqual(index, 1)
+                    self.assertEqual(steps, [["join", executable_relative]])
+                    if operation == "read-entry":
+                        result = {"kind": "document", "value": executable_text}
+                    else:
+                        self.assertEqual(operation, "read-pin-digest")
+                        result = {"kind": "catalog-pin-digest", "value": pin_digest}
             return json.dumps({"format": "io.tobkiri.native-inspection-response.v1",
                                "scope": request["scope"], "result": result})
 
@@ -202,10 +226,25 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                                  wraps=module.validate_document) as validate,
                 ):
                     loaded = bridge._load_catalog(catalog.load, root)
-                    self.assertEqual(loaded.packs[document["pack"]["id"]], document)
+                    self.assertEqual(loaded.packs[pack_id], document)
                     strict.assert_called_once_with(lock)
                     validate.assert_not_called()
                     semantic.assert_not_called()
+
+                    for status, error_type, message in (
+                        ("escape", module.BundleIntegrityError,
+                         "bundle entry escapes root: ./pack.json"),
+                        ("symlink", module.BundleIntegrityError,
+                         "bundle entry contains a symlink: ./pack.json"),
+                        ("null-byte", ValueError, "lstat: embedded null character in path"),
+                    ):
+                        with self.subTest(status=status):
+                            reply = {"kind": "catalog-path-rejection", "value": status}
+                            reads.clear()
+                            with self.assertRaises(error_type) as error:
+                                bridge._load_catalog(catalog.load, root)
+                            self.assertEqual(str(error.exception), message)
+                            self.assertEqual(reads, [("read-entry", 0)])
 
                     bad_raw = b'{"pack": {}, "pack": {}}'
                     reply = {
@@ -213,14 +252,14 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                     }
                     with self.assertRaisesRegex(
                         module.BundleIntegrityError,
-                        "bundle artifact digest changed: pack.json",
+                        r"bundle artifact digest changed: \./pack\.json",
                     ):
                         bridge._load_catalog(catalog.load, root)
                     validate.assert_not_called()
 
                     lock = make_lock(bad_raw)
                     with self.assertRaisesRegex(
-                        module.BundleIntegrityError, "invalid pack document pack.json",
+                        module.BundleIntegrityError, r"invalid pack document \./pack\.json",
                     ) as error:
                         bridge._load_catalog(catalog.load, root)
                     validate.assert_called_once_with(bad_raw, "pack")
@@ -239,6 +278,43 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                                 ),
                                 root,
                             )
+
+                    reply = {"kind": "document", "value": text}
+                    lock = make_lock(raw, executable)
+                    reads.clear()
+                    loaded = bridge._load_catalog(catalog.load, root)
+                    self.assertEqual(loaded.executable_catalogs[pack_id],
+                                     json.loads(executable_text))
+                    self.assertEqual(reads, [
+                        ("read-entry", 0), ("read-entry", 1), ("read-pin-digest", 1),
+                    ])
+
+                    different_bytes = executable + b"\n"
+                    for first, reread in ((different_bytes, executable),
+                                          (different_bytes, different_bytes)):
+                        with self.subTest(pin_matches=(reread == executable)):
+                            lock = make_lock(raw, first)
+                            executable_text = first.decode()
+                            pin_digest = digest(reread)
+                            with self.assertRaisesRegex(
+                                module.BundleIntegrityError,
+                                f"Pack executable catalog artifact pin is stale: {pack_id}",
+                            ):
+                                bridge._load_catalog(catalog.load, root)
+
+                    lock = make_lock(raw, executable)
+                    validate.side_effect = lambda content, _kind: json.loads(content)
+                    reads.clear()
+                    bridge._load_catalog(
+                        lambda selected: catalog.load_from_reader(
+                            lock,
+                            entry_reader=lambda i, _path, _reread: (raw, executable)[i],
+                            root=selected,
+                            artifact_root_resolver=lambda: None,
+                        ),
+                        root,
+                    )
+                    self.assertEqual(reads, [])
 
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")

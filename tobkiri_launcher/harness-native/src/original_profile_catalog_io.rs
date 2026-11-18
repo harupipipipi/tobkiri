@@ -20,6 +20,9 @@ mod document_shapes;
 #[path = "original_initial_catalog_fixture.rs"]
 pub(in crate::original_authority::io::publication) mod initial_catalog_fixture;
 #[cfg(unix)]
+#[path = "original_catalog_member_path.rs"]
+mod member_path;
+#[cfg(unix)]
 #[path = "original_recovery_catalog_artifact.rs"]
 mod recovery_artifact;
 #[cfg(all(test, unix))]
@@ -585,15 +588,12 @@ impl CatalogIo {
         let operation = operation
             .as_str()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
-        #[cfg(unix)]
-        let checked_read = operation == "read-document" && self.document_shapes.is_some();
-        #[cfg(not(unix))]
-        let checked_read = false;
         let args = args
             .array()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
         let mut path = self.selected.clone();
-        if self.loader != Loader::Root {
+        let grouped = matches!(operation, "read-entry" | "read-pin-digest");
+        if self.loader != Loader::Root && !grouped {
             for step in steps_array.iter() {
                 let pair = step
                     .array()
@@ -740,6 +740,16 @@ impl CatalogIo {
                 self.loader = Loader::Entries;
                 true
             }
+            #[cfg(unix)]
+            Loader::Entries if grouped && self.document_shapes.is_some() => {
+                self.ensure_lock(&op)?;
+                if operation == "read-entry" {
+                    self.read_checked_entry(&op, &mut output, &steps_array, &args)?;
+                } else {
+                    self.read_checked_pin(&op, &mut output, &steps_array, &args)?;
+                }
+                true
+            }
             Loader::Entries if operation == "resolve" && strict(&args) => {
                 self.ensure_lock(&op)?;
                 let relative = self.entry_path(self.entry)?;
@@ -790,7 +800,7 @@ impl CatalogIo {
                 }
                 true
             }
-            Loader::EntryRead if (operation == "read-bytes" || checked_read) && args.is_empty() => {
+            Loader::EntryRead if operation == "read-bytes" && args.is_empty() => {
                 if path != self.selected.join(self.entry_path(self.entry)?) {
                     return Err(OriginalAuthorityError::unavailable().into());
                 }
@@ -799,14 +809,7 @@ impl CatalogIo {
                     self.candidate.as_ref().expect("resolved entry"),
                     &self.budget,
                 )?;
-                #[cfg(unix)]
-                let checked =
-                    checked_read && self.write_checked_document(&op, &mut output, &bytes.value)?;
-                #[cfg(not(unix))]
-                let checked = false;
-                if !checked {
-                    write_bytes(&mut output, &bytes.value)?;
-                }
+                write_bytes(&mut output, &bytes.value)?;
                 #[cfg(unix)]
                 {
                     self.retain_pack_pin(&op, &bytes.value)?;
