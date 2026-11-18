@@ -19,9 +19,17 @@ interface manage {
   apply: func(payload: json) -> result<json, error>;
 }
 
+interface routing {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Resolve an enabled keyless loopback connection in the current Profile.
+  resolve-local: func(provider: string) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
   export %resource;
   export manage;
+  export routing;
 }

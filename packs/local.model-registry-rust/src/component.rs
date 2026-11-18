@@ -11,6 +11,7 @@ use crate::{
     component_store::DocumentStore,
     presentation::project_list,
     registry::Registry,
+    routing,
     settings_save::{captured_save_result, normalize, present_saved},
 };
 use ordered_python_compat::{CodecError, PyValue, dumps, loads, utc_timestamp_from_millis};
@@ -38,7 +39,7 @@ impl exports::local::model_registry::settings::Guest for Pack {
         let registry = Registry::new(&profile, document).map_err(source_error)?;
         let snapshot = registry.snapshot().map_err(source_error)?;
         let projected = project_list(&snapshot).map_err(source_error)?;
-        encode_reply(&projected)
+        encode_reply(&projected, "model Settings response")
     }
 
     fn save_model(payload: String) -> Result<String, Error> {
@@ -58,11 +59,21 @@ impl exports::local::model_registry::settings::Guest for Pack {
             .map_err(source_error)?;
         let captured = captured_save_result(&request, &result).map_err(source_error)?;
         let projected = present_saved(&captured).map_err(source_error)?;
-        let reply = encode_reply(&projected)?;
+        let reply = encode_reply(&projected, "model Settings response")?;
         if let Some(updated) = updated {
             store.commit(&dumps(&updated).map_err(codec_error)?)?;
         }
         Ok(reply)
+    }
+}
+
+impl exports::local::model_registry::routing::Guest for Pack {
+    fn resolve_model(identifier: String) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        let (_, document) = DocumentStore::read()?;
+        let registry = Registry::new(&profile, document).map_err(source_error)?;
+        let route = routing::resolve_model(&registry, identifier).map_err(source_error)?;
+        encode_reply(&route, "model route response")
     }
 }
 
@@ -115,15 +126,15 @@ fn validate_provider(profile: &str, request: &PyValue) -> Result<(), Error> {
     Ok(())
 }
 
-fn encode_reply(projected: &PyValue) -> Result<String, Error> {
+fn encode_reply(projected: &PyValue, subject: &str) -> Result<String, Error> {
     let encoded = dumps(projected).map_err(codec_error)?;
     tobkiri_canon::parse(encoded.as_bytes(), tobkiri_canon::Variant::StrictV1).map_err(
         |error| match error {
             tobkiri_canon::Error::Limit(_) => failure(
                 ErrorCode::LimitExceeded,
-                "model Settings response exceeds limits",
+                &format!("{subject} exceeds limits"),
             ),
-            _ => failure(ErrorCode::Invalid, "model Settings response is invalid"),
+            _ => failure(ErrorCode::Invalid, &format!("{subject} is invalid")),
         },
     )?;
     Ok(encoded)
@@ -140,6 +151,9 @@ fn source_error(error: SourceError) -> Error {
             failure(ErrorCode::Denied, "model Registry Profile is invalid")
         }
         ("ModelRegistryConflict", _) => failure(ErrorCode::Conflict, "model Registry conflict"),
+        ("ModelRouteNotFound", _) => failure(ErrorCode::NotFound, &error.message),
+        ("ModelRouteDenied", _) => failure(ErrorCode::Denied, &error.message),
+        ("ModelRouteInvalid", _) => failure(ErrorCode::Invalid, &error.message),
         _ => failure(ErrorCode::Invalid, "model Registry document is invalid"),
     }
 }

@@ -54,7 +54,7 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         directory.path(),
         Path::new(&artifact),
         PACK,
-        &["resource", "manage"],
+        &["resource", "manage", "routing"],
         &[],
     )?];
     let a = registry::profile("prof_provider_a", &packs, &[RESOURCE, MANAGE])?;

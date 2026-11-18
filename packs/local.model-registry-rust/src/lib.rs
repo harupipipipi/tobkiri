@@ -12,6 +12,8 @@ mod mutation;
 #[cfg(test)]
 mod oracle_tests;
 #[cfg(any(feature = "component", test))]
+mod routing;
+#[cfg(any(feature = "component", test))]
 mod settings_save;
 
 /// A fixed failure from the original Registry or Settings projection.

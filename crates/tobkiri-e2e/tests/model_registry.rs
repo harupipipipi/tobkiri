@@ -1,4 +1,6 @@
 //! Exercise saved model Settings through the actual Core and Wasm Packs.
+#[path = "model_registry/registered_network.rs"]
+mod registered_network;
 mod support;
 
 use anyhow::{Context, Result, ensure};
@@ -25,14 +27,14 @@ fn packs(root: &Path) -> Result<[RegistryPack; 2]> {
             root,
             Path::new(&model),
             PACK,
-            &["settings"],
+            &["settings", "routing"],
             &[PROVIDER_RESOURCE],
         )?,
         registry::pack(
             root,
             Path::new(&provider),
             PROVIDER_PACK,
-            &["resource", "manage"],
+            &["resource", "manage", "routing"],
             &[],
         )?,
     ])

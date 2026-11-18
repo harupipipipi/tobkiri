@@ -15,8 +15,18 @@ interface settings {
   save-model: func(payload: json) -> result<json, error>;
 }
 
+interface routing {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Resolve an enabled saved model and its local text route for this Profile.
+  /// Returns model_id, provider_instance_id, nullable max_tokens and nullable
+  /// temperature as a decimal string.
+  resolve-model: func(identifier: string) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
   export settings;
+  export routing;
 }

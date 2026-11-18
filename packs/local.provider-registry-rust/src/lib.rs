@@ -13,6 +13,8 @@ pub mod failure;
 pub mod host;
 pub mod record;
 pub mod registry;
+#[cfg(any(feature = "component", test))]
+mod routing;
 pub mod state;
 
 #[cfg(test)]

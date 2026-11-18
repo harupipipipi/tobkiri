@@ -16,6 +16,14 @@ The prompt's positive `max_tokens` value is passed to the API without the former
 512-token cap; zero retains its one-token fallback. The upstream model may reject
 unsupported settings, and existing host resource limits still apply.
 
+A Pack using the saved-model route can set `{"registered_models":true,"timeout_ms":20000}`.
+The Profile binds `local.model-registry.routing@1.0` and
+`local.provider-registry.routing@1.0`. In this mode the prompt's model field
+selects a saved model registration or alias. Both lookups use Core's live
+Profile. The request uses the saved model ID and the lower of the requested
+and saved token ceilings. The provider must be a keyless loopback connection
+with the usual Core network grant for its exact origin.
+
 HTTP failures include the status and bounded API message, type, code and parameter
 (or non-JSON response text). At most 4096 response bytes are read and the displayed
 summary is limited to 512 characters. Authentication/permission failures omit

@@ -21,7 +21,7 @@ pub(crate) struct RegistryPack {
     permissions: PermissionSet,
 }
 
-fn store_permissions() -> PermissionSet {
+pub(crate) fn store_permissions() -> PermissionSet {
     PermissionSet {
         storage: StoragePermissions {
             private: true,
@@ -130,19 +130,30 @@ pub(crate) fn pack(
         }],
         permissions,
         ui: None,
-        files: files
-            .iter()
-            .map(|(path, bytes)| FileEntry {
-                path: path.clone(),
-                sha256: Digest::hash(bytes),
-                size: bytes.len() as u64,
-            })
-            .collect(),
+        files: vec![],
     };
-    let directory = root.join(id);
-    fs::create_dir_all(directory.join("wit/deps"))?;
+    materialize(root, manifest, files)
+}
+
+pub(crate) fn materialize(
+    root: &Path,
+    mut manifest: PackManifest,
+    files: BTreeMap<String, Vec<u8>>,
+) -> Result<RegistryPack> {
+    manifest.files = files
+        .iter()
+        .map(|(path, bytes)| FileEntry {
+            path: path.clone(),
+            sha256: Digest::hash(bytes),
+            size: bytes.len() as u64,
+        })
+        .collect();
+    let directory = root.join(manifest.id.as_str());
+    fs::create_dir_all(&directory)?;
     for (path, content) in files {
-        fs::write(directory.join(path), content)?;
+        let destination = directory.join(path);
+        fs::create_dir_all(destination.parent().context("fixture file parent")?)?;
+        fs::write(destination, content)?;
     }
     fs::write(
         directory.join("pack.json"),

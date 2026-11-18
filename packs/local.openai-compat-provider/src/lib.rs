@@ -2,14 +2,44 @@
 
 wit_bindgen::generate!({ path: "wit", world: "pack",generate_all });
 
+mod registry;
+
 use exports::local::harness_chat::llm_provider::{Guest as Provider, Prompt};
 use exports::tobkiri::core::{lifecycle, stream_source};
-use std::{cell::RefCell, collections::BTreeMap};
+use std::{cell::RefCell, collections::BTreeMap, num::NonZeroU32};
 use tobkiri::core::{
     flow, network, secrets,
     types::{Error, ErrorCode, StreamHandle},
 };
 use tobkiri_guest_sdk::{done_event, sse::Decoder};
+
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum Configuration {
+    Static(Settings),
+    Registered(RegisteredSettings),
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegisteredSettings {
+    registered_models: bool,
+    timeout_ms: u32,
+}
+
+impl Configuration {
+    fn validate(&mut self) -> Result<(), Error> {
+        match self {
+            Self::Static(settings) => settings.validate(),
+            Self::Registered(settings)
+                if settings.registered_models && valid_timeout(settings.timeout_ms) =>
+            {
+                Ok(())
+            }
+            Self::Registered(_) => Err(error(ErrorCode::Invalid, "provider settings are invalid")),
+        }
+    }
+}
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -49,8 +79,7 @@ impl Settings {
         self.base_url = normalize_base_url(&self.base_url)
             .map_err(|message| error(ErrorCode::Invalid, message))?;
         if self.model.trim().is_empty()
-            || self.timeout_ms == 0
-            || self.timeout_ms > 300_000
+            || !valid_timeout(self.timeout_ms)
             || !self.temperature.is_finite()
             || !(0.0..=2.0).contains(&self.temperature)
         {
@@ -61,6 +90,10 @@ impl Settings {
         }
         Ok(())
     }
+}
+
+fn valid_timeout(timeout_ms: u32) -> bool {
+    (1..=300_000).contains(&timeout_ms)
 }
 
 struct ActiveStream {
@@ -106,7 +139,7 @@ impl PendingFailure {
 
 #[derive(Default)]
 struct State {
-    settings: Option<Settings>,
+    settings: Option<Configuration>,
     next_id: u64,
     streams: BTreeMap<u64, ActiveStream>,
 }
@@ -165,21 +198,24 @@ fn normalize_base_url(value: &str) -> Result<String, &'static str> {
     Ok(url.to_string())
 }
 
-// The WIT contract already bounds this value to u32. Keep the historical zero
-// fallback, but leave the model's supported token budget to the API.
-fn requested_max_tokens(value: u32) -> u32 {
-    value.max(1)
-}
-
-fn request_body(config: &Settings, prompt: Prompt) -> Vec<u8> {
+fn request_body(
+    config: &Settings,
+    prompt: Prompt,
+    saved_max_tokens: Option<NonZeroU32>,
+) -> Vec<u8> {
+    // Keep the historical zero fallback and apply a saved cap when present.
+    let requested = prompt.max_tokens.max(1);
+    let max_tokens = saved_max_tokens.map_or(requested, |cap| requested.min(cap.get()));
     let messages = prompt
         .messages
         .into_iter()
         .map(|message| serde_json::json!({"role":message.role,"content":message.content}))
         .collect::<Vec<_>>();
     serde_json::json!({"model":config.model,"messages":messages,"stream":true,
-        "stream_options":{"include_usage":true},"max_tokens":requested_max_tokens(prompt.max_tokens),
-        "temperature":config.temperature}).to_string().into_bytes()
+        "stream_options":{"include_usage":true},"max_tokens":max_tokens,
+        "temperature":config.temperature})
+    .to_string()
+    .into_bytes()
 }
 
 const ERROR_BODY_LIMIT: usize = 4096;
@@ -313,7 +349,7 @@ fn http_failure(response: &network::Response) -> Error {
 
 impl lifecycle::Guest for Pack {
     fn init(config: String) -> Result<(), Error> {
-        let mut settings: Settings = serde_json::from_str(&config)
+        let mut settings: Configuration = serde_json::from_str(&config)
             .map_err(|_| error(ErrorCode::Invalid, "provider settings are invalid"))?;
         settings.validate()?;
         STATE.with_borrow_mut(|state| {
@@ -339,17 +375,29 @@ impl Provider for Pack {
             if state.streams.len() >= 64 {
                 return Err(error(ErrorCode::LimitExceeded, "too many active streams"));
             }
-            let config = state
+            let configuration = state
                 .settings
                 .as_ref()
                 .ok_or_else(|| error(ErrorCode::Invalid, "provider has not been initialized"))?;
-            if !prompt.model.is_empty() && prompt.model != config.model {
-                return Err(error(
-                    ErrorCode::Invalid,
-                    "model does not match the approved provider settings",
-                ));
-            }
-            let body = request_body(config, prompt);
+            let resolved;
+            let (config, saved_max_tokens) = match configuration {
+                Configuration::Static(config) => {
+                    if !prompt.model.is_empty() && prompt.model != config.model {
+                        return Err(error(
+                            ErrorCode::Invalid,
+                            "model does not match the approved provider settings",
+                        ));
+                    }
+                    (config, None)
+                }
+                Configuration::Registered(settings) => {
+                    resolved =
+                        registry::resolve(&prompt.model, settings.timeout_ms, flow::call_port)?;
+                    let (config, cap) = &resolved;
+                    (config, *cap)
+                }
+            };
+            let body = request_body(config, prompt, saved_max_tokens);
             let secret = match &config.secret_name {
                 Some(name) => Some(secrets::get(name)?),
                 None => None,
@@ -505,7 +553,39 @@ mod tests {
     use super::*;
 
     fn settings() -> Settings {
-        serde_json::from_str(include_str!("../config.json")).unwrap()
+        match serde_json::from_str(include_str!("../config.json")).unwrap() {
+            Configuration::Static(settings) => settings,
+            Configuration::Registered(_) => panic!("the shipped static fixture changed mode"),
+        }
+    }
+
+    #[test]
+    fn registered_settings_require_explicit_opt_in_and_no_static_route_fields() {
+        let mut mode =
+            serde_json::from_str::<Configuration>(r#"{"registered_models":true,"timeout_ms":42}"#)
+                .unwrap();
+        assert!(mode.validate().is_ok());
+        assert!(matches!(mode, Configuration::Registered(s) if s.timeout_ms == 42));
+
+        for config in [
+            r#"{"registered_models":false,"timeout_ms":300000}"#,
+            r#"{"registered_models":true,"timeout_ms":0}"#,
+            r#"{"registered_models":true,"timeout_ms":300001}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<Configuration>(config)
+                    .unwrap()
+                    .validate()
+                    .is_err()
+            );
+        }
+        for config in [
+            r#"{"registered_models":true,"timeout_ms":1,"base_url":"http://localhost","model":"raw"}"#,
+            r#"{"registered_models":true,"timeout_ms":1,"secret_name":"api-key"}"#,
+            r#"{"registered_models":true,"timeout_ms":1,"temperature":0}"#,
+        ] {
+            assert!(serde_json::from_str::<Configuration>(config).is_err());
+        }
     }
 
     #[test]
@@ -563,6 +643,7 @@ mod tests {
                     messages: vec![],
                     max_tokens,
                 },
+                None,
             ))
             .unwrap();
             assert_eq!(body["max_tokens"], max_tokens.max(1));
@@ -577,7 +658,10 @@ mod tests {
             let mut document: serde_json::Value =
                 serde_json::from_str(include_str!("../config.json")).unwrap();
             document["temperature"] = value;
-            let mut parsed: Settings = serde_json::from_value(document).unwrap();
+            let Configuration::Static(mut parsed) = serde_json::from_value(document).unwrap()
+            else {
+                panic!("the static configuration changed mode");
+            };
             parsed.validate().unwrap();
             let body: serde_json::Value = serde_json::from_slice(&request_body(
                 &parsed,
@@ -586,6 +670,7 @@ mod tests {
                     messages: vec![],
                     max_tokens: 2048,
                 },
+                None,
             ))
             .unwrap();
             assert!(body["temperature"].is_number());
@@ -602,7 +687,7 @@ mod tests {
             let mut document: serde_json::Value =
                 serde_json::from_str(include_str!("../config.json")).unwrap();
             document["temperature"] = value;
-            assert!(serde_json::from_value::<Settings>(document).is_err());
+            assert!(serde_json::from_value::<Configuration>(document).is_err());
         }
         config.temperature = 1.25;
         config.validate().unwrap();
@@ -613,6 +698,7 @@ mod tests {
                 messages: vec![],
                 max_tokens: 2048,
             },
+            None,
         ))
         .unwrap();
         assert_eq!(body["temperature"], 1.25);

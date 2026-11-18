@@ -11,6 +11,7 @@ use crate::{
     failure::{SourceError, SourceResult},
     host::{MANAGE_OPERATION, READONLY_RESOURCE_OPERATION, invoke_manage, invoke_readonly},
     registry::Registry,
+    routing,
     state::Clock,
 };
 use ordered_python_compat::{CodecError, PyValue, dumps, loads};
@@ -64,6 +65,14 @@ impl exports::local::provider_registry::manage::Guest for Pack {
     }
 }
 
+impl exports::local::provider_registry::routing::Guest for Pack {
+    fn resolve_local(provider: String) -> Result<String, Error> {
+        let mut registry = open_registry(&current_profile()?)?;
+        let route = routing::resolve_local(&mut registry, &provider).map_err(source_error)?;
+        encode_reply(&route)
+    }
+}
+
 export!(Pack);
 
 struct BoundRequest {
@@ -74,21 +83,29 @@ struct BoundRequest {
 
 impl BoundRequest {
     fn open(payload: &str) -> Result<Self, Error> {
-        let profile = flow::current_profile().map_err(|error| {
-            boundary_error(error.code, "provider registry profile is unavailable")
-        })?;
+        let profile = current_profile()?;
         let payload = loads(payload).map_err(codec_error)?;
-        let store = SqlDocumentStore::new();
-        let registry =
-            Registry::new(&PyValue::String(profile.clone()), store, CoreClock).map_err(|_| {
-                boundary_error(ErrorCode::Denied, "provider registry profile is invalid")
-            })?;
+        let registry = open_registry(&profile)?;
         Ok(Self {
             registry,
             profile,
             payload,
         })
     }
+}
+
+fn current_profile() -> Result<String, Error> {
+    flow::current_profile()
+        .map_err(|error| boundary_error(error.code, "provider registry profile is unavailable"))
+}
+
+fn open_registry(profile: &str) -> Result<Registry<SqlDocumentStore, CoreClock>, Error> {
+    Registry::new(
+        &PyValue::String(profile.into()),
+        SqlDocumentStore::new(),
+        CoreClock,
+    )
+    .map_err(|_| boundary_error(ErrorCode::Denied, "provider registry profile is invalid"))
 }
 
 fn encode_reply(value: &PyValue) -> Result<String, Error> {
