@@ -21,6 +21,8 @@ use tobkiri_store::{DataRoot, StoreError};
 const PACK: &str = "local.provider-registry";
 const RESOURCE: &str = "local.provider-registry.resource@1.0";
 const MANAGE: &str = "local.provider-registry.manage@1.0";
+#[cfg(unix)]
+const LEGACY_COMMIT: &str = "local.provider-registry.legacy-configuration-commit@1.0";
 
 fn prepared_digest(plan: &Value) -> Result<String> {
     Ok(tobkiri_canon::digest(&canon(plan)?, tobkiri_canon::Variant::StrictV1)?.to_string())
@@ -179,12 +181,12 @@ async fn verify_legacy_preparation(
     ensure!(initial["expected_revision"] == 0);
     #[cfg(unix)]
     ensure!(
-        native_legacy_prepare(
+        native_legacy_configuration(
             core,
             pack,
             profile,
             fixture,
-            &request["request"],
+            (&request["request"], None),
             observe.clone(),
             2
         )
@@ -201,12 +203,12 @@ async fn verify_legacy_preparation(
     ensure!(verified == expected);
     #[cfg(unix)]
     {
-        let plan = native_legacy_prepare(
+        let plan = native_legacy_configuration(
             core,
             pack,
             profile,
             fixture,
-            &request["request"],
+            (&request["request"], None),
             observe.clone(),
             2,
         )
@@ -214,6 +216,101 @@ async fn verify_legacy_preparation(
         ensure!(plan == expected);
         ensure!(!plan.to_string().contains(HANDLE));
         ensure!(observe()?.as_deref() == Some(observed.as_str()));
+
+        let prepared = native_legacy_configuration(
+            core,
+            pack,
+            profile,
+            fixture,
+            (&request["request"], Some(&plan)),
+            observe.clone(),
+            3,
+        )
+        .await?;
+        ensure!(
+            prepared
+                == json!({
+                    "expected_revision": 42,
+                    "record": {
+                        "provider_instance_id":"provider.authoritative",
+                        "adapter_id":"local-openai-compatible",
+                        "display_name":"provider.authoritative",
+                        "credential_handle":null,
+                        "endpoint":"http://127.0.0.1:1234/v1",
+                        "enabled":true,
+                        "data_residency":"unknown",
+                        "health_evidence":{"status":"unknown","observed_at":null,"verified":false},
+                        "metadata": {},
+                        "record_revision":1
+                    }
+                })
+        );
+        ensure!(observe()?.as_deref() == Some(observed.as_str()));
+        ensure!(
+            call(
+                session,
+                LEGACY_COMMIT,
+                "validate-local",
+                json!({"request":request["request"],"plan":plan,"observe":{"id":1}}),
+            )
+            .await
+            .is_err()
+        );
+
+        let mut edited = plan.clone();
+        edited["request_digest"] = json!(format!("sha256:{}", "0".repeat(64)));
+        let rejected = native_legacy_configuration(
+            core,
+            pack,
+            profile,
+            fixture,
+            (&request["request"], Some(&edited)),
+            observe.clone(),
+            2,
+        )
+        .await
+        .expect_err("native commit validation accepted an altered approved plan");
+        ensure!(
+            matches!(
+                rejected.downcast_ref::<NativeArtifactError>(),
+                Some(NativeArtifactError::ProviderRejected(error)) if error.code() == "denied"
+            ),
+            "{rejected:#}"
+        );
+
+        let mut newer = existing.clone();
+        newer["revision"] = json!(43);
+        let newer = newer.to_string();
+        let race_source = source.clone();
+        let race_path = path.clone();
+        let race_document = newer.clone();
+        let original_reader = observe.clone();
+        let mut read_count = 0;
+        let conflict = native_legacy_configuration(
+            core,
+            pack,
+            profile,
+            fixture,
+            (&request["request"], Some(&plan)),
+            move || {
+                if read_count == 2 {
+                    race_source.write_atomic(&race_path, race_document.as_bytes())?;
+                }
+                read_count += 1;
+                original_reader()
+            },
+            3,
+        )
+        .await
+        .expect_err("native commit validation accepted an intervening Registry save");
+        ensure!(
+            matches!(
+                conflict.downcast_ref::<NativeArtifactError>(),
+                Some(NativeArtifactError::ProviderRejected(error)) if error.code() == "conflict"
+            ),
+            "{conflict:#}"
+        );
+        ensure!(observe()?.as_deref() == Some(newer.as_str()));
 
         let mut invalid_request = request["request"].clone();
         invalid_request["endpoint"] = json!("https://example.invalid/v1");
@@ -223,12 +320,12 @@ async fn verify_legacy_preparation(
             (&request["request"], "null", 1),
         ] {
             source.write_atomic(&path, document.as_bytes())?;
-            let error = native_legacy_prepare(
+            let error = native_legacy_configuration(
                 core,
                 pack,
                 profile,
                 fixture,
-                submitted,
+                (submitted, None),
                 observe.clone(),
                 reads,
             )
@@ -270,12 +367,12 @@ async fn verify_legacy_preparation(
         let replacement_source = source.clone();
         let replacement_path = path.clone();
         let mut replacement = Some(raced.clone());
-        let result = native_legacy_prepare(
+        let result = native_legacy_configuration(
             core,
             pack,
             profile,
             fixture,
-            &request["request"],
+            (&request["request"], None),
             move || {
                 let observed = original_reader()?;
                 // Replace the fixture between PREPARE's two observations.
@@ -319,12 +416,12 @@ async fn verify_legacy_preparation(
 }
 
 #[cfg(unix)]
-async fn native_legacy_prepare(
+async fn native_legacy_configuration(
     core: &Arc<Core>,
     expected: &tobkiri_profile::PackPin,
     profile: &str,
     root: &Path,
-    request: &Value,
+    (request, frozen_plan): (&Value, Option<&Value>),
     mut observe: impl FnMut() -> Result<Option<String>> + Send + 'static,
     expected_reads: usize,
 ) -> Result<Value> {
@@ -377,9 +474,16 @@ async fn native_legacy_prepare(
                 .map(|observation| CoreBuffer::copy_from(observation.as_bytes(), budget))
                 .transpose()?)
         });
-        let result = inspection
-            .invoke_live_legacy_provider_prepare(&pack, profile, &input, read)
-            .await?;
+        let result = if let Some(plan) = frozen_plan {
+            let plan = CoreValue::parse_guest(&serde_json::to_vec(plan)?, &budget)?;
+            inspection
+                .validate_live_legacy_provider_commit(&pack, profile, &input, &plan, read)
+                .await?
+        } else {
+            inspection
+                .invoke_live_legacy_provider_prepare(&pack, profile, &input, read)
+                .await?
+        };
         let output = result.encode_guest(&budget)?;
         Ok(serde_json::from_slice(output.as_bytes())?)
     }
@@ -387,11 +491,11 @@ async fn native_legacy_prepare(
     inspection
         .finish()
         .await
-        .context("finish native Provider preparation")?;
+        .context("finish native Provider configuration validation")?;
     let reads = reads.load(Ordering::Relaxed);
     ensure!(
         reads == expected_reads,
-        "native PREPARE made {reads} Registry reads, expected {expected_reads}: {outcome:?}"
+        "native Provider validation made {reads} Registry reads, expected {expected_reads}: {outcome:?}"
     );
     outcome
 }

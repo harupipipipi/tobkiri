@@ -71,6 +71,15 @@ interface legacy-configuration-live {
   prepare-local: func(request: local-connection, observe: callback-handle) -> result<json, error>;
 }
 
+interface legacy-configuration-commit {
+  use configuration.{local-connection};
+  use tobkiri:core/types@1.2.0.{callback-handle, json, error};
+
+  /// Revalidate the approved base plan using live Registry observations.
+  /// Return the prepared record and expected revision for the original saver.
+  validate-local: func(request: local-connection, plan: json, observe: callback-handle) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
@@ -81,4 +90,5 @@ world pack {
   export configuration-commit;
   export legacy-configuration;
   export legacy-configuration-live;
+  export legacy-configuration-commit;
 }

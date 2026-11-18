@@ -8,7 +8,10 @@ wit_bindgen::generate!({
 
 use crate::{
     component_store::SqlDocumentStore,
-    configuration::{configured_result, prepare_configuration, stage_local_configuration},
+    configuration::{
+        configured_result, prepare_configuration, stage_local_configuration,
+        validate_legacy_local_configuration,
+    },
     failure::{SourceError, SourceResult},
     host::{MANAGE_OPERATION, READONLY_RESOURCE_OPERATION, invoke_manage, invoke_readonly},
     registry::Registry,
@@ -129,8 +132,9 @@ impl exports::local::provider_registry::legacy_configuration::Guest for Pack {
     ) -> Result<String, Error> {
         let observed = [snapshot.as_deref(), preflight.as_deref()].into_iter();
         let profile = current_profile()?;
-        let mut registry = Registry::new(&text(profile), ObservedRegistry(observed), CoreClock)
-            .map_err(source_error)?;
+        let mut registry =
+            Registry::new(&text(profile), ObservedRegistry(observed), ObservationClock)
+                .map_err(source_error)?;
         let plan =
             prepare_configuration(&mut registry, &local_request(request)).map_err(source_error)?;
         encode_reply(&plan)
@@ -139,20 +143,35 @@ impl exports::local::provider_registry::legacy_configuration::Guest for Pack {
 
 impl exports::local::provider_registry::legacy_configuration_live::Guest for Pack {
     fn prepare_local(request: LocalConnection, observe: CallbackHandle) -> Result<String, Error> {
-        let profile = current_profile()?;
-        let store = LiveObservedRegistry {
-            observe,
-            read_error: None,
-        };
-        let mut registry = Registry::new(&text(profile), store, CoreClock).map_err(source_error)?;
-        let plan =
-            prepare_configuration(&mut registry, &local_request(request)).map_err(|error| {
-                match registry.store().read_error {
-                    Some(code) => boundary_error(code, "provider registry observation failed"),
-                    None => source_error(error),
-                }
-            })?;
+        let mut registry = live_registry(observe)?;
+        let plan = prepare_configuration(&mut registry, &local_request(request))
+            .map_err(|error| registry.store().map_error(error))?;
         encode_reply(&plan)
+    }
+}
+
+impl exports::local::provider_registry::legacy_configuration_commit::Guest for Pack {
+    fn validate_local(
+        request: LocalConnection,
+        plan: String,
+        observe: CallbackHandle,
+    ) -> Result<String, Error> {
+        let plan = loads(&plan).map_err(codec_error)?;
+        let mut registry = live_registry(observe)?;
+        let prepared =
+            validate_legacy_local_configuration(&mut registry, &local_request(request), &plan)
+                .map_err(|error| registry.store().map_error(error))?;
+        encode_reply(&prepared)
+    }
+}
+
+struct ObservationClock;
+
+impl Clock for ObservationClock {
+    fn now(&mut self) -> SourceResult<String> {
+        Err(SourceError::permission(
+            "provider registry observations have no clock",
+        ))
     }
 }
 
@@ -177,6 +196,26 @@ impl DocumentStore for ObservedRegistry<'_> {
 struct LiveObservedRegistry {
     observe: CallbackHandle,
     read_error: Option<ErrorCode>,
+}
+
+fn live_registry(
+    observe: CallbackHandle,
+) -> Result<Registry<LiveObservedRegistry, ObservationClock>, Error> {
+    let profile = current_profile()?;
+    let store = LiveObservedRegistry {
+        observe,
+        read_error: None,
+    };
+    Registry::new(&text(profile), store, ObservationClock).map_err(source_error)
+}
+
+impl LiveObservedRegistry {
+    fn map_error(&self, error: SourceError) -> Error {
+        match self.read_error {
+            Some(code) => boundary_error(code, "provider registry observation failed"),
+            None => source_error(error),
+        }
+    }
 }
 
 impl DocumentStore for LiveObservedRegistry {

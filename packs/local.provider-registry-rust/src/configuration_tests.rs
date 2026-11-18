@@ -221,6 +221,44 @@ fn prepare_keeps_raw_digest_and_does_not_write_or_include_the_key() {
     assert!(!format!("{plan:?}").contains("fixture-secret-123"));
 }
 
+#[cfg(feature = "component")]
+#[test]
+fn legacy_validation_compares_the_frozen_plan_before_the_final_registry_read() {
+    let mut registry = registry(WriteBehavior::Normal);
+    let request = local_request();
+    let plan = prepare_configuration(&mut registry, &request).unwrap();
+    registry.store_mut().events.clear();
+
+    let mut changed_plan = plan.clone();
+    put(&mut changed_plan, "profile_id", text("other"));
+    let error =
+        validate_legacy_local_configuration(&mut registry, &request, &changed_plan).unwrap_err();
+    assert_eq!(error.exception_class, "PermissionError");
+    assert_eq!(registry.store().events, ["read", "read"]);
+
+    registry.store_mut().events.clear();
+    let prepared = validate_legacy_local_configuration(&mut registry, &request, &plan).unwrap();
+    assert_eq!(registry.store().events, ["read", "read", "read"]);
+    assert_eq!(prepared.as_object().unwrap().len(), 2);
+    assert_eq!(
+        prepared.get("expected_revision"),
+        plan.get("expected_revision")
+    );
+    let record = prepared.get("record").unwrap();
+    assert_eq!(
+        record.get("provider_instance_id"),
+        plan.get("provider_instance_id")
+    );
+    assert_eq!(record.get("endpoint"), plan.get("endpoint"));
+    assert_eq!(record.get("credential_handle"), Some(&PyValue::Null));
+    assert_eq!(
+        record.get("record_revision"),
+        Some(&PyValue::Int("1".into()))
+    );
+    assert!(record.get("updated_at").is_none());
+    assert_eq!(registry.store().document, None);
+}
+
 #[test]
 fn typed_zeroizing_encoder_matches_canonical_reference_for_nonsecret_input() {
     let input = object([

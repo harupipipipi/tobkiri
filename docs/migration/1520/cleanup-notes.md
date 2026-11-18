@@ -4076,7 +4076,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   互換動作も製品経路で確かめる。
   分離したmacOSプロセス同士でUnix接続のUID・PIDを両方向から観測し、同じ環境で
   Pythonの `monotonic_ns()` と `CLOCK_UPTIME_RAW` の時刻基準が一致することを確認した。
-  `native_provider_prepare_service.rs` と `native_provider_prepare_ipc.py` を元のLauncherと
+  `063b395b5` は `native_provider_prepare_service.rs` と `native_provider_prepare_ipc.py` を元のLauncherと
   署名済みHTTP HostのPREPAREへ接続した。管理対象の実プロセス、Profileの4識別子と
   security epoch、HTTPサーバの世代を照合し、元のHTTP captureとleaseが有効な間だけ
   Registryを読む。結果は実Wasmジョブが終了してから返し、承認と保存は既存の経路で行う。
@@ -4092,6 +4092,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   SetupとRegistryの入力を取り込む段階が残る。署名済みCI検証Appで配布時の流れを調べる。
   Registryと元の呼出しをRustで担える段階で、Pythonからの同期借用、ソケット、稼働世代の
   引き渡しを削除し、現在のlease確認と物理終了証明をNative側の同じ所有者に集約できる。
+  承認後の検証用に `legacy-configuration-commit.validate-local` をProvider Packへ追加。
+  元の計画を再計算する2回の観測を終え、承認時の計画と比較してから3回目の読み取りで
+  既存のprepare-saveを行う。Rustの既存executeも同じ検証を使う。検証用Storeは元の
+  Registryの読み取りだけを受け付ける。Coreは固定したWITと実Wasmの型を確認し、回数を計上する。
+  新しくビルドしたPackのCore試験で、準備済みレコード、計画の改変、3回目直前の競合、
+  通常のPackポート経由のアクセス拒否、検証だけで原本が変化しないことを確認した。
+  Providerの57件、固定Pythonの比較1件、元のPythonでの同じレコードの実行比較、
+  Clippyが通過した。製品の承認済み実行は別のPendingEffectワーカーで動く。接続時は
+  そのワーカーのdispatched lease、確定済みpayload、稼働中Hostとの結び付きを確認する。
+  元のNamedLock・リビジョン照合・不確定な保存応答の
+  確認まで検証した段階で、従来のPython側の保存実装を整理できる。
+  [macOSのSetupレビュー CI 44416408861](https://github.com/harupipipipi/tobkiri/actions/runs/44416408861)
+  は `native-first-setup` のテスト用メタデータ3件で初期化漏れを検出した。通常フィールドの
+  fixtureを維持して、機能有効時の任意Provider情報を初期化した。分離コンパイルで修正前の
+  3件を再現し、修正後は機能の有効・無効の両方で通過した。同じファイルの変更をSetup
+  レビューCIの起動対象に含めた。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

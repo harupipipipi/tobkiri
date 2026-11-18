@@ -72,6 +72,8 @@ pub enum NativeArtifactError {
     TooLarge,
     #[error("native Provider preparation failed")]
     ProviderPrepare(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("native Provider commit validation failed")]
+    ProviderCommitValidation(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("{0}")]
     ProviderRejected(#[from] LegacyProviderPrepareError),
 }
@@ -250,12 +252,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         request: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
-        self.require_ready()?;
-        self.work
-            .get()
-            .phase
-            .compare_exchange(READY, READING, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| NativeDataIoError::Busy)?;
+        self.claim_provider_observation()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let plan = store
             .invoke_live_legacy_provider_prepare(pack, profile_id, request, read)
@@ -267,6 +264,41 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
                 Err(error) => NativeArtifactError::ProviderPrepare(error.into()),
             },
         )
+    }
+
+    /// Validate the frozen plan and record using the original Registry reader.
+    /// The caller owns the approved lease and the later atomic state change.
+    /// The validation Store has no write capability, even while it is live.
+    pub async fn validate_live_legacy_provider_commit(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        request: &CoreValue,
+        plan: &CoreValue,
+        read: LegacyProviderRegistryRead,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.claim_provider_observation()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let validation = store
+            .validate_live_legacy_provider_commit(pack, profile_id, request, plan, read)
+            .await;
+        self.require_live()?;
+        validation.map_err(
+            |error| match error.downcast::<LegacyProviderPrepareError>() {
+                Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+                Err(error) => NativeArtifactError::ProviderCommitValidation(error.into()),
+            },
+        )
+    }
+
+    fn claim_provider_observation(&self) -> Result<(), NativeArtifactError> {
+        self.require_ready()?;
+        self.work
+            .get()
+            .phase
+            .compare_exchange(READY, READING, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| NativeDataIoError::Busy)?;
+        Ok(())
     }
 
     fn require_live(&self) -> Result<(), NativeArtifactError> {

@@ -287,6 +287,60 @@ pub fn prepare_configuration<S: DocumentStore, C: Clock>(
     Ok(plan)
 }
 
+struct ValidatedConfiguration<'a> {
+    request: Request<'a>,
+    expected_revision: &'a PyValue,
+    record: PyValue,
+}
+
+fn validate_frozen_configuration<'a, S: DocumentStore, C: Clock>(
+    registry: &mut Registry<S, C>,
+    request_payload: &'a PyValue,
+    supplied_plan: &'a PyValue,
+) -> SourceResult<ValidatedConfiguration<'a>> {
+    if request_payload.as_object().is_none() || supplied_plan.as_object().is_none() {
+        return Err(SourceError::value(
+            "provider configuration execution is invalid",
+        ));
+    }
+    if !python_equal(
+        supplied_plan,
+        &prepare_configuration(registry, request_payload)?,
+    ) {
+        return Err(SourceError::permission(
+            "provider configuration changed after preparation",
+        ));
+    }
+    let request = configuration_request(request_payload)?;
+    let expected_revision = supplied_plan
+        .get("expected_revision")
+        .expect("a matching plan contains expected_revision");
+    let record = registry.prepare_save(
+        &connection_record(&request, supplied_plan, PyValue::Null),
+        expected_revision,
+    )?;
+    Ok(ValidatedConfiguration {
+        request,
+        expected_revision,
+        record,
+    })
+}
+
+/// Revalidate the original base plan and return the prepared record for the
+/// caller that owns the approved save and the original Registry mutation.
+#[cfg(feature = "component")]
+pub(crate) fn validate_legacy_local_configuration<S: DocumentStore, C: Clock>(
+    registry: &mut Registry<S, C>,
+    request_payload: &PyValue,
+    supplied_plan: &PyValue,
+) -> SourceResult<PyValue> {
+    let validated = validate_frozen_configuration(registry, request_payload, supplied_plan)?;
+    Ok(object([
+        ("record", validated.record),
+        ("expected_revision", validated.expected_revision.clone()),
+    ]))
+}
+
 /// Execute one frozen provider setup. A failed/ambiguous credential create is
 /// never retried or compensated; only a new handle proven absent from a
 /// readable Registry snapshot may be revoked after a failed Registry save.
@@ -308,28 +362,11 @@ pub fn execute_configuration<S: DocumentStore, C: Clock, P: CredentialPort>(
     }
     let request_payload = payload.get("request").expect("request key was checked");
     let supplied_plan = payload.get("plan").expect("plan key was checked");
-    if request_payload.as_object().is_none() || supplied_plan.as_object().is_none() {
-        return Err(SourceError::value(
-            "provider configuration execution is invalid",
-        ));
-    }
-
-    if !python_equal(
-        supplied_plan,
-        &prepare_configuration(registry, request_payload)?,
-    ) {
-        return Err(SourceError::permission(
-            "provider configuration changed after preparation",
-        ));
-    }
-    let request = configuration_request(request_payload)?;
-    let expected_revision = supplied_plan
-        .get("expected_revision")
-        .expect("a matching plan contains expected_revision");
-    let prepared = registry.prepare_save(
-        &connection_record(&request, supplied_plan, PyValue::Null),
+    let ValidatedConfiguration {
+        request,
         expected_revision,
-    )?;
+        record: prepared,
+    } = validate_frozen_configuration(registry, request_payload, supplied_plan)?;
 
     if request.protocol == "local-openai-compatible" {
         match registry.save(&prepared, expected_revision) {
@@ -467,16 +504,21 @@ pub(crate) fn stage_local_configuration<S: DocumentStore, C: Clock>(
 ) -> SourceResult<PyValue> {
     let request = configuration_request(request_payload)?;
     if request.protocol != "local-openai-compatible" {
-        return Err(SourceError::permission("local provider configuration is required"));
+        return Err(SourceError::permission(
+            "local provider configuration is required",
+        ));
     }
     let revision = get(plan, "expected_revision");
     // The next persisted revision must still be readable by Core's StrictV1.
     if !matches!(revision, PyValue::Int(value)
         if value.parse::<u64>().is_ok_and(|n| n < tobkiri_canon::MAX_SAFE_INTEGER))
     {
-        return Err(SourceError::value("provider registry revision is outside the Core JSON domain"));
+        return Err(SourceError::value(
+            "provider registry revision is outside the Core JSON domain",
+        ));
     }
-    let record = registry.prepare_save(&connection_record(&request, plan, PyValue::Null), revision)?;
+    let record =
+        registry.prepare_save(&connection_record(&request, plan, PyValue::Null), revision)?;
     registry.save(&record, revision)
 }
 
