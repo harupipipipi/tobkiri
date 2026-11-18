@@ -122,9 +122,14 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         observation.optimization,
         observation.deadline == deadline,
     );
+    println!(
+        "NATIVE_HARNESS_PREPARATION_PHASES source_us={} compile_us={}",
+        observation.source_micros, observation.compile_micros
+    );
     ensure!(
         observation.deadline == deadline
             && invocation.deadline()? == deadline
+            && observation.source_micros + observation.compile_micros <= observation.elapsed_micros
             && std::time::Instant::now() < deadline,
         "original native deadline exhausted during component preparation"
     );

@@ -18,6 +18,10 @@ use wasmtime::{OptLevel, component::Component};
 pub struct NativePreparationObservation {
     /// Time from the caller's original operation start, including Engine creation.
     pub elapsed_micros: u128,
+    /// Time spent reading and authenticating the selected file and its buffer.
+    pub source_micros: u128,
+    /// Time spent inside Wasmtime's cold `Component::new` on those verified bytes.
+    pub compile_micros: u128,
     /// Actual peak payload charge on that same original account.
     pub peak_charged_bytes: u64,
     /// Bytes actually read from the caller's selected file.
@@ -133,6 +137,7 @@ impl<S: NativeComponentOwner> NativeComponentPreparation<S> {
     /// not source rights, signatures, permissions or native effect authority.
     pub fn compile(self, mut input: File, expected: &Digest) -> Result<PreparedNativeComponent<S>> {
         self.check_live()?;
+        let source_start = Instant::now();
         let metadata = input.metadata()?;
         let size = usize::try_from(metadata.len())?;
         ensure!(
@@ -159,7 +164,10 @@ impl<S: NativeComponentOwner> NativeComponentPreparation<S> {
             input.metadata()?.len() == metadata.len() && &Digest::hash(&bytes) == expected,
             "component changed"
         );
+        let compile_start = Instant::now();
+        let source_micros = compile_start.duration_since(source_start).as_micros();
         let compiled = Component::new(self.engine.engine(), &bytes);
+        let compile_micros = compile_start.elapsed().as_micros();
         // The actual source allocation dies before either prepaid reservation.
         drop(bytes);
         drop(payload);
@@ -175,6 +183,8 @@ impl<S: NativeComponentOwner> NativeComponentPreparation<S> {
         })?;
         let observation = NativePreparationObservation {
             elapsed_micros,
+            source_micros,
+            compile_micros,
             peak_charged_bytes,
             source_bytes: u64::try_from(size)?,
             deadline: self.deadline,
