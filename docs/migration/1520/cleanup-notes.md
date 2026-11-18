@@ -4225,6 +4225,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   エラー時は署名journalを保持し、前任のpointerと予約状態を保つ。Rust 226件、原本比較3件、
   strict Clippy、workflow補助22件が通過。通常のLauncher画面からの呼び出し、実Wasmでの
   全体実行、既存active/ソース更新、並行して旧版snapshotに切り替わった場合の原本同等の復旧は残る。
+  `bb9b623f5` はネイティブの初回発行と復旧発行の完了を、Launcher既存の監督付きKernel
+  再起動へ接続した。ワーカーの後処理を通過した発行結果を使い、レビュー開始時の管理対象
+  世代が一致する場合だけ引き継ぐ。監督処理が従来のHost契約再取得とパネル再認証を行う。
+  後処理失敗や未確定の結果からは再起動を要求しない。発行後の再起動失敗は状態の再読込が必要。
+  この入口はまだ通常のSetup画面に公開していない。実Wasmの実行上限内での確認と、同じ
+  管理対象起動で旧HTTP確定を制限してRendererからの別経路を閉じる作業が残る。
+  元のSetupと隔離確認のフロントエンド25件、整形と差分の検査が通過した。
+  [macOSの再起動・完了結果テスト 44242425667](https://github.com/harupipipipi/tobkiri/actions/runs/44242425667)
+  で実子プロセスと発行結果の回帰試験を実行する。
+  [原本のSetup resolverと初回発行 44241344745](https://github.com/harupipipipi/tobkiri/actions/runs/44241344745)
+  はLinuxとmacOSで通過した。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
