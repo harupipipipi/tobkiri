@@ -124,6 +124,16 @@ impl CatalogIo {
                 write_error(out, "value-error", [error.message.as_str()])?;
             }
             NativeBundleError::Authority(error) => return Err(error.into()),
+            NativeBundleError::NestedLockJson { bytes, detail } => {
+                charge_work(&self.budget, bytes.len() as u64)?;
+                write_error(
+                    out,
+                    "lock-json-source",
+                    ["cannot read bundle lock: ", detail.as_str()?],
+                )?;
+                out.append(b",\"cause\":")?;
+                write_bytes(out, &bytes)?;
+            }
             NativeBundleError::Lock { cause, detail, .. } => {
                 let detail = detail.as_str()?;
                 let message = ["cannot read bundle lock: ", detail];

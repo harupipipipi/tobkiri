@@ -210,7 +210,7 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
             error = opened.get("error")
             message = opened.get("message")
             fields = {"kind", "error", "message"}
-            if error in ("lock-io", "lock-json"):
+            if error in ("lock-io", "lock-json", "lock-json-source"):
                 fields.add("cause")
             if set(opened) != fields or type(message) is not str:
                 raise UnsupportedValue("invalid native catalog snapshot error")
@@ -220,6 +220,24 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
                 raise TypeError(message)
             if error == "value-error":
                 raise ValueError(message)
+            if error == "lock-json-source":
+                if type(opened["cause"]) is not dict:
+                    raise UnsupportedValue("invalid native catalog snapshot lock source")
+                lock_bytes = root._bridge._value(opened["cause"], "bytes")
+                try:
+                    strict_loads(lock_bytes)
+                except ProtocolError as exc:
+                    if (
+                        type(exc) is not CanonicalizationError
+                        or type(exc.__cause__) not in (
+                            json.JSONDecodeError, UnicodeDecodeError,
+                        )
+                    ):
+                        raise UnsupportedValue(
+                            "invalid native catalog snapshot lock source"
+                        ) from None
+                    raise BundleIntegrityError(f"cannot read bundle lock: {exc}") from exc
+                raise UnsupportedValue("invalid native catalog snapshot lock source")
             if error == "lock-io" and type(opened["cause"]) is dict:
                 cause = root._bridge._catalog_error(opened["cause"])
                 if not isinstance(cause, OSError):

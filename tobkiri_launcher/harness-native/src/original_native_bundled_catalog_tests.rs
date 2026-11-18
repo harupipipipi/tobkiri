@@ -286,3 +286,60 @@ async fn owned_catalog_delivery_adopts_only_a_consumed_snapshot() {
         assert!(cleanup.verified());
     });
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn owned_catalog_lock_sends_exact_invalid_source_once() {
+    for raw in [b"{".as_slice(), &[0xff]] {
+        with_source(false, |source, invocation, budget, io, cleanup| {
+            let bundle = source.root.join("ecosystem/defaultspack/v4");
+            fs::create_dir_all(&bundle).unwrap();
+            let lock = bundle.join("bundle.lock.json");
+            fs::write(&lock, raw).unwrap();
+            io.select_packaged(&bundle).unwrap();
+            io.enable_owned_catalog();
+            io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+                .unwrap();
+            call(
+                io,
+                source,
+                invocation,
+                budget,
+                "root",
+                json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+                json!([]),
+            );
+
+            let before = invocation.capacity_snapshot().unwrap();
+            let opened = call(
+                io,
+                source,
+                invocation,
+                budget,
+                "snapshot-open",
+                json!([]),
+                json!([]),
+            );
+            assert_eq!(opened["kind"], "snapshot-error");
+            assert_eq!(opened["error"], "lock-json-source");
+            assert_eq!(opened["cause"]["kind"], "bytes");
+            assert_eq!(
+                base64::Engine::decode(
+                    &base64::engine::general_purpose::STANDARD,
+                    opened["cause"]["value"].as_str().unwrap(),
+                )
+                .unwrap(),
+                raw
+            );
+            let after = invocation.capacity_snapshot().unwrap();
+            assert_eq!(
+                (after.charged_bytes, after.reservations),
+                (before.charged_bytes, before.reservations)
+            );
+            fs::write(&lock, b"{}").unwrap();
+            let reopen = packet(invocation, budget, "snapshot-open", json!([]), json!([]));
+            assert!(io.inspect(source, invocation, &reopen, budget).is_err());
+            assert!(!io.completed());
+            assert!(cleanup.verified());
+        });
+    }
+}

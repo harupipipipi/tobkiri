@@ -569,6 +569,57 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             self.assertEqual((cause.args, cause.filename), (original.args, original.filename))
             self.assertEqual(str(exc.exception), f"cannot read bundle lock: {original}")
 
+            def copied_lock(raw: bytes) -> list[tuple[str, list, dict]]:
+                return [("snapshot-open", [], {
+                    "kind": "snapshot-error",
+                    "error": "lock-json-source",
+                    "message": "native parser diagnostic",
+                    "cause": {"kind": "bytes", "value": base64.b64encode(raw).decode()},
+                })]
+
+            for raw, nested_type, attributes in (
+                (b'{\n"entries": [}', json.JSONDecodeError,
+                 ("msg", "doc", "pos", "lineno", "colno")),
+                (b'{"entries":"\xff"}', UnicodeDecodeError,
+                 ("encoding", "object", "start", "end", "reason")),
+            ):
+                with self.subTest(nested=nested_type):
+                    with self.assertRaises(CanonicalizationError) as original:
+                        module.strict_loads(raw)
+                    with self.assertRaises(module.BundleIntegrityError) as result:
+                        load(copied_lock(raw))
+                    error = result.exception
+                    cause = error.__cause__
+                    nested = cause.__cause__
+                    expected = original.exception.__cause__
+                    self.assertIs(type(cause), CanonicalizationError)
+                    self.assertIs(type(nested), nested_type)
+                    self.assertIs(error.__context__, cause)
+                    self.assertIs(cause.__context__, nested)
+                    self.assertTrue(error.__suppress_context__)
+                    self.assertTrue(cause.__suppress_context__)
+                    self.assertIs(nested.__cause__, expected.__cause__)
+                    self.assertEqual(nested.__suppress_context__,
+                                     expected.__suppress_context__)
+                    context = nested.__context__
+                    expected_context = expected.__context__
+                    self.assertIs(type(context), type(expected_context))
+                    if expected_context is not None:
+                        self.assertEqual(context.args, expected_context.args)
+                        self.assertIs(context.__cause__, expected_context.__cause__)
+                        self.assertIs(context.__context__, expected_context.__context__)
+                        self.assertEqual(context.__suppress_context__,
+                                         expected_context.__suppress_context__)
+                    self.assertEqual(cause.args, original.exception.args)
+                    self.assertEqual(nested.args, expected.args)
+                    self.assertEqual(str(error), f"cannot read bundle lock: {cause}")
+                    for name in attributes:
+                        self.assertEqual(getattr(nested, name), getattr(expected, name))
+
+            for raw in (b"{}", b'{"entries": [], "entries": []}'):
+                with self.subTest(raw=raw), self.assertRaises(UnsupportedValue):
+                    load(copied_lock(raw))
+
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")
         for enabled in (True, False):

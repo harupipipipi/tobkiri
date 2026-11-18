@@ -17,6 +17,10 @@ pub(super) enum NativeBundleError {
     },
     TypeError(&'static str),
     UnrepresentedDocument,
+    NestedLockJson {
+        bytes: Funded<Zeroizing<Vec<u8>>>,
+        detail: CoreBuffer,
+    },
     Lock {
         cause: Box<OriginalAuthorityError>,
         detail: CoreBuffer,
@@ -44,7 +48,7 @@ impl fmt::Display for NativeBundleError {
             Self::UnrepresentedDocument => {
                 f.write_str("the native reader cannot represent this document's validation outcome")
             }
-            Self::Lock { detail, .. } => {
+            Self::Lock { detail, .. } | Self::NestedLockJson { detail, .. } => {
                 write!(
                     f,
                     "cannot read bundle lock: {}",
@@ -292,11 +296,24 @@ fn read_lock<S: crate::BootstrapReviewOwner>(
         Ok(bytes) => bytes,
         Err(error) => return Err(lock_error(error, op, budget)?),
     };
-    json::decode_read_only_strict(&bytes, op, budget).map_err(|error| {
-        match lock_error(error, op, budget) {
-            Ok(error) | Err(error) => error,
+    match json::decode_read_only_strict(&bytes, op, budget) {
+        Ok(lock) => Ok(lock),
+        Err(error)
+            if error.class == "tobkiri_protocol.errors.CanonicalizationError"
+                && matches!(
+                    error.cause,
+                    Some(OriginalAuthorityCause::Python {
+                        class: "json.decoder.JSONDecodeError" | "builtins.UnicodeDecodeError",
+                        ..
+                    })
+                ) =>
+        {
+            let detail = CoreBuffer::copy_from(error.message.as_bytes(), budget)
+                .map_err(|_| OriginalAuthorityError::capacity(STAGE))?;
+            Err(NativeBundleError::NestedLockJson { bytes, detail })
         }
-    })
+        Err(error) => Err(lock_error(error, op, budget)?),
+    }
 }
 
 fn lock_error<S: OriginalAuthorityOwner>(
