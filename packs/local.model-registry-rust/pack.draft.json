@@ -1,0 +1,94 @@
+{
+  "format": "tobkiri.pack/1",
+  "id": "local.model-registry",
+  "version": "0.1.0",
+  "publisher_key": null,
+  "runtime": {
+    "kind": "wasm",
+    "component": "component.wasm",
+    "toolchain": "rust/1.94.0",
+    "config": null
+  },
+  "shapes": [
+    {
+      "name": "local.model-registry.settings",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.model-registry.routing",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.model-registry.data",
+      "version": "1.0",
+      "kind": "data",
+      "wit": "wit/pack.wit"
+    }
+  ],
+  "ports": {
+    "provides": [
+      {
+        "shape": "local.model-registry.settings",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.model-registry.routing",
+        "version": "1.0",
+        "optional": false
+      }
+    ],
+    "consumes": [
+      {
+        "shape": "local.provider-registry.resource",
+        "version": "1.0",
+        "optional": false
+      }
+    ],
+    "untyped": []
+  },
+  "flows": [],
+  "overlays": [],
+  "stores": [
+    {
+      "name": "model-registry",
+      "tier": "private",
+      "data_shape": "local.model-registry.data@1.0",
+      "seed": null
+    }
+  ],
+  "permissions": {
+    "storage": {
+      "private": true
+    },
+    "ports": [
+      "local.provider-registry.resource@1.0"
+    ],
+    "wasm": {
+      "fuel_per_call": 100000000,
+      "memory_mib": 32,
+      "wall_ms": 10000,
+      "table_elements": 10000,
+      "output_bytes": 1048576
+    },
+    "loops": {
+      "max_iterations": 100,
+      "max_wall_ms": 10000,
+      "max_cost_units": 10000
+    }
+  },
+  "ui": null,
+  "files": [
+    "component.wasm",
+    "wit/data.shape.json",
+    "wit/deps/core.wit",
+    "wit/deps/provider-registry.wit",
+    "wit/pack.wit",
+    "wit/routing.shape.json",
+    "wit/settings.shape.json"
+  ]
+}

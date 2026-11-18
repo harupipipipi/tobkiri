@@ -309,8 +309,12 @@ impl Host {
                     .source
                     .strip_prefix("file:")
                     .context("fixture review requires an explicit local Pack source")?;
-                let pack =
-                    tobkiri_manifest::verify_directory(Path::new(path), &profile.publishers)?;
+                let path = Path::new(path);
+                let pack = if path.is_dir() {
+                    tobkiri_manifest::verify_directory(path, &profile.publishers)?
+                } else {
+                    tobkiri_manifest::verify_tpk_file(path, &profile.publishers)?
+                };
                 anyhow::ensure!(
                     pack.hash == pin.sha256
                         && pack.manifest.id == pin.id

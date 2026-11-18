@@ -1,0 +1,73 @@
+{
+  "format": "tobkiri.pack/1",
+  "id": "local.saved-conversation",
+  "version": "0.1.0",
+  "publisher_key": null,
+  "runtime": {
+    "kind": "wasm",
+    "component": "component.wasm",
+    "toolchain": "rust/1.94.0",
+    "config": null
+  },
+  "shapes": [
+    {
+      "name": "local.saved-conversation.model",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.saved-conversation.data",
+      "version": "1.0",
+      "kind": "data",
+      "wit": "wit/pack.wit"
+    }
+  ],
+  "ports": {
+    "provides": [
+      {
+        "shape": "local.saved-conversation.model",
+        "version": "1.0",
+        "optional": false
+      }
+    ],
+    "consumes": [],
+    "untyped": []
+  },
+  "flows": [],
+  "overlays": [],
+  "stores": [
+    {
+      "name": "saved-conversation",
+      "tier": "private",
+      "data_shape": "local.saved-conversation.data@1.0",
+      "seed": null
+    }
+  ],
+  "permissions": {
+    "storage": {
+      "private": true
+    },
+    "ports": [],
+    "wasm": {
+      "fuel_per_call": 100000000,
+      "memory_mib": 32,
+      "wall_ms": 10000,
+      "table_elements": 10000,
+      "output_bytes": 1048576
+    },
+    "loops": {
+      "max_iterations": 100,
+      "max_wall_ms": 10000,
+      "max_cost_units": 10000
+    }
+  },
+  "ui": null,
+  "files": [
+    "component.wasm",
+    "wit/data.shape.json",
+    "wit/deps/core.wit",
+    "wit/model.shape.json",
+    "wit/pack.wit"
+  ]
+}

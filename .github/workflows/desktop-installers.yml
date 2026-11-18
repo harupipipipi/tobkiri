@@ -10,6 +10,9 @@ on:
       native_setup_receipt_sha256:
         type: string
         required: true
+      native_registry_packs_receipt_sha256:
+        type: string
+        default: ""
   push:
     branches: [master, soon]
     paths:
@@ -503,6 +506,13 @@ jobs:
           name: whole-native-harness-component
           path: ${{ runner.temp }}/harness-built
 
+      - name: Download the same-run Registry Packs for the CI installer
+        if: inputs.native_setup
+        uses: actions/download-artifact@v4
+        with:
+          name: native-registry-packs
+          path: ${{ runner.temp }}/native-registry-packs
+
       - name: Bind the installer to the verified Launcher staging receipt
         if: inputs.native_setup
         shell: bash
@@ -539,14 +549,18 @@ jobs:
           TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
           NATIVE_SETUP: ${{ inputs.native_setup || false }}
           EXPECTED_LAUNCHER_RECEIPT_SHA256: ${{ inputs.native_setup_receipt_sha256 }}
+          EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256: ${{ inputs.native_registry_packs_receipt_sha256 }}
         run: |
           set -euo pipefail
           build_args=(--config src-tauri/tauri.macos.ci-e2e.conf.json --bundles app --ci
             ${{ matrix.signing_args }})
           if [[ "$NATIVE_SETUP" == true ]]; then
+            [[ "$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]]
             export TOBKIRI_SETUP_COMPONENT_SOURCE="$RUNNER_TEMP/harness-built/harness-native/harness-native-app-frame/work/component.wasm"
             export TOBKIRI_SETUP_COMPONENT_RECEIPT="$RUNNER_TEMP/harness-native-inputs/launcher-component.json"
             export TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$EXPECTED_LAUNCHER_RECEIPT_SHA256"
+            export TOBKIRI_REGISTRY_PACK_SOURCE_DIR="$RUNNER_TEMP/native-registry-packs"
+            export TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256="$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256"
             build_args+=(--features native-first-setup)
           fi
           python -B scripts/run_tauri_build.py build --target ${{ matrix.target }} "${build_args[@]}"
@@ -664,6 +678,7 @@ jobs:
         shell: bash
         env:
           NATIVE_SETUP: ${{ inputs.native_setup || false }}
+          EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256: ${{ inputs.native_registry_packs_receipt_sha256 }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -677,7 +692,8 @@ jobs:
             --expected-manifest-sha256 "$TOBKIRI_PACKAGED_PYTHON_INVENTORY_SHA256")
           if [[ "$NATIVE_SETUP" == true ]]; then
             verify_args+=(--expected-native-setup-component-sha256 "$TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_SHA256"
-              --expected-native-setup-component-bytes "$TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_BYTES")
+              --expected-native-setup-component-bytes "$TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_BYTES"
+              --expected-native-registry-packs-receipt-sha256 "$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256")
           fi
           bash scripts/verify_packaged_python_dmg.sh "${verify_args[@]}"
           printf 'path=%s\n' "$dmg" >> "$GITHUB_OUTPUT"

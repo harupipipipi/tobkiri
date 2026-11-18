@@ -3979,6 +3979,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `presentation::launch_verified_target_once` の実行IDと、署名済み置換Pack群で確認したCore
   の固定値を結ぶ。実行中の管理対象子プロセスの失効は既存の終了管理へ渡す。DMGの現行手順と
   照合した範囲で、試験用Harness ProfileのIDを変更して使う方法では元のPackと権限を復元できない。
+- Provider Registry、Model Registry、Saved ConversationのManifestとshapeを各Packのソースに移し、
+  E2E内の仮Manifest生成を削除した。`stage_registry_packs.py` が標準の `tobkiri pack
+  manifest/build/verify` で実 `.tpk` を作り、アーカイブの長さ・SHA-256とCoreで使うManifest
+  digestを記録する。統合試験はファイル形式のPack pinを通して同じアーカイブをCoreへ渡す。
+  CoreのローカルPack規則と既存のDATA所有者に合わせて `local.*` を保持した。
+  非配布用macOS CI/E2Eでは、同じrunの作成ジョブから受け取るreceiptのSHA-256を検証して
+  アプリのruntimeリソース目録へ格納する。DMGマウント後も同じreceiptと3ファイルのサイズ・
+  digestを照合する。通常の配布ビルドにはこのステージを有効にしない。既存LauncherのProfileと
+  Native Sessionを関連付け、このPack群を設定・会話から使う製品の接続は引き続き未完了。
+  ローカルのPack CLI 2件、実Wasm/Core 4件、strict Clippy、ワークフロー38件が通過。
+  同じコンポーネントを2回パッケージしたバイト列とreceiptは一致し、変更したWasmを含む
+  アーカイブを標準verifierが拒否した。
+  Launcherのビルド処理を使った3件で、格納した4ファイルがruntime目録と一致し、改変・
+  リンク差し替えを拒否した。Launcherスクリプト163件（実DMGのfixtureを含む）が通過。
+  実 `.tpk` 3個を入れたfixture DMGも読み取り専用でマウントし、receiptと各Packを検証した。
+  旧フロントエンド試験のStart欄を、同ボタンが購読準備までdisabledである現行実装に揃えた。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

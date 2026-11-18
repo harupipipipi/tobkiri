@@ -5,7 +5,7 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc, time::Duration};
 use support::registry::{
-    PROVIDER_COMMIT, PROVIDER_CONFIGURATION as CONFIGURATION, PROVIDER_INTERFACES,
+    PROVIDER_COMMIT, PROVIDER_CONFIGURATION as CONFIGURATION,
     PROVIDER_LEGACY_CONFIGURATION as LEGACY_CONFIGURATION,
 };
 use support::{Host, canon, physical_temp, registry, within_session};
@@ -375,18 +375,10 @@ async fn verify_unknown_local_commit(
 }
 
 #[tokio::test]
-#[ignore = "requires a source-built provider Registry Wasm component"]
+#[ignore = "requires a staged Provider Registry Pack archive"]
 async fn provider_registry_uses_gated_private_storage_and_profile_revisions() -> Result<()> {
-    let artifact = std::env::var_os("TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT")
-        .context("source-built provider Registry component required")?;
     let directory = physical_temp()?;
-    let packs = [registry::pack(
-        directory.path(),
-        Path::new(&artifact),
-        PACK,
-        PROVIDER_INTERFACES,
-        &[],
-    )?];
+    let packs = [registry::pack(PACK)?];
     let a = registry::profile(
         "prof_provider_a",
         &packs,

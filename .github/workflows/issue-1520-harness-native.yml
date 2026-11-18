@@ -718,10 +718,49 @@ jobs:
             ${{ runner.temp }}/original-catalog-nine-prefix/actual-catalog-nine-comparison.json
           if-no-files-found: warn
 
+  build-native-registry-packs:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    outputs:
+      receipt_sha256: ${{ steps.archives.outputs.receipt_sha256 }}
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-native-registry-packs
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - name: Build and verify the Registry Pack archives
+        id: archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --target wasm32-wasip2 --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-provider-registry-rust -p tobkiri-pack-model-registry-rust \
+            -p tobkiri-pack-saved-conversation-rust --features component
+          cargo build --locked -p tobkiri-cli --bin tobkiri
+          python3 -B packs/stage_registry_packs.py \
+            --tobkiri "$CARGO_TARGET_DIR/debug/tobkiri" \
+            --components "$CARGO_TARGET_DIR/wasm32-wasip2/release" \
+            --output "$RUNNER_TEMP/native-registry-packs"
+          receipt_sha256="$(sha256sum "$RUNNER_TEMP/native-registry-packs/receipt.json" | cut -d ' ' -f 1)"
+          printf 'receipt_sha256=%s\n' "$receipt_sha256" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-registry-packs
+          path: ${{ runner.temp }}/native-registry-packs/
+          if-no-files-found: error
+
   package-native-setup-dmg:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg }}
-    needs: execute-original-native-bootstrap
+    needs: [execute-original-native-bootstrap, build-native-registry-packs]
     uses: ./.github/workflows/desktop-installers.yml
     with:
       native_setup: true
       native_setup_receipt_sha256: ${{ needs.execute-original-native-bootstrap.outputs.launcher_receipt_sha256 }}
+      native_registry_packs_receipt_sha256: ${{ needs.build-native-registry-packs.outputs.receipt_sha256 }}

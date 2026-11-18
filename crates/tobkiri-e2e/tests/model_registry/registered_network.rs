@@ -6,6 +6,7 @@ use std::{
     fs,
     io::{BufRead, BufReader, Read, Write},
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
+    path::Path,
     thread,
     time::{Duration, Instant},
 };
@@ -214,11 +215,9 @@ async fn registered_core(
     origins: &[String],
     wall_ms: u64,
 ) -> Result<(Core, ProfileStartBinding)> {
-    let [model, provider] = packs(root)?;
+    let [model, provider] = packs()?;
     let [ui, openai] = streaming_packs(root, origins, wall_ms)?;
-    let artifact = std::env::var_os("TOBKIRI_TEST_SAVED_CONVERSATION_COMPONENT")
-        .context("source-built saved conversation component required")?;
-    let saved = registry::pack(root, Path::new(&artifact), SAVED_PACK, &["model"], &[])?;
+    let saved = registry::pack(SAVED_PACK)?;
     let owner = saved.pin.clone();
     let mut profile = registry::profile(
         "prof_registered_conversation",
@@ -391,7 +390,7 @@ async fn stream(
 }
 
 #[tokio::test]
-#[ignore = "requires source-built registered OpenAI and Registry Wasm components"]
+#[ignore = "requires a source-built OpenAI component and staged Registry Pack archives"]
 async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
     let listeners = [
         TcpListener::bind("127.0.0.1:0")?,

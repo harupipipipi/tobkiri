@@ -111,8 +111,10 @@ class NativeWorkflowContracts(unittest.TestCase):
         package = job(self.workflow, "package-native-setup-dmg")
         for required in (
             "inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg",
-            "needs: execute-original-native-bootstrap", "uses: ./.github/workflows/desktop-installers.yml",
+            "needs: [execute-original-native-bootstrap, build-native-registry-packs]",
+            "uses: ./.github/workflows/desktop-installers.yml",
             "native_setup: true", "needs.execute-original-native-bootstrap.outputs.launcher_receipt_sha256",
+            "needs.build-native-registry-packs.outputs.receipt_sha256",
         ):
             self.assertIn(required, package)
 
@@ -121,6 +123,15 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn("if: inputs.native_setup", artifact)
         self.assertIn("name: whole-native-harness-component", artifact)
         self.assertNotIn("run-id:", artifact)
+        registry = job(self.workflow, "build-native-registry-packs")
+        self.assertIn("inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg", registry)
+        self.assertIn("steps.archives.outputs.receipt_sha256", registry)
+        self.assertIn("packs/stage_registry_packs.py", registry)
+        self.assertIn("name: native-registry-packs", registry)
+        registry_download = step(installer, "Download the same-run Registry Packs for the CI installer")
+        self.assertIn("if: inputs.native_setup", registry_download)
+        self.assertIn("name: native-registry-packs", registry_download)
+        self.assertNotIn("run-id:", registry_download)
         bind = step(installer, "Bind the installer to the verified Launcher staging receipt")
         self.assertIn("harness_native_ci_inputs.py", bind)
         self.assertIn("--app-backend", bind)
@@ -129,14 +140,18 @@ class NativeWorkflowContracts(unittest.TestCase):
         app = step(installer, "Build non-publishable macOS CI/E2E application")
         self.assertIn("--features native-first-setup", app)
         self.assertIn("TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256", app)
+        self.assertIn("TOBKIRI_REGISTRY_PACK_SOURCE_DIR", app)
+        self.assertIn("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256", app)
         self.assertIn("--bundles app --ci", app)
         shell = step(installer, "Build verified Tauri Shell artifact")
         self.assertNotIn("TOBKIRI_SETUP_COMPONENT", shell)
+        self.assertNotIn("TOBKIRI_REGISTRY_PACK_", shell)
         self.assertNotIn("native-first-setup", shell)
         mounted = step(installer, "Verify mounted macOS installer resources")
         self.assertIn("verify_packaged_python_dmg.sh", mounted)
         self.assertIn("--expected-native-setup-component-sha256", mounted)
         self.assertIn("--expected-native-setup-component-bytes", mounted)
+        self.assertIn("--expected-native-registry-packs-receipt-sha256", mounted)
         self.assertIn('>> "$GITHUB_OUTPUT"', mounted)
         upload = step(installer, "Upload desktop installer")
         self.assertIn("non-publishable-ci-e2e", upload)

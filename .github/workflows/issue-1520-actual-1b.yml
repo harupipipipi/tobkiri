@@ -13,6 +13,7 @@ on:
       - 'packs/local.saved-conversation-rust/**'
       - 'packs/local.openai-compat-provider/src/**'
       - 'packs/local.provider-registry-rust/**'
+      - 'packs/stage_registry_packs.py'
       - 'packs/local.harness-prompt/**'
       - 'packs/local.harness-conversation-store/**'
       - 'tools/quality/issue_1520_llama_cancel_probe.py'
@@ -55,10 +56,17 @@ jobs:
           -p tobkiri-pack-model-registry-rust -p tobkiri-pack-provider-registry-rust
           -p tobkiri-pack-saved-conversation-rust -p tobkiri-pack-openai-compat-provider
           --features tobkiri-pack-model-registry-rust/component,tobkiri-pack-provider-registry-rust/component,tobkiri-pack-saved-conversation-rust/component
+      - name: Author and verify the Registry Pack archives
+        run: |
+          cargo build --locked -p tobkiri-cli --bin tobkiri
+          python3 -B packs/stage_registry_packs.py \
+            --tobkiri "$CARGO_TARGET_DIR/debug/tobkiri" \
+            --components "$CARGO_TARGET_DIR/wasm32-wasip2/release" \
+            --output "$RUNNER_TEMP/registry-packs"
+          echo "TOBKIRI_TEST_REGISTRY_PACKS=$RUNNER_TEMP/registry-packs" >> "$GITHUB_ENV"
       - name: Verify local provider preparation and approved save in the Wasm Registry
         shell: bash
         run: |
-          export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/registered-provider.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test provider_registry -- \
@@ -252,10 +260,7 @@ jobs:
           curl --fail --silent --show-error --max-time 5 http://127.0.0.1:18081/v1/models | \
             python3 -B -c 'import json,sys; assert [m["id"] for m in json.load(sys.stdin)["data"]] == ["gemma3-1b-local"]'
           export TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN=http://127.0.0.1:18081
-          export TOBKIRI_TEST_MODEL_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_model_registry_rust.wasm"
-          export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
           export TOBKIRI_TEST_REGISTERED_OPENAI_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_openai_compat_provider.wasm"
-          export TOBKIRI_TEST_SAVED_CONVERSATION_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_saved_conversation_rust.wasm"
           status=0
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/registered-1b.log" --expected-passed 1 -- \
@@ -275,6 +280,7 @@ jobs:
             ${{ runner.temp }}/actual-1b.receipt.json
             ${{ runner.temp }}/direct-1b-cancel-probe.log
             ${{ runner.temp }}/registered-1b.log
+            ${{ runner.temp }}/registry-packs/
             ${{ runner.temp }}/registered-1b.receipt.json
             ${{ runner.temp }}/registered-provider.log
             ${{ runner.temp }}/registered-provider.receipt.json

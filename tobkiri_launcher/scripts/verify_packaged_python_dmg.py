@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import plistlib
 import re
@@ -15,7 +16,8 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import ExitStack
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
@@ -25,6 +27,20 @@ MOUNT_PREFIX = ".tobkiri-dmg-verify."
 DEVICE_PATTERN = re.compile(r"^/dev/disk[0-9]+(?:s[0-9]+)?$")
 NATIVE_SETUP_COMPONENT = Path("Contents/Resources/app/native-setup/component.wasm")
 MAX_NATIVE_SETUP_COMPONENT_BYTES = 32 * 1024 * 1024
+NATIVE_REGISTRY_PACKS = Path("Contents/Resources/app/native-registry-packs")
+REGISTRY_RECEIPT_NAME = "receipt.json"
+REGISTRY_RECEIPT_FORMAT = "tobkiri.registry-packs/1"
+REGISTRY_ARCHIVES = {
+    "local.provider-registry": "local.provider-registry.tpk",
+    "local.model-registry": "local.model-registry.tpk",
+    "local.saved-conversation": "local.saved-conversation.tpk",
+}
+MAX_REGISTRY_RECEIPT_BYTES = 16 * 1024
+# Match the package limit in crates/tobkiri-manifest/src/package.rs.
+MAX_REGISTRY_ARCHIVE_BYTES = 512 * 1024 * 1024
+SHA256 = re.compile(r"[0-9a-f]{64}")
+TAGGED_SHA256 = re.compile(r"sha256:[0-9a-f]{64}")
+PACK_VERSION = re.compile(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}")
 ALLOWED_SYSTEM_ALIASES = {
     Path("/var"): Path("/private/var"),
     Path("/tmp"): Path("/private/tmp"),
@@ -320,10 +336,10 @@ class MountedDmg:
         self.verify_mounted()
         return app_bundle
 
-    def verify_native_setup_component(
-        self, app_bundle: Path, expected_bytes: int, expected_sha256: str
-    ) -> None:
-        """Hash the fixed physical Wasm resource from the held mounted root."""
+    @contextmanager
+    def _resource_directory(
+        self, app_bundle: Path, relative: Path, label: str
+    ) -> Iterator[tuple[int, int]]:
         self.verify_mounted()
         assert self.mounted_fd is not None
         assert self.mounted_identity is not None
@@ -331,44 +347,61 @@ class MountedDmg:
         try:
             with ExitStack() as opened:
                 directory = self.mounted_fd
-                for part in (app_bundle.name, *NATIVE_SETUP_COMPONENT.parent.parts):
+                for part in (app_bundle.name, *relative.parts):
                     directory = os.open(part, _directory_flags(), dir_fd=directory)
                     opened.callback(os.close, directory)
                     if os.fstat(directory).st_dev != volume_device:
-                        raise DmgVerificationError("native Setup resource left the DMG")
-                descriptor = os.open(
-                    NATIVE_SETUP_COMPONENT.name,
-                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
-                    dir_fd=directory,
-                )
-                opened.callback(os.close, descriptor)
-                metadata = os.fstat(descriptor)
-                if (
-                    not stat.S_ISREG(metadata.st_mode)
-                    or metadata.st_dev != volume_device
-                    or metadata.st_nlink != 1
-                ):
-                    raise DmgVerificationError(
-                        "native Setup Wasm is not a physical regular file on the DMG"
-                    )
-                if metadata.st_size != expected_bytes:
-                    raise DmgVerificationError("native Setup Wasm size differs")
-                digest = hashlib.sha256()
-                size = 0
-                while block := os.read(descriptor, 64 * 1024):
-                    size += len(block)
-                    if size > expected_bytes:
-                        raise DmgVerificationError("native Setup Wasm size differs")
-                    digest.update(block)
-                if size != expected_bytes:
-                    raise DmgVerificationError("native Setup Wasm size differs")
-                if digest.hexdigest() != expected_sha256:
-                    raise DmgVerificationError("native Setup Wasm SHA-256 differs")
+                        raise DmgVerificationError(f"{label} left the DMG")
+                yield directory, volume_device
         except OSError as error:
             raise DmgVerificationError(
-                "native Setup Wasm is missing or could not be read without following links"
+                f"{label} is missing or could not be read without following links"
             ) from error
         self.verify_mounted()
+
+    def verify_native_setup_component(
+        self, app_bundle: Path, expected_bytes: int, expected_sha256: str
+    ) -> None:
+        """Hash the fixed physical Wasm resource from the held mounted root."""
+        label = "native Setup Wasm"
+        with self._resource_directory(
+            app_bundle, NATIVE_SETUP_COMPONENT.parent, label
+        ) as (directory, device):
+            _verify_resource(
+                directory,
+                device,
+                NATIVE_SETUP_COMPONENT.name,
+                label,
+                expected_bytes,
+                expected_sha256,
+            )
+
+    def verify_native_registry_packs(
+        self, app_bundle: Path, expected_receipt_sha256: str
+    ) -> None:
+        """Verify the pinned receipt and each physical Registry Pack archive."""
+        with self._resource_directory(
+            app_bundle, NATIVE_REGISTRY_PACKS, "native Registry Packs"
+        ) as (directory, device):
+            _verify_registry_directory_entries(directory)
+            receipt_label = "native Registry Packs receipt"
+            with _resource_file(
+                directory, device, REGISTRY_RECEIPT_NAME, receipt_label
+            ) as (descriptor, size):
+                if not 0 < size <= MAX_REGISTRY_RECEIPT_BYTES:
+                    raise DmgVerificationError(f"{receipt_label} size is out of range")
+                payload = b"".join(_file_blocks(descriptor, size, receipt_label))
+            if hashlib.sha256(payload).hexdigest() != expected_receipt_sha256:
+                raise DmgVerificationError(f"{receipt_label} SHA-256 differs")
+            for pin in _registry_archive_pins(payload):
+                _verify_resource(
+                    directory,
+                    device,
+                    pin.name,
+                    f"native Registry Pack {pin.name}",
+                    pin.size,
+                    pin.sha256,
+                )
 
     def detach(self) -> None:
         """Detach only the device established by the successful attach plist."""
@@ -409,6 +442,146 @@ class MountedDmg:
         os.close(self.parent_fd)
 
 
+@contextmanager
+def _resource_file(
+    directory: int, device: int, name: str, label: str
+) -> Iterator[tuple[int, int]]:
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+            dir_fd=directory,
+        )
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_dev != device
+                or metadata.st_nlink != 1
+            ):
+                raise DmgVerificationError(
+                    f"{label} is not a physical regular file on the DMG"
+                )
+            yield descriptor, metadata.st_size
+        finally:
+            os.close(descriptor)
+    except OSError as error:
+        raise DmgVerificationError(
+            f"{label} is missing or could not be read without following links"
+        ) from error
+
+
+def _file_blocks(descriptor: int, expected_bytes: int, label: str) -> Iterator[bytes]:
+    remaining = expected_bytes
+    while block := os.read(descriptor, min(64 * 1024, remaining + 1)):
+        remaining -= len(block)
+        if remaining < 0:
+            raise DmgVerificationError(f"{label} size differs")
+        yield block
+    if remaining:
+        raise DmgVerificationError(f"{label} size differs")
+
+
+def _verify_resource(
+    directory: int,
+    device: int,
+    name: str,
+    label: str,
+    expected_bytes: int,
+    expected_sha256: str,
+) -> None:
+    with _resource_file(directory, device, name, label) as (descriptor, size):
+        if size != expected_bytes:
+            raise DmgVerificationError(f"{label} size differs")
+        digest = hashlib.sha256()
+        for block in _file_blocks(descriptor, expected_bytes, label):
+            digest.update(block)
+        if digest.hexdigest() != expected_sha256:
+            raise DmgVerificationError(f"{label} SHA-256 differs")
+
+
+def _verify_registry_directory_entries(directory: int) -> None:
+    expected = {REGISTRY_RECEIPT_NAME, *REGISTRY_ARCHIVES.values()}
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if entry.name not in expected:
+                raise DmgVerificationError("native Registry Packs has extra entries")
+            expected.remove(entry.name)
+    if expected:
+        raise DmgVerificationError("native Registry Packs is missing required entries")
+
+
+@dataclass(frozen=True)
+class _RegistryArchivePin:
+    name: str
+    size: int
+    sha256: str
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _matches(pattern: re.Pattern[str], value: object) -> bool:
+    return isinstance(value, str) and pattern.fullmatch(value) is not None
+
+
+def _registry_archive_pins(payload: bytes) -> list[_RegistryArchivePin]:
+    try:
+        receipt = json.loads(
+            payload.decode("utf-8"), object_pairs_hook=_unique_json_object
+        )
+    except (ValueError, RecursionError) as error:
+        raise DmgVerificationError(
+            "native Registry Packs receipt is invalid"
+        ) from error
+    if (
+        not isinstance(receipt, dict)
+        or receipt.keys() != {"format", "packs"}
+        or receipt["format"] != REGISTRY_RECEIPT_FORMAT
+        or not isinstance(receipt["packs"], list)
+        or len(receipt["packs"]) != len(REGISTRY_ARCHIVES)
+    ):
+        raise DmgVerificationError("native Registry Packs receipt has the wrong format")
+
+    pins = []
+    for (pack_id, archive), record in zip(REGISTRY_ARCHIVES.items(), receipt["packs"]):
+        if not isinstance(record, dict) or record.keys() != {
+            "id",
+            "version",
+            "archive",
+            "archive_bytes",
+            "archive_sha256",
+            "manifest_sha256",
+        }:
+            raise DmgVerificationError(
+                "native Registry Packs receipt has an invalid record"
+            )
+        if record["id"] != pack_id or record["archive"] != archive:
+            raise DmgVerificationError(
+                "native Registry Packs receipt has an invalid archive"
+            )
+        size = record["archive_bytes"]
+        digest = record["archive_sha256"]
+        if (
+            type(size) is not int
+            or not 0 < size <= MAX_REGISTRY_ARCHIVE_BYTES
+            or not _matches(TAGGED_SHA256, digest)
+            or not _matches(TAGGED_SHA256, record["manifest_sha256"])
+            or not _matches(PACK_VERSION, record["version"])
+        ):
+            raise DmgVerificationError(
+                "native Registry Packs receipt has an invalid pin"
+            )
+        pins.append(_RegistryArchivePin(archive, size, digest.removeprefix("sha256:")))
+    return pins
+
+
 def _canonical_regular_file(path: Path, label: str) -> Path:
     if not path.is_absolute():
         path = path.absolute()
@@ -439,6 +612,10 @@ def verify_dmg(args: argparse.Namespace) -> None:
                 app_bundle,
                 args.expected_native_setup_component_bytes,
                 args.expected_native_setup_component_sha256,
+            )
+        if args.expected_native_registry_packs_receipt_sha256 is not None:
+            mount.verify_native_registry_packs(
+                app_bundle, args.expected_native_registry_packs_receipt_sha256
             )
         for executable, arguments in (
             (
@@ -493,6 +670,8 @@ def verify_dmg(args: argparse.Namespace) -> None:
     print(f"Verified mounted DMG packaged Python: {dmg}")
     if args.expected_native_setup_component_sha256 is not None:
         print(f"Verified mounted DMG native Setup Wasm: {dmg}")
+    if args.expected_native_registry_packs_receipt_sha256 is not None:
+        print(f"Verified mounted DMG native Registry Packs: {dmg}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -503,12 +682,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-manifest-sha256", required=True)
     parser.add_argument("--expected-native-setup-component-sha256")
     parser.add_argument("--expected-native-setup-component-bytes")
+    parser.add_argument("--expected-native-registry-packs-receipt-sha256")
     args = parser.parse_args()
     sha256 = args.expected_native_setup_component_sha256
     size = args.expected_native_setup_component_bytes
     if (sha256 is None) != (size is None):
         parser.error("native Setup Wasm SHA-256 and byte count must be supplied together")
-    if sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", sha256):
+    if sha256 is not None and not SHA256.fullmatch(sha256):
         parser.error("expected native Setup Wasm SHA-256 is invalid")
     if size is not None:
         if not re.fullmatch(r"[1-9][0-9]{0,7}", size) or (
@@ -516,6 +696,9 @@ def parse_args() -> argparse.Namespace:
         ):
             parser.error("expected native Setup Wasm byte count is out of range")
         args.expected_native_setup_component_bytes = int(size)
+    receipt_digest = args.expected_native_registry_packs_receipt_sha256
+    if receipt_digest is not None and not SHA256.fullmatch(receipt_digest):
+        parser.error("expected native Registry Packs receipt SHA-256 is invalid")
     return args
 
 
@@ -527,7 +710,7 @@ def main() -> int:
     for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, _raise_for_signal)
     args = parse_args()
-    if not re.fullmatch(r"[0-9a-f]{64}", args.expected_manifest_sha256):
+    if not SHA256.fullmatch(args.expected_manifest_sha256):
         raise DmgVerificationError("expected sealed Python manifest digest is invalid")
     verify_dmg(args)
     return 0

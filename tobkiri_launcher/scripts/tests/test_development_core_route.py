@@ -37,6 +37,7 @@ class SetupDocument(HTMLParser):
         self.paragraphs: list[str] = []
         self.scripts: list[dict[str, str | None]] = []
         self.inputs: dict[str, dict[str, str | None]] = {}
+        self.buttons: dict[str, dict[str, str | None]] = {}
         self._paragraph: list[str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -49,6 +50,8 @@ class SetupDocument(HTMLParser):
             self.scripts.append(fields)
         if tag == "input" and fields.get("id") is not None:
             self.inputs[str(fields["id"])] = fields
+        if tag == "button" and fields.get("id") is not None:
+            self.buttons[str(fields["id"])] = fields
 
     def handle_data(self, data: str) -> None:
         if self._paragraph is not None:
@@ -371,7 +374,7 @@ class DevelopmentCoreRouteTests(unittest.TestCase):
             document.ids,
             [
                 "profile-setup", "profile-setup-cli", "profile-form", "profile-id",
-                "stop", "status", "pack-ui", "terminal-output", "terminal-form",
+                "start", "stop", "status", "pack-ui", "terminal-output", "terminal-form",
                 "terminal-prompt", "terminal-input",
             ],
         )
@@ -384,6 +387,8 @@ class DevelopmentCoreRouteTests(unittest.TestCase):
         self.assertIn("ordinary verification and approval", document.paragraphs[1])
         self.assertEqual(document.inputs["profile-id"]["maxlength"], "128")
         self.assertIn("required", document.inputs["profile-id"])
+        self.assertEqual(document.buttons["start"]["type"], "submit")
+        self.assertIn("disabled", document.buttons["start"])
         self.assertEqual(document.inputs["terminal-input"]["maxlength"], "65536")
         self.assertEqual(
             document.scripts, [{"type": "module", "src": "/src/core-host/main.ts"}]

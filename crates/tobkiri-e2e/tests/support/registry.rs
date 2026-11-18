@@ -1,32 +1,23 @@
-//! Verified fixture Packs with private Registry storage.
+//! Verified Registry archives and test-only supporting Packs.
 
-use super::repo;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde_json::json;
-use std::{collections::BTreeMap, fs, path::Path};
-use tobkiri_canon::{Digest, ids::ShapeRef};
-use tobkiri_gate::{LoopLimits, PermissionSet, ResourceLimits, StoragePermissions};
-use tobkiri_manifest::{
-    FileEntry, PackManifest, PortDeclaration, Ports, RuntimeSpec, ShapeDefinition, ShapeKind,
-    StoreDefinition, StoreTier,
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
 };
+use tobkiri_canon::Digest;
+use tobkiri_gate::{LoopLimits, PermissionSet, ResourceLimits, StoragePermissions};
+use tobkiri_manifest::{FileEntry, PackManifest};
 use tobkiri_profile::{PackPin, Profile};
 
 pub(crate) const PROVIDER_PACK: &str = "local.provider-registry";
-pub(crate) const PROVIDER_RESOURCE: &str = "local.provider-registry.resource@1.0";
 pub(crate) const PROVIDER_MANAGE: &str = "local.provider-registry.manage@1.0";
 pub(crate) const PROVIDER_CONFIGURATION: &str = "local.provider-registry.configuration@1.0";
 pub(crate) const PROVIDER_COMMIT: &str = "local.provider-registry.configuration-commit@1.0";
 pub(crate) const PROVIDER_LEGACY_CONFIGURATION: &str =
     "local.provider-registry.legacy-configuration@1.0";
-pub(crate) const PROVIDER_INTERFACES: &[&str] = &[
-    "resource",
-    "manage",
-    "routing",
-    "configuration",
-    "configuration-commit",
-    "legacy-configuration",
-];
 
 pub(crate) struct RegistryPack {
     pub(crate) pin: PackPin,
@@ -55,96 +46,24 @@ pub(crate) fn store_permissions() -> PermissionSet {
     }
 }
 
-pub(crate) fn pack(
-    root: &Path,
-    component: &Path,
-    id: &str,
-    interfaces: &[&str],
-    dependencies: &[&str],
-) -> Result<RegistryPack> {
-    let store = id
-        .strip_prefix("local.")
-        .context("local Registry fixture ID")?;
-    let wit = fs::read(repo().join(format!("packs/{id}-rust/wit/pack.wit")))?;
-    let sidecar = br#"{"cardinality":"one","streams":{},"callbacks":{}}"#.to_vec();
-    let mut files = BTreeMap::from([
-        ("component.wasm".to_owned(), fs::read(component)?),
-        ("wit/pack.wit".to_owned(), wit),
-        (
-            "wit/deps/core.wit".to_owned(),
-            include_bytes!("../../../tobkiri-wit/wit/core-v1-2/core.wit").to_vec(),
-        ),
-    ]);
-    let mut shapes = Vec::new();
-    let mut provides = Vec::new();
-    let mut consumes = Vec::new();
-    let mut permissions = store_permissions();
-    for dependency in dependencies {
-        let shape = ShapeRef::parse(dependency)?;
-        let owner = shape.name.owner();
-        files.insert(
-            format!("wit/deps/{owner}.wit"),
-            fs::read(repo().join(format!("packs/{owner}-rust/wit/pack.wit")))?,
-        );
-        permissions.ports.insert((*dependency).into());
-        consumes.push(PortDeclaration {
-            shape: shape.name.clone(),
-            version: shape.version,
-            optional: false,
-        });
-    }
-    for (name, kind) in interfaces
-        .iter()
-        .map(|name| (*name, ShapeKind::Port))
-        .chain([("data", ShapeKind::Data)])
-    {
-        let shape = ShapeRef::parse(&format!("{id}.{name}@1.0"))?;
-        files.insert(format!("wit/{name}.shape.json"), sidecar.clone());
-        if kind == ShapeKind::Port {
-            provides.push(PortDeclaration {
-                shape: shape.name.clone(),
-                version: shape.version,
-                optional: false,
-            });
-        }
-        shapes.push(ShapeDefinition {
-            name: shape.name,
-            version: shape.version,
-            kind,
-            wit: "wit/pack.wit".into(),
-        });
-    }
-    let manifest = PackManifest {
-        format: "tobkiri.pack/1".into(),
-        id: id.parse()?,
-        version: "0.1.0".into(),
-        publisher_key: None,
-        runtime: RuntimeSpec::Wasm {
-            core_modules: Default::default(),
-            component: "component.wasm".into(),
-            toolchain: "rust/1.94.0".into(),
-            config: None,
+pub(crate) fn pack(id: &str) -> Result<RegistryPack> {
+    let root = std::env::var_os("TOBKIRI_TEST_REGISTRY_PACKS")
+        .context("set TOBKIRI_TEST_REGISTRY_PACKS to the staged Registry archives")?;
+    let path = PathBuf::from(root).join(format!("{id}.tpk"));
+    let verified = tobkiri_manifest::verify_tpk_file(&path, &BTreeMap::new())?;
+    ensure!(
+        verified.manifest.id.as_str() == id,
+        "unexpected Registry Pack identity"
+    );
+    Ok(RegistryPack {
+        pin: PackPin {
+            id: verified.manifest.id.clone(),
+            version: verified.manifest.version.clone(),
+            sha256: verified.hash.clone(),
+            source: format!("file:{}", path.canonicalize()?.display()),
         },
-        shapes,
-        ports: Ports {
-            provides,
-            consumes,
-            ..Default::default()
-        },
-        inputs: vec![],
-        flows: vec![],
-        overlays: vec![],
-        stores: vec![StoreDefinition {
-            name: store.into(),
-            tier: StoreTier::Private,
-            data_shape: format!("{id}.data@1.0").parse()?,
-            seed: None,
-        }],
-        permissions,
-        ui: None,
-        files: vec![],
-    };
-    materialize(root, manifest, files)
+        permissions: verified.manifest.permissions.clone(),
+    })
 }
 
 pub(crate) fn materialize(

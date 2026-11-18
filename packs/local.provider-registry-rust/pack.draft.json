@@ -1,0 +1,133 @@
+{
+  "format": "tobkiri.pack/1",
+  "id": "local.provider-registry",
+  "version": "0.1.0",
+  "publisher_key": null,
+  "runtime": {
+    "kind": "wasm",
+    "component": "component.wasm",
+    "toolchain": "rust/1.94.0",
+    "config": null
+  },
+  "shapes": [
+    {
+      "name": "local.provider-registry.resource",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.provider-registry.manage",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.provider-registry.routing",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.provider-registry.configuration",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.provider-registry.configuration-commit",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.provider-registry.legacy-configuration",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.provider-registry.data",
+      "version": "1.0",
+      "kind": "data",
+      "wit": "wit/pack.wit"
+    }
+  ],
+  "ports": {
+    "provides": [
+      {
+        "shape": "local.provider-registry.resource",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.provider-registry.manage",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.provider-registry.routing",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.provider-registry.configuration",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.provider-registry.configuration-commit",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.provider-registry.legacy-configuration",
+        "version": "1.0",
+        "optional": false
+      }
+    ],
+    "consumes": [],
+    "untyped": []
+  },
+  "flows": [],
+  "overlays": [],
+  "stores": [
+    {
+      "name": "provider-registry",
+      "tier": "private",
+      "data_shape": "local.provider-registry.data@1.0",
+      "seed": null
+    }
+  ],
+  "permissions": {
+    "storage": {
+      "private": true
+    },
+    "ports": [],
+    "wasm": {
+      "fuel_per_call": 100000000,
+      "memory_mib": 32,
+      "wall_ms": 10000,
+      "table_elements": 10000,
+      "output_bytes": 1048576
+    },
+    "loops": {
+      "max_iterations": 100,
+      "max_wall_ms": 10000,
+      "max_cost_units": 10000
+    }
+  },
+  "ui": null,
+  "files": [
+    "component.wasm",
+    "wit/configuration-commit.shape.json",
+    "wit/configuration.shape.json",
+    "wit/data.shape.json",
+    "wit/deps/core.wit",
+    "wit/legacy-configuration.shape.json",
+    "wit/manage.shape.json",
+    "wit/pack.wit",
+    "wit/resource.shape.json",
+    "wit/routing.shape.json"
+  ]
+}

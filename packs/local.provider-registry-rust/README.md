@@ -45,7 +45,8 @@ cargo test --locked --manifest-path packs/Cargo.toml \
   -p tobkiri-pack-provider-registry-rust --features component --lib
 ```
 
-Build the component and verify local preparation against the original Python
+Build the component and author the Registry Pack archive to verify local
+preparation against the original Python
 plans, plus the separately approved save, stale-plan refusal, Profile
 isolation, and recovery through Core:
 
@@ -53,10 +54,20 @@ isolation, and recovery through Core:
 cargo build --locked --manifest-path packs/Cargo.toml \
   --target wasm32-wasip2 --release -p tobkiri-pack-provider-registry-rust \
   --features component
-TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$PWD/packs/target/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm" \
+cargo build --locked -p tobkiri-cli --bin tobkiri
+registry_work="$(mktemp -d)"
+python3 -B packs/stage_registry_packs.py --tobkiri target/debug/tobkiri \
+  --components packs/target/wasm32-wasip2/release --pack provider-registry \
+  --output "$registry_work/registry-packs"
+TOBKIRI_TEST_REGISTRY_PACKS="$registry_work/registry-packs" \
   cargo test --locked -p tobkiri-e2e --test provider_registry -- \
   provider_registry_uses_gated_private_storage_and_profile_revisions --ignored --exact
 ```
+
+Building all three components and omitting `--pack` stages the Provider,
+Model, and Saved Conversation archives used in the saved-model CI. The
+receipt records the archive hashes and Core manifest pins. The `local.*`
+identities use the Core local Pack policy.
 
 The settings adapter still needs to supply the existing interactive approval,
 operation identity, budgets, pending-effect lifecycle and credential transport.

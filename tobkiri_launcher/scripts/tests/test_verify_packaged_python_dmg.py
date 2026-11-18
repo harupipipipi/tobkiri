@@ -8,6 +8,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -361,6 +362,7 @@ def test_primary_error_wins_over_cleanup_error(
         expected_manifest_sha256="a" * 64,
         expected_native_setup_component_bytes=None,
         expected_native_setup_component_sha256=None,
+        expected_native_registry_packs_receipt_sha256=None,
     )
 
     with pytest.raises(MODULE.DmgVerificationError, match="primary attach failure"):
@@ -404,6 +406,238 @@ def test_expected_setup_component_requires_a_valid_pin_and_size(
     assert error in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("digest", ["a" * 64, "A" * 64, "sha256:" + "a" * 64, "a"])
+def test_registry_receipt_cli_accepts_only_bare_lowercase_sha256(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    digest: str,
+) -> None:
+    monkeypatch.setattr(sys, "argv", [
+        os.fspath(SCRIPT),
+        "--dmg", "fixture.dmg",
+        "--repo-root", ".",
+        "--target", "aarch64-apple-darwin",
+        "--expected-manifest-sha256", "b" * 64,
+        "--expected-native-registry-packs-receipt-sha256", digest,
+    ])
+    if digest == "a" * 64:
+        args = MODULE.parse_args()
+        assert args.expected_native_registry_packs_receipt_sha256 == digest
+    else:
+        with pytest.raises(SystemExit, match="2"):
+            MODULE.parse_args()
+        assert "expected native Registry Packs receipt SHA-256 is invalid" in (
+            capsys.readouterr().err
+        )
+
+
+def test_registry_receipt_pin_is_forwarded_by_shell_wrapper(tmp_path: Path) -> None:
+    dmg = tmp_path / "fixture.dmg"
+    dmg.touch()
+    result = subprocess.run(
+        [
+            "bash",
+            os.fspath(SCRIPT.with_suffix(".sh")),
+            "--dmg",
+            os.fspath(dmg),
+            "--target",
+            "aarch64-apple-darwin",
+            "--expected-manifest-sha256",
+            "a" * 64,
+            "--expected-native-registry-packs-receipt-sha256",
+            "A" * 64,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "expected native Registry Packs receipt SHA-256 is invalid" in result.stderr
+
+
+def _write_registry_packs(app: Path) -> str:
+    directory = app / "Contents/Resources/app/native-registry-packs"
+    directory.mkdir(parents=True)
+    records = []
+    for pack_id in (
+        "local.provider-registry", "local.model-registry", "local.saved-conversation"
+    ):
+        archive = f"{pack_id}.tpk"
+        contents = f"fixture archive for {pack_id}".encode()
+        (directory / archive).write_bytes(contents)
+        records.append({
+            "id": pack_id,
+            "version": "0.1.0",
+            "archive": archive,
+            "archive_bytes": len(contents),
+            "archive_sha256": "sha256:" + hashlib.sha256(contents).hexdigest(),
+            "manifest_sha256": "sha256:" + "a" * 64,
+        })
+    receipt = {"format": "tobkiri.registry-packs/1", "packs": records}
+    data = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode()
+    (directory / "receipt.json").write_bytes(data)
+    return hashlib.sha256(data).hexdigest()
+
+
+@pytest.fixture
+def registry_mount(
+    tmp_path: Path,
+) -> Iterator[tuple[MODULE.MountedDmg, Path, str]]:
+    root = tmp_path.resolve() / "mounted"
+    app = root / "Fixture.app"
+    receipt_digest = _write_registry_packs(app)
+    mount = MODULE.MountedDmg.__new__(MODULE.MountedDmg)
+    mount.path = root
+    mount.name = root.name
+    mount.parent = root.parent
+    mount.parent_fd = os.open(root.parent, MODULE._directory_flags())
+    try:
+        mount.parent_identity = MODULE.Identity.from_stat(os.fstat(mount.parent_fd))
+        mount.mounted_fd = os.open(root, MODULE._directory_flags())
+        try:
+            metadata = os.fstat(mount.mounted_fd)
+            mount.mounted_identity = MODULE.Identity.from_stat(metadata)
+            yield mount, app, receipt_digest
+        finally:
+            os.close(mount.mounted_fd)
+    finally:
+        os.close(mount.parent_fd)
+
+
+def test_registry_verifier_checks_all_three_archive_contents(
+    registry_mount: tuple[MODULE.MountedDmg, Path, str],
+) -> None:
+    mount, app, receipt_digest = registry_mount
+    mount.verify_native_registry_packs(app, receipt_digest)
+    for archive in sorted((app / MODULE.NATIVE_REGISTRY_PACKS).glob("*.tpk")):
+        data = archive.read_bytes()
+        archive.write_bytes(b"x" * len(data))
+        with pytest.raises(MODULE.DmgVerificationError, match="SHA-256 differs"):
+            mount.verify_native_registry_packs(app, receipt_digest)
+        archive.write_bytes(data + b"x")
+        with pytest.raises(MODULE.DmgVerificationError, match="size differs"):
+            mount.verify_native_registry_packs(app, receipt_digest)
+        archive.write_bytes(data)
+
+
+@pytest.mark.parametrize(
+    ("entry", "change", "error"),
+    [
+        ("local.model-registry.tpk", "missing", "missing required entries"),
+        ("extra", "extra", "extra entries"),
+        ("local.saved-conversation.tpk", "symlink", "without following links"),
+        ("local.provider-registry.tpk", "hardlink", "physical regular file"),
+        ("local.model-registry.tpk", "fifo", "physical regular file"),
+        ("receipt.json", "symlink", "without following links"),
+        ("receipt.json", "hardlink", "physical regular file"),
+        ("receipt.json", "oversize", "size is out of range"),
+        (".", "symlink", "without following links"),
+    ],
+)
+def test_registry_verifier_requires_the_exact_physical_files(
+    registry_mount: tuple[MODULE.MountedDmg, Path, str],
+    entry: str,
+    change: str,
+    error: str,
+) -> None:
+    mount, app, receipt_digest = registry_mount
+    target = app / MODULE.NATIVE_REGISTRY_PACKS / entry
+    external = mount.path.parent / "external"
+    if change == "missing":
+        target.unlink()
+    elif change == "extra":
+        target.touch()
+    elif change == "oversize":
+        target.write_bytes(b"x" * (MODULE.MAX_REGISTRY_RECEIPT_BYTES + 1))
+    elif change == "fifo":
+        target.unlink()
+        os.mkfifo(target)
+    else:
+        target.rename(external)
+        if change == "symlink":
+            target.symlink_to(external, target_is_directory=entry == ".")
+        else:
+            os.link(external, target)
+
+    with pytest.raises(MODULE.DmgVerificationError, match=error):
+        mount.verify_native_registry_packs(app, receipt_digest)
+
+
+def test_registry_verifier_rejects_replaced_mount_root(
+    registry_mount: tuple[MODULE.MountedDmg, Path, str],
+) -> None:
+    mount, app, receipt_digest = registry_mount
+    mount.path.rename(mount.path.with_name("original"))
+    _write_registry_packs(app)
+    with pytest.raises(MODULE.DmgVerificationError, match="mounted DMG root identity"):
+        mount.verify_native_registry_packs(app, receipt_digest)
+
+
+def test_registry_receipt_pin_is_checked_before_parsing(
+    registry_mount: tuple[MODULE.MountedDmg, Path, str],
+) -> None:
+    mount, app, receipt_digest = registry_mount
+    (app / MODULE.NATIVE_REGISTRY_PACKS / "receipt.json").write_bytes(b"invalid JSON")
+    with pytest.raises(MODULE.DmgVerificationError, match="receipt SHA-256 differs"):
+        mount.verify_native_registry_packs(app, receipt_digest)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("id", "local.provider-registry"),
+        ("archive", "../local.model-registry.tpk"),
+        ("archive_bytes", True),
+        ("archive_bytes", 0),
+        ("archive_bytes", 512 * 1024 * 1024 + 1),
+        ("archive_sha256", "a" * 64),
+        ("manifest_sha256", "sha256:" + "A" * 64),
+        ("version", "01.0.0"),
+        ("unknown", None),
+    ],
+)
+def test_registry_receipt_rejects_invalid_records_even_with_matching_digest(
+    registry_mount: tuple[MODULE.MountedDmg, Path, str],
+    field: str,
+    replacement: object,
+) -> None:
+    mount, app, _ = registry_mount
+    path = app / MODULE.NATIVE_REGISTRY_PACKS / "receipt.json"
+    receipt = json.loads(path.read_bytes())
+    receipt["packs"][1][field] = replacement
+    payload = json.dumps(receipt).encode()
+    path.write_bytes(payload)
+    with pytest.raises(MODULE.DmgVerificationError, match="receipt has an invalid"):
+        mount.verify_native_registry_packs(app, hashlib.sha256(payload).hexdigest())
+
+
+def test_registry_receipt_rejects_duplicate_json_keys(
+    registry_mount: tuple[MODULE.MountedDmg, Path, str],
+) -> None:
+    mount, app, _ = registry_mount
+    path = app / MODULE.NATIVE_REGISTRY_PACKS / "receipt.json"
+    payload = path.read_bytes().replace(
+        b'"archive_bytes": ', b'"archive_bytes": 1, "archive_bytes": ', 1
+    )
+    path.write_bytes(payload)
+    with pytest.raises(MODULE.DmgVerificationError, match="receipt is invalid"):
+        mount.verify_native_registry_packs(app, hashlib.sha256(payload).hexdigest())
+
+
+def test_registry_receipt_requires_the_producer_pack_order(
+    registry_mount: tuple[MODULE.MountedDmg, Path, str],
+) -> None:
+    mount, app, _ = registry_mount
+    path = app / MODULE.NATIVE_REGISTRY_PACKS / "receipt.json"
+    receipt = json.loads(path.read_bytes())
+    receipt["packs"].reverse()
+    payload = json.dumps(receipt).encode()
+    path.write_bytes(payload)
+    with pytest.raises(
+        MODULE.DmgVerificationError, match="receipt has an invalid archive"
+    ):
+        mount.verify_native_registry_packs(app, hashlib.sha256(payload).hexdigest())
+
+
 @pytest.mark.skipif(
     sys.platform != "darwin" or shutil.which("hdiutil") is None,
     reason="requires a real macOS disk image mount",
@@ -424,6 +658,7 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
     component_bytes = b"fixed Wasm fixture"
     component.write_bytes(component_bytes)
     component_digest = hashlib.sha256(component_bytes).hexdigest()
+    registry_digest = _write_registry_packs(app)
     dmg = tmp_path / "fixture.dmg"
     subprocess.run(
         [
@@ -449,9 +684,14 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
         mount.verify_native_setup_component(
             mounted_app, len(component_bytes), component_digest
         )
+        mount.verify_native_registry_packs(mounted_app, registry_digest)
         with pytest.raises(MODULE.DmgVerificationError, match="Wasm size differs"):
             mount.verify_native_setup_component(
                 mounted_app, len(component_bytes) + 1, component_digest
+            )
+        with pytest.raises(MODULE.DmgVerificationError, match="Wasm SHA-256 differs"):
+            mount.verify_native_setup_component(
+                mounted_app, len(component_bytes), "b" * 64
             )
         mounted_sealed_root = mounted_app / "Contents/Resources/app/python-runtime"
         before = tuple(
@@ -489,10 +729,13 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
         target="aarch64-apple-darwin",
         expected_manifest_sha256="a" * 64,
         expected_native_setup_component_bytes=len(component_bytes),
-        expected_native_setup_component_sha256="b" * 64,
+        expected_native_setup_component_sha256=component_digest,
+        expected_native_registry_packs_receipt_sha256="b" * 64,
     )
     try:
-        with pytest.raises(MODULE.DmgVerificationError, match="Wasm SHA-256 differs"):
+        with pytest.raises(
+            MODULE.DmgVerificationError, match="receipt SHA-256 differs"
+        ):
             MODULE.verify_dmg(args)
         assert mismatch_mount.detached
         assert not mismatch_mount.path.exists()

@@ -5,8 +5,8 @@ mod support;
 
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
-use std::{path::Path, sync::Arc};
-use support::registry::{PROVIDER_MANAGE, PROVIDER_PACK, PROVIDER_RESOURCE, RegistryPack};
+use std::sync::Arc;
+use support::registry::{PROVIDER_MANAGE, PROVIDER_PACK, RegistryPack};
 use support::{Host, canon, physical_temp, registry, within_session};
 use tobkiri_core::{Core, CoreConfig, CoreError, Session};
 use tobkiri_gate::StoreTier;
@@ -17,27 +17,8 @@ const SETTINGS: &str = "local.model-registry.settings@1.0";
 const DATA: &str = "local.model-registry.data@1.0";
 const STORE: &str = "model-registry";
 
-fn packs(root: &Path) -> Result<[RegistryPack; 2]> {
-    let model = std::env::var_os("TOBKIRI_TEST_MODEL_REGISTRY_COMPONENT")
-        .context("source-built model Registry component required")?;
-    let provider = std::env::var_os("TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT")
-        .context("source-built provider Registry component required")?;
-    Ok([
-        registry::pack(
-            root,
-            Path::new(&model),
-            PACK,
-            &["settings", "routing"],
-            &[PROVIDER_RESOURCE],
-        )?,
-        registry::pack(
-            root,
-            Path::new(&provider),
-            PROVIDER_PACK,
-            registry::PROVIDER_INTERFACES,
-            &[],
-        )?,
-    ])
+fn packs() -> Result<[RegistryPack; 2]> {
+    Ok([registry::pack(PACK)?, registry::pack(PROVIDER_PACK)?])
 }
 
 async fn call(session: &Session, shape: &str, operation: &str, arguments: Value) -> Result<Value> {
@@ -65,7 +46,7 @@ async fn list(session: &Session) -> Result<Value> {
 }
 
 #[tokio::test]
-#[ignore = "requires source-built model and provider Registry Wasm components"]
+#[ignore = "requires staged Model and Provider Registry Pack archives"]
 async fn existing_model_document_projects_settings_through_gate() -> Result<()> {
     let oracle: Value = serde_json::from_str(include_str!(
         "../../../packs/local.model-registry-rust/evidence/original-python-read.json"
@@ -78,7 +59,7 @@ async fn existing_model_document_projects_settings_through_gate() -> Result<()> 
         .context("model Registry settings case missing")?;
     let original_profile = case["profile_id"].as_str().context("missing Profile ID")?;
     let root = physical_temp()?;
-    let packs = packs(root.path())?;
+    let packs = packs()?;
     let pin = &packs[0].pin;
     let host = Arc::new(Host::default());
     host.utility_ports
@@ -156,10 +137,10 @@ fn rejected(error: &anyhow::Error, expected_code: &str) -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "requires source-built model and provider Registry Wasm components"]
+#[ignore = "requires staged Model and Provider Registry Pack archives"]
 async fn model_save_checks_both_registry_revisions_and_persists_the_token_limit() -> Result<()> {
     let root = physical_temp()?;
-    let packs = packs(root.path())?;
+    let packs = packs()?;
     let profile = registry::profile("prof_model_save", &packs, &[SETTINGS, PROVIDER_MANAGE])?;
     let host = Arc::new(Host::default());
     host.utility_ports.lock().unwrap().extend([

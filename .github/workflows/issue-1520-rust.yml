@@ -205,7 +205,12 @@ jobs:
           cargo build --locked --release --target wasm32-wasip2 \
             --manifest-path packs/Cargo.toml -p tobkiri-pack-provider-registry-rust \
             --features component
-          export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
+          cargo build --locked -p tobkiri-cli --bin tobkiri
+          export TOBKIRI_TEST_REGISTRY_PACKS="$RUNNER_TEMP/provider-registry-pack"
+          python3 -B packs/stage_registry_packs.py \
+            --tobkiri "$CARGO_TARGET_DIR/debug/tobkiri" \
+            --components "$CARGO_TARGET_DIR/wasm32-wasip2/release" \
+            --pack provider-registry --output "$TOBKIRI_TEST_REGISTRY_PACKS"
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/provider-registry-wasm.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test provider_registry -- \
@@ -250,10 +255,12 @@ jobs:
           cargo build --locked --release --target wasm32-wasip2 \
             --manifest-path packs/Cargo.toml -p tobkiri-pack-saved-conversation-rust \
             --features component
-          export TOBKIRI_TEST_MODEL_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_model_registry_rust.wasm"
-          export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
+          export TOBKIRI_TEST_REGISTRY_PACKS="$RUNNER_TEMP/model-registry-packs"
+          python3 -B packs/stage_registry_packs.py \
+            --tobkiri "$CARGO_TARGET_DIR/debug/tobkiri" \
+            --components "$CARGO_TARGET_DIR/wasm32-wasip2/release" \
+            --output "$TOBKIRI_TEST_REGISTRY_PACKS"
           export TOBKIRI_TEST_REGISTERED_OPENAI_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_openai_compat_provider.wasm"
-          export TOBKIRI_TEST_SAVED_CONVERSATION_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_saved_conversation_rust.wasm"
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/model-registry-wasm.log" --expected-passed 3 -- \
             cargo test --locked -p tobkiri-e2e --test model_registry -- \

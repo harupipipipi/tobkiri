@@ -14,6 +14,8 @@ mod packaged_source;
 mod packaging_toolchain;
 #[path = "src/packvm_bundle.rs"]
 mod packvm_bundle;
+#[path = "registry_pack_build.rs"]
+mod registry_pack_build;
 #[path = "src/runtime_resource_paths.rs"]
 mod runtime_resource_paths;
 #[path = "setup_component_build.rs"]
@@ -49,6 +51,7 @@ const PACKAGING_PYTHON_SNAPSHOT_ENV: &str = "TOBKIRI_PACKAGING_PYTHON_SNAPSHOT";
 const PACKAGING_PYTHON_INVENTORY_SHA_ENV: &str = "TOBKIRI_PACKAGING_PYTHON_INVENTORY_SHA256";
 const PACKAGING_SOURCE_SNAPSHOT_ENV: &str = "TOBKIRI_PACKAGING_SOURCE_SNAPSHOT";
 const MACOS_ARTIFACT_POLICY_ENV: &str = "TOBKIRI_MACOS_ARTIFACT_POLICY";
+const MACOS_CI_E2E_POLICY: &str = "ci-e2e-v1";
 const MACOS_CI_CERT_SHA256_ENV: &str = "TOBKIRI_MACOS_CI_CERT_SHA256";
 const MACOS_CI_PUBLIC_KEY_ENV: &str = "TOBKIRI_MACOS_CI_PUBLIC_KEY";
 const APPLE_TEAM_ID_ENV: &str = "APPLE_TEAM_ID";
@@ -196,6 +199,7 @@ struct SourceProvenance<'a> {
 
 #[cfg(not(test))]
 fn main() {
+    let registry_packs = configured_registry_packs().expect("invalid Registry Pack staging inputs");
     if cfg!(feature = "native-setup-review")
         && std::env::var_os("CARGO_CFG_TARGET_OS").is_some_and(|os| os == "macos")
     {
@@ -290,7 +294,8 @@ fn main() {
         stage_local_development_authority().expect("failed to stage local development authority");
     } else {
         println!("cargo:rustc-env=TOBKIRI_LOCAL_DEV_WORKSPACE=0");
-        _runtime_stage_guard = stage_runtime_bundle().expect("failed to stage runtime bundle");
+        _runtime_stage_guard =
+            stage_runtime_bundle(registry_packs.as_ref()).expect("failed to stage runtime bundle");
         reset_tauri_macos_resource_copy()
             .expect("failed to reset the manifest-bound Tauri resource copy");
         _debug_destination_guard = prepare_debug_tauri_resource_destination()
@@ -928,7 +933,7 @@ fn bind_macos_artifact_policy() -> io::Result<()> {
             }
             String::new()
         }
-        "ci-e2e-v1" => {
+        MACOS_CI_E2E_POLICY => {
             if profile != "release" {
                 return Err(invalid_release(
                     "the non-publishable CI/E2E policy is restricted to release-profile artifacts",
@@ -963,7 +968,7 @@ fn bind_macos_artifact_policy() -> io::Result<()> {
         _ => return Err(invalid_release("unknown macOS artifact policy")),
     };
     println!("cargo:rustc-env=TOBKIRI_MACOS_ARTIFACT_POLICY={policy}");
-    if policy == "ci-e2e-v1" {
+    if policy == MACOS_CI_E2E_POLICY {
         println!("cargo:rustc-cfg=tobkiri_ci_e2e_artifact");
     }
     println!("cargo:rustc-env=TOBKIRI_MACOS_ARTIFACT_IDENTITY={identity}");
@@ -972,6 +977,28 @@ fn bind_macos_artifact_policy() -> io::Result<()> {
         std::env::var(MACOS_CI_PUBLIC_KEY_ENV).unwrap_or_default()
     );
     Ok(())
+}
+
+fn configured_registry_packs() -> io::Result<Option<registry_pack_build::Input>> {
+    for name in [
+        registry_pack_build::SOURCE_ENV,
+        registry_pack_build::DIGEST_ENV,
+    ] {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
+    let source = std::env::var_os(registry_pack_build::SOURCE_ENV);
+    let digest = std::env::var_os(registry_pack_build::DIGEST_ENV);
+    let allowed = (source.is_some() || digest.is_some())
+        && cfg!(all(
+            unix,
+            feature = "native-first-setup",
+            not(feature = "core-host")
+        ))
+        && required_cargo_target()?.ends_with("-apple-darwin")
+        && required_cargo_profile()? == "release"
+        && std::env::var(MACOS_ARTIFACT_POLICY_ENV).as_deref() == Ok(MACOS_CI_E2E_POLICY)
+        && core_build_stage() == CoreBuildStage::FinalApplication;
+    registry_pack_build::Input::configure(source, digest, allowed)
 }
 
 #[cfg(test)]
@@ -1185,7 +1212,9 @@ type StagedRuntimeGuard = windows_packaging_fs::PinnedPath;
 #[cfg(not(windows))]
 type StagedRuntimeGuard = ();
 
-fn stage_runtime_bundle() -> io::Result<StagedRuntimeGuard> {
+fn stage_runtime_bundle(
+    registry_packs: Option<&registry_pack_build::Input>,
+) -> io::Result<StagedRuntimeGuard> {
     let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let repo_root = project_dir
         .parent()
@@ -1196,7 +1225,13 @@ fn stage_runtime_bundle() -> io::Result<StagedRuntimeGuard> {
 
     let guard = reset_staged_runtime(&staged_root)
         .map_err(|error| stage_error("reset staged runtime", error))?;
-    stage_runtime_bundle_into(&project_dir, repo_root, &runtime_root, &staged_root)?;
+    stage_runtime_bundle_into(
+        &project_dir,
+        repo_root,
+        &runtime_root,
+        &staged_root,
+        registry_packs,
+    )?;
     Ok(guard)
 }
 
@@ -1205,6 +1240,7 @@ fn stage_runtime_bundle_into(
     repo_root: &Path,
     runtime_root: &Path,
     staged_root: &Path,
+    registry_packs: Option<&registry_pack_build::Input>,
 ) -> io::Result<()> {
     if core_build_stage() == CoreBuildStage::IntermediateShell {
         // The Shell is only the presentation artifact consumed by the outer
@@ -1228,6 +1264,11 @@ fn stage_runtime_bundle_into(
             &runtime_root,
             &staged_root,
         );
+    }
+    if let Some(registry_packs) = registry_packs {
+        registry_packs
+            .stage(staged_root)
+            .map_err(|error| stage_error("stage verified native Registry Packs", error))?;
     }
     if !copy_tracked_runtime_tree(repo_root, &staged_root)
         .map_err(|error| stage_error("copy tracked runtime", error))?
@@ -6812,6 +6853,10 @@ fn should_skip(relative: &Path, is_dir: bool) -> bool {
     };
 
     let first = first.to_str();
+    // This subtree is populated only by the receipt-bound CI staging path.
+    if first == Some(registry_pack_build::DIRECTORY) {
+        return true;
+    }
     if matches!(
         first,
         Some(".env")

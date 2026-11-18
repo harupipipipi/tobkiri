@@ -4,7 +4,8 @@ set -Eeuo pipefail
 usage() {
   printf '%s\n' \
     'Usage: verify_packaged_python_dmg.sh --dmg PATH --target TARGET --expected-manifest-sha256 SHA256' \
-    '       [--expected-native-setup-component-sha256 SHA256 --expected-native-setup-component-bytes BYTES]' >&2
+    '       [--expected-native-setup-component-sha256 SHA256 --expected-native-setup-component-bytes BYTES]' \
+    '       [--expected-native-registry-packs-receipt-sha256 SHA256]' >&2
 }
 
 dmg=''
@@ -20,7 +21,7 @@ while (($# > 0)); do
       expected_manifest=$2
       shift 2
       ;;
-    --expected-native-setup-component-sha256|--expected-native-setup-component-bytes)
+    --expected-native-setup-component-sha256|--expected-native-setup-component-bytes|--expected-native-registry-packs-receipt-sha256)
       (($# >= 2)) || { usage; exit 2; }
       shift 2
       ;;
