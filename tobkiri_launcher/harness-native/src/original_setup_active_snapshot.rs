@@ -4,16 +4,23 @@ use crate::original_authority::catalog::CatalogIo;
 use std::sync::Mutex;
 use workspace_active::{ActiveSnapshot, ActiveSnapshotRead, ProfileCheck, SnapshotProjection};
 
+#[path = "original_setup_active_catalog_policy.rs"]
+mod active_catalog_policy;
+pub(crate) use active_catalog_policy::RegisteredCatalogSelection;
+
 #[derive(Debug)]
 pub(crate) enum RegisteredSnapshotReached {
-    CatalogPolicy {
-        registered_profile: CoreValue,
-        active_profile: CoreValue,
-        active_plan: Option<CoreValue>,
-        verified_definition_digest: CoreValue,
-    },
+    CatalogPolicy(RegisteredCatalogPolicy),
     LegacySuccessor,
     SnapshotSchemas,
+}
+
+#[derive(Debug)]
+pub(crate) struct RegisteredCatalogPolicy {
+    pub(crate) registered_profile: CoreValue,
+    pub(crate) active_profile: CoreValue,
+    pub(crate) active_plan: Option<CoreValue>,
+    pub(crate) verified_definition_digest: CoreValue,
 }
 
 impl PublicationRead {
@@ -76,12 +83,14 @@ impl PublicationRead {
                         "bootstrap review does not match the verified active definition",
                     ));
                 };
-                Ok(RegisteredSnapshotReached::CatalogPolicy {
-                    registered_profile: candidate.registered.review_profile(&op, budget)?,
-                    active_profile,
-                    active_plan,
-                    verified_definition_digest,
-                })
+                Ok(RegisteredSnapshotReached::CatalogPolicy(
+                    RegisteredCatalogPolicy {
+                        registered_profile: candidate.registered.review_profile(&op, budget)?,
+                        active_profile,
+                        active_plan,
+                        verified_definition_digest,
+                    },
+                ))
             }
             Snapshot::Boundary(reached) => Ok(reached),
         }

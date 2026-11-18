@@ -24,7 +24,7 @@ mod publish_active;
 mod registered_snapshot;
 #[path = "original_recovery_workspace_active.rs"]
 mod workspace_active;
-pub(crate) use registered_snapshot::RegisteredSnapshotReached;
+pub(crate) use registered_snapshot::{RegisteredCatalogSelection, RegisteredSnapshotReached};
 
 struct ActiveSnapshotChecks<Artifact, Definition, Legacy, LegacyArtifact, LegacyIdentity> {
     artifact: Artifact,

@@ -526,6 +526,11 @@ impl CatalogIo {
             && text_is(&header, "artifact_digest", digest))
     }
 
+    /// Look up a retained manifest pin after the caller verifies loader completion.
+    pub(crate) fn bundled_review_pack_digest(&self, id: &str) -> Result<Option<&str>> {
+        Ok(self.bundled_pack_pin(id)?.map(|pin| pin.digest.as_str()))
+    }
+
     fn bundled_pack_pin(&self, id: &str) -> Result<Option<&PackPin>> {
         let pins = &self
             .recovery_pack_pins

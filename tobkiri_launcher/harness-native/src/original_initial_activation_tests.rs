@@ -199,12 +199,8 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             let workspace = root.join("workspaces/defaults/activation");
             let workspace_pointer = fs::read(workspace.join("active.json")).unwrap();
             let check_snapshot = |witness: &Path, successor_required: bool| {
-                let RegisteredSnapshotReached::CatalogPolicy {
-                    registered_profile,
-                    active_profile,
-                    active_plan,
-                    verified_definition_digest,
-                } = read_registered(owner, read, cancellation, budget, witness, artifacts).unwrap()
+                let RegisteredSnapshotReached::CatalogPolicy(records) =
+                    read_registered(owner, read, cancellation, budget, witness, artifacts).unwrap()
                 else {
                     panic!("expected the authenticated catalog policy inputs");
                 };
@@ -214,20 +210,20 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
                         expected.encode_guest(budget).unwrap().as_bytes()
                     );
                 };
-                assert_record(&registered_profile, &definition);
+                assert_record(&records.registered_profile, &definition);
                 assert_record(
-                    &active_profile,
+                    &records.active_profile,
                     &original_resolved.get_key("profile").unwrap(),
                 );
                 assert_eq!(
-                    verified_definition_digest.as_str(),
+                    records.verified_definition_digest.as_str(),
                     Some(definition_digest.as_str())
                 );
                 if successor_required {
-                    assert!(active_plan.is_none());
+                    assert!(records.active_plan.is_none());
                 } else {
                     assert_record(
-                        &active_plan.unwrap(),
+                        &records.active_plan.unwrap(),
                         &original_resolved.get_key("plan").unwrap(),
                     );
                 }
@@ -323,6 +319,16 @@ fn read_registered(
         &loader,
         Some(workspace_active::tests::bound_recovery_schemas()),
     ));
+    if let Ok(RegisteredSnapshotReached::CatalogPolicy(records)) = &outcome {
+        // This publication fixture exports only the Shell Pack manifest.
+        // That retained pin cannot substitute for the missing active closure.
+        assert_eq!(
+            listing
+                .review_registered_catalog(owner, cancellation, budget, &loader, records)
+                .unwrap(),
+            RegisteredCatalogSelection::AdmittedClosure
+        );
+    }
     assert!(listing.receipt().verified());
     outcome
 }

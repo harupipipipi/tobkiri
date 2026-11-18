@@ -318,7 +318,7 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
 ) -> BootstrapReviewFailure {
-    use crate::original_authority::RegisteredSnapshotReached;
+    use crate::original_authority::{RegisteredCatalogSelection, RegisteredSnapshotReached};
     let work = pack.work.get();
     let reached = review
         .read
@@ -331,14 +331,28 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
         )
         .await;
     BootstrapReviewFailure::NotBound(match reached {
-        Ok(RegisteredSnapshotReached::CatalogPolicy {
-            registered_profile: _registered_profile,
-            active_profile: _active_profile,
-            active_plan,
-            verified_definition_digest: _verified_definition_digest,
-        }) => BootstrapReviewReachpoint::ActiveCandidateCatalogPolicyNotBound {
-            successor_required: active_plan.is_none(),
-        },
+        Ok(RegisteredSnapshotReached::CatalogPolicy(records)) => {
+            let selected = review.read.review_registered_catalog(
+                &work.source,
+                pack.cancellation,
+                pack.input_budget,
+                &work.catalog,
+                &records,
+            );
+            let _verified_definition_digest = records.verified_definition_digest;
+            match selected {
+                Ok(RegisteredCatalogSelection::Bundled {
+                    binding_renewal_required,
+                }) => BootstrapReviewReachpoint::ActiveCandidateDefinitionPolicyNotBound {
+                    successor_required: records.active_plan.is_none(),
+                    binding_renewal_required,
+                },
+                Ok(RegisteredCatalogSelection::AdmittedClosure) => {
+                    BootstrapReviewReachpoint::ActiveCandidateAdmittedClosureNotBound
+                }
+                Err(error) => return original_failure(error),
+            }
+        }
         Ok(RegisteredSnapshotReached::SnapshotSchemas) => {
             BootstrapReviewReachpoint::ActiveCandidateSnapshotSchemasNotBound
         }
