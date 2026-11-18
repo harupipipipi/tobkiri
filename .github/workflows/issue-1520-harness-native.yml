@@ -40,7 +40,7 @@ on:
       verification:
         description: Original runtime regression, targeted comparison, or Launcher resource staging
         type: choice
-        options: [bootstrap, bootstrap-host-compiler, denied-factory, bootstrap-identity, review-identity, catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, catalog-app-frame-diagnostic, launcher-staging]
+        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix, recovery-catalog, catalog-schema-diagnostic, catalog-app-frame, catalog-app-frame-diagnostic, launcher-staging]
         default: bootstrap
 
 permissions:
@@ -291,17 +291,6 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/harness-native-runtime.log" --expected-passed 1 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
-          bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
-          -- --nocapture
-      - name: Compare optimized host compiler on the same sealed component
-        if: ${{ inputs.verification == 'bootstrap-host-compiler' }}
-        run: >-
-          python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/harness-native-runtime-host-compiler.log" --expected-passed 1 --
-          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
-          --config profile.test.package.wasmtime-internal-cranelift.opt-level=2
-          --config profile.test.package.wasmtime-internal-cranelift.debug-assertions=true
-          --config profile.test.package.wasmtime-internal-cranelift.overflow-checks=true
           bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
           -- --nocapture
       - name: Verify catalog DATA capacity and actual native comparison work
@@ -651,7 +640,6 @@ jobs:
             ${{ runner.temp }}/harness-native-source-metadata.log*
             ${{ runner.temp }}/harness-native-inspection-policy.log*
             ${{ runner.temp }}/harness-native-preparation.log*
-            ${{ runner.temp }}/harness-native-runtime-host-compiler.log*
             ${{ runner.temp }}/harness-native-launcher-staging.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
             ${{ runner.temp }}/harness-native-runtime-features/

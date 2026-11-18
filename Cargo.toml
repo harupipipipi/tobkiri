@@ -141,3 +141,8 @@ overflow-checks = true
 opt-level = 2
 debug-assertions = true
 overflow-checks = true
+
+[profile.test.package.wasmtime-internal-cranelift]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
