@@ -412,7 +412,11 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             from harness_native.exception_graph import ExceptionGraphStore
             from harness_native.native_path import PathBridge
             from harness_native.value_graph import Scope, UnsupportedValue
-            from tobkiri_protocol.errors import CanonicalizationError
+            from tobkiri_protocol import bundle_catalog as original_catalog
+            from tobkiri_protocol.errors import (
+                CanonicalizationError,
+                SchemaValidationError,
+            )
 
             exec(compile(app_schema.derive_catalog_validation(source.read_bytes()),
                          str(source), "exec"), module.__dict__)
@@ -661,6 +665,120 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             for raw in (b"{}", b'{"entries": [], "entries": []}'):
                 with self.subTest(raw=raw), self.assertRaises(UnsupportedValue):
                     load(copied_lock(raw))
+
+            relative = "./packs/rejected-π.json"
+            rejected = {
+                "kind": "snapshot-invalid-document",
+                "document_kind": "pack",
+                "path": relative,
+            }
+            valid_pack = original_pack.read_bytes()
+            invalid_pack = json.loads(valid_pack)
+            invalid_pack["pack"]["id"] = "BAD ID"
+            invalid_pack["provider_authority"] = "forbidden"
+
+            def compare_exception_graph(
+                actual: BaseException,
+                original: BaseException,
+                observed: dict[int, BaseException],
+            ) -> None:
+                self.assertEqual(vars(actual), vars(original))
+                self.assertEqual(actual.args, original.args)
+                self.assertEqual(actual.__suppress_context__,
+                                 original.__suppress_context__)
+                for link in ("__cause__", "__context__"):
+                    node = getattr(actual, link)
+                    expected_node = getattr(original, link)
+                    self.assertIs(type(node), type(expected_node))
+                    if expected_node is None:
+                        continue
+                    if id(expected_node) in observed:
+                        self.assertIs(node, observed[id(expected_node)])
+                        continue
+                    observed[id(expected_node)] = node
+                    compare_exception_graph(node, expected_node, observed)
+
+            for label, raw, nested_type in (
+                ("json", b'{\n"pack": [}', json.JSONDecodeError),
+                ("utf8", b'{"pack":"\xff"}', UnicodeDecodeError),
+                ("schema and semantics", json.dumps(invalid_pack).encode(), None),
+            ):
+                with self.subTest(rejected_document=label):
+                    lock = json.dumps({
+                        "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+                        "entries": [{
+                            "path": relative,
+                            "kind": "pack",
+                            "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                        }],
+                    }).encode()
+
+                    def read_entry(index: int, path: str, reread: bool) -> bytes:
+                        self.assertEqual((index, path, reread), (0, relative, False))
+                        return raw
+
+                    with self.assertRaises(
+                        original_catalog.BundleIntegrityError
+                    ) as expected:
+                        original_catalog.BundledCatalog.load_from_reader(
+                            lock, entry_reader=read_entry, root="/bundle",
+                            artifact_root_resolver=lambda: self.fail(
+                                "resolved artifact root"
+                            ),
+                        )
+                    with (
+                        patch.object(module, "validate_document",
+                                     wraps=module.validate_document) as validate,
+                        self.assertRaises(module.BundleIntegrityError) as result,
+                    ):
+                        load([
+                            ("snapshot-open", [], rejected),
+                            ("snapshot-invalid-document-bytes", [], byte_frame(raw)),
+                        ])
+                    validate.assert_called_once_with(raw, "pack")
+                    error, reference = result.exception, expected.exception
+                    self.assertIs(type(error), module.BundleIntegrityError)
+                    self.assertIn(relative, str(error))
+                    compare_exception_graph(error, reference, {id(reference): error})
+                    cause = error.__cause__
+                    self.assertIs(type(cause), SchemaValidationError)
+                    if nested_type is None:
+                        self.assertIsNone(cause.__cause__)
+                        self.assertTrue(any(
+                            "does not match" in entry for entry in cause.diagnostics
+                        ))
+                        self.assertTrue(any(
+                            "forbidden authority-bearing field" in entry
+                            for entry in cause.diagnostics
+                        ))
+                    else:
+                        self.assertIs(type(cause.__cause__.__cause__), nested_type)
+
+            for invalid in (
+                {**rejected, "document_kind": "distribution"},
+                {**rejected, "document_kind": ["pack"]},
+                {**rejected, "path": 1},
+                {**rejected, "path": ""},
+                {**rejected, "message": "forged error"},
+            ):
+                with (
+                    self.subTest(rejection=invalid), self.assertRaises(UnsupportedValue)
+                ):
+                    load([("snapshot-open", [], invalid)])
+
+            for invalid in (
+                {"kind": "unit"},
+                {"kind": "bytes", "value": "not base64"},
+                {**byte_frame(b"{"), "extra": True},
+                byte_frame(valid_pack),
+            ):
+                with self.subTest(rejection_bytes=invalid["kind"]), self.assertRaises(
+                    UnsupportedValue,
+                ):
+                    load([
+                        ("snapshot-open", [], rejected),
+                        ("snapshot-invalid-document-bytes", [], invalid),
+                    ])
 
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")

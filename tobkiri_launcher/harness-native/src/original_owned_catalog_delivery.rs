@@ -1,7 +1,7 @@
 //! Ordered delivery of the verified catalog within the original Review call.
 use super::*;
 use crate::bootstrap_metadata::string_parts;
-use document_shapes::byte_frame_fits;
+use document_shapes::{byte_frame_fits, byte_frame_limit};
 use native_bundled_catalog::{NativeBundleError, NativeOwnedBundle, label};
 use tobkiri_canon::{AllocationError, CoreArray};
 
@@ -10,6 +10,7 @@ const SOFT_FRAME_BYTES: usize = 128 * 1024;
 
 pub(super) enum OwnedCatalogDelivery {
     Armed,
+    DiagnosticBytes(Funded<Zeroizing<Vec<u8>>>),
     Reading {
         bundle: Funded<Box<NativeOwnedBundle>>,
         next: usize,
@@ -53,7 +54,8 @@ impl CatalogIo {
                 // errors and failed publication must leave a terminal loader.
                 self.owned_delivery = None;
                 self.loader = Loader::Rejected;
-                match self.compose_owned_bundle(op) {
+                let byte_limit = byte_frame_limit(&out).ok_or(AllocationError::Limit)?;
+                match self.compose_owned_bundle(op, byte_limit) {
                     Ok(bundle) => {
                         write_open(&mut out, &bundle)?;
                         let response = seal(op, out)?;
@@ -67,11 +69,45 @@ impl CatalogIo {
                         self.loader = Loader::RootSymlink;
                         Ok(response)
                     }
+                    Err(NativeBundleError::UnverifiedDocument {
+                        kind,
+                        relative,
+                        bytes,
+                    }) => {
+                        if !byte_frame_fits(&out, bytes.len()) {
+                            return Err(AllocationError::Limit.into());
+                        }
+                        charge_work(&self.budget, relative.len() as u64)?;
+                        out.append(b"{\"kind\":\"snapshot-invalid-document\",\"document_kind\":")?;
+                        string_parts(&mut out, [label(kind)])?;
+                        out.append(b",\"path\":")?;
+                        string_parts(&mut out, [relative.as_str()?])?;
+                        out.append(b"}")?;
+                        let response = seal(op, out)?;
+                        self.owned_delivery = Some(OwnedCatalogDelivery::DiagnosticBytes(bytes));
+                        self.loader = Loader::RootSymlink;
+                        Ok(response)
+                    }
                     Err(error) => {
                         self.write_owned_error(&mut out, error)?;
                         seal(op, out)
                     }
                 }
+            }
+            ("snapshot-invalid-document-bytes", Some(OwnedCatalogDelivery::DiagnosticBytes(_)))
+                if args.is_empty() =>
+            {
+                let Some(OwnedCatalogDelivery::DiagnosticBytes(bytes)) = self.owned_delivery.take()
+                else {
+                    unreachable!("pending catalog diagnostics");
+                };
+                self.loader = Loader::Rejected;
+                if !byte_frame_fits(&out, bytes.len()) {
+                    return Err(AllocationError::Limit.into());
+                }
+                charge_work(&self.budget, bytes.len() as u64)?;
+                write_bytes(&mut out, &bytes)?;
+                seal(op, out)
             }
             ("snapshot-rows", Some(OwnedCatalogDelivery::Reading { bundle, next }))
                 if ordinal(args) == Some(*next) && *next < bundle.entry_count() =>
@@ -125,6 +161,7 @@ impl CatalogIo {
                 write_error(out, "value-error", [error.message.as_str()])?;
             }
             NativeBundleError::Authority(error) => return Err(error.into()),
+            NativeBundleError::ByteResponseLimit => return Err(AllocationError::Limit.into()),
             NativeBundleError::NestedLockJson { bytes, detail } => {
                 charge_work(&self.budget, bytes.len() as u64)?;
                 write_error(
@@ -161,7 +198,8 @@ impl CatalogIo {
                     return Err((*cause).into());
                 }
             }
-            error @ NativeBundleError::UnrepresentedDocument => return Err(error.into()),
+            error @ (NativeBundleError::UnrepresentedDocument
+            | NativeBundleError::UnverifiedDocument { .. }) => return Err(error.into()),
         }
         out.append(b"}")?;
         Ok(())

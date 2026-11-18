@@ -16,6 +16,12 @@ pub(super) enum NativeBundleError {
         field: &'static str,
     },
     TypeError(&'static str),
+    UnverifiedDocument {
+        kind: CatalogDocumentKind,
+        relative: CoreBuffer,
+        bytes: Funded<Zeroizing<Vec<u8>>>,
+    },
+    ByteResponseLimit,
     UnrepresentedDocument,
     NestedLockJson {
         bytes: Funded<Zeroizing<Vec<u8>>>,
@@ -45,9 +51,16 @@ impl fmt::Display for NativeBundleError {
                 path.as_str().map_err(|_| fmt::Error)?
             ),
             Self::TypeError(message) => f.write_str(message),
+            Self::UnverifiedDocument { kind, relative, .. } => write!(
+                f,
+                "cannot verify {} document {}",
+                label(*kind),
+                relative.as_str().map_err(|_| fmt::Error)?
+            ),
             Self::UnrepresentedDocument => {
                 f.write_str("the native reader cannot represent this document's validation outcome")
             }
+            Self::ByteResponseLimit => f.write_str("catalog byte response exceeds its size limit"),
             Self::Lock { detail, .. } | Self::NestedLockJson { detail, .. } => {
                 write!(
                     f,
@@ -124,13 +137,14 @@ impl CatalogIo {
         {
             return Err(OriginalAuthorityError::unavailable().into());
         }
-        self.compose_owned_bundle(&op)
+        self.compose_owned_bundle(&op, MAX_BYTES)
     }
 
     /// Build the native snapshot for the already selected catalog scope.
     pub(super) fn compose_owned_bundle<S: crate::BootstrapReviewOwner>(
         &self,
         op: &Operation<'_, S>,
+        byte_limit: usize,
     ) -> NativeBundleResult<NativeOwnedBundle> {
         if !self.invocation.same_invocation(op.invocation)
             || !Arc::ptr_eq(&self.cleanup, &op.cleanup)
@@ -147,7 +161,7 @@ impl CatalogIo {
         if metadata(op, budget, &lock_path, false)?.is_some_and(|value| value.is_symlink()) {
             return Err(integrity("bundle lock must not be a symlink"));
         }
-        let lock = read_lock(op, budget, &lock_path)?;
+        let lock = read_lock(op, budget, &lock_path, byte_limit)?;
         let rows = lock_entries(&lock)?;
         let mut identities = CatalogMemberIndex::new(op, rows.len())?;
         let mut members = member_storage(op, rows.len())?;
@@ -169,6 +183,7 @@ impl CatalogIo {
                 )));
             }
             let bytes = read_file(op, &candidate, budget)?;
+            require_byte_response_limit(bytes.len(), byte_limit)?;
             charge_work(budget, bytes.len() as u64)?;
             let actual = Digest::hash(&bytes);
             if actual != row.expected {
@@ -179,9 +194,15 @@ impl CatalogIo {
                     row.expected.as_str()
                 )));
             }
-            let document = schemas
-                .prove_document(op, budget, row.kind, &bytes)?
-                .ok_or(NativeBundleError::UnrepresentedDocument)?;
+            let Some(document) = schemas.prove_document(op, budget, row.kind, &bytes)? else {
+                let relative = CoreBuffer::copy_from(row.relative.as_bytes(), budget)
+                    .map_err(|_| OriginalAuthorityError::capacity(STAGE))?;
+                return Err(NativeBundleError::UnverifiedDocument {
+                    kind: row.kind,
+                    relative,
+                    bytes,
+                });
+            };
             if matches!(
                 row.kind,
                 CatalogDocumentKind::Base | CatalogDocumentKind::Shell
@@ -213,7 +234,7 @@ impl CatalogIo {
             });
         }
         drop(schemas);
-        let pins = verify_pins(op, budget, &root, &identities, &members)?;
+        let pins = verify_pins(op, budget, &root, &identities, &members, byte_limit)?;
         let artifact_path = root.parent().unwrap_or(&root).join("platform-artifacts");
         let (artifact_root, artifact_parent) =
             if metadata(op, budget, &artifact_path, true)?.is_some_and(|value| value.is_dir()) {
@@ -308,11 +329,13 @@ fn read_lock<S: crate::BootstrapReviewOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     path: &Path,
+    byte_limit: usize,
 ) -> NativeBundleResult<Funded<Document>> {
     let bytes = match read_file(op, path, budget) {
         Ok(bytes) => bytes,
         Err(error) => return Err(lock_error(error, op, budget)?),
     };
+    require_byte_response_limit(bytes.len(), byte_limit)?;
     match json::decode_read_only_strict(&bytes, op, budget) {
         Ok(lock) => Ok(lock),
         Err(error)
@@ -396,6 +419,7 @@ fn verify_pins<S: crate::BootstrapReviewOwner>(
     root: &Path,
     identities: &CatalogMemberIndex,
     records: &[OwnedMember],
+    byte_limit: usize,
 ) -> NativeBundleResult<usize> {
     let mut pins = 0;
     for ((kind, id), record) in identities.entries().zip(records) {
@@ -424,6 +448,7 @@ fn verify_pins<S: crate::BootstrapReviewOwner>(
         // original pin check does not repeat resolve or the symlink walk.
         let path = lexical(root, &record.row.relative)?;
         let fresh = read_file(op, &path, budget)?;
+        require_byte_response_limit(fresh.len(), byte_limit)?;
         charge_work(budget, fresh.len() as u64)?;
         let actual = Digest::hash(&fresh);
         if actual != record.row.expected || !expected_pin.is(actual.as_str()) {
@@ -434,6 +459,15 @@ fn verify_pins<S: crate::BootstrapReviewOwner>(
         pins += 1;
     }
     Ok(pins)
+}
+
+fn require_byte_response_limit(len: usize, limit: usize) -> NativeBundleResult<()> {
+    // The original caller had to receive the physical byte response before
+    // it could detect a digest or document error for this occurrence.
+    if len > limit {
+        return Err(NativeBundleError::ByteResponseLimit);
+    }
+    Ok(())
 }
 
 fn lexical(root: &Path, relative: &str) -> Result<PathBuf> {

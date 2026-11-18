@@ -424,3 +424,160 @@ async fn owned_catalog_lock_sends_exact_invalid_source_once() {
         });
     }
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn owned_catalog_sends_only_first_unverified_document_without_reopening() {
+    let pack = include_bytes!(
+        "../../../tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
+    );
+    with_source(false, |source, invocation, budget, io, cleanup| {
+        let mut invalid = b"{}".to_vec();
+        // The diagnostic header and old maximum-size byte reply are separate.
+        invalid.resize(legacy_byte_limit(invocation, budget), b'\n');
+        let bundle = source.root.join("ecosystem/defaultspack/v4");
+        fs::create_dir_all(&bundle).unwrap();
+        fs::write(bundle.join("pack.json"), pack).unwrap();
+        let rejected_path = bundle.join("invalid.json");
+        fs::write(&rejected_path, &invalid).unwrap();
+        let lock = json!({
+            "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+            "entries": [
+                {"path": "pack.json", "kind": "pack", "digest": Digest::hash(pack).as_str()},
+                {"path": "./invalid.json", "kind": "profile", "digest": Digest::hash(&invalid).as_str()},
+                {"path": "missing.json", "kind": "base", "digest": Digest::hash(b"{}").as_str()},
+            ],
+        });
+        fs::write(
+            bundle.join("bundle.lock.json"),
+            serde_json::to_vec(&lock).unwrap(),
+        )
+        .unwrap();
+        io.select_packaged(&bundle).unwrap();
+        io.enable_owned_catalog();
+        io.retain_review_pack_dependencies();
+        io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+            .unwrap();
+        let inspect = |io: &mut CatalogIo, operation, steps, args| {
+            let request = packet(invocation, budget, operation, steps, args);
+            io.inspect(source, invocation, &request, budget)
+        };
+        let result = |io: &mut CatalogIo, operation| {
+            call(
+                io,
+                source,
+                invocation,
+                budget,
+                operation,
+                json!([]),
+                json!([]),
+            )
+        };
+        let diagnostic = "snapshot-invalid-document-bytes";
+        assert!(inspect(io, diagnostic, json!([]), json!([])).is_err());
+        call(
+            io,
+            source,
+            invocation,
+            budget,
+            "root",
+            json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+            json!([]),
+        );
+        assert!(inspect(io, diagnostic, json!([]), json!([])).is_err());
+        let baseline = invocation.capacity_snapshot().unwrap();
+        assert_eq!(
+            result(io, "snapshot-open"),
+            json!({
+                "kind": "snapshot-invalid-document",
+                "document_kind": "profile",
+                "path": "./invalid.json",
+            })
+        );
+        assert!(!io.completed());
+        assert!(inspect(io, "snapshot-open", json!([]), json!([])).is_err());
+        assert!(inspect(io, "snapshot-rows", json!([]), json!([0])).is_err());
+        assert!(inspect(io, "snapshot-close", json!([]), json!([1])).is_err());
+        assert!(inspect(io, diagnostic, json!([["join", "invalid.json"]]), json!([])).is_err());
+        assert!(inspect(io, diagnostic, json!([]), json!([0])).is_err());
+        fs::remove_file(rejected_path).unwrap();
+        let closed = result(io, diagnostic);
+        assert_eq!(closed["kind"], "bytes");
+        assert_eq!(
+            base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                closed["value"].as_str().unwrap(),
+            )
+            .unwrap(),
+            invalid
+        );
+        assert!(inspect(io, diagnostic, json!([]), json!([])).is_err());
+        assert!(inspect(io, "snapshot-close", json!([]), json!([1])).is_err());
+        assert!(!io.completed());
+        assert!(io.lock.is_none());
+        assert!(io.shell_inputs.is_none());
+        let released = invocation.capacity_snapshot().unwrap();
+        assert_eq!(
+            (released.charged_bytes, released.reservations),
+            (baseline.charged_bytes, baseline.reservations),
+        );
+        assert!(cleanup.verified());
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn owned_catalog_checks_byte_limit_before_document_digest() {
+    with_source(false, |source, invocation, budget, io, cleanup| {
+        let bundle = source.root.join("ecosystem/defaultspack/v4");
+        fs::create_dir_all(&bundle).unwrap();
+        let mut pack = include_bytes!(
+            "../../../tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
+        )
+        .to_vec();
+        pack.resize(legacy_byte_limit(invocation, budget) + 1, b'\n');
+        fs::write(bundle.join("pack.json"), &pack).unwrap();
+        let lock = json!({
+            "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+            "entries": [
+                {"path": "pack.json", "kind": "pack", "digest": Digest::hash(b"wrong").as_str()},
+                {"path": "missing.json", "kind": "base", "digest": Digest::hash(b"{}").as_str()},
+            ],
+        });
+        fs::write(
+            bundle.join("bundle.lock.json"),
+            serde_json::to_vec(&lock).unwrap(),
+        )
+        .unwrap();
+        io.select_packaged(&bundle).unwrap();
+        io.enable_owned_catalog();
+        io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+            .unwrap();
+        call(
+            io,
+            source,
+            invocation,
+            budget,
+            "root",
+            json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+            json!([]),
+        );
+        let open = packet(invocation, budget, "snapshot-open", json!([]), json!([]));
+        let error = io.inspect(source, invocation, &open, budget).unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<tobkiri_canon::AllocationError>(),
+            Some(tobkiri_canon::AllocationError::Limit),
+        ));
+        assert!(io.inspect(source, invocation, &open, budget).is_err());
+        assert!(!io.completed());
+        assert!(cleanup.verified());
+    });
+}
+
+fn legacy_byte_limit(
+    invocation: &NativeSetupInvocation,
+    budget: &Arc<dyn AllocationBudget>,
+) -> usize {
+    let request = packet(invocation, budget, "snapshot-open", json!([]), json!([]));
+    let scope = request.get_key("scope").unwrap();
+    let output = inspection_result(&scope, budget).unwrap();
+    document_shapes::byte_frame_limit(&output).unwrap()
+}

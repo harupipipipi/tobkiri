@@ -205,7 +205,33 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
         from harness_native.value_graph import UnsupportedValue
         from .errors import CanonicalizationError
 
+        identity_fields = {
+            "pack": "id", "base": "pack_id", "shell": "provider_id",
+            "profile": "profile_id", "executable_catalog": "pack_id",
+        }
         opened = root._catalog_snapshot("snapshot-open", [])
+        if opened.get("kind") == "snapshot-invalid-document":
+            kind, relative = opened.get("document_kind"), opened.get("path")
+            if (
+                set(opened) != {"kind", "document_kind", "path"}
+                or type(kind) is not str
+                or kind not in identity_fields
+                or type(relative) is not str
+                or not relative
+            ):
+                raise UnsupportedValue(
+                    "invalid native catalog snapshot document rejection"
+                )
+            frame = root._catalog_snapshot("snapshot-invalid-document-bytes", [])
+            raw = root._bridge._value(frame, "bytes")
+            try:
+                validate_document(raw, kind)
+            except SchemaValidationError as exc:
+                raise BundleIntegrityError(
+                    f"invalid {kind} document {relative}: {exc}"
+                ) from exc
+            raise UnsupportedValue("native catalog snapshot document rejection differs")
+
         if opened.get("kind") == "snapshot-error":
             error = opened.get("error")
             message = opened.get("message")
@@ -268,10 +294,6 @@ def _derive_catalog_snapshot(source: bytes) -> bytes:
         if not resolved.is_absolute() or (artifact is not None and not artifact.is_absolute()):
             raise UnsupportedValue("invalid native catalog snapshot path")
 
-        identity_fields = {
-            "pack": "id", "base": "pack_id", "shell": "provider_id",
-            "profile": "profile_id", "executable_catalog": "pack_id",
-        }
         collections = {kind: {} for kind in identity_fields}
         ordinal = 0
         count = opened["count"]

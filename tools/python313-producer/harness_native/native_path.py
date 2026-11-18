@@ -535,6 +535,12 @@ class NativePath:
             self is not bridge._catalog_snapshot_root
             or self is not bridge._catalog_root
             or bridge._catalog_snapshot_result is not None
+            or operation not in {
+                "snapshot-open",
+                "snapshot-rows",
+                "snapshot-close",
+                "snapshot-invalid-document-bytes",
+            }
         ):
             raise UnsupportedValue("catalog snapshot outside its fixed call")
         return bridge._catalog_request(self._target(), operation, args)
