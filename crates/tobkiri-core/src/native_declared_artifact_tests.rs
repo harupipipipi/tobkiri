@@ -2,8 +2,8 @@
 //! here is fixture DATA; Launcher separately proves its real resolver linkage.
 use super::*;
 use crate::{
-    ApprovalAnswer, ApprovalPrompt, CanonValue, CoreConfig, HostError, HostIo, TrustedPrompt,
-    UiEmbed, ids::UiSessionId,
+    ApprovalAnswer, ApprovalPrompt, CanonValue, CoreConfig, HostError, HostIo, RuntimeOwner,
+    TrustedPrompt, UiEmbed, ids::UiSessionId,
 };
 use std::{
     fs,
@@ -62,8 +62,7 @@ impl Drop for Source {
     }
 }
 fn fixture() -> (tempfile::TempDir, Arc<Core>, Source) {
-    let temp = tempfile::tempdir().unwrap();
-    let physical = fs::canonicalize(temp.path()).unwrap();
+    let (temp, physical, source) = source_fixture();
     let core = Arc::new(
         Core::open(
             CoreConfig::for_test_data_root(physical.join("data")),
@@ -72,6 +71,12 @@ fn fixture() -> (tempfile::TempDir, Arc<Core>, Source) {
         .unwrap(),
     );
     assert!(core.profile_ids().unwrap().is_empty());
+    (temp, core, source)
+}
+
+fn source_fixture() -> (tempfile::TempDir, PathBuf, Source) {
+    let temp = tempfile::tempdir().unwrap();
+    let physical = fs::canonicalize(temp.path()).unwrap();
     let root = physical.join("source");
     fs::create_dir(&root).unwrap();
     let source = Source {
@@ -79,7 +84,7 @@ fn fixture() -> (tempfile::TempDir, Arc<Core>, Source) {
         declarations: BTreeMap::new(),
         dropped: Arc::new(AtomicUsize::new(0)),
     };
-    (temp, core, source)
+    (temp, physical, source)
 }
 
 #[tokio::test]
@@ -197,6 +202,84 @@ async fn original_envelope_bound_rejects_before_allocating_a_large_read_tail() {
         Err(NativeArtifactError::TooLarge)
     ));
     inspection.finish().await.unwrap();
+}
+
+#[tokio::test]
+async fn native_owner_inspection_preserves_the_single_store_claim_and_parent() {
+    let (_temp, physical, mut source) = source_fixture();
+    fs::write(source.root.join("member"), b"declared bytes").unwrap();
+    source
+        .declarations
+        .insert("member".into(), Digest::hash(b"declared bytes"));
+    let root_pointer = source.root.as_os_str().as_encoded_bytes().as_ptr();
+    let owner = RuntimeOwner::open(physical.join("data")).unwrap();
+    let invocation = owner.begin_native_setup().unwrap();
+    let parent = CoreCancellation::new_with_control(owner.control()).unwrap();
+    let mut inspection =
+        NativeArtifactInspection::from_invocation(source, invocation.clone(), &parent).unwrap();
+    assert_eq!(
+        inspection.read("member").await.unwrap().as_bytes(),
+        b"declared bytes"
+    );
+    let source = inspection.finish().await.unwrap();
+    assert_eq!(
+        source.root.as_os_str().as_encoded_bytes().as_ptr(),
+        root_pointer
+    );
+    assert!(!parent.is_cancelled());
+    assert!(matches!(
+        NativeArtifactInspection::from_invocation(source, invocation, &parent),
+        Err(NativeArtifactError::Execution(
+            NativeDataIoError::Unavailable
+        ))
+    ));
+}
+
+#[tokio::test]
+async fn native_owner_cancellation_during_finish_waits_for_physical_cleanup() {
+    let (_temp, physical, source) = source_fixture();
+    let dropped = source.dropped.clone();
+    let owner = RuntimeOwner::open(physical.join("data")).unwrap();
+    let parent = CoreCancellation::new_with_control(owner.control()).unwrap();
+    let inspection = NativeArtifactInspection::from_invocation(
+        source,
+        owner.begin_native_setup().unwrap(),
+        &parent,
+    )
+    .unwrap();
+    let child = inspection.store.as_ref().unwrap().cancellation().clone();
+    let held = inspection.work.clone();
+    let io = inspection.io.clone();
+    let (entered, ready) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let read = tokio::spawn(async move {
+        io.inspect_retaining(
+            held.project(|work| work as &(dyn std::any::Any + Send + Sync)),
+            move |_| {
+                let _source_custody = held;
+                let _ = entered.send(());
+                released.recv().unwrap();
+                Ok(())
+            },
+        )
+        .await
+    });
+    ready.await.unwrap();
+    read.abort();
+
+    let finish = tokio::spawn(inspection.finish());
+    child.cancelled().await.unwrap();
+    assert!(!parent.is_cancelled());
+    parent.cancel();
+    assert!(!finish.is_finished());
+    assert_eq!(dropped.load(Ordering::SeqCst), 0);
+
+    release.send(()).unwrap();
+    assert!(matches!(
+        finish.await.unwrap(),
+        Err(NativeArtifactError::Execution(NativeDataIoError::Cancelled))
+    ));
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

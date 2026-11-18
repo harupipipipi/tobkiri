@@ -19,7 +19,8 @@ use std::{
 };
 use tobkiri_canon::{ControlHandle, CoreBuffer, Digest, MAX_BYTES};
 use tobkiri_gate::{
-    CapacityKind, ControlKind, ControlReservation, NativeSetupInvocation, NativeSetupReservation,
+    CapacityKind, ControlKind, ControlReservation, CoreCancellation, NativeSetupInvocation,
+    NativeSetupReservation,
 };
 use tobkiri_wasm::{NativeDataIo, NativeDataIoError, NativeInspectionOutput, NativeSetupStore};
 
@@ -79,7 +80,7 @@ struct Work<S> {
     owned: Mutex<Owned<S>>,
     phase: AtomicU8,
     invocation: NativeSetupInvocation,
-    _core: Arc<Core>,
+    _core: Option<Arc<Core>>,
 }
 struct Funding {
     _native: NativeSetupReservation,
@@ -87,7 +88,7 @@ struct Funding {
 }
 type Held<S> = ControlHandle<Work<S>>;
 
-/// Move-only native action. Only Core constructs its active operation owner.
+/// Move-only native action owned by Core or its trusted native composition.
 ///
 /// One invocation, Store, deadline, 64MiB account and physical IO slot serve all
 /// reads. This is not a transferable filesystem capability or an FD registry.
@@ -95,6 +96,7 @@ pub struct NativeArtifactInspection<S: NativeDeclaredArtifactSource> {
     work: Held<S>,
     store: Option<NativeSetupStore<()>>,
     io: NativeDataIo,
+    cancellation_parent: Option<CoreCancellation>,
 }
 
 impl Core {
@@ -105,6 +107,30 @@ impl Core {
         source: S,
     ) -> Result<NativeArtifactInspection<S>, NativeArtifactError> {
         let invocation = self.native_artifact_invocation()?;
+        NativeArtifactInspection::new(source, invocation, Some(self.clone()), None)
+    }
+}
+
+impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
+    /// Admit an actual resolved source using a trusted composition's original
+    /// invocation and cancellation parent from the same control account.
+    ///
+    /// The caller keeps its runtime owner and worker alive through `finish`.
+    /// Requires the caller's entered async runtime.
+    pub fn from_invocation(
+        source: S,
+        invocation: NativeSetupInvocation,
+        cancellation: &CoreCancellation,
+    ) -> Result<Self, NativeArtifactError> {
+        Self::new(source, invocation, None, Some(cancellation))
+    }
+
+    fn new(
+        source: S,
+        invocation: NativeSetupInvocation,
+        core: Option<Arc<Core>>,
+        cancellation: Option<&CoreCancellation>,
+    ) -> Result<Self, NativeArtifactError> {
         let bytes = u64::try_from(Held::<S>::storage_bytes::<Funding>())
             .ok()
             // std's pinned Darwin Mutex lazily allocates one pthread_mutex_t.
@@ -127,7 +153,7 @@ impl Core {
                 }),
                 phase: AtomicU8::new(READY),
                 invocation: invocation.clone(),
-                _core: self.clone(),
+                _core: core,
             },
             Funding {
                 _native: native,
@@ -137,24 +163,27 @@ impl Core {
         .map_err(|_| NativeDataIoError::Capacity)?;
         let engine = tobkiri_wasm::WasmEngine::new_with_control(invocation.control())
             .map_err(|_| NativeDataIoError::Unavailable)?;
-        let mut store = engine
-            .native_setup_store(invocation, ())
-            .map_err(|_| NativeDataIoError::Unavailable)?;
+        let store = match cancellation {
+            Some(parent) => {
+                engine.native_setup_store_with_cancellation_parent(invocation, (), parent)
+            }
+            None => engine.native_setup_store(invocation, ()),
+        };
+        let mut store = store.map_err(|_| NativeDataIoError::Unavailable)?;
         let io = store.bind_native_data_io().map_err(|error| {
             error
                 .downcast_ref::<NativeDataIoError>()
                 .copied()
                 .unwrap_or(NativeDataIoError::Unavailable)
         })?;
-        Ok(NativeArtifactInspection {
+        Ok(Self {
             work,
             store: Some(store),
             io,
+            cancellation_parent: cancellation.cloned(),
         })
     }
-}
 
-impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
     /// Pure borrowed facts for the original native domain validation. No IO or
     /// permission decision is delegated to this nonescaping callback.
     pub fn with_source<T>(
@@ -262,7 +291,12 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         self.io.retire_and_wait().await?;
         // Cleanup still waits after expiry/cancellation. Its successful Join
         // does not renew the action's deadline or authorize a late result.
-        if cancelled {
+        if cancelled
+            || self
+                .cancellation_parent
+                .as_ref()
+                .is_some_and(CoreCancellation::is_cancelled)
+        {
             return Err(NativeDataIoError::Cancelled.into());
         }
         if std::time::Instant::now() >= deadline? {

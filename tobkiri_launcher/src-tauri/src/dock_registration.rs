@@ -754,7 +754,7 @@ fn ensure_defaultspack_desktop_ready(
     let api_token = read_desktop_api_token_from_config(config)
         .context("failed to read Viewer local auth token for Defaultspack launch")?;
     let panel_bootstrap_secret = read_panel_bootstrap_secret_from_config(config)?;
-    let metadata = match read_defaultspack_desktop_metadata(config) {
+    let metadata = match read_launch_metadata(app, config, deadline) {
         Ok(m) => {
             info!("launch_defaultspack_desktop_impl: metadata loaded (port={}, entrypoint={}, argv_count={}, working_dir={})",
                 m.port, m.entrypoint.display(), m.argv.len(), m.app_working_dir.display());
@@ -1048,11 +1048,27 @@ pub(crate) fn read_defaultspack_desktop_metadata(
     )
 }
 
+fn read_launch_metadata(
+    app: &AppHandle,
+    config: &AppConfig,
+    deadline: Instant,
+) -> AnyResult<DefaultspackDesktopMetadata> {
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    if crate::kernel_manager::native_first_setup_enabled(config) {
+        let metadata = crate::native_harness_bootstrap::read_launch_metadata(app, deadline)?;
+        crate::defaultspack_authority::require_current_launch_identity(
+            config,
+            metadata.execution_identity(),
+        )?;
+        return Ok(metadata);
+    }
+    let _ = (app, deadline);
+    read_defaultspack_desktop_metadata(config)
+}
+
 /// Inspect the actual later flow-A resolver selection through an existing Core.
 ///
-/// This preserves the original resolver/identity/contribution/assembly order.
-/// Product bootstrap still needs to supply its composed Core at this call site;
-/// the default Launcher path remains on the existing reader until full parity.
+/// Keep the same resolver, execution identity and metadata assembly as Launch.
 #[cfg(all(feature = "native-source-inspection", unix))]
 pub(crate) async fn read_defaultspack_desktop_metadata_with_core(
     config: &AppConfig,
@@ -1071,7 +1087,7 @@ pub(crate) async fn read_defaultspack_desktop_metadata_with_core(
     )
 }
 
-fn assemble_defaultspack_desktop_metadata(
+pub(crate) fn assemble_defaultspack_desktop_metadata(
     config: &AppConfig,
     authority: crate::defaultspack_authority::ApplicationAuthority,
     execution_identity: crate::host_contract::ExecutionProfileIdentity,

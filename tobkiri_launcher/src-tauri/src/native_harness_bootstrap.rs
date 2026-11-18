@@ -37,6 +37,11 @@ pub(crate) use authority::{
     read_original_authority_snapshot, OriginalAuthorityData, OriginalAuthorityJob,
     OriginalAuthorityJobFailure,
 };
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+#[path = "native_launch_metadata.rs"]
+mod launch_metadata;
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) use launch_metadata::read_launch_metadata;
 
 enum OwnedRuntime {
     Unopened,

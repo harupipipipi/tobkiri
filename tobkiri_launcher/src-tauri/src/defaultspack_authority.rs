@@ -328,6 +328,18 @@ pub(crate) fn has_verified_active_profile(config: &AppConfig) -> Result<bool> {
     Ok(read_active_profile_snapshot(config)?.is_some())
 }
 
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) fn require_current_launch_identity(
+    config: &AppConfig,
+    expected: &crate::host_contract::ExecutionProfileIdentity,
+) -> Result<()> {
+    let active = read_active_profile_snapshot(config)?.context("active Profile is unavailable")?;
+    if !expected.matches(&active.identity) {
+        bail!("active Profile changed during native Launch metadata inspection");
+    }
+    Ok(())
+}
+
 /// Generic resolver retained behind the historical module boundary until the
 /// Launcher composition root can be renamed without a migration fan-out.
 pub(crate) struct SignedApplicationResolver;
@@ -4469,8 +4481,8 @@ mod tests {
             HostError, HostIo, TrustedPrompt, UiEmbed,
         };
 
-        // Test-only host rejects any invented effect/approval. Production must
-        // pass its real composed Core; the adapter never creates a stand-in.
+        // This exercises the independent Core entry with a Host that rejects
+        // any unexpected effect. The Launcher-owned path requires no Host.
         struct NoEffects;
         #[async_trait::async_trait]
         impl TrustedPrompt for NoEffects {
@@ -4564,6 +4576,34 @@ mod tests {
         assert_eq!(original.execution_identity(), &execution_identity);
         assert_eq!(through_core.execution_identity(), &execution_identity);
         assert!(core.profile_ids().unwrap().is_empty());
+
+        #[cfg(feature = "native-harness-bootstrap")]
+        {
+            let owner = tobkiri_core::RuntimeOwner::open(config.user_data_dir.join("core")).unwrap();
+            let invocation = owner.begin_native_setup().unwrap();
+            let cancellation =
+                tobkiri_gate::CoreCancellation::new_with_control(invocation.control()).unwrap();
+            let signed = SignedApplicationResolver::resolve_sources(&config).unwrap();
+            let identity = signed.authority().execution_identity().unwrap();
+            let (inspected, cleanup_verified) =
+                crate::native_declared_artifacts::collect_for_native_launch(
+                    signed,
+                    invocation,
+                    &cancellation,
+                )
+                .await;
+            assert!(cleanup_verified);
+            let (signed, contributions) = inspected.unwrap();
+            let metadata = crate::dock_registration::assemble_defaultspack_desktop_metadata(
+                &config,
+                signed.into_authority(),
+                identity,
+                contributions,
+            )
+            .unwrap();
+            assert_eq!(metadata, original);
+            assert!(!cancellation.is_cancelled());
+        }
 
         // Mutate after the actual resolution: no second resolver or copied
         // manifest can silently turn these bytes into the accepted artifact.

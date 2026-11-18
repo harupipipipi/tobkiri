@@ -580,6 +580,13 @@ jobs:
           --log "$RUNNER_TEMP/harness-native-owner-transfer.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-core --lib
           core::runtime_owner_tests:: -- --nocapture
+      - name: Read Launch artifacts through the same native owner and cancellation
+        if: ${{ inputs.verification == 'launcher-snapshot-staging' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-launch-artifacts.log" --expected-passed 8 --
+          cargo test --locked -p tobkiri-core --lib
+          native_declared_artifact::tests -- --nocapture --test-threads=1
       - name: Install Node for the original Launcher staging check
         if: ${{ (inputs.verification == 'launcher-staging' || inputs.verification == 'launcher-snapshot-staging') && steps.native_inputs.conclusion == 'success' }}
         uses: actions/setup-node@v4
@@ -665,6 +672,7 @@ jobs:
             ${{ runner.temp }}/harness-native-launcher-staging.log*
             ${{ runner.temp }}/harness-native-launcher-snapshot.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
+            ${{ runner.temp }}/harness-native-launch-artifacts.log*
             ${{ runner.temp }}/harness-native-runtime-features/
             ${{ runner.temp }}/harness-native-denied-factory.log*
             ${{ runner.temp }}/original-denied-factory-reference/summary.json

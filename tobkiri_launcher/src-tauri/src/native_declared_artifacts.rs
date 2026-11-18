@@ -5,8 +5,7 @@
 //! reached open, verifies identity and digest, and retains source custody until
 //! physical cleanup finishes. The Launcher still parses JSON with its original
 //! native allocations; this is not the complete nativeKit transform boundary.
-//! Product bootstrap/CoreHost composition must still supply its real Core to
-//! `read_defaultspack_desktop_metadata_with_core`; the default path is unchanged.
+//! The original Launcher can use its own registered native invocation at Launch.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -15,7 +14,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use serde_json::Value;
 use tobkiri_core::{
-    Core, NativeArtifactDeclaration, NativeArtifactInspection, NativeDeclaredArtifactSource,
+    Core, NativeArtifactDeclaration, NativeArtifactError, NativeArtifactInspection,
+    NativeDeclaredArtifactSource,
 };
 
 use crate::defaultspack_authority::{
@@ -54,23 +54,63 @@ pub(crate) async fn collect_for_resolved_application(
     core: &Arc<Core>,
     sources: NativeApplicationSources,
 ) -> Result<(NativeApplicationSources, HostContractContributionValues)> {
-    if declared_artifact_for_role(
+    collect(sources, |sources| core.inspect_declared_artifacts(sources))
+        .await
+        .0
+}
+
+#[cfg(all(target_os = "macos", feature = "native-harness-bootstrap"))]
+pub(crate) async fn collect_for_native_launch(
+    sources: NativeApplicationSources,
+    invocation: tobkiri_core::NativeSetupInvocation,
+    cancellation: &tobkiri_gate::CoreCancellation,
+) -> (Collection, bool) {
+    collect(sources, |sources| {
+        NativeArtifactInspection::from_invocation(sources, invocation, cancellation)
+    })
+    .await
+}
+
+type Collection = Result<(NativeApplicationSources, HostContractContributionValues)>;
+
+async fn collect(
+    sources: NativeApplicationSources,
+    inspect: impl FnOnce(
+        NativeApplicationSources,
+    ) -> Result<
+        NativeArtifactInspection<NativeApplicationSources>,
+        NativeArtifactError,
+    >,
+) -> (Collection, bool) {
+    match declared_artifact_for_role(
         &sources.authority().verified_artifacts,
         CONTRIBUTION_PATH,
         CONTRIBUTION_ARTIFACT_ROLE,
         "Host contract contribution",
-    )?
-    .is_none()
-    {
-        return Ok((sources, HostContractContributionValues::empty()));
+    ) {
+        Ok(Some(_)) => {}
+        Ok(None) => return (Ok((sources, HostContractContributionValues::empty())), true),
+        Err(error) => return (Err(error), true),
     }
-
-    let mut inspection = core.inspect_declared_artifacts(sources)?;
+    let mut inspection = match inspect(sources) {
+        Ok(inspection) => inspection,
+        Err(error) => return (Err(error.into()), true),
+    };
     let values = collect_from_inspection(&mut inspection).await;
-    // Do not return either a parser/read error or the original source before
-    // the Core worker has physically closed its files and joined.
-    let sources = inspection.finish().await.map_err(Into::into);
-    finish_collection(values, sources)
+    // Retire and join before reporting either the value or the parser error.
+    let sources = inspection.finish().await;
+    let cleanup_verified = match &sources {
+        Ok(_) => true,
+        #[cfg(all(target_os = "macos", feature = "native-harness-bootstrap"))]
+        Err(NativeArtifactError::Execution(
+            tobkiri_wasm::NativeDataIoError::Cancelled | tobkiri_wasm::NativeDataIoError::Deadline,
+        )) => true,
+        Err(_) => false,
+    };
+    (
+        finish_collection(values, sources.map_err(Into::into)),
+        cleanup_verified,
+    )
 }
 
 async fn collect_from_inspection(

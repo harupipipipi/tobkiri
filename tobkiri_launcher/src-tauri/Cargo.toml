@@ -9,7 +9,7 @@ core-host = ["dep:tobkiri-launcher-core-host", "dep:async-trait", "dep:tokio", "
 native-source-inspection = ["dep:tobkiri-core", "dep:tokio", "dep:async-trait"]
 native-harness-bootstrap = ["dep:tobkiri-core", "dep:tobkiri-gate", "dep:tobkiri-harness-native", "dep:tobkiri-wasm", "dep:tokio"]
 native-setup-review = ["dep:objc2-web-kit", "dep:tokio"]
-native-first-setup = ["native-harness-bootstrap", "native-setup-review"]
+native-first-setup = ["native-harness-bootstrap", "native-setup-review", "native-source-inspection"]
 
 [lib]
 name = "tobkiri_launcher_lib"
