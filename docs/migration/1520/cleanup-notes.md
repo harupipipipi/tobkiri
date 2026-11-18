@@ -4404,7 +4404,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rust 242件、strict Clippy、Python 255件、初回確定の物理fixtureが通過した。固定原本で153
   Packと物理macOS Shellを読み、登録済み候補から確認文書とpreviewを得る原本側の試験も通過。
   [実Wasmの燃料計測 44310299404](https://github.com/harupipipipi/tobkiri/actions/runs/44310299404)
-  は `994b070e9` の読取り境界を測る。成果物生成は成功し、macOSでの実行を待っている。
+  は `994b070e9` の読取り境界を測る。成果物生成は成功し、macOSの9件比較を実行中。
+  `f2fd7528a` は解決後の固定呼び出しで、登録revisionと実catalogの定義digestが一致したときに
+  resolver側のrootでAuthorityを新たに開く。実Shellを再検証し、閉じた後に4つのactivation
+  識別子を検証済みポインターと比較する。最初の登録済みSetup検証と同じ稼働記録読取りを共用し、
+  再承認例外をAuthorityのclose後に識別する。最終候補と同じShellを選ぶために、最初に物理検証
+  したcatalog入力を同じ予算内で解決後まで保持し、再取得した定義digestも照合する。
+  変更なしなら後継情報を省き、直接の親から既存Provider Packのpinだけが変わり、すべてが同じ
+  カタログで検証できた場合だけ、最初のレジストリsnapshotとポインターを12項目で確認に結ぶ。
+  inactive判定は独立して実行し、旧定義の確認情報との併用も元のdigestに含める。登録済み候補の
+  準備時のPack pin復旧、同梱外の承認照合、登録済み置換の確定は後続。初回確定処理にはこの
+  Pack pin付きの確認を渡さない。旧形式の稼働記録と未接続のschemaは従来の境界で終了する。
+  Rust 245件、strict Clippy、Pack pinのCIラッパー3件、Python 256件、固定原本の専用16件が通過。
+  物理macOS fixtureで変更なし、古いShell指定、別activationに切り替えられたポインターを比較。
+  一つのfixture内の別レビューには個別のinvocationを使い、各回の確保量が0へ戻ることを確認した。
+  固定CPython上で元の実resolverと確認を呼び、Pack pin単独と旧定義情報を併用したdigestを照合。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
