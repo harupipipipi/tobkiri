@@ -1,6 +1,6 @@
 //! Pure translation of the Registry Host's request boundary and UI projection.
 //!
-//! These helpers operate on an already-selected in-memory Registry. They do
+//! These helpers operate on an already-selected Registry. They do
 //! not create Host contributions, resolve bindings, open stores, or confer
 //! Gate authority. The capture check below reports only source validation and
 //! contribution cardinality; its fixture facts are not production bindings.
