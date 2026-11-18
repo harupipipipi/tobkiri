@@ -25,6 +25,12 @@ mod member_index;
 #[cfg(unix)]
 #[path = "original_catalog_member_path.rs"]
 mod member_path;
+#[cfg(all(test, unix))]
+#[path = "original_native_bundle_lock.rs"]
+mod native_bundle_lock;
+#[cfg(all(test, unix))]
+#[path = "original_native_bundled_catalog.rs"]
+mod native_bundled_catalog;
 #[cfg(unix)]
 #[path = "original_recovery_catalog_artifact.rs"]
 mod recovery_artifact;

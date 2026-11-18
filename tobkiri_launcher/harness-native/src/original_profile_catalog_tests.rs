@@ -7,6 +7,9 @@ use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupLease};
 
 #[path = "original_grouped_catalog_fixture_tests.rs"]
 mod grouped_fixture;
+#[path = "original_native_bundled_catalog_tests.rs"]
+mod native_owned_fixture;
+use native_bundled_catalog::NativeBundleError;
 
 struct Portable;
 impl NativeSetupLease for Portable {

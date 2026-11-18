@@ -16,6 +16,23 @@ pub(super) struct CatalogMemberIndex {
     members: Funded<Vec<Member>>,
 }
 
+pub(super) fn document_identity(doc: &Document, kind: CatalogDocumentKind) -> Option<&Text> {
+    let id = match kind {
+        CatalogDocumentKind::Pack => doc
+            .get(doc.root, "pack")
+            .and_then(|pack| doc.get(pack, "id")),
+        CatalogDocumentKind::Base | CatalogDocumentKind::ExecutableCatalog => {
+            doc.get(doc.root, "pack_id")
+        }
+        CatalogDocumentKind::Shell => doc.get(doc.root, "provider_id"),
+        CatalogDocumentKind::Profile => doc.get(doc.root, "profile_id"),
+    }?;
+    match doc.node(id) {
+        Node::String(text) => Some(text),
+        _ => None,
+    }
+}
+
 impl CatalogMemberIndex {
     /// Preallocate only the slots in the actual decoded bundle lock.
     pub(super) fn new<S: OriginalAuthorityOwner>(
@@ -57,17 +74,7 @@ impl CatalogMemberIndex {
         }
 
         charge_work(budget, MAX_ID_BYTES as u64)?;
-        let id = match kind {
-            CatalogDocumentKind::Pack => doc
-                .get(doc.root, "pack")
-                .and_then(|pack| doc.get(pack, "id")),
-            CatalogDocumentKind::Base | CatalogDocumentKind::ExecutableCatalog => {
-                doc.get(doc.root, "pack_id")
-            }
-            CatalogDocumentKind::Shell => doc.get(doc.root, "provider_id"),
-            CatalogDocumentKind::Profile => doc.get(doc.root, "profile_id"),
-        };
-        let Some(Node::String(text)) = id.map(|id| doc.node(id)) else {
+        let Some(text) = document_identity(doc, kind) else {
             return Ok(false);
         };
         let length = text.0.len();
