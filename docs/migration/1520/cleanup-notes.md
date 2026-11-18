@@ -3741,6 +3741,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Promptの6件と、既定値と異なるProviderモデルで実Wasmからloopback APIまで通す試験を含む
   networkの2件がローカルで通過。実Wasmと5つのProfileのpinを照合した。Launcher側の既存の
   モデル登録はそのWasm設定への接続が残る。
+  [更新後の実Flow・UI・CLI 44266173501](https://github.com/harupipipipi/tobkiri/actions/runs/44266173501)
+  は通過。[実1B 44266173496](https://github.com/harupipipipi/tobkiri/actions/runs/44266173496)
+  の初回は推論と保存、次ターンのCoreキャンセルと保存抑止まで進んだが、llama.cppの
+  `/slots` が3秒以内に待機状態を示さなかった。サーバー、モデル、リクエストのモデル名、
+  キャンセル実装、試験の上限は前回の成功後も同じ。
+  [同じSHAでの2回目](https://github.com/harupipipipi/tobkiri/actions/runs/44266173496/attempts/2)
+  は71.04秒で停止と保存の試験を通過し、前回の失敗は再現しなかった。原因は未特定。
   接続先・Secret・モデルを獲得する箇所を一つの実Wasmターンに接続し、既存保存値と照合する。
   `frontend/src/lib/launcherConnections.ts::saveLauncherModelProfile` の既存入力は
   model_profile_id/model_id/provider_instance_idとRegistry revisionを送る。
@@ -4317,6 +4324,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `original_external_catalog_compiler.rs` のRust構造・意味検証を同梱カタログに再利用する候補がある。
   外部CAS専用の承認と例外は同梱処理へ持ち込まず、同梱用のエラー詳細と順序を原本と比較する。
   読取順、ダイジェスト、pinの独立再読、既存上限と後処理を維持して実カタログを再検証する。
+  `3cc640b09` は既存のRust構造検証を共用し、同梱5種類の元スキーマが使う暦日、相対パス、
+  `maxItems` を追加した。同じ予算下の読み取り専用decoderで、同梱ロックの305件すべてを
+  1件ずつ検査した。日付・実行パス・Shellの3変異も、CPython 3.13.16の固定原本と同様に拒否。
+  Profile v4の `requested_edges` は入れ子のauthority参照も既存の許可リストに照合する。
+  CatalogIoとの接続には、同じ物理読取り結果への結合、同梱専用の意味検証と例外詳細の比較が必要。
+  実Wasmのカタログ入口は引き続き元の検証を使い、同じ上限での再計測は接続後に行う。
   `029093528` は登録済みのactive ProfileをSetupレビューで読み、既存のAuthorityと
   workspace復旧を共用する。同じ初回ロードで取得した同梱のProfile、Shell、Pack pinを使う。
   ロック外でShellを検証し、変更なしの場合はスナップショットを再読する。Authorityを閉じた
@@ -4331,6 +4344,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ローカルでRust 227件、strict Clippy、固定原本とCPython 3.13.16によるmacOS fixtureが通過。
   完全なProfile・PlanとShell再承認、異なるHost pointerの拒否、64MiBの共通上限に計上した予約の
   解放を確認した。Pack pinと追加Packの照合を含むカタログ判断と、製品画面の切替は後続。
+  `261fd6a93` は同じ読取済みcatalogのPack pinから、実際の登録済みSetupの選択を判定する。
+  検証済みのBase・Shell・選択Packが不足するか、同梱IDに異なる明示pinがあれば入場判定に進む。
+  同梱集合を使う場合は稼働中Planのbindingをすべて照合し、Shellの再承認時だけ旧Planを使わない。
+  既存の外部closureは同梱IDの置換を認めず、exact版の読み取りは単独の実行定義だけを扱う。
+  登録済みの全pinと依存をまとめて検証する接続、定義の更新方針、任意Packの過去の承認照合は後続。
+  macOSのRust 231件とstrict Clippy、固定原本の物理Shell／Authority fixtureが通過した。
+  原本SetupのLinux CIにも、同梱文書の構造検証と登録済みカタログ選択の各2件を加えた。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
