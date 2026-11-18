@@ -4393,6 +4393,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rust 242件、strict Clippy、固定原本の物理Shell fixture、CPython 3.13.16の255件が通過。
   153 Packを持つ固定原本のcatalogを使ったCPython比較で、上書きと2回目getterの検索も一致した。
   新しい登録済み候補の経路を含む実Wasmと、Setupから承認ウィンドウまでの実機検証は後続。
+  `416b6cc07` はこのcatalogを、静的・動的edge、成果物集合、解決、後継判定の再取得、previewへ
+  一貫して渡す。同じProfile IDなら登録済みのShell指定を使い、2回目のgetterが別IDなら、その
+  IDの同梱定義を使う。物理バンドルとShell定義は元の読取りを共用し、同じIDでShell指定がない
+  場合は同梱Shellへ戻さない。定義とpointerが一致してPack pinの再読が必要な場合は引き続き
+  `BootstrapPredecessorActivationNotBound` で止まる。ここではresolver側のrootでAuthorityを
+  改めて開き、確定済みの4識別子と最終候補のShellを照合する必要がある。候補準備時の記録の
+  再利用は避け、復旧と更新の読取り処理を共用できる箇所を検討する。任意Packの承認照合、外部
+  Pack closure、登録済み置換の確定は後続。実Shell経路の代替候補拒否と一回限りの証明を含む
+  Rust 242件、strict Clippy、Python 255件、初回確定の物理fixtureが通過した。固定原本で153
+  Packと物理macOS Shellを読み、登録済み候補から確認文書とpreviewを得る原本側の試験も通過。
+  [実Wasmの燃料計測 44310299404](https://github.com/harupipipipi/tobkiri/actions/runs/44310299404)
+  は `994b070e9` の読取り境界を測る。成果物生成は成功し、macOSでの実行を待っている。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
