@@ -58,18 +58,78 @@ def select_app_provider(source: bytes) -> bytes:
 
 
 def derive_catalog_validation(source: bytes) -> bytes:
-    """Use the fixed reader's live shape result while preserving semantic checks."""
+    """Use the fixed reader's digest-checked document while preserving semantics."""
     from bundle_catalog_kernel_inputs import _replace_one
 
+    source = _replace_one(source, b"import hashlib\n", b"import hashlib\nimport json\n")
     source = _replace_one(
         source, b"from .validation import validate_document\n",
-        b"from .validation import _semantic_diagnostics, _versioned_schema_name, validate_document\n",
+        b"from .validation import (\n"
+        b"    _semantic_diagnostics,\n"
+        b"    _versioned_schema_name,\n"
+        b"    validate_document,\n"
+        b")\n",
     )
     source = _replace_one(
-        source, b"        for index, entry in enumerate(entries):\n",
+        source, b"        def read_native_entry(index: int, relative: str, reread: bool) -> bytes:\n",
         b"        from harness_native.native_path import NativePath\n\n"
-        b"        native = type(root) is NativePath and root._bridge._catalog_root is not None\n"
-        b"        for index, entry in enumerate(entries):\n",
+        b"        native = type(root) is NativePath and root._bridge._catalog_root is not None\n\n"
+        b"        def read_native_entry(index: int, relative: str, reread: bool) -> bytes | str:\n",
+    )
+    source = _replace_one(
+        source, b"            return candidate.read_bytes()\n",
+        b"            if native:\n"
+        b"                return candidate._read_catalog_document()\n"
+        b"            return candidate.read_bytes()\n",
+    )
+    source = _replace_one(
+        source, b"        return cls.load_from_reader(\n",
+        b'''        if native:
+            return cls._load_from_reader(
+                lock_bytes,
+                entry_reader=read_native_entry,
+                root=root,
+                artifact_root_resolver=resolve_native_artifact_root,
+                native_documents=True,
+            )
+        return cls.load_from_reader(
+''',
+    )
+    source = _replace_one(
+        source, b"        try:\n            lock = strict_loads(lock_bytes)\n",
+        b'''        return cls._load_from_reader(
+            lock_bytes,
+            entry_reader=entry_reader,
+            root=root,
+            artifact_root_resolver=artifact_root_resolver,
+        )
+
+    @classmethod
+    def _load_from_reader(
+        cls,
+        lock_bytes: bytes,
+        *,
+        entry_reader: Callable[[int, str, bool], bytes | str],
+        root: Any,
+        artifact_root_resolver: Callable[[], Any],
+        native_documents: bool = False,
+    ) -> "BundledCatalog":
+        try:
+            lock = strict_loads(lock_bytes)
+''',
+    )
+    digest = b'''            actual_digest = 'sha256:' + hashlib.sha256(raw).hexdigest()
+            if actual_digest != expected_digest:
+                raise BundleIntegrityError(
+                    f"bundle artifact digest changed: {relative} "
+                    f"({actual_digest} != {expected_digest})"
+                )
+'''
+    source = _replace_one(
+        source, digest,
+        b"            native_document = native_documents and type(raw) is str\n"
+        b"            if not native_document:\n"
+        + b"".join(b"    " + line for line in digest.splitlines(keepends=True)),
     )
     validation = b'''                document = (
                     copy.deepcopy(_validated_document(raw, kind))
@@ -79,10 +139,9 @@ def derive_catalog_validation(source: bytes) -> bytes:
                     else validate_document(raw, kind)
                 )
 '''
-    replacement = b'''                if native and root._effect("document-shape", "bool", [index, kind, actual_digest]):
-                    # Only this occurrence's structural result is native. The
-                    # exact original semantic diagnostics still run on the DATA.
-                    document = strict_loads(raw)
+    replacement = b'''                if native_document:
+                    # The fixed read already checked the digest, strict JSON and schema.
+                    document = json.loads(raw)
                     schema_name = _versioned_schema_name(document, kind)
                     diagnostics = _semantic_diagnostics(document, schema_name, True)
                     if diagnostics:

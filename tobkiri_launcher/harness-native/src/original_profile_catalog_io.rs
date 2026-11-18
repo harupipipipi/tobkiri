@@ -106,7 +106,7 @@ pub(crate) struct CatalogIo {
     lock_bytes: Option<Funded<Zeroizing<Vec<u8>>>>,
     lock: Option<Funded<Document>>,
     #[cfg(unix)]
-    document_shapes: document_shapes::DocumentShapes,
+    document_shapes: Option<document_shapes::CatalogSchemas>,
     entry: usize,
     walk: usize,
     pins: usize,
@@ -315,7 +315,7 @@ impl CatalogIo {
             lock_bytes: None,
             lock: None,
             #[cfg(unix)]
-            document_shapes: document_shapes::DocumentShapes::default(),
+            document_shapes: None,
             entry: 0,
             walk: 0,
             pins: 0,
@@ -585,6 +585,10 @@ impl CatalogIo {
         let operation = operation
             .as_str()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
+        #[cfg(unix)]
+        let checked_read = operation == "read-document" && self.document_shapes.is_some();
+        #[cfg(not(unix))]
+        let checked_read = false;
         let args = args
             .array()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
@@ -737,8 +741,6 @@ impl CatalogIo {
                 true
             }
             Loader::Entries if operation == "resolve" && strict(&args) => {
-                #[cfg(unix)]
-                self.document_shapes.discard_receipt();
                 self.ensure_lock(&op)?;
                 let relative = self.entry_path(self.entry)?;
                 if path != self.selected.join(&relative) {
@@ -788,7 +790,7 @@ impl CatalogIo {
                 }
                 true
             }
-            Loader::EntryRead if operation == "read-bytes" && args.is_empty() => {
+            Loader::EntryRead if (operation == "read-bytes" || checked_read) && args.is_empty() => {
                 if path != self.selected.join(self.entry_path(self.entry)?) {
                     return Err(OriginalAuthorityError::unavailable().into());
                 }
@@ -797,10 +799,16 @@ impl CatalogIo {
                     self.candidate.as_ref().expect("resolved entry"),
                     &self.budget,
                 )?;
-                write_bytes(&mut output, &bytes.value)?;
+                #[cfg(unix)]
+                let checked =
+                    checked_read && self.write_checked_document(&op, &mut output, &bytes.value)?;
+                #[cfg(not(unix))]
+                let checked = false;
+                if !checked {
+                    write_bytes(&mut output, &bytes.value)?;
+                }
                 #[cfg(unix)]
                 {
-                    self.prepare_document_shape(&op, &bytes.value)?;
                     self.retain_pack_pin(&op, &bytes.value)?;
                     self.retain_shell_input(&op, bytes)?;
                 }
@@ -809,21 +817,7 @@ impl CatalogIo {
                 self.loader = Loader::Entries;
                 true
             }
-            #[cfg(unix)]
-            Loader::Entries
-                if operation == "document-shape"
-                    && self.entry != 0
-                    && self.pins == 0
-                    && steps_array.is_empty()
-                    && path == self.selected =>
-            {
-                let matches = self.take_document_shape(&args)?;
-                write_bool(&mut output, matches)?;
-                true
-            }
             Loader::Entries if operation == "read-bytes" && args.is_empty() => {
-                #[cfg(unix)]
-                self.document_shapes.discard_receipt();
                 self.ensure_lock(&op)?;
                 if self.entry != self.entry_count()? {
                     return Err(OriginalAuthorityError::unavailable().into());
@@ -852,7 +846,9 @@ impl CatalogIo {
                             .join("platform-artifacts") =>
             {
                 #[cfg(unix)]
-                self.document_shapes.finish();
+                {
+                    self.document_shapes = None;
+                }
                 self.ensure_lock(&op)?;
                 if self.entry != self.entry_count()? || self.pin_index(self.pins).is_some() {
                     return Err(OriginalAuthorityError::unavailable().into());

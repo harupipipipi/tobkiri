@@ -104,7 +104,7 @@ impl Samples {
             Some("is-symlink") => "is-symlink",
             Some("resolve") => "resolve",
             Some("read-bytes") => "read-bytes",
-            Some("document-shape") => "document-shape",
+            Some("read-document") => "read-document",
             Some("is-dir") => "is-dir",
             _ => return,
         };

@@ -1428,14 +1428,14 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn document_shape_is_bound_to_the_digest_checked_first_physical_read() {
+async fn catalog_document_is_bound_to_the_digest_checked_first_physical_read() {
     const VALID: &[u8] = include_bytes!(
         "../../../tobkiri_runtime/tests/fixtures/conformance_minimal_echo_pack/executables.v4.json"
     );
-    for (bytes, expected, shape) in [
-        (VALID, Digest::hash(VALID), Some(true)),
-        (b"{}".as_slice(), Digest::hash(b"{}"), Some(false)),
-        (b"{}".as_slice(), Digest::hash(VALID), None),
+    for (bytes, expected, checked) in [
+        (VALID, Digest::hash(VALID), true),
+        (b"{}".as_slice(), Digest::hash(b"{}"), false),
+        (b"{}".as_slice(), Digest::hash(VALID), false),
     ] {
         with_source(false, |source, invocation, budget, io, _| {
             let bundle = source.root.join("ecosystem/defaultspack/v4");
@@ -1455,9 +1455,13 @@ async fn document_shape_is_bound_to_the_digest_checked_first_physical_read() {
             io.select_packaged(&bundle).unwrap();
             io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
                 .unwrap();
-            io.enable_document_shapes();
             let lock = json!([["join", "bundle.lock.json"]]);
             let entry = json!([["join", "catalog.json"]]);
+            let inspect_document = |io: &mut CatalogIo, steps: Value, args: Value| {
+                let request = packet(invocation, budget, "read-document", steps, args);
+                io.inspect(source, invocation, &request, budget)
+            };
+            assert!(inspect_document(io, entry.clone(), json!([])).is_err());
             for (operation, steps, args) in [
                 (
                     "root",
@@ -1473,18 +1477,35 @@ async fn document_shape_is_bound_to_the_digest_checked_first_physical_read() {
             ] {
                 call(io, source, invocation, budget, operation, steps, args);
             }
-            let inspect_shape = |io: &mut CatalogIo, args: Value| {
-                let request = packet(invocation, budget, "document-shape", json!([]), args);
-                let result = io.inspect(source, invocation, &request, budget)?;
-                Ok::<_, anyhow::Error>(
-                    serde_json::from_slice::<Value>(result.as_bytes())?["result"]["value"]
-                        .as_bool()
-                        .unwrap(),
-                )
-            };
-            let exact = json!([0, "executable_catalog", expected.as_str()]);
-            assert!(inspect_shape(io, exact.clone()).is_err());
+            assert!(inspect_document(io, entry.clone(), json!([])).is_err());
+            io.enable_document_shapes();
+            assert!(inspect_document(io, entry.clone(), json!([0])).is_err());
+            assert!(inspect_document(io, json!([["join", "other.json"]]), json!([])).is_err());
             let first = call(
+                io,
+                source,
+                invocation,
+                budget,
+                "read-document",
+                entry.clone(),
+                json!([]),
+            );
+            let value = first["value"].as_str().unwrap();
+            if checked {
+                assert_eq!(first["kind"], "document");
+                assert_eq!(value.as_bytes(), bytes);
+            } else {
+                assert_eq!(first["kind"], "bytes");
+                assert_eq!(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(value)
+                        .unwrap(),
+                    bytes
+                );
+            }
+            fs::write(&member, b"changed after first read").unwrap();
+            assert!(inspect_document(io, entry.clone(), json!([])).is_err());
+            let pin = call(
                 io,
                 source,
                 invocation,
@@ -1493,37 +1514,14 @@ async fn document_shape_is_bound_to_the_digest_checked_first_physical_read() {
                 entry.clone(),
                 json!([]),
             );
+            assert_eq!(pin["kind"], "bytes");
             assert_eq!(
                 base64::engine::general_purpose::STANDARD
-                    .decode(first["value"].as_str().unwrap())
+                    .decode(pin["value"].as_str().unwrap())
                     .unwrap(),
-                bytes
+                b"changed after first read",
             );
-            fs::write(&member, b"changed after first read").unwrap();
-            for forged in [
-                json!([1, "executable_catalog", expected.as_str()]),
-                json!([0, "pack", expected.as_str()]),
-                json!([
-                    0,
-                    "executable_catalog",
-                    Digest::hash(b"changed after first read").as_str()
-                ]),
-            ] {
-                assert!(inspect_shape(io, forged).is_err());
-            }
-            assert_eq!(inspect_shape(io, exact.clone()).ok(), shape);
-            assert!(inspect_shape(io, exact.clone()).is_err());
-            let pin = call(
-                io,
-                source,
-                invocation,
-                budget,
-                "read-bytes",
-                entry,
-                json!([]),
-            );
-            assert_ne!(pin, first);
-            assert!(inspect_shape(io, exact).is_err());
+            assert!(inspect_document(io, entry, json!([])).is_err());
         });
     }
 }

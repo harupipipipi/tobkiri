@@ -337,6 +337,49 @@ class NativePathAdapterTests(unittest.TestCase):
         with self.assertRaises(UnsupportedValue):
             bridge._value({**path("existing_module", "/app/bundle"), "steps": []}, "path")
 
+    def test_catalog_document_read_keeps_text_opaque_and_can_fall_back_to_bytes(self):
+        document = ' { "z": "\\u00e9", "a": -0 }\n'
+        bridge, port = self.bridge([
+            ("root", path("root", "/bundle")),
+            ("read-document", {"kind": "document", "value": document}),
+            ("read-document", blob(b"raw fallback")),
+            ("read-bytes", blob(b"pin reread")),
+        ])
+        root = bridge.bind("root", "/bundle")
+
+        def load(selected):
+            candidate = selected / "entry.json"
+            self.assertEqual(candidate._read_catalog_document(), document)
+            self.assertEqual(candidate._read_catalog_document(), b"raw fallback")
+            self.assertEqual(candidate.read_bytes(), b"pin reread")
+
+        with self.assertRaises(UnsupportedValue):
+            root._read_catalog_document()
+        bridge._load_catalog(load, root)
+        for request in port.requests[1:]:
+            self.assertEqual(request["format"], "io.tobkiri.native-catalog-request.v1")
+            self.assertEqual(request["target"], {
+                "binding": "root", "steps": [["join", "entry.json"]],
+            })
+            self.assertEqual(request["args"], [])
+
+    def test_catalog_document_read_rejects_nested_objects_or_extra_fields(self):
+        for response in (
+            {"kind": "document", "value": {}},
+            {"kind": "document", "value": "{}", "verified": True},
+        ):
+            with self.subTest(response=response):
+                bridge, _ = self.bridge([
+                    ("root", path("root", "/bundle")),
+                    ("read-document", response),
+                ])
+                root = bridge.bind("root", "/bundle")
+                with self.assertRaises(UnsupportedValue):
+                    bridge._load_catalog(
+                        lambda selected: (selected / "entry.json")._read_catalog_document(),
+                        root,
+                    )
+
     def setUp(self):
         self.scope = Scope(1, 2, 3, 4)
 

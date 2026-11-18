@@ -475,6 +475,17 @@ class NativePath:
     def read_bytes(self) -> bytes:
         return self._effect("read-bytes", "bytes")
 
+    def _read_catalog_document(self) -> bytes | str:
+        bridge = self._bridge
+        if bridge._catalog_root is None:
+            raise UnsupportedValue("catalog document DATA outside its fixed call")
+        row = bridge._catalog_request(self._target(), "read-document", [])
+        if row.get("kind") == "document":
+            if set(row) != {"kind", "value"} or type(row["value"]) is not str:
+                raise UnsupportedValue("invalid native catalog document result")
+            return row["value"]
+        return bridge._value(row, "bytes")
+
     def lstat(self) -> _Stat:
         return self._effect("lstat", "stat")
 

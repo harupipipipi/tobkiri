@@ -1,11 +1,13 @@
-"""Source-only staging tests; no original runtime, wheel or extension executes."""
+"""Source staging and guest routing tests without any native extension."""
 
 import ast
+import base64
 import hashlib
 import json
 from pathlib import Path
 import sys
 import tempfile
+from types import ModuleType
 import unittest
 from unittest.mock import patch
 
@@ -120,11 +122,94 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             self.assertIn(b"from app_schema_provider import AppSchemaProvider as Draft202012Validator",
                           (stage / "python/tobkiri_protocol/validation.py").read_bytes())
             catalog = (stage / "python/tobkiri_protocol/bundle_catalog.py").read_bytes()
-            self.assertIn(b'root._effect("document-shape", "bool", [index, kind, actual_digest])', catalog)
+            self.assertIn(b"return candidate._read_catalog_document()", catalog)
+            self.assertIn(b"document = json.loads(raw)", catalog)
             self.assertIn(b'_semantic_diagnostics(document, schema_name, True)', catalog)
             compile(catalog, "bundle_catalog.py", "exec")
             self.assertFalse(metadata["original_source_files_unchanged"])
             self.assertFalse(metadata["app_schema_backend"]["validation_results_prepared"])
+
+    def test_derived_catalog_accepts_typed_reads_only_from_the_native_path(self):
+        repo = HERE.parents[1]
+        runtime = repo / "tobkiri_runtime"
+        source = runtime / "tobkiri_protocol/bundle_catalog.py"
+        module = ModuleType("tobkiri_protocol._catalog_routing_test")
+        module.__package__ = "tobkiri_protocol"
+        pack = runtime / "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json"
+        raw = pack.read_bytes()
+        text = raw.decode()
+        document = json.loads(text)
+        lock = json.dumps({
+            "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+            "entries": [{
+                "path": "pack.json",
+                "kind": "pack",
+                "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            }],
+        }).encode()
+        reply = {"kind": "document", "value": text}
+
+        def inspect(payload: str) -> str:
+            request = json.loads(payload)
+            operation = request["operation"]
+            target = request["target"]
+            steps = target["steps"]
+            if operation in {"root", "resolve"}:
+                value = "/bundle/pack.json" if steps else "/bundle"
+                result = {"kind": "path", "binding": "root", "steps": steps, "value": value}
+            elif operation in {"is-symlink", "is-dir"}:
+                result = {"kind": "bool", "value": False}
+            elif operation == "read-bytes":
+                self.assertEqual(steps, [["join", "bundle.lock.json"]])
+                result = {"kind": "bytes", "value": base64.b64encode(lock).decode()}
+            else:
+                self.assertEqual((operation, steps, request["args"]),
+                                 ("read-document", [["join", "pack.json"]], []))
+                result = reply
+            return json.dumps({"format": "io.tobkiri.native-inspection-response.v1",
+                               "scope": request["scope"], "result": result})
+
+        paths = [runtime, repo / "packs/local.ai-tool-bridge-ordered-python"]
+        with (
+            patch.object(sys, "path", [*map(str, paths), *sys.path]),
+            patch.dict(sys.modules, {module.__name__: module}),
+        ):
+            from harness_native.native_path import PathBridge
+            from harness_native.value_graph import Scope
+
+            exec(compile(app_schema.derive_catalog_validation(source.read_bytes()),
+                         str(source), "exec"), module.__dict__)
+            bridge = PathBridge(Scope(1, 2, 3, 4), "posix", inspect,
+                                os_flags={"O_RDONLY": 0})
+            root = bridge.bind("root", "/bundle")
+            module.Path = bridge.module_path(str(source), root)
+            catalog = module.BundledCatalog
+            with (
+                patch.object(module, "strict_loads", wraps=module.strict_loads) as strict,
+                patch.object(module, "_semantic_diagnostics",
+                             wraps=module._semantic_diagnostics) as semantic,
+                patch.object(module, "validate_document",
+                             side_effect=AssertionError("schema validation reached")),
+            ):
+                loaded = bridge._load_catalog(catalog.load, root)
+                self.assertEqual(loaded.packs[document["pack"]["id"]], document)
+                strict.assert_called_once_with(lock)
+                semantic.assert_called_once_with(document, "pack", True)
+
+                reply = {"kind": "bytes", "value": base64.b64encode(b"invalid").decode()}
+                with self.assertRaisesRegex(module.BundleIntegrityError,
+                                            "bundle artifact digest changed: pack.json"):
+                    bridge._load_catalog(catalog.load, root)
+
+                for value in (text, document):
+                    with self.subTest(kind=type(value)), self.assertRaises(TypeError):
+                        bridge._load_catalog(
+                            lambda selected: catalog.load_from_reader(
+                                lock, entry_reader=lambda *_: value, root=selected,
+                                artifact_root_resolver=lambda: None,
+                            ),
+                            root,
+                        )
 
     def test_optional_trio_is_atomic_and_native_only(self):
         value = Path("/input")
