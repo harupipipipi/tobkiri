@@ -878,6 +878,13 @@ def _observe_publication_checks(
                 "profile": resolved.profile, "lock": resolved.lock, "plan": resolved.plan,
             })
             (root.parent / "resolved-records.json").write_bytes(records)
+            shell = resolved.profile["shell"]
+            (root.parent / "reread-shell.json").write_bytes(
+                canonical.canonical_bytes(reread.shells[shell["provider_id"]]),
+            )
+            (root.parent / "reread-pack.json").write_bytes(
+                canonical.canonical_bytes(reread.packs[shell["pack_id"]]),
+            )
             candidate["resolved_records_sha256"] = hashlib.sha256(records).hexdigest()
             # Run the actual writer on a separate CI-only root. Its fixed test
             # key never enters the live capture fixture or uploaded metadata.

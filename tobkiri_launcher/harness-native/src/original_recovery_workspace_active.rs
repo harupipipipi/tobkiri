@@ -9,9 +9,8 @@ mod profile_schema;
 #[path = "original_recovery_snapshot_graph.rs"]
 mod snapshot_graph;
 use snapshot_graph::{Snapshot, SnapshotRecords, View};
-#[cfg(test)]
 #[path = "original_initial_activation_records.rs"]
-mod initial_records;
+pub(super) mod initial_records;
 
 pub(super) const POINTER_SCHEMA: &str = "io.tobkiri.defaultspack-active-pointer.v1";
 const ENVELOPE_SCHEMA: &str = "io.tobkiri.defaultspack-activation-envelope.v1";

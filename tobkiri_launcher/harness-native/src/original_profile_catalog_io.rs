@@ -13,6 +13,9 @@ mod artifact_identity;
 #[cfg(unix)]
 #[path = "original_recovery_bundle_metadata.rs"]
 mod bundle_metadata;
+#[cfg(all(test, unix))]
+#[path = "original_initial_catalog_fixture.rs"]
+pub(in crate::original_authority::io::publication) mod initial_catalog_fixture;
 #[cfg(unix)]
 #[path = "original_recovery_catalog_artifact.rs"]
 mod recovery_artifact;

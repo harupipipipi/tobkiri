@@ -6,7 +6,6 @@ use tobkiri_canon::{AllocationError, CoreBuffer, CoreValue};
 
 #[path = "original_profile_definitions_bootstrap.rs"]
 mod bootstrap;
-#[cfg(test)]
 pub(super) use bootstrap::{FirstRevision, prepare_first_revision};
 pub(super) use bootstrap::{
     bootstrap_template_id, normalize_bootstrap_template, prepare_bootstrap_template,
@@ -983,7 +982,6 @@ pub(super) fn find_entry<S: OriginalAuthorityOwner>(
     Ok(None)
 }
 
-#[cfg(test)]
 // Both inputs were admitted as strict, depth-bounded JSON. Object equality
 // ignores key order and the original Python allows bool/int equality.
 pub(super) fn python_equal(
@@ -1041,14 +1039,12 @@ pub(super) fn python_equal(
     })
 }
 
-#[cfg(test)]
 pub(super) fn registration_generation(state: &State) -> i64 {
     let doc = &state.doc;
     integer(doc, field(doc, doc.root, "generation"))
 }
 
 /// Validate the generation and current revision again under the update lock.
-#[cfg(test)]
 pub(super) fn require_registration_cas<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &State,
@@ -1081,19 +1077,6 @@ pub(super) fn require_registration_cas<S: OriginalAuthorityOwner>(
     Ok(current)
 }
 
-#[cfg(test)]
-pub(super) fn prepare_registration<S: OriginalAuthorityOwner>(
-    op: &Operation<'_, S>,
-    state: &State,
-    entry: usize,
-    source: &CoreValue,
-    now: i64,
-    budget: &Arc<dyn AllocationBudget>,
-) -> Result<CoreBuffer> {
-    prepare_registration_with_clock(op, state, entry, source, || Ok(now), budget)
-}
-
-#[cfg(test)]
 pub(super) fn prepare_registration_with_clock<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     state: &State,

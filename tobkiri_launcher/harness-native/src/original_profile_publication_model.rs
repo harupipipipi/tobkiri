@@ -7,7 +7,7 @@ pub(super) fn pointer_error(message: impl Into<String>) -> OriginalAuthorityErro
         message,
     )
 }
-fn canonical_ascii_id(value: &str) -> bool {
+pub(super) fn canonical_ascii_id(value: &str) -> bool {
     let bytes = value.as_bytes();
     if !bytes.first().is_some_and(u8::is_ascii_lowercase) {
         return false;

@@ -42,6 +42,8 @@ mod recovery_workspace;
 #[cfg(unix)]
 pub(crate) use recovery_authority::RecoveryAuthorityReached;
 #[cfg(unix)]
+pub(crate) use recovery_authority::initial_activation::InitialPublication;
+#[cfg(unix)]
 pub(crate) use recovery_workspace::APP_DENIED as RECOVERY_APP_DENIED;
 
 const JOURNAL: &str = "bootstrap-publication.json";
@@ -1079,7 +1081,7 @@ fn signing_key<S: OriginalAuthorityOwner>(
     let descriptor = unsafe {
         libc::open(
             name.as_ptr(),
-            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
         )
     };
     if descriptor < 0 {

@@ -23,7 +23,8 @@ name: Issue 1520 original Setup resolver prefix
       - tobkiri_launcher/harness-native/src/original_profile_publication.rs
       - tobkiri_launcher/harness-native/src/original_publication_begin_ci.rs
       - tobkiri_launcher/harness-native/src/original_publication_begin.rs
-      - tobkiri_launcher/harness-native/src/original_initial_activation_records.rs
+      - tobkiri_launcher/harness-native/src/original_initial_activation*.rs
+      - tobkiri_launcher/harness-native/src/original_initial_catalog_fixture.rs
       - tobkiri_launcher/harness-native/src/original_recovery_snapshot_graph*.rs
       - tobkiri_launcher/harness-native/src/original_recovery_workspace_active.rs
       - tobkiri_launcher/harness-native/src/original_authority_json.rs
@@ -191,6 +192,16 @@ jobs:
             cargo test --locked -p tobkiri-harness-native --lib \
             original_authority::io::publication::recovery_authority::workspace_active::initial_records::tests:: \
             -- --include-ignored --test-threads=1
+      - name: Verify initial publication through the Host pointer with the original Shell
+        if: matrix.os == 'ubuntu-22.04'
+        env:
+          TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE: ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-setup-resolver-prefix/initial-publication.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::io::publication::recovery_authority::initial_activation::tests::commits_confirmed_initial_publication_to_the_host_pointer
+          -- --ignored --exact --test-threads=1 --nocapture
       - name: Retain bounded original observation metadata only
         if: always()
         uses: actions/upload-artifact@v4

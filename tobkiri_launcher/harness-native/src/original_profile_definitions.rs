@@ -4,9 +4,13 @@ use tobkiri_canon::AllocationBudget;
 #[cfg(unix)]
 use tobkiri_canon::CoreValue;
 
-#[cfg(all(test, unix))]
+#[cfg(unix)]
 #[path = "original_bootstrap_registration.rs"]
 mod bootstrap_registration;
+#[cfg(unix)]
+pub(super) use bootstrap_registration::{
+    register_initial_definition, register_initial_inactive_definition,
+};
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 #[path = "original_setup_candidate_reference_ci.rs"]
 mod candidate_reference_ci;

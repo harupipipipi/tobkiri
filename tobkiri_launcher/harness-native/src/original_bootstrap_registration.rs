@@ -1,4 +1,4 @@
-//! Register the reread bundled Profile for confirmed Setup without a predecessor.
+//! Register the reread bundled Profile for confirmed initial Setup.
 use super::*;
 use definitions_model::{
     CONFLICT, FirstRevision, State, bootstrap_template_id, find_entry,
@@ -6,6 +6,45 @@ use definitions_model::{
     python_equal, registration_generation, require_registration_cas,
 };
 use tobkiri_canon::AllocationError;
+
+/// Register the verified source before opening the initial Authority Store.
+pub(in crate::original_authority::io::publication) fn register_initial_definition<
+    S: OriginalAuthorityOwner,
+>(
+    op: &Operation<'_, S>,
+    user_data: &Path,
+    source_profile: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    register(op, user_data, source_profile, budget, registry_time)
+}
+
+/// Register a confirmed successor after recovery. The caller holds the
+/// original activation-store workspace lock and has checked its active pointer.
+pub(in crate::original_authority::io::publication) fn register_initial_inactive_definition<
+    S: OriginalAuthorityOwner,
+>(
+    op: &Operation<'_, S>,
+    user_data: &Path,
+    source_profile: &CoreValue,
+    profile_id: &str,
+    reviewed_predecessor: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    let definition_digest = reviewed_predecessor
+        .get_key("definition_digest")
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    let approved_digest = definition_digest
+        .as_str()
+        .ok_or_else(OriginalAuthorityError::unavailable)?;
+    let review = ReviewedRegistration {
+        source: source_profile,
+        predecessor: reviewed_predecessor,
+        approved_digest,
+        profile_id,
+    };
+    register_inactive(op, user_data, &review, budget, || {}, registry_time)
+}
 
 fn register<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
@@ -99,6 +138,144 @@ fn register<S: OriginalAuthorityOwner>(
             prepare_registration_with_clock(op, state, entry, source, || timestamp(clock), budget)?;
         Ok(Some((1, output)))
     })?;
+    Ok(())
+}
+
+pub(super) struct ReviewedRegistration<'a> {
+    pub(super) source: &'a CoreValue,
+    pub(super) predecessor: &'a CoreValue,
+    pub(super) approved_digest: &'a str,
+    pub(super) profile_id: &'a str,
+}
+
+pub(super) fn register_inactive<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    root: &Path,
+    review: &ReviewedRegistration<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+    before_cas: impl FnOnce(),
+    clock: impl FnOnce() -> Result<i64>,
+) -> Result<()> {
+    bootstrap_template_id(op, review.source, budget)?;
+    if review
+        .source
+        .get_key("profile_id")
+        .and_then(|profile| profile.as_str().map(|id| id == review.profile_id))
+        != Some(true)
+    {
+        return Err(OriginalAuthorityError::unavailable());
+    }
+    let store = Store::new(op, root)?;
+    let selection_dir = Directory::capture(op, &root.join("profiles"), false)?;
+    let selection = publication_io::LockName::HostSelection;
+    let mut host = PublicationLock::acquire_named(op, &selection_dir, selection)?;
+    let result = (|| {
+        revalidate(
+            op,
+            &store,
+            review.source,
+            review.predecessor,
+            review.profile_id,
+            budget,
+        )?;
+        let missing = OriginalAuthorityError::unavailable;
+        let definition_digest = review
+            .predecessor
+            .get_key("definition_digest")
+            .ok_or_else(missing)?;
+        if definition_digest.as_str() != Some(review.approved_digest) {
+            return Err(raw(
+                CONFLICT,
+                "inactive bootstrap predecessor approval is mismatched",
+            ));
+        }
+        let generation = review
+            .predecessor
+            .get_key("store_generation")
+            .and_then(|value| value.as_i64())
+            .ok_or_else(missing)?;
+        let revision = review
+            .predecessor
+            .get_key("profile_revision")
+            .ok_or_else(missing)?;
+        let revision = revision.as_str().ok_or_else(missing)?;
+        before_cas();
+        store.update_definitions(op, budget, |state| {
+            let entry = require_registration_cas(
+                op,
+                state,
+                review.profile_id,
+                generation,
+                revision,
+                budget,
+            )?;
+            let output = prepare_registration_with_clock(
+                op,
+                state,
+                entry,
+                review.source,
+                || timestamp(clock),
+                budget,
+            )?;
+            Ok(Some((1, output)))
+        })?;
+        selection_dir.validate_file(
+            op,
+            selection.text(),
+            host.file.as_ref().expect("Host selection lock"),
+        )
+    })();
+    finish_scope(result, host.close())
+}
+
+fn stale() -> OriginalAuthorityError {
+    raw(
+        definitions_model::CONFLICT,
+        "inactive bootstrap predecessor is stale",
+    )
+}
+
+fn revalidate<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    store: &Store,
+    source: &CoreValue,
+    expected: &CoreValue,
+    profile_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    let root = &store.user_data;
+    let snapshot = store.snapshot(op, budget)?;
+    let _paths = op.reserve(
+        OriginalAuthorityStage::Path,
+        root.as_os_str()
+            .len()
+            .saturating_mul(4)
+            .saturating_add(profile_id.len())
+            .saturating_add(8192),
+    )?;
+    if candidate_selection::inactive_has_active_profile(op, root, profile_id)? {
+        return Err(candidate_selection::active_predecessor_conflict());
+    }
+    if candidate_selection::inactive_has_active_profile(op, root, profile_id)?
+        || !candidate_selection::predecessor_path_present(op, &root.join("profiles/index.json"))?
+    {
+        return Err(stale());
+    }
+    let mut registry =
+        inactive_registry_from_snapshot(op, snapshot, profile_id, budget)?.ok_or_else(stale)?;
+    registry.serialize_definition(op, budget)?;
+    let existing = CoreValue::parse_guest(registry.definition(), budget).map_err(capacity)?;
+    drop(registry.serialized_definition.take());
+    if definitions_model::python_equal(&existing, source, budget)? {
+        return Err(stale());
+    }
+    drop(existing);
+    let actual =
+        candidate_selection::inactive_handover_at(op, root, profile_id, &mut registry, budget)?
+            .ok_or_else(stale)?;
+    if !actual.eq_guest(expected, budget).map_err(capacity)? {
+        return Err(stale());
+    }
     Ok(())
 }
 

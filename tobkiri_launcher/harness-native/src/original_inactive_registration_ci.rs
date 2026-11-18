@@ -1,70 +1,6 @@
 //! Exercise the original Host registry transaction with CI-owned fixtures.
-//! The native Setup listing still grants no activation or write authority.
 use super::*;
-use tobkiri_canon::{CoreBuffer, CoreValue};
-
-fn stale() -> OriginalAuthorityError {
-    raw(
-        definitions_model::CONFLICT,
-        "inactive bootstrap predecessor is stale",
-    )
-}
-
-fn revalidate<S: OriginalAuthorityOwner>(
-    op: &Operation<'_, S>,
-    store: &Store,
-    source: &CoreValue,
-    expected: &CoreValue,
-    profile_id: &str,
-    budget: &Arc<dyn AllocationBudget>,
-) -> Result<()> {
-    let root = &store.user_data;
-    let snapshot = store.snapshot(op, budget)?;
-    let _paths = op.reserve(
-        OriginalAuthorityStage::Path,
-        root.as_os_str()
-            .len()
-            .saturating_mul(4)
-            .saturating_add(profile_id.len())
-            .saturating_add(8192),
-    )?;
-    if candidate_selection::inactive_has_active_profile(op, root, profile_id)? {
-        return Err(candidate_selection::active_predecessor_conflict());
-    }
-    if candidate_selection::inactive_has_active_profile(op, root, profile_id)?
-        || !candidate_selection::predecessor_path_present(op, &root.join("profiles/index.json"))?
-    {
-        return Err(stale());
-    }
-    let mut registry =
-        inactive_registry_from_snapshot(op, snapshot, profile_id, budget)?.ok_or_else(stale)?;
-    registry.serialize_definition(op, budget)?;
-    let existing = CoreValue::parse_guest(registry.definition(), budget).map_err(capacity)?;
-    drop(registry.serialized_definition.take());
-    if definitions_model::python_equal(&existing, source, budget)? {
-        return Err(stale());
-    }
-    drop(existing);
-    let actual =
-        candidate_selection::inactive_handover_at(op, root, profile_id, &mut registry, budget)?
-            .ok_or_else(stale)?;
-    if !actual.eq_guest(expected, budget).map_err(capacity)? {
-        return Err(stale());
-    }
-    Ok(())
-}
-
-fn capacity(_: tobkiri_canon::AllocationError) -> OriginalAuthorityError {
-    OriginalAuthorityError::capacity(OriginalAuthorityStage::Source)
-}
-
-struct ReviewedRegistration<'a> {
-    source: &'a CoreValue,
-    predecessor: &'a CoreValue,
-    approved_digest: &'a str,
-    profile_id: &'a str,
-    now: i64,
-}
+use bootstrap_registration::{ReviewedRegistration, register_inactive};
 
 fn with_inactive_workspace<S: OriginalAuthorityOwner, T>(
     op: &Operation<'_, S>,
@@ -99,83 +35,6 @@ fn with_inactive_workspace<S: OriginalAuthorityOwner, T>(
         Ok(result)
     })();
     finish_scope(result, lock.close())
-}
-
-fn with_registration<S: OriginalAuthorityOwner, T>(
-    op: &Operation<'_, S>,
-    root: &Path,
-    review: &ReviewedRegistration<'_>,
-    budget: &Arc<dyn AllocationBudget>,
-    before_cas: impl FnOnce(),
-    register: impl FnOnce(&Store, CoreBuffer) -> Result<T>,
-) -> Result<T> {
-    let store = Store::new(op, root)?;
-    let selection_dir = Directory::capture(op, &root.join("profiles"), false)?;
-    let selection = publication_io::LockName::HostSelection;
-    let mut host = PublicationLock::acquire_named(op, &selection_dir, selection)?;
-    let result = (|| {
-        revalidate(
-            op,
-            &store,
-            review.source,
-            review.predecessor,
-            review.profile_id,
-            budget,
-        )?;
-        let missing = || OriginalAuthorityError::unavailable();
-        let definition_digest = review
-            .predecessor
-            .get_key("definition_digest")
-            .ok_or_else(missing)?;
-        if definition_digest.as_str() != Some(review.approved_digest) {
-            return Err(raw(
-                definitions_model::CONFLICT,
-                "inactive bootstrap predecessor approval is mismatched",
-            ));
-        }
-        let generation = review
-            .predecessor
-            .get_key("store_generation")
-            .and_then(|value| value.as_i64())
-            .ok_or_else(missing)?;
-        let revision = review
-            .predecessor
-            .get_key("profile_revision")
-            .ok_or_else(missing)?;
-        let revision = revision.as_str().ok_or_else(missing)?;
-        before_cas();
-        let mut definition = store.lock(op)?;
-        let result = (|| {
-            let state = store.read_state(op, budget)?;
-            let entry = definitions_model::require_registration_cas(
-                op,
-                &state,
-                review.profile_id,
-                generation,
-                revision,
-                budget,
-            )?;
-            let output = definitions_model::prepare_registration(
-                op,
-                &state,
-                entry,
-                review.source,
-                review.now,
-                budget,
-            )?;
-            register(&store, output)
-        })();
-        finish_snapshot(op, &store.directory, &mut definition, result)
-    })();
-    let result = result.and_then(|value| {
-        selection_dir.validate_file(
-            op,
-            selection.text(),
-            host.file.as_ref().expect("Host selection lock"),
-        )?;
-        Ok(value)
-    });
-    finish_scope(result, host.close())
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -285,7 +144,6 @@ async fn original_inactive_registration_driver() {
                 predecessor: &predecessor,
                 approved_digest,
                 profile_id,
-                now: row["registration_time"].as_i64().unwrap(),
             };
             let index = profiles.join(INDEX);
             let before = fs::read(&index).unwrap();
@@ -294,7 +152,7 @@ async fn original_inactive_registration_driver() {
             let workspace_name = publication_io::LockName::workspace(profile_id);
             let workspace_lock = workspace.join(workspace_name.text());
             let register = || {
-                with_registration(
+                register_inactive(
                     &op,
                     root,
                     &review,
@@ -317,12 +175,12 @@ async fn original_inactive_registration_driver() {
                             lock.close().unwrap();
                         }
                     },
-                    |store, output| {
+                    || {
                         assert_eq!(case, "append");
                         assert!(!lock_free(&workspace_lock));
                         assert!(!lock_free(&profiles.join(".active-profile.lock")));
                         assert!(!lock_free(&profiles.join(".profile-definition.lock")));
-                        store.directory.replace_definition(&op, output.as_bytes())
+                        Ok(row["registration_time"].as_i64().unwrap())
                     },
                 )
             };

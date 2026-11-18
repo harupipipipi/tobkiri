@@ -61,7 +61,6 @@ pub enum BootstrapReviewReachpoint {
     ClosureBundledPackRootNotBound,
     AdmittedHostExtensionProjectionNotBound,
     CatalogWithProfilesNotBound,
-    InitialPublicationJournalNotBound,
     RecoveryLoadActiveSnapshotProfileSchemaNotBound {
         name: &'static str,
         legacy: bool,

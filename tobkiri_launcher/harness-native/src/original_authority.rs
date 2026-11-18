@@ -20,7 +20,9 @@ pub(crate) use io::publication::{
     CandidateSelection, Prefix as PublicationPrefix, PublicationRead, ResolverAuthority,
 };
 #[cfg(unix)]
-pub(crate) use io::publication::{RECOVERY_APP_DENIED, RecoveryAuthorityReached};
+pub(crate) use io::publication::{
+    InitialPublication, RECOVERY_APP_DENIED, RecoveryAuthorityReached,
+};
 #[cfg(unix)]
 pub(crate) const LEGACY_RESOLVER_INTERRUPTED: &str = "tobkiri.native.LegacyResolverInterrupted";
 

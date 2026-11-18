@@ -1,7 +1,9 @@
-//! Prepare the original journal payload under the confirmed publication lock.
+//! Prepare and persist the original journal under the confirmed publication lock.
 use super::*;
 use crate::BootstrapActivationCandidate;
-use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue};
+use hmac::{Hmac, Mac};
+use sha2::{Digest as _, Sha256};
+use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, MAX_BYTES};
 
 const SCHEMA: &str = "io.tobkiri.profile-publication-intent.v1";
 
@@ -123,4 +125,83 @@ pub(super) fn payload<S: OriginalAuthorityOwner>(
         budget,
     )
     .map_err(capacity)
+}
+
+/// Durably record the prepared intent while borrowing the existing lock.
+pub(super) fn persist_initial_intent<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    scope: &RecoveryScope,
+    payload: CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    scope.validate(op)?;
+    let directory = &scope.directory;
+    if directory.exists(op, JOURNAL)? {
+        return Err(value(
+            "Profile publication already has an unfinished intent",
+        ));
+    }
+    let key_path = directory.publication_key_path(op)?;
+    let mut generated = Zeroizing::new([0_u8; 64]);
+    op.check(OriginalAuthorityStage::Key)?;
+    // Let the original key loader diagnose an existing or redirected key.
+    let existing = if key_path.is_symlink() || key_path.exists() {
+        Some(signing_key(op, &key_path)?)
+    } else {
+        let mut random = Zeroizing::new([0_u8; 32]);
+        getrandom::fill(&mut random[..]).map_err(|_| OriginalAuthorityError::unavailable())?;
+        let mut digest = Sha256::digest(&random[..]);
+        for (pair, &byte) in generated.chunks_exact_mut(2).zip(digest.iter()) {
+            let hex = b"0123456789abcdef";
+            pair[0] = hex[usize::from(byte >> 4)];
+            pair[1] = hex[usize::from(byte & 0xf)];
+        }
+        zeroize::Zeroize::zeroize(&mut digest[..]);
+        directory.create_publication_key(op, &generated[..])?;
+        None
+    };
+    let expected = match &existing {
+        Some(existing) => existing.as_slice(),
+        None => &generated[..],
+    };
+    directory.sync_publication_key(op)?;
+    let key = signing_key(op, &key_path)?;
+    if key.as_slice() != expected {
+        return Err(value("Profile publication signing key changed"));
+    }
+    let intent = encode(op, payload, &key, budget)?;
+    directory.create_publication_intent(op, intent.as_bytes())
+}
+
+fn encode<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    payload: CoreValue,
+    key: &[u8],
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer> {
+    let compact = payload.encode_guest(budget).map_err(capacity)?;
+    let preimage = python_default_spacing(op, compact.as_bytes())?;
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(key).map_err(|_| OriginalAuthorityError::unavailable())?;
+    mac.update(&preimage);
+    let hex = Digest::from_sha256(mac.finalize().into_bytes().into());
+    drop((preimage, compact));
+    let envelope = CoreValue::object_shared(
+        [
+            ("payload", payload),
+            (
+                "hmac",
+                CoreValue::string(&hex.as_str()[7..], budget).map_err(capacity)?,
+            ),
+        ]
+        .into_iter()
+        .map(Ok),
+        budget,
+    )
+    .map_err(capacity)?;
+    let envelope = envelope.encode_guest(budget).map_err(capacity)?;
+    let mut result = CoreBuffer::builder(budget, MAX_BYTES);
+    result.append(envelope.as_bytes()).map_err(capacity)?;
+    result.append(b"\n").map_err(capacity)?;
+    result.finish().map_err(capacity)
 }

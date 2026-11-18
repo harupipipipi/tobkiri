@@ -1226,8 +1226,8 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     }
 
     /// Resume Setup from the entire worker-issued listing and its confirmed
-    /// digest. This can recover a publication or materialize its Host catalog
-    /// under the original lock. The caller must own the UI receipt.
+    /// digest. This recovers or publishes the activation under the original
+    /// lock. The caller must own the UI receipt.
     pub async fn setup_activation_decision_for_listing(
         &mut self,
         options: &crate::BootstrapReviewOptions,
@@ -1575,22 +1575,34 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Ok(Decision::Matched(candidate, resolved)) => {
             if confirmed {
                 #[cfg(unix)]
-                return Ok(Err(
-                    match catalog::publication::verify(review, pack, &candidate).await? {
-                        Ok(_) => match review.read.prepare_initial_publication(
-                            &pack.work.get().source,
+                {
+                    let source_profile =
+                        match catalog::publication::verify(review, pack, &candidate).await? {
+                            Ok(source) => source,
+                            Err(error) => return Ok(Err(error)),
+                        };
+                    let work = pack.work.get();
+                    let schemas = work
+                        .profile_schemas
+                        .context("confirmed Setup record schemas are missing")?;
+                    return Ok(review
+                        .read
+                        .activate_initial(
+                            &work.source,
                             pack.cancellation,
-                            &candidate,
                             pack.input_budget,
-                        ) {
-                            Ok(_) => crate::BootstrapReviewFailure::NotBound(
-                                crate::BootstrapReviewReachpoint::InitialPublicationJournalNotBound,
-                            ),
-                            Err(error) => crate::bootstrap_review::original_failure(error),
-                        },
-                        Err(error) => error,
-                    },
-                ));
+                            crate::original_authority::InitialPublication {
+                                candidate: &candidate,
+                                resolved: &resolved,
+                                source_profile: &source_profile,
+                                loader: &work.catalog,
+                                schemas,
+                            },
+                        )
+                        .await
+                        .map(|()| SetupOutput::Decision(BootstrapActivationDecision::Published))
+                        .map_err(crate::bootstrap_review::original_failure));
+                }
                 #[cfg(not(unix))]
                 bail!("confirmed Setup has no native publication lock");
             }

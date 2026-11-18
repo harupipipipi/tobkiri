@@ -12,6 +12,8 @@ use std::ops::ControlFlow;
 use tobkiri_canon::{AllocationBudget, CoreValue};
 #[path = "original_recovery_active_reservation.rs"]
 mod active_reservation;
+#[path = "original_initial_activation.rs"]
+pub(super) mod initial_activation;
 #[path = "original_legacy_activation.rs"]
 mod legacy_activation;
 #[path = "original_recovery_pending_reservation.rs"]

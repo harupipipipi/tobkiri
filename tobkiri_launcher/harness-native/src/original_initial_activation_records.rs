@@ -2,7 +2,9 @@
 use super::*;
 use snapshot_graph::ResolvedRecords;
 
-pub(super) fn validate<S: crate::BootstrapReviewOwner>(
+pub(in crate::original_authority::io::publication::recovery_authority) fn validate<
+    S: crate::BootstrapReviewOwner,
+>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     schemas: BoundProfileSchemas,

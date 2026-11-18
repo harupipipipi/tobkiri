@@ -1,9 +1,7 @@
 //! Exact original journal encoding and persistence on CI-owned state.
 use super::super::{publication_begin, *};
 use crate::BootstrapActivationCandidate;
-use hmac::{Hmac, Mac};
-use sha2::{Digest as _, Sha256};
-use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, MAX_BYTES};
+use tobkiri_canon::{AllocationBudget, AllocationError, CoreValue, MAX_BYTES};
 
 fn capacity(_: AllocationError) -> OriginalAuthorityError {
     OriginalAuthorityError::capacity(OriginalAuthorityStage::Source)
@@ -16,7 +14,7 @@ fn begin<S: OriginalAuthorityOwner>(
     candidate: &BootstrapActivationCandidate,
     read_published_source: impl FnOnce() -> Result<(CoreValue, Digest)>,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<CoreBuffer> {
+) -> Result<()> {
     let (source, raw_bundle_digest) = read_published_source()?;
     let definition = source.digest_guest(budget).map_err(capacity)?;
     if &definition != candidate.definition_digest()
@@ -27,78 +25,9 @@ fn begin<S: OriginalAuthorityOwner>(
             "bootstrap target changed after confirmation",
         ));
     }
-    scope.validate(op)?;
-    let directory = &scope.directory;
     drop(source);
-    if directory.exists(op, JOURNAL)? {
-        return Err(value(
-            "Profile publication already has an unfinished intent",
-        ));
-    }
     let payload = publication_begin::payload(op, predecessor, candidate, budget)?;
-    let key_path = directory.publication_key_path();
-    let mut generated = Zeroizing::new([0_u8; 64]);
-    op.check(OriginalAuthorityStage::Key)?;
-    let existing = if key_path.is_symlink() || key_path.exists() {
-        Some(signing_key(op, &key_path)?)
-    } else {
-        let mut random = Zeroizing::new([0_u8; 32]);
-        getrandom::fill(&mut random[..]).map_err(|_| OriginalAuthorityError::unavailable())?;
-        let mut digest = Sha256::digest(&random[..]);
-        for (pair, &byte) in generated.chunks_exact_mut(2).zip(digest.iter()) {
-            let hex = b"0123456789abcdef";
-            pair[0] = hex[usize::from(byte >> 4)];
-            pair[1] = hex[usize::from(byte & 0xf)];
-        }
-        zeroize::Zeroize::zeroize(&mut digest[..]);
-        directory.create_publication_key(op, &generated[..])?;
-        None
-    };
-    let expected = match &existing {
-        Some(existing) => existing.as_slice(),
-        None => &generated[..],
-    };
-    directory.sync_publication_key(op)?;
-    let key = signing_key(op, &key_path)?;
-    if key.as_slice() != expected {
-        return Err(value("Profile publication signing key changed"));
-    }
-    let intent = encode(op, payload, &key, budget)?;
-    directory.create_publication_intent(op, intent.as_bytes())?;
-    Ok(intent)
-}
-
-fn encode<S: OriginalAuthorityOwner>(
-    op: &Operation<'_, S>,
-    payload: CoreValue,
-    key: &[u8],
-    budget: &Arc<dyn AllocationBudget>,
-) -> Result<CoreBuffer> {
-    let compact = payload.encode_guest(budget).map_err(capacity)?;
-    let preimage = python_default_spacing(op, compact.as_bytes())?;
-    let mut mac =
-        Hmac::<Sha256>::new_from_slice(key).map_err(|_| OriginalAuthorityError::unavailable())?;
-    mac.update(&preimage);
-    let hex = Digest::from_sha256(mac.finalize().into_bytes().into());
-    drop((preimage, compact));
-    let envelope = CoreValue::object_shared(
-        [
-            ("payload", payload),
-            (
-                "hmac",
-                CoreValue::string(&hex.as_str()[7..], budget).map_err(capacity)?,
-            ),
-        ]
-        .into_iter()
-        .map(Ok),
-        budget,
-    )
-    .map_err(capacity)?;
-    let envelope = envelope.encode_guest(budget).map_err(capacity)?;
-    let mut result = CoreBuffer::builder(budget, MAX_BYTES);
-    result.append(envelope.as_bytes()).map_err(capacity)?;
-    result.append(b"\n").map_err(capacity)?;
-    result.finish().map_err(capacity)
+    publication_begin::persist_initial_intent(op, scope, payload, budget)
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -224,39 +153,39 @@ async fn original_publication_intent_bytes_match() {
                 expected
             );
             assert!(!profiles.join(KEY).exists() && !profiles.join(JOURNAL).exists());
-            drop((payload, compact));
+            drop(compact);
+            let (reread_source, reread_digest) = reread(case, budget).unwrap();
+            assert_eq!(
+                &reread_source.digest_guest(budget).unwrap(),
+                candidate.definition_digest(),
+            );
+            assert_eq!(&reread_digest, candidate.bundle_digest());
+            drop(reread_source);
+            assert!(!lock_free(&profiles.join(LOCK)));
             let op = operation(read, source, cancel);
             let confirmed = read.confirmed.as_ref().unwrap();
             let key = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
             fs::write(profiles.join(KEY), key).unwrap();
             fs::set_permissions(profiles.join(KEY), fs::Permissions::from_mode(0o600)).unwrap();
-            let encoded = begin(
+            publication_begin::persist_initial_intent(
                 &op,
                 &confirmed.scope,
-                confirmed.predecessor.as_ref(),
-                &candidate,
-                || {
-                    assert!(!lock_free(&profiles.join(LOCK)));
-                    reread("matched", budget)
-                },
+                payload.share(),
                 budget,
             )
             .unwrap();
+            let stored = fs::read(profiles.join(JOURNAL)).unwrap();
             assert_eq!(
-                &Digest::hash(encoded.as_bytes()).as_str()[7..],
+                &Digest::hash(&stored).as_str()[7..],
                 oracle["encoded_sha256"].as_str().unwrap()
             );
             assert_eq!(
-                confirmed
-                    .scope
-                    .directory
-                    .create_publication_intent(&op, b"second intent")
+                publication_begin::persist_initial_intent(&op, &confirmed.scope, payload, budget)
                     .unwrap_err()
                     .message,
                 "Profile publication already has an unfinished intent",
             );
-            let stored = fs::read(profiles.join(JOURNAL)).unwrap();
-            assert_eq!(stored, encoded.as_bytes());
+            assert_eq!(fs::read(profiles.join(JOURNAL)).unwrap(), stored);
             let envelope: Value = serde_json::from_slice(&stored).unwrap();
             assert_eq!(&envelope["payload"], expected);
             assert!(read_intent(&op, &profiles).unwrap().is_some());
@@ -314,7 +243,17 @@ async fn original_publication_intent_bytes_match() {
             assert!(key.is_symlink());
             assert!(!journal.exists());
             fs::remove_file(&key).unwrap();
-            let intent = begin()?;
+
+            let fifo = std::ffi::CString::new(key.as_os_str().as_encoded_bytes()).unwrap();
+            assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+            let error = begin().unwrap_err();
+            assert_eq!(error.class, "core_runtime.hmac_key_manager.SigningKeyError");
+            assert_eq!(error.message, "signing-key path is not a regular file");
+            assert!(!journal.exists());
+            fs::remove_file(&key).unwrap();
+
+            begin()?;
+            let intent = fs::read(&journal).unwrap();
             let stored = signing_key(&op, &key)?;
             assert_eq!(stored.len(), 64);
             assert!(
@@ -325,7 +264,8 @@ async fn original_publication_intent_bytes_match() {
             assert_eq!(fs::metadata(&key).unwrap().mode() & 0o777, 0o600);
             assert!(read_intent(&op, &profiles)?.is_some());
             dir.clear_journal(&op)?;
-            assert_eq!(begin()?.as_bytes(), intent.as_bytes());
+            begin()?;
+            assert_eq!(fs::read(&journal).unwrap(), intent);
             assert_eq!(signing_key(&op, &key)?.as_slice(), stored.as_slice());
             Ok(())
         })

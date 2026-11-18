@@ -162,14 +162,27 @@ pub(super) struct Directory {
     _capacity: NativeSetupReservation,
 }
 
-#[cfg(all(test, unix))]
-impl Directory {
-    pub(super) fn publication_key_path(&self) -> PathBuf {
-        self.root.join(KEY)
-    }
+#[cfg(unix)]
+enum DirectoryCapture {
+    Existing,
+    Private,
+    Workspace,
 }
+
 #[cfg(unix)]
 impl Directory {
+    pub(super) fn publication_key_path<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+    ) -> Result<Funded<PathBuf>> {
+        let bytes = self.root.as_os_str().len().saturating_add(KEY.len() + 1);
+        let capacity = op.reserve(OriginalAuthorityStage::Key, bytes.saturating_mul(2))?;
+        Ok(Funded {
+            value: self.root.join(KEY),
+            _capacity: capacity,
+        })
+    }
+
     pub(super) fn profiles_user_data(&self) -> Option<&Path> {
         if self.root.file_name().is_some_and(|name| name == "profiles") {
             self.root.parent()
@@ -187,6 +200,32 @@ impl Directory {
         path: &Path,
         create: bool,
     ) -> Result<Self> {
+        let mode = if create {
+            DirectoryCapture::Private
+        } else {
+            DirectoryCapture::Existing
+        };
+        Self::capture_with_mode(op, path, mode)
+    }
+
+    /// Create the selected workspace and parents using the caller's umask.
+    pub(super) fn create_workspace<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        path: &Path,
+    ) -> Result<()> {
+        Self::capture_with_mode(op, path, DirectoryCapture::Workspace).map(drop)
+    }
+
+    fn capture_with_mode<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        path: &Path,
+        mode: DirectoryCapture,
+    ) -> Result<Self> {
+        let create_mode = match mode {
+            DirectoryCapture::Existing => None,
+            DirectoryCapture::Private => Some(0o700),
+            DirectoryCapture::Workspace => Some(0o777),
+        };
         // The original platform helper only permits the OS-owned /var and /tmp
         // aliases. Reuse the Authority source's already audited normalization.
         let path = canonical(path)?;
@@ -222,10 +261,10 @@ impl Directory {
                 let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
                 let mut descriptor = unsafe { libc::openat(parent, name.as_ptr(), flags) };
                 if descriptor < 0
-                    && create
+                    && let Some(create_mode) = create_mode
                     && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound
                 {
-                    if unsafe { libc::mkdirat(parent, name.as_ptr(), 0o700) } != 0
+                    if unsafe { libc::mkdirat(parent, name.as_ptr(), create_mode) } != 0
                         && std::io::Error::last_os_error().kind()
                             != std::io::ErrorKind::AlreadyExists
                     {
@@ -265,7 +304,9 @@ impl Directory {
             if !metadata.is_dir() || metadata.uid() != unsafe { libc::getuid() } {
                 return Err(secure_error("persistence root is unsafe"));
             }
-            if create && unsafe { libc::fchmod(file.as_raw_fd(), 0o700) } != 0 {
+            if matches!(mode, DirectoryCapture::Private)
+                && unsafe { libc::fchmod(file.as_raw_fd(), 0o700) } != 0
+            {
                 return Err(caused(
                     secure_error("persistence ancestor is unsafe"),
                     raw_io(std::io::Error::last_os_error(), None),
@@ -422,7 +463,6 @@ impl Directory {
         self.replace_fixed(op, c"index.json", bytes, false)
     }
 
-    #[cfg(test)]
     pub(super) fn create_publication_intent<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -431,7 +471,6 @@ impl Directory {
         self.replace_fixed(op, c"bootstrap-publication.json", bytes, true)
     }
 
-    #[cfg(test)]
     pub(super) fn create_publication_key<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -440,7 +479,6 @@ impl Directory {
         self.replace_fixed(op, c".publication-key", bytes, true)
     }
 
-    #[cfg(test)]
     pub(super) fn sync_publication_key<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,

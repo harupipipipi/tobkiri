@@ -246,6 +246,30 @@ impl CatalogIo {
         profiles: &CoreValue,
         admitted_closure: Option<&CoreValue>,
     ) -> Result<(CoreValue, ActiveArtifactVerification)> {
+        self.select_active_variant(op, profile, admitted_closure, || {
+            registered_shell(profiles, profile_id, &self.budget)
+        })
+    }
+
+    pub(super) fn initial_active_variant<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        profile_id: &str,
+        source_profile: &CoreValue,
+    ) -> Result<(CoreValue, ActiveArtifactVerification)> {
+        self.select_active_variant(op, profile, None, || {
+            Ok(initial_source_shell(source_profile, profile_id))
+        })
+    }
+
+    fn select_active_variant<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        admitted_closure: Option<&CoreValue>,
+        source_shell: impl FnOnce() -> Result<Option<CoreValue>>,
+    ) -> Result<(CoreValue, ActiveArtifactVerification)> {
         let shell = self.recovery_profile_shell(op, profile)?;
         let definition = self.recovery_shell_definition(&shell)?;
         if !text_is(&definition, "availability", "verified") {
@@ -271,8 +295,7 @@ impl CatalogIo {
                 )
         }));
         let unavailable = || shell_denied("active Profile Shell artifact is unavailable");
-        let registered =
-            registered_shell(profiles, profile_id, &self.budget)?.ok_or_else(unavailable)?;
+        let registered = source_shell()?.ok_or_else(unavailable)?;
         if ![
             "provider_id",
             "pack_id",
@@ -395,7 +418,6 @@ impl CatalogIo {
 
     /// The independent publication loader supplies both the source Profile
     /// and the bundled Pack pin for the selected Shell.
-    #[cfg(test)]
     pub(super) fn verify_initial_shell_binding<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -404,9 +426,7 @@ impl CatalogIo {
         source_profile: &CoreValue,
     ) -> Result<()> {
         self.verify_current_shell_binding(op, selected, None, || {
-            Ok(source_profile.get_key("shell").filter(|shell| {
-                text_is(source_profile, "profile_id", profile_id) && shell.object().is_some()
-            }))
+            Ok(initial_source_shell(source_profile, profile_id))
         })
     }
 
@@ -499,6 +519,12 @@ impl CatalogIo {
         }
         Ok(None)
     }
+}
+
+fn initial_source_shell(source: &CoreValue, profile_id: &str) -> Option<CoreValue> {
+    source
+        .get_key("shell")
+        .filter(|shell| text_is(source, "profile_id", profile_id) && shell.object().is_some())
 }
 
 fn unique_variant(mut matching: impl Iterator<Item = CoreValue>) -> Option<CoreValue> {

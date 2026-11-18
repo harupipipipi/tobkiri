@@ -76,10 +76,7 @@ pub(in super::super) fn prepare_bootstrap_template<S: OriginalAuthorityOwner>(
 
 pub(in super::super) enum FirstRevision {
     Template,
-    #[cfg(test)]
-    Ordinary {
-        expected_generation: i64,
-    },
+    Ordinary { expected_generation: i64 },
 }
 
 pub(in super::super) fn prepare_first_revision<S: OriginalAuthorityOwner>(
@@ -91,7 +88,6 @@ pub(in super::super) fn prepare_first_revision<S: OriginalAuthorityOwner>(
     creation: FirstRevision,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<CoreBuffer> {
-    #[cfg(test)]
     if let FirstRevision::Ordinary {
         expected_generation,
     } = creation
@@ -182,7 +178,6 @@ pub(in super::super) fn prepare_first_revision<S: OriginalAuthorityOwner>(
 
     let (bootstrap_state, template_revision) = match creation {
         FirstRevision::Template => ("template_available", revision),
-        #[cfg(test)]
         FirstRevision::Ordinary { .. } => (
             "not_required",
             CoreValue::null(budget).map_err(capacity_error)?,

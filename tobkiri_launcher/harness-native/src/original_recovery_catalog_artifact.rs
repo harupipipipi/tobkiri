@@ -108,45 +108,9 @@ impl<'a> RecoveryCatalogInputs<'a> {
         profile: &CoreValue,
         profile_id: &str,
     ) -> Result<ActiveArtifactVerification> {
-        let mut outcome = ActiveArtifactVerification::Current;
-        artifact_identity::bounded(
-            op,
-            || {
-                artifact_identity::artifact_rejected(
-                    "packaged artifact verification deadline exceeded",
-                )
-            },
-            |op| {
-                let (variant, classification) = self.io.active_artifact_variant(
-                    op,
-                    profile,
-                    profile_id,
-                    self.profiles,
-                    self.admitted,
-                )?;
-                outcome = classification;
-                let (root, parent) = self.io.artifact_anchor()?;
-                artifact_identity::verify_active_package(
-                    op,
-                    &self.io.budget,
-                    root,
-                    parent,
-                    &variant,
-                )?;
-                Ok(outcome)
-            },
-        )
-        .map_err(|mut error| {
-            if outcome == ActiveArtifactVerification::SuccessorNeedsReconfirmation
-                && let Some(OriginalAuthorityCause::Python {
-                    class: "tobkiri_protocol.errors.ProtocolError",
-                    message,
-                    ..
-                }) = &error.cause
-            {
-                error.message = format!("verified successor Shell artifact rejected: {message}");
-            }
-            error
+        self.io.verify_catalogued_active_artifact(op, |op| {
+            self.io
+                .active_artifact_variant(op, profile, profile_id, self.profiles, self.admitted)
         })
     }
 
@@ -192,10 +156,56 @@ impl<'a> RecoveryCatalogInputs<'a> {
 }
 
 impl CatalogIo {
-    // The ordinary activation caller will enter this only after its first
-    // workspace recovery and resolved record checks. Exercise it with physical
-    // package fixtures until that caller runs the full transaction.
-    #[cfg(test)]
+    pub(in crate::original_authority::io::publication) fn verify_initial_active_artifact<
+        S: crate::BootstrapReviewOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        profile_id: &str,
+        source_profile: &CoreValue,
+    ) -> Result<ActiveArtifactVerification> {
+        self.verify_catalogued_active_artifact(op, |op| {
+            self.initial_active_variant(op, profile, profile_id, source_profile)
+        })
+    }
+
+    fn verify_catalogued_active_artifact<S: crate::BootstrapReviewOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        select: impl FnOnce(&Operation<'_, S>) -> Result<(CoreValue, ActiveArtifactVerification)>,
+    ) -> Result<ActiveArtifactVerification> {
+        let mut outcome = ActiveArtifactVerification::Current;
+        artifact_identity::bounded(
+            op,
+            || {
+                artifact_identity::artifact_rejected(
+                    "packaged artifact verification deadline exceeded",
+                )
+            },
+            |op| {
+                let (variant, classification) = select(op)?;
+                outcome = classification;
+                let (root, parent) = self.artifact_anchor()?;
+                artifact_identity::verify_active_package(op, &self.budget, root, parent, &variant)?;
+                Ok(outcome)
+            },
+        )
+        .map_err(|mut error| {
+            if outcome == ActiveArtifactVerification::SuccessorNeedsReconfirmation
+                && let Some(OriginalAuthorityCause::Python {
+                    class: "tobkiri_protocol.errors.ProtocolError",
+                    message,
+                    ..
+                }) = &error.cause
+            {
+                error.message = format!("verified successor Shell artifact rejected: {message}");
+            }
+            error
+        })
+    }
+
+    /// Verify the Shell for the exact independently reread bundled Profile.
     pub(in crate::original_authority::io::publication) fn verify_initial_artifact<
         S: crate::BootstrapReviewOwner,
     >(
