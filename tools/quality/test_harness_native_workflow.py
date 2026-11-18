@@ -385,7 +385,8 @@ class NativeWorkflowContracts(unittest.TestCase):
         positions = [current.index(token) for token in (
             "runtime.begin(&app,&job)?",
             "job.attach_invocation(&invocation)?",
-            "OriginalBootstrapInputs::new(app,job.source_custody()?,&invocation)?",
+            "OriginalBootstrapInputs::new(app,job.source_custody()?,&invocation,Some(launch))?",
+            "source.check_live()?",
             "NativeComponentPreparation::new_with_cancellation_parent(",
             ".compile(artifact,&expected)?",
             "letinitialize=prepared.initialize_with_profile_schemas(index,profile_schemas);",
