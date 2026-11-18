@@ -11,6 +11,7 @@ on:
       - 'packs/local.saved-conversation-rust/**'
       - 'packs/local.openai-compat-provider/src/**'
       - 'packs/local.harness-prompt/**'
+      - 'packs/local.harness-conversation-store/**'
       - 'tools/quality/issue_1520_llama_cancel_probe.py'
   workflow_dispatch:
 

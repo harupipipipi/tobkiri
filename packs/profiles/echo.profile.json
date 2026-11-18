@@ -281,7 +281,7 @@
     },
     {
       "id": "local.echo-store",
-      "sha256": "sha256:82af93acfaee2c3707a100bbc989e22edd946f48ed40d79619c1569f79b7ab6e",
+      "sha256": "sha256:ba4dff323047952b2672ded3e33deba13abbc1750bc5aecc54df0a69765c2818",
       "source": "file:../local.echo-store",
       "version": "0.1.0"
     },

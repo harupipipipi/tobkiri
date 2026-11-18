@@ -3685,6 +3685,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   保存時の既存監査レポートを全ターンに共用し、`load` と `append` を同じ上限付き抽出の対象に追加した。
   stderrもCIの実行記録に保存する。ローカルのSQLite fixtureで両方の呼び出しが残り、
   対象外イベントや任意のエラー文が出ないことを確認。既存の試験条件で再計測する。
+  [44371423977](https://github.com/harupipipipi/tobkiri/actions/runs/44371423977) のimport後の
+  overlayターンでは、初期化中のDDLが成功し、`load` が同じDDLを再実行した時だけ
+  `storage-sql-failed` が記録された。先行のread grantのcancelはDDLの書込み分類によるもの。
+  EchoとHarnessの会話ストアでテーブル作成をライフサイクルの `init` に集約。
+  ホストは `init` 成功後にのみハンドラーを実行する。以降の `load` は既存のSELECTのみ、
+  `append` は2行をまとめる既存のINSERTのみを行う。2つのWasmと関連Profile 14件を再生成。
+  実Wasmの通常Flow、Core再起動後の履歴、承認したFlow変更を含むローカル4件が通過。
+  SQL書込み全体の競合原因はこの監査コードだけでは特定できず、承認・commit fenceと再試行の
+  条件は維持する。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。

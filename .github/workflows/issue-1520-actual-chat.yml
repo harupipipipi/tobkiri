@@ -11,6 +11,8 @@ on:
       - 'packs/Cargo.lock'
       - 'packs/local.openai-compat-provider/**'
       - 'packs/local.harness-prompt/**'
+      - 'packs/local.harness-conversation-store/**'
+      - 'packs/local.echo-store/**'
       - 'packs/local.harness-ui/**'
       - 'crates/tobkiri-e2e/tests/ui.rs'
       - 'crates/tobkiri-cli/**'
