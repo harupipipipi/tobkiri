@@ -23,6 +23,9 @@ name: Issue 1520 original Setup resolver prefix
       - tobkiri_launcher/harness-native/src/original_profile_publication.rs
       - tobkiri_launcher/harness-native/src/original_publication_begin_ci.rs
       - tobkiri_launcher/harness-native/src/original_publication_begin.rs
+      - tobkiri_launcher/harness-native/src/original_initial_activation_records.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_snapshot_graph*.rs
+      - tobkiri_launcher/harness-native/src/original_recovery_workspace_active.rs
       - tobkiri_launcher/harness-native/src/original_authority_json.rs
       - tobkiri_launcher/harness-native/src/original_development_handover.rs
       - tobkiri_launcher/harness-native/src/original_inactive_registration_ci.rs
@@ -178,6 +181,16 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --lib
           bootstrap_runtime::activation_decision::tests::matched_activation_requires_the_reviewed_source_bundle_and_confirmation
           -- --exact --test-threads=1 --nocapture
+      - name: Verify fresh activation record validation against the original resolved graph
+        if: matrix.os == 'ubuntu-22.04'
+        env:
+          TOBKIRI_ORIGINAL_INACTIVE_REGISTRY_REFERENCE: ${{ runner.temp }}/original-setup-resolver-prefix/inactive-registry.json
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/original-setup-resolver-prefix/fresh-records.log" --expected-passed 3 -- \
+            cargo test --locked -p tobkiri-harness-native --lib \
+            original_authority::io::publication::recovery_authority::workspace_active::initial_records::tests:: \
+            -- --include-ignored --test-threads=1
       - name: Retain bounded original observation metadata only
         if: always()
         uses: actions/upload-artifact@v4

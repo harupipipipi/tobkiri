@@ -9,6 +9,9 @@ mod profile_schema;
 #[path = "original_recovery_snapshot_graph.rs"]
 mod snapshot_graph;
 use snapshot_graph::{Snapshot, SnapshotRecords, View};
+#[cfg(test)]
+#[path = "original_initial_activation_records.rs"]
+mod initial_records;
 
 pub(super) const POINTER_SCHEMA: &str = "io.tobkiri.defaultspack-active-pointer.v1";
 const ENVELOPE_SCHEMA: &str = "io.tobkiri.defaultspack-activation-envelope.v1";
@@ -395,19 +398,7 @@ async fn check_snapshot_records<S: OriginalAuthorityOwner>(
     }
     let selected = |id, kind| {
         let record = select_record(op, budget, envelope, id, kind)?;
-        let root = load_record_schema(op, budget, schemas, record.name)?;
-        if matches!(kind, RecordKind::Plan) {
-            let principal =
-                load_record_schema(op, budget, schemas, "function_principal_v1.schema.json")?;
-            validate_record(
-                op,
-                budget,
-                &record,
-                &[&root, &common, &projection, &principal],
-            )?;
-        } else {
-            validate_record(op, budget, &record, &[&root, &common, &projection])?;
-        }
+        validate_selected_record(op, budget, schemas, &record, [&common, &projection])?;
         Ok::<_, OriginalAuthorityError>(record)
     };
     let [lock, plan, activation] = pending;
@@ -428,6 +419,23 @@ async fn check_snapshot_records<S: OriginalAuthorityOwner>(
         activation: activation.view(),
     })
     .await
+}
+
+fn validate_selected_record<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    schemas: BoundProfileSchemas,
+    record: &Record<'_>,
+    [common, projection]: [&Document; 2],
+) -> Result<()> {
+    let root = load_record_schema(op, budget, schemas, record.name)?;
+    if matches!(record.kind, RecordKind::Plan) {
+        let principal =
+            load_record_schema(op, budget, schemas, "function_principal_v1.schema.json")?;
+        validate_record(op, budget, record, &[&root, common, projection, &principal])
+    } else {
+        validate_record(op, budget, record, &[&root, common, projection])
+    }
 }
 
 pub(super) fn validate_activation<S: OriginalAuthorityOwner>(

@@ -168,6 +168,13 @@ fn compare_work<S: OriginalAuthorityOwner>(
 }
 
 #[derive(Clone, Copy)]
+pub(super) struct ResolvedRecords<'a> {
+    pub(super) profile: View<'a>,
+    pub(super) lock: View<'a>,
+    pub(super) plan: View<'a>,
+}
+
+#[derive(Clone, Copy)]
 pub(super) struct SnapshotRecords<'a> {
     pub(super) profile: View<'a>,
     pub(super) lock: View<'a>,
@@ -201,9 +208,15 @@ pub(super) fn verify<S: crate::BootstrapReviewOwner>(
         )?;
         return Ok(ProfileCheck::NeedsLegacySuccessor);
     }
-    current::verify(op, budget, records, |selections, effective_set| {
-        projections::verify(op, budget, selections, effective_set)
-    })?;
+    verify_resolved(
+        op,
+        budget,
+        ResolvedRecords {
+            profile: records.profile,
+            lock: records.lock,
+            plan: records.plan,
+        },
+    )?;
     if !records.activation.field("activation_id")?.same(
         snapshot.pointer.field("activation_id")?,
         op,
@@ -239,6 +252,17 @@ pub(super) fn verify<S: crate::BootstrapReviewOwner>(
         ));
     }
     Ok(ProfileCheck::NeedsArtifactReverification)
+}
+
+/// Validate the resolved graph independently of an activation or reservation.
+pub(super) fn verify_resolved<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    budget: &Arc<dyn AllocationBudget>,
+    records: ResolvedRecords<'_>,
+) -> Result<()> {
+    current::verify(op, budget, records, |selections, effective_set| {
+        projections::verify(op, budget, selections, effective_set)
+    })
 }
 
 /// Retain the four canonical record identities and the small fields consumed

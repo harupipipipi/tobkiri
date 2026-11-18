@@ -23,14 +23,13 @@ const SHARED: [&str; 10] = [
 pub(super) fn verify<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
-    records: SnapshotRecords<'_>,
+    records: ResolvedRecords<'_>,
     verify_projections: impl FnOnce(View<'_>, View<'_>) -> Result<()>,
 ) -> Result<()> {
-    let SnapshotRecords {
+    let ResolvedRecords {
         profile,
         lock,
         plan,
-        ..
     } = records;
     let profile_revision = profile.digest(None, op, budget)?;
     let plan_digest = plan.digest(Some("plan_digest"), op, budget)?;
