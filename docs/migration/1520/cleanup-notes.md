@@ -4434,10 +4434,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   固定CPython 3.13.16でID・承認項目・重複operationの拒否と、整数やobjectのbindingを持つ
   有効な入力を照合した。Rust 248件、strict Clippy、Python 262件、producer 344件が通過。
   [意味検証を含む実Wasm CI 44324536644](https://github.com/harupipipipi/tobkiri/actions/runs/44324536644)。
-  次の物理I/O統合では、最初のresolve、root外拒否、symlink検査、openの順序と、pin照合時の
-  独立したopenを維持する。固定CPythonのPathは区切りや末尾slashを正規化し、`..` を残す。
-  既存のRust canonicalizeは失敗時に原本と異なるパスを返す場合があり、is_symlinkも一部の
-  errnoを隠す。I/O統合の比較ではLockの生の表記、物理パス、例外のfilenameを照合する。
+  `d1d9dd599` は同梱比較経路で、ロックの生パスと序数を照合してから初回のパス解決、
+  root外拒否、symlink検査、open、文書検証を一度の呼び出しで行う。固定CPythonに合わせて
+  区切りや末尾slashを正規化し、`..` を残す。中間パス欠落、ENOTDIR、ループ、NUL到達時の
+  errno・filename・優先順を実ファイルで比較した。ピンは独立したFDで読んだdigestを返し、
+  ファイル差し替え後にそのdigestが変わることを確認した。旧8,192バイトのパス上限と
+  旧byte応答の上限を検証し、試行した初回readとpin数を別々に燃料計測へ出力する。
+  305文書と148ピンの順序は模擬応答で固定原本と一致。Rust 249件、strict Clippy、Python
+  262件、producer 344件、CIスクリプト14件が通過した。OSエラーのファイル名の伝送は既存の
+  ASCII範囲に残り、非ASCIIのエラー表示は後続。実Wasmの先行計測が終わってから統合版を測る。
   [定義CI 44320718878](https://github.com/harupipipipi/tobkiri/actions/runs/44320718878)
   は19件が通過後、旧期待件数18で失敗した。`b08f8c89d` で19に更新し、
   [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で再検証する。
