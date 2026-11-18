@@ -4028,8 +4028,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Core 306件、native Harness 275件、Pack manifest 23件、strict Clippyが通過した。
   確認済みSetupが作るProfileから旧準備操作を選んだ。生成済み `.tpk` の読取りと改変・取消の
   3件、実WasmのProvider・Model Registry 4件も成功した。
-  製品の設定実行には、元のPOSTで有効なBrokerのlease・scope・期限・キャンセルを保持する
-  Native Sessionとの接続が残る。実際のProvider操作は元のGenerationBudgetと承認を維持する。
+  宣言済み成果物を読む同じ `NativeArtifactInspection` のStoreで、レシート照合済み
+  `prepare-local` を一度実行できる。ホストがProfileと旧Registryの二つの観測値を渡し、
+  `current-profile` だけを提供する。観測値の上限は各1 MiB。実 `.tpk` の試験で、元の
+  設定計画と同じ応答、revision競合の型付き拒否、Registryのバイト列が維持されることを確認した。
+  元の署名済みShell → coordinator → Providerの `profile_grant` を経る固定経路に限り、
+  Python Host側で元のPOSTのlease、親scope、期限、キャンセル、受付済み予算を借りる接続点を追加した。
+  旧Registryはその接続点からディスクリプタを使って最大2回読み、当初の不在と確認後の消失を区別する。
+  承認前の計画作成と承認後の保存を分け、既存のGenerationBudgetを適用する。
+  署名付きHTTP試験で、隔離予算ポリシーがない構成の承認待ち・承認後の一度だけの保存と、
+  OpenRouter専用ポリシーによるローカル設定の拒否を確認した。実Wasm E2Eは4件、
+  macOSの `SecureDirectory` は29件が通過した。元のコミットでも、既存のProvider設定試験2件は
+  この隔離ポリシーによる503を返す。
+  通常Launcherからこの接続点をRustに渡す経路が残る。接続前に、初回観測が失敗した時の二度目の
+  読み取り順序と、1 MiBを超える既存Registryの互換動作を確定する。既存Host Brokerの接続認証は
+  起動中のProfileまでを証明する。リクエスト単位のleaseと実作業終了の対応、観測値の転送上限も確認する。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

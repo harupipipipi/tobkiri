@@ -277,6 +277,7 @@ class ExactHostProviderBackendV4:
         invocation_context: Callable[
             [RequestEnvelope], HostProviderInvocationContextV4
         ],
+        admission_bound_operations: frozenset[tuple[str, str, str]] = frozenset(),
     ) -> None:
         if not contributions:
             raise ValueError("Host Provider backend requires contributions")
@@ -284,6 +285,9 @@ class ExactHostProviderBackendV4:
         if len(self._contributions) != len(contributions):
             raise ValueError("duplicate Host Provider contribution")
         self._invocation_context = invocation_context
+        self._admission_bound_operations = admission_bound_operations
+        if not admission_bound_operations.issubset(self._contributions):
+            raise ValueError("Host Provider admission binding is unavailable")
         backend_digest = canonical_digest(
             {
                 "backend": "tobkiri.exact-host-provider.v4",
@@ -335,6 +339,10 @@ class ExactHostProviderBackendV4:
             backend_digest=self.status.backend_digest,
             authenticated_channel=True,
             nonce_fresh=True,
+            resource_reservation_id=(
+                reservation_id if contribution.key in self._admission_bound_operations
+                else None
+            ),
         )
 
     def invoke(self, request: object) -> ProviderOutcome:

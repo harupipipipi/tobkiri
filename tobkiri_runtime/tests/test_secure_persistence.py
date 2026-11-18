@@ -37,6 +37,24 @@ def test_bounded_read_rejects_oversized_entry_before_returning_bytes(
     assert store.read_bytes_bounded("artifact.bin", max_bytes=9) == b"oversized"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX stat/open continuity")
+def test_bounded_read_reports_disappearance_after_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SecureDirectory(tmp_path / "root")
+    store.write_bytes_atomic("artifact.bin", b"present")
+    real_open = os.open
+
+    def open_entry(path, flags, *args, **kwargs):
+        if path == "artifact.bin" and kwargs.get("dir_fd") is not None:
+            raise FileNotFoundError(path)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(persistence.os, "open", open_entry)
+    with pytest.raises(SecurePersistenceError, match="changed before read"):
+        store.read_bytes_bounded("artifact.bin", max_bytes=64)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX FIFO replacement contract")
 @pytest.mark.parametrize("bound", [None, 64])
 def test_regular_leaf_replaced_by_fifo_before_open_fails_without_blocking(

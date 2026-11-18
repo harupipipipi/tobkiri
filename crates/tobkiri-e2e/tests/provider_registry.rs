@@ -10,6 +10,8 @@ use support::registry::{
 };
 use support::{Host, canon, physical_temp, registry, within_session};
 use tobkiri_core::{Core, CoreConfig, CoreError, Session};
+#[cfg(unix)]
+use tobkiri_core::{CoreValue, NativeArtifactDeclaration, NativeDeclaredArtifactSource};
 use tobkiri_gate::{EffectRequest, StoreOperation, StoreTier};
 use tobkiri_store::{DataRoot, StoreError};
 
@@ -122,6 +124,8 @@ async fn verify_local_preparation(session: &Session, profile: &str) -> Result<()
 }
 
 async fn verify_legacy_preparation(
+    core: &Arc<Core>,
+    pack: &tobkiri_profile::PackPin,
     session: &Session,
     unapproved: &Session,
     profile: &str,
@@ -173,6 +177,21 @@ async fn verify_legacy_preparation(
     let mut expected = call(session, CONFIGURATION, "prepare-local", request.clone()).await?;
     expected["expected_revision"] = json!(42);
     ensure!(verified == expected);
+    #[cfg(unix)]
+    {
+        let plan = native_legacy_prepare(
+            core,
+            pack,
+            profile,
+            fixture,
+            arguments(observe()?, observe()?),
+        )
+        .await?;
+        ensure!(plan == expected);
+        ensure!(!plan.to_string().contains(HANDLE));
+    }
+    #[cfg(not(unix))]
+    let _ = (core, pack);
     ensure!(!verified.to_string().contains(HANDLE));
     ensure!(observe()?.as_deref() == Some(observed.as_str()));
     ensure!(
@@ -190,7 +209,25 @@ async fn verify_legacy_preparation(
     raced["revision"] = json!(43);
     let before_replacement = observe()?;
     source.write_atomic(&path, raced.to_string().as_bytes())?;
-    let conflict = prepare(before_replacement, observe()?)
+    let after_replacement = observe()?;
+    #[cfg(unix)]
+    {
+        let result = native_legacy_prepare(
+            core,
+            pack,
+            profile,
+            fixture,
+            arguments(before_replacement.clone(), after_replacement.clone()),
+        )
+        .await
+        .expect_err("native PREPARE must reject a changed Registry revision");
+        ensure!(matches!(
+            result.downcast_ref::<tobkiri_core::NativeArtifactError>(),
+            Some(tobkiri_core::NativeArtifactError::ProviderRejected(error)) if error.code() == "conflict"
+        ));
+        ensure!(observe()? == after_replacement);
+    }
+    let conflict = prepare(before_replacement, after_replacement)
         .await
         .expect_err("preflight rejected a new Registry revision");
     ensure!(
@@ -206,6 +243,68 @@ async fn verify_legacy_preparation(
     );
     ensure!(prepare(Some("{".into()), None).await.is_err());
     Ok(())
+}
+
+#[cfg(unix)]
+async fn native_legacy_prepare(
+    core: &Arc<Core>,
+    expected: &tobkiri_profile::PackPin,
+    profile: &str,
+    root: &Path,
+    arguments: Value,
+) -> Result<Value> {
+    use std::collections::BTreeMap;
+
+    enum NoDeclaration {}
+    impl NativeArtifactDeclaration for NoDeclaration {
+        fn digest(&self) -> &str {
+            match *self {}
+        }
+    }
+
+    struct OriginalSource {
+        root: std::path::PathBuf,
+        declarations: BTreeMap<String, NoDeclaration>,
+    }
+    impl NativeDeclaredArtifactSource for OriginalSource {
+        type Declaration = NoDeclaration;
+
+        fn root(&self) -> &Path {
+            &self.root
+        }
+
+        fn declarations(&self) -> &BTreeMap<String, NoDeclaration> {
+            &self.declarations
+        }
+    }
+
+    let mut inspection = core.inspect_declared_artifacts(OriginalSource {
+        root: root.to_path_buf(),
+        declarations: BTreeMap::new(),
+    })?;
+    let outcome = async {
+        let path = expected
+            .source
+            .strip_prefix("file:")
+            .context("staged Provider archive")?;
+        let mut file = std::fs::File::open(path)?;
+        let length = file.metadata()?.len();
+        let pack = inspection.verify_pack_archive(&mut file, length)?;
+        ensure!(pack.hash == expected.sha256);
+        let budget = inspection.allocation_budget()?.clone();
+        let input = CoreValue::parse_guest(&serde_json::to_vec(&arguments)?, &budget)?;
+        let result = inspection
+            .invoke_legacy_provider_prepare(&pack, profile, &input)
+            .await?;
+        let output = result.encode_guest(&budget)?;
+        Ok(serde_json::from_slice(output.as_bytes())?)
+    }
+    .await;
+    inspection
+        .finish()
+        .await
+        .context("finish native Provider preparation")?;
+    outcome
 }
 
 async fn verify_local_commit(
@@ -408,7 +507,10 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
     ]);
     host.approve_literal_user(&a)?;
     let data = directory.path().join("data");
-    let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host.clone())?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(data.clone()),
+        host.clone(),
+    )?);
     core.save_profile(a.clone(), None).await?;
     core.save_profile(b.clone(), None).await?;
     let sa = core.start(&a.id).await.context("start Profile A")?;
@@ -423,7 +525,15 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
         let before = snapshot(&sa, a.id.as_str()).await?;
         ensure!(before["revision"] == 0);
         verify_local_preparation(&sa, a.id.as_str()).await?;
-        verify_legacy_preparation(&sa, &sb, a.id.as_str(), directory.path()).await?;
+        verify_legacy_preparation(
+            &core,
+            &packs[0].pin,
+            &sa,
+            &sb,
+            a.id.as_str(),
+            directory.path(),
+        )
+        .await?;
         ensure!(snapshot(&sa, a.id.as_str()).await? == before);
         let local = local_request(&json!({
             "connection_name":"fixture", "endpoint":"http://127.0.0.1:1234/v1"

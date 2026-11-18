@@ -17,13 +17,16 @@ use std::{
         atomic::{AtomicU8, Ordering},
     },
 };
-use tobkiri_canon::{AllocationBudget, ControlHandle, CoreBuffer, Digest, MAX_BYTES};
+use tobkiri_canon::{AllocationBudget, ControlHandle, CoreBuffer, CoreValue, Digest, MAX_BYTES};
 use tobkiri_gate::{
     CapacityKind, ControlKind, ControlReservation, CoreCancellation, NativeSetupInvocation,
     NativeSetupReservation,
 };
 use tobkiri_manifest::{VerifiedPack, source::SourceCatalog, verify_tpk_reader_in_catalog};
-use tobkiri_wasm::{NativeDataIo, NativeDataIoError, NativeInspectionOutput, NativeSetupStore};
+use tobkiri_wasm::{
+    LegacyProviderPrepareError, NativeDataIo, NativeDataIoError, NativeInspectionOutput,
+    NativeSetupStore,
+};
 
 #[path = "native_artifact_open_unix.rs"]
 mod opening;
@@ -65,6 +68,10 @@ pub enum NativeArtifactError {
     Integrity,
     #[error("native artifact exceeds the original DATA envelope")]
     TooLarge,
+    #[error("native Provider preparation failed")]
+    ProviderPrepare(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("{0}")]
+    ProviderRejected(#[from] LegacyProviderPrepareError),
 }
 
 const READY: u8 = 0;
@@ -230,7 +237,36 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         verified.map_err(|error| NativeArtifactError::Core(error.into()))
     }
 
-    fn require_ready(&self) -> Result<(), NativeArtifactError> {
+    /// Execute the fixed read-only Provider planning operation as the last
+    /// action on this Store. The host owns the selected Profile and both old
+    /// Registry observations, and still finishes this inspection on error.
+    /// The resulting plan carries no permission to save or execute it.
+    pub async fn invoke_legacy_provider_prepare(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        arguments: &CoreValue,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.require_ready()?;
+        self.work
+            .get()
+            .phase
+            .compare_exchange(READY, READING, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| NativeDataIoError::Busy)?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let plan = store
+            .invoke_legacy_provider_prepare(pack, profile_id, arguments)
+            .await;
+        self.require_live()?;
+        plan.map_err(
+            |error| match error.downcast::<LegacyProviderPrepareError>() {
+                Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+                Err(error) => NativeArtifactError::ProviderPrepare(error.into()),
+            },
+        )
+    }
+
+    fn require_live(&self) -> Result<(), NativeArtifactError> {
         let deadline = self
             .work
             .get()
@@ -247,6 +283,11 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         {
             return Err(NativeDataIoError::Cancelled.into());
         }
+        Ok(())
+    }
+
+    fn require_ready(&self) -> Result<(), NativeArtifactError> {
+        self.require_live()?;
         match self.work.get().phase.load(Ordering::Acquire) {
             READY => Ok(()),
             READING => Err(NativeDataIoError::Busy.into()),

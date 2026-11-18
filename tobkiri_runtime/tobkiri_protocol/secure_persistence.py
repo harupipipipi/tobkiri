@@ -592,13 +592,16 @@ class SecureDirectory:
             assert before is not None
             if max_bytes is not None and before.st_size > max_bytes:
                 raise SecurePersistenceError("persistence entry exceeds read limit")
-            descriptor = os.open(
-                name,
-                os.O_RDONLY
-                | getattr(os, "O_NOFOLLOW", 0)
-                | getattr(os, "O_NONBLOCK", 0),
-                dir_fd=parent,
-            )
+            try:
+                descriptor = os.open(
+                    name,
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_NONBLOCK", 0),
+                    dir_fd=parent,
+                )
+            except FileNotFoundError:
+                raise SecurePersistenceError("persistence entry changed before read") from None
             try:
                 opened = os.fstat(descriptor)
                 if not _owned_regular(opened) or _read_fingerprint(opened) != _read_fingerprint(

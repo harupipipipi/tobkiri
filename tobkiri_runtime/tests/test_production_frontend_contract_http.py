@@ -429,6 +429,7 @@ def _captured_production_server(
     *,
     packvm_backends: BackendRegistry | None = None,
     credential_store_factory=None,
+    native_provider_prepare_planner=None,
     authority_approval_window_open: (
         Callable[[str], Mapping[str, object]] | None
     ) = None,
@@ -491,6 +492,7 @@ def _captured_production_server(
         authority_store=authority,
         backends=packvm_backends,
         credential_store_factory=credential_store_factory,
+        native_provider_prepare_planner=native_provider_prepare_planner,
         http_contract_bindings=bindings,
         activation_snapshot_loader=defaultspack_activation_snapshot_loader,
         runtime_surface_factory=create_runtime_surface_services,
@@ -4840,6 +4842,136 @@ def test_audio_provider_configuration_http_preserves_explicit_approval_and_exact
     production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _exercise_provider_configuration_http(production_server, tmp_path, monkeypatch, audio=True)
+
+
+@pytest.mark.parametrize("openrouter_only", [False, True])
+def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, openrouter_only: bool,
+) -> None:
+    """The signed request can borrow a planner only while its prepare lease runs."""
+    from core_runtime.authority.ui_operator import sign_ui_operator
+    from core_runtime.bootstrap import production_v4
+    from core_runtime.provider_prepare_native_v4 import (
+        MINIMUM_PREPARE_MEMORY,
+        NativeProviderPrepareBorrow,
+        NativeProviderPreparePlanner,
+    )
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_protocol.canonical import canonical_digest
+
+    if not openrouter_only:
+        # Exercise the ordinary signed route without the isolated cloud-run policy.
+        monkeypatch.setattr(
+            production_v4, "owner_startup_generation_budget_template", lambda _template: None,
+        )
+    root = tmp_path / "user-data"
+    connection = {
+        "connection_name": "fixture-local",
+        "protocol": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:11434/v1/",
+        "key_value": "",
+        "capabilities": ["ai.stream", "ai.generate"],
+    }
+    borrowed = []
+
+    def plan(borrow: NativeProviderPrepareBorrow) -> Mapping[str, object]:
+        borrow.assert_current()
+        assert dict(borrow.request) == {
+            "connection_name": "fixture-local",
+            "endpoint": "http://127.0.0.1:11434/v1/",
+            "capabilities": ("ai.stream", "ai.generate"),
+        }
+        assert borrow.context.profile_id == "defaults"
+        assert borrow.resources.memory_bytes >= MINIMUM_PREPARE_MEMORY
+        observations = [json.loads(borrow.read_legacy_registry()) for _ in range(2)]
+        assert [document["revision"] for document in observations] == [1, 1]
+        assert observations[0] == observations[1]
+        with pytest.raises(PermissionError, match="reads are exhausted"):
+            borrow.read_legacy_registry()
+        borrowed.append(borrow)
+        return {
+            "profile_id": "defaults",
+            "provider_instance_id": "provider.fixture-local",
+            "adapter_id": "local-openai-compatible",
+            "endpoint": "http://127.0.0.1:11434/v1",
+            "expected_revision": 1,
+            "request_digest": canonical_digest(connection),
+            "credential_scopes": ["ai.generate", "ai.stream"],
+        }
+
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch,
+        credential_store_factory=host_credential_store_factory,
+        native_provider_prepare_planner=NativeProviderPreparePlanner(
+            MINIMUM_PREPARE_MEMORY, plan,
+        ),
+    ) as (server, _session, _authority):
+        registry = ProviderRegistry("defaults", user_data_root=root)
+        registry.save({
+            "provider_instance_id": "provider.already-saved",
+            "adapter_id": "local-openai-compatible",
+            "endpoint": "http://127.0.0.1:11435/v1",
+        }, expected_revision=0)
+        before = registry.path.read_bytes()
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(path: str, body: Mapping[str, object]) -> tuple[int, dict[str, object]]:
+            status, result, _ = _request(
+                server, "POST", _contract("POST", path), body=body,
+                headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            return status, result
+
+        path = "/api/ai/provider-key"
+        status, response = post(path, {
+            "phase": "prepare",
+            "effect_kind": "provider_configure",
+            "correlation_id": str(uuid.uuid4()),
+            "request": connection,
+        })
+        assert registry.path.read_bytes() == before
+        assert len(borrowed) == 1
+        with pytest.raises(PermissionError, match="borrow is unavailable"):
+            borrowed[0].assert_current()
+        if openrouter_only:
+            assert status == 503, response
+            assert response["data"]["state"] == "error"
+            return
+        assert status == 200, response
+        effect = response["data"]
+        assert effect["state"] == "approval_pending"
+
+        approval_id = effect["approval_request_id"]
+        status, response = post(
+            "/api/interactive-approval/v1/get", {"request_id": approval_id},
+        )
+        assert status == 200, response
+        approval = response["data"]
+        status, response = post("/api/interactive-approval/v1/approve", {
+            "request_id": approval_id,
+            "confirmation_text": "EXECUTE",
+            "ui_operator": sign_ui_operator(
+                approval_id, nonce="local-provider-configuration-approval",
+                decision="approve",
+                request_snapshot_digest=approval["request_snapshot_digest"],
+                typed_confirmation_digest=approval["typed_confirmation_digest"],
+            ),
+        })
+        assert status == 200, response
+        for _ in range(2):
+            result = _resume_until_terminal(
+                post, path, {"phase": "resume", "effect_id": effect["effect_id"]},
+            )
+            assert result["data"]["state"] == "succeeded", result
+        snapshot = registry.snapshot()
+        assert snapshot["revision"] == 2
+        assert snapshot["providers"][1]["credential_handle"] is None
+        assert not (root / "credentials/material-store/credentials.store.json").exists()
+        assert len(borrowed) == 1
 
 
 @pytest.mark.parametrize("text_blocks", [False, True])
