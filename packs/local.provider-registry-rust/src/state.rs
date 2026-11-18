@@ -6,7 +6,7 @@
 //! These ports neither acquire a lock nor make an atomic-storage claim.
 use crate::failure::{SourceError, SourceResult};
 use ordered_python_compat::{
-    CoercionError, MAX_INTEGER_DIGITS, PyValue, pyfloat, pyint, pyrepr, pystrip,
+    CoercionError, MAX_INTEGER_DIGITS, PyValue, decimal_digit_count, pyfloat, pyint, pyrepr,
 };
 
 pub const STORE_VERSION: &str = "rumi.provider-registry.store.v1";
@@ -106,47 +106,6 @@ pub(crate) fn type_name(value: &PyValue) -> &'static str {
         PyValue::Array(_) => "list",
         PyValue::Object(_) => "dict",
     }
-}
-
-fn numeric_space(character: char) -> bool {
-    if character.is_ascii() {
-        matches!(
-            character,
-            ' ' | '\t' | '\n' | '\r' | '\u{000b}' | '\u{000c}'
-        )
-    } else {
-        let mut buffer = [0; 4];
-        pystrip(character.encode_utf8(&mut buffer)).is_empty()
-    }
-}
-/// Validate the original decimal-string grammar separately only when pyint
-/// failed, so its pinned 4300-digit limit gets Python's diagnostic, not the
-/// generic malformed-literal diagnostic. Individual Unicode decimal digits
-/// are classified by the same pinned compatibility implementation.
-fn decimal_digit_count(value: &str) -> Option<usize> {
-    let value = value.trim_matches(numeric_space);
-    let value = value
-        .strip_prefix('+')
-        .or_else(|| value.strip_prefix('-'))
-        .unwrap_or(value);
-    let mut digits = 0;
-    let mut previous_digit = false;
-    for character in value.chars() {
-        if character == '_' {
-            if !previous_digit {
-                return None;
-            }
-            previous_digit = false;
-        } else {
-            let digit = pyint(&text(character.to_string())).ok()?;
-            if digit.len() != 1 || !digit.as_bytes()[0].is_ascii_digit() {
-                return None;
-            }
-            digits += 1;
-            previous_digit = true;
-        }
-    }
-    (digits != 0 && previous_digit).then_some(digits)
 }
 
 // CPython v3.13.9 Objects/longobject.c PyLong_FromUnicodeObject uses

@@ -228,19 +228,21 @@ jobs:
           git fetch --no-tags --depth=1 origin 6818f8ef7fae92685794acceccf71924d6eafd6b
           python3 -ISB tools/quality/python_model_registry_compat/generate.py | \
             cmp - packs/local.model-registry-rust/evidence/original-python-read.json
+          python3 -B tools/quality/python_model_registry_compat/generate_saves.py | \
+            cmp - packs/local.model-registry-rust/evidence/original-python-save.json
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
-            --log "$RUNNER_TEMP/model-registry-source.log" --expected-passed 10 -- \
+            --log "$RUNNER_TEMP/model-registry-source.log" --expected-passed 21 -- \
             cargo test --locked --manifest-path packs/Cargo.toml \
             -p tobkiri-pack-model-registry-rust --features component --lib
           cargo build --locked --release --target wasm32-wasip2 \
             --manifest-path packs/Cargo.toml -p tobkiri-pack-model-registry-rust \
             --features component
           export TOBKIRI_TEST_MODEL_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_model_registry_rust.wasm"
+          export TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_provider_registry_rust.wasm"
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
-            --log "$RUNNER_TEMP/model-registry-wasm.log" --expected-passed 1 -- \
+            --log "$RUNNER_TEMP/model-registry-wasm.log" --expected-passed 2 -- \
             cargo test --locked -p tobkiri-e2e --test model_registry -- \
-            existing_model_document_projects_settings_through_gate \
-            --ignored --exact --test-threads=1
+            --ignored --test-threads=1
       - name: Retain Model Registry runtime evidence
         if: always()
         uses: actions/upload-artifact@v4

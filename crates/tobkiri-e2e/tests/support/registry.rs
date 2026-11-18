@@ -12,6 +12,15 @@ use tobkiri_manifest::{
 };
 use tobkiri_profile::{PackPin, Profile};
 
+pub(crate) const PROVIDER_PACK: &str = "local.provider-registry";
+pub(crate) const PROVIDER_RESOURCE: &str = "local.provider-registry.resource@1.0";
+pub(crate) const PROVIDER_MANAGE: &str = "local.provider-registry.manage@1.0";
+
+pub(crate) struct RegistryPack {
+    pub(crate) pin: PackPin,
+    permissions: PermissionSet,
+}
+
 fn store_permissions() -> PermissionSet {
     PermissionSet {
         storage: StoragePermissions {
@@ -39,7 +48,8 @@ pub(crate) fn pack(
     component: &Path,
     id: &str,
     interfaces: &[&str],
-) -> Result<PackPin> {
+    dependencies: &[&str],
+) -> Result<RegistryPack> {
     let store = id
         .strip_prefix("local.")
         .context("local Registry fixture ID")?;
@@ -55,6 +65,22 @@ pub(crate) fn pack(
     ]);
     let mut shapes = Vec::new();
     let mut provides = Vec::new();
+    let mut consumes = Vec::new();
+    let mut permissions = store_permissions();
+    for dependency in dependencies {
+        let shape = ShapeRef::parse(dependency)?;
+        let owner = shape.name.owner();
+        files.insert(
+            format!("wit/deps/{owner}.wit"),
+            fs::read(repo().join(format!("packs/{owner}-rust/wit/pack.wit")))?,
+        );
+        permissions.ports.insert((*dependency).into());
+        consumes.push(PortDeclaration {
+            shape: shape.name.clone(),
+            version: shape.version,
+            optional: false,
+        });
+    }
     for (name, kind) in interfaces
         .iter()
         .map(|name| (*name, ShapeKind::Port))
@@ -90,6 +116,7 @@ pub(crate) fn pack(
         shapes,
         ports: Ports {
             provides,
+            consumes,
             ..Default::default()
         },
         inputs: vec![],
@@ -101,7 +128,7 @@ pub(crate) fn pack(
             data_shape: format!("{id}.data@1.0").parse()?,
             seed: None,
         }],
-        permissions: store_permissions(),
+        permissions,
         ui: None,
         files: files
             .iter()
@@ -122,30 +149,38 @@ pub(crate) fn pack(
         tobkiri_manifest::canonical_manifest(&manifest)?,
     )?;
     let verified = tobkiri_manifest::verify_directory(&directory, &BTreeMap::new())?;
-    Ok(PackPin {
-        id: manifest.id,
-        version: manifest.version,
-        sha256: verified.hash.clone(),
-        source: format!("file:{}", directory.canonicalize()?.display()),
+    Ok(RegistryPack {
+        pin: PackPin {
+            id: manifest.id,
+            version: manifest.version,
+            sha256: verified.hash.clone(),
+            source: format!("file:{}", directory.canonicalize()?.display()),
+        },
+        permissions: manifest.permissions,
     })
 }
 
-pub(crate) fn profile(id: &str, pin: &PackPin, ports: &[&str]) -> Result<Profile> {
-    let pack_limits = store_permissions();
+pub(crate) fn profile(id: &str, packs: &[RegistryPack], ports: &[&str]) -> Result<Profile> {
+    let user_ports = ports.iter().map(|shape| (*shape).into()).collect();
     let ceiling = PermissionSet {
-        ports: ports.iter().map(|shape| (*shape).into()).collect(),
-        ..pack_limits.clone()
+        ports: packs
+            .iter()
+            .flat_map(|pack| pack.permissions.ports.iter().cloned())
+            .chain(ports.iter().map(|shape| (*shape).into()))
+            .collect(),
+        ..store_permissions()
     };
     let user = PermissionSet {
-        ports: ceiling.ports.clone(),
+        ports: user_ports,
         wasm: ceiling.wasm.clone(),
         loops: ceiling.loops.clone(),
         ..Default::default()
     };
     Ok(serde_json::from_value(json!({
         "format":"tobkiri.profile/1", "id":id, "name":"Registry persistence fixture",
-        "packs":[pin], "publishers":{}, "ceiling":ceiling, "user_permissions":user,
-        "pack_limits": {(pin.id.as_str()):pack_limits},
+        "packs":packs.iter().map(|pack| &pack.pin).collect::<Vec<_>>(),
+        "publishers":{}, "ceiling":ceiling, "user_permissions":user,
+        "pack_limits":packs.iter().map(|pack| (pack.pin.id.as_str(), &pack.permissions)).collect::<BTreeMap<_,_>>(),
         "bindings":{},
         "overlay_order":[], "user_overlays":[], "startup":{"inputs":[],"ui":null}
     }))?)

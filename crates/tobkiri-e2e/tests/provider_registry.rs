@@ -50,14 +50,15 @@ async fn provider_registry_uses_gated_private_storage_and_profile_revisions() ->
     let artifact = std::env::var_os("TOBKIRI_TEST_PROVIDER_REGISTRY_COMPONENT")
         .context("source-built provider Registry component required")?;
     let directory = physical_temp()?;
-    let pack = registry::pack(
+    let packs = [registry::pack(
         directory.path(),
         Path::new(&artifact),
         PACK,
         &["resource", "manage"],
-    )?;
-    let a = registry::profile("prof_provider_a", &pack, &[RESOURCE, MANAGE])?;
-    let b = registry::profile("prof_provider_b", &pack, &[RESOURCE, MANAGE])?;
+        &[],
+    )?];
+    let a = registry::profile("prof_provider_a", &packs, &[RESOURCE, MANAGE])?;
+    let b = registry::profile("prof_provider_b", &packs, &[RESOURCE, MANAGE])?;
     let host = Arc::new(Host::default());
     host.utility_ports.lock().unwrap().extend([
         (RESOURCE.into(), "snapshot".into()),

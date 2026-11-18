@@ -1,15 +1,19 @@
 //! Pack-owned ordered-finite-json-v2 and the scalar operations used by the
 //! original CPython usage-cost and stream-normalizer providers.
 
+mod clock;
 mod codec;
 mod coercion;
 mod unicode;
 
+pub use clock::utc_timestamp_from_millis;
 pub use codec::{
     CodecError, MAX_BYTES, MAX_INTEGER_DIGITS, MAX_NODES, PythonJson, dumps, dumps_python_json,
     loads, loads_python_json,
 };
-pub use coercion::{CoercionError, pyfloat, pyint, pyrepr, pystr, pystrip, pytruthy};
+pub use coercion::{
+    CoercionError, decimal_digit_count, pyfloat, pyint, pyrepr, pystr, pystrip, pytruthy,
+};
 
 pub const PROTOCOL: &str = "ordered-finite-json-v2";
 

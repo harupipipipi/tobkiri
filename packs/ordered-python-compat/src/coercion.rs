@@ -252,18 +252,33 @@ pub fn pyfloat(value: &PyValue) -> Result<f64, CoercionError> {
     }
 }
 
-fn normalize_integer(value: &str) -> Result<String, CoercionError> {
-    let transformed = numeric_text(value);
-    let token = without_underscores(transformed.trim_matches(ascii_space))?;
+fn integer_sign_and_digits(token: &str) -> Result<(bool, &str), CoercionError> {
     let (negative, digits) = token
         .strip_prefix('-')
         .map(|value| (true, value))
         .or_else(|| token.strip_prefix('+').map(|value| (false, value)))
-        .unwrap_or((false, &token));
-    if digits.is_empty()
-        || !digits.bytes().all(|byte| byte.is_ascii_digit())
-        || digits.len() > crate::MAX_INTEGER_DIGITS
-    {
+        .unwrap_or((false, token));
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(CoercionError::Value);
+    }
+    Ok((negative, digits))
+}
+
+/// Count digits of a valid Python base-10 integer literal before its size limit.
+/// This allows callers to distinguish a long decimal from a malformed literal.
+pub fn decimal_digit_count(value: &str) -> Option<usize> {
+    let transformed = numeric_text(value);
+    let token = without_underscores(transformed.trim_matches(ascii_space)).ok()?;
+    integer_sign_and_digits(&token)
+        .ok()
+        .map(|(_, digits)| digits.len())
+}
+
+fn normalize_integer(value: &str) -> Result<String, CoercionError> {
+    let transformed = numeric_text(value);
+    let token = without_underscores(transformed.trim_matches(ascii_space))?;
+    let (negative, digits) = integer_sign_and_digits(&token)?;
+    if digits.len() > crate::MAX_INTEGER_DIGITS {
         return Err(CoercionError::Value);
     }
     let digits = digits.trim_start_matches('0');

@@ -10,6 +10,9 @@ interface settings {
 
   /// The existing Settings projection for the authenticated Profile.
   list-models: func() -> result<json, error>;
+
+  /// Apply the existing Settings save request under both Registry revisions.
+  save-model: func(payload: json) -> result<json, error>;
 }
 
 world pack {

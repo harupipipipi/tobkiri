@@ -39,5 +39,16 @@ The generator stages the original Git blobs in a temporary tree and invokes
 passes the original snapshot to the original `present_model_profiles`.
 The generator compares the exact store bytes before and after each read,
 including continued file absence. This captures the original Python read and
-presentation boundary. Registry mutations, host dispatch, Rust and Wasm,
-Core storage, and UI integration require separate evidence.
+presentation boundary. Host dispatch, Core storage, and UI integration have
+separate verification.
+
+[`original-python-save.json`](original-python-save.json) captures seven
+Settings mutations from the same pinned Python files with a fixed UTC clock.
+It records the normalized requests, owner replies, changed documents,
+Settings projections, and rejected input. The source SHA-256 for this fixture
+is `9c953ee730b60c452fe26bc06e65540747c208538dcb27266755637fe7b0e205`.
+
+```sh
+python3 -B tools/quality/python_model_registry_compat/generate_saves.py |
+  cmp - packs/local.model-registry-rust/evidence/original-python-save.json
+```

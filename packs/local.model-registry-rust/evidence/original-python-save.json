@@ -1,0 +1,715 @@
+{
+  "schema": "io.tobkiri.original-python-model-registry-save.v1",
+  "source_commit": "6818f8ef7fae92685794acceccf71924d6eafd6b",
+  "sources": [
+    {
+      "path": "tobkiri_runtime/core_runtime/__init__.py",
+      "sha256": "686c3971e74d622c934d41861b66b29d2d1c163359e08556ab3b4248d6aa7d4d"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/paths.py",
+      "sha256": "07679581cea2eaeaf6aea3be2df0b1dfdc0066bf211d9b03b8e1ba973c10d91f"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_workspace.py",
+      "sha256": "576df6a58ddb8887be7ab86c8399b2987134849de16e92a93c826176cd55f569"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/runtime_locks.py",
+      "sha256": "b39a0250736ea73773707bf4fc6e395e2e206babb9d8fe2c666343ff9e8f0979"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/__init__.py",
+      "sha256": "a42fb884c06d0c91173549a112bf8fd2c6311def89ca6219e42ecede908840f3"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/model_profile_presentation.py",
+      "sha256": "e4539b12c977c77bdfec94132e227b0412effb60566cbb3eb8dbe26aa78fabb7"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/runtime/__init__.py",
+      "sha256": "70a156cfce2e38caa85cd299302c8161d958fbc60947f80e1e6bfd8bf373029b"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/runtime/registry.py",
+      "sha256": "e80b6c16c13fdc69318477b6db8392d951094d5cbaf23db454a1d101a625fa9c"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/__init__.py",
+      "sha256": "fe5cc79898dfbc1154f11f01a498e32eb7566dfe527769069acd4dc88b63b424"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/canonical.py",
+      "sha256": "9f068ab737e2c9c152348601d604c6c81a060edf207c483849a90ca97ccd434e"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/durability.py",
+      "sha256": "600627fb8d8be1738c45282de0cd338a7aae9624f4014e7a500eb9f736fa56ad"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/errors.py",
+      "sha256": "2292de2b3fd27e3fe644979d7aee20a40e4b77b2366dd4c5ac3ad3a449acbddf"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/ids.py",
+      "sha256": "833ff21e644c69e6693244d81331e5afc8f6ed5e15f8a1cdda866274c05eb15c"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/platform_paths.py",
+      "sha256": "afb6aa3229ce968f61757e16698073aebc9807891d8a47d7935f71d4c1ea3657"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/secure_persistence.py",
+      "sha256": "3f3f4496399012cb937fce6ec15984b03c9dec0a55232fe38eceb2e104ee4105"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/windows_private_file.py",
+      "sha256": "75d0494343007f4bab23f6b6539b0da9554addc1a319020e51013d11ff025d79"
+    }
+  ],
+  "cases": [
+    {
+      "id": "create-first-route",
+      "profile_id": "prof_model_fixture",
+      "document": null,
+      "request": {
+        "model_profile_id": "daily-model",
+        "model_id": "models/example",
+        "provider_instance_id": "example-provider",
+        "display_name": " 日常のモデル ",
+        "expected_revision": 0,
+        "provider_registry_revision": 7
+      },
+      "now": "2026-10-21T12:34:56Z",
+      "normalized": {
+        "operation": "create",
+        "expected_revision": 0,
+        "provider_registry_revision": 7,
+        "record": {
+          "model_profile_id": "daily-model",
+          "model_id": "models/example",
+          "display_name": " 日常のモデル ",
+          "metadata": {
+            "provider_connection_id": "example-provider"
+          }
+        }
+      },
+      "result": {
+        "action": "saved",
+        "profile": {
+          "model_profile_id": "daily-model",
+          "display_name": " 日常のモデル ",
+          "model_id": "models/example",
+          "requirements": {},
+          "credential_handle": null,
+          "parameters": {},
+          "enabled": true,
+          "metadata": {
+            "provider_connection_id": "example-provider"
+          },
+          "created_at": "2026-10-21T12:34:56Z",
+          "updated_at": "2026-10-21T12:34:56Z",
+          "record_revision": 1,
+          "record_hash": "sha256:251cc0c08b8590ee922ac04c982a6c9fffe6c0595f4be4157ed0d7a9b64f135f"
+        },
+        "store_revision": 1
+      },
+      "presented": {
+        "profiles": [
+          {
+            "profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "provider_id": "example-provider",
+            "route_configured": true
+          }
+        ],
+        "count": 1,
+        "registry_revision": 1
+      },
+      "updated": {
+        "version": "rumi.model-registry.store.v1",
+        "profile_id": "prof_model_fixture",
+        "revision": 1,
+        "profiles": {
+          "daily-model": {
+            "model_profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "requirements": {},
+            "credential_handle": null,
+            "parameters": {},
+            "enabled": true,
+            "metadata": {
+              "provider_connection_id": "example-provider"
+            },
+            "created_at": "2026-10-21T12:34:56Z",
+            "updated_at": "2026-10-21T12:34:56Z",
+            "record_revision": 1,
+            "record_hash": "sha256:251cc0c08b8590ee922ac04c982a6c9fffe6c0595f4be4157ed0d7a9b64f135f"
+          }
+        },
+        "aliases": {},
+        "migration": null
+      }
+    },
+    {
+      "id": "create-existing-route",
+      "profile_id": "prof_model_fixture",
+      "document": {
+        "version": "rumi.model-registry.store.v1",
+        "profile_id": "prof_model_fixture",
+        "revision": 12,
+        "profiles": {
+          "daily-model": {
+            "model_profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "requirements": {
+              "minimum_context": 8192
+            },
+            "credential_handle": "opaque:synthetic-model-fixture",
+            "parameters": {
+              "max_tokens": 4096,
+              "temperature": 0.125,
+              "offset": -0.0,
+              "nested": {
+                "threshold": 1e-07,
+                "counter": 9007199254740993
+              }
+            },
+            "enabled": true,
+            "metadata": {
+              "provider_connection_id": "example-provider",
+              "private_marker": "synthetic-model-fixture"
+            },
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-08-09T10:11:12Z",
+            "record_revision": 4
+          }
+        },
+        "aliases": {
+          "daily": "daily-model"
+        },
+        "migration": null
+      },
+      "request": {
+        "model_profile_id": "daily-model",
+        "model_id": "models/example",
+        "provider_instance_id": "example-provider",
+        "display_name": " 日常のモデル ",
+        "expected_revision": 12,
+        "provider_registry_revision": 7
+      },
+      "now": "2026-10-21T12:34:56Z",
+      "normalized": {
+        "operation": "create",
+        "expected_revision": 12,
+        "provider_registry_revision": 7,
+        "record": {
+          "model_profile_id": "daily-model",
+          "model_id": "models/example",
+          "display_name": " 日常のモデル ",
+          "metadata": {
+            "provider_connection_id": "example-provider"
+          }
+        }
+      },
+      "result": {
+        "action": "saved",
+        "profile": {
+          "model_profile_id": "daily-model",
+          "display_name": " 日常のモデル ",
+          "model_id": "models/example",
+          "requirements": {
+            "minimum_context": 8192
+          },
+          "credential_handle": "opaque:synthetic-model-fixture",
+          "parameters": {
+            "max_tokens": 4096,
+            "temperature": 0.125,
+            "offset": -0.0,
+            "nested": {
+              "threshold": 1e-07,
+              "counter": 9007199254740993
+            }
+          },
+          "enabled": true,
+          "metadata": {
+            "provider_connection_id": "example-provider",
+            "private_marker": "synthetic-model-fixture"
+          },
+          "created_at": "2026-01-02T03:04:05Z",
+          "updated_at": "2026-08-09T10:11:12Z",
+          "record_revision": 4
+        },
+        "store_revision": 12
+      },
+      "updated": null
+    },
+    {
+      "id": "create-stale-model-revision",
+      "profile_id": "prof_model_fixture",
+      "document": {
+        "version": "rumi.model-registry.store.v1",
+        "profile_id": "prof_model_fixture",
+        "revision": 12,
+        "profiles": {
+          "daily-model": {
+            "model_profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "requirements": {
+              "minimum_context": 8192
+            },
+            "credential_handle": "opaque:synthetic-model-fixture",
+            "parameters": {
+              "max_tokens": 4096,
+              "temperature": 0.125,
+              "offset": -0.0,
+              "nested": {
+                "threshold": 1e-07,
+                "counter": 9007199254740993
+              }
+            },
+            "enabled": true,
+            "metadata": {
+              "provider_connection_id": "example-provider",
+              "private_marker": "synthetic-model-fixture"
+            },
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-08-09T10:11:12Z",
+            "record_revision": 4
+          }
+        },
+        "aliases": {
+          "daily": "daily-model"
+        },
+        "migration": null
+      },
+      "request": {
+        "model_profile_id": "daily-model",
+        "model_id": "models/example",
+        "provider_instance_id": "example-provider",
+        "display_name": " 日常のモデル ",
+        "expected_revision": 0,
+        "provider_registry_revision": 7
+      },
+      "now": "2026-10-21T12:34:56Z",
+      "normalized": {
+        "operation": "create",
+        "expected_revision": 0,
+        "provider_registry_revision": 7,
+        "record": {
+          "model_profile_id": "daily-model",
+          "model_id": "models/example",
+          "display_name": " 日常のモデル ",
+          "metadata": {
+            "provider_connection_id": "example-provider"
+          }
+        }
+      },
+      "error": {
+        "class": "ModelRegistryConflict",
+        "message": "model registry revision is stale"
+      },
+      "updated": null
+    },
+    {
+      "id": "save-updated-cap",
+      "profile_id": "prof_model_fixture",
+      "document": {
+        "version": "rumi.model-registry.store.v1",
+        "profile_id": "prof_model_fixture",
+        "revision": 12,
+        "profiles": {
+          "daily-model": {
+            "model_profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "requirements": {
+              "minimum_context": 8192
+            },
+            "credential_handle": "opaque:synthetic-model-fixture",
+            "parameters": {
+              "max_tokens": 4096,
+              "temperature": 0.125,
+              "offset": -0.0,
+              "nested": {
+                "threshold": 1e-07,
+                "counter": 9007199254740993
+              }
+            },
+            "enabled": true,
+            "metadata": {
+              "provider_connection_id": "example-provider",
+              "private_marker": "synthetic-model-fixture"
+            },
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-08-09T10:11:12Z",
+            "record_revision": 4
+          }
+        },
+        "aliases": {
+          "daily": "daily-model"
+        },
+        "migration": null
+      },
+      "request": {
+        "model_profile_id": "daily-model",
+        "model_id": "models/example",
+        "provider_instance_id": "example-provider",
+        "display_name": " 日常のモデル ",
+        "expected_revision": 12,
+        "provider_registry_revision": 7,
+        "max_output_tokens": 131072
+      },
+      "now": "2026-10-21T12:34:56Z",
+      "normalized": {
+        "operation": "save",
+        "expected_revision": 12,
+        "provider_registry_revision": 7,
+        "preserve_existing": true,
+        "record": {
+          "model_profile_id": "daily-model",
+          "model_id": "models/example",
+          "display_name": " 日常のモデル ",
+          "metadata": {
+            "provider_connection_id": "example-provider"
+          },
+          "enabled": true,
+          "parameters": {
+            "max_tokens": 131072
+          }
+        }
+      },
+      "result": {
+        "action": "saved",
+        "profile": {
+          "model_profile_id": "daily-model",
+          "display_name": " 日常のモデル ",
+          "model_id": "models/example",
+          "requirements": {
+            "minimum_context": 8192
+          },
+          "credential_handle": "opaque:synthetic-model-fixture",
+          "parameters": {
+            "max_tokens": 131072,
+            "temperature": 0.125,
+            "offset": -0.0,
+            "nested": {
+              "threshold": 1e-07,
+              "counter": 9007199254740993
+            }
+          },
+          "enabled": true,
+          "metadata": {
+            "provider_connection_id": "example-provider",
+            "private_marker": "synthetic-model-fixture"
+          },
+          "created_at": "2026-01-02T03:04:05Z",
+          "updated_at": "2026-10-21T12:34:56Z",
+          "record_revision": 5,
+          "record_hash": "sha256:cfa9cbc8c77ac07c49cd4750d15ead524f87be6834c01f4458dbde74dfb5e37f"
+        },
+        "store_revision": 13
+      },
+      "presented": {
+        "profiles": [
+          {
+            "profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "max_output_tokens": 131072,
+            "provider_id": "example-provider",
+            "route_configured": true
+          }
+        ],
+        "count": 1,
+        "registry_revision": 13
+      },
+      "updated": {
+        "version": "rumi.model-registry.store.v1",
+        "profile_id": "prof_model_fixture",
+        "revision": 13,
+        "profiles": {
+          "daily-model": {
+            "model_profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "requirements": {
+              "minimum_context": 8192
+            },
+            "credential_handle": "opaque:synthetic-model-fixture",
+            "parameters": {
+              "max_tokens": 131072,
+              "temperature": 0.125,
+              "offset": -0.0,
+              "nested": {
+                "threshold": 1e-07,
+                "counter": 9007199254740993
+              }
+            },
+            "enabled": true,
+            "metadata": {
+              "provider_connection_id": "example-provider",
+              "private_marker": "synthetic-model-fixture"
+            },
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-10-21T12:34:56Z",
+            "record_revision": 5,
+            "record_hash": "sha256:cfa9cbc8c77ac07c49cd4750d15ead524f87be6834c01f4458dbde74dfb5e37f"
+          }
+        },
+        "aliases": {
+          "daily": "daily-model"
+        },
+        "migration": null
+      }
+    },
+    {
+      "id": "save-existing-cap",
+      "profile_id": "prof_model_fixture",
+      "document": {
+        "version": "rumi.model-registry.store.v1",
+        "profile_id": "prof_model_fixture",
+        "revision": 12,
+        "profiles": {
+          "daily-model": {
+            "model_profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "requirements": {
+              "minimum_context": 8192
+            },
+            "credential_handle": "opaque:synthetic-model-fixture",
+            "parameters": {
+              "max_tokens": 4096,
+              "temperature": 0.125,
+              "offset": -0.0,
+              "nested": {
+                "threshold": 1e-07,
+                "counter": 9007199254740993
+              }
+            },
+            "enabled": true,
+            "metadata": {
+              "provider_connection_id": "example-provider",
+              "private_marker": "synthetic-model-fixture"
+            },
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-08-09T10:11:12Z",
+            "record_revision": 4
+          }
+        },
+        "aliases": {
+          "daily": "daily-model"
+        },
+        "migration": null
+      },
+      "request": {
+        "model_profile_id": "daily-model",
+        "model_id": "models/example",
+        "provider_instance_id": "example-provider",
+        "display_name": " 日常のモデル ",
+        "expected_revision": 12,
+        "provider_registry_revision": 7,
+        "max_output_tokens": 4096
+      },
+      "now": "2026-10-21T12:34:56Z",
+      "normalized": {
+        "operation": "save",
+        "expected_revision": 12,
+        "provider_registry_revision": 7,
+        "preserve_existing": true,
+        "record": {
+          "model_profile_id": "daily-model",
+          "model_id": "models/example",
+          "display_name": " 日常のモデル ",
+          "metadata": {
+            "provider_connection_id": "example-provider"
+          },
+          "enabled": true,
+          "parameters": {
+            "max_tokens": 4096
+          }
+        }
+      },
+      "result": {
+        "action": "saved",
+        "profile": {
+          "model_profile_id": "daily-model",
+          "display_name": " 日常のモデル ",
+          "model_id": "models/example",
+          "requirements": {
+            "minimum_context": 8192
+          },
+          "credential_handle": "opaque:synthetic-model-fixture",
+          "parameters": {
+            "max_tokens": 4096,
+            "temperature": 0.125,
+            "offset": -0.0,
+            "nested": {
+              "threshold": 1e-07,
+              "counter": 9007199254740993
+            }
+          },
+          "enabled": true,
+          "metadata": {
+            "provider_connection_id": "example-provider",
+            "private_marker": "synthetic-model-fixture"
+          },
+          "created_at": "2026-01-02T03:04:05Z",
+          "updated_at": "2026-08-09T10:11:12Z",
+          "record_revision": 4
+        },
+        "store_revision": 12
+      },
+      "presented": {
+        "profiles": [
+          {
+            "profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "max_output_tokens": 4096,
+            "provider_id": "example-provider",
+            "route_configured": true
+          }
+        ],
+        "count": 1,
+        "registry_revision": 12
+      },
+      "updated": null
+    },
+    {
+      "id": "save-changed-identity",
+      "profile_id": "prof_model_fixture",
+      "document": {
+        "version": "rumi.model-registry.store.v1",
+        "profile_id": "prof_model_fixture",
+        "revision": 12,
+        "profiles": {
+          "daily-model": {
+            "model_profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "requirements": {
+              "minimum_context": 8192
+            },
+            "credential_handle": "opaque:synthetic-model-fixture",
+            "parameters": {
+              "max_tokens": 4096,
+              "temperature": 0.125,
+              "offset": -0.0,
+              "nested": {
+                "threshold": 1e-07,
+                "counter": 9007199254740993
+              }
+            },
+            "enabled": true,
+            "metadata": {
+              "provider_connection_id": "example-provider",
+              "private_marker": "synthetic-model-fixture"
+            },
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-08-09T10:11:12Z",
+            "record_revision": 4
+          }
+        },
+        "aliases": {
+          "daily": "daily-model"
+        },
+        "migration": null
+      },
+      "request": {
+        "model_profile_id": "daily-model",
+        "model_id": "models/other",
+        "provider_instance_id": "example-provider",
+        "display_name": " 日常のモデル ",
+        "expected_revision": 12,
+        "provider_registry_revision": 7,
+        "max_output_tokens": 131072
+      },
+      "now": "2026-10-21T12:34:56Z",
+      "normalized": {
+        "operation": "save",
+        "expected_revision": 12,
+        "provider_registry_revision": 7,
+        "preserve_existing": true,
+        "record": {
+          "model_profile_id": "daily-model",
+          "model_id": "models/other",
+          "display_name": " 日常のモデル ",
+          "metadata": {
+            "provider_connection_id": "example-provider"
+          },
+          "enabled": true,
+          "parameters": {
+            "max_tokens": 131072
+          }
+        }
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "model profile route identity changed"
+      },
+      "updated": null
+    },
+    {
+      "id": "save-invalid-float-cap",
+      "profile_id": "prof_model_fixture",
+      "document": {
+        "version": "rumi.model-registry.store.v1",
+        "profile_id": "prof_model_fixture",
+        "revision": 12,
+        "profiles": {
+          "daily-model": {
+            "model_profile_id": "daily-model",
+            "display_name": " 日常のモデル ",
+            "model_id": "models/example",
+            "requirements": {
+              "minimum_context": 8192
+            },
+            "credential_handle": "opaque:synthetic-model-fixture",
+            "parameters": {
+              "max_tokens": 4096,
+              "temperature": 0.125,
+              "offset": -0.0,
+              "nested": {
+                "threshold": 1e-07,
+                "counter": 9007199254740993
+              }
+            },
+            "enabled": true,
+            "metadata": {
+              "provider_connection_id": "example-provider",
+              "private_marker": "synthetic-model-fixture"
+            },
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-08-09T10:11:12Z",
+            "record_revision": 4
+          }
+        },
+        "aliases": {
+          "daily": "daily-model"
+        },
+        "migration": null
+      },
+      "request": {
+        "model_profile_id": "daily-model",
+        "model_id": "models/example",
+        "provider_instance_id": "example-provider",
+        "display_name": " 日常のモデル ",
+        "expected_revision": 12,
+        "provider_registry_revision": 7,
+        "max_output_tokens": 4096.0
+      },
+      "now": "2026-10-21T12:34:56Z",
+      "error": {
+        "class": "ValueError",
+        "message": "model output token limit is invalid"
+      },
+      "updated": null
+    }
+  ]
+}

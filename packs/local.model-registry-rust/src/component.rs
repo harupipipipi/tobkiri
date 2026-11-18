@@ -6,15 +6,20 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use crate::{SourceError, presentation::project_list, registry::Registry};
-use ordered_python_compat::{CodecError, PyValue, dumps, loads};
+use crate::{
+    SourceError,
+    component_store::DocumentStore,
+    presentation::project_list,
+    registry::Registry,
+    settings_save::{captured_save_result, normalize, present_saved},
+};
+use ordered_python_compat::{CodecError, PyValue, dumps, loads, utc_timestamp_from_millis};
 use tobkiri::core::{
-    flow, storage,
+    clock, flow,
     types::{Error, ErrorCode},
 };
 
-const STORE: &str = "model-registry";
-const DOCUMENT: &str = "document";
+const PROVIDER_RESOURCE: &str = "local.provider-registry.resource@1.0";
 
 struct Pack;
 
@@ -29,37 +34,104 @@ impl exports::tobkiri::core::lifecycle::Guest for Pack {
 impl exports::local::model_registry::settings::Guest for Pack {
     fn list_models() -> Result<String, Error> {
         let profile = flow::current_profile()?;
-        let store = storage::open(STORE)?;
-        let document = store
-            .kv_get(DOCUMENT)?
-            .as_deref()
-            .map(decode_document)
-            .transpose()?;
+        let (_, document) = DocumentStore::read()?;
         let registry = Registry::new(&profile, document).map_err(source_error)?;
         let snapshot = registry.snapshot().map_err(source_error)?;
         let projected = project_list(&snapshot).map_err(source_error)?;
-        let encoded = dumps(&projected).map_err(codec_error)?;
-        tobkiri_canon::parse(encoded.as_bytes(), tobkiri_canon::Variant::StrictV1).map_err(
-            |error| match error {
-                tobkiri_canon::Error::Limit(_) => failure(
-                    ErrorCode::LimitExceeded,
-                    "model Settings response exceeds limits",
-                ),
-                _ => failure(ErrorCode::Invalid, "model Settings response is invalid"),
-            },
-        )?;
-        Ok(encoded)
+        encode_reply(&projected)
+    }
+
+    fn save_model(payload: String) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        let request = normalize(&loads(&payload).map_err(codec_error)?).map_err(source_error)?;
+        validate_provider(&profile, &request)?;
+        let (store, document) = DocumentStore::read()?;
+        let registry = Registry::new(&profile, document).map_err(source_error)?;
+        let now = utc_timestamp_from_millis(clock::now_ms()).ok_or_else(|| {
+            failure(
+                ErrorCode::Unavailable,
+                "model Registry clock is unavailable",
+            )
+        })?;
+        let (updated, result) = registry
+            .apply_settings(&request, &now)
+            .map_err(source_error)?;
+        let captured = captured_save_result(&request, &result).map_err(source_error)?;
+        let projected = present_saved(&captured).map_err(source_error)?;
+        let reply = encode_reply(&projected)?;
+        if let Some(updated) = updated {
+            store.commit(&dumps(&updated).map_err(codec_error)?)?;
+        }
+        Ok(reply)
     }
 }
 
 export!(Pack);
 
-fn decode_document(stored: &[u8]) -> Result<PyValue, Error> {
-    // The DATA value is a JSON string. Keep the inner document's Python
-    // numeric values opaque to Core JSON, including floats and wide integers.
-    let document: String = serde_json::from_slice(stored)
-        .map_err(|_| failure(ErrorCode::Invalid, "model Registry DATA is invalid"))?;
-    loads(&document).map_err(codec_error)
+fn validate_provider(profile: &str, request: &PyValue) -> Result<(), Error> {
+    let Some((expected, provider)) = request.get("provider_registry_revision").zip(
+        request
+            .get("record")
+            .and_then(|record| record.get("metadata"))
+            .and_then(|metadata| metadata.get("provider_connection_id"))
+            .and_then(PyValue::as_str),
+    ) else {
+        return Err(failure(
+            ErrorCode::Denied,
+            "model route provider binding is invalid",
+        ));
+    };
+    let args = serde_json::json!({"payload":{"profile_id":profile}}).to_string();
+    let snapshot = flow::call_port(PROVIDER_RESOURCE, "snapshot", &args)?;
+    let snapshot = loads(&snapshot).map_err(codec_error)?;
+    if snapshot.get("revision") != Some(expected) {
+        return Err(failure(
+            ErrorCode::Denied,
+            "model route provider connection changed",
+        ));
+    }
+    let providers = snapshot
+        .get("providers")
+        .and_then(PyValue::as_array)
+        .ok_or_else(|| {
+            failure(
+                ErrorCode::Denied,
+                "model route provider registry is invalid",
+            )
+        })?;
+    let matches = providers
+        .iter()
+        .filter(|row| {
+            row.get("provider_instance_id").and_then(PyValue::as_str) == Some(provider)
+                && matches!(row.get("enabled"), Some(PyValue::Bool(true)))
+        })
+        .count();
+    if matches != 1 {
+        return Err(failure(
+            ErrorCode::Denied,
+            "model route provider connection is unavailable",
+        ));
+    }
+    Ok(())
+}
+
+fn encode_reply(projected: &PyValue) -> Result<String, Error> {
+    let encoded = dumps(projected).map_err(codec_error)?;
+    tobkiri_canon::parse(encoded.as_bytes(), tobkiri_canon::Variant::StrictV1).map_err(
+        |error| match error {
+            tobkiri_canon::Error::Limit(_) => failure(
+                ErrorCode::LimitExceeded,
+                "model Settings response exceeds limits",
+            ),
+            _ => failure(ErrorCode::Invalid, "model Settings response is invalid"),
+        },
+    )?;
+    Ok(encoded)
+}
+
+pub(super) fn decode_document(document: &str) -> Result<PyValue, Error> {
+    // This private document preserves Python floats and wide integers.
+    loads(document).map_err(codec_error)
 }
 
 fn source_error(error: SourceError) -> Error {
@@ -67,6 +139,7 @@ fn source_error(error: SourceError) -> Error {
         ("ValueError", "model registry profile binding is invalid") => {
             failure(ErrorCode::Denied, "model Registry Profile is invalid")
         }
+        ("ModelRegistryConflict", _) => failure(ErrorCode::Conflict, "model Registry conflict"),
         _ => failure(ErrorCode::Invalid, "model Registry document is invalid"),
     }
 }
@@ -83,7 +156,7 @@ fn codec_error(error: CodecError) -> Error {
     }
 }
 
-fn failure(code: ErrorCode, message: &str) -> Error {
+pub(super) fn failure(code: ErrorCode, message: &str) -> Error {
     Error {
         code,
         message: message.into(),

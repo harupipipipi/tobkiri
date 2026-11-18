@@ -8,22 +8,22 @@ use crate::SourceError;
 
 const STORE_VERSION: &str = "rumi.model-registry.store.v1";
 
-type Fields = [(String, PyValue)];
+pub(crate) type Fields = [(String, PyValue)];
 
 /// The owner read operations for one Python-compatible Model Registry store.
 pub struct Registry {
     profile_id: String,
-    document: PyValue,
+    pub(crate) document: PyValue,
 }
 
-struct ReadState<'a> {
-    revision: Option<&'a PyValue>,
-    profiles: &'a Fields,
-    aliases: &'a Fields,
+pub(crate) struct ReadState<'a> {
+    pub(crate) revision: Option<&'a PyValue>,
+    pub(crate) profiles: &'a Fields,
+    pub(crate) aliases: &'a Fields,
 }
 
 impl ReadState<'_> {
-    fn revision(&self) -> Result<PyValue, SourceError> {
+    pub(crate) fn revision(&self) -> Result<PyValue, SourceError> {
         self.revision
             .cloned()
             .ok_or_else(|| SourceError::new("KeyError", "'revision'"))
@@ -59,6 +59,7 @@ impl Registry {
                 ("revision", PyValue::Int("0".into())),
                 ("profiles", PyValue::Object(Vec::new())),
                 ("aliases", PyValue::Object(Vec::new())),
+                ("migration", PyValue::Null),
             ])
         });
         Ok(Self {
@@ -133,7 +134,7 @@ impl Registry {
         ]))
     }
 
-    fn read(&self) -> Result<ReadState<'_>, SourceError> {
+    pub(crate) fn read(&self) -> Result<ReadState<'_>, SourceError> {
         let document = &self.document;
         if document.get("version").and_then(PyValue::as_str) != Some(STORE_VERSION) {
             return Err(SourceError::new(
@@ -163,7 +164,7 @@ impl Registry {
     }
 }
 
-fn identifier(value: &PyValue) -> Result<Cow<'_, str>, SourceError> {
+pub(crate) fn identifier(value: &PyValue) -> Result<Cow<'_, str>, SourceError> {
     let key = match value {
         PyValue::String(value) => Cow::Borrowed(pystrip(value)),
         value if pytruthy(value) => Cow::Owned(pystr(value)),
@@ -185,14 +186,14 @@ fn identifier(value: &PyValue) -> Result<Cow<'_, str>, SourceError> {
     }
 }
 
-fn field<'a>(entries: &'a Fields, key: &str) -> Option<&'a PyValue> {
+pub(crate) fn field<'a>(entries: &'a Fields, key: &str) -> Option<&'a PyValue> {
     entries
         .iter()
         .find(|(name, _)| name == key)
         .map(|(_, value)| value)
 }
 
-fn object<const N: usize>(entries: [(&str, PyValue); N]) -> PyValue {
+pub(crate) fn object<const N: usize>(entries: [(&str, PyValue); N]) -> PyValue {
     PyValue::Object(
         entries
             .into_iter()
@@ -201,11 +202,11 @@ fn object<const N: usize>(entries: [(&str, PyValue); N]) -> PyValue {
     )
 }
 
-fn string(value: &str) -> PyValue {
+pub(crate) fn string(value: &str) -> PyValue {
     PyValue::String(value.into())
 }
 
-fn type_name(value: &PyValue) -> &'static str {
+pub(crate) fn type_name(value: &PyValue) -> &'static str {
     match value {
         PyValue::Null => "NoneType",
         PyValue::Bool(_) => "bool",
@@ -234,27 +235,31 @@ fn pair_length_error(index: usize, length: usize) -> SourceError {
     )
 }
 
-fn dictionary_pair(row: &PyValue, index: usize) -> Result<Option<(String, PyValue)>, SourceError> {
+pub(crate) fn dictionary_pair(
+    row: &PyValue,
+    index: usize,
+) -> Result<(PyValue, PyValue), SourceError> {
     let pair = match row {
         PyValue::Array(values) => {
             let [key, value] = values.as_slice() else {
                 return Err(pair_length_error(index, values.len()));
             };
             ensure_hashable(key)?;
-            key.as_str().map(|key| (key.into(), value.clone()))
+            (key.clone(), value.clone())
         }
         PyValue::Object(fields) => {
             let [(key, _), (value, _)] = fields.as_slice() else {
                 return Err(pair_length_error(index, fields.len()));
             };
-            Some((key.clone(), string(value)))
+            (string(key), string(value))
         }
         PyValue::String(text) => {
             let mut chars = text.chars();
             match (chars.next(), chars.next(), chars.next()) {
-                (Some(key), Some(value), None) => {
-                    Some((key.to_string(), PyValue::String(value.to_string())))
-                }
+                (Some(key), Some(value), None) => (
+                    PyValue::String(key.to_string()),
+                    PyValue::String(value.to_string()),
+                ),
                 _ => return Err(pair_length_error(index, text.chars().count())),
             }
         }
@@ -269,7 +274,10 @@ fn dictionary_pair(row: &PyValue, index: usize) -> Result<Option<(String, PyValu
 }
 
 // The source snapshot calls dict(record), even when a saved record is not a dict.
-fn copy_dictionary(value: &PyValue, non_string_key: &mut bool) -> Result<PyValue, SourceError> {
+pub(crate) fn copy_dictionary(
+    value: &PyValue,
+    non_string_key: &mut bool,
+) -> Result<PyValue, SourceError> {
     let rows = match value {
         PyValue::Object(_) => return Ok(value.clone()),
         PyValue::Array(rows) => rows,
@@ -284,7 +292,8 @@ fn copy_dictionary(value: &PyValue, non_string_key: &mut bool) -> Result<PyValue
     };
     let mut fields = HashMap::new();
     for (index, row) in rows.iter().enumerate() {
-        if let Some((key, value)) = dictionary_pair(row, index)? {
+        let (key, value) = dictionary_pair(row, index)?;
+        if let Some(key) = key.into_string() {
             let next = fields.len();
             fields.entry(key).or_insert((next, PyValue::Null)).1 = value;
         } else {

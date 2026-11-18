@@ -5,8 +5,14 @@ pub mod registry;
 
 #[cfg(feature = "component")]
 mod component;
+#[cfg(feature = "component")]
+mod component_store;
+#[cfg(any(feature = "component", test))]
+mod mutation;
 #[cfg(test)]
 mod oracle_tests;
+#[cfg(any(feature = "component", test))]
+mod settings_save;
 
 /// A fixed failure from the original Registry or Settings projection.
 #[derive(Debug, PartialEq, Eq)]
