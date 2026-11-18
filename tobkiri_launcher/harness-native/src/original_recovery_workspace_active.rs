@@ -4,8 +4,6 @@ use crate::bootstrap_metadata::BoundProfileSchemas;
 use recovery_workspace::{APP_DENIED, pending};
 use tobkiri_canon::{CoreBuffer, CoreValue};
 
-#[path = "original_recovery_profile_schema.rs"]
-mod profile_schema;
 #[path = "original_recovery_snapshot_graph.rs"]
 mod snapshot_graph;
 use snapshot_graph::{Snapshot, SnapshotRecords, View};

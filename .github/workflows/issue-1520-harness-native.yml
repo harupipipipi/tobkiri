@@ -218,6 +218,7 @@ jobs:
       CARGO_INCREMENTAL: '0'
       CARGO_TERM_COLOR: never
       CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-harness-native
+      TOBKIRI_TEST_NATIVE_CATALOG_SHAPES: ${{ inputs.verification == 'catalog-app-frame' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
         with:

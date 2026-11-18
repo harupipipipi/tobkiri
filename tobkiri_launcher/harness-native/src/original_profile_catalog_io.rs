@@ -13,6 +13,9 @@ mod artifact_identity;
 #[cfg(unix)]
 #[path = "original_recovery_bundle_metadata.rs"]
 mod bundle_metadata;
+#[cfg(unix)]
+#[path = "original_catalog_document_shapes.rs"]
+mod document_shapes;
 #[cfg(all(test, unix))]
 #[path = "original_initial_catalog_fixture.rs"]
 pub(in crate::original_authority::io::publication) mod initial_catalog_fixture;
@@ -100,6 +103,8 @@ pub(crate) struct CatalogIo {
     binding: Option<CoreValue>,
     lock_bytes: Option<Funded<Zeroizing<Vec<u8>>>>,
     lock: Option<Funded<Document>>,
+    #[cfg(unix)]
+    document_shapes: document_shapes::DocumentShapes,
     entry: usize,
     walk: usize,
     pins: usize,
@@ -304,6 +309,8 @@ impl CatalogIo {
             binding: None,
             lock_bytes: None,
             lock: None,
+            #[cfg(unix)]
+            document_shapes: document_shapes::DocumentShapes::default(),
             entry: 0,
             walk: 0,
             pins: 0,
@@ -718,6 +725,8 @@ impl CatalogIo {
                 true
             }
             Loader::Entries if operation == "resolve" && strict(&args) => {
+                #[cfg(unix)]
+                self.document_shapes.discard_receipt();
                 self.ensure_lock(&op)?;
                 let relative = self.entry_path(self.entry)?;
                 if path != self.selected.join(&relative) {
@@ -779,6 +788,7 @@ impl CatalogIo {
                 write_bytes(&mut output, &bytes.value)?;
                 #[cfg(unix)]
                 {
+                    self.prepare_document_shape(&op, &bytes.value)?;
                     self.retain_pack_pin(&op, &bytes.value)?;
                     self.retain_shell_input(&op, bytes)?;
                 }
@@ -787,7 +797,21 @@ impl CatalogIo {
                 self.loader = Loader::Entries;
                 true
             }
+            #[cfg(unix)]
+            Loader::Entries
+                if operation == "document-shape"
+                    && self.entry != 0
+                    && self.pins == 0
+                    && steps_array.is_empty()
+                    && path == self.selected =>
+            {
+                let matches = self.take_document_shape(&args)?;
+                write_bool(&mut output, matches)?;
+                true
+            }
             Loader::Entries if operation == "read-bytes" && args.is_empty() => {
+                #[cfg(unix)]
+                self.document_shapes.discard_receipt();
                 self.ensure_lock(&op)?;
                 if self.entry != self.entry_count()? {
                     return Err(OriginalAuthorityError::unavailable().into());
@@ -815,6 +839,8 @@ impl CatalogIo {
                             .ok_or_else(OriginalAuthorityError::unavailable)?
                             .join("platform-artifacts") =>
             {
+                #[cfg(unix)]
+                self.document_shapes.finish();
                 self.ensure_lock(&op)?;
                 if self.entry != self.entry_count()? || self.pin_index(self.pins).is_some() {
                     return Err(OriginalAuthorityError::unavailable().into());

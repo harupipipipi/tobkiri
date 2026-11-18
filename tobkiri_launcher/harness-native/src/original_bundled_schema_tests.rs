@@ -1,15 +1,9 @@
 //! Compare the bounded structural evaluator against the shipped bundle inventory.
 use super::*;
+use crate::original_authority::bundled_schema::{CatalogDocumentKind, CatalogSchemas};
 use crate::original_authority::definitions::tests::{operation, with_source};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
-
-const PACK: &str = "https://schemas.tobkiri.local/io.tobkiri/pack-manifest.v4.schema.json";
-const EXECUTABLE: &str =
-    "https://schemas.tobkiri.local/io.tobkiri/executable-catalog.v4.schema.json";
-const BASE: &str = "https://schemas.tobkiri.local/io.tobkiri/base-definition.v4.schema.json";
-const SHELL_V4: &str = "https://schemas.tobkiri.local/io.tobkiri/shell-definition.v4.schema.json";
-const SHELL_V5: &str = "https://schemas.tobkiri.local/io.tobkiri/shell-definition.v5.schema.json";
 
 #[tokio::test(flavor = "current_thread")]
 async fn applies_original_structural_schemas_to_every_bundled_document() {
@@ -17,20 +11,7 @@ async fn applies_original_structural_schemas_to_every_bundled_document() {
         let op = operation(read, source, cancellation);
         let runtime = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tobkiri_runtime");
         let bundle = runtime.join("ecosystem/defaultspack/v4");
-        let schemas = runtime.join("tobkiri_protocol/schemas");
-        let schema = |name| {
-            let bytes = fs::read(schemas.join(name)).unwrap();
-            json::decode_read_only_strict(&bytes, &op, budget).unwrap()
-        };
-        let pack = schema("pack_manifest_v4.schema.json");
-        let executable = schema("executable_catalog_v4.schema.json");
-        let base = schema("base_definition_v4.schema.json");
-        let shell4 = schema("shell_definition_v4.schema.json");
-        let shell5 = schema("shell_definition_v5.schema.json");
-        let profile4 = schema("profile_v4.schema.json");
-        let profile5 = schema("profile_v5.schema.json");
-        let common = schema("common_v1.schema.json");
-        let projection = schema("profile_content_projection_v1.schema.json");
+        let mut schemas = CatalogSchemas::default();
         let lock: Value =
             serde_json::from_slice(&fs::read(bundle.join("bundle.lock.json")).unwrap()).unwrap();
         let entries = lock["entries"].as_array().unwrap();
@@ -42,48 +23,69 @@ async fn applies_original_structural_schemas_to_every_bundled_document() {
                 Digest::hash(&bytes).as_str(),
                 entry["digest"].as_str().unwrap()
             );
-            let doc = json::decode_read_only_strict(&bytes, &op, budget).unwrap();
-            let (id, schema, extra): (_, _, Option<&Document>) =
-                match entry["kind"].as_str().unwrap() {
-                    "pack" => (PACK, &*pack, None),
-                    "executable_catalog" => (EXECUTABLE, &*executable, None),
-                    "base" => (BASE, &*base, None),
-                    "shell" => {
-                        let version = doc.get(doc.root, "shell_api_version").unwrap();
-                        if doc.string_is(version, "io.tobkiri.shell.v4") {
-                            (SHELL_V4, &*shell4, None)
-                        } else {
-                            assert!(doc.string_is(version, "io.tobkiri.shell.v5"));
-                            (SHELL_V5, &*shell5, None)
-                        }
-                    }
-                    "profile" => {
-                        let version = doc.get(doc.root, "profile_api_version").unwrap();
-                        if doc.string_is(version, "io.tobkiri.profile.v4") {
-                            (PROFILE_V4, &*profile4, Some(&*projection))
-                        } else {
-                            assert!(doc.string_is(version, "io.tobkiri.profile.v5"));
-                            (PROFILE_V5, &*profile5, Some(&*projection))
-                        }
-                    }
-                    _ => panic!("unexpected original bundle kind: {path}"),
-                };
-            let closure = [schema, &*common, extra.unwrap_or(&common)];
-            let closure = &closure[..2 + usize::from(extra.is_some())];
+            let kind = match entry["kind"].as_str().unwrap() {
+                "pack" => CatalogDocumentKind::Pack,
+                "executable_catalog" => CatalogDocumentKind::ExecutableCatalog,
+                "base" => CatalogDocumentKind::Base,
+                "shell" => CatalogDocumentKind::Shell,
+                "profile" => CatalogDocumentKind::Profile,
+                _ => panic!("unexpected original bundle kind: {path}"),
+            };
             assert!(
-                matches_shape(&op, budget, closure, &[id], &doc, doc.root)
+                schemas
+                    .validate_shape(&op, budget, kind, &bytes)
                     .unwrap_or_else(|error| panic!("{path}: {error}")),
                 "{path}"
             );
-            drop(doc);
             if let Some(invalid) = invalid_structure(path, &bytes) {
                 let bytes = serde_json::to_vec(&invalid).unwrap();
-                let doc = json::decode_read_only_strict(&bytes, &op, budget).unwrap();
                 assert!(
-                    !matches_shape(&op, budget, closure, &[id], &doc, doc.root).unwrap(),
+                    !schemas.validate_shape(&op, budget, kind, &bytes).unwrap(),
                     "{path}"
                 );
             }
+        }
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn structural_eligibility_declines_wrong_kind_version_and_strict_json_errors() {
+    with_source(|source, read, cancellation, budget| {
+        let op = operation(read, source, cancellation);
+        let mut schemas = CatalogSchemas::default();
+        let original = include_bytes!(
+            "../../../tobkiri_runtime/tests/fixtures/profile_v4/pre-e853-activation.json"
+        );
+        let original: Value = serde_json::from_slice(original).unwrap();
+        let mut profile = original["profile"].clone();
+        let bytes = serde_json::to_vec(&profile).unwrap();
+        assert!(
+            schemas
+                .validate_shape(&op, budget, CatalogDocumentKind::Profile, &bytes)
+                .unwrap()
+        );
+        for kind in [
+            CatalogDocumentKind::Pack,
+            CatalogDocumentKind::ExecutableCatalog,
+            CatalogDocumentKind::Base,
+            CatalogDocumentKind::Shell,
+        ] {
+            assert!(!schemas.validate_shape(&op, budget, kind, &bytes).unwrap());
+        }
+        profile["profile_api_version"] = json!("io.tobkiri.profile.v6");
+        let wrong_version = serde_json::to_vec(&profile).unwrap();
+        for invalid in [
+            wrong_version.as_slice(),
+            b"[",
+            b"\xff",
+            br#"{"profile_api_version":"io.tobkiri.profile.v4","x":1,"x":2}"#,
+            br#"{"profile_api_version":"io.tobkiri.profile.v4","x":1.0}"#,
+        ] {
+            assert!(
+                !schemas
+                    .validate_shape(&op, budget, CatalogDocumentKind::Profile, invalid)
+                    .unwrap()
+            );
         }
     });
 }

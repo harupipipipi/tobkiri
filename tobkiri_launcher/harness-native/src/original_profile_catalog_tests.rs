@@ -1200,6 +1200,107 @@ async fn legacy_pack_resolve_uses_replacement_profiles_and_releases_each_verifie
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn document_shape_is_bound_to_the_digest_checked_first_physical_read() {
+    const VALID: &[u8] = include_bytes!(
+        "../../../tobkiri_runtime/tests/fixtures/conformance_minimal_echo_pack/executables.v4.json"
+    );
+    for (bytes, expected, shape) in [
+        (VALID, Digest::hash(VALID), Some(true)),
+        (b"{}".as_slice(), Digest::hash(b"{}"), Some(false)),
+        (b"{}".as_slice(), Digest::hash(VALID), None),
+    ] {
+        with_source(false, |source, invocation, budget, io, _| {
+            let bundle = source.root.join("ecosystem/defaultspack/v4");
+            fs::create_dir_all(&bundle).unwrap();
+            let member = bundle.join("catalog.json");
+            fs::write(&member, bytes).unwrap();
+            let lock = json!({
+                "schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+                "entries": [{"path": "catalog.json", "kind": "executable_catalog",
+                             "digest": expected.as_str()}],
+            });
+            fs::write(
+                bundle.join("bundle.lock.json"),
+                serde_json::to_vec(&lock).unwrap(),
+            )
+            .unwrap();
+            io.select_packaged(&bundle).unwrap();
+            io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
+                .unwrap();
+            io.enable_document_shapes();
+            let lock = json!([["join", "bundle.lock.json"]]);
+            let entry = json!([["join", "catalog.json"]]);
+            for (operation, steps, args) in [
+                (
+                    "root",
+                    json!([["parent", ""], ["parent", ""], ["join", "v4"]]),
+                    json!([]),
+                ),
+                ("is-symlink", json!([]), json!([])),
+                ("resolve", json!([]), json!([true])),
+                ("is-symlink", lock.clone(), json!([])),
+                ("read-bytes", lock, json!([])),
+                ("resolve", entry.clone(), json!([true])),
+                ("is-symlink", entry.clone(), json!([])),
+            ] {
+                call(io, source, invocation, budget, operation, steps, args);
+            }
+            let inspect_shape = |io: &mut CatalogIo, args: Value| {
+                let request = packet(invocation, budget, "document-shape", json!([]), args);
+                let result = io.inspect(source, invocation, &request, budget)?;
+                Ok::<_, anyhow::Error>(
+                    serde_json::from_slice::<Value>(result.as_bytes())?["result"]["value"]
+                        .as_bool()
+                        .unwrap(),
+                )
+            };
+            let exact = json!([0, "executable_catalog", expected.as_str()]);
+            assert!(inspect_shape(io, exact.clone()).is_err());
+            let first = call(
+                io,
+                source,
+                invocation,
+                budget,
+                "read-bytes",
+                entry.clone(),
+                json!([]),
+            );
+            assert_eq!(
+                base64::engine::general_purpose::STANDARD
+                    .decode(first["value"].as_str().unwrap())
+                    .unwrap(),
+                bytes
+            );
+            fs::write(&member, b"changed after first read").unwrap();
+            for forged in [
+                json!([1, "executable_catalog", expected.as_str()]),
+                json!([0, "pack", expected.as_str()]),
+                json!([
+                    0,
+                    "executable_catalog",
+                    Digest::hash(b"changed after first read").as_str()
+                ]),
+            ] {
+                assert!(inspect_shape(io, forged).is_err());
+            }
+            assert_eq!(inspect_shape(io, exact.clone()).ok(), shape);
+            assert!(inspect_shape(io, exact.clone()).is_err());
+            let pin = call(
+                io,
+                source,
+                invocation,
+                budget,
+                "read-bytes",
+                entry,
+                json!([]),
+            );
+            assert_ne!(pin, first);
+            assert!(inspect_shape(io, exact).is_err());
+        });
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
     with_source(false, |source, invocation, budget, io, _| {
         let bundle = source.root.join("ecosystem/defaultspack/v4");

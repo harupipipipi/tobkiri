@@ -57,7 +57,46 @@ def select_app_provider(source: bytes) -> bytes:
     return source.replace(anchor, APP_IMPORT)
 
 
-def derive_harness_sources(files: dict[str, bytes]) -> dict[str, bytes]:
+def derive_catalog_validation(source: bytes) -> bytes:
+    """Use the fixed reader's live shape result while preserving semantic checks."""
+    from bundle_catalog_kernel_inputs import _replace_one
+
+    source = _replace_one(
+        source, b"from .validation import validate_document\n",
+        b"from .validation import _semantic_diagnostics, _versioned_schema_name, validate_document\n",
+    )
+    source = _replace_one(
+        source, b"        for index, entry in enumerate(entries):\n",
+        b"        from harness_native.native_path import NativePath\n\n"
+        b"        native = type(root) is NativePath and root._bridge._catalog_root is not None\n"
+        b"        for index, entry in enumerate(entries):\n",
+    )
+    validation = b'''                document = (
+                    copy.deepcopy(_validated_document(raw, kind))
+                    if len(raw) <= _MAX_CACHED_DOCUMENT_BYTES
+                    else copy.deepcopy(_validated_large_document(raw, kind))
+                    if len(raw) <= _MAX_LARGE_DOCUMENT_BYTES
+                    else validate_document(raw, kind)
+                )
+'''
+    replacement = b'''                if native and root._effect("document-shape", "bool", [index, kind, actual_digest]):
+                    # Only this occurrence's structural result is native. The
+                    # exact original semantic diagnostics still run on the DATA.
+                    document = strict_loads(raw)
+                    schema_name = _versioned_schema_name(document, kind)
+                    diagnostics = _semantic_diagnostics(document, schema_name, True)
+                    if diagnostics:
+                        raise SchemaValidationError(
+                            f"{schema_name} validation failed", diagnostics=tuple(diagnostics)
+                        )
+                else:
+'''
+    return _replace_one(source, validation, replacement + b"".join(
+        b"    " + line for line in validation.splitlines(keepends=True)
+    ))
+
+
+def derive_harness_sources(files: dict[str, bytes], *, catalog_shapes: bool = False) -> dict[str, bytes]:
     """Rebuild the native source index using exactly the derived runtime bytes."""
     from harness_native.schema_diagnostic_stage import _index_values, _source_index
 
@@ -72,9 +111,12 @@ def derive_harness_sources(files: dict[str, bytes]) -> dict[str, bytes]:
         runtime["source-package/tobkiri_runtime/" + path] = raw
     if _source_index(runtime)[0] != files[index]:
         raise ValueError("authenticated Harness source index differs")
-    derived = select_app_provider(files[validation])
-    runtime["source-package/tobkiri_runtime/" + validation] = derived
-    return {validation: derived, index: _source_index(runtime)[0]}
+    changes = {validation: select_app_provider(files[validation])}
+    if catalog_shapes:
+        catalog = "tobkiri_protocol/bundle_catalog.py"
+        changes[catalog] = derive_catalog_validation(files[catalog])
+    runtime.update({"source-package/tobkiri_runtime/" + path: raw for path, raw in changes.items()})
+    return {**changes, index: _source_index(runtime)[0]}
 
 
 APP_PRELOAD = b'''if any(name == "jsonschema" or name.startswith("jsonschema.")

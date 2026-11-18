@@ -20,6 +20,9 @@ use model::{Pointer, validate_pointer};
 #[cfg(unix)]
 #[path = "original_active_profile.rs"]
 mod active_profile;
+#[cfg(unix)]
+#[path = "original_bundled_schema.rs"]
+pub(in crate::original_authority) mod bundled_schema;
 #[path = "original_setup_candidate_selection.rs"]
 mod candidate_selection;
 #[path = "original_profile_catalog_io.rs"]
@@ -32,6 +35,9 @@ mod development_handover;
 #[cfg(unix)]
 #[path = "original_external_catalog_io.rs"]
 pub(crate) mod external_catalog;
+#[cfg(unix)]
+#[path = "original_recovery_profile_schema.rs"]
+mod profile_schema;
 pub(crate) use candidate_selection::{CandidateSelection, ResolverAuthority};
 #[cfg(unix)]
 #[path = "original_recovery_authority.rs"]

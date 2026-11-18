@@ -251,7 +251,7 @@ def stage(
     if app_extension is not None:
         from app_schema_extension_inputs import derive_harness_sources
 
-        app_sources = derive_harness_sources(files)
+        app_sources = derive_harness_sources(files, catalog_shapes=not diagnostic)
         files.update(app_sources)
     modules, namespaces = _index(files)
     stdlib_preimports = _stdlib_preimports(files, modules)
@@ -414,8 +414,11 @@ def stage(
             "provider_substitution": False, "whole_catalog_acceptance": False,
         })
     if app_extension is not None:
-        proof["app_schema_backend"] = {"extension_build": extension_build,
-                                       "validation_results_prepared": False}
+        proof["app_schema_backend"] = {
+            "extension_build": extension_build,
+            "validation_results_prepared": False,
+            "catalog_document_shapes": not diagnostic,
+        }
     if diagnostic and app_sources is not None:
         proof.update(
             format=APP_DIAGNOSTIC_FORMAT,

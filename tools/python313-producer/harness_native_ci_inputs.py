@@ -132,6 +132,8 @@ def verify_app_source_bindings(
     report = evidence["extension_build"]
     if evidence.get("validation_results_prepared") is not False:
         raise ValueError("App provider requires live schema evaluation")
+    if evidence.get("catalog_document_shapes") is not (diagnostic_sources is None):
+        raise ValueError("native catalog shape selection differs from the derived source")
     verify_report(report, ["app-schema-backend"])
     wrapper = derive_harness_entry((SOURCE.parent / "harness_native/entry_wrapper.py").read_bytes())
     expected = {EXTENSION: report["artifact"]["sha256"],
@@ -313,8 +315,10 @@ def bind(
     if app_backend:
         from app_schema_extension_inputs import PROVIDER_FILES, derive_harness_sources
 
-        changes = derive_harness_sources({name.removeprefix("python/"): raw
-                                          for name, raw in base.items()})
+        changes = derive_harness_sources(
+            {name.removeprefix("python/"): raw for name, raw in base.items()},
+            catalog_shapes=not schema_call_diagnostic,
+        )
         base.update({"python/" + name: raw for name, raw in changes.items()})
         if schema_call_diagnostic:
             from harness_native.schema_diagnostic_stage import HELPER

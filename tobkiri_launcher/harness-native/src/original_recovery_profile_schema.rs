@@ -1,11 +1,13 @@
 //! Structural predicates in the bound original protocol schemas.
 use super::*;
-use tobkiri_canon::{AllocationKind, AllocationRequest};
+use tobkiri_canon::{AllocationBudget, AllocationKind, AllocationRequest};
 
 const STAGE: OriginalAuthorityStage = OriginalAuthorityStage::Source;
 const DIALECT: &str = "https://json-schema.org/draft/2020-12/schema";
-const PROFILE_V4: &str = "https://schemas.tobkiri.local/io.tobkiri/profile.v4.schema.json";
-const PROFILE_V5: &str = "https://schemas.tobkiri.local/io.tobkiri/profile.v5.schema.json";
+pub(super) const PROFILE_V4: &str =
+    "https://schemas.tobkiri.local/io.tobkiri/profile.v4.schema.json";
+pub(super) const PROFILE_V5: &str =
+    "https://schemas.tobkiri.local/io.tobkiri/profile.v5.schema.json";
 const LOCK_V4: &str = "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v4.schema.json";
 const LOCK_V5: &str = "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json";
 const PLAN_V1: &str = "https://schemas.tobkiri.local/io.tobkiri/resolved-plan.v1.schema.json";
@@ -14,8 +16,8 @@ const ACTIVATION_V1: &str =
     "https://schemas.tobkiri.local/io.tobkiri/activation-record.v1.schema.json";
 const ACTIVATION_V2: &str =
     "https://schemas.tobkiri.local/io.tobkiri/activation-record.v2.schema.json";
-const COMMON: &str = "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json";
-const PROJECTION: &str =
+pub(super) const COMMON: &str = "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json";
+pub(super) const PROJECTION: &str =
     "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json";
 const FUNCTION_PRINCIPAL: &str =
     "https://schemas.tobkiri.local/io.tobkiri/function-principal.v1.schema.json";
@@ -83,7 +85,7 @@ pub(super) fn matches<S: OriginalAuthorityOwner>(
     matches_shape(op, budget, schemas, PERSISTED_ROOTS, record, record_id)
 }
 
-fn matches_shape<S: OriginalAuthorityOwner>(
+pub(super) fn matches_shape<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     schemas: &[&Document],

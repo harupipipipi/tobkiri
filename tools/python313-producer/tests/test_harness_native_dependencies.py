@@ -76,7 +76,7 @@ def fixture(root):
 
 
 class NativeHarnessDependencyTests(unittest.TestCase):
-    def test_app_backend_stages_live_provider_and_only_derives_validation_and_index(self):
+    def test_app_backend_stages_live_provider_and_derives_only_declared_sources(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             stage = root / "native"
@@ -115,9 +115,14 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                                                {**source, bad_kernel: {**source[bad_kernel], "sha256": "wrong"}})
             changed = {path for path, raw in before.items() if (stage / path).read_bytes() != raw}
             self.assertEqual(changed, {"python/tobkiri_protocol/validation.py",
+                                       "python/tobkiri_protocol/bundle_catalog.py",
                                        "python/harness_native_source_index.py", "plan.json"})
             self.assertIn(b"from app_schema_provider import AppSchemaProvider as Draft202012Validator",
                           (stage / "python/tobkiri_protocol/validation.py").read_bytes())
+            catalog = (stage / "python/tobkiri_protocol/bundle_catalog.py").read_bytes()
+            self.assertIn(b'root._effect("document-shape", "bool", [index, kind, actual_digest])', catalog)
+            self.assertIn(b'_semantic_diagnostics(document, schema_name, True)', catalog)
+            compile(catalog, "bundle_catalog.py", "exec")
             self.assertFalse(metadata["original_source_files_unchanged"])
             self.assertFalse(metadata["app_schema_backend"]["validation_results_prepared"])
 

@@ -452,6 +452,10 @@ async fn select_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Ok(io) => io,
         Err(error) => return Ok(Err(original_failure(error))),
     };
+    #[cfg(all(test, feature = "bootstrap-ci", unix))]
+    if std::env::var("TOBKIRI_TEST_NATIVE_CATALOG_SHAPES").as_deref() == Ok("1") {
+        io.enable_document_shapes();
+    }
     let development = io.select_development(&pack.work.get().source, &pack.work.get().invocation);
     let development = match development {
         Ok(value) => value,
