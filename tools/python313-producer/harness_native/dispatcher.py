@@ -1105,12 +1105,16 @@ class Dispatcher:
                 raise UnsupportedValue("original setup decision has no activation input")
             if preflight:
                 return "continue", None
+            profile, lock, plan = resolved.profile, resolved.lock, resolved.plan
+            if any(type(document) is not dict for document in (profile, lock, plan)):
+                raise UnsupportedValue("original resolved profile documents are not bound")
             return "matched", {
                 "confirmation": dict(decision.confirmation),
                 "source_profile": source,
-                "profile_definition_digest": resolved.plan["profile_definition_digest"],
-                "bundle_digest": resolved.lock["bundle_digest"],
-                "plan_digest": resolved.plan["plan_digest"],
+                "profile_definition_digest": plan["profile_definition_digest"],
+                "bundle_digest": lock["bundle_digest"],
+                "plan_digest": plan["plan_digest"],
+                "resolved": {"profile": profile, "lock": lock, "plan": plan},
             }
 
         outcome, value = self._apply_original(decide, caller=caller)

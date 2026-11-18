@@ -1517,7 +1517,7 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
                     BootstrapActivationDecision::Rejected(response),
                 )));
             }
-            Ok(Decision::Matched(_)) => bail!("activation preflight returned a match"),
+            Ok(Decision::Matched(..)) => bail!("activation preflight returned a match"),
             Err(error) => return Ok(Err(error)),
         }
     }
@@ -1552,7 +1552,7 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Ok(Decision::Rejected(response)) => Ok(Ok(SetupOutput::Decision(
             BootstrapActivationDecision::Rejected(response),
         ))),
-        Ok(Decision::Matched(confirmation)) => {
+        Ok(Decision::Matched(candidate, resolved)) => {
             if confirmed
                 && let Err(error) = review
                     .read
@@ -1561,7 +1561,7 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
                 return Ok(Err(crate::bootstrap_review::original_failure(error)));
             }
             Ok(Ok(SetupOutput::Decision(
-                BootstrapActivationDecision::Matched(confirmation),
+                BootstrapActivationDecision::Matched(candidate, resolved),
             )))
         }
         Err(error) => Ok(Err(error)),

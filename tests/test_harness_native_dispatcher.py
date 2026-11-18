@@ -2129,6 +2129,9 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             "profile_definition_digest": "fixture-definition",
             "bundle_digest": "fixture-bundle",
             "plan_digest": "fixture-plan",
+            "resolved": {
+                "profile": resolved.profile, "lock": resolved.lock, "plan": resolved.plan,
+            },
         } if equal else {"state": "review_required", "write_set": []})
         self.assertEqual(wire.loads(self.dispatcher.call("setup_activation_decision", match)), {
             "format": PREFIX + "bootstrap-activation-match-result.v1",

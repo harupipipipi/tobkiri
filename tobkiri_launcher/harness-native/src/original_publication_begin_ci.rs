@@ -223,19 +223,33 @@ async fn original_publication_intent_bytes_match() {
     let bundle = Digest::parse(oracle_digest(matched)).unwrap();
     let plan = Digest::parse(expected["candidate"]["plan_digest"].as_str().unwrap()).unwrap();
     let fixture_root = path.with_file_name("inactive-registry-inputs");
+    let resolved =
+        fs::read(fixture_root.join("publication-matched/resolved-records.json")).unwrap();
+    assert!(resolved.len() <= MAX_BYTES);
+    assert_eq!(
+        &Digest::hash(&resolved).as_str()[7..],
+        matched["outcome"]["candidate"]["resolved_records_sha256"]
+            .as_str()
+            .unwrap()
+    );
     let load_candidate = |budget: &Arc<dyn AllocationBudget>| {
         let source = fs::read(fixture_root.join("source-profile.json")).unwrap();
         let source = CoreValue::parse_guest(&source, budget).unwrap();
         let confirmation = serde_json::to_vec(&imported["setup_review"]["confirmation"]).unwrap();
         let confirmation = CoreValue::parse_guest(&confirmation, budget).unwrap();
-        BootstrapActivationCandidate::fixture(
+        let records = CoreValue::parse_guest(&resolved, budget).unwrap();
+        let (candidate, admitted) = BootstrapActivationCandidate::fixture(
             confirmation,
             source,
+            records,
             bundle.clone(),
             [definition.clone(), plan.clone(), lock.clone()],
             budget,
         )
-        .unwrap()
+        .unwrap();
+        let encoded = admitted.encode_guest(budget).unwrap();
+        assert_eq!(encoded.as_bytes(), resolved);
+        candidate
     };
     let reread = |case: &str, budget: &Arc<dyn AllocationBudget>| -> Result<(CoreValue, Digest)> {
         let dir = fixture_root.join(format!("publication-{case}"));

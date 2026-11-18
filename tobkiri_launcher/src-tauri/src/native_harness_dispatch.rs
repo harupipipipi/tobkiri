@@ -235,7 +235,7 @@ impl DispatchOutput {
             Self::SetupDecision(decision) => {
                 use tobkiri_harness_native::BootstrapActivationDecision::{Matched, Rejected};
                 let (decision, data) = match decision {
-                    Matched(_) => ("matched", serde_json::Value::Null),
+                    Matched(..) => ("matched", serde_json::Value::Null),
                     Rejected(response) => (
                         "rejected",
                         serde_json::Value::String(detachment.description(response)?),

@@ -830,6 +830,13 @@ def _observe_publication_checks(
                 "plan_digest": plan_digest,
                 "activation_id": activation_id,
             }
+            from tobkiri_protocol.canonical import canonical_bytes
+
+            records = canonical_bytes({
+                "profile": resolved.profile, "lock": resolved.lock, "plan": resolved.plan,
+            })
+            (root.parent / "resolved-records.json").write_bytes(records)
+            candidate["resolved_records_sha256"] = hashlib.sha256(records).hexdigest()
             # Run the actual writer on a separate CI-only root. Its fixed test
             # key never enters the live capture fixture or uploaded metadata.
             oracle_root = inputs / "publication-intent-oracle" / "user-data"

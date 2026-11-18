@@ -11,7 +11,8 @@ use crate::BootstrapReviewFailure;
 )]
 pub enum BootstrapActivationDecision {
     Rejected(CoreBuffer),
-    Matched(BootstrapActivationCandidate),
+    /// Candidate identity and its exact resolved Profile, Lock and Plan.
+    Matched(BootstrapActivationCandidate, CoreValue),
 }
 
 /// Inputs from the exact same-Store candidate accepted by the original Pack.
@@ -50,10 +51,11 @@ impl BootstrapActivationCandidate {
     pub(crate) fn fixture(
         confirmation: CoreValue,
         source_profile: CoreValue,
+        resolved: CoreValue,
         bundle_digest: tobkiri_canon::Digest,
         resolved_digests: [tobkiri_canon::Digest; 3],
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<Self> {
+    ) -> Result<(Self, CoreValue)> {
         let [definition, plan, lock] = resolved_digests;
         let identity = ResolvedProfileIdentity {
             definition,
@@ -76,12 +78,13 @@ impl BootstrapActivationCandidate {
                     "plan_digest",
                     CoreValue::string(identity.plan.as_str(), budget)?,
                 ),
+                ("resolved", resolved),
             ]
             .into_iter()
             .map(Ok),
             budget,
         )?;
-        admit_candidate(
+        admit_match(
             &value,
             Reviewed {
                 confirmation: &confirmation,
@@ -100,7 +103,7 @@ impl BootstrapActivationCandidate {
 pub(super) enum Decision {
     Continue,
     Rejected(CoreBuffer),
-    Matched(BootstrapActivationCandidate),
+    Matched(BootstrapActivationCandidate, CoreValue),
 }
 
 pub(super) struct Reviewed<'a> {
@@ -214,17 +217,18 @@ fn admit(
         }
         Some("matched") if value.object().is_some() => {
             let review = review.context("activation match preceded Setup listing")?;
-            admit_candidate(&value, review, budget).map(Decision::Matched)
+            admit_match(&value, review, budget)
+                .map(|(candidate, resolved)| Decision::Matched(candidate, resolved))
         }
         _ => bail!("activation decision outcome differs"),
     }
 }
 
-fn admit_candidate(
+fn admit_match(
     value: &CoreValue,
     review: Reviewed<'_>,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<BootstrapActivationCandidate> {
+) -> Result<(BootstrapActivationCandidate, CoreValue)> {
     denied::exact(
         value,
         &[
@@ -233,8 +237,84 @@ fn admit_candidate(
             "profile_definition_digest",
             "bundle_digest",
             "plan_digest",
+            "resolved",
         ],
     )?;
+    let candidate = admit_candidate(value, &review, budget)?;
+    let resolved = denied::field(value, "resolved")?;
+    check_resolved_records(&resolved, &review, budget)?;
+    Ok((candidate, resolved))
+}
+
+fn check_resolved_records(
+    resolved: &CoreValue,
+    review: &Reviewed<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    denied::exact(resolved, &["profile", "lock", "plan"])?;
+    let profile = denied::field(resolved, "profile")?;
+    let lock = denied::field(resolved, "lock")?;
+    let plan = denied::field(resolved, "plan")?;
+    let expected_profile_id = denied::field(review.confirmation, "profile_id")?;
+    let expected_revision = denied::field(review.confirmation, "profile_revision")?;
+    let expected_epoch = denied::field(review.confirmation, "security_epoch")?;
+    let snapshot = denied::field(review.confirmation, "authority_snapshot_digest")?;
+    let profile_revision = profile.digest_guest(budget)?;
+    for record in [&profile, &lock, &plan] {
+        if !denied::field(record, "profile_id")?.eq_guest(&expected_profile_id, budget)?
+            || !denied::field(record, "profile_authority_snapshot_digest")?
+                .eq_guest(&snapshot, budget)?
+        {
+            bail!("activation records differ from the reviewed Profile or Authority snapshot");
+        }
+    }
+    if expected_revision.as_str() != Some(profile_revision.as_str()) {
+        bail!("activation records differ from the reviewed Profile revision");
+    }
+    for record in [&lock, &plan] {
+        if denied::field(record, "profile_revision")?.as_str() != Some(profile_revision.as_str())
+            || !denied::field(record, "security_epoch")?.eq_guest(&expected_epoch, budget)?
+            || denied::field(record, "profile_definition_digest")?.as_str()
+                != Some(review.identity.definition.as_str())
+            || denied::field(record, "bundle_digest")?.as_str()
+                != Some(review.bundle_digest.as_str())
+            || denied::field(record, "plan_digest")?.as_str() != Some(review.identity.plan.as_str())
+        {
+            bail!("activation Lock or Plan differs from the reviewed binding");
+        }
+    }
+    for (record, field, digest) in [
+        (&lock, "lock_digest", &review.identity.lock),
+        (&plan, "plan_digest", &review.identity.plan),
+    ] {
+        if denied::field(record, field)?.as_str() != Some(digest.as_str()) {
+            bail!("activation record digest differs from the reviewed digest");
+        }
+        let entries = record
+            .object()
+            .context("activation record is not an object")?;
+        let mut unsigned_fields = entries.iter().filter(|(key, _)| *key != field);
+        // The digest key was just checked and object keys are unique.
+        let unsigned = CoreValue::object_shared(
+            (0..entries.len() - 1).map(|_| {
+                unsigned_fields
+                    .next()
+                    .ok_or(tobkiri_canon::AllocationError::Invalid)
+            }),
+            budget,
+        )?;
+        if &unsigned.digest_guest(budget)? != digest {
+            bail!("activation record contents differ from the reviewed digest");
+        }
+    }
+    Ok(())
+}
+
+fn admit_candidate(
+    value: &CoreValue,
+    review: &Reviewed<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<BootstrapActivationCandidate> {
     let confirmation = denied::field(value, "confirmation")?;
     if !confirmation.eq_guest(review.confirmation, budget)? {
         bail!("activation decision changed its reviewed confirmation");
@@ -327,37 +407,72 @@ mod tests {
     #[test]
     fn matched_activation_requires_the_reviewed_source_bundle_and_confirmation() -> Result<()> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let digest = |value: &serde_json::Value| -> Result<Digest> {
+            Ok(
+                CoreValue::parse_guest(&serde_json::to_vec(value)?, &budget)?
+                    .digest_guest(&budget)?,
+            )
+        };
         let bundle = Digest::hash(b"original lock bytes");
-        let plan = Digest::hash(b"plan");
         let source = json!({"profile_id":"defaults", "name":"Harness"});
-        let source_digest = CoreValue::parse_guest(&serde_json::to_vec(&source)?, &budget)?
-            .digest_guest(&budget)?;
-        let confirmation = json!({"profile_id":"defaults","plan_digest":plan.as_str()});
+        let source_digest = digest(&source)?;
+        let snapshot = Digest::hash(b"authority snapshot");
+        let profile = json!({
+            "profile_id":"defaults", "name":"Harness",
+            "profile_authority_snapshot_digest":snapshot.as_str(),
+        });
+        let revision = digest(&profile)?;
+        let bindings = json!({
+            "profile_id":"defaults", "profile_revision":revision.as_str(), "security_epoch":3,
+            "profile_definition_digest":source_digest.as_str(), "bundle_digest":bundle.as_str(),
+            "profile_authority_snapshot_digest":snapshot.as_str(),
+        });
+        let mut plan = bindings.clone();
+        plan["bindings"] = json!(["original binding"]);
+        let plan_digest = digest(&plan)?;
+        plan["plan_digest"] = json!(plan_digest.as_str());
+        let mut lock = bindings;
+        lock["plan_digest"] = json!(plan_digest.as_str());
+        lock["base"] = json!("original base");
+        let lock_digest = digest(&lock)?;
+        lock["lock_digest"] = json!(lock_digest.as_str());
+        let confirmation = json!({
+            "profile_id":"defaults", "plan_digest":plan_digest.as_str(),
+            "profile_revision":revision.as_str(), "security_epoch":3,
+            "authority_snapshot_digest":snapshot.as_str(),
+        });
         let expected_confirmation =
             CoreValue::parse_guest(&serde_json::to_vec(&confirmation)?, &budget)?;
+        let records = json!({"profile":profile,"lock":lock,"plan":plan});
         let packet = json!({
             "confirmation": confirmation, "source_profile": source,
             "profile_definition_digest": source_digest.as_str(), "bundle_digest": bundle.as_str(),
-            "plan_digest": plan.as_str(),
+            "plan_digest": plan_digest.as_str(), "resolved": records,
         });
         let identity = ResolvedProfileIdentity {
             definition: source_digest.clone(),
-            plan,
-            lock: Digest::hash(b"resolved profile lock"),
+            plan: plan_digest,
+            lock: lock_digest,
         };
-        let parse = |value: &serde_json::Value| -> Result<BootstrapActivationCandidate> {
-            let value = CoreValue::parse_guest(&serde_json::to_vec(value)?, &budget)?;
-            admit_candidate(
-                &value,
-                Reviewed {
-                    confirmation: &expected_confirmation,
-                    bundle_digest: &bundle,
-                    identity: &identity,
-                },
-                &budget,
-            )
-        };
-        let matched = parse(&packet)?;
+        let parse =
+            |value: &serde_json::Value| -> Result<(BootstrapActivationCandidate, CoreValue)> {
+                let value = CoreValue::parse_guest(&serde_json::to_vec(value)?, &budget)?;
+                admit_match(
+                    &value,
+                    Reviewed {
+                        confirmation: &expected_confirmation,
+                        bundle_digest: &bundle,
+                        identity: &identity,
+                    },
+                    &budget,
+                )
+            };
+        let (matched, resolved) = parse(&packet)?;
+        let encoded = resolved.encode_guest(&budget)?;
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(encoded.as_bytes())?,
+            records
+        );
         assert_eq!(matched.bundle_digest(), &bundle);
         assert_eq!(matched.lock_digest(), &identity.lock);
         assert_eq!(
@@ -378,6 +493,12 @@ mod tests {
                 "/plan_digest",
                 json!(Digest::hash(b"changed plan").as_str()),
             ),
+            ("/resolved/profile/name", json!("changed Profile bytes")),
+            ("/resolved/lock/base", json!("changed Lock bytes")),
+            ("/resolved/plan/bindings/0", json!("changed Plan bytes")),
+            ("/resolved/plan/security_epoch", json!(4)),
+            ("/resolved/lock/profile_id", json!("other")),
+            ("/resolved/lock", json!(null)),
         ] {
             let mut changed = packet.clone();
             *changed.pointer_mut(path).unwrap() = replacement;
