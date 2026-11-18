@@ -11,7 +11,7 @@ use std::{
 };
 use support::registry::{PROVIDER_COMMIT, PROVIDER_CONFIGURATION};
 use tobkiri_canon::ids::ProfileId;
-use tobkiri_core::UiAttachment;
+use tobkiri_core::{ProfileStartBinding, RuntimeOwner, UiAttachment};
 use tobkiri_manifest::{
     PackManifest, PortDeclaration, Ports, RuntimeConfig, RuntimeSpec, ShapeDefinition, ShapeKind,
     UiDefinition,
@@ -213,7 +213,7 @@ async fn registered_core(
     root: &Path,
     origins: &[String],
     wall_ms: u64,
-) -> Result<(Core, ProfileId)> {
+) -> Result<(Core, ProfileStartBinding)> {
     let [model, provider] = packs(root)?;
     let [ui, openai] = streaming_packs(root, origins, wall_ms)?;
     let artifact = std::env::var_os("TOBKIRI_TEST_SAVED_CONVERSATION_COMPONENT")
@@ -255,9 +255,11 @@ async fn registered_core(
     ]);
     host.approve_literal_user(&profile)?;
     let data = root.join("data");
-    let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host)?;
+    let runtime_owner = RuntimeOwner::open(&data)?;
+    let core = Core::from_runtime_owner(runtime_owner, host)?;
     let id = profile.id.clone();
-    core.save_profile(profile, None).await?;
+    let head = core.save_profile(profile, None).await?;
+    let start = core.profile_start_binding(&id, &head)?;
     let stores = TieredStore::open(&DataRoot::open(data)?, &id)?;
     // The file is the output of the original Python ConversationStore; the
     // test import keeps its bytes and does not manufacture a current model.
@@ -269,7 +271,7 @@ async fn registered_core(
     )?;
     let seed = canon(&json!({"document":CONVERSATION_FIXTURE}))?;
     stores.apply_seed(&owner.id, "saved-conversation", &owner.sha256, &seed)?;
-    Ok((core, id))
+    Ok((core, start))
 }
 
 async fn select_saved_model(
@@ -401,14 +403,15 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
     let servers = listeners.map(|listener| thread::spawn(move || api(listener)));
     let root = physical_temp()?;
-    let (core, profile) = registered_core(root.path(), &origins, 10_000).await?;
-    let session = core.start(&profile).await?;
+    let (core, start) = registered_core(root.path(), &origins, 10_000).await?;
+    let profile = &start.profile_id;
+    let session = core.start_bound(&start).await?;
     let checked = async {
         for (origin, (route, cap, revision)) in
             origins.iter().zip([("one", 128, 0), ("two", 256, 1)])
         {
             let provider_revision =
-                save_connection(&session, &profile, route, route, origin, revision).await?;
+                save_connection(&session, profile, route, route, origin, revision).await?;
             let model = json!({
                 "model_profile_id": format!("registered-{route}"),
                 "model_id": format!("llama/{route}"),
@@ -485,8 +488,7 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
         "llama.cpp requires a canonical http://127.0.0.1 origin with an unprivileged port"
     );
     let root = physical_temp()?;
-    let (core, profile) =
-        registered_core(root.path(), std::slice::from_ref(&origin), 30_000).await?;
+    let (core, start) = registered_core(root.path(), std::slice::from_ref(&origin), 30_000).await?;
     let expected = json!({
         "profiles": [{
             "profile_id": SELECTION,
@@ -499,11 +501,11 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
         "count": 1,
         "registry_revision": 1
     });
-    let session = core.start(&profile).await?;
+    let session = core.start_bound(&start).await?;
     let saved = async {
         let provider_revision = save_connection(
             &session,
-            &profile,
+            &start.profile_id,
             PROVIDER_NAME,
             "Local llama.cpp",
             &origin,
@@ -531,7 +533,7 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
     closed?;
     drop(session);
 
-    let session = core.start(&profile).await?;
+    let session = core.start_bound(&start).await?;
     let streamed = async {
         ensure!(
             list(&session).await? == expected,

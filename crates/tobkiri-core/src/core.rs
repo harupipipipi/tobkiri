@@ -75,6 +75,22 @@ pub enum ProfileRecoveryStatus {
         code: &'static str,
     },
 }
+
+/// Exact Core inputs expected by a trusted activation that starts a Session.
+/// The digests identify the Core Profile and resolved native plan. Legacy
+/// activation identifiers and approval authority are owned by their caller.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProfileStartBinding {
+    pub profile_id: ProfileId,
+    pub head: Digest,
+    pub plan_digest: Digest,
+    pub security_epoch: u64,
+}
+
+fn start_binding_changed() -> CoreError {
+    tobkiri_store::StoreError::Conflict("Profile start binding changed".into()).into()
+}
+
 fn recovery_status(error: &CoreError) -> ProfileRecoveryStatus {
     match error {
         CoreError::Gate(tobkiri_gate::GateError::Integrity(code))
@@ -881,13 +897,80 @@ impl Core {
         Ok(id)
     }
 
-    /// Instantiate all verified components, freeze bindings and start a Session.
-    pub async fn start(&self, id: &ProfileId) -> Result<Session, CoreError> {
-        self.ensure_admission(id).await?;
-        let (head, epoch) = self.profiles.root.profile_head_snapshot(id)?;
+    /// Capture the native start conditions for a specific saved Profile head.
+    /// Pack pins are verified and the plan is resolved without starting guests
+    /// or installing permissions. A trusted activation retains these expected
+    /// values and uses `start_bound` to reject later replacement.
+    pub fn profile_start_binding(
+        &self,
+        id: &ProfileId,
+        expected_head: &Digest,
+    ) -> Result<ProfileStartBinding, CoreError> {
+        let (head, security_epoch) = self.profiles.root.profile_head_snapshot(id)?;
+        if &head != expected_head {
+            return Err(start_binding_changed());
+        }
         let profile = self.profiles.load_revision(id, &head)?;
         let packs = load_packs(&profile, &self.control)?;
         let compiled = compile(&profile, &packs).map_err(CoreError::Conflicts)?;
+        let binding = ProfileStartBinding {
+            profile_id: id.clone(),
+            head,
+            plan_digest: compiled.plan_digest,
+            security_epoch,
+        };
+        self.check_profile_start_snapshot(&binding)?;
+        Ok(binding)
+    }
+
+    /// Recheck the durable head and epoch before a Host publishes a Session
+    /// that Core has started with this binding.
+    pub fn check_profile_start_snapshot(
+        &self,
+        binding: &ProfileStartBinding,
+    ) -> Result<(), CoreError> {
+        let (head, epoch) = self
+            .profiles
+            .root
+            .profile_head_snapshot(&binding.profile_id)?;
+        if head != binding.head || epoch != binding.security_epoch {
+            return Err(start_binding_changed());
+        }
+        Ok(())
+    }
+
+    /// Instantiate all verified components, freeze bindings and start a Session.
+    pub async fn start(&self, id: &ProfileId) -> Result<Session, CoreError> {
+        self.start_profile(id, None).await
+    }
+
+    /// Start through the ordinary Gate using only the expected Core Profile
+    /// revision, compiled plan and security epoch. A stale binding is a conflict.
+    pub async fn start_bound(&self, binding: &ProfileStartBinding) -> Result<Session, CoreError> {
+        self.start_profile(&binding.profile_id, Some(binding)).await
+    }
+
+    async fn start_profile(
+        &self,
+        id: &ProfileId,
+        binding: Option<&ProfileStartBinding>,
+    ) -> Result<Session, CoreError> {
+        self.ensure_admission(id).await?;
+        let (head, epoch) = self.profiles.root.profile_head_snapshot(id)?;
+        if let Some(binding) = binding
+            && (head != binding.head || epoch != binding.security_epoch)
+        {
+            return Err(start_binding_changed());
+        }
+        let profile = self.profiles.load_revision(id, &head)?;
+        let packs = load_packs(&profile, &self.control)?;
+        let compiled = compile(&profile, &packs).map_err(CoreError::Conflicts)?;
+        if let Some(binding) = binding {
+            if compiled.plan_digest != binding.plan_digest {
+                return Err(start_binding_changed());
+            }
+            self.check_profile_start_snapshot(binding)?;
+        }
         let (gate, audit) = self.authority(&profile)?;
         register_policies(&gate, &profile, &packs)?;
         register_views(&gate, &compiled)?;
@@ -1019,6 +1102,17 @@ impl Core {
             provider_bridge,
         );
         session.ensure_started().await?;
+        if let Some(binding) = binding
+            && let Err(original) = self.check_profile_start_snapshot(binding)
+        {
+            return match session.close().await {
+                Ok(()) => Err(original),
+                Err(cleanup) => Err(CoreError::Cleanup {
+                    original: Box::new(original),
+                    cleanup: Box::new(cleanup),
+                }),
+            };
+        }
         pack_host.set_flow_runner(session.weak_runner())?;
         for (pack, hash, material) in materials {
             session.install_ui_material(pack, hash, material)?;

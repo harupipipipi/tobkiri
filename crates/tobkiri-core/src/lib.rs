@@ -66,7 +66,7 @@ mod tracked_stream;
 mod ui_operation_delivery;
 mod ui_operation_preparation;
 
-pub use core::{Core, CoreConfig, ProfileRecoveryStatus};
+pub use core::{Core, CoreConfig, ProfileRecoveryStatus, ProfileStartBinding};
 pub use error::CoreError;
 pub use execution_frames::UiOperationPublishAttempt;
 pub use filesystem_registry::{FilesystemRights, FilesystemRoot};

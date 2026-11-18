@@ -3967,6 +3967,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   適用する前に、観測の作業領域を元の世代予算に計上し、現行activationとProfileをread前後で
   検証する製品側の接続が必要。通常Launcherの `NativeRuntimeState::adopt_core` にはまだ
   製品用Sessionがないため、別の `core-host` アプリを有効にして代用しない。
+- Coreに保存済みProfileを起動する際、`ProfileStartBinding` で実行するhead、検証済みPackから
+  作ったplan digest、権限epochを固定した。既存のGateと起動処理を共用し、準備後にheadまたは
+  epochが変わった場合はUIへ渡す前にSessionを終了する。終了にも失敗した場合は両方のエラーを返す。
+  `LauncherCore::start_bound` は既存のUI generation発行・破棄に接続し、起動側のactivationが
+  開始前または公開時に失効していれば新しいSessionを公開しない。通常のIPC入口は従来のoriginを確認する。
+  登録済みProviderとモデルの試験で、同じ `RuntimeOwner` をCoreへ渡し、開始と再起動に固定値を使用。
+  同じProfile IDでのhead変更、異なるplan、headを保った権限epoch更新、期限切れの起動を検査。
+  Core単体304件とLauncherアダプター単体74件が通過。Wasm/Coreの4件はローカルで成功。
+  製品Launcherのv5 Profile/Lock/PlanとCoreの各digestは別契約。実製品で使うには既存
+  `presentation::launch_verified_target_once` の実行IDと、署名済み置換Pack群で確認したCore
+  の固定値を結ぶ。実行中の管理対象子プロセスの失効は既存の終了管理へ渡す。DMGの現行手順と
+  照合した範囲で、試験用Harness ProfileのIDを変更して使う方法では元のPackと権限を復元できない。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

@@ -10,8 +10,9 @@ use std::{
 
 use serde::Serialize;
 use tobkiri_core::{
-    CanonValue, Core, CoreBuffer, CoreConfig, CoreError, HostIo, Session, UiInvokeRequest,
-    UiOperationCloseHandle, UiOperationPreparation, UiOperationTermination, Variant,
+    CanonValue, Core, CoreBuffer, CoreConfig, CoreError, HostIo, ProfileStartBinding, Session,
+    UiInvokeRequest, UiOperationCloseHandle, UiOperationPreparation, UiOperationTermination,
+    Variant,
     ids::{OpName, ProfileId, ShapeRef, UiSessionId},
     parse,
 };
@@ -1783,18 +1784,50 @@ impl LauncherCore {
     ) -> Result<Vec<UiFrame>, HostError> {
         caller.check()?;
         let profile = ProfileId::parse(profile).map_err(|_| HostError::Invalid)?;
+        self.start_profile(&profile, None).await
+    }
+
+    /// Start from the native application's verified activation. The caller
+    /// owns the original activation proof and retires the running Session when
+    /// that activation expires. Only in-process application code calls this
+    /// entry. The cancellation token fences creation and publication.
+    pub async fn start_bound(
+        &self,
+        binding: &ProfileStartBinding,
+        activation: &CancellationToken,
+    ) -> Result<Vec<UiFrame>, HostError> {
+        self.start_profile(&binding.profile_id, Some((binding, activation)))
+            .await
+    }
+
+    async fn start_profile(
+        &self,
+        profile: &ProfileId,
+        bound: Option<(&ProfileStartBinding, &CancellationToken)>,
+    ) -> Result<Vec<UiFrame>, HostError> {
+        let activation_is_current =
+            || bound.is_none_or(|(_, activation)| !activation.is_cancelled());
+        if !activation_is_current() {
+            return Err(HostError::Cancelled);
+        }
+        if let Some((binding, _)) = bound {
+            self.core
+                .check_profile_start_snapshot(binding)
+                .map_err(core_error)?;
+        }
         let generation = self.next_generation()?;
         let lifecycle = self.next_lifecycle()?;
         let _startup = self.startup.lock().await;
         self.close_current().await?;
-        if !self.startup_is_current(lifecycle, generation) {
+        if !self.startup_is_current(lifecycle, generation) || !activation_is_current() {
             return Err(HostError::Cancelled);
         }
         let session = Arc::new(
-            self.core
-                .start(&profile)
-                .await
-                .map_err(|_| HostError::Core)?,
+            match bound {
+                Some((binding, _)) => self.core.start_bound(binding).await,
+                None => self.core.start(profile).await,
+            }
+            .map_err(|_| HostError::Core)?,
         );
         let runtime = tokio::runtime::Handle::current();
         // Bind before any attachment is visible to the renderer. The received
@@ -1823,13 +1856,19 @@ impl LauncherCore {
                 platform: if cfg!(windows) { "windows" } else { "native" },
             })
             .collect();
+        if let Some((binding, _)) = bound
+            && let Err(error) = self.core.check_profile_start_snapshot(binding)
+        {
+            self.close_unpublished(session, generation, runtime).await?;
+            return Err(core_error(error));
+        }
         let commit = self.operations.publish_session(
             ActiveSession {
                 session: session.clone(),
                 generation,
                 runtime: runtime.clone(),
             },
-            || self.startup_is_current(lifecycle, generation),
+            || self.startup_is_current(lifecycle, generation) && activation_is_current(),
             || {
                 self.lifecycle
                     .active_lifecycle
@@ -2564,12 +2603,19 @@ mod tests {
         document["startup"]["ui"] = serde_json::json!("local.prepared-ui");
         let profile =
             tobkiri_core::profile::parse_profile(&serde_json::to_vec(&document).unwrap()).unwrap();
-        launcher
+        let head = launcher
             .core
             .save_profile(profile, Some(head))
             .await
             .unwrap();
-        let mut frames = launcher.start(caller(), profile_id.as_str()).await.unwrap();
+        let binding = launcher
+            .core
+            .profile_start_binding(&profile_id, &head)
+            .unwrap();
+        let mut frames = launcher
+            .start_bound(&binding, &CancellationToken::new())
+            .await
+            .unwrap();
         assert_eq!(frames.len(), 1);
         let frame = frames.pop().unwrap();
         assert_eq!(frame.pack_hash, verified.hash.to_string());
@@ -3085,6 +3131,32 @@ mod tests {
 
     async fn launcher_fixture() -> (LauncherCore, ProfileId, tempfile::TempDir) {
         launcher_fixture_with_host(Arc::new(ClosedHost)).await
+    }
+
+    #[tokio::test]
+    async fn native_activation_starts_the_bound_profile_and_rejects_expired_starts() {
+        let (launcher, id, _directory) = launcher_fixture().await;
+        let (_, head) = launcher.core.profile(&id).unwrap();
+        let binding = launcher.core.profile_start_binding(&id, &head).unwrap();
+        let activation = CancellationToken::new();
+        launcher.start_bound(&binding, &activation).await.unwrap();
+        let active = launcher.current_generation().unwrap();
+        let session = launcher.active_for_generation_now(active).unwrap();
+        assert_eq!(session.plan_digest(), &binding.plan_digest);
+        drop(session);
+        let expired = CancellationToken::new();
+        expired.cancel();
+        assert!(matches!(
+            launcher.start_bound(&binding, &expired).await,
+            Err(HostError::Cancelled)
+        ));
+        assert_eq!(launcher.current_generation(), Some(active));
+        let mut stale = binding;
+        stale.head = tobkiri_core::Digest::hash(b"superseded head");
+        assert!(launcher.start_bound(&stale, &activation).await.is_err());
+        assert_eq!(launcher.current_generation(), Some(active));
+        launcher.shutdown_from_native_owner().await.unwrap();
+        assert_eq!(launcher.current_generation(), None);
     }
 
     #[tokio::test]

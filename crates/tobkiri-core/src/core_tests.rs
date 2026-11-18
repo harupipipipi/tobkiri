@@ -249,6 +249,50 @@ async fn add_and_update_reject_oversized_tpk_without_changing_profile_or_authori
 }
 
 #[tokio::test]
+async fn bound_start_rejects_a_replaced_head_plan_or_epoch() {
+    let (core, host, mut profile, _dir) = fixture();
+    let id = profile.id.clone();
+    let head = core.save_profile(profile.clone(), None).await.unwrap();
+    let binding = core.profile_start_binding(&id, &head).unwrap();
+    let known_prompts = host.prompts.lock().unwrap().len();
+    let session = core.start_bound(&binding).await.unwrap();
+    assert_eq!(session.plan_digest(), &binding.plan_digest);
+    session.close().await.unwrap();
+
+    let mut wrong_plan = binding.clone();
+    wrong_plan.plan_digest = Digest::hash(b"other plan");
+    assert!(matches!(
+        core.start_bound(&wrong_plan).await,
+        Err(CoreError::Store(tobkiri_store::StoreError::Conflict(_)))
+    ));
+    assert_eq!(host.prompts.lock().unwrap().len(), known_prompts);
+
+    profile.name = "Edited document".into();
+    let next = core
+        .save_profile(profile, Some(head.clone()))
+        .await
+        .unwrap();
+    assert!(matches!(
+        core.profile_start_binding(&id, &head),
+        Err(CoreError::Store(tobkiri_store::StoreError::Conflict(_)))
+    ));
+    let mut wrong_head = core.profile_start_binding(&id, &next).unwrap();
+    wrong_head.head = head;
+    assert!(matches!(
+        core.start_bound(&wrong_head).await,
+        Err(CoreError::Store(tobkiri_store::StoreError::Conflict(_)))
+    ));
+    let approved = core.profile_start_binding(&id, &next).unwrap();
+    let approvals = Approvals::open(&core.profiles.root, &id).unwrap();
+    ApprovalStore::advance_security_epoch(&approvals, &id).unwrap();
+    assert_eq!(core.profile(&id).unwrap().1, next);
+    assert!(matches!(
+        core.start_bound(&approved).await,
+        Err(CoreError::Store(tobkiri_store::StoreError::Conflict(_)))
+    ));
+}
+
+#[tokio::test]
 async fn user_approval_is_bound_to_committed_document_revision_and_epoch() {
     let (core, host, mut profile, _dir) = fixture();
     let head = core.save_profile(profile.clone(), None).await.unwrap();
