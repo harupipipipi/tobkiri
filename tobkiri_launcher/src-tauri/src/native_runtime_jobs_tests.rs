@@ -325,6 +325,82 @@ fn unknown_worker_panic_is_joined_but_never_reported_closed() {
 }
 
 #[test]
+fn provider_job_join_waits_for_source_and_keeps_other_jobs_accepting() {
+    let root = Root::new();
+    let owner = RuntimeOwner::open(root.0.join("data")).unwrap();
+    let invocation = owner.begin_native_setup().unwrap();
+    let jobs = jobs();
+    let (send, ready) = mpsc::channel();
+    let (exit, waiting) = mpsc::channel();
+    let join = jobs
+        .spawn_joinable(move |job| {
+            let cancellation = job.attach_invocation(&invocation).unwrap();
+            let custody = job.source_custody().unwrap();
+            assert!(send.send((cancellation, custody)).is_ok());
+            receive(&waiting);
+            WorkerExit {
+                cleanup_verified: true,
+            }
+        })
+        .unwrap();
+    let (cancellation, custody) = receive(&ready);
+    join.cancel().unwrap();
+    assert!(cancellation.is_cancelled());
+    assert!(jobs.ensure_accepting().is_ok());
+    exit.send(()).unwrap();
+    let error = join
+        .join_until(Instant::now() + Duration::from_millis(50))
+        .unwrap_err();
+    assert!(error.to_string().contains("join timed out"));
+    assert!(custody.0.live.load(Ordering::Acquire));
+    drop(custody);
+    join.join_until(Instant::now() + Duration::from_secs(20))
+        .unwrap();
+    assert!(jobs.0.state.lock().unwrap().jobs.is_empty());
+    assert!(jobs.ensure_accepting().is_ok());
+}
+
+#[test]
+fn provider_job_cancel_before_attachment_prevents_native_admission() {
+    let root = Root::new();
+    let owner = RuntimeOwner::open(root.0.join("data")).unwrap();
+    let invocation = owner.begin_native_setup().unwrap();
+    let jobs = jobs();
+    let (send, ready) = mpsc::channel();
+    let (run, waiting) = mpsc::channel();
+    let join = jobs
+        .spawn_joinable(move |job| {
+            send.send(()).unwrap();
+            receive(&waiting);
+            assert!(job.ensure_accepting(&job.jobs).is_err());
+            assert!(job.attach_invocation(&invocation).is_err());
+            WorkerExit {
+                cleanup_verified: true,
+            }
+        })
+        .unwrap();
+    receive(&ready);
+    join.cancel().unwrap();
+    run.send(()).unwrap();
+    join.join_until(Instant::now() + Duration::from_secs(20))
+        .unwrap();
+    assert!(jobs.ensure_accepting().is_ok());
+}
+
+#[test]
+fn provider_job_join_does_not_certify_an_unverified_worker() {
+    let jobs = jobs();
+    let join = jobs
+        .spawn_joinable(|_| panic!("unknown physical custody"))
+        .unwrap();
+    let error = join
+        .join_until(Instant::now() + Duration::from_secs(20))
+        .unwrap_err();
+    assert!(error.to_string().contains("cleanup was not verified"));
+    assert!(jobs.ensure_accepting().is_err());
+}
+
+#[test]
 fn concurrent_finalizer_waits_after_owner_slot_is_empty_until_actual_drop_finishes() {
     let root = Root::new();
     let owner = Arc::new(Mutex::new(Some(

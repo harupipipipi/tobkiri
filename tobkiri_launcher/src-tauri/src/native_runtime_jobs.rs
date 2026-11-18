@@ -129,6 +129,8 @@ struct Job {
     thread: Option<JoinHandle<WorkerExit>>,
     // Actual thread Join, separately from Source/IO custody and cleanup status.
     joined: bool,
+    cleanup_verified: bool,
+    cancel_requested: bool,
     source: Arc<SourceStatus>,
     source_created: bool,
     invocation: Option<NativeSetupInvocation>,
@@ -154,6 +156,13 @@ pub(crate) struct Jobs(Arc<Shared>);
 
 /// A private registration, available only inside the actually retained worker.
 pub(crate) struct JobTicket {
+    jobs: Jobs,
+    id: u64,
+}
+
+/// Control for one tracked worker. A reply from its work is independent of
+/// the thread join and the release of its source custody.
+pub(crate) struct JobJoin {
     jobs: Jobs,
     id: u64,
 }
@@ -189,6 +198,13 @@ impl Jobs {
         &self,
         worker: impl FnOnce(JobTicket) -> WorkerExit + Send + 'static,
     ) -> Result<()> {
+        self.spawn_joinable(worker).map(|_| ())
+    }
+
+    pub(crate) fn spawn_joinable(
+        &self,
+        worker: impl FnOnce(JobTicket) -> WorkerExit + Send + 'static,
+    ) -> Result<JobJoin> {
         let id = {
             let mut state = self
                 .0
@@ -215,6 +231,8 @@ impl Jobs {
                 id,
                 thread: None,
                 joined: false,
+                cleanup_verified: false,
+                cancel_requested: false,
                 source: Arc::new(SourceStatus {
                     live: AtomicBool::new(false),
                     jobs: Arc::downgrade(&self.0),
@@ -248,6 +266,11 @@ impl Jobs {
                     jobs: jobs.clone(),
                     id,
                 };
+                if ticket.ensure_accepting(&jobs).is_err() {
+                    return WorkerExit {
+                        cleanup_verified: true,
+                    };
+                }
                 let result = worker(ticket);
                 if !result.cleanup_verified {
                     jobs.cleanup_failed();
@@ -273,7 +296,10 @@ impl Jobs {
                 self.0.changed.notify_all();
                 drop(state);
                 let _ = start.send(());
-                Ok(())
+                Ok(JobJoin {
+                    jobs: self.clone(),
+                    id,
+                })
             }
             Err(error) => {
                 let mut state = self
@@ -336,6 +362,10 @@ impl Jobs {
     }
 
     fn reap(&self) -> Result<()> {
+        self.reap_joined(None)
+    }
+
+    fn reap_joined(&self, only: Option<u64>) -> Result<()> {
         loop {
             let completed = {
                 let mut state =
@@ -343,7 +373,9 @@ impl Jobs {
                         anyhow::Error::new(LifecycleError("native jobs are poisoned"))
                     })?;
                 state.jobs.iter_mut().find_map(|job| {
-                    if job.thread.as_ref().is_some_and(JoinHandle::is_finished) {
+                    if only.is_none_or(|id| id == job.id)
+                        && job.thread.as_ref().is_some_and(JoinHandle::is_finished)
+                    {
                         Some((job.id, job.thread.take().expect("finished native Join")))
                     } else {
                         None
@@ -364,13 +396,15 @@ impl Jobs {
                 .state
                 .lock()
                 .map_err(|_| anyhow::Error::new(LifecycleError("native jobs are poisoned")))?;
-            state
+            let job = state
                 .jobs
                 .iter_mut()
                 .find(|job| job.id == id)
-                .expect("retained native Join")
-                .joined = true;
+                .expect("retained native Join");
+            job.joined = true;
+            job.cleanup_verified = clean;
             drop(state);
+            self.0.changed.notify_all();
             if !clean {
                 self.cleanup_failed();
             }
@@ -385,6 +419,7 @@ impl Jobs {
             let mut index = 0;
             while index < state.jobs.len() {
                 if state.jobs[index].joined
+                    && state.jobs[index].cleanup_verified
                     && !state.jobs[index].source.live.load(Ordering::Acquire)
                     && state.failure.is_none()
                 {
@@ -454,6 +489,72 @@ impl Jobs {
     }
 }
 
+impl JobJoin {
+    /// Cancel only this job, including a cancellation that arrives before it
+    /// has attached its funded invocation.
+    pub(crate) fn cancel(&self) -> Result<()> {
+        let cancellation = {
+            let mut state = self
+                .jobs
+                .0
+                .state
+                .lock()
+                .map_err(|_| LifecycleError("native jobs are poisoned"))?;
+            state
+                .jobs
+                .iter_mut()
+                .find(|job| job.id == self.id)
+                .and_then(|job| {
+                    job.cancel_requested = true;
+                    job.cancellation.clone()
+                })
+        };
+        if let Some(cancellation) = cancellation {
+            cancellation.cancel();
+        }
+        self.jobs.0.changed.notify_all();
+        Ok(())
+    }
+
+    /// Prove that this specific thread joined and released its source. A
+    /// timeout leaves the original registration and owner in the tracker.
+    pub(crate) fn join_until(&self, deadline: Instant) -> Result<()> {
+        loop {
+            self.jobs.reap_joined(Some(self.id))?;
+            let state = self
+                .jobs
+                .0
+                .state
+                .lock()
+                .map_err(|_| LifecycleError("native jobs are poisoned"))?;
+            let Some(job) = state.jobs.iter().find(|job| job.id == self.id) else {
+                return Ok(());
+            };
+            if job.joined {
+                ensure!(
+                    job.cleanup_verified,
+                    LifecycleError("native job cleanup was not verified")
+                );
+                if !job.source.live.load(Ordering::Acquire) {
+                    return Ok(());
+                }
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            ensure!(
+                !remaining.is_zero(),
+                LifecycleError("native job join timed out; owner and Join retained")
+            );
+            drop(
+                self.jobs
+                    .0
+                    .changed
+                    .wait_timeout(state, remaining.min(Duration::from_millis(10)))
+                    .map_err(|_| LifecycleError("native job join is poisoned"))?,
+            );
+        }
+    }
+}
+
 impl JobTicket {
     pub(crate) fn invocation(&self) -> Option<NativeSetupInvocation> {
         self.jobs
@@ -473,7 +574,22 @@ impl JobTicket {
             Arc::ptr_eq(&self.jobs.0, &jobs.0),
             LifecycleError("foreign native job owner")
         );
-        self.jobs.ensure_accepting()
+        let state = self
+            .jobs
+            .0
+            .state
+            .lock()
+            .map_err(|_| LifecycleError("native jobs are poisoned"))?;
+        ensure!(
+            state.phase == Phase::Accepting
+                && !self.jobs.0.shutdown.load(Ordering::Acquire)
+                && state
+                    .jobs
+                    .iter()
+                    .any(|job| job.id == self.id && !job.cancel_requested),
+            LifecycleError("native preparation admission is closed")
+        );
+        Ok(())
     }
 
     pub(crate) fn attach_invocation(
@@ -500,8 +616,8 @@ impl JobTicket {
             .find(|job| job.id == self.id)
             .ok_or_else(|| anyhow::Error::new(LifecycleError("native registration retired")))?;
         ensure!(
-            job.invocation.is_none(),
-            LifecycleError("native job invocation was already attached")
+            job.invocation.is_none() && !job.cancel_requested,
+            LifecycleError("native job invocation was already attached or cancelled")
         );
         job.invocation = Some(invocation.clone());
         job.cancellation = Some(cancellation.clone());

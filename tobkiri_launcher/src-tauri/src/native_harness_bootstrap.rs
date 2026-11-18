@@ -44,6 +44,11 @@ mod launch_metadata;
 pub(crate) use launch_metadata::{
     read_launch_metadata, registry_pack_receipt_bound, VerifiedProviderPrepareLaunch,
 };
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+#[path = "native_provider_prepare_job.rs"]
+mod provider_prepare;
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) use provider_prepare::{start_provider_prepare, PendingProviderPrepare};
 
 enum OwnedRuntime {
     Unopened,

@@ -11,7 +11,7 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{
     ids::{OpName, ShapeRef},
-    pack::{RuntimeSpec, ShapeKind},
+    pack::{RuntimeSpec, ShapeKind, VerifiedPack},
     NativeArtifactInspection, NativeSetupInvocation,
 };
 use tobkiri_gate::{ControlKind, CoreCancellation};
@@ -40,7 +40,7 @@ use crate::{
 const REGISTRY_RECEIPT_SHA256: &str = env!("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256");
 // Allow the bounded receipt decoder and streaming SHA-256 work to run only
 // when their fixed working set fits the real Launch job's control ledger.
-const REGISTRY_VERIFICATION_BYTES: u64 = 256 * 1024;
+pub(super) const REGISTRY_VERIFICATION_BYTES: u64 = 256 * 1024;
 
 /// Detached launch evidence for the verified legacy route and its bundled Wasm Pack.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -396,11 +396,50 @@ impl LaunchActivationObserver<'_> {
     }
 }
 
+/// Reacquire the exact verified Pack from the original signed resolver source
+/// and compile-time receipt pin. Return only after the whole receipt matches.
+pub(super) fn reacquire_provider_prepare_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedProviderPrepareLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let app_root = inspection.with_source(|sources| {
+        let authority = sources.authority();
+        ensure!(
+            proof.identity.matches(&authority.execution_identity()?)
+                && proof.catalog_revision == authority.catalog_revision,
+            "signed Provider preparation source differs from the admitted launch"
+        );
+        Ok::<_, anyhow::Error>(sources.root(NativeSourceRoot::Application).to_path_buf())
+    })??;
+    registry_pack_receipt::verify_installed_with_provider(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || {
+            checkpoint().map_err(io::Error::other)?;
+            inspection.allocation_budget().map_err(io::Error::other)?;
+            Ok(())
+        },
+        |receipt, input| {
+            if receipt.archive_sha256() != proof.archive_sha256
+                || receipt.archive_bytes() != proof.archive_bytes
+                || receipt.manifest_sha256() != proof.manifest_sha256
+            {
+                return Err(io::Error::other(
+                    "installed Provider receipt differs from the admitted launch",
+                ));
+            }
+            verify_provider_prepare_archive(inspection, receipt, input)
+        },
+    )
+    .context("bundled Provider prepare archive verification failed")
+}
+
 fn verify_provider_prepare_archive(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     receipt: &registry_pack_receipt::Pack,
     input: &mut dyn io::Read,
-) -> io::Result<()> {
+) -> io::Result<VerifiedPack> {
     (|| {
         let pack = inspection.verify_pack_archive(input, receipt.archive_bytes())?;
         ensure!(
@@ -430,7 +469,7 @@ fn verify_provider_prepare_archive(
                 "bundled Provider Pack has no exact legacy prepare-local port {name}"
             );
         }
-        Ok::<_, anyhow::Error>(())
+        Ok::<_, anyhow::Error>(pack)
     })()
     .map_err(io::Error::other)
 }

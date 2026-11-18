@@ -123,6 +123,12 @@ pub(crate) struct ProviderPrepareListener {
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 impl ProviderPrepareListener {
+    pub(crate) fn verified_source(
+        &self,
+    ) -> &crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch {
+        &self.proof
+    }
+
     pub(crate) fn observe(
         proof: crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch,
         metadata: &DefaultspackDesktopMetadata,
@@ -300,7 +306,7 @@ impl ApplicationProcessManager {
     pub(crate) fn admitted_provider_prepare(
         &self,
         identity: &crate::host_contract::ExecutionProfileIdentity,
-    ) -> Result<Option<crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch>> {
+    ) -> Result<Option<Arc<ProviderPrepareListener>>> {
         let candidate = {
             let state = self.lock_state()?;
             state
@@ -316,15 +322,35 @@ impl ApplicationProcessManager {
             return Ok(None);
         };
         let state = self.lock_state()?;
-        Ok((!self.shutdown_requested.load(Ordering::Acquire)
-            && state
-                .provider_prepare
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, &candidate))
-            && state.matches_provider_listener(&candidate)
-            && candidate.process_is_current()
+        Ok((self.provider_prepare_still_admitted(&state, &candidate)
             && self.has_provider_guardian(&state, &candidate))
-        .then(|| candidate.proof.clone()))
+        .then_some(candidate))
+    }
+
+    /// Compare the original registered slot while working on an admitted
+    /// request. A new registration must never revive a previous request.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn require_provider_prepare_admission(
+        &self,
+        candidate: &Arc<ProviderPrepareListener>,
+    ) -> Result<()> {
+        let state = self.lock_state()?;
+        anyhow::ensure!(
+            self.provider_prepare_still_admitted(&state, candidate),
+            "the admitted Provider prepare source changed"
+        );
+        Ok(())
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn provider_prepare_still_admitted(
+        &self,
+        state: &ApplicationProcessState,
+        candidate: &Arc<ProviderPrepareListener>,
+    ) -> bool {
+        !self.shutdown_requested.load(Ordering::Acquire)
+            && state.matches_provider_slot(candidate)
+            && candidate.process_is_current()
     }
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -1273,6 +1299,14 @@ fn managed_defaultspack_run_id() -> String {
 
 impl ApplicationProcessState {
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn matches_provider_slot(&self, candidate: &Arc<ProviderPrepareListener>) -> bool {
+        self.provider_prepare
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, candidate))
+            && self.matches_provider_listener(candidate)
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     fn matches_provider_listener(&self, candidate: &ProviderPrepareListener) -> bool {
         !self.stop_requested
             && !self.restart_in_progress
@@ -1983,7 +2017,11 @@ mod tests {
         state.stop_requested = true;
         assert!(!state.matches_provider_listener(&candidate));
         state.stop_requested = false;
+        let slot = Arc::new(candidate.clone());
+        state.provider_prepare = Some(slot.clone());
+        assert!(state.matches_provider_slot(&slot));
         state.provider_prepare = Some(Arc::new(candidate.clone()));
+        assert!(!state.matches_provider_slot(&slot));
         state.retire_provider_prepare();
         assert!(state.provider_prepare.is_none());
         assert!(!state.matches_provider_listener(&candidate));

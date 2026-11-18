@@ -4060,9 +4060,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Coreがパスの各要素をsymlink追従なしで開く際、macOSのテスト用パスに含まれる `/var` などを
   拒んだ。fixtureの実体パスに設定と同じ相対配置を適用した。macOSのCoreで元の失敗を再現し、
   修正後のrootで `RuntimeOwner::open` と `begin_native_setup` の成功を確認した。
-  通常LauncherからRustの呼出しへこの登録を渡す経路と、1 MiB超の旧Registryとの互換動作が残る。
-  既存Host Brokerの接続認証は起動中のProfileまでを証明する。リクエスト単位のlease、同一
-  プロセス内のHTTPサーバ再生成、物理終了までの取消と転送上限を後続の接続で確認する。
+  `native_provider_prepare_job.rs` が登録を借り、元のRuntimeOwnerの個別ジョブで署名済み
+  Applicationと同梱Packを再照合し、読み取り専用のWasmを動かす。登録が同じdigestで更新されても
+  古いリクエストが再利用できないよう、同じ登録オブジェクトをStoreと結果返却時に確かめる。
+  `native_runtime_jobs.rs` の個別joinは取消を当該ジョブに伝え、スレッドとsourceが実際に終了した
+  時だけ完了を返す。不明な終了はRuntimeOwnerを保持する。3件をmacOSの実Coreで確認した。
+  Launcher管理状態を代替する分離検証では、生成済み `.tpk` の照合、同じCore上のWasm実行、
+  型付き拒否、取消後の結果破棄、読み取りの前後のguardを実行した。
+  次に通常Launcherと元のHostのリクエストを接続する。既存Host Brokerの接続認証は起動中の
+  Profileまでを証明する。接続時に実listenerのPID・起動時刻とHTTPサーバの世代を照合し、
+  元のleaseで逐次読み取りと取消を確認する。相互の物理終了と、1 MiB超の旧Registryとの
+  互換動作も製品経路で確かめる。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

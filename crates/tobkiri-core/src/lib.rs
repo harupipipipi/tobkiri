@@ -16,8 +16,8 @@ pub use tobkiri_store::ProfileCommitProgress;
 /// Generic Pack authoring and verification functions exposed by Core.
 pub mod pack {
     pub use tobkiri_manifest::{
-        PackManifest, PackSignature, RuntimeSpec, ShapeKind, build_tpk, generate_manifest,
-        parse_manifest, sign_manifest, verify_directory, verify_tpk,
+        PackManifest, PackSignature, RuntimeSpec, ShapeKind, VerifiedPack, build_tpk,
+        generate_manifest, parse_manifest, sign_manifest, verify_directory, verify_tpk,
     };
 }
 /// Structural Profile parsing exposed by the Core facade.
