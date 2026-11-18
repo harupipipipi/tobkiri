@@ -424,12 +424,16 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         }),
     )?;
     let (_, session) = fixture.start().await?;
+    let oversized_history = format!(
+        "Use the declared local external provider. {}",
+        "猫".repeat(750)
+    );
     fixture
         .host
         .lines
         .lock()
         .unwrap()
-        .push_back("Use the declared local external provider".into());
+        .push_back(oversized_history.clone());
     let input = within_session(
         &session,
         "network: physical Input read",
@@ -495,6 +499,7 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         assert_eq!(requests[0]["model"], "gemma3-1b-local");
         assert_eq!(requests[0]["max_tokens"], 2048);
         assert_eq!(requests[0]["temperature"], 0.4);
+        assert_eq!(requests[0]["messages"][1]["content"], oversized_history);
         assert!(events.iter().any(
             |event| matches!(&event.kind,tobkiri_flow::RunEventKind::StepValue{step,..} if step=="save")
         ));
@@ -515,11 +520,12 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         "the saved turn must call the provider again"
     );
     assert_eq!(
-        requests[1]["messages"]
-            .as_array()
-            .and_then(|messages| messages.last())
-            .and_then(|message| message["content"].as_str()),
-        Some("Check saved conversation")
+        requests[1]["messages"],
+        serde_json::json!([
+            {"role": "system", "content": "Answer in plain text. Be helpful and concise."},
+            {"role": "user", "content": "Check saved conversation"},
+        ]),
+        "old turns stay persisted and fit in the prompt only when within the history budget",
     );
     Ok(())
 }

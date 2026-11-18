@@ -282,6 +282,8 @@ def guest_manifest(name: str, target: Path, origin: str, model: str, *,
         config = {"conversation":"e2e","prompt":"> ","flow":"local."+shape+".turn-flow@1.0"}
     elif "prompt" in name:
         config = {"model":"mock" if name.startswith("echo-") else model,"system_prompt":"Answer in plain text. Be helpful and concise.","max_tokens":128}
+        if name == "harness-prompt":
+            config["max_history_bytes"] = 2048
     elif name=="openai-compat-provider":
         config = {"base_url":origin+"/v1","model":model,"secret_name":"api-key","timeout_ms":300000}
     write_json(directory/"config.json",config)
