@@ -329,13 +329,27 @@ pub(crate) fn has_verified_active_profile(config: &AppConfig) -> Result<bool> {
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+#[derive(Debug)]
+pub(crate) struct ActiveLaunchIdentityChanged;
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl std::fmt::Display for ActiveLaunchIdentityChanged {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("active Profile changed during native Launch metadata inspection")
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl std::error::Error for ActiveLaunchIdentityChanged {}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) fn require_current_launch_identity(
     config: &AppConfig,
     expected: &crate::host_contract::ExecutionProfileIdentity,
 ) -> Result<()> {
     let active = read_active_profile_snapshot(config)?.context("active Profile is unavailable")?;
     if !expected.matches(&active.identity) {
-        bail!("active Profile changed during native Launch metadata inspection");
+        return Err(ActiveLaunchIdentityChanged.into());
     }
     Ok(())
 }

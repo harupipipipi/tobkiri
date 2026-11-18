@@ -180,6 +180,7 @@ struct ApplicationProcessState {
 
 /// Compatibility alias for the existing Launcher composition root.
 pub(crate) type DefaultspackManager = ApplicationProcessManager;
+type MetadataReader<'a> = dyn Fn() -> Result<DefaultspackDesktopMetadata> + 'a;
 
 /// Compatibility alias for focused lifecycle tests and old internal names.
 type DefaultspackState = ApplicationProcessState;
@@ -213,7 +214,11 @@ impl ApplicationProcessManager {
     /// Start Defaultspack when this Launcher does not already own a live child.
     ///
     /// A restart already in progress is reused instead of spawning a duplicate.
-    pub(crate) fn start_or_reuse(&self, metadata: DefaultspackDesktopMetadata) -> Result<()> {
+    pub(crate) fn start_or_reuse(
+        &self,
+        metadata: DefaultspackDesktopMetadata,
+        read_metadata: &MetadataReader<'_>,
+    ) -> Result<()> {
         let mut replaced_child = None;
         let mut replaced_run_id = None;
         let should_spawn = {
@@ -317,7 +322,7 @@ impl ApplicationProcessManager {
             stop_child(&mut child)?;
         }
         if should_spawn {
-            self.spawn_and_track(metadata, "initial launch")?;
+            self.spawn_and_track(metadata, "initial launch", read_metadata)?;
         }
         Ok(())
     }
@@ -448,21 +453,25 @@ impl ApplicationProcessManager {
     }
 
     /// Start the background monitor. It exits when Launcher shutdown begins.
-    pub(crate) fn spawn_exit_monitor(manager: Arc<Self>) {
+    pub(crate) fn spawn_exit_monitor(manager: Arc<Self>, app: tauri::AppHandle) {
         thread::spawn(move || loop {
             if manager.shutdown_requested.load(Ordering::SeqCst) {
                 break;
             }
 
-            if let Err(error) = manager.monitor_once() {
+            let deadline = Instant::now() + crate::preparation_budget::TIMEOUT;
+            if let Err(error) = manager.monitor_once(&|| {
+                crate::dock_registration::read_launch_metadata(&app, &manager.config, deadline)
+            }) {
                 error!("Defaultspack lifecycle monitor failed: {error:#}");
             }
             thread::sleep(DEFAULTSPACK_MONITOR_INTERVAL);
         });
     }
 
-    fn monitor_once(&self) -> Result<()> {
+    fn monitor_once(&self, read_metadata: &MetadataReader<'_>) -> Result<()> {
         self.monitor_once_with(
+            read_metadata,
             || self.pending_restart_port_gate(),
             |pid, port| {
                 stop_adopted_defaultspack_listener(
@@ -476,10 +485,11 @@ impl ApplicationProcessManager {
 
     fn monitor_once_with(
         &self,
+        read_metadata: &MetadataReader<'_>,
         port_gate: impl FnOnce() -> Result<PendingRestartPort>,
         retire_listener: impl FnOnce(u32, u16) -> Result<()>,
     ) -> Result<()> {
-        let restart_needed = {
+        let pending_key = {
             let mut state = self.lock_state()?;
             if state.stop_requested || self.shutdown_requested.load(Ordering::SeqCst) {
                 return Ok(());
@@ -516,16 +526,13 @@ impl ApplicationProcessManager {
                 return Ok(());
             }
 
-            if state.launch_metadata.is_none() {
+            let Some(metadata) = state.launch_metadata.as_ref() else {
                 return Ok(());
-            }
+            };
+            let pending_key = application_instance_key(metadata);
             state.restart_in_progress = true;
-            true
+            pending_key
         };
-
-        if !restart_needed {
-            return Ok(());
-        }
 
         // A respawn can only claim the port when it is free. Defer while an
         // adopted Launcher-owned listener still serves it, and bound the
@@ -625,20 +632,19 @@ impl ApplicationProcessManager {
         // a Profile rotation (pack enable/disable, recapture) commits a new
         // execution identity, and respawning the stale one would publish a
         // Host contract the restored session cannot match.
-        let metadata =
-            match crate::dock_registration::read_defaultspack_desktop_metadata(&self.config) {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    self.defer_restart_for_resolution_failure(&error)?;
-                    return Ok(());
-                }
-            };
+        let metadata = match read_metadata() {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                self.defer_restart_for_resolution_failure(&error)?;
+                return Ok(());
+            }
+        };
 
         // The authority can rotate while a resolution is in flight. Read it
         // once more before this result may overwrite an identity adopted by a
         // concurrent launch, so an older in-flight resolution can never
         // displace a newer one.
-        match crate::dock_registration::read_defaultspack_desktop_metadata(&self.config) {
+        match read_metadata() {
             Ok(current) if application_metadata_matches(&current, &metadata) => {}
             Ok(_) => {
                 info!(
@@ -655,11 +661,19 @@ impl ApplicationProcessManager {
 
         {
             let mut state = self.lock_state()?;
-            state.consecutive_resolve_failures = 0;
             if state.stop_requested
                 || self.shutdown_requested.load(Ordering::SeqCst)
                 || state.child.is_some()
             {
+                state.restart_in_progress = false;
+                return Ok(());
+            }
+            if state.launch_metadata.as_ref().is_some_and(|current| {
+                !application_instance_key(current).matches(&pending_key)
+                    && !application_metadata_matches(current, &metadata)
+            }) {
+                // A foreground launch adopted another Profile while the
+                // monitor was resolving. Leave it for the next restart pass.
                 state.restart_in_progress = false;
                 return Ok(());
             }
@@ -675,19 +689,24 @@ impl ApplicationProcessManager {
             state.launch_metadata = Some(metadata.clone());
         }
 
-        if let Err(error) = self.spawn_and_track(metadata, "automatic restart") {
+        if let Err(error) = self.spawn_and_track(metadata, "automatic restart", read_metadata) {
             error!("Failed to restart Defaultspack: {error:#}");
         }
         Ok(())
     }
 
-    fn spawn_and_track(&self, metadata: DefaultspackDesktopMetadata, reason: &str) -> Result<()> {
+    fn spawn_and_track(
+        &self,
+        metadata: DefaultspackDesktopMetadata,
+        reason: &str,
+        read_metadata: &MetadataReader<'_>,
+    ) -> Result<()> {
         let run_id = managed_defaultspack_run_id();
         // The authority can rotate between the caller's resolution and this
         // spawn. Re-verify the resolved identity immediately before the Host
         // contract is written so a superseded execution identity is never
         // bound into a new child.
-        match crate::dock_registration::read_defaultspack_desktop_metadata(&self.config) {
+        match read_metadata() {
             Ok(current) if application_metadata_matches(&current, &metadata) => {}
             Ok(_) => {
                 info!(
@@ -744,24 +763,23 @@ impl ApplicationProcessManager {
         // The authority may also have rotated while the child was being
         // created; confirm the spawned identity once more before it is
         // registered as the guardian and allowed to own `state.child`.
-        let spawned_identity_is_current =
-            match crate::dock_registration::read_defaultspack_desktop_metadata(&self.config) {
-                Ok(current) => application_metadata_matches(&current, &metadata),
-                Err(error) => {
+        let spawned_identity_is_current = match read_metadata() {
+            Ok(current) => application_metadata_matches(&current, &metadata),
+            Err(error) => {
+                warn!(
+                    "Defaultspack {reason} could not re-verify the active execution Profile after spawn: {error:#}"
+                );
+                if let Err(stop_error) = stop_child(&mut child) {
                     warn!(
-                        "Defaultspack {reason} could not re-verify the active execution Profile after spawn: {error:#}"
+                        "Failed to stop the unverifiable Defaultspack child {pid}: {stop_error:#}"
                     );
-                    if let Err(stop_error) = stop_child(&mut child) {
-                        warn!(
-                            "Failed to stop the unverifiable Defaultspack child {pid}: {stop_error:#}"
-                        );
-                    }
-                    self.defer_restart_for_resolution_failure(&error)?;
-                    return Err(anyhow!(
-                        "Defaultspack {reason} discarded a child whose execution Profile could not be re-verified"
-                    ));
                 }
-            };
+                self.defer_restart_for_resolution_failure(&error)?;
+                return Err(error).context(format!(
+                    "Defaultspack {reason} discarded a child whose execution Profile could not be re-verified"
+                ));
+            }
+        };
         let mut registration_error = None;
 
         let should_stop_child = {
@@ -913,6 +931,10 @@ impl ApplicationProcessManager {
     /// pending launch is abandoned with a terminal log; a later launch
     /// request can still re-seed `launch_metadata` and retry.
     fn defer_restart_for_resolution_failure(&self, error: &anyhow::Error) -> Result<()> {
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        if error.is::<crate::defaultspack_authority::ActiveLaunchIdentityChanged>() {
+            return self.clear_restart_in_progress();
+        }
         let mut state = self.lock_state()?;
         state.restart_in_progress = false;
         state.consecutive_resolve_failures = state.consecutive_resolve_failures.saturating_add(1);
@@ -1593,6 +1615,10 @@ mod tests {
         )
     }
 
+    fn read_test_metadata(manager: &DefaultspackManager) -> Result<DefaultspackDesktopMetadata> {
+        crate::dock_registration::read_defaultspack_desktop_metadata(&manager.config)
+    }
+
     fn test_execution_identity(
         profile_id: &str,
         profile_revision: &str,
@@ -1647,7 +1673,9 @@ mod tests {
             state.launch_metadata = Some(stale.clone());
         }
 
-        manager.start_or_reuse(requested.clone()).unwrap();
+        manager
+            .start_or_reuse(requested.clone(), &|| panic!("restart already in progress"))
+            .unwrap();
 
         let state = manager.lock_state().unwrap();
         assert!(state.restart_in_progress);
@@ -1672,7 +1700,9 @@ mod tests {
             state.launch_metadata = None;
         }
 
-        manager.start_or_reuse(requested.clone()).unwrap();
+        manager
+            .start_or_reuse(requested.clone(), &|| panic!("restart already in progress"))
+            .unwrap();
 
         let state = manager.lock_state().unwrap();
         assert!(state.restart_in_progress);
@@ -1699,7 +1729,10 @@ mod tests {
         }
 
         manager
-            .start_or_reuse(DefaultspackDesktopMetadata::test_metadata(identity.clone()))
+            .start_or_reuse(
+                DefaultspackDesktopMetadata::test_metadata(identity.clone()),
+                &|| panic!("restart already in progress"),
+            )
             .unwrap();
 
         let state = manager.lock_state().unwrap();
@@ -2240,7 +2273,9 @@ mod tests {
             state.remember_adopted_listener(listener_pid, port);
         }
 
-        manager.monitor_once().unwrap();
+        manager
+            .monitor_once(&|| read_test_metadata(&manager))
+            .unwrap();
         assert!(listener.borrow().is_some());
         assert!(manager.debug_approval.current_guardian().is_err());
         {
@@ -2254,6 +2289,7 @@ mod tests {
         let retired = std::cell::Cell::new(false);
         manager
             .monitor_once_with(
+                &|| panic!("an occupied port must defer authority resolution"),
                 || {
                     assert!(listener.borrow().is_some());
                     Ok(PendingRestartPort::AdoptedListener(listener_pid))
@@ -2280,7 +2316,9 @@ mod tests {
         // The next pass proceeds to authority resolution instead of being
         // deferred by the same orphan forever. This fixture has no signed
         // catalog, so resolution must enter its bounded failure path.
-        manager.monitor_once().unwrap();
+        manager
+            .monitor_once(&|| read_test_metadata(&manager))
+            .unwrap();
         let state = manager.lock_state().unwrap();
         assert_eq!(state.consecutive_resolve_failures, 1);
         assert!(state.next_restart_at.is_some());
@@ -2338,7 +2376,9 @@ mod tests {
 
         // The test fixture has no signed catalog, so resolution fails and the
         // monitor must defer with a recorded failure instead of spinning.
-        manager.monitor_once().unwrap();
+        manager
+            .monitor_once(&|| read_test_metadata(&manager))
+            .unwrap();
 
         let state = manager.lock_state().unwrap();
         assert!(!state.restart_in_progress);
@@ -2356,7 +2396,9 @@ mod tests {
             state.consecutive_resolve_failures = DEFAULTSPACK_MAX_RESOLUTION_FAILURES - 1;
         }
 
-        manager.monitor_once().unwrap();
+        manager
+            .monitor_once(&|| read_test_metadata(&manager))
+            .unwrap();
 
         let state = manager.lock_state().unwrap();
         assert!(!state.restart_in_progress);
@@ -2375,7 +2417,7 @@ mod tests {
         }
 
         let error = manager
-            .spawn_and_track(metadata, "test launch")
+            .spawn_and_track(metadata, "test launch", &|| read_test_metadata(&manager))
             .unwrap_err();
 
         assert!(format!("{error:#}").contains("could not re-verify"));
@@ -2383,6 +2425,41 @@ mod tests {
         assert!(!state.restart_in_progress);
         assert_eq!(state.consecutive_resolve_failures, 1);
         assert!(state.next_restart_at.is_some());
+    }
+
+    #[test]
+    fn restart_resolution_does_not_replace_metadata_adopted_by_a_concurrent_launch() {
+        let manager = test_manager();
+        let pending = pending_restart_metadata();
+        let adopted = DefaultspackDesktopMetadata::test_metadata(test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-rotated",
+            &"b".repeat(64),
+        ));
+        manager.lock_state().unwrap().launch_metadata = Some(pending.clone());
+        let reads = std::cell::Cell::new(0);
+        manager
+            .monitor_once_with(
+                &|| {
+                    reads.set(reads.get() + 1);
+                    if reads.get() == 2 {
+                        manager.start_or_reuse(adopted.clone(), &|| {
+                            panic!("foreground launch must reuse the in-flight restart")
+                        })?;
+                    }
+                    Ok(pending.clone())
+                },
+                || Ok(PendingRestartPort::Free),
+                |_, _| panic!("free port has no listener to retire"),
+            )
+            .unwrap();
+        assert_eq!(reads.get(), 2);
+        let state = manager.lock_state().unwrap();
+        assert!(!state.restart_in_progress);
+        assert!(state.child.is_none());
+        assert_eq!(state.consecutive_resolve_failures, 0);
+        assert_eq!(state.launch_metadata.as_ref(), Some(&adopted));
     }
 
     #[test]

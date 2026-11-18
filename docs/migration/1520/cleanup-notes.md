@@ -3889,6 +3889,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   前回の原本と一致した。全221ファイルの参照ハッシュとsourceを照合し、変わった時計値と
   参照ハッシュを保存した。同じCIの独立した旧Profile解決は現行の2つのcatalog JSONが
   固定原本と異なり停止しており、この再生成でその比較が通ったとは数えない。
+  現行GUIのProvider設定は、署名済みルートを通じて `interactive_effect.manage` が
+  `ProviderRegistryHostFactoryV4` のprepare/executeを呼ぶ。Rust側の設定prepareを
+  この固定バインディングと既存Profile Registryの読み取りへ接続するのが次の置換点。
+  Host側の世代予算と専用承認、実行時の同じCredential Brokerを維持する。
+  `component_store.rs` の段階書込みは現行の結果検証用で、実際のCASが後から実行されるため、
+  設定の保存確認・不確定応答・資格情報回収にはそのまま使えない。承認済み経路で一つの
+  Registryへ確定し、実際のCAS結果を設定処理に返すまで、製品設定の切替は未実施。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と
@@ -4619,7 +4626,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   親の期限・キャンセルで発行を止め、物理後処理を待つ。完了後は現行active Profileと照合してから
   既存のHost契約発行へ進む。別のCoreや承認用Hostは生成しない。Coreの物理試験8件が通過。
   元Launcher fixtureに新旧メタデータの比較を追加。ローカル容量のためTauriのビルドはCIで行う。
-  監視側の再読とPythonプロセスの起動、通常画面のRegistry・会話の接続は後続。
+  既存の起動前後と自動再起動の照合も同じ読取りへ接続し、元の一回の準備期限を共有する。
+  active Profileとの再照合を管理ワーカーの期限内に移し、Profile交代は読取り失敗の上限に加算しない。
+  自動再起動中に前景で採用された新しいProfileを古い結果で上書きしない回帰試験をmacOS CIに追加。
+  終了時は読取りを待つ起動元を解除し、ワーカーの物理後処理は既存の管理下に残す。
+  Pythonプロセスの起動と通常画面のRegistry・会話の接続は後続。
   `2535f6dbd` は `adopt_owned_bundle` のPack再パースを外し、構造と意味を検証した同じ文書からpin情報を抽出
   する。必要な候補だけPack ID・ハッシュ・種類・依存IDを保持し、全行受領後にロック順で採用。
   旧readerとの直接比較で、非ASCIIを含む依存ID順、設定なしと空の違い、欠損時の結果が一致した。

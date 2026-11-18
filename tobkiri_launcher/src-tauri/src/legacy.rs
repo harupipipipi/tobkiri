@@ -4542,7 +4542,10 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
         Arc::clone(&app.state::<ShutdownState>().inner().0),
         panel_bootstrap_secret.clone(),
     );
-    DefaultspackManager::spawn_exit_monitor(defaultspack_manager_for_monitor);
+    DefaultspackManager::spawn_exit_monitor(
+        defaultspack_manager_for_monitor,
+        app.handle().clone(),
+    );
 
     std::thread::spawn(move || {
         // --- Fast path: existing authenticated kernel ---

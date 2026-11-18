@@ -754,7 +754,8 @@ fn ensure_defaultspack_desktop_ready(
     let api_token = read_desktop_api_token_from_config(config)
         .context("failed to read Viewer local auth token for Defaultspack launch")?;
     let panel_bootstrap_secret = read_panel_bootstrap_secret_from_config(config)?;
-    let metadata = match read_launch_metadata(app, config, deadline) {
+    let read_metadata = || read_launch_metadata(app, config, deadline);
+    let metadata = match read_metadata() {
         Ok(m) => {
             info!("launch_defaultspack_desktop_impl: metadata loaded (port={}, entrypoint={}, argv_count={}, working_dir={})",
                 m.port, m.entrypoint.display(), m.argv.len(), m.app_working_dir.display());
@@ -845,7 +846,7 @@ fn ensure_defaultspack_desktop_ready(
         }
         info!("launch_defaultspack_desktop_impl: health check indicates server not ready; ensuring supervised pack-shell is running...");
         crate::preparation_budget::check(deadline)?;
-        if let Err(error) = manager.start_or_reuse(metadata.clone()) {
+        if let Err(error) = manager.start_or_reuse(metadata.clone(), &read_metadata) {
             error!("launch_defaultspack_desktop_impl: failed to start supervised pack-shell: {error:#}");
             info!(
                 "launch_defaultspack_desktop_impl: pack_shell_path={}",
@@ -886,7 +887,7 @@ fn ensure_defaultspack_desktop_ready(
         crate::preparation_budget::check(deadline)?;
         manager.stop()?;
         crate::preparation_budget::check(deadline)?;
-        manager.start_or_reuse(metadata.clone())?;
+        manager.start_or_reuse(metadata.clone(), &read_metadata)?;
         wait_for_defaultspack_http_ready(
             metadata.port,
             &panel_bootstrap_secret,
@@ -1048,19 +1049,14 @@ pub(crate) fn read_defaultspack_desktop_metadata(
     )
 }
 
-fn read_launch_metadata(
+pub(crate) fn read_launch_metadata(
     app: &AppHandle,
     config: &AppConfig,
     deadline: Instant,
 ) -> AnyResult<DefaultspackDesktopMetadata> {
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     if crate::kernel_manager::native_first_setup_enabled(config) {
-        let metadata = crate::native_harness_bootstrap::read_launch_metadata(app, deadline)?;
-        crate::defaultspack_authority::require_current_launch_identity(
-            config,
-            metadata.execution_identity(),
-        )?;
-        return Ok(metadata);
+        return crate::native_harness_bootstrap::read_launch_metadata(app, deadline);
     }
     let _ = (app, deadline);
     read_defaultspack_desktop_metadata(config)

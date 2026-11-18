@@ -2,19 +2,19 @@
 
 use std::{
     panic::{catch_unwind, AssertUnwindSafe},
-    sync::mpsc,
-    time::Instant,
+    sync::{atomic::Ordering, mpsc},
+    time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use tauri::{AppHandle, Manager};
 
 use super::{JobTicket, NativeRuntimeState, WorkerExit};
 use crate::{
-    defaultspack_authority::SignedApplicationResolver,
+    defaultspack_authority::{require_current_launch_identity, SignedApplicationResolver},
     dock_registration::{assemble_defaultspack_desktop_metadata, DefaultspackDesktopMetadata},
     native_declared_artifacts::collect_for_native_launch,
-    preparation_budget, AppConfig,
+    preparation_budget, AppConfig, ShutdownState,
 };
 
 pub(crate) fn read_launch_metadata(
@@ -27,6 +27,9 @@ pub(crate) fn read_launch_metadata(
         .context("native Launch runtime owner is unavailable")?
         .inner()
         .clone();
+    let shutdown = app
+        .try_state::<ShutdownState>()
+        .context("native Launch shutdown state is unavailable")?;
     let jobs = runtime.0.jobs.clone();
     let app = app.clone();
     let (send, receive) = mpsc::sync_channel(1);
@@ -38,9 +41,22 @@ pub(crate) fn read_launch_metadata(
         let _ = send.send(result);
         WorkerExit { cleanup_verified }
     })?;
-    receive
-        .recv_timeout(preparation_budget::remaining(deadline)?)
-        .context("native Launch metadata is unavailable")?
+    loop {
+        if shutdown.inner().0.load(Ordering::Acquire) {
+            bail!("native Launch metadata observation stopped during shutdown");
+        }
+        let timeout = preparation_budget::remaining(deadline)?.min(Duration::from_millis(100));
+        match receive.recv_timeout(timeout) {
+            Ok(result) => {
+                preparation_budget::check(deadline)?;
+                return result;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(error) => {
+                return Err(error).context("native Launch metadata worker is unavailable")
+            }
+        }
+    }
 }
 
 async fn collect_on_worker(
@@ -76,6 +92,8 @@ async fn collect_on_worker(
         }
     };
     let metadata = result.and_then(|(sources, contributions)| {
+        preparation_budget::check(deadline)?;
+        require_current_launch_identity(&config, &identity)?;
         preparation_budget::check(deadline)?;
         job.ensure_accepting(&runtime.0.jobs)?;
         assemble_defaultspack_desktop_metadata(
