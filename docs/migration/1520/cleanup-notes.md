@@ -4197,6 +4197,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   初回保存も既存の4相writerとHost pointer発行を再利用できる。保存前にProfile→Lock→Planの
   schema検証を行い、既存のrecord graph検査からActivationに依存しない部分を共有できる。
   仮のActivationを作らず、原本どおりrecover後、artifactの検証と予約の前で3レコードを検証する。
+  `43d953f28` は初回発行の元Bundle再読込でも、同じloaderが実際に取得したPack pinを保持する。
+  原本は最後に独立ロードした同梱catalogのProfileとShellを参照する。発行のartifact照合は
+  このpinと再読込済みProfileを使う必要があり、Host catalogへ追加された外部Packは含めない。
+  `4ec69ca5f` は既存の復旧と旧版activation直前のpending処理を共用する。ロック内で取得した
+  journalを使い、既存の予約状態に応じて中断を整理するか、ロックを解放して再発行へ進む。
+  `3f22710d3` はProfile・Lock・Planのschemaとgraph検証から、保存済みActivationへの依存を
+  外した。元Pythonの実resolverが返した3レコードで、実Authorityの予約、4相writer、
+  ワークスペースからの照合済みの再読込に成功した。実Packのハッシュはこのテストでは
+  専用の検証関数に置き換えてあり、実Launcherと発行処理への接続が残る。
+  Rust 226件、原本データを含む追加の検証2件、strict Clippy、workflow補助22件が通過した。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
