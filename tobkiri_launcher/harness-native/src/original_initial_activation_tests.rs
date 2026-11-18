@@ -54,7 +54,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             );
             let approved =
                 CoreValue::parse_guest(&serde_json::to_vec(approved).unwrap(), budget).unwrap();
-            let resolved = load_document(&witness.join("resolved-records.json"), budget);
+            let original_resolved = load_document(&witness.join("resolved-records.json"), budget);
             let definition = load_document(&witness.join("reread-source.json"), budget);
             let expected = &intent["candidate"];
             let digest = |key| Digest::parse(expected[key].as_str().unwrap()).unwrap();
@@ -62,7 +62,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             let (candidate, resolved) = BootstrapActivationCandidate::fixture(
                 approved.share(),
                 definition.share(),
-                resolved,
+                original_resolved.share(),
                 Digest::parse(row["reread_bundle_digest"].as_str().unwrap()).unwrap(),
                 [
                     definition_digest.clone(),
@@ -198,12 +198,44 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             let host_pointer = fs::read(profiles.join("active.json")).unwrap();
             let workspace = root.join("workspaces/defaults/activation");
             let workspace_pointer = fs::read(workspace.join("active.json")).unwrap();
-            assert_eq!(
-                read_registered(owner, read, cancellation, budget, &witness, artifacts).unwrap(),
-                RegisteredSnapshotReached::CatalogPolicy {
-                    successor_required: false
-                },
-            );
+            let check_snapshot = |witness: &Path, successor_required: bool| {
+                let RegisteredSnapshotReached::CatalogPolicy {
+                    registered_profile,
+                    active_profile,
+                    active_plan,
+                    verified_definition_digest,
+                } = read_registered(owner, read, cancellation, budget, witness, artifacts).unwrap()
+                else {
+                    panic!("expected the authenticated catalog policy inputs");
+                };
+                let assert_record = |actual: &CoreValue, expected: &CoreValue| {
+                    assert_eq!(
+                        actual.encode_guest(budget).unwrap().as_bytes(),
+                        expected.encode_guest(budget).unwrap().as_bytes()
+                    );
+                };
+                assert_record(&registered_profile, &definition);
+                assert_record(
+                    &active_profile,
+                    &original_resolved.get_key("profile").unwrap(),
+                );
+                assert_eq!(
+                    verified_definition_digest.as_str(),
+                    Some(definition_digest.as_str())
+                );
+                if successor_required {
+                    assert!(active_plan.is_none());
+                } else {
+                    assert_record(
+                        &active_plan.unwrap(),
+                        &original_resolved.get_key("plan").unwrap(),
+                    );
+                }
+            };
+            check_snapshot(&witness, false);
+            let bundled_successor = root.join("successor-catalog");
+            seed_successor_catalog(&witness, &bundled_successor);
+            check_snapshot(&bundled_successor, true);
             assert_eq!(
                 fs::read(profiles.join("active.json")).unwrap(),
                 host_pointer
@@ -231,6 +263,29 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             ));
         });
     }
+}
+
+fn seed_successor_catalog(original: &Path, successor: &Path) {
+    fs::create_dir(successor).unwrap();
+    let revision = Value::from(Digest::hash(b"successor shell definition").to_string());
+    // Retain the physical artifact and Pack pin while independently changing
+    // the bundled Shell definition revision that triggers reconfirmation.
+    for (name, shell_in_profile) in [("reread-source.json", true), ("reread-shell.json", false)] {
+        let mut record: Value =
+            serde_json::from_slice(&fs::read(original.join(name)).unwrap()).unwrap();
+        let shell = if shell_in_profile {
+            &mut record["shell"]
+        } else {
+            &mut record
+        };
+        shell["definition_revision"] = revision.clone();
+        fs::write(successor.join(name), serde_json::to_vec(&record).unwrap()).unwrap();
+    }
+    fs::copy(
+        original.join("reread-pack.json"),
+        successor.join("reread-pack.json"),
+    )
+    .unwrap();
 }
 
 fn read_registered(

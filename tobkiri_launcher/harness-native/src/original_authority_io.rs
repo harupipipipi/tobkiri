@@ -708,7 +708,7 @@ pub(super) const CAPTURE_DENIAL_CLASS: &str =
 
 /// Enter the actual Store on the root already selected by Setup.
 /// Unlike a resolver snapshot, the constructor also runs for an absent DB.
-#[cfg(unix)]
+#[cfg(all(test, unix))]
 pub(super) fn with_registered_store<S: OriginalAuthorityOwner, T>(
     op: &Operation<'_, S>,
     root: &Path,

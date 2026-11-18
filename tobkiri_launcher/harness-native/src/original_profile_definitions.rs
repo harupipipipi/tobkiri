@@ -283,6 +283,26 @@ pub(super) struct RegisteredProfile {
 }
 
 #[cfg(unix)]
+impl RegisteredProfile {
+    /// Project the exact document already read by get_profile before Authority entry.
+    pub(super) fn review_profile<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<CoreValue> {
+        let bytes = json::canonical_subtree(
+            &self.state.doc,
+            self.profile.references[2],
+            None,
+            op,
+            budget,
+        )?;
+        CoreValue::parse_guest(&bytes, budget)
+            .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Source))
+    }
+}
+
+#[cfg(unix)]
 pub(super) fn get_profile<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,

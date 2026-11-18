@@ -331,9 +331,14 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
         )
         .await;
     BootstrapReviewFailure::NotBound(match reached {
-        Ok(RegisteredSnapshotReached::CatalogPolicy { successor_required }) => {
-            BootstrapReviewReachpoint::ActiveCandidateCatalogPolicyNotBound { successor_required }
-        }
+        Ok(RegisteredSnapshotReached::CatalogPolicy {
+            registered_profile: _registered_profile,
+            active_profile: _active_profile,
+            active_plan,
+            verified_definition_digest: _verified_definition_digest,
+        }) => BootstrapReviewReachpoint::ActiveCandidateCatalogPolicyNotBound {
+            successor_required: active_plan.is_none(),
+        },
         Ok(RegisteredSnapshotReached::SnapshotSchemas) => {
             BootstrapReviewReachpoint::ActiveCandidateSnapshotSchemasNotBound
         }

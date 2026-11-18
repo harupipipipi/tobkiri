@@ -16,7 +16,7 @@ pub(super) struct ActiveCandidate {
     #[cfg(unix)]
     pub(super) pointer: active_profile::LoadedPointer,
     #[cfg(unix)]
-    _registered: definitions::RegisteredProfile,
+    pub(super) registered: definitions::RegisteredProfile,
     #[cfg(unix)]
     pub(super) workspace: Funded<PathBuf>,
 }
@@ -703,7 +703,7 @@ fn select<S: OriginalAuthorityOwner>(
         let workspace = workspace_path(op, root, profile_id)?;
         Ok(Ok(ActiveCandidate {
             pointer,
-            _registered: registered,
+            registered,
             workspace,
         }))
     }

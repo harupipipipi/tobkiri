@@ -265,12 +265,13 @@ pub(super) fn verify_resolved<S: crate::BootstrapReviewOwner>(
     })
 }
 
-/// Retain the four canonical record identities and the small fields consumed
-/// after dropping the workspace lock. Only the Shell is read by artifact lookup.
+/// Retain the canonical record identities and data consumed after unlocking.
+/// Only registered Setup needs the complete Profile and Plan for its policy.
 pub(super) fn retain_active<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &Arc<dyn AllocationBudget>,
     records: SnapshotRecords<'_>,
+    projection: SnapshotProjection,
 ) -> Result<ActiveSnapshot> {
     let capacity = || OriginalAuthorityError::capacity(GRAPH);
     let to_core = |value: View<'_>| {
@@ -290,7 +291,18 @@ pub(super) fn retain_active<S: OriginalAuthorityOwner>(
         verified_digest(records.plan, "plan_digest")?,
         records.activation.digest(None, op, budget)?,
     ];
-    let artifact_profile = retain_artifact_profile(op, budget, records.profile)?;
+    let review_records = match projection {
+        SnapshotProjection::Identity => None,
+        SnapshotProjection::RegisteredReview => Some(ActiveReviewRecords {
+            profile: to_core(records.profile)?,
+            plan: to_core(records.plan)?,
+        }),
+    };
+    let artifact_profile = if let Some(review) = &review_records {
+        review.profile.share()
+    } else {
+        retain_artifact_profile(op, budget, records.profile)?
+    };
     let candidate = CoreValue::object_shared(
         [
             Ok(("profile_id", to_core(records.profile.field("profile_id")?)?)),
@@ -319,6 +331,7 @@ pub(super) fn retain_active<S: OriginalAuthorityOwner>(
     .map_err(|_| capacity())?;
     Ok(ActiveSnapshot {
         artifact_profile,
+        review_records,
         activation_profile_id: to_core(records.activation.field("profile_id")?)?,
         catalog_revision: to_core(records.plan.field("catalog_revision")?)?,
         records: seals,

@@ -2,11 +2,16 @@
 use super::*;
 use crate::original_authority::catalog::CatalogIo;
 use std::sync::Mutex;
-use workspace_active::{ActiveSnapshotRead, ProfileCheck};
+use workspace_active::{ActiveSnapshot, ActiveSnapshotRead, ProfileCheck, SnapshotProjection};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) enum RegisteredSnapshotReached {
-    CatalogPolicy { successor_required: bool },
+    CatalogPolicy {
+        registered_profile: CoreValue,
+        active_profile: CoreValue,
+        active_plan: Option<CoreValue>,
+        verified_definition_digest: CoreValue,
+    },
     LegacySuccessor,
     SnapshotSchemas,
 }
@@ -57,15 +62,26 @@ impl PublicationRead {
         match reached {
             Snapshot::Verified {
                 identity,
-                successor_required,
+                active_profile,
+                active_plan,
             } => {
-                if !matches_host_pointer(&identity, &candidate.pointer) {
+                let verified_definition_digest = identity
+                    .get_key("profile_definition_digest")
+                    .filter(|digest| digest.as_str().is_some());
+                let Some(verified_definition_digest) = verified_definition_digest
+                    .filter(|_| matches_host_pointer(&identity, &candidate.pointer))
+                else {
                     return Err(raw(
                         "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict",
                         "bootstrap review does not match the verified active definition",
                     ));
-                }
-                Ok(RegisteredSnapshotReached::CatalogPolicy { successor_required })
+                };
+                Ok(RegisteredSnapshotReached::CatalogPolicy {
+                    registered_profile: candidate.registered.review_profile(&op, budget)?,
+                    active_profile,
+                    active_plan,
+                    verified_definition_digest,
+                })
             }
             Snapshot::Boundary(reached) => Ok(reached),
         }
@@ -75,9 +91,27 @@ impl PublicationRead {
 enum Snapshot {
     Verified {
         identity: CoreValue,
-        successor_required: bool,
+        active_profile: CoreValue,
+        active_plan: Option<CoreValue>,
     },
     Boundary(RegisteredSnapshotReached),
+}
+
+impl Snapshot {
+    fn verified(mut active: ActiveSnapshot, verification: ActiveArtifactVerification) -> Self {
+        let records = active
+            .review_records
+            .take()
+            .expect("first registered Setup snapshot has review records");
+        Self::Verified {
+            identity: active.into_candidate(),
+            active_profile: records.profile,
+            // The original reconfirmation error carries the Profile and
+            // identities. The old Plan participates only on the current path.
+            active_plan: (verification == ActiveArtifactVerification::Current)
+                .then_some(records.plan),
+        }
+    }
 }
 
 struct RegisteredActivation<'a, 'op, 'host, S> {
@@ -93,7 +127,9 @@ struct RegisteredActivation<'a, 'op, 'host, S> {
 impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
     async fn load_snapshot(&self) -> Result<Snapshot> {
         loop {
-            let Some(first) = self.resume(self.read().await?)? else {
+            let Some(first) =
+                self.resume(self.read(SnapshotProjection::RegisteredReview).await?)?
+            else {
                 continue;
             };
             let Some(active) = first.current else {
@@ -108,22 +144,16 @@ impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
                 )
             })?;
             if verified == ActiveArtifactVerification::SuccessorNeedsReconfirmation {
-                return Ok(Snapshot::Verified {
-                    identity: active.into_candidate(),
-                    successor_required: true,
-                });
+                return Ok(Snapshot::verified(active, verified));
             }
-            let Some(second) = self.resume(self.read().await?)? else {
+            let Some(second) = self.resume(self.read(SnapshotProjection::Identity).await?)? else {
                 continue;
             };
             let Some(current) = second.current else {
                 return Ok(Self::boundary(second));
             };
             active.require_same_activation(&current)?;
-            return Ok(Snapshot::Verified {
-                identity: active.into_candidate(),
-                successor_required: false,
-            });
+            return Ok(Snapshot::verified(active, verified));
         }
     }
 
@@ -134,7 +164,10 @@ impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
         })
     }
 
-    async fn read(&self) -> Result<ControlFlow<PendingRepublish, ActiveSnapshotRead>> {
+    async fn read(
+        &self,
+        projection: SnapshotProjection,
+    ) -> Result<ControlFlow<PendingRepublish, ActiveSnapshotRead>> {
         self.workspace
             .recover_async(self.op, async |state, workspace_digest, journal| {
                 if let Some(pending) = pending_reservation::recover_pending_locked(
@@ -147,7 +180,7 @@ impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
                 )? {
                     return Ok(ControlFlow::Break(pending));
                 }
-                let read = workspace_active::read(
+                let read = workspace_active::read_with_projection(
                     self.op,
                     state,
                     workspace_digest,
@@ -156,7 +189,7 @@ impl<S: crate::BootstrapReviewOwner> RegisteredActivation<'_, '_, '_, S> {
                     self.store,
                     // Legacy resolution against this bundled catalog is a later
                     // binding. Never drive the journal recovery's replacement resolver.
-                    (self.profile_id, async |_| Ok(None)),
+                    (self.profile_id, projection, async |_| Ok(None)),
                 )
                 .await?;
                 Ok(ControlFlow::Continue(read))

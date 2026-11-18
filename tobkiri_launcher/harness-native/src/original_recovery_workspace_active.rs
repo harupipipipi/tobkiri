@@ -63,8 +63,21 @@ pub(super) struct ActiveSnapshot {
     pub(super) artifact_profile: CoreValue,
     pub(super) activation_profile_id: CoreValue,
     pub(super) catalog_revision: CoreValue,
+    pub(super) review_records: Option<ActiveReviewRecords>,
     records: [Digest; 4],
     candidate: CoreValue,
+}
+
+#[derive(Debug)]
+pub(super) struct ActiveReviewRecords {
+    pub(super) profile: CoreValue,
+    pub(super) plan: CoreValue,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum SnapshotProjection {
+    Identity,
+    RegisteredReview,
 }
 
 impl ActiveSnapshot {
@@ -166,6 +179,31 @@ pub(super) async fn read<S: crate::BootstrapReviewOwner>(
         impl AsyncFnOnce(LegacyResolverInput) -> Result<Option<CoreValue>>,
     ),
 ) -> Result<ActiveSnapshotRead> {
+    read_with_projection(
+        op,
+        state,
+        workspace_digest,
+        budget,
+        schemas,
+        store,
+        (profile_id, SnapshotProjection::Identity, resolve_legacy),
+    )
+    .await
+}
+
+pub(super) async fn read_with_projection<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+    state: &Directory,
+    workspace_digest: &Digest,
+    budget: &Arc<dyn AllocationBudget>,
+    schemas: Option<BoundProfileSchemas>,
+    store: &crate::original_authority::io::Store<'_, '_, S>,
+    (profile_id, projection, resolve_legacy): (
+        &str,
+        SnapshotProjection,
+        impl AsyncFnOnce(LegacyResolverInput) -> Result<Option<CoreValue>>,
+    ),
+) -> Result<ActiveSnapshotRead> {
     let mut current = None;
     let mut legacy_successor = None;
     let prefix = read_records(
@@ -177,7 +215,12 @@ pub(super) async fn read<S: crate::BootstrapReviewOwner>(
         async |snapshot| {
             let check = snapshot_graph::verify(op, store, budget, snapshot, profile_id)?;
             if check == ProfileCheck::NeedsArtifactReverification {
-                current = Some(snapshot_graph::retain_active(op, budget, snapshot.records)?);
+                current = Some(snapshot_graph::retain_active(
+                    op,
+                    budget,
+                    snapshot.records,
+                    projection,
+                )?);
             }
             if check == ProfileCheck::NeedsLegacySuccessor {
                 let input =
