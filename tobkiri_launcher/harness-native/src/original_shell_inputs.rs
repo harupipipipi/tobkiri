@@ -20,12 +20,25 @@ struct Entry {
 pub(super) struct ShellInputs(Funded<Vec<Entry>>);
 
 #[derive(Default)]
-pub(super) struct PackPins(Option<Funded<Vec<Option<PackPin>>>>);
+pub(super) struct PackPins {
+    pins: Option<Funded<Vec<Option<PackPin>>>>,
+    retain_dependencies: bool,
+}
+
+impl PackPins {
+    pub(super) fn with_dependencies() -> Self {
+        Self {
+            retain_dependencies: true,
+            ..Self::default()
+        }
+    }
+}
 
 struct PackPin {
     id: CoreValue,
     digest: Digest,
     shell: bool,
+    dependencies: Option<CoreValue>,
 }
 
 pub(super) struct SelectedShell {
@@ -79,19 +92,19 @@ impl CatalogIo {
         if !pack_entry(lock, entry) {
             return Ok(());
         }
-        let allocation = if pins.0.is_none() {
+        let allocation = if pins.pins.is_none() {
             charge_work(&self.budget, (entries.len() as u64).saturating_mul(16))?;
             let count = entries.iter().filter(|&&id| pack_entry(lock, id)).count();
             Some(funded_entries(op, count)?)
         } else {
             None
         };
-        let pin = pack_pin(bytes, &self.budget)?;
+        let pin = pack_pin(bytes, pins.retain_dependencies, &self.budget)?;
         let pins = &mut self
             .recovery_pack_pins
             .as_mut()
             .expect("retained Pack pins")
-            .0;
+            .pins;
         if let Some(allocation) = allocation {
             *pins = Some(allocation);
         }
@@ -407,7 +420,9 @@ impl CatalogIo {
             .ok_or_else(|| shell_denied("active Profile Shell binding is unavailable"))
     }
 
-    pub(super) fn require_recovery_catalog<S: OriginalAuthorityOwner>(
+    pub(in crate::original_authority::io::publication) fn require_recovery_catalog<
+        S: OriginalAuthorityOwner,
+    >(
         &self,
         op: &Operation<'_, S>,
     ) -> Result<()> {
@@ -548,12 +563,22 @@ impl CatalogIo {
         Ok(self.bundled_pack_pin(id)?.map(|pin| pin.digest.as_str()))
     }
 
+    /// Read the dependency keys after the caller verifies this catalog's custody.
+    pub(in crate::original_authority::io::publication) fn bundled_review_dependencies(
+        &self,
+        id: &str,
+    ) -> Result<&CoreValue> {
+        self.bundled_pack_pin(id)?
+            .and_then(|pin| pin.dependencies.as_ref())
+            .ok_or_else(OriginalAuthorityError::unavailable)
+    }
+
     fn bundled_pack_pin(&self, id: &str) -> Result<Option<&PackPin>> {
         let pins = &self
             .recovery_pack_pins
             .as_ref()
             .ok_or_else(OriginalAuthorityError::unavailable)?
-            .0;
+            .pins;
         if let Some(pins) = pins {
             charge_work(
                 &self.budget,
@@ -635,7 +660,11 @@ fn pack_entry(lock: &Document, entry: usize) -> bool {
         .is_some_and(|kind| lock.string_is(kind, "pack"))
 }
 
-fn pack_pin(bytes: &[u8], budget: &Arc<dyn AllocationBudget>) -> Result<Option<PackPin>> {
+fn pack_pin(
+    bytes: &[u8],
+    retain_dependencies: bool,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<PackPin>> {
     let manifest = match CoreValue::parse_guest(bytes, budget) {
         Ok(manifest) => manifest,
         // Leave invalid bytes to the actual loader's validation. A missing
@@ -657,10 +686,41 @@ fn pack_pin(bytes: &[u8], budget: &Arc<dyn AllocationBudget>) -> Result<Option<P
     let Some(id) = id.as_str() else {
         return Ok(None);
     };
-    // Copy only the Pack ID. Sharing the original field would retain the
-    // entire manifest's graph through the recovery continuation.
+    // Copy only consumed fields. Sharing a field would retain the entire
+    // manifest's graph through the recovery continuation.
     let id = CoreValue::string(id, budget).map_err(|_| source_capacity())?;
-    Ok(Some(PackPin { id, digest, shell }))
+    let dependencies = retain_dependencies
+        .then(|| pack_dependency_ids(&manifest, budget))
+        .transpose()?
+        .flatten();
+    Ok(Some(PackPin {
+        id,
+        digest,
+        shell,
+        dependencies,
+    }))
+}
+
+fn pack_dependency_ids(
+    manifest: &CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<CoreValue>> {
+    let Some(dependencies) = manifest
+        .get_key("requirements")
+        .and_then(|requirements| requirements.get_key("pack_dependencies"))
+    else {
+        return Ok(None);
+    };
+    let Some(dependencies) = dependencies.object() else {
+        return Ok(None);
+    };
+    let capacity = |_| source_capacity();
+    let mut ids = CoreValue::array_builder(budget, dependencies.len()).map_err(capacity)?;
+    for (id, _) in dependencies.iter() {
+        ids.push(CoreValue::string(id, budget).map_err(capacity)?)
+            .map_err(capacity)?;
+    }
+    Ok(Some(ids.finish().map_err(capacity)?))
 }
 
 fn matching_row(

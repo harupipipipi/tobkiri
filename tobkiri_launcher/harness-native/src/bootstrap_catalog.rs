@@ -200,11 +200,10 @@ async fn load_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         Err(error) => return Ok(Err(error)),
     };
     #[cfg(unix)]
-    if matches!(
-        caller,
-        ReviewCaller::Recovery | ReviewCaller::RecoveryTemplate | ReviewCaller::Candidate
-    ) {
-        io.retain_recovery_pack_pins();
+    match caller {
+        ReviewCaller::Candidate => io.retain_review_pack_dependencies(),
+        ReviewCaller::Recovery | ReviewCaller::RecoveryTemplate => io.retain_recovery_pack_pins(),
+        _ => {}
     }
     if reread {
         io.retain_publication_inputs();

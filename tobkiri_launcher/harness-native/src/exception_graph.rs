@@ -4,7 +4,7 @@
 //! This decoder cannot establish confidentiality by guessing from strings.
 //! Host paths, arbitrary native classes, panics and allocation failures are not
 //! converted into portable domain errors. Unknown representations are gaps.
-//! The private recovery policy retains fixed native APP causes on the Host;
+//! Private Host policies retain fixed native APP causes;
 //! those tags remain unsupported by the public/Guest decoder.
 use std::{fmt, sync::Arc};
 use tobkiri_canon::{
@@ -52,6 +52,7 @@ pub enum NativeErrorKind {
     ActiveProfileStoreError,
     ActiveProfileStoreIntegrityError,
     ActiveProfileStoreLockTimeout,
+    ProfileDefinitionStoreConflict,
 }
 
 impl NativeErrorKind {
@@ -92,6 +93,7 @@ impl NativeErrorKind {
             ActiveProfileStoreError => "active-profile-store-error",
             ActiveProfileStoreIntegrityError => "active-profile-store-integrity-error",
             ActiveProfileStoreLockTimeout => "active-profile-store-lock-timeout",
+            ProfileDefinitionStoreConflict => "profile-definition-store-conflict",
         }
     }
     fn parse(tag: &str) -> Result<Self> {
@@ -130,6 +132,7 @@ impl NativeErrorKind {
             ActiveProfileStoreError,
             ActiveProfileStoreIntegrityError,
             ActiveProfileStoreLockTimeout,
+            ProfileDefinitionStoreConflict,
         ];
         all.into_iter()
             .find(|kind| kind.tag() == tag)
@@ -173,6 +176,18 @@ enum GraphPolicy {
     Portable,
     CatalogIo,
     HostRecovery,
+    #[cfg(unix)]
+    HostSourceAdditions,
+}
+
+impl GraphPolicy {
+    fn host_source_additions(self) -> bool {
+        match self {
+            #[cfg(unix)]
+            Self::HostSourceAdditions => true,
+            _ => false,
+        }
+    }
 }
 
 /// Unsupported ABI DATA is not an original domain denial or native IO result.
@@ -240,6 +255,31 @@ impl NativeErrorGraph {
     ) -> Result<Self> {
         Self::decode_inner(code, message, details, budget, GraphPolicy::HostRecovery)
     }
+    /// Preserve the immediate native merge conflict as APP cause data.
+    #[cfg(unix)]
+    pub(crate) fn from_source_additions_conflict(
+        message: &str,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> anyhow::Result<Self> {
+        let kind = NativeErrorKind::ProfileDefinitionStoreConflict.tag();
+        let code = CoreBuffer::copy_from(kind.as_bytes(), budget)?;
+        let text = CoreBuffer::copy_from(message.as_bytes(), budget)?;
+        let mut out = CoreBuffer::builder(budget, MAX_BYTES);
+        out.append(
+            br#"{"format":"tobkiri.native-exception/1","graph_id":1,"root":0,"nodes":[{"kind":"#,
+        )?;
+        crate::bootstrap_metadata::string_parts(&mut out, [kind])?;
+        out.append(br#","args":["#)?;
+        crate::bootstrap_metadata::string_parts(&mut out, [message])?;
+        out.append(br#"],"fields":{},"cause":null,"context":null,"suppress_context":false}]}"#)?;
+        Ok(Self::decode_inner(
+            code,
+            text,
+            out.finish()?,
+            budget,
+            GraphPolicy::HostSourceAdditions,
+        )?)
+    }
     /// Keep the original private producer policy while moving funded DATA to
     /// the existing Store owner. A serialized tag cannot select this policy.
     pub(crate) fn try_copy_to(&self, budget: &Arc<dyn AllocationBudget>) -> Result<Self> {
@@ -286,7 +326,10 @@ impl NativeErrorGraph {
         let root = index(&field(&graph, "root")?)?;
         let nodes = field(&graph, "nodes")?;
         let array = nodes.array().ok_or(NativeErrorGraphError::Invalid)?;
-        if array.is_empty() || root as usize >= array.len() {
+        if array.is_empty()
+            || root as usize >= array.len()
+            || (policy.host_source_additions() && array.len() != 1)
+        {
             return Err(NativeErrorGraphError::Invalid);
         }
         for node in array.iter() {
@@ -428,7 +471,10 @@ fn validate_node(node: &CoreValue, length: usize, policy: GraphPolicy) -> Result
         .ok_or(NativeErrorGraphError::Invalid)?;
     let kind = kind(node)?;
     let host_recovery = matches!(policy, GraphPolicy::HostRecovery);
-    if kind.native_recovery_only() && !host_recovery {
+    if (kind.native_recovery_only() && !host_recovery)
+        || (kind == NativeErrorKind::ProfileDefinitionStoreConflict)
+            != policy.host_source_additions()
+    {
         return Err(NativeErrorGraphError::Unsupported);
     }
     let args = field(node, "args")?;

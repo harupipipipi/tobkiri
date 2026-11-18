@@ -435,6 +435,12 @@ impl CatalogIo {
         self.recovery_pack_pins = Some(shell_inputs::PackPins::default());
     }
 
+    /// Retain the Pack dependency keys for the registered Setup candidate pass.
+    #[cfg(unix)]
+    pub(crate) fn retain_review_pack_dependencies(&mut self) {
+        self.recovery_pack_pins = Some(shell_inputs::PackPins::with_dependencies());
+    }
+
     /// The resolver hashes a separate physical read after its bundle selection.
     /// The previous loader's bytes and the manifest's inventory are unrelated.
     pub(crate) fn resolver_lock_digest<S: crate::BootstrapReviewOwner>(

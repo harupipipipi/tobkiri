@@ -1,6 +1,8 @@
 //! Catalog selection and binding are separate from the descriptor walk.
 use super::*;
-use crate::original_authority::definitions::tests::{Source, operation, with_setup_source};
+use crate::original_authority::definitions::tests::{
+    Source, operation, with_setup_source, with_source,
+};
 use serde_json::{Value, json};
 
 const PROFILE: &str = "registered-profile";
@@ -9,6 +11,35 @@ const RELATIVE: &str = "nested//./TrustedShell.app";
 
 fn guest(value: &Value, budget: &Arc<dyn AllocationBudget>) -> CoreValue {
     CoreValue::parse_guest(&serde_json::to_vec(value).unwrap(), budget).unwrap()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn candidate_pins_copy_only_dependency_keys_and_keep_missing_metadata_distinct() {
+    with_source(|_, _, _, budget| {
+        let mut manifest = json!({"pack": {"id": PACK, "kind": "shell", "artifact_digest": Digest::hash(b"example")}});
+        let pin = |manifest: &Value, enabled| {
+            pack_pin(&serde_json::to_vec(manifest).unwrap(), enabled, budget)
+                .unwrap()
+                .unwrap()
+        };
+        assert!(pin(&manifest, true).dependencies.is_none());
+        manifest["requirements"] = json!({"pack_dependencies": {"a.pack": "^1", "b.pack": "^2"}});
+        assert!(pin(&manifest, false).dependencies.is_none());
+        let dependencies = pin(&manifest, true).dependencies.unwrap();
+        assert_eq!(
+            dependencies.encode_guest(budget).unwrap().as_bytes(),
+            br#"["a.pack","b.pack"]"#
+        );
+        manifest["requirements"]["pack_dependencies"] = json!({});
+        assert!(
+            pin(&manifest, true)
+                .dependencies
+                .unwrap()
+                .array()
+                .unwrap()
+                .is_empty()
+        );
+    });
 }
 
 fn definition(availability: &str, matching_count: usize) -> Value {

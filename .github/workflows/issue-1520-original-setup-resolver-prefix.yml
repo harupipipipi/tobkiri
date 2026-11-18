@@ -31,6 +31,10 @@ name: Issue 1520 original Setup resolver prefix
       - tobkiri_launcher/harness-native/src/original_bundled_schema_tests.rs
       - tobkiri_launcher/harness-native/src/original_bundled_schema.rs
       - tobkiri_launcher/harness-native/src/original_setup_active_catalog_policy.rs
+      - tobkiri_launcher/harness-native/src/original_setup_active_snapshot.rs
+      - tobkiri_launcher/harness-native/src/original_setup_optional_packs.rs
+      - tobkiri_launcher/harness-native/src/original_setup_source_predecessor.rs
+      - tobkiri_launcher/harness-native/src/original_shell_inputs.rs
       - tobkiri_launcher/harness-native/src/original_external_catalog_model.rs
       - tobkiri_launcher/harness-native/src/original_authority_json.rs
       - tobkiri_launcher/harness-native/src/original_development_handover.rs
@@ -214,12 +218,12 @@ jobs:
           --log "$RUNNER_TEMP/original-setup-resolver-prefix/bundled-schemas.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-harness-native --lib profile_schema::bundled_tests::
           -- --test-threads=1
-      - name: Verify registered Setup catalog selection and binding renewal
+      - name: Verify registered Setup catalog selection, candidate and optional Pack roots
         if: matrix.os == 'ubuntu-22.04'
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/original-setup-resolver-prefix/registered-catalog-policy.log" --expected-passed 2 --
-          cargo test --locked -p tobkiri-harness-native --lib active_catalog_policy::tests::
+          --log "$RUNNER_TEMP/original-setup-resolver-prefix/registered-catalog-policy.log" --expected-passed 6 --
+          cargo test --locked -p tobkiri-harness-native --lib registered_snapshot::
           -- --test-threads=1
       - name: Retain bounded original observation metadata only
         if: always()

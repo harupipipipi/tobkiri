@@ -6,7 +6,11 @@ use workspace_active::{ActiveSnapshot, ActiveSnapshotRead, ProfileCheck, Snapsho
 
 #[path = "original_setup_active_catalog_policy.rs"]
 mod active_catalog_policy;
-pub(crate) use active_catalog_policy::{RegisteredCatalogSelection, RegisteredDefinitionSelection};
+#[path = "original_setup_optional_packs.rs"]
+mod optional_packs;
+pub(crate) use active_catalog_policy::{
+    RegisteredCatalogSelection, RegisteredDefinitionCandidate, RegisteredSourceUpdate,
+};
 
 #[derive(Debug)]
 pub(crate) enum RegisteredSnapshotReached {

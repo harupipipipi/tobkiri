@@ -299,7 +299,7 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         #[cfg(unix)]
         Ok(CandidateSelection::ActiveAuthority) if !confirmed => {
             pack.require_same_runtime()?;
-            review_registered_candidate(review, pack).await
+            return review_registered_candidate(review, pack).await;
         }
         // Confirmed active replacement has a different precheck and write
         // order from both the read review and confirmed first Setup.
@@ -317,9 +317,10 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
-) -> BootstrapReviewFailure {
+) -> super::listing::Outcome {
     use crate::original_authority::{
-        RegisteredCatalogSelection, RegisteredDefinitionSelection, RegisteredSnapshotReached,
+        RegisteredCatalogSelection, RegisteredDefinitionCandidate, RegisteredSnapshotReached,
+        RegisteredSourceUpdate,
     };
     let work = pack.work.get();
     let reached = review
@@ -332,66 +333,102 @@ async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapRe
             work.profile_schemas,
         )
         .await;
-    BootstrapReviewFailure::NotBound(match reached {
-        Ok(RegisteredSnapshotReached::CatalogPolicy(records)) => {
-            let selected = review.read.review_registered_catalog(
-                &work.source,
-                pack.cancellation,
-                pack.input_budget,
-                &work.catalog,
-                &records,
-            );
-            match selected {
-                Ok(RegisteredCatalogSelection::Bundled {
-                    binding_renewal_required,
-                }) => {
-                    let definition = match review.read.review_registered_definition(
-                        &work.source,
-                        pack.cancellation,
-                        pack.input_budget,
-                        &work.catalog,
-                        &records,
-                        review.include_source_additions,
-                    ) {
-                        Ok(RegisteredDefinitionSelection::PackPinPredecessor) => {
-                            return BootstrapReviewFailure::NotBound(
-                                BootstrapReviewReachpoint::ActiveCandidatePackPinPredecessorNotBound,
-                            );
-                        }
-                        Ok(definition) => definition,
-                        Err(error) => return original_failure(error),
-                    };
-                    let interrupted_source_update =
-                        definition == RegisteredDefinitionSelection::InterruptedSourcePredecessor;
-                    let successor_required = records.active_plan.is_none();
-                    if successor_required || review.include_source_additions {
-                        BootstrapReviewReachpoint::ActiveCandidateSourceUpdateNotBound {
-                            successor_required,
-                            binding_renewal_required,
-                            include_source_additions: review.include_source_additions,
-                            interrupted_source_update,
-                        }
-                    } else {
-                        BootstrapReviewReachpoint::ActiveCandidateAdditionalPacksNotBound {
-                            binding_renewal_required,
-                            interrupted_source_update,
-                        }
-                    }
-                }
-                Ok(RegisteredCatalogSelection::AdmittedClosure) => {
-                    BootstrapReviewReachpoint::ActiveCandidateAdmittedClosureNotBound
-                }
-                Err(error) => return original_failure(error),
-            }
-        }
+    let records = match reached {
+        Ok(RegisteredSnapshotReached::CatalogPolicy(records)) => records,
         Ok(RegisteredSnapshotReached::SnapshotSchemas) => {
-            BootstrapReviewReachpoint::ActiveCandidateSnapshotSchemasNotBound
+            return Ok(Err(BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::ActiveCandidateSnapshotSchemasNotBound,
+            )));
         }
         Ok(RegisteredSnapshotReached::LegacySuccessor) => {
-            BootstrapReviewReachpoint::ActiveCandidateLegacySuccessorNotBound
+            return Ok(Err(BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::ActiveCandidateLegacySuccessorNotBound,
+            )));
         }
-        Err(error) => return original_failure(error),
-    })
+        Err(error) => return Ok(Err(original_failure(error))),
+    };
+    let binding_renewal_required = match review.read.review_registered_catalog(
+        &work.source,
+        pack.cancellation,
+        pack.input_budget,
+        &work.catalog,
+        &records,
+    ) {
+        Ok(RegisteredCatalogSelection::Bundled {
+            binding_renewal_required,
+        }) => binding_renewal_required,
+        Ok(RegisteredCatalogSelection::AdmittedClosure) => {
+            return Ok(Err(BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::ActiveCandidateAdmittedClosureNotBound,
+            )));
+        }
+        Err(error) => return Ok(Err(original_failure(error))),
+    };
+    let candidate = match review.read.review_registered_definition_candidate(
+        &work.source,
+        pack.cancellation,
+        pack.input_budget,
+        &work.catalog,
+        &records,
+        RegisteredSourceUpdate {
+            binding_renewal_required,
+            include_source_additions: review.include_source_additions,
+        },
+    ) {
+        Ok(RegisteredDefinitionCandidate::Profile(candidate)) => candidate,
+        Ok(RegisteredDefinitionCandidate::PackPinPredecessor) => {
+            return Ok(Err(BootstrapReviewFailure::NotBound(
+                BootstrapReviewReachpoint::ActiveCandidatePackPinPredecessorNotBound,
+            )));
+        }
+        Ok(RegisteredDefinitionCandidate::SourceAdditionsConflict(error)) => {
+            let cause = NativeErrorGraph::from_source_additions_conflict(
+                &error.message,
+                pack.input_budget,
+            )?;
+            return Ok(Err(denied(
+                review,
+                pack,
+                ReviewCaller::Candidate,
+                "source update conflicts with the registered Profile",
+                BootstrapDeniedRaise::ExplicitFrom(cause),
+            )
+            .await?));
+        }
+        Ok(RegisteredDefinitionCandidate::SourceAdditionsReconfirmation) => {
+            return Ok(Err(denied(
+                review,
+                pack,
+                ReviewCaller::Candidate,
+                "source update requires reconfirmation",
+                BootstrapDeniedRaise::Plain,
+            )
+            .await?));
+        }
+        Err(error) => return Ok(Err(original_failure(error))),
+    };
+    let optional = match review.read.review_registered_optional_roots(
+        &work.source,
+        pack.cancellation,
+        pack.input_budget,
+        &work.catalog,
+        &records.active_profile,
+        &candidate,
+    ) {
+        Ok(optional) => optional,
+        Err(error) => return Ok(Err(original_failure(error))),
+    };
+    let reachpoint = if optional
+        .array()
+        .context("verified optional Setup Pack IDs must be an array")?
+        .is_empty()
+    {
+        BootstrapReviewReachpoint::ActiveCandidateCatalogTransportNotBound
+    } else {
+        BootstrapReviewReachpoint::ActiveCandidateOptionalReceiptsNotBound
+    };
+    review.actual._registered_candidate = Some((candidate, optional));
+    Ok(Err(BootstrapReviewFailure::NotBound(reachpoint)))
 }
 
 async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(

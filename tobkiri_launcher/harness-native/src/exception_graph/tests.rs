@@ -99,6 +99,38 @@ fn native_app_causes_require_private_host_policy_and_keep_it_on_rebind() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn source_additions_conflict_is_private_to_the_native_review_caller() {
+    let b: Arc<dyn AllocationBudget> = Arc::new(Budget::default());
+    let message = "additive Profile update cannot replace base";
+    let graph = NativeErrorGraph::from_source_additions_conflict(message, &b).unwrap();
+    let rebound = graph.try_copy_to(&b).unwrap();
+    assert_eq!(
+        rebound.root().kind(),
+        NativeErrorKind::ProfileDefinitionStoreConflict
+    );
+    assert_eq!(
+        rebound.root().args().get_index(0).unwrap().as_str(),
+        Some(message)
+    );
+    for decode in [
+        NativeErrorGraph::decode,
+        NativeErrorGraph::decode_catalog_io,
+        NativeErrorGraph::decode_host_recovery,
+    ] {
+        assert!(matches!(
+            decode(
+                graph.code().clone(),
+                graph.message().clone(),
+                graph.details().clone(),
+                &b,
+            ),
+            Err(NativeErrorGraphError::Unsupported)
+        ));
+    }
+}
+
 #[test]
 fn message_only_os_args_remain_one_argument_with_unset_descriptors() {
     let b: Arc<dyn AllocationBudget> = Arc::new(Budget::default());

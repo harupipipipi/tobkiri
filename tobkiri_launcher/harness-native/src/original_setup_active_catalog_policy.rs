@@ -14,11 +14,17 @@ pub(crate) enum RegisteredCatalogSelection {
     AdmittedClosure,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RegisteredDefinitionSelection {
-    Current,
-    InterruptedSourcePredecessor,
+#[derive(Debug)]
+pub(crate) enum RegisteredDefinitionCandidate {
+    Profile(CoreValue),
     PackPinPredecessor,
+    SourceAdditionsConflict(OriginalAuthorityError),
+    SourceAdditionsReconfirmation,
+}
+
+pub(crate) struct RegisteredSourceUpdate {
+    pub(crate) binding_renewal_required: bool,
+    pub(crate) include_source_additions: bool,
 }
 
 impl PublicationRead {
@@ -35,8 +41,8 @@ impl PublicationRead {
         let io = loader.lock().unwrap_or_else(|error| error.into_inner());
         let io = io
             .as_ref()
-            .filter(|io| io.completed())
             .ok_or_else(OriginalAuthorityError::unavailable)?;
+        io.require_recovery_catalog(&op)?;
         select(
             &op,
             budget,
@@ -47,16 +53,16 @@ impl PublicationRead {
         )
     }
 
-    /// Authenticate the definition base before any change to the candidate catalog.
-    pub(crate) fn review_registered_definition<S: crate::BootstrapReviewOwner>(
+    /// Build the original review candidate from the authenticated definition base.
+    pub(crate) fn review_registered_definition_candidate<S: crate::BootstrapReviewOwner>(
         &self,
         owner: &S,
         cancellation: &CoreCancellation,
         budget: &Arc<dyn AllocationBudget>,
         loader: &Mutex<Option<CatalogIo>>,
         records: &RegisteredCatalogPolicy,
-        include_source_additions: bool,
-    ) -> Result<RegisteredDefinitionSelection> {
+        update: RegisteredSourceUpdate,
+    ) -> Result<RegisteredDefinitionCandidate> {
         let op = self.candidate_operation(owner, cancellation)?;
         op.check(STAGE)?;
         let current_digest = records
@@ -67,50 +73,67 @@ impl PublicationRead {
             .verified_definition_digest
             .as_str()
             .ok_or_else(OriginalAuthorityError::unavailable)?;
-        if current_digest.as_str() == verified_digest {
-            return Ok(RegisteredDefinitionSelection::Current);
-        }
-
+        let successor_required = records.active_plan.is_none();
         let (root, candidate) = self.registered_candidate();
         let profile_id = candidate
             .workspace
             .file_name()
             .and_then(|name| name.to_str())
             .expect("verified workspace Profile ID");
-        let predecessor = candidate.registered.review_source_predecessor(
-            &op,
-            root,
-            &current_digest,
-            verified_digest,
-            budget,
-        )?;
-        // As in the original call, the source lookup follows the independent
-        // registry snapshot and uses the catalog loaded for this invocation.
-        let source = loader
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .as_ref()
-            .ok_or_else(OriginalAuthorityError::unavailable)?
-            .bundled_review_profile(&op, profile_id)?;
-        if let Some(predecessor) = predecessor
-            && source_predecessor::matches(
+        let bundled_source = || {
+            loader
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .as_ref()
+                .ok_or_else(OriginalAuthorityError::unavailable)?
+                .bundled_review_profile(&op, profile_id)
+        };
+        let (base, source) = if current_digest.as_str() == verified_digest {
+            (records.registered_profile.share(), None)
+        } else {
+            let predecessor = candidate.registered.review_source_predecessor(
                 &op,
-                &predecessor,
-                &source,
+                root,
                 &current_digest,
-                records.active_plan.is_none(),
+                verified_digest,
                 budget,
-            )?
-        {
-            return Ok(RegisteredDefinitionSelection::InterruptedSourcePredecessor);
+            )?;
+            // Evaluate the source lookup after the independent registry snapshot.
+            let source = bundled_source()?;
+            match predecessor {
+                Some(predecessor)
+                    if source_predecessor::matches(
+                        &op,
+                        &predecessor,
+                        &source,
+                        &current_digest,
+                        successor_required,
+                        budget,
+                    )? =>
+                {
+                    (predecessor, Some(source))
+                }
+                _ if update.include_source_additions => {
+                    return Ok(RegisteredDefinitionCandidate::PackPinPredecessor);
+                }
+                _ => {
+                    return Err(raw(
+                        CONFLICT,
+                        "bootstrap review does not match a verified interrupted source update",
+                    ));
+                }
+            }
+        };
+        if !successor_required && !update.include_source_additions {
+            return Ok(RegisteredDefinitionCandidate::Profile(base));
         }
-        if include_source_additions {
-            return Ok(RegisteredDefinitionSelection::PackPinPredecessor);
-        }
-        Err(raw(
-            CONFLICT,
-            "bootstrap review does not match a verified interrupted source update",
-        ))
+        // The catalog is immutable here. Retain the verified source used for
+        // predecessor replay rather than decoding the same retained bytes again.
+        let source = match source {
+            Some(source) => source,
+            None => bundled_source()?,
+        };
+        source_predecessor::review_candidate(&op, base, &source, successor_required, update, budget)
     }
 }
 

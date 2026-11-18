@@ -10,6 +10,37 @@ const EDGE_KEYS: &[&str] = &[
 ];
 const SEMANTICS: &str = "semantics_digest";
 
+pub(super) fn review_candidate<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    base: CoreValue,
+    source: &CoreValue,
+    successor_required: bool,
+    update: RegisteredSourceUpdate,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<RegisteredDefinitionCandidate> {
+    let before_scope = select_shell(base, source, successor_required, budget)?;
+    let candidate = scope_successor(op, &before_scope, source, budget)?;
+    if !update.include_source_additions {
+        return Ok(RegisteredDefinitionCandidate::Profile(candidate));
+    }
+    let updated = match source_additions(op, &candidate, source, budget) {
+        Ok(updated) => updated,
+        Err(error) if error.class == CONFLICT => {
+            return Ok(RegisteredDefinitionCandidate::SourceAdditionsConflict(
+                error,
+            ));
+        }
+        Err(error) => return Err(error),
+    };
+    if !successor_required
+        && !update.binding_renewal_required
+        && definitions::python_equal(&updated, &before_scope, budget)?
+    {
+        return Ok(RegisteredDefinitionCandidate::SourceAdditionsReconfirmation);
+    }
+    Ok(RegisteredDefinitionCandidate::Profile(updated))
+}
+
 pub(super) fn matches<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     predecessor: &CoreValue,
@@ -48,10 +79,7 @@ fn proposal<S: OriginalAuthorityOwner>(
     additions: bool,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<CoreValue> {
-    let mut candidate = predecessor.share();
-    if successor_required {
-        candidate = set(&candidate, "shell", lookup(source, "shell")?, budget)?;
-    }
+    let mut candidate = select_shell(predecessor.share(), source, successor_required, budget)?;
     if successor_required || additions {
         candidate = scope_successor(op, &candidate, source, budget)?;
     }
@@ -59,6 +87,19 @@ fn proposal<S: OriginalAuthorityOwner>(
         candidate = source_additions(op, &candidate, source, budget)?;
     }
     Ok(candidate)
+}
+
+fn select_shell(
+    base: CoreValue,
+    source: &CoreValue,
+    successor_required: bool,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue> {
+    if successor_required {
+        set(&base, "shell", lookup(source, "shell")?, budget)
+    } else {
+        Ok(base)
+    }
 }
 
 fn scope_successor<S: OriginalAuthorityOwner>(
@@ -344,6 +385,71 @@ mod tests {
 
     fn parse(value: &Value, budget: &Arc<dyn AllocationBudget>) -> CoreValue {
         CoreValue::parse_guest(&serde_json::to_vec(value).unwrap(), budget).unwrap()
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn registered_candidate_requires_explicit_additions_and_preserves_user_fields() {
+        with_source(|owner, read, cancellation, budget| {
+            let op = operation(read, owner, cancellation);
+            let original = json!({
+                "profile_id": "defaults",
+                "base": {"pack_id": "base"},
+                "shell": {"pack_id": "shell", "version": "old"},
+                "display_name": "My Profile",
+                "packs": [],
+                "requested_edges": []
+            });
+            let build = |source: &Value, successor, additions, renewal| {
+                review_candidate(
+                    &op,
+                    parse(&original, budget),
+                    &parse(source, budget),
+                    successor,
+                    RegisteredSourceUpdate {
+                        binding_renewal_required: renewal,
+                        include_source_additions: additions,
+                    },
+                    budget,
+                )
+                .unwrap()
+            };
+            let assert_profile = |candidate, expected: &Value| {
+                let RegisteredDefinitionCandidate::Profile(candidate) = candidate else {
+                    panic!("expected a review Profile");
+                };
+                assert!(
+                    definitions::python_equal(&candidate, &parse(expected, budget), budget)
+                        .unwrap()
+                );
+            };
+
+            assert!(matches!(
+                build(&original, false, true, false),
+                RegisteredDefinitionCandidate::SourceAdditionsReconfirmation
+            ));
+            assert_profile(build(&original, false, true, true), &original);
+
+            let mut packaged = original.clone();
+            packaged["display_name"] = json!("Packaged Profile");
+            packaged["shell"]["version"] = json!("new");
+            packaged["packs"] = json!([{"pack_id": "extra", "artifact_digest": null}]);
+            let mut expected = original.clone();
+            expected["shell"] = packaged["shell"].clone();
+            assert_profile(build(&packaged, true, false, false), &expected);
+            expected["packs"] = packaged["packs"].clone();
+            assert_profile(build(&packaged, true, true, false), &expected);
+
+            let RegisteredDefinitionCandidate::SourceAdditionsConflict(error) =
+                build(&packaged, false, true, false)
+            else {
+                panic!("source additions must not override the registered Shell");
+            };
+            assert_eq!(error.class, CONFLICT);
+            assert_eq!(
+                error.message,
+                "additive Profile update cannot replace shell"
+            );
+        });
     }
 
     #[tokio::test(flavor = "current_thread")]
