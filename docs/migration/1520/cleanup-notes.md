@@ -4363,6 +4363,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   直接の親と、その親の実データと更新結果のdigestがすべて一致するときに限り中断更新と認識。
   数値と真偽値を含むPythonのdict比較を共用する。正確なPack pin、任意Packの承認、最終候補への
   適用は各後続経路。Rust 235件、strict Clippy、物理Shell fixture、原本の再承認19件が成功。
+  `330b442c8` は登録済みSetupで、照合済みの現行定義または中断更新の親から候補を組み立てる。
+  元のShell変更とscope更新の順序を保ち、明示的な追加要求だけを合成する。同一内容でbinding更新も
+  ない追加要求は元の拒否factoryへ送り、衝突時は元のクラスとcauseをHost内で保持する。
+  初回に読んだ同梱manifestから依存IDだけを確保し、検証済みactive選択から候補の宣言Packと
+  activeのBase・Shell・選択Packが要求する依存を除く。任意Packは候補の必須Packに昇格させない。
+  欠落した依存目録を空として扱わず、同梱catalogの完了、所有者、invocationと取消経路を照合する。
+  候補と任意Pack IDを同じreview内で保持する。候補のWasm受け渡しには、既存の復旧・previewと
+  異なる、最初のProfile getterを使った照合が必要。任意Packがある場合はその承認・成果物照合が先。
+  登録済みexact closureの次の実装では、全pinによる署名済みレコード選択、単一pinでのroot再読、
+  変更manifestの実行目録再読を元の順序で保つ。既存の復旧用closureを流用できるのは個々の検証のみ。
+  ローカルでRust 240件、登録済みSetupのCIコマンド6件、strict Clippy、物理Shell fixtureが通過。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
