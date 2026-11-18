@@ -14,6 +14,9 @@ use std::path::PathBuf;
 #[cfg(unix)]
 #[path = "bootstrap_admitted_closure.rs"]
 mod admitted_closure;
+#[cfg(unix)]
+#[path = "bootstrap_publication_reread.rs"]
+pub(super) mod publication;
 #[path = "bootstrap_recovery_error.rs"]
 mod recovery_cause;
 
@@ -21,6 +24,12 @@ pub(super) const BOOTSTRAP_TEMPLATE_REQUEST: &str =
     "io.tobkiri.native-bootstrap-template-lookup.v1";
 pub(super) const ADMITTED_CLOSURE_REQUEST: &str =
     "io.tobkiri.native-bootstrap-admitted-closure-step.v1";
+pub(super) const PUBLICATION_HOST_START_REQUEST: &str =
+    "io.tobkiri.native-bootstrap-publication-host-start.v1";
+pub(super) const PUBLICATION_REREAD_REQUEST: &str =
+    "io.tobkiri.native-bootstrap-publication-reread.v1";
+pub(super) const PUBLICATION_SOURCE_REQUEST: &str =
+    "io.tobkiri.native-bootstrap-publication-source.v1";
 
 pub(super) enum RecoveryCompletion {
     NoActivation,
@@ -137,7 +146,9 @@ fn dispatch<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     phase: u8,
 ) -> Result<CoreBuffer> {
     let result = match phase {
-        CATALOG_LOAD => io.inspect(owner, invocation, request, budget),
+        CATALOG_LOAD | BOOTSTRAP_PUBLICATION_REREAD => {
+            io.inspect(owner, invocation, request, budget)
+        }
         RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE => {
             io.inspect_pack_resolve(owner, invocation, request, budget)
         }
@@ -174,7 +185,17 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
 ) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
-    let (mut io, binding) = match select_bundle(review, pack, caller).await? {
+    load_bundle(review, pack, caller, None).await
+}
+
+async fn load_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
+    after_host_catalog: Option<CoreValue>,
+) -> Result<std::result::Result<(), BootstrapReviewFailure>> {
+    let reread = after_host_catalog.is_some();
+    let (mut io, binding) = match select_bundle(review, pack, caller, after_host_catalog).await? {
         Ok(selected) => selected,
         Err(error) => return Ok(Err(error)),
     };
@@ -184,6 +205,9 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         ReviewCaller::Recovery | ReviewCaller::RecoveryTemplate
     ) {
         io.retain_recovery_pack_pins();
+    }
+    if reread {
+        io.retain_publication_root();
     }
     io.bind_loader(CoreValue::string(binding.as_str()?, pack.input_budget)?)?;
     {
@@ -204,8 +228,13 @@ pub(super) async fn load<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         .as_ref()
         .expect("fixed loader input")
         .clone();
+    let origin = if reread {
+        "bootstrap-publication-reread"
+    } else {
+        "catalog"
+    };
     review.actual.catalog = Some(
-        pack.observe_fixed_call(CATALOG_LOAD_SLOT, &input, "catalog")
+        pack.observe_fixed_call(CATALOG_LOAD_SLOT, &input, origin)
             .await?,
     );
     caller.check(review, pack)?;
@@ -339,7 +368,7 @@ pub(super) async fn resolver_lock_digest<S: BootstrapInputOwner + crate::Bootstr
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
 ) -> Result<std::result::Result<tobkiri_canon::Digest, BootstrapReviewFailure>> {
-    let (io, _) = match select_bundle(review, pack, ReviewCaller::Resolver).await? {
+    let (io, _) = match select_bundle(review, pack, ReviewCaller::Resolver, None).await? {
         Ok(selected) => selected,
         Err(error) => return Ok(Err(error)),
     };
@@ -355,6 +384,9 @@ fn bundle_calls(review: &mut Review, caller: ReviewCaller) -> &mut BundleCalls {
             &mut review.actual.catalog_roots
         }
         ReviewCaller::Resolver => &mut review.actual.resolver_roots,
+        ReviewCaller::Publication | ReviewCaller::PublicationTemplate => {
+            &mut review.actual.publication_roots
+        }
     }
 }
 
@@ -362,6 +394,7 @@ async fn select_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
     caller: ReviewCaller,
+    after_host_catalog: Option<CoreValue>,
 ) -> Result<std::result::Result<(CatalogIo, CoreBuffer), BootstrapReviewFailure>> {
     caller.check(review, pack)?;
     pack.require_same_runtime()?;
@@ -376,6 +409,8 @@ async fn select_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             BootstrapReviewReachpoint::CatalogSourceNotBound,
         )));
     }
+    // A subsequent actual _bundle_root can choose a different branch.
+    *bundle_calls(review, caller) = BundleCalls::default();
     let call = pack.call.clone();
     bundle_calls(review, caller).host = Some(pack.observe_fixed_call(3, &call, "host-root").await?);
     caller.check(review, pack)?;
@@ -467,7 +502,11 @@ async fn select_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             .as_ref()
             .or(roots.host.as_ref())
             .expect("selected root");
-        review.actual.catalog_input = Some(loader_call(pack, returned(root)?.result())?);
+        review.actual.catalog_input = Some(loader_call(
+            pack,
+            returned(root)?.result(),
+            after_host_catalog,
+        )?);
     }
     let manifest = io.prepare_manifest(&pack.work.get().source, &pack.work.get().invocation);
     let manifest = match manifest {
@@ -574,7 +613,7 @@ async fn materialize_host_catalog<S: BootstrapInputOwner + crate::BootstrapRevie
         }
         #[cfg(unix)]
         Ok(DefinitionRecovery::BootstrapTemplate(store)) => {
-            return bootstrap_template(review, pack, store).await;
+            return bootstrap_template(review, pack, caller, store).await;
         }
         Err(error) => return Ok(Err(registry_failure(review, pack, caller, error).await?)),
     };
@@ -585,9 +624,14 @@ async fn materialize_host_catalog<S: BootstrapInputOwner + crate::BootstrapRevie
 async fn bootstrap_template<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    caller: ReviewCaller,
     store: definitions::BootstrapTemplateStore,
 ) -> HostCatalogOutcome {
-    let caller = ReviewCaller::RecoveryTemplate;
+    let caller = if caller.is_recovery() {
+        ReviewCaller::RecoveryTemplate
+    } else {
+        ReviewCaller::PublicationTemplate
+    };
     pack.require_same_runtime()?;
     let identity = match review_continuation::validated_identity(review, pack, caller).await? {
         Ok(identity) => identity,
@@ -1153,7 +1197,11 @@ pub(super) async fn handle_call_failure<S: BootstrapInputOwner + crate::Bootstra
         BootstrapIdentityOutcome::GetterRaised(error) => {
             let kind = error.observation().get_key("kind");
             let kind = kind.as_ref().and_then(CoreValue::as_str);
-            if matches!(caller, ReviewCaller::RecoveryTemplate) && kind == Some("key-error") {
+            if matches!(
+                caller,
+                ReviewCaller::RecoveryTemplate | ReviewCaller::PublicationTemplate
+            ) && kind == Some("key-error")
+            {
                 review_continuation::denied(
                     review,
                     pack,
@@ -1196,6 +1244,7 @@ pub(super) async fn handle_call_failure<S: BootstrapInputOwner + crate::Bootstra
 fn loader_call<S: BootstrapInputOwner>(
     pack: &ReviewPackBorrow<'_, S>,
     root: &CoreBuffer,
+    after_host_catalog: Option<CoreValue>,
 ) -> Result<CoreBuffer> {
     let scope = CoreValue::parse_guest(pack.call.as_bytes(), pack.input_budget)?
         .get_key("scope")
@@ -1208,6 +1257,13 @@ fn loader_call<S: BootstrapInputOwner>(
     )?;
     let root = denied::field(&packet, "root")?;
     denied::ownership(&packet, &root, false)?;
+    if let Some(catalog) = after_host_catalog {
+        return denied::frame(
+            pack,
+            PUBLICATION_REREAD_REQUEST,
+            [("root", root), ("catalog", catalog)],
+        );
+    }
     denied::frame(
         pack,
         "io.tobkiri.native-call.v1",

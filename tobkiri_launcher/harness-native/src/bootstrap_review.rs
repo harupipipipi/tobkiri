@@ -61,6 +61,7 @@ pub enum BootstrapReviewReachpoint {
     ClosureBundledPackRootNotBound,
     AdmittedHostExtensionProjectionNotBound,
     CatalogWithProfilesNotBound,
+    InitialPublicationJournalNotBound,
     RecoveryLoadActiveSnapshotProfileSchemaNotBound {
         name: &'static str,
         legacy: bool,
@@ -144,6 +145,7 @@ pub(crate) struct Review {
 pub(crate) struct ActualCustody {
     pub(crate) getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) recovery_template_getter: Option<crate::BootstrapIdentityOutcome>,
+    pub(crate) publication_template_getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) _recovery_profile_definitions: Option<CoreValue>,
     #[cfg(unix)]
     pub(crate) _recovery_catalog: Option<CoreBuffer>,
@@ -156,6 +158,7 @@ pub(crate) struct ActualCustody {
     pub(crate) factory_failure: Option<crate::BootstrapDeniedFailure>,
     pub(crate) catalog_roots: BundleCalls,
     pub(crate) resolver_roots: BundleCalls,
+    pub(crate) publication_roots: BundleCalls,
     pub(crate) resolver_getter: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog: Option<crate::BootstrapIdentityOutcome>,
     pub(crate) catalog_input: Option<CoreBuffer>,

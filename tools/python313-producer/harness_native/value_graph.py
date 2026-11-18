@@ -178,6 +178,9 @@ class Registry:
         self._bootstrap_activation_started = False
         self._bootstrap_activation_body: dict[str, Any] | None = None
         self._bootstrap_activation_listing: Any = None
+        self._bootstrap_publication_stage = "closed"
+        self._bootstrap_publication_profile_id: str | None = None
+        self._bootstrap_publication_catalog: int | None = None
         self._resolver_dynamic_stage = "awaiting-static"
         self._next = 1
         self._retired = False
@@ -330,6 +333,11 @@ class Registry:
             del self._permissions[number]
             self._denied.pop(number, None)
             self._bootstrap_identity.pop(number, None)
+            if (number == self._bootstrap_publication_catalog
+                    or number == self._replaced_recovery_catalog
+                    or number == self._resolver_catalog
+                    or number == self._resolver_profile_id):
+                self._clear_bootstrap_publication()
             if number == self._replaced_recovery_catalog:
                 self._replaced_recovery_catalog = None
             if number == self._bootstrap_template_profile_id:
@@ -359,6 +367,7 @@ class Registry:
         self._denied.clear()
         self._bootstrap_identity.clear()
         self._bootstrap_activation_body = None
+        self._clear_bootstrap_publication()
         self._clear_resolver_inputs()
 
     def _clear_resolver_inputs(self) -> None:
@@ -389,6 +398,10 @@ class Registry:
         # its catalog. A failed or replacement loader cannot reuse old custody.
         self._bootstrap_recovery_catalog = None
         self._replaced_recovery_catalog = None
+        if self._bootstrap_publication_stage == "host-started":
+            self._bootstrap_publication_stage = "host-loading"
+        else:
+            self._clear_bootstrap_publication()
         if self._bootstrap_template_stage == "awaiting-catalog":
             self._bootstrap_template_stage = "catalog-pending"
         else:
@@ -482,6 +495,8 @@ class Registry:
 
     def _record_recovery_catalog_replacement(self, catalog: Reference) -> None:
         self._replaced_recovery_catalog = catalog.object_id
+        if self._bootstrap_publication_stage == "host-loading":
+            self._bootstrap_publication_stage = "host-materialized"
 
     def _current_recovery_replacement(self, catalog_ref: Reference) -> Any:
         catalog = self.borrow(catalog_ref)
@@ -493,6 +508,7 @@ class Registry:
 
     def _finish_bootstrap_recovery(self, catalog: Reference) -> None:
         self._current_recovery_replacement(catalog)
+        self._clear_bootstrap_publication()
         self._replaced_recovery_catalog = None
         self._resolver_stage = "awaiting-catalog"
         self.release([catalog])
@@ -739,6 +755,68 @@ class Registry:
         self._resolver_dynamic_stage = "bootstrap-activation-match-started"
         return body, listing, source, resolved
 
+    def _matched_publication_profile_id(self, confirmation: dict[str, Any]) -> str:
+        number = self._resolver_profile_id
+        if number is None:
+            raise InvalidReference("bootstrap activation has no resolver Profile ID")
+        profile_id = self._objects[number]
+        confirmed_id = confirmation.get("profile_id")
+        if (type(profile_id) is not str or type(confirmed_id) is not str
+                or self._bootstrap_identity.get(number) != "getter-returned"
+                or confirmed_id != profile_id):
+            raise UnsupportedValue("activation confirmation differs from the resolver getter")
+        return profile_id
+
+    def _record_bootstrap_publication_match(self, profile_id: str) -> None:
+        self._bootstrap_publication_profile_id = profile_id
+        self._bootstrap_publication_stage = "matched"
+
+    def _begin_bootstrap_publication_host(self) -> None:
+        self._live()
+        if self._bootstrap_publication_stage != "matched":
+            raise InvalidReference("bootstrap publication has no completed match")
+        self._clear_resolver_inputs()
+        # The confirmed caller already passed the Profile ID checks. The
+        # optional template getter still follows the new Host catalog load.
+        self._resolver_stage = "awaiting-catalog"
+        self._bootstrap_template_stage = "awaiting-catalog"
+        self._bootstrap_publication_stage = "host-started"
+
+    def _take_bootstrap_publication_reread(
+        self, catalog_ref: Reference,
+    ) -> tuple[Any, str]:
+        catalog = self._current_recovery_replacement(catalog_ref)
+        profile_id = self._bootstrap_publication_profile_id
+        if self._bootstrap_publication_stage != "host-materialized" or profile_id is None:
+            raise InvalidReference("bootstrap publication has no materialized Host catalog")
+        self._clear_bootstrap_publication()
+        self._replaced_recovery_catalog = None
+        return catalog, profile_id
+
+    def _record_bootstrap_publication_reread(
+        self, catalog: Reference, profile_id: str,
+    ) -> None:
+        self._bootstrap_publication_catalog = catalog.object_id
+        self._bootstrap_publication_profile_id = profile_id
+        self._bootstrap_publication_stage = "source-ready"
+
+    def _take_bootstrap_publication_source(
+        self, catalog_ref: Reference,
+    ) -> tuple[Any, str]:
+        catalog = self.borrow(catalog_ref)
+        profile_id = self._bootstrap_publication_profile_id
+        if (self._bootstrap_publication_stage != "source-ready" or profile_id is None
+                or catalog_ref.object_id != self._bootstrap_publication_catalog
+                or self._bootstrap_identity.get(catalog_ref.object_id) != "catalog-returned"):
+            raise InvalidReference("reference has no current bootstrap publication catalog origin")
+        self._clear_bootstrap_publication()
+        return catalog, profile_id
+
+    def _clear_bootstrap_publication(self) -> None:
+        self._bootstrap_publication_stage = "closed"
+        self._bootstrap_publication_profile_id = None
+        self._bootstrap_publication_catalog = None
+
     @staticmethod
     def _identity_string(value: str, limit: int) -> dict[str, Any]:
         # Python len/iteration preserve lone surrogate codepoints. Never encode,
@@ -792,6 +870,7 @@ class Registry:
             "bootstrap-confirmation-raised",
             "bootstrap-preview-raised", "bootstrap-listing-raised",
             "bootstrap-activation-preflight-raised", "bootstrap-activation-match-raised",
+            "bootstrap-publication-source-raised",
         })
 
     def _describe_fixed_call(self, root: Reference, origins: set[str]) -> str:

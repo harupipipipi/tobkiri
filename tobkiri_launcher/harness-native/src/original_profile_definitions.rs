@@ -123,6 +123,13 @@ pub(crate) fn recover<S: crate::BootstrapReviewOwner>(
     cancellation: &CoreCancellation,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<DefinitionRecovery> {
+    #[cfg(unix)]
+    if read.confirmed.is_some() {
+        let op = read.candidate_operation(owner, cancellation)?;
+        let root = candidate_selection::read_root(&op)?;
+        read.check_confirmed_root(&op, &root)?;
+        return recover_at(&op, &root, budget);
+    }
     let op = review_operation(read, owner, cancellation)?;
     owner
         .with_original_review_user_data(|root| recover_at(&op, root, budget))?
@@ -154,7 +161,7 @@ pub(crate) fn complete_bootstrap_template<S: crate::BootstrapReviewOwner>(
             .bootstrap_defaults(&op, template, budget, registry_time)?;
         pending.store.catalog_profiles(&op, budget)
     })()
-    .map_err(recovery_error)
+    .map_err(|error| read.catalog_failure(error))
 }
 
 // Retain the original constructor/list comparison's stopping point.

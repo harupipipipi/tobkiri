@@ -354,12 +354,19 @@ class Dispatcher:
 
     def _result(self, value: Any, *, set_items: bool = False,
                 denied_message: str | None = None,
-                identity_origin: str | None = None) -> str:
+                identity_origin: str | None = None,
+                publication_profile_id: str | None = None) -> str:
         state = self._current()
         created: list[tuple[Reference, int]] = []
         ref = None
         try:
+            if (publication_profile_id is not None
+                    and state.registry._kind(value) != "bundled-catalog"):
+                raise UnsupportedValue("original publication loader did not return a catalog")
             ref, fresh = state.registry._retain(value, set_items=set_items, created=created)
+            if publication_profile_id is not None and not fresh:
+                ref = None
+                raise UnsupportedValue("original publication catalog was already issued")
             # Only a fresh value returned by the actual fixed denied call may
             # gain this finite observation. Reusing/raising an existing object
             # removes its old provenance; no new authority is issued.
@@ -377,7 +384,10 @@ class Dispatcher:
                     "owned": [format(r.object_id, "x") for r, _ in created],
                 }
             )
-            state.registry._record_resolver_return(ref, identity_origin)
+            if publication_profile_id is None:
+                state.registry._record_resolver_return(ref, identity_origin)
+            else:
+                state.registry._record_bootstrap_publication_reread(ref, publication_profile_id)
             return payload
         except BaseException:
             if ref is not None:
@@ -426,6 +436,9 @@ class Dispatcher:
         if method not in METHODS:
             raise InvalidFrame("method is not a fixed original export")
         frame = self._load(payload)
+        if (method == "load_catalog"
+                and frame.get("format") == PREFIX + "bootstrap-publication-reread.v1"):
+            return self._bootstrap_publication_reread(state, frame, _catalog_diagnostic)
         if method == "resolve_profile":
             if frame.get("format") == PREFIX + "resolver-profile.v1":
                 return self._resolve_bundled_profile(state, frame)
@@ -492,6 +505,33 @@ class Dispatcher:
         return self._result(value, denied_message=message,
                             identity_origin=("getter-returned" if identity else
                                              caller + "-returned" if caller else None))
+
+    def _bootstrap_publication_reread(
+        self, state: _State, frame: dict[str, Any], diagnostic: _CatalogDiagnostic | None,
+    ) -> str:
+        from .native_path import NativePath
+
+        self._checked_frame(frame, "bootstrap-publication-reread", {"root", "catalog"})
+        if diagnostic is not None:
+            diagnostic.phase = "argument-binding"
+        registry = state.registry
+        root = registry.borrow(registry.reference(frame["root"]), NativePath)
+        catalog, profile_id = registry._take_bootstrap_publication_reread(
+            registry.reference(frame["catalog"]),
+        )
+        if type(catalog.root) is not NativePath or catalog.root._bridge is not root._bridge:
+            raise InvalidReference("publication loader root has a different native owner")
+        if diagnostic is not None:
+            diagnostic.phase = "original-call"
+        value = self._apply_original(
+            lambda: root._bridge._load_catalog(state.runtime.load_catalog, root),
+            caller="catalog", _catalog_diagnostic=diagnostic,
+        )
+        if diagnostic is not None:
+            diagnostic.phase = "result-retain"
+        return self._result(
+            value, identity_origin="catalog-returned", publication_profile_id=profile_id,
+        )
 
     def _resolve_bundled_profile(self, state: _State, frame: dict[str, Any]) -> str:
         from .native_path import NativePath, _UnboundPlatformArtifacts
@@ -1118,18 +1158,54 @@ class Dispatcher:
             }
 
         outcome, value = self._apply_original(decide, caller=caller)
+        publication_profile_id = None
+        if outcome == "matched":
+            publication_profile_id = registry._matched_publication_profile_id(
+                value["confirmation"],
+            )
         packet = wire.dumps({
             "format": PREFIX + caller + "-result.v1",
             "scope": registry.scope.wire(), "outcome": outcome, "value": value,
         })
         if preflight and outcome == "continue":
             registry._bootstrap_activation_body = body
+        if publication_profile_id is not None:
+            registry._record_bootstrap_publication_match(publication_profile_id)
         return packet
+
+    def _bootstrap_publication_source(self, state: _State, frame: dict[str, Any]) -> str:
+        self._checked_frame(frame, "bootstrap-publication-source", {"catalog"})
+        registry = state.registry
+        catalog, profile_id = registry._take_bootstrap_publication_source(
+            registry.reference(frame["catalog"]),
+        )
+        source = self._apply_original(
+            lambda: catalog.profiles[profile_id], caller="bootstrap-publication-source",
+        )
+        if type(source) is not dict:
+            raise UnsupportedValue("original publication Profile is not a dictionary")
+        try:
+            return wire.dumps({
+                "format": PREFIX + "bootstrap-publication-source-result.v1",
+                "scope": registry.scope.wire(), "source": source,
+            })
+        except wire.OrderedJSONError:
+            raise UnsupportedValue("original publication Profile exceeds DATA bounds") from None
 
     def describe_value(self, payload: str) -> str:
         """Serve closed DATA observations and fixed original Setup operations."""
         state = self._current()
         frame = self._load(payload)
+        if frame.get("format") == PREFIX + "bootstrap-publication-host-start.v1":
+            self._checked_frame(frame, "bootstrap-publication-host-start", set())
+            packet = wire.dumps({
+                "format": PREFIX + "bootstrap-publication-host-start-result.v1",
+                "scope": state.registry.scope.wire(),
+            })
+            state.registry._begin_bootstrap_publication_host()
+            return packet
+        if frame.get("format") == PREFIX + "bootstrap-publication-source.v1":
+            return self._bootstrap_publication_source(state, frame)
         if frame.get("format") == PREFIX + "bootstrap-template-lookup.v1":
             return self._bootstrap_template_lookup(state, frame)
         if frame.get("format") == PREFIX + "bootstrap-recovery-finished.v1":

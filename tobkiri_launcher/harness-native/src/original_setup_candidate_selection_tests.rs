@@ -156,6 +156,7 @@ async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
         "same",
         "candidate-root",
         "resolver-root",
+        "definition-root",
         "lock-replaced-before-resolver",
         "lock-replaced-before-verification",
     ] {
@@ -163,12 +164,16 @@ async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
             let other_root = source.root.with_file_name("other-user-data");
             let owner = ChangingOwner {
                 first: &source.root,
-                next: if matches!(case, "candidate-root" | "resolver-root") {
+                next: if matches!(case, "candidate-root" | "resolver-root" | "definition-root") {
                     &other_root
                 } else {
                     &source.root
                 },
-                calls: AtomicUsize::new(if case == "candidate-root" { 2 } else { 1 }),
+                calls: AtomicUsize::new(match case {
+                    "candidate-root" => 2,
+                    "definition-root" => 0,
+                    _ => 1,
+                }),
             };
             let confirmation = CoreValue::parse_guest(b"{}", budget).unwrap();
             read.begin_confirmed(&owner, cancel, confirmation.share(), budget)
@@ -217,6 +222,17 @@ async fn confirmed_candidate_uses_the_locked_root_and_verifies_before_finish() {
                     _ => {
                         read.acquire_resolver_root(&owner, cancel).unwrap();
                         read.verify_confirmed(&owner, cancel).unwrap();
+                        if case == "definition-root" {
+                            assert!(matches!(
+                                recover(read, &owner, cancel, budget),
+                                Err(OriginalAuthorityError {
+                                    cause: Some(OriginalAuthorityCause::Unsupported(
+                                        "Setup root differs from the locked publication root"
+                                    )),
+                                    ..
+                                })
+                            ));
+                        }
                     }
                 }
             }

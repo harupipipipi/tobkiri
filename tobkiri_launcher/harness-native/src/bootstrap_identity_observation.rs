@@ -299,12 +299,19 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (1, "getter")
                 | (3, "host-root")
                 | (4, "bundle-root")
-                | (CATALOG_LOAD_SLOT, "catalog")
+                | (
+                    CATALOG_LOAD_SLOT,
+                    "catalog" | "bootstrap-publication-reread"
+                )
                 | (2, "manifest")
                 | (2, "resolver-source-lookup")
                 | (2, "bootstrap-template-lookup")
                 | (2, "bootstrap-admitted-closure-step")
                 | (2, "bootstrap-recovery-finished")
+                | (
+                    2,
+                    "bootstrap-publication-host-start" | "bootstrap-publication-source"
+                )
                 | (2, "resolver-static-edges")
                 | (2, "resolver-dynamic-edges")
                 | (2, "resolver-verified-artifacts")
@@ -334,6 +341,9 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (REVIEW, "host-root") => REVIEW_HOST_ROOT,
             (REVIEW, "bundle-root") => REVIEW_BUNDLE_ROOT,
             (REVIEW, "catalog") => CATALOG_LOAD,
+            (REVIEW, "bootstrap-publication-reread") => BOOTSTRAP_PUBLICATION_REREAD,
+            (REVIEW, "bootstrap-publication-host-start") => BOOTSTRAP_PUBLICATION_HOST_START,
+            (REVIEW, "bootstrap-publication-source") => BOOTSTRAP_PUBLICATION_SOURCE,
             (REVIEW, "manifest") => CATALOG_PARSE,
             (REVIEW, "resolver-source-lookup") => RESOLVER_SOURCE_LOOKUP,
             (REVIEW, "bootstrap-template-lookup") => BOOTSTRAP_TEMPLATE_LOOKUP,
@@ -356,6 +366,13 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             (READY, "getter") => IDENTITY,
             (REVIEW, "getter") => REVIEW,
             _ => bail!("fixed original caller is outside review"),
+        };
+        // Both load phases execute the same App loader and retain its actual
+        // catalog observations. The publication frame is separately gated.
+        let origin = if phase == BOOTSTRAP_PUBLICATION_REREAD {
+            "catalog"
+        } else {
+            origin
         };
         self.work.get().source.check_live()?;
         if matches!(slot, 3 | 4) || matches!(phase, RESOLVE_PROFILE | RESOLVE_LEGACY_PROFILE) {
@@ -429,6 +446,8 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 | BOOTSTRAP_RECOVERY_FINISHED
                 | BOOTSTRAP_ACTIVATION_PREFLIGHT
                 | BOOTSTRAP_ACTIVATION_MATCH
+                | BOOTSTRAP_PUBLICATION_HOST_START
+                | BOOTSTRAP_PUBLICATION_SOURCE
         ) && pending.result.is_some()
         {
             let pending = self.identity_pending.take().expect("admitted edge call");
@@ -796,6 +815,11 @@ fn origin_matches(actual: Option<&str>, origin: &str, raised: bool) -> bool {
             | (
                 Some("bootstrap-activation-match-raised"),
                 "bootstrap-activation-match",
+                true
+            )
+            | (
+                Some("bootstrap-publication-source-raised"),
+                "bootstrap-publication-source",
                 true
             )
     )

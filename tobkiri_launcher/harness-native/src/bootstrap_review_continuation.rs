@@ -100,6 +100,8 @@ pub(super) enum ReviewCaller {
     RecoveryTemplate,
     Candidate,
     Resolver,
+    Publication,
+    PublicationTemplate,
 }
 
 impl ReviewCaller {
@@ -116,6 +118,11 @@ impl ReviewCaller {
             Self::Resolver => review
                 .read
                 .check_resolver_root(&pack.work.get().source, pack.cancellation),
+            Self::Publication | Self::PublicationTemplate => {
+                let owner = &pack.work.get().source;
+                review.read.check_candidate_root(owner, pack.cancellation)?;
+                review.read.verify_confirmed(owner, pack.cancellation)
+            }
         }
     }
 
@@ -124,6 +131,9 @@ impl ReviewCaller {
             Self::Recovery | Self::Candidate => &mut review.actual.getter,
             Self::RecoveryTemplate => &mut review.actual.recovery_template_getter,
             Self::Resolver => &mut review.actual.resolver_getter,
+            Self::Publication | Self::PublicationTemplate => {
+                &mut review.actual.publication_template_getter
+            }
         }
     }
 

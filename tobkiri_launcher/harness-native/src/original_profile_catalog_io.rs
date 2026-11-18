@@ -52,7 +52,7 @@ pub(crate) struct CatalogIo {
     selected: PathBuf,
     // The selected spelling precedes the loader's strict resolve. A later
     // original caller reading bundle.lock.json uses this spelling.
-    #[cfg(test)]
+    retain_publication_root: bool,
     selected_before_resolve: Option<PathBuf>,
     cancellation: CoreCancellation,
     cleanup: Arc<CleanupState>,
@@ -256,7 +256,7 @@ impl CatalogIo {
             source,
             runtime: runtime.to_path_buf(),
             selected: PathBuf::new(),
-            #[cfg(test)]
+            retain_publication_root: false,
             selected_before_resolve: None,
             cancellation: cancellation.clone(),
             cleanup,
@@ -438,11 +438,13 @@ impl CatalogIo {
         self.read_raw_lock_digest(owner, invocation, &self.selected)
     }
 
-    /// The confirmed capture reopens the selected lexical lock after the
-    /// loader and source lookup. This runs in the locked comparison until the
-    /// product publication caller can prove those actual guest occurrences.
-    #[cfg(test)]
-    fn publication_lock_digest<S: crate::BootstrapReviewOwner>(
+    pub(crate) fn retain_publication_root(&mut self) {
+        self.retain_publication_root = true;
+    }
+
+    /// The confirmed capture reopens the lexical lock after the loader and
+    /// source lookup, once for this actual load.
+    pub(crate) fn publication_lock_digest<S: crate::BootstrapReviewOwner>(
         &mut self,
         owner: &S,
         invocation: &NativeSetupInvocation,
@@ -667,13 +669,10 @@ impl CatalogIo {
             {
                 let canonical = fs::canonicalize(&self.selected)
                     .map_err(|e| raw_io(e, self.selected.to_str()))?;
-                #[cfg(test)]
-                {
+                if self.retain_publication_root {
                     self.selected_before_resolve =
                         Some(std::mem::replace(&mut self.selected, canonical));
-                }
-                #[cfg(not(test))]
-                {
+                } else {
                     self.selected = canonical;
                 }
                 write_path(

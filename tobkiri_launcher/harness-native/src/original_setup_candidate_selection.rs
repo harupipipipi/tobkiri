@@ -528,7 +528,7 @@ impl PublicationRead {
         Self::operation(&self.invocation, &self.cleanup, owner, cancellation)
     }
 
-    fn check_confirmed_root<S: OriginalAuthorityOwner>(
+    pub(super) fn check_confirmed_root<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
         root: &Path,
@@ -645,7 +645,9 @@ pub(super) fn predecessor_stat<S: OriginalAuthorityOwner>(
     }
 }
 
-fn read_root<S: crate::BootstrapReviewOwner>(op: &Operation<'_, S>) -> Result<Funded<PathBuf>> {
+pub(super) fn read_root<S: crate::BootstrapReviewOwner>(
+    op: &Operation<'_, S>,
+) -> Result<Funded<PathBuf>> {
     op.owner.with_original_review_user_data(|path| {
         let bound = path
             .as_os_str()

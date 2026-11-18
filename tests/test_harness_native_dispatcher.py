@@ -1935,10 +1935,10 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
                 self.setUp()
                 self.check_predecessor_review(equal)
 
-    def check_predecessor_review(self, equal: bool) -> None:
+    def check_predecessor_review(self, equal: bool) -> tuple[dict, dict]:
         activation_calls = []
         listings = []
-        body = {"confirmation": {"bindings": []}}
+        body = {"confirmation": {"bindings": [], "profile_id": "fixture-id"}}
         preflight = self.frame("bootstrap-activation-preflight", body=body)
         match = self.frame("bootstrap-activation-match")
 
@@ -2054,7 +2054,7 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
             call = wire.dumps(bound_call)
 
         nested = []
-        returned = {"bindings": nested}
+        returned = {"bindings": nested, "profile_id": "fixture-id"}
 
         def confirm(**kwargs):
             self.assertIs(kwargs["resolved"], resolved)
@@ -2141,6 +2141,120 @@ class ResolverSourceLookupTransportTests(unittest.TestCase):
         self.assertEqual(len(activation_calls), 2)
         with self.assertRaises(InvalidReference):
             self.dispatcher.call("setup_activation_decision", match)
+        return catalog, preview["root"]
+
+    def publication_host_catalog(self, *, template: bool) -> tuple[dict, dict]:
+        start = self.frame("bootstrap-publication-host-start")
+        self.assertEqual(wire.loads(self.dispatcher.describe_value(start)), {
+            "format": PREFIX + "bootstrap-publication-host-start-result.v1",
+            "scope": self.scope.wire(),
+        })
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.describe_value(start)
+        self.runtime.catalog = self.Catalog()
+        self.runtime.catalog.profiles["fixture-id"] = {"profile_id": "fixture-id"}
+        catalog = self.load()
+        self.runtime.catalog_with_profiles = self.recovery_projector
+        if template:
+            profile_id = self.getter("fixture-id")
+            with self.assertRaises(InvalidReference):
+                self.recovery_catalog(catalog, [])
+            self.template(catalog, profile_id)
+        replacement = self.recovery_catalog(catalog, [])["root"]
+        return catalog, replacement
+
+    def publication_reread(self, catalog: dict) -> dict:
+        return wire.loads(self.dispatcher.call("load_catalog", self.frame(
+            "bootstrap-publication-reread", root=self.root.wire(), catalog=catalog,
+        )))
+
+    def publication_source(self, catalog: dict) -> dict:
+        return wire.loads(self.dispatcher.describe_value(self.frame(
+            "bootstrap-publication-source", catalog=catalog,
+        )))
+
+    def test_publication_reads_only_the_new_actual_catalog_after_match(self) -> None:
+        with self.assertRaises(InvalidReference):
+            self.dispatcher.describe_value(self.frame("bootstrap-publication-host-start"))
+        candidate, preview = self.check_predecessor_review(True)
+        loaded, replacement = self.publication_host_catalog(template=True)
+        self.runtime.catalog = self.Catalog()
+        source = {"profile_id": "fixture-id", "fresh": [True, None]}
+        self.runtime.catalog.profiles["fixture-id"] = source
+        for stale in (candidate, preview, loaded):
+            with self.assertRaises(InvalidReference):
+                self.publication_reread(stale)
+        data = self.publication_reread(replacement)
+        actual = data["root"]
+        self.assertEqual(data["owned"], [actual["object"]])
+        self.assertEqual(self.view(data)["origin"], "catalog-returned")
+        with self.assertRaises(InvalidReference):
+            self.publication_reread(replacement)
+        for stale in (candidate, preview, loaded, replacement):
+            with self.assertRaises(InvalidReference):
+                self.publication_source(stale)
+        self.assertEqual(self.publication_source(actual), {
+            "format": PREFIX + "bootstrap-publication-source-result.v1",
+            "scope": self.scope.wire(), "source": source,
+        })
+        with self.assertRaises(InvalidReference):
+            self.publication_source(actual)
+
+    def test_publication_missing_profile_preserves_key_error_and_consumes_lookup(self) -> None:
+        self.check_predecessor_review(True)
+        _, replacement = self.publication_host_catalog(template=False)
+        self.runtime.catalog = self.Catalog()
+        actual = self.publication_reread(replacement)["root"]
+        with self.assertRaises(MethodRaised) as raised:
+            self.publication_source(actual)
+        observed = self.view(wire.loads(raised.exception.details))
+        self.assertEqual(observed["origin"], "bootstrap-publication-source-raised")
+        self.assertEqual(observed["kind"], "key-error")
+        with self.assertRaises(InvalidReference):
+            self.publication_source(actual)
+
+    def test_publication_rejects_a_reused_loader_result_and_consumes_reread(self) -> None:
+        self.check_predecessor_review(True)
+        _, replacement = self.publication_host_catalog(template=False)
+        with self.assertRaises(UnsupportedValue):
+            self.publication_reread(replacement)
+        self.runtime.catalog = self.Catalog()
+        with self.assertRaises(InvalidReference):
+            self.publication_reread(replacement)
+
+    def test_publication_release_and_reissue_does_not_restore_lookup(self) -> None:
+        self.check_predecessor_review(True)
+        _, replacement = self.publication_host_catalog(template=False)
+        self.runtime.catalog = self.Catalog()
+        self.runtime.catalog.profiles["fixture-id"] = {"profile_id": "fixture-id"}
+        actual = self.publication_reread(replacement)["root"]
+        self.dispatcher.release_values(self.frame("values-release", refs=[actual]))
+        reissued = self.registry.retain(self.runtime.catalog).wire()
+        self.assertNotEqual(actual, reissued)
+        for catalog in (actual, reissued):
+            with self.assertRaises(InvalidReference):
+                self.publication_source(catalog)
+
+    def test_publication_reread_result_is_not_published_if_serialization_fails(self) -> None:
+        self.check_predecessor_review(True)
+        _, replacement = self.publication_host_catalog(template=False)
+        self.runtime.catalog = self.Catalog()
+        self.runtime.catalog.profiles["fixture-id"] = {"profile_id": "fixture-id"}
+        dumps = wire.dumps
+
+        def fail_result(packet: dict) -> str:
+            if packet["format"] == PREFIX + "value-result.v1":
+                raise wire.OrderedJSONError("reread result serialization failed")
+            return dumps(packet)
+
+        with patch.object(wire, "dumps", fail_result), self.assertRaises(wire.OrderedJSONError):
+            self.publication_reread(replacement)
+        self.assertNotIn(id(self.runtime.catalog), self.registry._identity)
+        reissued = self.registry.retain(self.runtime.catalog).wire()
+        with self.assertRaises(InvalidReference):
+            self.publication_source(reissued)
+        with self.assertRaises(InvalidReference):
+            self.publication_reread(replacement)
 
     def test_fixed_profile_checks_shell_path_after_original_lock_digest(self) -> None:
         # The portable caller fixture uses the actual original helpers. The

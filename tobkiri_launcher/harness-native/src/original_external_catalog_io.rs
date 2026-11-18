@@ -132,8 +132,7 @@ pub(crate) fn read_closure_executable<S: crate::BootstrapReviewOwner>(
     expected_manifest: &CoreValue,
     digest: &str,
 ) -> Result<ClosureExecutable> {
-    publication.check_continuation_thread()?;
-    let pending = publication.pending.as_ref().expect("held recovery");
+    let user_data = publication.catalog_user_data(owner, cancellation)?;
     let op = PublicationRead::operation(
         &publication.invocation,
         &publication.cleanup,
@@ -145,14 +144,14 @@ pub(crate) fn read_closure_executable<S: crate::BootstrapReviewOwner>(
             external_catalog_executable::read(
                 &op,
                 source.runtime,
-                &pending.root,
+                user_data,
                 budget,
                 id,
                 expected_manifest,
                 digest,
             )
         })?
-        .map_err(recovery_error)
+        .map_err(|error| publication.catalog_failure(error))
 }
 
 pub(crate) fn read_closure_manifest<S: crate::BootstrapReviewOwner>(
@@ -162,8 +161,7 @@ pub(crate) fn read_closure_manifest<S: crate::BootstrapReviewOwner>(
     budget: &Arc<dyn AllocationBudget>,
     id: &str,
 ) -> Result<ClosureManifest> {
-    publication.check_continuation_thread()?;
-    let pending = publication.pending.as_ref().expect("held recovery");
+    let user_data = publication.catalog_user_data(owner, cancellation)?;
     let op = PublicationRead::operation(
         &publication.invocation,
         &publication.cleanup,
@@ -172,9 +170,9 @@ pub(crate) fn read_closure_manifest<S: crate::BootstrapReviewOwner>(
     )?;
     owner
         .with_original_catalog_source(|source| {
-            read_manifest_from_catalogs(&op, source.runtime, &pending.root, budget, id)
+            read_manifest_from_catalogs(&op, source.runtime, user_data, budget, id)
         })?
-        .map_err(recovery_error)
+        .map_err(|error| publication.catalog_failure(error))
 }
 
 fn read_manifest_from_catalogs<S: OriginalAuthorityOwner>(
@@ -375,8 +373,7 @@ pub(crate) fn read<S: crate::BootstrapReviewOwner>(
     cancellation: &CoreCancellation,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<ExternalPackRead> {
-    publication.check_continuation_thread()?;
-    let pending = publication.pending.as_ref().expect("held recovery");
+    let user_data = publication.catalog_user_data(owner, cancellation)?;
     let op = PublicationRead::operation(
         &publication.invocation,
         &publication.cleanup,
@@ -385,10 +382,10 @@ pub(crate) fn read<S: crate::BootstrapReviewOwner>(
     )?;
     owner
         .with_original_catalog_source(|source| {
-            let input = read_inputs(&op, source.runtime, &pending.root, budget)?;
+            let input = read_inputs(&op, source.runtime, user_data, budget)?;
             authenticate(&op, input, budget)
         })?
-        .map_err(recovery_error)
+        .map_err(|error| publication.catalog_failure(error))
 }
 
 fn read_inputs<S: OriginalAuthorityOwner>(

@@ -1206,9 +1206,18 @@ async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
         fs::create_dir_all(&bundle).unwrap();
         fs::write(bundle.join("catalog.json"), b"first").unwrap();
         fs::write(bundle.join("bundle.lock.json"), br#"{"schema":"test-resource-index-only","entries":[{"path":"catalog.json","kind":"executable_catalog","digest":"not-a-Pack-validation-test"}]}"#).unwrap();
-        io.select_packaged(&bundle).unwrap();
+        #[cfg(unix)]
+        let selected = {
+            let parent_alias = source.root.join("selected-bundle-parent");
+            std::os::unix::fs::symlink(bundle.parent().unwrap(), &parent_alias).unwrap();
+            parent_alias.join("v4")
+        };
+        #[cfg(not(unix))]
+        let selected = bundle.clone();
+        io.select_packaged(&selected).unwrap();
         io.bind_loader(CoreValue::string("resolved_module_fixture", budget).unwrap())
             .unwrap();
+        io.retain_publication_root();
         assert!(io.publication_lock_digest(source, invocation).is_err());
         call(
             io,
@@ -1311,9 +1320,18 @@ async fn catalog_reader_preserves_pin_reread_and_closes_each_actual_file() {
         );
         assert!(io.completed());
         // The loader already read and verified its own lock occurrence. A
-        // subsequent capture reread must observe the newly written raw bytes.
+        // subsequent capture uses the original lexical path, even when its
+        // parent now points away from the resolved loader root.
         let changed = b"changed after the source Profile lookup";
-        fs::write(bundle.join("bundle.lock.json"), changed).unwrap();
+        #[cfg(unix)]
+        {
+            let replacement_parent = source.root.join("replacement-bundle-parent");
+            fs::create_dir_all(replacement_parent.join("v4")).unwrap();
+            let parent_alias = selected.parent().unwrap();
+            fs::remove_file(parent_alias).unwrap();
+            std::os::unix::fs::symlink(replacement_parent, parent_alias).unwrap();
+        }
+        fs::write(selected.join("bundle.lock.json"), changed).unwrap();
         assert_eq!(
             io.publication_lock_digest(source, invocation).unwrap(),
             Digest::hash(changed)

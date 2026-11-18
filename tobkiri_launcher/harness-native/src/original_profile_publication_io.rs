@@ -170,9 +170,16 @@ impl Directory {
 }
 #[cfg(unix)]
 impl Directory {
+    pub(super) fn profiles_user_data(&self) -> Option<&Path> {
+        if self.root.file_name().is_some_and(|name| name == "profiles") {
+            self.root.parent()
+        } else {
+            None
+        }
+    }
+
     pub(super) fn is_profiles_at(&self, root: &Path) -> bool {
-        self.root.file_name().is_some_and(|name| name == "profiles")
-            && self.root.parent() == Some(root)
+        self.profiles_user_data() == Some(root)
     }
 
     pub(super) fn capture<S: OriginalAuthorityOwner>(

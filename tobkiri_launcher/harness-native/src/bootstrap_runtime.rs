@@ -57,6 +57,9 @@ const BOOTSTRAP_RECOVERY_CATALOG: u8 = 27;
 const BOOTSTRAP_ADMITTED_CLOSURE_STEP: u8 = 28;
 const BOOTSTRAP_RECOVERY_FINISHED: u8 = 29;
 const RESOLVE_LEGACY_PROFILE: u8 = 30;
+const BOOTSTRAP_PUBLICATION_HOST_START: u8 = 31;
+const BOOTSTRAP_PUBLICATION_REREAD: u8 = 32;
+const BOOTSTRAP_PUBLICATION_SOURCE: u8 = 33;
 const CATALOG_LOAD_SLOT: usize = 7;
 const RESOLVE_PROFILE_SLOT: usize = 8;
 const BOOTSTRAP_CONFIRMATION_SLOT: usize = 9;
@@ -205,6 +208,9 @@ impl CiRetiredCall {
             BOOTSTRAP_RECOVERY_CATALOG => "bootstrap-recovery-catalog",
             BOOTSTRAP_ADMITTED_CLOSURE_STEP => "bootstrap-admitted-closure-step",
             BOOTSTRAP_RECOVERY_FINISHED => "bootstrap-recovery-finished",
+            BOOTSTRAP_PUBLICATION_HOST_START => "bootstrap-publication-host-start",
+            BOOTSTRAP_PUBLICATION_REREAD => "bootstrap-publication-reread",
+            BOOTSTRAP_PUBLICATION_SOURCE => "bootstrap-publication-source",
             _ => "unknown",
         }
     }
@@ -430,6 +436,9 @@ fn inspect<S: BootstrapInputOwner>(
                 });
             }
         }
+    }
+    if phase == BOOTSTRAP_PUBLICATION_REREAD {
+        return catalog::inspect(context, work.clone(), phase);
     }
     if phase == CATALOG_LOAD {
         #[cfg(all(
@@ -1216,8 +1225,9 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         .await
     }
 
-    /// Build the activation decision request from the entire worker-issued
-    /// listing and its confirmed digest. The caller must own the UI receipt.
+    /// Resume Setup from the entire worker-issued listing and its confirmed
+    /// digest. This can recover a publication or materialize its Host catalog
+    /// under the original lock. The caller must own the UI receipt.
     pub async fn setup_activation_decision_for_listing(
         &mut self,
         options: &crate::BootstrapReviewOptions,
@@ -1563,12 +1573,18 @@ async fn run_setup_review<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             BootstrapActivationDecision::Rejected(response),
         ))),
         Ok(Decision::Matched(candidate, resolved)) => {
-            if confirmed
-                && let Err(error) = review
-                    .read
-                    .verify_confirmed(&pack.work.get().source, pack.cancellation)
-            {
-                return Ok(Err(crate::bootstrap_review::original_failure(error)));
+            if confirmed {
+                #[cfg(unix)]
+                return Ok(Err(
+                    match catalog::publication::verify(review, pack, &candidate).await? {
+                        Ok(_) => crate::BootstrapReviewFailure::NotBound(
+                            crate::BootstrapReviewReachpoint::InitialPublicationJournalNotBound,
+                        ),
+                        Err(error) => error,
+                    },
+                ));
+                #[cfg(not(unix))]
+                bail!("confirmed Setup has no native publication lock");
             }
             Ok(Ok(SetupOutput::Decision(
                 BootstrapActivationDecision::Matched(candidate, resolved),
@@ -1587,6 +1603,20 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
     ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
         // These private frames are constructed by their own Review caller.
         // The ordinary DATA describe API cannot select these operations.
+        if slot == CATALOG_LOAD_SLOT {
+            let frame = CoreValue::parse_guest(input.as_bytes(), self.input_budget)?;
+            let format = frame.get_key("format");
+            if !matches!(
+                (phase, format.as_ref().and_then(CoreValue::as_str)),
+                (CATALOG_LOAD, Some("io.tobkiri.native-call.v1"))
+                    | (
+                        BOOTSTRAP_PUBLICATION_REREAD,
+                        Some(catalog::PUBLICATION_REREAD_REQUEST)
+                    )
+            ) {
+                bail!("catalog load is outside the fixed Review reachpoint");
+            }
+        }
         if slot == RESOLVE_PROFILE_SLOT {
             let frame = CoreValue::parse_guest(input.as_bytes(), self.input_budget)?;
             let format = frame.get_key("format");
@@ -1630,6 +1660,16 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                         if phase != BOOTSTRAP_RECOVERY_FINISHED =>
                     {
                         bail!("recovery completion is outside the fixed Review reachpoint");
+                    }
+                    Some(catalog::PUBLICATION_HOST_START_REQUEST)
+                        if phase != BOOTSTRAP_PUBLICATION_HOST_START =>
+                    {
+                        bail!("publication Host catalog is outside the fixed Review reachpoint");
+                    }
+                    Some(catalog::PUBLICATION_SOURCE_REQUEST)
+                        if phase != BOOTSTRAP_PUBLICATION_SOURCE =>
+                    {
+                        bail!("publication source lookup is outside the fixed Review reachpoint");
                     }
                     Some(resolver_edges::STATIC_REQUEST) if phase != RESOLVER_STATIC_EDGES => {
                         bail!("static Profile edges are outside the fixed Review reachpoint");

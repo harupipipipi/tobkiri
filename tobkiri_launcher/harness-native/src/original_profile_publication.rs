@@ -312,6 +312,32 @@ impl PublicationRead {
             "publication continuation is not held",
         ))
     }
+
+    /// Host catalog IO is shared by held recovery and confirmed fresh Setup.
+    #[cfg(unix)]
+    fn catalog_user_data<S: OriginalAuthorityOwner>(
+        &self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+    ) -> Result<&Path> {
+        if let Some(pending) = &self.pending {
+            pending.check_thread()?;
+            return Ok(&pending.root);
+        }
+        self.verify_confirmed(owner, cancellation)?;
+        self.confirmed
+            .as_ref()
+            .and_then(|confirmed| confirmed.scope.directory.profiles_user_data())
+            .ok_or_else(OriginalAuthorityError::unavailable)
+    }
+
+    fn catalog_failure(&self, error: OriginalAuthorityError) -> OriginalAuthorityError {
+        #[cfg(unix)]
+        if self.confirmed.is_some() {
+            return error;
+        }
+        recovery_error(error)
+    }
     pub(crate) fn candidate_matches_identity(&self, identity: &[u32]) -> Result<bool> {
         self.check_continuation_thread()?;
         #[cfg(unix)]
