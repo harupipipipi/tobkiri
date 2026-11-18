@@ -4832,16 +4832,34 @@ def _exercise_provider_configuration_http(
     assert provider_owners[-1][1] != provider_owners[-1][3]
 
 
+@pytest.fixture
+def provider_configuration_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Exercise arbitrary test Providers outside the isolated enrollment policy."""
+    from core_runtime.bootstrap import production_v4
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    monkeypatch.setattr(
+        production_v4, "owner_startup_generation_budget_template", lambda _template: None,
+    )
+    yield from _captured_production_server(
+        tmp_path, monkeypatch, credential_store_factory=host_credential_store_factory,
+    )
+
+
 def test_provider_configuration_http_requires_approval_and_saves_once(
-    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    provider_configuration_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _exercise_provider_configuration_http(production_server, tmp_path, monkeypatch)
+    _exercise_provider_configuration_http(
+        provider_configuration_server, tmp_path, monkeypatch,
+    )
 
 
 def test_audio_provider_configuration_http_preserves_explicit_approval_and_exact_scopes(
-    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    provider_configuration_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _exercise_provider_configuration_http(production_server, tmp_path, monkeypatch, audio=True)
+    _exercise_provider_configuration_http(
+        provider_configuration_server, tmp_path, monkeypatch, audio=True,
+    )
 
 
 @pytest.mark.parametrize(
@@ -4851,6 +4869,8 @@ def test_audio_provider_configuration_http_preserves_explicit_approval_and_exact
         (False, "inapplicable"),
         (False, "oversized-registry"),
         (False, "unfunded"),
+        (False, "revoked-before-save"),
+        (False, "retired-publication"),
         (True, None),
     ],
 )
@@ -4858,7 +4878,7 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, openrouter_only: bool,
     launcher_mode: str | None,
 ) -> None:
-    """The signed request can borrow a planner only while its prepare lease runs."""
+    """The signed prepare and approved save borrow only their own live leases."""
     from core_runtime.authority.ui_operator import sign_ui_operator
     from core_runtime.bootstrap import production_v4
     from core_runtime import native_provider_prepare_ipc
@@ -4889,6 +4909,7 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
     }
     borrowed: list[NativeProviderPrepareBorrow] = []
     rejected_native_amounts: list[int] = []
+    revocations: list[str] = []
     if launcher_mode == "unfunded":
         reserve = DurableResourceLedger.reserve
 
@@ -4918,11 +4939,28 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         borrowed.append(borrow)
         if launcher_mode == "inapplicable":
             raise native_provider_prepare_ipc.NativeProviderPrepareUnavailable()
-        observations = [json.loads(borrow.read_legacy_registry()) for _ in range(2)]
-        assert [document["revision"] for document in observations] == [1, 1]
-        assert observations[0] == observations[1]
+        count = 3 if borrow.frozen_plan is not None else 2
+        observations = [json.loads(borrow.read_legacy_registry()) for _ in range(count)]
+        assert [document["revision"] for document in observations] == [1] * count
+        assert all(document == observations[0] for document in observations)
         with pytest.raises(PermissionError, match="reads are exhausted"):
             borrow.read_legacy_registry()
+        if borrow.frozen_plan is not None:
+            assert borrow.frozen_plan["request_digest"] == canonical_digest(connection)
+            assert borrow.frozen_plan["expected_revision"] == 1
+            if launcher_mode == "retired-publication":
+                with server._lifecycle_lock:
+                    server._native_provider_prepare_instance = "0" * 32
+            return {
+                "expected_revision": 1,
+                "record": {
+                    "provider_instance_id": "provider.fixture-local",
+                    "adapter_id": "local-openai-compatible",
+                    "endpoint": "http://127.0.0.1:11434/v1",
+                    "credential_handle": None,
+                    "record_revision": 1,
+                },
+            }
         return {
             "profile_id": "defaults",
             "provider_instance_id": "provider.fixture-local",
@@ -4943,7 +4981,7 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         tmp_path, monkeypatch,
         credential_store_factory=host_credential_store_factory,
         native_provider_prepare_planner=planner if launcher_mode is None else None,
-    ) as (server, _session, _authority):
+    ) as (server, _session, authority):
         registry = ProviderRegistry("defaults", user_data_root=root)
         registry.save({
             "provider_instance_id": "provider.already-saved",
@@ -5007,16 +5045,43 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
             ),
         })
         assert status == 200, response
+        if launcher_mode == "revoked-before-save":
+            decision = authority.get_interactive_approval_decision(approval_id)
+            assert decision is not None and decision.grant_id
+            original_read = ProviderRegistry._read
+
+            def read_before_publication(instance: ProviderRegistry) -> dict[str, Any]:
+                document = original_read(instance)
+                if (instance.lock_root / "provider-registry.lock").is_file():
+                    revocations.append(authority.revoke(
+                        target_kind="grant", target_id=decision.grant_id,
+                        reason="fixture revoke after native validation",
+                    ))
+                return document
+
+            monkeypatch.setattr(ProviderRegistry, "_read", read_before_publication)
+        failed_closed = launcher_mode in {"revoked-before-save", "retired-publication"}
+        expected_state = "ambiguous" if failed_closed else "succeeded"
         for _ in range(2):
             result = _resume_until_terminal(
                 post, path, {"phase": "resume", "effect_id": effect["effect_id"]},
             )
-            assert result["data"]["state"] == "succeeded", result
+            assert result["data"]["state"] == expected_state, result
+        if failed_closed:
+            assert registry.path.read_bytes() == before
+            assert len(borrowed) == 2
+            assert len(revocations) == int(launcher_mode == "revoked-before-save")
+            return
         snapshot = registry.snapshot()
         assert snapshot["revision"] == 2
         assert snapshot["providers"][1]["credential_handle"] is None
         assert not (root / "credentials/material-store/credentials.store.json").exists()
-        assert len(borrowed) == expected_borrows
+        expected_validations = 1 if launcher_mode in {
+            "available", "inapplicable", "oversized-registry",
+        } else 0
+        assert len(borrowed) == expected_borrows + expected_validations
+        if launcher_mode == "unfunded":
+            assert rejected_native_amounts == [MINIMUM_PREPARE_MEMORY] * 2
 
 
 @pytest.mark.parametrize("text_blocks", [False, True])

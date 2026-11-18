@@ -146,6 +146,9 @@ class ProductionRuntimeV4:
         close_callbacks: tuple[Callable[[], None], ...] = (),
         stop_callbacks: tuple[Callable[[], None], ...] = (),
         before_close_callbacks: tuple[Callable[[], None], ...] = (),
+        native_provider_runtime_publish: (
+            Callable[[str, Callable[[], None]], None] | None
+        ) = None,
     ) -> "V4DispatchSession":
         """Bind request ports to identities from this captured composition."""
         return V4DispatchSession(
@@ -167,6 +170,7 @@ class ProductionRuntimeV4:
             close_callbacks=close_callbacks,
             stop_callbacks=stop_callbacks,
             before_close_callbacks=before_close_callbacks,
+            native_provider_runtime_publish=native_provider_runtime_publish,
         )
 
 
@@ -194,6 +198,11 @@ class V4DispatchSession:
     close_callbacks: tuple[Callable[[], None], ...] = ()
     stop_callbacks: tuple[Callable[[], None], ...] = ()
     before_close_callbacks: tuple[Callable[[], None], ...] = ()
+    native_provider_runtime_publish: (
+        Callable[[str, Callable[[], None]], None] | None
+    ) = field(
+        default=None, repr=False, compare=False,
+    )
     _close_lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
     _completed_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)
     _completed_pre_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)

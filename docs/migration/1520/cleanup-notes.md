@@ -4092,7 +4092,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   SetupとRegistryの入力を取り込む段階が残る。署名済みCI検証Appで配布時の流れを調べる。
   Registryと元の呼出しをRustで担える段階で、Pythonからの同期借用、ソケット、稼働世代の
   引き渡しを削除し、現在のlease確認と物理終了証明をNative側の同じ所有者に集約できる。
-  承認後の検証用に `legacy-configuration-commit.validate-local` をProvider Packへ追加。
+  `58cbfdc56` で承認後の検証用に `legacy-configuration-commit.validate-local` をProvider Packへ追加。
   元の計画を再計算する2回の観測を終え、承認時の計画と比較してから3回目の読み取りで
   既存のprepare-saveを行う。Rustの既存executeも同じ検証を使う。検証用Storeは元の
   Registryの読み取りだけを受け付ける。Coreは固定したWITと実Wasmの型を確認し、回数を計上する。
@@ -4108,6 +4108,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   fixtureを維持して、機能有効時の任意Provider情報を初期化した。分離コンパイルで修正前の
   3件を再現し、修正後は機能の有効・無効の両方で通過した。同じファイルの変更をSetup
   レビューCIの起動対象に含めた。
+  `58cbfdc56` の[再検証 44418244271](https://github.com/harupipipipi/tobkiri/actions/runs/44418244271)
+  でmacOSのLauncherとAppKit・WebKitが通過した。
+  [実モデル CI 44418244216](https://github.com/harupipipipi/tobkiri/actions/runs/44418244216)も
+  llama.cppのGemma 3 1Bを実行し、保存したRegistryのモデル選択からのWasm Flowが通過した。
+  元の署名済み `interactive_only` の実行へWasm検証を接続した。保存用ワーカーが引き継いだ
+  画面の所有者、一回限りの承認、確定済みリクエスト、実行中のlease、稼働中のHost公開状態を
+  照合する。既存のNamedLock内で、署名済みRegistry実装が書き込みに進む直前にも再照合する。
+  既存の署名済みProviderのソースとレジストリ形式を使う。Nativeは結果を返す前に終了し、
+  そこから元のCAS、保存と不確定な応答の確認に進む。固定IPCの入力上限は16 KiBで、承認済み
+  計画がある場合の結果上限は保持するモデル選択ポリシーに合わせて1 MiBとした。
+  macOSの分離実通信11件で、署名済みApplicationに同梱するレシートの実Wasmを使った。元の
+  Registry読取り、3回の観測、計画改変の拒否、16 KiBを超えるモデル制限を保存後も保持する
+  ことを確認した。分離検証のLauncher管理状態と元のPack選択はfixtureを使用した。
+  署名済みHTTPと周辺回帰66件が通過した。Runtimeの公開切替とNamedLock内の承認失効では
+  Registryの内容が維持され、再resumeによる保存もなかった。通常の認証情報付き設定を扱う
+  試験は隔離されたOpenRouter登録の予算ポリシーをfixture上で選択しない構成に揃えた。
+  元の保存処理を移す際は、元の排他ロック、リビジョン照合、文書形式、結果の不確定時の
+  確認まで同じ永続化境界で検証する。その段階でHost側の保存直前guardのためのRegistry
+  派生クラスを除去できる。
 - [全体CI 43417464300](https://github.com/harupipipipi/tobkiri/actions/runs/43417464300)の
   foundationsは、スレッドのスケジューリング次第で回数を使い切れる並行解放試験で失敗した。
   `17ac67b2a` では実リースの解放前、競合中、解放後をbarrierで同期し、上限と

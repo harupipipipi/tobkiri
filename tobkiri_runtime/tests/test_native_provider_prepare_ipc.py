@@ -46,6 +46,7 @@ class _Borrow:
         "key_value": "discarded-by-the-wire-shape",
     }
     runtime_instance = "a" * 32
+    frozen_plan = None
 
     def __init__(self, lifetime: float = 3.0) -> None:
         self.deadline_monotonic = time.monotonic() + lifetime
@@ -120,6 +121,37 @@ def _served(
             result = pool.submit(accept)
             yield planner
             result.result(timeout=5)
+
+
+def test_approved_provider_validation_carries_a_larger_retained_model_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+    borrow.frozen_plan = {"expected_revision": 42}
+    result = {
+        "expected_revision": 42,
+        "record": {"model_access": {
+            "mode": "explicit",
+            "model_ids": [f"model-{index}-{'x' * 120}" for index in range(150)],
+        }},
+    }
+    encoded = json.dumps(result).encode()
+    assert 16 * 1024 < len(encoded) <= 1024 * 1024
+
+    def serve(peer: socket.socket) -> None:
+        tag, data = _receive(peer)
+        assert tag == 1
+        frame = json.loads(data)
+        assert frame["plan"] == borrow.frozen_plan
+        assert "key_value" not in frame["request"]
+        for _ in range(3):
+            _send(peer, 4)
+            assert _receive(peer)[0] in {5, 6}
+        _send(peer, 7, encoded)
+
+    with _served(monkeypatch, serve) as planner:
+        assert planner.plan(borrow) == result
+        assert borrow.reads == 3
 
 
 def test_captured_launcher_borrow_preserves_raw_request_and_documents(

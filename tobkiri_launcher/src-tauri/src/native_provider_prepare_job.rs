@@ -1,4 +1,4 @@
-//! Tracked, read-only execution of the Provider PREPARE admitted at Shell launch.
+//! Tracked, read-only Provider preparation and commit validation.
 
 use std::{
     panic::{catch_unwind, AssertUnwindSafe},
@@ -111,6 +111,8 @@ impl Drop for PendingProviderPrepare {
 struct Request {
     listener: Arc<ProviderPrepareListener>,
     bytes: Vec<u8>,
+    plan: Option<Vec<u8>>,
+    input_capacity: u64,
     deadline: Arc<ProviderPrepareDeadline>,
     read: LegacyProviderRegistryRead,
     continue_current: ContinueCurrent,
@@ -122,7 +124,7 @@ struct Prepared {
     result: Result<CoreBuffer>,
 }
 
-/// Start the installed Provider PREPARE for the original managed Launcher.
+/// Run the installed Provider planner or validate its frozen plan read-only.
 ///
 /// The trusted Host adapter owns the route, activation epoch, Registry reader,
 /// and continuing eligibility. The guest receives the bounded typed payload.
@@ -130,13 +132,20 @@ pub(crate) fn start_provider_prepare(
     app: &AppHandle,
     listener: Arc<ProviderPrepareListener>,
     request: Vec<u8>,
+    plan: Option<Vec<u8>>,
     deadline: Arc<ProviderPrepareDeadline>,
     read: LegacyProviderRegistryRead,
     continue_current: ContinueCurrent,
 ) -> Result<PendingProviderPrepare> {
     check_live(deadline.current(), None)?;
+    let input_capacity = request
+        .capacity()
+        .checked_add(plan.as_ref().map_or(0, Vec::capacity))
+        .context("native Provider preparation input capacity overflow")?;
     ensure!(
-        !request.is_empty() && request.capacity() <= MAX_BYTES,
+        !request.is_empty()
+            && plan.as_ref().is_none_or(|plan| !plan.is_empty())
+            && input_capacity <= MAX_BYTES,
         "native Provider preparation request exceeds its input envelope"
     );
     listener.verified_source().identity.validate()?;
@@ -149,6 +158,8 @@ pub(crate) fn start_provider_prepare(
     let request = Request {
         listener,
         bytes: request,
+        plan,
+        input_capacity: u64::try_from(input_capacity)?,
         deadline: Arc::clone(&deadline),
         read,
         continue_current: Arc::clone(&continue_current),
@@ -186,6 +197,8 @@ async fn run(
     let Request {
         listener,
         bytes,
+        plan,
+        input_capacity,
         deadline,
         read,
         continue_current,
@@ -213,11 +226,10 @@ async fn run(
         let custody = job.source_custody()?;
         let sources = SignedApplicationResolver::resolve_sources(&config)?;
         check_live(execution_deadline, Some(&cancellation))?;
-        let request_bytes = u64::try_from(bytes.capacity())?;
-        let input_funding = invocation.reserve(CapacityKind::VfsBuffer, request_bytes)?;
+        let input_funding = invocation.reserve(CapacityKind::VfsBuffer, input_capacity)?;
         let control_funding = invocation.control().reserve(
             ControlKind::Frame,
-            request_bytes + REGISTRY_VERIFICATION_BYTES,
+            input_capacity + REGISTRY_VERIFICATION_BYTES,
         )?;
         let inspection =
             NativeArtifactInspection::from_invocation(sources, invocation, &cancellation)?;
@@ -266,6 +278,9 @@ async fn run(
             let graph = inspection.allocation_budget()?.clone();
             let input = CoreValue::parse_guest(&bytes, &graph)?;
             drop(bytes);
+            let plan = plan
+                .map(|bytes| CoreValue::parse_guest(&bytes, &graph))
+                .transpose()?;
             let pack = reacquire_provider_prepare_pack(
                 &inspection,
                 listener.verified_source(),
@@ -275,22 +290,38 @@ async fn run(
             let read_manager = Arc::clone(&manager);
             let read_listener = Arc::clone(&listener);
             let continue_read = Arc::clone(&continue_current);
-            let output = inspection
-                .invoke_live_legacy_provider_prepare(
-                    &pack,
-                    &identity.profile_id,
-                    &input,
-                    guarded_registry_read(
-                        read,
-                        Arc::new(move || {
-                            read_manager.require_provider_prepare_admission(&read_listener)?;
-                            continue_read()
-                        }),
-                        cancellation.clone(),
-                        execution_deadline,
-                    ),
-                )
-                .await?;
+            let read = guarded_registry_read(
+                read,
+                Arc::new(move || {
+                    read_manager.require_provider_prepare_admission(&read_listener)?;
+                    continue_read()
+                }),
+                cancellation.clone(),
+                execution_deadline,
+            );
+            let output = match plan.as_ref() {
+                Some(plan) => {
+                    inspection
+                        .validate_live_legacy_provider_commit(
+                            &pack,
+                            &identity.profile_id,
+                            &input,
+                            plan,
+                            read,
+                        )
+                        .await?
+                }
+                None => {
+                    inspection
+                        .invoke_live_legacy_provider_prepare(
+                            &pack,
+                            &identity.profile_id,
+                            &input,
+                            read,
+                        )
+                        .await?
+                }
+            };
             Ok::<_, anyhow::Error>(output.encode_guest(&graph)?)
         });
         tokio::pin!(prepare);

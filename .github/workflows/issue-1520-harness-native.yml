@@ -636,7 +636,7 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib defaultspack_manager::tests::restart_resolution_does_not_replace_metadata_adopted_by_a_concurrent_launch -- --exact
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 4 -- \
+              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 6 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_provider_prepare_ipc::tests

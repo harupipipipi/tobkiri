@@ -184,6 +184,8 @@ from ..panel_auth import (
 )
 from ..provider_prepare_native_v4 import (
     CONTRACT as NATIVE_PROVIDER_PREPARE_CONTRACT,
+    EXECUTE_FUNCTION as NATIVE_PROVIDER_EXECUTE_FUNCTION,
+    EXECUTE_OPERATION as NATIVE_PROVIDER_EXECUTE_OPERATION,
     FUNCTION as NATIVE_PROVIDER_PREPARE_FUNCTION,
     OPERATION as NATIVE_PROVIDER_PREPARE_OPERATION,
     NativeProviderPrepareBorrow,
@@ -404,9 +406,12 @@ class _PlanAdmission(RequestAdmissionPort):
         activation_id: str,
         plan: Mapping[str, Any],
         state_path: Path,
-        native_prepare: tuple[
-            ResolvedOperationBinding, int, Callable[[RequestContext, Mapping[str, Any]], bool]
-        ] | None = None,
+        native_provider: tuple[
+            tuple[
+                ResolvedOperationBinding, int,
+                Callable[[RequestContext, Mapping[str, Any]], bool],
+            ], ...
+        ] = (),
         confirmed_supervisor_release: Callable[
             [Mapping[str, str], tuple[ResourceReservation, ...]], tuple[str, ...]
         ]
@@ -414,10 +419,9 @@ class _PlanAdmission(RequestAdmissionPort):
     ) -> None:
         self._profile_id = profile_id
         self._plan_digest = str(plan["plan_digest"])
-        self._native_prepare = native_prepare
-        self._native_binding_id = (
-            _admission_binding_id(native_prepare[0]) if native_prepare else None
-        )
+        self._native_bindings = {
+            _admission_binding_id(rule[0]): rule for rule in native_provider
+        }
         self._native_reservations: dict[str, ResourceReservation] = {}
         self._native_lock = threading.RLock()
         policy = _admission_mapping(plan.get("admission_policy"))
@@ -504,12 +508,9 @@ class _PlanAdmission(RequestAdmissionPort):
             policy.get("backend_overhead_bytes"), default=0,
         )
         native_floor_bytes = 0
-        if (
-            self._native_prepare is not None
-            and binding == self._native_prepare[0]
-            and self._native_prepare[2](context, payload)
-        ):
-            native_floor_bytes = self._native_prepare[1]
+        native = self._native_bindings.get(_admission_binding_id(binding))
+        if native is not None and binding == native[0] and native[2](context, payload):
+            native_floor_bytes = native[1]
         return _PlanAdmissionEstimate(
             measured_p95_bytes=measured,
             declared_minimum_bytes=_nonnegative_int(
@@ -560,19 +561,19 @@ class _PlanAdmission(RequestAdmissionPort):
             if preferred == original:
                 raise
             reservation = admit(original)
-        if scope.binding_id == self._native_binding_id:
+        if scope.binding_id in self._native_bindings:
             with self._native_lock:
                 self._native_reservations[reservation.reservation_id] = reservation
         return AdmissionTicket(reservation)
 
     def release(self, ticket: AdmissionTicket) -> None:
-        if self._native_prepare is not None:
+        if self._native_bindings:
             with self._native_lock:
                 self._native_reservations.pop(ticket.reservation.reservation_id, None)
         self._ledger.release(ticket.reservation.reservation_id)
 
-    def native_prepare_resources(self, reservation_id: str | None) -> ResourceAmount:
-        """Borrow the current prepare ticket's admitted capacity."""
+    def native_provider_resources(self, reservation_id: str | None) -> ResourceAmount:
+        """Borrow the current Provider ticket's admitted capacity."""
         with self._native_lock:
             reservation = self._native_reservations.get(reservation_id or "")
         if reservation is None:
@@ -1809,6 +1810,8 @@ def capture_production_dispatch(
     from ..provider_prepare_native_v4 import (
         NativeProviderRegistryRequiresLegacyRead,
         current_provider_prepare_http_scope,
+        invoke_native_provider_commit_validation,
+        save_validated_local_provider,
     )
 
     launcher_provider_prepare = native_provider_prepare_planner is None
@@ -3859,11 +3862,21 @@ def capture_production_dispatch(
         interactive_effect_port = LateBoundInteractiveEffectPort()
 
     native_prepare_edges: tuple[_CapturedPlanEdge, _CapturedPlanEdge] | None = None
+    native_execute_edge: _CapturedPlanEdge | None = None
+    native_provider_runtime: tuple[str, Callable[[], None]] | None = None
 
-    def is_exact_legacy_prepare_edge(edge: _CapturedPlanEdge, function_id: str) -> bool:
+    def publish_native_provider_runtime(
+        instance: str, check: Callable[[], None],
+    ) -> None:
+        nonlocal native_provider_runtime
+        native_provider_runtime = (instance, check)
+
+    def is_exact_legacy_provider_edge(
+        edge: _CapturedPlanEdge, function_id: str, mode: str = "profile_grant",
+    ) -> bool:
         binding = edge.binding
         return (
-            edge.authority_mode == "profile_grant"
+            edge.authority_mode == mode
             and edge.target.function_id == function_id
             and binding.get("variant_id") == function_id + ".python"
             and binding.get("platform") == binding.get("architecture") == "any"
@@ -3887,7 +3900,7 @@ def capture_production_dispatch(
             edge for edge in captured_edges
             if edge.caller.principal_id in shell_principal_ids
             and edge.resolved_binding == coordinator_binding
-            and is_exact_legacy_prepare_edge(
+            and is_exact_legacy_provider_edge(
                 edge, "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
             )
         )
@@ -3899,10 +3912,28 @@ def capture_production_dispatch(
             == NATIVE_PROVIDER_PREPARE_CONTRACT
             and edge.resolved_binding.operation.operation_id
             == NATIVE_PROVIDER_PREPARE_OPERATION
-            and is_exact_legacy_prepare_edge(edge, NATIVE_PROVIDER_PREPARE_FUNCTION)
+            and is_exact_legacy_provider_edge(edge, NATIVE_PROVIDER_PREPARE_FUNCTION)
         )
         if len(shell_edges) == len(prepare_edges) == 1:
             native_prepare_edges = shell_edges[0], prepare_edges[0]
+            execute_edges = tuple(
+                edge for edge in captured_edges
+                if edge.caller.principal_id == coordinator_binding.principal_ref.value
+                and edge.resolved_binding.artifact.pack_id
+                == "rumi_provider_registry_pack"
+                and edge.resolved_binding.operation.contract_id
+                == NATIVE_PROVIDER_PREPARE_CONTRACT
+                and edge.resolved_binding.operation.operation_id
+                == NATIVE_PROVIDER_EXECUTE_OPERATION
+                and is_exact_legacy_provider_edge(
+                    edge, NATIVE_PROVIDER_EXECUTE_FUNCTION, "interactive_only",
+                )
+            )
+            if len(execute_edges) == 1 and (
+                credential_store_binding is None
+                or credential_store_binding.generation_admission is None
+            ):
+                native_execute_edge = execute_edges[0]
 
     def is_native_prepare_route(
         context: RequestContext, payload: Mapping[str, Any],
@@ -3973,13 +4004,13 @@ def capture_production_dispatch(
                 current_provider_prepare_http_scope() if launcher_provider_prepare else None
             )
             reservation_id = envelope.resource_reservation_id
-            resources = production_admission.native_prepare_resources(reservation_id)
+            resources = production_admission.native_provider_resources(reservation_id)
 
             def guard() -> None:
                 invocation.assert_current()
                 if http_scope is not None:
                     http_scope[1]()
-                production_admission.native_prepare_resources(reservation_id)
+                production_admission.native_provider_resources(reservation_id)
 
             if resources.memory_bytes < planner.memory_bytes:
                 guard()
@@ -4009,6 +4040,127 @@ def capture_production_dispatch(
                 plan = budget.prepare(plan)
                 guard()
             return plan
+
+        return replace(contribution, invoke=invoke)
+
+    def is_native_execute_route(
+        context: RequestContext, payload: Mapping[str, Any],
+    ) -> bool:
+        request, plan = payload.get("request"), payload.get("plan")
+        return (
+            native_execute_edge is not None
+            and native_provider_runtime is not None
+            and context.caller_principal.value
+            == native_execute_edge.caller.principal_id
+            and set(payload) == {"request", "plan"}
+            and isinstance(request, Mapping)
+            and is_keyless_local(request)
+            and isinstance(plan, Mapping)
+            and "generation_budget" not in plan
+        )
+
+    def wrap_native_provider_execution(
+        contribution: HostProviderContributionV4,
+        capture: HostProviderCaptureContextV4,
+        planner: NativeProviderPreparePlanner,
+        edge: _CapturedPlanEdge,
+    ) -> HostProviderContributionV4:
+        """Validate a detached approved effect before the original locked save."""
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native Provider execution context unavailable")
+            envelope = invocation.envelope
+            context = envelope.context
+            if not is_native_execute_route(context, payload):
+                return contribution.invoke(operation_id, payload, invocation)
+            pinned_runtime = native_provider_runtime
+            if (
+                pinned_runtime is None
+                or operation_id != NATIVE_PROVIDER_EXECUTE_OPERATION
+                or payload is not envelope.payload
+                or envelope.target_principal != edge.resolved_binding.principal_ref
+                or capture.user_data_root is None
+                or capture.generation_budget_port is not None
+            ):
+                raise AuthorityDenied("native Provider execution lineage changed")
+            reservation = envelope.resource_reservation_id
+            owner = (
+                invocation.presentation_owner_principal_id,
+                invocation.presentation_owner_session_id,
+            )
+
+            def guard() -> None:
+                invocation.assert_current()
+                if native_provider_runtime is not pinned_runtime:
+                    raise AuthorityDenied("native Provider runtime publication changed")
+                pinned_runtime[1]()
+                with caller_session_bindings_lock:
+                    retained_owner = presentation_owner_bindings.get(
+                        context.caller_session_id,
+                    )
+                    if retained_owner != owner:
+                        raise AuthorityDenied("native Provider approval owner changed")
+                production_admission.native_provider_resources(reservation)
+
+            guard()
+            lease, _state, _epoch, _revoked = (
+                authority_store.inspect_dispatch_authority(
+                    envelope.lease.token.decode("ascii"),
+                )
+            )
+            grant = authority_store.get_grant(lease.grant_id)
+            if (
+                grant is None
+                or grant.lifetime is not GrantLifetime.ONE_SHOT
+                or grant.approval_id is None
+                or grant.scope.exact_request_digest != envelope.request_digest
+                or lease.authorized_scope.exact_request_digest
+                != envelope.request_digest
+            ):
+                raise AuthorityDenied("native Provider execution lacks an exact approval")
+            resources = production_admission.native_provider_resources(reservation)
+            if resources.memory_bytes < planner.memory_bytes:
+                guard()
+                return contribution.invoke(operation_id, payload, invocation)
+
+            from ecosystem.rumi_provider_registry_pack.runtime.configuration import (
+                configuration_request,
+            )
+            from ecosystem.rumi_provider_registry_pack.runtime.registry import (
+                ProviderRegistry,
+            )
+
+            request = payload["request"]
+            normalized = configuration_request(request)
+            registry = ProviderRegistry(
+                capture.profile_id, user_data_root=capture.user_data_root,
+            )
+            borrow = NativeProviderPrepareBorrow(
+                context=context, payload=request, user_data_root=capture.user_data_root,
+                document_path=registry.path,
+                deadline_monotonic=envelope.deadline_monotonic,
+                resources=resources, guard=guard, runtime_instance=pinned_runtime[0],
+                frozen_plan=payload["plan"],
+            )
+            try:
+                record, revision = invoke_native_provider_commit_validation(
+                    planner, borrow, payload=request, normalized=normalized,
+                )
+            except (
+                NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
+            ):
+                guard()
+                return contribution.invoke(operation_id, payload, invocation)
+            guard()
+            return save_validated_local_provider(
+                capture.profile_id, capture.user_data_root, record,
+                expected_revision=revision, guard=guard,
+            )
 
         return replace(contribution, invoke=invoke)
 
@@ -4053,6 +4205,7 @@ def capture_production_dispatch(
             return host_provider_data.capture_for(factory)
 
     native_prepare_key: tuple[str, str, str] | None = None
+    native_execute_key: tuple[str, str, str] | None = None
     captured_wake_ports: list[tuple[LateBoundWakePortV4, CapturedWakeDeclarationV4,
                                    ResolvedOperationBinding]] = []
     for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
@@ -4144,6 +4297,21 @@ def capture_production_dispatch(
                     ) if item.key == native_prepare_key else item
                     for item in contributions
                 )
+            if (
+                native_execute_edge is not None
+                and native_execute_edge.resolved_binding in captured_bindings
+            ):
+                native_execute_key = (
+                    NATIVE_PROVIDER_PREPARE_CONTRACT, NATIVE_PROVIDER_EXECUTE_OPERATION,
+                    native_execute_edge.target.principal_id,
+                )
+                contributions = tuple(
+                    wrap_native_provider_execution(
+                        item, provider_capture, native_provider_prepare_planner,
+                        native_execute_edge,
+                    ) if item.key == native_execute_key else item
+                    for item in contributions
+                )
         host_contributions_by_backend.setdefault(backend_id, []).extend(contributions)
         close_callbacks.append(captured_provider.close)
         if wake_port is not None and declaration is not None:
@@ -4158,7 +4326,8 @@ def capture_production_dispatch(
                 security_epoch=int(active.activation["security_epoch"]),
                 invocation_context=invocation_context,
                 admission_bound_operations=frozenset(
-                    item.key for item in contributions if item.key == native_prepare_key
+                    item.key for item in contributions
+                    if item.key in {native_prepare_key, native_execute_key}
                 ),
             ),
         )
@@ -4274,21 +4443,28 @@ def capture_production_dispatch(
                 released.add(reservation_id)
         return tuple(sorted(released))
 
+    native_admission_rules = []
+    if native_provider_prepare_planner is not None:
+        memory = native_provider_prepare_planner.memory_bytes
+        if native_prepare_key is not None and native_prepare_edges is not None:
+            native_admission_rules.append(
+                (
+                    native_prepare_edges[1].resolved_binding,
+                    memory,
+                    is_native_prepare_route,
+                )
+            )
+        if native_execute_key is not None and native_execute_edge is not None:
+            native_admission_rules.append(
+                (native_execute_edge.resolved_binding, memory, is_native_execute_route)
+            )
     production_admission = _PlanAdmission(
         profile_id=profile_id,
         activation_id=activation_id,
         plan=plan,
         state_path=authority_workspace / "admission" / "reservations.json",
         confirmed_supervisor_release=confirmed_supervisor_release,
-        native_prepare=(
-            native_prepare_edges[1].resolved_binding,
-            native_provider_prepare_planner.memory_bytes,
-            is_native_prepare_route,
-        ) if (
-            native_prepare_key is not None
-            and native_prepare_edges is not None
-            and native_provider_prepare_planner is not None
-        ) else None,
+        native_provider=tuple(native_admission_rules),
     )
     broker = runtime.broker(
         authority_store=authority_store,
@@ -5011,6 +5187,9 @@ def capture_production_dispatch(
             *((control_session.cancel_pending_reads,) if control_session is not None else ()),
         ),
         before_close_callbacks=(close_wake_drivers,),
+        native_provider_runtime_publish=(
+            publish_native_provider_runtime if native_execute_key is not None else None
+        ),
     )
     dispatch_holder.append(dispatch)
     for wake_port, declaration, owner_binding in captured_wake_ports:

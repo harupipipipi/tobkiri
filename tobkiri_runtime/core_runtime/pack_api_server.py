@@ -3614,6 +3614,7 @@ class PackAPIServer:
             self.server = server
             self.thread = thread
             self._lifecycle_state = "running"
+            self._publish_native_provider_runtime(handler, lifecycle_generation)
             thread.start()
         logger.info("Pack v4 API server started on http://%s:%s", self.host, self.port)
 
@@ -3649,6 +3650,35 @@ class PackAPIServer:
                 return handler
 
         return current
+
+    def _publish_native_provider_runtime(
+        self, handler: type[PackAPIHandler], lifecycle_generation: int,
+    ) -> None:
+        """Pin an exact server publication for detached approved Provider execution."""
+        from weakref import ref
+
+        instance = self._native_provider_prepare_instance
+        publish = getattr(
+            self._dispatch_session, "native_provider_runtime_publish", None,
+        )
+        if instance is None or publish is None:
+            return
+        server = ref(self)
+        expected_handler = ref(handler)
+
+        def check() -> None:
+            owner, expected = server(), expected_handler()
+            if owner is None or expected is None:
+                raise PermissionError("native Provider runtime publication expired")
+            with owner._lifecycle_lock:
+                published = owner._request_snapshot_callback(lifecycle_generation)()
+                if (
+                    owner._native_provider_prepare_instance != instance
+                    or published is not expected
+                ):
+                    raise PermissionError("native Provider runtime publication changed")
+
+        publish(instance, check)
 
     def _runtime_refresh_callback(
         self,
@@ -4028,6 +4058,7 @@ class PackAPIServer:
                 self.handler_class = handler
                 if self.server is not None:
                     self.server.RequestHandlerClass = handler
+                self._publish_native_provider_runtime(handler, published_generation)
                 install_dispatch_session(get_container(), session)
                 if previous is not None and previous is not session:
                     self._retired_dispatch_sessions.append(previous)

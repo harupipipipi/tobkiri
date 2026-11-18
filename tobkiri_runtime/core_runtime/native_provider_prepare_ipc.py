@@ -43,7 +43,6 @@ _FAILURES = frozenset({
 _INBOUND_LIMITS = {
     _CHECK: 0,
     _READ: 0,
-    _PLAN: _JSON_LIMIT,
     _FAILURE: max(map(len, _FAILURES)),
     _INAPPLICABLE: 0,
 }
@@ -141,28 +140,28 @@ def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> byt
         or not 0 < context.security_epoch <= _U64_MAX
     ):
         raise _ProtocolError("native Provider preparation binding is invalid")
-    payload = json.dumps(
-        {
-            "identity": {
-                "profile_id": context.profile_id,
-                "profile_revision": context.profile_revision,
-                "activation_id": context.activation_id,
-                "plan_digest": context.plan_digest,
-            },
-            "security_epoch": context.security_epoch,
-            "runtime_instance": runtime_instance,
-            "deadline_ns": deadline_ns,
-            "request": {
-                "connection-name": request["connection_name"],
-                "endpoint": request["endpoint"],
-                "catalog-provider-id": request.get("catalog_provider_id"),
-                "display-name": request.get("display_name"),
-                "capabilities": request.get("capabilities"),
-            },
+    frame = {
+        "identity": {
+            "profile_id": context.profile_id,
+            "profile_revision": context.profile_revision,
+            "activation_id": context.activation_id,
+            "plan_digest": context.plan_digest,
         },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+        "security_epoch": context.security_epoch,
+        "runtime_instance": runtime_instance,
+        "deadline_ns": deadline_ns,
+        "request": {
+            "connection-name": request["connection_name"],
+            "endpoint": request["endpoint"],
+            "catalog-provider-id": request.get("catalog_provider_id"),
+            "display-name": request.get("display_name"),
+            "capabilities": request.get("capabilities"),
+        },
+    }
+    frozen_plan = borrow.frozen_plan
+    if frozen_plan is not None:
+        frame["plan"] = dict(frozen_plan)
+    payload = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
     try:
         encoded = payload.encode("utf-8")
     except UnicodeEncodeError:
@@ -172,9 +171,9 @@ def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> byt
     return encoded
 
 
-def _decode_plan(payload: bytes) -> dict[str, Any]:
+def _decode_plan(payload: bytes, limit: int) -> dict[str, Any]:
     try:
-        plan = strict_loads(payload, max_bytes=_JSON_LIMIT)
+        plan = strict_loads(payload, max_bytes=limit)
     except (ValueError, RecursionError):
         raise _ProtocolError("native Provider preparation plan is invalid") from None
     if not isinstance(plan, dict):
@@ -183,8 +182,9 @@ def _decode_plan(payload: bytes) -> dict[str, Any]:
 
 
 class _Exchange:
-    def __init__(self, connection: socket.socket) -> None:
+    def __init__(self, connection: socket.socket, *, result_limit: int) -> None:
         self.connection = connection
+        self.result_limit = result_limit
         self.received = bytearray()
         self.partial_write = False
         self.started = False
@@ -219,7 +219,7 @@ class _Exchange:
     def receive(self, wait_seconds: Callable[[], float]) -> tuple[int, bytes]:
         self._receive_until(_FRAME.size, wait_seconds)
         tag, size = _FRAME.unpack_from(self.received)
-        limit = _INBOUND_LIMITS.get(tag)
+        limit = self.result_limit if tag == _PLAN else _INBOUND_LIMITS.get(tag)
         if limit is None or size > limit:
             raise _ProtocolError("native Provider preparation frame is invalid")
         self._receive_until(_FRAME.size + size, wait_seconds)
@@ -289,7 +289,7 @@ class _Exchange:
                     raise _ProtocolError("Provider Registry exceeds its read bound")
                 self.send(_ABSENT if document is None else _PRESENT, raw, wait_seconds)
             elif tag == _PLAN:
-                plan = _decode_plan(payload)
+                plan = _decode_plan(payload, self.result_limit)
                 wait_seconds()
                 self.terminal = True
                 return plan
@@ -325,7 +325,8 @@ def _plan(
         except OSError:
             raise _ProtocolError(connection_error) from None
         _authenticate(connection, launcher)
-        exchange = _Exchange(connection)
+        result_limit = DOCUMENT_LIMIT if borrow.frozen_plan is not None else _JSON_LIMIT
+        exchange = _Exchange(connection, result_limit=result_limit)
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds)
         except Exception as error:

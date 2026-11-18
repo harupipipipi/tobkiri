@@ -1,4 +1,4 @@
-//! One private, synchronous connection to the original Provider PREPARE borrow.
+//! Private synchronous access to the original Provider Registry reader.
 
 use std::{
     io::{self, Read, Write},
@@ -9,7 +9,8 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
+use serde_json::value::RawValue;
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{AllocationBudget, AllocationError, CoreBuffer, NativeArtifactError};
 use tobkiri_wasm::NativeDataIoError;
@@ -42,12 +43,25 @@ const MAX_HORIZON: Duration = Duration::from_secs(300);
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Start {
+struct Start<'a> {
     identity: Identity,
     runtime_instance: String,
     security_epoch: u64,
     deadline_ns: u64,
     request: Request,
+    #[serde(borrow, default, deserialize_with = "deserialize_plan")]
+    plan: Option<&'a RawValue>,
+}
+
+fn deserialize_plan<'de, D>(deserializer: D) -> std::result::Result<Option<&'de RawValue>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let plan = <&RawValue>::deserialize(deserializer)?;
+    if !plan.get().starts_with('{') {
+        return Err(de::Error::custom("Provider commit plan must be an object"));
+    }
+    Ok(Some(plan))
 }
 
 #[derive(Deserialize)]
@@ -110,9 +124,8 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     );
     let mut bytes = vec![0; size];
     read_exact(&mut stream, &mut bytes, start_deadline)?;
-    let start: Start =
+    let start: Start<'_> =
         serde_json::from_slice(&bytes).map_err(|_| anyhow!("invalid Provider prepare start"))?;
-    drop(bytes);
     ensure!(
         start.runtime_instance.len() == 32
             && start
@@ -129,11 +142,6 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         start.identity.activation_id,
         start.identity.plan_digest,
     )?;
-    let request = serde_json::to_vec(&start.request)?;
-    ensure!(
-        request.len() <= JSON_LIMIT,
-        "Provider prepare request exceeds its envelope"
-    );
     let manager = app
         .try_state::<Arc<ApplicationProcessManager>>()
         .context("native Provider preparation Application manager is unavailable")?
@@ -170,12 +178,26 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         );
     }
 
+    let request = serde_json::to_vec(&start.request)?;
+    ensure!(
+        request.len() <= JSON_LIMIT,
+        "Provider prepare request exceeds its envelope"
+    );
+    // Keep the frozen plan's exact JSON for the Core's funded strict parser.
+    let plan = start.plan.map(|plan| plan.get().as_bytes().to_vec());
+    let result_limit = if plan.is_some() {
+        DOCUMENT_LIMIT
+    } else {
+        JSON_LIMIT
+    };
+    drop(bytes);
     let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
     let connection = Arc::new(Connection {
         manager,
         candidate: Arc::clone(&candidate),
         wire: Mutex::new(Wire { stream, stop: None }),
         deadline: Arc::clone(&deadline),
+        result_limit,
     });
     let check_connection = Arc::clone(&connection);
     let read_connection = Arc::clone(&connection);
@@ -183,6 +205,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         app,
         candidate,
         request,
+        plan,
         deadline,
         Box::new(move |budget| read_connection.read_registry(budget)),
         Arc::new(move || check_connection.check_current()),
@@ -201,6 +224,7 @@ struct Connection {
     // The worker's synchronous borrow and the idle actor share one reader.
     wire: Mutex<Wire>,
     deadline: Arc<ProviderPrepareDeadline>,
+    result_limit: usize,
 }
 
 struct Wire {
@@ -348,8 +372,8 @@ impl Connection {
             return self.send_stopped(stop);
         }
         match result {
-            Ok(plan) if plan.len() <= JSON_LIMIT => {
-                send_frame(&mut wire.stream, PLAN, plan.as_bytes(), deadline)
+            Ok(output) if output.len() <= self.result_limit => {
+                send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline)
             }
             Ok(_) => send_frame(&mut wire.stream, FAILURE, b"limit-exceeded", deadline),
             Err(error) => send_frame(
@@ -577,6 +601,44 @@ fn poll(stream: &UnixStream, events: libc::c_short, milliseconds: libc::c_int) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn start_frame(extra: &str) -> String {
+        format!(
+            r#"{{"identity":{{"profile_id":"profile","profile_revision":"revision","activation_id":"activation","plan_digest":"digest"}},"runtime_instance":"0123456789abcdef0123456789abcdef","security_epoch":1,"deadline_ns":1,"request":{{"connection-name":"local","endpoint":"http://localhost"}}{extra}}}"#
+        )
+    }
+
+    #[test]
+    fn start_leaves_legacy_prepare_unmodified_and_preserves_frozen_plan_bytes() {
+        let prepare = start_frame("");
+        let prepare: Start<'_> = serde_json::from_str(&prepare).unwrap();
+        assert!(prepare.plan.is_none());
+        assert_eq!(prepare.request.connection_name, "local");
+
+        // Leave semantic checks, including duplicate object keys, to the Core.
+        let plan = r#"{"record": {"name":"ä", "name":"same"}}"#;
+        let validate = start_frame(&format!(r#", "plan": {plan}"#));
+        let validate: Start<'_> = serde_json::from_str(&validate).unwrap();
+        assert_eq!(validate.plan.unwrap().get(), plan);
+    }
+
+    #[test]
+    fn start_rejects_nonobject_plans_and_extra_envelope_fields() {
+        for extra in [
+            r#","plan":null"#,
+            r#","plan":[]"#,
+            r#","plan":"{}""#,
+            r#","plan":42"#,
+            r#","plan":{},"plan":{}"#,
+            r#","plan":{},"approved":true"#,
+        ] {
+            let payload = start_frame(extra);
+            assert!(
+                serde_json::from_str::<Start<'_>>(&payload).is_err(),
+                "{extra}"
+            );
+        }
+    }
 
     #[test]
     fn frames_preserve_utf8_payload_bytes() {
