@@ -4162,7 +4162,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既存の確認lockとcleanupを維持する。Tauriの表示には従来の結果だけを返し、保存はまだ行わない。
   Rust 220件、strict Clippy、Python 243件、workflow補助14件が通過した。
   原本CIのjournal比較に、実Pythonが発行直前に使った3レコードとRustが受け取るcanonical bytesの
-  比較を追加した。既存のSetupからの採用、発行全体と64MiB内での実Wasm確認は後続。
+  比較を追加した。[原本比較CI 44233355545](https://github.com/harupipipipi/tobkiri/actions/runs/44233355545)
+  はLinuxとmacOSで成功し、Linuxで確認document、3レコードと署名済みintentのbytes、
+  activation候補の照合を通過した。
+  `af567159e` は中断した発行の復旧を、同じ発行lockとworkerで確認済みSetupに接続する。
+  未確定の作業を片付けた場合は、そのlockを保持して元の候補確認を続ける。保存済みの候補は
+  snapshotと登録定義の照合後に元の確認digestを確認し、一致した場合だけHost pointerを発行する。
+  発行済みの結果はSetupの再実行を起こさず返す。失敗時は既存の終了処理でlockを解放する。
+  Rust 221件とstrict Clippy、Python dispatcher 87件、workflow補助14件が通過した。
+  既存Launcherからの採用、初回の発行全体と64MiB内での実Wasm確認は後続。
+  初回保存も既存の4相writerとHost pointer発行を再利用できる。保存前にProfile→Lock→Planの
+  schema検証を行い、既存のrecord graph検査からActivationに依存しない部分を共有できる。
+  仮のActivationを作らず、原本どおりrecover後、artifactの検証と予約の前で3レコードを検証する。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
