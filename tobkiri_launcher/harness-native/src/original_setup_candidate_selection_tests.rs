@@ -1004,6 +1004,41 @@ fn seed_authority(source: &Source, read: &PublicationRead, cancel: &CoreCancella
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn registered_snapshot_opens_authority_and_workspace_before_reading_catalog_artifacts() {
+    use std::sync::Mutex;
+
+    with_setup_source(|source, read, cancel, budget| {
+        seed_candidate(source, true);
+        selected_setup(read, source, cancel, false, budget);
+        let before = fs::read(source.root.join("profiles/active.json")).unwrap();
+
+        let error = recovery_workspace::ready_test(read.review_registered_activation(
+            source,
+            cancel,
+            budget,
+            &Mutex::new(None),
+            None,
+        ))
+        .unwrap_err();
+        assert_eq!(error.class, recovery_workspace::APP_DENIED);
+        assert_eq!(error.message, "active pointer is unavailable: active.json");
+        assert_eq!(meta(&database(&source.root), "schema_version"), "4");
+        let lock = source
+            .root
+            .join("workspaces/defaults/activation")
+            .join(LockName::workspace("defaults").text());
+        assert!(lock.is_file() && lock_free(&lock));
+        assert!(lock_free(&source.root.join(GUARD)));
+        assert_eq!(
+            fs::read(source.root.join("profiles/active.json")).unwrap(),
+            before
+        );
+        assert!(!source.root.join("profiles").join(JOURNAL).exists());
+        assert!(read.receipt().verified());
+    });
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn registered_authority_initializes_genesis_on_the_held_root_before_the_body() {
     for additions in [false, true] {
         with_setup_source(|source, read, cancel, budget| {

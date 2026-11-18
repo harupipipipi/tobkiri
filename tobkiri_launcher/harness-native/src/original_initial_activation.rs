@@ -200,12 +200,7 @@ impl<S: crate::BootstrapReviewOwner> InitialWorkspace<'_, '_, '_, S> {
             let Some(current) = self.resume(self.read_active().await?)? else {
                 continue;
             };
-            if !first.is_same_activation(&current) {
-                return Err(raw(
-                    recovery_workspace::APP_DENIED,
-                    "active Profile changed during artifact verification",
-                ));
-            }
+            first.require_same_activation(&current)?;
             return Ok(first);
         }
     }

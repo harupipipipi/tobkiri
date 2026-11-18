@@ -53,6 +53,11 @@ pub enum BootstrapReviewReachpoint {
     CatalogSourceNotBound,
     BootstrapPredecessorActivationNotBound,
     ActiveCandidateAuthorityNotBound,
+    ActiveCandidateSnapshotSchemasNotBound,
+    ActiveCandidateLegacySuccessorNotBound,
+    ActiveCandidateCatalogPolicyNotBound {
+        successor_required: bool,
+    },
     ProfileDefinitionStoreNotBound,
     ImportLegacyCollectionNotBound,
     LegacySuccessorBuilderNotBound,

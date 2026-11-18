@@ -156,6 +156,32 @@ impl<'a> RecoveryCatalogInputs<'a> {
 }
 
 impl CatalogIo {
+    pub(in crate::original_authority::io::publication) fn verify_bundled_active_artifact<
+        S: crate::BootstrapReviewOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        profile_id: &str,
+    ) -> Result<ActiveArtifactVerification> {
+        self.verify_catalogued_active_artifact(op, |op| {
+            self.bundled_active_variant(op, profile, profile_id)
+        })
+    }
+
+    pub(in crate::original_authority::io::publication) fn verify_bundled_pending_artifact<
+        S: crate::BootstrapReviewOwner,
+    >(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        profile_id: &str,
+    ) -> Result<ArtifactTreeIdentity> {
+        self.verify_exact_artifact(op, profile, |op, selected| {
+            self.verify_bundled_shell_binding(op, selected, profile_id)
+        })
+    }
+
     pub(in crate::original_authority::io::publication) fn verify_initial_active_artifact<
         S: crate::BootstrapReviewOwner,
     >(

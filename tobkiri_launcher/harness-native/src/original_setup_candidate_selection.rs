@@ -12,21 +12,20 @@ pub(crate) enum CandidateSelection {
 
 /// The two funded arenas move into the same review as the fixed candidate root.
 /// Neither persistence store retains a lock after selection.
-struct ActiveCandidate {
+pub(super) struct ActiveCandidate {
     #[cfg(unix)]
-    _pointer: active_profile::LoadedPointer,
+    pub(super) pointer: active_profile::LoadedPointer,
     #[cfg(unix)]
     _registered: definitions::RegisteredProfile,
     #[cfg(unix)]
-    _workspace: Funded<PathBuf>,
+    pub(super) workspace: Funded<PathBuf>,
 }
 
 type ActiveLookup = std::result::Result<ActiveCandidate, &'static str>;
 
 /// Native-only borrows for the original activation factory. The Store and its
 /// key never leave this synchronous scope or become guest data.
-#[cfg(unix)]
-#[cfg_attr(not(test), allow(dead_code))] // The activation factory is not yet bound.
+#[cfg(all(unix, test))]
 pub(crate) struct RegisteredActivationScope<'scope, 'store, 'host, S> {
     pub(crate) activation_root: &'scope Path,
     pub(crate) workspace: &'scope Path,
@@ -82,7 +81,6 @@ enum Progress {
     #[cfg(unix)]
     SelectedRegistered,
     #[cfg(unix)]
-    #[cfg_attr(not(test), allow(dead_code))] // The activation factory is not yet bound.
     RegisteredAuthorityStarted,
     Resolving,
     SnapshotStarted,
@@ -222,35 +220,19 @@ impl PublicationRead {
         }
     }
 
-    /// Open Authority once, only for the exact held registered candidate.
-    /// The caller must supply the actual factory body before enabling this
-    /// operation; returning a boundary diagnostic is not a factory binding.
-    #[cfg(unix)]
-    #[cfg_attr(not(test), allow(dead_code))] // The activation factory is not yet bound.
+    /// Observe the factory inputs for the original Authority prefix comparison.
+    #[cfg(all(unix, test))]
     pub(crate) fn with_registered_activation_authority<S: crate::BootstrapReviewOwner, T>(
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
         body: impl FnOnce(RegisteredActivationScope<'_, '_, '_, S>) -> Result<T>,
     ) -> Result<T> {
-        self.registered_activation_authority(
-            owner,
-            cancellation,
-            body,
-            #[cfg(test)]
-            None,
-        )
+        self.registered_activation_authority(owner, cancellation, body, None)
     }
 
     #[cfg(unix)]
-    #[cfg_attr(not(test), allow(dead_code))] // The activation factory is not yet bound.
-    fn registered_activation_authority<S: crate::BootstrapReviewOwner, T>(
-        &mut self,
-        owner: &S,
-        cancellation: &CoreCancellation,
-        body: impl FnOnce(RegisteredActivationScope<'_, '_, '_, S>) -> Result<T>,
-        #[cfg(test)] fixture: Option<&super::super::super::tests::Fixture>,
-    ) -> Result<T> {
+    pub(super) fn enter_registered_candidate(&mut self) -> Result<()> {
         if self.fresh.progress != Progress::SelectedRegistered {
             return Err(OriginalAuthorityError::unsupported(
                 OriginalAuthorityStage::Guard,
@@ -264,16 +246,33 @@ impl PublicationRead {
                 "registered Setup candidate cleanup is uncertain",
             ));
         }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    pub(super) fn registered_candidate(&self) -> (&Path, &ActiveCandidate) {
         let root = self.fresh.root.as_ref().expect("registered candidate root");
         let candidate = self
             .fresh
             .active_candidate
             .as_ref()
             .expect("registered Setup candidate");
+        (root.as_path(), candidate)
+    }
+
+    #[cfg(all(unix, test))]
+    fn registered_activation_authority<S: crate::BootstrapReviewOwner, T>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        body: impl FnOnce(RegisteredActivationScope<'_, '_, '_, S>) -> Result<T>,
+        fixture: Option<&super::super::super::tests::Fixture>,
+    ) -> Result<T> {
+        self.enter_registered_candidate()?;
+        let (root, candidate) = self.registered_candidate();
         let op = self.candidate_operation(owner, cancellation)?;
-        #[cfg(test)]
         let op = Operation { fixture, ..op };
-        let workspace = candidate._workspace.as_path();
+        let workspace = candidate.workspace.as_path();
         super::super::with_registered_store(&op, root, |authority| {
             // Workspace ends with the exact ASCII ID verified by Setup and
             // matched against the active pointer. No ID getter is repeated.
@@ -703,9 +702,9 @@ fn select<S: OriginalAuthorityOwner>(
         };
         let workspace = workspace_path(op, root, profile_id)?;
         Ok(Ok(ActiveCandidate {
-            _pointer: pointer,
+            pointer,
             _registered: registered,
-            _workspace: workspace,
+            workspace,
         }))
     }
     #[cfg(not(unix))]

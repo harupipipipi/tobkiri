@@ -1,6 +1,8 @@
 use super::*;
 use crate::original_authority::catalog::initial_catalog_fixture;
-use crate::original_authority::definitions::tests::{lock_free, operation, with_setup_source};
+use crate::original_authority::definitions::tests::{
+    Source, lock_free, operation, with_setup_source,
+};
 use rusqlite::Connection;
 use serde_json::Value;
 
@@ -192,8 +194,113 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             drop((active, db, loader));
             read.close_continuation().unwrap();
             assert!(lock_free(&lock));
+
+            let host_pointer = fs::read(profiles.join("active.json")).unwrap();
+            let workspace = root.join("workspaces/defaults/activation");
+            let workspace_pointer = fs::read(workspace.join("active.json")).unwrap();
+            assert_eq!(
+                read_registered(owner, read, cancellation, budget, &witness, artifacts).unwrap(),
+                RegisteredSnapshotReached::CatalogPolicy {
+                    successor_required: false
+                },
+            );
+            assert_eq!(
+                fs::read(profiles.join("active.json")).unwrap(),
+                host_pointer
+            );
+            replace_host_selection(root, &host_pointer, budget);
+            let predecessor = fs::read(profiles.join("active.json")).unwrap();
+            let error = read_registered(owner, read, cancellation, budget, &witness, artifacts)
+                .unwrap_err();
+            assert_eq!(
+                error.class,
+                "core_runtime.profile_definition_store_v4.ProfileDefinitionStoreConflict",
+            );
+            assert_eq!(
+                error.message,
+                "bootstrap review does not match the verified active definition"
+            );
+            assert_eq!(fs::read(profiles.join("active.json")).unwrap(), predecessor);
+            assert_eq!(
+                fs::read(workspace.join("active.json")).unwrap(),
+                workspace_pointer
+            );
+            assert!(!profiles.join(JOURNAL).exists());
+            assert!(lock_free(
+                &workspace.join(LockName::workspace("defaults").text())
+            ));
         });
     }
+}
+
+fn read_registered(
+    owner: &Source,
+    read: &PublicationRead,
+    cancellation: &CoreCancellation,
+    budget: &Arc<dyn AllocationBudget>,
+    witness: &Path,
+    artifacts: &Path,
+) -> Result<RegisteredSnapshotReached> {
+    let mut listing = PublicationRead::new(&read.invocation).unwrap();
+    for discard in [true, false] {
+        assert_eq!(
+            listing
+                .enter_recovery(owner, cancellation, discard)
+                .unwrap(),
+            Prefix::NoJournal
+        );
+    }
+    listing.acquire_candidate_root(owner, cancellation).unwrap();
+    assert!(matches!(
+        listing
+            .candidate_selection(owner, cancellation, "defaults", false, budget)
+            .unwrap(),
+        CandidateSelection::ActiveAuthority
+    ));
+    let op = operation(&listing, owner, cancellation);
+    let loader = Mutex::new(Some(
+        initial_catalog_fixture::load(&op, budget, witness, artifacts).unwrap(),
+    ));
+    let outcome = ready_test(listing.review_registered_activation(
+        owner,
+        cancellation,
+        budget,
+        &loader,
+        Some(workspace_active::tests::bound_recovery_schemas()),
+    ));
+    assert!(listing.receipt().verified());
+    outcome
+}
+
+fn replace_host_selection(root: &Path, predecessor: &[u8], budget: &Arc<dyn AllocationBudget>) {
+    let mut pointer: Value = serde_json::from_slice(predecessor).unwrap();
+    let prior = root.join(pointer["activation_snapshot_path"].as_str().unwrap());
+    let mut snapshot: Value = serde_json::from_slice(&fs::read(prior).unwrap()).unwrap();
+    let other_id = "activation:defaults-other";
+    snapshot["activation"]["activation_id"] = Value::from(other_id);
+    let relative = "workspaces/defaults/activation/activations/defaults-other.json";
+    let payload = serde_json::to_vec(&snapshot).unwrap();
+    let digest = |payload: &[u8]| {
+        CoreValue::parse_guest(payload, budget)
+            .unwrap()
+            .digest_guest(budget)
+            .unwrap()
+            .to_string()
+    };
+    let path = root.join(relative);
+    fs::write(&path, &payload).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
+    pointer["activation_id"] = Value::from(other_id);
+    pointer["activation_snapshot_path"] = Value::from(relative);
+    pointer["activation_snapshot_digest"] = Value::from(digest(&payload));
+    pointer.as_object_mut().unwrap().remove("pointer_digest");
+    pointer["pointer_digest"] = Value::from(digest(&serde_json::to_vec(&pointer).unwrap()));
+    fs::write(
+        root.join("profiles/active.json"),
+        serde_json::to_vec(&pointer).unwrap(),
+    )
+    .unwrap();
 }
 
 fn load_document(path: &Path, budget: &Arc<dyn AllocationBudget>) -> CoreValue {

@@ -185,7 +185,7 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             }
             Ok(_) => bail!("confirmed publication entered an unexpected recovery state"),
         }
-        return Ok(fresh_candidate(review, pack)
+        return Ok(fresh_candidate(review, pack, true)
             .await?
             .map(SetupReview::Listing));
     }
@@ -215,7 +215,7 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             }
         }
     }
-    Ok(fresh_candidate(review, pack)
+    Ok(fresh_candidate(review, pack, false)
         .await?
         .map(SetupReview::Listing))
 }
@@ -265,7 +265,10 @@ async fn nonstale<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
 async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     review: &mut Review,
     pack: &mut ReviewPackBorrow<'_, S>,
+    confirmed: bool,
 ) -> super::listing::Outcome {
+    #[cfg(not(unix))]
+    let _ = confirmed;
     // The original candidate enters the exact Host user-data scope before
     // evaluating the root, the actual App loader, then the bootstrap getter.
     if let Err(error) = review
@@ -293,6 +296,13 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     drop(identity);
     Ok(Err(match selection {
         Ok(CandidateSelection::BundledCatalog) => return resolve_bundled(review, pack).await,
+        #[cfg(unix)]
+        Ok(CandidateSelection::ActiveAuthority) if !confirmed => {
+            pack.require_same_runtime()?;
+            review_registered_candidate(review, pack).await
+        }
+        // Confirmed active replacement has a different precheck and write
+        // order from both the read review and confirmed first Setup.
         Ok(CandidateSelection::ActiveAuthority) => BootstrapReviewFailure::NotBound(
             BootstrapReviewReachpoint::ActiveCandidateAuthorityNotBound,
         ),
@@ -301,6 +311,37 @@ async fn fresh_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         }
         Err(error) => original_failure(error),
     }))
+}
+
+#[cfg(unix)]
+async fn review_registered_candidate<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
+    review: &mut Review,
+    pack: &mut ReviewPackBorrow<'_, S>,
+) -> BootstrapReviewFailure {
+    use crate::original_authority::RegisteredSnapshotReached;
+    let work = pack.work.get();
+    let reached = review
+        .read
+        .review_registered_activation(
+            &work.source,
+            pack.cancellation,
+            pack.input_budget,
+            &work.catalog,
+            work.profile_schemas,
+        )
+        .await;
+    BootstrapReviewFailure::NotBound(match reached {
+        Ok(RegisteredSnapshotReached::CatalogPolicy { successor_required }) => {
+            BootstrapReviewReachpoint::ActiveCandidateCatalogPolicyNotBound { successor_required }
+        }
+        Ok(RegisteredSnapshotReached::SnapshotSchemas) => {
+            BootstrapReviewReachpoint::ActiveCandidateSnapshotSchemasNotBound
+        }
+        Ok(RegisteredSnapshotReached::LegacySuccessor) => {
+            BootstrapReviewReachpoint::ActiveCandidateLegacySuccessorNotBound
+        }
+        Err(error) => return original_failure(error),
+    })
 }
 
 async fn resolve_bundled<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(

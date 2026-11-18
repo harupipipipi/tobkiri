@@ -68,8 +68,18 @@ pub(super) struct ActiveSnapshot {
 }
 
 impl ActiveSnapshot {
-    pub(super) fn is_same_activation(&self, other: &Self) -> bool {
-        self.records == other.records
+    pub(super) fn require_same_activation(&self, current: &Self) -> Result<()> {
+        if self.records != current.records {
+            return Err(raw(
+                APP_DENIED,
+                "active Profile changed during artifact verification",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn into_candidate(self) -> CoreValue {
+        self.candidate
     }
 
     pub(super) fn candidate_field(&self, name: &'static str) -> CoreValue {

@@ -263,6 +263,24 @@ impl CatalogIo {
         })
     }
 
+    pub(super) fn bundled_active_variant<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        profile: &CoreValue,
+        profile_id: &str,
+    ) -> Result<(CoreValue, ActiveArtifactVerification)> {
+        self.select_active_variant(op, profile, None, || self.bundled_source_shell(profile_id))
+    }
+
+    fn bundled_source_shell(&self, profile_id: &str) -> Result<Option<CoreValue>> {
+        let Some(inputs) = self.shell_inputs.as_ref() else {
+            return Ok(None);
+        };
+        Ok(inputs
+            .find(Kind::Profile, "profile_id", profile_id, &self.budget)?
+            .and_then(|source| initial_source_shell(&source, profile_id)))
+    }
+
     fn select_active_variant<S: OriginalAuthorityOwner>(
         &self,
         op: &Operation<'_, S>,
@@ -427,6 +445,17 @@ impl CatalogIo {
     ) -> Result<()> {
         self.verify_current_shell_binding(op, selected, None, || {
             Ok(initial_source_shell(source_profile, profile_id))
+        })
+    }
+
+    pub(super) fn verify_bundled_shell_binding<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        selected: &RecoveryShellVariant,
+        profile_id: &str,
+    ) -> Result<()> {
+        self.verify_current_shell_binding(op, selected, None, || {
+            self.bundled_source_shell(profile_id)
         })
     }
 

@@ -202,7 +202,7 @@ async fn load_bundle<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
     #[cfg(unix)]
     if matches!(
         caller,
-        ReviewCaller::Recovery | ReviewCaller::RecoveryTemplate
+        ReviewCaller::Recovery | ReviewCaller::RecoveryTemplate | ReviewCaller::Candidate
     ) {
         io.retain_recovery_pack_pins();
     }

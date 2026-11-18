@@ -20,8 +20,11 @@ mod legacy_activation;
 mod pending_reservation;
 #[path = "original_recovery_publish_active.rs"]
 mod publish_active;
+#[path = "original_setup_active_snapshot.rs"]
+mod registered_snapshot;
 #[path = "original_recovery_workspace_active.rs"]
 mod workspace_active;
+pub(crate) use registered_snapshot::RegisteredSnapshotReached;
 
 struct ActiveSnapshotChecks<Artifact, Definition, Legacy, LegacyArtifact, LegacyIdentity> {
     artifact: Artifact,
@@ -456,12 +459,7 @@ async fn verify_active_snapshot(
     let Some(second) = second.current else {
         return Ok(incomplete_snapshot(second.prefix));
     };
-    if !first.is_same_activation(&second) {
-        return Err(raw(
-            recovery_workspace::APP_DENIED,
-            "active Profile changed during artifact verification",
-        ));
-    }
+    first.require_same_activation(&second)?;
     if !first.matches_candidate(intent)? {
         return Err(raw(
             recovery_workspace::APP_DENIED,
