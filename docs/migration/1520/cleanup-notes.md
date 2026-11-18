@@ -4540,11 +4540,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   1 B超過がダイジェスト不一致より先に止まることを物理fixtureで確認した。
   Rust 265件、カタログCIラッパー20件、strict Clippy、固定CPythonアダプター265件、
   producer 345件とCIスクリプト14件が通過した。
-  既存Launcherの `native-first-setup` はレビューと承認後の独立した確定ワーカーで
-  `bootstrap_catalog.rs::select_bundle` を共用する。新しい配送の製品候補には
-  `harness_native_ci_inputs.py` と `setup_component_build.rs` の固定されたWasm/レシート検証を
-  通して配送方式を両ワーカーに伝える必要がある。現行producerはApp版のLauncher用レシートを
-  出力しない。配布版の初回Setup、専用承認、設定、会話は同じDMGの一連の実機試験で照合する。
+  `8ce338169` は通常のApp版だけにv3レシートを出力し、Launcherの選択に接続した。
+  `harness_native_ci_inputs.py` が派生ソース、圧縮capture、同一ビルドのWasmと完全なProfile
+  スキーマを照合する。`setup_component_build.rs` はWasmとレシートの両方を固定digestで
+  検証し、v3だけでRustの目録を選ぶ。v1・v2は従来の読取りを選ぶ。既存Setupレビューと
+  承認後の独立した確定ワーカーが、検証された同じ選択を保持する。Store作成前に不正な
+  スキーマ指定を拒否することを確認した。従来の実Wasm計測用環境変数は試験専用のまま。
+  Rust 266件、strict Clippy、receipt単体1件、固定CPythonアダプター269件、producer
+  345件、CIスクリプト15件が通過した。`launcher-snapshot-staging` は通常Launcherの
+  ソースでv3の生成設定と実Wasmのリソース封印を照合する。配布版の初回Setup、専用承認、
+  設定、会話の一連の実機試験と同梱Python/PackVMの除去は後続。
   [定義CI 44320718878](https://github.com/harupipipipi/tobkiri/actions/runs/44320718878)
   は19件が通過後、旧期待件数18で失敗した。`b08f8c89d` で19に更新し、
   [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で
