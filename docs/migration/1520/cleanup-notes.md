@@ -3671,8 +3671,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既定値で動く。Packと5つの開発Profileを実Wasmのdigestへ更新した。Packテスト5件、実Wasmの
   Flowとloopback APIの2件がローカルで通過。保存された2行が残った上で長い前ターンだけが
   次回リクエストから消えることを確認した。ストアの最大1,000行の既存読取りは今回の範囲外。
-  [実Flow・UI 44259160857](https://github.com/harupipipipi/tobkiri/actions/runs/44259160857) と
-  [実1B 44259160901](https://github.com/harupipipipi/tobkiri/actions/runs/44259160901) を実行中。
+  [実1B 44259160901](https://github.com/harupipipipi/tobkiri/actions/runs/44259160901) は
+  更新後のPackで70.69秒の一連の推論と保存を通過。
+  [実Flow・UI 44259160857](https://github.com/harupipipipi/tobkiri/actions/runs/44259160857) の
+  Flow・ネットワーク・UI・マニフェストも通過。最後の別Pack構成のEcho CLIは最初の保存が
+  `unavailable` で停止した。同じEchoのCLI作成・実行・公開・拒否・再取込み・User overlayは
+  ローカルで通過。原因は未確定。`d36f7ef3f` はCIで再発時に既存の監査DBから保存に関係する
+  許可・実行結果だけを読み、状態コードを出力する。限定出力はローカルの生成fixtureで確認し、
+  [診断付きの再試験 44261610869](https://github.com/harupipipipi/tobkiri/actions/runs/44261610869)
+  を開始した。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
@@ -4296,6 +4303,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   開発・配布ビルドへ適用し、比較用の一時workflow分岐を削除した。
   [通常カタログの再計測 44259276687](https://github.com/harupipipipi/tobkiri/actions/runs/44259276687)
   を実行中。通常配布用プロファイルの実測と、カタログ全体の完走は未確認。
+  `029093528` は登録済みのactive ProfileをSetupレビューで読み、既存のAuthorityと
+  workspace復旧を共用する。同じ初回ロードで取得した同梱のProfile、Shell、Pack pinを使う。
+  ロック外でShellを検証し、変更なしの場合はスナップショットを再読する。Authorityを閉じた
+  後に、保持していたHost pointerと4つの識別子を比較する。Rust 227件が通過。元ソースから
+  生成したmacOS fixtureで、実Shellの正常な再読と、別activationの真正なHost pointerの
+  拒否を確認した。両ポインタに書込みは発生しなかった。アクティブ定義の比較方針には
+  認証済みのProfile全体とPlanが必要で、カタログ更新、旧形式移行、確定処理は後続。
+  [原本と現行スナップショット 44261201051](https://github.com/harupipipipi/tobkiri/actions/runs/44261201051)
+  はmacOSで通過。既存Profileの製品画面からの切替は引き続き検証対象。
 - [署名付きPack投影と定義CI 44106179177](https://github.com/harupipipipi/tobkiri/actions/runs/44106179177)
   と[非同期化後の定義CI 44110927026](https://github.com/harupipipipi/tobkiri/actions/runs/44110927026)
   はLinuxとmacOSで通過。[Launcher staging CI 44103401607](https://github.com/harupipipipi/tobkiri/actions/runs/44103401607)
