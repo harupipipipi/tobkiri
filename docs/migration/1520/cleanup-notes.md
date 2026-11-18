@@ -4421,7 +4421,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Python 262件とproducer依存テスト6件が通過。固定CPython 3.13.16で応答を模擬した比較では
   305文書と453回の読取り順が一致し、digest・スキーマ・重複キーの失敗診断も一致した。
   [実Wasmの再計測 44322944319](https://github.com/harupipipipi/tobkiri/actions/runs/44322944319)
-  は同じ2B・30秒・64MiBで実行する。意味検証では文書全体の2回の走査をRustで共用できる。
+  は同じ2B・30秒・64MiBで、同梱正常系の初回read完了が28件から37件に進んだ。
+  先頭27件の同じインポート区間で895,281,935から733,349,666 fuelに減少。9ケースのうち
+  先行拒否5件が一致し、読取りに進んだ4件は37・46・37・47件で燃料を使い切った。
+  すべてpin再読の前で止まり、期限超過はなく、最大計上量58,500,598 B、退役後の確保は全て0。
+  意味検証では文書全体の2回の走査をRustで共用できる。
   外部Catalogの意味検証を使う際はShellの禁止キーを補い、Pythonが文字列化する入れ子bindingsは
   一致を確証できる型だけを処理する。Profile v4の有効な要求scopeにリスト型の識別要素を
   含む実例があるため、確証できなければ原本の意味検証へ渡す。148回の物理pin再読では
@@ -4442,10 +4446,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   旧byte応答の上限を検証し、試行した初回readとpin数を別々に燃料計測へ出力する。
   305文書と148ピンの順序は模擬応答で固定原本と一致。Rust 249件、strict Clippy、Python
   262件、producer 344件、CIスクリプト14件が通過した。OSエラーのファイル名の伝送は既存の
-  ASCII範囲に残り、非ASCIIのエラー表示は後続。実Wasmの先行計測が終わってから統合版を測る。
+  ASCII範囲に残る。UTF-8対応には既存の固定Unicode repr writerを生成側と照合側で共用し、
+  非UTF-8はsurrogateescapeを扱える別の伝送が必要。
+  [物理I/Oをまとめた実Wasm CI 44328024810](https://github.com/harupipipipi/tobkiri/actions/runs/44328024810)。
   [定義CI 44320718878](https://github.com/harupipipipi/tobkiri/actions/runs/44320718878)
   は19件が通過後、旧期待件数18で失敗した。`b08f8c89d` で19に更新し、
-  [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で再検証する。
+  [定義CI 44324536754](https://github.com/harupipipipi/tobkiri/actions/runs/44324536754)で
+  19件は通過。後続の両OSで旧Profile schemaパスの指定が0件に一致して失敗した。
+  `9bfc0076e` で移動後のテストを指定し、全定義CIのフィルターと現行の件数を照合して
+  Shell選択、Setup候補、物理カタログの期待件数も修正。4つの変更済みゲートをローカルで通過。
   `f88735b2e` はコードキャッシュ派生の旧参照を削除し、ソースと計上値をどちらもLoader
   に束縛されたツリーから取る。原本の先行変更後に失敗していた専用6件を含めてproducer
   344件が通過した。
