@@ -6162,6 +6162,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ある。接続先と資格情報を省く応答はShell、Model Registry更新、Commandのデータソース、
   モデル検索が使う。テキスト生成、Messages API、音声のGateway・Adapterには生のRegistry
   が必要。各入口で今と同じ応答と認可を確認するまで、共通のPython所有者を残す。
+- `91317d0ba` と `3e584db85` は、既存の接続ステータスGETとModel Manage内のProvider読み取りを、
+  接続先と資格情報を省くWasm投影につないだ。後者はModel Saveの実行と別のBroker Leaseを
+  使い、モデルを書き込む権限を渡さない。Launcherは元のShell直下のGrantとModel Manageから
+  のGrantを別々に検証する。旧Launcherでは従来の読み取りを使う。移植の残りはCommandの
+  データソース、モデル検索、テキスト生成・Messages API・音声経路など。
+- 既存の署名済みHTTPとHost IPCの関連68件、Launcherの型検査、IPC・ジョブ・サービスの
+  分離試験90件、Shellの署名選択試験が通過した。macOSの実ソケットと配布用Wasmを使った
+  分離HTTP試験では、接続ステータス1回とModel Manage内の読み取り4回で元の公開応答に一致し、
+  接続先と資格情報ハンドルが含まれないことを確認した。各読み取りは0.34〜0.39秒。
+  Launcher起動とModel Saveの書き込み応答はfixtureを使用した。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 
