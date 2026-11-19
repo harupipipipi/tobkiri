@@ -27,6 +27,31 @@ from .workflow_presentation import (
 )
 
 
+# Signed schemas can declare fields supplied by the Host after public input validation.
+_HOST_PAYLOAD_KEYS = frozenset({"profile_id", "_session_id"})
+
+# The shipped Side Chat view names these exact operations. Other inherited
+# contract schemas remain metadata and do not publish generic UI aliases.
+_SIDE_CHAT_VIEW_OPERATIONS = frozenset({
+    (
+        "tobkiri_side_chat_pack", "tobkiri.resource.side-chat.v1",
+        "tobkiri_side_chat_pack.side-chat-resource",
+    ),
+    (
+        "tobkiri_side_chat_pack", "tobkiri.action.side-chat.v1",
+        "tobkiri_side_chat_pack.side-chat-manage",
+    ),
+    (
+        "tobkiri_side_chat_pack", "tobkiri.service.side-chat.turn.v1",
+        "tobkiri_side_chat_pack.side-chat-turn",
+    ),
+    (
+        "rumi_turn_runtime_pack", "tobkiri.resource.turn.progress.v1",
+        "rumi_turn_runtime_pack.turn-progress-resource",
+    ),
+})
+
+
 def defaultspack_dynamic_capability_targets(
     binding: HTTPContractBinding,
     *,
@@ -74,9 +99,14 @@ def defaultspack_dynamic_capability_targets(
                 continue
             if (contract_id, operation_id, provider_id, function_id) in explicit:
                 continue
-            input_schema = _captured_input_schema(operation.get("input_schema"))
+            declared_schema = operation.get("input_schema")
+            if not declared_schema and (
+                pack_id, contract_id, operation_id
+            ) in _SIDE_CHAT_VIEW_OPERATIONS:
+                declared_schema = operation.get("declared_input_schema")
+            input_schema = _captured_input_schema(declared_schema)
             payload_keys = (
-                frozenset(json.loads(input_schema)["properties"]) - {"profile_id"}
+                frozenset(json.loads(input_schema)["properties"]) - _HOST_PAYLOAD_KEYS
                 if input_schema
                 else _payload_keys(contract_id, operation_id)
             )
@@ -126,7 +156,9 @@ def _captured_input_schema(value: object) -> bytes:
     ):
         return b""
     try:
-        validate_public_input({key: None for key in value["properties"] if key != "profile_id"})
+        validate_public_input({
+            key: None for key in value["properties"] if key not in _HOST_PAYLOAD_KEYS
+        })
         encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(
             "utf-8"
         )

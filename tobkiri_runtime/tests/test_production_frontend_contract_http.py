@@ -3999,6 +3999,260 @@ def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
         assert not packvm_materializations
 
 
+@pytest.mark.parametrize("use_native", [False, True], ids=["packvm", "native"])
+def test_signed_side_chat_http_uses_shared_saved_orchestration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, use_native: bool,
+) -> None:
+    """Inspect signed Side Chat ancestry with a Python oracle at the native step port."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import DomainBoundary, LeaseState
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import (
+        saved_conversation,
+    )
+    from tobkiri_host.contracts import ResolvedOperationBinding
+    from tobkiri_host.native_saved_orchestration import NativeSavedOrchestrationBackend
+    from tobkiri_host.runtime import V4DispatchSession
+
+    manifest = canonical_digest({"manifest": "fixture-side-chat-orchestration"})
+    pack_id = "tobkiri_side_chat_pack"
+    side_target = ("tobkiri.service.side-chat.turn.v1", f"{pack_id}.side-chat-turn")
+    saved_target = (_SavedPackVmBackend._CONTRACT_ID, _SavedPackVmBackend._OPERATION_ID)
+    step_inputs: list[Mapping[str, object]] = []
+    materializations: list[RuntimeEvidence] = []
+    ai_calls: list[Mapping[str, object]] = []
+    backend = _SavedPackVmBackend()
+    original_invoke = V4DispatchSession.invoke
+    packvm_materialize = backend.materialize
+    native_materialize = NativeSavedOrchestrationBackend.materialize
+
+    def invoke(
+        session: V4DispatchSession, contract: str, operation: str,
+        payload: Mapping[str, object], **kwargs: object,
+    ) -> Mapping[str, object]:
+        if (contract, operation) == READINESS:
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
+        if (contract, operation) == saved_conversation.TARGETS[2]:
+            ai_calls.append(payload)
+            return {"status": "ok", "output": "Side answer", "finish_reason": "stop"}
+        return original_invoke(session, contract, operation, payload, **kwargs)
+
+    def step(request: ipc.NativeSavedOrchestrationRequest) -> Mapping[str, object]:
+        request.assert_current()
+        step_inputs.append(request.input)
+        return saved_conversation.tobkiri_packvm_invoke(saved_target[1], dict(request.input))
+
+    def observe_packvm(
+        binding: ResolvedOperationBinding, reservation_id: str,
+    ) -> RuntimeEvidence:
+        assert not use_native, "Side Chat materialized the legacy Saved Orchestration"
+        evidence = packvm_materialize(binding, reservation_id)
+        materializations.append(evidence)
+        return evidence
+
+    def observe_native(
+        selected: NativeSavedOrchestrationBackend, binding: ResolvedOperationBinding,
+        reservation_id: str,
+    ) -> RuntimeEvidence:
+        evidence = native_materialize(selected, binding, reservation_id)
+        materializations.append(evidence)
+        return evidence
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    monkeypatch.setattr(backend, "materialize", observe_packvm)
+    monkeypatch.setattr(NativeSavedOrchestrationBackend, "materialize", observe_native)
+    if use_native:
+        monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
+        monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", manifest)
+        _publish_native_runtime_fixture(monkeypatch)
+        monkeypatch.setattr(ipc, "capture_launcher_saved_orchestration_step", lambda: step)
+    else:
+        monkeypatch.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", raising=False)
+        monkeypatch.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", raising=False)
+
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((backend,)),
+    ) as (server, session, authority):
+        targets = (
+            side_target,
+            ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved"),
+            saved_target,
+        )
+        envelopes: list[RequestEnvelope] = []
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(
+            selected: object, envelope: RequestEnvelope, *args: object, **kwargs: object,
+        ) -> object:
+            if (envelope.contract_id, envelope.operation_id) in targets:
+                envelopes.append(envelope)
+            return dispatch(selected, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        conversations = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+        conversations.create(
+            {"id": "parent", "model_reference": "model-profile-1"}, expected_revision=0,
+        )
+        cookie, csrf, origin = _authenticate(server)
+        status, catalog, _ = _request(
+            server, "GET", _contract("GET", "/api/ui/catalog"),
+            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 200, catalog
+        catalog = catalog["data"]["dynamic_host"]
+        view = next(
+            item["view"] for item in catalog["contributions"]
+            if item["owner_pack_id"] == pack_id
+            and item["contribution_id"] == "tobkiri.side-chat"
+        )
+        thread = view["conversation_thread"]
+        manage = view["controls"][0]["operation"]
+        resource = view["data_source"]
+        actions = {
+            item["contribution_id"]: item for item in catalog["contributions"]
+            if item["kind"] == "action" and item["owner_pack_id"] == pack_id
+        }
+        for target in (manage, resource, thread["send"]["operation"]):
+            action = actions[target["contribution_id"]]
+            assert action["action_contract"] == target["contract_id"]
+            assert action["operation_id"] == target["operation_id"]
+        assert actions[resource["contribution_id"]]["read_only"] is True
+        progress = thread["progress"]["operation"]
+        progress_action, = [
+            item for item in catalog["contributions"]
+            if item["kind"] == "action"
+            and item["contribution_id"] == progress["contribution_id"]
+        ]
+        assert progress_action["operation_id"] == progress["operation_id"]
+        assert progress_action["action_contract"] == progress["contract_id"]
+        assert progress_action["read_only"] is True
+        assert not any(
+            item.get("action_contract") == saved_target[0]
+            for item in catalog["contributions"]
+        )
+
+        def post(
+            operation: Mapping[str, str],
+            payload: Mapping[str, object],
+            *,
+            expected_status: int = 200,
+            owner_pack_id: str = pack_id,
+        ) -> Mapping[str, object]:
+            status, reply, _ = _request(
+                server, "POST", _contract("POST", "/api/ui/capability/invoke"),
+                body={
+                    **{key: catalog[key] for key in (
+                        "profile_id", "profile_revision", "activation_id",
+                        "plan_hash", "catalog_hash",
+                    )},
+                    "request_id": str(uuid.uuid4()),
+                    "expires_at": time.time() + 30,
+                    "contribution_id": operation["contribution_id"],
+                    "owner_pack_id": owner_pack_id,
+                    "contract_id": operation["contract_id"],
+                    "payload": payload,
+                },
+                headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert status == expected_status, reply
+            return reply["data"]
+
+        ensure_payload = {
+            "operation": "ensure", "parent_conversation_id": "parent",
+            "expected_parent_revision": 1,
+        }
+        if not use_native:
+            for invalid in (
+                {"_session_id": "forged"},
+                {"profile_id": "other"},
+                {"expected_parent_revision": True},
+            ):
+                denied = post(manage, {**ensure_payload, **invalid}, expected_status=400)
+                assert denied["code"] == "invalid_contract_payload"
+        saved_pack_id = "tobkiri_conversation_orchestration_pack"
+        denied = post({
+            "contribution_id": f"pack.{saved_pack_id}.{saved_target[1]}",
+            "contract_id": saved_target[0],
+        }, {}, expected_status=404, owner_pack_id=saved_pack_id)
+        assert denied["code"] == "unselected_contract_contribution"
+        approval_pack = "rumi_host_authority_bridge_pack"
+        denied = post({
+            "contribution_id": f"pack.{approval_pack}.interactive_approval.approve",
+            "contract_id": "tobkiri.service.interactive-approval.v1",
+        }, {}, expected_status=404, owner_pack_id=approval_pack)
+        assert denied["code"] == "unselected_contract_contribution"
+        opened = post(manage, ensure_payload)
+        source = post(resource, {
+            "operation": "get", "parent_conversation_id": "parent",
+        })
+        assert source == opened
+        parent = conversations.get("parent")
+        child_id = source["conversation_id"]
+        turn_id = str(uuid.uuid4())
+        first = post(thread["send"]["operation"], {
+            "operation": "send", "turn_id": turn_id, "content": "Side question",
+            "conversation_id": child_id, "expected_child_revision": source["revision"],
+            "expected_parent_revision": source["parent_revision"],
+        })
+        assert first["status"] == "completed", first
+        assert [(item.contract_id, item.operation_id) for item in envelopes] == list(targets)
+        side, turn, saved = envelopes
+        assert saved.payload["request"]["context_binding"]["parent_conversation_id"] == "parent"
+        assert saved.payload["request"]["conversation_id"] == child_id
+        assert len({item.lease.token for item in envelopes}) == 3
+        assert saved.deadline_monotonic <= turn.deadline_monotonic <= side.deadline_monotonic
+        chain = []
+        for envelope in envelopes:
+            lease, state = authority.inspect_lease_token(envelope.lease.token.decode("ascii"))
+            assert state is LeaseState.COMMITTED
+            chain.append((lease.caller.function_id, lease.target.function_id))
+        assert chain == [
+            ("shell.tauri.default", f"{pack_id}.turn"),
+            (f"{pack_id}.turn", "rumi_turn_runtime_pack.turn-runtime.saved"),
+            ("rumi_turn_runtime_pack.turn-runtime.saved", _SavedPackVmBackend._FUNCTION_ID),
+        ]
+        (evidence,) = materializations
+        assert evidence.domain_ref == saved.target_domain
+        domain = authority.get_domain(saved.target_domain.value)
+        assert domain is not None
+        if use_native:
+            assert saved.resource_reservation_id is not None
+            assert saved.resource_reservation_id not in {
+                side.resource_reservation_id, turn.resource_reservation_id,
+            }
+            assert domain.boundary is DomainBoundary.WASM_COMPONENT
+            assert evidence.executable_digest == manifest
+            assert evidence.guest_execution_boundary == "wasm-component"
+            assert evidence.resource_reservation_id == saved.resource_reservation_id
+            assert step_inputs[0] == saved.payload
+            assert [item.get("state", {}).get("stage") for item in step_inputs] == [
+                None, "read", "user", "ai", "assistant",
+            ]
+        else:
+            assert not step_inputs
+
+        child = conversations.get(child_id)
+        assert [(message["role"], message["content"]) for message in child["messages"]] == [
+            ("user", "Side question"), ("assistant", "Side answer"),
+        ]
+        assert conversations.get("parent") == parent
+        receipt = conversations.saved_receipt(turn_id)
+        assert receipt["result_reference"] == first["turn"]["result_reference"]
+        recovered = post(thread["reconcile"]["operation"], {
+            "operation": "reconcile", "conversation_id": child_id, "turn_id": turn_id,
+        })
+        assert recovered["turn"] == first["turn"]
+        assert len(ai_calls) == len(materializations) == 1
+        assert conversations.get(child_id) == child
+
+
 def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

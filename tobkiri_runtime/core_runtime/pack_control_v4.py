@@ -1417,7 +1417,7 @@ def _required_profile_pack_ids(
 def _active_grant_bindings(
     state: Mapping[str, Any], *, _inspection: dict[str, Any] | None = None,
 ) -> set[tuple[str, str]]:
-    """Return current plan operations with a live, non-revoked Grant.
+    """Return current plan operations granted directly to the selected Shell.
 
     A valid Pack approval file is necessary but not sufficient for an
     invokable projection.  The captured production Authority store must also
@@ -1431,10 +1431,17 @@ def _active_grant_bindings(
     expected_activation = str(activation.get("activation_id") or "")
     expected_profile = str(profile.get("profile_id") or "")
     expected_epoch = activation.get("security_epoch")
+    plan = state.get("resolved_plan")
+    if not isinstance(plan, Mapping):
+        return set()
+    shell = plan.get("shell")
+    shell_artifact = shell.get("artifact_digest") if isinstance(shell, Mapping) else None
+    if not isinstance(shell_artifact, str) or not shell_artifact:
+        return set()
     from .authority.v4 import FunctionPrincipal
 
-    plan_bindings: set[tuple[str, str, str]] = set()
-    for item in state.get("resolved_plan", {}).get("bindings") or []:
+    plan_bindings: set[tuple[str, str, str, str]] = set()
+    for item in plan.get("bindings") or []:
         if not isinstance(item, Mapping) or not isinstance(item.get("function_principal"), Mapping):
             continue
         try:
@@ -1443,6 +1450,7 @@ def _active_grant_bindings(
             continue
         plan_bindings.add(
             (
+                str(item.get("caller_function_id") or ""),
                 str(item.get("contract_id") or ""),
                 str(item.get("operation_id") or ""),
                 principal.principal_id,
@@ -1451,6 +1459,7 @@ def _active_grant_bindings(
     if not expected_activation or not expected_profile or not isinstance(expected_epoch, int):
         return set()
     from .authority.v4 import AuthorityStore
+    from .authority.v4_models import authority_digest
 
     try:
         with AuthorityStore(_user_data_root() / "authority" / "v4.sqlite3") as authority:
@@ -1462,7 +1471,7 @@ def _active_grant_bindings(
             if _inspection is not None:
                 _inspection.update({
                     "epoch": authority.security_epoch,
-                    "grants": canonical_digest([grant.to_dict() for grant in grants]),
+                    "grants": authority_digest([grant.to_dict() for grant in grants]),
                     "revoked": sorted(revoked_grant_ids),
                 })
             for grant in grants:
@@ -1472,6 +1481,7 @@ def _active_grant_bindings(
                     or grant.activation_id != expected_activation
                     or grant.security_epoch != expected_epoch
                     or grant.grant_id in revoked_grant_ids
+                    or grant.caller.parent_artifact_digest != shell_artifact
                 ):
                     continue
                 dimensions = grant.scope.dimensions
@@ -1479,7 +1489,12 @@ def _active_grant_bindings(
                 operations = tuple(dimensions.get("operation", ()))
                 if len(contracts) != 1 or len(operations) != 1:
                     continue
-                candidate = (contracts[0], operations[0], grant.target.principal_id)
+                candidate = (
+                    grant.caller.function_id,
+                    contracts[0],
+                    operations[0],
+                    grant.target.principal_id,
+                )
                 if candidate in plan_bindings:
                     result.add((contracts[0], operations[0]))
             return result
@@ -1566,6 +1581,8 @@ def _declared_operations(record: Mapping[str, Any]) -> list[dict[str, Any]]:
             continue
         contract_id = str(contract.get("contract_id") or "").strip()
         provider_id = str(contract.get("provider_id") or "").strip()
+        schemas = contract.get("schemas")
+        contract_input = schemas.get("input") if isinstance(schemas, Mapping) else None
         required = contract.get("required_capabilities")
         required_capabilities = (
             sorted({str(item).strip() for item in required if str(item).strip()})
@@ -1581,6 +1598,15 @@ def _declared_operations(record: Mapping[str, Any]) -> list[dict[str, Any]]:
             operation_id = str(operation.get("id") or "").strip()
             if not contract_id or not provider_id or not operation_id:
                 continue
+            # Bundled source records share the contract input unless this
+            # operation overrides it. Admitted records can already carry the
+            # projected operation schema.
+            overrides = operation.get("schemas")
+            declared_input = (
+                overrides.get("input", contract_input)
+                if isinstance(overrides, Mapping) else contract_input
+            )
+            input_schema = operation.get("input_schema")
             result.append(
                 {
                     "contract_id": contract_id,
@@ -1589,7 +1615,15 @@ def _declared_operations(record: Mapping[str, Any]) -> list[dict[str, Any]]:
                     "function_id": provider_id,
                     "required_capabilities": required_capabilities,
                     "capabilities": required_capabilities,
-                    "input_schema": dict(operation.get("input_schema") or {}),
+                    "input_schema": (
+                        dict(input_schema) if isinstance(input_schema, Mapping) else {}
+                    ),
+                    **(
+                        {"declared_input_schema": dict(declared_input)}
+                        if "input_schema" not in operation
+                        and isinstance(declared_input, Mapping)
+                        else {}
+                    ),
                 }
             )
     return sorted(
