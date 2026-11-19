@@ -17,8 +17,8 @@ use tobkiri_core::{
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
     OriginalConversationAppendChoice, OriginalConversationCompleteChoice, OriginalFailoverChoice,
-    OriginalGatewayProviderSnapshotChoice, OriginalModelSaveSelection,
-    OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice,
+    OriginalGatewayProviderSnapshotChoice, OriginalModelAccessProviderSnapshotSelection,
+    OriginalModelSaveSelection, OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice,
     OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
     OriginalShellProviderSnapshotSelection, OriginalSideChatSavedReceiptChoice,
     OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
@@ -133,14 +133,16 @@ pub(crate) struct LockedSavedProviderBundle<'pin, const ROLES: usize, const PINS
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// Locked Pack documents for each caller's projected Registry read.
+/// Locked Pack documents for each Registry read entered from the desktop Shell.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) struct LockedProjectedProviderBundle<'pin> {
+pub(crate) struct LockedShellProviderSnapshotBundle<'pin> {
     source: VerifiedOrdinarySavedBundle,
     shell_settings: Option<[LockedRegistryRoute<'pin>; 1]>,
     model_save: Option<[LockedRegistryRoute<'pin>; 2]>,
     model_search: Option<[LockedRegistryRoute<'pin>; 2]>,
     command_datasource: Option<[LockedRegistryRoute<'pin>; 2]>,
+    model_access_read: Option<[LockedRegistryRoute<'pin>; 1]>,
+    model_access_catalog: Option<[LockedRegistryRoute<'pin>; 1]>,
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -599,26 +601,36 @@ impl NativeApplicationSources {
         })
     }
 
-    /// Capture the signed Bundle Pack and sidecars for the selected caller's projected read.
+    /// Capture the signed Bundle documents for each Registry read entered from the Shell.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    pub(crate) fn projected_provider_snapshot_bundle<'pin>(
+    pub(crate) fn shell_provider_snapshot_bundle<'pin>(
         &self,
         shell: Option<&'pin OriginalShellProviderSnapshotSelection<'_>>,
         model_save: Option<&'pin OriginalModelSaveSelection<'_>>,
         query: Option<&'pin OriginalQueryProviderSnapshotSelection<'_>>,
+        model_access: Option<&'pin OriginalModelAccessProviderSnapshotSelection<'_>>,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedProjectedProviderBundle<'pin>> {
+    ) -> Result<LockedShellProviderSnapshotBundle<'pin>> {
         let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        let lock_direct = |pin: &'pin OriginalRoutePin| {
+            ensure!(
+                pin.caller_function_id() == self.authority.shell_provider_id
+                    && self.authority.shell_provider_id == "shell.tauri.default",
+                "old Provider Registry caller differs from the selected desktop Shell"
+            );
+            Ok::<_, anyhow::Error>([from_lock(pin)?])
+        };
         let shell_settings = shell
-            .map(|selection| {
-                let read = selection.provider_read();
-                ensure!(
-                    read.caller_function_id() == self.authority.shell_provider_id
-                        && self.authority.shell_provider_id == "shell.tauri.default",
-                    "old Provider Registry settings caller differs from the selected desktop Shell"
-                );
-                Ok::<_, anyhow::Error>([from_lock(read)?])
-            })
+            .map(OriginalShellProviderSnapshotSelection::provider_read)
+            .map(lock_direct)
+            .transpose()?;
+        let model_access_read = model_access
+            .and_then(OriginalModelAccessProviderSnapshotSelection::read)
+            .map(lock_direct)
+            .transpose()?;
+        let model_access_catalog = model_access
+            .and_then(OriginalModelAccessProviderSnapshotSelection::catalog)
+            .map(lock_direct)
             .transpose()?;
         let model_save = model_save
             .map(|selection| {
@@ -649,12 +661,14 @@ impl NativeApplicationSources {
             .and_then(OriginalQueryProviderSnapshotSelection::command_datasource)
             .map(lock_query)
             .transpose()?;
-        Ok(LockedProjectedProviderBundle {
+        Ok(LockedShellProviderSnapshotBundle {
             source: VerifiedOrdinarySavedBundle::new(self)?,
             shell_settings,
             model_save,
             model_search,
             command_datasource,
+            model_access_read,
+            model_access_catalog,
             budget: Arc::clone(budget),
         })
     }
@@ -1330,24 +1344,28 @@ impl<const ROLES: usize, const PINS: usize> LockedSavedProviderBundle<'_, ROLES,
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-impl LockedProjectedProviderBundle<'_> {
-    /// Verify and retain only the documents behind each projected caller's own grant.
+impl LockedShellProviderSnapshotBundle<'_> {
+    /// Verify and retain the documents behind each original caller's own grant.
     pub(crate) fn verify(
         self,
         mut checkpoint: impl FnMut() -> Result<()>,
-    ) -> Result<[Option<VerifiedOrdinarySavedBundle>; 4]> {
+    ) -> Result<[Option<VerifiedOrdinarySavedBundle>; 6]> {
         self.source.revalidate(&self.budget, &mut checkpoint)?;
-        let shell_settings = self
-            .shell_settings
-            .map(|routes| {
-                self.source.clone().verify_routes(
-                    &[Some(routes)],
-                    &self.budget,
-                    &mut checkpoint,
-                    ["privileged"],
-                )
-            })
-            .transpose()?;
+        let mut verify_direct = |routes: Option<[LockedRegistryRoute<'_>; 1]>| {
+            routes
+                .map(|routes| {
+                    self.source.clone().verify_routes(
+                        &[Some(routes)],
+                        &self.budget,
+                        &mut checkpoint,
+                        ["privileged"],
+                    )
+                })
+                .transpose()
+        };
+        let shell_settings = verify_direct(self.shell_settings)?;
+        let model_access_read = verify_direct(self.model_access_read)?;
+        let model_access_catalog = verify_direct(self.model_access_catalog)?;
         let mut verify_nested = |routes: Option<[LockedRegistryRoute<'_>; 2]>| {
             routes
                 .map(|routes| {
@@ -1365,6 +1383,8 @@ impl LockedProjectedProviderBundle<'_> {
             verify_nested(self.model_save)?,
             verify_nested(self.model_search)?,
             verify_nested(self.command_datasource)?,
+            model_access_read,
+            model_access_catalog,
         ])
     }
 }

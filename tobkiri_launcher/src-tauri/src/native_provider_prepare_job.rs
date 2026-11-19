@@ -2097,12 +2097,15 @@ fn encode_turn_start_reply(
 
 fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool {
     use OriginalProviderSnapshotRole::{
-        Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings, Workflow,
+        Adapter, CommandDatasource, Gateway, ModelAccessCatalog, ModelAccessRead, ModelSave,
+        ModelSearch, ShellSettings, Workflow,
     };
 
     match role {
         ShellSettings | ModelSave | ModelSearch | CommandDatasource => true,
-        Adapter(_) | Gateway { .. } | Workflow { .. } => false,
+        Adapter(_) | Gateway { .. } | Workflow { .. } | ModelAccessRead | ModelAccessCatalog => {
+            false
+        }
     }
 }
 
@@ -2641,7 +2644,8 @@ mod tests {
 
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings, Workflow,
+            Adapter, CommandDatasource, Gateway, ModelAccessCatalog, ModelAccessRead, ModelSave,
+            ModelSearch, ShellSettings, Workflow,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -2697,6 +2701,7 @@ mod tests {
                     .map(|entry| Workflow { caller, entry })
                 }),
             )
+            .chain([ModelAccessRead, ModelAccessCatalog])
             .map(|role| (role, false))
             .chain(
                 [ShellSettings, ModelSave, ModelSearch, CommandDatasource].map(|role| (role, true)),

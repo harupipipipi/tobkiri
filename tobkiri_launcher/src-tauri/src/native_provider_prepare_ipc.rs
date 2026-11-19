@@ -1111,7 +1111,8 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
 
     fn try_from(wire: ProviderSnapshotWire) -> std::result::Result<Self, Self::Error> {
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings, Workflow,
+            Adapter, CommandDatasource, Gateway, ModelAccessCatalog, ModelAccessRead, ModelSave,
+            ModelSearch, ShellSettings, Workflow,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -1165,6 +1166,8 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
             "model-save" => return snapshot(ModelSave),
             "model-search" => return snapshot(ModelSearch),
             "command-datasource" => return snapshot(CommandDatasource),
+            "model-access-read" => return snapshot(ModelAccessRead),
+            "model-access-catalog" => return snapshot(ModelAccessCatalog),
             _ => return Err("unknown Provider Snapshot role or missing Workflow entry"),
         };
         snapshot(Gateway { role, side_chat })
@@ -3156,7 +3159,8 @@ mod tests {
     #[test]
     fn provider_snapshot_start_decodes_the_closed_role_set() {
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings,
+            Adapter, CommandDatasource, Gateway, ModelAccessCatalog, ModelAccessRead, ModelSave,
+            ModelSearch, ShellSettings,
         };
 
         let assert_role = |name: &str, expected| {
@@ -3207,6 +3211,39 @@ mod tests {
         assert_role("model-save", ModelSave);
         assert_role("model-search", ModelSearch);
         assert_role("command-datasource", CommandDatasource);
+        assert_role("model-access-read", ModelAccessRead);
+        assert_role("model-access-catalog", ModelAccessCatalog);
+    }
+
+    #[test]
+    fn model_access_provider_snapshot_accepts_only_its_named_role() {
+        for role in ["model-access-read", "model-access-catalog"] {
+            let positional = start_frame(&format!(r#", "provider_snapshot":["{role}"]"#));
+            assert!(parse_start(START, positional.as_bytes()).is_err());
+            for extra in [
+                r#", "entry":"run.advance""#,
+                r#", "entry":null"#,
+                r#", "input_bytes":32"#,
+                r#", "body":{}"#,
+                r#", "profile_id":"elsewhere""#,
+                r#", "connection_id":"provider""#,
+                r#", "settings_projection":true"#,
+                r#", "role":"model-access-read""#,
+            ] {
+                let frame = start_frame(&format!(
+                    r#", "provider_snapshot":{{"role":"{role}"{extra}}}"#
+                ));
+                assert!(
+                    parse_start(START, frame.as_bytes()).is_err(),
+                    "{role}{extra}"
+                );
+            }
+            let multiple = start_frame(&format!(
+                r#", "provider_snapshot":{{"role":"{role}"}}, "saved_orchestration":{{"input_bytes":32}}"#
+            ));
+            let start = parse_start(START, multiple.as_bytes()).unwrap();
+            assert!(start.operation().is_err());
+        }
     }
 
     #[test]

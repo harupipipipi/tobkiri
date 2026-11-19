@@ -20,7 +20,8 @@ use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
     OriginalConversationAppendChoice, OriginalConversationCompleteChoice,
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalFailoverChoice, OriginalGatewayProviderSnapshotChoice, OriginalModelResolveRole,
+    OriginalFailoverChoice, OriginalGatewayProviderSnapshotChoice,
+    OriginalModelAccessProviderSnapshotSelection, OriginalModelResolveRole,
     OriginalModelResolveSelection, OriginalModelSaveSelection, OriginalModelSettingsSelection,
     OriginalProviderPrepareSelection, OriginalProviderSnapshotRole,
     OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice, OriginalRoutePin,
@@ -192,6 +193,13 @@ impl VerifiedRegistryLaunch {
         })
     }
 
+    /// Whether either original Model Access operation has a verified Registry read proof.
+    pub(crate) fn permits_model_access_provider_snapshot(&self) -> bool {
+        self.provider_snapshot.as_ref().is_some_and(|source| {
+            source.model_access_read.is_some() || source.model_access_catalog.is_some()
+        })
+    }
+
     fn provider_snapshot(
         &self,
         role: OriginalProviderSnapshotRole,
@@ -224,6 +232,10 @@ impl VerifiedRegistryLaunch {
                 source.workflow.callers[caller.index()].as_ref()?
             }
             OriginalProviderSnapshotRole::ShellSettings => source.shell_settings.as_ref()?,
+            OriginalProviderSnapshotRole::ModelAccessRead => source.model_access_read.as_ref()?,
+            OriginalProviderSnapshotRole::ModelAccessCatalog => {
+                source.model_access_catalog.as_ref()?
+            }
             OriginalProviderSnapshotRole::ModelSave => source.model_save.as_ref()?,
             OriginalProviderSnapshotRole::ModelSearch => source.model_search.as_ref()?,
             OriginalProviderSnapshotRole::CommandDatasource => {
@@ -768,6 +780,8 @@ struct VerifiedProviderSnapshotSource {
     model_save: Option<VerifiedOrdinarySavedBundle>,
     model_search: Option<VerifiedOrdinarySavedBundle>,
     command_datasource: Option<VerifiedOrdinarySavedBundle>,
+    model_access_read: Option<VerifiedOrdinarySavedBundle>,
+    model_access_catalog: Option<VerifiedOrdinarySavedBundle>,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -896,6 +910,8 @@ impl VerifiedRegistryLaunch {
             model_save: None,
             model_search: None,
             command_datasource: None,
+            model_access_read: None,
+            model_access_catalog: None,
             archive_sha256: Digest::hash(b"provider-snapshot-archive").to_string(),
             archive_bytes: 512,
             manifest_sha256: Digest::hash(b"provider-snapshot-manifest").to_string(),
@@ -929,6 +945,10 @@ impl VerifiedRegistryLaunch {
                     &mut source.workflow.callers[caller.index()]
                 }
                 OriginalProviderSnapshotRole::ShellSettings => &mut source.shell_settings,
+                OriginalProviderSnapshotRole::ModelAccessRead => &mut source.model_access_read,
+                OriginalProviderSnapshotRole::ModelAccessCatalog => {
+                    &mut source.model_access_catalog
+                }
                 OriginalProviderSnapshotRole::ModelSave => &mut source.model_save,
                 OriginalProviderSnapshotRole::ModelSearch => &mut source.model_search,
                 OriginalProviderSnapshotRole::CommandDatasource => &mut source.command_datasource,
@@ -1772,6 +1792,10 @@ impl LaunchActivationObserver<'_> {
             .map(|active| OriginalQueryProviderSnapshotSelection::select(active, budget))
             .transpose()?
             .flatten();
+        let model_access_snapshot_selection = active
+            .map(|active| OriginalModelAccessProviderSnapshotSelection::select(active, budget))
+            .transpose()?
+            .flatten();
         let workflow_snapshot_selection = active
             .map(|active| OriginalWorkflowProviderSnapshotSelection::select(active, budget))
             .transpose()?
@@ -1793,10 +1817,11 @@ impl LaunchActivationObserver<'_> {
             || model_resolve_selection.is_some()
             || conversation_read_selection.is_some()
             || saved_receipt_selection.is_some();
-        let has_projected_grants = shell_snapshot_selection.is_some()
+        let has_shell_snapshot_grants = shell_snapshot_selection.is_some()
             || model_save_selection.is_some()
-            || query_snapshot_selection.is_some();
-        let (app_root, catalog_revision, locked, projected, workflow) =
+            || query_snapshot_selection.is_some()
+            || model_access_snapshot_selection.is_some();
+        let (app_root, catalog_revision, locked, shell_snapshot, workflow) =
             inspection.with_source(|sources| {
                 let catalog_revision = &sources.authority().catalog_revision;
                 if let Some(active) = active {
@@ -1816,12 +1841,13 @@ impl LaunchActivationObserver<'_> {
                         )
                     })
                     .transpose()?;
-                let projected = has_projected_grants
+                let shell_snapshot = has_shell_snapshot_grants
                     .then(|| {
-                        sources.projected_provider_snapshot_bundle(
+                        sources.shell_provider_snapshot_bundle(
                             shell_snapshot_selection.as_ref(),
                             model_save_selection.as_ref(),
                             query_snapshot_selection.as_ref(),
+                            model_access_snapshot_selection.as_ref(),
                             budget,
                         )
                     })
@@ -1834,7 +1860,7 @@ impl LaunchActivationObserver<'_> {
                     sources.root(NativeSourceRoot::Application).to_path_buf(),
                     catalog_revision.clone(),
                     locked,
-                    projected,
+                    shell_snapshot,
                     workflow,
                 ))
             })??;
@@ -1848,7 +1874,14 @@ impl LaunchActivationObserver<'_> {
         if let Some(locked) = locked {
             locked.verify(checkpoint)?;
         }
-        let [shell_settings, model_save_snapshot, model_search, command_datasource] = projected
+        let [
+            shell_settings,
+            model_save_snapshot,
+            model_search,
+            command_datasource,
+            model_access_read,
+            model_access_catalog,
+        ] = shell_snapshot
             .map(|bundle| bundle.verify(checkpoint))
             .transpose()?
             .unwrap_or_default();
@@ -1879,7 +1912,9 @@ impl LaunchActivationObserver<'_> {
             || shell_settings.is_some()
             || model_save_snapshot.is_some()
             || model_search.is_some()
-            || command_datasource.is_some();
+            || command_datasource.is_some()
+            || model_access_read.is_some()
+            || model_access_catalog.is_some();
         let verified_registry_pack_evidence =
             registry_pack_receipt::verify_installed_with_ai_routing_archives(
                 &app_root,
@@ -1913,6 +1948,8 @@ impl LaunchActivationObserver<'_> {
                             model_save: model_save_snapshot,
                             model_search,
                             command_datasource,
+                            model_access_read,
+                            model_access_catalog,
                             archive_sha256: receipt.archive_sha256().to_owned(),
                             archive_bytes: receipt.archive_bytes(),
                             manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -4470,6 +4507,49 @@ mod tests {
             proof.provider_snapshot = None;
             assert!(!proof.permits_projected_provider_snapshot());
             assert!(!proof.permits_query_provider_snapshot());
+            assert!(!proof.permits_provider_snapshot(role));
+        }
+    }
+
+    #[test]
+    fn model_access_provider_snapshot_proof_requires_its_own_grant_and_port() {
+        use OriginalProviderSnapshotRole::{
+            CommandDatasource, ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch,
+            ShellSettings,
+        };
+
+        let digest = Digest::hash(b"model-access-provider-snapshot-activation");
+        let identity = ExecutionProfileIdentity::new(
+            "defaults",
+            digest.as_str(),
+            "activation:model-access-provider-snapshot-test",
+            Digest::hash(b"plan").as_str(),
+        )
+        .unwrap();
+        let roles = [ModelAccessRead, ModelAccessCatalog];
+        let other_roles = [ShellSettings, ModelSave, ModelSearch, CommandDatasource];
+        let unrelated = VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
+            identity.clone(),
+            digest.as_str(),
+            other_roles,
+        );
+        assert!(!unrelated.permits_model_access_provider_snapshot());
+        for role in roles {
+            assert!(!unrelated.permits_provider_snapshot(role));
+            let mut proof = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                identity.clone(),
+                digest.as_str(),
+                role,
+            );
+            assert!(proof.permits_model_access_provider_snapshot());
+            for candidate in roles.into_iter().chain(other_roles) {
+                assert_eq!(
+                    proof.permits_provider_snapshot(candidate),
+                    candidate == role,
+                );
+            }
+            proof.provider_snapshot = None;
+            assert!(!proof.permits_model_access_provider_snapshot());
             assert!(!proof.permits_provider_snapshot(role));
         }
     }

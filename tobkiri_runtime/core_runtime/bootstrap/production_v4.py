@@ -5170,16 +5170,18 @@ def capture_production_dispatch(
         getattr(native_provider_snapshot_reader, "supports_projected", False) is True
     )
 
-    def select_original_provider_connections(
+    def select_original_registry_read(
         caller_ids: set[str],
+        operation_id: str = _MODEL_PROVIDER_OPERATION,
+        function_id: str = _MODEL_PROVIDER_FUNCTION,
     ) -> _CapturedPlanEdge | None:
         return select_original_chat_edge(
             caller_ids, "rumi_provider_registry_pack", _MODEL_PROVIDER_CONTRACT,
-            _MODEL_PROVIDER_OPERATION, _MODEL_PROVIDER_FUNCTION, EffectClass.PRIVILEGED,
+            operation_id, function_id, EffectClass.PRIVILEGED,
         )
 
     if supports_projected_snapshot:
-        settings_read = select_original_provider_connections(desktop_shell_principal_ids)
+        settings_read = select_original_registry_read(desktop_shell_principal_ids)
         if settings_read is not None:
             projected_snapshot_routes[settings_read.caller.principal_id] = (
                 "shell-settings", settings_read, None,
@@ -5203,7 +5205,7 @@ def capture_production_dispatch(
                 EffectClass.PRIVILEGED,
             )
             if query is not None:
-                read = select_original_provider_connections({query.target.principal_id})
+                read = select_original_registry_read({query.target.principal_id})
                 if read is not None:
                     projected_snapshot_routes[read.caller.principal_id] = (role, read, query)
 
@@ -5216,10 +5218,9 @@ def capture_production_dispatch(
         )
         for role, name in model_access_operations:
             operation = f"rumi_provider_registry_pack.{role}"
-            edge = select_original_chat_edge(
-                desktop_shell_principal_ids, "rumi_provider_registry_pack",
-                _MODEL_PROVIDER_CONTRACT, operation,
-                f"rumi_provider_registry_pack.model-access.{name}", EffectClass.PRIVILEGED,
+            edge = select_original_registry_read(
+                desktop_shell_principal_ids, operation,
+                f"rumi_provider_registry_pack.model-access.{name}",
             )
             if edge is not None:
                 model_access_snapshot_routes[operation] = role, edge
@@ -5231,7 +5232,7 @@ def capture_production_dispatch(
             _MODEL_SAVE_OPERATION, _MODEL_SAVE_FUNCTION, EffectClass.PRIVILEGED,
         )
         if manage is not None:
-            provider_read = select_original_provider_connections({manage.target.principal_id})
+            provider_read = select_original_registry_read({manage.target.principal_id})
             if provider_read is not None:
                 if native_model_save_writer is not None:
                     native_model_save_edge = manage

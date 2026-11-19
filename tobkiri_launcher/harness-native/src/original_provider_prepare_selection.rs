@@ -197,6 +197,20 @@ static PROVIDER_READ_STREAM: Route = Route {
     ..PROVIDER_READ
 };
 
+static MODEL_ACCESS_READ: Route = Route {
+    function: "rumi_provider_registry_pack.model-access.read",
+    operation: "rumi_provider_registry_pack.model-access-read",
+    variant: "rumi_provider_registry_pack.model-access.read.python",
+    ..PROVIDER_READ
+};
+
+static MODEL_ACCESS_CATALOG: Route = Route {
+    function: "rumi_provider_registry_pack.model-access.catalog",
+    operation: "rumi_provider_registry_pack.model-access-catalog",
+    variant: "rumi_provider_registry_pack.model-access.catalog.python",
+    ..PROVIDER_READ
+};
+
 static CONVERSATION_READ: Route = Route {
     pack: "rumi_conversation_store_pack",
     function: "rumi_conversation_store_pack.conversation-store.resource",
@@ -777,6 +791,44 @@ impl<'a> OriginalShellProviderSnapshotSelection<'a> {
     /// The selected Shell-to-Provider Registry read grant target.
     pub fn provider_read(&self) -> &OriginalRoutePin {
         &self.provider_read
+    }
+}
+
+/// Immutable metadata for each desktop Shell Model Access operation's own Profile grant.
+pub struct OriginalModelAccessProviderSnapshotSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    read: Option<OriginalRoutePin>,
+    catalog: Option<OriginalRoutePin>,
+}
+
+impl<'a> OriginalModelAccessProviderSnapshotSelection<'a> {
+    /// Select the exact Model Access read and catalog grants independently.
+    ///
+    /// Verify each returned pin against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        let [read, catalog] =
+            select_model_access_provider_snapshot_records(active.records(), budget)?;
+        if read.is_none() && catalog.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            _active: active,
+            read,
+            catalog,
+        }))
+    }
+
+    /// The Shell's grant for the Registry Model Access read operation.
+    pub fn read(&self) -> Option<&OriginalRoutePin> {
+        self.read.as_ref()
+    }
+
+    /// The Shell's grant for the Registry Model Access catalog operation.
+    pub fn catalog(&self) -> Option<&OriginalRoutePin> {
+        self.catalog.as_ref()
     }
 }
 
@@ -1505,6 +1557,10 @@ pub enum OriginalProviderSnapshotRole {
     ModelSearch,
     /// Command Datasource owns a nested read grant on the selected desktop Shell chain.
     CommandDatasource,
+    /// The direct Registry Model Access read operation selected by the desktop Shell.
+    ModelAccessRead,
+    /// The direct Registry Model Access catalog operation selected by the desktop Shell.
+    ModelAccessCatalog,
 }
 
 impl From<OriginalSavedLocalChatRole> for OriginalProviderSnapshotRole {
@@ -2001,19 +2057,26 @@ fn select_shell_provider_snapshot_records(
     records.select_shell_route(&PROVIDER_READ)
 }
 
+fn select_model_access_provider_snapshot_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<[Option<OriginalRoutePin>; 2]> {
+    let Some(records) = selected_desktop_shell_records(active, budget)? else {
+        return Ok([None, None]);
+    };
+    Ok([
+        records.select_shell_route(&MODEL_ACCESS_READ)?,
+        records.select_shell_route(&MODEL_ACCESS_CATALOG)?,
+    ])
+}
+
 fn select_query_provider_snapshot_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<[Option<[OriginalRoutePin; 2]>; 2]> {
-    let Some(records) = selected_shell_records(active, budget)? else {
+    let Some(records) = selected_desktop_shell_records(active, budget)? else {
         return Ok([None, None]);
     };
-    let shell = required(active.0, "shell")?;
-    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER
-        || !is_text(&shell, "pack_id", TURN_SHELL_CALLER)
-    {
-        return Ok([None, None]);
-    }
 
     let select = |owner| -> Result<Option<[OriginalRoutePin; 2]>> {
         Ok(records
@@ -2495,6 +2558,22 @@ fn select_saved_gateway(
     Ok(records
         .select_route(orchestration.function_id(), gateway)?
         .map(|gateway| [turn, orchestration, gateway]))
+}
+
+fn selected_desktop_shell_records<'a>(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &'a Arc<dyn AllocationBudget>,
+) -> Result<Option<Records<'a>>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    let shell = required(active.0, "shell")?;
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER
+        || !is_text(&shell, "pack_id", TURN_SHELL_CALLER)
+    {
+        return Ok(None);
+    }
+    Ok(Some(records))
 }
 
 fn selected_shell_records<'a>(
@@ -5578,6 +5657,100 @@ mod tests {
             .remove(SHELL_PROVIDER_READ_ROW);
         assert!(select(&fixture).unwrap().is_none());
         assert!(select_model_save(&fixture).unwrap().is_some());
+    }
+
+    #[test]
+    fn model_access_provider_snapshots_require_each_desktop_shell_grant() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_model_access_provider_snapshot_records((&profile, &lock, &plan), &budget)
+        };
+        let mut fixture = records();
+        assert!(select(&fixture).unwrap().iter().all(Option::is_none));
+        for field in ["requested_edges", "authority_references"] {
+            fixture["profile"][field] = json!([]);
+        }
+        fixture["plan"]["bindings"] = json!([]);
+        const REGISTRY_REVISION: &str =
+            "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d";
+        for (route, reference, scope) in [
+            (
+                &MODEL_ACCESS_READ,
+                "authority-ref:781ba2a0eb5861768c70456ae577184f298d82bf86a96379d7d10bba8837b3fa",
+                "sha256:6e3d5ddd7eb15c58a7ba7bf9cc7622a6ef111f501a1b63ff26d66f55dec310c1",
+            ),
+            (
+                &MODEL_ACCESS_CATALOG,
+                "authority-ref:4ef7ff45f17f93f241e6bc38f1097ce88941c2d8b4e5ae0657e483b6ee710d9f",
+                "sha256:82ba4dd024168f171cffb63e165f6c0093f9976747537a7e1e9cf9d9d95b2670",
+            ),
+        ] {
+            add_record(
+                &mut fixture,
+                route,
+                TURN_SHELL_CALLER,
+                reference,
+                REGISTRY_REVISION,
+                scope,
+            );
+        }
+
+        let operations = [&MODEL_ACCESS_READ, &MODEL_ACCESS_CATALOG];
+        for (row, (route, pin)) in operations
+            .into_iter()
+            .zip(select(&fixture).unwrap())
+            .enumerate()
+        {
+            let pin = pin.unwrap();
+            assert_eq!(pin.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(pin.pack_id(), route.pack);
+            assert_eq!(pin.function_id(), route.function);
+            assert_eq!(pin.contract_id(), route.contract);
+            assert_eq!(pin.operation_id(), route.operation);
+            assert_eq!(pin.variant_id(), route.variant);
+
+            let mut missing = fixture.clone();
+            missing["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(matches!(select(&missing), Err(Inconsistent(_))));
+            missing["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            let grants = select(&missing).unwrap();
+            assert!(grants[row].is_none());
+            assert!(grants[1 - row].is_some());
+
+            let mut interactive = fixture.clone();
+            interactive["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            interactive["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            let grants = select(&interactive).unwrap();
+            assert!(grants[row].is_none());
+            assert!(grants[1 - row].is_some());
+
+            let mut wrong_scope = fixture.clone();
+            let scope =
+                &mut wrong_scope["profile"]["requested_edges"][row]["requested_scope_template"];
+            scope["dimensions"]["operation"] = json!([operations[1 - row].operation]);
+            assert!(matches!(select(&wrong_scope), Err(Inconsistent(_))));
+
+            let mut wrong_variant = fixture.clone();
+            wrong_variant["plan"]["bindings"][row]["variant_id"] =
+                json!(operations[1 - row].variant);
+            assert!(matches!(select(&wrong_variant), Err(Inconsistent(_))));
+        }
+
+        for field in ["provider_id", "pack_id"] {
+            let mut other_shell = fixture.clone();
+            for record in ["profile", "lock", "plan"] {
+                other_shell[record]["shell"][field] = json!("unrelated.shell");
+            }
+            assert!(select(&other_shell).unwrap().iter().all(Option::is_none));
+        }
     }
 
     #[test]
