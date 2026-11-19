@@ -171,8 +171,8 @@ impl ProviderPrepareListener {
 
     pub(crate) fn owns_socket(&self) -> bool {
         self.process_is_current()
-            && crate::kernel_manager::detect_port_listener(self.port)
-                .is_ok_and(|listen| listen.is_some_and(|listen| listen.pid == self.process.pid))
+            && crate::kernel_manager::detect_port_listener_pid(self.port)
+                .is_ok_and(|pid| pid == Some(self.process.pid))
             && self.process_is_current()
     }
 

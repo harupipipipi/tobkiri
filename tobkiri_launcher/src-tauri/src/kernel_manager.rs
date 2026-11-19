@@ -716,6 +716,25 @@ pub(crate) fn detect_port_listener(port: u16) -> Result<Option<PortListener>> {
 
 #[cfg(unix)]
 fn detect_port_listener_unix(port: u16) -> Result<Option<PortListener>> {
+    let Some((pid, short_name)) = probe_port_listener_unix(port)? else {
+        return Ok(None);
+    };
+    let command = unix_process_command(pid)
+        .or(short_name)
+        .unwrap_or_else(|| "unknown".to_string());
+    let cwd = unix_process_cwd(pid);
+
+    Ok(Some(PortListener { pid, command, cwd }))
+}
+
+/// Inspect the same TCP listener used by port-conflict recovery, without its diagnostics.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) fn detect_port_listener_pid(port: u16) -> Result<Option<u32>> {
+    Ok(probe_port_listener_unix(port)?.map(|(pid, _)| pid))
+}
+
+#[cfg(unix)]
+fn probe_port_listener_unix(port: u16) -> Result<Option<(u32, Option<String>)>> {
     let mut command = process_utils::command("lsof");
     command.args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fpc"]);
     let output = match process_utils::bounded_output(
@@ -738,7 +757,13 @@ fn detect_port_listener_unix(port: u16) -> Result<Option<PortListener>> {
         bail!("lsof exited with {}: {}", output.status, stderr.trim());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_unix_port_listener(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
+#[cfg(unix)]
+fn parse_unix_port_listener(stdout: &str) -> Option<(u32, Option<String>)> {
     let mut pid = None;
     let mut short_name = None;
 
@@ -750,16 +775,7 @@ fn detect_port_listener_unix(port: u16) -> Result<Option<PortListener>> {
         }
     }
 
-    let Some(pid) = pid else {
-        return Ok(None);
-    };
-
-    let command = unix_process_command(pid)
-        .or(short_name)
-        .unwrap_or_else(|| "unknown".to_string());
-    let cwd = unix_process_cwd(pid);
-
-    Ok(Some(PortListener { pid, command, cwd }))
+    pid.map(|pid| (pid, short_name))
 }
 
 #[cfg(windows)]
@@ -1163,6 +1179,31 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_port_listener_uses_the_last_lsof_pid_record() {
+        assert_eq!(
+            parse_unix_port_listener("p123\ncone\np456\nctwo\n"),
+            Some((456, Some("two".to_string())))
+        );
+        assert_eq!(parse_unix_port_listener("p123\npinvalid\n"), None);
+        assert_eq!(parse_unix_port_listener(""), None);
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
+    fn pid_probe_finds_the_same_live_loopback_listener_as_port_recovery() {
+        let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = socket.local_addr().unwrap().port();
+        let pid = detect_port_listener_pid(port).unwrap();
+
+        assert_eq!(pid, Some(std::process::id()));
+        assert_eq!(
+            pid,
+            detect_port_listener(port).unwrap().map(|entry| entry.pid)
+        );
+    }
 
     #[cfg(unix)]
     #[test]
