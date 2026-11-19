@@ -10,7 +10,7 @@ import stat
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Mapping, Optional
@@ -249,10 +249,12 @@ def _probes(
     )
 
 
+@pytest.mark.parametrize("expect_setup", [False, True])
 def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
-    tmp_path: Path,
+    tmp_path: Path, expect_setup: bool,
 ) -> None:
     config, _diagnostics = _bundle_and_config(tmp_path)
+    config = replace(config, expect_setup=expect_setup)
     clock = _Clock()
     signals: list[tuple[int, signal.Signals]] = []
     calls: list[tuple[int, str, str]] = []
@@ -311,6 +313,22 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
                 },
                 b'{"success":true,"data":{"csrf_token":"csrf-token"}}',
             )
+        if port == config.kernel_port and method == "GET" and path == VERIFY.SETUP_STATUS_PATH:
+            assert headers["Cookie"] == "rumi_panel_session=sealed-session"
+            return VERIFY.HttpResponse(200, {}, json.dumps({
+                "success": True,
+                "data": {
+                    "setup_state": "profile_transaction_required", "needs_setup": True,
+                    "active_profile_ready": False, "launch_ready": False,
+                    "host_catalog_verified": True,
+                },
+            }).encode())
+        if port == config.kernel_port and method == "GET" and path == VERIFY.SETUP_PANEL_PATH:
+            assert headers["Cookie"] == "rumi_panel_session=sealed-session"
+            return VERIFY.HttpResponse(
+                200, {"content-type": "text/html; charset=utf-8"},
+                b'<div id="root"></div><script type="module" src="/panel/assets/app.js"></script>',
+            )
         return None
 
     def launch(executable: Path, _bundle: Path, environment: object) -> _Process:
@@ -337,6 +355,7 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
 
     assert result.kernel_pid == 4243
     assert result.panel_reachable is True
+    assert result.setup_panel_reachable is expect_setup
     assert launched_executable == (
         config.app_bundle
         / VERIFY.EXECUTABLE_DIRECTORY_RELATIVE
@@ -347,6 +366,8 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
         (config.kernel_port, "GET", VERIFY.KERNEL_HEALTH_PATH),
         (config.kernel_port, "POST", VERIFY.PANEL_AUTH_BOOTSTRAP_PATH),
         (config.kernel_port, "POST", VERIFY.PANEL_AUTH_EXCHANGE_PATH),
+        *([(config.kernel_port, "GET", VERIFY.SETUP_STATUS_PATH),
+           (config.kernel_port, "GET", VERIFY.SETUP_PANEL_PATH)] if expect_setup else []),
     ]
     assert launched_environment["RUMI_VIEWER_BROKER_PORT"] == "18770"
     assert launched_environment[VERIFY.CI_APP_DATA_ROOT_ENV] == str(
@@ -373,6 +394,33 @@ def test_panel_auth_response_rejects_unauthenticated_static_panel() -> None:
     )
 
     assert VERIFY._successful_panel_auth_response(response) is None
+
+
+@pytest.mark.parametrize("already_active", [False, True])
+def test_setup_probe_rejects_bootstrap_or_already_active_profile(
+    tmp_path: Path, already_active: bool,
+) -> None:
+    config, _diagnostics = _bundle_and_config(tmp_path)
+    calls: list[str] = []
+
+    def request(_port, _method, path, _headers, _body, _timeout):
+        calls.append(path)
+        if path == VERIFY.SETUP_STATUS_PATH:
+            data = {
+                "setup_state": "profile_transaction_required", "needs_setup": True,
+                "active_profile_ready": already_active, "launch_ready": already_active,
+                "host_catalog_verified": True,
+            }
+            return VERIFY.HttpResponse(200, {}, json.dumps({"success": True, "data": data}).encode())
+        return VERIFY.HttpResponse(
+            200, {"content-type": "text/html"}, b'<script src="/panel/bootstrap.js"></script>',
+        )
+
+    probes = _probes(_Clock(), request, lambda _pid: 1, [])
+    assert not VERIFY._fresh_setup_is_reachable(
+        config, probes, "rumi_panel_session=test; HttpOnly; Path=/", 10.0,
+    )
+    assert calls == [VERIFY.SETUP_STATUS_PATH] + ([] if already_active else [VERIFY.SETUP_PANEL_PATH])
 
 
 def test_embedded_bootstrap_contract_rejects_reused_profile_and_plan_digest(

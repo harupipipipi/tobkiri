@@ -657,6 +657,36 @@ def _canonical_regular_file(path: Path, label: str) -> Path:
     return canonical
 
 
+def _cold_boot_installed_launcher(
+    mount: MountedDmg, app_bundle: Path, diagnostics: Path,
+    python: Executable, codesign: Executable,
+) -> None:
+    """Copy the verified app, detach the DMG, and boot the installed copy."""
+    ditto = _resolve_executable("ditto")
+    verifier = _canonical_regular_file(
+        Path(__file__).resolve().with_name("verify_macos_launcher_cold_boot.py"),
+        "Launcher cold-boot verifier",
+    )
+    with tempfile.TemporaryDirectory(prefix="tbk.", dir="/private/tmp") as directory:
+        root = Path(directory).resolve(strict=True)
+        install_root = root / "Applications"
+        install_root.mkdir(mode=0o700)
+        installed = install_root / app_bundle.name
+        mount.verify_mounted()
+        if _run(ditto, [os.fspath(app_bundle), os.fspath(installed)]).returncode:
+            raise DmgVerificationError("could not copy the Launcher from the verified DMG")
+        mount.verify_mounted()
+        mount.cleanup()
+        if _run(codesign, ["--verify", "--deep", "--strict", os.fspath(installed)]).returncode:
+            raise DmgVerificationError("installed Launcher signature verification failed")
+        if _run(python, [
+            "-B", os.fspath(verifier), "--app-bundle", os.fspath(installed),
+            "--app-data-dir", os.fspath(root / "ci-e2e-app-data"),
+            "--diagnostics-dir", os.fspath(diagnostics), "--expect-setup",
+        ]).returncode:
+            raise DmgVerificationError("installed Launcher did not reach authenticated fresh Setup")
+
+
 def verify_dmg(args: argparse.Namespace) -> None:
     """Mount, verify, codesign-check, detach, and safely remove one mountpoint."""
     dmg = _canonical_regular_file(args.dmg, "DMG")
@@ -717,6 +747,10 @@ def verify_dmg(args: argparse.Namespace) -> None:
                     f"mounted DMG verification command failed: {executable.path.name}"
                 )
             mount.verify_mounted()
+        if args.installed_boot_diagnostics_dir is not None:
+            _cold_boot_installed_launcher(
+                mount, app_bundle, args.installed_boot_diagnostics_dir, python, codesign,
+            )
     except BaseException as error:
         primary_error = error
         raise
@@ -748,6 +782,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-native-setup-component-sha256")
     parser.add_argument("--expected-native-setup-component-bytes")
     parser.add_argument("--expected-native-registry-packs-receipt-sha256")
+    parser.add_argument("--installed-boot-diagnostics-dir", type=Path)
     args = parser.parse_args()
     sha256 = args.expected_native_setup_component_sha256
     size = args.expected_native_setup_component_bytes
@@ -764,6 +799,8 @@ def parse_args() -> argparse.Namespace:
     receipt_digest = args.expected_native_registry_packs_receipt_sha256
     if receipt_digest is not None and not SHA256.fullmatch(receipt_digest):
         parser.error("expected native Registry Packs receipt SHA-256 is invalid")
+    if args.installed_boot_diagnostics_dir is not None and (sha256 is None or receipt_digest is None):
+        parser.error("installed native cold boot requires the pinned native Setup and Registry resources")
     return args
 
 

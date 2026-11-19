@@ -645,7 +645,7 @@ jobs:
             "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app/Contents/MacOS/tobkiri-packvm-vz-helper"
 
       - name: Cold-boot packaged macOS CI/E2E Launcher
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && !inputs.native_setup
         shell: bash
         run: |
           set -euo pipefail
@@ -698,9 +698,12 @@ jobs:
           verify_args=(--dmg "$dmg" --target '${{ matrix.target }}'
             --expected-manifest-sha256 "$TOBKIRI_PACKAGED_PYTHON_INVENTORY_SHA256")
           if [[ "$NATIVE_SETUP" == true ]]; then
+            diagnostics_dir="$RUNNER_TEMP/tobkiri-launcher-cold-boot-${{ matrix.target }}"
+            /bin/mkdir -m 700 "$diagnostics_dir"
             verify_args+=(--expected-native-setup-component-sha256 "$TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_SHA256"
               --expected-native-setup-component-bytes "$TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_BYTES"
-              --expected-native-registry-packs-receipt-sha256 "$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256")
+              --expected-native-registry-packs-receipt-sha256 "$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256"
+              --installed-boot-diagnostics-dir "$diagnostics_dir")
           fi
           bash scripts/verify_packaged_python_dmg.sh "${verify_args[@]}"
           printf 'path=%s\n' "$dmg" >> "$GITHUB_OUTPUT"

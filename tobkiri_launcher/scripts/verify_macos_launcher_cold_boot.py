@@ -30,6 +30,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from typing import Any, Optional
 
@@ -48,6 +49,8 @@ KERNEL_HEALTH_PATH = "/health"
 DESKTOP_HEALTH_CHALLENGE_HEADER = "X-Rumi-Desktop-Health-Challenge"
 PANEL_AUTH_BOOTSTRAP_PATH = "/api/panel/auth/bootstrap"
 PANEL_AUTH_EXCHANGE_PATH = "/api/panel/auth/exchange"
+SETUP_STATUS_PATH = "/api/setup/status"
+SETUP_PANEL_PATH = "/panel/setup"
 DEFAULT_KERNEL_PORT = 8765
 POLL_INTERVAL_SECONDS = 0.2
 HTTP_CONNECT_TIMEOUT_SECONDS = 0.8
@@ -87,6 +90,7 @@ class ColdBootConfig:
     diagnostics_dir: Path
     kernel_port: int
     timeout_seconds: float
+    expect_setup: bool = False
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,7 @@ class ColdBootResult:
     launcher_pid: int
     kernel_pid: int
     panel_reachable: bool
+    setup_panel_reachable: bool = False
 
 
 @dataclass(frozen=True)
@@ -294,6 +299,7 @@ def _validate_config(config: ColdBootConfig) -> tuple[ColdBootConfig, Path]:
             diagnostics_dir=diagnostics_dir,
             kernel_port=kernel_port,
             timeout_seconds=config.timeout_seconds,
+            expect_setup=config.expect_setup,
         ),
         executable,
     )
@@ -678,12 +684,54 @@ def _panel_authentication_is_reachable(
     exchange_data = _successful_panel_auth_response(exchange)
     csrf_token = exchange_data.get("csrf_token") if exchange_data is not None else None
     set_cookie = exchange.headers.get("set-cookie", "") if exchange is not None else ""
-    return (
+    authenticated = (
         isinstance(csrf_token, str)
         and bool(csrf_token)
         and csrf_token == csrf_token.strip()
         and "rumi_panel_session=" in set_cookie
         and "httponly" in set_cookie.lower()
+    )
+    if not authenticated or not config.expect_setup:
+        return authenticated
+    return _fresh_setup_is_reachable(config, probes, set_cookie, deadline)
+
+
+def _fresh_setup_is_reachable(
+    config: ColdBootConfig, probes: ColdBootProbes, set_cookie: str, deadline: float,
+) -> bool:
+    """Observe the original Setup route and its pending state without publishing."""
+    cookies: SimpleCookie[str] = SimpleCookie()
+    try:
+        cookies.load(set_cookie)
+    except CookieError:
+        return False
+    session = cookies.get("rumi_panel_session")
+    if session is None or not session.value or not session["httponly"]:
+        return False
+    cookie = f"rumi_panel_session={session.coded_value}"
+    status = _request_before_deadline(
+        probes, deadline, config.kernel_port, "GET", SETUP_STATUS_PATH,
+        {"Accept": "application/json", "Cookie": cookie}, b"",
+    )
+    state = _successful_panel_auth_response(status)
+    if (
+        state is None
+        or state.get("setup_state") != "profile_transaction_required"
+        or state.get("needs_setup") is not True
+        or state.get("active_profile_ready") is not False
+        or state.get("launch_ready") is not False
+        or state.get("host_catalog_verified") is not True
+    ):
+        return False
+    panel = _request_before_deadline(
+        probes, deadline, config.kernel_port, "GET", SETUP_PANEL_PATH,
+        {"Accept": "text/html", "Cookie": cookie}, b"",
+    )
+    return (
+        panel is not None and panel.status == 200
+        and panel.headers.get("content-type", "").startswith("text/html")
+        and b'<div id="root">' in panel.body
+        and b'type="module"' in panel.body
     )
 
 
@@ -866,7 +914,7 @@ def _wait_for_readiness(
                     int(process.pid),
                     probes.parent_pid,
                 ):
-                    pending_stage = "panel_authentication"
+                    pending_stage = "authenticated_setup" if config.expect_setup else "panel_authentication"
                     panel_reachable = (
                         _panel_authentication_is_reachable(
                             config,
@@ -884,6 +932,7 @@ def _wait_for_readiness(
                             launcher_pid=int(process.pid),
                             kernel_pid=kernel_pid,
                             panel_reachable=True,
+                            setup_panel_reachable=config.expect_setup,
                         )
                 else:
                     kernel_ownership_error = True
@@ -964,6 +1013,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--diagnostics-dir", required=True, type=Path)
     parser.add_argument("--kernel-port", default=DEFAULT_KERNEL_PORT, type=int)
     parser.add_argument("--timeout-seconds", default=180.0, type=float)
+    parser.add_argument("--expect-setup", action="store_true")
     return parser.parse_args()
 
 
@@ -977,8 +1027,11 @@ def main() -> int:
             diagnostics_dir=args.diagnostics_dir,
             kernel_port=args.kernel_port,
             timeout_seconds=args.timeout_seconds,
+            expect_setup=args.expect_setup,
         )
     )
+    if result.setup_panel_reachable:
+        print("Verified authenticated fresh Setup entry from the installed app")
     print(
         "Verified local macOS CI/E2E cold boot "
         f"(broker={result.broker_port}, kernel={result.kernel_port}, "

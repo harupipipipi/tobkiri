@@ -363,6 +363,7 @@ def test_primary_error_wins_over_cleanup_error(
         expected_native_setup_component_bytes=None,
         expected_native_setup_component_sha256=None,
         expected_native_registry_packs_receipt_sha256=None,
+        installed_boot_diagnostics_dir=None,
     )
 
     with pytest.raises(MODULE.DmgVerificationError, match="primary attach failure"):
@@ -814,6 +815,7 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
         expected_native_setup_component_bytes=len(component_bytes),
         expected_native_setup_component_sha256=component_digest,
         expected_native_registry_packs_receipt_sha256="b" * 64,
+        installed_boot_diagnostics_dir=None,
     )
     try:
         with pytest.raises(
@@ -827,6 +829,56 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
             subprocess.run(
                 ["hdiutil", "detach", str(mismatch_mount.device)], check=False
             )
+
+
+def test_installed_boot_uses_the_verified_copy_after_detach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "mounted" / "Tobkiri Launcher CI E2E.app"
+    source.mkdir(parents=True)
+    (source / "exact-resource").write_bytes(b"verified")
+    diagnostics = tmp_path / "diagnostics"
+    diagnostics.mkdir()
+    events: list[str] = []
+    installed_paths: list[Path] = []
+
+    class Mount:
+        def verify_mounted(self) -> None:
+            assert source.is_dir()
+            events.append("verify-mount")
+
+        def cleanup(self) -> None:
+            shutil.rmtree(source)
+            events.append("detach")
+
+    def run(tool, arguments):
+        events.append(tool)
+        if tool == "ditto":
+            assert Path(arguments[0]) == source
+            shutil.copytree(source, arguments[1])
+            installed_paths.append(Path(arguments[1]))
+        elif tool == "codesign":
+            assert not source.exists()
+            assert Path(arguments[-1]) == installed_paths[0]
+        else:
+            assert not source.exists()
+            assert Path(arguments[arguments.index("--app-bundle") + 1]) == installed_paths[0]
+            assert (installed_paths[0] / "exact-resource").read_bytes() == b"verified"
+            assert arguments[arguments.index("--diagnostics-dir") + 1] == str(diagnostics)
+            assert "--expect-setup" in arguments
+            assert not Path(arguments[arguments.index("--app-data-dir") + 1]).exists()
+        return subprocess.CompletedProcess(arguments, 0)
+
+    temporary = MODULE.tempfile.TemporaryDirectory
+    monkeypatch.setattr(
+        MODULE.tempfile, "TemporaryDirectory", lambda *, prefix, dir: temporary(prefix=prefix, dir=tmp_path),
+    )
+    monkeypatch.setattr(MODULE, "_resolve_executable", lambda name: name)
+    monkeypatch.setattr(MODULE, "_run", run)
+    MODULE._cold_boot_installed_launcher(Mount(), source, diagnostics, "python", "codesign")
+    assert events == ["verify-mount", "ditto", "verify-mount", "detach", "codesign", "python"]
+    assert installed_paths[0].parent.name == "Applications"
+    assert not installed_paths[0].exists()
 
 
 def tempfile_parent_value() -> str:
