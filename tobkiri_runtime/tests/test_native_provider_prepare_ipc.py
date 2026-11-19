@@ -2073,15 +2073,17 @@ def test_provider_snapshot_settings_role_only_accepts_the_public_view(
         assert peer.recv(1) == b""
 
     with _served(monkeypatch, serve):
-        for old_version in ("1", "2"):
+        query_role = role in ipc._QUERY_PROVIDER_SNAPSHOT_ROLES
+        for old_version in (("1", "2", "3") if query_role else ("1", "2")):
             monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, old_version)
             reader = ipc.capture_launcher_provider_snapshot_reader()
             assert reader is not None
             with pytest.raises(ipc.NativeProviderPrepareUnavailable):
                 reader(request)
-        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "3")
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "4" if query_role else "3")
         reader = ipc.capture_launcher_provider_snapshot_reader()
         assert reader is not None and reader.supports_gateway and reader.supports_projected
+        assert reader.supports_query is query_role
         if unexpected_field is not None:
             with pytest.raises(ipc._ProtocolError):
                 reader(request)

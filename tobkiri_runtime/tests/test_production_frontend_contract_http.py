@@ -7709,6 +7709,143 @@ def test_command_state_and_datasource_queries_reach_exact_canonical_owners(
         assert datasource_result["data"]["revision"]
 
 
+def test_search_and_commands_borrow_their_own_projected_provider_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve search and datasource results with their separate Registry grants."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import AuthorityDenied, LeaseState
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog as catalog_module
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_provider_registry_pack.runtime.process import (
+        _provider_connection_snapshot,
+    )
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    root = tmp_path / "user-data"
+    providers = ProviderRegistry("defaults", user_data_root=root)
+    observed: list[RequestEnvelope] = []
+    reads: list[ipc.NativeProviderSnapshotRequest] = []
+    parent_operations = {
+        "model-search": "tobkiri_ui_settings_pack.model-search",
+        "command-datasource": "command.datasource.query",
+    }
+    compatibility = False
+
+    def native_snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, object]:
+        owner = observed[-1]
+        assert owner.operation_id == "rumi_provider_registry_pack.provider-registry-resource"
+        parent, = [
+            item for item in observed[:-1]
+            if item.operation_id in parent_operations.values()
+        ]
+        assert parent.operation_id == parent_operations[request.role]
+        assert request.context is owner.context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic == owner.deadline_monotonic
+        assert owner.deadline_monotonic <= parent.deadline_monotonic
+        assert owner.context.caller_principal == parent.target_principal
+        assert owner.lease.token != parent.lease.token
+        assert owner.resource_reservation_id is not None
+        assert owner.resource_reservation_id != parent.resource_reservation_id
+        for envelope in (owner, parent):
+            _, state = authority.inspect_lease_token(envelope.lease.token.decode("ascii"))
+            assert state is LeaseState.DISPATCHED
+        request.assert_current()
+        reads.append(request)
+        if compatibility:
+            raise ipc.NativeProviderRegistryRequiresLegacyRead()
+        return _provider_connection_snapshot(providers.snapshot())
+
+    native_snapshot.supports_query = True
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_provider_snapshot_reader", lambda: native_snapshot,
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, credential_store_factory=host_credential_store_factory,
+    ) as (server, session, authority):
+        providers.save({
+            "provider_instance_id": "provider.fixture",
+            "display_name": "Fixture connection",
+            "adapter_id": "openai-compatible", "endpoint": "https://fixture.invalid/v1",
+            "credential_handle": "opaque:query-projection-fixture", "enabled": True,
+            "metadata": {"catalog_provider_id": "openrouter"},
+        }, expected_revision=0)
+        ModelRegistry("defaults", user_data_root=root).save({
+            "model_profile_id": "fixture-route", "display_name": "Fixture route",
+            "model_id": "fixture/model-001",
+            "metadata": {"provider_connection_id": "provider.fixture"},
+        }, expected_revision=0)
+        public_model = catalog_module._normalize_openrouter_model({
+            "id": "fixture/model-001", "name": "Fixture public model",
+            "context_length": 8192,
+            "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+        })
+        assert public_model is not None
+        now = int(time.time())
+        catalog_module._save_openrouter_inventory_cache({
+            "version": 1, "saved_at": now, "expires_at": now + 3600,
+            "models": [public_model],
+        })
+
+        def unexpected_network(*_args, **_kwargs):
+            raise AssertionError("signed query fixtures use cached public inventory")
+
+        monkeypatch.setattr(catalog_module.urllib.request, "urlopen", unexpected_network)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            observed.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        search = _contract("POST", "/api/ai/models/search")
+        datasource = _contract("POST", "/api/command-protocol/v1/datasources/query")
+        for path in (search, datasource):
+            status, _, _ = _request(server, "POST", path, body={})
+            assert status == 401 and not reads
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(path: str, body: Mapping[str, object]) -> dict[str, object]:
+            observed.clear()
+            status, result, _ = _request(server, "POST", path, body=body, headers={
+                "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            })
+            assert status == 200, result
+            return result["data"]
+
+        cases = [
+            ("model-search", search,
+             {"connection_id": "provider.fixture", "query": "fixture/model-001"},
+             "models", "fixture-route"),
+            ("command-datasource", datasource, {"datasource_ref": "tobkiri:model_catalog"},
+             "items", "fixture-route"),
+            ("command-datasource", datasource, {"datasource_ref": "tobkiri:provider_catalog"},
+             "items", "provider.fixture"),
+        ]
+        for role, path, body, rows, expected in cases:
+            reads.clear()
+            compatibility = False
+            native = post(path, body)
+            identifier = "profile_id" if rows == "models" else "value"
+            assert any(row[identifier] == expected for row in native[rows]), native
+            assert "opaque:query-projection-fixture" not in json.dumps(native)
+            assert "https://fixture.invalid" not in json.dumps(native)
+            compatibility = True
+            assert post(path, body) == native
+            assert [request.role for request in reads] == [role, role]
+            for request in reads:
+                with pytest.raises((AuthorityDenied, PermissionError)):
+                    request.assert_current()
+
+        reads.clear()
+        post(search, {"query": "fixture/model-001"})
+        assert not reads
+
+
 def _exercise_provider_configuration_http(
     production_server,
     tmp_path: Path,

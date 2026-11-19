@@ -485,11 +485,16 @@ GatewayProviderSnapshotRole = Literal[
     "side-chat-gateway-generate", "side-chat-gateway-stream",
     "side-chat-gateway-quote-generate", "side-chat-gateway-quote-stream",
 ]
-ProjectedProviderSnapshotRole = Literal["shell-settings", "model-save"]
+ProjectedProviderSnapshotRole = Literal[
+    "shell-settings", "model-save", "model-search", "command-datasource",
+]
 ProviderSnapshotRole = (
     SavedLocalChatRole | GatewayProviderSnapshotRole | ProjectedProviderSnapshotRole
 )
-_PROJECTED_PROVIDER_SNAPSHOT_ROLES = ("shell-settings", "model-save")
+_QUERY_PROVIDER_SNAPSHOT_ROLES = ("model-search", "command-datasource")
+_PROJECTED_PROVIDER_SNAPSHOT_ROLES = (
+    "shell-settings", "model-save", *_QUERY_PROVIDER_SNAPSHOT_ROLES,
+)
 GATEWAY_PROVIDER_SNAPSHOT_ROLES: Mapping[
     tuple[bool, ModelResolveRole], GatewayProviderSnapshotRole
 ] = MappingProxyType({
@@ -731,6 +736,7 @@ class _LauncherProviderSnapshot:
     launcher: _Launcher
     supports_gateway: bool
     supports_projected: bool
+    supports_query: bool
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
@@ -738,6 +744,8 @@ class _LauncherProviderSnapshot:
              and request.role in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values())
             or (not self.supports_projected
                 and request.role in _PROJECTED_PROVIDER_SNAPSHOT_ROLES)
+            or (not self.supports_query
+                and request.role in _QUERY_PROVIDER_SNAPSHOT_ROLES)
         ):
             raise NativeProviderPrepareUnavailable("native Registry read role is unavailable")
         return _invoke(self.launcher, request, operation="provider_snapshot")
@@ -746,13 +754,16 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV)
-    if version not in ("1", "2", "3"):
+    if version not in ("1", "2", "3", "4"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
         return None
     return _LauncherProviderSnapshot(
-        launcher, supports_gateway=version in ("2", "3"), supports_projected=version == "3",
+        launcher,
+        supports_gateway=version != "1",
+        supports_projected=version in ("3", "4"),
+        supports_query=version == "4",
     )
 
 

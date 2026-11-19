@@ -5084,6 +5084,28 @@ def capture_production_dispatch(
             projected_snapshot_routes[settings_read.caller.principal_id] = (
                 "shell-settings", settings_read, None,
             )
+    if getattr(native_provider_snapshot_reader, "supports_query", False) is True:
+        query_parents: tuple[tuple[ProjectedProviderSnapshotRole, str, str, str, str], ...] = (
+            (
+                "model-search", "tobkiri_ui_settings_pack",
+                "tobkiri.resource.ui.model-search.v1", "tobkiri_ui_settings_pack.model-search",
+                "tobkiri.ui.model-search.read",
+            ),
+            (
+                "command-datasource", "rumi_command_protocol_pack",
+                "tobkiri.resource.command.datasource.v1", "command.datasource.query",
+                "rumi_command_protocol_pack.command.datasource",
+            ),
+        )
+        for role, pack_id, contract, operation, function in query_parents:
+            query = select_original_chat_edge(
+                desktop_shell_principal_ids, pack_id, contract, operation, function,
+                EffectClass.PRIVILEGED,
+            )
+            if query is not None:
+                read = select_original_provider_connections({query.target.principal_id})
+                if read is not None:
+                    projected_snapshot_routes[read.caller.principal_id] = (role, read, query)
 
     native_model_save_edge: _CapturedPlanEdge | None = None
     if native_model_save_writer is not None or supports_projected_snapshot:
@@ -5284,14 +5306,14 @@ def capture_production_dispatch(
             projected = projected_snapshot_routes.get(context.caller_principal.value)
             if projected is None:
                 return None
-            projected_role, projected_edge, manage = projected
-            if manage is None:
+            projected_role, projected_edge, parent_edge = projected
+            if parent_edge is None:
                 return (projected_role, projected_edge, None) if parent is None else None
             if (
                 parent is not None and parent.parent is None
                 and parent.envelope.context.profile_id == context.profile_id
                 and parent.envelope.target_principal == context.caller_principal
-                and matches_captured_edge(parent.envelope, manage)
+                and matches_captured_edge(parent.envelope, parent_edge)
             ):
                 return projected_role, projected_edge, parent
             return None
