@@ -1,4 +1,4 @@
-//! Prepare a receipt settlement using the live Core execution Profile.
+//! Validate a Turn observation or prepare settlement using the live Core Profile.
 
 wit_bindgen::generate!({
     path: ["../../crates/tobkiri-wit/wit/core-v1-2/core.wit", "wit"],
@@ -6,7 +6,11 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use crate::{LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, Transition, settle};
+use crate::{
+    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, Transition, settle,
+    validate_legacy_saved_turn,
+};
+use exports::local::saved_turn_runtime::legacy_read::{self, ReadOutcome};
 use exports::local::saved_turn_runtime::legacy_settlement::{
     Guest, Replacement, SettlementError, SettlementOutcome,
 };
@@ -23,6 +27,28 @@ impl exports::tobkiri::core::lifecycle::Guest for Pack {
     }
 
     fn shutdown() {}
+}
+
+impl legacy_read::Guest for Pack {
+    fn validate(turn_id: String, request_id: String, body: String) -> Result<ReadOutcome, Error> {
+        let profile = flow::current_profile()?;
+        let outcome =
+            match validate_legacy_saved_turn(&profile, &turn_id, &request_id, body.as_bytes()) {
+                Ok(()) => ReadOutcome::Valid,
+                Err(LegacySavedTurnSettlementError::RequiresLegacyCodec) => {
+                    ReadOutcome::RequiresLegacyCodec
+                }
+                Err(LegacySavedTurnSettlementError::Capacity) => ReadOutcome::Capacity,
+                Err(LegacySavedTurnSettlementError::InvalidRecord) => ReadOutcome::InvalidRecord,
+                Err(_) => {
+                    return Err(Error {
+                        code: ErrorCode::Internal,
+                        message: "unexpected Turn row validation result".into(),
+                    });
+                }
+            };
+        Ok(outcome)
+    }
 }
 
 impl Guest for Pack {

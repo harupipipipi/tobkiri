@@ -1,4 +1,4 @@
-//! Receipt validation and lifecycle transition for the original Turn owner.
+//! Indexed record validation and receipt settlement for the original Turn owner.
 
 use ordered_python_compat::{CodecError, PyValue, dumps, dumps_bounded, loads, pystrip};
 use std::collections::BTreeSet;
@@ -15,6 +15,19 @@ pub const REFERENCE_LIMIT: usize = 2 * 1024;
 
 const MAX_DEPTH: usize = 96;
 const MAX_STRUCTURAL_MARKS: usize = 48 * 1024;
+
+/// Validate an existing owner row against its physical index and Core Profile.
+///
+/// The caller may return the original body after success. Keeping those bytes
+/// preserves opaque fields and avoids serializing a second copy of the row.
+pub fn validate_legacy_saved_turn(
+    profile: &str,
+    turn_id: &str,
+    request_id: &str,
+    body: &[u8],
+) -> Result<()> {
+    load_record(profile, turn_id, request_id, body).map(drop)
+}
 
 /// Content-free result identity supplied by the captured saved-turn owner.
 pub struct LegacySavedTurnSettlementRequest<'a> {
@@ -126,11 +139,7 @@ pub fn settle(
     {
         return Err(Error::InvalidRequest);
     }
-    if body.len() > RECORD_LIMIT {
-        return Err(Error::Capacity);
-    }
-    let mut turn = parse(body)?;
-    validate_record(&turn, profile_id, turn_id, request_id)?;
+    let mut turn = load_record(profile_id, turn_id, request_id, body)?;
 
     let conversation_id = turn.string("conversation_id").ok_or(Error::InvalidRecord)?;
     let initial_revision = turn
@@ -225,6 +234,15 @@ pub fn settle(
         })?
         .into_bytes();
     Ok(Transition::Commit { updated_at, body })
+}
+
+fn load_record(profile: &str, id: &str, request_id: &str, body: &[u8]) -> Result<PyValue> {
+    if body.len() > RECORD_LIMIT {
+        return Err(Error::Capacity);
+    }
+    let turn = parse(body)?;
+    validate_record(&turn, profile, id, request_id)?;
+    Ok(turn)
 }
 
 fn validate_record(turn: &PyValue, profile: &str, id: &str, request_id: &str) -> Result<()> {

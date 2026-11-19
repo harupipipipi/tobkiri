@@ -1,8 +1,8 @@
-//! Settlement of an already verified outcome in the original Turn owner's database.
+//! Indexed read and settlement in the original Turn owner's database.
 
 use rusqlite::{
-    Connection, ErrorCode, Transaction, TransactionBehavior,
-    hooks::{AuthContext, Authorization},
+    Connection, ErrorCode, PrepFlags, Row, Transaction, TransactionBehavior,
+    hooks::{AuthAction, AuthContext, Authorization},
     params,
 };
 use std::{
@@ -32,6 +32,7 @@ const TRANSITION_WORK_BYTES: u64 = 24 * 1024 * 1024;
 const SQLITE_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 const SQLITE_BUSY_SLICE: Duration = Duration::from_millis(25);
 const TURNS_OWNER: &str = "packs/rumi_turn_runtime_pack/profiles";
+const SELECT_TURN: &str = "SELECT id, request_id, body FROM turns WHERE id = ?1";
 
 type Error = LegacySavedTurnSettlementError;
 
@@ -44,7 +45,7 @@ pub enum OriginalSavedTurnCheck {
     Publish,
 }
 
-/// Borrowed original indexed row. Valid only within the same write transaction.
+/// Original indexed row borrowed from the current SQLite statement.
 pub struct OriginalSavedTurnRow<'a> {
     /// The already admitted Profile for this operation.
     pub profile_id: &'a str,
@@ -67,6 +68,37 @@ pub enum OriginalSavedTurnDecision {
         /// Fully materialized owner record.
         body: CoreBuffer,
     },
+}
+
+/// Validate the original row with the admitted read-only Wasm port.
+///
+/// A valid result preserves the exact original body bytes for the caller.
+pub async fn invoke_original_saved_turn_read_port<T: Send + 'static>(
+    port: NativeReadOnlyPort<'_, T>,
+    row: OriginalSavedTurnRow<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer> {
+    let owner = port.allocation_owners().component();
+    let text = |value: &str| {
+        BudgetedString::copy_from(value, owner, 1)
+            .map(Val::String)
+            .map_err(|_| Error::Capacity)
+    };
+    let parameters = [text(row.turn_id)?, text(row.request_id)?, text(row.body)?];
+    let output = port.invoke(&parameters).await.map_err(|_| Error::Storage)?;
+    let [Val::Result(Ok(Some(outcome)))] = output.as_slice() else {
+        return Err(Error::Storage);
+    };
+    let Val::Enum(tag) = &**outcome else {
+        return Err(Error::Storage);
+    };
+    match tag.as_str() {
+        "valid" => CoreBuffer::copy_from(row.body.as_bytes(), budget).map_err(|_| Error::Capacity),
+        "invalid-record" => Err(Error::InvalidRecord),
+        "requires-legacy-codec" => Err(Error::RequiresLegacyCodec),
+        "capacity" => Err(Error::Capacity),
+        _ => Err(Error::Storage),
+    }
 }
 
 /// Evaluate the exact admitted Wasm port for this indexed row.
@@ -145,6 +177,86 @@ fn decode_port_decision(
             _ => Error::Storage,
         }),
         _ => Err(Error::Storage),
+    }
+}
+
+/// Read one original Turn through the admitted Profile's existing database.
+///
+/// The evaluator runs only for an exact indexed row, and can borrow its text
+/// until the SQLite statement closes. It must return before the deadline
+/// and avoid reentering this database. Missing files and rows return `None`.
+pub fn read_legacy_saved_turn<T>(
+    root: &DataRoot,
+    profile: &ProfileId,
+    turn_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+    deadline: Instant,
+    mut guard: impl FnMut() -> Result<()>,
+    evaluate: impl FnOnce(OriginalSavedTurnRow<'_>) -> Result<T>,
+) -> Result<Option<T>> {
+    let mut check = || {
+        if Instant::now() >= deadline {
+            return Err(Error::Revoked);
+        }
+        guard()?;
+        if Instant::now() >= deadline {
+            return Err(Error::Revoked);
+        }
+        Ok(())
+    };
+    check()?;
+    if turn_id.len() > 256 * 4 {
+        return Err(Error::InvalidRequest);
+    }
+    let _sqlite_funding = TemporaryCharge::new(budget, SQLITE_WORK_BYTES)?;
+    let lock_deadline = (Instant::now() + SQLITE_LOCK_TIMEOUT).min(deadline);
+    let database_result =
+        root.with_existing_read_only_database(&database_path(profile), |connection| {
+            let mut prepared = false;
+            let mut evaluate = Some(evaluate);
+            loop {
+                check()?;
+                connection
+                    .busy_timeout(
+                        lock_deadline
+                            .saturating_duration_since(Instant::now())
+                            .min(SQLITE_BUSY_SLICE),
+                    )
+                    .map_err(read_sql)?;
+                let attempt: rusqlite::Result<Result<Option<T>>> = (|| {
+                    // The cache PRAGMA can acquire a read lock while loading
+                    // the schema, so configure it inside the same busy loop.
+                    if !prepared {
+                        prepare_read_connection(connection, deadline)?;
+                        prepared = true;
+                    }
+                    let mut statement = connection
+                        .prepare_with_flags(SELECT_TURN, PrepFlags::SQLITE_PREPARE_NO_VTAB)?;
+                    let mut rows = statement.query([turn_id])?;
+                    Ok(rows
+                        .next()?
+                        .map(|row| {
+                            check()?;
+                            let row = indexed_turn_row(row, profile, turn_id)?;
+                            evaluate.take().ok_or(Error::Storage)?(row)
+                        })
+                        .transpose())
+                })();
+                match attempt {
+                    Err(error)
+                        if error.sqlite_error_code() == Some(ErrorCode::DatabaseBusy)
+                            && Instant::now() < lock_deadline => {}
+                    Err(error) => return Err(read_sql(error)),
+                    Ok(result) => return result,
+                }
+            }
+        });
+    check()?;
+    match database_result {
+        Ok(result) => result,
+        Err(StoreError::NotFound) => Ok(None),
+        Err(StoreError::Sql(error)) => Err(read_sql(error)),
+        Err(_) => Err(Error::Storage),
     }
 }
 
@@ -258,35 +370,12 @@ pub fn settle_legacy_saved_turn_from_admitted_port(
         check(OriginalSavedTurnCheck::Live)?;
 
         let (updated_at, output) = {
-            let mut select = transaction
-                .prepare("SELECT id, request_id, body FROM turns WHERE id = ?1")
-                .map_err(sql)?;
+            let mut select = transaction.prepare(SELECT_TURN).map_err(sql)?;
             let mut rows = select.query([request.turn_id]).map_err(sql)?;
             let row = rows.next().map_err(sql)?.ok_or(Error::NotFound)?;
-            let stored_turn = row
-                .get_ref(0)
-                .map_err(sql)?
-                .as_str()
-                .map_err(|_| Error::InvalidRecord)?;
-            let stored_request = row
-                .get_ref(1)
-                .map_err(sql)?
-                .as_str()
-                .map_err(|_| Error::InvalidRecord)?;
-            let body = row
-                .get_ref(2)
-                .map_err(sql)?
-                .as_str()
-                .map_err(|_| Error::InvalidRecord)?;
-            if body.len() > RECORD_LIMIT || stored_turn != request.turn_id {
-                return Err(Error::InvalidRecord);
-            }
-            match evaluate(OriginalSavedTurnRow {
-                profile_id: profile.as_str(),
-                turn_id: stored_turn,
-                request_id: stored_request,
-                body,
-            })? {
+            let row = indexed_turn_row(row, profile, request.turn_id)?;
+            let body = row.body;
+            match evaluate(row)? {
                 OriginalSavedTurnDecision::Replay => (
                     None,
                     CoreBuffer::copy_from(body.as_bytes(), budget).map_err(|_| Error::Capacity)?,
@@ -337,7 +426,32 @@ fn database_path(profile: &ProfileId) -> PathBuf {
         .join("turns.sqlite3")
 }
 
-fn prepare_connection(connection: &Connection, deadline: Instant) -> rusqlite::Result<()> {
+fn indexed_turn_row<'a>(
+    row: &'a Row<'_>,
+    profile: &'a ProfileId,
+    turn_id: &str,
+) -> Result<OriginalSavedTurnRow<'a>> {
+    let text = |column| {
+        row.get_ref(column)
+            .map_err(sql)?
+            .as_str()
+            .map_err(|_| Error::InvalidRecord)
+    };
+    let stored_turn = text(0)?;
+    let stored_request = text(1)?;
+    let body = text(2)?;
+    if body.len() > RECORD_LIMIT || stored_turn != turn_id {
+        return Err(Error::InvalidRecord);
+    }
+    Ok(OriginalSavedTurnRow {
+        profile_id: profile.as_str(),
+        turn_id: stored_turn,
+        request_id: stored_request,
+        body,
+    })
+}
+
+fn cap_connection(connection: &Connection, deadline: Instant) -> rusqlite::Result<()> {
     // SQLite measures the full encoded row, including its index fields.
     // The body itself has the original exact limit when it is read and written.
     unsafe {
@@ -347,8 +461,38 @@ fn prepare_connection(connection: &Connection, deadline: Instant) -> rusqlite::R
             RECORD_LIMIT as i32 + 4096,
         );
     }
-    connection.execute_batch("PRAGMA cache_size=-512")?;
     connection.progress_handler(1000, Some(move || Instant::now() >= deadline))?;
+    connection.execute_batch("PRAGMA cache_size=-512")?;
+    Ok(())
+}
+
+fn prepare_read_connection(connection: &Connection, deadline: Instant) -> rusqlite::Result<()> {
+    cap_connection(connection, deadline)?;
+    connection.authorizer(Some(|context: AuthContext<'_>| {
+        if context.accessor.is_none()
+            && (context.action == AuthAction::Select
+                || matches!(
+                    context,
+                    AuthContext {
+                        database_name: Some("main"),
+                        action: AuthAction::Read {
+                            table_name: "turns",
+                            column_name: "id" | "request_id" | "body"
+                        },
+                        ..
+                    }
+                ))
+        {
+            Authorization::Allow
+        } else {
+            Authorization::Deny
+        }
+    }))?;
+    Ok(())
+}
+
+fn prepare_connection(connection: &Connection, deadline: Instant) -> rusqlite::Result<()> {
+    cap_connection(connection, deadline)?;
     connection.authorizer(Some(|context: AuthContext<'_>| {
         if context.accessor.is_some() {
             Authorization::Deny
@@ -433,6 +577,18 @@ fn sql(error: rusqlite::Error) -> Error {
         Some(ErrorCode::OperationInterrupted) => Error::Revoked,
         Some(ErrorCode::TooBig) => Error::InvalidRecord,
         _ => Error::Storage,
+    }
+}
+
+fn read_sql(error: rusqlite::Error) -> Error {
+    match error.sqlite_error_code() {
+        Some(
+            ErrorCode::DatabaseCorrupt
+            | ErrorCode::NotADatabase
+            | ErrorCode::AuthorizationForStatementDenied,
+        ) => Error::InvalidRecord,
+        Some(ErrorCode::OutOfMemory) => Error::Capacity,
+        _ => sql(error),
     }
 }
 

@@ -53,6 +53,47 @@ fn saved_record(status: &str, events: &str, guidance: &str, reference: &str) -> 
 }
 
 #[test]
+fn read_validates_the_index_without_rewriting_historical_bytes() {
+    let body = record("completed", QUEUED_EVENT, "", "null");
+    let body = format!(
+        "  {},\"opaque\":{{\"z\":123456789012345678901234567890,\"unicode\":\"日本語\"}}}} ",
+        body.strip_suffix('}').unwrap()
+    );
+    let validate = |profile, turn, request| {
+        validate_legacy_saved_turn(profile, turn, request, body.as_bytes())
+    };
+    assert_eq!(validate("defaults", "test-turn", "saved-turn.test"), Ok(()));
+    for (profile, turn, request) in [
+        ("foreign", "test-turn", "saved-turn.test"),
+        ("defaults", "foreign", "saved-turn.test"),
+        ("defaults", "test-turn", "saved-turn.foreign"),
+    ] {
+        assert_eq!(validate(profile, turn, request), Err(Error::InvalidRecord));
+    }
+}
+
+#[test]
+fn read_distinguishes_record_error_legacy_codec_and_capacity() {
+    let entry = record("running", "", "", "null");
+    let validate = |body: &str| {
+        validate_legacy_saved_turn("defaults", "test-turn", "saved-turn.test", body.as_bytes())
+    };
+    for invalid in [
+        entry.replace("\"revision\":3", "\"revision\":true"),
+        entry.replace("\"events\":[]", "\"events\":[1]"),
+        entry.replace("\"status\":\"running\"", "\"status\":\"foreign\""),
+        format!("{},\"saved_workflow\":{{}}}}", entry.trim_end_matches('}')),
+    ] {
+        assert_eq!(validate(&invalid), Err(Error::InvalidRecord));
+    }
+    let duplicate = format!("{},\"status\":\"running\"}}", entry.trim_end_matches('}'));
+    assert_eq!(validate(&duplicate), Err(Error::RequiresLegacyCodec));
+    let limit = format!("{}{}", entry, " ".repeat(RECORD_LIMIT - entry.len()));
+    assert_eq!(validate(&limit), Ok(()));
+    assert_eq!(validate(&(limit + " ")), Err(Error::Capacity));
+}
+
+#[test]
 fn waiting_uses_separate_turn_and_event_clocks_and_preserves_legacy_values() {
     let body = saved_record("waiting", QUEUED_EVENT, "", "null");
     let body = body.strip_suffix('}').unwrap();

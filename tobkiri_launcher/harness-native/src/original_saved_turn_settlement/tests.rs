@@ -187,6 +187,226 @@ fn result_reference() -> Value {
 }
 
 #[test]
+fn original_read_preserves_exact_bytes_and_distinguishes_missing_data() {
+    let store = OriginalStore::new();
+    let bounded = Arc::new(BoundedBudget::default());
+    let budget: Arc<dyn AllocationBudget> = bounded.clone();
+    let read = |id| {
+        read_legacy_saved_turn(
+            &store.root,
+            &store.profile,
+            id,
+            &budget,
+            Instant::now() + WAIT,
+            || Ok(()),
+            |row| {
+                assert_eq!(row.profile_id, PROFILE);
+                assert_eq!(row.turn_id, TURN);
+                assert_eq!(row.request_id, REQUEST_ID);
+                assert_eq!(bounded.0.load(Ordering::Acquire), SQLITE_WORK_BYTES);
+                CoreBuffer::copy_from(row.body.as_bytes(), &budget).map_err(|_| Error::Capacity)
+            },
+        )
+    };
+
+    assert!(read(TURN).unwrap().is_none());
+    assert!(!store.database.parent().unwrap().exists());
+    let original = running_turn();
+    store.initialize(&original);
+    let bytes = fs::read(&store.database).unwrap();
+    let metadata = fs::metadata(&store.database).unwrap();
+    store
+        .root
+        .with_existing_read_only_database(&database_path(&store.profile), |connection| {
+            assert!(connection.is_readonly("main").unwrap());
+        })
+        .unwrap();
+    for id in ["not-present", "読み取り", "turn-original' OR 1=1 --"] {
+        assert!(read(id).unwrap().is_none());
+    }
+    let row = read(TURN).unwrap().unwrap();
+    assert_eq!(row.as_bytes(), original.to_string().as_bytes());
+    drop(row);
+    assert_eq!(bounded.0.load(Ordering::Acquire), 0);
+    assert_eq!(fs::read(&store.database).unwrap(), bytes);
+    let current = fs::metadata(&store.database).unwrap();
+    assert_eq!(
+        (current.dev(), current.ino()),
+        (metadata.dev(), metadata.ino())
+    );
+    assert_eq!(current.mode(), metadata.mode());
+    assert_eq!(
+        fs::read_dir(store.database.parent().unwrap())
+            .unwrap()
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn original_read_rejects_unsafe_paths_and_malformed_physical_data() {
+    let store = OriginalStore::new();
+    let budget: Arc<dyn AllocationBudget> = Arc::new(BoundedBudget::default());
+    let read = || {
+        read_legacy_saved_turn(
+            &store.root,
+            &store.profile,
+            TURN,
+            &budget,
+            Instant::now() + WAIT,
+            || Ok(()),
+            |_| -> Result<()> { panic!("unsafe or malformed rows must never reach the evaluator") },
+        )
+    };
+    let other = OriginalStore::new();
+    other.initialize(&running_turn());
+    let before = fs::read(&other.database).unwrap();
+    let parent = store.database.parent().unwrap();
+    fs::create_dir_all(parent.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(other.database.parent().unwrap(), parent).unwrap();
+    assert_eq!(read().unwrap_err(), Error::Storage);
+    fs::remove_file(parent).unwrap();
+    fs::create_dir(parent).unwrap();
+
+    std::os::unix::fs::symlink(&other.database, &store.database).unwrap();
+    assert_eq!(read().unwrap_err(), Error::Storage);
+    fs::remove_file(&store.database).unwrap();
+    fs::hard_link(&other.database, &store.database).unwrap();
+    assert_eq!(read().unwrap_err(), Error::Storage);
+    fs::remove_file(&store.database).unwrap();
+    assert_eq!(fs::read(&other.database).unwrap(), before);
+
+    fs::write(&store.database, b"not a SQLite database").unwrap();
+    assert_eq!(read().unwrap_err(), Error::InvalidRecord);
+    fs::remove_file(&store.database).unwrap();
+    store.initialize(&running_turn());
+    std::os::unix::fs::symlink(&other.database, store.journal()).unwrap();
+    assert_eq!(read().unwrap_err(), Error::Storage);
+    fs::remove_file(store.journal()).unwrap();
+    assert_eq!(fs::read(&other.database).unwrap(), before);
+
+    let connection = Connection::open(&store.database).unwrap();
+    connection
+        .execute(
+            "UPDATE turns SET body = CAST(x'FF' AS TEXT) WHERE id = ?1",
+            [TURN],
+        )
+        .unwrap();
+    assert_eq!(read().unwrap_err(), Error::InvalidRecord);
+    for size in [RECORD_LIMIT + 1, RECORD_LIMIT * 2] {
+        connection
+            .execute(
+                "UPDATE turns SET body = ?1 WHERE id = ?2",
+                params!["X".repeat(size), TURN],
+            )
+            .unwrap();
+        assert_eq!(read().unwrap_err(), Error::InvalidRecord);
+    }
+}
+
+#[test]
+fn original_read_never_recovers_or_returns_stale_rows_from_an_active_wal() {
+    let store = OriginalStore::new();
+    store.initialize(&running_turn());
+    let connection = Connection::open(&store.database).unwrap();
+    connection.execute_batch("PRAGMA journal_mode=WAL").unwrap();
+    connection
+        .execute(
+            "UPDATE turns SET body = ?1 WHERE id = ?2",
+            params!["{}", TURN],
+        )
+        .unwrap();
+    let wal = store.database.with_file_name("turns.sqlite3-wal");
+    let shm = store.database.with_file_name("turns.sqlite3-shm");
+    let body_and_wal = (fs::read(&store.database).unwrap(), fs::read(&wal).unwrap());
+    let shm_len = fs::metadata(&shm).unwrap().len();
+    let budget: Arc<dyn AllocationBudget> = Arc::new(BoundedBudget::default());
+    let result = read_legacy_saved_turn(
+        &store.root,
+        &store.profile,
+        TURN,
+        &budget,
+        Instant::now() + WAIT,
+        || Ok(()),
+        |_| -> Result<()> { panic!("WAL-backed owner must never expose stale data") },
+    );
+    assert_eq!(result.unwrap_err(), Error::Storage);
+    assert_eq!(fs::read(&store.database).unwrap(), body_and_wal.0);
+    assert_eq!(fs::read(&wal).unwrap(), body_and_wal.1);
+    assert_eq!(fs::metadata(&shm).unwrap().len(), shm_len);
+    assert!(!store.journal().exists());
+}
+
+#[test]
+fn original_read_obeys_its_capacity_guard_and_deadline_under_contention() {
+    let store = OriginalStore::new();
+    store.initialize(&running_turn());
+    let exhausted: Arc<dyn AllocationBudget> =
+        Arc::new(BoundedBudget(AtomicU64::new(RUNTIME_BYTES)));
+    let evaluate = |_: OriginalSavedTurnRow<'_>| -> Result<()> {
+        panic!("read must finish without evaluating the row")
+    };
+    assert_eq!(
+        read_legacy_saved_turn(
+            &store.root,
+            &store.profile,
+            TURN,
+            &exhausted,
+            Instant::now() + WAIT,
+            || Ok(()),
+            evaluate,
+        )
+        .unwrap_err(),
+        Error::Capacity
+    );
+
+    let mut writer = Connection::open(&store.database).unwrap();
+    let lock = writer
+        .transaction_with_behavior(TransactionBehavior::Exclusive)
+        .unwrap();
+    let bounded = Arc::new(BoundedBudget::default());
+    let budget: Arc<dyn AllocationBudget> = bounded.clone();
+    let mut checks = 0;
+    assert_eq!(
+        read_legacy_saved_turn(
+            &store.root,
+            &store.profile,
+            TURN,
+            &budget,
+            Instant::now() + WAIT,
+            || {
+                checks += 1;
+                if checks >= 3 {
+                    Err(Error::Revoked)
+                } else {
+                    Ok(())
+                }
+            },
+            evaluate,
+        )
+        .unwrap_err(),
+        Error::Revoked
+    );
+    assert!(checks >= 3);
+    assert_eq!(
+        read_legacy_saved_turn(
+            &store.root,
+            &store.profile,
+            TURN,
+            &budget,
+            Instant::now() + Duration::from_millis(50),
+            || Ok(()),
+            evaluate,
+        )
+        .unwrap_err(),
+        Error::Revoked
+    );
+    assert_eq!(bounded.0.load(Ordering::Acquire), 0);
+    lock.rollback().unwrap();
+    assert!(!store.journal().exists());
+}
+
+#[test]
 fn settles_the_original_file_and_exact_stale_replay_preserves_its_bytes() {
     let store = OriginalStore::new();
     let mut original = running_turn();
@@ -673,6 +893,79 @@ async fn actual_wasm_proposes_settlement_under_the_original_sqlite_lock() -> any
         assert_eq!(account.snapshot()?.charged_bytes, 0);
     }
     assert_eq!(offered.load(Ordering::Acquire), 2);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the built saved-turn Wasm Pack with its read declaration"]
+async fn actual_wasm_reads_existing_owner_bytes_without_publication() -> anyhow::Result<()> {
+    use std::collections::BTreeMap;
+    use tobkiri_canon::ids::{OpName, ShapeRef};
+    use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupLease};
+    use tobkiri_wasm::WasmEngine;
+
+    struct Proof;
+    impl NativeSetupLease for Proof {
+        fn validate(&self) -> std::result::Result<(), GateError> {
+            Ok(())
+        }
+        fn allocation_domain(&self) -> Digest {
+            Digest::hash(b"original saved turn read Wasm proof")
+        }
+    }
+
+    let source = std::env::var_os("TOBKIRI_TURN_WASM_PACK")
+        .expect("provide the built local.saved-turn-runtime.tpk");
+    let pack = tobkiri_core::pack::verify_tpk(&fs::read(source)?, &BTreeMap::new())?;
+    let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-read@1.0")?;
+    let operation = OpName::parse("validate")?;
+    let original = OriginalStore::new();
+    let mut document = running_turn();
+    document["historical"] = serde_json::from_str(
+        r#"{"z":123456789012345678901234567890,"unicode":"日本語","space":" "}"#,
+    )?;
+    original.initialize(&document);
+    let initial_bytes = fs::read(&original.database)?;
+    let row_bytes = original.row().2;
+    let control = CoreControl::default();
+    let ledger = CapacityLedger::new();
+    let account = ledger.native_setup_account(&control, || Ok(Arc::new(Proof)))?;
+    let engine = WasmEngine::new_with_control(&control)?;
+    let runtime = tokio::runtime::Handle::current();
+
+    for (turn, expected) in [(TURN, Some(row_bytes.as_bytes())), ("absent", None)] {
+        let invocation = account.begin()?;
+        let deadline = invocation.deadline()?;
+        let mut wasm = engine.native_setup_store(invocation, ())?;
+        let budget = wasm.allocation_owners().graph().clone();
+        let port = wasm
+            .prepare_declared_read_only_port(
+                &pack,
+                &shape,
+                &operation,
+                &original.profile,
+                deadline,
+                0,
+            )
+            .await?;
+        let observed = tokio::task::block_in_place(|| {
+            read_legacy_saved_turn(
+                &original.root,
+                &original.profile,
+                turn,
+                &budget,
+                deadline,
+                || Ok(()),
+                |row| runtime.block_on(invoke_original_saved_turn_read_port(port, row, &budget)),
+            )
+        })?;
+        assert_eq!(observed.as_ref().map(CoreBuffer::as_bytes), expected);
+        assert_eq!(fs::read(&original.database)?, initial_bytes);
+        assert!(!original.journal().exists());
+        drop(observed);
+        drop(wasm);
+        assert_eq!(account.snapshot()?.charged_bytes, 0);
+    }
     Ok(())
 }
 

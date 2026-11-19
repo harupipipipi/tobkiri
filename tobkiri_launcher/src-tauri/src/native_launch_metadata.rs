@@ -1346,13 +1346,18 @@ fn verify_turn_settlement_archive(
     Ok(pack)
 }
 
-// The same files are used when staging the Pack. They determine the exact
-// parameter and result ABI, Core imports, and settlement port cardinality.
-const TURN_SETTLEMENT_WIT_FILES: [(&str, &[u8]); 3] = [
-    (
-        "wit/pack.wit",
-        include_bytes!("../../../packs/local.saved-turn-runtime-rust/wit/pack.wit"),
-    ),
+// The staged declarations pin the exact ABI, including Core imports and cardinality.
+const TURN_WIT: (&str, &[u8]) = (
+    "wit/pack.wit",
+    include_bytes!("../../../packs/local.saved-turn-runtime-rust/wit/pack.wit"),
+);
+const ORIGINAL_TURN_WIT_DIGEST: &str =
+    "sha256:6308b8f72305ac93942d4596116f3ddbdcfe1f590b6617ced2e0a75b0a93056e";
+const TURN_READ_SHAPE: (&str, &[u8]) = (
+    "wit/legacy-read.shape.json",
+    include_bytes!("../../../packs/local.saved-turn-runtime-rust/wit/legacy-read.shape.json"),
+);
+const TURN_SETTLEMENT_WIT_FILES: [(&str, &[u8]); 2] = [
     (
         "wit/deps/core.wit",
         include_bytes!("../../../crates/tobkiri-wit/wit/core-v1-2/core.wit"),
@@ -1365,9 +1370,16 @@ const TURN_SETTLEMENT_WIT_FILES: [(&str, &[u8]); 3] = [
     ),
 ];
 
-fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<()> {
-    const SHAPE: &str = "local.saved-turn-runtime.legacy-settlement@1.0";
+fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
+    const SETTLEMENT: &str = "local.saved-turn-runtime.legacy-settlement@1.0";
+    const READ: &str = "local.saved-turn-runtime.legacy-read@1.0";
     let manifest = &pack.manifest;
+    let (read, wit_digest) = match manifest.version.as_str() {
+        "0.1.0" => (false, Digest::parse(ORIGINAL_TURN_WIT_DIGEST)?),
+        "0.2.0" => (true, Digest::hash(TURN_WIT.1)),
+        _ => anyhow::bail!("bundled Turn settlement Pack version is unsupported"),
+    };
+    let port_count = 1 + usize::from(read);
     let permissions = PermissionSet {
         wasm: manifest.permissions.wasm.clone(),
         loops: manifest.permissions.loops.clone(),
@@ -1375,7 +1387,7 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<()> {
     };
     ensure!(
         manifest.id.as_str() == registry_pack_receipt::SETTLEMENT_PACK_ID
-            && manifest.ports.provides.len() == 1
+            && manifest.ports.provides.len() == port_count
             && manifest.ports.consumes.is_empty()
             && manifest.ports.untyped.is_empty()
             && manifest.inputs.is_empty()
@@ -1386,21 +1398,30 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<()> {
             && manifest.permissions == permissions,
         "bundled Turn settlement Pack has unexpected capabilities"
     );
+    let matches_wit = |(path, bytes): (&str, &[u8])| {
+        pack.files
+            .get(path)
+            .is_some_and(|file| *file.digest() == Digest::hash(bytes))
+    };
     ensure!(
         matches!(&manifest.runtime, RuntimeSpec::Wasm { component, core_modules, config, .. }
             if component == "component.wasm" && core_modules.is_empty() && config.is_none())
-            && manifest.shapes.len() == 1
-            && manifest.shapes[0].wit == "wit/pack.wit"
-            && manifest.files.len() == TURN_SETTLEMENT_WIT_FILES.len() + 1
-            && TURN_SETTLEMENT_WIT_FILES.into_iter().all(|(path, wit)| {
-                pack.files
-                    .get(path)
-                    .is_some_and(|file| *file.digest() == Digest::hash(wit))
-            }),
+            && manifest.shapes.len() == port_count
+            && manifest.shapes.iter().all(|shape| shape.wit == TURN_WIT.0)
+            && manifest.files.len() == TURN_SETTLEMENT_WIT_FILES.len() + 2 + usize::from(read)
+            && TURN_SETTLEMENT_WIT_FILES.into_iter().all(matches_wit)
+            && pack
+                .files
+                .get(TURN_WIT.0)
+                .is_some_and(|file| *file.digest() == wit_digest)
+            && (!read || matches_wit(TURN_READ_SHAPE)),
         "bundled Turn settlement Pack has an unexpected WIT or runtime declaration"
     );
-    require_registry_ports(pack, "prepare", &[SHAPE])?;
-    Ok(())
+    require_registry_ports(pack, "prepare", &[SETTLEMENT])?;
+    if read {
+        require_registry_ports(pack, "validate", &[READ])?;
+    }
+    Ok(read)
 }
 
 fn verify_provider_prepare_archive(
@@ -1601,7 +1622,10 @@ mod tests {
         )));
         fs::create_dir_all(root.0.join("wit/deps")).unwrap();
         let path = root.0.canonicalize().unwrap();
-        for (relative, wit) in TURN_SETTLEMENT_WIT_FILES {
+        for (relative, wit) in TURN_SETTLEMENT_WIT_FILES
+            .into_iter()
+            .chain([TURN_WIT, TURN_READ_SHAPE])
+        {
             fs::write(path.join(relative), wit).unwrap();
         }
         fs::write(path.join("component.wasm"), b"fixture").unwrap();
@@ -1611,7 +1635,7 @@ mod tests {
             fs::write(path.join("pack.json"), manifest).unwrap();
             verify_directory(&path, &Default::default()).unwrap()
         };
-        require_turn_settlement_declaration(&verify(draft)).unwrap();
+        assert!(require_turn_settlement_declaration(&verify(draft)).unwrap());
 
         let mut extra: serde_json::Value = serde_json::from_slice(draft).unwrap();
         extra["permissions"]["storage"] = serde_json::json!({"private": true});
@@ -1621,16 +1645,37 @@ mod tests {
                 .to_string()
                 .contains("unexpected capabilities")
         );
-        let old_wit = std::str::from_utf8(TURN_SETTLEMENT_WIT_FILES[0].1).unwrap();
+        let current_wit = std::str::from_utf8(TURN_WIT.1).unwrap();
         fs::write(
             path.join("wit/pack.wit"),
-            old_wit.replace("option<u64>", "option<u32>"),
+            current_wit.replace("option<u64>", "option<u32>"),
         )
         .unwrap();
         assert!(require_turn_settlement_declaration(&verify(draft))
             .unwrap_err()
             .to_string()
             .contains("unexpected WIT"));
+
+        let (settlement, after) = current_wit.split_once("interface legacy-read {").unwrap();
+        let (_, world) = after.split_once("world pack {").unwrap();
+        let old_wit =
+            format!("{settlement}world pack {{{world}").replace("  export legacy-read;\n", "");
+        assert_eq!(
+            Digest::hash(old_wit.as_bytes()).as_str(),
+            ORIGINAL_TURN_WIT_DIGEST
+        );
+        fs::write(path.join(TURN_WIT.0), old_wit).unwrap();
+        fs::remove_file(path.join(TURN_READ_SHAPE.0)).unwrap();
+        let mut old: serde_json::Value = serde_json::from_slice(draft).unwrap();
+        old["version"] = serde_json::json!("0.1.0");
+        old["shapes"].as_array_mut().unwrap().pop();
+        old["ports"]["provides"].as_array_mut().unwrap().pop();
+        old["files"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|file| file != TURN_READ_SHAPE.0);
+        let old = serde_json::to_vec(&old).unwrap();
+        assert!(!require_turn_settlement_declaration(&verify(&old)).unwrap());
     }
 
     #[test]

@@ -40,10 +40,25 @@ interface legacy-settlement {
   ) -> result<settlement-outcome, error>;
 }
 
+interface legacy-read {
+  use tobkiri:core/types@1.2.0.{error};
+
+  enum read-outcome {
+    valid,
+    invalid-record,
+    requires-legacy-codec,
+    capacity,
+  }
+
+  /// Verify the row in Core's live Profile without returning a second copy.
+  validate: func(turn-id: string, request-id: string, body: string) -> result<read-outcome, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   import tobkiri:core/flow@1.2.0;
   import tobkiri:core/clock@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
   export legacy-settlement;
+  export legacy-read;
 }

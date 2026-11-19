@@ -531,33 +531,7 @@ impl DataRoot {
                 }
                 Err(error) => return Err(error),
             };
-            let name = cstring(&last)?;
-            let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-            if unsafe {
-                libc::fstatat(
-                    dir.as_raw_fd(),
-                    name.as_ptr(),
-                    stat.as_mut_ptr(),
-                    libc::AT_SYMLINK_NOFOLLOW,
-                )
-            } != 0
-            {
-                let error = std::io::Error::last_os_error();
-                if error.kind() == std::io::ErrorKind::NotFound {
-                    return Ok(None);
-                }
-                return Err(error.into());
-            }
-            let stat = unsafe { stat.assume_init() };
-            if stat.st_mode & libc::S_IFMT != libc::S_IFREG
-                || stat.st_nlink != 1
-                || stat.st_size < 0
-            {
-                return Err(StoreError::Denied(
-                    "DATA inode must be a regular single-link file".into(),
-                ));
-            }
-            Ok(Some(stat.st_size as u64))
+            Self::file_len_at(&dir, &last)
         }
         #[cfg(not(unix))]
         {
@@ -834,6 +808,56 @@ impl DataRoot {
         }
         let database = self.database_mode(path, false)?;
         Ok(run(&database.0))
+    }
+
+    /// Open an existing rollback-journal database through its pinned directory.
+    ///
+    /// SQLite receives a read-only connection. The VFS denies writable opens,
+    /// unlinking, and all sidecar opens for this capability. A WAL or rollback
+    /// journal that requires opening must be handled by the database owner.
+    #[cfg(unix)]
+    pub fn with_existing_read_only_database<R>(
+        &self,
+        path: &Path,
+        run: impl FnOnce(&rusqlite::Connection) -> R,
+    ) -> Result<R, StoreError> {
+        let (directory, filename) = self.parent(path, false).map_err(existing_source_error)?;
+        if Self::file_len_at(&directory, &filename)?.is_none() {
+            return Err(StoreError::NotFound);
+        }
+        for suffix in ["-journal", "-wal", "-shm"] {
+            Self::file_len_at(&directory, &format!("{filename}{suffix}"))?;
+        }
+        let (virtual_path, _guard) = crate::vfs::register_read_only(directory, &filename)?;
+        let connection = rusqlite::Connection::open_with_flags(
+            virtual_path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )?;
+        connection.busy_timeout(std::time::Duration::ZERO)?;
+        connection.execute_batch(
+            "PRAGMA trusted_schema=OFF; PRAGMA temp_store=MEMORY; PRAGMA query_only=ON;",
+        )?;
+        Ok(run(&connection))
+    }
+
+    #[cfg(unix)]
+    fn file_len_at(directory: &File, filename: &str) -> Result<Option<u64>, StoreError> {
+        let name = cstring(filename)?;
+        let stat = match stat_entry(directory, &name) {
+            Ok(stat) => stat,
+            Err(StoreError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        if stat.st_mode & libc::S_IFMT != libc::S_IFREG || stat.st_nlink != 1 || stat.st_size < 0 {
+            return Err(StoreError::Denied(
+                "DATA inode must be a regular single-link file".into(),
+            ));
+        }
+        Ok(Some(stat.st_size as u64))
     }
 
     fn database_mode(

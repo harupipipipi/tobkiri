@@ -28,6 +28,7 @@ struct Entry {
     directory: Arc<File>,
     filename: String,
     quota: Option<GuestRegistration>,
+    read_only: bool,
 }
 fn registry() -> &'static Mutex<BTreeMap<String, Entry>> {
     static REGISTRY: OnceLock<Mutex<BTreeMap<String, Entry>>> = OnceLock::new();
@@ -102,7 +103,14 @@ pub(crate) fn register(
     directory: File,
     filename: &str,
 ) -> Result<(PathBuf, DatabaseGuard), StoreError> {
-    register_mode(directory, filename, None)
+    register_mode(directory, filename, None, false)
+}
+
+pub(crate) fn register_read_only(
+    directory: File,
+    filename: &str,
+) -> Result<(PathBuf, DatabaseGuard), StoreError> {
+    register_mode(directory, filename, None, true)
 }
 
 pub(crate) fn register_guest_data(
@@ -111,7 +119,7 @@ pub(crate) fn register_guest_data(
     policy: crate::StoreDiskPolicy,
     custody: Arc<crate::data_custody::DataCustody>,
 ) -> Result<(PathBuf, DatabaseGuard), StoreError> {
-    register_mode(directory, filename, Some((policy, custody)))
+    register_mode(directory, filename, Some((policy, custody)), false)
 }
 
 fn register_mode(
@@ -121,6 +129,7 @@ fn register_mode(
         crate::StoreDiskPolicy,
         Arc<crate::data_custody::DataCustody>,
     )>,
+    read_only: bool,
 ) -> Result<(PathBuf, DatabaseGuard), StoreError> {
     install()?;
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -151,6 +160,7 @@ fn register_mode(
                 directory: directory.clone(),
                 filename: filename.into(),
                 quota: quota.clone(),
+                read_only,
             },
         );
     let path = PathBuf::from(&key).join(filename);
@@ -164,10 +174,16 @@ fn register_mode(
     ))
 }
 
+enum Access {
+    Owner,
+    ReadOnly { sidecar: bool },
+    Guest(GuestRegistration),
+}
+
 enum Route {
     Plain,
     Denied,
-    Cap(Arc<File>, Option<CString>, Option<GuestRegistration>),
+    Cap(Arc<File>, Option<CString>, Access),
 }
 unsafe fn route(path: *const libc::c_char) -> Route {
     if path.is_null() {
@@ -185,7 +201,7 @@ unsafe fn route(path: *const libc::c_char) -> Route {
     };
     for (key, entry) in map.range(..=path.to_owned()).rev() {
         if path == key {
-            return Route::Cap(entry.directory.clone(), None, entry.quota.clone());
+            return Route::Cap(entry.directory.clone(), None, Access::Owner);
         }
         if let Some(name) = path.strip_prefix(&format!("{key}/")) {
             let wal = name == format!("{}-wal", entry.filename);
@@ -201,7 +217,16 @@ unsafe fn route(path: *const libc::c_char) -> Route {
                 return Route::Denied;
             }
             return match CString::new(name) {
-                Ok(name) => Route::Cap(entry.directory.clone(), Some(name), entry.quota.clone()),
+                Ok(name) => {
+                    let access = match &entry.quota {
+                        Some(guest) => Access::Guest(guest.clone()),
+                        None if entry.read_only => Access::ReadOnly {
+                            sidecar: name.as_bytes() != entry.filename.as_bytes(),
+                        },
+                        None => Access::Owner,
+                    };
+                    Route::Cap(entry.directory.clone(), Some(name), access)
+                }
                 Err(_) => Route::Denied,
             };
         }
@@ -218,7 +243,7 @@ pub(crate) unsafe fn guest_route(
     Arc<crate::data_custody::DataCustody>,
 )> {
     match unsafe { route(path) } {
-        Route::Cap(_, Some(name), Some(guest)) => Some((guest.quota, name, guest.custody)),
+        Route::Cap(_, Some(name), Access::Guest(guest)) => Some((guest.quota, name, guest.custody)),
         _ => None,
     }
 }
@@ -252,21 +277,34 @@ unsafe fn cap_open_impl(
                 unsafe { libc::fcntl(directory.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) }
             }
         }
-        Route::Cap(directory, Some(name), quota) => {
-            // Logical extensions/truncations must go through the wrapper's
-            // admitted xWrite/xTruncate, never an underlying open(O_TRUNC).
-            if quota.is_some() && flags & libc::O_TRUNC != 0 {
-                return denied();
+        Route::Cap(directory, Some(name), access) => {
+            match access {
+                // SQLite can write SHM and change sidecar ownership even through
+                // a read-only connection. Keep their existence visible but
+                // leave their actual opens to the database owner.
+                Access::ReadOnly { sidecar }
+                    if sidecar
+                        || flags & (libc::O_ACCMODE | libc::O_CREAT | libc::O_TRUNC) != 0 =>
+                {
+                    return denied();
+                }
+                // DATA extensions must go through the admitted xWrite/xTruncate.
+                Access::Guest(_) if flags & libc::O_TRUNC != 0 => return denied(),
+                _ => {}
             }
+            let read_only = matches!(access, Access::ReadOnly { .. });
             let fd = unsafe {
                 libc::openat(
                     directory.as_raw_fd(),
                     name.as_ptr(),
-                    flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                    flags
+                        | libc::O_NOFOLLOW
+                        | libc::O_CLOEXEC
+                        | if read_only { libc::O_NONBLOCK } else { 0 },
                     0o600,
                 )
             };
-            if fd < 0 || quota.is_none() {
+            if fd < 0 || matches!(access, Access::Owner) {
                 return fd;
             }
             let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
@@ -376,17 +414,14 @@ unsafe fn cap_access_impl(path: *const libc::c_char, mode: libc::c_int) -> libc:
 unsafe fn cap_unlink_impl(path: *const libc::c_char) -> libc::c_int {
     match unsafe { route(path) } {
         Route::Plain => unsafe { libc::unlink(path) },
-        Route::Denied | Route::Cap(_, None, _) => denied(),
-        Route::Cap(directory, Some(name), quota) => {
-            if let Some(quota) = quota {
-                match quota.quota.unlink(&name) {
-                    Ok(result) => result,
-                    Err(_) => denied(),
-                }
-            } else {
-                unsafe { libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0) }
-            }
-        }
+        Route::Cap(_, Some(name), Access::Guest(guest)) => match guest.quota.unlink(&name) {
+            Ok(result) => result,
+            Err(_) => denied(),
+        },
+        Route::Cap(directory, Some(name), Access::Owner) => unsafe {
+            libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0)
+        },
+        _ => denied(),
     }
 }
 unsafe fn cap_open_directory_impl(path: *const libc::c_char, out: *mut libc::c_int) -> libc::c_int {

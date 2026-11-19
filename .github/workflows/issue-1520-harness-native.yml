@@ -787,6 +787,14 @@ jobs:
             --log "$RUNNER_TEMP/conversation-owner.log" --expected-passed 3 -- \
             cargo test --locked -p tobkiri-e2e --test model_registry \
               registered_network::original_saved_ -- --ignored
+      - name: Verify saved Turn Wasm against the original SQLite owner
+        env:
+          TOBKIRI_TURN_WASM_PACK: ${{ runner.temp }}/native-registry-packs/local.saved-turn-runtime.tpk
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/saved-turn-owner.log" --expected-passed 2 -- \
+            cargo test --locked -p tobkiri-harness-native \
+              original_saved_turn_settlement::tests::actual_wasm_ -- --ignored
       - uses: actions/upload-artifact@v4
         with:
           name: native-registry-packs
