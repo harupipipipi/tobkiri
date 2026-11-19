@@ -205,13 +205,14 @@ async fn profile(core: &Core, command: ProfileCommand) -> Result<()> {
             profile,
             pack,
             limits,
+            allow_provided_port,
         } => {
             let digest = core
-                .add_pack_with_limits(
+                .add_pack_with_provided_ports(
                     &ProfileId::parse(&profile)?,
                     format!("file:{}", std::fs::canonicalize(pack)?.display()),
-                    false,
                     limits.as_deref().map(json).transpose()?,
+                    &allow_provided_port,
                 )
                 .await?;
             println!("{digest}");

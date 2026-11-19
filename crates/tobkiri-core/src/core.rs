@@ -740,6 +740,30 @@ impl Core {
         update: bool,
         limits: Option<PermissionSet>,
     ) -> Result<Digest, CoreError> {
+        self.save_pack_edit(id, source, update, limits, &[]).await
+    }
+
+    /// Install a new Pack and include selected exact ports that it defines
+    /// and provides in the Profile ceiling. The ceiling does not grant calls.
+    pub async fn add_pack_with_provided_ports(
+        &self,
+        id: &ProfileId,
+        source: String,
+        limits: Option<PermissionSet>,
+        allowed_ports: &[ShapeRef],
+    ) -> Result<Digest, CoreError> {
+        self.save_pack_edit(id, source, false, limits, allowed_ports)
+            .await
+    }
+
+    async fn save_pack_edit(
+        &self,
+        id: &ProfileId,
+        source: String,
+        update: bool,
+        limits: Option<PermissionSet>,
+        allowed_ports: &[ShapeRef],
+    ) -> Result<Digest, CoreError> {
         let (mut profile, head) = self.profile(id)?;
         let path = std::path::Path::new(source.strip_prefix("file:").unwrap_or(&source));
         let source_catalog = tobkiri_manifest::source::SourceCatalog::new(&self.control)?;
@@ -776,6 +800,22 @@ impl Core {
             sha256: pack.hash.clone(),
             source,
         };
+        for port in allowed_ports {
+            if !pack.shapes.iter().any(|shape| {
+                shape.reference == *port && shape.kind == tobkiri_manifest::ShapeKind::Port
+            }) || !pack
+                .manifest
+                .ports
+                .provides
+                .iter()
+                .any(|entry| entry.shape == port.name && entry.version == port.version)
+            {
+                return Err(CoreError::Invalid(format!(
+                    "New Pack must define and provide the exact port {port}"
+                )));
+            }
+            profile.ceiling.ports.insert(port.to_string());
+        }
         if let Some(limits) = limits {
             if has_duplicate_permission_keys(&limits)
                 || !limits.is_subset_of(&pack.manifest.permissions)
@@ -811,6 +851,11 @@ impl Core {
         // The removed Pack's own narrowing entry must go with it; compilation
         // rejects limits that belong to no selected Pack.
         profile.pack_limits.remove(pack);
+        // A ceiling may include views owned by the departing Pack. Existing
+        // callers, bindings and required ports still go through compilation.
+        profile.ceiling.ports.retain(|reference| {
+            !ShapeRef::parse(reference).is_ok_and(|port| port.name.owner() == *pack)
+        });
         self.save_profile(profile, Some(head)).await
     }
 

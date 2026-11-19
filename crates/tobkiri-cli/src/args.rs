@@ -86,6 +86,9 @@ pub enum ProfileCommand {
         /// JSON permissions that narrow the Pack declaration and Profile ceiling.
         #[arg(long)]
         limits: Option<PathBuf>,
+        /// Include an exact port defined and provided by the new Pack in the Profile ceiling.
+        #[arg(long, value_name = "SHAPE@MAJOR.MINOR")]
+        allow_provided_port: Vec<tobkiri_core::ids::ShapeRef>,
     },
     /// Update an installed pin, approving only newly added permissions.
     Update {

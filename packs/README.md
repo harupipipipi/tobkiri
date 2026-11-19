@@ -69,6 +69,12 @@ Review any new permissions in the ordinary approval prompt. To change the
 limits when upgrading the Pack, pass `--limits` to `profile update`. An update
 that omits the flag retains the installed limits.
 
+When a new Pack defines and provides a port that other Packs will call, include
+the exact view in the Profile ceiling with `--allow-provided-port`
+(`publisher.pack.port@1.0`). The CLI checks the view against the verified Pack.
+Install callers with the appropriate declared port limits and review their
+permission prompts separately.
+
 Unsigned development Packs use `local.*`. The Rust guest workspace is separate
 from the host workspace, targets `wasm32-wasip2`, and pins wit-bindgen 0.62.0
 (published 2026-09-10; 0.63.0 was too new under the reviewed dependency rule).
