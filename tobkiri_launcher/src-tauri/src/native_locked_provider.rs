@@ -1075,6 +1075,45 @@ mod tests {
         fn release(&self, _: u64) {}
     }
 
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
+    fn stream_bundle_revalidates_its_normalizer_document_and_bundle_lock() {
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-stream-bundle-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("packs")).unwrap();
+        let bundle_lock = "bundle.lock.json";
+        let normalizer = "packs/rumi_ai_stream_pack.executables.v4.json";
+        let routing = "packs/rumi_ai_routing_pack.executables.v4.json";
+        for path in [bundle_lock, normalizer, routing] {
+            fs::write(root.0.join(path), path).unwrap();
+        }
+        let bundle = VerifiedOrdinarySavedBundle {
+            application_root: root.0.clone(),
+            bundle_root: root.0.canonicalize().unwrap(),
+            bundle_lock_digest: Digest::hash(bundle_lock.as_bytes()),
+            documents: vec![(normalizer.to_owned(), Digest::hash(normalizer.as_bytes()))],
+        };
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        fs::write(root.0.join(routing), b"changed").unwrap();
+        bundle.revalidate(&budget, || Ok(())).unwrap();
+
+        for document in [normalizer, bundle_lock] {
+            fs::write(root.0.join(document), b"changed").unwrap();
+            let error = bundle.revalidate(&budget, || Ok(())).unwrap_err();
+            assert_eq!(error.to_string(), format!("locked Bundle digest changed: {document}"));
+            fs::write(root.0.join(document), document).unwrap();
+        }
+    }
+
     #[test]
     fn locked_document_rejects_replacement_and_preserves_checkpoint_failure() {
         let unique = SystemTime::now()
