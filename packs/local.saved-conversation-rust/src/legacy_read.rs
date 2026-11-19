@@ -1,5 +1,6 @@
 //! Read-only projections over the original Conversation owner document.
 
+use crate::legacy_append_context::{context_parent_id, inherited_fields};
 use crate::saved_model::{STORE_VERSION, valid_conversation_id};
 use ordered_python_compat::{
     CodecError, PyValue, dumps_bounded, dumps_spaced_document, loads, loads_python_json, pystrip,
@@ -27,6 +28,67 @@ pub(super) fn get(
     document: Option<&str>,
     conversation_id: &str,
 ) -> Result<String, ReadError> {
+    let mut conversations = read_conversations(profile, document, conversation_id)?;
+    let conversation = take_conversation(&mut conversations, pystrip(conversation_id))?;
+    drop(conversations);
+    owner_reply("conversation", conversation)
+}
+
+/// Return the child and just the context fields of its persisted parent from
+/// one owner snapshot. The parent ID never comes from the caller.
+pub(super) fn get_linked(
+    profile: &str,
+    document: Option<&str>,
+    conversation_id: &str,
+) -> Result<String, ReadError> {
+    let mut conversations = read_conversations(profile, document, conversation_id)?;
+    let conversation_id = pystrip(conversation_id);
+    let child = take_conversation(&mut conversations, conversation_id)?;
+    if child.get("id").and_then(PyValue::as_str) != Some(conversation_id) {
+        return Err(ReadError::InvalidDocument);
+    }
+    let link = context_parent_id(&child).map_err(|_| ReadError::InvalidDocument)?;
+    let parent = if let Some(parent_id) = link {
+        let parent = field(&mut conversations, parent_id)
+            .filter(|row| row.as_object().is_some())
+            .ok_or(ReadError::NotFound)?;
+        if parent.get("id").and_then(PyValue::as_str) != Some(parent_id)
+            || context_parent_id(parent)
+                .map_err(|_| ReadError::InvalidDocument)?
+                .is_some()
+        {
+            return Err(ReadError::InvalidDocument);
+        }
+        // A normal get normalizes non-object metadata to an empty object.
+        let metadata = parent
+            .get("metadata")
+            .and_then(PyValue::as_object)
+            .unwrap_or_default();
+        let mut projection = inherited_fields(parent, metadata);
+        projection.push(("id".into(), PyValue::String(parent_id.into())));
+        projection.push((
+            "conversation_revision".into(),
+            parent
+                .get("conversation_revision")
+                .cloned()
+                .unwrap_or(PyValue::Null),
+        ));
+        PyValue::Object(projection)
+    } else {
+        PyValue::Null
+    };
+    drop(conversations);
+    encode_owner_reply(PyValue::Object(vec![
+        ("conversation".into(), child),
+        ("parent_context".into(), parent),
+    ]))
+}
+
+fn read_conversations(
+    profile: &str,
+    document: Option<&str>,
+    conversation_id: &str,
+) -> Result<Vec<(String, PyValue)>, ReadError> {
     validate_profile(profile)?;
     // The Host checks for an empty argument before opening the owner store.
     if conversation_id.is_empty() {
@@ -41,14 +103,18 @@ pub(super) fn get(
     let Some(PyValue::Object(conversations)) = field(&mut state, "conversations") else {
         return Err(ReadError::InvalidDocument);
     };
+    Ok(std::mem::take(conversations))
+}
+
+fn take_conversation(
+    conversations: &mut [(String, PyValue)],
+    conversation_id: &str,
+) -> Result<PyValue, ReadError> {
     let Some(PyValue::Object(conversation)) = field(conversations, conversation_id) else {
         return Err(ReadError::NotFound);
     };
     normalize(conversation);
-    let conversation = std::mem::take(conversation);
-    drop(state);
-
-    owner_reply("conversation", PyValue::Object(conversation))
+    Ok(PyValue::Object(std::mem::take(conversation)))
 }
 
 /// Read the immutable receipt as stored, including user-only append evidence.
@@ -81,7 +147,10 @@ pub(super) fn saved_receipt(
 }
 
 fn owner_reply(field: &str, value: PyValue) -> Result<String, ReadError> {
-    let owner = PyValue::Object(vec![(field.into(), value)]);
+    encode_owner_reply(PyValue::Object(vec![(field.into(), value)]))
+}
+
+fn encode_owner_reply(owner: PyValue) -> Result<String, ReadError> {
     let owner = dumps_bounded(&owner, MAX_BYTES).map_err(output_error)?;
     let reply = PyValue::Object(vec![("owner_result".into(), PyValue::String(owner))]);
     dumps_bounded(&reply, MAX_BYTES).map_err(output_error)

@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::{Value, json};
 
 const PROFILE: &str = "profile-1";
 const DOCUMENT: &str = include_str!("../fixtures/legacy-get-document.json");
@@ -31,6 +32,113 @@ fn matches_the_python_owner_row_including_linked_context_and_opaque_numbers() {
         let reply = get(PROFILE, Some(DOCUMENT), id).unwrap();
         assert_eq!(owner(&reply), OWNER.trim_end());
     }
+}
+
+fn linked_rows() -> Value {
+    json!({
+        "child": {
+            "id": "child", "conversation_revision": 2, "parent_conversation_id": "parent",
+            "context_link": {
+                "version": "tobkiri.conversation-context-link.v1",
+                "parent_conversation_id": "parent", "slot": "side-chat",
+                "created_from_parent_revision": 3,
+            },
+            "metadata": {"icon_svg": "old", "conversation_channel": "side"},
+            "messages": [{"id": "user-1", "sequence": 99}],
+        },
+        "parent": {
+            "id": "parent", "conversation_revision": 7, "model_reference": "local-model",
+            "metadata": {"thinking_level": "medium", "title": "private", "icon_svg": "old"},
+            "messages": [{"id": "parent-message", "content": "Parent history"}],
+        },
+        "decoy": {"id": "decoy", "model_reference": "other-model"},
+    })
+}
+
+#[test]
+fn linked_read_preserves_the_child_and_projects_only_inherited_parent_fields() {
+    let raw = document(&linked_rows().to_string());
+    let paired = owner(&get_linked(PROFILE, Some(&raw), " child ").unwrap());
+    let single = owner(&get(PROFILE, Some(&raw), "child").unwrap());
+    let paired: Value = serde_json::from_str(&paired).unwrap();
+    let single: Value = serde_json::from_str(&single).unwrap();
+    assert_eq!(paired["conversation"], single["conversation"]);
+    assert_eq!(
+        paired["parent_context"],
+        json!({
+            "id": "parent", "conversation_revision": 7, "model_reference": "local-model",
+            "system_prompt_id": null, "agent_id": null, "conversation_kind": null,
+            "group_id": null, "tags": null, "metadata": {"thinking_level": "medium"},
+        })
+    );
+}
+
+#[test]
+fn linked_read_does_not_follow_an_old_unlinked_parent_id() {
+    for explicit_null in [false, true] {
+        let mut rows = linked_rows();
+        if explicit_null {
+            rows["child"]["context_link"] = Value::Null;
+        } else {
+            rows["child"]
+                .as_object_mut()
+                .unwrap()
+                .remove("context_link");
+        }
+        let raw = document(&rows.to_string());
+        let result = owner(&get_linked(PROFILE, Some(&raw), "child").unwrap());
+        let result: Value = serde_json::from_str(&result).unwrap();
+        assert!(result["parent_context"].is_null());
+        assert_eq!(result["conversation"]["parent_conversation_id"], "parent");
+    }
+}
+
+#[test]
+fn linked_read_rejects_invalid_missing_self_or_nested_links() {
+    let check = |rows: Value, expected| {
+        let raw = document(&rows.to_string());
+        assert_eq!(get_linked(PROFILE, Some(&raw), "child"), Err(expected));
+        // Strict link inspection belongs to this private read. Normal GET can
+        // still return the old row for diagnostics and repair.
+        assert!(get(PROFILE, Some(&raw), "child").is_ok());
+    };
+    let mut rows = linked_rows();
+    rows["child"]["context_link"]["created_from_parent_revision"] = json!(true);
+    check(rows, ReadError::InvalidDocument);
+    let mut rows = linked_rows();
+    rows["child"]["context_link"]["parent_conversation_id"] = json!("decoy");
+    check(rows, ReadError::InvalidDocument);
+    let mut rows = linked_rows();
+    rows["parent"] = json!([]);
+    check(rows, ReadError::NotFound);
+    let mut rows = linked_rows();
+    rows["parent"]["id"] = json!("decoy");
+    check(rows, ReadError::InvalidDocument);
+    let mut rows = linked_rows();
+    rows["child"]["parent_conversation_id"] = json!("child");
+    rows["child"]["context_link"]["parent_conversation_id"] = json!("child");
+    check(rows, ReadError::InvalidDocument);
+    let mut rows = linked_rows();
+    rows["parent"]["parent_conversation_id"] = json!("decoy");
+    rows["parent"]["context_link"] = rows["child"]["context_link"].clone();
+    rows["parent"]["context_link"]["parent_conversation_id"] = json!("decoy");
+    check(rows, ReadError::InvalidDocument);
+}
+
+#[test]
+fn linked_read_checks_profile_and_both_reply_limits() {
+    let mut rows = linked_rows();
+    rows["child"]["content"] = json!("\"".repeat(MAX_BYTES / 4));
+    let raw = document(&rows.to_string());
+    assert!(raw.len() < MAX_BYTES);
+    assert_eq!(
+        get_linked("foreign", Some(&raw), "child"),
+        Err(ReadError::Profile)
+    );
+    assert_eq!(
+        get_linked(PROFILE, Some(&raw), "child"),
+        Err(ReadError::LegacyCodec)
+    );
 }
 
 #[test]

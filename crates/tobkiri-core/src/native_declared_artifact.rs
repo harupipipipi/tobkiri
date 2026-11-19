@@ -141,6 +141,7 @@ type Held<S> = ControlHandle<Work<S>>;
 
 enum LegacyConversationLookup<'a> {
     Conversation(&'a str),
+    LinkedContext(&'a str),
     SavedReceipt(&'a str),
 }
 
@@ -590,6 +591,24 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         .await
     }
 
+    /// Take one fresh owner snapshot for trusted linked context inspection.
+    /// The caller must authorize child and parent reads before exposing their data.
+    pub async fn get_legacy_linked_conversation_context(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        conversation_id: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.lookup_legacy_conversation(
+            pack,
+            root,
+            profile_id,
+            LegacyConversationLookup::LinkedContext(conversation_id),
+        )
+        .await
+    }
+
     /// Read original saved evidence in the active Profile. Settlement and
     /// publication remain with their existing authorized owners.
     pub async fn get_legacy_saved_receipt(
@@ -631,6 +650,11 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             LegacyConversationLookup::Conversation(id) => {
                 store
                     .get_legacy_conversation(pack, profile_id, document, id)
+                    .await
+            }
+            LegacyConversationLookup::LinkedContext(id) => {
+                store
+                    .get_legacy_linked_conversation_context(pack, profile_id, document, id)
                     .await
             }
             LegacyConversationLookup::SavedReceipt(id) => {

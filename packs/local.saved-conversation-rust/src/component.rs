@@ -59,6 +59,13 @@ impl exports::local::saved_conversation::legacy_read::Guest for Pack {
     }
 }
 
+impl exports::local::saved_conversation::legacy_linked_context::Guest for Pack {
+    fn get(document: Option<String>, conversation_id: String) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        legacy_read::get_linked(&profile, document.as_deref(), &conversation_id).map_err(read_error)
+    }
+}
+
 impl exports::local::saved_conversation::legacy_receipt::Guest for Pack {
     fn get(document: Option<String>, turn_id: String) -> Result<String, Error> {
         let profile = flow::current_profile()?;

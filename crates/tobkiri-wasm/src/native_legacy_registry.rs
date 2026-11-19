@@ -128,6 +128,16 @@ const CONVERSATION_GET: RegistryExport = RegistryExport {
     reads: 0,
     clock: RegistryClock::None,
 };
+const CONVERSATION_LINKED_CONTEXT: RegistryExport = RegistryExport {
+    pack: CONVERSATION_PACK,
+    shape: "local.saved-conversation.legacy-linked-context@1.0",
+    interface: "local:saved-conversation/legacy-linked-context@1.0.0",
+    function: "get",
+    error_subject: "legacy Conversation linked context read",
+    parameters: &["document", "conversation-id"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 const CONVERSATION_RECEIPT: RegistryExport = RegistryExport {
     pack: CONVERSATION_PACK,
     shape: "local.saved-conversation.legacy-receipt@1.0",
@@ -238,6 +248,13 @@ pub fn verify_legacy_model_resolve_declaration(pack: &VerifiedPack) -> Result<()
 pub fn verify_legacy_conversation_read_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &CONVERSATION_GET)?;
     declared_registry_function(pack, &CONVERSATION_GET)?;
+    Ok(())
+}
+
+/// Check the fixed private linked context declaration separately from GET.
+pub fn verify_legacy_conversation_linked_context_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &CONVERSATION_LINKED_CONTEXT)?;
+    declared_registry_function(pack, &CONVERSATION_LINKED_CONTEXT)?;
     Ok(())
 }
 
@@ -433,6 +450,26 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             pack,
             profile_id,
             &CONVERSATION_GET,
+            RegistryInput::DocumentLookup {
+                document,
+                identifier: conversation_id,
+            },
+        )
+        .await
+    }
+
+    /// Project a child and its stored parent's context from the same document.
+    pub async fn get_legacy_linked_conversation_context(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+        conversation_id: &str,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &CONVERSATION_LINKED_CONTEXT,
             RegistryInput::DocumentLookup {
                 document,
                 identifier: conversation_id,
@@ -828,6 +865,7 @@ fn declared_registry_function<'a>(
 fn returns_owner_result(export: &RegistryExport) -> bool {
     [
         CONVERSATION_GET.shape,
+        CONVERSATION_LINKED_CONTEXT.shape,
         CONVERSATION_RECEIPT.shape,
         MODEL_RESOLVE.shape,
     ]

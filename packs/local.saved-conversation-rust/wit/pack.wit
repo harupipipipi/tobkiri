@@ -21,6 +21,14 @@ interface legacy-read {
   get: func(document: option<string>, conversation-id: string) -> result<json, error>;
 }
 
+interface legacy-linked-context {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Read a conversation and the context of its stored parent from one
+  /// snapshot of the authenticated Profile. Parent history is excluded.
+  get: func(document: option<string>, conversation-id: string) -> result<json, error>;
+}
+
 interface legacy-receipt {
   use tobkiri:core/types@1.2.0.{json, error};
 
@@ -52,6 +60,7 @@ world pack {
   import tobkiri:core/storage@1.2.0;
   export model;
   export legacy-read;
+  export legacy-linked-context;
   export legacy-receipt;
   export legacy-confirmation;
   import tobkiri:core/clock@1.2.0;

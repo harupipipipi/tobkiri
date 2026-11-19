@@ -141,7 +141,7 @@ pub(super) fn verify(
     Ok(())
 }
 
-fn context_parent_id(conversation: &PyValue) -> Result<Option<&str>, AppendError> {
+pub(super) fn context_parent_id(conversation: &PyValue) -> Result<Option<&str>, AppendError> {
     let Some(link) = non_null(conversation.get("context_link")) else {
         return Ok(None);
     };
@@ -199,6 +199,13 @@ fn inherited_context(
     parent: &PyValue,
     metadata: &[(String, PyValue)],
 ) -> Result<CanonValue, AppendError> {
+    canonical(&PyValue::Object(inherited_fields(parent, metadata)))
+}
+
+pub(super) fn inherited_fields(
+    parent: &PyValue,
+    metadata: &[(String, PyValue)],
+) -> Vec<(String, PyValue)> {
     let mut fields: Vec<_> = CONTEXT_FIELDS
         .iter()
         .map(|&key| {
@@ -218,7 +225,7 @@ fn inherited_context(
                 .collect(),
         ),
     ));
-    canonical(&PyValue::Object(fields))
+    fields
 }
 
 /// Validate the original saved tool selection shape.

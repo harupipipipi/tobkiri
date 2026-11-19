@@ -305,6 +305,7 @@ struct LiveConversationFixture<'a> {
 #[cfg(unix)]
 enum OriginalConversationLookup {
     Conversation,
+    LinkedContext,
     SavedReceipt,
 }
 
@@ -373,6 +374,12 @@ impl<'a> LiveConversationFixture<'a> {
                         .get_legacy_conversation(&pack, &self.data, profile_id, id)
                         .await?
                 }
+                OriginalConversationLookup::LinkedContext => {
+                    tobkiri_wasm::verify_legacy_conversation_linked_context_declaration(&pack)?;
+                    inspection
+                        .get_legacy_linked_conversation_context(&pack, &self.data, profile_id, id)
+                        .await?
+                }
                 OriginalConversationLookup::SavedReceipt => {
                     tobkiri_wasm::verify_legacy_conversation_receipt_declaration(&pack)?;
                     inspection
@@ -392,6 +399,63 @@ impl<'a> LiveConversationFixture<'a> {
         inspection.finish().await?;
         outcome
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires the staged Conversation Registry Pack archive"]
+async fn original_saved_linked_context_reads_the_physical_owner() -> Result<()> {
+    let root = physical_temp()?;
+    let profile = ProfileId::parse("defaults")?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(root.path().join("core")),
+        Arc::new(Host::default()),
+    )?);
+    let live = LiveConversationFixture::import(&core, root.path(), &profile).await?;
+    let owner = DataRoot::open(&live.data)?;
+    let relative = live.relative_path();
+    let mut document = json!({
+        "version": "rumi.conversation-store.v1", "profile_id": "defaults", "revision": 7,
+        "conversations": {
+            "child": {
+                "id": "child", "conversation_revision": 1, "parent_conversation_id": "parent",
+                "context_link": {
+                    "version": "tobkiri.conversation-context-link.v1",
+                    "parent_conversation_id": "parent", "slot": "side-chat",
+                    "created_from_parent_revision": 1,
+                },
+                "messages": [{"id": "child-message"}],
+            },
+            "parent": {
+                "id": "parent", "conversation_revision": 7, "model_reference": "m-local",
+                "metadata": {"thinking_level": "low", "unrelated": "private"},
+                "messages": [{"id": "parent-message"}],
+            },
+        },
+    });
+    for (model, revision) in [("m-local", 7), ("m-updated", 8)] {
+        let parent = &mut document["conversations"]["parent"];
+        parent["model_reference"] = json!(model);
+        parent["conversation_revision"] = json!(revision);
+        let bytes = serde_json::to_vec(&document)?;
+        owner.write_atomic(&relative, &bytes)?;
+        let result: Value = serde_json::from_str(
+            &live
+                .lookup("child", OriginalConversationLookup::LinkedContext)
+                .await?,
+        )?;
+        ensure!(result["conversation"] == live.get("child").await?["conversation"]);
+        ensure!(
+            result["parent_context"]
+                == json!({
+                    "id": "parent", "conversation_revision": revision, "model_reference": model,
+                    "system_prompt_id": null, "agent_id": null, "conversation_kind": null,
+                    "group_id": null, "tags": null, "metadata": {"thinking_level": "low"},
+                })
+        );
+        ensure!(fs::read(live.data.join(&relative))? == bytes);
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
