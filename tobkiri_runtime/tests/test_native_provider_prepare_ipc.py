@@ -908,8 +908,9 @@ def _served_turn_settlement(
 
 
 @pytest.mark.parametrize("replay", [False, True])
+@pytest.mark.parametrize("side_chat", [False, True])
 def test_turn_settlement_sends_only_the_bound_reference_and_preserves_the_owner_row(
-    monkeypatch: pytest.MonkeyPatch, replay: bool,
+    monkeypatch: pytest.MonkeyPatch, replay: bool, side_chat: bool,
 ) -> None:
     borrow = _Borrow()
     marked = threading.Event()
@@ -921,7 +922,13 @@ def test_turn_settlement_sends_only_the_bound_reference_and_preserves_the_owner_
             checked.set()
 
     request = replace(_settlement_request(borrow, marked.set), assert_current=guard)
-    if replay:
+    if side_chat:
+        request = replace(
+            request,
+            caller="side-chat-reconcile" if replay else "side-chat-turn",
+            expected_revision=7 if replay else None,
+        )
+    elif replay:
         request = replace(request, caller="saved-reconcile", expected_revision=7)
     owner_row = dict(_SETTLED_TURN, details="")
     row_bytes = json.dumps(owner_row).encode()
@@ -966,6 +973,7 @@ def test_turn_settlement_sends_only_the_bound_reference_and_preserves_the_owner_
 
 @pytest.mark.parametrize("change", [
     {"caller": "shell"}, {"caller": "saved-reconcile"},
+    {"caller": "side-chat-reconcile"}, {"caller": "side-chat"},
     {"turn_id": "a" * 257}, {"turn_id": "été"}, {"turn_id": "a/b"},
     {"input_digest": "sha256:" + "A" * 64},
     {"expected_revision": True}, {"expected_revision": 0},

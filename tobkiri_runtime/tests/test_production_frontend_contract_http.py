@@ -4002,15 +4002,26 @@ def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
 
 
 @pytest.mark.parametrize(
-    "use_native,use_native_append,use_native_start",
-    [(False, False, False), (True, False, False), (True, True, False), (True, True, True)],
-    ids=["packvm", "native-orchestration", "native", "native-start"],
+    "use_native,use_native_append,use_native_start,settlement",
+    [
+        (False, False, False, None),
+        (True, False, False, None),
+        (True, True, False, None),
+        (True, True, True, None),
+        (True, True, True, "send"),
+        (True, True, True, "reconcile"),
+    ],
+    ids=[
+        "packvm", "native-orchestration", "native", "native-start",
+        "native-settle", "native-settle-reconcile",
+    ],
 )
 def test_signed_side_chat_http_uses_shared_saved_orchestration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     use_native: bool, use_native_append: bool, use_native_start: bool,
+    settlement: str | None,
 ) -> None:
-    """Inspect signed Side Chat ancestry at the start, step and append ports."""
+    """Inspect signed ancestry and owner state at each selected Side Chat port."""
     from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.authority.v4 import DomainBoundary, LeaseState
     from core_runtime.bootstrap.saved_bridge import READINESS
@@ -4031,6 +4042,9 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     saved_target = (_SavedPackVmBackend._CONTRACT_ID, _SavedPackVmBackend._OPERATION_ID)
     message_target = saved_conversation.TARGETS[1]
     start_target = ("tobkiri.action.turn.lifecycle.v1", "rumi_turn_runtime_pack.turn-lifecycle")
+    reconcile_target = (
+        "tobkiri.action.turn.reconcile.v1", "rumi_turn_runtime_pack.turn-reconcile",
+    )
     step_inputs: list[Mapping[str, object]] = []
     materializations: list[RuntimeEvidence] = []
     ai_calls: list[Mapping[str, object]] = []
@@ -4039,6 +4053,8 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     ordinary_append_requests: list[ipc.NativeConversationAppendRequest] = []
     start_requests: list[ipc.NativeSavedTurnStartRequest] = []
     start_envelopes: list[RequestEnvelope] = []
+    settlement_requests: list[ipc.NativeSavedTurnSettlementRequest] = []
+    settlement_envelopes: list[RequestEnvelope] = []
     fixture_failures: list[AssertionError] = []
     backend = _SavedPackVmBackend()
     original_invoke = V4DispatchSession.invoke
@@ -4164,6 +4180,59 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             fixture_failures.append(error)
             raise
 
+    def checked_side_settlement(
+        request: ipc.NativeSavedTurnSettlementRequest,
+    ) -> Mapping[str, object]:
+        request.assert_current()
+        side, owner = settlement_envelopes[-2:]
+        mode = side.payload["operation"]
+        assert request.caller == (
+            "side-chat-reconcile" if mode == "reconcile" else "side-chat-turn"
+        )
+        assert request.context == owner.context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic == owner.deadline_monotonic
+        assert owner.deadline_monotonic <= side.deadline_monotonic
+        assert owner.context.caller_principal == side.target_principal
+        assert owner.resource_reservation_id is not None
+        assert owner.resource_reservation_id != side.resource_reservation_id
+        assert owner.lease.token != side.lease.token
+        for item in (side, owner):
+            _, state, _, _ = authority.inspect_dispatch_authority(
+                item.lease.token.decode("ascii"),
+            )
+            assert state is LeaseState.DISPATCHED
+        assert request.turn_id == side.payload["turn_id"]
+        row = turns.get(request.turn_id)
+        receipt = conversations.saved_receipt(request.turn_id)
+        assert row is not None and receipt is not None
+        assert request.input_digest == row["input_digest"] == receipt["input_digest"]
+        assert request.result_reference == receipt["result_reference"]
+        assert request.result_reference["conversation_id"] == side.payload["conversation_id"]
+        revision = request.expected_revision
+        assert revision == (row["revision"] if mode == "reconcile" else None)
+        settlement_requests.append(request)
+        if settlement == "reconcile" and mode == "send":
+            raise ipc.NativeSavedTurnSettlementPublicationUnconfirmed("fixture lost reply")
+        request.mark_publication_possible()
+        request.assert_current()
+        if revision is not None:
+            return turns.reconcile_saved(
+                request.turn_id, expected_revision=revision, input_digest=request.input_digest,
+                result_reference=request.result_reference,
+            )
+        return turns.settle_saved_from_receipt(
+            request.turn_id, input_digest=request.input_digest,
+            result_reference=request.result_reference,
+        )
+
+    def side_settlement(request: ipc.NativeSavedTurnSettlementRequest) -> Mapping[str, object]:
+        try:
+            return checked_side_settlement(request)
+        except AssertionError as error:
+            fixture_failures.append(error)
+            raise
+
     def observe_packvm(
         binding: ResolvedOperationBinding, reservation_id: str,
     ) -> RuntimeEvidence:
@@ -4195,6 +4264,10 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ipc, "capture_launcher_side_chat_turn_start_writer",
         lambda: side_start if use_native_start else None,
     )
+    monkeypatch.setattr(
+        ipc, "capture_launcher_saved_turn_settlement_writer",
+        lambda: side_settlement if settlement else None,
+    )
     if use_native:
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", manifest)
@@ -4220,6 +4293,10 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ) -> object:
             if (envelope.contract_id, envelope.operation_id) in targets:
                 envelopes.append(envelope)
+            if (envelope.contract_id, envelope.operation_id) in {
+                side_target, targets[1], reconcile_target,
+            }:
+                settlement_envelopes.append(envelope)
             if (
                 (envelope.contract_id, envelope.operation_id) == message_target
                 and envelope.payload.get("operation") == "append_saved"
@@ -4342,7 +4419,9 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         })
         if fixture_failures:
             raise fixture_failures[0]
-        assert first["status"] == "completed", first
+        assert first["status"] == (
+            "reconciliation_required" if settlement == "reconcile" else "completed"
+        ), first
         assert [(item.contract_id, item.operation_id) for item in envelopes] == list(targets)
         side, turn, saved = envelopes
         assert saved.payload["request"]["context_binding"]["parent_conversation_id"] == "parent"
@@ -4385,11 +4464,15 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ]
         assert conversations.get("parent") == parent
         receipt = conversations.saved_receipt(turn_id)
-        assert receipt["result_reference"] == first["turn"]["result_reference"]
         recovered = post(thread["reconcile"]["operation"], {
             "operation": "reconcile", "conversation_id": child_id, "turn_id": turn_id,
         })
-        assert recovered["turn"] == first["turn"]
+        if fixture_failures:
+            raise fixture_failures[0]
+        assert recovered["turn"]["status"] == "completed", recovered
+        assert recovered["turn"]["result_reference"] == receipt["result_reference"]
+        if settlement != "reconcile":
+            assert recovered["turn"] == first["turn"]
         assert len(ai_calls) == len(materializations) == 1
         assert conversations.get(child_id) == child
         assert len(append_envelopes) == 2
@@ -4405,6 +4488,13 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             ["begin", "claim"] if use_native_start else []
         )
         for request in start_requests:
+            with pytest.raises(PermissionError):
+                request.assert_current()
+        expected_settlement = ["side-chat-turn"] if settlement else []
+        if settlement == "reconcile":
+            expected_settlement.append("side-chat-reconcile")
+        assert [request.caller for request in settlement_requests] == expected_settlement
+        for request in settlement_requests:
             with pytest.raises(PermissionError):
                 request.assert_current()
 

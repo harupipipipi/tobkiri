@@ -470,6 +470,11 @@ class NativeSavedLocalChatRequest:
     compile_policy: bool = False
 
 
+SavedTurnSettlementCaller = Literal[
+    "saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile",
+]
+
+
 @dataclass(frozen=True)
 class NativeSavedTurnSettlementRequest:
     """Borrow the signed Turn invocation and its verified result reference."""
@@ -478,7 +483,7 @@ class NativeSavedTurnSettlementRequest:
     runtime_instance: str
     deadline_monotonic: float
     assert_current: Callable[[], None]
-    caller: SavedReceiptCaller
+    caller: SavedTurnSettlementCaller
     turn_id: str
     input_digest: str
     expected_revision: int | None
@@ -1307,12 +1312,14 @@ def _turn_settlement_payload(borrow: NativeSavedTurnSettlementRequest) -> dict[s
     revision = borrow.expected_revision
     if (
         type(borrow.caller) is not str
-        or borrow.caller not in ("saved-turn", "saved-reconcile")
+        or borrow.caller not in {
+            "saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile",
+        }
         or not isinstance(borrow.turn_id, str)
         or _TURN_IDENTIFIER.fullmatch(borrow.turn_id) is None
         or not isinstance(borrow.input_digest, str)
         or _TURN_INPUT_DIGEST.fullmatch(borrow.input_digest) is None
-        or (borrow.caller == "saved-reconcile" and revision is None)
+        or (borrow.caller in {"saved-reconcile", "side-chat-reconcile"} and revision is None)
         or (
             revision is not None and (type(revision) is not int or not 0 < revision <= _U64_MAX)
         )

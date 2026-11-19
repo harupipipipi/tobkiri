@@ -1975,6 +1975,7 @@ def capture_production_dispatch(
         NativeSavedTurnStartFailure,
         NativeSavedTurnStartRequest,
         SavedReceiptCaller,
+        SavedTurnSettlementCaller,
         SavedTurnStartAction,
         SavedTurnStartCaller,
         capture_launcher_ai_gateway_policy_projector,
@@ -5343,12 +5344,16 @@ def capture_production_dispatch(
         parent: _CapturedPlanEdge
         resource: _CapturedPlanEdge
 
+    @dataclass(frozen=True)
+    class _SavedSettlementRoute:
+        caller: SavedTurnSettlementCaller
+        edge: _CapturedPlanEdge
+        side_chat: _CapturedPlanEdge | None = None
+
     saved_receipt_routes: dict[
         str, tuple[SavedReceiptCaller, _CapturedPlanEdge, _CapturedPlanEdge]
     ] = {}
-    saved_turn_routes: dict[
-        str, tuple[SavedReceiptCaller, _CapturedPlanEdge]
-    ] = {}
+    saved_turn_routes: dict[str, list[_SavedSettlementRoute]] = {}
     confirmation_routes: dict[str, _SavedCompletionRoute] = {}
     completion_function = "rumi_conversation_store_pack.conversation-store.completion"
     completion_operation = (
@@ -5383,7 +5388,9 @@ def capture_production_dispatch(
                 continue
             parent_edge, = parents
             if native_saved_turn_settlement_writer is not None:
-                saved_turn_routes[parent_edge.target.principal_id] = (caller, parent_edge)
+                saved_turn_routes.setdefault(parent_edge.target.principal_id, []).append(
+                    _SavedSettlementRoute(caller, parent_edge),
+                )
             if native_confirmation_writer is not None or native_saved_turn_reader is not None:
                 completion_edges = tuple(
                     edge for edge in captured_edges
@@ -5428,6 +5435,22 @@ def capture_production_dispatch(
                 receipt_edge, = receipt_edges
                 saved_receipt_routes[receipt_edge.caller.principal_id] = (
                     caller, receipt_edge, parent_edge,
+                )
+
+    if native_saved_turn_settlement_writer is not None and side_chat_edge is not None:
+        side_reconcile = select_original_chat_edge(
+            {side_chat_edge.target.principal_id},
+            turn_pack, "tobkiri.action.turn.reconcile.v1", f"{turn_pack}.turn-reconcile",
+            f"{turn_pack}.turn-runtime.reconcile", EffectClass.PRIVILEGED,
+        )
+        side_routes: tuple[tuple[SavedTurnSettlementCaller, _CapturedPlanEdge | None], ...] = (
+            ("side-chat-turn", side_chat_turn_edge),
+            ("side-chat-reconcile", side_reconcile),
+        )
+        for caller, side_edge in side_routes:
+            if side_edge is not None:
+                saved_turn_routes.setdefault(side_edge.target.principal_id, []).append(
+                    _SavedSettlementRoute(caller, side_edge, side_chat_edge),
                 )
 
     saved_owner_publications: WeakValueDictionary[int, RequestEnvelope] = WeakValueDictionary()
@@ -5634,45 +5657,87 @@ def capture_production_dispatch(
             candidate = request.get("turn_id") if isinstance(request, Mapping) else None
         return candidate if isinstance(candidate, str) and 0 < len(candidate) <= 256 else None
 
+    def saved_turn_settlement_lineage(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        parent: CapturedInvocationScopeV4 | None,
+        routes: Sequence[_SavedSettlementRoute],
+    ) -> tuple[_SavedSettlementRoute, str, tuple[RequestEnvelope, ...]] | None:
+        for route in routes:
+            if context.caller_principal.value != route.edge.caller.principal_id:
+                continue
+            reconcile = route.caller in {"saved-reconcile", "side-chat-reconcile"}
+            turn_id = requested_saved_turn_id(
+                "saved-reconcile" if reconcile else "saved-turn", payload,
+            )
+            if turn_id is None:
+                continue
+            expected = (route.side_chat,) if route.side_chat is not None else ()
+            ancestors = match_captured_ancestors(parent, expected)
+            if ancestors is None:
+                continue
+            if ancestors:
+                side = ancestors[0]
+                if (
+                    side.context.profile_id != context.profile_id
+                    or side.payload.get("operation") != ("reconcile" if reconcile else "send")
+                    or side.payload.get("turn_id") != turn_id
+                ):
+                    return None
+                if not reconcile:
+                    source = payload["request"]
+                    if (
+                        side.payload.get("conversation_id") != source.get("conversation_id")
+                        or side.payload.get("expected_child_revision")
+                        != source.get("conversation_revision")
+                    ):
+                        return None
+            return route, turn_id, ancestors
+        return None
+
     def is_native_saved_turn_settlement_route(
         context: RequestContext,
         payload: Mapping[str, Any],
         *,
-        caller: SavedReceiptCaller,
-        edge: _CapturedPlanEdge,
+        routes: Sequence[_SavedSettlementRoute],
     ) -> bool:
-        return (
-            native_provider_runtime is not None
-            and context.caller_principal.value == edge.caller.principal_id
-            and parent_invocation_scopes.lookup(context.caller_session_id) is None
-            and requested_saved_turn_id(caller, payload) is not None
-        )
+        return native_provider_runtime is not None and saved_turn_settlement_lineage(
+            context, payload, parent_invocation_scopes.lookup(context.caller_session_id), routes,
+        ) is not None
 
     def capture_turn_settlement_port(
-        caller: SavedReceiptCaller,
-        edge: _CapturedPlanEdge,
+        routes: Sequence[_SavedSettlementRoute],
         writer: Callable[[NativeSavedTurnSettlementRequest], Mapping[str, Any]],
     ) -> Callable[[HostProviderInvocationContextV4], SavedTurnSettlementPort | None]:
         def borrow(invocation: HostProviderInvocationContextV4) -> SavedTurnSettlementPort | None:
             if type(invocation) is not _HostInvocation:
                 raise AuthorityDenied("native Turn settlement context is unavailable")
             envelope = invocation.envelope
-            if not matches_captured_edge(envelope, edge) or invocation.parent_invocation is not None:
-                return None
-            invocation.assert_current()
-            root_turn_id = requested_saved_turn_id(caller, envelope.payload)
             runtime = native_provider_runtime
-            if root_turn_id is None or runtime is None:
+            lineage = saved_turn_settlement_lineage(
+                envelope.context, envelope.payload, invocation.parent_invocation, routes,
+            )
+            if lineage is None or runtime is None:
                 return None
+            route, root_turn_id, ancestors = lineage
+            caller = route.caller
             reservation_id = envelope.resource_reservation_id
+            if not matches_captured_edge(envelope, route.edge) or (
+                ancestors and (
+                    reservation_id is None
+                    or reservation_id == ancestors[0].resource_reservation_id
+                    or envelope.lease.token == ancestors[0].lease.token
+                    or envelope.deadline_monotonic > ancestors[0].deadline_monotonic
+                )
+            ):
+                raise AuthorityDenied("native Turn settlement lineage changed")
+            invocation.assert_current()
 
             def guard() -> None:
                 invocation.assert_current()
-                if (
-                    native_provider_runtime is not runtime
-                    or parent_invocation_scopes.lookup(envelope.context.caller_session_id) is not None
-                ):
+                if native_provider_runtime is not runtime:
                     raise AuthorityDenied("native Turn settlement capture changed")
+                require_retained_ancestors(envelope, ancestors)
                 runtime[1]()
                 production_admission.native_resources(reservation_id)
 
@@ -5686,7 +5751,10 @@ def capture_production_dispatch(
             ) -> dict[str, Any] | None:
                 if (
                     turn_id != root_turn_id
-                    or (caller == "saved-reconcile" and expected_revision is None)
+                    or (caller in {"saved-reconcile", "side-chat-reconcile"}
+                        and expected_revision is None)
+                    or (ancestors and result_reference.get("conversation_id")
+                        != ancestors[0].payload.get("conversation_id"))
                 ):
                     raise AuthorityDenied("native Turn settlement identity changed")
                 if saved_owner_publication_possible(envelope):
@@ -7357,7 +7425,7 @@ def capture_production_dispatch(
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
     native_turn_settlement_bindings: dict[
-        tuple[str, str, str], tuple[SavedReceiptCaller, _CapturedPlanEdge]
+        tuple[str, str, str], tuple[ResolvedOperationBinding, tuple[_SavedSettlementRoute, ...]]
     ] = {}
     native_conversation_confirmation_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
@@ -7392,15 +7460,17 @@ def capture_production_dispatch(
             and len(captured_bindings) == 1
         ):
             binding = captured_bindings[0]
-            turn_route = saved_turn_routes.get(binding.principal_ref.value)
-            if turn_route is not None and turn_route[1].resolved_binding == binding:
-                caller, edge = turn_route
+            routes = tuple(
+                route for route in saved_turn_routes.get(binding.principal_ref.value, [])
+                if route.edge.resolved_binding == binding
+            )
+            if routes:
                 turn_settlement_port = capture_turn_settlement_port(
-                    caller, edge, native_saved_turn_settlement_writer,
+                    routes, native_saved_turn_settlement_writer,
                 )
                 native_turn_settlement_bindings[(
-                    *edge.binding_key[1:], binding.principal_ref.value,
-                )] = turn_route
+                    *routes[0].edge.binding_key[1:], binding.principal_ref.value,
+                )] = (binding, routes)
         confirmation_port = None
         if (
             native_confirmation_writer is not None
@@ -7832,11 +7902,11 @@ def capture_production_dispatch(
     )
     native_admission_rules.extend(
         (
-            edge.resolved_binding,
+            binding,
             SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
-            partial(is_native_saved_turn_settlement_route, caller=caller, edge=edge),
+            partial(is_native_saved_turn_settlement_route, routes=routes),
         )
-        for caller, edge in native_turn_settlement_bindings.values()
+        for binding, routes in native_turn_settlement_bindings.values()
     )
     native_admission_rules.extend(
         (
