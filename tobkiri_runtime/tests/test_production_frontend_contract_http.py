@@ -425,6 +425,14 @@ def _authenticate(server: PackAPIServer) -> tuple[str, str, str]:
     return cookie.split(";", 1)[0], str(exchange["data"]["csrf_token"]), origin
 
 
+def _publish_native_runtime_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Publish a runtime instance for the test's explicitly injected IPC callbacks."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+
+    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/launcher.sock")
+    monkeypatch.setattr(ipc, "_capture_launcher", lambda: None)
+
+
 def _captured_production_server(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1917,9 +1925,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             return {"conversation": document["conversations"][request.conversation_id]}
 
         monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_read)
-        monkeypatch.setenv(
-            "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/read.sock",
-        )
+        _publish_native_runtime_fixture(monkeypatch)
         monkeypatch.setattr(
             ipc, "capture_launcher_provider_prepare_planner", lambda: None,
         )
@@ -2858,7 +2864,7 @@ def test_native_settlement_borrows_signed_turn_http_authority(
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
-    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/turn.sock")
+    _publish_native_runtime_fixture(monkeypatch)
     for capture in (
         "capture_launcher_provider_prepare_planner",
         "capture_launcher_model_save_writer",
@@ -3139,7 +3145,7 @@ def test_native_confirmation_borrows_signed_completion_child(
         return result
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
-    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/confirm.sock")
+    _publish_native_runtime_fixture(monkeypatch)
     for capture in (
         "capture_launcher_provider_prepare_planner",
         "capture_launcher_model_save_writer",
@@ -3432,7 +3438,7 @@ def test_native_append_borrows_signed_saved_orchestration_child(
             raise
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
-    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/append.sock")
+    _publish_native_runtime_fixture(monkeypatch)
     for capture in (
         "capture_launcher_provider_prepare_planner",
         "capture_launcher_model_save_writer",
@@ -3589,20 +3595,6 @@ def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
     )
 
     manifest = canonical_digest({"manifest": "fixture-saved-orchestration"})
-    for capture in (
-        "capture_launcher_provider_prepare_planner",
-        "capture_launcher_model_save_writer",
-        "capture_launcher_model_settings_reader",
-        "capture_launcher_model_resolve_reader",
-        "capture_launcher_conversation_get_reader",
-        "capture_launcher_conversation_append_writer",
-        "capture_launcher_saved_receipt_reader",
-        "capture_launcher_saved_turn_reader",
-        "capture_launcher_saved_turn_settlement_writer",
-        "capture_launcher_conversation_confirmation_writer",
-    ):
-        monkeypatch.setattr(ipc, capture, lambda: None)
-
     turn_target = ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
     saved_target = (SAVED_CONVERSATION_CONTRACT, SAVED_CONVERSATION_OPERATION)
     parents: list[RequestEnvelope] = []
@@ -3655,6 +3647,8 @@ def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
         NativeSavedOrchestrationBackend, "materialize", observe_native_materialization,
     )
     with monkeypatch.context() as legacy:
+        legacy.delenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", raising=False)
+        legacy.delenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER", raising=False)
         legacy.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", raising=False)
         legacy.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", raising=False)
         with contextmanager(_captured_production_server)(
@@ -3670,7 +3664,7 @@ def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
 
     monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", manifest)
     monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
-    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/saved.sock")
+    _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(ipc, "capture_launcher_saved_orchestration_step", lambda: step)
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch, packvm_backends=BackendRegistry((backend,)),
@@ -5195,7 +5189,7 @@ def test_model_settings_native_read_preserves_signed_http_and_legacy_owner(
 
     monkeypatch.setattr(Path, "read_text", observe_legacy_document)
     monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_model_read)
-    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
+    _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_saved_turn_settlement_writer", lambda: None)
@@ -5375,7 +5369,7 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
             raise ipc.NativeModelSavePublicationUnconfirmed("test reply loss")
         return {"action": "saved", "store_revision": 1, "profile": normalized["record"]}
 
-    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
+    _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_saved_turn_settlement_writer", lambda: None)
@@ -6801,7 +6795,7 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
 
     planner = NativeProviderPreparePlanner(MINIMUM_PREPARE_MEMORY, plan)
     if launcher_mode is not None:
-        monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/provider.sock")
+        _publish_native_runtime_fixture(monkeypatch)
         monkeypatch.setattr(
             native_provider_prepare_ipc,
             "capture_launcher_conversation_get_reader",
@@ -7219,9 +7213,7 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
     monkeypatch.setattr(Path, "read_text", observe_legacy_read)
     monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_read)
     monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
-    monkeypatch.setenv(
-        "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/resolve.sock",
-    )
+    _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
