@@ -12,6 +12,7 @@ use tobkiri_harness_native::{
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
     OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
+    OriginalSavedTurnSettlementChoice,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -26,7 +27,42 @@ pub(crate) struct LockedRegistryBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
+/// An original Shell's signed Turn owner routes, independent of Conversation grants.
+pub(crate) struct LockedTurnSettlementBundle<'pin> {
+    root: CoreBuffer,
+    routes: [Option<LockedRegistryRoute<'pin>>; 2],
+    budget: Arc<dyn AllocationBudget>,
+}
+
 impl NativeApplicationSources {
+    /// Capture the originally signed Turn Pack and catalog for each settlement grant.
+    pub(crate) fn turn_settlement_bundle<'pin>(
+        &self,
+        selections: [Option<&'pin OriginalSavedTurnSettlementChoice<'_>>; 2],
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedTurnSettlementBundle<'pin>> {
+        let mut routes = [None, None];
+        for (route, selection) in routes.iter_mut().zip(selections) {
+            if let Some(selection) = selection {
+                let pin = selection.pin();
+                ensure!(
+                    pin.caller_function_id() == self.authority.shell_provider_id,
+                    "old Turn settlement caller differs from the selected Shell"
+                );
+                *route = Some(LockedRegistryRoute::from_lock(
+                    &self.bundle_lock,
+                    pin,
+                    budget,
+                )?);
+            }
+        }
+        Ok(LockedTurnSettlementBundle {
+            root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
+            routes,
+            budget: Arc::clone(budget),
+        })
+    }
+
     /// Capture Bundle-relative file identities from the original verified lock.
     /// File reads happen after the Core source borrow has ended.
     pub(crate) fn registry_bundle<'pin>(
@@ -170,26 +206,53 @@ impl LockedRegistryBundle<'_> {
                 route.verify_documents(&pack, &catalog, Some("read"))?;
             }
         }
-        let mut conversation = self
-            .conversation_read
-            .iter()
-            .chain(self.saved_receipt.iter())
-            .flatten();
-        if let Some(first) = conversation.next() {
-            let pack = first.pack.read(root, &self.budget, &mut checkpoint)?;
-            let catalog = first.catalog.read(root, &self.budget, &mut checkpoint)?;
-            for route in std::iter::once(first).chain(conversation) {
-                checkpoint()?;
-                ensure!(
-                    route.pack.digest == first.pack.digest
-                        && route.catalog.digest == first.catalog.digest,
-                    "legacy Conversation routes select different Bundle documents"
-                );
-                route.verify_documents(&pack, &catalog, Some("privileged"))?;
-            }
-        }
+        verify_privileged_routes(
+            self.conversation_read
+                .iter()
+                .chain(self.saved_receipt.iter())
+                .flatten(),
+            root,
+            &self.budget,
+            &mut checkpoint,
+        )?;
         checkpoint()
     }
+}
+
+impl LockedTurnSettlementBundle<'_> {
+    /// Verify the original Turn Pack and both independently granted operations.
+    pub(crate) fn verify(&self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<()> {
+        let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
+        verify_privileged_routes(
+            self.routes.iter().flatten(),
+            root,
+            &self.budget,
+            &mut checkpoint,
+        )?;
+        checkpoint()
+    }
+}
+
+fn verify_privileged_routes<'a>(
+    mut routes: impl Iterator<Item = &'a LockedRegistryRoute<'a>>,
+    root: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<()> {
+    if let Some(first) = routes.next() {
+        let pack = first.pack.read(root, budget, checkpoint)?;
+        let catalog = first.catalog.read(root, budget, checkpoint)?;
+        for route in std::iter::once(first).chain(routes) {
+            checkpoint()?;
+            ensure!(
+                route.pack.digest == first.pack.digest
+                    && route.catalog.digest == first.catalog.digest,
+                "legacy Registry routes select different Bundle documents"
+            );
+            route.verify_documents(&pack, &catalog, Some("privileged"))?;
+        }
+    }
+    Ok(())
 }
 
 struct LockedRegistryRoute<'pin> {

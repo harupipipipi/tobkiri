@@ -12,7 +12,8 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use tauri::{AppHandle, Manager};
-use tobkiri_core::NativeArtifactError;
+use tobkiri_core::{Digest, NativeArtifactError};
+use tobkiri_harness_native::LegacySavedTurnSettlementError;
 use tobkiri_wasm::NativeDataIoError;
 
 use crate::{
@@ -22,7 +23,8 @@ use crate::{
         start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
         ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
         OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
-        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+        SettlementCaller, TurnSettlementRequiresLegacyCodec, CONVERSATION_READ_REPLY_LIMIT,
+        MODEL_RESOLVE_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -39,6 +41,8 @@ const PUBLISH_PERMIT: u8 = 12;
 const JSON_LIMIT: usize = 16 * 1024;
 const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
 const SAVED_RECEIPT_TURN_ID_MAX_CHARS: usize = 2048;
+const TURN_SETTLEMENT_RESULT_LIMIT: usize = 1024 * 1024;
+const TURN_SETTLEMENT_REFERENCE_LIMIT: usize = 2 * 1024;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CLEANUP_WAIT: Duration = Duration::from_secs(10);
@@ -65,6 +69,8 @@ struct Start<'a> {
     conversation_receipt: Option<ConversationReceipt>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     model_resolve: Option<ModelResolve>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
+    turn_settlement: Option<TurnSettlement>,
 }
 
 impl Start<'_> {
@@ -76,9 +82,10 @@ impl Start<'_> {
             &self.conversation_get,
             &self.conversation_receipt,
             &self.model_resolve,
+            &self.turn_settlement,
             self.apply,
         ) {
-            (Some(request), None, None, None, None, None, apply) => {
+            (Some(request), None, None, None, None, None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -88,29 +95,45 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 Ok(NativeRegistryRequest::Provider { request, apply })
             }
-            (None, Some(_), None, None, None, None, None) => Ok(NativeRegistryRequest::ModelList),
-            (None, None, Some(save), None, None, None, None) => {
+            (None, Some(_), None, None, None, None, None, None) => {
+                Ok(NativeRegistryRequest::ModelList)
+            }
+            (None, None, Some(save), None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ModelSave {
                     request: save.request.get().as_bytes().to_vec(),
                     provider: save.provider.get().as_bytes().to_vec(),
                 })
             }
-            (None, None, None, Some(get), None, None, None) => {
+            (None, None, None, Some(get), None, None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationGet {
                     caller: get.caller,
                     conversation_id: get.conversation_id.clone(),
                 })
             }
-            (None, None, None, None, Some(receipt), None, None) => {
+            (None, None, None, None, Some(receipt), None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationReceipt {
                     caller: receipt.caller,
                     turn_id: receipt.turn_id.clone(),
                 })
             }
-            (None, None, None, None, None, Some(resolve), None) => {
+            (None, None, None, None, None, Some(resolve), None, None) => {
                 Ok(NativeRegistryRequest::ModelResolve {
                     role: resolve.role,
                     identifier: resolve.identifier.clone(),
+                })
+            }
+            (None, None, None, None, None, None, Some(settlement), None) => {
+                ensure!(
+                    !matches!(settlement.caller, SettlementCaller::SavedReconcile)
+                        || settlement.expected_revision.is_some(),
+                    "Turn settlement reconciliation requires an expected revision"
+                );
+                Ok(NativeRegistryRequest::TurnSettlement {
+                    caller: settlement.caller,
+                    turn_id: settlement.turn_id.clone(),
+                    input_digest: settlement.input_digest.clone(),
+                    expected_revision: settlement.expected_revision,
+                    result_reference: settlement.result_reference.clone(),
                 })
             }
             _ => bail!("native Registry start must name exactly one operation"),
@@ -155,6 +178,106 @@ struct ModelResolve {
     role: OriginalModelResolveRole,
     #[serde(deserialize_with = "deserialize_model_identifier")]
     identifier: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TurnSettlement {
+    #[serde(deserialize_with = "deserialize_settlement_caller")]
+    caller: SettlementCaller,
+    #[serde(deserialize_with = "deserialize_settlement_turn_id")]
+    turn_id: String,
+    #[serde(deserialize_with = "deserialize_settlement_digest")]
+    input_digest: String,
+    #[serde(deserialize_with = "deserialize_settlement_revision")]
+    expected_revision: Option<u64>,
+    #[serde(deserialize_with = "deserialize_settlement_reference")]
+    result_reference: String,
+}
+
+fn deserialize_settlement_caller<'de, D>(
+    deserializer: D,
+) -> std::result::Result<SettlementCaller, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "saved-turn" => Ok(SettlementCaller::SavedTurn),
+        "saved-reconcile" => Ok(SettlementCaller::SavedReconcile),
+        _ => Err(de::Error::custom("unknown Turn settlement caller")),
+    }
+}
+
+fn deserialize_settlement_turn_id<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let turn_id = String::deserialize(deserializer)?;
+    let mut bytes = turn_id.bytes();
+    if turn_id.len() <= 256
+        && bytes
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+    {
+        Ok(turn_id)
+    } else {
+        Err(de::Error::custom("invalid Turn settlement identifier"))
+    }
+}
+
+fn deserialize_settlement_digest<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let digest = String::deserialize(deserializer)?;
+    Digest::parse(&digest).map_err(de::Error::custom)?;
+    Ok(digest)
+}
+
+fn deserialize_settlement_revision<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let revision = Option::deserialize(deserializer)?;
+    if revision == Some(0) {
+        return Err(de::Error::custom("invalid Turn settlement revision"));
+    }
+    Ok(revision)
+}
+
+fn deserialize_settlement_reference<'de, D>(
+    deserializer: D,
+) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let reference = String::deserialize(deserializer)?;
+    if reference.len() > TURN_SETTLEMENT_REFERENCE_LIMIT || !reference.starts_with('{') {
+        return Err(de::Error::custom(
+            "invalid Turn settlement reference envelope",
+        ));
+    }
+    serde_json::from_str::<&RawValue>(&reference).map_err(de::Error::custom)?;
+    // Preserve the exact owner JSON and allow whitespace within string values.
+    let mut in_string = false;
+    let mut escaped = false;
+    for byte in reference.bytes() {
+        if escaped {
+            escaped = false;
+        } else if in_string && byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            in_string = !in_string;
+        } else if !in_string && byte.is_ascii_whitespace() {
+            return Err(de::Error::custom(
+                "Turn settlement reference must be compact JSON",
+            ));
+        }
+    }
+    Ok(reference)
 }
 
 fn deserialize_model_resolve_role<'de, D>(
@@ -347,6 +470,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     ensure!(start.security_epoch != 0, "invalid Provider prepare epoch");
     let deadline = host_deadline(start.deadline_ns)?;
     let operation = start.operation()?;
+    let settlement = matches!(&operation, NativeRegistryRequest::TurnSettlement { .. });
     let identity = ExecutionProfileIdentity::new(
         start.identity.profile_id,
         start.identity.profile_revision,
@@ -359,10 +483,16 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         .inner()
         .clone();
     let Some(candidate) = manager.admitted_provider_prepare(&identity)? else {
+        // An absent or stale admission cannot authorize a settlement fallback.
+        let (tag, payload): (u8, &[u8]) = if settlement {
+            (FAILURE, b"unavailable")
+        } else {
+            (INAPPLICABLE, &[])
+        };
         return send_frame(
             &mut stream,
-            INAPPLICABLE,
-            &[],
+            tag,
+            payload,
             deadline.min(Instant::now() + FRAME_TIMEOUT),
         );
     };
@@ -371,7 +501,10 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         candidate.matches_process(&peer),
         "Provider prepare peer differs from the admitted launch"
     );
-    if candidate.verified_source().security_epoch != start.security_epoch {
+    let matches_runtime = candidate.matches_runtime_instance(&start.runtime_instance);
+    if candidate.verified_source().security_epoch != start.security_epoch
+        || (settlement && !matches_runtime)
+    {
         return send_frame(
             &mut stream,
             FAILURE,
@@ -380,9 +513,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         );
     }
     manager.require_provider_prepare_admission(&candidate)?;
-    if !candidate.matches_runtime_instance(&start.runtime_instance)
-        || !operation.has_launch_proof(candidate.verified_source())
-    {
+    if !matches_runtime || !operation.has_launch_proof(candidate.verified_source()) {
         return send_frame(
             &mut stream,
             INAPPLICABLE,
@@ -398,6 +529,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         NativeRegistryRequest::ConversationGet { .. }
         | NativeRegistryRequest::ConversationReceipt { .. } => ReplyRole::ConversationRead,
         NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
+        NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
     };
     drop(bytes);
     let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
@@ -409,7 +541,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         reply,
     });
     let check_connection = Arc::clone(&connection);
-    let publish_permit = (reply == ReplyRole::ModelSave).then(|| {
+    let publish_permit = reply.permits_publication().then(|| {
         let connection = Arc::clone(&connection);
         Arc::new(move || connection.authorize_publication())
             as Arc<dyn Fn() -> Result<()> + Send + Sync>
@@ -424,7 +556,10 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     ) {
         Ok(pending) => pending,
         Err(error) => {
-            return connection.send_failure(failure_code(&error), connection.deadline.current())
+            return connection.send_failure(
+                reply.failure_code(WireAuthority::AwaitingLive, &error),
+                connection.deadline.current(),
+            )
         }
     };
     connection.finish(pending)
@@ -437,6 +572,57 @@ enum ReplyRole {
     ModelSave,
     ConversationRead,
     ModelResolve,
+    TurnSettlement,
+}
+
+impl ReplyRole {
+    fn permits_publication(self) -> bool {
+        matches!(self, Self::ModelSave | Self::TurnSettlement)
+    }
+
+    fn result_limit(self, authority: WireAuthority) -> (usize, &'static str) {
+        match self {
+            Self::Provider => (JSON_LIMIT, "limit-exceeded"),
+            Self::ModelList => (MODEL_RESULT_LIMIT, "legacy-read-required"),
+            Self::ModelSave => (MODEL_RESULT_LIMIT, "limit-exceeded"),
+            Self::ConversationRead => (CONVERSATION_READ_REPLY_LIMIT, "legacy-read-required"),
+            Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
+            Self::TurnSettlement if authority == WireAuthority::PublicationPermitted => {
+                (TURN_SETTLEMENT_RESULT_LIMIT, "unavailable")
+            }
+            Self::TurnSettlement => (TURN_SETTLEMENT_RESULT_LIMIT, "limit-exceeded"),
+        }
+    }
+
+    fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
+        if self != Self::TurnSettlement {
+            return failure_code(error);
+        }
+        if authority == WireAuthority::PublicationPermitted {
+            return "unavailable";
+        }
+        if authority == WireAuthority::Live && error.is::<TurnSettlementRequiresLegacyCodec>() {
+            return "legacy-read-required";
+        }
+        use LegacySavedTurnSettlementError as SettlementError;
+        match error.downcast_ref::<SettlementError>() {
+            Some(SettlementError::Conflict) => "conflict",
+            Some(
+                SettlementError::InvalidRequest
+                | SettlementError::InvalidRecord
+                | SettlementError::InvalidReference,
+            ) => "invalid",
+            Some(SettlementError::NotFound) => "not-found",
+            Some(SettlementError::Capacity) => "limit-exceeded",
+            Some(SettlementError::Revoked) => "cancelled",
+            Some(SettlementError::Storage) => "internal",
+            Some(_) => "unavailable",
+            None => match failure_code(error) {
+                "legacy-read-required" => "unavailable",
+                code => code,
+            },
+        }
+    }
 }
 
 struct Connection {
@@ -487,8 +673,8 @@ impl Connection {
 
     fn authorize_publication(&self) -> Result<()> {
         ensure!(
-            self.reply == ReplyRole::ModelSave,
-            "Registry exchange does not admit Model publication"
+            self.reply.permits_publication(),
+            "Registry exchange does not admit publication"
         );
         self.authorize(true)
     }
@@ -567,13 +753,7 @@ impl Connection {
             drop(wire);
             return self.send_stopped(stop);
         }
-        let (limit, overflow_code) = match self.reply {
-            ReplyRole::Provider => (JSON_LIMIT, "limit-exceeded"),
-            ReplyRole::ModelList => (MODEL_RESULT_LIMIT, "legacy-read-required"),
-            ReplyRole::ModelSave => (MODEL_RESULT_LIMIT, "limit-exceeded"),
-            ReplyRole::ConversationRead => (CONVERSATION_READ_REPLY_LIMIT, "legacy-read-required"),
-            ReplyRole::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
-        };
+        let (limit, overflow_code) = self.reply.result_limit(wire.authority);
         match result {
             Ok(output) if output.len() <= limit => {
                 send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline)
@@ -584,12 +764,10 @@ impl Connection {
                 overflow_code.as_bytes(),
                 deadline,
             ),
-            Err(error) => send_frame(
-                &mut wire.stream,
-                FAILURE,
-                failure_code(&error).as_bytes(),
-                deadline,
-            ),
+            Err(error) => {
+                let code = self.reply.failure_code(wire.authority, &error);
+                send_frame(&mut wire.stream, FAILURE, code.as_bytes(), deadline)
+            }
         }
     }
 
@@ -625,7 +803,7 @@ impl Wire {
         let (challenge, expected) = if publish {
             ensure!(
                 self.authority == WireAuthority::Live,
-                "Model Registry publication is outside its live phase"
+                "Registry publication is outside its live phase"
             );
             (PUBLISH_CHECK, PUBLISH_PERMIT)
         } else {
@@ -1203,6 +1381,188 @@ mod tests {
         assert_eq!(failure_code(&NativeArtifactError::Denied.into()), "denied");
     }
 
+    fn settlement_frame(settlement: &serde_json::Value) -> String {
+        start_frame(&format!(r#", "turn_settlement":{settlement}"#))
+    }
+
+    fn settlement_body() -> serde_json::Value {
+        serde_json::json!({
+            "caller": "saved-turn",
+            "turn_id": "turn:one-2",
+            "input_digest": format!("sha256:{}", "a".repeat(64)),
+            "expected_revision": null,
+            "result_reference": r#"{"conversation_id":"会話 \"1\"","conversation_revision":7}"#,
+        })
+    }
+
+    #[test]
+    fn turn_settlement_preserves_reference_bytes_and_requires_explicit_revision() {
+        let maximal_id = format!("a._:-{}", "0".repeat(251));
+        let maximal_reference = format!(
+            r#"{{"value":"{}"}}"#,
+            "x".repeat(TURN_SETTLEMENT_REFERENCE_LIMIT - r#"{"value":""}"#.len()),
+        );
+        for (role, expected, revision, id, reference) in [
+            (
+                "saved-turn",
+                SettlementCaller::SavedTurn,
+                None,
+                "turn:one-2",
+                r#"{"conversation_id":"会話 \"1\"","conversation_revision":7}"#,
+            ),
+            (
+                "saved-reconcile",
+                SettlementCaller::SavedReconcile,
+                Some(u64::MAX),
+                maximal_id.as_str(),
+                maximal_reference.as_str(),
+            ),
+        ] {
+            let mut body = settlement_body();
+            body["caller"] = role.into();
+            body["expected_revision"] = serde_json::json!(revision);
+            body["turn_id"] = id.into();
+            body["result_reference"] = reference.into();
+            let frame = settlement_frame(&body);
+            let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+            let NativeRegistryRequest::TurnSettlement {
+                caller,
+                turn_id,
+                input_digest,
+                expected_revision,
+                result_reference,
+            } = start.operation().unwrap()
+            else {
+                panic!("expected Turn settlement");
+            };
+            assert!(caller == expected);
+            assert_eq!(turn_id, id);
+            assert_eq!(input_digest, body["input_digest"].as_str().unwrap());
+            assert_eq!(expected_revision, revision);
+            assert_eq!(result_reference, reference);
+        }
+
+        let mut body = settlement_body();
+        body["caller"] = "saved-reconcile".into();
+        let frame = settlement_frame(&body);
+        let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+        assert!(start.operation().is_err());
+        body.as_object_mut().unwrap().remove("expected_revision");
+        assert!(serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err());
+    }
+
+    #[test]
+    fn turn_settlement_rejects_invalid_envelopes_and_other_operations() {
+        let invalid_fields = [
+            ("caller", serde_json::json!("shell")),
+            ("turn_id", serde_json::json!("")),
+            ("turn_id", serde_json::json!("-turn")),
+            ("turn_id", serde_json::json!("turn/child")),
+            ("turn_id", serde_json::json!("turn猫")),
+            ("turn_id", serde_json::json!("a".repeat(257))),
+            ("input_digest", serde_json::json!("sha256:abcd")),
+            (
+                "input_digest",
+                serde_json::json!(format!("sha256:{}", "A".repeat(64))),
+            ),
+            ("expected_revision", serde_json::json!(0)),
+            ("expected_revision", serde_json::json!(-1)),
+            ("expected_revision", serde_json::json!(1.0)),
+            ("expected_revision", serde_json::json!(true)),
+            ("expected_revision", serde_json::json!("1")),
+            ("result_reference", serde_json::json!({"value": 1})),
+            ("result_reference", serde_json::json!("[]")),
+            ("result_reference", serde_json::json!(r#"{"value": }"#)),
+            ("result_reference", serde_json::json!(r#"{"value": 1}"#)),
+            ("result_reference", serde_json::json!("{}\n")),
+            (
+                "result_reference",
+                serde_json::json!(format!(r#"{{"value":"{}"}}"#, "猫".repeat(700))),
+            ),
+            ("publish", serde_json::json!(true)),
+        ];
+        for (field, value) in invalid_fields {
+            let mut body = settlement_body();
+            body[field] = value;
+            assert!(
+                serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err(),
+                "{field}"
+            );
+        }
+        for body in [serde_json::Value::Null, serde_json::json!([])] {
+            assert!(serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err());
+        }
+        let body = settlement_body().to_string();
+        let settlement = format!(r#", "turn_settlement":{body}"#);
+        for other in [
+            PROVIDER_REQUEST,
+            r#", "apply": {}"#,
+            r#", "model_list": {}"#,
+            r#", "model_save": {"request":{},"provider":{}}"#,
+            r#", "conversation_get": {"caller":"shell","conversation_id":"stored"}"#,
+            r#", "conversation_receipt": {"caller":"saved-turn","turn_id":"turn"}"#,
+            r#", "model_resolve": {"role":"generate","identifier":"local"}"#,
+        ] {
+            let frame = start_frame(&format!("{settlement}{other}"));
+            let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+            assert!(start.operation().is_err(), "{other}");
+        }
+        let frame = start_frame(&format!("{settlement}{settlement}"));
+        assert!(serde_json::from_str::<Start<'_>>(&frame).is_err());
+        let duplicate_caller = format!(r#"{{"caller":"saved-turn",{}"#, &body[1..]);
+        let frame = start_frame(&format!(r#", "turn_settlement":{duplicate_caller}"#));
+        assert!(serde_json::from_str::<Start<'_>>(&frame).is_err());
+    }
+
+    #[test]
+    fn settlement_fallback_requires_live_and_cannot_follow_publication() {
+        let role = ReplyRole::TurnSettlement;
+        assert!(role.permits_publication());
+        assert!(ReplyRole::ModelSave.permits_publication());
+        for readonly in [
+            ReplyRole::Provider,
+            ReplyRole::ModelList,
+            ReplyRole::ConversationRead,
+            ReplyRole::ModelResolve,
+        ] {
+            assert!(!readonly.permits_publication());
+        }
+        let codec = TurnSettlementRequiresLegacyCodec.into();
+        assert_eq!(
+            role.failure_code(WireAuthority::AwaitingLive, &codec),
+            "unavailable"
+        );
+        assert_eq!(
+            role.failure_code(WireAuthority::Live, &codec),
+            "legacy-read-required"
+        );
+        assert_eq!(
+            role.failure_code(WireAuthority::PublicationPermitted, &codec),
+            "unavailable"
+        );
+        assert_eq!(
+            role.failure_code(WireAuthority::Live, &ModelRegistryRequiresLegacyRead.into()),
+            "unavailable",
+        );
+        let conflict = LegacySavedTurnSettlementError::Conflict.into();
+        assert_eq!(
+            role.failure_code(WireAuthority::Live, &conflict),
+            "conflict"
+        );
+        assert_eq!(
+            role.failure_code(WireAuthority::PublicationPermitted, &conflict),
+            "unavailable"
+        );
+        assert_eq!(
+            role.result_limit(WireAuthority::Live),
+            (1024 * 1024, "limit-exceeded")
+        );
+        assert_eq!(
+            role.result_limit(WireAuthority::PublicationPermitted),
+            (1024 * 1024, "unavailable")
+        );
+    }
+
     #[test]
     fn publication_requires_live_and_uses_one_permit() {
         let (mut client, server) = UnixStream::pair().unwrap();
@@ -1228,6 +1588,29 @@ mod tests {
         wire.exchange_authority(false, deadline).unwrap();
         let _peer = peer.join().unwrap();
         assert!(wire.exchange_authority(true, deadline).is_err());
+    }
+
+    #[test]
+    fn publication_cannot_be_authorized_by_a_live_response() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        client.set_nonblocking(true).unwrap();
+        server.set_nonblocking(true).unwrap();
+        let deadline = Instant::now() + FRAME_TIMEOUT;
+        let mut wire = Wire::new(server);
+        let peer = thread::spawn(move || {
+            assert_eq!(read_header(&mut client, deadline).unwrap(), (CHECK, 0));
+            send_frame(&mut client, LIVE, &[], deadline).unwrap();
+            assert_eq!(
+                read_header(&mut client, deadline).unwrap(),
+                (PUBLISH_CHECK, 0),
+            );
+            send_frame(&mut client, LIVE, &[], deadline).unwrap();
+            client
+        });
+        wire.exchange_authority(false, deadline).unwrap();
+        assert!(wire.exchange_authority(true, deadline).is_err());
+        assert!(wire.authority == WireAuthority::Live);
+        peer.join().unwrap();
     }
 
     #[test]

@@ -19,15 +19,20 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU8, Ordering},
     },
+    time::Instant,
 };
-use tobkiri_canon::{AllocationBudget, ControlHandle, CoreBuffer, CoreValue, Digest, MAX_BYTES};
+use tobkiri_canon::{
+    AllocationBudget, ControlHandle, CoreBuffer, CoreValue, Digest, MAX_BYTES,
+    ids::{OpName, ProfileId, ShapeRef},
+};
 use tobkiri_gate::{
     CapacityKind, ControlKind, ControlReservation, CoreCancellation, NativeSetupInvocation,
     NativeSetupReservation,
 };
 use tobkiri_manifest::{VerifiedPack, source::SourceCatalog, verify_tpk_reader_in_catalog};
 use tobkiri_wasm::{
-    LegacyRegistryError, NativeDataIo, NativeDataIoError, NativeInspectionOutput, NativeSetupStore,
+    LegacyRegistryError, NativeDataIo, NativeDataIoError, NativeInspectionOutput,
+    NativeReadOnlyPort, NativeSetupStore,
 };
 
 pub use tobkiri_wasm::{LegacyProviderRegistryRead, LegacyRegistryRead};
@@ -72,6 +77,8 @@ pub enum NativeArtifactError {
     Integrity,
     #[error("native artifact exceeds the original DATA envelope")]
     TooLarge,
+    #[error("native read-only port preparation failed")]
+    ReadOnlyPort(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("native Provider preparation failed")]
     ProviderPrepare(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("native Provider commit validation failed")]
@@ -302,6 +309,35 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         verified.map_err(|error| NativeArtifactError::Core(error.into()))
     }
 
+    /// Bind a fixed read-only port in this inspection's original Store.
+    ///
+    /// The trusted native caller supplies its authenticated Pack and active
+    /// Profile and retains the authority for any later operation. After the
+    /// single port call, finish this inspection to collect physical cleanup.
+    pub async fn prepare_declared_read_only_port<'a>(
+        &'a mut self,
+        pack: &'a VerifiedPack,
+        shape: &ShapeRef,
+        operation: &OpName,
+        profile: &ProfileId,
+        deadline: Instant,
+        max_wall_clock_calls: u8,
+    ) -> Result<NativeReadOnlyPort<'a, ()>, NativeArtifactError> {
+        self.claim_execution()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        store
+            .prepare_declared_read_only_port(
+                pack,
+                shape,
+                operation,
+                profile,
+                deadline,
+                max_wall_clock_calls,
+            )
+            .await
+            .map_err(|error| NativeArtifactError::ReadOnlyPort(error.into()))
+    }
+
     /// Execute read-only preparation in the same Store, obtaining original
     /// Registry observations in the order required by the fixed Wasm planner.
     /// The caller owns the activated Profile and must finish the inspection,
@@ -313,7 +349,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         request: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
-        self.claim_registry()?;
+        self.claim_execution()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let plan = store
             .invoke_live_legacy_provider_prepare(pack, profile_id, request, read)
@@ -336,7 +372,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         plan: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
-        self.claim_registry()?;
+        self.claim_execution()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let validation = store
             .validate_live_legacy_provider_commit(pack, profile_id, request, plan, read)
@@ -359,7 +395,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         plan: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
-        self.claim_registry()?;
+        self.claim_execution()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let staged = store
             .stage_live_legacy_provider_commit(pack, profile_id, request, plan, read)
@@ -382,7 +418,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         provider: &CoreValue,
         read: LegacyRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
-        self.claim_registry()?;
+        self.claim_execution()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let staged = store
             .stage_live_legacy_model_save(pack, profile_id, request, provider, read)
@@ -544,7 +580,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             .map_err(|_| NativeDataIoError::Capacity)?;
         let profile = CoreBuffer::copy_from(profile_id.as_bytes(), budget)
             .map_err(|_| NativeDataIoError::Capacity)?;
-        self.claim_registry()?;
+        self.claim_execution()?;
         let held = self.work.clone();
         let framed = self
             .io
@@ -569,7 +605,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         Ok(framed)
     }
 
-    fn claim_registry(&self) -> Result<(), NativeArtifactError> {
+    fn claim_execution(&self) -> Result<(), NativeArtifactError> {
         self.require_ready()?;
         self.work
             .get()

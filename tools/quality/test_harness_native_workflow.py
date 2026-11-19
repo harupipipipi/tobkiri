@@ -127,6 +127,8 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn("inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg", registry)
         self.assertIn("steps.archives.outputs.receipt_sha256", registry)
         self.assertIn("packs/stage_registry_packs.py", registry)
+        self.assertIn("-p tobkiri-pack-saved-turn-runtime-rust", registry)
+        self.assertIn("--pack saved-turn-runtime", registry)
         self.assertIn("name: native-registry-packs", registry)
         registry_download = step(installer, "Download the same-run Registry Packs for the CI installer")
         self.assertIn("if: inputs.native_setup", registry_download)

@@ -29,6 +29,7 @@ mod unix {
 
     pub(crate) const RECEIPT: &str = "receipt.json";
     pub(crate) const RECEIPT_FORMAT: &str = "tobkiri.registry-packs/1";
+    pub(crate) const SETTLEMENT_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/2";
     const RECEIPT_LIMIT: u64 = 16 * 1024;
     // The Pack authoring CLI's .tpk size ceiling.
     pub(crate) const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
@@ -37,12 +38,13 @@ mod unix {
         "local.model-registry",
         "local.saved-conversation",
     ];
+    pub(crate) const SETTLEMENT_PACK_ID: &str = "local.saved-turn-runtime";
 
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     pub(crate) struct Receipt {
         format: String,
-        packs: [Pack; PACK_IDS.len()],
+        packs: Vec<Pack>,
     }
 
     #[derive(Deserialize)]
@@ -181,10 +183,20 @@ mod unix {
             ));
         }
         let receipt: Receipt = serde_json::from_slice(raw)?;
-        if receipt.format != RECEIPT_FORMAT {
-            return Err(invalid("Registry Pack receipt format is invalid"));
+        let expected_count = match receipt.format.as_str() {
+            RECEIPT_FORMAT => PACK_IDS.len(),
+            SETTLEMENT_RECEIPT_FORMAT => PACK_IDS.len() + 1,
+            _ => return Err(invalid("Registry Pack receipt format is invalid")),
+        };
+        if receipt.packs.len() != expected_count {
+            return Err(invalid(
+                "Registry Pack receipt has the wrong number of records",
+            ));
         }
-        for (id, pack) in PACK_IDS.into_iter().zip(&receipt.packs) {
+        let ids = PACK_IDS
+            .into_iter()
+            .chain(std::iter::once(SETTLEMENT_PACK_ID));
+        for (id, pack) in ids.zip(&receipt.packs) {
             if pack.id != id
                 || pack.archive != format!("{id}.tpk")
                 || !valid_version(&pack.version)
@@ -265,12 +277,6 @@ mod unix {
     }
 
     fn verify_inventory(directory: &File, receipt: &Receipt) -> io::Result<()> {
-        let names = [
-            RECEIPT.as_bytes(),
-            receipt.packs[0].archive.as_bytes(),
-            receipt.packs[1].archive.as_bytes(),
-            receipt.packs[2].archive.as_bytes(),
-        ];
         let independent = open_child_directory(directory, c".")?;
         let stream = unsafe { libc::fdopendir(independent.as_raw_fd()) };
         if stream.is_null() {
@@ -279,7 +285,9 @@ mod unix {
         // fdopendir owns this descriptor on success.
         let _ = independent.into_raw_fd();
         let result = (|| {
-            let mut found = [false; PACK_IDS.len() + 1];
+            let mut found = [false; PACK_IDS.len() + 2];
+            let names = std::iter::once(RECEIPT.as_bytes())
+                .chain(receipt.packs.iter().map(|pack| pack.archive.as_bytes()));
             loop {
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 unsafe {
@@ -301,7 +309,7 @@ mod unix {
                 if name == b"." || name == b".." {
                     continue;
                 }
-                let index = names.iter().position(|expected| *expected == name);
+                let index = names.clone().position(|expected| expected == name);
                 let Some(index) = index else {
                     return Err(invalid("Registry Pack directory has an unexpected entry"));
                 };
@@ -310,7 +318,7 @@ mod unix {
                 }
                 found[index] = true;
             }
-            if found.contains(&false) {
+            if found[..=receipt.packs.len()].contains(&false) {
                 return Err(invalid(
                     "Registry Pack directory is missing a receipt or archive",
                 ));
@@ -450,21 +458,66 @@ mod unix {
         Ok((provider, model))
     }
 
-    /// Inspect all three archives in one receipt pass and return the results only after verification.
+    /// Inspect the original archives and verify every installed archive's digest.
     pub(crate) fn verify_installed_with_archives<P, M, C>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
+        inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
+        inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
+    ) -> io::Result<(P, M, C)> {
+        let (provider, model, conversation, _) = verify_installed_with_settlement_archives(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            inspect_provider,
+            inspect_model,
+            inspect_conversation,
+            discard_archive,
+        )?;
+        Ok((provider, model, conversation))
+    }
+
+    /// Inspect the settlement archive if admitted by the exact installed receipt.
+    pub(crate) fn verify_installed_with_settlement<S>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_settlement: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<S>,
+    ) -> io::Result<Option<S>> {
+        let ((), (), (), settlement) = verify_installed_with_settlement_archives(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            inspect_settlement,
+        )?;
+        Ok(settlement)
+    }
+
+    /// Verify the exact receipt and each physical archive before returning any result.
+    /// An absent settlement is allowed only in the original three-Pack format.
+    pub(crate) fn verify_installed_with_settlement_archives<P, M, C, S>(
         app_root: &Path,
         expected_sha256: &str,
         mut checkpoint: impl FnMut() -> io::Result<()>,
         inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
         inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
         inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
-    ) -> io::Result<(P, M, C)> {
+        inspect_settlement: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<S>,
+    ) -> io::Result<(P, M, C, Option<S>)> {
         checkpoint()?;
         let app = open_directory(app_root)?;
         let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
         let directory = open_child_directory(&app, &name)?;
         let (receipt, _) = read_verified_receipt(&directory, expected_sha256, &mut checkpoint)?;
-        let [provider, model, conversation] = &receipt.packs;
+        let ([provider, model, conversation], newest) = receipt
+            .packs
+            .split_first_chunk::<3>()
+            .expect("the receipt contains the three original Packs");
         let provider = inspect_archive(&directory, provider, &mut checkpoint, inspect_provider)?;
         let model = inspect_archive(&directory, model, &mut checkpoint, inspect_model)?;
         let conversation = inspect_archive(
@@ -473,7 +526,11 @@ mod unix {
             &mut checkpoint,
             inspect_conversation,
         )?;
-        Ok((provider, model, conversation))
+        let settlement = newest
+            .first()
+            .map(|pack| inspect_archive(&directory, pack, &mut checkpoint, inspect_settlement))
+            .transpose()?;
+        Ok((provider, model, conversation, settlement))
     }
 
     fn discard_archive(_: &Pack, input: &mut dyn Read) -> io::Result<()> {

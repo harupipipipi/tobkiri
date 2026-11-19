@@ -454,13 +454,16 @@ def test_registry_receipt_pin_is_forwarded_by_shell_wrapper(tmp_path: Path) -> N
     assert "expected native Registry Packs receipt SHA-256 is invalid" in result.stderr
 
 
-def _write_registry_packs(app: Path) -> str:
+def _write_registry_packs(app: Path, *, settlement: bool = False) -> str:
     directory = app / "Contents/Resources/app/native-registry-packs"
     directory.mkdir(parents=True)
     records = []
-    for pack_id in (
+    pack_ids = [
         "local.provider-registry", "local.model-registry", "local.saved-conversation"
-    ):
+    ]
+    if settlement:
+        pack_ids.append("local.saved-turn-runtime")
+    for pack_id in pack_ids:
         archive = f"{pack_id}.tpk"
         contents = f"fixture archive for {pack_id}".encode()
         (directory / archive).write_bytes(contents)
@@ -472,19 +475,20 @@ def _write_registry_packs(app: Path) -> str:
             "archive_sha256": "sha256:" + hashlib.sha256(contents).hexdigest(),
             "manifest_sha256": "sha256:" + "a" * 64,
         })
-    receipt = {"format": "tobkiri.registry-packs/1", "packs": records}
+    version = 2 if settlement else 1
+    receipt = {"format": f"tobkiri.registry-packs/{version}", "packs": records}
     data = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode()
     (directory / "receipt.json").write_bytes(data)
     return hashlib.sha256(data).hexdigest()
 
 
-@pytest.fixture
+@pytest.fixture(params=[False, True], ids=["three-packs", "with-settlement"])
 def registry_mount(
-    tmp_path: Path,
+    tmp_path: Path, request: pytest.FixtureRequest,
 ) -> Iterator[tuple[MODULE.MountedDmg, Path, str]]:
     root = tmp_path.resolve() / "mounted"
     app = root / "Fixture.app"
-    receipt_digest = _write_registry_packs(app)
+    receipt_digest = _write_registry_packs(app, settlement=request.param)
     mount = MODULE.MountedDmg.__new__(MODULE.MountedDmg)
     mount.path = root
     mount.name = root.name
@@ -503,7 +507,7 @@ def registry_mount(
         os.close(mount.parent_fd)
 
 
-def test_registry_verifier_checks_all_three_archive_contents(
+def test_registry_verifier_checks_all_archive_contents(
     registry_mount: tuple[MODULE.MountedDmg, Path, str],
 ) -> None:
     mount, app, receipt_digest = registry_mount
@@ -635,6 +639,31 @@ def test_registry_receipt_requires_the_producer_pack_order(
     with pytest.raises(
         MODULE.DmgVerificationError, match="receipt has an invalid archive"
     ):
+        mount.verify_native_registry_packs(app, hashlib.sha256(payload).hexdigest())
+
+
+def test_registry_receipt_version_requires_its_exact_pack_set(
+    registry_mount: tuple[MODULE.MountedDmg, Path, str],
+) -> None:
+    mount, app, receipt_digest = registry_mount
+    directory = app / MODULE.NATIVE_REGISTRY_PACKS
+    path = directory / "receipt.json"
+    receipt = json.loads(path.read_bytes())
+    settlement = directory / "local.saved-turn-runtime.tpk"
+    if settlement.exists():
+        settlement.unlink()
+        with pytest.raises(MODULE.DmgVerificationError, match="missing required entries"):
+            mount.verify_native_registry_packs(app, receipt_digest)
+        receipt["format"] = "tobkiri.registry-packs/1"
+    else:
+        settlement.touch()
+        with pytest.raises(MODULE.DmgVerificationError, match="extra entries"):
+            mount.verify_native_registry_packs(app, receipt_digest)
+        receipt["format"] = "tobkiri.registry-packs/2"
+
+    payload = json.dumps(receipt).encode()
+    path.write_bytes(payload)
+    with pytest.raises(MODULE.DmgVerificationError, match="receipt has the wrong format"):
         mount.verify_native_registry_packs(app, hashlib.sha256(payload).hexdigest())
 
 

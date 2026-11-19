@@ -27,7 +27,7 @@ pub const WASI_SUBSET: &[&str] = &[
     "wasi:filesystem/preopens",
 ];
 
-fn permitted_wasi(name: &str) -> bool {
+pub(crate) fn permitted_wasi(name: &str) -> bool {
     let Some((interface, version)) = name.rsplit_once('@') else {
         return false;
     };

@@ -21,7 +21,9 @@ mod original_provider_prepare_selection;
 mod original_saved_turn_settlement;
 #[cfg(unix)]
 pub use original_saved_turn_settlement::{
-    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, settle_legacy_saved_turn,
+    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, OriginalSavedTurnCheck,
+    OriginalSavedTurnDecision, OriginalSavedTurnRow, invoke_original_saved_turn_port,
+    settle_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port,
 };
 mod preparation;
 #[cfg(unix)]
@@ -37,12 +39,13 @@ pub use original_authority::{
 pub use original_provider_prepare_selection::{
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin, OriginalRoutePin as OriginalProviderPreparePin,
+    OriginalRoutePin, OriginalRoutePin as OriginalProviderPreparePin, OriginalRouteSelectionError,
     OriginalRouteSelectionError as OriginalModelResolveSelectionError,
     OriginalRouteSelectionError as OriginalModelSaveSelectionError,
     OriginalRouteSelectionError as OriginalModelSettingsSelectionError,
     OriginalRouteSelectionError as OriginalProviderPrepareSelectionError, OriginalSavedReceiptRole,
-    OriginalSavedReceiptSelection,
+    OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
+    OriginalSavedTurnSettlementRole, select_original_saved_turn_settlement,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

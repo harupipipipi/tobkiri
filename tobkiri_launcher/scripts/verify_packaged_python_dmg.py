@@ -30,10 +30,15 @@ MAX_NATIVE_SETUP_COMPONENT_BYTES = 32 * 1024 * 1024
 NATIVE_REGISTRY_PACKS = Path("Contents/Resources/app/native-registry-packs")
 REGISTRY_RECEIPT_NAME = "receipt.json"
 REGISTRY_RECEIPT_FORMAT = "tobkiri.registry-packs/1"
+SETTLEMENT_RECEIPT_FORMAT = "tobkiri.registry-packs/2"
 REGISTRY_ARCHIVES = {
     "local.provider-registry": "local.provider-registry.tpk",
     "local.model-registry": "local.model-registry.tpk",
     "local.saved-conversation": "local.saved-conversation.tpk",
+}
+REGISTRY_ARCHIVES_WITH_SETTLEMENT = {
+    **REGISTRY_ARCHIVES,
+    "local.saved-turn-runtime": "local.saved-turn-runtime.tpk",
 }
 MAX_REGISTRY_RECEIPT_BYTES = 16 * 1024
 # Match the package limit in crates/tobkiri-manifest/src/package.rs.
@@ -383,7 +388,6 @@ class MountedDmg:
         with self._resource_directory(
             app_bundle, NATIVE_REGISTRY_PACKS, "native Registry Packs"
         ) as (directory, device):
-            _verify_registry_directory_entries(directory)
             receipt_label = "native Registry Packs receipt"
             with _resource_file(
                 directory, device, REGISTRY_RECEIPT_NAME, receipt_label
@@ -393,7 +397,9 @@ class MountedDmg:
                 payload = b"".join(_file_blocks(descriptor, size, receipt_label))
             if hashlib.sha256(payload).hexdigest() != expected_receipt_sha256:
                 raise DmgVerificationError(f"{receipt_label} SHA-256 differs")
-            for pin in _registry_archive_pins(payload):
+            pins = _registry_archive_pins(payload)
+            _verify_registry_directory_entries(directory, pins)
+            for pin in pins:
                 _verify_resource(
                     directory,
                     device,
@@ -500,8 +506,10 @@ def _verify_resource(
             raise DmgVerificationError(f"{label} SHA-256 differs")
 
 
-def _verify_registry_directory_entries(directory: int) -> None:
-    expected = {REGISTRY_RECEIPT_NAME, *REGISTRY_ARCHIVES.values()}
+def _verify_registry_directory_entries(
+    directory: int, pins: list[_RegistryArchivePin]
+) -> None:
+    expected = {REGISTRY_RECEIPT_NAME, *(pin.name for pin in pins)}
     with os.scandir(directory) as entries:
         for entry in entries:
             if entry.name not in expected:
@@ -543,14 +551,20 @@ def _registry_archive_pins(payload: bytes) -> list[_RegistryArchivePin]:
     if (
         not isinstance(receipt, dict)
         or receipt.keys() != {"format", "packs"}
-        or receipt["format"] != REGISTRY_RECEIPT_FORMAT
         or not isinstance(receipt["packs"], list)
-        or len(receipt["packs"]) != len(REGISTRY_ARCHIVES)
     ):
+        raise DmgVerificationError("native Registry Packs receipt has the wrong format")
+    if receipt["format"] == REGISTRY_RECEIPT_FORMAT:
+        archives = REGISTRY_ARCHIVES
+    elif receipt["format"] == SETTLEMENT_RECEIPT_FORMAT:
+        archives = REGISTRY_ARCHIVES_WITH_SETTLEMENT
+    else:
+        raise DmgVerificationError("native Registry Packs receipt has the wrong format")
+    if len(receipt["packs"]) != len(archives):
         raise DmgVerificationError("native Registry Packs receipt has the wrong format")
 
     pins = []
-    for (pack_id, archive), record in zip(REGISTRY_ARCHIVES.items(), receipt["packs"]):
+    for (pack_id, archive), record in zip(archives.items(), receipt["packs"]):
         if not isinstance(record, dict) or record.keys() != {
             "id",
             "version",

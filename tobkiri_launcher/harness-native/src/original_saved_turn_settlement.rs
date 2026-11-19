@@ -21,6 +21,8 @@ pub use tobkiri_pack_saved_turn_runtime_rust::{
 };
 use tobkiri_pack_saved_turn_runtime_rust::{RECORD_LIMIT, Result, Transition, settle};
 use tobkiri_store::{DataRoot, StoreError};
+use tobkiri_wasm::NativeReadOnlyPort;
+use wasmtime::component::{BudgetedBox, BudgetedString, Val};
 
 #[cfg(test)]
 mod tests;
@@ -32,6 +34,119 @@ const SQLITE_BUSY_SLICE: Duration = Duration::from_millis(25);
 const TURNS_OWNER: &str = "packs/rumi_turn_runtime_pack/profiles";
 
 type Error = LegacySavedTurnSettlementError;
+
+/// Authorization stage for a single original SQLite settlement.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalSavedTurnCheck {
+    /// Check the original caller's continuing eligibility without offering a write.
+    Live,
+    /// Check eligibility and obtain permission while SQLite holds its commit lock.
+    Publish,
+}
+
+/// Borrowed original indexed row. Valid only within the same write transaction.
+pub struct OriginalSavedTurnRow<'a> {
+    /// The already admitted Profile for this operation.
+    pub profile_id: &'a str,
+    /// Exact indexed Turn and request identifiers.
+    pub turn_id: &'a str,
+    /// Exact indexed saved request identifier.
+    pub request_id: &'a str,
+    /// Original compact UTF-8 row JSON.
+    pub body: &'a str,
+}
+
+/// A bounded decision from the verified Pack, funded by the active owner.
+pub enum OriginalSavedTurnDecision {
+    /// Return the original record without changing it.
+    Replay,
+    /// Update the same indexed record under the current transaction.
+    Replace {
+        /// The timestamp also written to the original index.
+        updated_at: i64,
+        /// Fully materialized owner record.
+        body: CoreBuffer,
+    },
+}
+
+/// Evaluate the exact admitted Wasm port for this indexed row.
+pub async fn invoke_original_saved_turn_port<T: Send + 'static>(
+    port: NativeReadOnlyPort<'_, T>,
+    row: OriginalSavedTurnRow<'_>,
+    request: &LegacySavedTurnSettlementRequest<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<OriginalSavedTurnDecision> {
+    let owner = port.allocation_owners().component().clone();
+    let text = |value: &str| -> Result<Val> {
+        BudgetedString::copy_from(value, &owner, 1)
+            .map(Val::String)
+            .map_err(|_| Error::Capacity)
+    };
+    let revision = request
+        .expected_revision
+        .map(|value| BudgetedBox::new(Val::U64(value), &owner, 0).map_err(|_| Error::Capacity))
+        .transpose()?;
+    let reference =
+        std::str::from_utf8(request.result_reference).map_err(|_| Error::InvalidReference)?;
+    let parameters = [
+        text(row.turn_id)?,
+        text(row.request_id)?,
+        text(row.body)?,
+        text(request.input_digest)?,
+        Val::Option(revision),
+        text(reference)?,
+    ];
+    let output = port.invoke(&parameters).await.map_err(|_| Error::Storage)?;
+    decode_port_decision(output.as_slice(), budget)
+}
+
+fn decode_port_decision(
+    output: &[Val],
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<OriginalSavedTurnDecision> {
+    let [Val::Result(Ok(Some(outcome)))] = output else {
+        return Err(Error::Storage);
+    };
+    let Val::Variant(tag, payload) = &**outcome else {
+        return Err(Error::Storage);
+    };
+    match (tag.as_str(), payload.as_deref()) {
+        ("replay", None) => Ok(OriginalSavedTurnDecision::Replay),
+        ("update", Some(Val::Record(record))) => {
+            let [
+                (timestamp, Val::S64(updated_at)),
+                (document, Val::String(body)),
+            ] = record.as_slice()
+            else {
+                return Err(Error::Storage);
+            };
+            let body = body.as_str();
+            if timestamp.as_str() != "updated-at" || document.as_str() != "body" {
+                return Err(Error::Storage);
+            }
+            if body.len() > RECORD_LIMIT || !body.starts_with('{') || !body.ends_with('}') {
+                return Err(Error::InvalidRecord);
+            }
+            Ok(OriginalSavedTurnDecision::Replace {
+                updated_at: *updated_at,
+                body: CoreBuffer::copy_from(body.as_bytes(), budget)
+                    .map_err(|_| Error::Capacity)?,
+            })
+        }
+        ("rejected", Some(Val::Enum(code))) => Err(match code.as_str() {
+            "invalid-request" => Error::InvalidRequest,
+            "invalid-record" => Error::InvalidRecord,
+            "invalid-reference" => Error::InvalidReference,
+            "not-found" => Error::NotFound,
+            "conflict" => Error::Conflict,
+            "requires-legacy-codec" => Error::RequiresLegacyCodec,
+            "capacity" => Error::Capacity,
+            "revoked" => Error::Revoked,
+            _ => Error::Storage,
+        }),
+        _ => Err(Error::Storage),
+    }
+}
 
 /// Settle an owner-verified receipt using the original SQLite row and write lock.
 ///
@@ -69,6 +184,51 @@ fn settle_legacy_saved_turn_with_clock(
     mut guard: impl FnMut() -> Result<()> + Send + 'static,
     mut clock: impl FnMut() -> Result<i64>,
 ) -> Result<CoreBuffer> {
+    settle_legacy_saved_turn_from_admitted_port(
+        root,
+        profile,
+        request,
+        budget,
+        deadline,
+        move |phase| match phase {
+            OriginalSavedTurnCheck::Live => guard(),
+            OriginalSavedTurnCheck::Publish => Ok(()),
+        },
+        |row| {
+            let _funding = TemporaryCharge::new(budget, TRANSITION_WORK_BYTES)?;
+            match settle(
+                row.profile_id,
+                row.turn_id,
+                row.request_id,
+                row.body.as_bytes(),
+                request,
+                &mut clock,
+            )? {
+                Transition::Replay => Ok(OriginalSavedTurnDecision::Replay),
+                Transition::Commit { updated_at, body } => Ok(OriginalSavedTurnDecision::Replace {
+                    updated_at,
+                    body: CoreBuffer::copy_from(&body, budget).map_err(|_| Error::Capacity)?,
+                }),
+            }
+        },
+    )
+}
+
+/// Apply the bounded decision of the already admitted Pack to the original row.
+///
+/// The evaluator borrows the indexed row while the writer lock is held. It
+/// must return before the original deadline and must never reenter the turn
+/// database. The publication check runs only for an actual update, after
+/// SQLite has acquired the lock required for commit.
+pub fn settle_legacy_saved_turn_from_admitted_port(
+    root: &DataRoot,
+    profile: &ProfileId,
+    request: &LegacySavedTurnSettlementRequest<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+    deadline: Instant,
+    mut guard: impl FnMut(OriginalSavedTurnCheck) -> Result<()> + Send + 'static,
+    evaluate: impl FnOnce(OriginalSavedTurnRow<'_>) -> Result<OriginalSavedTurnDecision>,
+) -> Result<CoreBuffer> {
     if Digest::parse(request.input_digest).is_err() || request.expected_revision == Some(0) {
         return Err(Error::InvalidRequest);
     }
@@ -76,24 +236,26 @@ fn settle_legacy_saved_turn_with_clock(
         return Err(Error::NotFound);
     }
     let now = Instant::now();
-    let mut check = move || {
+    let mut check = move |phase| {
         if Instant::now() >= deadline {
             return Err(Error::Revoked);
         }
-        guard()?;
+        guard(phase)?;
         if Instant::now() >= deadline {
             return Err(Error::Revoked);
         }
         Ok(())
     };
-    check()?;
+    check(OriginalSavedTurnCheck::Live)?;
     let _sqlite_funding = TemporaryCharge::new(budget, SQLITE_WORK_BYTES)?;
     let path = database_path(profile);
     root.with_existing_database(&path, |connection| {
         prepare_connection(connection, deadline).map_err(sql)?;
         let lock_deadline = (now + SQLITE_LOCK_TIMEOUT).min(deadline);
-        let transaction = begin_immediate(connection, lock_deadline, &mut check)?;
-        check()?;
+        let transaction = begin_immediate(connection, lock_deadline, &mut || {
+            check(OriginalSavedTurnCheck::Live)
+        })?;
+        check(OriginalSavedTurnCheck::Live)?;
 
         let (updated_at, output) = {
             let mut select = transaction
@@ -119,30 +281,31 @@ fn settle_legacy_saved_turn_with_clock(
             if body.len() > RECORD_LIMIT || stored_turn != request.turn_id {
                 return Err(Error::InvalidRecord);
             }
-            let _transition_funding = TemporaryCharge::new(budget, TRANSITION_WORK_BYTES)?;
-            let transition = settle(
-                profile.as_str(),
-                request.turn_id,
-                stored_request,
-                body.as_bytes(),
-                request,
-                &mut clock,
-            )?;
-            match transition {
-                Transition::Replay => (
+            match evaluate(OriginalSavedTurnRow {
+                profile_id: profile.as_str(),
+                turn_id: stored_turn,
+                request_id: stored_request,
+                body,
+            })? {
+                OriginalSavedTurnDecision::Replay => (
                     None,
                     CoreBuffer::copy_from(body.as_bytes(), budget).map_err(|_| Error::Capacity)?,
                 ),
-                Transition::Commit { updated_at, body } => (
-                    Some(updated_at),
-                    CoreBuffer::copy_from(&body, budget).map_err(|_| Error::Capacity)?,
-                ),
+                OriginalSavedTurnDecision::Replace { updated_at, body } => {
+                    if updated_at <= 0
+                        || body.len() > RECORD_LIMIT
+                        || !body.as_bytes().starts_with(b"{")
+                    {
+                        return Err(Error::InvalidRecord);
+                    }
+                    (Some(updated_at), body)
+                }
             }
         };
 
         match updated_at {
             None => {
-                check()?;
+                check(OriginalSavedTurnCheck::Live)?;
                 transaction.rollback().map_err(sql)?;
             }
             Some(updated_at) => {
@@ -157,7 +320,10 @@ fn settle_legacy_saved_turn_with_clock(
                 if changed != 1 {
                     return Err(Error::Storage);
                 }
-                commit_current(connection, transaction, deadline, check)?;
+                commit_current(connection, transaction, deadline, move || {
+                    check(OriginalSavedTurnCheck::Live)?;
+                    check(OriginalSavedTurnCheck::Publish)
+                })?;
             }
         }
         Ok(output)

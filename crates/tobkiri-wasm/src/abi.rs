@@ -18,6 +18,15 @@ pub(crate) fn validate_abi(
     pack: &VerifiedPack,
     shapes: &BTreeMap<ShapeRef, ShapeDef>,
 ) -> Result<()> {
+    validate_abi_with_shapes(engine, component, pack, |reference| shapes.get(reference))
+}
+
+pub(crate) fn validate_abi_with_shapes<'a>(
+    engine: &Engine,
+    component: &Component,
+    pack: &VerifiedPack,
+    shape_for: impl Fn(&ShapeRef) -> Option<&'a ShapeDef>,
+) -> Result<()> {
     let packages = BTreeMap::from([
         ("1.0.0", tobkiri_wit::core_abi_version("1.0.0")?),
         ("1.1.0", tobkiri_wit::core_abi_version("1.1.0")?),
@@ -97,9 +106,7 @@ pub(crate) fn validate_abi(
             });
         let shape = declared
             .map(|port| {
-                shapes
-                    .values()
-                    .find(|s| s.reference.name == port.shape && s.reference.version == port.version)
+                shape_for(&ShapeRef::new(port.shape.clone(), port.version))
                     .context("declared ABI shape missing")
             })
             .transpose()?;

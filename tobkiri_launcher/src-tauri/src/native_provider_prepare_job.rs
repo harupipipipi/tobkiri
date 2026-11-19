@@ -12,11 +12,17 @@ use std::{
 
 use anyhow::{anyhow, ensure, Context, Result};
 use tauri::{AppHandle, Manager};
+use tobkiri_core::ids::{OpName, ProfileId, ShapeRef};
 use tobkiri_core::{
     AllocationBudget, CoreBuffer, CoreRef, CoreValue, LegacyRegistryRead, NativeArtifactError,
     NativeArtifactInspection, NativeRegistry, MAX_BYTES,
 };
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
+use tobkiri_harness_native::{
+    invoke_original_saved_turn_port, settle_legacy_saved_turn_from_admitted_port,
+    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, OriginalSavedTurnCheck,
+};
+use tobkiri_store::DataRoot;
 use tobkiri_wasm::NativeDataIoError;
 
 use super::{
@@ -24,8 +30,8 @@ use super::{
     launch_metadata::{
         reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
         reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_saved_receipt_pack, ConversationReadCaller, VerifiedRegistryLaunch,
-        REGISTRY_VERIFICATION_BYTES,
+        reacquire_saved_receipt_pack, reacquire_turn_settlement_pack, ConversationReadCaller,
+        SettlementCaller, VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -65,6 +71,13 @@ pub(crate) enum NativeRegistryRequest {
         role: OriginalModelResolveRole,
         identifier: String,
     },
+    TurnSettlement {
+        caller: SettlementCaller,
+        turn_id: String,
+        input_digest: String,
+        expected_revision: Option<u64>,
+        result_reference: String,
+    },
 }
 
 impl NativeRegistryRequest {
@@ -76,6 +89,7 @@ impl NativeRegistryRequest {
             Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
             Self::ConversationReceipt { caller, .. } => proof.permits_saved_receipt(*caller),
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
+            Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
         }
     }
 
@@ -84,6 +98,27 @@ impl NativeRegistryRequest {
             Self::Provider { request, apply } => (request, apply.as_ref()),
             Self::ModelList => return Ok(0),
             Self::ModelSave { request, provider } => (request, Some(provider)),
+            Self::TurnSettlement {
+                turn_id,
+                input_digest,
+                result_reference,
+                ..
+            } => {
+                return [turn_id, input_digest, result_reference]
+                    .into_iter()
+                    .try_fold(0usize, |total, value| {
+                        total
+                            .checked_add(value.capacity())
+                            .context("native Turn input capacity overflow")
+                    })
+                    .and_then(|capacity| {
+                        ensure!(
+                            capacity <= MAX_BYTES,
+                            "native Turn request exceeds its input envelope"
+                        );
+                        Ok(capacity)
+                    });
+            }
             Self::ConversationGet {
                 conversation_id: identifier,
                 ..
@@ -135,6 +170,18 @@ impl std::fmt::Display for ConversationRegistryRequiresLegacyRead {
 }
 
 impl std::error::Error for ConversationRegistryRequiresLegacyRead {}
+
+/// The verified Turn port requires the original JSON decoder before any write.
+#[derive(Debug)]
+pub(crate) struct TurnSettlementRequiresLegacyCodec;
+
+impl std::fmt::Display for TurnSettlementRequiresLegacyCodec {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("Turn settlement requires the original JSON codec")
+    }
+}
+
+impl std::error::Error for TurnSettlementRequiresLegacyCodec {}
 
 /// A running Provider can narrow its Host deadline when the Core begins.
 pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
@@ -250,7 +297,10 @@ pub(crate) fn start_provider_prepare(
         "native Registry operation has no matching Launch proof"
     );
     ensure!(
-        matches!(&operation, NativeRegistryRequest::ModelSave { .. }) == publish_permit.is_some(),
+        matches!(
+            &operation,
+            NativeRegistryRequest::ModelSave { .. } | NativeRegistryRequest::TurnSettlement { .. }
+        ) == publish_permit.is_some(),
         "native Registry publication permit differs from the operation"
     );
     let input_capacity = operation.input_capacity()?;
@@ -523,6 +573,81 @@ async fn run(
                         .map_err(model_registry_error)?;
                     return decode_model_resolve_reply(output, &graph);
                 }
+                NativeRegistryRequest::TurnSettlement {
+                    caller,
+                    turn_id,
+                    input_digest,
+                    expected_revision,
+                    result_reference,
+                } => {
+                    let pack = reacquire_turn_settlement_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        caller,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-settlement@1.0")?;
+                    let operation = OpName::parse("prepare")?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &shape,
+                            &operation,
+                            &profile,
+                            execution_deadline,
+                            3,
+                        )
+                        .await?;
+                    let data = DataRoot::open_existing(&config.user_data_dir)?;
+                    let request = LegacySavedTurnSettlementRequest {
+                        turn_id: &turn_id,
+                        input_digest: &input_digest,
+                        expected_revision,
+                        result_reference: result_reference.as_bytes(),
+                    };
+                    let permit = Arc::clone(
+                        publish_permit
+                            .as_ref()
+                            .context("Turn settlement permit is missing")?,
+                    );
+                    let authorize = turn_settlement_authority(TurnSettlementAuthority {
+                        app: app.clone(),
+                        manager: Arc::clone(&manager),
+                        listener: Arc::clone(&listener),
+                        current: Arc::clone(&continue_current),
+                        permit,
+                        cancellation: cancellation.clone(),
+                        deadline: execution_deadline,
+                    });
+                    let handle = tokio::runtime::Handle::current();
+                    let wire = tokio::task::block_in_place(|| {
+                        settle_legacy_saved_turn_from_admitted_port(
+                            &data,
+                            &profile,
+                            &request,
+                            &graph,
+                            execution_deadline,
+                            authorize,
+                            |row| {
+                                handle.block_on(invoke_original_saved_turn_port(
+                                    port, row, &request, &graph,
+                                ))
+                            },
+                        )
+                    })
+                    .map_err(|error| match error {
+                        LegacySavedTurnSettlementError::RequiresLegacyCodec => {
+                            TurnSettlementRequiresLegacyCodec.into()
+                        }
+                        _ => anyhow::Error::from(error),
+                    })?;
+                    return Ok(PreparedReply {
+                        wire,
+                        document: None,
+                    });
+                }
             };
             let input = CoreValue::parse_guest(&request, &graph)?;
             drop(request);
@@ -648,6 +773,44 @@ async fn run(
         }),
         cleanup_verified,
     )
+}
+
+struct TurnSettlementAuthority {
+    app: AppHandle,
+    manager: Arc<ApplicationProcessManager>,
+    listener: Arc<ProviderPrepareListener>,
+    current: ContinueCurrent,
+    permit: ContinueCurrent,
+    cancellation: CoreCancellation,
+    deadline: Instant,
+}
+
+fn turn_settlement_authority(
+    authority: TurnSettlementAuthority,
+) -> impl FnMut(OriginalSavedTurnCheck) -> std::result::Result<(), LegacySavedTurnSettlementError> {
+    move |phase| {
+        const REVOKED: LegacySavedTurnSettlementError = LegacySavedTurnSettlementError::Revoked;
+        let check = || {
+            check_live(authority.deadline, Some(&authority.cancellation)).map_err(|_| REVOKED)?;
+            if !authority.listener.owns_socket() {
+                return Err(REVOKED);
+            }
+            authority
+                .manager
+                .require_provider_prepare_admission(&authority.listener)
+                .map_err(|_| REVOKED)?;
+            let config = authority.app.try_state::<AppConfig>().ok_or(REVOKED)?;
+            require_current_launch_identity(&config, &authority.listener.verified_source().identity)
+                .map_err(|_| REVOKED)
+        };
+        check()?;
+        match phase {
+            OriginalSavedTurnCheck::Live => (authority.current)(),
+            OriginalSavedTurnCheck::Publish => (authority.permit)(),
+        }
+        .map_err(|_| REVOKED)?;
+        check()
+    }
 }
 
 fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {

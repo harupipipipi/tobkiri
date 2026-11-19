@@ -1,4 +1,4 @@
-//! Stage the three Registry Pack archives from a pinned CI producer receipt.
+//! Stage the Registry Pack archives from a pinned CI producer receipt.
 
 use std::ffi::OsString;
 use std::io;
@@ -124,8 +124,9 @@ mod unix {
         use super::super::super::raw_byte_digest;
         use super::super::super::registry_pack_receipt::{
             verify_installed, verify_installed_with_conversation, verify_installed_with_model,
-            verify_installed_with_provider, verify_installed_with_provider_and_model, Pack,
-            ARCHIVE_LIMIT, PACK_IDS, RECEIPT_FORMAT,
+            verify_installed_with_provider, verify_installed_with_provider_and_model,
+            verify_installed_with_settlement, Pack, ARCHIVE_LIMIT, PACK_IDS, RECEIPT_FORMAT,
+            SETTLEMENT_PACK_ID, SETTLEMENT_RECEIPT_FORMAT,
         };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
         use super::*;
@@ -143,6 +144,13 @@ mod unix {
 
         impl Fixture {
             fn new() -> io::Result<Self> {
+                Self::with_packs(RECEIPT_FORMAT, PACK_IDS)
+            }
+
+            fn with_packs(
+                format: &str,
+                ids: impl IntoIterator<Item = &'static str>,
+            ) -> io::Result<Self> {
                 let root = std::env::temp_dir().canonicalize()?.join(format!(
                     "tobkiri-registry-pack-{:016x}",
                     rand::random::<u64>()
@@ -153,7 +161,7 @@ mod unix {
                 fs::create_dir(&source)?;
                 fs::create_dir(&stage)?;
                 let mut packs = Vec::new();
-                for id in PACK_IDS {
+                for id in ids {
                     let archive = format!("{id}.tpk");
                     fs::write(source.join(&archive), id)?;
                     packs.push(json!({
@@ -165,7 +173,7 @@ mod unix {
                         "manifest_sha256": format!("sha256:{}", "1".repeat(64)),
                     }));
                 }
-                let document = json!({"format": RECEIPT_FORMAT, "packs": packs});
+                let document = json!({"format": format, "packs": packs});
                 Ok(Self {
                     root,
                     source,
@@ -415,6 +423,76 @@ mod unix {
                 assert_eq!(entry["size"], bytes.len());
                 assert_eq!(entry["sha256"], raw_byte_digest(&bytes));
             }
+            Ok(())
+        }
+
+        #[test]
+        fn only_the_original_receipt_format_allows_absent_settlement() -> io::Result<()> {
+            let original = Fixture::new()?;
+            let original_input = original.write_receipt(&original.document)?;
+            original_input.stage(&original.stage)?;
+            assert_eq!(
+                verify_installed_with_settlement(
+                    &original.stage,
+                    original_input.receipt_sha256(),
+                    || Ok(()),
+                    |_, _| panic!("the original receipt has no settlement archive"),
+                )?,
+                None::<()>,
+            );
+            let original_settlement = original
+                .stage
+                .join(DIRECTORY)
+                .join("local.saved-turn-runtime.tpk");
+            fs::write(original_settlement, SETTLEMENT_PACK_ID)?;
+            assert!(
+                verify_installed(&original.stage, original_input.receipt_sha256(), || Ok(()))
+                    .is_err()
+            );
+            let mut invalid_upgrade = original.document.clone();
+            invalid_upgrade["format"] = json!(SETTLEMENT_RECEIPT_FORMAT);
+            let invalid = original.write_receipt(&invalid_upgrade)?;
+            let error = invalid.stage(&original.root).unwrap_err();
+            assert!(error.to_string().contains("wrong number of records"));
+
+            let current = Fixture::with_packs(
+                SETTLEMENT_RECEIPT_FORMAT,
+                PACK_IDS
+                    .into_iter()
+                    .chain(std::iter::once(SETTLEMENT_PACK_ID)),
+            )?;
+            let current_input = current.write_receipt(&current.document)?;
+            current_input.stage(&current.stage)?;
+            let pin = current_input.receipt_sha256();
+            let verify_settlement = || {
+                verify_installed_with_settlement(
+                    &current.stage,
+                    pin,
+                    || Ok(()),
+                    |pack, archive| {
+                        assert_eq!(pack.id(), SETTLEMENT_PACK_ID);
+                        let mut prefix = [0; 11];
+                        archive.read_exact(&mut prefix)?;
+                        Ok(prefix)
+                    },
+                )
+            };
+            assert_eq!(verify_settlement()?, Some(*b"local.saved"));
+            let settlement = current
+                .stage
+                .join(DIRECTORY)
+                .join("local.saved-turn-runtime.tpk");
+            fs::write(&settlement, b"local.saved-turn-runtimE")?;
+            assert!(verify_settlement().is_err());
+            assert!(verify_installed(&current.stage, pin, || Ok(())).is_err());
+            fs::remove_file(&settlement)?;
+            assert!(verify_settlement().is_err());
+            assert!(verify_installed(&current.stage, pin, || Ok(())).is_err());
+            let mut invalid_downgrade = current.document.clone();
+            invalid_downgrade["format"] = json!(RECEIPT_FORMAT);
+            let invalid = current.write_receipt(&invalid_downgrade)?;
+            let error = invalid.stage(&current.root).unwrap_err();
+            assert!(error.to_string().contains("wrong number of records"));
             Ok(())
         }
 

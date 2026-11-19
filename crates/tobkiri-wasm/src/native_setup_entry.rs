@@ -164,6 +164,13 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         contract: Option<NativeDataResultContract<'_>>,
     ) -> Result<NativeDataEntry<T>> {
         let result = async {
+            let state = self
+                .store
+                .as_mut()
+                .context("native Setup Store was retired")?
+                .data_mut();
+            ensure_active(state)?;
+            state.claim_component()?;
             // The selector is borrowed from trusted nativeKit, never copied or
             // retained here. Account for lookup work before scanning its bytes.
             charge_selector(self.allocation_owners(), &export)?;

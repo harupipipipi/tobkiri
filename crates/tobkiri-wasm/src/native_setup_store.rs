@@ -4,7 +4,7 @@ use crate::aggregate_limits::{AggregateLimits, PhysicalCapacity};
 use crate::engine::STORE_STRUCTURE_CONTROL_BYTES;
 use crate::execution_epoch::check_epoch;
 use crate::instance_capacity::WASM_STACK_BYTES;
-use anyhow::{Result, bail};
+use anyhow::{Result, bail, ensure};
 use std::{
     sync::{Arc, Mutex},
     time::Instant,
@@ -36,6 +36,8 @@ mod entry;
 mod imports;
 #[path = "native_legacy_registry.rs"]
 mod legacy_registry;
+#[path = "native_read_only_port.rs"]
+mod read_only_port;
 pub use entry::{
     NativeDataBinding, NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
     NativeDataObservation, NativeDataProgram, NativeDataResultContract, NativeDataResultEntry,
@@ -50,6 +52,7 @@ pub use legacy_registry::{
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
 };
+pub use read_only_port::NativeReadOnlyPort;
 
 struct NativePhysical {
     reservation: NativeSetupReservation,
@@ -135,9 +138,10 @@ struct NativeState<T: 'static> {
     capture_claimed: bool,
     io: Option<crate::NativeDataIo>,
     io_claimed: bool,
-    registry_claimed: bool,
+    component_claimed: bool,
     registry_profile: Option<tobkiri_canon::CoreBuffer>,
     provider_prepare_reads: Option<legacy_registry::LiveObservations>,
+    read_only_call: Option<read_only_port::ActiveCall>,
     #[cfg(test)]
     import_trace: Option<entry::import_trace::NativeImportTrace>,
     #[cfg(test)]
@@ -154,6 +158,17 @@ struct NativeState<T: 'static> {
     retirement: tokio_util::sync::CancellationToken,
 }
 
+impl<T> NativeState<T> {
+    fn claim_component(&mut self) -> Result<()> {
+        ensure!(
+            !self.component_claimed,
+            "native Store component already claimed"
+        );
+        self.component_claimed = true;
+        Ok(())
+    }
+}
+
 /// Native-only prototype Store custody. It exposes no linker/import surface or
 /// raw Store extraction. Codecs, sealed capture and the optional managed IO
 /// share the original invocation's owners. The product UI runner still needs
@@ -161,7 +176,7 @@ struct NativeState<T: 'static> {
 pub struct NativeSetupStore<T: 'static> {
     store: Option<Store<NativeState<T>>>,
     physical: Option<PhysicalOwner>,
-    registry_control: Option<ControlReservation>,
+    component_control: Option<ControlReservation>,
     // Keep the original bounded ticker alive until AFTER actual Store drop.
     _engine: WasmEngine,
 }
@@ -257,9 +272,10 @@ impl WasmEngine {
             capture_claimed: false,
             io: None,
             io_claimed: false,
-            registry_claimed: false,
+            component_claimed: false,
             registry_profile: None,
             provider_prepare_reads: None,
+            read_only_call: None,
             #[cfg(test)]
             import_trace: None,
             #[cfg(test)]
@@ -317,7 +333,7 @@ impl WasmEngine {
         Ok(NativeSetupStore {
             store: Some(store),
             physical: Some(physical),
-            registry_control: None,
+            component_control: None,
             _engine: self.clone(),
         })
     }
@@ -508,7 +524,7 @@ impl<T: 'static> Drop for NativeSetupStore<T> {
     fn drop(&mut self) {
         self.retire();
         drop(self.store.take());
-        drop(self.registry_control.take());
+        drop(self.component_control.take());
         drop(self.physical.take());
         let _ = crate::allocation::reap_custody();
     }

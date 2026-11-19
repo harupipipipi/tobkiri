@@ -566,6 +566,116 @@ sys.stdout.buffer.write(body.encode("utf-8"))
 
 struct KillChild(Child);
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the built and verified saved-turn Wasm Pack archive"]
+async fn actual_wasm_proposes_settlement_under_the_original_sqlite_lock() -> anyhow::Result<()> {
+    use std::collections::BTreeMap;
+    use tobkiri_canon::ids::{OpName, ShapeRef};
+    use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupLease};
+    use tobkiri_wasm::WasmEngine;
+
+    struct Proof;
+    impl NativeSetupLease for Proof {
+        fn validate(&self) -> std::result::Result<(), GateError> {
+            Ok(())
+        }
+        fn allocation_domain(&self) -> Digest {
+            Digest::hash(b"original saved turn local Wasm proof")
+        }
+    }
+
+    let source = std::env::var_os("TOBKIRI_TURN_WASM_PACK")
+        .expect("provide the built local.saved-turn-runtime.tpk");
+    let pack = tobkiri_core::pack::verify_tpk(&fs::read(source)?, &BTreeMap::new())?;
+    let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-settlement@1.0")?;
+    let operation = OpName::parse("prepare")?;
+    let original = OriginalStore::new();
+    original.initialize(&running_turn());
+    let initial_bytes = fs::read(&original.database)?;
+    let reference = result_reference().to_string();
+    let control = CoreControl::default();
+    let ledger = CapacityLedger::new();
+    let account = ledger.native_setup_account(&control, || Ok(Arc::new(Proof)))?;
+    let engine = WasmEngine::new_with_control(&control)?;
+    let runtime = tokio::runtime::Handle::current();
+    let offered = Arc::new(AtomicU64::new(0));
+    let mut completed_bytes = None;
+
+    for (revision, permit) in [(1, true), (2, false), (2, true), (1, false)] {
+        let invocation = account.begin()?;
+        let deadline = invocation.deadline()?;
+        let mut wasm = engine.native_setup_store(invocation, ())?;
+        let budget = wasm.allocation_owners().graph().clone();
+        let port = wasm
+            .prepare_declared_read_only_port(
+                &pack,
+                &shape,
+                &operation,
+                &original.profile,
+                deadline,
+                3,
+            )
+            .await?;
+        let request = request(Some(revision), reference.as_bytes());
+        let offered_here = Arc::clone(&offered);
+        let journal = original.journal();
+        let current = tokio::task::block_in_place(|| {
+            settle_legacy_saved_turn_from_admitted_port(
+                &original.root,
+                &original.profile,
+                &request,
+                &budget,
+                deadline,
+                move |phase| {
+                    if phase == OriginalSavedTurnCheck::Publish {
+                        assert!(
+                            journal.is_file(),
+                            "publication belongs inside the SQLite commit"
+                        );
+                        offered_here.fetch_add(1, Ordering::AcqRel);
+                        if !permit {
+                            return Err(Error::Revoked);
+                        }
+                    }
+                    Ok(())
+                },
+                |row| {
+                    runtime.block_on(invoke_original_saved_turn_port(
+                        port, row, &request, &budget,
+                    ))
+                },
+            )
+        });
+        match (revision, permit) {
+            (1, true) => assert_eq!(current.unwrap_err(), Error::Conflict),
+            (2, false) => assert_eq!(current.unwrap_err(), Error::Revoked),
+            (2, true) => {
+                let output = current?;
+                let row: Value = serde_json::from_slice(output.as_bytes())?;
+                assert_eq!(row["revision"], 3);
+                assert_eq!(row["status"], "completed");
+                assert_eq!(output.as_bytes(), original.row().2.as_bytes());
+                completed_bytes = Some(fs::read(&original.database)?);
+            }
+            (1, false) => {
+                assert_eq!(current?.as_bytes(), original.row().2.as_bytes());
+                assert_eq!(
+                    fs::read(&original.database)?,
+                    *completed_bytes.as_ref().unwrap()
+                );
+            }
+            _ => unreachable!(),
+        }
+        if completed_bytes.is_none() {
+            assert_eq!(fs::read(&original.database)?, initial_bytes);
+        }
+        drop(wasm);
+        assert_eq!(account.snapshot()?.charged_bytes, 0);
+    }
+    assert_eq!(offered.load(Ordering::Acquire), 2);
+    Ok(())
+}
+
 impl Drop for KillChild {
     fn drop(&mut self) {
         let _ = self.0.kill();

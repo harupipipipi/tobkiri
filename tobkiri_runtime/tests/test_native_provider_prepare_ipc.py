@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -431,6 +432,175 @@ def test_model_save_loses_guard_during_result_delivery(
         writer(_model_save_request(borrow, lambda: None))
 
 
+_TURN_REFERENCE = {
+    "conversation_id": "conversation-1",
+    "conversation_revision": 5,
+    "user_message_id": "message:" + "c" * 64,
+    "assistant_message_id": "message:" + "d" * 64,
+    "outcome_digest": "sha256:" + "e" * 64,
+}
+_TURN_DIGEST = "sha256:" + "b" * 64
+_SETTLED_TURN = {
+    "id": "turn-1", "profile_id": "defaults", "request_id": "saved-turn.fixture",
+    "conversation_id": "conversation-1", "conversation_revision": 3,
+    "status": "completed", "revision": 8, "input_digest": _TURN_DIGEST,
+    "result_reference": _TURN_REFERENCE, "created_at": 100, "updated_at": 200,
+    "guidance": [], "events": [{"name": "turn.completed", "wide": 1 << 128}],
+}
+
+
+def _settlement_request(
+    borrow: _Borrow, marker: Callable[[], None],
+) -> ipc.NativeSavedTurnSettlementRequest:
+    return ipc.NativeSavedTurnSettlementRequest(
+        context=borrow.context, runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic, assert_current=borrow.assert_current,
+        caller="saved-turn", turn_id="turn-1", input_digest=_TURN_DIGEST,
+        expected_revision=None, result_reference=_TURN_REFERENCE,
+        mark_publication_possible=marker,
+    )
+
+
+@contextmanager
+def _served_turn_settlement(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeSavedTurnSettlementRequest], Mapping[str, Any]]]:
+    with _served(monkeypatch, serve):
+        writer = ipc.capture_launcher_saved_turn_settlement_writer()
+        assert writer is not None
+        yield writer
+
+
+@pytest.mark.parametrize("replay", [False, True])
+def test_turn_settlement_sends_only_the_bound_reference_and_preserves_the_owner_row(
+    monkeypatch: pytest.MonkeyPatch, replay: bool,
+) -> None:
+    borrow = _Borrow()
+    marked = threading.Event()
+    checked = threading.Event()
+
+    def guard() -> None:
+        borrow.assert_current()
+        if marked.is_set():
+            checked.set()
+
+    request = replace(_settlement_request(borrow, marked.set), assert_current=guard)
+    if replay:
+        request = replace(request, caller="saved-reconcile", expected_revision=7)
+    owner_row = dict(_SETTLED_TURN, details="")
+    row_bytes = json.dumps(owner_row).encode()
+    owner_row["details"] = "x" * (1024 * 1024 - len(row_bytes))
+    row_bytes = json.dumps(owner_row).encode()
+    assert len(row_bytes) == 1024 * 1024
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == 1
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": "a" * 32,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "turn_settlement": {
+                "caller": request.caller, "turn_id": "turn-1",
+                "input_digest": _TURN_DIGEST, "expected_revision": request.expected_revision,
+                "result_reference": json.dumps(_TURN_REFERENCE, separators=(",", ":")),
+            },
+        }
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        assert not marked.is_set()
+        if not replay:
+            _send(peer, 11)
+            assert _receive(peer) == (12, b"")
+            assert marked.is_set() and checked.is_set()
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, 7, row_bytes)
+        assert peer.recv(1) == b""
+
+    with _served_turn_settlement(monkeypatch, serve) as writer:
+        assert writer(request) == owner_row
+    assert marked.is_set() is (not replay)
+
+
+@pytest.mark.parametrize("change", [
+    {"caller": "shell"}, {"caller": "saved-reconcile"},
+    {"turn_id": "a" * 257}, {"turn_id": "été"}, {"turn_id": "a/b"},
+    {"input_digest": "sha256:" + "A" * 64},
+    {"expected_revision": True}, {"expected_revision": 0},
+    {"expected_revision": 1 << 64},
+    {"result_reference": {"non-finite": math.inf}},
+    {"result_reference": {"payload": "é" * 1024}},
+])
+def test_turn_settlement_rejects_invalid_inputs_before_start(change: dict[str, Any]) -> None:
+    request = replace(_settlement_request(_Borrow(), _unexpected_marker), **change)
+    with pytest.raises(ipc._ProtocolError):
+        ipc._start_payload(request, 1)
+
+
+@pytest.mark.parametrize("live, tag, body, error_type", [
+    (False, 10, b"", ipc.NativeProviderPrepareUnavailable),
+    (False, 8, b"legacy-read-required", ipc._ProtocolError),
+    (True, 8, b"legacy-read-required", ipc.NativeProviderRegistryRequiresLegacyRead),
+    (True, 8, b"conflict", ipc.NativeSavedTurnSettlementFailure),
+    (True, 8, b"unavailable", ipc.NativeSavedTurnSettlementFailure),
+])
+def test_turn_settlement_distinguishes_only_explicit_fallback_from_failure(
+    monkeypatch: pytest.MonkeyPatch, live: bool, tag: int, body: bytes,
+    error_type: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, tag, body)
+        assert peer.recv(1) == b""
+
+    with _served_turn_settlement(monkeypatch, serve) as writer, pytest.raises(error_type) as exc:
+        writer(_settlement_request(_Borrow(), _unexpected_marker))
+    if isinstance(exc.value, ipc.NativeSavedTurnSettlementFailure):
+        assert exc.value.code == body.decode()
+
+
+@pytest.mark.parametrize("terminal", [
+    None, (8, b"legacy-read-required"), (8, b"conflict"), (11, b""),
+    (7, json.dumps(dict(_SETTLED_TURN, id="another-turn")).encode()),
+    (7, json.dumps({"turn": _SETTLED_TURN}).encode()),
+])
+def test_turn_settlement_never_retries_after_possible_publication(
+    monkeypatch: pytest.MonkeyPatch, terminal: tuple[int, bytes] | None,
+) -> None:
+    marks = []
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 11)
+        assert _receive(peer) == (12, b"")
+        if terminal is not None:
+            _send(peer, *terminal)
+            if terminal[0] != 8:
+                assert _receive(peer) == (9, b"")
+                if terminal[0] == 11:
+                    return  # Closing without acknowledgement leaves cleanup unconfirmed.
+                _send(peer, 8, b"cancelled")
+            assert peer.recv(1) == b""
+
+    with (
+        _served_turn_settlement(monkeypatch, serve) as writer,
+        pytest.raises(ipc.NativeSavedTurnSettlementPublicationUnconfirmed),
+    ):
+        writer(_settlement_request(_Borrow(), lambda: marks.append(True)))
+    assert marks == [True]
+
+
 def test_model_settings_reader_sends_only_its_role_and_accepts_one_mib_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -743,7 +913,9 @@ def test_deadline_keeps_original_failure_after_cancel_cleanup(
             planner.plan(borrow)
 
 
-@pytest.mark.parametrize("operation", ["provider", "model-resolve", "saved-receipt"])
+@pytest.mark.parametrize(
+    "operation", ["provider", "model-resolve", "saved-receipt", "turn-settlement"],
+)
 def test_real_child_rejects_socket_owned_by_a_different_same_uid_process(
     operation: str,
 ) -> None:
@@ -767,6 +939,12 @@ elif sys.argv[1] == "saved-receipt":
     borrow = native_provider_prepare_ipc.NativeSavedReceiptRequest(
         None, "a" * 32, borrow.deadline_monotonic, borrow.assert_current,
         "saved-turn", "fixture",
+    )
+elif sys.argv[1] == "turn-settlement":
+    invoke = native_provider_prepare_ipc.capture_launcher_saved_turn_settlement_writer()
+    borrow = native_provider_prepare_ipc.NativeSavedTurnSettlementRequest(
+        None, "a" * 32, borrow.deadline_monotonic, borrow.assert_current,
+        "saved-turn", "fixture", "sha256:" + "b" * 64, None, {}, lambda: None,
     )
 else:
     planner = native_provider_prepare_ipc.capture_launcher_provider_prepare_planner()

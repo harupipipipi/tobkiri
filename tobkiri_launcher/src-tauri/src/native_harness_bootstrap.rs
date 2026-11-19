@@ -42,7 +42,7 @@ pub(crate) use authority::{
 mod launch_metadata;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use launch_metadata::{
-    read_launch_metadata, registry_pack_receipt_bound, ConversationReadCaller,
+    read_launch_metadata, registry_pack_receipt_bound, ConversationReadCaller, SettlementCaller,
     VerifiedRegistryLaunch,
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -54,7 +54,8 @@ mod provider_prepare;
 pub(crate) use provider_prepare::{
     start_provider_prepare, ConversationRegistryRequiresLegacyRead,
     ModelRegistryRequiresLegacyRead, NativeRegistryRequest, PendingProviderPrepare,
-    ProviderPrepareDeadline, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+    ProviderPrepareDeadline, TurnSettlementRequiresLegacyCodec, CONVERSATION_READ_REPLY_LIMIT,
+    MODEL_RESOLVE_REPLY_LIMIT,
 };
 
 enum OwnedRuntime {

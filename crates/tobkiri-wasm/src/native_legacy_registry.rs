@@ -430,11 +430,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             .context("native Setup Store was retired")?;
         let state = store.data_mut();
         ensure_active(state)?;
-        ensure!(
-            !state.registry_claimed,
-            "legacy Registry call already claimed"
-        );
-        state.registry_claimed = true;
+        state.claim_component()?;
 
         let artifact = declared_registry_component(pack, export)?;
         let function = declared_registry_function(pack, export)?;
@@ -461,7 +457,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         // Retain conservative native compilation/instance metadata funding
         // until the actual Store owning the compiled code has been destroyed.
         let compilation_bytes = length * 8 + 1024 * 1024;
-        self.registry_control = Some(
+        self.component_control = Some(
             state
                 .invocation
                 .control()
@@ -738,7 +734,7 @@ fn profile_input(profile_id: &str, owners: &crate::AllocationOwners) -> Result<C
     )?)
 }
 
-fn read_component(
+pub(super) fn read_component(
     artifact: &tobkiri_manifest::source::StagedArtifact,
     owners: &crate::AllocationOwners,
 ) -> Result<CoreBuffer> {

@@ -28,6 +28,131 @@ fn funding() -> (NativeSetupAccount, NativeSetupInvocation) {
     (account, invocation)
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn declared_read_only_port_limits_clock_calls_and_traps_wasi() -> anyhow::Result<()> {
+    use std::{collections::BTreeMap, fs, time::SystemTime};
+    use tobkiri_canon::ids::{OpName, ProfileId, ShapeRef};
+    use wasmtime::component::Val;
+
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let directory = tempfile::tempdir()?;
+    let root = directory.path();
+    fs::create_dir(root.join("wit"))?;
+    fs::write(
+        root.join("wit/pack.wit"),
+        "package local:read-only-test@1.0.0; interface observe { sample: func() -> u64; call-wasi: func(); }",
+    )?;
+    fs::write(
+        root.join("wit/observe.shape.json"),
+        br#"{"cardinality":"one","streams":{},"callbacks":{}}"#,
+    )?;
+    fs::write(
+        root.join("component.wasm"),
+        wat::parse_str(
+            r#"(component
+                (type $clock (instance (export "now-ms" (func (result u64)))))
+                (import "tobkiri:core/clock@1.2.0" (instance $clock (type $clock)))
+                (type $cli (instance
+                    (type $status (result))
+                    (export "exit" (func (param "status" $status)))))
+                (import "wasi:cli/exit@0.2.6" (instance $cli (type $cli)))
+                (alias export $clock "now-ms" (func $now))
+                (alias export $cli "exit" (func $exit))
+                (core func $now (canon lower (func $now)))
+                (core func $exit (canon lower (func $exit)))
+                (core module $entry
+                    (import "host" "now" (func $now (result i64)))
+                    (import "host" "exit" (func $exit (param i32)))
+                    (func (export "sample") (result i64)
+                        call $now drop
+                        call $now drop
+                        call $now)
+                    (func (export "call-wasi") i32.const 0 call $exit))
+                (core instance $entry (instantiate $entry
+                    (with "host" (instance
+                        (export "now" (func $now))
+                        (export "exit" (func $exit))))))
+                (alias core export $entry "sample" (core func $sample))
+                (alias core export $entry "call-wasi" (core func $call-wasi))
+                (func $sample (result u64) (canon lift (core func $sample)))
+                (func $call-wasi (canon lift (core func $call-wasi)))
+                (instance $observe
+                    (export "sample" (func $sample))
+                    (export "call-wasi" (func $call-wasi)))
+                (export "local:read-only-test/observe@1.0.0" (instance $observe)))"#,
+        )?,
+    )?;
+    let manifest = tobkiri_manifest::generate_manifest(
+        root,
+        br#"{
+            "format":"tobkiri.pack/1","id":"local.read-only-test","version":"1.0.0",
+            "publisher_key":null,"runtime":{"kind":"wasm","component":"component.wasm",
+                "toolchain":"wat-test/1","config":null},
+            "shapes":[{"name":"local.read-only-test.observe","version":"1.0","kind":"port",
+                "wit":"wit/pack.wit"}],
+            "ports":{"provides":[{"shape":"local.read-only-test.observe","version":"1.0",
+                "optional":false}],"consumes":[],"untyped":[]},
+            "flows":[],"overlays":[],"stores":[],
+            "permissions":{"wasm":{"fuel_per_call":100000,"memory_mib":1,
+                "wall_ms":10000,"table_elements":16,"output_bytes":32},
+                "loops":{"max_iterations":1,"max_wall_ms":100,"max_cost_units":1}},
+            "ui":null,"files":["component.wasm","wit/observe.shape.json","wit/pack.wit"]
+        }"#,
+    )?;
+    fs::write(root.join("pack.json"), manifest)?;
+    let pack = tobkiri_manifest::verify_directory(root, &BTreeMap::new())?;
+    let shape = ShapeRef::parse("local.read-only-test.observe@1.0")?;
+    let profile = ProfileId::parse("test-profile")?;
+    for (operation, max_calls, expected_trap) in [
+        (
+            "sample",
+            2,
+            Some("native read-only clock allowance exhausted"),
+        ),
+        ("sample", 3, None),
+        ("call-wasi", 0, Some("wasi:cli/exit@0.2.6#exit")),
+    ] {
+        let operation = OpName::parse(operation)?;
+        let (account, invocation) = funding();
+        let deadline = invocation.deadline()?;
+        let engine = WasmEngine::new_with_control(invocation.control())?;
+        let mut store = engine.native_setup_store(invocation, ())?;
+        let port = store
+            .prepare_declared_read_only_port(
+                &pack, &shape, &operation, &profile, deadline, max_calls,
+            )
+            .await?;
+        let result = port.invoke(&[]).await;
+        if let Some(expected_trap) = expected_trap {
+            assert!(
+                format!(
+                    "{:#}",
+                    result.expect_err("the prohibited import call must trap")
+                )
+                .contains(expected_trap)
+            );
+        } else {
+            let values = result?;
+            let [Val::U64(timestamp)] = values.as_slice() else {
+                anyhow::bail!("wall-clock timestamp is missing")
+            };
+            assert!(u128::from(*timestamp) <= SystemTime::UNIX_EPOCH.elapsed()?.as_millis());
+        }
+        assert!(
+            store
+                .prepare_declared_read_only_port(
+                    &pack, &shape, &operation, &profile, deadline, max_calls
+                )
+                .await
+                .is_err()
+        );
+        drop(store);
+        assert_eq!(account.snapshot()?.charged_bytes, 0);
+    }
+    Ok(())
+}
+
 struct ObserveDrop {
     account: NativeSetupAccount,
     observed_charge: Arc<AtomicU64>,

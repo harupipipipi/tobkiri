@@ -13,7 +13,9 @@ from build import REPO, ROOT, sha256, write_json
 
 
 # These names are source directories and the exact local Pack identities.
-PACKS = ("provider-registry", "model-registry", "saved-conversation")
+ORIGINAL_PACKS = ("provider-registry", "model-registry", "saved-conversation")
+SETTLEMENT_PACK = "saved-turn-runtime"
+PACKS = (*ORIGINAL_PACKS, SETTLEMENT_PACK)
 CORE_WIT = REPO / "crates/tobkiri-wit/wit/core-v1-2/core.wit"
 
 
@@ -73,7 +75,12 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--pack", action="append", choices=PACKS)
     args = parser.parse_args()
-    selected = set(args.pack or PACKS)
+    selected = set(args.pack or ORIGINAL_PACKS)
+    receipt_version = 1
+    if SETTLEMENT_PACK in selected:
+        if selected != set(PACKS):
+            parser.error("the settlement Pack requires the full Registry Pack set")
+        receipt_version = 2
     output = args.output.absolute()
     if output.exists() or output.is_symlink():
         parser.error("output must be a new directory")
@@ -89,7 +96,8 @@ def main() -> None:
             if name in selected
         ]
         write_json(
-            archives / "receipt.json", {"format": "tobkiri.registry-packs/1", "packs": records}
+            archives / "receipt.json",
+            {"format": f"tobkiri.registry-packs/{receipt_version}", "packs": records},
         )
         archives.rename(output)
 

@@ -12,14 +12,14 @@ use tauri::{AppHandle, Manager};
 use tobkiri_core::{
     ids::{OpName, ShapeRef},
     pack::{RuntimeSpec, ShapeKind, VerifiedPack},
-    NativeArtifactInspection, NativeSetupInvocation,
+    Digest, NativeArtifactInspection, NativeSetupInvocation,
 };
-use tobkiri_gate::{ControlKind, CoreCancellation};
+use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
 use tobkiri_harness_native::{
-    OriginalActivationInspection, OriginalActiveProfile, OriginalConversationReadSelection,
-    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
-    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
-    OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
+    select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
+    OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
@@ -43,6 +43,9 @@ use crate::{
     preparation_budget, registry_pack_receipt, AppConfig, ShutdownState,
 };
 
+/// The signed Shell-to-Turn grant authorizing this settlement caller.
+pub(crate) use tobkiri_harness_native::OriginalSavedTurnSettlementRole as SettlementCaller;
+
 const REGISTRY_RECEIPT_SHA256: &str = env!("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256");
 // Allow the bounded receipt decoder and streaming SHA-256 work to run only
 // when their fixed working set fits the real Launch job's control ledger.
@@ -59,6 +62,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     pub(crate) model_save: Option<VerifiedModelSaveSource>,
     model_resolve: Option<VerifiedModelResolveSource>,
     conversation: Option<VerifiedConversationSource>,
+    turn_settlement: Option<VerifiedTurnSettlementSource>,
 }
 
 /// The caller of the original conversation-owner read grant.
@@ -85,6 +89,13 @@ impl VerifiedRegistryLaunch {
         self.conversation
             .as_ref()
             .is_some_and(|source| source.permits_read(caller))
+    }
+
+    /// Require the caller's original signed Turn grant and verified settlement Pack.
+    pub(crate) fn permits_turn_settlement(&self, role: SettlementCaller) -> bool {
+        self.turn_settlement
+            .as_ref()
+            .is_some_and(|source| source.permits(role))
     }
 
     /// Require the receipt caller's own legacy edge and verified receipt declaration.
@@ -171,6 +182,24 @@ impl VerifiedConversationSource {
     }
 }
 
+/// Separate signed Shell-to-Turn grants and the receipt pin for the settlement Pack.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedTurnSettlementSource {
+    roles: [Option<(SettlementCaller, VerifiedLegacyRoutePin)>; 2],
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
+}
+
+impl VerifiedTurnSettlementSource {
+    fn permits(&self, role: SettlementCaller) -> bool {
+        self.roles
+            .iter()
+            .flatten()
+            .any(|(granted, _)| *granted == role)
+    }
+}
+
 /// Exact legacy binding digests confirmed against the activation and signed Bundle.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct VerifiedLegacyRoutePin {
@@ -213,6 +242,7 @@ impl VerifiedRegistryLaunch {
             model_save: None,
             model_resolve: None,
             conversation: None,
+            turn_settlement: None,
         }
     }
 
@@ -234,6 +264,7 @@ impl VerifiedRegistryLaunch {
             model_save: None,
             model_resolve: None,
             conversation: None,
+            turn_settlement: None,
         }
     }
 
@@ -256,6 +287,7 @@ impl VerifiedRegistryLaunch {
             }),
             model_resolve: None,
             conversation: None,
+            turn_settlement: None,
         }
     }
 
@@ -283,6 +315,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             conversation: None,
+            turn_settlement: None,
         }
     }
 
@@ -304,6 +337,30 @@ impl VerifiedRegistryLaunch {
                 saved_turn: None,
                 saved_orchestration: None,
                 saved_receipt: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
+                archive_sha256: "sha256:archive".into(),
+                archive_bytes: 512,
+                manifest_sha256: "sha256:manifest".into(),
+            }),
+            turn_settlement: None,
+        }
+    }
+
+    pub(crate) fn test_turn_settlement_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: SettlementCaller,
+    ) -> Self {
+        Self {
+            identity,
+            security_epoch: 7,
+            catalog_revision: catalog_revision.to_owned(),
+            provider_prepare: None,
+            model_settings: None,
+            model_save: None,
+            model_resolve: None,
+            conversation: None,
+            turn_settlement: Some(VerifiedTurnSettlementSource {
+                roles: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
@@ -575,59 +632,50 @@ impl LaunchActivationObserver<'_> {
             .map(|active| OriginalSavedReceiptSelection::select(active, budget))
             .transpose()?
             .flatten();
-        let (app_root, activation) = inspection.with_source(|sources| {
+        let has_existing_grants = provider_selection.is_some()
+            || model_selection.is_some()
+            || model_save_selection.is_some()
+            || model_resolve_selection.is_some()
+            || conversation_read_selection.is_some()
+            || saved_receipt_selection.is_some();
+        let (app_root, catalog_revision, locked) = inspection.with_source(|sources| {
             let catalog_revision = &sources.authority().catalog_revision;
-            let activation = active
-                .map(|active| {
-                    validate_observed_activation(active, self.identity, catalog_revision)?;
-                    if provider_selection.is_none()
-                        && model_selection.is_none()
-                        && model_save_selection.is_none()
-                        && model_resolve_selection.is_none()
-                        && conversation_read_selection.is_none()
-                        && saved_receipt_selection.is_none()
-                    {
-                        return Ok(None);
-                    }
-                    let security_epoch = active
-                        .identity()
-                        .get_key("security_epoch")
-                        .and_then(|value| value.as_i64())
-                        .and_then(|epoch| u64::try_from(epoch).ok())
-                        .context("native Authority activation has an invalid security epoch")?;
-                    Ok::<_, anyhow::Error>(Some((
-                        sources.registry_bundle(
-                            provider_selection.as_ref(),
-                            model_selection.as_ref(),
-                            model_save_selection.as_ref(),
-                            model_resolve_selection.as_ref(),
-                            (
-                                conversation_read_selection.as_ref(),
-                                saved_receipt_selection.as_ref(),
-                            ),
-                            budget,
-                        )?,
-                        security_epoch,
-                        catalog_revision.clone(),
-                    )))
+            if let Some(active) = active {
+                validate_observed_activation(active, self.identity, catalog_revision)?;
+            }
+            let locked = has_existing_grants
+                .then(|| {
+                    sources.registry_bundle(
+                        provider_selection.as_ref(),
+                        model_selection.as_ref(),
+                        model_save_selection.as_ref(),
+                        model_resolve_selection.as_ref(),
+                        (
+                            conversation_read_selection.as_ref(),
+                            saved_receipt_selection.as_ref(),
+                        ),
+                        budget,
+                    )
                 })
-                .transpose()?
-                .flatten();
+                .transpose()?;
             Ok::<_, anyhow::Error>((
                 sources.root(NativeSourceRoot::Application).to_path_buf(),
-                activation,
+                catalog_revision.clone(),
+                locked,
             ))
         })??;
-        let Some((locked, security_epoch, catalog_revision)) = activation else {
+        let Some(active) = active else {
             registry_pack_receipt::verify_installed(&app_root, REGISTRY_RECEIPT_SHA256, || {
                 checkpoint().map_err(io::Error::other)
             })
             .context("bundled Registry Pack verification failed during Launch")?;
             return Ok(None);
         };
-        locked.verify(checkpoint)?;
-        let (provider_prepare, (model_settings, model_save, model_resolve), conversation) =
-            registry_pack_receipt::verify_installed_with_archives(
+        if let Some(locked) = locked {
+            locked.verify(checkpoint)?;
+        }
+        let verified_registry_pack_evidence =
+            registry_pack_receipt::verify_installed_with_settlement_archives(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
                 || checkpoint().map_err(io::Error::other),
@@ -730,8 +778,28 @@ impl LaunchActivationObserver<'_> {
                         manifest_sha256: receipt.manifest_sha256().to_owned(),
                     }))
                 },
+                |receipt, input| {
+                    verify_turn_settlement_source(inspection, active, receipt, input, checkpoint)
+                        .map_err(io::Error::other)
+                },
             )
             .context("bundled Registry Pack verification failed during Launch")?;
+        let (
+            provider_prepare,
+            (model_settings, model_save, model_resolve),
+            conversation,
+            settlement,
+        ) = verified_registry_pack_evidence;
+        let turn_settlement = settlement.flatten();
+        if !has_existing_grants && turn_settlement.is_none() {
+            return Ok(None);
+        }
+        let security_epoch = active
+            .identity()
+            .get_key("security_epoch")
+            .and_then(|value| value.as_i64())
+            .and_then(|epoch| u64::try_from(epoch).ok())
+            .context("native Authority activation has an invalid security epoch")?;
         if provider_prepare.is_some() {
             log::info!("verified the selected old Provider prepare and its bundled Wasm replacement for this activation");
         }
@@ -750,6 +818,9 @@ impl LaunchActivationObserver<'_> {
         if saved_receipt_selection.is_some() {
             log::info!("verified selected old Conversation saved receipt grants and their bundled Wasm replacement for this activation");
         }
+        if turn_settlement.is_some() {
+            log::info!("verified selected old Turn settlement grants and their bundled Wasm replacement for this activation");
+        }
         Ok(Some(VerifiedRegistryLaunch {
             identity: self.identity.clone(),
             security_epoch,
@@ -759,6 +830,7 @@ impl LaunchActivationObserver<'_> {
             model_save,
             model_resolve,
             conversation,
+            turn_settlement,
         }))
     }
 }
@@ -927,6 +999,37 @@ pub(super) fn reacquire_saved_receipt_pack(
     .context("bundled Conversation saved receipt archive verification failed")
 }
 
+/// Reacquire the Turn settlement Pack using the caller's signed grant and pinned archive.
+pub(crate) fn reacquire_turn_settlement_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: SettlementCaller,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .turn_settlement
+        .as_ref()
+        .filter(|source| source.permits(role))
+        .context("admitted launch has no verified Turn settlement source for the caller")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    registry_pack_receipt::verify_installed_with_settlement(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            verify_turn_settlement_archive(inspection, receipt, input)
+        },
+    )
+    .context("bundled Turn settlement archive verification failed")?
+    .context("bundled Registry receipt has no Turn settlement archive")
+}
+
 fn reacquire_conversation_archive(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
@@ -992,6 +1095,102 @@ fn require_archive_receipt(
             "installed Registry receipt differs from the admitted launch",
         ));
     }
+    Ok(())
+}
+
+fn verify_turn_settlement_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<VerifiedTurnSettlementSource>> {
+    let budget = inspection.allocation_budget()?;
+    let [saved_turn, saved_reconcile] = SettlementCaller::ALL;
+    let selections = [
+        select_original_saved_turn_settlement(active, budget, saved_turn)?,
+        select_original_saved_turn_settlement(active, budget, saved_reconcile)?,
+    ];
+    if selections.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    let locked = inspection.with_source(|sources| {
+        sources.turn_settlement_bundle(selections.each_ref().map(Option::as_ref), budget)
+    })??;
+    locked.verify(checkpoint)?;
+    verify_turn_settlement_archive(inspection, receipt, input)?;
+    Ok(Some(VerifiedTurnSettlementSource {
+        roles: selections.map(|choice| choice.map(|choice| (choice.role(), choice.pin().into()))),
+        archive_sha256: receipt.archive_sha256().to_owned(),
+        archive_bytes: receipt.archive_bytes(),
+        manifest_sha256: receipt.manifest_sha256().to_owned(),
+    }))
+}
+
+fn verify_turn_settlement_archive(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+) -> io::Result<VerifiedPack> {
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_turn_settlement_declaration(&pack).map_err(io::Error::other)?;
+    Ok(pack)
+}
+
+// The same files are used when staging the Pack. They determine the exact
+// parameter and result ABI, Core imports, and settlement port cardinality.
+const TURN_SETTLEMENT_WIT_FILES: [(&str, &[u8]); 3] = [
+    (
+        "wit/pack.wit",
+        include_bytes!("../../../packs/local.saved-turn-runtime-rust/wit/pack.wit"),
+    ),
+    (
+        "wit/deps/core.wit",
+        include_bytes!("../../../crates/tobkiri-wit/wit/core-v1-2/core.wit"),
+    ),
+    (
+        "wit/legacy-settlement.shape.json",
+        include_bytes!(
+            "../../../packs/local.saved-turn-runtime-rust/wit/legacy-settlement.shape.json"
+        ),
+    ),
+];
+
+fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<()> {
+    const SHAPE: &str = "local.saved-turn-runtime.legacy-settlement@1.0";
+    let manifest = &pack.manifest;
+    let permissions = PermissionSet {
+        wasm: manifest.permissions.wasm.clone(),
+        loops: manifest.permissions.loops.clone(),
+        ..PermissionSet::default()
+    };
+    ensure!(
+        manifest.id.as_str() == registry_pack_receipt::SETTLEMENT_PACK_ID
+            && manifest.ports.provides.len() == 1
+            && manifest.ports.consumes.is_empty()
+            && manifest.ports.untyped.is_empty()
+            && manifest.inputs.is_empty()
+            && manifest.flows.is_empty()
+            && manifest.overlays.is_empty()
+            && manifest.stores.is_empty()
+            && manifest.ui.is_none()
+            && manifest.permissions == permissions,
+        "bundled Turn settlement Pack has unexpected capabilities"
+    );
+    ensure!(
+        matches!(&manifest.runtime, RuntimeSpec::Wasm { component, core_modules, config, .. }
+            if component == "component.wasm" && core_modules.is_empty() && config.is_none())
+            && manifest.shapes.len() == 1
+            && manifest.shapes[0].wit == "wit/pack.wit"
+            && manifest.files.len() == TURN_SETTLEMENT_WIT_FILES.len() + 1
+            && TURN_SETTLEMENT_WIT_FILES.into_iter().all(|(path, wit)| {
+                pack.files
+                    .get(path)
+                    .is_some_and(|file| *file.digest() == Digest::hash(wit))
+            }),
+        "bundled Turn settlement Pack has an unexpected WIT or runtime declaration"
+    );
+    require_registry_ports(pack, "prepare", &[SHAPE])?;
     Ok(())
 }
 
@@ -1173,6 +1372,91 @@ mod tests {
             apply: None,
         }
         .has_launch_proof(&proof));
+    }
+
+    #[test]
+    fn turn_settlement_declaration_pins_wit_and_rejects_extra_permissions() {
+        use std::{fs, path::PathBuf};
+        use tobkiri_core::pack::{generate_manifest, verify_directory};
+
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-settlement-declaration-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("wit/deps")).unwrap();
+        let path = root.0.canonicalize().unwrap();
+        for (relative, wit) in TURN_SETTLEMENT_WIT_FILES {
+            fs::write(path.join(relative), wit).unwrap();
+        }
+        fs::write(path.join("component.wasm"), b"fixture").unwrap();
+        let draft = include_bytes!("../../../packs/local.saved-turn-runtime-rust/pack.draft.json");
+        let verify = |draft: &[u8]| {
+            let manifest = generate_manifest(&path, draft).unwrap();
+            fs::write(path.join("pack.json"), manifest).unwrap();
+            verify_directory(&path, &Default::default()).unwrap()
+        };
+        require_turn_settlement_declaration(&verify(draft)).unwrap();
+
+        let mut extra: serde_json::Value = serde_json::from_slice(draft).unwrap();
+        extra["permissions"]["storage"] = serde_json::json!({"private": true});
+        assert!(
+            require_turn_settlement_declaration(&verify(&serde_json::to_vec(&extra).unwrap()))
+                .unwrap_err()
+                .to_string()
+                .contains("unexpected capabilities")
+        );
+        let old_wit = std::str::from_utf8(TURN_SETTLEMENT_WIT_FILES[0].1).unwrap();
+        fs::write(
+            path.join("wit/pack.wit"),
+            old_wit.replace("option<u64>", "option<u32>"),
+        )
+        .unwrap();
+        assert!(require_turn_settlement_declaration(&verify(draft))
+            .unwrap_err()
+            .to_string()
+            .contains("unexpected WIT"));
+    }
+
+    #[test]
+    fn turn_settlement_evidence_requires_the_original_grant_for_each_role() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let revision = "catalog:fixture";
+        for granted in OriginalSavedReceiptRole::ALL {
+            let receipt = VerifiedRegistryLaunch::test_saved_receipt_proof(
+                identity.clone(),
+                revision,
+                granted,
+            );
+            for role in SettlementCaller::ALL {
+                assert!(!receipt.permits_turn_settlement(role));
+            }
+        }
+        for granted in SettlementCaller::ALL {
+            let proof = VerifiedRegistryLaunch::test_turn_settlement_proof(
+                identity.clone(),
+                revision,
+                granted,
+            );
+            for role in SettlementCaller::ALL {
+                assert_eq!(proof.permits_turn_settlement(role), role == granted);
+            }
+            for role in OriginalSavedReceiptRole::ALL {
+                assert!(!proof.permits_saved_receipt(role));
+            }
+            assert!(!proof.permits_conversation_read(ConversationReadCaller::SavedTurn));
+        }
     }
 
     #[test]

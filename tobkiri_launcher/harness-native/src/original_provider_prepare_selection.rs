@@ -103,6 +103,25 @@ static CONVERSATION_READ: Route = Route {
 
 const SAVED_TURN_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.saved";
 const SAVED_RECONCILE_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.reconcile";
+const TURN_RUNTIME_PACK: &str = "rumi_turn_runtime_pack";
+const TURN_SHELL_CALLER: &str = "shell.tauri.default";
+
+static SAVED_TURN: Route = Route {
+    pack: TURN_RUNTIME_PACK,
+    function: SAVED_TURN_CALLER,
+    contract: "tobkiri.action.turn.saved.v1",
+    operation: "rumi_turn_runtime_pack.turn-saved",
+    variant: "rumi_turn_runtime_pack.turn-runtime.saved.python",
+};
+
+static SAVED_RECONCILE: Route = Route {
+    pack: TURN_RUNTIME_PACK,
+    function: SAVED_RECONCILE_CALLER,
+    contract: "tobkiri.action.turn.reconcile.v1",
+    operation: "rumi_turn_runtime_pack.turn-reconcile",
+    variant: "rumi_turn_runtime_pack.turn-runtime.reconcile.python",
+};
+
 const SAVED_ORCHESTRATION_CALLER: &str = "tobkiri_conversation_orchestration_pack.saved";
 const GATEWAY_QUOTE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.route-quote";
 const GATEWAY_GENERATE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.generate";
@@ -408,6 +427,66 @@ impl<'a> OriginalSavedReceiptSelection<'a> {
     }
 }
 
+/// The original Shell grant under which a Turn owner may settle a saved receipt.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalSavedTurnSettlementRole {
+    /// The saved execution path after validating the owner result.
+    SavedTurn,
+    /// The explicit reconciliation path after validating the saved receipt.
+    SavedReconcile,
+}
+
+impl OriginalSavedTurnSettlementRole {
+    /// The distinct original Turn Runtime grants used for settlement.
+    pub const ALL: [Self; 2] = [Self::SavedTurn, Self::SavedReconcile];
+
+    fn route(self) -> &'static Route {
+        match self {
+            Self::SavedTurn => &SAVED_TURN,
+            Self::SavedReconcile => &SAVED_RECONCILE,
+        }
+    }
+}
+
+/// The exact Profile grant from the selected default Shell to the Turn owner.
+pub struct OriginalSavedTurnSettlementChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    role: OriginalSavedTurnSettlementRole,
+    pin: OriginalRoutePin,
+}
+
+impl OriginalSavedTurnSettlementChoice<'_> {
+    /// The settlement role selected by the original Shell grant.
+    pub fn role(&self) -> OriginalSavedTurnSettlementRole {
+        self.role
+    }
+
+    /// The exact grant and Python execution pins for the Turn owner.
+    pub fn pin(&self) -> &OriginalRoutePin {
+        &self.pin
+    }
+}
+
+/// Select one original Shell-to-Turn grant from the active Profile, Lock, and Plan.
+///
+/// An absent or unsupported grant yields `None`. The packaged catalog must
+/// independently attest the returned pin and its privileged effect class.
+pub fn select_original_saved_turn_settlement<'a>(
+    active: &'a OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalSavedTurnSettlementRole,
+) -> Result<Option<OriginalSavedTurnSettlementChoice<'a>>> {
+    Ok(
+        select_saved_turn_settlement_records(active.records(), budget, role)?.map(|pin| {
+            OriginalSavedTurnSettlementChoice {
+                _active: active,
+                role,
+                pin,
+            }
+        }),
+    )
+}
+
 /// A Gateway caller and Model Registry Resolve child operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalModelResolveRole {
@@ -565,6 +644,20 @@ fn select_saved_receipt_records(
         pins[role.index()] = records.select_route(role.caller_function_id(), &CONVERSATION_READ)?;
     }
     Ok(pins)
+}
+
+fn select_saved_turn_settlement_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalSavedTurnSettlementRole,
+) -> Result<Option<OriginalRoutePin>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
+        return Ok(None);
+    }
+    records.select_shell_route(role.route())
 }
 
 fn select_model_resolve_records(
@@ -1054,6 +1147,20 @@ mod tests {
                 "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
                 "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c",
             ),
+            (
+                &SAVED_TURN,
+                SHELL,
+                "authority-ref:21481aa6225da5be0e04f67071df262275cb65368e69915a6bb1460f98e8bd5f",
+                "sha256:b7dda70b162f84a9af42022f3025059c074d6a66dc5b7b2b7ef8b153d48fc8c9",
+                "sha256:def47bb0d27a6a624fd7ac61b770fa148a287173f52e79416a0476927a17b930",
+            ),
+            (
+                &SAVED_RECONCILE,
+                SHELL,
+                "authority-ref:77f95502f06a8b3ef0acb863f32cd7d7056c2d90579509f7c1ca3aa298c01dc6",
+                "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
+                "sha256:ec01327293949904e663230af519789526a68e3acafcef188a7c01a7d70bfc2c",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -1186,6 +1293,114 @@ mod tests {
     const CONVERSATION_SAVED_ORCHESTRATION_ROW: usize = 8;
     const MODEL_RESOLVE_ROWS: std::ops::Range<usize> = 9..13;
     const CONVERSATION_SAVED_RECONCILE_ROW: usize = 13;
+    const SAVED_TURN_SETTLEMENT_ROW: usize = 14;
+    const SAVED_RECONCILE_SETTLEMENT_ROW: usize = 15;
+
+    fn select_saved_turn_settlement(
+        records: &Value,
+        role: OriginalSavedTurnSettlementRole,
+    ) -> Result<Option<OriginalRoutePin>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_saved_turn_settlement_records((&profile, &lock, &plan), &budget, role)
+    }
+
+    #[test]
+    fn saved_turn_settlement_selects_each_shell_grant_independently() {
+        use OriginalSavedTurnSettlementRole::{SavedReconcile, SavedTurn};
+
+        let mut fixture = records();
+        for (role, row) in [
+            (SavedTurn, SAVED_TURN_SETTLEMENT_ROW),
+            (SavedReconcile, SAVED_RECONCILE_SETTLEMENT_ROW),
+        ] {
+            let binding = &fixture["plan"]["bindings"][row];
+            let pin = select_saved_turn_settlement(&fixture, role)
+                .unwrap()
+                .unwrap();
+            assert_eq!(pin.caller_function_id(), "shell.tauri.default");
+            assert_eq!(pin.pack_id(), "rumi_turn_runtime_pack");
+            assert_eq!(pin.contract_id(), binding["contract_id"]);
+            assert_eq!(pin.operation_id(), binding["operation_id"]);
+            assert_eq!(pin.authority_reference(), binding["authority_reference"]);
+            assert_eq!(
+                pin.requested_scope_digest(),
+                binding["requested_scope_digest"]
+            );
+        }
+
+        for (role, row, other) in [
+            (SavedReconcile, SAVED_RECONCILE_SETTLEMENT_ROW, SavedTurn),
+            (SavedTurn, SAVED_TURN_SETTLEMENT_ROW, SavedReconcile),
+        ] {
+            fixture["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(matches!(
+                select_saved_turn_settlement(&fixture, role),
+                Err(Inconsistent(_))
+            ));
+            fixture["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(
+                select_saved_turn_settlement(&fixture, role)
+                    .unwrap()
+                    .is_none()
+            );
+            if role == SavedReconcile {
+                assert!(
+                    select_saved_turn_settlement(&fixture, other)
+                        .unwrap()
+                        .is_some()
+                );
+            }
+            assert!(
+                select_saved_receipt(&fixture)
+                    .unwrap()
+                    .iter()
+                    .all(Option::is_some)
+            );
+        }
+    }
+
+    #[test]
+    fn saved_turn_settlement_requires_the_original_python_variant_and_role_authority() {
+        use OriginalSavedTurnSettlementRole::{SavedReconcile, SavedTurn};
+
+        let mut fixture = records();
+        let row = SAVED_RECONCILE_SETTLEMENT_ROW;
+        fixture["plan"]["bindings"][row]["variant_id"] = json!("replacement");
+        let pins = fixture["lock"]["variant_pins"].as_array_mut().unwrap();
+        let pin = pins
+            .iter_mut()
+            .find(|pin| pin["variant_id"] == SAVED_RECONCILE.variant)
+            .unwrap();
+        pin["variant_id"] = json!("replacement");
+        assert!(
+            select_saved_turn_settlement(&fixture, SavedReconcile)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            select_saved_turn_settlement(&fixture, SavedTurn)
+                .unwrap()
+                .is_some()
+        );
+
+        let mut fixture = records();
+        let reference =
+            fixture["plan"]["bindings"][CONVERSATION_SAVED_RECONCILE_ROW]["authority_reference"]
+                .clone();
+        fixture["profile"]["requested_edges"][row]["authority_reference"] = reference.clone();
+        fixture["plan"]["bindings"][row]["authority_reference"] = reference;
+        assert!(matches!(
+            select_saved_turn_settlement(&fixture, SavedReconcile),
+            Err(Inconsistent(_))
+        ));
+    }
 
     #[test]
     fn saved_receipt_selects_only_the_two_exact_turn_runtime_grants() {
