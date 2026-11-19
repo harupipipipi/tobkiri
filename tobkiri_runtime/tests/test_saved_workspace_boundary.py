@@ -341,6 +341,8 @@ def _production_capture_fixture(*, cancel_parent_during_owner_read: bool = False
         "authority_store": object(),
         "caller_session_bindings_lock": RLock(),
         "dispatch_holder": [Dispatch()],
+        "native_conversation": None,
+        "native_saved_execution": None,
         "parent_invocation_scopes": parents,
         "saved_tool_entry_guards": SimpleNamespace(capture=lambda _envelope: None),
         "saved_workspace_execution_registry": registry,
