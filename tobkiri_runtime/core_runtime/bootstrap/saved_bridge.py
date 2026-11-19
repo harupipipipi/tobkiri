@@ -651,7 +651,13 @@ class SavedBridgeCallbacks:
         }
         if len(canonical_json(payload)) > MAX_SAVED_INPUT_BYTES:
             raise AuthorityDenied("saved bridge readiness input exceeds budget")
-        conversation = self._recheck_linked_context(outer, request, conversation)
+        # A plain linked preflight assembles a read-only quote from one owner
+        # snapshot. Re-read when another owner supplied context or a prompt.
+        # The later read, append and AI stages resolve their own live context.
+        if (prompt is not None
+                or workspace_resolution(conversation) is not None
+                or owned_context_resolution(conversation) is not None):
+            self._recheck_linked_context(outer, request, conversation)
         outcome = self._dispatch(outer, READINESS, payload)
         value = outcome.get("value")
         if (

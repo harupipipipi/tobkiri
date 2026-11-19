@@ -131,8 +131,8 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
     ]
 
 
-def test_linked_appends_without_prompt_read_each_owner_once(tmp_path: Path) -> None:
-    """Read the linked child and parent once during each owner append."""
+def test_plain_linked_preflight_and_appends_read_each_owner_once(tmp_path: Path) -> None:
+    """Read each linked owner once for a plain quote and for each append."""
     store, outer, calls, callbacks = _setup(tmp_path)
     store.create(
         {
@@ -152,6 +152,18 @@ def test_linked_appends_without_prompt_read_each_owner_once(tmp_path: Path) -> N
         conversation_id="side-chat",
         context_binding=context_binding(store.get("conversation-1"), "defaults"),
     )
+    before = store.path.read_bytes()
+    calls.clear()
+    callbacks.preflight(outer)
+    assert calls == [
+        (saved.TARGETS[0], {"operation": "get", "conversation_id": "side-chat"}),
+        (saved.TARGETS[0], {"operation": "get", "conversation_id": "conversation-1"}),
+        (READINESS, {
+            "model_profile_id": "model-profile-1",
+            "messages": [{"role": "user", "content": "Hello"}],
+        }),
+    ]
+    assert store.path.read_bytes() == before
     intent = saved.start(request)
     for hop in range(4):
         calls.clear()

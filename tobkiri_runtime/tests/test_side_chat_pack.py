@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
+from core_runtime.bootstrap.saved_bridge import READINESS
 from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import (
     ConversationConflict,
@@ -473,7 +474,7 @@ def test_omitted_child_reasoning_is_derived_from_bound_parent_in_host(service: A
     assert client.exchange.outer.payload["request"] == request
 
 
-@pytest.mark.parametrize("stage", ["user", "ai"])
+@pytest.mark.parametrize("stage", ["preflight", "user", "ai"])
 def test_parent_change_during_prompt_read_rejects_before_effect(service: Any, stage: str) -> None:
     from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
     from tobkiri_protocol.saved_context import PROMPT_TARGET
@@ -496,7 +497,7 @@ def test_parent_change_during_prompt_read_rejects_before_effect(service: Any, st
     exchange = client.exchange
     exchange.outer.payload = {"request": request}
     intent = saved.start(request)
-    for _ in range({"user": 1, "ai": 2}[stage]):
+    for _ in range({"preflight": 0, "user": 1, "ai": 2}[stage]):
         intent = saved.resume(intent["state"], exchange.callback(exchange.outer, _frame(intent)))
     dispatch = exchange.callback._dispatch
 
@@ -513,9 +514,43 @@ def test_parent_change_during_prompt_read_rejects_before_effect(service: Any, st
     exchange.callback._dispatch = mutate_parent
     before_messages = deepcopy(client.store.get(child["conversation_id"])["messages"])
     with pytest.raises(AuthorityDenied, match="stale"):
-        exchange.callback(exchange.outer, _frame(intent))
+        if stage == "preflight":
+            exchange.callback.preflight(exchange.outer)
+        else:
+            exchange.callback(exchange.outer, _frame(intent))
     assert client.store.get(child["conversation_id"])["messages"] == before_messages
-    assert not any(target == saved.TARGETS[2] for target, _ in exchange.calls)
+    assert not any(target in (READINESS, saved.TARGETS[2]) for target, _ in exchange.calls)
+
+
+def test_linked_preflight_does_not_authorize_a_stale_next_stage(service: Any) -> None:
+    side, client = service
+    child = side.ensure("conversation-1", 1)
+    request = {
+        "turn_id": "side-turn", "conversation_id": child["conversation_id"],
+        "conversation_revision": 1, "content": "Hi",
+        "context_binding": child["context_binding"],
+    }
+    exchange = client.exchange
+    exchange.outer.payload = {"request": request}
+    dispatch = exchange.callback._dispatch
+
+    def mutate_parent(outer: Any, target: Any, payload: Any) -> Any:
+        if target == READINESS:
+            parent = client.store.get("conversation-1")
+            client.store.update(
+                "conversation-1", {"model_reference": "changed-model"},
+                expected_conversation_revision=parent["conversation_revision"],
+            )
+        return dispatch(outer, target, payload)
+
+    exchange.callback._dispatch = mutate_parent
+    exchange.callback.preflight(exchange.outer)
+    assert exchange.calls[-1][0] == READINESS
+    before = client.store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="stale"):
+        exchange.callback(exchange.outer, _frame(saved.start(request)))
+    assert client.store.path.read_bytes() == before
+    assert not any(target in saved.TARGETS[1:] for target, _ in exchange.calls)
 
 
 @pytest.mark.parametrize("change", ["model", "bindings", "membership"])
