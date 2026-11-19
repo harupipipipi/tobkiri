@@ -10473,6 +10473,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             if fixture_failures:
                 raise fixture_failures[0]
             if side_chat:
+                assert len(native_snapshot_reads) == 1, result
                 snapshot, = native_snapshot_reads
                 assert snapshot.context is registry_reads[-1][0].context
                 with pytest.raises((AuthorityDenied, PermissionError)):
