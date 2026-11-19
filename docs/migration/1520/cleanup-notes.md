@@ -3841,9 +3841,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   起動済みのv5 Profileから、Shell→Model ManageとModel Manage→Provider Registry読取りを
   一組として選定する処理も追加した。両方の権限、スコープ、実行バリアントが揃った場合だけ
   対応するpinを返す。Model一覧とShell自身のProvider読取りに与えられた別の権限を流用しない。
-  既存のProvider準備と同じ選定処理を使い、重複する照合を増やさなかった。Launcherでの
-  署名済みBundleと同梱Wasmの再照合、通常保存のBroker経路への接続が残る。設定経路の
-  選定8件と、旧Setupの原本から発行されたProfileの両方のスコープを照合する1件が通過。
+  既存のProvider準備と選定処理を共有した。設定経路の選定8件と、旧Setupの原本から
+  発行されたProfileの両方のスコープを照合する1件が通過。
+  Launcherは起動時に保存の両経路を元のBundleのPackと実行カタログへ照合し、同梱Model
+  Packのreceipt、必須ポート、Wasm宣言を確認して起動世代に結び付ける。Model一覧の証拠を
+  別に保持する。同じModelアーカイブについて一覧と保存の両方を選んだ場合も、同梱アーカイブの
+  読み取りとPack検証は一回。旧BundleのModelとProviderのカタログは、各権限の照合ごとに
+  読み直す。計約63 KiBの追加読み取りで、今後まとめる場合も個々のpinの照合と停止点を保つ。
+  元のBundleを使った分離試験10件とWasmを実行するモデル試験3件が通過した。分離試験で
+  現在の同梱Packは両方のポート、旧版の同梱Packは一覧のポートだけを持つことも確認した。
+  通常の保存は署名済みBrokerが許可したModel Manageの中で、元と同じ入れ子のProvider
+  読取りを実行する必要がある。Providerの応答は接続ID・有効状態・revisionへ絞れ、同じIDの
+  件数を保てば従来の照合を保てる。ファイル置換の最終許可を出した後は、切断や期限切れを
+  既存のBroker監査とジャーナルの不確定結果に結び付けて、同じ要求の再実行を防ぐ。
   キー不要のローカル会話では、既存のOpenAI SSE処理から、選択された
   保存モデルのIDとProvider接続を実行中のProfileで解決する。選択先のloopback URLと
   モデル名を取り出し、保存した出力上限を適用する。送信先の許可は既存のCore Gateが判定する。

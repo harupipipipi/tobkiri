@@ -16,9 +16,10 @@ use tobkiri_core::{
 };
 use tobkiri_gate::{ControlKind, CoreCancellation};
 use tobkiri_harness_native::{
-    OriginalActivationInspection, OriginalActiveProfile, OriginalModelSettingsSelection,
-    OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalActivationInspection, OriginalActiveProfile, OriginalModelSaveSelection,
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
 };
+use tobkiri_wasm::verify_legacy_model_save_declaration;
 
 use super::{
     authority, caught, selected_setup_component, JobTicket, NativeRuntimeState,
@@ -50,6 +51,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     pub(crate) catalog_revision: String,
     pub(crate) provider_prepare: Option<VerifiedProviderPrepareSource>,
     pub(crate) model_settings: Option<VerifiedModelSettingsSource>,
+    pub(crate) model_save: Option<VerifiedModelSaveSource>,
 }
 
 /// Signed legacy Provider route pins and the receipt identity of its Wasm Pack.
@@ -66,6 +68,16 @@ pub(crate) struct VerifiedProviderPrepareSource {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct VerifiedModelSettingsSource {
     pub(crate) model_list: VerifiedLegacyRoutePin,
+    pub(crate) archive_sha256: String,
+    pub(crate) archive_bytes: u64,
+    pub(crate) manifest_sha256: String,
+}
+
+/// The two signed Model Save edges and the receipt identity of their Wasm replacement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VerifiedModelSaveSource {
+    pub(crate) model_manage: VerifiedLegacyRoutePin,
+    pub(crate) provider_read: VerifiedLegacyRoutePin,
     pub(crate) archive_sha256: String,
     pub(crate) archive_bytes: u64,
     pub(crate) manifest_sha256: String,
@@ -110,6 +122,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             model_settings: None,
+            model_save: None,
         }
     }
 
@@ -128,6 +141,7 @@ impl VerifiedRegistryLaunch {
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
             }),
+            model_save: None,
         }
     }
 }
@@ -379,12 +393,19 @@ impl LaunchActivationObserver<'_> {
             .map(|active| OriginalModelSettingsSelection::select(active, budget))
             .transpose()?
             .flatten();
+        let model_save_selection = active
+            .map(|active| OriginalModelSaveSelection::select(active, budget))
+            .transpose()?
+            .flatten();
         let (app_root, activation) = inspection.with_source(|sources| {
             let catalog_revision = &sources.authority().catalog_revision;
             let activation = active
                 .map(|active| {
                     validate_observed_activation(active, self.identity, catalog_revision)?;
-                    if provider_selection.is_none() && model_selection.is_none() {
+                    if provider_selection.is_none()
+                        && model_selection.is_none()
+                        && model_save_selection.is_none()
+                    {
                         return Ok(None);
                     }
                     let security_epoch = active
@@ -397,6 +418,7 @@ impl LaunchActivationObserver<'_> {
                         sources.registry_bundle(
                             provider_selection.as_ref(),
                             model_selection.as_ref(),
+                            model_save_selection.as_ref(),
                             budget,
                         )?,
                         security_epoch,
@@ -418,7 +440,7 @@ impl LaunchActivationObserver<'_> {
             return Ok(None);
         };
         locked.verify(checkpoint)?;
-        let (provider_prepare, model_settings) =
+        let (provider_prepare, (model_settings, model_save)) =
             registry_pack_receipt::verify_installed_with_provider_and_model(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
@@ -439,18 +461,37 @@ impl LaunchActivationObserver<'_> {
                         .transpose()
                 },
                 |receipt, input| {
-                    model_selection
-                        .as_ref()
+                    let model_list = model_selection.as_ref();
+                    let model_save = model_save_selection.as_ref();
+                    if model_list.is_none() && model_save.is_none() {
+                        return Ok((None, None));
+                    }
+                    let pack = verify_registry_archive(inspection, receipt, input)?;
+                    let list = model_list
                         .map(|selection| {
-                            verify_model_settings_archive(inspection, receipt, input)?;
-                            Ok(VerifiedModelSettingsSource {
+                            require_model_list_port(&pack)?;
+                            Ok::<_, io::Error>(VerifiedModelSettingsSource {
                                 model_list: selection.model_list().into(),
                                 archive_sha256: receipt.archive_sha256().to_owned(),
                                 archive_bytes: receipt.archive_bytes(),
                                 manifest_sha256: receipt.manifest_sha256().to_owned(),
                             })
                         })
-                        .transpose()
+                        .transpose()?;
+                    let save = model_save
+                        .map(|selection| {
+                            verify_legacy_model_save_declaration(&pack)
+                                .map_err(io::Error::other)?;
+                            Ok::<_, io::Error>(VerifiedModelSaveSource {
+                                model_manage: selection.model_manage().into(),
+                                provider_read: selection.provider_read().into(),
+                                archive_sha256: receipt.archive_sha256().to_owned(),
+                                archive_bytes: receipt.archive_bytes(),
+                                manifest_sha256: receipt.manifest_sha256().to_owned(),
+                            })
+                        })
+                        .transpose()?;
+                    Ok((list, save))
                 },
             )
             .context("bundled Registry Pack verification failed during Launch")?;
@@ -460,12 +501,16 @@ impl LaunchActivationObserver<'_> {
         if model_settings.is_some() {
             log::info!("verified the selected old Model list and its bundled Wasm replacement for this activation");
         }
+        if model_save.is_some() {
+            log::info!("verified the selected old Model save grants and its bundled Wasm replacement for this activation");
+        }
         Ok(Some(VerifiedRegistryLaunch {
             identity: self.identity.clone(),
             security_epoch,
             catalog_revision,
             provider_prepare,
             model_settings,
+            model_save,
         }))
     }
 }
@@ -572,16 +617,16 @@ fn verify_provider_prepare_archive(
     receipt: &registry_pack_receipt::Pack,
     input: &mut dyn io::Read,
 ) -> io::Result<VerifiedPack> {
-    verify_registry_archive(
-        inspection,
-        receipt,
-        input,
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_registry_ports(
+        &pack,
         "prepare-local",
         &[
             "local.provider-registry.legacy-configuration@1.0",
             "local.provider-registry.legacy-configuration-live@1.0",
         ],
-    )
+    )?;
+    Ok(pack)
 }
 
 fn verify_model_settings_archive(
@@ -589,10 +634,14 @@ fn verify_model_settings_archive(
     receipt: &registry_pack_receipt::Pack,
     input: &mut dyn io::Read,
 ) -> io::Result<VerifiedPack> {
-    verify_registry_archive(
-        inspection,
-        receipt,
-        input,
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_model_list_port(&pack)?;
+    Ok(pack)
+}
+
+fn require_model_list_port(pack: &VerifiedPack) -> io::Result<()> {
+    require_registry_ports(
+        pack,
         "list-models",
         &["local.model-registry.legacy-settings@1.0"],
     )
@@ -602,8 +651,6 @@ fn verify_registry_archive(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     receipt: &registry_pack_receipt::Pack,
     input: &mut dyn io::Read,
-    operation: &str,
-    shapes: &[&str],
 ) -> io::Result<VerifiedPack> {
     (|| {
         let pack = inspection.verify_pack_archive(input, receipt.archive_bytes())?;
@@ -614,6 +661,13 @@ fn verify_registry_archive(
                 && matches!(&pack.manifest.runtime, RuntimeSpec::Wasm { .. }),
             "Registry Pack manifest differs from the bundled receipt"
         );
+        Ok::<_, anyhow::Error>(pack)
+    })()
+    .map_err(io::Error::other)
+}
+
+fn require_registry_ports(pack: &VerifiedPack, operation: &str, shapes: &[&str]) -> io::Result<()> {
+    (|| {
         let operation = OpName::parse(operation)?;
         for name in shapes {
             let shape = ShapeRef::parse(name)?;
@@ -631,7 +685,7 @@ fn verify_registry_archive(
                 "bundled Registry Pack has no exact legacy {operation} port {name}"
             );
         }
-        Ok::<_, anyhow::Error>(pack)
+        Ok(())
     })()
     .map_err(io::Error::other)
 }
@@ -661,4 +715,35 @@ fn validate_observed_activation(
         "native Authority activation differs from the signed Shell selection"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::native_harness_bootstrap::NativeRegistryRequest;
+
+    #[test]
+    fn model_save_evidence_keeps_the_other_registry_operations_separate() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let mut proof = VerifiedRegistryLaunch::test_model_proof(identity, "catalog:fixture");
+        let list = proof.model_settings.take().unwrap();
+        proof.model_save = Some(VerifiedModelSaveSource {
+            model_manage: VerifiedLegacyRoutePin::fixture(),
+            provider_read: VerifiedLegacyRoutePin::fixture(),
+            archive_sha256: list.archive_sha256,
+            archive_bytes: list.archive_bytes,
+            manifest_sha256: list.manifest_sha256,
+        });
+        assert!(!NativeRegistryRequest::ModelList.has_launch_proof(&proof));
+        assert!(!NativeRegistryRequest::Provider {
+            request: Vec::new(),
+            apply: None,
+        }
+        .has_launch_proof(&proof));
+    }
 }

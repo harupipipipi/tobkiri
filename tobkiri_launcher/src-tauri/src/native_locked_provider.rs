@@ -9,7 +9,8 @@ use tobkiri_core::{
     Digest,
 };
 use tobkiri_harness_native::{
-    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRoutePin,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -17,6 +18,7 @@ pub(crate) struct LockedRegistryBundle<'pin> {
     root: CoreBuffer,
     provider_prepare: Option<[LockedRegistryRoute<'pin>; 2]>,
     model_list: Option<LockedRegistryRoute<'pin>>,
+    model_save: Option<[LockedRegistryRoute<'pin>; 2]>,
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -27,6 +29,7 @@ impl NativeApplicationSources {
         &self,
         provider: Option<&'pin OriginalProviderPrepareSelection<'_>>,
         model: Option<&'pin OriginalModelSettingsSelection<'_>>,
+        model_save: Option<&'pin OriginalModelSaveSelection<'_>>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedRegistryBundle<'pin>> {
         let provider_prepare = provider
@@ -59,10 +62,29 @@ impl NativeApplicationSources {
                 LockedRegistryRoute::from_lock(&self.bundle_lock, selection.model_list(), budget)
             })
             .transpose()?;
+        let model_save = model_save
+            .map(|selection| {
+                let model_manage = selection.model_manage();
+                let provider_read = selection.provider_read();
+                ensure!(
+                    model_manage.caller_function_id() == self.authority.shell_provider_id,
+                    "old Model manage caller differs from the selected Shell"
+                );
+                ensure!(
+                    provider_read.caller_function_id() == model_manage.function_id(),
+                    "old Model save Provider read caller differs from Model manage"
+                );
+                Ok::<_, anyhow::Error>([
+                    LockedRegistryRoute::from_lock(&self.bundle_lock, model_manage, budget)?,
+                    LockedRegistryRoute::from_lock(&self.bundle_lock, provider_read, budget)?,
+                ])
+            })
+            .transpose()?;
         Ok(LockedRegistryBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             provider_prepare,
             model_list,
+            model_save,
             budget: Arc::clone(budget),
         })
     }
@@ -78,6 +100,10 @@ impl LockedRegistryBundle<'_> {
         }
         if let Some(model_list) = &self.model_list {
             model_list.verify(root, &self.budget, &mut checkpoint)?;
+        }
+        if let Some([model_manage, provider_read]) = &self.model_save {
+            model_manage.verify(root, &self.budget, &mut checkpoint)?;
+            provider_read.verify(root, &self.budget, &mut checkpoint)?;
         }
         checkpoint()
     }

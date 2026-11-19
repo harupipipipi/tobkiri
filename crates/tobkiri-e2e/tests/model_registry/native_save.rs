@@ -12,6 +12,7 @@ use std::{
 use tobkiri_core::{CoreValue, NativeRegistry};
 use tobkiri_profile::PackPin;
 use tobkiri_store::DataRoot;
+use tobkiri_wasm::verify_legacy_model_save_declaration;
 
 struct Save<'a> {
     core: Arc<Core>,
@@ -41,6 +42,7 @@ impl Save<'_> {
         let length = archive.metadata()?.len();
         let pack = inspection.verify_pack_archive(&mut archive, length)?;
         ensure!(pack.hash == self.pin.sha256);
+        verify_legacy_model_save_declaration(&pack)?;
         let request = CoreValue::parse_guest(&serde_json::to_vec(request)?, &budget)?;
         let provider = CoreValue::parse_guest(&serde_json::to_vec(&self.provider)?, &budget)?;
         let registry = Arc::new(Mutex::new(

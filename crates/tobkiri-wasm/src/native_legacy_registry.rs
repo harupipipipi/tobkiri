@@ -8,7 +8,9 @@ use tobkiri_canon::{
     AllocationBudget, AllocationError, CoreBuffer, CoreRef, CoreValue, ids::ShapeRef,
 };
 use tobkiri_gate::ControlKind;
-use tobkiri_manifest::{RuntimeSpec, ShapeKind, VerifiedPack, WitFunction, WitType};
+use tobkiri_manifest::{
+    RuntimeSpec, ShapeKind, VerifiedPack, WitFunction, WitType, source::StagedArtifact,
+};
 use wasmtime::component::types::{ComponentFunc, ComponentInstance, ComponentItem, Type};
 use wasmtime::component::{BudgetedBox, BudgetedString, BudgetedVec, Component, Linker, Val};
 use wasmtime::{Engine, Store};
@@ -151,6 +153,14 @@ pub type LegacyRegistryRead =
     Box<dyn FnMut(&Arc<dyn AllocationBudget>) -> Result<Option<CoreBuffer>> + Send>;
 
 pub use LegacyRegistryRead as LegacyProviderRegistryRead;
+
+/// Verify a receipt-checked Pack's fixed Model Save declaration at Launch.
+/// The native invocation still checks the Component's actual imports and export.
+pub fn verify_legacy_model_save_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &MODEL_SAVE)?;
+    declared_registry_function(pack, &MODEL_SAVE)?;
+    Ok(())
+}
 
 pub(super) struct LiveObservations {
     read: LegacyProviderRegistryRead,
@@ -306,22 +316,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         );
         state.registry_claimed = true;
 
-        ensure!(
-            pack.manifest.id.as_str() == export.pack,
-            "legacy Registry Pack identity differs"
-        );
-        let RuntimeSpec::Wasm {
-            component,
-            core_modules,
-            ..
-        } = &pack.manifest.runtime
-        else {
-            bail!("legacy Provider Pack must use Wasm");
-        };
-        ensure!(
-            core_modules.is_empty(),
-            "legacy Provider Pack declares external core modules"
-        );
+        let artifact = declared_registry_component(pack, export)?;
         let function = declared_registry_function(pack, export)?;
         let abi_matches = match &input {
             RegistryInput::Provider { plan, .. } => {
@@ -333,11 +328,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         .is_some_and(|(_, ty)| *ty == WitType::CallbackHandle)
             }
             RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
-            RegistryInput::ModelSave { .. } => {
-                function.params[0].1 == WitType::Json
-                    && function.params[1].1 == WitType::Json
-                    && function.params[2].1 == WitType::CallbackHandle
-            }
+            RegistryInput::ModelSave { .. } => true,
         };
         ensure!(
             abi_matches,
@@ -346,15 +337,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
 
         let owners = state.owners.clone();
         let profile = profile_input(profile_id, &owners)?;
-        let artifact = pack
-            .files
-            .get(component)
-            .context("verified legacy Provider component missing")?;
         let length = artifact.len();
-        ensure!(
-            length > 0 && length <= MAX_COMPONENT_BYTES,
-            "legacy Provider component size exceeds its envelope"
-        );
         // Retain conservative native compilation/instance metadata funding
         // until the actual Store owning the compiled code has been destroyed.
         let compilation_bytes = length * 8 + 1024 * 1024;
@@ -478,6 +461,37 @@ fn validate_model_save_reply(reply: &CoreValue) -> Result<bool> {
     }
 }
 
+fn declared_registry_component<'a>(
+    pack: &'a VerifiedPack,
+    export: &RegistryExport,
+) -> Result<&'a StagedArtifact> {
+    ensure!(
+        pack.manifest.id.as_str() == export.pack,
+        "legacy Registry Pack identity differs"
+    );
+    let RuntimeSpec::Wasm {
+        component,
+        core_modules,
+        ..
+    } = &pack.manifest.runtime
+    else {
+        bail!("legacy Registry Pack must use Wasm");
+    };
+    ensure!(
+        core_modules.is_empty(),
+        "legacy Registry Pack declares external core modules"
+    );
+    let artifact = pack
+        .files
+        .get(component)
+        .context("verified legacy Registry component missing")?;
+    ensure!(
+        !artifact.is_empty() && artifact.len() <= MAX_COMPONENT_BYTES,
+        "legacy Registry component size exceeds its envelope"
+    );
+    Ok(artifact)
+}
+
 fn declared_registry_function<'a>(
     pack: &'a VerifiedPack,
     export: &RegistryExport,
@@ -518,6 +532,14 @@ fn declared_registry_function<'a>(
             && valid_declared_result(function.result.as_ref()),
         "legacy Registry declared function ABI differs"
     );
+    if export.shape == MODEL_SAVE.shape {
+        ensure!(
+            function.params[0].1 == WitType::Json
+                && function.params[1].1 == WitType::Json
+                && function.params[2].1 == WitType::CallbackHandle,
+            "legacy Model Registry save parameter ABI differs"
+        );
+    }
     Ok(function)
 }
 

@@ -45,7 +45,10 @@ pub use imports::{
     NativeImportBinding, NativeImportContext, NativeImportInput, NativeImportOperation,
     NativeImportState,
 };
-pub use legacy_registry::{LegacyProviderRegistryRead, LegacyRegistryError, LegacyRegistryRead};
+pub use legacy_registry::{
+    LegacyProviderRegistryRead, LegacyRegistryError, LegacyRegistryRead,
+    verify_legacy_model_save_declaration,
+};
 
 struct NativePhysical {
     reservation: NativeSetupReservation,
