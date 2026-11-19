@@ -465,6 +465,8 @@ def _write_registry_packs(app: Path, *, version: int = 1) -> str:
         pack_ids.append("local.saved-turn-runtime")
     if version >= 3:
         pack_ids.append("local.saved-orchestration")
+    if version >= 4:
+        pack_ids.append("local.provider-adapter")
     for pack_id in pack_ids:
         archive = f"{pack_id}.tpk"
         contents = f"fixture archive for {pack_id}".encode()
@@ -483,7 +485,10 @@ def _write_registry_packs(app: Path, *, version: int = 1) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-@pytest.fixture(params=[1, 2, 3], ids=["three-packs", "with-settlement", "with-orchestration"])
+@pytest.fixture(
+    params=[1, 2, 3, 4],
+    ids=["three-packs", "with-settlement", "with-orchestration", "with-provider-adapter"],
+)
 def registry_mount(
     tmp_path: Path, request: pytest.FixtureRequest,
 ) -> Iterator[tuple[MODULE.MountedDmg, Path, str]]:
@@ -667,9 +672,12 @@ def test_registry_receipt_version_requires_its_exact_pack_set(
         mount.verify_native_registry_packs(app, hashlib.sha256(payload).hexdigest())
 
 
-def test_registry_receipt_pins_the_saved_orchestration_release(tmp_path: Path) -> None:
+@pytest.mark.parametrize("receipt_version", [3, 4], ids=["orchestration", "adapter"])
+def test_registry_receipt_pins_the_latest_pack_release(
+    tmp_path: Path, receipt_version: int,
+) -> None:
     app = tmp_path / "Fixture.app"
-    _write_registry_packs(app, version=3)
+    _write_registry_packs(app, version=receipt_version)
     path = app / MODULE.NATIVE_REGISTRY_PACKS / "receipt.json"
     receipt = json.loads(path.read_bytes())
     receipt["packs"][-1]["version"] = "0.1.1"
@@ -697,7 +705,7 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
     component_bytes = b"fixed Wasm fixture"
     component.write_bytes(component_bytes)
     component_digest = hashlib.sha256(component_bytes).hexdigest()
-    registry_digest = _write_registry_packs(app, version=3)
+    registry_digest = _write_registry_packs(app, version=4)
     dmg = tmp_path / "fixture.dmg"
     subprocess.run(
         [

@@ -31,6 +31,7 @@ mod unix {
     pub(crate) const RECEIPT_FORMAT: &str = "tobkiri.registry-packs/1";
     pub(crate) const SETTLEMENT_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/2";
     pub(crate) const ORCHESTRATION_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/3";
+    pub(crate) const PROVIDER_ADAPTER_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/4";
     const RECEIPT_LIMIT: u64 = 16 * 1024;
     // The Pack authoring CLI's .tpk size ceiling.
     pub(crate) const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
@@ -41,7 +42,14 @@ mod unix {
     ];
     pub(crate) const SETTLEMENT_PACK_ID: &str = "local.saved-turn-runtime";
     pub(crate) const ORCHESTRATION_PACK_ID: &str = "local.saved-orchestration";
+    pub(crate) const PROVIDER_ADAPTER_PACK_ID: &str = "local.provider-adapter";
     const ORCHESTRATION_PACK_VERSION: &str = "0.1.0";
+    const PROVIDER_ADAPTER_PACK_VERSION: &str = "0.1.0";
+    const ADDITIONAL_PACK_IDS: [&str; 3] = [
+        SETTLEMENT_PACK_ID,
+        ORCHESTRATION_PACK_ID,
+        PROVIDER_ADAPTER_PACK_ID,
+    ];
 
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -190,6 +198,7 @@ mod unix {
             RECEIPT_FORMAT => PACK_IDS.len(),
             SETTLEMENT_RECEIPT_FORMAT => PACK_IDS.len() + 1,
             ORCHESTRATION_RECEIPT_FORMAT => PACK_IDS.len() + 2,
+            PROVIDER_ADAPTER_RECEIPT_FORMAT => PACK_IDS.len() + ADDITIONAL_PACK_IDS.len(),
             _ => return Err(invalid("Registry Pack receipt format is invalid")),
         };
         if receipt.packs.len() != expected_count {
@@ -197,14 +206,13 @@ mod unix {
                 "Registry Pack receipt has the wrong number of records",
             ));
         }
-        let ids = PACK_IDS
-            .into_iter()
-            .chain([SETTLEMENT_PACK_ID, ORCHESTRATION_PACK_ID]);
+        let ids = PACK_IDS.into_iter().chain(ADDITIONAL_PACK_IDS);
         for (id, pack) in ids.zip(&receipt.packs) {
             if pack.id != id
                 || pack.archive != format!("{id}.tpk")
                 || !valid_version(&pack.version)
                 || (id == ORCHESTRATION_PACK_ID && pack.version != ORCHESTRATION_PACK_VERSION)
+                || (id == PROVIDER_ADAPTER_PACK_ID && pack.version != PROVIDER_ADAPTER_PACK_VERSION)
                 || !(1..=ARCHIVE_LIMIT).contains(&pack.archive_bytes)
                 || !tagged_sha256(&pack.archive_sha256)
                 || !tagged_sha256(&pack.manifest_sha256)
@@ -290,7 +298,7 @@ mod unix {
         // fdopendir owns this descriptor on success.
         let _ = independent.into_raw_fd();
         let result = (|| {
-            let mut found = [false; PACK_IDS.len() + 3];
+            let mut found = [false; PACK_IDS.len() + ADDITIONAL_PACK_IDS.len() + 1];
             let names = std::iter::once(RECEIPT.as_bytes())
                 .chain(receipt.packs.iter().map(|pack| pack.archive.as_bytes()));
             loop {
@@ -548,10 +556,58 @@ mod unix {
         Ok(orchestration)
     }
 
-    /// Inspect each archive in one pass and return the results after every digest matches.
-    /// Settlement and orchestration are present only in versions of the receipt requiring them.
+    /// Inspect the original, settlement, and orchestration archives and verify all digests.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     pub(crate) fn verify_installed_with_orchestration_archives<P, M, C, S, O>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
+        inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
+        inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
+        inspect_settlement: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<S>,
+        inspect_orchestration: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<O>,
+    ) -> io::Result<(P, M, C, Option<S>, Option<O>)> {
+        let (provider, model, conversation, settlement, orchestration, _) =
+            verify_installed_with_provider_adapter_archives(
+                app_root,
+                expected_sha256,
+                checkpoint,
+                inspect_provider,
+                inspect_model,
+                inspect_conversation,
+                inspect_settlement,
+                inspect_orchestration,
+                discard_archive,
+            )?;
+        Ok((provider, model, conversation, settlement, orchestration))
+    }
+
+    /// Inspect the provider-adapter archive when the installed receipt includes it.
+    pub(crate) fn verify_installed_with_provider_adapter<A>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider_adapter: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<A>,
+    ) -> io::Result<Option<A>> {
+        let (_, _, _, _, _, provider_adapter) = verify_installed_with_provider_adapter_archives(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            inspect_provider_adapter,
+        )?;
+        Ok(provider_adapter)
+    }
+
+    /// Inspect each archive in one pass and return the results after every digest matches.
+    /// Optional archives are present only in receipt versions requiring them.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    pub(crate) fn verify_installed_with_provider_adapter_archives<P, M, C, S, O, A>(
         app_root: &Path,
         expected_sha256: &str,
         mut checkpoint: impl FnMut() -> io::Result<()>,
@@ -560,7 +616,8 @@ mod unix {
         inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
         inspect_settlement: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<S>,
         inspect_orchestration: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<O>,
-    ) -> io::Result<(P, M, C, Option<S>, Option<O>)> {
+        inspect_provider_adapter: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<A>,
+    ) -> io::Result<(P, M, C, Option<S>, Option<O>, Option<A>)> {
         checkpoint()?;
         let app = open_directory(app_root)?;
         let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
@@ -586,7 +643,20 @@ mod unix {
             .get(1)
             .map(|pack| inspect_archive(&directory, pack, &mut checkpoint, inspect_orchestration))
             .transpose()?;
-        Ok((provider, model, conversation, settlement, orchestration))
+        let provider_adapter = newest
+            .get(2)
+            .map(|pack| {
+                inspect_archive(&directory, pack, &mut checkpoint, inspect_provider_adapter)
+            })
+            .transpose()?;
+        Ok((
+            provider,
+            model,
+            conversation,
+            settlement,
+            orchestration,
+            provider_adapter,
+        ))
     }
 
     fn discard_archive(_: &Pack, input: &mut dyn Read) -> io::Result<()> {

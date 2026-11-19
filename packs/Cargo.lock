@@ -836,6 +836,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-provider-adapter-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-provider-model-access-rust"
 version = "0.1.0"
 dependencies = [

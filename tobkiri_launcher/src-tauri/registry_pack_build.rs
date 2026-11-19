@@ -125,10 +125,11 @@ mod unix {
         use super::super::super::registry_pack_receipt::{
             verify_installed, verify_installed_with_conversation, verify_installed_with_model,
             verify_installed_with_orchestration, verify_installed_with_orchestration_archives,
-            verify_installed_with_provider, verify_installed_with_provider_and_model,
-            verify_installed_with_settlement, Pack, ARCHIVE_LIMIT, ORCHESTRATION_PACK_ID,
-            ORCHESTRATION_RECEIPT_FORMAT, PACK_IDS, RECEIPT_FORMAT, SETTLEMENT_PACK_ID,
-            SETTLEMENT_RECEIPT_FORMAT,
+            verify_installed_with_provider, verify_installed_with_provider_adapter,
+            verify_installed_with_provider_and_model, verify_installed_with_settlement, Pack,
+            ARCHIVE_LIMIT, ORCHESTRATION_PACK_ID, ORCHESTRATION_RECEIPT_FORMAT, PACK_IDS,
+            PROVIDER_ADAPTER_PACK_ID, PROVIDER_ADAPTER_RECEIPT_FORMAT, RECEIPT_FORMAT,
+            SETTLEMENT_PACK_ID, SETTLEMENT_RECEIPT_FORMAT,
         };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
         use super::*;
@@ -499,7 +500,7 @@ mod unix {
         }
 
         #[test]
-        fn only_v3_receipts_require_the_pinned_orchestration_archive() -> io::Result<()> {
+        fn v3_receipts_require_the_pinned_orchestration_archive() -> io::Result<()> {
             let ids = PACK_IDS
                 .into_iter()
                 .chain([SETTLEMENT_PACK_ID, ORCHESTRATION_PACK_ID]);
@@ -576,6 +577,72 @@ mod unix {
                 .stage(&current.root)
                 .unwrap_err();
             assert!(error.to_string().contains(ORCHESTRATION_PACK_ID));
+            Ok(())
+        }
+
+        #[test]
+        fn v4_receipts_require_the_pinned_provider_adapter_archive() -> io::Result<()> {
+            let ids = PACK_IDS.into_iter().chain([
+                SETTLEMENT_PACK_ID,
+                ORCHESTRATION_PACK_ID,
+                PROVIDER_ADAPTER_PACK_ID,
+            ]);
+            for (format, count) in [
+                (RECEIPT_FORMAT, 3),
+                (SETTLEMENT_RECEIPT_FORMAT, 4),
+                (ORCHESTRATION_RECEIPT_FORMAT, 5),
+            ] {
+                let fixture = Fixture::with_packs(format, ids.clone().take(count))?;
+                let input = fixture.write_receipt(&fixture.document)?;
+                input.stage(&fixture.stage)?;
+                assert_eq!(
+                    verify_installed_with_provider_adapter(
+                        &fixture.stage,
+                        input.receipt_sha256(),
+                        || Ok(()),
+                        |_, _| panic!("older receipts do not have the provider adapter"),
+                    )?,
+                    None::<()>,
+                );
+            }
+
+            let fixture = Fixture::with_packs(PROVIDER_ADAPTER_RECEIPT_FORMAT, ids)?;
+            let input = fixture.write_receipt(&fixture.document)?;
+            input.stage(&fixture.stage)?;
+            let pin = input.receipt_sha256();
+            let inspect = || {
+                verify_installed_with_provider_adapter(
+                    &fixture.stage,
+                    pin,
+                    || Ok(()),
+                    |pack, archive| {
+                        assert_eq!(pack.id(), PROVIDER_ADAPTER_PACK_ID);
+                        assert_eq!(pack.version(), "0.1.0");
+                        let mut prefix = [0; 6];
+                        archive.read_exact(&mut prefix)?;
+                        Ok(prefix)
+                    },
+                )
+            };
+            assert_eq!(inspect()?, Some(*b"local."));
+
+            let archive = fixture
+                .stage
+                .join(DIRECTORY)
+                .join(format!("{PROVIDER_ADAPTER_PACK_ID}.tpk"));
+            fs::write(&archive, b"local.provider-adapteR")?;
+            assert!(inspect().is_err());
+            assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
+            fs::remove_file(&archive)?;
+            assert!(inspect().is_err());
+
+            let mut invalid = fixture.document.clone();
+            invalid["packs"][5]["version"] = json!("0.1.1");
+            let error = fixture
+                .write_receipt(&invalid)?
+                .stage(&fixture.root)
+                .unwrap_err();
+            assert!(error.to_string().contains(PROVIDER_ADAPTER_PACK_ID));
             Ok(())
         }
 

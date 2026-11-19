@@ -16,9 +16,11 @@ from build import REPO, ROOT, sha256, write_json
 ORIGINAL_PACKS = ("provider-registry", "model-registry", "saved-conversation")
 SETTLEMENT_PACK = "saved-turn-runtime"
 ORCHESTRATION_PACK = "saved-orchestration"
+PROVIDER_ADAPTER_PACK = "provider-adapter"
 SETTLEMENT_PACKS = (*ORIGINAL_PACKS, SETTLEMENT_PACK)
-PACKS = (*SETTLEMENT_PACKS, ORCHESTRATION_PACK)
-ORCHESTRATION_PACK_VERSION = "0.1.0"
+ORCHESTRATION_PACKS = (*SETTLEMENT_PACKS, ORCHESTRATION_PACK)
+PACKS = (*ORCHESTRATION_PACKS, PROVIDER_ADAPTER_PACK)
+PINNED_VERSIONS = {ORCHESTRATION_PACK: "0.1.0", PROVIDER_ADAPTER_PACK: "0.1.0"}
 CORE_WIT = REPO / "crates/tobkiri-wit/wit/core-v1-2/core.wit"
 
 
@@ -58,7 +60,7 @@ def stage_pack(
     verified_id, version, digest = verified.split()
     if verified_id != pack_id or digest != sha256(manifest.read_bytes()):
         raise ValueError(f"verified Pack differs from the staged manifest for {pack_id}")
-    if name == ORCHESTRATION_PACK and version != ORCHESTRATION_PACK_VERSION:
+    if name in PINNED_VERSIONS and version != PINNED_VERSIONS[name]:
         raise ValueError(f"verified Pack version is invalid for {pack_id}")
     archive_digest = hashlib.sha256()
     with artifact.open("rb") as reader:
@@ -84,8 +86,12 @@ def main() -> None:
     args = parser.parse_args()
     selected = set(args.pack or ORIGINAL_PACKS)
     receipt_version = 1
-    if ORCHESTRATION_PACK in selected:
+    if PROVIDER_ADAPTER_PACK in selected:
         if selected != set(PACKS):
+            parser.error("the provider-adapter Pack requires the full Registry Pack set")
+        receipt_version = 4
+    elif ORCHESTRATION_PACK in selected:
+        if selected != set(ORCHESTRATION_PACKS):
             parser.error("the orchestration Pack requires the full Registry Pack set")
         receipt_version = 3
     elif SETTLEMENT_PACK in selected:

@@ -1,0 +1,15 @@
+package local:provider-adapter@1.0.0;
+
+interface local-completion {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Project an already received response into the saved chat result.
+  /// An empty result leaves interpretation to the original codec.
+  project: func(response: string, streaming: bool) -> result<string, error>;
+}
+
+world pack {
+  import tobkiri:core/types@1.2.0;
+  export tobkiri:core/lifecycle@1.2.0;
+  export local-completion;
+}

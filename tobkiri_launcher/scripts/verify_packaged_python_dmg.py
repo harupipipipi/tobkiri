@@ -32,8 +32,13 @@ REGISTRY_RECEIPT_NAME = "receipt.json"
 REGISTRY_RECEIPT_FORMAT = "tobkiri.registry-packs/1"
 SETTLEMENT_RECEIPT_FORMAT = "tobkiri.registry-packs/2"
 ORCHESTRATION_RECEIPT_FORMAT = "tobkiri.registry-packs/3"
+PROVIDER_ADAPTER_RECEIPT_FORMAT = "tobkiri.registry-packs/4"
 ORCHESTRATION_PACK_ID = "local.saved-orchestration"
-ORCHESTRATION_PACK_VERSION = "0.1.0"
+PROVIDER_ADAPTER_PACK_ID = "local.provider-adapter"
+PINNED_REGISTRY_PACK_VERSIONS = {
+    ORCHESTRATION_PACK_ID: "0.1.0",
+    PROVIDER_ADAPTER_PACK_ID: "0.1.0",
+}
 REGISTRY_ARCHIVES = {
     "local.provider-registry": "local.provider-registry.tpk",
     "local.model-registry": "local.model-registry.tpk",
@@ -46,6 +51,10 @@ REGISTRY_ARCHIVES_WITH_SETTLEMENT = {
 REGISTRY_ARCHIVES_WITH_ORCHESTRATION = {
     **REGISTRY_ARCHIVES_WITH_SETTLEMENT,
     ORCHESTRATION_PACK_ID: f"{ORCHESTRATION_PACK_ID}.tpk",
+}
+REGISTRY_ARCHIVES_WITH_PROVIDER_ADAPTER = {
+    **REGISTRY_ARCHIVES_WITH_ORCHESTRATION,
+    PROVIDER_ADAPTER_PACK_ID: f"{PROVIDER_ADAPTER_PACK_ID}.tpk",
 }
 MAX_REGISTRY_RECEIPT_BYTES = 16 * 1024
 # Match the package limit in crates/tobkiri-manifest/src/package.rs.
@@ -567,6 +576,8 @@ def _registry_archive_pins(payload: bytes) -> list[_RegistryArchivePin]:
         archives = REGISTRY_ARCHIVES_WITH_SETTLEMENT
     elif receipt["format"] == ORCHESTRATION_RECEIPT_FORMAT:
         archives = REGISTRY_ARCHIVES_WITH_ORCHESTRATION
+    elif receipt["format"] == PROVIDER_ADAPTER_RECEIPT_FORMAT:
+        archives = REGISTRY_ARCHIVES_WITH_PROVIDER_ADAPTER
     else:
         raise DmgVerificationError("native Registry Packs receipt has the wrong format")
     if len(receipt["packs"]) != len(archives):
@@ -598,8 +609,8 @@ def _registry_archive_pins(payload: bytes) -> list[_RegistryArchivePin]:
             or not _matches(TAGGED_SHA256, record["manifest_sha256"])
             or not _matches(PACK_VERSION, record["version"])
             or (
-                pack_id == ORCHESTRATION_PACK_ID
-                and record["version"] != ORCHESTRATION_PACK_VERSION
+                pack_id in PINNED_REGISTRY_PACK_VERSIONS
+                and record["version"] != PINNED_REGISTRY_PACK_VERSIONS[pack_id]
             )
         ):
             raise DmgVerificationError(
