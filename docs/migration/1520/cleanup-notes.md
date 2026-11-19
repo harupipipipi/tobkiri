@@ -4436,8 +4436,33 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   権限失効、拒否、実行不能、Providerが返した未要求のツール呼出し情報、親のない呼出しを確認した。
   [0.2.0のGemma 3 1B実モデルCI 44516968539](https://github.com/harupipipipi/tobkiri/actions/runs/44516968539)
   は、認証付きloopbackのWasm Flowと、保存済みRegistryから選ぶキーレス会話が通過した。
+  0.4.0を含む `badeb906f` の同じ実モデル試験も通過した。
+  [Gemma 3 1B実モデルCI 44520961942](https://github.com/harupipipipi/tobkiri/actions/runs/44520961942)
   Tool BridgeとRoutingで共通化した正規化処理は、単体版のABIが不要になるまで保持する。
   元の署名宣言、固定CPythonとの差分試験、通常Gatewayの呼出し結果の一致を除去の前提とする。
+- `63a7d0ccf` はリクエスト整形と再試行の可否判定を `local.ai-routing` 0.5.0の
+  二つのポートへ接続した。整形はGenerate・Streamと個別のルート見積もり、再試行判定は
+  バッファ付きGenerateで元の署名済み呼出しに結び付く。両者はDATAを返す。Providerの呼出しや
+  ストリーム失敗の終端条件は元のGatewayが担う。レシートv5で0.1.0〜0.5.0を検証する。
+  `8d7ddf5f4` はPythonの値をJSONが暗黙変換する場合と、署名済みProviderで扱うべき
+  Credential Handle候補を互換経路へ戻す。同じリースを再確認して元のエラーを保持する。
+  1 MiBの範囲に収まる有限値を使い、期限と要求IDの扱い、パラメーター・要件の順序、
+  再試行の6条件と最初に不成立だった条件を保つ。
+  固定CPython 3.13.16の原本処理を使う2,000ケースで、1,246件の順序付きJSONと754件の
+  互換経路選択が一致した。Rust Routing 25件、権限選択35件、Python IPC474件、Rust IPC44件、
+  レシート単体15件、DMG検証とワークフロー構成313件、生成物照合6件が通過した。
+  macOS Launcherのテスト型検査、Harness Nativeとゲストのstrict Clippyが通過した。実Packを
+  5版とも照合し、検証済み0.5.0の全ポートをCore経由で呼んだ。各呼出し後の確保量は0へ戻った。
+  クリーンな `20cd3f781` のmacOS結合試験では、署名済みHTTP入口から全4役割の整形と
+  Generateの再試行判定を、実IPCと検証済みWasmへ通してPython原本と照合した。
+  配布物resolver入口、Application管理、PackVM搬送、Provider応答はfixtureで供給した。
+  元のGatewayに届く型付きProviderエラーをfixtureで再現し、Generateで判定が1回呼ばれ、
+  Streamは1回のProvider試行で終了することを照合した。通常のBrokerが型を包むHTTP 503は
+  独立して検証し、再試行判定へ進まない既存の挙動を保持した。
+  同じクリーンなソースの署名付きHTTP回帰で、通常とエラーの10ケース、旧Launcherと
+  ゲスト辞退、リース失効・実行拒否・実行不能、親のない呼出しが通過した。
+  Launchで同じPipeline Packと目録を役割ごとに読み直す。起動計測で重複を確認できたら、
+  読み取りを共用しつつ、各役割の署名済み操作と呼出しごとの物理再照合を維持できる。
 - [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
   実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
   経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で
