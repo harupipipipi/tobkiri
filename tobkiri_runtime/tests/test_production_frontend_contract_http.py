@@ -2983,10 +2983,20 @@ def test_native_settlement_borrows_signed_turn_http_authority(
 
 
 @pytest.mark.parametrize(
-    "case", ["direct", "unavailable", "unconfirmed", "reply_lost"],
+    ("case", "read_mode"),
+    [
+        ("direct", None),
+        ("unavailable", None),
+        ("unconfirmed", None),
+        ("reply_lost", None),
+        ("direct", "native"),
+        ("direct", "inapplicable"),
+        ("direct", "codec"),
+        ("legacy_writer", "native"),
+    ],
 )
 def test_native_confirmation_borrows_signed_completion_child(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, read_mode: str | None,
 ) -> None:
     """Confirm a durable saved Turn through its independently funded child."""
     from core_runtime import native_provider_prepare_ipc as ipc
@@ -3011,6 +3021,8 @@ def test_native_confirmation_borrows_signed_completion_child(
     parents: list[RequestEnvelope] = []
     children: list[RequestEnvelope] = []
     reads: list[tuple[RequestEnvelope, Mapping[str, object]]] = []
+    read_children: list[RequestEnvelope] = []
+    read_requests: list[ipc.NativeSavedTurnReadRequest] = []
     borrows: list[ipc.NativeConversationConfirmationRequest] = []
     permitted: list[str] = []
     ambiguous_children: list[RequestEnvelope] = []
@@ -3031,6 +3043,41 @@ def test_native_confirmation_borrows_signed_completion_child(
             ai_calls.append(payload)
             return {"status": "ok", "output": "Hi", "finish_reason": "stop"}
         return original_invoke(session, contract, operation, payload, **kwargs)
+
+    def native_read(request: ipc.NativeSavedTurnReadRequest) -> Mapping[str, object]:
+        request.assert_current()
+        saved, completion, read = parents[-1], children[-1], read_children[-1]
+        assert request.caller == (
+            "saved-turn" if saved.contract_id == "tobkiri.action.turn.saved.v1"
+            else "saved-reconcile"
+        )
+        assert request.turn_id == "turn-1"
+        assert request.context == read.context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic == read.deadline_monotonic
+        assert read.deadline_monotonic <= completion.deadline_monotonic
+        assert completion.deadline_monotonic <= saved.deadline_monotonic
+        assert read.context.caller_principal == completion.target_principal
+        assert completion.context.caller_principal == saved.target_principal
+        envelope_chain = (saved, completion, read)
+        assert len({item.lease.token for item in envelope_chain}) == 3
+        assert read.resource_reservation_id is not None
+        assert read.resource_reservation_id not in {
+            saved.resource_reservation_id, completion.resource_reservation_id,
+        }
+        for envelope in envelope_chain:
+            _, state, _, _ = authority.inspect_dispatch_authority(
+                envelope.lease.token.decode("ascii"),
+            )
+            assert state is LeaseState.DISPATCHED
+        read_requests.append(request)
+        if read_mode == "inapplicable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if read_mode == "codec":
+            raise ipc.NativeProviderRegistryRequiresLegacyRead()
+        terminal = turns.get(request.turn_id)
+        assert terminal is not None and terminal["status"] == "completed"
+        return terminal
 
     def native_confirm(
         request: ipc.NativeConversationConfirmationRequest,
@@ -3097,7 +3144,12 @@ def test_native_confirmation_borrows_signed_completion_child(
     ):
         monkeypatch.setattr(ipc, capture, lambda: None)
     monkeypatch.setattr(
-        ipc, "capture_launcher_conversation_confirmation_writer", lambda: native_confirm,
+        ipc, "capture_launcher_conversation_confirmation_writer",
+        lambda: None if case == "legacy_writer" else native_confirm,
+    )
+    monkeypatch.setattr(
+        ipc, "capture_launcher_saved_turn_reader",
+        lambda: native_read if read_mode is not None else None,
     )
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
@@ -3121,20 +3173,23 @@ def test_native_confirmation_borrows_signed_completion_child(
                 assert envelope.payload == {
                     "profile_id": "defaults", "operation": "confirm", "turn_id": "turn-1",
                 }
+            completion_read = (
+                target == (TURN_CONTRACT, TURN_OPERATION)
+                and children
+                and envelope.context.caller_principal == children[-1].target_principal
+            )
+            if completion_read:
+                assert envelope.payload == {
+                    "profile_id": "defaults", "operation": "get", "turn_id": "turn-1",
+                }
+                read_children.append(envelope)
             try:
                 result = dispatch(backend, envelope, *args, **kwargs)
             except AmbiguousEffectError:
                 if target == (CONTRACT_ID, OPERATION_ID):
                     ambiguous_children.append(envelope)
                 raise
-            if (
-                target == (TURN_CONTRACT, TURN_OPERATION)
-                and children
-                and envelope.context.caller_principal == children[-1].target_principal
-            ):
-                assert envelope.payload == {
-                    "profile_id": "defaults", "operation": "get", "turn_id": "turn-1",
-                }
+            if completion_read:
                 reads.append((envelope, result))
             return result
 
@@ -3169,7 +3224,9 @@ def test_native_confirmation_borrows_signed_completion_child(
             "reconciliation_required" if uncertain else "completed"
         ), first
         assert first["turn"]["status"] == "completed"
-        assert [item.caller for item in borrows] == ["saved-turn"]
+        assert [item.caller for item in borrows] == (
+            [] if case == "legacy_writer" else ["saved-turn"]
+        )
         assert ambiguous_children == ([children[0]] if uncertain else [])
         conversation = conversations.get("conversation-1")
         assert conversation is not None
@@ -3191,17 +3248,37 @@ def test_native_confirmation_borrows_signed_completion_child(
                 before = conversations.path.read_bytes()
             assert conversations.path.read_bytes() == before
             assert turns.path.read_bytes() == ledger_before
-        assert [item.caller for item in borrows] == (
+        expected_roles = (
             ["saved-turn", "saved-turn", "saved-reconcile"] if case == "unconfirmed"
             else ["saved-turn", "saved-reconcile", "saved-turn"]
         )
-        assert len(reads) == len(children) == len(borrows)
+        assert [item.caller for item in borrows] == (
+            [] if case == "legacy_writer" else expected_roles
+        )
+        assert [item.caller for item in read_requests] == (
+            [] if read_mode is None else expected_roles
+        )
+        assert len(reads) == len(children) == len(expected_roles)
+        if read_mode == "native":
+            status, observed, _ = _request(
+                server, "GET", _contract("GET", "/api/chat/turn") + "?turn_id=turn-1",
+                headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert status == 200 and observed["data"] == first["turn"], observed
+            assert [item.caller for item in read_requests] == expected_roles
         assert permitted == {
             "direct": ["saved-turn"],
+            "legacy_writer": [],
             "unavailable": [],
             "unconfirmed": ["saved-turn", "saved-turn"],
             "reply_lost": ["saved-turn"],
         }[case]
+        for request in read_requests:
+            with pytest.raises(PermissionError):
+                request.assert_current()
         for request in borrows:
             with pytest.raises(PermissionError):
                 request.assert_current()

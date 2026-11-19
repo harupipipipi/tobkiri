@@ -648,12 +648,17 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::launch_metadata::tests::conversation_
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 23 -- \
+              --log "$RUNNER_TEMP/harness-native-turn-evidence.log" --expected-passed 2 -- \
+              cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+              --target aarch64-apple-darwin --features "$features" \
+              --lib native_harness_bootstrap::launch_metadata::tests::turn_
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
+              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 25 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_provider_prepare_ipc::tests
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 18 -- \
+              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 19 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::provider_prepare::tests
@@ -703,6 +708,7 @@ jobs:
             ${{ runner.temp }}/harness-native-conversation-evidence.log*
             ${{ runner.temp }}/harness-native-provider-connection.log*
             ${{ runner.temp }}/harness-native-provider-job.log*
+            ${{ runner.temp }}/harness-native-turn-evidence.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
             ${{ runner.temp }}/harness-native-launch-artifacts.log*
             ${{ runner.temp }}/harness-native-runtime-features/
@@ -746,7 +752,7 @@ jobs:
 
   build-native-registry-packs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg }}
-    runs-on: ubuntu-22.04
+    runs-on: macos-15
     timeout-minutes: 25
     outputs:
       receipt_sha256: ${{ steps.archives.outputs.receipt_sha256 }}
@@ -758,6 +764,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Require original supported physical ownership platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          owner_tmp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          for root in "$GITHUB_WORKSPACE" "$owner_tmp"; do
+            device="$(df -P "$root" | awk 'NR == 2 {print $1}')"
+            diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          done
+          printf 'TMPDIR=%s\n' "$owner_tmp" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
           targets: wasm32-wasip2
@@ -777,7 +795,7 @@ jobs:
             --pack provider-registry --pack model-registry --pack saved-conversation \
             --pack saved-turn-runtime \
             --output "$RUNNER_TEMP/native-registry-packs"
-          receipt_sha256="$(sha256sum "$RUNNER_TEMP/native-registry-packs/receipt.json" | cut -d ' ' -f 1)"
+          receipt_sha256="$(shasum -a 256 "$RUNNER_TEMP/native-registry-packs/receipt.json" | cut -d ' ' -f 1)"
           printf 'receipt_sha256=%s\n' "$receipt_sha256" >> "$GITHUB_OUTPUT"
       - name: Replay saved Conversation operations against the physical owner
         env:

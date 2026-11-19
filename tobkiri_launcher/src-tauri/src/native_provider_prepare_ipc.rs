@@ -26,6 +26,7 @@ use crate::{
         PendingProviderPrepare, ProviderPrepareDeadline, SettlementCaller,
         TurnSettlementRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT,
         CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+        TURN_READ_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -43,6 +44,7 @@ const START_APPEND: u8 = 13;
 const JSON_LIMIT: usize = 16 * 1024;
 const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
 const SAVED_RECEIPT_TURN_ID_MAX_CHARS: usize = 2048;
+const TURN_READ_ID_MAX_CHARS: usize = 256;
 const TURN_SETTLEMENT_RESULT_LIMIT: usize = 1024 * 1024;
 const TURN_SETTLEMENT_REFERENCE_LIMIT: usize = 2 * 1024;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(3);
@@ -74,6 +76,8 @@ struct Start<'a> {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     model_resolve: Option<ModelResolve>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
+    turn_read: Option<TurnRead>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     turn_settlement: Option<TurnSettlement>,
     #[serde(borrow, default, deserialize_with = "deserialize_present")]
     conversation_append: Option<ConversationAppend<'a>>,
@@ -89,11 +93,12 @@ impl Start<'_> {
             &self.conversation_receipt,
             &self.conversation_confirmation,
             &self.model_resolve,
+            &self.turn_read,
             &self.turn_settlement,
             &self.conversation_append,
             self.apply,
         ) {
-            (Some(request), None, None, None, None, None, None, None, None, apply) => {
+            (Some(request), None, None, None, None, None, None, None, None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -103,37 +108,43 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 Ok(NativeRegistryRequest::Provider { request, apply })
             }
-            (None, Some(_), None, None, None, None, None, None, None, None) => {
+            (None, Some(_), None, None, None, None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ModelList)
             }
-            (None, None, Some(save), None, None, None, None, None, None, None) => {
+            (None, None, Some(save), None, None, None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ModelSave {
                     request: save.request.get().as_bytes().to_vec(),
                     provider: save.provider.get().as_bytes().to_vec(),
                 })
             }
-            (None, None, None, Some(get), None, None, None, None, None, None) => {
+            (None, None, None, Some(get), None, None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationGet {
                     caller: get.caller,
                     conversation_id: get.conversation_id.clone(),
                 })
             }
-            (None, None, None, None, Some(receipt), None, None, None, None, None) => {
+            (None, None, None, None, Some(receipt), None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationReceipt {
                     caller: receipt.caller,
                     turn_id: receipt.turn_id.clone(),
                 })
             }
-            (None, None, None, None, None, Some(confirmation), None, None, None, None) => {
+            (None, None, None, None, None, Some(confirmation), None, None, None, None, None) => {
                 confirmation.operation(&self.identity.profile_id)
             }
-            (None, None, None, None, None, None, Some(resolve), None, None, None) => {
+            (None, None, None, None, None, None, Some(resolve), None, None, None, None) => {
                 Ok(NativeRegistryRequest::ModelResolve {
                     role: resolve.role,
                     identifier: resolve.identifier.clone(),
                 })
             }
-            (None, None, None, None, None, None, None, Some(settlement), None, None) => {
+            (None, None, None, None, None, None, None, Some(read), None, None, None) => {
+                Ok(NativeRegistryRequest::TurnRead {
+                    caller: read.caller,
+                    turn_id: read.turn_id.clone(),
+                })
+            }
+            (None, None, None, None, None, None, None, None, Some(settlement), None, None) => {
                 ensure!(
                     !matches!(settlement.caller, SettlementCaller::SavedReconcile)
                         || settlement.expected_revision.is_some(),
@@ -147,7 +158,7 @@ impl Start<'_> {
                     result_reference: settlement.result_reference.clone(),
                 })
             }
-            (None, None, None, None, None, None, None, None, Some(append), None) => {
+            (None, None, None, None, None, None, None, None, None, Some(append), None) => {
                 append.operation()
             }
             _ => bail!("native Registry start must name exactly one operation"),
@@ -182,6 +193,15 @@ struct ConversationReceipt {
     #[serde(deserialize_with = "deserialize_saved_receipt_caller")]
     caller: OriginalSavedReceiptRole,
     #[serde(deserialize_with = "deserialize_saved_receipt_turn_id")]
+    turn_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TurnRead {
+    #[serde(deserialize_with = "deserialize_saved_receipt_caller")]
+    caller: OriginalSavedReceiptRole,
+    #[serde(deserialize_with = "deserialize_turn_read_id")]
     turn_id: String,
 }
 
@@ -536,6 +556,21 @@ where
     Ok(turn_id)
 }
 
+fn deserialize_turn_read_id<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let turn_id = String::deserialize(deserializer)?;
+    // Match the Python Turn Resource identifier envelope, including str.strip().
+    let trimmed = turn_id
+        .trim_matches(|ch: char| ch.is_whitespace() || matches!(ch, '\u{001c}'..='\u{001f}'));
+    if turn_id.is_empty() || turn_id != trimmed || turn_id.chars().count() > TURN_READ_ID_MAX_CHARS
+    {
+        return Err(de::Error::custom("invalid Turn read identifier"));
+    }
+    Ok(turn_id)
+}
+
 fn deserialize_present<'de, T, D>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
 where
     T: Deserialize<'de>,
@@ -658,7 +693,8 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     let operation = start.operation()?;
     let needs_active_host = matches!(
         &operation,
-        NativeRegistryRequest::TurnSettlement { .. }
+        NativeRegistryRequest::TurnRead { .. }
+            | NativeRegistryRequest::TurnSettlement { .. }
             | NativeRegistryRequest::ConversationAppend { .. }
             | NativeRegistryRequest::ConversationConfirmation { .. }
     );
@@ -724,6 +760,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         }
         NativeRegistryRequest::ConversationAppend { .. } => ReplyRole::ConversationAppend,
         NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
+        NativeRegistryRequest::TurnRead { .. } => ReplyRole::TurnRead,
         NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
     };
     drop(bytes);
@@ -769,6 +806,7 @@ enum ReplyRole {
     ConversationConfirmation,
     ConversationAppend,
     ModelResolve,
+    TurnRead,
     TurnSettlement,
 }
 
@@ -800,6 +838,7 @@ impl ReplyRole {
                 conversation_publication_fallback(authority),
             ),
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
+            Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
             Self::TurnSettlement if authority == WireAuthority::PublicationPermitted => {
                 (TURN_SETTLEMENT_RESULT_LIMIT, "unavailable")
             }
@@ -827,6 +866,23 @@ impl ReplyRole {
                 _ => failure_code(error),
             };
         }
+        use LegacySavedTurnSettlementError as SettlementError;
+        if self == Self::TurnRead {
+            return match error.downcast_ref::<SettlementError>() {
+                Some(SettlementError::RequiresLegacyCodec) if authority == WireAuthority::Live => {
+                    "legacy-read-required"
+                }
+                Some(SettlementError::InvalidRequest | SettlementError::InvalidRecord) => "invalid",
+                Some(SettlementError::Capacity) => "limit-exceeded",
+                Some(SettlementError::Revoked) => "cancelled",
+                Some(SettlementError::Storage) => "internal",
+                Some(_) => "unavailable",
+                None => match failure_code(error) {
+                    "legacy-read-required" => "unavailable",
+                    code => code,
+                },
+            };
+        }
         if self != Self::TurnSettlement {
             return failure_code(error);
         }
@@ -836,7 +892,6 @@ impl ReplyRole {
         if authority == WireAuthority::Live && error.is::<TurnSettlementRequiresLegacyCodec>() {
             return "legacy-read-required";
         }
-        use LegacySavedTurnSettlementError as SettlementError;
         match error.downcast_ref::<SettlementError>() {
             Some(SettlementError::Conflict) => "conflict",
             Some(
@@ -854,6 +909,24 @@ impl ReplyRole {
                 code => code,
             },
         }
+    }
+
+    fn validate_result(self, authority: WireAuthority, output: &[u8]) -> Result<(), &'static str> {
+        let (limit, overflow_code) = self.result_limit(authority);
+        if output.len() > limit {
+            return Err(overflow_code);
+        }
+        if self == Self::TurnRead {
+            if authority != WireAuthority::Live {
+                return Err("unavailable");
+            }
+            let text = std::str::from_utf8(output).map_err(|_| "internal")?;
+            let raw = serde_json::from_str::<&RawValue>(text).map_err(|_| "internal")?;
+            if raw.get() != "null" && !raw.get().starts_with('{') {
+                return Err("internal");
+            }
+        }
+        Ok(())
     }
 }
 
@@ -993,17 +1066,14 @@ impl Connection {
             drop(wire);
             return self.send_stopped(stop);
         }
-        let (limit, overflow_code) = self.reply.result_limit(wire.authority);
         match result {
-            Ok(output) if output.len() <= limit => {
-                send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline)
-            }
-            Ok(_) => send_frame(
-                &mut wire.stream,
-                FAILURE,
-                overflow_code.as_bytes(),
-                deadline,
-            ),
+            Ok(output) => match self
+                .reply
+                .validate_result(wire.authority, output.as_bytes())
+            {
+                Ok(()) => send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline),
+                Err(code) => send_frame(&mut wire.stream, FAILURE, code.as_bytes(), deadline),
+            },
             Err(error) => {
                 let code = self.reply.failure_code(wire.authority, &error);
                 send_frame(&mut wire.stream, FAILURE, code.as_bytes(), deadline)
@@ -1925,6 +1995,98 @@ mod tests {
         assert!(start.operation().is_err());
         body.as_object_mut().unwrap().remove("expected_revision");
         assert!(serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err());
+    }
+
+    #[test]
+    fn turn_read_start_accepts_only_a_saved_caller_and_trim_stable_id() {
+        let id = "猫".repeat(TURN_READ_ID_MAX_CHARS);
+        let operation = |caller: &str, turn_id: &str| {
+            let request = serde_json::json!({"caller": caller, "turn_id": turn_id});
+            format!(r#", "turn_read":{request}"#)
+        };
+        for (caller, expected) in [
+            ("saved-turn", OriginalSavedReceiptRole::SavedTurn),
+            ("saved-reconcile", OriginalSavedReceiptRole::SavedReconcile),
+        ] {
+            let frame = start_frame(&operation(caller, &id));
+            let start = parse_start(START, frame.as_bytes()).unwrap();
+            let NativeRegistryRequest::TurnRead { caller, turn_id } = start.operation().unwrap()
+            else {
+                panic!("expected Turn read operation");
+            };
+            assert_eq!(caller, expected);
+            assert_eq!(turn_id, id);
+            assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+        }
+        for operation in [
+            operation("saved-turn", ""),
+            operation("saved-turn", "猫  "),
+            operation("saved-turn", "\u{001c}猫"),
+            operation("saved-turn", &format!("{id}猫")),
+            operation("shell", "猫"),
+            r#", "turn_read":null"#.to_owned(),
+            r#", "turn_read":["saved-turn","猫"]"#.to_owned(),
+            r#", "turn_read":{"caller":"saved-turn"}"#.to_owned(),
+            r#", "turn_read":{"caller":"saved-turn","turn_id":1}"#.to_owned(),
+            r#", "turn_read":{"caller":"saved-turn","turn_id":"猫","publish":false}"#.to_owned(),
+            r#", "turn_read":{"caller":"saved-turn","turn_id":"猫","turn_id":"turn"}"#.to_owned(),
+        ] {
+            assert!(parse_start(START, start_frame(&operation).as_bytes()).is_err());
+        }
+        let read = operation("saved-turn", "turn");
+        for other in [PROVIDER_REQUEST, r#", "apply":{}"#, r#", "model_list":{}"#] {
+            let frame = start_frame(&format!("{read}{other}"));
+            let start = parse_start(START, frame.as_bytes()).unwrap();
+            assert!(start.operation().is_err());
+        }
+    }
+
+    #[test]
+    fn turn_read_replies_require_live_and_only_explicit_legacy_codec_can_fallback() {
+        use LegacySavedTurnSettlementError as Error;
+        let role = ReplyRole::TurnRead;
+        assert!(!role.permits_publication());
+        let codec = Error::RequiresLegacyCodec.into();
+        for authority in [
+            WireAuthority::AwaitingLive,
+            WireAuthority::PublicationPermitted,
+        ] {
+            assert_eq!(role.failure_code(authority, &codec), "unavailable");
+            assert_eq!(role.validate_result(authority, b"null"), Err("unavailable"));
+        }
+        let live = WireAuthority::Live;
+        assert_eq!(role.failure_code(live, &codec), "legacy-read-required");
+        assert_eq!(
+            role.failure_code(live, &ModelRegistryRequiresLegacyRead.into()),
+            "unavailable"
+        );
+        assert_eq!(role.result_limit(live), (1024 * 1024, "limit-exceeded"));
+        for (error, code) in [
+            (Error::InvalidRequest, "invalid"),
+            (Error::InvalidRecord, "invalid"),
+            (Error::Capacity, "limit-exceeded"),
+            (Error::Revoked, "cancelled"),
+            (Error::Storage, "internal"),
+        ] {
+            assert_eq!(role.failure_code(live, &error.into()), code);
+        }
+        assert!(role.validate_result(live, br#"{"id":"turn"}"#).is_ok());
+        assert!(role.validate_result(live, b"null").is_ok());
+        for output in ["[]", "false", "1", "\"null\"", "{", "{} null"] {
+            assert_eq!(
+                role.validate_result(live, output.as_bytes()),
+                Err("internal")
+            );
+        }
+        assert_eq!(
+            role.validate_result(live, b"{\"id\":\"\xff\"}"),
+            Err("internal")
+        );
+        let oversized = format!("{{\"padding\":\"{}\"}}", "a".repeat(TURN_READ_REPLY_LIMIT));
+        assert_eq!(
+            role.validate_result(live, oversized.as_bytes()),
+            Err("limit-exceeded")
+        );
     }
 
     #[test]

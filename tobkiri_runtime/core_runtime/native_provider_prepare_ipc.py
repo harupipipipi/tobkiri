@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from functools import lru_cache, partial
-from typing import Any, Literal
+from typing import Any, Literal, overload
 
 from core_runtime.process_identity import process_start_identity
 from core_runtime.provider_prepare_native_v4 import (
@@ -29,6 +29,7 @@ from tobkiri_protocol.canonical import strict_loads
 _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
 _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
+_SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -56,10 +57,12 @@ CONVERSATION_APPEND_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 CONVERSATION_CONFIRMATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 MODEL_RESOLVE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_RECEIPT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+SAVED_TURN_READ_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
 SAVED_RECEIPT_MAX_ID_CHARS = _JSON_LIMIT // 8
+SAVED_TURN_READ_MAX_ID_CHARS = 256
 _MODEL_SAVE_MAX_NODES = 100_000
 _OWNER_MAX_INTEGER_DIGITS = 4300
 _FAILURES = frozenset({
@@ -124,6 +127,14 @@ class NativeSavedReceiptFailure(RuntimeError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"native Saved Receipt lookup failed ({code})")
+        self.code = code
+
+
+class NativeSavedTurnReadFailure(RuntimeError):
+    """The Launcher returned a typed failure from the saved Turn owner."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native saved Turn read failed ({code})")
         self.code = code
 
 
@@ -225,6 +236,18 @@ class NativeSavedReceiptRequest:
 
 
 @dataclass(frozen=True)
+class NativeSavedTurnReadRequest:
+    """Borrow the original saved Turn read's capture and live guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    caller: SavedReceiptCaller
+    turn_id: str
+
+
+@dataclass(frozen=True)
 class NativeSavedTurnSettlementRequest:
     """Borrow the signed Turn invocation and its verified result reference."""
 
@@ -275,10 +298,16 @@ _NativeBorrow = (
     | NativeConversationGetRequest
     | NativeConversationAppendRequest
     | NativeSavedReceiptRequest
+    | NativeSavedTurnReadRequest
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
     | NativeModelResolveRequest
 )
+_NativeOperation = Literal[
+    "provider_prepare", "model_list", "model_save", "conversation_get",
+    "conversation_receipt", "model_resolve", "turn_settlement",
+    "conversation_confirmation", "conversation_append",
+]
 
 
 @dataclass(frozen=True)
@@ -399,6 +428,37 @@ def capture_launcher_saved_receipt_reader() -> (
     return partial(_invoke, launcher, operation="conversation_receipt")
 
 
+def capture_launcher_saved_turn_reader() -> (
+    Callable[[NativeSavedTurnReadRequest], dict[str, Any] | None] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for saved Turn reads."""
+    if os.environ.get(_SAVED_TURN_READ_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+
+    def read(borrow: NativeSavedTurnReadRequest) -> dict[str, Any] | None:
+        return _invoke(launcher, borrow, operation="turn_read")
+
+    return read
+
+
+def is_native_saved_turn_read_identifier(value: object) -> bool:
+    """Check that a Turn resource identifier can cross the native wire unchanged."""
+    if (
+        not isinstance(value, str)
+        or not 0 < len(value) <= SAVED_TURN_READ_MAX_ID_CHARS
+        or value.strip() != value
+    ):
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def capture_launcher_saved_turn_settlement_writer() -> (
     Callable[[NativeSavedTurnSettlementRequest], Mapping[str, Any]] | None
 ):
@@ -505,6 +565,14 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
             "caller": borrow.caller,
             "turn_id": borrow.turn_id,
         }
+    elif isinstance(borrow, NativeSavedTurnReadRequest):
+        if (
+            type(borrow.caller) is not str
+            or borrow.caller not in ("saved-turn", "saved-reconcile")
+            or not is_native_saved_turn_read_identifier(borrow.turn_id)
+        ):
+            raise _ProtocolError("native saved Turn read inputs are invalid")
+        frame["turn_read"] = {"caller": borrow.caller, "turn_id": borrow.turn_id}
     elif isinstance(borrow, NativeSavedTurnSettlementRequest):
         frame["turn_settlement"] = _turn_settlement_payload(borrow)
     elif isinstance(borrow, NativeConversationConfirmationRequest):
@@ -794,6 +862,22 @@ def _decode_saved_receipt(payload: bytes) -> dict[str, Any]:
     return result
 
 
+def _decode_saved_turn_read(
+    payload: bytes, borrow: NativeSavedTurnReadRequest,
+) -> dict[str, Any] | None:
+    invalid = "native saved Turn read owner result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if result is None:
+        return None
+    if (
+        type(result) is not dict
+        or result.get("id") != borrow.turn_id
+        or result.get("profile_id") != borrow.context.profile_id
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
 def _decode_turn_settlement(
     payload: bytes, borrow: NativeSavedTurnSettlementRequest,
 ) -> dict[str, Any]:
@@ -999,7 +1083,7 @@ class _Exchange:
         borrow: _NativeBorrow,
         deadline_ns: int,
         wait_seconds: Callable[[], float],
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         conversation_append = isinstance(borrow, NativeConversationAppendRequest)
         try:
             start = _start_payload(borrow, deadline_ns)
@@ -1024,6 +1108,11 @@ class _Exchange:
                         "owner requires a legacy read outside the native envelope",
                     )
                 if payload != self.legacy_failure:
+                    if entered_live_phase and isinstance(
+                        borrow, NativeSavedTurnReadRequest,
+                    ):
+                        wait_seconds()
+                        raise NativeSavedTurnReadFailure(payload.decode("ascii"))
                     if isinstance(borrow, NativeModelSaveRequest):
                         wait_seconds()
                         raise NativeModelSaveFailure(payload.decode("ascii"))
@@ -1076,6 +1165,7 @@ class _Exchange:
                 # send() checks the current guard again before offering any byte.
                 self.send(_PUBLISH_PERMIT, b"", wait_seconds)
             elif tag == _PLAN and entered_live_phase:
+                plan: dict[str, Any] | None
                 if conversation_get:
                     plan = _decode_conversation_get(payload)
                 elif conversation_append:
@@ -1084,6 +1174,8 @@ class _Exchange:
                     plan = _decode_conversation_append(payload, borrow)
                 elif isinstance(borrow, NativeSavedReceiptRequest):
                     plan = _decode_saved_receipt(payload)
+                elif isinstance(borrow, NativeSavedTurnReadRequest):
+                    plan = _decode_saved_turn_read(payload, borrow)
                 elif isinstance(borrow, NativeSavedTurnSettlementRequest):
                     plan = _decode_turn_settlement(payload, borrow)
                 elif isinstance(borrow, NativeConversationConfirmationRequest):
@@ -1106,21 +1198,36 @@ class _Exchange:
                 raise _ProtocolError("native Provider frame is out of order")
 
 
+@overload
 def _invoke(
     launcher: _Launcher,
     borrow: _NativeBorrow,
     *,
-    operation: Literal[
-        "provider_prepare", "model_list", "model_save", "conversation_get",
-        "conversation_receipt", "model_resolve", "turn_settlement",
-        "conversation_confirmation", "conversation_append",
-    ],
-) -> Mapping[str, Any]:
+    operation: _NativeOperation,
+) -> dict[str, Any]: ...
+
+
+@overload
+def _invoke(
+    launcher: _Launcher,
+    borrow: NativeSavedTurnReadRequest,
+    *,
+    operation: Literal["turn_read"],
+) -> dict[str, Any] | None: ...
+
+
+def _invoke(
+    launcher: _Launcher,
+    borrow: _NativeBorrow,
+    *,
+    operation: _NativeOperation | Literal["turn_read"],
+) -> dict[str, Any] | None:
     model_settings = isinstance(borrow, NativeModelSettingsRequest)
     model_save = isinstance(borrow, NativeModelSaveRequest)
     conversation_get = isinstance(borrow, NativeConversationGetRequest)
     conversation_append = isinstance(borrow, NativeConversationAppendRequest)
     saved_receipt = isinstance(borrow, NativeSavedReceiptRequest)
+    turn_read = isinstance(borrow, NativeSavedTurnReadRequest)
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
@@ -1130,6 +1237,7 @@ def _invoke(
         or conversation_get != (operation == "conversation_get")
         or conversation_append != (operation == "conversation_append")
         or saved_receipt != (operation == "conversation_receipt")
+        or turn_read != (operation == "turn_read")
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
         or model_resolve != (operation == "model_resolve")
@@ -1162,7 +1270,7 @@ def _invoke(
             _OWNER_RESULT_LIMIT
             if (
                 model_settings or model_save or conversation_get
-                or saved_receipt or model_resolve or turn_settlement
+                or saved_receipt or model_resolve or turn_read or turn_settlement
                 or conversation_append
             )
             else _JSON_LIMIT

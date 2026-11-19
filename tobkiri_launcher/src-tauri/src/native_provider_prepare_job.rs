@@ -21,8 +21,9 @@ use tobkiri_core::{
 };
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 use tobkiri_harness_native::{
-    invoke_original_saved_turn_port, settle_legacy_saved_turn_from_admitted_port,
-    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, OriginalSavedTurnCheck,
+    invoke_original_saved_turn_port, invoke_original_saved_turn_read_port, read_legacy_saved_turn,
+    settle_legacy_saved_turn_from_admitted_port, LegacySavedTurnSettlementError,
+    LegacySavedTurnSettlementRequest, OriginalSavedTurnCheck,
 };
 use tobkiri_store::{DataRoot, StoreError};
 use tobkiri_wasm::NativeDataIoError;
@@ -33,8 +34,9 @@ use super::{
         reacquire_conversation_append_pack, reacquire_conversation_confirmation_pack,
         reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
         reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_saved_receipt_pack, reacquire_turn_settlement_pack, ConversationReadCaller,
-        SettlementCaller, VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
+        reacquire_saved_receipt_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
+        ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch,
+        REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -55,6 +57,8 @@ pub(crate) const CONVERSATION_CONFIRMATION_LIMIT: usize = 16 * 1024;
 pub(crate) const CONVERSATION_APPEND_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded CPython Model Resolve result accepted by the Host.
 pub(crate) const MODEL_RESOLVE_REPLY_LIMIT: usize = 1024 * 1024;
+/// Maximum encoded saved Turn GET result accepted by the Host.
+pub(crate) const TURN_READ_REPLY_LIMIT: usize = 1024 * 1024;
 
 pub(crate) enum NativeRegistryRequest {
     Provider {
@@ -87,6 +91,10 @@ pub(crate) enum NativeRegistryRequest {
         role: OriginalModelResolveRole,
         identifier: String,
     },
+    TurnRead {
+        caller: OriginalSavedReceiptRole,
+        turn_id: String,
+    },
     TurnSettlement {
         caller: SettlementCaller,
         turn_id: String,
@@ -109,6 +117,7 @@ impl NativeRegistryRequest {
             }
             Self::ConversationAppend { .. } => proof.permits_conversation_append(),
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
+            Self::TurnRead { caller, .. } => proof.permits_turn_read(*caller),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
         }
     }
@@ -176,6 +185,10 @@ impl NativeRegistryRequest {
                 ..
             }
             | Self::ConversationReceipt {
+                turn_id: identifier,
+                ..
+            }
+            | Self::TurnRead {
                 turn_id: identifier,
                 ..
             }
@@ -712,6 +725,55 @@ async fn run(
                         .await
                         .map_err(model_registry_error)?;
                     return decode_model_resolve_reply(output, &graph);
+                }
+                NativeRegistryRequest::TurnRead { caller, turn_id } => {
+                    let pack = reacquire_turn_read_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        caller,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-read@1.0")?;
+                    let operation = OpName::parse("validate")?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &shape,
+                            &operation,
+                            &profile,
+                            execution_deadline,
+                            0,
+                        )
+                        .await?;
+                    let data = DataRoot::open_existing(&config.user_data_dir)
+                        .map_err(|_| LegacySavedTurnSettlementError::Storage)?;
+                    let handle = tokio::runtime::Handle::current();
+                    let result = tokio::task::block_in_place(|| {
+                        read_legacy_saved_turn(
+                            &data,
+                            &profile,
+                            &turn_id,
+                            &graph,
+                            execution_deadline,
+                            || revalidate().map_err(|_| LegacySavedTurnSettlementError::Revoked),
+                            |row| {
+                                handle.block_on(invoke_original_saved_turn_read_port(
+                                    port, row, &graph,
+                                ))
+                            },
+                        )
+                    })?;
+                    let wire = match result {
+                        Some(record) => record,
+                        None => CoreBuffer::copy_from(b"null", &graph)
+                            .map_err(|_| LegacySavedTurnSettlementError::Capacity)?,
+                    };
+                    return Ok(PreparedReply {
+                        wire,
+                        document: None,
+                    });
                 }
                 NativeRegistryRequest::TurnSettlement {
                     caller,
@@ -1349,6 +1411,56 @@ mod tests {
         assert!(make_request(SavedTurn, CONVERSATION_CONFIRMATION_LIMIT + 1)
             .input_capacity()
             .is_err());
+    }
+
+    #[test]
+    fn turn_read_requires_its_own_role_proof_and_has_no_publication_permit() {
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        for granted in OriginalSavedReceiptRole::ALL {
+            let read = VerifiedRegistryLaunch::test_turn_read_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            let writer = VerifiedRegistryLaunch::test_conversation_confirmation_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            let receipt = VerifiedRegistryLaunch::test_saved_receipt_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            let settlement = VerifiedRegistryLaunch::test_turn_settlement_proof(
+                identity.clone(),
+                "catalog:fixture",
+                match granted {
+                    OriginalSavedReceiptRole::SavedTurn => SettlementCaller::SavedTurn,
+                    OriginalSavedReceiptRole::SavedReconcile => SettlementCaller::SavedReconcile,
+                },
+            );
+            assert!(!read.permits_conversation_confirmation(granted));
+            for caller in OriginalSavedReceiptRole::ALL {
+                let request = NativeRegistryRequest::TurnRead {
+                    caller,
+                    turn_id: "turn".to_owned(),
+                };
+                assert_eq!(request.has_launch_proof(&read), caller == granted);
+                assert!(!request.has_launch_proof(&writer));
+                assert!(!request.has_launch_proof(&receipt));
+                assert!(!request.has_launch_proof(&settlement));
+                assert!(!request.requires_publication_permit());
+                assert_eq!(request.input_capacity().unwrap(), "turn".len());
+            }
+        }
     }
 
     #[test]

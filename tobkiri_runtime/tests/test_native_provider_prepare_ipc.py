@@ -1433,7 +1433,7 @@ def test_deadline_keeps_original_failure_after_cancel_cleanup(
 
 @pytest.mark.parametrize(
     "operation", [
-        "provider", "model-resolve", "saved-receipt", "turn-settlement",
+        "provider", "model-resolve", "saved-receipt", "turn-read", "turn-settlement",
         "conversation-confirmation",
     ],
 )
@@ -1460,6 +1460,12 @@ elif sys.argv[1] == "saved-receipt":
     borrow = native_provider_prepare_ipc.NativeSavedReceiptRequest(
         None, "a" * 32, borrow.deadline_monotonic, borrow.assert_current,
         "saved-turn", "fixture",
+    )
+elif sys.argv[1] == "turn-read":
+    invoke = native_provider_prepare_ipc.capture_launcher_saved_turn_reader()
+    borrow = native_provider_prepare_ipc.NativeSavedTurnReadRequest(
+        None, "a" * 32, borrow.deadline_monotonic, borrow.assert_current,
+        "saved-reconcile", "fixture",
     )
 elif sys.argv[1] == "turn-settlement":
     invoke = native_provider_prepare_ipc.capture_launcher_saved_turn_settlement_writer()
@@ -1500,7 +1506,10 @@ with socket.socket(socket.AF_UNIX) as listener:
 """
     with tempfile.TemporaryDirectory(dir="/tmp") as root:
         address = str(Path(root) / "substitute.sock")
-        environment = os.environ | {ipc._SOCKET_ENV: address, ipc._OWNER_ENV: _owner()}
+        environment = os.environ | {
+            ipc._SOCKET_ENV: address, ipc._OWNER_ENV: _owner(),
+            ipc._SAVED_TURN_READ_ENV: "1",
+        }
         with subprocess.Popen(
             [sys.executable, "-B", "-c", server_code, address],
             stdout=subprocess.PIPE,
@@ -1844,6 +1853,197 @@ def test_saved_receipt_rejects_malformed_results_and_publication(
         reader(_saved_receipt_request(_Borrow()))
 
 
+def _saved_turn_read_request(
+    borrow: _Borrow,
+    caller: ipc.SavedReceiptCaller = "saved-turn",
+    turn_id: str = "turn-1",
+) -> ipc.NativeSavedTurnReadRequest:
+    return ipc.NativeSavedTurnReadRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        caller=caller,
+        turn_id=turn_id,
+    )
+
+
+@contextmanager
+def _served_saved_turn_read(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeSavedTurnReadRequest], dict[str, Any] | None]]:
+    monkeypatch.setenv(ipc._SAVED_TURN_READ_ENV, "1")
+    with _served(monkeypatch, serve):
+        reader = ipc.capture_launcher_saved_turn_reader()
+        assert reader is not None
+        yield reader
+
+
+def test_saved_turn_read_capture_requires_managed_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ipc._SOCKET_ENV, raising=False)
+    monkeypatch.delenv(ipc._OWNER_ENV, raising=False)
+    monkeypatch.setenv(ipc._SAVED_TURN_READ_ENV, "1")
+    assert ipc.capture_launcher_saved_turn_reader() is None
+    monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
+    monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+    monkeypatch.setenv(ipc._SAVED_TURN_READ_ENV, "true")
+    assert ipc.capture_launcher_saved_turn_reader() is None
+    monkeypatch.delenv(ipc._SAVED_TURN_READ_ENV)
+    assert ipc.capture_launcher_saved_turn_reader() is None
+    monkeypatch.setenv(ipc._SAVED_TURN_READ_ENV, "1")
+    reader = ipc.capture_launcher_saved_turn_reader()
+    assert reader is not None
+    with pytest.raises(ipc._ProtocolError, match="request role is invalid"):
+        reader(_saved_receipt_request(_Borrow()))
+
+
+@pytest.mark.parametrize(
+    ("caller", "turn_id", "present"),
+    [
+        ("saved-turn", "absent", False),
+        ("saved-reconcile", "もの\x1c/🧪", True),
+        ("saved-turn", "🧪" * ipc.SAVED_TURN_READ_MAX_ID_CHARS, True),
+    ],
+)
+def test_saved_turn_read_preserves_owner_values_through_the_bounded_wire(
+    monkeypatch: pytest.MonkeyPatch,
+    caller: ipc.SavedReceiptCaller,
+    turn_id: str,
+    present: bool,
+) -> None:
+    borrow = _Borrow()
+    expected = {
+        "id": turn_id,
+        "profile_id": borrow.context.profile_id,
+        "extra": ["会話", {"zero": -0.0, "wide": 1 << 145}],
+    } if present else None
+    response = json.dumps(expected, ensure_ascii=False).encode("utf-8")
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert tag == 1
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "turn_read": {"caller": caller, "turn_id": turn_id},
+        }
+        for _ in range(2):
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, 7, response.ljust(1024 * 1024, b" "))
+        assert peer.recv(1) == b""
+
+    with _served_saved_turn_read(monkeypatch, serve) as reader:
+        monkeypatch.delenv(ipc._SAVED_TURN_READ_ENV)
+        monkeypatch.setenv(ipc._SOCKET_ENV, "/invalidated-after-capture")
+        monkeypatch.delenv(ipc._OWNER_ENV)
+        actual = reader(_saved_turn_read_request(borrow, caller, turn_id))
+        assert actual == expected
+        assert json.dumps(actual, ensure_ascii=False).encode("utf-8") == response
+
+
+@pytest.mark.parametrize(
+    ("caller", "turn_id"),
+    [
+        ("shell", "turn-1"),
+        ("saved-turn", ""),
+        ("saved-turn", "turn-1\x1c"),
+        ("saved-reconcile", "\u3000turn-1"),
+        ("saved-turn", "🧪" * (ipc.SAVED_TURN_READ_MAX_ID_CHARS + 1)),
+        ("saved-reconcile", "\ud800"),
+        ("saved-reconcile", 42),
+    ],
+)
+def test_saved_turn_read_rejects_open_callers_and_invalid_identifiers(
+    caller: ipc.SavedReceiptCaller, turn_id: str,
+) -> None:
+    with pytest.raises(ipc._ProtocolError, match="saved Turn read inputs are invalid"):
+        ipc._start_payload(_saved_turn_read_request(_Borrow(), caller, turn_id), 1)
+
+
+@pytest.mark.parametrize(
+    ("live", "tag", "payload", "expected"),
+    [
+        (False, 7, b"null", ipc._ProtocolError),
+        (False, 10, b"", ipc.NativeProviderPrepareUnavailable),
+        (False, 8, b"legacy-read-required", ipc._ProtocolError),
+        (False, 8, b"invalid", ipc._ProtocolError),
+        (True, 8, b"legacy-read-required", ipc.NativeProviderRegistryRequiresLegacyRead),
+        (True, 8, b"not-found", ipc.NativeSavedTurnReadFailure),
+        (True, 8, b"invalid", ipc.NativeSavedTurnReadFailure),
+        (True, 8, b"denied", ipc.NativeSavedTurnReadFailure),
+        (True, 8, b"limit-exceeded", ipc.NativeSavedTurnReadFailure),
+        (True, 8, b"internal", ipc.NativeSavedTurnReadFailure),
+        (True, 10, b"", ipc._ProtocolError),
+    ],
+)
+def test_saved_turn_read_distinguishes_proven_fallback_from_failures(
+    monkeypatch: pytest.MonkeyPatch, live: bool, tag: int, payload: bytes,
+    expected: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, tag, payload)
+        if (tag == 7 and not live) or (tag == 10 and live):
+            assert _receive(peer) == (9, b"")
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_turn_read(monkeypatch, serve) as reader,
+        pytest.raises(expected) as failure,
+    ):
+        reader(_saved_turn_read_request(_Borrow()))
+    if isinstance(failure.value, ipc.NativeSavedTurnReadFailure):
+        assert failure.value.code == payload.decode("ascii")
+
+
+@pytest.mark.parametrize(
+    ("tag", "size", "payload"),
+    [
+        (7, 1024 * 1024 + 1, b""),
+        (7, None, b'[]'),
+        (7, None, b'{"turn":null}'),
+        (7, None, b'{"id":"other","profile_id":"defaults"}'),
+        (7, None, b'{"id":"turn-1","profile_id":"other"}'),
+        (7, None, b'{"id":"turn-1","profile_id":"defaults","extra":1e999}'),
+        (7, None, b'{"id":"turn-1","id":"turn-1","profile_id":"defaults"}'),
+        (11, 0, b""),
+    ],
+)
+def test_saved_turn_read_rejects_malformed_results_and_publication(
+    monkeypatch: pytest.MonkeyPatch, tag: int, size: int | None, payload: bytes,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        length = len(payload) if size is None else size
+        peer.sendall(_HEADER.pack(tag, length) + payload)
+        assert _receive(peer) == (9, b"")
+        if size is None:
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    message = "owner result is invalid" if size is None else "cleanup was unconfirmed"
+    with (
+        _served_saved_turn_read(monkeypatch, serve) as reader,
+        pytest.raises(ipc._ProtocolError, match=message),
+    ):
+        reader(_saved_turn_read_request(_Borrow()))
+
+
 def _model_resolve_request(
     borrow: _Borrow,
     role: ipc.ModelResolveRole = "generate",
@@ -2039,9 +2239,9 @@ def test_model_resolve_rejects_malformed_results_and_publication(
 
 
 @pytest.mark.parametrize("revoked", [False, True])
-@pytest.mark.parametrize("saved_receipt", [False, True])
+@pytest.mark.parametrize("operation", ["model-resolve", "saved-receipt", "turn-read"])
 def test_owner_read_requires_a_live_guard_during_result_delivery(
-    monkeypatch: pytest.MonkeyPatch, revoked: bool, saved_receipt: bool,
+    monkeypatch: pytest.MonkeyPatch, revoked: bool, operation: str,
 ) -> None:
     borrow = _Borrow(lifetime=3 if revoked else 0.5)
 
@@ -2059,7 +2259,12 @@ def test_owner_read_requires_a_live_guard_during_result_delivery(
 
     expected = PermissionError if revoked else TimeoutError
     with _served(monkeypatch, serve), pytest.raises(expected):
-        if saved_receipt:
+        if operation == "turn-read":
+            monkeypatch.setenv(ipc._SAVED_TURN_READ_ENV, "1")
+            turn_reader = ipc.capture_launcher_saved_turn_reader()
+            assert turn_reader is not None
+            turn_reader(_saved_turn_read_request(borrow))
+        elif operation == "saved-receipt":
             reader = ipc.capture_launcher_saved_receipt_reader()
             assert reader is not None
             reader(_saved_receipt_request(borrow))

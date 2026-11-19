@@ -65,7 +65,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     pub(crate) model_save: Option<VerifiedModelSaveSource>,
     model_resolve: Option<VerifiedModelResolveSource>,
     conversation: Option<VerifiedConversationSource>,
-    turn_settlement: Option<VerifiedTurnSettlementSource>,
+    turn: Option<VerifiedTurnSource>,
 }
 
 /// The caller of the original conversation-owner read grant.
@@ -96,9 +96,16 @@ impl VerifiedRegistryLaunch {
 
     /// Require the caller's original signed Turn grant and verified settlement Pack.
     pub(crate) fn permits_turn_settlement(&self, role: SettlementCaller) -> bool {
-        self.turn_settlement
+        self.turn
             .as_ref()
-            .is_some_and(|source| source.permits(role))
+            .is_some_and(|source| source.permits_settlement(role))
+    }
+
+    /// Require the caller's complete signed confirmation chain and verified Turn read port.
+    pub(crate) fn permits_turn_read(&self, role: OriginalSavedReceiptRole) -> bool {
+        self.turn
+            .as_ref()
+            .is_some_and(|source| source.permits_read(role))
     }
 
     /// Require the receipt caller's own legacy edge and verified receipt declaration.
@@ -211,18 +218,26 @@ impl VerifiedConversationSource {
     }
 }
 
-/// Separate signed Shell-to-Turn grants and the receipt pin for the settlement Pack.
+/// Independent signed grants for settlement and completion reads of the Turn Pack.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct VerifiedTurnSettlementSource {
-    roles: [Option<(SettlementCaller, VerifiedLegacyRoutePin)>; 2],
+struct VerifiedTurnSource {
+    settlement: [Option<(SettlementCaller, VerifiedLegacyRoutePin)>; 2],
+    read: VerifiedConversationConfirmationRoles,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
 }
 
-impl VerifiedTurnSettlementSource {
-    fn permits(&self, role: SettlementCaller) -> bool {
-        self.roles
+impl VerifiedTurnSource {
+    fn permits_settlement(&self, role: SettlementCaller) -> bool {
+        self.settlement
+            .iter()
+            .flatten()
+            .any(|(granted, _)| *granted == role)
+    }
+
+    fn permits_read(&self, role: OriginalSavedReceiptRole) -> bool {
+        self.read
             .iter()
             .flatten()
             .any(|(granted, _)| *granted == role)
@@ -271,7 +286,7 @@ impl VerifiedRegistryLaunch {
             model_save: None,
             model_resolve: None,
             conversation: None,
-            turn_settlement: None,
+            turn: None,
         }
     }
 
@@ -293,7 +308,7 @@ impl VerifiedRegistryLaunch {
             model_save: None,
             model_resolve: None,
             conversation: None,
-            turn_settlement: None,
+            turn: None,
         }
     }
 
@@ -316,7 +331,7 @@ impl VerifiedRegistryLaunch {
             }),
             model_resolve: None,
             conversation: None,
-            turn_settlement: None,
+            turn: None,
         }
     }
 
@@ -344,7 +359,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             conversation: None,
-            turn_settlement: None,
+            turn: None,
         }
     }
 
@@ -372,7 +387,7 @@ impl VerifiedRegistryLaunch {
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
             }),
-            turn_settlement: None,
+            turn: None,
         }
     }
 
@@ -423,13 +438,32 @@ impl VerifiedRegistryLaunch {
             model_save: None,
             model_resolve: None,
             conversation: None,
-            turn_settlement: Some(VerifiedTurnSettlementSource {
-                roles: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
+            turn: Some(VerifiedTurnSource {
+                settlement: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
+                read: [None, None],
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
             }),
         }
+    }
+
+    pub(crate) fn test_turn_read_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalSavedReceiptRole,
+    ) -> Self {
+        let mut proof =
+            Self::test_conversation_confirmation_proof(identity, catalog_revision, role);
+        let confirmation = proof.conversation.take().unwrap();
+        proof.turn = Some(VerifiedTurnSource {
+            settlement: [None, None],
+            read: confirmation.confirmation,
+            archive_sha256: confirmation.archive_sha256,
+            archive_bytes: confirmation.archive_bytes,
+            manifest_sha256: confirmation.manifest_sha256,
+        });
+        proof
     }
 }
 
@@ -867,19 +901,15 @@ impl LaunchActivationObserver<'_> {
                     }))
                 },
                 |receipt, input| {
-                    verify_turn_settlement_source(inspection, active, receipt, input, checkpoint)
+                    verify_turn_source(inspection, active, receipt, input, checkpoint)
                         .map_err(io::Error::other)
                 },
             )
             .context("bundled Registry Pack verification failed during Launch")?;
-        let (
-            provider_prepare,
-            (model_settings, model_save, model_resolve),
-            conversation,
-            settlement,
-        ) = verified_registry_pack_evidence;
-        let turn_settlement = settlement.flatten();
-        if !has_existing_grants && conversation.is_none() && turn_settlement.is_none() {
+        let (provider_prepare, (model_settings, model_save, model_resolve), conversation, turn) =
+            verified_registry_pack_evidence;
+        let turn = turn.flatten();
+        if !has_existing_grants && conversation.is_none() && turn.is_none() {
             return Ok(None);
         }
         let security_epoch = active
@@ -906,7 +936,10 @@ impl LaunchActivationObserver<'_> {
         if saved_receipt_selection.is_some() {
             log::info!("verified selected old Conversation saved receipt grants and their bundled Wasm replacement for this activation");
         }
-        if turn_settlement.is_some() {
+        if turn
+            .as_ref()
+            .is_some_and(|source| source.settlement.iter().any(Option::is_some))
+        {
             log::info!("verified selected old Turn settlement grants and their bundled Wasm replacement for this activation");
         }
         Ok(Some(VerifiedRegistryLaunch {
@@ -918,7 +951,7 @@ impl LaunchActivationObserver<'_> {
             model_save,
             model_resolve,
             conversation,
-            turn_settlement,
+            turn,
         }))
     }
 }
@@ -1140,10 +1173,45 @@ pub(crate) fn reacquire_turn_settlement_pack(
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<VerifiedPack> {
     let source = proof
-        .turn_settlement
+        .turn
         .as_ref()
-        .filter(|source| source.permits(role))
+        .filter(|source| source.permits_settlement(role))
         .context("admitted launch has no verified Turn settlement source for the caller")?;
+    reacquire_turn_archive(inspection, proof, source, checkpoint, |pack| {
+        require_turn_settlement_declaration(pack).map(|_| ())
+    })
+    .context("bundled Turn settlement archive verification failed")
+}
+
+/// Reacquire the Turn Pack using this completion caller's signed grants and pinned read port.
+pub(super) fn reacquire_turn_read_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalSavedReceiptRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .turn
+        .as_ref()
+        .filter(|source| source.permits_read(role))
+        .context("admitted launch has no verified Turn read source for the caller")?;
+    reacquire_turn_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        require_turn_read_declaration,
+    )
+    .context("bundled Turn read archive verification failed")
+}
+
+fn reacquire_turn_archive(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    source: &VerifiedTurnSource,
+    checkpoint: impl Fn() -> Result<()>,
+    verify_declaration: fn(&VerifiedPack) -> Result<()>,
+) -> Result<VerifiedPack> {
     let app_root = registry_pack_root(inspection, proof)?;
     registry_pack_receipt::verify_installed_with_settlement(
         &app_root,
@@ -1156,11 +1224,12 @@ pub(crate) fn reacquire_turn_settlement_pack(
                 source.archive_bytes,
                 &source.manifest_sha256,
             )?;
-            verify_turn_settlement_archive(inspection, receipt, input)
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            verify_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
         },
-    )
-    .context("bundled Turn settlement archive verification failed")?
-    .context("bundled Registry receipt has no Turn settlement archive")
+    )?
+    .context("bundled Registry receipt has no Turn archive")
 }
 
 fn observe_conversation_confirmation_declaration(pack: &VerifiedPack) -> Result<bool> {
@@ -1307,43 +1376,56 @@ fn verify_conversation_append_source(
     Ok(Some(choice.pins().each_ref().map(Into::into)))
 }
 
-fn verify_turn_settlement_source(
+fn verify_turn_source(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     active: &OriginalActiveProfile,
     receipt: &registry_pack_receipt::Pack,
     input: &mut dyn io::Read,
     checkpoint: impl Fn() -> Result<()>,
-) -> Result<Option<VerifiedTurnSettlementSource>> {
+) -> Result<Option<VerifiedTurnSource>> {
     let budget = inspection.allocation_budget()?;
     let [saved_turn, saved_reconcile] = SettlementCaller::ALL;
     let selections = [
         select_original_saved_turn_settlement(active, budget, saved_turn)?,
         select_original_saved_turn_settlement(active, budget, saved_reconcile)?,
     ];
-    if selections.iter().all(Option::is_none) {
+    let read = if receipt.version() == "0.2.0" {
+        verify_conversation_confirmation_source(inspection, active, &checkpoint)?
+    } else {
+        [None, None]
+    };
+    let has_read = read.iter().any(Option::is_some);
+    if selections.iter().all(Option::is_none) && !has_read {
         return Ok(None);
     }
-    let locked = inspection.with_source(|sources| {
-        sources.turn_settlement_bundle(selections.each_ref().map(Option::as_ref), budget)
-    })??;
-    locked.verify(checkpoint)?;
-    verify_turn_settlement_archive(inspection, receipt, input)?;
-    Ok(Some(VerifiedTurnSettlementSource {
-        roles: selections.map(|choice| choice.map(|choice| (choice.role(), choice.pin().into()))),
+    if selections.iter().any(Option::is_some) {
+        let locked = inspection.with_source(|sources| {
+            sources.turn_settlement_bundle(selections.each_ref().map(Option::as_ref), budget)
+        })??;
+        locked.verify(checkpoint)?;
+    }
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    let declares_read = require_turn_settlement_declaration(&pack)?;
+    ensure!(
+        !has_read || declares_read,
+        "bundled Turn Pack has no read port"
+    );
+    Ok(Some(VerifiedTurnSource {
+        settlement: selections
+            .map(|choice| choice.map(|choice| (choice.role(), choice.pin().into()))),
+        read,
         archive_sha256: receipt.archive_sha256().to_owned(),
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
     }))
 }
 
-fn verify_turn_settlement_archive(
-    inspection: &NativeArtifactInspection<NativeApplicationSources>,
-    receipt: &registry_pack_receipt::Pack,
-    input: &mut dyn io::Read,
-) -> io::Result<VerifiedPack> {
-    let pack = verify_registry_archive(inspection, receipt, input)?;
-    require_turn_settlement_declaration(&pack).map_err(io::Error::other)?;
-    Ok(pack)
+fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
+    ensure!(
+        require_turn_settlement_declaration(pack)?,
+        "bundled Turn Pack has no read port"
+    );
+    Ok(())
 }
 
 // The staged declarations pin the exact ABI, including Core imports and cardinality.
@@ -1635,7 +1717,9 @@ mod tests {
             fs::write(path.join("pack.json"), manifest).unwrap();
             verify_directory(&path, &Default::default()).unwrap()
         };
-        assert!(require_turn_settlement_declaration(&verify(draft)).unwrap());
+        let current = verify(draft);
+        assert!(require_turn_settlement_declaration(&current).unwrap());
+        assert!(require_turn_read_declaration(&current).is_ok());
 
         let mut extra: serde_json::Value = serde_json::from_slice(draft).unwrap();
         extra["permissions"]["storage"] = serde_json::json!({"private": true});
@@ -1646,6 +1730,15 @@ mod tests {
                 .contains("unexpected capabilities")
         );
         let current_wit = std::str::from_utf8(TURN_WIT.1).unwrap();
+        fs::write(
+            path.join(TURN_WIT.0),
+            current_wit.replace("    valid,", "    accepted,"),
+        )
+        .unwrap();
+        assert!(require_turn_read_declaration(&verify(draft))
+            .unwrap_err()
+            .to_string()
+            .contains("unexpected WIT"));
         fs::write(
             path.join("wit/pack.wit"),
             current_wit.replace("option<u64>", "option<u32>"),
@@ -1675,7 +1768,9 @@ mod tests {
             .unwrap()
             .retain(|file| file != TURN_READ_SHAPE.0);
         let old = serde_json::to_vec(&old).unwrap();
-        assert!(!require_turn_settlement_declaration(&verify(&old)).unwrap());
+        let original = verify(&old);
+        assert!(!require_turn_settlement_declaration(&original).unwrap());
+        assert!(require_turn_read_declaration(&original).is_err());
     }
 
     #[test]

@@ -1845,6 +1845,7 @@ def capture_production_dispatch(
         MODEL_RESOLVE_MINIMUM_MEMORY,
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
+        SAVED_TURN_READ_MINIMUM_MEMORY,
         SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
         ConversationGetCaller,
         ModelResolveRole,
@@ -1865,6 +1866,8 @@ def capture_production_dispatch(
         NativeProviderPrepareUnavailable,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
+        NativeSavedTurnReadFailure,
+        NativeSavedTurnReadRequest,
         NativeSavedTurnSettlementFailure,
         NativeSavedTurnSettlementPublicationUnconfirmed,
         NativeSavedTurnSettlementRequest,
@@ -1877,8 +1880,10 @@ def capture_production_dispatch(
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
         capture_launcher_saved_receipt_reader,
+        capture_launcher_saved_turn_reader,
         capture_launcher_saved_turn_settlement_writer,
         is_canonical_model_resolve_identifier,
+        is_native_saved_turn_read_identifier,
     )
     from ..provider_prepare_native_v4 import (
         NativeProviderRegistryRequiresLegacyRead,
@@ -1896,6 +1901,7 @@ def capture_production_dispatch(
     native_confirmation_writer = capture_launcher_conversation_confirmation_writer()
     native_append_writer = capture_launcher_conversation_append_writer()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
+    native_saved_turn_reader = capture_launcher_saved_turn_reader()
     native_saved_turn_settlement_writer = capture_launcher_saved_turn_settlement_writer()
 
     authority_path = authority_store.path.resolve()
@@ -4238,15 +4244,22 @@ def capture_production_dispatch(
             and (envelope.contract_id, envelope.operation_id) == edge.binding_key[1:]
         )
 
+    @dataclass(frozen=True)
+    class _SavedCompletionRoute:
+        """The exact signed edges for saved completion and its nested Turn read."""
+
+        caller: SavedReceiptCaller
+        completion: _CapturedPlanEdge
+        parent: _CapturedPlanEdge
+        resource: _CapturedPlanEdge
+
     saved_receipt_routes: dict[
         str, tuple[SavedReceiptCaller, _CapturedPlanEdge, _CapturedPlanEdge]
     ] = {}
     saved_turn_routes: dict[
         str, tuple[SavedReceiptCaller, _CapturedPlanEdge]
     ] = {}
-    confirmation_routes: dict[
-        str, tuple[SavedReceiptCaller, _CapturedPlanEdge, _CapturedPlanEdge]
-    ] = {}
+    confirmation_routes: dict[str, _SavedCompletionRoute] = {}
     completion_function = "rumi_conversation_store_pack.conversation-store.completion"
     completion_operation = (
         "tobkiri.action.conversation.completion.v1",
@@ -4256,6 +4269,7 @@ def capture_production_dispatch(
         native_saved_receipt_reader is not None
         or native_saved_turn_settlement_writer is not None
         or native_confirmation_writer is not None
+        or native_saved_turn_reader is not None
     ):
         turn_pack = "rumi_turn_runtime_pack"
         receipt_callers: tuple[tuple[SavedReceiptCaller, str], ...] = (
@@ -4280,7 +4294,7 @@ def capture_production_dispatch(
             parent_edge, = parents
             if native_saved_turn_settlement_writer is not None:
                 saved_turn_routes[parent_edge.target.principal_id] = (caller, parent_edge)
-            if native_confirmation_writer is not None:
+            if native_confirmation_writer is not None or native_saved_turn_reader is not None:
                 completion_edges = tuple(
                     edge for edge in captured_edges
                     if edge.caller.principal_id == parent_edge.target.principal_id
@@ -4303,8 +4317,8 @@ def capture_production_dispatch(
                         and is_exact_original_python_edge(edge, f"{turn_pack}.turn-runtime.resource")
                     )
                     if len(resource_edges) == 1:
-                        confirmation_routes[parent_edge.target.principal_id] = (
-                            caller, completion_edge, parent_edge,
+                        confirmation_routes[parent_edge.target.principal_id] = _SavedCompletionRoute(
+                            caller, completion_edge, parent_edge, resource_edges[0],
                         )
             if native_saved_receipt_reader is None:
                 continue
@@ -4467,16 +4481,16 @@ def capture_production_dispatch(
             route is None
             or parent is None
             or parent.parent is not None
-            or not matches_captured_edge(parent.envelope, route[2])
+            or not matches_captured_edge(parent.envelope, route.parent)
             or set(payload) - {"_session_id"} != {"profile_id", "operation", "turn_id"}
             or payload.get("operation") != "confirm"
             or payload.get("profile_id") != context.profile_id
         ):
             return None
-        turn_id = requested_saved_turn_id(route[0], parent.envelope.payload)
+        turn_id = requested_saved_turn_id(route.caller, parent.envelope.payload)
         if turn_id is None or payload["turn_id"] != turn_id:
             return None
-        return route[0], route[1], parent.envelope
+        return route.caller, route.completion, parent.envelope
 
     def is_native_conversation_confirmation_route(
         context: RequestContext, payload: Mapping[str, Any],
@@ -4484,6 +4498,139 @@ def capture_production_dispatch(
         return native_provider_runtime is not None and confirmation_lineage(
             context, payload, parent_invocation_scopes.lookup(context.caller_session_id),
         ) is not None
+
+    def saved_turn_read_lineage(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        parent: CapturedInvocationScopeV4 | None,
+    ) -> tuple[SavedReceiptCaller, _CapturedPlanEdge] | None:
+        turn_id = payload.get("turn_id")
+        if (
+            parent is None
+            or set(payload) - {"_session_id"} != {"profile_id", "operation", "turn_id"}
+            or payload.get("operation") != "get"
+            or payload.get("profile_id") != context.profile_id
+            or not is_native_saved_turn_read_identifier(turn_id)
+        ):
+            return None
+        completion = parent.envelope
+        route = confirmation_routes.get(completion.context.caller_principal.value)
+        if (
+            route is None
+            or not matches_captured_edge(completion, route.completion)
+            or context.caller_principal.value != route.resource.caller.principal_id
+            or completion.context.profile_id != context.profile_id
+            or completion.payload.get("turn_id") != turn_id
+            or confirmation_lineage(
+                completion.context, completion.payload, parent.parent,
+            ) is None
+        ):
+            return None
+        return route.caller, route.resource
+
+    def is_native_saved_turn_read_route(
+        context: RequestContext, payload: Mapping[str, Any],
+    ) -> bool:
+        return native_provider_runtime is not None and saved_turn_read_lineage(
+            context, payload, parent_invocation_scopes.lookup(context.caller_session_id),
+        ) is not None
+
+    def wrap_native_saved_turn_read(
+        contribution: HostProviderContributionV4,
+        reader: Callable[[NativeSavedTurnReadRequest], Mapping[str, Any] | None],
+    ) -> HostProviderContributionV4:
+        """Read the indexed Turn under the signed completion's own Resource lease."""
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native saved Turn read context is unavailable")
+            envelope = invocation.envelope
+            context = envelope.context
+            parent = invocation.parent_invocation
+            lineage = saved_turn_read_lineage(context, payload, parent)
+            runtime = native_provider_runtime
+            if lineage is None or runtime is None:
+                return contribution.invoke(operation_id, payload, invocation)
+            caller, edge = lineage
+            assert parent is not None and parent.parent is not None
+            grandparent = parent.parent
+            ancestors = (parent.envelope, grandparent.envelope)
+            if (
+                operation_id != envelope.operation_id
+                or payload is not envelope.payload
+                or not matches_captured_edge(envelope, edge)
+                or len({item.lease.token for item in (envelope, *ancestors)}) != 3
+                or envelope.resource_reservation_id is None
+                or any(
+                    envelope.resource_reservation_id == item.resource_reservation_id
+                    for item in ancestors
+                )
+                or envelope.deadline_monotonic > ancestors[0].deadline_monotonic
+                or ancestors[0].deadline_monotonic > ancestors[1].deadline_monotonic
+            ):
+                raise AuthorityDenied("native saved Turn read lineage changed")
+
+            def guard() -> None:
+                invocation.assert_current()
+                retained = parent_invocation_scopes.lookup(context.caller_session_id)
+                retained_grandparent = parent_invocation_scopes.lookup(
+                    parent.envelope.context.caller_session_id,
+                )
+                if (
+                    retained is None or retained.envelope is not parent.envelope
+                    or retained.parent is None
+                    or retained.parent.envelope is not grandparent.envelope
+                    or retained_grandparent is None
+                    or retained_grandparent.envelope is not grandparent.envelope
+                    or native_provider_runtime is not runtime
+                ):
+                    raise AuthorityDenied("native saved Turn read capture changed")
+                runtime[1]()
+                production_admission.native_resources(envelope.resource_reservation_id)
+
+            def legacy_read() -> Mapping[str, Any]:
+                guard()
+                result = contribution.invoke(operation_id, payload, invocation)
+                guard()
+                return result
+
+            guard()
+            resources = production_admission.native_resources(
+                envelope.resource_reservation_id,
+            )
+            if resources.memory_bytes < SAVED_TURN_READ_MINIMUM_MEMORY:
+                return legacy_read()
+            try:
+                result = reader(NativeSavedTurnReadRequest(
+                    context=context,
+                    runtime_instance=runtime[0],
+                    deadline_monotonic=envelope.deadline_monotonic,
+                    assert_current=guard,
+                    caller=caller,
+                    turn_id=payload["turn_id"],
+                ))
+            except (
+                NativeProviderPrepareUnavailable,
+                NativeProviderRegistryRequiresLegacyRead,
+            ):
+                return legacy_read()
+            except NativeSavedTurnReadFailure as error:
+                guard()
+                if error.code == "invalid":
+                    raise ValueError("persisted turn record is invalid") from None
+                if error.code == "denied":
+                    raise PermissionError("turn read operation is not permitted") from None
+                raise
+            guard()
+            if result is None:
+                raise KeyError("turn is unavailable")
+            return result
+
+        return replace(contribution, invoke=invoke)
 
     def capture_conversation_confirmation_port(
         writer: Callable[[NativeConversationConfirmationRequest], Mapping[str, Any]],
@@ -5561,6 +5708,9 @@ def capture_production_dispatch(
     native_conversation_confirmation_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
+    native_saved_turn_read_bindings: dict[
+        tuple[str, str, str], ResolvedOperationBinding
+    ] = {}
     native_saved_append_binding: ResolvedOperationBinding | None = None
     native_saved_append_key: tuple[str, str, str] | None = None
     native_model_resolve_bindings: dict[
@@ -5600,7 +5750,10 @@ def capture_production_dispatch(
             and captured_bindings[0].function.function_id == completion_function
         ):
             binding = captured_bindings[0]
-            if any(edge.resolved_binding == binding for _, edge, _ in confirmation_routes.values()):
+            if any(
+                route.completion.resolved_binding == binding
+                for route in confirmation_routes.values()
+            ):
                 confirmation_port = capture_conversation_confirmation_port(native_confirmation_writer)
                 native_conversation_confirmation_bindings[(
                     *completion_operation, binding.principal_ref.value,
@@ -5728,6 +5881,18 @@ def capture_production_dispatch(
                 if item.key in receipt_bindings else item
                 for item in contributions
             )
+        if native_saved_turn_reader is not None:
+            turn_read_bindings = {
+                (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
+                for edge in (route.resource for route in confirmation_routes.values())
+                if edge.resolved_binding in captured_bindings
+            }
+            native_saved_turn_read_bindings.update(turn_read_bindings)
+            contributions = tuple(
+                wrap_native_saved_turn_read(item, native_saved_turn_reader)
+                if item.key in turn_read_bindings else item
+                for item in contributions
+            )
         if (
             native_model_save_edge is not None
             and native_model_save_writer is not None
@@ -5834,6 +5999,7 @@ def capture_production_dispatch(
                     or item.key in native_model_resolve_bindings
                     or item.key in native_turn_settlement_bindings
                     or item.key in native_conversation_confirmation_bindings
+                    or item.key in native_saved_turn_read_bindings
                 ),
             ),
         )
@@ -5976,6 +6142,10 @@ def capture_production_dispatch(
             is_native_conversation_confirmation_route,
         )
         for binding in native_conversation_confirmation_bindings.values()
+    )
+    native_admission_rules.extend(
+        (binding, SAVED_TURN_READ_MINIMUM_MEMORY, is_native_saved_turn_read_route)
+        for binding in native_saved_turn_read_bindings.values()
     )
     native_admission_rules.extend(
         (
@@ -6751,6 +6921,7 @@ def capture_production_dispatch(
             if (native_execute_key is not None or native_conversation_get_bindings
                 or native_saved_receipt_bindings or native_model_resolve_bindings
                 or native_turn_settlement_bindings or native_conversation_confirmation_bindings
+                or native_saved_turn_read_bindings
                 or native_saved_append_key is not None)
             else None
         ),

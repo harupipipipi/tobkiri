@@ -125,6 +125,10 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertNotIn("run-id:", artifact)
         registry = job(self.workflow, "build-native-registry-packs")
         self.assertIn("inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg", registry)
+        self.assertIn("runs-on: macos-15", registry)
+        physical_owner = step(registry, "Require original supported physical ownership platform")
+        for requirement in ('"$(uname -m)" = arm64', '"$(uname -r)" = 24.6.0', "apfs", "pwd -P"):
+            self.assertIn(requirement, physical_owner)
         self.assertIn("steps.archives.outputs.receipt_sha256", registry)
         self.assertIn("packs/stage_registry_packs.py", registry)
         self.assertIn("-p tobkiri-pack-saved-turn-runtime-rust", registry)
