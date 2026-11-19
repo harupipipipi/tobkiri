@@ -824,6 +824,301 @@ def test_conversation_confirmation_rejects_invalid_owner_result(
         ipc._decode_conversation_confirmation(result, request, publication_possible=False)
 
 
+_APPEND_MESSAGE = {
+    "id": "message:" + "c" * 64,
+    "role": "assistant",
+    "content": "応答",
+    "parent_id": "message:" + "d" * 64,
+}
+_APPEND_REQUEST = {
+    "conversation_id": "fixture-conversation",
+    "expected_conversation_revision": 4,
+    "message": _APPEND_MESSAGE,
+    "saved_input": {"request": {
+        "turn_id": "fixture-turn",
+        "conversation_id": "fixture-conversation",
+        "conversation_revision": 3,
+        "content": "入力",
+    }},
+}
+_APPEND_RESULT = {
+    "action": "message_appended",
+    "message": _APPEND_MESSAGE | {"sequence_number": 3},
+    "conversation_revision": 5,
+    "store_revision": 25,
+}
+
+
+def _append_request(
+    borrow: _Borrow, marker: Callable[[], None],
+) -> ipc.NativeConversationAppendRequest:
+    return ipc.NativeConversationAppendRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        request=_APPEND_REQUEST,
+        mark_publication_possible=marker,
+    )
+
+
+@contextmanager
+def _served_append(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeConversationAppendRequest], Mapping[str, Any]]]:
+    monkeypatch.setenv(ipc._APPEND_ENV, "1")
+    with _served(monkeypatch, serve):
+        writer = ipc.capture_launcher_conversation_append_writer()
+        assert writer is not None
+        yield writer
+
+
+@pytest.mark.parametrize("start_hint", [None, "", "0", "true"])
+def test_conversation_append_requires_exact_version_hint(
+    monkeypatch: pytest.MonkeyPatch, start_hint: str | None,
+) -> None:
+    if start_hint is None:
+        monkeypatch.delenv(ipc._APPEND_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ipc._APPEND_ENV, start_hint)
+    monkeypatch.setenv(ipc._SOCKET_ENV, "invalid-endpoint")
+    assert ipc.capture_launcher_conversation_append_writer() is None
+
+
+def test_conversation_append_binds_full_start_and_permits_one_mib_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+    marked = threading.Event()
+    checked = threading.Event()
+    one_mib = 1024 * 1024
+
+    def guard() -> None:
+        borrow.assert_current()
+        if marked.is_set():
+            checked.set()
+
+    numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+    deadline_ns = numerator * 1_000_000_000 // denominator
+    base = replace(_append_request(borrow, marked.set), assert_current=guard)
+    fill = one_mib - len(ipc._start_payload(base, deadline_ns))
+    content = _APPEND_MESSAGE["content"] + "雪" * (fill // 3) + "a" * (fill % 3)
+    message = _APPEND_MESSAGE | {"content": content}
+    request = replace(base, request=_APPEND_REQUEST | {"message": message})
+    result = _APPEND_RESULT | {
+        "message": _APPEND_RESULT["message"] | {"content": content},
+    }
+    owner_result = json.dumps(result, ensure_ascii=False).encode().ljust(one_mib, b" ")
+    assert len(owner_result) == one_mib
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == 13
+        assert len(payload) == one_mib
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": deadline_ns,
+            "conversation_append": {"request": request.request},
+        }
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        assert not marked.is_set()
+        _send(peer, 11)
+        assert _receive(peer) == (12, b"")
+        assert marked.is_set() and checked.is_set()
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, owner_result)
+        assert peer.recv(1) == b""
+
+    with _served_append(monkeypatch, serve) as writer:
+        monkeypatch.delenv(ipc._OWNER_ENV)
+        monkeypatch.delenv(ipc._APPEND_ENV)
+        assert writer(request) == result
+
+
+def test_conversation_append_oversize_falls_back_before_sending_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+    context = SimpleNamespace(**(vars(borrow.context) | {"activation_id": "雪" * 4096}))
+    base = replace(_append_request(borrow, _unexpected_marker), context=context)
+    numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+    deadline_ns = numerator * 1_000_000_000 // denominator
+    fill = 1024 * 1024 - len(ipc._start_payload(base, deadline_ns)) + 1
+    message = _APPEND_MESSAGE | {"content": _APPEND_MESSAGE["content"] + "x" * fill}
+    request = replace(base, request=_APPEND_REQUEST | {"message": message})
+
+    def serve(peer: socket.socket) -> None:
+        assert peer.recv(1) == b""
+
+    with (
+        _served_append(monkeypatch, serve) as writer,
+        pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead, match="request bound"),
+    ):
+        writer(request)
+
+
+@pytest.mark.parametrize("change", [
+    {"operation": "append_saved"},
+    {"conversation_id": "invalid/id"},
+    {"expected_conversation_revision": True},
+    {"message": {"id": "other"}},
+    {"saved_input": None},
+    {"saved_input": {"request": {"conversation_id": "different", "turn_id": "turn"}}},
+])
+def test_conversation_append_rejects_invalid_inputs_before_start(
+    change: dict[str, Any],
+) -> None:
+    request = replace(
+        _append_request(_Borrow(), _unexpected_marker),
+        request=_APPEND_REQUEST | change,
+    )
+    with pytest.raises(ipc._ProtocolError, match="inputs are invalid"):
+        ipc._start_payload(request, 1)
+
+
+@pytest.mark.parametrize("live, tag, body, error_type", [
+    (False, 10, b"", ipc.NativeProviderPrepareUnavailable),
+    (False, 8, b"requires-legacy-read", ipc._ProtocolError),
+    (False, 8, b"unavailable", ipc.NativeConversationAppendFailure),
+    (True, 8, b"requires-legacy-read", ipc.NativeProviderRegistryRequiresLegacyRead),
+    (True, 8, b"legacy-read-required", ipc._ProtocolError),
+    (True, 8, b"conflict", ipc.NativeConversationAppendFailure),
+    (True, 8, b"invalid", ipc.NativeConversationAppendFailure),
+    (True, 8, b"not-found", ipc.NativeConversationAppendFailure),
+    (True, 8, b"publication-unconfirmed", ipc._ProtocolError),
+    (True, 7, json.dumps(_APPEND_RESULT).encode(), ipc._ProtocolError),
+])
+def test_conversation_append_classifies_failures_before_permit(
+    monkeypatch: pytest.MonkeyPatch,
+    live: bool,
+    tag: int,
+    body: bytes,
+    error_type: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 13
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, tag, body)
+        if tag == 7 or body == b"legacy-read-required":
+            assert _receive(peer) == (9, b"")
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_append(monkeypatch, serve) as writer,
+        pytest.raises(error_type) as failure,
+    ):
+        writer(_append_request(_Borrow(), _unexpected_marker))
+    if isinstance(failure.value, ipc.NativeConversationAppendFailure):
+        assert failure.value.code == body.decode("ascii")
+
+
+@pytest.mark.parametrize("terminal", [
+    None,
+    (8, b"requires-legacy-read"),
+    (8, b"publication-unconfirmed"),
+    (8, b"conflict"),
+    (11, b""),
+    (7, json.dumps(_APPEND_RESULT | {"conversation_revision": 4}).encode()),
+])
+def test_conversation_append_is_unconfirmed_after_permit_without_bound_result(
+    monkeypatch: pytest.MonkeyPatch, terminal: tuple[int, bytes] | None,
+) -> None:
+    marks: list[bool] = []
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 13
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 11)
+        assert _receive(peer) == (12, b"")
+        if terminal is not None:
+            _send(peer, *terminal)
+            if terminal[0] != 8:
+                assert _receive(peer) == (9, b"")
+                _send(peer, 8, b"cancelled")
+            assert peer.recv(1) == b""
+
+    with (
+        _served_append(monkeypatch, serve) as writer,
+        pytest.raises(ipc.NativeConversationAppendPublicationUnconfirmed),
+    ):
+        writer(_append_request(_Borrow(), lambda: marks.append(True)))
+    assert marks == [True]
+
+
+def test_conversation_append_checks_guard_after_marker_before_permit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 13
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 11)
+        assert _receive(peer) == (9, b"")
+        _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_append(monkeypatch, serve) as writer,
+        pytest.raises(ipc.NativeConversationAppendPublicationUnconfirmed),
+    ):
+        writer(_append_request(borrow, borrow.revoked.set))
+
+
+def test_conversation_append_above_one_mib_result_is_unconfirmed_at_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marked = threading.Event()
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 13
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 11)
+        assert _receive(peer) == (12, b"")
+        peer.sendall(_HEADER.pack(7, 1024 * 1024 + 1))
+        assert _receive(peer) == (9, b"")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_append(monkeypatch, serve) as writer,
+        pytest.raises(ipc.NativeConversationAppendPublicationUnconfirmed),
+    ):
+        writer(_append_request(_Borrow(), marked.set))
+    assert marked.is_set()
+
+
+@pytest.mark.parametrize("change", [
+    {"extra": None},
+    {"action": "saved"},
+    {"message": _APPEND_MESSAGE | {"id": "message:" + "e" * 64}},
+    {"message": _APPEND_MESSAGE | {"role": "user"}},
+    {"message": _APPEND_MESSAGE | {"content": "different"}},
+    {"conversation_revision": 5.0},
+    {"conversation_revision": 6},
+    {"store_revision": True},
+    {"store_revision": 0},
+    {"store_revision": 1 << 64},
+])
+def test_conversation_append_rejects_unbound_owner_result(change: dict[str, Any]) -> None:
+    payload = json.dumps(_APPEND_RESULT | change).encode()
+    request = _append_request(_Borrow(), _unexpected_marker)
+    with pytest.raises(ipc._ProtocolError, match="owner result is invalid"):
+        ipc._decode_conversation_append(payload, request)
+
+
 def test_model_settings_reader_sends_only_its_role_and_accepts_one_mib_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

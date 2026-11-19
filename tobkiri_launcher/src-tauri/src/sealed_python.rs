@@ -259,6 +259,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             key,
             crate::native_provider_prepare_service::SOCKET_ENV
                 | crate::native_provider_prepare_service::OWNER_ENV
+                | crate::native_provider_prepare_service::APPEND_ENV
         )
     {
         return true;

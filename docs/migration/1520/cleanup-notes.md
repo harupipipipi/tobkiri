@@ -3985,8 +3985,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Pack・共有codec 56件、Wasm応答2件、Core＋同梱Wasmと元のファイル3件が通過した。
   物理試験では最終許可が拒否された書込み、古いrevisionの再送、編集済みの親を使う追記が
   元のファイルを変更しないことを確認した。macOS上のPackビルド、厳格Clippyも通過。
-  通常送信の署名付きMessage Manage Hostからの接続は後続。元のSaved Orchestration子リースと
-  公開前の再確認を使い、既存の返信契約、容量を超える文書、初回メッセージ時刻の取得位置を照合する。
+  Conversation Store Pack 1.0.3では通常送信のMessage Manage Hostをこの追記へ接続した。
+  ShellからSaved Turn、Saved Orchestration、Message Manageまで元の3つの署名済み権限と
+  現行の呼出しを照合する。メッセージ追記の子リース・予約・期限を使い、保存済み入力は
+  元のOrchestrationの入力と比較する。未指定のメッセージ作成時刻は旧Hostと同じく
+  物理ロックを得る前に用意し、ライフサイクルと会話更新時刻はロック内で取得する。
+  Launcherは追記専用の1MiBフレームを受ける。以前のLauncherは新しいフレームを選択しない。
+  バージョン通知は通信形式の選択に使い、既存のLaunch証明、稼働Hostと公開許可を毎回確認する。
+  公開許可後の応答喪失は同じ子の未確認効果とし、再照合が保存済みのレシートを観測する。
+  昔の形式や容量に起因する互換経路は公開許可前にのみ使う。
+  分離macOS Launcherの74件、実PythonプロセスとUnixソケットを使う元ファイル試験、
+  24KiBの追記、公開許可中断、古いrevisionと権限なしの拒否を確認した。
+  Rust Harness 300件と元のSetup承認記録1件、CPython 3.13.16の関連回帰352件、
+  配布生成物5件・厳格なDefaults整合性検査が通過した。
+  署名付きHTTP 5件は実SQLiteと会話ファイルを使い、ProviderとLauncher応答はfixture。
+  通常送信、公開前の互換経路、許可直後の応答中断、ユーザー・アシスタント追記後の応答喪失を
+  照合した。再送と再照合では新しい追記や推論を発生させない。
+  追記対象外の公開メッセージ操作とCalendar、通常Saved Orchestrationの実行本体は旧経路。
+  既存のPackVMを廃止する際は同じ続行データ、Provider呼出順序、承認、永続結果の再観測を維持する。
   Pack 11件、旧保存領域18件、実Core＋Wasm 3件、元のSetupでの権限照合1件が通過。
   IPC 66件、実WasmとLauncherワーカーの分離検証35件、元の署名済みHTTPの会話読み取り・
   保存ターンとモデル設定の回帰が通過。HTTPのLauncher応答と、分離検証のTauriサービスは

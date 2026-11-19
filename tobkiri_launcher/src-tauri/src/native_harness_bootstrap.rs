@@ -52,10 +52,11 @@ pub(crate) use tobkiri_harness_native::{OriginalModelResolveRole, OriginalSavedR
 mod provider_prepare;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use provider_prepare::{
-    start_provider_prepare, ConversationConfirmationRequiresLegacyRead,
-    ConversationRegistryRequiresLegacyRead, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
+    start_provider_prepare, ConversationRegistryRequiresLegacyRead,
+    ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
     PendingProviderPrepare, ProviderPrepareDeadline, TurnSettlementRequiresLegacyCodec,
-    CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+    CONVERSATION_APPEND_LIMIT, CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT,
+    MODEL_RESOLVE_REPLY_LIMIT,
 };
 
 enum OwnedRuntime {

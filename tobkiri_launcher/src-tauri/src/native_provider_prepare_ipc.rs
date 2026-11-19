@@ -20,12 +20,12 @@ use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, ConversationConfirmationRequiresLegacyRead, ConversationReadCaller,
-        ConversationRegistryRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
+        start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
+        ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
         NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
         PendingProviderPrepare, ProviderPrepareDeadline, SettlementCaller,
-        TurnSettlementRequiresLegacyCodec, CONVERSATION_CONFIRMATION_LIMIT,
-        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+        TurnSettlementRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT,
+        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -39,6 +39,7 @@ const CANCEL: u8 = 9;
 const INAPPLICABLE: u8 = 10;
 const PUBLISH_CHECK: u8 = 11;
 const PUBLISH_PERMIT: u8 = 12;
+const START_APPEND: u8 = 13;
 const JSON_LIMIT: usize = 16 * 1024;
 const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
 const SAVED_RECEIPT_TURN_ID_MAX_CHARS: usize = 2048;
@@ -74,6 +75,8 @@ struct Start<'a> {
     model_resolve: Option<ModelResolve>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     turn_settlement: Option<TurnSettlement>,
+    #[serde(borrow, default, deserialize_with = "deserialize_present")]
+    conversation_append: Option<ConversationAppend<'a>>,
 }
 
 impl Start<'_> {
@@ -87,9 +90,10 @@ impl Start<'_> {
             &self.conversation_confirmation,
             &self.model_resolve,
             &self.turn_settlement,
+            &self.conversation_append,
             self.apply,
         ) {
-            (Some(request), None, None, None, None, None, None, None, apply) => {
+            (Some(request), None, None, None, None, None, None, None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -99,37 +103,37 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 Ok(NativeRegistryRequest::Provider { request, apply })
             }
-            (None, Some(_), None, None, None, None, None, None, None) => {
+            (None, Some(_), None, None, None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ModelList)
             }
-            (None, None, Some(save), None, None, None, None, None, None) => {
+            (None, None, Some(save), None, None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ModelSave {
                     request: save.request.get().as_bytes().to_vec(),
                     provider: save.provider.get().as_bytes().to_vec(),
                 })
             }
-            (None, None, None, Some(get), None, None, None, None, None) => {
+            (None, None, None, Some(get), None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationGet {
                     caller: get.caller,
                     conversation_id: get.conversation_id.clone(),
                 })
             }
-            (None, None, None, None, Some(receipt), None, None, None, None) => {
+            (None, None, None, None, Some(receipt), None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationReceipt {
                     caller: receipt.caller,
                     turn_id: receipt.turn_id.clone(),
                 })
             }
-            (None, None, None, None, None, Some(confirmation), None, None, None) => {
+            (None, None, None, None, None, Some(confirmation), None, None, None, None) => {
                 confirmation.operation(&self.identity.profile_id)
             }
-            (None, None, None, None, None, None, Some(resolve), None, None) => {
+            (None, None, None, None, None, None, Some(resolve), None, None, None) => {
                 Ok(NativeRegistryRequest::ModelResolve {
                     role: resolve.role,
                     identifier: resolve.identifier.clone(),
                 })
             }
-            (None, None, None, None, None, None, None, Some(settlement), None) => {
+            (None, None, None, None, None, None, None, Some(settlement), None, None) => {
                 ensure!(
                     !matches!(settlement.caller, SettlementCaller::SavedReconcile)
                         || settlement.expected_revision.is_some(),
@@ -142,6 +146,9 @@ impl Start<'_> {
                     expected_revision: settlement.expected_revision,
                     result_reference: settlement.result_reference.clone(),
                 })
+            }
+            (None, None, None, None, None, None, None, None, Some(append), None) => {
+                append.operation()
             }
             _ => bail!("native Registry start must name exactly one operation"),
         }
@@ -185,6 +192,78 @@ struct ConversationConfirmation<'a> {
     caller: OriginalSavedReceiptRole,
     #[serde(borrow, deserialize_with = "deserialize_object")]
     terminal: &'a RawValue,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationAppend<'a> {
+    #[serde(borrow, deserialize_with = "deserialize_object")]
+    request: &'a RawValue,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AppendRequest {
+    conversation_id: String,
+    expected_conversation_revision: i64,
+    message: AppendMessageIdentity,
+    saved_input: AppendSavedInput,
+}
+
+#[derive(Deserialize)]
+struct AppendMessageIdentity {
+    id: String,
+    role: AppendRole,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum AppendRole {
+    User,
+    Assistant,
+}
+
+#[derive(Deserialize)]
+struct AppendSavedInput {
+    request: AppendSavedIdentity,
+}
+
+#[derive(Deserialize)]
+struct AppendSavedIdentity {
+    conversation_id: String,
+    turn_id: String,
+}
+
+impl ConversationAppend<'_> {
+    fn operation(&self) -> Result<NativeRegistryRequest> {
+        let raw = self.request.get();
+        let request: AppendRequest = serde_json::from_str(raw)
+            .map_err(|_| anyhow!("invalid Conversation append request"))?;
+        let saved = request.saved_input.request;
+        ensure!(
+            request.conversation_id == saved.conversation_id
+                && valid_saved_identifier(&request.conversation_id)
+                && valid_saved_identifier(&saved.turn_id)
+                && request.expected_conversation_revision > 0,
+            "invalid Conversation append identity or revision"
+        );
+        let role = match request.message.role {
+            AppendRole::User => "user",
+            AppendRole::Assistant => "assistant",
+        };
+        // All three values are ASCII with no JSON escape characters.
+        let identity =
+            serde_json::to_vec(&[request.conversation_id.as_str(), &saved.turn_id, role])?;
+        ensure!(
+            request.message.id.strip_prefix("message:") == Some(Digest::hash(&identity).hex()),
+            "invalid Conversation append message identity"
+        );
+        Ok(NativeRegistryRequest::ConversationAppend {
+            // The locked owner validates the complete input and receipt evidence.
+            request: raw.as_bytes().to_vec(),
+            expected_revision: request.expected_conversation_revision as u64,
+        })
+    }
 }
 
 #[derive(Deserialize)]
@@ -532,6 +611,29 @@ impl Stop {
     }
 }
 
+fn validate_start_size(tag: u8, size: usize) -> Result<()> {
+    let limit = match tag {
+        START => JSON_LIMIT,
+        START_APPEND => CONVERSATION_APPEND_LIMIT,
+        _ => bail!("invalid native Registry start tag"),
+    };
+    ensure!(
+        (1..=limit).contains(&size),
+        "invalid native Registry start frame size"
+    );
+    Ok(())
+}
+
+fn parse_start(tag: u8, bytes: &[u8]) -> Result<Start<'_>> {
+    let start: Start<'_> =
+        serde_json::from_slice(bytes).map_err(|_| anyhow!("invalid native Registry start"))?;
+    ensure!(
+        (tag == START_APPEND) == start.conversation_append.is_some(),
+        "native Registry start tag does not match its operation"
+    );
+    Ok(start)
+}
+
 /// Handle one accepted macOS connection for the currently managed Host process.
 pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Result<()> {
     let peer = authenticate_peer(&stream)?;
@@ -539,14 +641,10 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     stream.set_nonblocking(true)?;
     let start_deadline = Instant::now() + FRAME_TIMEOUT;
     let (tag, size) = read_header(&mut stream, start_deadline)?;
-    ensure!(
-        tag == START && (1..=JSON_LIMIT).contains(&size),
-        "invalid Provider prepare start frame"
-    );
+    validate_start_size(tag, size)?;
     let mut bytes = vec![0; size];
     read_exact(&mut stream, &mut bytes, start_deadline)?;
-    let start: Start<'_> =
-        serde_json::from_slice(&bytes).map_err(|_| anyhow!("invalid Provider prepare start"))?;
+    let start = parse_start(tag, &bytes)?;
     ensure!(
         start.runtime_instance.len() == 32
             && start
@@ -561,6 +659,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     let needs_active_host = matches!(
         &operation,
         NativeRegistryRequest::TurnSettlement { .. }
+            | NativeRegistryRequest::ConversationAppend { .. }
             | NativeRegistryRequest::ConversationConfirmation { .. }
     );
     let identity = ExecutionProfileIdentity::new(
@@ -623,6 +722,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         NativeRegistryRequest::ConversationConfirmation { .. } => {
             ReplyRole::ConversationConfirmation
         }
+        NativeRegistryRequest::ConversationAppend { .. } => ReplyRole::ConversationAppend,
         NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
         NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
     };
@@ -667,15 +767,21 @@ enum ReplyRole {
     ModelSave,
     ConversationRead,
     ConversationConfirmation,
+    ConversationAppend,
     ModelResolve,
     TurnSettlement,
 }
 
 impl ReplyRole {
     fn permits_publication(self) -> bool {
+        self.uses_conversation_publication()
+            || matches!(self, Self::ModelSave | Self::TurnSettlement)
+    }
+
+    fn uses_conversation_publication(self) -> bool {
         matches!(
             self,
-            Self::ModelSave | Self::ConversationConfirmation | Self::TurnSettlement
+            Self::ConversationConfirmation | Self::ConversationAppend
         )
     }
 
@@ -687,7 +793,11 @@ impl ReplyRole {
             Self::ConversationRead => (CONVERSATION_READ_REPLY_LIMIT, "legacy-read-required"),
             Self::ConversationConfirmation => (
                 CONVERSATION_CONFIRMATION_LIMIT,
-                conversation_confirmation_fallback(authority),
+                conversation_publication_fallback(authority),
+            ),
+            Self::ConversationAppend => (
+                CONVERSATION_APPEND_LIMIT,
+                conversation_publication_fallback(authority),
             ),
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnSettlement if authority == WireAuthority::PublicationPermitted => {
@@ -698,17 +808,17 @@ impl ReplyRole {
     }
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
-        if self == Self::ConversationConfirmation {
+        if self.uses_conversation_publication() {
             if authority == WireAuthority::PublicationPermitted {
                 return "publication-unconfirmed";
             }
-            if error.is::<ConversationConfirmationRequiresLegacyRead>()
+            if error.is::<ConversationWriteRequiresLegacyRead>()
                 || matches!(
                     error.downcast_ref::<NativeArtifactError>(),
                     Some(NativeArtifactError::ConversationLimitBeforePublish)
                 )
             {
-                return conversation_confirmation_fallback(authority);
+                return conversation_publication_fallback(authority);
             }
             return match error.downcast_ref::<NativeArtifactError>() {
                 Some(NativeArtifactError::ConversationPublicationUnconfirmed(_)) => {
@@ -747,7 +857,7 @@ impl ReplyRole {
     }
 }
 
-fn conversation_confirmation_fallback(authority: WireAuthority) -> &'static str {
+fn conversation_publication_fallback(authority: WireAuthority) -> &'static str {
     match authority {
         WireAuthority::AwaitingLive => "unavailable",
         WireAuthority::Live => "requires-legacy-read",
@@ -903,7 +1013,7 @@ impl Connection {
 
     fn send_failure(&self, code: &str, deadline: Instant) -> Result<()> {
         let mut wire = self.lock_wire()?;
-        let code = if self.reply == ReplyRole::ConversationConfirmation
+        let code = if self.reply.uses_conversation_publication()
             && wire.authority == WireAuthority::PublicationPermitted
         {
             "publication-unconfirmed"
@@ -1197,6 +1307,99 @@ mod tests {
         format!(r#", "conversation_confirmation":{{"caller":"{caller}","terminal":{terminal}}}"#)
     }
 
+    fn append_oracle() -> serde_json::Value {
+        serde_json::from_str(include_str!(
+            "../../../packs/local.saved-conversation-rust/fixtures/legacy-append-oracle.json"
+        ))
+        .unwrap()
+    }
+
+    fn append_operation(request: &str) -> String {
+        format!(r#", "conversation_append":{{"request":{request}}}"#)
+    }
+
+    #[test]
+    fn append_uses_its_own_start_tag_and_size_limit() {
+        let oracle = append_oracle();
+        for role in ["user", "assistant"] {
+            let request = serde_json::to_string_pretty(&oracle[role]["request"]).unwrap();
+            let operation = append_operation(&request);
+            let message = start_frame(&operation);
+            assert!(parse_start(START, message.as_bytes()).is_err());
+            let start = parse_start(START_APPEND, message.as_bytes()).unwrap();
+            let NativeRegistryRequest::ConversationAppend {
+                request: raw,
+                expected_revision,
+            } = start.operation().unwrap()
+            else {
+                panic!("expected Conversation append");
+            };
+            assert_eq!(raw, request.as_bytes());
+            assert_eq!(
+                expected_revision,
+                oracle[role]["request"]["expected_conversation_revision"]
+                    .as_u64()
+                    .unwrap(),
+            );
+            let mixed = start_frame(&format!("{operation}{PROVIDER_REQUEST}"));
+            assert!(parse_start(START_APPEND, mixed.as_bytes())
+                .unwrap()
+                .operation()
+                .is_err());
+        }
+        assert!(parse_start(START_APPEND, start_frame(PROVIDER_REQUEST).as_bytes()).is_err());
+        for (tag, limit) in [
+            (START, JSON_LIMIT),
+            (START_APPEND, CONVERSATION_APPEND_LIMIT),
+        ] {
+            assert!(validate_start_size(tag, 0).is_err());
+            assert!(validate_start_size(tag, limit).is_ok());
+            assert!(validate_start_size(tag, limit + 1).is_err());
+        }
+        assert!(validate_start_size(PLAN, 2).is_err());
+    }
+
+    #[test]
+    fn append_rejects_ambiguous_fields_and_unbound_message_identity() {
+        let oracle = append_oracle();
+        let request = &oracle["user"]["request"];
+        let rejected = |request: &str| {
+            let message = start_frame(&append_operation(request));
+            assert!(parse_start(START_APPEND, message.as_bytes())
+                .and_then(|start| start.operation())
+                .is_err());
+        };
+        rejected(&format!(
+            r#"{{"profile_id":"defaults",{}"#,
+            &request.to_string()[1..]
+        ));
+        rejected(&format!(
+            r#"{{"conversation_id":"override",{}"#,
+            &request.to_string()[1..]
+        ));
+        for (field, value) in [
+            (
+                "/message/id",
+                serde_json::json!(oracle["assistant"]["request"]["message"]["id"]),
+            ),
+            ("/message/role", serde_json::json!("system")),
+            ("/expected_conversation_revision", serde_json::json!(0)),
+            ("/expected_conversation_revision", serde_json::json!(true)),
+            (
+                "/saved_input/request/conversation_id",
+                serde_json::json!("other"),
+            ),
+            (
+                "/saved_input/request/turn_id",
+                serde_json::json!("invalid/id"),
+            ),
+        ] {
+            let mut invalid = request.clone();
+            *invalid.pointer_mut(field).unwrap() = value;
+            rejected(&invalid.to_string());
+        }
+    }
+
     #[test]
     fn confirmation_start_preserves_the_exact_terminal_json_for_both_callers() {
         let terminal = serde_json::to_string_pretty(&confirmation_terminal()).unwrap();
@@ -1285,31 +1488,38 @@ mod tests {
     }
 
     #[test]
-    fn confirmation_fallback_requires_live_and_cannot_follow_publication() {
-        let role = ReplyRole::ConversationConfirmation;
-        assert!(role.permits_publication());
-        for (authority, code) in [
-            (WireAuthority::AwaitingLive, "unavailable"),
-            (WireAuthority::Live, "requires-legacy-read"),
+    fn conversation_write_fallback_requires_live_and_cannot_follow_publication() {
+        for (role, limit) in [
             (
-                WireAuthority::PublicationPermitted,
-                "publication-unconfirmed",
+                ReplyRole::ConversationConfirmation,
+                CONVERSATION_CONFIRMATION_LIMIT,
             ),
+            (ReplyRole::ConversationAppend, CONVERSATION_APPEND_LIMIT),
         ] {
-            for error in [
-                ConversationConfirmationRequiresLegacyRead.into(),
-                NativeArtifactError::ConversationLimitBeforePublish.into(),
+            assert!(role.permits_publication());
+            for (authority, code) in [
+                (WireAuthority::AwaitingLive, "unavailable"),
+                (WireAuthority::Live, "requires-legacy-read"),
+                (
+                    WireAuthority::PublicationPermitted,
+                    "publication-unconfirmed",
+                ),
             ] {
-                assert_eq!(role.failure_code(authority, &error), code);
+                for error in [
+                    ConversationWriteRequiresLegacyRead.into(),
+                    NativeArtifactError::ConversationLimitBeforePublish.into(),
+                ] {
+                    assert_eq!(role.failure_code(authority, &error), code);
+                }
+                assert_eq!(role.result_limit(authority), (limit, code));
             }
-            assert_eq!(role.result_limit(authority), (16 * 1024, code));
+            let denied = NativeArtifactError::Denied.into();
+            assert_eq!(role.failure_code(WireAuthority::Live, &denied), "denied");
+            assert_eq!(
+                role.failure_code(WireAuthority::PublicationPermitted, &denied),
+                "publication-unconfirmed"
+            );
         }
-        let denied = NativeArtifactError::Denied.into();
-        assert_eq!(role.failure_code(WireAuthority::Live, &denied), "denied");
-        assert_eq!(
-            role.failure_code(WireAuthority::PublicationPermitted, &denied),
-            "publication-unconfirmed"
-        );
     }
 
     #[test]

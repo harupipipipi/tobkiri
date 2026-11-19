@@ -28,6 +28,7 @@ from tobkiri_protocol.canonical import strict_loads
 
 _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
+_APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -44,11 +45,14 @@ _START, _CHECK, _LIVE = 1, 2, 3
 _PLAN, _FAILURE, _CANCEL = 7, 8, 9
 _INAPPLICABLE = 10
 _PUBLISH_CHECK, _PUBLISH_PERMIT = 11, 12
+_START_APPEND = 13
 _JSON_LIMIT = 16 * 1024
+_APPEND_START_LIMIT = 1024 * 1024
 _OWNER_RESULT_LIMIT = 1024 * 1024
 # The Host borrows the same bridge allowance as the Registry owner routes.
 # The managed Launcher's Wasm instance has its own physical memory cap.
 CONVERSATION_GET_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+CONVERSATION_APPEND_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 CONVERSATION_CONFIRMATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 MODEL_RESOLVE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_RECEIPT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
@@ -63,7 +67,7 @@ _FAILURES = frozenset({
     b"limit-exceeded", b"conflict", b"unavailable", b"internal",
 })
 _LEGACY_READ_FAILURE = b"legacy-read-required"
-_CONFIRMATION_LEGACY_READ_FAILURE = b"requires-legacy-read"
+_CONVERSATION_LEGACY_READ_FAILURE = b"requires-legacy-read"
 _PUBLICATION_UNCONFIRMED = b"publication-unconfirmed"
 _INBOUND_LIMITS = {
     _CHECK: 0,
@@ -93,6 +97,18 @@ class NativeConversationGetFailure(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(f"native Conversation GET failed ({code})")
         self.code = code
+
+
+class NativeConversationAppendFailure(RuntimeError):
+    """The Launcher returned a typed append failure before publication permission."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native Conversation append failed ({code})")
+        self.code = code
+
+
+class NativeConversationAppendPublicationUnconfirmed(RuntimeError):
+    """A permitted append has no confirmed Conversation owner result."""
 
 
 class NativeModelResolveFailure(RuntimeError):
@@ -181,6 +197,18 @@ class NativeConversationGetRequest:
     conversation_id: str
 
 
+@dataclass(frozen=True)
+class NativeConversationAppendRequest:
+    """Borrow the signed Conversation append payload and its live guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    request: Mapping[str, Any]
+    mark_publication_possible: Callable[[], None]
+
+
 SavedReceiptCaller = Literal["saved-turn", "saved-reconcile"]
 
 
@@ -245,6 +273,7 @@ _NativeBorrow = (
     | NativeModelSettingsRequest
     | NativeModelSaveRequest
     | NativeConversationGetRequest
+    | NativeConversationAppendRequest
     | NativeSavedReceiptRequest
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
@@ -346,6 +375,18 @@ def capture_launcher_conversation_get_reader() -> (
     if launcher is None:
         return None
     return partial(_invoke, launcher, operation="conversation_get")
+
+
+def capture_launcher_conversation_append_writer() -> (
+    Callable[[NativeConversationAppendRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's fixed endpoint for a saved append."""
+    if os.environ.get(_APPEND_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="conversation_append")
 
 
 def capture_launcher_saved_receipt_reader() -> (
@@ -450,6 +491,8 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
             "caller": borrow.caller,
             "conversation_id": borrow.conversation_id,
         }
+    elif isinstance(borrow, NativeConversationAppendRequest):
+        frame["conversation_append"] = _conversation_append_payload(borrow)
     elif isinstance(borrow, NativeSavedReceiptRequest):
         if (
             type(borrow.caller) is not str
@@ -487,6 +530,8 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
         if frozen_plan is not None:
             frame["apply"] = dict(frozen_plan)
     try:
+        if isinstance(borrow, NativeConversationAppendRequest):
+            return _encode_append_start(frame)
         payload = json.dumps(
             frame, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
         )
@@ -498,6 +543,27 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
     if len(encoded) > _JSON_LIMIT:
         raise _ProtocolError("native Provider preparation request exceeds its bound")
     return encoded
+
+
+def _encode_append_start(frame: dict[str, Any]) -> bytes:
+    encoder = json.JSONEncoder(
+        ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+    )
+    encoded = bytearray()
+    for part in encoder.iterencode(frame):
+        remaining = _APPEND_START_LIMIT - len(encoded)
+        # UTF-8 never uses fewer bytes than code points.
+        if len(part) > remaining:
+            break
+        chunk = part.encode("utf-8")
+        if len(chunk) > remaining:
+            break
+        encoded.extend(chunk)
+    else:
+        return bytes(encoded)
+    raise NativeProviderRegistryRequiresLegacyRead(
+        "native Conversation append exceeds its request bound",
+    )
 
 
 def _turn_settlement_payload(borrow: NativeSavedTurnSettlementRequest) -> dict[str, Any]:
@@ -542,6 +608,52 @@ def _matches(pattern: re.Pattern[str], value: object) -> bool:
 
 def _bounded_revision(value: object, minimum: int) -> bool:
     return type(value) is int and minimum <= value <= _U64_MAX
+
+
+def _conversation_append_payload(
+    borrow: NativeConversationAppendRequest,
+) -> dict[str, Any]:
+    invalid = "native Conversation append inputs are invalid"
+    request = borrow.request
+    if not isinstance(request, Mapping) or set(request) != {
+        "conversation_id", "expected_conversation_revision", "message", "saved_input",
+    }:
+        raise _ProtocolError(invalid)
+    conversation_id = request["conversation_id"]
+    revision = request["expected_conversation_revision"]
+    message = request["message"]
+    saved = request["saved_input"]
+    if (
+        not _matches(_TURN_IDENTIFIER, conversation_id)
+        or type(revision) is not int
+        or revision < 1
+        or not isinstance(message, Mapping)
+        or not _matches(_SAVED_MESSAGE_ID, message.get("id"))
+        or message.get("role") not in ("user", "assistant")
+        or "content" not in message
+        or not isinstance(saved, Mapping)
+        or set(saved) != {"request"}
+    ):
+        raise _ProtocolError(invalid)
+    initial = saved["request"]
+    if (
+        not isinstance(initial, Mapping)
+        or initial.get("conversation_id") != conversation_id
+        or not _matches(_TURN_IDENTIFIER, initial.get("turn_id"))
+    ):
+        raise _ProtocolError(invalid)
+    if revision >= 1 << 63:
+        raise NativeProviderRegistryRequiresLegacyRead(
+            "native Conversation append revision exceeds its bound",
+        )
+    return {
+        "request": {
+            "conversation_id": conversation_id,
+            "expected_conversation_revision": revision,
+            "message": dict(message),
+            "saved_input": {"request": dict(initial)},
+        },
+    }
 
 
 def _conversation_confirmation_payload(
@@ -636,6 +748,35 @@ def _decode_conversation_get(payload: bytes) -> dict[str, Any]:
         type(result) is not dict
         or set(result) != {"conversation"}
         or type(result["conversation"]) is not dict
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_conversation_append(
+    payload: bytes, borrow: NativeConversationAppendRequest,
+) -> dict[str, Any]:
+    invalid = "native Conversation append owner result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    request = borrow.request
+    if (
+        type(result) is not dict
+        or set(result) != {"action", "message", "conversation_revision", "store_revision"}
+        or result["action"] != "message_appended"
+        or not _bounded_revision(result["conversation_revision"], 2)
+        or result["conversation_revision"] != request["expected_conversation_revision"] + 1
+        or not _bounded_revision(result["store_revision"], 1)
+        or type(result["message"]) is not dict
+    ):
+        raise _ProtocolError(invalid)
+    message = result["message"]
+    expected = request["message"]
+    content = expected["content"] or ""
+    if (
+        message.get("id") != expected["id"]
+        or message.get("role") != expected["role"]
+        or type(message.get("content")) is not type(content)
+        or message["content"] != content
     ):
         raise _ProtocolError(invalid)
     return result
@@ -760,18 +901,18 @@ class _Exchange:
         plan_limit: int,
         *,
         permits_publication: bool,
-        conversation_confirmation: bool,
+        conversation_mutation: bool,
     ) -> None:
         self.connection = connection
         self.plan_limit = plan_limit
         self.permits_publication = permits_publication
         self.legacy_failure = (
-            _CONFIRMATION_LEGACY_READ_FAILURE
-            if conversation_confirmation
+            _CONVERSATION_LEGACY_READ_FAILURE
+            if conversation_mutation
             else _LEGACY_READ_FAILURE
         )
         self.failure_codes = _FAILURES | {self.legacy_failure}
-        if conversation_confirmation:
+        if conversation_mutation:
             self.failure_codes |= {_PUBLICATION_UNCONFIRMED}
         self.failure_limit = max(map(len, self.failure_codes))
         self.received = bytearray()
@@ -859,7 +1000,13 @@ class _Exchange:
         deadline_ns: int,
         wait_seconds: Callable[[], float],
     ) -> dict[str, Any]:
-        self.send(_START, _start_payload(borrow, deadline_ns), wait_seconds)
+        conversation_append = isinstance(borrow, NativeConversationAppendRequest)
+        try:
+            start = _start_payload(borrow, deadline_ns)
+        except NativeProviderRegistryRequiresLegacyRead:
+            wait_seconds()
+            raise
+        self.send(_START_APPEND if conversation_append else _START, start, wait_seconds)
         self.started = True
         entered_live_phase = False
         conversation_get = isinstance(borrow, NativeConversationGetRequest)
@@ -883,6 +1030,9 @@ class _Exchange:
                     if isinstance(borrow, NativeSavedTurnSettlementRequest):
                         wait_seconds()
                         raise NativeSavedTurnSettlementFailure(payload.decode("ascii"))
+                    if conversation_append and payload != _PUBLICATION_UNCONFIRMED:
+                        wait_seconds()
+                        raise NativeConversationAppendFailure(payload.decode("ascii"))
                     if (
                         isinstance(borrow, NativeConversationConfirmationRequest)
                         and payload != _PUBLICATION_UNCONFIRMED
@@ -916,7 +1066,7 @@ class _Exchange:
                 and entered_live_phase
                 and isinstance(borrow, (
                     NativeModelSaveRequest, NativeSavedTurnSettlementRequest,
-                    NativeConversationConfirmationRequest,
+                    NativeConversationConfirmationRequest, NativeConversationAppendRequest,
                 ))
                 and not self.publication_possible
             ):
@@ -928,6 +1078,10 @@ class _Exchange:
             elif tag == _PLAN and entered_live_phase:
                 if conversation_get:
                     plan = _decode_conversation_get(payload)
+                elif conversation_append:
+                    if not self.publication_possible:
+                        raise _ProtocolError("native Conversation append permit is missing")
+                    plan = _decode_conversation_append(payload, borrow)
                 elif isinstance(borrow, NativeSavedReceiptRequest):
                     plan = _decode_saved_receipt(payload)
                 elif isinstance(borrow, NativeSavedTurnSettlementRequest):
@@ -959,12 +1113,13 @@ def _invoke(
     operation: Literal[
         "provider_prepare", "model_list", "model_save", "conversation_get",
         "conversation_receipt", "model_resolve", "turn_settlement",
-        "conversation_confirmation",
+        "conversation_confirmation", "conversation_append",
     ],
 ) -> Mapping[str, Any]:
     model_settings = isinstance(borrow, NativeModelSettingsRequest)
     model_save = isinstance(borrow, NativeModelSaveRequest)
     conversation_get = isinstance(borrow, NativeConversationGetRequest)
+    conversation_append = isinstance(borrow, NativeConversationAppendRequest)
     saved_receipt = isinstance(borrow, NativeSavedReceiptRequest)
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
@@ -973,6 +1128,7 @@ def _invoke(
         model_settings != (operation == "model_list")
         or model_save != (operation == "model_save")
         or conversation_get != (operation == "conversation_get")
+        or conversation_append != (operation == "conversation_append")
         or saved_receipt != (operation == "conversation_receipt")
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
@@ -1007,14 +1163,18 @@ def _invoke(
             if (
                 model_settings or model_save or conversation_get
                 or saved_receipt or model_resolve or turn_settlement
+                or conversation_append
             )
             else _JSON_LIMIT
         )
         exchange = _Exchange(
             connection,
             plan_limit,
-            permits_publication=(model_save or turn_settlement or conversation_confirmation),
-            conversation_confirmation=conversation_confirmation,
+            permits_publication=(
+                model_save or turn_settlement or conversation_confirmation
+                or conversation_append
+            ),
+            conversation_mutation=conversation_confirmation or conversation_append,
         )
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds)
@@ -1026,6 +1186,10 @@ def _invoke(
                     if not exchange.publication_possible:
                         raise cleanup_error from None
             if exchange.publication_possible:
+                if conversation_append:
+                    raise NativeConversationAppendPublicationUnconfirmed(
+                        "native Conversation append publication could not be confirmed",
+                    ) from None
                 if conversation_confirmation:
                     raise NativeConversationConfirmationPublicationUnconfirmed(
                         "native Conversation confirmation publication could not be confirmed",

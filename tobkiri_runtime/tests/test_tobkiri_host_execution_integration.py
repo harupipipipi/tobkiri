@@ -561,8 +561,13 @@ def test_host_control_write_timeout_cannot_be_reported_as_failed() -> None:
             "tobkiri.action.conversation.completion.v1",
             "rumi_conversation_store_pack.conversation-completion",
         ),
+        (
+            "native_conversation_append_publication_possible",
+            "tobkiri.action.message.manage.v1",
+            "rumi_conversation_store_pack.message-manage",
+        ),
     ],
-    ids=["model-save", "conversation-confirmation"],
+    ids=["model-save", "conversation-confirmation", "conversation-append"],
 )
 def test_exact_host_write_requires_its_own_publication_marker(
     marked: bool, failure: str, marker_name: str, contract_id: str, operation_id: str,

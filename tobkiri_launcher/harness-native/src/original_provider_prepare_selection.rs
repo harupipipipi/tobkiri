@@ -22,18 +22,24 @@ const PIN_FIELDS: [&str; 10] = [
 const PLATFORM: &str = "any";
 const ARCHITECTURE: &str = "any";
 const RUNTIME_ABI: &str = "python3.13";
-const BACKEND: &str = "tobkiri.python-host-v4";
-const EXECUTION_KIND: &str = "host_extension";
-const DOMAIN_KIND: &str = "dedicated_process";
+#[derive(Clone, Copy)]
+struct Execution {
+    backend: &'static str,
+    kind: &'static str,
+    domain: &'static str,
+}
 
-const LEGACY_EXECUTION: [(&str, &str); 6] = [
-    ("platform", PLATFORM),
-    ("architecture", ARCHITECTURE),
-    ("runtime_abi", RUNTIME_ABI),
-    ("backend", BACKEND),
-    ("execution_kind", EXECUTION_KIND),
-    ("domain_kind", DOMAIN_KIND),
-];
+const PYTHON_HOST: Execution = Execution {
+    backend: "tobkiri.python-host-v4",
+    kind: "host_extension",
+    domain: "dedicated_process",
+};
+
+const PYTHON_PACK_VM: Execution = Execution {
+    backend: "tobkiri.python-pack-v4",
+    kind: "pack_vm",
+    domain: "pack_vm",
+};
 
 struct Route {
     pack: &'static str,
@@ -41,6 +47,20 @@ struct Route {
     contract: &'static str,
     operation: &'static str,
     variant: &'static str,
+    execution: Execution,
+}
+
+impl Route {
+    fn execution_fields(&self) -> [(&'static str, &'static str); 6] {
+        [
+            ("platform", PLATFORM),
+            ("architecture", ARCHITECTURE),
+            ("runtime_abi", RUNTIME_ABI),
+            ("backend", self.execution.backend),
+            ("execution_kind", self.execution.kind),
+            ("domain_kind", self.execution.domain),
+        ]
+    }
 }
 
 static COORDINATOR: Route = Route {
@@ -49,6 +69,7 @@ static COORDINATOR: Route = Route {
     contract: "tobkiri.service.interactive-effect.v1",
     operation: "interactive_effect.manage",
     variant: "rumi_host_authority_bridge_pack.host-authority.interactive-effect.python",
+    execution: PYTHON_HOST,
 };
 
 static PROVIDER_PREPARE: Route = Route {
@@ -57,6 +78,7 @@ static PROVIDER_PREPARE: Route = Route {
     contract: "tobkiri.action.ai.provider.registry.manage.v1",
     operation: "rumi_provider_registry_pack.provider-configure-prepare",
     variant: "rumi_provider_registry_pack.provider-configure.prepare.python",
+    execution: PYTHON_HOST,
 };
 
 static MODEL_LIST: Route = Route {
@@ -65,6 +87,7 @@ static MODEL_LIST: Route = Route {
     contract: "tobkiri.resource.ai.model.profile.v1",
     operation: "rumi_model_registry_pack.model-profile-resource",
     variant: "rumi_model_registry_pack.model-registry.profile.python",
+    execution: PYTHON_HOST,
 };
 
 static MODEL_RESOLVE_GENERATE: Route = Route {
@@ -83,6 +106,7 @@ static MODEL_MANAGE: Route = Route {
     contract: "tobkiri.action.ai.model.profile.manage.v1",
     operation: "rumi_model_registry_pack.model-profile-manage",
     variant: "rumi_model_registry_pack.model-registry.manage.python",
+    execution: PYTHON_HOST,
 };
 
 static PROVIDER_READ: Route = Route {
@@ -91,6 +115,7 @@ static PROVIDER_READ: Route = Route {
     contract: "tobkiri.resource.ai.provider.registry.v1",
     operation: "rumi_provider_registry_pack.provider-registry-resource",
     variant: "rumi_provider_registry_pack.provider-registry.resource.python",
+    execution: PYTHON_HOST,
 };
 
 static CONVERSATION_READ: Route = Route {
@@ -99,6 +124,7 @@ static CONVERSATION_READ: Route = Route {
     contract: "tobkiri.resource.conversation.v1",
     operation: "rumi_conversation_store_pack.conversation-resource",
     variant: "rumi_conversation_store_pack.conversation-store.resource.python",
+    execution: PYTHON_HOST,
 };
 
 static CONVERSATION_CONFIRMATION: Route = Route {
@@ -107,6 +133,7 @@ static CONVERSATION_CONFIRMATION: Route = Route {
     contract: "tobkiri.action.conversation.completion.v1",
     operation: "rumi_conversation_store_pack.conversation-completion",
     variant: "rumi_conversation_store_pack.conversation-store.completion.python",
+    execution: PYTHON_HOST,
 };
 
 const SAVED_TURN_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.saved";
@@ -120,6 +147,7 @@ static SAVED_TURN: Route = Route {
     contract: "tobkiri.action.turn.saved.v1",
     operation: "rumi_turn_runtime_pack.turn-saved",
     variant: "rumi_turn_runtime_pack.turn-runtime.saved.python",
+    execution: PYTHON_HOST,
 };
 
 static SAVED_RECONCILE: Route = Route {
@@ -128,6 +156,7 @@ static SAVED_RECONCILE: Route = Route {
     contract: "tobkiri.action.turn.reconcile.v1",
     operation: "rumi_turn_runtime_pack.turn-reconcile",
     variant: "rumi_turn_runtime_pack.turn-runtime.reconcile.python",
+    execution: PYTHON_HOST,
 };
 
 static TURN_GET: Route = Route {
@@ -136,9 +165,28 @@ static TURN_GET: Route = Route {
     contract: "tobkiri.resource.turn.v1",
     operation: "rumi_turn_runtime_pack.turn-resource",
     variant: "rumi_turn_runtime_pack.turn-runtime.resource.python",
+    execution: PYTHON_HOST,
 };
 
 const SAVED_ORCHESTRATION_CALLER: &str = "tobkiri_conversation_orchestration_pack.saved";
+static SAVED_ORCHESTRATION: Route = Route {
+    pack: "tobkiri_conversation_orchestration_pack",
+    function: SAVED_ORCHESTRATION_CALLER,
+    contract: "conversation.saved-turn.v1",
+    operation: "saved_complete",
+    variant: "tobkiri_conversation_orchestration_pack.saved.python",
+    execution: PYTHON_PACK_VM,
+};
+
+static CONVERSATION_MESSAGE_MANAGE: Route = Route {
+    pack: "rumi_conversation_store_pack",
+    function: "rumi_conversation_store_pack.conversation-store.message-manage",
+    contract: "tobkiri.action.message.manage.v1",
+    operation: "rumi_conversation_store_pack.message-manage",
+    variant: "rumi_conversation_store_pack.conversation-store.message-manage.python",
+    execution: PYTHON_HOST,
+};
+
 const GATEWAY_QUOTE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.route-quote";
 const GATEWAY_GENERATE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.generate";
 const GATEWAY_STREAM_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.stream";
@@ -217,17 +265,17 @@ impl OriginalRoutePin {
 
     /// Selected runtime backend pin.
     pub fn backend(&self) -> &'static str {
-        BACKEND
+        self.route.execution.backend
     }
 
     /// Selected execution kind pin.
     pub fn execution_kind(&self) -> &'static str {
-        EXECUTION_KIND
+        self.route.execution.kind
     }
 
     /// Selected isolation domain pin.
     pub fn domain_kind(&self) -> &'static str {
-        DOMAIN_KIND
+        self.route.execution.domain
     }
 
     /// Caller function named by the exact Profile edge.
@@ -483,6 +531,34 @@ impl<'a> OriginalConversationConfirmationChoice<'a> {
     }
 }
 
+/// The signed chain from the default Shell through Saved Orchestration to Message Manage.
+pub struct OriginalConversationAppendChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 3],
+}
+
+impl<'a> OriginalConversationAppendChoice<'a> {
+    /// Select the exact grants for an ordinary saved turn's message append.
+    /// Verify every returned pin against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_conversation_append_records(active.records(), budget)?.map(|pins| Self {
+                _active: active,
+                pins,
+            }),
+        )
+    }
+
+    /// The Shell-to-Turn saved grant, followed by the Turn-to-Saved Orchestration grant
+    /// and the Saved Orchestration-to-Message Manage grant.
+    pub fn pins(&self) -> &[OriginalRoutePin; 3] {
+        &self.pins
+    }
+}
+
 /// The original Shell grant under which a Turn owner may settle a saved receipt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalSavedTurnSettlementRole {
@@ -730,6 +806,28 @@ fn select_conversation_confirmation_records(
         .map(|turn_get| [turn_caller, completion, turn_get]))
 }
 
+fn select_conversation_append_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<[OriginalRoutePin; 3]>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
+        return Ok(None);
+    }
+    let Some(turn) = records.select_shell_route(&SAVED_TURN)? else {
+        return Ok(None);
+    };
+    let Some(orchestration) = records.select_route(turn.function_id(), &SAVED_ORCHESTRATION)?
+    else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(orchestration.function_id(), &CONVERSATION_MESSAGE_MANAGE)?
+        .map(|manage| [turn, orchestration, manage]))
+}
+
 fn select_saved_turn_settlement_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
@@ -921,7 +1019,8 @@ impl Records<'_> {
         let adapters = adapters.array().ok_or(Inconsistent("adapter_digests"))?;
         if !grant
             || verified_text(&variant) != route.variant
-            || LEGACY_EXECUTION
+            || route
+                .execution_fields()
                 .into_iter()
                 .any(|(field, expected)| !is_text(&binding, field, expected))
             || !adapters.is_empty()
@@ -1266,6 +1365,20 @@ mod tests {
                 "sha256:acf98c5bf82405666c710bdd2a4b6199d108ffdc70deaed0157c1b0f6e9f450a",
                 "sha256:f4c5dd96f70e7e108a5b46b9adbf244990326628e62592b618ba77b2fb92de3d",
             ),
+            (
+                &SAVED_ORCHESTRATION,
+                SAVED_TURN_CALLER,
+                "authority-ref:fcdb3a500a3174f9aeb463d61b569e894a1dc0bc5637b8b504320f0db6856996",
+                "sha256:c8f748e29c75e01a3ea58533a66d84a4debc410808ba7bd45c30e04fb81efc50",
+                "sha256:0fd9eb1e037d917b1b1a2d6d351870c00465a70539e341e27e46d0e45b6125cf",
+            ),
+            (
+                &CONVERSATION_MESSAGE_MANAGE,
+                SAVED_ORCHESTRATION_CALLER,
+                "authority-ref:109e313f6f0b1f266b39c69b090f59c012ea090c8eb72332ee11603e90c9a168",
+                "sha256:9dd8f4b40122ccebecee571c81ad10a71b07bc791baee7dedfa96ed8214e5fc4",
+                "sha256:f3ab7b69d73b0e79b262bc2900c652da5f92e15d13c44c160eb8e7f8b2f9f3e3",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -1279,9 +1392,9 @@ mod tests {
                 "platform": "any",
                 "architecture": "any",
                 "runtime_abi": "python3.13",
-                "backend": "tobkiri.python-host-v4",
-                "execution_kind": "host_extension",
-                "domain_kind": "dedicated_process"
+                "backend": route.execution.backend,
+                "execution_kind": route.execution.kind,
+                "domain_kind": route.execution.domain
             });
             let mut binding = pin.clone();
             binding["caller_function_id"] = json!(caller);
@@ -1400,6 +1513,12 @@ mod tests {
         select_conversation_confirmation_records((&profile, &lock, &plan), &budget, role)
     }
 
+    fn select_append(records: &Value) -> Result<Option<[OriginalRoutePin; 3]>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_conversation_append_records((&profile, &lock, &plan), &budget)
+    }
+
     const MODEL_MANAGE_ROW: usize = 3;
     const MODEL_PROVIDER_READ_ROW: usize = 4;
     const CONVERSATION_SHELL_ROW: usize = 6;
@@ -1412,6 +1531,8 @@ mod tests {
     const SAVED_TURN_CONFIRMATION_ROW: usize = 16;
     const SAVED_RECONCILE_CONFIRMATION_ROW: usize = 17;
     const CONFIRMATION_TURN_GET_ROW: usize = 18;
+    const SAVED_ORCHESTRATION_ROW: usize = 19;
+    const MESSAGE_MANAGE_ROW: usize = 20;
 
     fn select_saved_turn_settlement(
         records: &Value,
@@ -1574,6 +1695,90 @@ mod tests {
             select_saved_receipt(&fixture),
             Err(Inconsistent(_))
         ));
+    }
+
+    #[test]
+    fn conversation_append_requires_each_original_grant_independently() {
+        let fixture = records();
+        let [turn, orchestration, manage] = select_append(&fixture).unwrap().unwrap();
+        assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
+        assert_eq!(turn.function_id(), SAVED_TURN_CALLER);
+        assert_eq!(orchestration.caller_function_id(), turn.function_id());
+        assert_eq!(orchestration.variant_id(), SAVED_ORCHESTRATION.variant);
+        assert_eq!(orchestration.execution_kind(), "pack_vm");
+        assert_eq!(orchestration.domain_kind(), "pack_vm");
+        assert_eq!(manage.caller_function_id(), orchestration.function_id());
+        assert_eq!(manage.variant_id(), CONVERSATION_MESSAGE_MANAGE.variant);
+        for row in [
+            SAVED_TURN_SETTLEMENT_ROW,
+            SAVED_ORCHESTRATION_ROW,
+            MESSAGE_MANAGE_ROW,
+        ] {
+            let mut fixture = fixture.clone();
+            let edges = fixture["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap();
+            edges[row].as_object_mut().unwrap().remove("authority_mode");
+            assert!(select_append(&fixture).unwrap().is_some());
+
+            fixture["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            fixture["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            assert!(select_append(&fixture).unwrap().is_none());
+
+            fixture["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(matches!(select_append(&fixture), Err(Inconsistent(_))));
+            fixture["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(select_append(&fixture).unwrap().is_none());
+            assert!(
+                select_saved_receipt(&fixture)
+                    .unwrap()
+                    .iter()
+                    .all(Option::is_some)
+            );
+            assert!(
+                select_confirmation(&fixture, OriginalSavedReceiptRole::SavedReconcile)
+                    .unwrap()
+                    .is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn conversation_append_rejects_other_runtimes_and_callers() {
+        for (field, alternate) in [
+            (
+                "variant_id",
+                "tobkiri_conversation_orchestration_pack.saved.alternate",
+            ),
+            ("backend", "tobkiri.python-host-v4"),
+            ("execution_kind", "host_extension"),
+            ("domain_kind", "dedicated_process"),
+        ] {
+            let mut fixture = records();
+            let pin = fixture["lock"]["variant_pins"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|pin| pin["variant_id"] == SAVED_ORCHESTRATION.variant)
+                .unwrap();
+            pin[field] = json!(alternate);
+            fixture["plan"]["bindings"][SAVED_ORCHESTRATION_ROW][field] = json!(alternate);
+            assert!(select_append(&fixture).unwrap().is_none(), "{field}");
+        }
+
+        let mut fixture = records();
+        fixture["profile"]["requested_edges"][MESSAGE_MANAGE_ROW]["caller_function_id"] =
+            json!(SAVED_RECONCILE_CALLER);
+        fixture["plan"]["bindings"][MESSAGE_MANAGE_ROW]["caller_function_id"] =
+            json!(SAVED_RECONCILE_CALLER);
+        assert!(select_append(&fixture).unwrap().is_none());
     }
 
     #[test]

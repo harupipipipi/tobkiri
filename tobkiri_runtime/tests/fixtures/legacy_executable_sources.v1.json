@@ -25,7 +25,7 @@
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
-      "implementation_digest": "sha256:406bb346b44fe05e4bb8c00d30b27f3bc504d0d346edd5139e81105230fb57fe",
+      "implementation_digest": "sha256:760b25f88d3f1cdea633b71992acd10956d4f04ecfba6918344ce6eca543d83a",
       "implementation_path": "runtime/message_host.py",
       "legacy": {
         "contract_id": "tobkiri.action.message.manage.v1",

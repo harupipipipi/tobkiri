@@ -21,6 +21,7 @@ use tauri::AppHandle;
 
 pub(crate) const SOCKET_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET";
 pub(crate) const OWNER_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER";
+pub(crate) const APPEND_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_APPEND";
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProviderPrepareEndpoint {

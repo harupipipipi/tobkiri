@@ -266,6 +266,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             check_conversation_read_grants(&observed, budget);
             check_saved_receipt_grants(&observed, budget);
             check_conversation_confirmation_grants(&observed, budget);
+            check_conversation_append_grants(&observed, budget);
             check_model_resolve_grants(&observed, budget);
             assert_eq!(
                 observed
@@ -585,6 +586,45 @@ fn check_conversation_confirmation_grants(
         );
         assert!(confirmation_grants.insert(completion.authority_reference().to_owned()));
     }
+}
+
+fn check_conversation_append_grants(
+    observed: &crate::OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+) {
+    let choice = crate::OriginalConversationAppendChoice::select(observed, budget)
+        .expect("authenticate all three original saved append grants")
+        .expect("confirmed Profile selects Saved Orchestration and Message Manage");
+    let [turn, orchestration, manage] = choice.pins();
+
+    assert_eq!(turn.caller_function_id(), "shell.tauri.default");
+    assert_eq!(
+        turn.function_id(),
+        "rumi_turn_runtime_pack.turn-runtime.saved"
+    );
+    assert_eq!(orchestration.caller_function_id(), turn.function_id());
+    assert_eq!(orchestration.contract_id(), "conversation.saved-turn.v1");
+    assert_eq!(orchestration.operation_id(), "saved_complete");
+    assert_eq!(
+        orchestration.variant_id(),
+        "tobkiri_conversation_orchestration_pack.saved.python"
+    );
+    assert_eq!(orchestration.backend(), "tobkiri.python-pack-v4");
+    assert_eq!(orchestration.execution_kind(), "pack_vm");
+    assert_eq!(orchestration.domain_kind(), "pack_vm");
+    assert_eq!(manage.caller_function_id(), orchestration.function_id());
+    assert_eq!(manage.contract_id(), "tobkiri.action.message.manage.v1");
+    assert_eq!(
+        manage.operation_id(),
+        "rumi_conversation_store_pack.message-manage"
+    );
+    assert_eq!(
+        manage.variant_id(),
+        "rumi_conversation_store_pack.conversation-store.message-manage.python"
+    );
+    assert_eq!(manage.backend(), "tobkiri.python-host-v4");
+    assert_eq!(manage.execution_kind(), "host_extension");
+    assert_eq!(manage.domain_kind(), "dedicated_process");
 }
 
 fn check_model_resolve_grants(

@@ -189,6 +189,7 @@ SavedTurnSettlementPort = Callable[
 SavedConversationConfirmationPort = Callable[
     [Mapping[str, Any]], Mapping[str, Any] | None
 ]
+SavedMessageAppendPort = Callable[[], Mapping[str, Any] | None]
 
 
 @dataclass(frozen=True)
@@ -251,6 +252,10 @@ class HostProviderCaptureContextV4:
         Callable[
             [HostProviderInvocationContextV4], SavedConversationConfirmationPort | None
         ] | None
+    ) = None
+    # The exact signed message owner uses only the admitted append envelope.
+    borrow_saved_message_append: (
+        Callable[[HostProviderInvocationContextV4], SavedMessageAppendPort | None] | None
     ) = None
 
 
@@ -318,6 +323,9 @@ class ExactHostProviderBackendV4:
         native_conversation_confirmation_publication_possible: (
             Callable[[RequestEnvelope], bool] | None
         ) = None,
+        native_conversation_append_publication_possible: (
+            Callable[[RequestEnvelope], bool] | None
+        ) = None,
     ) -> None:
         if not contributions:
             raise ValueError("Host Provider backend requires contributions")
@@ -331,6 +339,7 @@ class ExactHostProviderBackendV4:
                 native_model_save_publication_possible,
                 native_turn_settlement_publication_possible,
                 native_conversation_confirmation_publication_possible,
+                native_conversation_append_publication_possible,
             ) if check is not None
         )
         if not admission_bound_operations.issubset(self._contributions):

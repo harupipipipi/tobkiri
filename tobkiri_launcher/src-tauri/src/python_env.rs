@@ -345,13 +345,17 @@ where
         configure(command)?;
         command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET");
         command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER");
+        command.env_remove("TOBKIRI_NATIVE_CONVERSATION_APPEND");
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
         if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
             if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
-                use crate::native_provider_prepare_service::{OWNER_ENV, SOCKET_ENV};
+                use crate::native_provider_prepare_service::{APPEND_ENV, OWNER_ENV, SOCKET_ENV};
                 command
                     .env(SOCKET_ENV, &endpoint.socket)
-                    .env(OWNER_ENV, &endpoint.owner);
+                    .env(OWNER_ENV, &endpoint.owner)
+                    // A wire-version hint. The endpoint still checks the exact
+                    // launch proof and publication permit for every append.
+                    .env(APPEND_ENV, "1");
             }
         }
         Ok(())

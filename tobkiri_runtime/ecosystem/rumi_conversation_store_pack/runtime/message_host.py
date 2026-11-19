@@ -41,6 +41,7 @@ class MessageManageHostFactoryV4:
     """Bind message writes to one captured Profile, root and owner revision."""
 
     function_id = FUNCTION_ID
+    saved_message_append_v1 = True
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Capture the exact action binding without accessing durable state."""
@@ -63,6 +64,7 @@ class MessageManageHostFactoryV4:
         if domain_id is None:
             raise PermissionError("message action domain is unavailable")
         store = ConversationStore(context.profile_id, user_data_root=context.user_data_root)
+        borrow_append = getattr(context, "borrow_saved_message_append", None)
         saved_callers = frozenset(
             item.principal_ref.value for item in context.catalog_bindings
             if item.function.function_id == "tobkiri_conversation_orchestration_pack.saved"
@@ -96,9 +98,16 @@ class MessageManageHostFactoryV4:
                 if not isinstance(payload["saved_input"], Mapping):
                     raise ValueError("saved append requires an input binding")
             if action in {"append", "append_saved"}:
+                message = _message(payload["message"])
+                if action == "append_saved" and borrow_append is not None:
+                    append = borrow_append(invocation)
+                    if append is not None:
+                        result = append()
+                        if result is not None:
+                            return result
                 return store.append_message(
                     conversation_id,
-                    _message(payload["message"]),
+                    message,
                     expected_conversation_revision=revision,
                     saved_input=payload["saved_input"] if action == "append_saved" else None,
                 )

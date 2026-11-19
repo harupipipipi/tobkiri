@@ -9,10 +9,11 @@ use tobkiri_core::{
     Digest,
 };
 use tobkiri_harness_native::{
-    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
-    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
-    OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
+    OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
+    OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
+    OriginalSavedTurnSettlementChoice,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -38,6 +39,13 @@ pub(crate) struct LockedTurnSettlementBundle<'pin> {
 pub(crate) struct LockedConversationConfirmationBundle<'pin> {
     root: CoreBuffer,
     routes: [Option<[LockedRegistryRoute<'pin>; 3]>; 2],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// The locked Bundle documents for the three grants in the ordinary saved append chain.
+pub(crate) struct LockedConversationAppendBundle<'pin> {
+    root: CoreBuffer,
+    routes: [LockedRegistryRoute<'pin>; 3],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -100,6 +108,29 @@ impl NativeApplicationSources {
             }
         }
         Ok(LockedConversationConfirmationBundle {
+            root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
+            routes,
+            budget: Arc::clone(budget),
+        })
+    }
+
+    /// Capture the locked Turn, Saved Orchestration, and Message Manage documents.
+    pub(crate) fn conversation_append_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalConversationAppendChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedConversationAppendBundle<'pin>> {
+        let [turn, orchestration, manage] = selection.pins();
+        ensure!(
+            turn.caller_function_id() == self.authority.shell_provider_id,
+            "old Conversation append caller differs from the selected Shell"
+        );
+        let routes = [
+            LockedRegistryRoute::from_lock(&self.bundle_lock, turn, budget)?,
+            LockedRegistryRoute::from_lock(&self.bundle_lock, orchestration, budget)?,
+            LockedRegistryRoute::from_lock(&self.bundle_lock, manage, budget)?,
+        ];
+        Ok(LockedConversationAppendBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             routes,
             budget: Arc::clone(budget),
@@ -228,15 +259,15 @@ impl LockedRegistryBundle<'_> {
     pub(crate) fn verify(&self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<()> {
         let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
         if let Some([coordinator, provider]) = &self.provider_prepare {
-            coordinator.verify(root, &self.budget, &mut checkpoint)?;
-            provider.verify(root, &self.budget, &mut checkpoint)?;
+            coordinator.verify(root, &self.budget, &mut checkpoint, None)?;
+            provider.verify(root, &self.budget, &mut checkpoint, None)?;
         }
         if let Some(model_list) = &self.model_list {
-            model_list.verify(root, &self.budget, &mut checkpoint)?;
+            model_list.verify(root, &self.budget, &mut checkpoint, None)?;
         }
         if let Some([model_manage, provider_read]) = &self.model_save {
-            model_manage.verify(root, &self.budget, &mut checkpoint)?;
-            provider_read.verify(root, &self.budget, &mut checkpoint)?;
+            model_manage.verify(root, &self.budget, &mut checkpoint, None)?;
+            provider_read.verify(root, &self.budget, &mut checkpoint, None)?;
         }
         let mut model_resolve = self.model_resolve.iter().flatten();
         if let Some(first) = model_resolve.next() {
@@ -300,6 +331,17 @@ impl LockedConversationConfirmationBundle<'_> {
             &self.budget,
             &mut checkpoint,
         )?;
+        checkpoint()
+    }
+}
+
+impl LockedConversationAppendBundle<'_> {
+    /// Verify both privileged host routes and the pure Pack VM operation between them.
+    pub(crate) fn verify(&self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<()> {
+        let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
+        for (route, effect_class) in self.routes.iter().zip(["privileged", "pure", "privileged"]) {
+            route.verify(root, &self.budget, &mut checkpoint, Some(effect_class))?;
+        }
         checkpoint()
     }
 }
@@ -370,10 +412,11 @@ impl<'pin> LockedRegistryRoute<'pin> {
         root: &Path,
         budget: &Arc<dyn AllocationBudget>,
         checkpoint: &mut impl FnMut() -> Result<()>,
+        effect_class: Option<&str>,
     ) -> Result<()> {
         let pack = self.pack.read(root, budget, checkpoint)?;
         let catalog = self.catalog.read(root, budget, checkpoint)?;
-        self.verify_documents(&pack, &catalog, None)
+        self.verify_documents(&pack, &catalog, effect_class)
     }
 
     fn verify_documents(

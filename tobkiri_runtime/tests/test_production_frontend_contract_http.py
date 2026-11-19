@@ -3216,6 +3216,274 @@ def test_native_confirmation_borrows_signed_completion_child(
         assert len(ai_calls) == 1
 
 
+@pytest.mark.parametrize(
+    "case",
+    ["direct", "unavailable", "unconfirmed", "user_reply_lost", "assistant_reply_lost"],
+)
+def test_native_append_borrows_signed_saved_orchestration_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str,
+) -> None:
+    """Keep each native append inside its funded, signed Message Manage call."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import LeaseState
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import (
+        TARGETS,
+    )
+    from tobkiri_host.runtime import V4DispatchSession
+    from tobkiri_protocol.saved_conversation import (
+        SAVED_CONVERSATION_CONTRACT,
+        SAVED_CONVERSATION_OPERATION,
+    )
+
+    user_data = tmp_path / "user-data"
+    conversations = ConversationStore("defaults", user_data_root=user_data)
+    turns = DurableTurnRuntime("defaults", user_data_root=user_data)
+    body = {"request": {
+        "turn_id": "turn-1",
+        "conversation_id": "conversation-1",
+        "conversation_revision": 1,
+        "content": "Hello",
+    }}
+    turn_target = ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+    orchestration_target = (SAVED_CONVERSATION_CONTRACT, SAVED_CONVERSATION_OPERATION)
+    parents: list[RequestEnvelope] = []
+    orchestrations: list[RequestEnvelope] = []
+    children: list[RequestEnvelope] = []
+    borrows: list[ipc.NativeConversationAppendRequest] = []
+    permitted: list[str] = []
+    native_commits: list[str] = []
+    ambiguous: list[str] = []
+    fixture_failures: list[AssertionError] = []
+    ai_calls: list[Mapping[str, object]] = []
+    original_invoke = V4DispatchSession.invoke
+
+    def invoke(
+        session: V4DispatchSession, contract: str, operation: str,
+        payload: Mapping[str, object], **kwargs: object,
+    ) -> Mapping[str, object]:
+        if (contract, operation) == READINESS:
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
+        if (contract, operation) == TARGETS[2]:
+            ai_calls.append(payload)
+            return {"status": "ok", "output": "Hi", "finish_reason": "stop"}
+        return original_invoke(session, contract, operation, payload, **kwargs)
+
+    def native_append(
+        request: ipc.NativeConversationAppendRequest,
+    ) -> Mapping[str, object]:
+        request.assert_current()
+        turn, orchestration, child = parents[-1], orchestrations[-1], children[-1]
+        assert orchestration.context.caller_principal == turn.target_principal
+        assert child.context.caller_principal == orchestration.target_principal
+        assert request.context == child.context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic == child.deadline_monotonic
+        assert child.deadline_monotonic <= orchestration.deadline_monotonic
+        assert orchestration.deadline_monotonic <= turn.deadline_monotonic
+        envelopes = (turn, orchestration, child)
+        assert len({envelope.lease.token for envelope in envelopes}) == 3
+        assert child.resource_reservation_id is not None
+        assert child.resource_reservation_id not in {
+            turn.resource_reservation_id, orchestration.resource_reservation_id,
+        }
+        for envelope in envelopes:
+            _, state, _, _ = authority.inspect_dispatch_authority(
+                envelope.lease.token.decode("ascii"),
+            )
+            assert state is LeaseState.DISPATCHED
+        assert child.payload["profile_id"] == "defaults"
+        assert child.payload["operation"] == "append_saved"
+        assert child.payload["saved_input"] == orchestration.payload == body
+        assert turns.get("turn-1")["input_digest"] == canonical_digest(body)
+
+        arguments = request.request
+        message = dict(arguments["message"])
+        created_at = message.pop("created_at")
+        assert type(created_at) is int
+        assert http_started_ms <= created_at <= time.time_ns() // 1_000_000
+        assert message == child.payload["message"]
+        assert arguments == {
+            "conversation_id": "conversation-1",
+            "expected_conversation_revision": child.payload[
+                "expected_conversation_revision"
+            ],
+            "message": {**message, "created_at": created_at},
+            "saved_input": body,
+        }
+        role = message["role"]
+        borrows.append(request)
+        if case == "unavailable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        request.mark_publication_possible()
+        permitted.append(role)
+        request.assert_current()
+        if case == "unconfirmed":
+            raise ipc.NativeConversationAppendPublicationUnconfirmed(
+                "fixture lost reply after final permit",
+            )
+        result = conversations.append_message(
+            arguments["conversation_id"],
+            arguments["message"],
+            expected_conversation_revision=arguments["expected_conversation_revision"],
+            saved_input=arguments["saved_input"],
+        )
+        native_commits.append(role)
+        if case == f"{role}_reply_lost":
+            raise RuntimeError("fixture lost reply after physical append")
+        return result
+
+    def checked_native_append(
+        request: ipc.NativeConversationAppendRequest,
+    ) -> Mapping[str, object]:
+        try:
+            return native_append(request)
+        except AssertionError as error:
+            fixture_failures.append(error)
+            raise
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/append.sock")
+    for capture in (
+        "capture_launcher_provider_prepare_planner",
+        "capture_launcher_model_save_writer",
+        "capture_launcher_model_settings_reader",
+        "capture_launcher_model_resolve_reader",
+        "capture_launcher_conversation_get_reader",
+        "capture_launcher_saved_receipt_reader",
+        "capture_launcher_saved_turn_settlement_writer",
+        "capture_launcher_conversation_confirmation_writer",
+    ):
+        monkeypatch.setattr(ipc, capture, lambda: None)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_conversation_append_writer", lambda: checked_native_append,
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    ) as (server, session, authority):
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(
+            backend: object, envelope: RequestEnvelope, *args: object, **kwargs: object,
+        ) -> Mapping[str, object]:
+            target = envelope.contract_id, envelope.operation_id
+            if target == turn_target:
+                parents.append(envelope)
+            if target == orchestration_target:
+                orchestrations.append(envelope)
+            if target != TARGETS[1]:
+                return dispatch(backend, envelope, *args, **kwargs)
+            children.append(envelope)
+            try:
+                return dispatch(backend, envelope, *args, **kwargs)
+            except AmbiguousEffectError:
+                ambiguous.append(envelope.payload["message"]["role"])
+                raise
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        conversations.create(
+            {"id": "conversation-1", "model_reference": "model-profile-1"},
+            expected_revision=0,
+        )
+
+        def conversation_file() -> tuple[int, bytes]:
+            return conversations.path.stat().st_ino, conversations.path.read_bytes()
+
+        original_file = conversation_file()
+        send = _contract("POST", "/api/chat/turn")
+        reconcile = _contract("POST", "/api/chat/turn/reconcile")
+        status, result, _ = _request(server, "POST", send, body=body)
+        assert status in {401, 403} and not parents and not borrows, result
+        assert conversation_file() == original_file
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(route: str, payload: dict) -> dict:
+            status, result, _ = _request(
+                server, "POST", route, body=payload, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert status == 200, result
+            return result["data"]
+
+        http_started_ms = time.time_ns() // 1_000_000
+        first = post(send, body)
+        assert not fixture_failures, [str(error) for error in fixture_failures]
+        uncertain = case not in {"direct", "unavailable"}
+        assert first["status"] == (
+            "reconciliation_required" if uncertain else "completed"
+        ), first
+        assert first["turn"]["status"] == ("waiting" if uncertain else "completed")
+        roles = ["user"] if case in {"unconfirmed", "user_reply_lost"} else [
+            "user", "assistant",
+        ]
+        assert [request.request["message"]["role"] for request in borrows] == roles
+        assert [child.payload["message"]["role"] for child in children] == roles
+        assert len({child.lease.token for child in children}) == len(roles)
+        assert len({child.resource_reservation_id for child in children}) == len(roles)
+        assert [
+            request.request["expected_conversation_revision"] for request in borrows
+        ] == list(range(1, len(roles) + 1))
+        assert permitted == ([] if case == "unavailable" else roles)
+        assert native_commits == ([] if case in {"unavailable", "unconfirmed"} else roles)
+        assert ambiguous == (roles[-1:] if uncertain else [])
+        assert len(ai_calls) == int(len(roles) == 2)
+        assert len(orchestrations) == 1
+
+        conversation = conversations.get("conversation-1")
+        assert conversation is not None
+        saved_roles = [] if case == "unconfirmed" else roles
+        assert [message["role"] for message in conversation["messages"]] == saved_roles
+        assert [message["content"] for message in conversation["messages"]] == [
+            {"user": "Hello", "assistant": "Hi"}[role] for role in saved_roles
+        ]
+        assert conversation["conversation_revision"] == 1 + len(saved_roles)
+        if case == "unconfirmed":
+            assert conversation_file() == original_file
+        receipt = conversations.saved_receipt("turn-1")
+        if saved_roles:
+            assert receipt["input_digest"] == canonical_digest(body)
+            assert ("result_reference" in receipt) == (len(saved_roles) == 2)
+        else:
+            assert receipt is None
+
+        final_turn = first["turn"]
+        before_retry = conversation_file()
+        revision = conversations.snapshot()["revision"]
+        recovered = post(reconcile, {"turn_id": "turn-1"})
+        if case == "assistant_reply_lost":
+            assert recovered["status"] == "completed", recovered
+            final_turn = recovered["turn"]
+            assert final_turn["result_reference"] == receipt["result_reference"]
+            assert conversations.snapshot()["revision"] == revision + 1
+            assert conversations.get("conversation-1")["messages"] == conversation[
+                "messages"
+            ]
+            before_retry = conversation_file()
+        else:
+            assert recovered["status"] == "existing", recovered
+        assert recovered["turn"] == final_turn
+        assert conversation_file() == before_retry
+        replay = post(send, body)
+        assert replay["status"] == "existing", replay
+        assert replay["turn"] == final_turn
+        assert conversation_file() == before_retry
+        assert len(borrows) == len(children) == len(roles)
+        assert len(orchestrations) == 1
+        assert len(ai_calls) == int(len(roles) == 2)
+        for request in borrows:
+            with pytest.raises(PermissionError):
+                request.assert_current()
+            with pytest.raises(PermissionError):
+                request.mark_publication_possible()
+
+
 def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

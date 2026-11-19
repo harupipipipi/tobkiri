@@ -17,12 +17,13 @@ use tobkiri_core::{
 use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
 use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
-    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
-    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
-    OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
+    OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
+    OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
 };
 use tobkiri_wasm::{
+    verify_legacy_conversation_append_declaration,
     verify_legacy_conversation_confirmation_declaration,
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
@@ -107,6 +108,13 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.permits_saved_receipt(role))
     }
 
+    /// Require the original saved append grant chain and verified append declaration.
+    pub(crate) fn permits_conversation_append(&self) -> bool {
+        self.conversation
+            .as_ref()
+            .is_some_and(|source| source.append.is_some())
+    }
+
     /// Require the exact Shell, Turn, and Conversation grants for this caller.
     pub(crate) fn permits_conversation_confirmation(&self, role: OriginalSavedReceiptRole) -> bool {
         self.conversation
@@ -170,6 +178,7 @@ struct VerifiedConversationSource {
     saved_orchestration: Option<VerifiedLegacyRoutePin>,
     saved_receipt: [Option<(OriginalSavedReceiptRole, VerifiedLegacyRoutePin)>; 2],
     confirmation: VerifiedConversationConfirmationRoles,
+    append: Option<[VerifiedLegacyRoutePin; 3]>,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -358,6 +367,7 @@ impl VerifiedRegistryLaunch {
                 saved_orchestration: None,
                 saved_receipt: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
                 confirmation: [None, None],
+                append: None,
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
@@ -381,6 +391,21 @@ impl VerifiedRegistryLaunch {
             )),
             None,
         ];
+        proof
+    }
+
+    pub(crate) fn test_conversation_append_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        let mut proof = Self::test_saved_receipt_proof(
+            identity,
+            catalog_revision,
+            OriginalSavedReceiptRole::SavedTurn,
+        );
+        let source = proof.conversation.as_mut().unwrap();
+        source.saved_receipt = [None, None];
+        source.append = Some(std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()));
         proof
     }
 
@@ -799,6 +824,8 @@ impl LaunchActivationObserver<'_> {
                     let confirmation_declared =
                         observe_conversation_confirmation_declaration(&pack)
                             .map_err(io::Error::other)?;
+                    let append_declared =
+                        observe_conversation_append_declaration(&pack).map_err(io::Error::other)?;
                     drop(pack);
                     let confirmation = if confirmation_declared {
                         verify_conversation_confirmation_source(inspection, active, checkpoint)
@@ -806,9 +833,16 @@ impl LaunchActivationObserver<'_> {
                     } else {
                         [None, None]
                     };
+                    let append = if append_declared {
+                        verify_conversation_append_source(inspection, active, checkpoint)
+                            .map_err(io::Error::other)?
+                    } else {
+                        None
+                    };
                     if read.is_none()
                         && saved_receipt.is_none()
                         && confirmation.iter().all(Option::is_none)
+                        && append.is_none()
                     {
                         return Ok(None);
                     }
@@ -826,6 +860,7 @@ impl LaunchActivationObserver<'_> {
                                 .map(|pin| (role, pin.into()))
                         }),
                         confirmation,
+                        append,
                         archive_sha256: receipt.archive_sha256().to_owned(),
                         archive_bytes: receipt.archive_bytes(),
                         manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -1052,6 +1087,27 @@ pub(super) fn reacquire_saved_receipt_pack(
     .context("bundled Conversation saved receipt archive verification failed")
 }
 
+/// Reacquire the Conversation Pack using the ordinary saved append grant chain.
+pub(super) fn reacquire_conversation_append_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .conversation
+        .as_ref()
+        .filter(|source| source.append.is_some())
+        .context("admitted launch has no verified Conversation append source")?;
+    reacquire_conversation_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        verify_legacy_conversation_append_declaration,
+    )
+    .context("bundled Conversation append archive verification failed")
+}
+
 /// Reacquire the Conversation Pack using the exact confirmation chain for this role.
 pub(super) fn reacquire_conversation_confirmation_pack(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
@@ -1108,22 +1164,31 @@ pub(crate) fn reacquire_turn_settlement_pack(
 }
 
 fn observe_conversation_confirmation_declaration(pack: &VerifiedPack) -> Result<bool> {
-    const CONFIRMATION_SHAPE: &str = "local.saved-conversation.legacy-confirmation";
-    // Older signed Conversation archives provide only the read and receipt ports.
-    let declared = pack
-        .manifest
-        .ports
-        .provides
-        .iter()
-        .any(|port| port.shape.as_str() == CONFIRMATION_SHAPE)
-        || pack
-            .shapes
-            .iter()
-            .any(|shape| shape.reference.name.as_str() == CONFIRMATION_SHAPE);
+    let declared = conversation_port_declared(pack, "local.saved-conversation.legacy-confirmation");
     if declared {
         verify_legacy_conversation_confirmation_declaration(pack)?;
     }
     Ok(declared)
+}
+
+fn observe_conversation_append_declaration(pack: &VerifiedPack) -> Result<bool> {
+    let declared = conversation_port_declared(pack, "local.saved-conversation.legacy-append");
+    if declared {
+        verify_legacy_conversation_append_declaration(pack)?;
+    }
+    Ok(declared)
+}
+
+fn conversation_port_declared(pack: &VerifiedPack, name: &str) -> bool {
+    pack.manifest
+        .ports
+        .provides
+        .iter()
+        .any(|port| port.shape.as_str() == name)
+        || pack
+            .shapes
+            .iter()
+            .any(|shape| shape.reference.name.as_str() == name)
 }
 
 fn reacquire_conversation_archive(
@@ -1225,6 +1290,21 @@ fn verify_conversation_confirmation_source(
             )
         })
     }))
+}
+
+fn verify_conversation_append_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<[VerifiedLegacyRoutePin; 3]>> {
+    let budget = inspection.allocation_budget()?;
+    let Some(choice) = OriginalConversationAppendChoice::select(active, budget)? else {
+        return Ok(None);
+    };
+    let locked =
+        inspection.with_source(|sources| sources.conversation_append_bundle(&choice, budget))??;
+    locked.verify(checkpoint)?;
+    Ok(Some(choice.pins().each_ref().map(Into::into)))
 }
 
 fn verify_turn_settlement_source(
@@ -1554,7 +1634,7 @@ mod tests {
     }
 
     #[test]
-    fn conversation_confirmation_declaration_preserves_legacy_read_and_receipt_ports() {
+    fn conversation_write_declarations_preserve_earlier_ports() {
         use std::{fs, path::PathBuf};
         use tobkiri_core::pack::{generate_manifest, verify_directory};
 
@@ -1565,7 +1645,7 @@ mod tests {
             }
         }
         let root = Root(std::env::temp_dir().join(format!(
-            "tobkiri-confirmation-declaration-{}-{}",
+            "tobkiri-conversation-declaration-{}-{}",
             std::process::id(),
             rand::random::<u64>()
         )));
@@ -1605,31 +1685,80 @@ mod tests {
             verify_directory(&path, &Default::default()).unwrap()
         };
         let current = verify(&draft);
+        assert!(observe_conversation_append_declaration(&current).unwrap());
         assert!(observe_conversation_confirmation_declaration(&current).unwrap());
 
+        let append = "local.saved-conversation.legacy-append";
         let confirmation = "local.saved-conversation.legacy-confirmation";
-        let mut old = draft.clone();
-        old["shapes"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|row| row["name"] != confirmation);
-        old["ports"]["provides"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|row| row["shape"] != confirmation);
-        let old = verify(&old);
+        let undeclare = |draft: &mut serde_json::Value, shape: &str| {
+            draft["shapes"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|row| row["name"] != shape);
+            draft["ports"]["provides"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|row| row["shape"] != shape);
+        };
+
+        let mut previous = draft.clone();
+        undeclare(&mut previous, append);
+        let previous_pack = verify(&previous);
+        assert!(!observe_conversation_append_declaration(&previous_pack).unwrap());
+        assert!(observe_conversation_confirmation_declaration(&previous_pack).unwrap());
+        verify_legacy_conversation_read_declaration(&previous_pack).unwrap();
+        verify_legacy_conversation_receipt_declaration(&previous_pack).unwrap();
+
+        undeclare(&mut previous, confirmation);
+        let old = verify(&previous);
+        assert!(!observe_conversation_append_declaration(&old).unwrap());
         assert!(!observe_conversation_confirmation_declaration(&old).unwrap());
         verify_legacy_conversation_read_declaration(&old).unwrap();
         verify_legacy_conversation_receipt_declaration(&old).unwrap();
 
-        let mut optional = draft;
-        optional["ports"]["provides"]
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .find(|port| port["shape"] == confirmation)
-            .unwrap()["optional"] = serde_json::json!(true);
-        assert!(observe_conversation_confirmation_declaration(&verify(&optional)).is_err());
+        let ports: [(&str, fn(&VerifiedPack) -> Result<bool>); 2] = [
+            (append, observe_conversation_append_declaration),
+            (confirmation, observe_conversation_confirmation_declaration),
+        ];
+        for (shape, observe) in ports {
+            let mut optional = draft.clone();
+            optional["ports"]["provides"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|port| port["shape"] == shape)
+                .unwrap()["optional"] = serde_json::json!(true);
+            assert!(observe(&verify(&optional)).is_err(), "{shape}");
+        }
+    }
+
+    #[test]
+    fn conversation_append_evidence_is_independent_of_other_grants() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let proof = VerifiedRegistryLaunch::test_conversation_append_proof(
+            identity.clone(),
+            "catalog:fixture",
+        );
+        assert!(proof.permits_conversation_append());
+        for role in OriginalSavedReceiptRole::ALL {
+            assert!(!proof.permits_saved_receipt(role));
+            assert!(!proof.permits_conversation_confirmation(role));
+        }
+        for caller in [
+            ConversationReadCaller::Shell,
+            ConversationReadCaller::SavedTurn,
+            ConversationReadCaller::SavedOrchestration,
+        ] {
+            assert!(!proof.permits_conversation_read(caller));
+        }
+        for role in SettlementCaller::ALL {
+            assert!(!proof.permits_turn_settlement(role));
+        }
     }
 
     #[test]
@@ -1652,6 +1781,8 @@ mod tests {
                 revision,
                 granted,
             );
+            assert!(!receipt.permits_conversation_append());
+            assert!(!proof.permits_conversation_append());
             for role in OriginalSavedReceiptRole::ALL {
                 assert!(!receipt.permits_conversation_confirmation(role));
                 assert_eq!(
@@ -1743,6 +1874,7 @@ mod tests {
                 saved_orchestration: None,
                 saved_receipt: [None, None],
                 confirmation: [None, None],
+                append: None,
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
