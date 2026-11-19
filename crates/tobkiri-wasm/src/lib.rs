@@ -30,8 +30,9 @@ mod native_captured_inputs;
 pub use native_captured_inputs::{NativeCapturedFile, NativeCapturedInputs};
 mod native_preparation;
 mod native_setup_store;
+pub use native_setup_store::LegacyRegistryError as LegacyProviderPrepareError;
 pub use native_setup_store::{
-    LegacyProviderPrepareError, LegacyProviderRegistryRead, NativeDataBinding, NativeDataEntry,
+    LegacyProviderRegistryRead, LegacyRegistryError, NativeDataBinding, NativeDataEntry,
     NativeDataError, NativeDataErrorContract, NativeDataExport, NativeDataObservation,
     NativeDataProgram, NativeDataResultContract, NativeDataResultEntry, NativeDataSuccessType,
     NativeDataValue, NativeImportBinding, NativeImportContext, NativeImportInput,

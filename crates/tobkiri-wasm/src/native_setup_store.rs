@@ -34,8 +34,8 @@ pub(crate) mod epoch_observation;
 mod entry;
 #[path = "native_fixed_import.rs"]
 mod imports;
-#[path = "native_provider_prepare.rs"]
-mod provider_prepare;
+#[path = "native_legacy_registry.rs"]
+mod legacy_registry;
 pub use entry::{
     NativeDataBinding, NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
     NativeDataObservation, NativeDataProgram, NativeDataResultContract, NativeDataResultEntry,
@@ -45,7 +45,7 @@ pub use imports::{
     NativeImportBinding, NativeImportContext, NativeImportInput, NativeImportOperation,
     NativeImportState,
 };
-pub use provider_prepare::{LegacyProviderPrepareError, LegacyProviderRegistryRead};
+pub use legacy_registry::{LegacyProviderRegistryRead, LegacyRegistryError};
 
 struct NativePhysical {
     reservation: NativeSetupReservation,
@@ -131,9 +131,9 @@ struct NativeState<T: 'static> {
     capture_claimed: bool,
     io: Option<crate::NativeDataIo>,
     io_claimed: bool,
-    provider_prepare_claimed: bool,
-    provider_prepare_profile: Option<tobkiri_canon::CoreBuffer>,
-    provider_prepare_reads: Option<provider_prepare::LiveObservations>,
+    registry_claimed: bool,
+    registry_profile: Option<tobkiri_canon::CoreBuffer>,
+    provider_prepare_reads: Option<legacy_registry::LiveObservations>,
     #[cfg(test)]
     import_trace: Option<entry::import_trace::NativeImportTrace>,
     #[cfg(test)]
@@ -157,7 +157,7 @@ struct NativeState<T: 'static> {
 pub struct NativeSetupStore<T: 'static> {
     store: Option<Store<NativeState<T>>>,
     physical: Option<PhysicalOwner>,
-    provider_prepare_control: Option<ControlReservation>,
+    registry_control: Option<ControlReservation>,
     // Keep the original bounded ticker alive until AFTER actual Store drop.
     _engine: WasmEngine,
 }
@@ -253,8 +253,8 @@ impl WasmEngine {
             capture_claimed: false,
             io: None,
             io_claimed: false,
-            provider_prepare_claimed: false,
-            provider_prepare_profile: None,
+            registry_claimed: false,
+            registry_profile: None,
             provider_prepare_reads: None,
             #[cfg(test)]
             import_trace: None,
@@ -313,7 +313,7 @@ impl WasmEngine {
         Ok(NativeSetupStore {
             store: Some(store),
             physical: Some(physical),
-            provider_prepare_control: None,
+            registry_control: None,
             _engine: self.clone(),
         })
     }
@@ -504,7 +504,7 @@ impl<T: 'static> Drop for NativeSetupStore<T> {
     fn drop(&mut self) {
         self.retire();
         drop(self.store.take());
-        drop(self.provider_prepare_control.take());
+        drop(self.registry_control.take());
         drop(self.physical.take());
         let _ = crate::allocation::reap_custody();
     }

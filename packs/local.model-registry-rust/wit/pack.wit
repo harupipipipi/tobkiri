@@ -15,6 +15,14 @@ interface settings {
   save-model: func(payload: json) -> result<json, error>;
 }
 
+interface legacy-settings {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Project the authenticated Profile's physical legacy Registry document.
+  /// None represents an absent file. A present file is passed as UTF-8 text.
+  list-models: func(document: option<string>) -> result<json, error>;
+}
+
 interface routing {
   use tobkiri:core/types@1.2.0.{json, error};
 
@@ -28,5 +36,6 @@ world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
   export settings;
+  export legacy-settings;
   export routing;
 }

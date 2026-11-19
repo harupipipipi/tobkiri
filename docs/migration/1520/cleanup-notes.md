@@ -3788,6 +3788,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   別Profileの文書の拒否を確認した。旧文書の自動取込み、既存HTTPの接続、保存と会話への
   接続が残る。旧版が作れた文字列以外の辞書キーとCore JSONで表せない表示revisionは
   現時点の表現上限に当たる。ソース単体10件、Coreの実Wasm試験2件、strict Clippyが通過。
+  同じ読み取りと表示変換を、旧 `model_registry.store.json` の実ファイルからも呼び出せるようにした。
+  Coreは指定Profileの固定パスをdescriptorで読み取る。欠損時は空一覧を返し、読み取り時に
+  ディレクトリやデータを作らない。既存の保存先を読むため、旧Hostの原子的な保存も次の読取りに
+  反映できる。Wasmには最大1 MiBの文書と固定Profileを渡し、ストレージ・ネットワーク・別ポートは
+  与えない。ProviderとModelの固定WITの照合、実行予算、Wasm Storeの終了を共用する。
+  物理読取りは既存の `NativeDataIo` スロットに載せ、期限切れや取消時の応答から、元のworkerの
+  終了とソースの解放を独立して確認する。
+  通常の一覧入口は署名付き `GET /api/ai/profiles` の `defaults.models.profiles.list`。同じownerを
+  呼ぶモデル検索やSettings内部の呼出しは非公開のメタデータを含む別の応答を使う。通常GETの
+  接続では既存Shell、Profile grantとlease、Launcherの起動世代を照合し、表示変換を一度だけ行う。
+  現行のordered-finite codecでは重複キー、非有限数、単独のサロゲートを含む旧文書は扱えない。
+  通常GETへ接続する前に、既存Brokerで受理される範囲と、読み取り失敗時の互換動作を照合する。
+  Store 148件、Model Pack 28件、strict Clippy、ビルドして検証済み `.tpk` を使うModel E2E 3件と
+  Provider E2Eが通過。旧ファイルの有無・Profileの不一致・上限と原子的な更新を含めて照合した。
+  既存のProvider実通信の13条件も通過。通常画面の実経路は署名付きHTTPとの接続後に検証する。
   モデル登録の保存では、現在のProfileで実行中のModel Registryが、既存のProvider Registry
   の読み取りポートを呼ぶ。ProviderとModelのrevisionを照合し、無効な接続への登録を拒否する。
   SQLiteは読み取った文書のハッシュを条件にして保存する。既存ルートの再確認は書き込まず、

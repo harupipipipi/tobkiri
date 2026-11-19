@@ -9,6 +9,10 @@ use std::sync::Arc;
 use support::registry::{PROVIDER_MANAGE, PROVIDER_PACK, RegistryPack};
 use support::{Host, canon, physical_temp, registry, within_session};
 use tobkiri_core::{Core, CoreConfig, CoreError, Session};
+#[cfg(unix)]
+use tobkiri_core::{
+    CoreBuffer, NativeArtifactDeclaration, NativeArtifactError, NativeDeclaredArtifactSource,
+};
 use tobkiri_gate::StoreTier;
 use tobkiri_store::{DataRoot, TieredStore};
 
@@ -67,7 +71,10 @@ async fn existing_model_document_projects_settings_through_gate() -> Result<()> 
         .unwrap()
         .insert((SETTINGS.into(), "list-models".into()));
     let data = root.path().join("data");
-    let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host.clone())?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(data.clone()),
+        host.clone(),
+    )?);
     for id in [original_profile, "prof_model_empty", "prof_model_foreign"] {
         let profile = registry::profile(id, &packs, &[SETTINGS])?;
         host.approve_literal_user(&profile)?;
@@ -97,6 +104,108 @@ async fn existing_model_document_projects_settings_through_gate() -> Result<()> 
             _ => ensure!(result? == case["result"]),
         }
     }
+    #[cfg(unix)]
+    check_live_model_document(&core, root.path(), pin, original_profile, case).await?;
+    Ok(())
+}
+
+#[cfg(unix)]
+async fn check_live_model_document(
+    core: &Arc<Core>,
+    source_root: &std::path::Path,
+    pin: &tobkiri_profile::PackPin,
+    profile: &str,
+    case: &Value,
+) -> Result<()> {
+    use std::{collections::BTreeMap, path::Path};
+
+    struct Hash(String);
+    impl NativeArtifactDeclaration for Hash {
+        fn digest(&self) -> &str {
+            &self.0
+        }
+    }
+    struct Source {
+        root: std::path::PathBuf,
+        declarations: BTreeMap<String, Hash>,
+    }
+    impl NativeDeclaredArtifactSource for Source {
+        type Declaration = Hash;
+        fn root(&self) -> &Path {
+            &self.root
+        }
+        fn declarations(&self) -> &BTreeMap<String, Hash> {
+            &self.declarations
+        }
+    }
+
+    let data = source_root.join("original-user-data");
+    let legacy = DataRoot::open(&data)?;
+    let relative =
+        format!("packs/rumi_model_registry_pack/profiles/{profile}/model_registry.store.json");
+    let archive = pin
+        .source
+        .strip_prefix("file:")
+        .context("staged Model archive")?;
+    let run = || async {
+        let mut inspection = core.inspect_declared_artifacts(Source {
+            root: source_root.to_path_buf(),
+            declarations: BTreeMap::new(),
+        })?;
+        let budget = Arc::clone(inspection.allocation_budget()?);
+        let mut archive = std::fs::File::open(archive)?;
+        let length = archive.metadata()?.len();
+        let pack = inspection.verify_pack_archive(&mut archive, length)?;
+        ensure!(pack.hash == pin.sha256);
+        let outcome: Result<CoreBuffer> = async {
+            let output = inspection
+                .list_legacy_model_settings(&pack, &data, profile)
+                .await?;
+            Ok(output.encode_guest(&budget)?)
+        }
+        .await;
+        inspection.finish().await?;
+        let output = outcome?;
+        Ok::<Value, anyhow::Error>(serde_json::from_slice(output.as_bytes())?)
+    };
+
+    ensure!(run().await? == json!({"profiles":[],"count":0,"registry_revision":0}));
+    ensure!(!data.join("packs").exists());
+    let mut document = case["document"].clone();
+    let before = document.to_string();
+    legacy.write_atomic(&relative, before.as_bytes())?;
+    ensure!(run().await? == case["result"]);
+    ensure!(std::fs::read(data.join(&relative))? == before.as_bytes());
+
+    let mut revised = case["result"].clone();
+    let next_revision = document["revision"]
+        .as_i64()
+        .context("original Model revision")?
+        + 1;
+    document["revision"] = json!(next_revision);
+    revised["registry_revision"] = json!(next_revision);
+    legacy.write_atomic(&relative, document.to_string().as_bytes())?;
+    ensure!(run().await? == revised);
+
+    document["profile_id"] = json!("different_profile");
+    legacy.write_atomic(&relative, document.to_string().as_bytes())?;
+    ensure!(
+        matches!(run().await.unwrap_err().downcast_ref::<NativeArtifactError>(),
+        Some(NativeArtifactError::ModelRegistryRejected(error)) if error.code() == "denied")
+    );
+    legacy.write_atomic(&relative, b"null")?;
+    ensure!(
+        matches!(run().await.unwrap_err().downcast_ref::<NativeArtifactError>(),
+        Some(NativeArtifactError::ModelRegistryRejected(error)) if error.code() == "invalid")
+    );
+    legacy.write_atomic(&relative, &vec![b' '; 1024 * 1024 + 1])?;
+    ensure!(matches!(
+        run()
+            .await
+            .unwrap_err()
+            .downcast_ref::<NativeArtifactError>(),
+        Some(NativeArtifactError::TooLarge)
+    ));
     Ok(())
 }
 

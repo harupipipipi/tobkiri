@@ -24,8 +24,7 @@ use tobkiri_gate::{
 };
 use tobkiri_manifest::{VerifiedPack, source::SourceCatalog, verify_tpk_reader_in_catalog};
 use tobkiri_wasm::{
-    LegacyProviderPrepareError, NativeDataIo, NativeDataIoError, NativeInspectionOutput,
-    NativeSetupStore,
+    LegacyRegistryError, NativeDataIo, NativeDataIoError, NativeInspectionOutput, NativeSetupStore,
 };
 
 pub use tobkiri_wasm::LegacyProviderRegistryRead;
@@ -81,7 +80,11 @@ pub enum NativeArtifactError {
     #[error("legacy Provider Registry publication is unconfirmed")]
     ProviderRegistryPublicationUnconfirmed(#[source] tobkiri_store::StoreError),
     #[error("{0}")]
-    ProviderRejected(#[from] LegacyProviderPrepareError),
+    ProviderRejected(#[from] LegacyRegistryError),
+    #[error("native Model Registry projection failed")]
+    ModelSettings(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("{0}")]
+    ModelRegistryRejected(#[source] LegacyRegistryError),
 }
 
 const READY: u8 = 0;
@@ -272,18 +275,16 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         request: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
-        self.claim_provider_observation()?;
+        self.claim_registry()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let plan = store
             .invoke_live_legacy_provider_prepare(pack, profile_id, request, read)
             .await;
         self.require_live()?;
-        plan.map_err(
-            |error| match error.downcast::<LegacyProviderPrepareError>() {
-                Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
-                Err(error) => NativeArtifactError::ProviderPrepare(error.into()),
-            },
-        )
+        plan.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+            Err(error) => NativeArtifactError::ProviderPrepare(error.into()),
+        })
     }
 
     /// Validate the frozen plan and record using the original Registry reader.
@@ -297,18 +298,16 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         plan: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
-        self.claim_provider_observation()?;
+        self.claim_registry()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let validation = store
             .validate_live_legacy_provider_commit(pack, profile_id, request, plan, read)
             .await;
         self.require_live()?;
-        validation.map_err(
-            |error| match error.downcast::<LegacyProviderPrepareError>() {
-                Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
-                Err(error) => NativeArtifactError::ProviderCommitValidation(error.into()),
-            },
-        )
+        validation.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+            Err(error) => NativeArtifactError::ProviderCommitValidation(error.into()),
+        })
     }
 
     /// Derive the exact would-be replacement from four ordered observations.
@@ -322,21 +321,78 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         plan: &CoreValue,
         read: LegacyProviderRegistryRead,
     ) -> Result<CoreValue, NativeArtifactError> {
-        self.claim_provider_observation()?;
+        self.claim_registry()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let staged = store
             .stage_live_legacy_provider_commit(pack, profile_id, request, plan, read)
             .await;
         self.require_live()?;
-        staged.map_err(
-            |error| match error.downcast::<LegacyProviderPrepareError>() {
-                Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
-                Err(error) => NativeArtifactError::ProviderCommitStaging(error.into()),
-            },
-        )
+        staged.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+            Err(error) => NativeArtifactError::ProviderCommitStaging(error.into()),
+        })
     }
 
-    fn claim_provider_observation(&self) -> Result<(), NativeArtifactError> {
+    /// Read the original Model Registry in place, then run the fixed Settings
+    /// projection. The verified Pack and physical data root are selected by the
+    /// trusted native caller. No file selection or write is exposed to the guest.
+    pub async fn list_legacy_model_settings(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        use std::os::unix::ffi::OsStrExt;
+
+        let budget = self.allocation_budget()?;
+        if pack.manifest.id.as_str() != "local.model-registry" {
+            return Err(NativeArtifactError::Denied);
+        }
+        let directory = CoreBuffer::copy_from(root.as_os_str().as_bytes(), budget)
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        let profile = CoreBuffer::copy_from(profile_id.as_bytes(), budget)
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        self.claim_registry()?;
+        let held = self.work.clone();
+        let framed = self
+            .io
+            .inspect_retaining(
+                held.project(|work| work as &(dyn std::any::Any + Send + Sync)),
+                move |output| inspect_model_document(&held, &directory, &profile, output),
+            )
+            .await?;
+        if let Some(error) = self
+            .work
+            .get()
+            .owned
+            .lock()
+            .map_err(|_| NativeDataIoError::Unavailable)?
+            .failure
+            .take()
+        {
+            return Err(error);
+        }
+        let document = match framed.as_bytes() {
+            [0] => None,
+            [1, raw @ ..] => Some(
+                std::str::from_utf8(raw)
+                    .map_err(|error| NativeArtifactError::ModelSettings(Box::new(error)))?,
+            ),
+            _ => return Err(NativeDataIoError::CompletionUnknown.into()),
+        };
+        self.require_live()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let settings = store
+            .list_legacy_model_settings(pack, profile_id, document)
+            .await;
+        self.require_live()?;
+        settings.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ModelRegistryRejected(rejected),
+            Err(error) => NativeArtifactError::ModelSettings(error.into()),
+        })
+    }
+
+    fn claim_registry(&self) -> Result<(), NativeArtifactError> {
         self.require_ready()?;
         self.work
             .get()
@@ -541,6 +597,41 @@ fn inspect_selected<S: NativeDeclaredArtifactSource>(
         Ok(_) => Ok(()),
         Err(error) => record_failure(output, failure, error),
     }
+}
+
+fn inspect_model_document<S: NativeDeclaredArtifactSource>(
+    held: &Held<S>,
+    directory: &CoreBuffer,
+    profile: &CoreBuffer,
+    output: &mut NativeInspectionOutput<'_>,
+) -> Result<(), NativeDataIoError> {
+    use crate::native_provider_registry::{DOCUMENT_LIMIT, read_legacy_model_document};
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+    let work = held.get();
+    if !work.invocation.same_invocation(output.invocation())
+        || work.phase.load(Ordering::Acquire) != READING
+    {
+        return Err(output.reject_execution(NativeDataIoError::Retired));
+    }
+    let directory = Path::new(OsStr::from_bytes(directory.as_bytes()));
+    let profile = profile
+        .as_str()
+        .map_err(|_| output.reject_execution(NativeDataIoError::Unavailable))?;
+    let result = output.write_chunk_checked(DOCUMENT_LIMIT + 1, |tail, checkpoint| {
+        checkpoint.charge_work(1)?;
+        let read = read_legacy_model_document(&work.invocation, directory, profile, tail);
+        checkpoint.charge_work(0)?;
+        read
+    })?;
+    if let Err(error) = result {
+        let mut owned = work
+            .owned
+            .lock()
+            .map_err(|_| output.reject_execution(NativeDataIoError::Unavailable))?;
+        return record_failure(output, &mut owned.failure, error);
+    }
+    Ok(())
 }
 
 fn record_failure(

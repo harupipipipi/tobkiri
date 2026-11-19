@@ -10,6 +10,8 @@ const MAX: usize = 1024;
 const PROFILE_PATH: &str = "packs/rumi_provider_registry_pack/profiles/defaults";
 const STORE_NAME: &str = "provider_registry.store.json";
 const LOCK_PATH: &str = "locks/provider-registry.lock";
+const MODEL_PROFILE_PATH: &str = "packs/rumi_model_registry_pack/profiles/defaults";
+const MODEL_STORE_NAME: &str = "model_registry.store.json";
 
 fn fixture() -> (tempfile::TempDir, DataRoot, ProfileId, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
@@ -106,6 +108,106 @@ fn read_only_registry_rejects_a_detached_or_replaced_root_as_a_conflict() {
         Err(StoreError::Conflict(_))
     ));
     assert_eq!(fs::read_dir(&path).unwrap().count(), 0);
+}
+
+#[test]
+fn model_registry_absence_never_creates_directories_or_locks() {
+    let (_temp, root, profile, _) = fixture();
+    let registry = root.path().join(MODEL_PROFILE_PATH);
+    assert_eq!(
+        root.read_legacy_model_registry(&profile, MAX).unwrap(),
+        None
+    );
+    assert!(!root.path().join("packs").exists());
+
+    fs::create_dir_all(registry.parent().unwrap()).unwrap();
+    assert_eq!(
+        root.read_legacy_model_registry(&profile, MAX).unwrap(),
+        None
+    );
+    assert!(!registry.exists());
+
+    fs::create_dir(&registry).unwrap();
+    assert_eq!(
+        root.read_legacy_model_registry(&profile, MAX).unwrap(),
+        None
+    );
+    assert_eq!(fs::read_dir(&registry).unwrap().count(), 0);
+}
+
+#[test]
+fn model_registry_reads_only_the_fixed_pack_filename_and_requested_profile() {
+    let (_temp, root, profile, provider) = fixture();
+    let registry = root.path().join(MODEL_PROFILE_PATH);
+    let other = registry.with_file_name("other");
+    for directory in [&provider, &registry, &other] {
+        fs::create_dir_all(directory).unwrap();
+    }
+    fs::write(provider.join(STORE_NAME), b"provider").unwrap();
+    fs::write(provider.join(MODEL_STORE_NAME), b"wrong pack").unwrap();
+    fs::write(registry.join(STORE_NAME), b"wrong filename").unwrap();
+    fs::write(other.join(MODEL_STORE_NAME), b"wrong profile").unwrap();
+    assert_eq!(
+        root.read_legacy_model_registry(&profile, MAX).unwrap(),
+        None
+    );
+
+    fs::write(registry.join(MODEL_STORE_NAME), b"model").unwrap();
+    assert_eq!(
+        root.read_legacy_model_registry(&profile, 5)
+            .unwrap()
+            .as_deref(),
+        Some(b"model".as_slice()),
+    );
+    assert!(matches!(
+        root.read_legacy_model_registry(&profile, 4),
+        Err(StoreError::Quota)
+    ));
+    assert!(!registry.join("locks").exists());
+    assert_eq!(
+        root.read_legacy_provider_registry(&profile, MAX)
+            .unwrap()
+            .as_deref(),
+        Some(b"provider".as_slice()),
+    );
+}
+
+#[test]
+fn model_registry_rejects_symlinks_writable_directories_and_multilink_stores() {
+    let (temp, root, profile, _) = fixture();
+    let registry = root.path().join(MODEL_PROFILE_PATH);
+    let profiles = registry.parent().unwrap();
+    let outside = temp.path().join("outside");
+    fs::create_dir(&outside).unwrap();
+    fs::create_dir_all(profiles).unwrap();
+    symlink(&outside, &registry).unwrap();
+    assert!(root.read_legacy_model_registry(&profile, MAX).is_err());
+    assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+    fs::remove_file(&registry).unwrap();
+
+    fs::create_dir(&registry).unwrap();
+    fs::set_permissions(profiles, fs::Permissions::from_mode(0o775)).unwrap();
+    assert!(matches!(
+        root.read_legacy_model_registry(&profile, MAX),
+        Err(StoreError::Denied(_))
+    ));
+    fs::set_permissions(profiles, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let outside_file = outside.join(MODEL_STORE_NAME);
+    let store = registry.join(MODEL_STORE_NAME);
+    fs::write(&outside_file, b"foreign").unwrap();
+    symlink(&outside_file, &store).unwrap();
+    assert!(matches!(
+        root.read_legacy_model_registry(&profile, MAX),
+        Err(StoreError::Denied(_))
+    ));
+    fs::remove_file(&store).unwrap();
+    fs::hard_link(&outside_file, &store).unwrap();
+    assert!(matches!(
+        root.read_legacy_model_registry(&profile, MAX),
+        Err(StoreError::Denied(_))
+    ));
+    assert_eq!(fs::read(outside_file).unwrap(), b"foreign");
 }
 
 #[test]

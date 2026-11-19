@@ -8,7 +8,7 @@ use tobkiri_store::{
 };
 use tobkiri_wasm::NativeDataIoError;
 
-const DOCUMENT_LIMIT: usize = 1024 * 1024;
+pub(crate) const DOCUMENT_LIMIT: usize = 1024 * 1024;
 
 type Result<T> = std::result::Result<T, NativeArtifactError>;
 
@@ -36,12 +36,8 @@ impl NativeProviderRegistry {
         let funding = invocation
             .reserve(CapacityKind::VfsBuffer, DOCUMENT_LIMIT as u64)
             .map_err(CoreError::from)?;
-        #[cfg(target_os = "macos")]
-        let physical_root = macos_platform_root(root);
-        #[cfg(target_os = "macos")]
-        let root = physical_root.as_ref();
         Ok(Self {
-            root: DataRoot::open_existing(root).map_err(CoreError::from)?,
+            root: open_legacy_registry_root(root)?,
             profile,
             locked: None,
             _raw_read_funding: funding,
@@ -125,6 +121,43 @@ impl NativeProviderRegistry {
     }
 }
 
+pub(crate) fn read_legacy_model_document(
+    invocation: &NativeSetupInvocation,
+    root: &Path,
+    profile_id: &str,
+    output: &mut [u8],
+) -> Result<usize> {
+    let profile = ProfileId::parse(profile_id).map_err(CoreError::from)?;
+    let _funding = invocation
+        .reserve(CapacityKind::VfsBuffer, DOCUMENT_LIMIT as u64)
+        .map_err(CoreError::from)?;
+    let bytes = open_legacy_registry_root(root)?
+        .read_legacy_model_registry(&profile, DOCUMENT_LIMIT)
+        .map_err(|error| match error {
+            StoreError::Quota => NativeArtifactError::TooLarge,
+            error => CoreError::from(error).into(),
+        })?;
+    match bytes {
+        None => {
+            output[0] = 0;
+            Ok(1)
+        }
+        Some(bytes) => {
+            output[0] = 1;
+            output[1..][..bytes.len()].copy_from_slice(&bytes);
+            Ok(1 + bytes.len())
+        }
+    }
+}
+
+fn open_legacy_registry_root(root: &Path) -> Result<DataRoot> {
+    #[cfg(target_os = "macos")]
+    let physical_root = macos_platform_root(root);
+    #[cfg(target_os = "macos")]
+    let root = physical_root.as_ref();
+    DataRoot::open_existing(root).map_err(|error| CoreError::from(error).into())
+}
+
 // Keep the original Host's platform aliases without resolving other symlinks.
 #[cfg(target_os = "macos")]
 fn macos_platform_root(root: &Path) -> std::borrow::Cow<'_, Path> {
@@ -150,8 +183,14 @@ fn funded_observation(
     bytes: std::result::Result<Option<Vec<u8>>, StoreError>,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<CoreBuffer>> {
+    copy_document(bytes.map_err(before_publish)?, budget)
+}
+
+fn copy_document(
+    bytes: Option<Vec<u8>>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<CoreBuffer>> {
     bytes
-        .map_err(before_publish)?
         .map(|bytes| CoreBuffer::copy_from(&bytes, budget))
         .transpose()
         .map_err(|_| NativeDataIoError::Unavailable.into())

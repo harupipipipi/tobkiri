@@ -1,4 +1,4 @@
-//! Native access to the original Python Provider Registry store.
+//! Native access to the original Python Provider and Model Registry stores.
 
 use crate::{DataRoot, StoreError};
 use tobkiri_canon::ids::ProfileId;
@@ -42,12 +42,32 @@ impl DataRoot {
     ) -> Result<Option<Vec<u8>>, StoreError> {
         #[cfg(unix)]
         {
-            unix::read_registry(self, profile, max_bytes)
+            unix::read_provider_registry(self, profile, max_bytes)
         }
         #[cfg(not(unix))]
         {
             let _ = (profile, max_bytes);
             Err(unavailable())
+        }
+    }
+
+    /// Read one bounded observation of the Profile's original Model Registry.
+    /// Stable absence returns `None`. This never creates a directory or lock.
+    pub fn read_legacy_model_registry(
+        &self,
+        profile: &ProfileId,
+        max_bytes: usize,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        #[cfg(unix)]
+        {
+            unix::read_model_registry(self, profile, max_bytes)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (profile, max_bytes);
+            Err(StoreError::Unavailable(
+                "nofollow legacy Model Registry storage unavailable".into(),
+            ))
         }
     }
 
@@ -149,8 +169,23 @@ mod unix {
     };
     use tobkiri_canon::Digest;
 
-    const REGISTRY_DIRS: [&str; 3] = ["packs", "rumi_provider_registry_pack", "profiles"];
-    const STORE: &CStr = c"provider_registry.store.json";
+    struct RegistryLayout {
+        directories: [&'static str; 3],
+        store: &'static CStr,
+        label: &'static str,
+    }
+
+    const PROVIDER: RegistryLayout = RegistryLayout {
+        directories: ["packs", "rumi_provider_registry_pack", "profiles"],
+        store: c"provider_registry.store.json",
+        label: "Provider Registry",
+    };
+    const MODEL: RegistryLayout = RegistryLayout {
+        directories: ["packs", "rumi_model_registry_pack", "profiles"],
+        store: c"model_registry.store.json",
+        label: "Model Registry",
+    };
+    const STORE: &CStr = PROVIDER.store;
     const LOCK: &CStr = c"provider-registry.lock";
 
     // Keeping the staged descriptor open prevents inode reuse during confirmation.
@@ -177,9 +212,9 @@ mod unix {
 
     impl Transaction {
         pub(super) fn lock(root: &DataRoot, profile: &ProfileId) -> Result<Self, StoreError> {
-            verify_root(root)?;
+            verify_root(root, &PROVIDER)?;
             let directory = Arc::new(open_registry(root, profile, true)?);
-            let lock_directory = Arc::new(owned_directory(&directory, "locks", true)?);
+            let lock_directory = Arc::new(owned_directory(&directory, "locks", true, &PROVIDER)?);
             let pid = std::process::id();
             let acquired_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -228,13 +263,13 @@ mod unix {
         }
 
         fn verify_binding(&self) -> Result<(), StoreError> {
-            verify_root(&self.root)?;
+            verify_root(&self.root, &PROVIDER)?;
             let directory = open_registry(&self.root, &self.profile, false)?;
-            let locks = owned_directory(&directory, "locks", false)?;
+            let locks = owned_directory(&directory, "locks", false, &PROVIDER)?;
             if file_identity(&directory)? != file_identity(&self.directory)?
                 || file_identity(&locks)? != file_identity(&self.lock.directory)?
             {
-                return Err(binding_changed());
+                return Err(binding_changed(&PROVIDER));
             }
             self.lock_snapshot.verify_current(&locks, LOCK)
         }
@@ -243,7 +278,11 @@ mod unix {
             self.verify_binding()?;
             let snapshot = self.read_store(max_bytes)?;
             self.verify_binding()?;
-            verify_store_entry(&self.directory, snapshot.as_ref().map(|(_, file)| file))?;
+            verify_store_entry(
+                &self.directory,
+                snapshot.as_ref().map(|(_, file)| file),
+                &PROVIDER,
+            )?;
             Ok(snapshot.map(|(bytes, _)| bytes))
         }
 
@@ -302,7 +341,7 @@ mod unix {
             // The guard may cross a process boundary. Check only metadata
             // and pathname identity here, then replace within the pinned dir.
             self.verify_binding().map_err(BeforePublish)?;
-            verify_store_entry(&self.directory, prior).map_err(BeforePublish)?;
+            verify_store_entry(&self.directory, prior, &PROVIDER).map_err(BeforePublish)?;
             pending
                 .file
                 .verify_current(&self.directory, &staged.name)
@@ -358,40 +397,57 @@ mod unix {
             &self,
             max_bytes: usize,
         ) -> Result<Option<(Vec<u8>, OwnedFileSnapshot)>, StoreError> {
-            read_store(&self.directory, max_bytes)
+            read_store(&self.directory, max_bytes, &PROVIDER)
         }
     }
 
-    pub(super) fn read_registry(
+    pub(super) fn read_provider_registry(
         root: &DataRoot,
         profile: &ProfileId,
         max_bytes: usize,
     ) -> Result<Option<Vec<u8>>, StoreError> {
-        verify_read_root(root)?;
+        read_registry(root, profile, max_bytes, &PROVIDER)
+    }
+
+    pub(super) fn read_model_registry(
+        root: &DataRoot,
+        profile: &ProfileId,
+        max_bytes: usize,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        read_registry(root, profile, max_bytes, &MODEL)
+    }
+
+    fn read_registry(
+        root: &DataRoot,
+        profile: &ProfileId,
+        max_bytes: usize,
+        layout: &RegistryLayout,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        verify_read_root(root, layout)?;
         // Keep every prefix descriptor alive so a removed directory's inode
         // cannot be reused while we verify the observed path or its absence.
-        let observed = registry_directory_prefix(root, profile)?;
+        let observed = registry_directory_prefix(root, profile, layout)?;
         let directory = observed
             .last()
-            .filter(|_| observed.len() == REGISTRY_DIRS.len() + 1);
+            .filter(|_| observed.len() == layout.directories.len() + 1);
         let snapshot = match directory {
-            Some(directory) => read_store(directory, max_bytes),
+            Some(directory) => read_store(directory, max_bytes, layout),
             None => Ok(None),
         };
-        let current = registry_directory_prefix(root, profile)?;
-        verify_read_root(root)?;
+        let current = registry_directory_prefix(root, profile, layout)?;
+        verify_read_root(root, layout)?;
         if observed.len() != current.len() {
-            return Err(binding_changed());
+            return Err(binding_changed(layout));
         }
         for (before, after) in observed.iter().zip(current.iter()) {
             if file_identity(before)? != file_identity(after)? {
-                return Err(binding_changed());
+                return Err(binding_changed(layout));
             }
         }
 
         let snapshot = snapshot?;
         if let Some(directory) = directory {
-            verify_store_entry(directory, snapshot.as_ref().map(|(_, file)| file))?;
+            verify_store_entry(directory, snapshot.as_ref().map(|(_, file)| file), layout)?;
         }
         Ok(snapshot.map(|(bytes, _)| bytes))
     }
@@ -399,10 +455,14 @@ mod unix {
     fn read_store(
         directory: &File,
         max_bytes: usize,
+        layout: &RegistryLayout,
     ) -> Result<Option<(Vec<u8>, OwnedFileSnapshot)>, StoreError> {
-        match read_existing_owned_at_with_allocation_error(directory, STORE, max_bytes, || {
-            StoreError::Unavailable("could not allocate Provider Registry read buffer".into())
-        }) {
+        match read_existing_owned_at_with_allocation_error(
+            directory,
+            layout.store,
+            max_bytes,
+            || StoreError::Unavailable(format!("could not allocate {} read buffer", layout.label)),
+        ) {
             Ok(snapshot) => Ok(Some(snapshot)),
             Err(StoreError::NotFound) => Ok(None),
             Err(error) => Err(error),
@@ -412,19 +472,20 @@ mod unix {
     fn verify_store_entry(
         directory: &File,
         prior: Option<&OwnedFileSnapshot>,
+        layout: &RegistryLayout,
     ) -> Result<(), StoreError> {
         if let Some(prior) = prior {
-            return prior.verify_current(directory, STORE);
+            return prior.verify_current(directory, layout.store);
         }
-        match stat_entry(directory, STORE) {
+        match stat_entry(directory, layout.store) {
             Err(StoreError::Io(error)) if error.kind() == ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error),
-            Ok(_) => Err(StoreError::Conflict("Provider Registry appeared".into())),
+            Ok(_) => Err(StoreError::Conflict(format!("{} appeared", layout.label))),
         }
     }
 
-    fn binding_changed() -> StoreError {
-        StoreError::Conflict("Provider Registry filesystem binding changed".into())
+    fn binding_changed(layout: &RegistryLayout) -> StoreError {
+        StoreError::Conflict(format!("{} filesystem binding changed", layout.label))
     }
 
     fn file_identity(file: &File) -> Result<(u64, u64), StoreError> {
@@ -432,38 +493,42 @@ mod unix {
         Ok((metadata.dev(), metadata.ino()))
     }
 
-    fn verify_root(root: &DataRoot) -> Result<(), StoreError> {
+    fn verify_root(root: &DataRoot, layout: &RegistryLayout) -> Result<(), StoreError> {
         let current = DataRoot::open_existing(root.path())?;
         if current.physical_identity_key()? != root.physical_identity_key()? {
-            return Err(binding_changed());
+            return Err(binding_changed(layout));
         }
         Ok(())
     }
 
-    fn verify_read_root(root: &DataRoot) -> Result<(), StoreError> {
-        match verify_root(root) {
-            Err(StoreError::NotFound) => return Err(binding_changed()),
+    fn verify_read_root(root: &DataRoot, layout: &RegistryLayout) -> Result<(), StoreError> {
+        match verify_root(root, layout) {
+            Err(StoreError::NotFound) => return Err(binding_changed(layout)),
             result => result?,
         }
         if root.directory_capability().metadata()?.uid() != unsafe { libc::geteuid() } {
-            return Err(StoreError::Denied("unsafe Provider Registry root".into()));
+            return Err(StoreError::Denied(format!("unsafe {} root", layout.label)));
         }
         Ok(())
     }
 
-    fn registry_directories(profile: &ProfileId) -> impl Iterator<Item = &str> {
-        REGISTRY_DIRS.into_iter().chain([profile.as_str()])
+    fn registry_directories<'a>(
+        profile: &'a ProfileId,
+        layout: &RegistryLayout,
+    ) -> impl Iterator<Item = &'a str> + use<'a> {
+        layout.directories.into_iter().chain([profile.as_str()])
     }
 
     fn registry_directory_prefix(
         root: &DataRoot,
         profile: &ProfileId,
+        layout: &RegistryLayout,
     ) -> Result<Vec<File>, StoreError> {
         let base = root.directory_capability();
-        let mut directories = Vec::with_capacity(REGISTRY_DIRS.len() + 1);
-        for name in registry_directories(profile) {
+        let mut directories = Vec::with_capacity(layout.directories.len() + 1);
+        for name in registry_directories(profile, layout) {
             let parent = directories.last().unwrap_or(base.as_ref());
-            match owned_directory(parent, name, false) {
+            match owned_directory(parent, name, false, layout) {
                 Ok(directory) => directories.push(directory),
                 Err(StoreError::Io(error)) if error.kind() == ErrorKind::NotFound => break,
                 Err(error) => return Err(error),
@@ -478,21 +543,27 @@ mod unix {
         create: bool,
     ) -> Result<File, StoreError> {
         let base = root.directory_capability();
-        let mut directory = owned_directory(&base, REGISTRY_DIRS[0], create)?;
-        for name in registry_directories(profile).skip(1) {
-            directory = owned_directory(&directory, name, create)?;
+        let mut directory = owned_directory(&base, PROVIDER.directories[0], create, &PROVIDER)?;
+        for name in registry_directories(profile, &PROVIDER).skip(1) {
+            directory = owned_directory(&directory, name, create, &PROVIDER)?;
         }
         Ok(directory)
     }
 
-    fn owned_directory(parent: &File, name: &str, create: bool) -> Result<File, StoreError> {
+    fn owned_directory(
+        parent: &File,
+        name: &str,
+        create: bool,
+        layout: &RegistryLayout,
+    ) -> Result<File, StoreError> {
         let directory = open_dir(parent, name, create)?;
         let metadata = directory.metadata()?;
         // Historical Python-created intermediate directories can be 0755.
         if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o022 != 0 {
-            return Err(StoreError::Denied(
-                "unsafe Provider Registry directory".into(),
-            ));
+            return Err(StoreError::Denied(format!(
+                "unsafe {} directory",
+                layout.label
+            )));
         }
         Ok(directory)
     }
@@ -506,7 +577,7 @@ mod unix {
     fn verify_owned_link(directory: &File, name: &CStr, file: &File) -> Result<(), StoreError> {
         let entry = stat_entry(directory, name)?;
         if !is_owned_regular(&entry) || checked_file_identity(&entry)? != file_identity(file)? {
-            return Err(binding_changed());
+            return Err(binding_changed(&PROVIDER));
         }
         Ok(())
     }

@@ -1,4 +1,8 @@
-//! Keep the complete legacy document in the Profile's private DATA store.
+//! Registry ports for the authenticated Profile.
+
+#[cfg(test)]
+#[path = "component_legacy_list_tests.rs"]
+mod legacy_list_tests;
 
 wit_bindgen::generate!({
     path: ["../../crates/tobkiri-wit/wit/core-v1-2/core.wit", "wit"],
@@ -21,6 +25,7 @@ use tobkiri::core::{
 };
 
 const PROVIDER_RESOURCE: &str = "local.provider-registry.resource@1.0";
+const MAX_LEGACY_DOCUMENT_BYTES: usize = 1024 * 1024;
 
 struct Pack;
 
@@ -36,10 +41,7 @@ impl exports::local::model_registry::settings::Guest for Pack {
     fn list_models() -> Result<String, Error> {
         let profile = flow::current_profile()?;
         let (_, document) = DocumentStore::read()?;
-        let registry = Registry::new(&profile, document).map_err(source_error)?;
-        let snapshot = registry.snapshot().map_err(source_error)?;
-        let projected = project_list(&snapshot).map_err(source_error)?;
-        encode_reply(&projected, "model Settings response")
+        list_models(&profile, document)
     }
 
     fn save_model(payload: String) -> Result<String, Error> {
@@ -67,6 +69,13 @@ impl exports::local::model_registry::settings::Guest for Pack {
     }
 }
 
+impl exports::local::model_registry::legacy_settings::Guest for Pack {
+    fn list_models(document: Option<String>) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        list_legacy_models(&profile, document.as_deref())
+    }
+}
+
 impl exports::local::model_registry::routing::Guest for Pack {
     fn resolve_model(identifier: String) -> Result<String, Error> {
         let profile = flow::current_profile()?;
@@ -78,6 +87,28 @@ impl exports::local::model_registry::routing::Guest for Pack {
 }
 
 export!(Pack);
+
+fn list_legacy_models(profile: &str, document: Option<&str>) -> Result<String, Error> {
+    let document = document
+        .map(|document| {
+            if document.len() > MAX_LEGACY_DOCUMENT_BYTES {
+                return Err(failure(
+                    ErrorCode::LimitExceeded,
+                    "model Registry document exceeds limits",
+                ));
+            }
+            decode_document(document)
+        })
+        .transpose()?;
+    list_models(profile, document)
+}
+
+fn list_models(profile: &str, document: Option<PyValue>) -> Result<String, Error> {
+    let registry = Registry::new(profile, document).map_err(source_error)?;
+    let snapshot = registry.snapshot().map_err(source_error)?;
+    let projected = project_list(&snapshot).map_err(source_error)?;
+    encode_reply(&projected, "model Settings response")
+}
 
 fn validate_provider(profile: &str, request: &PyValue) -> Result<(), Error> {
     let Some((expected, provider)) = request.get("provider_registry_revision").zip(

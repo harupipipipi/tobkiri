@@ -1,4 +1,4 @@
-//! Fixed native validation of the Provider Registry's legacy keyless configuration.
+//! Fixed native entry points for the original Profile Registries.
 use super::{NativeSetupStore, NativeState, entry::ensure_active};
 use crate::owned_values::core_to_val;
 use anyhow::{Context, Result, bail, ensure};
@@ -6,12 +6,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fmt, io, sync::Arc};
 use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, ids::ShapeRef};
 use tobkiri_gate::ControlKind;
-use tobkiri_manifest::{RuntimeSpec, ShapeKind, VerifiedPack, WitType};
+use tobkiri_manifest::{RuntimeSpec, ShapeKind, VerifiedPack, WitFunction, WitType};
 use wasmtime::component::types::{ComponentFunc, ComponentInstance, ComponentItem, Type};
 use wasmtime::component::{BudgetedBox, BudgetedString, BudgetedVec, Component, Linker, Val};
 use wasmtime::{Engine, Store};
 
-const PACK_ID: &str = "local.provider-registry";
+const PROVIDER_PACK: &str = "local.provider-registry";
 const FLOW: &str = "tobkiri:core/flow@1.2.0";
 const PROFILE: &str = "current-profile";
 const CALLBACK: &str = "invoke-callback";
@@ -30,7 +30,8 @@ const ERROR_CODES: [&str; 9] = [
 const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
 const MAX_COMPONENT_BYTES: u64 = 4 * 1024 * 1024;
 
-struct LegacyProviderExport {
+struct RegistryExport {
+    pack: &'static str,
     shape: &'static str,
     interface: &'static str,
     function: &'static str,
@@ -39,7 +40,8 @@ struct LegacyProviderExport {
     clock: bool,
 }
 
-const PREPARE: LegacyProviderExport = LegacyProviderExport {
+const PREPARE: RegistryExport = RegistryExport {
+    pack: PROVIDER_PACK,
     shape: "local.provider-registry.legacy-configuration-live@1.0",
     interface: "local:provider-registry/legacy-configuration-live@1.0.0",
     function: "prepare-local",
@@ -47,7 +49,8 @@ const PREPARE: LegacyProviderExport = LegacyProviderExport {
     reads: 2,
     clock: false,
 };
-const VALIDATE_COMMIT: LegacyProviderExport = LegacyProviderExport {
+const VALIDATE_COMMIT: RegistryExport = RegistryExport {
+    pack: PROVIDER_PACK,
     shape: "local.provider-registry.legacy-configuration-commit@1.0",
     interface: "local:provider-registry/legacy-configuration-commit@1.0.0",
     function: "validate-local",
@@ -55,13 +58,23 @@ const VALIDATE_COMMIT: LegacyProviderExport = LegacyProviderExport {
     reads: 3,
     clock: false,
 };
-const STAGE_COMMIT: LegacyProviderExport = LegacyProviderExport {
+const STAGE_COMMIT: RegistryExport = RegistryExport {
+    pack: PROVIDER_PACK,
     shape: "local.provider-registry.legacy-configuration-apply@1.0",
     interface: "local:provider-registry/legacy-configuration-apply@1.0.0",
     function: "stage-local",
     parameters: &["request", "plan", "observe"],
     reads: 4,
     clock: true,
+};
+const MODEL_LIST: RegistryExport = RegistryExport {
+    pack: "local.model-registry",
+    shape: "local.model-registry.legacy-settings@1.0",
+    interface: "local:model-registry/legacy-settings@1.0.0",
+    function: "list-models",
+    parameters: &["document"],
+    reads: 0,
+    clock: false,
 };
 
 enum LegacyProviderOperation<'a> {
@@ -70,25 +83,42 @@ enum LegacyProviderOperation<'a> {
     Stage(&'a CoreValue),
 }
 
-/// A closed domain error from the Legacy Provider planner. The guest's free
+enum RegistryInput<'a> {
+    Provider {
+        request: &'a CoreValue,
+        plan: Option<&'a CoreValue>,
+        read: LegacyProviderRegistryRead,
+    },
+    ModelList(Option<&'a str>),
+}
+
+/// A closed domain error from a legacy Registry operation. The guest's free
 /// text is discarded to keep Registry data out of public errors and logs.
 #[derive(Debug)]
-pub struct LegacyProviderPrepareError(&'static str);
+pub struct LegacyRegistryError {
+    code: &'static str,
+    pack: &'static str,
+}
 
-impl LegacyProviderPrepareError {
-    /// The typed Core ABI code returned by the fixed planner.
+impl LegacyRegistryError {
+    /// The typed Core ABI code returned by the fixed entry point.
     pub fn code(&self) -> &'static str {
-        self.0
+        self.code
     }
 }
 
-impl fmt::Display for LegacyProviderPrepareError {
+impl fmt::Display for LegacyRegistryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "legacy Provider prepare returned {}", self.0)
+        let operation = if self.pack == PROVIDER_PACK {
+            "legacy Provider prepare"
+        } else {
+            "legacy Model Registry list"
+        };
+        write!(formatter, "{operation} returned {}", self.code)
     }
 }
 
-impl std::error::Error for LegacyProviderPrepareError {}
+impl std::error::Error for LegacyRegistryError {}
 
 /// Trusted native reader of the original Profile's fixed legacy Registry.
 /// The supplied budget owns the bytes returned to the isolated guest.
@@ -176,6 +206,43 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             LegacyProviderOperation::Validate(plan) => (&VALIDATE_COMMIT, Some(plan)),
             LegacyProviderOperation::Stage(plan) => (&STAGE_COMMIT, Some(plan)),
         };
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            export,
+            RegistryInput::Provider {
+                request,
+                plan,
+                read,
+            },
+        )
+        .await
+    }
+
+    /// Project the saved Model Settings from the original owner's file bytes.
+    /// The native caller distinguishes a physically absent file from JSON null.
+    pub async fn list_legacy_model_settings(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &MODEL_LIST,
+            RegistryInput::ModelList(document),
+        )
+        .await
+    }
+
+    async fn invoke_legacy_registry(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        export: &RegistryExport,
+        input: RegistryInput<'_>,
+    ) -> Result<CoreValue> {
         let store = self
             .store
             .as_mut()
@@ -183,14 +250,14 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         let state = store.data_mut();
         ensure_active(state)?;
         ensure!(
-            !state.provider_prepare_claimed,
-            "legacy Provider prepare already claimed"
+            !state.registry_claimed,
+            "legacy Registry call already claimed"
         );
-        state.provider_prepare_claimed = true;
+        state.registry_claimed = true;
 
         ensure!(
-            pack.manifest.id.as_str() == PACK_ID,
-            "legacy Provider Pack identity differs"
+            pack.manifest.id.as_str() == export.pack,
+            "legacy Registry Pack identity differs"
         );
         let RuntimeSpec::Wasm {
             component,
@@ -204,52 +271,21 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             core_modules.is_empty(),
             "legacy Provider Pack declares external core modules"
         );
-        let shape = ShapeRef::parse(export.shape)?;
+        let function = declared_registry_function(pack, export)?;
+        let abi_matches = match &input {
+            RegistryInput::Provider { plan, .. } => {
+                request_abi(&function.params[0].1)
+                    && (plan.is_none() || function.params[1].1 == WitType::Json)
+                    && function
+                        .params
+                        .last()
+                        .is_some_and(|(_, ty)| *ty == WitType::CallbackHandle)
+            }
+            RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
+        };
         ensure!(
-            pack.manifest.ports.provides.iter().any(|port| {
-                port.shape == shape.name && port.version == shape.version && !port.optional
-            }),
-            "legacy Provider Pack does not provide the fixed configuration port"
-        );
-        let mut shapes = pack
-            .shapes
-            .iter()
-            .filter(|definition| definition.reference == shape);
-        let definition = shapes
-            .next()
-            .context("legacy Provider prepare shape missing")?;
-        ensure!(
-            shapes.next().is_none()
-                && definition.kind == ShapeKind::Port
-                && definition.functions.len() == 1
-                && definition.streams.is_empty()
-                && definition.callbacks.is_empty(),
-            "legacy Provider prepare shape differs"
-        );
-        let function = definition
-            .functions
-            .iter()
-            .find_map(|(operation, function)| {
-                (operation.as_str() == export.function).then_some(function)
-            })
-            .context("legacy Provider configuration operation missing")?;
-        ensure!(
-            function
-                .params
-                .iter()
-                .map(|(name, _)| name.as_str())
-                .eq(export.parameters.iter().copied()),
-            "legacy Provider prepare parameter names differ"
-        );
-        ensure!(
-            request_abi(&function.params[0].1)
-                && (plan.is_none() || function.params[1].1 == WitType::Json)
-                && function
-                    .params
-                    .last()
-                    .is_some_and(|(_, ty)| *ty == WitType::CallbackHandle)
-                && valid_declared_result(function.result.as_ref()),
-            "legacy Provider declared prepare ABI differs"
+            abi_matches,
+            "legacy Registry declared parameter ABI differs"
         );
 
         let owners = state.owners.clone();
@@ -266,7 +302,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         // Retain conservative native compilation/instance metadata funding
         // until the actual Store owning the compiled code has been destroyed.
         let compilation_bytes = length * 8 + 1024 * 1024;
-        self.provider_prepare_control = Some(
+        self.registry_control = Some(
             state
                 .invocation
                 .control()
@@ -287,32 +323,44 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         ensure_active(store.data_mut())?;
         // Validate both the hashed WIT shape and the actual executable's type
         // before instantiating anything or accepting an invocation of the host.
-        let linker = legacy_provider_linker(engine, &component, &function.params, export, &owners)?;
-        let request = core_to_val(request, &function.params[0].1, &owners)?;
-        let observe = observe_handle(&owners)?;
+        let linker = registry_linker(engine, &component, &function.params, export, &owners)?;
+        let model_parameters;
         let without_plan;
         let with_plan;
-        let values: &[Val] = match plan {
-            Some(plan) => {
-                with_plan = [
-                    request,
-                    core_to_val(plan, &function.params[1].1, &owners)?,
-                    observe,
-                ];
-                &with_plan
+        let (values, read): (&[Val], _) = match input {
+            RegistryInput::Provider {
+                request,
+                plan,
+                read,
+            } => {
+                let request = core_to_val(request, &function.params[0].1, &owners)?;
+                let observe = observe_handle(&owners)?;
+                let values: &[Val] = if let Some(plan) = plan {
+                    with_plan = [
+                        request,
+                        core_to_val(plan, &function.params[1].1, &owners)?,
+                        observe,
+                    ];
+                    &with_plan
+                } else {
+                    without_plan = [request, observe];
+                    &without_plan
+                };
+                (values, Some(read))
             }
-            None => {
-                without_plan = [request, observe];
-                &without_plan
+            RegistryInput::ModelList(document) => {
+                model_parameters = [model_document(document, &owners)?];
+                (&model_parameters, None)
             }
         };
         store.host_allocation_budget(owners.component().clone());
         let (reply, reads, clock_pending) =
-            call_legacy_provider(store, &linker, &component, profile, values, read, export).await?;
+            call_registry(store, &linker, &component, profile, values, read, export).await?;
         ensure_active(store.data_mut())?;
         let reply = decode_reply(
             reply.as_slice(),
             pack.manifest.permissions.wasm.output_bytes,
+            export.pack,
             &owners,
         );
         ensure_active(store.data_mut())?;
@@ -323,6 +371,62 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         );
         Ok(reply)
     }
+}
+
+fn declared_registry_function<'a>(
+    pack: &'a VerifiedPack,
+    export: &RegistryExport,
+) -> Result<&'a WitFunction> {
+    let shape = ShapeRef::parse(export.shape)?;
+    ensure!(
+        pack.manifest.ports.provides.iter().any(|port| {
+            port.shape == shape.name && port.version == shape.version && !port.optional
+        }),
+        "legacy Registry Pack does not provide the fixed port"
+    );
+    let mut shapes = pack
+        .shapes
+        .iter()
+        .filter(|definition| definition.reference == shape);
+    let definition = shapes.next().context("legacy Registry shape missing")?;
+    ensure!(
+        shapes.next().is_none()
+            && definition.kind == ShapeKind::Port
+            && definition.functions.len() == 1
+            && definition.streams.is_empty()
+            && definition.callbacks.is_empty(),
+        "legacy Registry shape differs"
+    );
+    let function = definition
+        .functions
+        .iter()
+        .find_map(|(operation, function)| {
+            (operation.as_str() == export.function).then_some(function)
+        })
+        .context("legacy Registry operation missing")?;
+    ensure!(
+        function
+            .params
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .eq(export.parameters.iter().copied())
+            && valid_declared_result(function.result.as_ref()),
+        "legacy Registry declared function ABI differs"
+    );
+    Ok(function)
+}
+
+fn model_document(document: Option<&str>, owners: &crate::AllocationOwners) -> Result<Val> {
+    let Some(document) = document else {
+        return Ok(Val::Option(None));
+    };
+    ensure!(
+        document.len() <= MAX_DOCUMENT_BYTES,
+        "legacy Model Registry input exceeds its limit"
+    );
+    let owner = owners.component();
+    let raw = Val::String(BudgetedString::copy_from(document, owner, 1)?);
+    Ok(Val::Option(Some(BudgetedBox::new(raw, owner, 0)?)))
 }
 
 fn observe_handle(owners: &crate::AllocationOwners) -> Result<Val> {
@@ -373,11 +477,11 @@ fn read_component(
     })?)
 }
 
-fn legacy_provider_linker<T: Send + 'static>(
+fn registry_linker<T: Send + 'static>(
     engine: &Engine,
     component: &Component,
     parameters: &[(String, WitType)],
-    export: &LegacyProviderExport,
+    export: &RegistryExport,
     owners: &crate::AllocationOwners,
 ) -> Result<Linker<NativeState<T>>> {
     let ty = component.component_type();
@@ -403,17 +507,19 @@ fn legacy_provider_linker<T: Send + 'static>(
             "legacy Provider prepare parameter ABI differs"
         );
     }
-    let callback = function_type(flow.get_export(engine, CALLBACK).map(|item| item.ty))?;
-    let mut arguments = callback.params();
-    ensure!(
-        arguments
-            .next()
-            .is_some_and(|(name, ty)| name == "c" && is_callback_handle(&ty))
-            && arguments.next() == Some(("args", Type::String))
-            && arguments.next().is_none()
-            && valid_result(&callback),
-        "legacy Provider observation callback ABI differs"
-    );
+    if export.reads != 0 {
+        let callback = function_type(flow.get_export(engine, CALLBACK).map(|item| item.ty))?;
+        let mut arguments = callback.params();
+        ensure!(
+            arguments
+                .next()
+                .is_some_and(|(name, ty)| name == "c" && is_callback_handle(&ty))
+                && arguments.next() == Some(("args", Type::String))
+                && arguments.next().is_none()
+                && valid_result(&callback),
+            "legacy Provider observation callback ABI differs"
+        );
+    }
     let mut linker = Linker::new(engine);
     linker.define_unknown_imports_as_traps(component)?;
     // Replace only the exact flow instance, keeping the other import traps.
@@ -434,7 +540,7 @@ fn legacy_provider_linker<T: Send + 'static>(
                                 "legacy Provider current-profile argument mismatch",
                             ));
                         };
-                        let profile = state.provider_prepare_profile.take().ok_or_else(|| {
+                        let profile = state.registry_profile.take().ok_or_else(|| {
                             wasmtime::Error::msg(
                                 "legacy Provider current-profile is outside its admitted call",
                             )
@@ -449,7 +555,7 @@ fn legacy_provider_linker<T: Send + 'static>(
                     },
                 )?;
             }
-            ComponentItem::ComponentFunc(_) if name == CALLBACK => {
+            ComponentItem::ComponentFunc(_) if name == CALLBACK && export.reads != 0 => {
                 replacement.func_new_owned(
                     name,
                     owners.component(),
@@ -480,7 +586,7 @@ fn observe_registry<T>(state: &mut NativeState<T>, args: &[Val], output: &mut [V
     };
     ensure!(
         matches!(handle.as_slice(), [(name, Val::U64(OBSERVE_ID))] if name.as_str() == "id")
-            && state.provider_prepare_profile.is_none(),
+            && state.registry_profile.is_none(),
         "legacy Provider observation is outside its admitted call"
     );
     let mut observations = state
@@ -640,14 +746,14 @@ fn is_callback_handle(ty: &Type) -> bool {
     matches!(ty, Type::Record(record) if record.fields().map(|f| (f.name, f.ty)).eq([("id", Type::U64)]))
 }
 
-async fn call_legacy_provider<T: Send + 'static>(
+async fn call_registry<T: Send + 'static>(
     store: &mut Store<NativeState<T>>,
     linker: &Linker<NativeState<T>>,
     component: &Component,
     profile: CoreBuffer,
     parameters: &[Val],
-    read: LegacyProviderRegistryRead,
-    export: &LegacyProviderExport,
+    read: Option<LegacyProviderRegistryRead>,
+    export: &RegistryExport,
 ) -> Result<(BudgetedVec<Val>, u8, bool)> {
     let instance = linker
         .instantiate_async(&mut *store, component)
@@ -662,15 +768,15 @@ async fn call_legacy_provider<T: Send + 'static>(
         .and_then(|index| instance.get_func(&mut *store, index))
         .context("legacy Provider configuration function export missing")?;
     ensure_active(store.data_mut())?;
-    store.data_mut().provider_prepare_profile = Some(profile);
-    store.data_mut().provider_prepare_reads = Some(LiveObservations {
+    store.data_mut().registry_profile = Some(profile);
+    store.data_mut().provider_prepare_reads = read.map(|read| LiveObservations {
         read,
         count: 0,
         limit: export.reads,
         clock_pending: export.clock,
     });
     let result = function.call_async_owned(&mut *store, parameters).await;
-    let read_profile = store.data_mut().provider_prepare_profile.take().is_none();
+    let read_profile = store.data_mut().registry_profile.take().is_none();
     let (reads, clock_pending) = store
         .data_mut()
         .provider_prepare_reads
@@ -689,6 +795,7 @@ async fn call_legacy_provider<T: Send + 'static>(
 fn decode_reply(
     values: &[Val],
     max_bytes: u64,
+    pack: &'static str,
     owners: &crate::AllocationOwners,
 ) -> Result<CoreValue> {
     match values {
@@ -720,7 +827,7 @@ fn decode_reply(
                 .into_iter()
                 .find(|candidate| *candidate == code.as_str())
                 .context("legacy Provider prepare error code differs")?;
-            Err(LegacyProviderPrepareError(code).into())
+            Err(LegacyRegistryError { code, pack }.into())
         }
         _ => bail!("legacy Provider prepare reply differs"),
     }
