@@ -49,8 +49,9 @@ export function ProfilePackVersions({profileId, definitionDigest, disabled, onSa
       await onSaved();
     } finally {
       mutating.current = false;
+      setBusy(false);
       onBusyChange(false);
-      if (lifetime.current === epoch) { setBusy(false); setRefresh((value) => value + 1); }
+      if (lifetime.current === epoch) setRefresh((value) => value + 1);
     }
   };
   return <Card>
