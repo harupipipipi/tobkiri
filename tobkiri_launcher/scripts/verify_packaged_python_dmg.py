@@ -667,8 +667,10 @@ def _cold_boot_installed_launcher(
         Path(__file__).resolve().with_name("verify_macos_launcher_cold_boot.py"),
         "Launcher cold-boot verifier",
     )
-    with tempfile.TemporaryDirectory(prefix="tbk.", dir="/private/tmp") as directory:
-        root = Path(directory).resolve(strict=True)
+    root = Path(tempfile.mkdtemp(prefix="tbk.", dir="/private/tmp")).resolve(strict=True)
+    launch_attempted = False
+    shutdown_verified = False
+    try:
         install_root = root / "Applications"
         install_root.mkdir(mode=0o700)
         installed = install_root / app_bundle.name
@@ -679,12 +681,23 @@ def _cold_boot_installed_launcher(
         mount.cleanup()
         if _run(codesign, ["--verify", "--deep", "--strict", os.fspath(installed)]).returncode:
             raise DmgVerificationError("installed Launcher signature verification failed")
+        launch_attempted = True
         if _run(python, [
             "-B", os.fspath(verifier), "--app-bundle", os.fspath(installed),
             "--app-data-dir", os.fspath(root / "ci-e2e-app-data"),
             "--diagnostics-dir", os.fspath(diagnostics), "--expect-setup",
         ]).returncode:
-            raise DmgVerificationError("installed Launcher did not reach authenticated fresh Setup")
+            raise DmgVerificationError("installed Launcher did not verify fresh Setup and shutdown")
+        shutdown_verified = True
+    finally:
+        if not launch_attempted or shutdown_verified:
+            # The staged bundle may contain sealed read-only directories. All
+            # paths here are beneath this private copy, and links are not followed.
+            for _, _, _, descriptor in os.fwalk(root, follow_symlinks=False):
+                os.fchmod(descriptor, stat.S_IMODE(os.fstat(descriptor).st_mode) | stat.S_IRWXU)
+            shutil.rmtree(root)
+        else:
+            print("Retained the private install and data after unverified shutdown", file=sys.stderr)
 
 
 def verify_dmg(args: argparse.Namespace) -> None:

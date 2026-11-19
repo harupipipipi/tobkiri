@@ -56,6 +56,8 @@ POLL_INTERVAL_SECONDS = 0.2
 HTTP_CONNECT_TIMEOUT_SECONDS = 0.8
 HTTP_RESPONSE_TIMEOUT_SECONDS = 30.0
 TERMINATION_GRACE_SECONDS = 5.0
+# Launcher waits up to 160 seconds for its managed shutdown to complete.
+INSTALLED_SHUTDOWN_TIMEOUT_SECONDS = 165.0
 MAX_ANCESTRY_DEPTH = 64
 DIAGNOSTIC_FILENAME = "launcher-cold-boot.v1.json"
 
@@ -778,6 +780,31 @@ def _terminate_owned_process_group(
         pass
 
 
+def _stop_installed_launcher(
+    process: Any, probes: ColdBootProbes, kernel_port: int, broker_port: int,
+) -> None:
+    """Wait for the Launcher's own shutdown, including its separate Kernel group."""
+    process_id = int(process.pid)
+    try:
+        probes.kill_process_group(process_id, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    deadline = probes.monotonic() + INSTALLED_SHUTDOWN_TIMEOUT_SECONDS
+    while probes.monotonic() < deadline:
+        status = process.poll()
+        if status is not None and status != 0:
+            raise ColdBootError("installed Launcher reported incomplete shutdown")
+        if status == 0 and all(probes.port_available(port) for port in (kernel_port, broker_port)):
+            return
+        probes.sleep(POLL_INTERVAL_SECONDS)
+    if process.poll() is None:
+        try:
+            probes.kill_process_group(process_id, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    raise ColdBootError("installed Launcher shutdown did not release both listeners")
+
+
 def _sanitize_diagnostic_text(value: str) -> str:
     value = re.sub(
         r"(?i)\b(?:api[_-]?key|authorization|credential|password|secret|token)"
@@ -993,16 +1020,27 @@ def verify_cold_boot(
         failure = error
         raise
     finally:
+        shutdown_failure = None
         if process is not None:
-            _terminate_owned_process_group(process, probes)
-        if failure is not None:
+            try:
+                if config.expect_setup:
+                    assert broker_port is not None
+                    _stop_installed_launcher(process, probes, config.kernel_port, broker_port)
+                else:
+                    _terminate_owned_process_group(process, probes)
+            except (ColdBootError, OSError) as error:
+                shutdown_failure = error
+        diagnostic = failure or shutdown_failure
+        if diagnostic is not None:
             _write_failure_diagnostic(
                 config,
                 broker_port,
                 None if process is None else int(process.pid),
-                failure,
+                diagnostic,
                 "" if collector is None else collector.text(),
             )
+        if failure is None and shutdown_failure is not None:
+            raise shutdown_failure
 
 
 def parse_args() -> argparse.Namespace:

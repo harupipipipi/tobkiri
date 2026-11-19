@@ -831,8 +831,9 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
             )
 
 
+@pytest.mark.parametrize("shutdown_verified", [False, True])
 def test_installed_boot_uses_the_verified_copy_after_detach(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shutdown_verified: bool,
 ) -> None:
     source = tmp_path / "mounted" / "Tobkiri Launcher CI E2E.app"
     source.mkdir(parents=True)
@@ -867,18 +868,23 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
             assert arguments[arguments.index("--diagnostics-dir") + 1] == str(diagnostics)
             assert "--expect-setup" in arguments
             assert not Path(arguments[arguments.index("--app-data-dir") + 1]).exists()
+            return subprocess.CompletedProcess(arguments, 0 if shutdown_verified else 1)
         return subprocess.CompletedProcess(arguments, 0)
 
-    temporary = MODULE.tempfile.TemporaryDirectory
+    temporary = MODULE.tempfile.mkdtemp
     monkeypatch.setattr(
-        MODULE.tempfile, "TemporaryDirectory", lambda *, prefix, dir: temporary(prefix=prefix, dir=tmp_path),
+        MODULE.tempfile, "mkdtemp", lambda *, prefix, dir: temporary(prefix=prefix, dir=tmp_path),
     )
     monkeypatch.setattr(MODULE, "_resolve_executable", lambda name: name)
     monkeypatch.setattr(MODULE, "_run", run)
-    MODULE._cold_boot_installed_launcher(Mount(), source, diagnostics, "python", "codesign")
+    if shutdown_verified:
+        MODULE._cold_boot_installed_launcher(Mount(), source, diagnostics, "python", "codesign")
+    else:
+        with pytest.raises(MODULE.DmgVerificationError, match="did not verify fresh Setup and shutdown"):
+            MODULE._cold_boot_installed_launcher(Mount(), source, diagnostics, "python", "codesign")
     assert events == ["verify-mount", "ditto", "verify-mount", "detach", "codesign", "python"]
     assert installed_paths[0].parent.name == "Applications"
-    assert not installed_paths[0].exists()
+    assert installed_paths[0].exists() is not shutdown_verified
 
 
 def tempfile_parent_value() -> str:

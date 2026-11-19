@@ -122,7 +122,7 @@ class _Process:
     pid = 4242
     stdout = None
 
-    def poll(self) -> None:
+    def poll(self) -> Optional[int]:
         return None
 
 
@@ -331,11 +331,15 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
             )
         return None
 
+    class BootProcess(_Process):
+        def poll(self) -> Optional[int]:
+            return 0 if expect_setup and (self.pid, signal.SIGTERM) in signals else None
+
     def launch(executable: Path, _bundle: Path, environment: object) -> _Process:
         nonlocal launched_executable
         launched_executable = executable
         launched_environment.update(environment)
-        return _Process()
+        return BootProcess()
 
     result = VERIFY.verify_cold_boot(
         config,
@@ -377,10 +381,25 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
     assert launched_environment["HTTPS_PROXY"] == "http://127.0.0.1:9"
     assert launched_environment["NO_PROXY"] == "127.0.0.1,localhost"
     assert "CI_TEST_SECRET" not in launched_environment
-    assert signals == [
-        (4242, signal.SIGTERM),
-        (4242, signal.SIGKILL),
-    ]
+    assert signals == [(4242, signal.SIGTERM)] + ([] if expect_setup else [(4242, signal.SIGKILL)])
+
+
+def test_installed_shutdown_rejects_an_orphaned_kernel_listener(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    signals: list[tuple[int, signal.Signals]] = []
+
+    class ExitedLauncher(_Process):
+        def poll(self) -> int:
+            return 0
+
+    probes = replace(
+        _probes(clock, lambda *_args: None, lambda _pid: None, signals),
+        port_available=lambda port: port != 8765,
+    )
+    monkeypatch.setattr(VERIFY, "INSTALLED_SHUTDOWN_TIMEOUT_SECONDS", 1.0)
+    with pytest.raises(VERIFY.ColdBootError, match="did not release both listeners"):
+        VERIFY._stop_installed_launcher(ExitedLauncher(), probes, 8765, 18770)
+    assert signals == [(4242, signal.SIGTERM)]
 
 
 def test_panel_auth_response_rejects_unauthenticated_static_panel() -> None:

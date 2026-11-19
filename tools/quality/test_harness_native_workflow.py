@@ -103,6 +103,19 @@ class NativeWorkflowContracts(unittest.TestCase):
         evidence = step(self.native, "Retain actual native execution evidence")
         self.assertIn("harness-native-launcher-snapshot.log*", evidence)
 
+    def test_snapshot_stage_executes_both_side_chat_environment_proofs(self) -> None:
+        stage = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
+        command = stage.split('harness-native-side-chat-env.log" --expected-passed 2 --', 1)[1]
+        command = command.split("python3 -B tools/quality/issue_1520_ci.py", 1)[0]
+        self.assertIn("--lib -- --exact", command)
+        self.assertEqual(
+            re.findall(r"sealed_python::tests::(\w+)", command),
+            [
+                "side_chat_append_environment_requires_its_own_launch_proof",
+                "side_chat_turn_start_and_provider_snapshot_markers_use_independent_launch_proofs",
+            ],
+        )
+
     def test_snapshot_dmg_opt_in_carries_the_verified_same_run_receipt_to_the_mount(self) -> None:
         self.assertRegex(self.workflow, r"package_launcher_dmg:\n[^\n]*\n        type: boolean\n        default: false")
         staging = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
