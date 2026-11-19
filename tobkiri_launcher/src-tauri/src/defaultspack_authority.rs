@@ -4657,6 +4657,12 @@ mod tests {
         let expected = resolve(&config).unwrap();
         let selected = SignedApplicationResolver::resolve_sources(&config).unwrap();
         assert_eq!(selected.authority(), &expected);
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        {
+            assert_eq!(expected.application_id, DEFAULT_RUNTIME_ID);
+            assert!(selected.owns_runtime_pack("defaultspack"));
+            assert!(!selected.owns_runtime_pack(DEFAULT_RUNTIME_ID));
+        }
         let application = config.app_dir.canonicalize().unwrap();
         let bundle = application.join("ecosystem/defaultspack/v4");
         let application_pack = application.join("ecosystem/defaultspack");

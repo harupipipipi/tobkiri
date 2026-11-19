@@ -235,6 +235,71 @@ def test_application_presentation_requires_an_attested_manifest(
     assert ipc.capture_launcher_application_presentation() is None
 
 
+@pytest.mark.parametrize(
+    ("phase", "reply", "failure"),
+    [
+        ("prepare", b'{"messages":[{"content":"hello","role":"user"}]}', None),
+        ("finish", b'{"content":[],"tool_calls":[]}', None),
+        ("finish", b"invalid", ipc.NativeConversationCompleteFailure),
+        ("finish", b'{"tool_calls":[],"content":[]}', ipc._ProtocolError),
+    ],
+)
+def test_conversation_complete_uses_funded_canonical_phase_ipc(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: ipc.ConversationCompletePhase,
+    reply: bytes,
+    failure: type[Exception] | None,
+) -> None:
+    """Keep the authenticated phase, body size and liveness on the wire."""
+    borrow = _Borrow()
+    if phase == "prepare":
+        data = {"messages": [{"role": "user", "content": "日本語"}]}
+    else:
+        data = {"status": "ok", "value": {"output": "日本語"}}
+    body = ipc.canonical_json(data)
+    request = ipc.NativeConversationCompleteRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        phase=phase,
+        input=data,
+    )
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == ipc._START
+        start = json.loads(payload)
+        assert set(start) == {
+            "identity", "security_epoch", "runtime_instance", "deadline_ns",
+            "conversation_complete",
+        }
+        assert start["conversation_complete"] == {
+            "phase": phase, "input_bytes": len(body),
+        }
+        assert start["runtime_instance"] == request.runtime_instance
+        assert start["deadline_ns"] <= int(request.deadline_monotonic * 10**9)
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, body)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        tag = ipc._FAILURE if failure is ipc.NativeConversationCompleteFailure else ipc._PLAN
+        _send(peer, tag, reply)
+
+    manifest = "sha256:" + "b" * 64
+    monkeypatch.setenv(ipc._CONVERSATION_COMPLETE_ENV, manifest)
+    with _served(monkeypatch, serve):
+        captured = ipc.capture_launcher_conversation_complete()
+        assert captured is not None
+        captured_manifest, invoke = captured
+        assert captured_manifest == manifest
+        if failure is None:
+            assert invoke(request) == json.loads(reply)
+        else:
+            with pytest.raises(failure):
+                invoke(request)
+
+
 def _model_request(borrow: _Borrow) -> ipc.NativeModelSettingsRequest:
     return ipc.NativeModelSettingsRequest(
         context=borrow.context,

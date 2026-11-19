@@ -146,7 +146,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         for pack in (
             "provider-registry", "model-registry", "saved-conversation",
             "saved-turn-runtime", "saved-orchestration", "provider-adapter",
-            "ai-routing", "application-presentation",
+            "ai-routing", "application-presentation", "conversation-complete",
         ):
             self.assertIn(f"-p tobkiri-pack-{pack}-rust", archives)
             self.assertIn(f"--pack {pack}", archives)
@@ -176,6 +176,10 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn("/native-registry-packs/local.application-presentation.tpk", presentation)
         self.assertIn("application_presentation_uses_verified_wasm_port -- --ignored --exact", presentation)
         self.assertLess(registry.index(presentation), registry.index("name: native-registry-packs"))
+        completion = step(registry, "Replay the original Conversation complete guest through the packaged Wasm ports")
+        self.assertIn("/native-registry-packs/local.conversation-complete.tpk", completion)
+        self.assertIn("conversation_complete_replays_original_guest -- --ignored --exact", completion)
+        self.assertLess(registry.index(completion), registry.index("name: native-registry-packs"))
         self.assertIn("--expected-passed 1", orchestration)
         self.assertLess(registry.index(orchestration), registry.index("name: native-registry-packs"))
         self.assertNotIn("stage_pack(", orchestration)

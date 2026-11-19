@@ -361,6 +361,7 @@ where
         command.env_remove("TOBKIRI_NATIVE_AI_GATEWAY_POLICY");
         command.env_remove(crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV);
         command.env_remove(crate::sealed_python::APPLICATION_PRESENTATION_ENV);
+        command.env_remove(crate::sealed_python::CONVERSATION_COMPLETE_ENV);
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
         if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
             if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
@@ -400,6 +401,11 @@ where
                         native_registry.application_presentation_manifest.as_deref()
                     {
                         command.env(crate::sealed_python::APPLICATION_PRESENTATION_ENV, manifest);
+                    }
+                    if let Some(manifest) =
+                        native_registry.conversation_complete_manifest.as_deref()
+                    {
+                        command.env(crate::sealed_python::CONVERSATION_COMPLETE_ENV, manifest);
                     }
                 }
             }

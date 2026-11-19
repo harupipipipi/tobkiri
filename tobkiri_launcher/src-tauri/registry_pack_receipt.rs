@@ -34,6 +34,7 @@ mod unix {
     pub(crate) const PROVIDER_ADAPTER_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/4";
     pub(crate) const AI_ROUTING_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/5";
     pub(crate) const APPLICATION_PRESENTATION_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/6";
+    pub(crate) const CONVERSATION_COMPLETE_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/7";
     const RECEIPT_LIMIT: u64 = 16 * 1024;
     // The Pack authoring CLI's .tpk size ceiling.
     pub(crate) const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
@@ -47,17 +48,19 @@ mod unix {
     pub(crate) const PROVIDER_ADAPTER_PACK_ID: &str = "local.provider-adapter";
     pub(crate) const AI_ROUTING_PACK_ID: &str = "local.ai-routing";
     pub(crate) const APPLICATION_PRESENTATION_PACK_ID: &str = "local.application-presentation";
+    pub(crate) const CONVERSATION_COMPLETE_PACK_ID: &str = "local.conversation-complete";
     const ORCHESTRATION_PACK_VERSION: &str = "0.1.0";
     const PROVIDER_ADAPTER_PACK_VERSIONS: [&str; 3] = ["0.1.0", "0.2.0", "0.3.0"];
     const AI_ROUTING_PACK_VERSIONS: [&str; 7] = [
         "0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0",
     ];
-    const ADDITIONAL_PACK_IDS: [&str; 5] = [
+    const ADDITIONAL_PACK_IDS: [&str; 6] = [
         SETTLEMENT_PACK_ID,
         ORCHESTRATION_PACK_ID,
         PROVIDER_ADAPTER_PACK_ID,
         AI_ROUTING_PACK_ID,
         APPLICATION_PRESENTATION_PACK_ID,
+        CONVERSATION_COMPLETE_PACK_ID,
     ];
 
     #[derive(Deserialize)]
@@ -209,7 +212,8 @@ mod unix {
             ORCHESTRATION_RECEIPT_FORMAT => PACK_IDS.len() + 2,
             PROVIDER_ADAPTER_RECEIPT_FORMAT => PACK_IDS.len() + 3,
             AI_ROUTING_RECEIPT_FORMAT => PACK_IDS.len() + 4,
-            APPLICATION_PRESENTATION_RECEIPT_FORMAT => PACK_IDS.len() + ADDITIONAL_PACK_IDS.len(),
+            APPLICATION_PRESENTATION_RECEIPT_FORMAT => PACK_IDS.len() + 5,
+            CONVERSATION_COMPLETE_RECEIPT_FORMAT => PACK_IDS.len() + ADDITIONAL_PACK_IDS.len(),
             _ => return Err(invalid("Registry Pack receipt format is invalid")),
         };
         if receipt.packs.len() != expected_count {
@@ -228,6 +232,7 @@ mod unix {
                 || (id == AI_ROUTING_PACK_ID
                     && !AI_ROUTING_PACK_VERSIONS.contains(&pack.version.as_str()))
                 || (id == APPLICATION_PRESENTATION_PACK_ID && pack.version != "0.1.0")
+                || (id == CONVERSATION_COMPLETE_PACK_ID && pack.version != "0.1.0")
                 || !(1..=ARCHIVE_LIMIT).contains(&pack.archive_bytes)
                 || !tagged_sha256(&pack.archive_sha256)
                 || !tagged_sha256(&pack.manifest_sha256)
@@ -744,8 +749,41 @@ mod unix {
     pub(crate) fn verify_installed_with_application_presentation<R>(
         app_root: &Path,
         expected_sha256: &str,
-        mut checkpoint: impl FnMut() -> io::Result<()>,
+        checkpoint: impl FnMut() -> io::Result<()>,
         inspect_presentation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
+    ) -> io::Result<Option<R>> {
+        inspect_installed_pack(
+            app_root,
+            expected_sha256,
+            APPLICATION_PRESENTATION_PACK_ID,
+            checkpoint,
+            inspect_presentation,
+        )
+    }
+
+    /// Reopen the Conversation completion archive under the exact installed receipt.
+    #[allow(dead_code)]
+    pub(crate) fn verify_installed_with_conversation_complete<R>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
+    ) -> io::Result<Option<R>> {
+        inspect_installed_pack(
+            app_root,
+            expected_sha256,
+            CONVERSATION_COMPLETE_PACK_ID,
+            checkpoint,
+            inspect_conversation,
+        )
+    }
+
+    fn inspect_installed_pack<R>(
+        app_root: &Path,
+        expected_sha256: &str,
+        pack_id: &str,
+        mut checkpoint: impl FnMut() -> io::Result<()>,
+        inspect: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
     ) -> io::Result<Option<R>> {
         checkpoint()?;
         let app = open_directory(app_root)?;
@@ -755,8 +793,8 @@ mod unix {
         receipt
             .packs
             .iter()
-            .find(|pack| pack.id == APPLICATION_PRESENTATION_PACK_ID)
-            .map(|pack| inspect_archive(&directory, pack, &mut checkpoint, inspect_presentation))
+            .find(|pack| pack.id == pack_id)
+            .map(|pack| inspect_archive(&directory, pack, &mut checkpoint, inspect))
             .transpose()
     }
 

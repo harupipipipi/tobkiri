@@ -387,6 +387,16 @@ _PRESENTATION_CALLERS = (
         "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
     ),
 )
+_CONVERSATION_FUNCTION = "defaultspack.conversation"
+_CONVERSATION_IMPLEMENTATION = (
+    "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793"
+)
+_CONVERSATION_REVISION = (
+    "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a"
+)
+_CONVERSATION_GATEWAY_REVISION = (
+    "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768"
+)
 
 
 class _UnavailablePackVmBackend:
@@ -1914,6 +1924,7 @@ def capture_production_dispatch(
         AI_USAGE_COST_INPUT_FIELDS,
         APPLICATION_PRESENTATION_MINIMUM_MEMORY,
         CONVERSATION_APPEND_MINIMUM_MEMORY,
+        CONVERSATION_COMPLETE_MINIMUM_MEMORY,
         CONVERSATION_CONFIRMATION_MINIMUM_MEMORY,
         CONVERSATION_GET_MAX_ID_CHARS,
         CONVERSATION_GET_MINIMUM_MEMORY,
@@ -1929,6 +1940,7 @@ def capture_production_dispatch(
         AiPipelineStep,
         ApplicationPresentationRole,
         ConversationGetCaller,
+        ConversationCompletePhase,
         ModelResolveRole,
         NativeAiRoutingFailure,
         NativeAiRoutingRequest,
@@ -1936,6 +1948,7 @@ def capture_production_dispatch(
         NativeConversationAppendFailure,
         NativeConversationAppendPublicationUnconfirmed,
         NativeConversationAppendRequest,
+        NativeConversationCompleteRequest,
         NativeConversationConfirmationFailure,
         NativeConversationConfirmationPublicationUnconfirmed,
         NativeConversationConfirmationRequest,
@@ -1971,6 +1984,7 @@ def capture_production_dispatch(
         capture_launcher_ai_usage_cost_calculator,
         capture_launcher_application_presentation,
         capture_launcher_conversation_append_writer,
+        capture_launcher_conversation_complete,
         capture_launcher_conversation_confirmation_writer,
         capture_launcher_conversation_get_reader,
         capture_launcher_model_resolve_reader,
@@ -2012,6 +2026,7 @@ def capture_production_dispatch(
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
     native_presentation = capture_launcher_application_presentation()
+    native_conversation_port = capture_launcher_conversation_complete()
     native_saved_local_chat = capture_launcher_saved_local_chat_executor()
     native_saved_manifest = os.environ.get("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST")
     if native_saved_step is not None and native_saved_manifest is not None:
@@ -2896,9 +2911,76 @@ def capture_production_dispatch(
                 executable_digest=manifest,
             )
 
+    from tobkiri_host.native_conversation_complete import (
+        CONVERSATION_COMPLETE,
+        CONVERSATION_GENERATE,
+        NativeConversationCompleteBackend,
+        run_conversation_complete,
+    )
+
+    native_conversation: NativeWasmBinding | None = None
+    native_conversation_edge: _CapturedPlanEdge | None = None
+    native_conversation_gateway: _CapturedPlanEdge | None = None
+    native_conversation_original_provider: str | None = None
+    if native_conversation_port is not None:
+        matches = tuple(
+            edge for edge in captured_edges
+            if edge.caller.principal_id in shell_principal_ids
+            and edge.caller.function_id == "shell.tauri.default"
+            and edge.caller.operation_id == "present"
+            and edge.binding_key[1:] == CONVERSATION_COMPLETE
+            and edge.target.function_implementation_digest == _CONVERSATION_IMPLEMENTATION
+            and edge.target.contract_revision_digest == _CONVERSATION_REVISION
+            and edge.resolved_binding.operation.effect_class is EffectClass.PURE
+            and edge.resolved_binding.operation.contract_version == "1.0.0"
+            and edge.resolved_binding.artifact.pack_id == "defaultspack"
+            and is_exact_original_python_edge(
+                edge, _CONVERSATION_FUNCTION, backend="tobkiri.python-pack-v4",
+                execution_kind="pack_vm", domain_kind="pack_vm",
+            )
+        )
+        if len(matches) == 1:
+            edge = matches[0]
+            gateway = select_original_chat_edge(
+                {edge.target.principal_id}, "rumi_ai_gateway_pack",
+                *CONVERSATION_GENERATE, CONVERSATION_GENERATE[1], EffectClass.PRIVILEGED,
+            )
+            if (
+                gateway is not None
+                and gateway.target.contract_revision_digest == _CONVERSATION_GATEWAY_REVISION
+                and gateway.resolved_binding.operation.contract_version == "1.0.0"
+            ):
+                manifest, _ = native_conversation_port
+                caller = OpaqueAuthorityRef(edge.caller.principal_id)
+                caller_suffix = caller.value.removeprefix("sha256:")[:24]
+                native_domain = (
+                    f"domain.provider.conversation-wasm.{caller_suffix}."
+                    f"{activation_suffix}.{manifest.removeprefix('sha256:')}"
+                )
+                native_conversation = NativeWasmBinding(
+                    binding=edge.resolved_binding,
+                    backend=NativeConversationCompleteBackend(
+                        edge.resolved_binding, caller, native_domain, manifest,
+                        authority_store=authority_store,
+                        execute=lambda envelope, guard: execute_native_conversation(
+                            envelope, guard,
+                        ),
+                        capture_current=lambda envelope: capture_current_native_conversation(
+                            envelope,
+                        ),
+                    ),
+                    caller_principal=caller,
+                    domain_id=native_domain,
+                    executable_digest=manifest,
+                )
+                native_conversation_edge = edge
+                native_conversation_gateway = gateway
+
     def physical_wasm_for_edge(edge: _CapturedPlanEdge) -> NativeWasmBinding | None:
         if edge is ordinary_orchestration_edge:
             return native_saved_execution
+        if edge is native_conversation_edge:
+            return native_conversation
         return native_presentation_bindings.get(edge.key)
 
     selected_backend_registry = BackendRegistry(registered_backends)
@@ -2988,6 +3070,8 @@ def capture_production_dispatch(
         )
         if not provenance_valid:
             native_presentation_bindings.pop(captured_edge.key, None)
+            if captured_edge is native_conversation_edge:
+                native_conversation = None
             continue
         pack_approval_revision: str | None = None
         if approval_pack_id is not None:
@@ -2999,6 +3083,8 @@ def capture_production_dispatch(
                 # but a missing, stale, corrupt, or revoked approval must never
                 # recreate runtime authority for it.
                 native_presentation_bindings.pop(captured_edge.key, None)
+                if captured_edge is native_conversation_edge:
+                    native_conversation = None
                 continue
             captured_dynamic_approvals[approval_pack_id] = pack_approval_revision
         execution_kind = backend.status.execution_kind
@@ -3053,6 +3139,8 @@ def capture_production_dispatch(
                 (
                     "profile-saved-wasm-"
                     if physical_wasm is native_saved_execution
+                    else "profile-conversation-wasm-"
+                    if physical_wasm is native_conversation
                     else "profile-presentation-wasm-"
                 ) + physical_wasm.executable_digest[7:31]
                 if physical_wasm is not None else None
@@ -3067,6 +3155,8 @@ def capture_production_dispatch(
             original_provider = "provider." + logical_grant.grant_id.removeprefix("grant.")
             if physical_wasm is native_saved_execution:
                 native_saved_original_provider = original_provider
+            elif physical_wasm is native_conversation:
+                native_conversation_original_provider = original_provider
             else:
                 native_presentation_original_providers[physical_wasm.domain_id] = (
                     original_provider
@@ -3151,9 +3241,7 @@ def capture_production_dispatch(
         )
         if outer_edge is None or outer_edge.key not in bridge_targets:
             raise AuthorityDenied("PackVM capability bridge outer edge is not selected")
-        physical_wasm = (
-            native_saved_execution if outer_edge is ordinary_orchestration_edge else None
-        )
+        physical_wasm = physical_wasm_for_edge(outer_edge)
         if physical_wasm is None:
             expected_target_domain = authority_target_domain(outer_edge.resolved_binding)
             expected_target_backend_digest = target_backend_digests.get(outer_target)
@@ -3294,6 +3382,10 @@ def capture_production_dispatch(
         request = bridge_request.get("request")
         continuation = bridge_request.get("continuation")
         bridge_candidates = bridge_targets[outer_edge.key]
+        if outer_edge is native_conversation_edge and native_conversation is not None:
+            if native_conversation_gateway not in bridge_candidates:
+                raise AuthorityDenied("native Conversation Gateway edge is unavailable")
+            bridge_candidates = (native_conversation_gateway,)
         bridge_edge, expected_bridge_target = _resolve_packvm_bridge_target(
             bridge_candidates,
             target,
@@ -3696,6 +3788,11 @@ def capture_production_dispatch(
         saved_workspace_binding = saved_workspace_execution_registry.capture(
             envelope, parent
         )
+        uses_native_conversation = (
+            native_conversation is not None
+            and envelope.context.target_domain_id == native_conversation.domain_id
+        )
+        conversation_runtime = native_provider_runtime if uses_native_conversation else None
 
         def guard() -> None:
             with _capture_guard_traversal(assert_current_capture):
@@ -3705,6 +3802,14 @@ def capture_production_dispatch(
                     and envelope.context.target_domain_id == native_saved_execution.domain_id
                 ):
                     assert_original_saved_provider_current()
+                if uses_native_conversation:
+                    if (
+                        conversation_runtime is None
+                        or native_provider_runtime is not conversation_runtime
+                    ):
+                        raise AuthorityDenied("native Conversation Launcher capture changed")
+                    assert_original_conversation_provider_current()
+                    conversation_runtime[1]()
                 if saved_tool_entry_guard is not None:
                     saved_tool_entry_guard()
                 if saved_workspace_binding is not None:
@@ -4990,6 +5095,92 @@ def capture_production_dispatch(
         if provider_id is None or authority_store.is_revoked("provider_authority", provider_id):
             raise AuthorityDenied("original Saved Orchestration Provider was revoked")
 
+    def assert_original_conversation_provider_current() -> None:
+        if native_conversation_original_provider is None or authority_store.is_revoked(
+            "provider_authority", native_conversation_original_provider,
+        ):
+            raise AuthorityDenied("original Conversation Provider was revoked")
+
+    def require_native_conversation_gateway() -> None:
+        gateway = native_conversation_gateway
+        if gateway is None or gateway.binding_key not in approved_host_binding_keys:
+            raise AuthorityDenied("native Conversation Gateway is unavailable")
+        provider, grant = profile_edge_authority_records[gateway.binding_key]
+        if (
+            grant is None
+            or authority_store.is_revoked("provider_authority", provider.record_id)
+            or authority_store.is_revoked("grant", grant.grant_id)
+        ):
+            raise AuthorityDenied("native Conversation Gateway authority was revoked")
+        authority_target_domain(gateway.resolved_binding)
+        backend_registry.select(gateway.resolved_binding)
+
+    def capture_current_native_conversation(
+        envelope: RequestEnvelope,
+    ) -> Callable[[], None]:
+        scope = capture_invocation_scope(envelope)
+        if (
+            scope.parent is not None
+            or resolve_bridge_outer(envelope) is not native_conversation_edge
+        ):
+            raise AuthorityDenied("native Conversation captured scope changed")
+
+        def guard() -> None:
+            scope.assert_current()
+            resources = production_admission.native_resources(
+                envelope.resource_reservation_id,
+            )
+            if resources.memory_bytes < CONVERSATION_COMPLETE_MINIMUM_MEMORY:
+                raise AuthorityDenied("native Conversation capacity is unavailable")
+
+        guard()
+        require_native_conversation_gateway()
+        return guard
+
+    def execute_native_conversation(
+        envelope: RequestEnvelope, guard: Callable[[], None],
+    ) -> dict[str, Any]:
+        launcher_runtime = native_provider_runtime
+        if native_conversation_port is None or launcher_runtime is None:
+            raise AuthorityDenied("native Conversation Launcher is unavailable")
+        _, invoke = native_conversation_port
+
+        def execute(
+            phase: ConversationCompletePhase,
+            payload: Mapping[str, Any],
+            assert_current: Callable[[], None],
+        ) -> dict[str, Any]:
+            return invoke(NativeConversationCompleteRequest(
+                context=envelope.context,
+                runtime_instance=launcher_runtime[0],
+                deadline_monotonic=envelope.deadline_monotonic,
+                assert_current=assert_current,
+                phase=phase,
+                input=payload,
+            ))
+
+        owner_principal, owner_session = presentation_owner_for(envelope)
+        cancellation = cancellation_handles.bind(
+            group=("defaultspack", "conversation.complete"),
+            role="execute",
+            envelope=envelope,
+            owner_principal=owner_principal,
+            owner_session=owner_session,
+            guard=guard,
+        )
+        with cancellation.track(envelope.context.request_id):
+            proof = nested_cancellation_proof_for(envelope, owner_principal, owner_session)
+            if proof is None:
+                raise AuthorityDenied("native Conversation cancellation proof is unavailable")
+            return run_conversation_complete(
+                envelope,
+                capture_invocation_scope(envelope).public_payload(),
+                execute,
+                capability_bridge,
+                proof,
+                guard,
+            )
+
     def selected_native_saved_authority(
         context: RequestContext, target: OpaqueAuthorityRef,
     ) -> NativeWasmBinding | None:
@@ -5025,6 +5216,18 @@ def capture_production_dispatch(
         saved = selected_native_saved_authority(context, target)
         if saved is not None:
             return saved
+        native = native_conversation
+        if native is not None:
+            if context.caller_principal == native.caller_principal and target == (
+                native.binding.principal_ref
+            ):
+                assert_original_conversation_provider_current()
+                return native
+            if (
+                context.target_domain_id == native.domain_id
+                or context.target_backend_digest == native.backend_digest
+            ):
+                raise AuthorityDenied("native Conversation authority identity changed")
         for presentation in native_presentation_bindings.values():
             if (
                 context.caller_principal == presentation.caller_principal
@@ -7622,6 +7825,12 @@ def capture_production_dispatch(
             SAVED_ORCHESTRATION_MINIMUM_MEMORY,
             lambda context, _: context.target_domain_id == native_saved_execution.domain_id,
         ))
+    if native_conversation is not None:
+        native_admission_rules.append((
+            native_conversation.binding,
+            CONVERSATION_COMPLETE_MINIMUM_MEMORY,
+            lambda context, _: context.target_domain_id == native_conversation.domain_id,
+        ))
     native_admission_rules.extend(
         (
             native.binding,
@@ -7674,7 +7883,11 @@ def capture_production_dispatch(
         confirmed_supervisor_release=confirmed_supervisor_release,
         native_bindings=tuple(native_admission_rules),
     )
-    use_native_wasm = native_saved_execution is not None or bool(native_presentation_bindings)
+    use_native_wasm = (
+        native_saved_execution is not None
+        or native_conversation is not None
+        or bool(native_presentation_bindings)
+    )
     if use_native_wasm:
         authority_control.install_native_wasm_binding_resolver(selected_native_authority)
     broker = runtime.broker(
@@ -7813,9 +8026,25 @@ def capture_production_dispatch(
             if native.binding == binding
         ), None)
 
-    def ready_presentation_backend(
+    def ready_native_backend(
         binding: ResolvedOperationBinding,
     ) -> ExecutionBackend | None:
+        if native_conversation is not None and native_conversation.binding == binding:
+            if native_provider_runtime is None or native_conversation_edge is None:
+                raise BackendUnavailableError("native Conversation is unavailable")
+            native_provider_runtime[1]()
+            provider, grant = profile_edge_authority_records[
+                native_conversation_edge.binding_key
+            ]
+            assert_original_conversation_provider_current()
+            if (
+                grant is None
+                or authority_store.is_revoked("grant", grant.grant_id)
+                or authority_store.is_revoked("provider_authority", provider.record_id)
+            ):
+                raise AuthorityDenied("native Conversation authority was revoked")
+            require_native_conversation_gateway()
+            return native_conversation.backend
         backend = presentation_backend_for(binding)
         if backend is not None:
             if native_provider_runtime is None:
@@ -7850,6 +8079,9 @@ def capture_production_dispatch(
                 native_saved_execution.backend
                 if native_saved_execution is not None
                 and resolved_binding == native_saved_execution.binding
+                else native_conversation.backend
+                if native_conversation is not None
+                and resolved_binding == native_conversation.binding
                 else presentation_backend_for(resolved_binding)
                 or broker._backends.select(resolved_binding)
             )
@@ -8442,11 +8674,14 @@ def capture_production_dispatch(
                 or native_saved_turn_read_bindings
                 or native_saved_turn_start_key is not None
                 or native_saved_append_key is not None or native_saved_execution is not None
-                or saved_local_chat_routes or native_presentation_bindings)
+                or saved_local_chat_routes or native_presentation_bindings
+                or native_conversation is not None)
             else None
         ),
         native_readiness_for=(
-            ready_presentation_backend if native_presentation_bindings else None
+            ready_native_backend
+            if native_presentation_bindings or native_conversation is not None
+            else None
         ),
     )
     dispatch_holder.append(dispatch)

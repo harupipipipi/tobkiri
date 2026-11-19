@@ -4771,6 +4771,179 @@ def test_native_presentation_preserves_exact_nested_broker_edges_without_packvm(
         assert executions[-1].role == "settings"
 
 
+def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The signed Shell route dispatches at most one live Gateway child."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import AuthorityDenied
+    from ecosystem.defaultspack.runtime import conversation as legacy
+    from tobkiri_host.native_conversation_complete import (
+        CONVERSATION_COMPLETE,
+        CONVERSATION_GENERATE,
+    )
+
+    manifest = "sha256:" + "b" * 64
+    gateway_value = {
+        "output": "verified completion",
+        "tool_intents": [{
+            "intent_id": "fixture-intent",
+            "operation": "fixture.tool",
+            "arguments": {"count": 2},
+        }],
+        "usage": {"input_tokens": 2, "output_tokens": 3},
+    }
+    legacy_payload = {"messages": [{"role": "user", "content": "hello"}]}
+    executions = []
+    gateway_envelopes = []
+    mode = "success"
+
+    def complete(request: ipc.NativeConversationCompleteRequest) -> dict:
+        request.assert_current()
+        executions.append(request)
+        if request.phase == "prepare":
+            assert request.input == legacy_payload
+            frame = legacy.tobkiri_packvm_invoke("complete", request.input)
+            if mode == "tampered":
+                frame["request"]["requirements"]["request_surface"] = "unowned"
+            return frame["request"]
+        if mode == "finish-failure":
+            raise RuntimeError("fixture terminal transport failure")
+        assert request.input == {"status": "ok", "value": gateway_value}
+        return legacy._project_completion(request.input["value"])
+
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_conversation_complete", lambda: (manifest, complete),
+    )
+
+    def unused_presentation(_request: ipc.NativeApplicationPresentationRequest) -> dict:
+        pytest.fail("startup readiness must not dispatch Application presentation")
+
+    monkeypatch.setattr(
+        ipc, "capture_launcher_application_presentation",
+        lambda: ("sha256:" + "a" * 64, unused_presentation),
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry(()),
+    ) as (server, session, authority):
+        server.assert_runtime_startup_ready()
+        assert not executions
+        session.assert_operation_ready(*CONVERSATION_COMPLETE)
+        before = session.context_for(*CONVERSATION_COMPLETE, "native-conversation-probe")
+        native = session.broker._catalog.resolve_pinned(*CONVERSATION_COMPLETE)
+        selected = session.broker._native_wasm_binding_for(before, native)
+        assert selected.backend.status.backend_id == "tobkiri.native-conversation-complete-v1"
+        assert selected.executable_digest == manifest
+
+        # Preserve the real Broker, child lease, and Host Provider entry checks.
+        # Stub the verified Gateway contribution to avoid external generation.
+        child_binding = session.broker._catalog.resolve_pinned(*CONVERSATION_GENERATE)
+        gateway_backend = session.broker._backends.select(child_binding)
+        gateway_key = (*CONVERSATION_GENERATE, child_binding.principal_ref.value)
+        contribution = gateway_backend._contributions[gateway_key]
+
+        def generate(operation, payload, invocation):
+            invocation.assert_current()
+            assert operation == CONVERSATION_GENERATE[1]
+            assert payload["messages"] == legacy_payload["messages"]
+            assert payload["requirements"] == {"request_surface": "defaultspack.conversation"}
+            gateway_envelopes.append(invocation.envelope)
+            return gateway_value
+
+        monkeypatch.setitem(
+            gateway_backend._contributions, gateway_key, replace(contribution, invoke=generate),
+        )
+        envelopes = []
+        original_dispatch = session.broker._dispatch
+
+        def dispatch(backend, envelope: RequestEnvelope, *args, **kwargs):
+            if (envelope.contract_id, envelope.operation_id) == CONVERSATION_COMPLETE:
+                assert backend is selected.backend
+                envelopes.append(envelope)
+            return original_dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", dispatch)
+        cookie, csrf, origin = _authenticate(server)
+        headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+        status, catalog, _ = _request(
+            server, "GET", _contract("GET", "/api/ui/catalog"),
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 200, catalog
+        dynamic = catalog["data"]["dynamic_host"]
+
+        def send() -> tuple[int, dict]:
+            status, result, _ = _request(
+                server, "POST", _contract("POST", "/api/ui/capability/invoke"),
+                body={
+                    "request_id": str(uuid.uuid4()),
+                    "expires_at": time.time() + 30,
+                    **{key: dynamic[key] for key in (
+                        "profile_id", "profile_revision", "activation_id", "plan_hash",
+                        "catalog_hash",
+                    )},
+                    "contribution_id": "defaults.conversation.complete",
+                    "owner_pack_id": "defaultspack",
+                    "contract_id": CONVERSATION_COMPLETE[0],
+                    "payload": legacy_payload,
+                },
+                headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+            )
+            return status, result
+
+        status, result = send()
+        assert status == 200, result
+        assert result["data"] == legacy._project_completion(gateway_value)
+        assert [request.phase for request in executions] == ["prepare", "finish"]
+        (outer,) = envelopes
+        (child,) = gateway_envelopes
+        assert child.context.caller_principal == outer.target_principal
+        assert child.lease.token != outer.lease.token
+        assert child.cancellation_requested is outer.cancellation_requested
+        assert child.deadline_monotonic <= outer.deadline_monotonic
+        for request in executions:
+            assert request.runtime_instance == server._native_provider_prepare_instance
+            assert request.context is outer.context
+            assert request.deadline_monotonic == outer.deadline_monotonic
+            with pytest.raises(PermissionError):
+                request.assert_current()
+        assert not selected.backend._reservations
+        assert not selected.backend._requests
+        assert authority.get_domain(outer.target_domain.value).boundary.value == "wasm_component"
+
+        mode = "tampered"
+        status, result = send()
+        assert status != 200, result
+        assert len(gateway_envelopes) == 1
+        assert [request.phase for request in executions] == ["prepare", "finish", "prepare"]
+        assert not selected.backend._reservations
+
+        mode = "finish-failure"
+        status, result = send()
+        assert status != 200, result
+        assert len(gateway_envelopes) == 2
+        assert [request.phase for request in executions[-2:]] == ["prepare", "finish"]
+        assert not selected.backend._reservations
+
+        provider = next(
+            grant for grant in authority.list_grants()
+            if grant.caller.principal_id == outer.context.caller_principal.value
+            and grant.target.principal_id == outer.target_principal.value
+        )
+        original_provider_id = "provider." + provider.grant_id.removeprefix("grant.")
+        authority.revoke(
+            target_kind="provider_authority", target_id=original_provider_id,
+            reason="fixture revocation of original Conversation Provider",
+        )
+        with pytest.raises(AuthorityDenied, match="original Conversation Provider"):
+            session.assert_operation_ready(*CONVERSATION_COMPLETE)
+        status, result = send()
+        assert status != 200, result
+        assert len(executions) == 5
+        assert len(gateway_envelopes) == 2
+
+
 def test_presentation_allocation_capacity_refusal_has_http503_through_real_broker(
     settings_vertical_server,
     monkeypatch: pytest.MonkeyPatch,

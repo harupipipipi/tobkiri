@@ -16,8 +16,8 @@ use serde_json::value::RawValue;
 use tauri::{AppHandle, Manager};
 use tobkiri_core::ids::{OpName, ProfileId, ShapeRef};
 use tobkiri_core::{
-    AllocationBudget, CoreBuffer, CoreError, CoreRef, CoreValue, LegacyRegistryRead,
-    NativeArtifactError, NativeArtifactInspection, NativeRegistry, MAX_BYTES,
+    AllocationBudget, AllocationError, CoreBuffer, CoreError, CoreRef, CoreValue,
+    LegacyRegistryRead, NativeArtifactError, NativeArtifactInspection, NativeRegistry, MAX_BYTES,
 };
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 pub(crate) use tobkiri_harness_native::SavedOrchestrationStepError;
@@ -40,23 +40,23 @@ use super::{
     caught,
     launch_metadata::{
         reacquire_ai_routing_pack, reacquire_application_presentation_pack,
-        reacquire_conversation_append_pack, reacquire_conversation_confirmation_pack,
-        reacquire_conversation_read_pack, reacquire_failover_pack, reacquire_gateway_policy_pack,
-        reacquire_gateway_result_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
-        reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_request_prepare_pack, reacquire_saved_local_chat_adapter,
-        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
-        reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
-        reacquire_turn_settlement_pack, reacquire_turn_start_pack, reacquire_usage_cost_pack,
-        saved_local_chat_dispatch_bundle, ApplicationPresentationRole, ConversationReadCaller,
-        SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE,
-        FAILOVER_OPERATION, FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE,
-        GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION,
-        PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
-        PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
-        REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION, REQUEST_PREPARE_SHAPE,
-        STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE, TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE,
-        USAGE_COST_OPERATION, USAGE_COST_SHAPE,
+        reacquire_conversation_append_pack, reacquire_conversation_complete_pack,
+        reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
+        reacquire_failover_pack, reacquire_gateway_policy_pack, reacquire_gateway_result_pack,
+        reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
+        reacquire_provider_prepare_pack, reacquire_request_prepare_pack,
+        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
+        reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
+        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack,
+        reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
+        ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION,
+        AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION,
+        GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE,
+        PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION,
+        PROVIDER_POLICY_OPERATION, PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION,
+        PROVIDER_REQUEST_SHAPE, REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION,
+        REQUEST_PREPARE_SHAPE, STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE,
+        TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE, USAGE_COST_OPERATION, USAGE_COST_SHAPE,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -87,8 +87,44 @@ pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
 pub(crate) const APPLICATION_PRESENTATION_INPUT_LIMIT: usize = 128 * 1024;
 /// Maximum encoded application presentation result delivered to the Host.
 pub(crate) const APPLICATION_PRESENTATION_RESULT_LIMIT: usize = 1024 * 1024;
+/// Maximum success document from either Conversation completion DATA port.
+pub(crate) const CONVERSATION_COMPLETE_RESULT_LIMIT: usize = 4 * 1024 * 1024;
 /// Maximum original Gateway DATA input and result JSON.
 pub(crate) const AI_GATEWAY_DATA_LIMIT: usize = 1024 * 1024;
+
+/// The two original, effect-free Conversation completion operations.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ConversationCompletePhase {
+    Prepare,
+    Finish,
+}
+
+impl ConversationCompletePhase {
+    pub(crate) fn input_limit(self) -> usize {
+        match self {
+            Self::Prepare => 1024 * 1024,
+            Self::Finish => 512 * 1024,
+        }
+    }
+
+    pub(crate) fn check_input_size(self, size: usize) -> Result<(), SavedOrchestrationStepError> {
+        if size == 0 {
+            return Err(SavedOrchestrationStepError::Invalid);
+        }
+        if size > self.input_limit() {
+            return Err(SavedOrchestrationStepError::Capacity);
+        }
+        Ok(())
+    }
+
+    fn operation(self) -> &'static str {
+        match self {
+            Self::Prepare => "prepare",
+            Self::Finish => "finish",
+        }
+    }
+}
 
 /// Fixed effect-free work for the original signed Gateway and its children.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -183,6 +219,11 @@ pub(crate) enum NativeRegistryRequest {
         input_bytes: usize,
         receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
     },
+    ConversationComplete {
+        phase: ConversationCompletePhase,
+        input_bytes: usize,
+        receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
+    },
     AiGatewayData {
         operation: AiGatewayDataOperation,
         input: Vec<u8>,
@@ -219,6 +260,7 @@ impl NativeRegistryRequest {
             Self::ApplicationPresentation { role, .. } => {
                 proof.permits_application_presentation(*role)
             }
+            Self::ConversationComplete { .. } => proof.permits_conversation_complete(),
             Self::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
             Self::SavedLocalChat { role, .. } => proof.permits_saved_local_chat(*role),
         }
@@ -233,6 +275,13 @@ impl NativeRegistryRequest {
                 | Self::TurnStart { .. }
                 | Self::TurnSettlement { .. }
                 | Self::SavedLocalChat { .. }
+        )
+    }
+
+    fn uses_funded_input(&self) -> bool {
+        matches!(
+            self,
+            Self::ApplicationPresentation { .. } | Self::ConversationComplete { .. }
         )
     }
 
@@ -270,6 +319,12 @@ impl NativeRegistryRequest {
                 if *input_bytes > APPLICATION_PRESENTATION_INPUT_LIMIT {
                     return Err(SavedOrchestrationStepError::Capacity.into());
                 }
+                return Ok(*input_bytes);
+            }
+            Self::ConversationComplete {
+                phase, input_bytes, ..
+            } => {
+                phase.check_input_size(*input_bytes)?;
                 return Ok(*input_bytes);
             }
             Self::SavedOrchestration { input } | Self::AiGatewayData { input, .. } => {
@@ -636,10 +691,7 @@ async fn run(
     let admitted = (|| {
         check_live(deadline.current(), None)?;
         job.ensure_accepting(&runtime.0.jobs)?;
-        if !matches!(
-            &operation,
-            NativeRegistryRequest::ApplicationPresentation { .. }
-        ) {
+        if !operation.uses_funded_input() {
             continue_current()?;
         }
         check_live(deadline.current(), None)?;
@@ -1236,6 +1288,49 @@ async fn run(
                         &graph,
                     );
                 }
+                NativeRegistryRequest::ConversationComplete {
+                    phase,
+                    input_bytes,
+                    receive_input,
+                } => {
+                    require_current_source()?;
+                    let funding = input_funding
+                        .take()
+                        .context("Conversation completion input funding is missing")?;
+                    let input = receive_input(execution_deadline)?;
+                    if input.len() != input_bytes || input.capacity() > input_bytes {
+                        return Err(SavedOrchestrationStepError::Invalid.into());
+                    }
+                    revalidate()?;
+                    require_canonical_conversation_complete_input(&input, &graph)?;
+                    let pack = reacquire_conversation_complete_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let shape = ShapeRef::parse("local.conversation-complete.data@1.0")?;
+                    let operation = OpName::parse(phase.operation())?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &shape,
+                            &operation,
+                            &profile,
+                            execution_deadline,
+                            0,
+                        )
+                        .await?;
+                    revalidate()?;
+                    let output =
+                        invoke_original_saved_orchestration_port(port, input, funding).await?;
+                    return decode_bounded_data_reply(
+                        output.as_str(),
+                        CONVERSATION_COMPLETE_RESULT_LIMIT,
+                        &graph,
+                    );
+                }
                 NativeRegistryRequest::AiGatewayData { operation, input } => {
                     let source = listener.verified_source();
                     let (pack, shape, function) = match operation {
@@ -1682,6 +1777,26 @@ fn require_application_presentation_input_role(
     };
     if input.kind.get() != kind {
         return Err(NativeArtifactError::Denied.into());
+    }
+    Ok(())
+}
+
+fn require_canonical_conversation_complete_input(
+    input: &[u8],
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<()> {
+    let json_error = |error| match error {
+        AllocationError::Invalid | AllocationError::Depth => {
+            SavedOrchestrationStepError::Invalid.into()
+        }
+        AllocationError::Unavailable => anyhow::Error::from(error),
+        _ => SavedOrchestrationStepError::Capacity.into(),
+    };
+    let value = CoreValue::parse_guest(input, budget).map_err(json_error)?;
+    if value.object().is_none()
+        || value.encode_guest(budget).map_err(json_error)?.as_bytes() != input
+    {
+        return Err(SavedOrchestrationStepError::Invalid.into());
     }
     Ok(())
 }
@@ -2168,8 +2283,8 @@ mod tests {
 
     #[test]
     fn application_presentation_funds_only_its_exact_role_and_declared_input() {
-        use ApplicationPresentationRole::{Catalog, Commands, Settings};
         use crate::host_contract::ExecutionProfileIdentity;
+        use ApplicationPresentationRole::{Catalog, Commands, Settings};
 
         let identity = ExecutionProfileIdentity {
             profile_id: "profile".into(),
@@ -2219,6 +2334,75 @@ mod tests {
                     .downcast::<SavedOrchestrationStepError>()
                     .unwrap(),
                 expected
+            );
+        }
+    }
+
+    #[test]
+    fn conversation_complete_funds_only_the_admitted_read_only_phases() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use ConversationCompletePhase::{Finish, Prepare};
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: "revision".into(),
+            activation_id: "activation".into(),
+            plan_digest: "plan".into(),
+        };
+        let other =
+            VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
+        let proof = VerifiedRegistryLaunch::test_conversation_complete_proof(identity, "catalog");
+        for (phase, operation, capacity) in [
+            (Prepare, "prepare", 1024 * 1024),
+            (Finish, "finish", 512 * 1024),
+        ] {
+            let request = |input_bytes| NativeRegistryRequest::ConversationComplete {
+                phase,
+                input_bytes,
+                receive_input: Box::new(|_| panic!("admission cannot read the body")),
+            };
+            assert_eq!(phase.operation(), operation);
+            assert!(!request(capacity).has_launch_proof(&other));
+            assert!(request(capacity).has_launch_proof(&proof));
+            assert!(request(capacity).uses_funded_input());
+            assert!(!request(capacity).requires_publication_permit());
+            assert_eq!(request(capacity).input_capacity().unwrap(), capacity);
+            for (invalid, expected) in [
+                (0, SavedOrchestrationStepError::Invalid),
+                (capacity + 1, SavedOrchestrationStepError::Capacity),
+            ] {
+                let error = request(invalid).input_capacity().unwrap_err();
+                assert_eq!(error.downcast_ref(), Some(&expected));
+            }
+        }
+    }
+
+    #[test]
+    fn conversation_complete_requires_a_canonical_object_before_entering_wasm() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        for input in [
+            r#"{"messages":[{"content":"猫","role":"user"}],"model":"local"}"#,
+            r#"{"status":"ok","value":{"content":"猫","usage":{"total_tokens":2}}}"#,
+        ] {
+            assert!(
+                require_canonical_conversation_complete_input(input.as_bytes(), &budget).is_ok()
+            );
+        }
+        for input in [
+            b"null".as_slice(),
+            b"[]",
+            b" {}",
+            br#"{"model":"local","messages":[]}"#,
+            br#"{"messages":[],"messages":[]}"#,
+            br#"{"a":9007199254740992}"#,
+            br#"{"a":0.5}"#,
+            br#"{"model":"\u732b"}"#,
+            b"{\"model\":\"\xff\"}",
+        ] {
+            let error = require_canonical_conversation_complete_input(input, &budget).unwrap_err();
+            assert_eq!(
+                error.downcast_ref(),
+                Some(&SavedOrchestrationStepError::Invalid)
             );
         }
     }

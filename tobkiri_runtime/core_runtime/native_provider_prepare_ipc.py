@@ -40,6 +40,7 @@ _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
+_CONVERSATION_COMPLETE_ENV = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
 _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
 _AI_STREAM_RESULT_ENV = "TOBKIRI_NATIVE_AI_STREAM_RESULT"
@@ -86,6 +87,8 @@ SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_ORCHESTRATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 APPLICATION_PRESENTATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 _APPLICATION_PRESENTATION_INPUT_LIMIT = 128 * 1024
+CONVERSATION_COMPLETE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+_CONVERSATION_COMPLETE_INPUT_LIMITS = {"prepare": 1024 * 1024, "finish": 512 * 1024}
 SAVED_LOCAL_CHAT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_LOCAL_CHAT_MAX_INPUT_BYTES = 1024 * 1024
 SAVED_LOCAL_CHAT_MAX_RESULT_BYTES = 4 * 1024 * 1024
@@ -146,6 +149,9 @@ _FAILURES = frozenset({
     b"denied", b"approval-required", b"cancelled", b"not-found", b"invalid",
     b"limit-exceeded", b"conflict", b"unavailable", b"internal",
 })
+_CONVERSATION_COMPLETE_FAILURES = frozenset({
+    b"invalid", b"limit-exceeded", b"cancelled", b"denied", b"unavailable",
+})
 _LEGACY_READ_FAILURE = b"legacy-read-required"
 _CONVERSATION_LEGACY_READ_FAILURE = b"requires-legacy-read"
 _LEGACY_REQUEST_FAILURE = b"legacy-request"
@@ -181,6 +187,14 @@ class NativeConversationGetFailure(RuntimeError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"native Conversation GET failed ({code})")
+        self.code = code
+
+
+class NativeConversationCompleteFailure(RuntimeError):
+    """An authenticated guest or Launcher rejection of one Conversation phase."""
+
+    def __init__(self, phase: ConversationCompletePhase, code: str) -> None:
+        super().__init__(f"native Conversation {phase} failed ({code})")
         self.code = code
 
 
@@ -411,6 +425,21 @@ class NativeApplicationPresentationRequest:
     input: Mapping[str, Any]
 
 
+ConversationCompletePhase = Literal["prepare", "finish"]
+
+
+@dataclass(frozen=True)
+class NativeConversationCompleteRequest:
+    """Borrow the live Conversation invocation for one pure guest phase."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    phase: ConversationCompletePhase
+    input: Mapping[str, Any]
+
+
 SavedLocalChatRole = Literal["generate", "stream"]
 
 
@@ -507,6 +536,7 @@ _NativeBorrow = (
     | NativeSavedTurnStartRequest
     | NativeSavedOrchestrationRequest
     | NativeApplicationPresentationRequest
+    | NativeConversationCompleteRequest
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
     | NativeModelResolveRequest
@@ -516,7 +546,7 @@ _NativeOperation = Literal[
     "provider_prepare", "model_list", "model_save", "conversation_get",
     "conversation_receipt", "model_resolve", "turn_start", "turn_settlement",
     "conversation_confirmation", "conversation_append", "saved_orchestration", "ai_route",
-    "application_presentation",
+    "application_presentation", "conversation_complete",
 ]
 
 
@@ -699,6 +729,19 @@ def capture_launcher_application_presentation() -> (
     if launcher is None:
         return None
     return manifest, partial(_invoke, launcher, operation="application_presentation")
+
+
+def capture_launcher_conversation_complete() -> (
+    tuple[str, Callable[[NativeConversationCompleteRequest], dict[str, Any]]] | None
+):
+    """Capture the Launcher-attested Conversation manifest and authenticated port."""
+    manifest = os.environ.get(_CONVERSATION_COMPLETE_ENV)
+    if manifest is None or _TURN_INPUT_DIGEST.fullmatch(manifest) is None:
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return manifest, partial(_invoke, launcher, operation="conversation_complete")
 
 
 def capture_launcher_ai_routing_evaluator() -> (
@@ -966,6 +1009,14 @@ def _start_payload(
             raise _ProtocolError("native Application presentation input is invalid")
         frame["application_presentation"] = {
             "role": borrow.role, "input_bytes": body_input_bytes,
+        }
+    elif isinstance(borrow, NativeConversationCompleteRequest):
+        if not 0 < body_input_bytes <= _CONVERSATION_COMPLETE_INPUT_LIMITS.get(
+            borrow.phase, 0,
+        ):
+            raise _ProtocolError("native Conversation phase or input size is invalid")
+        frame["conversation_complete"] = {
+            "phase": borrow.phase, "input_bytes": body_input_bytes,
         }
     elif isinstance(borrow, NativeAiRoutingRequest):
         if not 0 < body_input_bytes <= _AI_ROUTING_LIMIT:
@@ -1912,7 +1963,8 @@ class _Exchange:
         conversation_mutation: bool,
         requires_body_ready: bool,
         ai_routing: bool = False,
-        application_presentation: bool = False,
+        read_only_body: bool = False,
+        conversation_complete: bool = False,
         permits_dispatch: bool = False,
         accepts_projected_local_chat: bool = False,
         compiles_local_chat_request: bool = False,
@@ -1925,7 +1977,7 @@ class _Exchange:
         self.accepts_projected_local_chat = accepts_projected_local_chat
         self.requires_body_ready = requires_body_ready
         self.ai_routing = ai_routing
-        self.read_only_body = ai_routing or application_presentation
+        self.read_only_body = ai_routing or read_only_body
         self.legacy_failure = (
             _CONVERSATION_LEGACY_READ_FAILURE
             if conversation_mutation
@@ -1938,6 +1990,8 @@ class _Exchange:
             self.failure_codes |= {_LEGACY_REQUEST_FAILURE}
         if compiles_local_chat_policy:
             self.failure_codes |= _LOCAL_CHAT_POLICY_FAILURES
+        if conversation_complete:
+            self.failure_codes = _CONVERSATION_COMPLETE_FAILURES
         if not requires_body_ready or ai_routing:
             self.failure_codes |= {self.legacy_failure}
         if conversation_mutation:
@@ -2157,6 +2211,11 @@ class _Exchange:
                         "owner requires a legacy read outside the native envelope",
                     )
                 if payload != self.legacy_failure:
+                    if isinstance(borrow, NativeConversationCompleteRequest):
+                        wait_seconds()
+                        raise NativeConversationCompleteFailure(
+                            borrow.phase, payload.decode("ascii"),
+                        )
                     if isinstance(borrow, NativeSavedOrchestrationRequest):
                         wait_seconds()
                         raise NativeSavedOrchestrationFailure(payload.decode("ascii"))
@@ -2274,11 +2333,17 @@ class _Exchange:
                         plan = _decode_ai_routing(payload)
                 else:
                     plan = _decode_plan(payload, self.plan_limit)
+                    if (
+                        isinstance(borrow, NativeConversationCompleteRequest)
+                        and canonical_json(plan) != payload
+                    ):
+                        raise _ProtocolError("native Conversation result is not canonical")
                 wait_seconds()
                 self.terminal = True
                 return plan
             elif (
                 tag == _INAPPLICABLE
+                and not isinstance(borrow, NativeConversationCompleteRequest)
                 and not self.entered_live_phase
                 and (not self.requires_body_ready or body_input is not None)
             ):
@@ -2438,6 +2503,7 @@ def _invoke(
     turn_start = isinstance(borrow, NativeSavedTurnStartRequest)
     saved_orchestration = isinstance(borrow, NativeSavedOrchestrationRequest)
     application_presentation = isinstance(borrow, NativeApplicationPresentationRequest)
+    conversation_complete = isinstance(borrow, NativeConversationCompleteRequest)
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
@@ -2452,6 +2518,7 @@ def _invoke(
         or turn_start != (operation == "turn_start")
         or saved_orchestration != (operation == "saved_orchestration")
         or application_presentation != (operation == "application_presentation")
+        or conversation_complete != (operation == "conversation_complete")
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
         or model_resolve != (operation == "model_resolve")
@@ -2469,8 +2536,15 @@ def _invoke(
         body_input = canonical_json(dict(borrow.input))
         if len(body_input) > _APPLICATION_PRESENTATION_INPUT_LIMIT:
             raise _ProtocolError("native Application presentation input exceeds IPC limit")
+    elif isinstance(borrow, NativeConversationCompleteRequest):
+        wait_seconds()
+        if not isinstance(borrow.input, Mapping):
+            raise _ProtocolError("native Conversation input must be an object")
+        body_input = canonical_json(dict(borrow.input))
+        if len(body_input) > _CONVERSATION_COMPLETE_INPUT_LIMITS.get(borrow.phase, 0):
+            raise _ProtocolError("native Conversation phase or input size is invalid")
     with _connect_launcher(launcher, wait_seconds) as connection:
-        if saved_orchestration:
+        if saved_orchestration or conversation_complete:
             plan_limit = MAX_CANONICAL_JSON_BYTES
         elif turn_start:
             plan_limit = _TURN_START_RESULT_LIMIT
@@ -2493,9 +2567,13 @@ def _invoke(
                 or conversation_append
             ),
             conversation_mutation=conversation_confirmation or conversation_append,
-            requires_body_ready=saved_orchestration or ai_routing or application_presentation,
+            requires_body_ready=(
+                saved_orchestration or ai_routing or application_presentation
+                or conversation_complete
+            ),
             ai_routing=ai_routing,
-            application_presentation=application_presentation,
+            read_only_body=application_presentation or conversation_complete,
+            conversation_complete=conversation_complete,
         )
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds, body_input=body_input)

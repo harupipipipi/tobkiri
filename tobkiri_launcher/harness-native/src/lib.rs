@@ -56,13 +56,14 @@ pub use original_authority::{
 };
 #[cfg(unix)]
 pub use original_provider_prepare_selection::{
-    ApplicationPresentationRole, OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalConversationAppendChoice,
-    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalFailoverChoice, OriginalModelResolveRole, OriginalModelResolveSelection,
-    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRequestPrepareChoice, OriginalRoutePin, OriginalRoutePin as OriginalProviderPreparePin,
-    OriginalRouteSelectionError, OriginalRouteSelectionError as OriginalModelResolveSelectionError,
+    ApplicationPresentationRole, CONVERSATION_COMPLETE_APPLICATION_ID, OriginalAiRoutingSelection,
+    OriginalApplicationPresentationChoice, OriginalConversationAppendChoice,
+    OriginalConversationCompleteChoice, OriginalConversationConfirmationChoice,
+    OriginalConversationReadSelection, OriginalFailoverChoice, OriginalModelResolveRole,
+    OriginalModelResolveSelection, OriginalModelSaveSelection, OriginalModelSettingsSelection,
+    OriginalProviderPrepareSelection, OriginalRequestPrepareChoice, OriginalRoutePin,
+    OriginalRoutePin as OriginalProviderPreparePin, OriginalRouteSelectionError,
+    OriginalRouteSelectionError as OriginalModelResolveSelectionError,
     OriginalRouteSelectionError as OriginalModelSaveSelectionError,
     OriginalRouteSelectionError as OriginalModelSettingsSelectionError,
     OriginalRouteSelectionError as OriginalProviderPrepareSelectionError,

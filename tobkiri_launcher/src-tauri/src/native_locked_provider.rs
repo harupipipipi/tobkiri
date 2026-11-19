@@ -15,9 +15,10 @@ use tobkiri_core::{
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
-    OriginalAiRoutingSelection, OriginalApplicationPresentationChoice, OriginalFailoverChoice,
-    OriginalRequestPrepareChoice, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
-    OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
+    OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
+    OriginalConversationCompleteChoice, OriginalFailoverChoice, OriginalRequestPrepareChoice,
+    OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
+    OriginalToolIntentsChoice, OriginalUsageCostChoice, CONVERSATION_COMPLETE_APPLICATION_ID,
 };
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
@@ -104,6 +105,17 @@ pub(crate) struct LockedApplicationPresentationBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
+/// The signed Shell, Application, Conversation, and Gateway documents.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedConversationCompleteBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    routes: [LockedRegistryRoute<'pin>; 2],
+    shell_pack: LockedDocument,
+    application_pack: LockedDocument,
+    choice: &'pin OriginalConversationCompleteChoice<'pin>,
+    budget: Arc<dyn AllocationBudget>,
+}
+
 /// The exact installed source from which Launcher verified an ordinary saved route.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -177,7 +189,7 @@ impl NativeApplicationSources {
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<LockedApplicationPresentationBundle<'pin>>> {
         let [caller, presentation] = choice.pins();
-        if presentation.pack_id() != self.authority.application_id {
+        if !self.owns_runtime_pack(presentation.pack_id()) {
             return Ok(None);
         }
         ensure!(
@@ -190,6 +202,46 @@ impl NativeApplicationSources {
         Ok(Some(LockedApplicationPresentationBundle {
             source: VerifiedOrdinarySavedBundle::new(self)?,
             routes: [from_lock(caller)?, from_lock(presentation)?],
+            budget: Arc::clone(budget),
+        }))
+    }
+
+    /// Capture the original owned Conversation operation and its Gateway grant.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn conversation_complete_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalConversationCompleteChoice<'pin>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<LockedConversationCompleteBundle<'pin>>> {
+        let [conversation, gateway] = choice.pins();
+        if !self.owns_runtime_pack(conversation.pack_id())
+            || self.authority.application_id != CONVERSATION_COMPLETE_APPLICATION_ID
+        {
+            return Ok(None);
+        }
+        let shell_id = self.authority.shell_provider_id.as_str();
+        ensure!(
+            shell_id == "shell.tauri.default"
+                && conversation.caller_function_id() == shell_id
+                && gateway.caller_function_id() == conversation.function_id()
+                && self.authority.launch.provider_id == CONVERSATION_COMPLETE_APPLICATION_ID
+                && self.authority.launch.entrypoint_digest == choice.application_artifacts()[1],
+            "Conversation Complete differs from the selected Shell and Application launch"
+        );
+        let lock = &self.bundle_lock;
+        Ok(Some(LockedConversationCompleteBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            routes: [
+                LockedRegistryRoute::from_lock(lock, conversation, budget)?,
+                LockedRegistryRoute::from_lock(lock, gateway, budget)?,
+            ],
+            shell_pack: LockedDocument::pack_from_lock(lock, shell_id, budget)?,
+            application_pack: LockedDocument::pack_from_lock(
+                lock,
+                CONVERSATION_COMPLETE_APPLICATION_ID,
+                budget,
+            )?,
+            choice,
             budget: Arc::clone(budget),
         }))
     }
@@ -855,6 +907,55 @@ impl LockedApplicationPresentationBundle<'_> {
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedConversationCompleteBundle<'_> {
+    /// Prove the original pure Conversation operation and its privileged Gateway child.
+    pub(crate) fn verify(
+        self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        self.source.revalidate(&self.budget, &mut checkpoint)?;
+        let mut source = self.source.verify_routes(
+            &[Some(self.routes)],
+            &self.budget,
+            &mut checkpoint,
+            ["pure", "privileged"],
+        )?;
+        for (document, pack_id, kind, [artifact, executable]) in [
+            (
+                self.shell_pack,
+                "shell.tauri.default",
+                "shell",
+                self.choice.shell_artifacts(),
+            ),
+            (
+                self.application_pack,
+                CONVERSATION_COMPLETE_APPLICATION_ID,
+                "application",
+                self.choice.application_artifacts(),
+            ),
+        ] {
+            let pack = document.read(&source.bundle_root, &self.budget, &mut checkpoint)?;
+            let identity = pack
+                .get_key("pack")
+                .context("missing locked launch Pack identity")?;
+            let function = unique_row(&pack, "functions", "id", pack_id)?;
+            ensure!(
+                text_matches(&identity, "id", pack_id)
+                    && text_matches(&identity, "kind", kind)
+                    && text_matches(&identity, "artifact_digest", artifact)
+                    && text_matches(&function, "implementation_digest", executable),
+                "Conversation Complete differs from the signed Shell or Application Pack"
+            );
+            source
+                .documents
+                .push((document.path.as_str()?.to_owned(), document.digest));
+        }
+        checkpoint()?;
+        Ok(source)
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 impl VerifiedOrdinarySavedBundle {
     fn verify_routes<const N: usize>(
         mut self,
@@ -934,15 +1035,6 @@ impl<'pin> LockedRegistryRoute<'pin> {
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Self> {
         let pack_id = pin.pack_id();
-        let path = lock
-            .pack_paths
-            .get(pack_id)
-            .filter(|path| lock.authority_roles.get(*path) == Some(&BundleEntryKind::Pack))
-            .context("legacy Registry Pack is absent from the accepted Bundle authority")?;
-        let pack_digest = lock
-            .authority_digests
-            .get(path)
-            .context("legacy Registry Pack is missing its accepted Bundle digest")?;
         let (catalog_path, catalog_digest) = lock
             .sidecar_digests
             .iter()
@@ -955,7 +1047,7 @@ impl<'pin> LockedRegistryRoute<'pin> {
             .context("legacy Registry executable catalog is absent from the accepted Bundle")?;
         Ok(Self {
             pin,
-            pack: LockedDocument::new(path, pack_digest, budget)?,
+            pack: LockedDocument::pack_from_lock(lock, pack_id, budget)?,
             catalog: LockedDocument::new(catalog_path, catalog_digest, budget)?,
         })
     }
@@ -1113,6 +1205,23 @@ struct LockedDocument {
 }
 
 impl LockedDocument {
+    fn pack_from_lock(
+        lock: &VerifiedBundleLock,
+        pack_id: &str,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Self> {
+        let path = lock
+            .pack_paths
+            .get(pack_id)
+            .filter(|path| lock.authority_roles.get(*path) == Some(&BundleEntryKind::Pack))
+            .context("legacy Registry Pack is absent from the accepted Bundle authority")?;
+        let digest = lock
+            .authority_digests
+            .get(path)
+            .context("legacy Registry Pack is missing its accepted Bundle digest")?;
+        Self::new(path, digest, budget)
+    }
+
     fn new(path: &str, digest: &str, budget: &Arc<dyn AllocationBudget>) -> Result<Self> {
         Ok(Self {
             path: CoreBuffer::copy_from(path.as_bytes(), budget)?,

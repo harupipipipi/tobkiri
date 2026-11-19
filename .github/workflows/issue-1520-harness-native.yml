@@ -658,17 +658,22 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::launch_metadata::tests::saved_orchestration_declaration_pins_the_effect_free_step -- --exact
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-application-presentation.log" --expected-passed 9 -- \
+              --log "$RUNNER_TEMP/harness-native-application-presentation.log" --expected-passed 7 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib application_presentation_
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 50 -- \
+              --log "$RUNNER_TEMP/harness-native-conversation-complete.log" --expected-passed 7 -- \
+              cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+              --target aarch64-apple-darwin --features "$features" \
+              --lib conversation_complete_
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
+              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 53 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_provider_prepare_ipc::tests
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 26 -- \
+              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 28 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::provider_prepare::tests
@@ -815,7 +820,11 @@ jobs:
           cargo rustc --locked --release --target wasm32-unknown-unknown --manifest-path packs/Cargo.toml \
             -p tobkiri-pack-application-presentation-rust --features component \
             -- -C link-arg=--wasi-adapter=none
+          cargo rustc --locked --release --target wasm32-unknown-unknown --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-conversation-complete-rust --features component \
+            -- -C link-arg=--wasi-adapter=none
           cp "$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/tobkiri_pack_application_presentation_rust.wasm" \
+            "$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/tobkiri_pack_conversation_complete_rust.wasm" \
             "$CARGO_TARGET_DIR/wasm32-wasip2/release/"
           cargo build --locked -p tobkiri-cli --bin tobkiri
           python3 -B packs/stage_registry_packs.py \
@@ -823,7 +832,7 @@ jobs:
             --components "$CARGO_TARGET_DIR/wasm32-wasip2/release" \
             --pack provider-registry --pack model-registry --pack saved-conversation \
             --pack saved-turn-runtime --pack saved-orchestration --pack provider-adapter \
-            --pack ai-routing --pack application-presentation \
+            --pack ai-routing --pack application-presentation --pack conversation-complete \
             --output "$RUNNER_TEMP/native-registry-packs"
           receipt_sha256="$(shasum -a 256 "$RUNNER_TEMP/native-registry-packs/receipt.json" | cut -d ' ' -f 1)"
           printf 'receipt_sha256=%s\n' "$receipt_sha256" >> "$GITHUB_OUTPUT"
@@ -876,6 +885,26 @@ jobs:
             --log "$RUNNER_TEMP/application-presentation-check.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test application_presentation \
               application_presentation_uses_verified_wasm_port -- --ignored --exact --nocapture
+      - name: Replay the original Conversation complete guest through the packaged Wasm ports
+        env:
+          TOBKIRI_CONVERSATION_COMPLETE_TPK: ${{ runner.temp }}/native-registry-packs/local.conversation-complete.tpk
+          TOBKIRI_CONVERSATION_COMPLETE_REFERENCE: ${{ runner.temp }}/conversation-complete-reference.json
+        run: |
+          set -euo pipefail
+          python3 -B -I -S tools/quality/export_conversation_complete_reference.py \
+            --output "$TOBKIRI_CONVERSATION_COMPLETE_REFERENCE"
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/conversation-complete-check.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test conversation_complete \
+              conversation_complete_replays_original_guest -- --ignored --exact
+      - name: Recover the actual Conversation Store after both writers exit
+        run: |
+          set -euo pipefail
+          export TOBKIRI_LEGACY_CONVERSATION_TEST_PYTHON="$(command -v python3)"
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/conversation-lock-recovery.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-store --test legacy_conversation_recovery \
+              conversation_lock_recovers_between_python_and_rust -- --ignored --exact
       - uses: actions/upload-artifact@v4
         with:
           name: native-registry-packs

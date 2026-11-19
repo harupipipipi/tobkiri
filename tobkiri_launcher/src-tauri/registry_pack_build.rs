@@ -125,14 +125,16 @@ mod unix {
         use super::super::super::registry_pack_receipt::{
             verify_installed, verify_installed_with_ai_routing,
             verify_installed_with_application_presentation, verify_installed_with_conversation,
-            verify_installed_with_model, verify_installed_with_orchestration,
-            verify_installed_with_orchestration_archives, verify_installed_with_provider,
-            verify_installed_with_provider_adapter, verify_installed_with_provider_and_model,
-            verify_installed_with_settlement, Pack, AI_ROUTING_PACK_ID, AI_ROUTING_RECEIPT_FORMAT,
-            APPLICATION_PRESENTATION_PACK_ID, APPLICATION_PRESENTATION_RECEIPT_FORMAT,
-            ARCHIVE_LIMIT, ORCHESTRATION_PACK_ID, ORCHESTRATION_RECEIPT_FORMAT, PACK_IDS,
-            PROVIDER_ADAPTER_PACK_ID, PROVIDER_ADAPTER_RECEIPT_FORMAT, RECEIPT_FORMAT,
-            SETTLEMENT_PACK_ID, SETTLEMENT_RECEIPT_FORMAT,
+            verify_installed_with_conversation_complete, verify_installed_with_model,
+            verify_installed_with_orchestration, verify_installed_with_orchestration_archives,
+            verify_installed_with_provider, verify_installed_with_provider_adapter,
+            verify_installed_with_provider_and_model, verify_installed_with_settlement, Pack,
+            AI_ROUTING_PACK_ID, AI_ROUTING_RECEIPT_FORMAT, APPLICATION_PRESENTATION_PACK_ID,
+            APPLICATION_PRESENTATION_RECEIPT_FORMAT, ARCHIVE_LIMIT, CONVERSATION_COMPLETE_PACK_ID,
+            CONVERSATION_COMPLETE_RECEIPT_FORMAT, ORCHESTRATION_PACK_ID,
+            ORCHESTRATION_RECEIPT_FORMAT, PACK_IDS, PROVIDER_ADAPTER_PACK_ID,
+            PROVIDER_ADAPTER_RECEIPT_FORMAT, RECEIPT_FORMAT, SETTLEMENT_PACK_ID,
+            SETTLEMENT_RECEIPT_FORMAT,
         };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
         use super::*;
@@ -801,6 +803,64 @@ mod unix {
             fs::write(archive, "local.application-presentatioN")?;
             assert!(inspect().is_err());
             receipt["packs"][7]["version"] = json!("0.1.1");
+            assert!(fixture
+                .write_receipt(&receipt)?
+                .stage(&fixture.root)
+                .is_err());
+            Ok(())
+        }
+
+        #[test]
+        fn v7_receipt_pins_conversation_complete() -> io::Result<()> {
+            let ids = PACK_IDS.into_iter().chain([
+                SETTLEMENT_PACK_ID,
+                ORCHESTRATION_PACK_ID,
+                PROVIDER_ADAPTER_PACK_ID,
+                AI_ROUTING_PACK_ID,
+                APPLICATION_PRESENTATION_PACK_ID,
+                CONVERSATION_COMPLETE_PACK_ID,
+            ]);
+            let previous =
+                Fixture::with_packs(APPLICATION_PRESENTATION_RECEIPT_FORMAT, ids.clone().take(8))?;
+            let input = previous.write_receipt(&previous.document)?;
+            input.stage(&previous.stage)?;
+            assert_eq!(
+                verify_installed_with_conversation_complete(
+                    &previous.stage,
+                    input.receipt_sha256(),
+                    || Ok(()),
+                    |_, _| panic!("unexpected v6 Pack"),
+                )?,
+                None::<()>
+            );
+
+            let fixture = Fixture::with_packs(CONVERSATION_COMPLETE_RECEIPT_FORMAT, ids)?;
+            let mut receipt = fixture.document.clone();
+            let input = fixture.write_receipt(&receipt)?;
+            input.stage(&fixture.stage)?;
+            let check = || {
+                verify_installed_with_conversation_complete(
+                    &fixture.stage,
+                    input.receipt_sha256(),
+                    || Ok(()),
+                    |pack, reader| {
+                        assert_eq!(pack.id(), CONVERSATION_COMPLETE_PACK_ID);
+                        let mut bytes = String::new();
+                        reader.read_to_string(&mut bytes)?;
+                        Ok(bytes)
+                    },
+                )
+            };
+            assert_eq!(check()?.as_deref(), Some(CONVERSATION_COMPLETE_PACK_ID));
+            fs::write(
+                fixture
+                    .stage
+                    .join(DIRECTORY)
+                    .join(format!("{CONVERSATION_COMPLETE_PACK_ID}.tpk")),
+                "local.conversation-completE",
+            )?;
+            assert!(check().is_err());
+            receipt["packs"][8]["version"] = json!("0.1.1");
             assert!(fixture
                 .write_receipt(&receipt)?
                 .stage(&fixture.root)

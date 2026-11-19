@@ -27,7 +27,7 @@ use crate::{
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
         start_provider_prepare, AiGatewayDataOperation, AiGatewayDataRequiresLegacyCodec,
-        ApplicationPresentationRole, ConversationReadCaller,
+        ApplicationPresentationRole, ConversationCompletePhase, ConversationReadCaller,
         ConversationRegistryRequiresLegacyRead, ConversationWriteRequiresLegacyRead,
         ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
         OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
@@ -35,8 +35,9 @@ use crate::{
         SavedTurnStartAction, SettlementCaller, TurnSettlementRequiresLegacyCodec,
         TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
         APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
-        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
-        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+        CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
+        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
+        TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -105,6 +106,8 @@ struct Start<'a> {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     application_presentation: Option<ApplicationPresentationStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
+    conversation_complete: Option<ConversationCompleteStart>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     saved_local_chat: Option<SavedLocalChatStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     ai_route: Option<AiRoutingStart>,
@@ -119,6 +122,10 @@ enum RequestStart {
         role: ApplicationPresentationRole,
         input_bytes: usize,
     },
+    ConversationComplete {
+        phase: ConversationCompletePhase,
+        input_bytes: usize,
+    },
     SavedLocalChat(SavedLocalChatStart),
     AiGatewayData {
         operation: AiGatewayDataOperation,
@@ -126,9 +133,25 @@ enum RequestStart {
     },
 }
 
+impl RequestStart {
+    fn reject_missing_launch_proof(
+        &self,
+        stream: &mut UnixStream,
+        deadline: Instant,
+    ) -> Result<()> {
+        let (tag, payload): (u8, &[u8]) = match self {
+            Self::ConversationComplete { .. } => (FAILURE, b"denied"),
+            Self::ApplicationPresentation { .. } => (FAILURE, b"unavailable"),
+            _ => (INAPPLICABLE, &[]),
+        };
+        send_frame(stream, tag, payload, deadline)
+    }
+}
+
 enum BodyStart<'a> {
     SavedOrchestration(&'a SavedOrchestrationStart),
     ApplicationPresentation(&'a ApplicationPresentationStart),
+    ConversationComplete(&'a ConversationCompleteStart),
     SavedLocalChat(&'a SavedLocalChatStart),
     AiRouting(&'a AiRoutingStart),
 }
@@ -164,16 +187,20 @@ impl Start<'_> {
         let body = match (
             &self.saved_orchestration,
             &self.application_presentation,
+            &self.conversation_complete,
             &self.saved_local_chat,
             &self.ai_route,
         ) {
-            (None, None, None, None) => None,
-            (Some(saved), None, None, None) => Some(BodyStart::SavedOrchestration(saved)),
-            (None, Some(presentation), None, None) => {
+            (None, None, None, None, None) => None,
+            (Some(saved), None, None, None, None) => Some(BodyStart::SavedOrchestration(saved)),
+            (None, Some(presentation), None, None, None) => {
                 Some(BodyStart::ApplicationPresentation(presentation))
             }
-            (None, None, Some(chat), None) => Some(BodyStart::SavedLocalChat(chat)),
-            (None, None, None, Some(routing)) => Some(BodyStart::AiRouting(routing)),
+            (None, None, Some(complete), None, None) => {
+                Some(BodyStart::ConversationComplete(complete))
+            }
+            (None, None, None, Some(chat), None) => Some(BodyStart::SavedLocalChat(chat)),
+            (None, None, None, None, Some(routing)) => Some(BodyStart::AiRouting(routing)),
             _ => bail!("native Registry start must name exactly one operation"),
         };
         let operation = match (
@@ -309,6 +336,26 @@ impl Start<'_> {
                 None,
                 None,
                 None,
+                Some(BodyStart::ConversationComplete(complete)),
+                None,
+            ) => {
+                complete.phase.check_input_size(complete.input_bytes)?;
+                return Ok(RequestStart::ConversationComplete {
+                    phase: complete.phase,
+                    input_bytes: complete.input_bytes,
+                });
+            }
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
                 Some(BodyStart::SavedLocalChat(chat)),
                 None,
             ) => return Ok(RequestStart::SavedLocalChat(chat.clone())),
@@ -347,6 +394,7 @@ impl Start<'_> {
             RequestStart::Inline(operation) => Ok(operation),
             RequestStart::SavedOrchestration { .. }
             | RequestStart::ApplicationPresentation { .. }
+            | RequestStart::ConversationComplete { .. }
             | RequestStart::SavedLocalChat(_)
             | RequestStart::AiGatewayData { .. } => {
                 bail!("request needs a body")
@@ -430,6 +478,13 @@ struct SavedOrchestrationStart {
 struct ApplicationPresentationStart {
     #[serde(deserialize_with = "deserialize_application_presentation_role")]
     role: ApplicationPresentationRole,
+    input_bytes: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationCompleteStart {
+    phase: ConversationCompletePhase,
     input_bytes: usize,
 }
 
@@ -1070,7 +1125,8 @@ fn parse_start(tag: u8, bytes: &[u8]) -> Result<Start<'_>> {
     ensure!(
         (start.turn_start.is_none()
             && start.saved_local_chat.is_none()
-            && start.application_presentation.is_none())
+            && start.application_presentation.is_none()
+            && start.conversation_complete.is_none())
             || bytes.iter().find(|byte| !byte.is_ascii_whitespace()) == Some(&b'{'),
         "native Registry start requires a named operation"
     );
@@ -1105,11 +1161,29 @@ pub(crate) fn admit_connection(
     );
     ensure!(start.security_epoch != 0, "invalid Provider prepare epoch");
     let deadline = host_deadline(start.deadline_ns)?;
-    let request = start.request_start()?;
+    let request = match start.request_start() {
+        Ok(request) => request,
+        Err(error)
+            if start.conversation_complete.is_some()
+                && error.is::<SavedOrchestrationStepError>() =>
+        {
+            send_frame(
+                &mut stream,
+                FAILURE,
+                ReplyRole::ConversationComplete
+                    .failure_code(WireAuthority::AwaitingLive, &error)
+                    .as_bytes(),
+                deadline.min(Instant::now() + FRAME_TIMEOUT),
+            )?;
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
     let needs_active_host = matches!(
         &request,
         RequestStart::SavedOrchestration { .. }
             | RequestStart::ApplicationPresentation { .. }
+            | RequestStart::ConversationComplete { .. }
             | RequestStart::AiGatewayData { .. }
             | RequestStart::SavedLocalChat(_)
             | RequestStart::Inline(
@@ -1182,20 +1256,13 @@ pub(crate) fn admit_connection(
         RequestStart::ApplicationPresentation { role, .. } => {
             proof.permits_application_presentation(*role)
         }
+        RequestStart::ConversationComplete { .. } => proof.permits_conversation_complete(),
         RequestStart::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
         RequestStart::SavedLocalChat(chat) => proof.permits_saved_local_chat(chat.role),
     };
     if !matches_runtime || !has_launch_proof {
-        let (tag, payload): (u8, &[u8]) =
-            if matches!(request, RequestStart::ApplicationPresentation { .. }) {
-                (FAILURE, b"unavailable")
-            } else {
-                (INAPPLICABLE, &[])
-            };
-        send_frame(
+        request.reject_missing_launch_proof(
             &mut stream,
-            tag,
-            payload,
             deadline.min(Instant::now() + FRAME_TIMEOUT),
         )?;
         return Ok(None);
@@ -1277,8 +1344,27 @@ impl AdmittedConnection {
                         role,
                         input_bytes,
                         receive_input: Box::new(move |deadline| {
-                            input_connection
-                                .receive_application_presentation_input(input_bytes, deadline)
+                            input_connection.receive_funded_input(input_bytes, deadline)
+                        }),
+                    },
+                );
+            }
+            RequestStart::ConversationComplete { phase, input_bytes } => {
+                let connection = Connection::new(
+                    manager,
+                    candidate,
+                    stream,
+                    deadline,
+                    ReplyRole::ConversationComplete,
+                );
+                let input_connection = Arc::clone(&connection);
+                return connection.run(
+                    app,
+                    NativeRegistryRequest::ConversationComplete {
+                        phase,
+                        input_bytes,
+                        receive_input: Box::new(move |deadline| {
+                            input_connection.receive_funded_input(input_bytes, deadline)
                         }),
                     },
                 );
@@ -1332,6 +1418,7 @@ impl AdmittedConnection {
             NativeRegistryRequest::ApplicationPresentation { .. } => {
                 ReplyRole::ApplicationPresentation
             }
+            NativeRegistryRequest::ConversationComplete { .. } => ReplyRole::ConversationComplete,
             NativeRegistryRequest::AiGatewayData { .. } => ReplyRole::AiGatewayData,
             NativeRegistryRequest::SavedLocalChat { .. } => ReplyRole::SavedLocalChat,
         };
@@ -1353,11 +1440,19 @@ enum ReplyRole {
     TurnSettlement,
     SavedOrchestration,
     ApplicationPresentation,
+    ConversationComplete,
     AiGatewayData,
     SavedLocalChat,
 }
 
 impl ReplyRole {
+    fn uses_funded_input(self) -> bool {
+        matches!(
+            self,
+            Self::ApplicationPresentation | Self::ConversationComplete
+        )
+    }
+
     fn effect_check(self) -> Option<AuthorityCheck> {
         if self == Self::SavedLocalChat {
             Some(AuthorityCheck::Dispatch)
@@ -1403,6 +1498,7 @@ impl ReplyRole {
             Self::ApplicationPresentation => {
                 (APPLICATION_PRESENTATION_RESULT_LIMIT, "limit-exceeded")
             }
+            Self::ConversationComplete => (CONVERSATION_COMPLETE_RESULT_LIMIT, "limit-exceeded"),
             Self::AiGatewayData => (AI_GATEWAY_DATA_LIMIT, "limit-exceeded"),
             Self::SavedLocalChat => (LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, "invalid-response"),
             Self::TurnStart(_) if authority == WireAuthority::PublicationPermitted => {
@@ -1466,7 +1562,10 @@ impl ReplyRole {
         }
         if matches!(
             self,
-            Self::SavedOrchestration | Self::ApplicationPresentation | Self::AiGatewayData
+            Self::SavedOrchestration
+                | Self::ApplicationPresentation
+                | Self::ConversationComplete
+                | Self::AiGatewayData
         ) {
             return match error.downcast_ref::<SavedOrchestrationStepError>() {
                 Some(SavedOrchestrationStepError::Invalid) => "invalid",
@@ -1578,6 +1677,7 @@ impl ReplyRole {
             Self::TurnRead
                 | Self::SavedOrchestration
                 | Self::ApplicationPresentation
+                | Self::ConversationComplete
                 | Self::AiGatewayData
         ) {
             if authority != WireAuthority::Live {
@@ -1614,7 +1714,7 @@ struct Wire {
     stream: UnixStream,
     stop: Option<Stop>,
     authority: WireAuthority,
-    presentation_input_received: bool,
+    funded_input_received: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1674,17 +1774,11 @@ impl Connection {
         self.finish(pending)
     }
 
-    fn receive_application_presentation_input(
-        &self,
-        input_bytes: usize,
-        deadline: Instant,
-    ) -> Result<Vec<u8>> {
+    fn receive_funded_input(&self, input_bytes: usize, deadline: Instant) -> Result<Vec<u8>> {
         let mut wire = self.lock_wire()?;
         self.checkpoint(&mut wire)?;
-        let input = wire.receive_application_presentation_input(
-            input_bytes,
-            deadline.min(Instant::now() + FRAME_TIMEOUT),
-        )?;
+        let input =
+            wire.receive_funded_input(input_bytes, deadline.min(Instant::now() + FRAME_TIMEOUT))?;
         self.checkpoint(&mut wire)?;
         Ok(input)
     }
@@ -1715,10 +1809,10 @@ impl Connection {
     fn authorize(&self, check: AuthorityCheck) -> Result<()> {
         let mut wire = self.lock_wire()?;
         self.checkpoint(&mut wire)?;
-        if self.reply == ReplyRole::ApplicationPresentation {
+        if self.reply.uses_funded_input() {
             ensure!(
-                wire.presentation_input_received && check == AuthorityCheck::Live,
-                "application presentation is outside its live phase"
+                wire.funded_input_received && check == AuthorityCheck::Live,
+                "native Registry DATA request is outside its live phase"
             );
         }
         let deadline = self.deadline.current().min(Instant::now() + FRAME_TIMEOUT);
@@ -1844,15 +1938,15 @@ impl Wire {
             stream,
             stop: None,
             authority: WireAuthority::AwaitingLive,
-            presentation_input_received: false,
+            funded_input_received: false,
         }
     }
 
-    fn receive_application_presentation_input(
-        &mut self,
-        input_bytes: usize,
-        deadline: Instant,
-    ) -> Result<Vec<u8>> {
+    fn receive_funded_input(&mut self, input_bytes: usize, deadline: Instant) -> Result<Vec<u8>> {
+        ensure!(
+            !self.funded_input_received && self.authority == WireAuthority::AwaitingLive,
+            "native Registry DATA body is outside its input phase"
+        );
         self.check_idle(deadline)?;
         let received = (|| {
             send_frame(&mut self.stream, BODY_READY, &[], deadline)?;
@@ -1866,7 +1960,7 @@ impl Wire {
         })();
         let stop = match received {
             Ok(Ok(input)) => {
-                self.presentation_input_received = true;
+                self.funded_input_received = true;
                 return Ok(input);
             }
             Ok(Err(stop)) => stop,
@@ -3179,42 +3273,140 @@ mod tests {
     }
 
     #[test]
-    fn application_presentation_reads_exact_body_before_the_live_check() {
-        let (mut client, server) = UnixStream::pair().unwrap();
-        client.set_nonblocking(true).unwrap();
-        server.set_nonblocking(true).unwrap();
-        let input = format!(
-            r#"{{"kind":"ui","example":"猫{}"}}"#,
-            "a".repeat(
-                APPLICATION_PRESENTATION_INPUT_LIMIT - r#"{"kind":"ui","example":"猫"}"#.len()
-            )
-        );
-        assert_eq!(input.len(), APPLICATION_PRESENTATION_INPUT_LIMIT);
-        let deadline = Instant::now() + FRAME_TIMEOUT;
-        let worker = thread::spawn(move || {
-            let mut wire = Wire::new(server);
-            assert!(!wire.presentation_input_received);
-            let input = wire
-                .receive_application_presentation_input(
-                    APPLICATION_PRESENTATION_INPUT_LIMIT,
-                    deadline,
-                )
-                .unwrap();
-            assert!(wire.presentation_input_received);
-            wire.exchange_authority(AuthorityCheck::Live, deadline)
-                .unwrap();
-            assert!(wire.authority == WireAuthority::Live);
-            input
-        });
-        assert_eq!(read_header(&mut client, deadline).unwrap(), (BODY_READY, 0));
-        send_frame(&mut client, ORCHESTRATION_INPUT, input.as_bytes(), deadline).unwrap();
-        assert_eq!(read_header(&mut client, deadline).unwrap(), (CHECK, 0));
-        send_frame(&mut client, LIVE, &[], deadline).unwrap();
-        assert_eq!(worker.join().unwrap(), input.as_bytes());
+    fn conversation_complete_start_requires_one_exact_phase_and_its_length() {
+        let start = |descriptor: &str, extra: &str| {
+            start_frame(&format!(r#", "conversation_complete":{descriptor}{extra}"#))
+        };
+        for (name, phase, limit) in [
+            ("prepare", ConversationCompletePhase::Prepare, 1024 * 1024),
+            ("finish", ConversationCompletePhase::Finish, 512 * 1024),
+        ] {
+            for input_bytes in [1, limit] {
+                let frame = start(
+                    &format!(r#"{{"phase":"{name}","input_bytes":{input_bytes}}}"#),
+                    "",
+                );
+                assert!(matches!(
+                    parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                    Ok(RequestStart::ConversationComplete { phase: actual, input_bytes: declared })
+                        if actual == phase && declared == input_bytes
+                ));
+                assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+            }
+            for (input_bytes, expected) in [
+                (0, SavedOrchestrationStepError::Invalid),
+                (limit + 1, SavedOrchestrationStepError::Capacity),
+            ] {
+                let frame = start(
+                    &format!(r#"{{"phase":"{name}","input_bytes":{input_bytes}}}"#),
+                    "",
+                );
+                let result = parse_start(START, frame.as_bytes())
+                    .unwrap()
+                    .request_start();
+                assert!(
+                    matches!(result, Err(error) if error.is::<SavedOrchestrationStepError>()
+                    && error.downcast_ref() == Some(&expected))
+                );
+            }
+        }
+        for (descriptor, extra) in [
+            ("null", ""),
+            (r#"["prepare",1]"#, ""),
+            (r#"{"input_bytes":1}"#, ""),
+            (r#"{"phase":"Prepare","input_bytes":1}"#, ""),
+            (r#"{"phase":"finalize","input_bytes":1}"#, ""),
+            (r#"{"phase":"prepare","input_bytes":true}"#, ""),
+            (
+                r#"{"phase":"prepare","phase":"finish","input_bytes":1}"#,
+                "",
+            ),
+            (
+                r#"{"phase":"prepare","input_bytes":1,"manifest":"sha256:untrusted"}"#,
+                "",
+            ),
+            (r#"{"phase":"prepare","input_bytes":1}"#, PROVIDER_REQUEST),
+            (
+                r#"{"phase":"prepare","input_bytes":1}"#,
+                r#", "model_list":{}"#,
+            ),
+            (r#"{"phase":"prepare","input_bytes":1}"#, r#", "apply":{}"#),
+            (
+                r#"{"phase":"prepare","input_bytes":1}"#,
+                r#", "application_presentation":{"role":"catalog","input_bytes":1}"#,
+            ),
+            (
+                r#"{"phase":"prepare","input_bytes":1}"#,
+                r#", "conversation_complete":{"phase":"finish","input_bytes":1}"#,
+            ),
+        ] {
+            let frame = start(descriptor, extra);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.request_start())
+                .is_err());
+        }
     }
 
     #[test]
-    fn application_presentation_body_stops_on_cancel_bad_framing_or_deadline() {
+    fn conversation_complete_denies_missing_proof_before_body_admission() {
+        for phase in [
+            ConversationCompletePhase::Prepare,
+            ConversationCompletePhase::Finish,
+        ] {
+            let (mut client, mut server) = UnixStream::pair().unwrap();
+            let deadline = Instant::now() + FRAME_TIMEOUT;
+            RequestStart::ConversationComplete {
+                phase,
+                input_bytes: 2,
+            }
+            .reject_missing_launch_proof(&mut server, deadline)
+            .unwrap();
+            let (tag, bytes) = read_header(&mut client, deadline).unwrap();
+            assert_eq!(tag, FAILURE);
+            assert_eq!(
+                read_input_bytes(&mut client, bytes, deadline).unwrap(),
+                b"denied"
+            );
+        }
+    }
+
+    #[test]
+    fn funded_data_reads_exact_body_before_the_live_check() {
+        for input_bytes in [
+            APPLICATION_PRESENTATION_INPUT_LIMIT,
+            ConversationCompletePhase::Prepare.input_limit(),
+            ConversationCompletePhase::Finish.input_limit(),
+        ] {
+            let (mut client, server) = UnixStream::pair().unwrap();
+            client.set_nonblocking(true).unwrap();
+            server.set_nonblocking(true).unwrap();
+            let input = format!(
+                r#"{{"example":"猫{}"}}"#,
+                "a".repeat(input_bytes - r#"{"example":"猫"}"#.len())
+            );
+            assert_eq!(input.len(), input_bytes);
+            let deadline = Instant::now() + FRAME_TIMEOUT;
+            let worker = thread::spawn(move || {
+                let mut wire = Wire::new(server);
+                assert!(!wire.funded_input_received);
+                let input = wire.receive_funded_input(input_bytes, deadline).unwrap();
+                assert!(wire.funded_input_received);
+                wire.exchange_authority(AuthorityCheck::Live, deadline)
+                    .unwrap();
+                assert!(wire.authority == WireAuthority::Live);
+                assert!(wire.receive_funded_input(input_bytes, deadline).is_err());
+                input
+            });
+            assert_eq!(read_header(&mut client, deadline).unwrap(), (BODY_READY, 0));
+            send_frame(&mut client, ORCHESTRATION_INPUT, input.as_bytes(), deadline).unwrap();
+            assert_eq!(read_header(&mut client, deadline).unwrap(), (CHECK, 0));
+            send_frame(&mut client, LIVE, &[], deadline).unwrap();
+            assert_eq!(worker.join().unwrap(), input.as_bytes());
+        }
+    }
+
+    #[test]
+    fn funded_data_body_stops_on_cancel_bad_framing_or_deadline() {
         for (tag, size, expected) in [
             (CANCEL, 0u32, "cancelled"),
             (ORCHESTRATION_INPUT, 1u32, "invalid"),
@@ -3224,10 +3416,8 @@ mod tests {
             let deadline = Instant::now() + FRAME_TIMEOUT;
             let worker = thread::spawn(move || {
                 let mut wire = Wire::new(server);
-                assert!(wire
-                    .receive_application_presentation_input(2, deadline)
-                    .is_err());
-                assert!(!wire.presentation_input_received);
+                assert!(wire.receive_funded_input(2, deadline).is_err());
+                assert!(!wire.funded_input_received);
                 assert_eq!(wire.stop.unwrap().reply(), Some(expected));
             });
             assert_eq!(read_header(&mut client, deadline).unwrap(), (BODY_READY, 0));
@@ -3238,11 +3428,9 @@ mod tests {
         let (_client, server) = UnixStream::pair().unwrap();
         let mut wire = Wire::new(server);
         let deadline = Instant::now() + Duration::from_millis(30);
-        assert!(wire
-            .receive_application_presentation_input(2, deadline)
-            .is_err());
+        assert!(wire.receive_funded_input(2, deadline).is_err());
         assert!(matches!(wire.stop, Some(Stop::Deadline)));
-        assert!(!wire.presentation_input_received);
+        assert!(!wire.funded_input_received);
     }
 
     #[test]
@@ -3281,6 +3469,46 @@ mod tests {
             role.failure_code(live, &SavedOrchestrationStepError::Capacity.into()),
             "limit-exceeded"
         );
+    }
+
+    #[test]
+    fn conversation_complete_returns_live_bounded_objects_without_effects_or_fallback() {
+        let role = ReplyRole::ConversationComplete;
+        assert!(role.uses_funded_input());
+        assert!(role.effect_check().is_none());
+        assert!(role
+            .validate_result(WireAuthority::AwaitingLive, b"{}")
+            .is_err());
+        assert!(role
+            .validate_result(WireAuthority::PublicationPermitted, b"{}")
+            .is_err());
+        let live = WireAuthority::Live;
+        let mut output = format!(
+            r#"{{"data":"{}"}}"#,
+            "a".repeat(CONVERSATION_COMPLETE_RESULT_LIMIT - r#"{"data":""}"#.len())
+        );
+        assert!(role.validate_result(live, output.as_bytes()).is_ok());
+        output.push(' ');
+        assert_eq!(
+            role.validate_result(live, output.as_bytes()),
+            Err("limit-exceeded")
+        );
+        assert!(role.validate_result(live, b"[]").is_err());
+        for (error, code) in [
+            (ModelRegistryRequiresLegacyRead.into(), "unavailable"),
+            (NativeArtifactError::Denied.into(), "denied"),
+            (
+                NativeArtifactError::Execution(NativeDataIoError::Cancelled).into(),
+                "cancelled",
+            ),
+            (SavedOrchestrationStepError::Invalid.into(), "invalid"),
+            (
+                SavedOrchestrationStepError::Capacity.into(),
+                "limit-exceeded",
+            ),
+        ] {
+            assert_eq!(role.failure_code(live, &error), code);
+        }
     }
 
     #[test]

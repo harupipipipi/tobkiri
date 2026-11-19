@@ -62,6 +62,12 @@ impl NativeApplicationSources {
         &self.authority
     }
 
+    /// Check the selected runtime Pack that owns a legacy operation.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn owns_runtime_pack(&self, pack_id: &str) -> bool {
+        self.authority.materialized_pack_id == pack_id
+    }
+
     /// Observe the original selected path value; perform no filesystem IO.
     pub(crate) fn root(&self, role: NativeSourceRoot) -> &Path {
         match role {

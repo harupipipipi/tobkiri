@@ -99,6 +99,23 @@ static APPLICATION_PRESENTATION: Route = Route {
     execution: PYTHON_PACK_VM,
 };
 
+static CONVERSATION_COMPLETE: Route = Route {
+    pack: "defaultspack",
+    function: "defaultspack.conversation",
+    contract: "conversation.turn.v1",
+    operation: "complete",
+    variant: "defaultspack.conversation.python",
+    execution: PYTHON_PACK_VM,
+};
+
+const CONVERSATION_COMPLETE_REVISION: &str =
+    "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a";
+const CONVERSATION_GENERATE_REVISION: &str =
+    "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768";
+
+/// Application runtime Pack selected by the ordinary desktop Shell.
+pub const CONVERSATION_COMPLETE_APPLICATION_ID: &str = "runtime.tauri.application.default";
+
 static SETTINGS_READ: Route = Route {
     pack: "tobkiri_ui_settings_pack",
     function: "tobkiri.ui.settings.read",
@@ -541,6 +558,51 @@ impl<'a> OriginalApplicationPresentationChoice<'a> {
     /// The caller and its nested presentation route, in chain order.
     pub fn pins(&self) -> &[OriginalRoutePin; 2] {
         &self.pins
+    }
+}
+
+struct ConversationCompleteRoutes {
+    pins: [OriginalRoutePin; 2],
+    shell_artifacts: [CoreValue; 2],
+    application_artifacts: [CoreValue; 2],
+}
+
+/// Exact ordinary desktop Shell-to-Conversation-to-Gateway Generate grants.
+pub struct OriginalConversationCompleteChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    routes: ConversationCompleteRoutes,
+}
+
+impl<'a> OriginalConversationCompleteChoice<'a> {
+    /// Select both grants and the Shell and Application artifact identities.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_conversation_complete_records(active.records(), budget)?.map(|routes| Self {
+                _active: active,
+                routes,
+            }),
+        )
+    }
+
+    /// Selected Conversation and Gateway pins in call order.
+    pub fn pins(&self) -> &[OriginalRoutePin; 2] {
+        &self.routes.pins
+    }
+
+    /// Aggregate and executable digests for the selected Shell Pack.
+    pub fn shell_artifacts(&self) -> [&str; 2] {
+        self.routes.shell_artifacts.each_ref().map(verified_text)
+    }
+
+    /// Aggregate and executable digests for the selected Application Pack.
+    pub fn application_artifacts(&self) -> [&str; 2] {
+        self.routes
+            .application_artifacts
+            .each_ref()
+            .map(verified_text)
     }
 }
 
@@ -1312,6 +1374,76 @@ fn select_application_presentation_records(
         .map(|presentation| [caller, presentation]))
 }
 
+fn select_conversation_complete_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<ConversationCompleteRoutes>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    let (profile, lock, plan) = active;
+    let shell = required(profile, "shell")?;
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER
+        || !is_text(&shell, "pack_id", TURN_SHELL_CALLER)
+    {
+        return Ok(None);
+    }
+    let Some(conversation) = records.select_shell_route(&CONVERSATION_COMPLETE)? else {
+        return Ok(None);
+    };
+    let Some(gateway) = records.select_route(conversation.function_id(), &GATEWAY_GENERATE)? else {
+        return Ok(None);
+    };
+    if conversation.contract_revision_digest() != CONVERSATION_COMPLETE_REVISION
+        || gateway.contract_revision_digest() != CONVERSATION_GENERATE_REVISION
+    {
+        return Ok(None);
+    }
+    let application = required(plan, "application")?;
+    if !is_text(
+        &application,
+        "pack_id",
+        CONVERSATION_COMPLETE_APPLICATION_ID,
+    ) {
+        return Ok(None);
+    }
+    let application_pin = records
+        .unique(&records.pack_pins, |pack| {
+            is_text(pack, "role", "application")
+        })?
+        .ok_or(Inconsistent(
+            "the selected Application is missing from the Profile",
+        ))?;
+    let application_digest = digest_field(&application, "artifact_digest")?;
+    if !is_text(
+        &application_pin,
+        "pack_id",
+        CONVERSATION_COMPLETE_APPLICATION_ID,
+    ) || !is_text(
+        &application_pin,
+        "artifact_digest",
+        verified_text(&application_digest),
+    ) || !application
+        .eq_guest(&required(lock, "application")?, budget)
+        .map_err(|_| Capacity)?
+    {
+        return Err(Inconsistent(
+            "the selected Application differs across records",
+        ));
+    }
+    Ok(Some(ConversationCompleteRoutes {
+        pins: [conversation, gateway],
+        shell_artifacts: [
+            digest_field(&shell, "artifact_digest")?,
+            digest_field(&shell, "executable_artifact_digest")?,
+        ],
+        application_artifacts: [
+            application_digest,
+            digest_field(&application, "executable_artifact_digest")?,
+        ],
+    }))
+}
+
 fn select_model_list_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
@@ -1993,17 +2125,28 @@ mod tests {
         shell["definition_revision"] = json!(Digest::hash(b"revision").as_str());
         shell["architecture"] = json!("arm64");
         shell["platform"] = json!("macos");
+        let application_artifact_digest = Digest::hash(b"application");
+        let application = json!({
+            "pack_id": CONVERSATION_COMPLETE_APPLICATION_ID,
+            "artifact_digest": application_artifact_digest.as_str(),
+            "executable_artifact_digest": Digest::hash(b"executable").as_str(),
+            "definition_digest": Digest::hash(b"application-definition").as_str(),
+        });
         let mut records = json!({
             "profile": {
                 "shell": shell,
-                "packs": [],
+                "packs": [{
+                    "pack_id": CONVERSATION_COMPLETE_APPLICATION_ID,
+                    "artifact_digest": application_artifact_digest.as_str(),
+                    "role": "application"
+                }],
                 "requested_edges": [],
                 "authority_references": [],
                 "profile_authority_snapshot_digest":
                     "sha256:0df912a62eed85abe0cadd3f18e5e419d2b011f7be059759fe71537879bdb276"
             },
-            "lock": {"shell": shell, "variant_pins": []},
-            "plan": {"shell": plan_shell, "bindings": []}
+            "lock": {"shell": shell, "application": application, "variant_pins": []},
+            "plan": {"shell": plan_shell, "application": application, "bindings": []}
         });
         let rows = [
             (
@@ -2356,6 +2499,20 @@ mod tests {
                 "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
                 "sha256:278f3e40167b87ecb30c79605645e506d39952386dff5dfbb27f591e5467cadd",
             ),
+            (
+                &CONVERSATION_COMPLETE,
+                SHELL,
+                "authority-ref:e24a9be3479f642b40d6a7b9d8cef669553dad8086881373ac90ff8ed6fccd90",
+                CONVERSATION_COMPLETE_REVISION,
+                "sha256:0143a990ff774359ea090bfed3c5247f37c0e48d4f813abe09d781f7bddef639",
+            ),
+            (
+                &GATEWAY_GENERATE,
+                CONVERSATION_COMPLETE.function,
+                "authority-ref:70aaac3025b9a3cbb0faf7ecaa897e581a305242f8d53c4eda1388d2733d24c7",
+                CONVERSATION_GENERATE_REVISION,
+                "sha256:aed4252c92a298de9bed574c81b5e421fa7f592541ce146b0e77b0c085f42370",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -2492,6 +2649,72 @@ mod tests {
                 assert!(select(&interactive, role).unwrap().is_none());
             }
         }
+    }
+
+    #[test]
+    fn conversation_complete_requires_exact_shell_application_and_generate_grants() {
+        let fixture = records();
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_conversation_complete_records((&profile, &lock, &plan), &budget)
+        };
+        let proof = select(&fixture).unwrap().unwrap();
+        let [conversation, gateway] = &proof.pins;
+        assert_eq!(conversation.caller_function_id(), "shell.tauri.default");
+        assert_eq!(conversation.pack_id(), "defaultspack");
+        assert_eq!(conversation.operation_id(), "complete");
+        assert_eq!(conversation.execution_kind(), "pack_vm");
+        assert_eq!(gateway.caller_function_id(), conversation.function_id());
+        assert_eq!(gateway.operation_id(), GATEWAY_GENERATE.operation);
+        assert_eq!(gateway.execution_kind(), "host_extension");
+
+        for pin in &proof.pins {
+            let row = fixture["profile"]["requested_edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|edge| edge["authority_reference"] == pin.authority_reference())
+                .unwrap();
+            let mut absent = fixture.clone();
+            absent["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            absent["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(select(&absent).unwrap().is_none());
+
+            let mut interactive = fixture.clone();
+            interactive["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            interactive["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            assert!(select(&interactive).unwrap().is_none());
+
+            let mut revised = fixture.clone();
+            let scope = &mut revised["profile"]["requested_edges"][row]["requested_scope_template"];
+            let digest = Digest::hash(b"different contract revision");
+            scope["semantics_digest"] = json!(digest.as_str());
+            let bytes = serde_json::to_vec(scope).unwrap();
+            let scope = CoreValue::parse_guest(&bytes, &budget).unwrap();
+            let binding = &mut revised["plan"]["bindings"][row];
+            binding["function_principal"]["contract_revision_digest"] = json!(digest.as_str());
+            binding["requested_scope_digest"] =
+                json!(scope.digest_guest(&budget).unwrap().as_str());
+            assert!(select(&revised).unwrap().is_none());
+        }
+
+        let mut wrong_app_pin = fixture.clone();
+        wrong_app_pin["lock"]["application"]["artifact_digest"] =
+            json!(Digest::hash(b"other application").as_str());
+        assert!(select(&wrong_app_pin).is_err());
+        let mut wrong_shell_pack = fixture.clone();
+        for record in ["profile", "lock", "plan"] {
+            wrong_shell_pack[record]["shell"]["pack_id"] = json!("unrelated.shell-pack");
+        }
+        assert!(select(&wrong_shell_pack).unwrap().is_none());
     }
 
     fn select_model_save(records: &Value) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {

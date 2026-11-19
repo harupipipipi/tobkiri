@@ -59,6 +59,7 @@ const RUNTIME_OVERLAY_SCHEMA: &str = "io.tobkiri.sealed-runtime-overlay.v1";
 pub(crate) const SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
     "TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST";
 pub(crate) const APPLICATION_PRESENTATION_ENV: &str = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION";
+pub(crate) const CONVERSATION_COMPLETE_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PythonRole {
@@ -90,6 +91,7 @@ pub struct RoleArguments {
 pub(crate) struct NativeRegistryEnvironment {
     pub(crate) saved_orchestration_manifest: Option<String>,
     pub(crate) application_presentation_manifest: Option<String>,
+    pub(crate) conversation_complete_manifest: Option<String>,
 }
 
 impl RoleArguments {
@@ -138,6 +140,9 @@ impl RoleArguments {
                 .map(str::to_owned),
             application_presentation_manifest: proof
                 .and_then(|proof| proof.application_presentation_manifest_sha256())
+                .map(str::to_owned),
+            conversation_complete_manifest: proof
+                .and_then(|proof| proof.conversation_complete_manifest_sha256())
                 .map(str::to_owned),
         };
         self
@@ -293,6 +298,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         key,
         SAVED_ORCHESTRATION_MANIFEST_ENV
             | APPLICATION_PRESENTATION_ENV
+            | CONVERSATION_COMPLETE_ENV
             | crate::native_provider_prepare_service::TURN_START_ENV
             | crate::native_provider_prepare_service::SAVED_LOCAL_CHAT_ENV
             | crate::native_provider_prepare_service::AI_ROUTING_ENV
@@ -4435,6 +4441,41 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
+    fn conversation_complete_environment_carries_only_a_verified_manifest() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use crate::native_harness_bootstrap::VerifiedRegistryLaunch;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: digest('c'),
+            activation_id: "activation".into(),
+            plan_digest: digest('d'),
+        };
+        let other =
+            VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
+        let verified =
+            VerifiedRegistryLaunch::test_conversation_complete_proof(identity, "catalog");
+        let expected = verified.conversation_complete_manifest_sha256().unwrap();
+        assert!(expected.starts_with("sha256:"));
+        for (proof, manifest) in [
+            (None, None),
+            (Some(&other), None),
+            (Some(&verified), Some(expected)),
+        ] {
+            let (args, environment) = RoleArguments::defaultspack([OsString::from("serve")])
+                .unwrap()
+                .with_native_registry_admission(proof)
+                .split_native_registry_environment();
+            assert_eq!(
+                environment.conversation_complete_manifest.as_deref(),
+                manifest
+            );
+            assert_eq!(args.into_values(), [OsString::from("serve")]);
+        }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
     fn saved_request_markers_are_allowed_for_defaultspack_only() {
         use crate::native_provider_prepare_service::{
             AI_GATEWAY_POLICY_ENV, AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV,
@@ -4444,6 +4485,7 @@ mod tests {
 
         for key in [
             APPLICATION_PRESENTATION_ENV,
+            CONVERSATION_COMPLETE_ENV,
             TURN_START_ENV,
             SAVED_LOCAL_CHAT_ENV,
             AI_ROUTING_ENV,

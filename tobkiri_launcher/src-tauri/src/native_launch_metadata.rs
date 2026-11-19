@@ -18,8 +18,8 @@ use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
 use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
-    OriginalConversationReadSelection,
+    OriginalConversationAppendChoice, OriginalConversationCompleteChoice,
+    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
     OriginalFailoverChoice, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
     OriginalRequestPrepareChoice, OriginalRoutePin, OriginalSavedGatewayChoice,
@@ -78,6 +78,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     orchestration: Option<VerifiedSavedOrchestrationSource>,
     local_chat: Option<VerifiedSavedLocalChatSource>,
     application_presentation: Option<VerifiedApplicationPresentationSource>,
+    conversation_complete: Option<VerifiedConversationCompleteSource>,
 }
 
 /// The caller of the original conversation-owner read grant.
@@ -92,6 +93,18 @@ pub(crate) enum ConversationReadCaller {
 }
 
 impl VerifiedRegistryLaunch {
+    /// Require the signed ordinary Conversation and Gateway grants and the verified DATA port.
+    pub(crate) fn permits_conversation_complete(&self) -> bool {
+        self.conversation_complete.is_some()
+    }
+
+    /// The admitted replacement manifest for the original Conversation Complete route.
+    pub(crate) fn conversation_complete_manifest_sha256(&self) -> Option<&str> {
+        self.conversation_complete
+            .as_ref()
+            .map(|source| source.manifest_sha256.as_str())
+    }
+
     /// Require the caller's original nested presentation grant and verified read port.
     pub(crate) fn permits_application_presentation(&self, role: ApplicationPresentationRole) -> bool {
         self.application_presentation
@@ -269,6 +282,15 @@ impl VerifiedApplicationPresentationSource {
         };
         self.bundles[index].as_ref()
     }
+}
+
+/// The exact ordinary Conversation Complete source and build-pinned archive.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedConversationCompleteSource {
+    bundle: VerifiedOrdinarySavedBundle,
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
 }
 
 /// Signed legacy Provider route pins and the receipt identity of its Wasm Pack.
@@ -547,6 +569,20 @@ impl From<&OriginalRoutePin> for VerifiedLegacyRoutePin {
 
 #[cfg(test)]
 impl VerifiedRegistryLaunch {
+    pub(crate) fn test_conversation_complete_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
+        proof.conversation_complete = Some(VerifiedConversationCompleteSource {
+            bundle: VerifiedOrdinarySavedBundle::fixture(),
+            archive_sha256: Digest::hash(b"conversation-complete-archive").to_string(),
+            archive_bytes: 512,
+            manifest_sha256: Digest::hash(b"conversation-complete-manifest").to_string(),
+        });
+        proof
+    }
+
     pub(crate) fn test_complete_application_presentation_proof(
         identity: ExecutionProfileIdentity,
         catalog_revision: &str,
@@ -598,6 +634,7 @@ impl VerifiedRegistryLaunch {
             orchestration: None,
             local_chat: None,
             application_presentation: None,
+            conversation_complete: None,
         }
     }
 
@@ -624,6 +661,7 @@ impl VerifiedRegistryLaunch {
             orchestration: None,
             local_chat: None,
             application_presentation: None,
+            conversation_complete: None,
         }
     }
 
@@ -651,6 +689,7 @@ impl VerifiedRegistryLaunch {
             orchestration: None,
             local_chat: None,
             application_presentation: None,
+            conversation_complete: None,
         }
     }
 
@@ -683,6 +722,7 @@ impl VerifiedRegistryLaunch {
             orchestration: None,
             local_chat: None,
             application_presentation: None,
+            conversation_complete: None,
         }
     }
 
@@ -904,6 +944,7 @@ impl VerifiedRegistryLaunch {
             orchestration: None,
             local_chat: None,
             application_presentation: None,
+            conversation_complete: None,
         }
     }
 
@@ -966,6 +1007,7 @@ impl VerifiedRegistryLaunch {
             orchestration: None,
             local_chat: None,
             application_presentation: None,
+            conversation_complete: None,
         }
     }
 
@@ -1507,6 +1549,20 @@ impl LaunchActivationObserver<'_> {
             )
             .context("bundled Application Presentation Pack verification failed during Launch")?
             .flatten();
+        let conversation_complete =
+            registry_pack_receipt::verify_installed_with_conversation_complete(
+                &app_root,
+                REGISTRY_RECEIPT_SHA256,
+                || registry_checkpoint(inspection, &checkpoint),
+                |receipt, input| {
+                    verify_conversation_complete_source(
+                        inspection, active, receipt, input, checkpoint,
+                    )
+                    .map_err(io::Error::other)
+                },
+            )
+            .context("bundled Conversation Complete Pack verification failed during Launch")?
+            .flatten();
         if !has_existing_grants
             && conversation.is_none()
             && turn.is_none()
@@ -1514,6 +1570,7 @@ impl LaunchActivationObserver<'_> {
             && local_chat.is_none()
             && ai_routing.is_none()
             && application_presentation.is_none()
+            && conversation_complete.is_none()
         {
             return Ok(None);
         }
@@ -1573,6 +1630,7 @@ impl LaunchActivationObserver<'_> {
             orchestration,
             local_chat,
             application_presentation,
+            conversation_complete,
         };
         if let Some(local_chat) = &verified.local_chat {
             inspection.with_source(|sources| local_chat.bundle.require_source(sources))??;
@@ -1620,6 +1678,41 @@ pub(super) fn reacquire_application_presentation_pack(
         },
     )?
     .context("bundled Registry receipt has no Application Presentation archive")
+}
+
+/// Reopen the DATA port after confirming the original installed Conversation chain.
+pub(super) fn reacquire_conversation_complete_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .conversation_complete
+        .as_ref()
+        .context("admitted launch has no verified Conversation Complete source")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    checkpoint()?;
+    inspection.with_source(|sources| source.bundle.require_source(sources))??;
+    source
+        .bundle
+        .revalidate(inspection.allocation_budget()?, &checkpoint)?;
+    registry_pack_receipt::verify_installed_with_conversation_complete(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            require_conversation_complete_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )?
+    .context("bundled Registry receipt has no Conversation Complete archive")
 }
 
 /// Reacquire the Provider Pack from the original signed resolver source and receipt pin.
@@ -2387,6 +2480,33 @@ fn verify_application_presentation_source(
     }))
 }
 
+fn verify_conversation_complete_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<VerifiedConversationCompleteSource>> {
+    let budget = inspection.allocation_budget()?;
+    let Some(choice) = OriginalConversationCompleteChoice::select(active, budget)? else {
+        return Ok(None);
+    };
+    let Some(locked) = inspection
+        .with_source(|sources| sources.conversation_complete_bundle(&choice, budget))??
+    else {
+        return Ok(None);
+    };
+    let bundle = locked.verify(&checkpoint)?;
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_conversation_complete_declaration(&pack)?;
+    Ok(Some(VerifiedConversationCompleteSource {
+        bundle,
+        archive_sha256: receipt.archive_sha256().to_owned(),
+        archive_bytes: receipt.archive_bytes(),
+        manifest_sha256: receipt.manifest_sha256().to_owned(),
+    }))
+}
+
 fn verify_conversation_append_source(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     active: &OriginalActiveProfile,
@@ -3133,6 +3253,47 @@ fn require_saved_orchestration_declaration(pack: &VerifiedPack) -> Result<()> {
     Ok(())
 }
 
+const CONVERSATION_COMPLETE_WIT: [(&str, &[u8]); 3] = [
+    (
+        "wit/pack.wit",
+        include_bytes!("../../../packs/local.conversation-complete-rust/wit/pack.wit"),
+    ),
+    CORE_V1_2_WIT,
+    (
+        "wit/data.shape.json",
+        include_bytes!("../../../packs/local.conversation-complete-rust/wit/data.shape.json"),
+    ),
+];
+
+fn require_conversation_complete_declaration(pack: &VerifiedPack) -> Result<()> {
+    verify_stateless_registry_surface(
+        pack,
+        registry_pack_receipt::CONVERSATION_COMPLETE_PACK_ID,
+        1,
+    )?;
+    let manifest = &pack.manifest;
+    ensure!(
+        manifest.version == "0.1.0"
+            && manifest.files.len() == CONVERSATION_COMPLETE_WIT.len() + 1
+            && manifest.shapes[0].wit == "wit/pack.wit"
+            && CONVERSATION_COMPLETE_WIT.into_iter().all(|(path, bytes)| {
+                pack.files
+                    .get(path)
+                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))
+            }),
+        "bundled Conversation Complete Pack has unexpected WIT or version"
+    );
+    ensure!(
+        declares_registry_port(
+            pack,
+            &ShapeRef::parse("local.conversation-complete.data@1.0")?,
+            &[OpName::parse("prepare")?, OpName::parse("finish")?],
+        ),
+        "bundled Conversation Complete Pack has no exact DATA port"
+    );
+    Ok(())
+}
+
 const APPLICATION_PRESENTATION_WIT: [(&str, &[u8]); 3] = [
     (
         "wit/pack.wit",
@@ -3401,6 +3562,60 @@ fn validate_observed_activation(
 mod tests {
     use super::*;
     use crate::native_harness_bootstrap::NativeRegistryRequest;
+
+    #[test]
+    fn conversation_complete_declaration_pins_both_effect_free_phases() {
+        use std::{fs, path::PathBuf};
+        use tobkiri_core::pack::{generate_manifest, verify_directory};
+
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-conversation-complete-declaration-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("wit/deps")).unwrap();
+        let path = root.0.canonicalize().unwrap();
+        for (relative, bytes) in CONVERSATION_COMPLETE_WIT {
+            fs::write(path.join(relative), bytes).unwrap();
+        }
+        fs::write(path.join("component.wasm"), b"fixture").unwrap();
+        let draft =
+            include_bytes!("../../../packs/local.conversation-complete-rust/pack.draft.json");
+        let verify = |draft: &[u8]| {
+            let manifest = generate_manifest(&path, draft).unwrap();
+            fs::write(path.join("pack.json"), manifest).unwrap();
+            verify_directory(&path, &Default::default()).unwrap()
+        };
+        require_conversation_complete_declaration(&verify(draft)).unwrap();
+
+        let mut modified: serde_json::Value = serde_json::from_slice(draft).unwrap();
+        modified["permissions"]["storage"] = serde_json::json!({"private": true});
+        assert!(require_conversation_complete_declaration(&verify(
+            &serde_json::to_vec(&modified).unwrap()
+        ))
+        .is_err());
+        modified = serde_json::from_slice(draft).unwrap();
+        modified["version"] = serde_json::json!("0.1.1");
+        assert!(require_conversation_complete_declaration(&verify(
+            &serde_json::to_vec(&modified).unwrap()
+        ))
+        .is_err());
+        let (wit_path, bytes) = CONVERSATION_COMPLETE_WIT[0];
+        fs::write(
+            path.join(wit_path),
+            std::str::from_utf8(bytes)
+                .unwrap()
+                .replace("finish: func(input: string)", "finish: func(input: u32)"),
+        )
+        .unwrap();
+        assert!(require_conversation_complete_declaration(&verify(draft)).is_err());
+    }
 
     #[test]
     fn application_presentation_launch_advertises_only_after_all_three_roles_are_proved() {
