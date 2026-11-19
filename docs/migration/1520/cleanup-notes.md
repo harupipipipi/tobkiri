@@ -6036,12 +6036,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   上限内に収まる場合だけ候補を返し、Launcherの応答は元の投影を使う。単体試験41件、
   配布Packを使うmacOSの物理所有者試験4件、Launcherの応答デコード試験が通過した。
   物理試験で、親を更新した前後の双方について、内部用の応答と通常GETをバイト単位で照合した。
+- `eb6f8cd2d` はCoreに親応答の一回限りの候補を持たせる。同じ制御台帳、期限、保存先、Profile、
+  親ID、Packの内容を照合し、親GETが読み取った会話ファイルのバイト列をSHA-256で照合する。
+  一致しなければ、そのGETで読み取った文書を既存のWasmに渡す。実Wasmと物理ファイルの4件で、
+  同一内容の再利用、同じファイル長とリビジョンの編集、別ID、シンボリックリンク拒否を確認した。
+  CoreのClippyとRustの書式検査も通過した。
 - Side Chatの実行経路への組み込みでは、元の親子それぞれのBroker認可、利用上限、監査結果と
   サイズ制限を維持する必要がある。親の認可を通してから投影を使い、従来の読み取りと同じ結果を
   確認する。途中で会話ファイルが更新された場合は、その時点の所有者から読み直す。実行経路への
   組み込みと30秒の全経路検証が残る。
 - ネイティブ容量と受け入れ条件のCIは既存のテスト3箇所の書式で停止した。`eeeba36aa` で修正し、
-  ローカルの `cargo fmt --all -- --check` が通過した。
+  再実行した [容量検証](https://github.com/harupipipipi/tobkiri/actions/runs/44576067515)、
+  [受け入れ条件6〜10](https://github.com/harupipipipi/tobkiri/actions/runs/44576067495)、
+  [受け入れ条件13〜16](https://github.com/harupipipipi/tobkiri/actions/runs/44576067793) が通過した。
 - [実1Bモデル CI](https://github.com/harupipipipi/tobkiri/actions/runs/44569439245) は `adbec3a8c`
   で通過した。承認済みのローカルProvider設定、認証付きループバック、保存済みのモデル選択を
   RustとWasmで確認した。`c0220c03a` での [再検証](https://github.com/harupipipipi/tobkiri/actions/runs/44574137606)
