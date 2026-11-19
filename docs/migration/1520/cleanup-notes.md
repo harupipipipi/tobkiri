@@ -4299,6 +4299,34 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既存の `local.provider-model-access-rust` は `_apply_model_access` が使うパラメータ生成の
   候補を持つ。現行経路へ接続する際は、署名付きBrokerとLauncherが照合する同じRegistry
   レコードを入力にし、現在の拒否理由とオプション順を保つ。
+  `948fe27fa` はIPC版4とAdapter Pack 0.3.0を接続する。Launcherが物理Registryから選択中の
+  保存済み接続だけを読み、そのモデル許可リストをWasmの本文生成に使う。接続とポリシーを
+  送信許可前にもう一度照合する。同じレコード版でも選択済みポリシーの変化を拒否する。
+  既存のモデル拒否、無効なモデルID、ルート上書きのエラーを維持する。旧IPC版と変換を
+  辞退した入力では互換codecで判定し、旧形式の本文も同じ送信権限で照合する。
+  同梱Adapter 1.0.6の生成物照合6件、Python IPC・ローカルHTTP回帰433件、Rust Adapter単体14件、
+  Registry選択7件、Launcher IPC 38件、ポリシー変更時の送信拒否1件、実Wasm結合1件、
+  DMG検証器172件が通過した。実DMGを入れたGUI経路の検証は後続。
+  クリーンな `948fe27fa` のmacOS結合試験では、明示許可リストを保存した同じProfileで、
+  署名付きGenerateとStreamがIPC版4の実Wasmを通り、Rust所有のローカルTCPに一度ずつ送信した。
+  本文、認証ヘッダーの不在、返信保存、同じターンの再送でPOSTが増えないことを確認した。
+  Application管理、配布物resolverの入口、PackVMの搬送とHTTP応答にfixtureを使った。
+  署名付きHTTP回帰では、モデルを拒否した場合に送信許可を取得せず、ユーザー発言だけを保存した。
+  署名付きHTTPの旧本文、IPC版3、IPC版4の各1件も通過した。版3の最初の実行で発生した
+  SQLiteのディスクI/Oエラーは、生成済みキャッシュの整理後の同じソースで再現しなかった。
+  Pythonの `_apply_model_access` を縮小する条件は、旧IPCと既存Profileの入力表現、
+  モデル・認証情報・接続先・期限のエラー順を同じ経路で再現できること。
+  Registryの `validate_document` と `resolve_legacy_local_chat_policy` は選択レコードの
+  ポリシーをそれぞれ正規化する。全レコードの検証と選択条件の順序を保ち、選択済みレコードの値だけを
+  検証結果から再利用できれば、送信前に2回行う物理照合それぞれの変換を一回減らせる。
+  `2173e2ea6` では、同じWasmのポート参照の不要な借用を取り除いた。旧HeadのDATA、
+  Authority、容量CIがそれぞれRust 1.94の同じClippyで停止した。修正後の容量対象3クレートの
+  strict Clippyがローカルで通過した。GitHub上の再検証は
+  [DATA 44509752378](https://github.com/harupipipipi/tobkiri/actions/runs/44509752378)、
+  [Authority 44509752703](https://github.com/harupipipipi/tobkiri/actions/runs/44509752703)、
+  [容量 44509796534](https://github.com/harupipipipi/tobkiri/actions/runs/44509796534)。
+  そのAuthority CIのUbuntuでは、追加したポリシー照合の入れ子の条件をClippyが指摘した。
+  `c9cd27c52` で同じ条件を一つのガードにし、Harness Nativeのstrict Clippyとrustfmtが通過した。
   `request.rs` と `projection.rs` の事前走査は文字列内のエスケープと深さ判定を共用できる。
   応答だけが必要とする重複キーを含めた構造数の上限と、各経路の旧codecへの戻り方を保つ。
   [717face1f の実Gemma 3 1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44487465311)
@@ -4310,6 +4338,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   サーバーログ末尾を認証情報を除いて保存し、3秒の合否基準を維持する。
   [ae72bf306 の再実行](https://github.com/harupipipipi/tobkiri/actions/runs/44493529574)は
   認証付きFlow・キー不要の保存モデルの両方で通過した。
+  [0031aea76 の実1B再計測](https://github.com/harupipipipi/tobkiri/actions/runs/44506573236)は
+  キー不要の保存モデル経路を通過した。認証付きFlowは42 msで取消を確定し、サーバーログにも
+  対象タスクの中止が残った。57回目までの照会で3秒以内の空きslotを観測できず、後続の直接プローブ
+  開始時点では既に空いていた。サーバーが中止を検出してからslotが空くまでの時間は特定できていない。
+  同じ3秒の上限で [948fe27fa の実1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44509752472)
+  を開始した。
 - [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
   実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
   経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で
