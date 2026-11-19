@@ -467,7 +467,7 @@ struct VerifiedConversationSource {
     saved_turn: Option<VerifiedLegacyRoutePin>,
     saved_orchestration: Option<VerifiedLegacyRoutePin>,
     saved_receipt: [Option<(OriginalSavedReceiptRole, VerifiedLegacyRoutePin)>; 2],
-    side_chat_saved_receipt: VerifiedSideChatSavedReceiptRoles,
+    side_chat_saved_receipt: VerifiedSideChatSavedRoles,
     confirmation: VerifiedConversationConfirmationRoles,
     append: VerifiedConversationAppendRoles,
     archive_sha256: String,
@@ -475,11 +475,52 @@ struct VerifiedConversationSource {
     manifest_sha256: String,
 }
 
-type VerifiedSideChatSavedReceiptRoles =
+type VerifiedSideChatSavedRoles =
     [Option<(OriginalSavedReceiptRole, VerifiedOrdinarySavedBundle)>; 2];
 
-type VerifiedConversationConfirmationRoles =
-    [Option<(OriginalSavedReceiptRole, [VerifiedLegacyRoutePin; 3])>; 2];
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct VerifiedConversationConfirmationRoles {
+    ordinary: [Option<(OriginalSavedReceiptRole, [VerifiedLegacyRoutePin; 3])>; 2],
+    side_chat: VerifiedSideChatSavedRoles,
+}
+
+impl VerifiedConversationConfirmationRoles {
+    fn is_empty(&self) -> bool {
+        self.ordinary.iter().all(Option::is_none) && self.side_chat.iter().all(Option::is_none)
+    }
+
+    fn permits(&self, role: OriginalSavedReceiptRole) -> bool {
+        self.ordinary
+            .iter()
+            .flatten()
+            .any(|(granted, _)| *granted == role)
+            || self.side_chat_bundle(role).is_some()
+    }
+
+    fn side_chat_bundle(
+        &self,
+        role: OriginalSavedReceiptRole,
+    ) -> Option<&VerifiedOrdinarySavedBundle> {
+        self.side_chat
+            .iter()
+            .flatten()
+            .find_map(|(granted, bundle)| (*granted == role).then_some(bundle))
+    }
+
+    fn revalidate_side_chat(
+        &self,
+        inspection: &NativeArtifactInspection<NativeApplicationSources>,
+        role: OriginalSavedReceiptRole,
+        checkpoint: &impl Fn() -> Result<()>,
+    ) -> Result<()> {
+        if let Some(bundle) = self.side_chat_bundle(role) {
+            checkpoint()?;
+            inspection.with_source(|sources| bundle.require_source(sources))??;
+            bundle.revalidate(inspection.allocation_budget()?, checkpoint)?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct VerifiedConversationAppendRoles {
@@ -528,10 +569,7 @@ impl VerifiedConversationSource {
     }
 
     fn permits_confirmation(&self, role: OriginalSavedReceiptRole) -> bool {
-        self.confirmation
-            .iter()
-            .flatten()
-            .any(|(granted, _)| *granted == role)
+        self.confirmation.permits(role)
     }
 }
 
@@ -610,10 +648,7 @@ impl VerifiedTurnSource {
     }
 
     fn permits_read(&self, role: OriginalSavedReceiptRole) -> bool {
-        self.read
-            .iter()
-            .flatten()
-            .any(|(granted, _)| *granted == role)
+        self.read.permits(role)
     }
 }
 
@@ -1015,7 +1050,7 @@ impl VerifiedRegistryLaunch {
                         (candidate == role).then(|| (role, VerifiedOrdinarySavedBundle::fixture()))
                     },
                 ),
-                confirmation: [None, None],
+                confirmation: VerifiedConversationConfirmationRoles::default(),
                 append: VerifiedConversationAppendRoles::default(),
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
@@ -1038,7 +1073,7 @@ impl VerifiedRegistryLaunch {
         let source = proof.conversation.as_mut().unwrap();
         source.saved_receipt = [None, None];
         source.side_chat_saved_receipt = [None, None];
-        source.confirmation = OriginalSavedReceiptRole::ALL.map(|candidate| {
+        source.confirmation.ordinary = OriginalSavedReceiptRole::ALL.map(|candidate| {
             (candidate == role).then(|| {
                 (
                     role,
@@ -1046,6 +1081,10 @@ impl VerifiedRegistryLaunch {
                 )
             })
         });
+        source.confirmation.side_chat =
+            OriginalSavedReceiptRole::SIDE_CHAT_CALLERS.map(|candidate| {
+                (candidate == role).then(|| (role, VerifiedOrdinarySavedBundle::fixture()))
+            });
         proof
     }
 
@@ -1111,7 +1150,7 @@ impl VerifiedRegistryLaunch {
                     None,
                     None,
                 ],
-                read: [None, None],
+                read: VerifiedConversationConfirmationRoles::default(),
                 start: VerifiedTurnStartRoles::default(),
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
@@ -1160,7 +1199,7 @@ impl VerifiedRegistryLaunch {
         }
         proof.turn = Some(VerifiedTurnSource {
             settlement: [None, None, None, None],
-            read: [None, None],
+            read: VerifiedConversationConfirmationRoles::default(),
             start,
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
@@ -1589,7 +1628,7 @@ impl LaunchActivationObserver<'_> {
                         verify_conversation_confirmation_source(inspection, active, checkpoint)
                             .map_err(io::Error::other)?
                     } else {
-                        [None, None]
+                        VerifiedConversationConfirmationRoles::default()
                     };
                     let append = if append_declared {
                         verify_conversation_append_source(inspection, active, checkpoint)
@@ -1600,7 +1639,7 @@ impl LaunchActivationObserver<'_> {
                     if read.is_none()
                         && saved_receipt.is_none()
                         && !has_side_chat_saved_receipt
-                        && confirmation.iter().all(Option::is_none)
+                        && confirmation.is_empty()
                         && append.is_empty()
                     {
                         return Ok(None);
@@ -2268,6 +2307,9 @@ pub(super) fn reacquire_conversation_confirmation_pack(
         .context(
             "admitted launch has no verified Conversation confirmation source for the caller",
         )?;
+    source
+        .confirmation
+        .revalidate_side_chat(inspection, role, &checkpoint)?;
     reacquire_conversation_archive(
         inspection,
         proof,
@@ -2315,6 +2357,9 @@ pub(super) fn reacquire_turn_read_pack(
         .as_ref()
         .filter(|source| source.permits_read(role))
         .context("admitted launch has no verified Turn read source for the caller")?;
+    source
+        .read
+        .revalidate_side_chat(inspection, role, &checkpoint)?;
     reacquire_turn_archive(
         inspection,
         proof,
@@ -2573,14 +2618,13 @@ fn verify_conversation_confirmation_source(
         OriginalConversationConfirmationChoice::select(active, budget, saved_turn)?,
         OriginalConversationConfirmationChoice::select(active, budget, saved_reconcile)?,
     ];
-    if choices.iter().all(Option::is_none) {
-        return Ok([None, None]);
+    if choices.iter().any(Option::is_some) {
+        let locked = inspection.with_source(|sources| {
+            sources.conversation_confirmation_bundle(choices.each_ref().map(Option::as_ref), budget)
+        })??;
+        locked.verify(&checkpoint)?;
     }
-    let locked = inspection.with_source(|sources| {
-        sources.conversation_confirmation_bundle(choices.each_ref().map(Option::as_ref), budget)
-    })??;
-    locked.verify(checkpoint)?;
-    Ok(std::array::from_fn(|index| {
+    let ordinary = std::array::from_fn(|index| {
         let role = OriginalSavedReceiptRole::ALL[index];
         choices[index].as_ref().map(|choice| {
             (
@@ -2592,7 +2636,25 @@ fn verify_conversation_confirmation_source(
                 ],
             )
         })
-    }))
+    });
+    let mut side_chat = [None, None];
+    for (bundle, role) in side_chat
+        .iter_mut()
+        .zip(OriginalSavedReceiptRole::SIDE_CHAT_CALLERS)
+    {
+        checkpoint()?;
+        let Some(choice) = OriginalConversationConfirmationChoice::select(active, budget, role)?
+        else {
+            continue;
+        };
+        let locked = inspection
+            .with_source(|sources| sources.side_chat_confirmation_bundle(&choice, budget))??;
+        *bundle = Some((role, locked.verify(&checkpoint)?));
+    }
+    Ok(VerifiedConversationConfirmationRoles {
+        ordinary,
+        side_chat,
+    })
 }
 
 fn verify_application_presentation_source(
@@ -2660,7 +2722,7 @@ fn verify_side_chat_saved_receipt_source(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     active: &OriginalActiveProfile,
     checkpoint: impl Fn() -> Result<()>,
-) -> Result<VerifiedSideChatSavedReceiptRoles> {
+) -> Result<VerifiedSideChatSavedRoles> {
     let budget = inspection.allocation_budget()?;
     let mut bundles = [None, None];
     for (bundle, role) in bundles
@@ -2714,14 +2776,14 @@ fn verify_turn_source(
     let read = if matches!(receipt.version(), "0.2.0" | "0.3.0") {
         verify_conversation_confirmation_source(inspection, active, &checkpoint)?
     } else {
-        [None, None]
+        VerifiedConversationConfirmationRoles::default()
     };
     let start = if receipt.version() == "0.3.0" {
         verify_turn_start_source(inspection, active, &checkpoint)?
     } else {
         VerifiedTurnStartRoles::default()
     };
-    let has_read = read.iter().any(Option::is_some);
+    let has_read = !read.is_empty();
     let has_settlement = selections.iter().any(Option::is_some);
     if !has_settlement && !has_read && start.is_empty() {
         return Ok(None);
@@ -4683,7 +4745,7 @@ mod tests {
             plan_digest: "sha256:fixture".into(),
         };
         let revision = "catalog:fixture";
-        for granted in OriginalSavedReceiptRole::ALL {
+        for granted in OriginalSavedReceiptRole::RECEIPT_CALLERS {
             let receipt = VerifiedRegistryLaunch::test_saved_receipt_proof(
                 identity.clone(),
                 revision,
@@ -4694,6 +4756,8 @@ mod tests {
                 revision,
                 granted,
             );
+            let turn =
+                VerifiedRegistryLaunch::test_turn_read_proof(identity.clone(), revision, granted);
             for caller in [
                 ConversationAppendCaller::SavedTurn,
                 ConversationAppendCaller::SideChat,
@@ -4701,13 +4765,17 @@ mod tests {
                 assert!(!receipt.permits_conversation_append_for(caller));
                 assert!(!proof.permits_conversation_append_for(caller));
             }
-            for role in OriginalSavedReceiptRole::ALL {
+            for role in OriginalSavedReceiptRole::RECEIPT_CALLERS {
                 assert!(!receipt.permits_conversation_confirmation(role));
                 assert_eq!(
                     proof.permits_conversation_confirmation(role),
                     role == granted
                 );
                 assert!(!proof.permits_saved_receipt(role));
+                assert!(!proof.permits_turn_read(role));
+                assert!(!turn.permits_conversation_confirmation(role));
+                assert!(!turn.permits_saved_receipt(role));
+                assert_eq!(turn.permits_turn_read(role), role == granted);
             }
             for caller in [
                 ConversationReadCaller::Shell,
@@ -4759,7 +4827,7 @@ mod tests {
                 )
                 .permits_turn_start_for(caller));
             }
-            for role in OriginalSavedReceiptRole::ALL {
+            for role in OriginalSavedReceiptRole::RECEIPT_CALLERS {
                 assert!(!start.permits_turn_read(role));
                 assert!(!VerifiedRegistryLaunch::test_turn_read_proof(
                     identity.clone(),
@@ -4853,7 +4921,7 @@ mod tests {
                 saved_orchestration: None,
                 saved_receipt: [None, None],
                 side_chat_saved_receipt: [None, None],
-                confirmation: [None, None],
+                confirmation: VerifiedConversationConfirmationRoles::default(),
                 append: VerifiedConversationAppendRoles::default(),
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,

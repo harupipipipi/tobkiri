@@ -745,13 +745,13 @@ pub enum OriginalSavedReceiptRole {
 }
 
 impl OriginalSavedReceiptRole {
-    /// Ordinary roles supported by the legacy receipt, confirmation, and Turn read selections.
+    /// Roles invoked directly by the selected Shell.
     pub const ALL: [Self; 2] = [Self::SavedTurn, Self::SavedReconcile];
 
-    /// The Side Chat roles that require their own receipt chains.
+    /// Roles invoked through the selected Shell's Side Chat service.
     pub const SIDE_CHAT_CALLERS: [Self; 2] = [Self::SideChatTurn, Self::SideChatReconcile];
 
-    /// All roles supported by the private saved receipt read.
+    /// All roles supported by the private saved Conversation and Turn operations.
     pub const RECEIPT_CALLERS: [Self; 4] = [
         Self::SavedTurn,
         Self::SavedReconcile,
@@ -836,11 +836,12 @@ impl<'a> OriginalSideChatSavedReceiptChoice<'a> {
 /// The signed Shell, Turn Runtime, and Conversation owner chain for confirmation.
 pub struct OriginalConversationConfirmationChoice<'a> {
     _active: &'a OriginalActiveProfile,
+    side_chat: Option<OriginalRoutePin>,
     pins: [OriginalRoutePin; 3],
 }
 
 impl<'a> OriginalConversationConfirmationChoice<'a> {
-    /// Select the role's original Shell grant, completion grant, and Turn resource grant.
+    /// Select the exact Shell entry, completion grant, and nested Turn resource grant.
     /// Verify the selected pins against the signed Bundle before use.
     pub fn select(
         active: &'a OriginalActiveProfile,
@@ -848,16 +849,22 @@ impl<'a> OriginalConversationConfirmationChoice<'a> {
         role: OriginalSavedReceiptRole,
     ) -> Result<Option<Self>> {
         Ok(
-            select_conversation_confirmation_records(active.records(), budget, role)?.map(|pins| {
-                Self {
+            select_conversation_confirmation_records(active.records(), budget, role)?.map(
+                |(side_chat, pins)| Self {
                     _active: active,
+                    side_chat,
                     pins,
-                }
-            }),
+                },
+            ),
         )
     }
 
-    /// The original Shell-to-Turn grant for this role.
+    /// The Shell-to-Side Chat grant for a Side Chat role.
+    pub fn side_chat(&self) -> Option<&OriginalRoutePin> {
+        self.side_chat.as_ref()
+    }
+
+    /// The original grant from the Shell or Side Chat to the selected Turn function.
     pub fn turn_caller(&self) -> &OriginalRoutePin {
         &self.pins[0]
     }
@@ -1627,25 +1634,23 @@ fn select_side_chat_saved_receipt_records(
         .map(|receipt| [side_chat, turn, receipt]))
 }
 
+type ConversationConfirmationPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 3]);
+
 fn select_conversation_confirmation_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
     role: OriginalSavedReceiptRole,
-) -> Result<Option<[OriginalRoutePin; 3]>> {
-    let turn = match role {
-        OriginalSavedReceiptRole::SavedTurn => &SAVED_TURN,
-        OriginalSavedReceiptRole::SavedReconcile => &SAVED_RECONCILE,
-        OriginalSavedReceiptRole::SideChatTurn | OriginalSavedReceiptRole::SideChatReconcile => {
-            return Ok(None);
-        }
+) -> Result<Option<ConversationConfirmationPins>> {
+    let (via_side_chat, turn) = match role {
+        OriginalSavedReceiptRole::SavedTurn => (false, &SAVED_TURN),
+        OriginalSavedReceiptRole::SavedReconcile => (false, &SAVED_RECONCILE),
+        OriginalSavedReceiptRole::SideChatTurn => (true, &SAVED_TURN),
+        OriginalSavedReceiptRole::SideChatReconcile => (true, &SAVED_RECONCILE),
     };
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
-        return Ok(None);
-    }
-    let Some(turn_caller) = records.select_shell_route(turn)? else {
+    let Some((side_chat, turn_caller)) = select_turn_entry(&records, via_side_chat, turn)? else {
         return Ok(None);
     };
     let Some(completion) =
@@ -1655,7 +1660,7 @@ fn select_conversation_confirmation_records(
     };
     Ok(records
         .select_route(completion.function_id(), &TURN_GET)?
-        .map(|turn_get| [turn_caller, completion, turn_get]))
+        .map(|turn_get| (side_chat, [turn_caller, completion, turn_get])))
 }
 
 type ConversationAppendPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 3]);
@@ -2965,7 +2970,7 @@ mod tests {
     fn select_confirmation(
         records: &Value,
         role: OriginalSavedReceiptRole,
-    ) -> Result<Option<[OriginalRoutePin; 3]>> {
+    ) -> Result<Option<ConversationConfirmationPins>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
         select_conversation_confirmation_records((&profile, &lock, &plan), &budget, role)
@@ -3980,7 +3985,6 @@ mod tests {
             assert_eq!(turn.function_id(), role.caller_function_id());
             assert_eq!(receipt.caller_function_id(), turn.function_id());
             assert_eq!(receipt.operation_id(), CONVERSATION_READ.operation);
-            assert!(select_confirmation(&fixture, role).unwrap().is_none());
             assert!(select(&fixture, ordinary_role).unwrap().is_none());
 
             let without = |row: usize| {
@@ -4237,7 +4241,9 @@ mod tests {
     fn conversation_confirmation_requires_all_three_exact_signed_grants() {
         use OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
         for role in OriginalSavedReceiptRole::ALL {
-            let [turn, completion, get] = select_confirmation(&records(), role).unwrap().unwrap();
+            let (side_chat, [turn, completion, get]) =
+                select_confirmation(&records(), role).unwrap().unwrap();
+            assert!(side_chat.is_none());
             assert_eq!(turn.function_id(), role.caller_function_id());
             assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
             assert_eq!(completion.caller_function_id(), turn.function_id());
@@ -4277,6 +4283,95 @@ mod tests {
                     .iter()
                     .all(Option::is_some)
             );
+        }
+    }
+
+    #[test]
+    fn side_chat_confirmation_requires_each_exact_grant_without_borrowing_the_shell_turn() {
+        use OriginalSavedReceiptRole::{
+            SavedReconcile, SavedTurn, SideChatReconcile, SideChatTurn,
+        };
+        let fixture = records();
+        for (role, sibling, ordinary, ordinary_row) in [
+            (
+                SideChatTurn,
+                SideChatReconcile,
+                SavedTurn,
+                SAVED_TURN_SETTLEMENT_ROW,
+            ),
+            (
+                SideChatReconcile,
+                SideChatTurn,
+                SavedReconcile,
+                SAVED_RECONCILE_SETTLEMENT_ROW,
+            ),
+        ] {
+            let (side_chat, [turn, completion, get]) =
+                select_confirmation(&fixture, role).unwrap().unwrap();
+            let side_chat = side_chat.unwrap();
+            assert_eq!(side_chat.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(side_chat.function_id(), SIDE_CHAT_TURN.function);
+            assert_eq!(turn.caller_function_id(), side_chat.function_id());
+            assert_eq!(turn.function_id(), role.caller_function_id());
+            assert_eq!(completion.caller_function_id(), turn.function_id());
+            assert_eq!(completion.variant_id(), CONVERSATION_CONFIRMATION.variant);
+            assert_eq!(get.caller_function_id(), completion.function_id());
+            assert_eq!(get.operation_id(), TURN_GET.operation);
+
+            let without = |row| {
+                let mut missing = fixture.clone();
+                missing["profile"]["requested_edges"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                missing["plan"]["bindings"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                missing
+            };
+            let without_ordinary = without(ordinary_row);
+            assert!(
+                select_confirmation(&without_ordinary, role)
+                    .unwrap()
+                    .is_some()
+            );
+            assert!(
+                select_confirmation(&without_ordinary, ordinary)
+                    .unwrap()
+                    .is_none()
+            );
+
+            for (index, pin) in [side_chat, turn, completion, get].iter().enumerate() {
+                let row = fixture["profile"]["requested_edges"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .position(|edge| edge["authority_reference"] == pin.authority_reference())
+                    .unwrap();
+                let missing = without(row);
+                assert!(select_confirmation(&missing, role).unwrap().is_none());
+                assert_eq!(
+                    select_confirmation(&missing, sibling).unwrap().is_some(),
+                    matches!(index, 1 | 2)
+                );
+                assert_eq!(
+                    select_confirmation(&missing, ordinary).unwrap().is_some(),
+                    index < 2
+                );
+                assert!(
+                    select_saved_receipt(&missing)
+                        .unwrap()
+                        .iter()
+                        .all(Option::is_some)
+                );
+
+                let mut interactive = fixture.clone();
+                interactive["profile"]["requested_edges"][row]["authority_mode"] =
+                    json!("interactive_only");
+                interactive["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+                assert!(select_confirmation(&interactive, role).unwrap().is_none());
+            }
         }
     }
 

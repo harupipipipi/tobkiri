@@ -2481,7 +2481,7 @@ mod tests {
     #[test]
     fn confirmation_request_only_accepts_its_role_proof_and_accounts_for_terminal() {
         use crate::host_contract::ExecutionProfileIdentity;
-        use OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
+        use OriginalSavedReceiptRole::SavedTurn;
 
         let identity = ExecutionProfileIdentity {
             profile_id: "defaults".into(),
@@ -2494,7 +2494,7 @@ mod tests {
             conversation_id: "conversation".into(),
             terminal: vec![b' '; size],
         };
-        for granted in [SavedTurn, SavedReconcile] {
+        for granted in OriginalSavedReceiptRole::RECEIPT_CALLERS {
             let confirmation = VerifiedRegistryLaunch::test_conversation_confirmation_proof(
                 identity.clone(),
                 "catalog:fixture",
@@ -2505,10 +2505,16 @@ mod tests {
                 "catalog:fixture",
                 granted,
             );
-            for caller in [SavedTurn, SavedReconcile] {
+            let read = VerifiedRegistryLaunch::test_turn_read_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            for caller in OriginalSavedReceiptRole::RECEIPT_CALLERS {
                 let request = make_request(caller, CONVERSATION_CONFIRMATION_LIMIT);
                 assert_eq!(request.has_launch_proof(&confirmation), caller == granted);
                 assert!(!request.has_launch_proof(&receipt));
+                assert!(!request.has_launch_proof(&read));
                 assert!(request.requires_publication_permit());
                 assert_eq!(
                     request.input_capacity().unwrap(),
@@ -2541,6 +2547,14 @@ mod tests {
                 OriginalSavedReceiptRole::SavedReconcile,
                 SettlementCaller::SavedReconcile,
             ),
+            (
+                OriginalSavedReceiptRole::SideChatTurn,
+                SettlementCaller::SideChatTurn,
+            ),
+            (
+                OriginalSavedReceiptRole::SideChatReconcile,
+                SettlementCaller::SideChatReconcile,
+            ),
         ] {
             let read = VerifiedRegistryLaunch::test_turn_read_proof(
                 identity.clone(),
@@ -2563,7 +2577,7 @@ mod tests {
                 settlement_caller,
             );
             assert!(!read.permits_conversation_confirmation(granted));
-            for caller in OriginalSavedReceiptRole::ALL {
+            for caller in OriginalSavedReceiptRole::RECEIPT_CALLERS {
                 let request = NativeRegistryRequest::TurnRead {
                     caller,
                     turn_id: "turn".to_owned(),
@@ -2821,7 +2835,7 @@ mod tests {
                 assert!(!request.uses_funded_input());
                 assert_eq!(request.input_capacity().unwrap(), "turn".len());
             }
-            for caller in OriginalSavedReceiptRole::ALL {
+            for caller in callers {
                 let read = NativeRegistryRequest::TurnRead {
                     caller,
                     turn_id: "turn".into(),

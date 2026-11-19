@@ -431,7 +431,7 @@ struct ConversationGet {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConversationReceipt {
-    #[serde(deserialize_with = "deserialize_saved_receipt_caller")]
+    #[serde(deserialize_with = "deserialize_saved_caller")]
     caller: OriginalSavedReceiptRole,
     #[serde(deserialize_with = "deserialize_saved_receipt_turn_id")]
     turn_id: String,
@@ -440,7 +440,7 @@ struct ConversationReceipt {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TurnRead {
-    #[serde(deserialize_with = "deserialize_ordinary_saved_caller")]
+    #[serde(deserialize_with = "deserialize_saved_caller")]
     caller: OriginalSavedReceiptRole,
     #[serde(deserialize_with = "deserialize_turn_read_id")]
     turn_id: String,
@@ -610,7 +610,7 @@ impl SavedLocalChatStart {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConversationConfirmation<'a> {
-    #[serde(deserialize_with = "deserialize_ordinary_saved_caller")]
+    #[serde(deserialize_with = "deserialize_saved_caller")]
     caller: OriginalSavedReceiptRole,
     #[serde(borrow, deserialize_with = "deserialize_object")]
     terminal: &'a RawValue,
@@ -1035,35 +1035,18 @@ where
     }
 }
 
-fn deserialize_saved_receipt_caller<'de, D>(
+fn deserialize_saved_caller<'de, D>(
     deserializer: D,
 ) -> std::result::Result<OriginalSavedReceiptRole, D::Error>
 where
     D: Deserializer<'de>,
 {
     match String::deserialize(deserializer)?.as_str() {
-        "side-chat-turn" => Ok(OriginalSavedReceiptRole::SideChatTurn),
-        "side-chat-reconcile" => Ok(OriginalSavedReceiptRole::SideChatReconcile),
-        caller => ordinary_saved_caller(caller),
-    }
-}
-
-fn deserialize_ordinary_saved_caller<'de, D>(
-    deserializer: D,
-) -> std::result::Result<OriginalSavedReceiptRole, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    ordinary_saved_caller(&String::deserialize(deserializer)?)
-}
-
-fn ordinary_saved_caller<E: de::Error>(
-    caller: &str,
-) -> std::result::Result<OriginalSavedReceiptRole, E> {
-    match caller {
         "saved-turn" => Ok(OriginalSavedReceiptRole::SavedTurn),
         "saved-reconcile" => Ok(OriginalSavedReceiptRole::SavedReconcile),
-        _ => Err(E::custom("unknown saved receipt caller")),
+        "side-chat-turn" => Ok(OriginalSavedReceiptRole::SideChatTurn),
+        "side-chat-reconcile" => Ok(OriginalSavedReceiptRole::SideChatReconcile),
+        _ => Err(de::Error::custom("unknown saved caller")),
     }
 }
 
@@ -2804,15 +2787,21 @@ mod tests {
     }
 
     #[test]
-    fn confirmation_start_preserves_the_exact_terminal_json_for_both_callers() {
+    fn confirmation_start_preserves_the_exact_terminal_json_for_each_caller() {
         let terminal = serde_json::to_string_pretty(&confirmation_terminal()).unwrap();
         for (wire_role, expected) in [
             ("saved-turn", OriginalSavedReceiptRole::SavedTurn),
             ("saved-reconcile", OriginalSavedReceiptRole::SavedReconcile),
+            ("side-chat-turn", OriginalSavedReceiptRole::SideChatTurn),
+            (
+                "side-chat-reconcile",
+                OriginalSavedReceiptRole::SideChatReconcile,
+            ),
         ] {
             let operation = confirmation_operation(wire_role, &terminal);
             let message = start_frame(&operation);
-            let start: Start<'_> = serde_json::from_str(&message).unwrap();
+            let start = parse_start(START, message.as_bytes()).unwrap();
+            assert!(parse_start(START_APPEND, message.as_bytes()).is_err());
             let NativeRegistryRequest::ConversationConfirmation {
                 caller,
                 conversation_id,
@@ -2883,8 +2872,8 @@ mod tests {
         ));
         for operation in [
             confirmation_operation("shell", &raw),
-            confirmation_operation("side-chat-turn", &raw),
-            confirmation_operation("side-chat-reconcile", &raw),
+            confirmation_operation("side-chat", &raw),
+            confirmation_operation("side-chat-reconcile ", &raw),
             confirmation_operation("saved-turn", "null"),
             r#", "conversation_confirmation":null"#.to_owned(),
         ] {
@@ -4157,6 +4146,11 @@ mod tests {
         for (caller, expected) in [
             ("saved-turn", OriginalSavedReceiptRole::SavedTurn),
             ("saved-reconcile", OriginalSavedReceiptRole::SavedReconcile),
+            ("side-chat-turn", OriginalSavedReceiptRole::SideChatTurn),
+            (
+                "side-chat-reconcile",
+                OriginalSavedReceiptRole::SideChatReconcile,
+            ),
         ] {
             let frame = start_frame(&operation(caller, &id));
             let start = parse_start(START, frame.as_bytes()).unwrap();
@@ -4174,8 +4168,8 @@ mod tests {
             operation("saved-turn", "\u{001c}猫"),
             operation("saved-turn", &format!("{id}猫")),
             operation("shell", "猫"),
-            operation("side-chat-turn", "猫"),
-            operation("side-chat-reconcile", "猫"),
+            operation("side-chat", "猫"),
+            operation("side-chat-turn ", "猫"),
             r#", "turn_read":null"#.to_owned(),
             r#", "turn_read":["saved-turn","猫"]"#.to_owned(),
             r#", "turn_read":{"caller":"saved-turn"}"#.to_owned(),

@@ -88,6 +88,14 @@ pub(crate) struct LockedConversationConfirmationBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
+/// Locked Bundle documents for one Side Chat confirmation caller.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedSideChatConfirmationBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    routes: [LockedRegistryRoute<'pin>; 4],
+    budget: Arc<dyn AllocationBudget>,
+}
+
 /// Locked Bundle documents for ordinary saved orchestration.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) struct LockedSavedOrchestrationBundle<'pin> {
@@ -522,7 +530,8 @@ impl NativeApplicationSources {
             if let Some(selection) = selection {
                 let turn_caller = selection.turn_caller();
                 ensure!(
-                    turn_caller.caller_function_id() == self.authority.shell_provider_id,
+                    selection.side_chat().is_none()
+                        && turn_caller.caller_function_id() == self.authority.shell_provider_id,
                     "old Conversation confirmation caller differs from the selected Shell"
                 );
                 *route = Some([
@@ -543,6 +552,43 @@ impl NativeApplicationSources {
         Ok(LockedConversationConfirmationBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             routes,
+            budget: Arc::clone(budget),
+        })
+    }
+
+    /// Capture the four installed routes behind one Side Chat confirmation chain.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn side_chat_confirmation_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalConversationConfirmationChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedSideChatConfirmationBundle<'pin>> {
+        let side_chat = selection
+            .side_chat()
+            .context("Side Chat confirmation has no signed Side Chat entry")?;
+        let pins = [
+            side_chat,
+            selection.turn_caller(),
+            selection.completion(),
+            selection.turn_get(),
+        ];
+        ensure!(
+            side_chat.caller_function_id() == self.authority.shell_provider_id
+                && pins
+                    .windows(2)
+                    .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
+            "Side Chat confirmation callers differ from the selected Shell and caller chain"
+        );
+        let [side_chat, turn, completion, get] = pins;
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        Ok(LockedSideChatConfirmationBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            routes: [
+                from_lock(side_chat)?,
+                from_lock(turn)?,
+                from_lock(completion)?,
+                from_lock(get)?,
+            ],
             budget: Arc::clone(budget),
         })
     }
@@ -986,6 +1032,23 @@ impl LockedConversationConfirmationBundle<'_> {
             &mut checkpoint,
         )?;
         checkpoint()
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedSideChatConfirmationBundle<'_> {
+    /// Verify and retain the installed Pack and catalog for each grant.
+    pub(crate) fn verify(
+        self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        self.source.revalidate(&self.budget, &mut checkpoint)?;
+        self.source.verify_routes(
+            &[Some(self.routes)],
+            &self.budget,
+            checkpoint,
+            ["privileged"; 4],
+        )
     }
 }
 
