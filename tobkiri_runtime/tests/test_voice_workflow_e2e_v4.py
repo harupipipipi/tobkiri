@@ -368,7 +368,9 @@ def test_voice_chain_end_to_end(
         credential_transport, "_open_pinned_request", _fake_opener(calls)
     )
     observed_dispatches: list[RequestEnvelope] = []
-    registry_reads: list[ipc.NativeProviderSnapshotRequest] = []
+    registry_reads: list[
+        tuple[ipc.NativeProviderSnapshotRequest, tuple[RequestEnvelope, ...]]
+    ] = []
     instance = "1" * 32
     operations_by_role = {
         "workflow-text": ("rumi_ai_gateway_pack.ai-gateway.text-generate",),
@@ -384,22 +386,8 @@ def test_voice_chain_end_to_end(
     }
 
     def snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, Any]:
-        read = observed_dispatches[-1]
-        assert read.operation_id == "rumi_provider_registry_pack.provider-registry-resource.generate"
-        assert request.context is read.context and request.runtime_instance == instance
-        assert request.deadline_monotonic == read.deadline_monotonic
-        assert request.workflow_entry in ("run.advance", "run.step.resume")
-        chain = [read]
-        earlier = iter(reversed(observed_dispatches[:-1]))
-        for operation in (*operations_by_role[request.role], request.workflow_entry):
-            parent = next(item for item in earlier if item.operation_id == operation)
-            assert chain[-1].context.caller_principal == parent.target_principal
-            assert chain[-1].deadline_monotonic <= parent.deadline_monotonic
-            chain.append(parent)
-        assert len({item.lease.token for item in chain}) == len(chain)
-        assert len({item.resource_reservation_id for item in chain}) == len(chain)
         request.assert_current()
-        registry_reads.append(request)
+        registry_reads.append((request, tuple(observed_dispatches)))
         return ProviderRegistry(
             request.context.profile_id, user_data_root=tmp_path / "user-data",
         ).snapshot()
@@ -550,11 +538,28 @@ def test_voice_chain_end_to_end(
         assert messages["outcome"]["text"] == _REPLY
 
         if native_registry:
-            assert [read.role for read in registry_reads] == [
+            assert [read.role for read, _ in registry_reads] == [
                 "workflow-audio-transcribe", "workflow-text",
                 "workflow-audio-speech", "workflow-messages",
             ]
-            for read in registry_reads:
+            for read, dispatches in registry_reads:
+                envelope = dispatches[-1]
+                assert envelope.operation_id == (
+                    "rumi_provider_registry_pack.provider-registry-resource.generate"
+                )
+                assert read.context is envelope.context
+                assert read.runtime_instance == instance
+                assert read.deadline_monotonic == envelope.deadline_monotonic
+                assert read.workflow_entry in ("run.advance", "run.step.resume")
+                chain = [envelope]
+                earlier = iter(reversed(dispatches[:-1]))
+                for operation in (*operations_by_role[read.role], read.workflow_entry):
+                    parent = next(item for item in earlier if item.operation_id == operation)
+                    assert chain[-1].context.caller_principal == parent.target_principal
+                    assert chain[-1].deadline_monotonic <= parent.deadline_monotonic
+                    chain.append(parent)
+                assert len({item.lease.token for item in chain}) == len(chain)
+                assert len({item.resource_reservation_id for item in chain}) == len(chain)
                 with pytest.raises((AuthorityDenied, PermissionError)):
                     read.assert_current()
 
