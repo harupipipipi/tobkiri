@@ -136,27 +136,27 @@ pub async fn post_original_local_chat(
         },
         budget,
         |phase| {
-            if phase == OriginalLocalChatCheck::Dispatch {
-                if let Some(expected) = request.expected_policy {
-                    let result = observe_original_local_chat_policy(
-                        root,
-                        request.profile,
-                        &request.provider,
-                        budget,
-                    )
-                    .and_then(|current| {
-                        if current.address != expected.address
-                            || current.document.as_bytes() != expected.document.as_bytes()
-                        {
-                            Err(LegacyLocalChatSourceError::SelectionChanged.into())
-                        } else {
-                            Ok(())
-                        }
-                    });
-                    if let Err(error) = result {
-                        registry_error = Some(error);
-                        bail!("local Provider policy observation changed at dispatch");
+            if phase == OriginalLocalChatCheck::Dispatch
+                && let Some(expected) = request.expected_policy
+            {
+                let result = observe_original_local_chat_policy(
+                    root,
+                    request.profile,
+                    &request.provider,
+                    budget,
+                )
+                .and_then(|current| {
+                    if current.address != expected.address
+                        || current.document.as_bytes() != expected.document.as_bytes()
+                    {
+                        Err(LegacyLocalChatSourceError::SelectionChanged.into())
+                    } else {
+                        Ok(())
                     }
+                });
+                if let Err(error) = result {
+                    registry_error = Some(error);
+                    bail!("local Provider policy observation changed at dispatch");
                 }
             }
             check(phase)
