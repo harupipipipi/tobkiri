@@ -1,4 +1,4 @@
-//! Effect-free routing and Gateway stream result normalization.
+//! Effect-free routing, Gateway stream result normalization and usage cost calculation.
 
 use std::{
     cmp::Ordering,
@@ -14,6 +14,15 @@ use ordered_python_compat::{
 mod component;
 
 const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+
+/// Project usage cost from supplied usage and pricing in ordered finite JSON.
+/// Return `None` when the request or result requires the original provider.
+pub fn calculate_usage_cost(request: &str) -> Option<String> {
+    if request.len() > MAX_OUTPUT_BYTES {
+        return None;
+    }
+    tobkiri_ai_usage_cost_core::invoke("calculate", request, MAX_OUTPUT_BYTES).ok()
+}
 
 /// Project Gateway stream events while preserving ordered finite JSON.
 /// Return `None` for requests that require the original normalizer.

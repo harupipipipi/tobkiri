@@ -16,6 +16,7 @@ use tobkiri_core::{
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
+    OriginalUsageCostChoice,
 };
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
@@ -180,6 +181,16 @@ impl NativeApplicationSources {
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
         self.ordinary_ai_bundle([Some(selection.pins())], budget)
+    }
+
+    /// Capture one usage-cost chain using the original signed Bundle document pins.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn usage_cost_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalUsageCostChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
+        self.ordinary_ai_bundle([Some(choice.pins())], budget)
     }
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -1077,7 +1088,7 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
-    fn stream_bundle_revalidates_its_normalizer_document_and_bundle_lock() {
+    fn ordinary_gateway_bundles_revalidate_only_their_own_documents_and_bundle_lock() {
         struct Root(PathBuf);
         impl Drop for Root {
             fn drop(&mut self) {
@@ -1092,28 +1103,34 @@ mod tests {
         fs::create_dir_all(root.0.join("packs")).unwrap();
         let bundle_lock = "bundle.lock.json";
         let normalizer = "packs/rumi_ai_stream_pack.executables.v4.json";
+        let usage = "packs/rumi_ai_usage_pack.executables.v4.json";
         let routing = "packs/rumi_ai_routing_pack.executables.v4.json";
-        for path in [bundle_lock, normalizer, routing] {
+        for path in [bundle_lock, normalizer, usage, routing] {
             fs::write(root.0.join(path), path).unwrap();
         }
-        let bundle = VerifiedOrdinarySavedBundle {
+        let proof = |document: &str| VerifiedOrdinarySavedBundle {
             application_root: root.0.clone(),
             bundle_root: root.0.canonicalize().unwrap(),
             bundle_lock_digest: Digest::hash(bundle_lock.as_bytes()),
-            documents: vec![(normalizer.to_owned(), Digest::hash(normalizer.as_bytes()))],
+            documents: vec![(document.to_owned(), Digest::hash(document.as_bytes()))],
         };
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         fs::write(root.0.join(routing), b"changed").unwrap();
-        bundle.revalidate(&budget, || Ok(())).unwrap();
 
-        for document in [normalizer, bundle_lock] {
-            fs::write(root.0.join(document), b"changed").unwrap();
-            let error = bundle.revalidate(&budget, || Ok(())).unwrap_err();
-            assert_eq!(
-                error.to_string(),
-                format!("locked Bundle digest changed: {document}")
-            );
-            fs::write(root.0.join(document), document).unwrap();
+        for (selected, unrelated) in [(normalizer, usage), (usage, normalizer)] {
+            let bundle = proof(selected);
+            fs::write(root.0.join(unrelated), b"changed").unwrap();
+            bundle.revalidate(&budget, || Ok(())).unwrap();
+            fs::write(root.0.join(unrelated), unrelated).unwrap();
+            for document in [selected, bundle_lock] {
+                fs::write(root.0.join(document), b"changed").unwrap();
+                let error = bundle.revalidate(&budget, || Ok(())).unwrap_err();
+                assert_eq!(
+                    error.to_string(),
+                    format!("locked Bundle digest changed: {document}")
+                );
+                fs::write(root.0.join(document), document).unwrap();
+            }
         }
     }
 

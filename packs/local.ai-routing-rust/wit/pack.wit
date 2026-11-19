@@ -16,9 +16,18 @@ interface stream-result {
   normalize: func(request: string) -> result<string, error>;
 }
 
+interface usage-cost {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Project cost from the supplied usage and rates in ordered finite JSON.
+  /// An empty result leaves calculation to the original usage provider.
+  calculate: func(request: string) -> result<string, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
   export routing;
   export stream-result;
+  export usage-cost;
 }

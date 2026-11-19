@@ -680,23 +680,27 @@ mod unix {
                 );
             }
 
-            let legacy = Fixture::with_packs(AI_ROUTING_RECEIPT_FORMAT, ids.clone())?;
-            let input = legacy.write_receipt(&legacy.document)?;
-            input.stage(&legacy.stage)?;
-            assert_eq!(
-                verify_installed_with_ai_routing(
-                    &legacy.stage,
-                    input.receipt_sha256(),
-                    || Ok(()),
-                    |pack, _| Ok(pack.version().to_owned()),
-                )?
-                .as_deref(),
-                Some("0.1.0"),
-            );
+            for version in ["0.1.0", "0.2.0"] {
+                let legacy = Fixture::with_packs(AI_ROUTING_RECEIPT_FORMAT, ids.clone())?;
+                let mut receipt = legacy.document.clone();
+                receipt["packs"][6]["version"] = json!(version);
+                let input = legacy.write_receipt(&receipt)?;
+                input.stage(&legacy.stage)?;
+                assert_eq!(
+                    verify_installed_with_ai_routing(
+                        &legacy.stage,
+                        input.receipt_sha256(),
+                        || Ok(()),
+                        |pack, _| Ok(pack.version().to_owned()),
+                    )?
+                    .as_deref(),
+                    Some(version),
+                );
+            }
             let fixture = Fixture::with_packs(AI_ROUTING_RECEIPT_FORMAT, ids)?;
             let mut receipt = fixture.document.clone();
             receipt["packs"][5]["version"] = json!("0.3.0");
-            receipt["packs"][6]["version"] = json!("0.2.0");
+            receipt["packs"][6]["version"] = json!("0.3.0");
             let input = fixture.write_receipt(&receipt)?;
             input.stage(&fixture.stage)?;
             let pin = input.receipt_sha256();
@@ -707,7 +711,7 @@ mod unix {
                     || Ok(()),
                     |pack, archive| {
                         assert_eq!(pack.id(), AI_ROUTING_PACK_ID);
-                        assert_eq!(pack.version(), "0.2.0");
+                        assert_eq!(pack.version(), "0.3.0");
                         let mut prefix = [0; 6];
                         archive.read_exact(&mut prefix)?;
                         Ok(prefix)

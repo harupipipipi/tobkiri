@@ -1,4 +1,4 @@
-//! The original Gateway's routing and stream results through verified Wasm.
+//! The original Gateway's pure routing, stream and cost results through verified Wasm.
 
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
@@ -111,5 +111,22 @@ async fn ai_routing_uses_verified_wasm_port() -> Result<()> {
     ensure!(events[3]["finish_reason"] == "stop");
     let after_finish = r#"{"request_id":"fixture-stream","value":[{"type":"finish"},{"type":"text_delta","delta":"late"}]}"#;
     ensure!(invoke(&shape, &operation, after_finish).await?.is_empty());
+
+    let shape = ShapeRef::parse("local.ai-routing.usage-cost@1.0")?;
+    let operation = OpName::parse("calculate")?;
+    let cost = r#"{"usage":{"prompt_tokens":10,"completion_tokens":4},"pricing":{"input":0.125,"output":0.25,"currency":"USD"},"usage_provenance":"fixture-usage","pricing_revision":"fixture-catalog"}"#;
+    let reply = invoke(&shape, &operation, cost).await?;
+    ensure!(
+        reply
+            == r#"{"input_tokens":10.0,"output_tokens":4.0,"total_tokens":14.0,"cost":2.25,"currency":"USD","known":true,"usage_provenance":"fixture-usage","pricing_revision":"fixture-catalog"}"#
+    );
+    let unknown = r#"{"usage":{"input_tokens":null,"prompt_tokens":10,"completion_tokens":4},"pricing":{"input":0.125,"output":0.25}}"#;
+    let reply = invoke(&shape, &operation, unknown).await?;
+    ensure!(
+        reply
+            == r#"{"input_tokens":null,"output_tokens":4.0,"total_tokens":null,"cost":null,"currency":null,"known":false,"usage_provenance":"provider_reported","pricing_revision":null}"#
+    );
+    let outside_domain = r#"{"usage":{"input_tokens":1e308,"output_tokens":1e308},"pricing":{"input":1,"output":1}}"#;
+    ensure!(invoke(&shape, &operation, outside_domain).await?.is_empty());
     Ok(())
 }

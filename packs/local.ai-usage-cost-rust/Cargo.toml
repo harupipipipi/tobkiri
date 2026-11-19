@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 wit-bindgen.workspace = true
 ordered-python-compat = { path = "../ordered-python-compat" }
+tobkiri-ai-usage-cost-core = { path = "core" }
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -45,12 +45,13 @@ use super::{
         reacquire_provider_prepare_pack, reacquire_saved_local_chat_adapter,
         reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
         reacquire_stream_result_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
-        reacquire_turn_start_pack, saved_local_chat_dispatch_bundle, ConversationReadCaller,
-        SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE,
-        PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION,
-        PROVIDER_POLICY_OPERATION, PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION,
-        PROVIDER_REQUEST_SHAPE, REGISTRY_VERIFICATION_BYTES, STREAM_RESULT_OPERATION,
-        STREAM_RESULT_SHAPE,
+        reacquire_turn_start_pack, reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle,
+        ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION,
+        AI_ROUTING_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
+        PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
+        PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
+        REGISTRY_VERIFICATION_BYTES, STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE,
+        USAGE_COST_OPERATION, USAGE_COST_SHAPE,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -85,6 +86,7 @@ pub(crate) const AI_GATEWAY_DATA_LIMIT: usize = 1024 * 1024;
 pub(crate) enum AiGatewayDataOperation {
     Route(OriginalModelResolveRole),
     StreamResult,
+    UsageCost(OriginalModelResolveRole),
 }
 
 impl AiGatewayDataOperation {
@@ -92,6 +94,7 @@ impl AiGatewayDataOperation {
         match self {
             Self::Route(role) => proof.permits_ai_routing(role),
             Self::StreamResult => proof.permits_stream_result(),
+            Self::UsageCost(role) => proof.permits_usage_cost(role),
         }
     }
 }
@@ -1159,6 +1162,11 @@ async fn run(
                             reacquire_stream_result_pack(&inspection, source, checkpoint)?,
                             STREAM_RESULT_SHAPE,
                             STREAM_RESULT_OPERATION,
+                        ),
+                        AiGatewayDataOperation::UsageCost(role) => (
+                            reacquire_usage_cost_pack(&inspection, source, role, checkpoint)?,
+                            USAGE_COST_SHAPE,
+                            USAGE_COST_OPERATION,
                         ),
                     };
                     revalidate()?;

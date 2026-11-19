@@ -23,7 +23,7 @@ use tobkiri_harness_native::{
     OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
     OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice,
     OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnStartChoice,
-    OriginalStreamResultSelection,
+    OriginalStreamResultSelection, OriginalUsageCostChoice,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
@@ -130,6 +130,14 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.stream_result.is_some())
     }
 
+    /// Require the signed ordinary Generate or Stream usage-cost grant for this Gateway role.
+    pub(crate) fn permits_usage_cost(&self, role: OriginalModelResolveRole) -> bool {
+        self.ai_routing
+            .as_ref()
+            .and_then(|source| source.usage_cost(role))
+            .is_some()
+    }
+
     /// Require the caller's own legacy read edge against the verified replacement.
     pub(crate) fn permits_conversation_read(&self, caller: ConversationReadCaller) -> bool {
         self.conversation
@@ -232,6 +240,7 @@ impl VerifiedModelResolveSource {
 struct VerifiedAiRoutingSource {
     routing: Option<VerifiedAiRoutingRoles>,
     stream_result: Option<VerifiedStreamResultRole>,
+    usage_cost: [Option<VerifiedUsageCostRole>; 2],
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -247,6 +256,13 @@ impl VerifiedAiRoutingSource {
                 .any(|(granted, _)| *granted == role)
         })
     }
+
+    fn usage_cost(&self, role: OriginalModelResolveRole) -> Option<&VerifiedUsageCostRole> {
+        self.usage_cost
+            .iter()
+            .flatten()
+            .find(|grant| grant.role == role)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -257,6 +273,13 @@ struct VerifiedAiRoutingRoles {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedStreamResultRole {
+    bundle: VerifiedOrdinarySavedBundle,
+    pins: [VerifiedLegacyRoutePin; 4],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedUsageCostRole {
+    role: OriginalModelResolveRole,
     bundle: VerifiedOrdinarySavedBundle,
     pins: [VerifiedLegacyRoutePin; 4],
 }
@@ -504,6 +527,7 @@ impl VerifiedRegistryLaunch {
                 }),
             }),
             stream_result: None,
+            usage_cost: [None, None],
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -522,6 +546,35 @@ impl VerifiedRegistryLaunch {
             stream_result: Some(VerifiedStreamResultRole {
                 bundle: VerifiedOrdinarySavedBundle::fixture(),
                 pins: std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+            }),
+            usage_cost: [None, None],
+            archive_sha256: "sha256:archive".into(),
+            archive_bytes: 512,
+            manifest_sha256: "sha256:manifest".into(),
+        });
+        proof
+    }
+
+    pub(crate) fn test_usage_cost_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalModelResolveRole,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
+        proof.provider_prepare = None;
+        proof.ai_routing = Some(VerifiedAiRoutingSource {
+            routing: None,
+            stream_result: None,
+            usage_cost: [
+                OriginalModelResolveRole::Generate,
+                OriginalModelResolveRole::Stream,
+            ]
+            .map(|candidate| {
+                (candidate == role).then(|| VerifiedUsageCostRole {
+                    role,
+                    bundle: VerifiedOrdinarySavedBundle::fixture(),
+                    pins: std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+                })
             }),
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
@@ -1378,8 +1431,31 @@ pub(super) fn reacquire_stream_result_pack(
     let (pack, declaration) =
         reacquire_ai_routing_archive(inspection, proof, source, &stream_result.bundle, checkpoint)?;
     ensure!(
-        declaration == AiRoutingDeclaration::RoutingWithStreamResult,
+        declaration.has_stream_result(),
         "bundled AI Routing Pack has no verified stream-result port"
+    );
+    Ok(pack)
+}
+
+/// Reacquire the usage-cost port behind the Gateway role's signed installed grant.
+pub(super) fn reacquire_usage_cost_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalModelResolveRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .ai_routing
+        .as_ref()
+        .context("admitted launch has no verified AI Routing archive")?;
+    let usage_cost = source
+        .usage_cost(role)
+        .context("admitted launch has no verified usage-cost grant for the Gateway role")?;
+    let (pack, declaration) =
+        reacquire_ai_routing_archive(inspection, proof, source, &usage_cost.bundle, checkpoint)?;
+    ensure!(
+        declaration == AiRoutingDeclaration::RoutingWithUsageCost,
+        "bundled AI Routing Pack has no verified usage-cost port"
     );
     Ok(pack)
 }
@@ -1951,12 +2027,28 @@ fn verify_ai_routing_source(
 ) -> Result<Option<VerifiedAiRoutingSource>> {
     let budget = inspection.allocation_budget()?;
     let routing_selection = OriginalAiRoutingSelection::select(active, budget)?;
-    let stream_result_selection = if receipt.version() == STREAM_RESULT_PACK_VERSION {
+    let stream_result_selection = if matches!(
+        receipt.version(),
+        STREAM_RESULT_PACK_VERSION | USAGE_COST_PACK_VERSION
+    ) {
         OriginalStreamResultSelection::select(active, budget)?
     } else {
         None
     };
-    if routing_selection.is_none() && stream_result_selection.is_none() {
+    let mut usage_cost_selections = [None, None];
+    if receipt.version() == USAGE_COST_PACK_VERSION {
+        for (selection, role) in usage_cost_selections.iter_mut().zip([
+            OriginalModelResolveRole::Generate,
+            OriginalModelResolveRole::Stream,
+        ]) {
+            *selection =
+                OriginalUsageCostChoice::select(active, budget, role)?.map(|choice| (role, choice));
+        }
+    }
+    if routing_selection.is_none()
+        && stream_result_selection.is_none()
+        && usage_cost_selections.iter().all(Option::is_none)
+    {
         return Ok(None);
     }
     let pack = verify_registry_archive(inspection, receipt, input)?;
@@ -1976,7 +2068,7 @@ fn verify_ai_routing_source(
     };
     let stream_result = if let Some(selection) = stream_result_selection {
         ensure!(
-            declaration == AiRoutingDeclaration::RoutingWithStreamResult,
+            declaration.has_stream_result(),
             "bundled AI Routing Pack has no verified stream-result port"
         );
         let locked = inspection
@@ -1988,9 +2080,27 @@ fn verify_ai_routing_source(
     } else {
         None
     };
+    let mut usage_cost = [None, None];
+    for (grant, selection) in usage_cost.iter_mut().zip(usage_cost_selections) {
+        let Some((role, choice)) = selection else {
+            continue;
+        };
+        ensure!(
+            declaration == AiRoutingDeclaration::RoutingWithUsageCost,
+            "bundled AI Routing Pack has no verified usage-cost port"
+        );
+        let locked =
+            inspection.with_source(|sources| sources.usage_cost_bundle(&choice, budget))??;
+        *grant = Some(VerifiedUsageCostRole {
+            role,
+            bundle: locked.verify(&checkpoint)?,
+            pins: choice.pins().each_ref().map(Into::into),
+        });
+    }
     Ok(Some(VerifiedAiRoutingSource {
         routing,
         stream_result,
+        usage_cost,
         archive_sha256: receipt.archive_sha256().to_owned(),
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -2001,10 +2111,20 @@ pub(super) const AI_ROUTING_SHAPE: &str = "local.ai-routing.routing@1.0";
 pub(super) const AI_ROUTING_OPERATION: &str = "evaluate";
 pub(super) const STREAM_RESULT_SHAPE: &str = "local.ai-routing.stream-result@1.0";
 pub(super) const STREAM_RESULT_OPERATION: &str = "normalize";
+pub(super) const USAGE_COST_SHAPE: &str = "local.ai-routing.usage-cost@1.0";
+pub(super) const USAGE_COST_OPERATION: &str = "calculate";
 const STREAM_RESULT_PACK_VERSION: &str = "0.2.0";
+const USAGE_COST_PACK_VERSION: &str = "0.3.0";
 
+// Published WIT and sidecar digests for 0.1.0 and 0.2.0.
 const AI_ROUTING_LEGACY_WIT: &str =
     "sha256:eab599c796a6dbc930e02f4b79f27a333e205e5f87231481893564dfdc924343";
+const AI_ROUTING_STREAM_RESULT_WIT: &str =
+    "sha256:417b89e703eac09fc7ff852e3c736c3c06473c25d91a4bf39401f3ecf811a528";
+const AI_ROUTING_LEGACY_CORE_WIT: &str =
+    "sha256:b5604d1611c56eff3078e43b6f0ba30a10f6b2793c8fe9480c240c58a6c390d5";
+const AI_ROUTING_LEGACY_SIDECAR: &str =
+    "sha256:1faeaa2c351dc457027b827aa92f8cc78f133170ba8df1aade57ef5d82a464be";
 const AI_ROUTING_WIT: (&str, &[u8]) = (
     "wit/pack.wit",
     include_bytes!("../../../packs/local.ai-routing-rust/wit/pack.wit"),
@@ -2020,54 +2140,78 @@ const STREAM_RESULT_SIDECAR: (&str, &[u8]) = (
     "wit/stream-result.shape.json",
     include_bytes!("../../../packs/local.ai-routing-rust/wit/stream-result.shape.json"),
 );
+const USAGE_COST_SIDECAR: (&str, &[u8]) = (
+    "wit/usage-cost.shape.json",
+    include_bytes!("../../../packs/local.ai-routing-rust/wit/usage-cost.shape.json"),
+);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AiRoutingDeclaration {
     Routing,
     RoutingWithStreamResult,
+    RoutingWithUsageCost,
+}
+
+impl AiRoutingDeclaration {
+    fn has_stream_result(self) -> bool {
+        self != Self::Routing
+    }
 }
 
 fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<AiRoutingDeclaration> {
     let manifest = &pack.manifest;
-    let (declaration, wit, port_count, extra_file) = match manifest.version.as_str() {
+    let (declaration, wit, port_count) = match manifest.version.as_str() {
         "0.1.0" => (
             AiRoutingDeclaration::Routing,
             Digest::parse(AI_ROUTING_LEGACY_WIT)?,
             1,
-            None,
         ),
         STREAM_RESULT_PACK_VERSION => (
             AiRoutingDeclaration::RoutingWithStreamResult,
-            Digest::hash(AI_ROUTING_WIT.1),
+            Digest::parse(AI_ROUTING_STREAM_RESULT_WIT)?,
             2,
-            Some(STREAM_RESULT_SIDECAR),
+        ),
+        USAGE_COST_PACK_VERSION => (
+            AiRoutingDeclaration::RoutingWithUsageCost,
+            Digest::hash(AI_ROUTING_WIT.1),
+            3,
         ),
         _ => bail!("bundled AI Routing Pack has an unsupported version"),
     };
     verify_stateless_registry_surface(pack, registry_pack_receipt::AI_ROUTING_PACK_ID, port_count)?;
+    let file_matches = |path, digest: &Digest| {
+        pack.files
+            .get(path)
+            .is_some_and(|file| file.digest() == digest)
+    };
+    let uses_current_wit = declaration == AiRoutingDeclaration::RoutingWithUsageCost;
+    let shared_wit_matches = if uses_current_wit {
+        AI_ROUTING_SHARED_WIT_FILES
+            .into_iter()
+            .chain([STREAM_RESULT_SIDECAR, USAGE_COST_SIDECAR])
+            .all(|(path, bytes)| file_matches(path, &Digest::hash(bytes)))
+    } else {
+        let sidecar = Digest::parse(AI_ROUTING_LEGACY_SIDECAR)?;
+        file_matches(CORE_V1_2_WIT.0, &Digest::parse(AI_ROUTING_LEGACY_CORE_WIT)?)
+            && file_matches(AI_ROUTING_SHARED_WIT_FILES[1].0, &sidecar)
+            && (!declaration.has_stream_result() || file_matches(STREAM_RESULT_SIDECAR.0, &sidecar))
+    };
     ensure!(
         manifest.files.len() == AI_ROUTING_SHARED_WIT_FILES.len() + port_count + 1
             && manifest
                 .shapes
                 .iter()
                 .all(|shape| shape.wit == AI_ROUTING_WIT.0)
-            && pack
-                .files
-                .get(AI_ROUTING_WIT.0)
-                .is_some_and(|file| *file.digest() == wit)
-            && AI_ROUTING_SHARED_WIT_FILES
-                .into_iter()
-                .chain(extra_file)
-                .all(|(path, bytes)| {
-                    pack.files
-                        .get(path)
-                        .is_some_and(|file| *file.digest() == Digest::hash(bytes))
-                }),
+            && file_matches(AI_ROUTING_WIT.0, &wit)
+            && shared_wit_matches,
         "bundled AI Routing Pack has unexpected WIT files"
     );
     require_registry_ports(pack, AI_ROUTING_OPERATION, &[AI_ROUTING_SHAPE])?;
-    if declaration == AiRoutingDeclaration::RoutingWithStreamResult {
+    if declaration.has_stream_result() {
         require_registry_ports(pack, STREAM_RESULT_OPERATION, &[STREAM_RESULT_SHAPE])?;
+    }
+    if uses_current_wit {
+        require_registry_ports(pack, USAGE_COST_OPERATION, &[USAGE_COST_SHAPE])?;
     }
     Ok(declaration)
 }
@@ -2448,10 +2592,11 @@ mod tests {
         )));
         fs::create_dir_all(root.0.join("wit/deps")).unwrap();
         let path = root.0.canonicalize().unwrap();
-        for (relative, wit) in AI_ROUTING_SHARED_WIT_FILES
-            .into_iter()
-            .chain([AI_ROUTING_WIT, STREAM_RESULT_SIDECAR])
-        {
+        for (relative, wit) in AI_ROUTING_SHARED_WIT_FILES.into_iter().chain([
+            AI_ROUTING_WIT,
+            STREAM_RESULT_SIDECAR,
+            USAGE_COST_SIDECAR,
+        ]) {
             fs::write(path.join(relative), wit).unwrap();
         }
         fs::write(path.join("component.wasm"), b"fixture").unwrap();
@@ -2463,7 +2608,7 @@ mod tests {
         };
         assert_eq!(
             require_ai_routing_declaration(&verify(draft)).unwrap(),
-            AiRoutingDeclaration::RoutingWithStreamResult,
+            AiRoutingDeclaration::RoutingWithUsageCost,
         );
 
         let mut modified: serde_json::Value = serde_json::from_slice(draft).unwrap();
@@ -2481,6 +2626,15 @@ mod tests {
                 .is_err()
         );
 
+        let (path_for_cost, sidecar) = USAGE_COST_SIDECAR;
+        let sidecar = std::str::from_utf8(sidecar).unwrap();
+        fs::write(path.join(path_for_cost), format!("{sidecar}\n")).unwrap();
+        assert!(require_ai_routing_declaration(&verify(draft))
+            .unwrap_err()
+            .to_string()
+            .contains("unexpected WIT"));
+        fs::write(path.join(path_for_cost), sidecar).unwrap();
+
         let wit = std::str::from_utf8(AI_ROUTING_WIT.1).unwrap();
         fs::write(
             path.join("wit/pack.wit"),
@@ -2492,7 +2646,7 @@ mod tests {
             .to_string()
             .contains("unexpected WIT"));
 
-        const LEGACY_WIT: &[u8] = br#"package local:ai-routing@1.0.0;
+        const STREAM_RESULT_WIT: &[u8] = br#"package local:ai-routing@1.0.0;
 
 interface routing {
   use tobkiri:core/types@1.2.0.{error};
@@ -2502,32 +2656,72 @@ interface routing {
   evaluate: func(request: string) -> result<string, error>;
 }
 
+interface stream-result {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Project the supplied Gateway stream events in ordered finite JSON.
+  /// An empty result leaves normalization to the original stream provider.
+  normalize: func(request: string) -> result<string, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
   export routing;
+  export stream-result;
 }
 "#;
-        fs::write(path.join(AI_ROUTING_WIT.0), LEGACY_WIT).unwrap();
-        fs::remove_file(path.join(STREAM_RESULT_SIDECAR.0)).unwrap();
         let mut legacy: serde_json::Value = serde_json::from_slice(draft).unwrap();
-        legacy["version"] = serde_json::json!("0.1.0");
-        legacy["shapes"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|shape| shape["name"] != "local.ai-routing.stream-result");
-        legacy["ports"]["provides"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|port| port["shape"] != "local.ai-routing.stream-result");
-        legacy["files"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|file| file != STREAM_RESULT_SIDECAR.0);
-        assert_eq!(
-            require_ai_routing_declaration(&verify(&serde_json::to_vec(&legacy).unwrap())).unwrap(),
-            AiRoutingDeclaration::Routing,
-        );
+        let stream_result_wit = std::str::from_utf8(STREAM_RESULT_WIT).unwrap();
+        let (_, stream_result_interface) = stream_result_wit
+            .split_once("interface stream-result")
+            .unwrap();
+        let (removed_interface, _) = stream_result_interface.split_once("world pack").unwrap();
+        let routing_wit = stream_result_wit
+            .replace(&format!("interface stream-result{removed_interface}"), "")
+            .replace("  export stream-result;\n", "");
+        for (version, wit, declaration, removed_shape, removed_sidecar) in [
+            (
+                "0.2.0",
+                stream_result_wit,
+                AiRoutingDeclaration::RoutingWithStreamResult,
+                "local.ai-routing.usage-cost",
+                USAGE_COST_SIDECAR.0,
+            ),
+            (
+                "0.1.0",
+                routing_wit.as_str(),
+                AiRoutingDeclaration::Routing,
+                "local.ai-routing.stream-result",
+                STREAM_RESULT_SIDECAR.0,
+            ),
+        ] {
+            legacy["version"] = serde_json::json!(version);
+            legacy["shapes"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|shape| shape["name"] != removed_shape);
+            legacy["ports"]["provides"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|port| port["shape"] != removed_shape);
+            legacy["files"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|file| file != removed_sidecar);
+            fs::write(path.join(AI_ROUTING_WIT.0), wit).unwrap();
+            fs::remove_file(path.join(removed_sidecar)).unwrap();
+            let legacy_draft = serde_json::to_vec(&legacy).unwrap();
+            assert_eq!(
+                require_ai_routing_declaration(&verify(&legacy_draft)).unwrap(),
+                declaration,
+            );
+            let sidecar_path = path.join(AI_ROUTING_SHARED_WIT_FILES[1].0);
+            let sidecar = std::str::from_utf8(AI_ROUTING_SHARED_WIT_FILES[1].1).unwrap();
+            fs::write(&sidecar_path, format!("{sidecar}\n")).unwrap();
+            assert!(require_ai_routing_declaration(&verify(&legacy_draft)).is_err());
+            fs::write(sidecar_path, sidecar).unwrap();
+        }
     }
 
     #[test]
@@ -2562,6 +2756,35 @@ world pack {
         assert!(stream_result.permits_stream_result());
         for role in OriginalModelResolveRole::ALL {
             assert!(!stream_result.permits_ai_routing(role));
+        }
+    }
+
+    #[test]
+    fn usage_cost_evidence_is_independent_of_other_gateway_roles_and_operations() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let catalog = "catalog:fixture";
+        let normalizer =
+            VerifiedRegistryLaunch::test_stream_result_proof(identity.clone(), catalog);
+        for granted in [
+            OriginalModelResolveRole::Generate,
+            OriginalModelResolveRole::Stream,
+        ] {
+            let usage =
+                VerifiedRegistryLaunch::test_usage_cost_proof(identity.clone(), catalog, granted);
+            let router =
+                VerifiedRegistryLaunch::test_ai_routing_proof(identity.clone(), catalog, granted);
+            assert!(!usage.permits_stream_result());
+            for role in OriginalModelResolveRole::ALL {
+                assert_eq!(usage.permits_usage_cost(role), role == granted);
+                assert!(!usage.permits_ai_routing(role));
+                assert!(!router.permits_usage_cost(role));
+                assert!(!normalizer.permits_usage_cost(role));
+            }
         }
     }
 

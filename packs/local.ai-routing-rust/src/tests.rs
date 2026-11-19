@@ -1,4 +1,4 @@
-use super::{MAX_OUTPUT_BYTES, evaluate, normalize_stream_result};
+use super::{MAX_OUTPUT_BYTES, calculate_usage_cost, evaluate, normalize_stream_result};
 use ordered_python_compat::{PyValue, loads};
 
 fn route(models: &str, providers: &str, health: &str, requirements: &str) -> Option<String> {
@@ -61,6 +61,77 @@ fn stream_result_accepts_the_exact_output_limit_and_declines_larger_results() {
         .len(),
         MAX_OUTPUT_BYTES + 1
     );
+}
+
+#[test]
+fn usage_cost_preserves_aliases_rounding_and_revision_order() {
+    let request = r#"{"usage":{"prompt_tokens":"１","completion_tokens":true},"pricing":{"input":"0.1","output":0.2,"currency":"JPY"},"usage_provenance":"metered","pricing_revision":{"z":1,"a":"雪"}}"#;
+    assert_eq!(
+        calculate_usage_cost(request).as_deref(),
+        Some(
+            r#"{"input_tokens":1.0,"output_tokens":1.0,"total_tokens":2.0,"cost":0.30000000000000004,"currency":"JPY","known":true,"usage_provenance":"metered","pricing_revision":{"z":1,"a":"雪"}}"#
+        )
+    );
+    let zero = r#"{"usage":{"input_tokens":"-0","output_tokens":0},"pricing":{"input":0,"output":0,"currency":false}}"#;
+    assert_eq!(
+        calculate_usage_cost(zero).as_deref(),
+        Some(
+            r#"{"input_tokens":-0.0,"output_tokens":0.0,"total_tokens":0.0,"cost":0.0,"currency":"USD","known":true,"usage_provenance":"provider_reported","pricing_revision":null}"#
+        )
+    );
+}
+
+#[test]
+fn usage_cost_preserves_explicit_null_and_leaves_missing_rates_unknown() {
+    let explicit_null = r#"{"usage":{"input_tokens":null,"prompt_tokens":15,"output_tokens":2},"pricing":{"input":0.1,"output":0,"currency":"JPY"}}"#;
+    assert_eq!(
+        calculate_usage_cost(explicit_null).as_deref(),
+        Some(
+            r#"{"input_tokens":null,"output_tokens":2.0,"total_tokens":null,"cost":null,"currency":null,"known":false,"usage_provenance":"provider_reported","pricing_revision":null}"#
+        )
+    );
+    let missing_rate = r#"{"usage":{"input_tokens":4,"output_tokens":2},"pricing":{"input":0.1,"currency":"JPY"}}"#;
+    assert_eq!(
+        calculate_usage_cost(missing_rate).as_deref(),
+        Some(
+            r#"{"input_tokens":4.0,"output_tokens":2.0,"total_tokens":6.0,"cost":null,"currency":null,"known":false,"usage_provenance":"provider_reported","pricing_revision":null}"#
+        )
+    );
+}
+
+#[test]
+fn usage_cost_declines_unsupported_inputs_and_original_arithmetic_exceptions() {
+    let too_large_as_float = "9".repeat(400);
+    for request in [
+        "[]",
+        r#"{"usage":{},"usage":null}"#,
+        r#"{"pricing_revision":"\ud800"}"#,
+        r#"{"usage":{"input_tokens":1e308,"output_tokens":1e308}}"#,
+        r#"{"usage":{"input_tokens":1e308,"output_tokens":0},"pricing":{"input":2,"output":0}}"#,
+        &format!(r#"{{"pricing":{{"output":{too_large_as_float}}}}}"#),
+    ] {
+        assert!(calculate_usage_cost(request).is_none(), "{request}");
+    }
+}
+
+#[test]
+fn usage_cost_accepts_the_exact_byte_limits_and_declines_larger_values() {
+    let at_request_limit = format!("{{}}{}", " ".repeat(MAX_OUTPUT_BYTES - 2));
+    assert!(calculate_usage_cost(&at_request_limit).is_some());
+    assert!(calculate_usage_cost(&format!("{at_request_limit} ")).is_none());
+
+    fn request(revision: &str) -> String {
+        format!(r#"{{"pricing_revision":"{revision}"}}"#)
+    }
+
+    let envelope_size = calculate_usage_cost(&request("")).unwrap().len();
+    let revision = "a".repeat(MAX_OUTPUT_BYTES - envelope_size);
+    let at_limit = calculate_usage_cost(&request(&revision)).unwrap();
+    assert_eq!(at_limit.len(), MAX_OUTPUT_BYTES);
+
+    let over_limit = request(&format!("{revision}a"));
+    assert!(over_limit.len() <= MAX_OUTPUT_BYTES);
+    assert!(calculate_usage_cost(&over_limit).is_none());
 }
 
 #[test]

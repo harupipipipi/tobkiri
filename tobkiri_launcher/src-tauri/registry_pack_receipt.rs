@@ -47,7 +47,7 @@ mod unix {
     pub(crate) const AI_ROUTING_PACK_ID: &str = "local.ai-routing";
     const ORCHESTRATION_PACK_VERSION: &str = "0.1.0";
     const PROVIDER_ADAPTER_PACK_VERSIONS: [&str; 3] = ["0.1.0", "0.2.0", "0.3.0"];
-    const AI_ROUTING_PACK_VERSIONS: [&str; 2] = ["0.1.0", "0.2.0"];
+    const AI_ROUTING_PACK_VERSIONS: [&str; 3] = ["0.1.0", "0.2.0", "0.3.0"];
     const ADDITIONAL_PACK_IDS: [&str; 4] = [
         SETTLEMENT_PACK_ID,
         ORCHESTRATION_PACK_ID,

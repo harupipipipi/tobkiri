@@ -14,4 +14,5 @@ component = ["dep:wit-bindgen"]
 [dependencies]
 ordered-python-compat = { path = "../ordered-python-compat" }
 tobkiri-ai-stream-normalizer-core = { path = "../local.ai-stream-normalizer-rust/core" }
+tobkiri-ai-usage-cost-core = { path = "../local.ai-usage-cost-rust/core" }
 wit-bindgen = { workspace = true, optional = true }

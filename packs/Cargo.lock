@@ -637,6 +637,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-ai-stream-normalizer-core"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+]
+
+[[package]]
+name = "tobkiri-ai-usage-cost-core"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+]
+
+[[package]]
 name = "tobkiri-canon"
 version = "0.1.0"
 dependencies = [
@@ -648,13 +662,6 @@ dependencies = [
  "serde",
  "sha2",
  "thiserror",
-]
-
-[[package]]
-name = "tobkiri-ai-stream-normalizer-core"
-version = "0.1.0"
-dependencies = [
- "ordered-python-compat",
 ]
 
 [[package]]
@@ -689,6 +696,7 @@ version = "0.1.0"
 dependencies = [
  "ordered-python-compat",
  "tobkiri-ai-stream-normalizer-core",
+ "tobkiri-ai-usage-cost-core",
  "wit-bindgen",
 ]
 
@@ -720,6 +728,7 @@ dependencies = [
  "ordered-python-compat",
  "serde_json",
  "sha2",
+ "tobkiri-ai-usage-cost-core",
  "wit-bindgen",
 ]
 

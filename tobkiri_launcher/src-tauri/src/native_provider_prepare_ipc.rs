@@ -295,14 +295,18 @@ impl Start<'_> {
                     (1..=AI_GATEWAY_DATA_LIMIT).contains(&routing.input_bytes),
                     "invalid AI Gateway DATA input size"
                 );
-                let operation = if routing.stream_result {
-                    ensure!(
-                        routing.role == OriginalModelResolveRole::Stream,
-                        "AI stream normalization requires the Stream role"
-                    );
-                    AiGatewayDataOperation::StreamResult
-                } else {
-                    AiGatewayDataOperation::Route(routing.role)
+                let operation = match (routing.stream_result, routing.usage_cost, routing.role) {
+                    (false, false, role) => AiGatewayDataOperation::Route(role),
+                    (true, false, OriginalModelResolveRole::Stream) => {
+                        AiGatewayDataOperation::StreamResult
+                    }
+                    (
+                        false,
+                        true,
+                        role @ (OriginalModelResolveRole::Generate
+                        | OriginalModelResolveRole::Stream),
+                    ) => AiGatewayDataOperation::UsageCost(role),
+                    _ => bail!("AI Gateway DATA operation does not match its role"),
                 };
                 return Ok(RequestStart::AiGatewayData {
                     operation,
@@ -405,6 +409,8 @@ struct AiRoutingStart {
     input_bytes: usize,
     #[serde(default)]
     stream_result: bool,
+    #[serde(default)]
+    usage_cost: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -2642,6 +2648,40 @@ mod tests {
                 input_bytes: 12,
             })
         ));
+    }
+
+    #[test]
+    fn ai_usage_cost_requires_a_generation_role_and_excludes_stream_result() {
+        let start = |role, flags| {
+            start_frame(&format!(
+                r#", "ai_route":{{"role":"{role}","input_bytes":12{flags}}}"#
+            ))
+        };
+        for (role, expected) in [
+            ("generate", OriginalModelResolveRole::Generate),
+            ("stream", OriginalModelResolveRole::Stream),
+        ] {
+            let frame = start(role, r#","usage_cost":true"#);
+            assert!(matches!(
+                parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                Ok(RequestStart::AiGatewayData {
+                    operation: AiGatewayDataOperation::UsageCost(role),
+                    input_bytes: 12,
+                }) if role == expected
+            ));
+        }
+        for (role, flags) in [
+            ("quote-generate", r#","usage_cost":true"#),
+            ("quote-stream", r#","usage_cost":true"#),
+            ("stream", r#","usage_cost":true,"stream_result":true"#),
+            ("stream", r#","usage_cost":1"#),
+            ("stream", r#","usage_cost":null"#),
+        ] {
+            let frame = start(role, flags);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.request_start())
+                .is_err());
+        }
     }
 
     #[test]
