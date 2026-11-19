@@ -320,8 +320,8 @@ def test_local_adapter_posts_only_to_bound_chat_route_without_credentials(
         assert result["events"][0] == {
             "type": "text_delta", "delta": "local ok",
         }
-    else:
-        assert result["output"] == "local ok"
+    assert result["output"] == "local ok"
+    assert result["finish_reason"] == "stop"
 
 
 @pytest.mark.parametrize(

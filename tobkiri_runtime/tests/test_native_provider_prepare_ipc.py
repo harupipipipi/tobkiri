@@ -2754,6 +2754,7 @@ def test_saved_local_chat_rejects_out_of_bounds_body_before_connection(
         ("start", 8, b"unavailable", ipc.NativeSavedLocalChatFailure),
         ("body", 8, b"invalid", ipc.NativeSavedLocalChatFailure),
         ("permit", 8, b"limit-exceeded", ipc.NativeSavedLocalChatFailure),
+        ("permit", 8, b"invalid-response", ipc.NativeSavedLocalChatFailure),
         ("permit", 8, b"cancelled", ipc.NativeSavedLocalChatFailure),
         ("body", 10, b"", ipc._ProtocolError),
         ("body", 17, b"", ipc._ProtocolError),

@@ -1350,7 +1350,9 @@ def _stream_result(result: Mapping[str, Any]) -> dict[str, Any]:
             {"type": "finish", "finish_reason": result.get("finish_reason")},
         ]
     )
-    return {"events": events}
+    # The Gateway uses the events for display, and the buffered terminal
+    # fields for the saved reply and any follow-up tool calls.
+    return {**result, "events": events}
 
 
 def _endpoint(connection: Mapping[str, Any], suffix: str) -> str:
