@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 import json
 from pathlib import Path
 from typing import Any, Iterator, Mapping
@@ -141,7 +142,8 @@ def test_native_model_access_rechecks_registry_under_the_catalog_lease(
         def large_catalog(backend, envelope):
             result = invoke(backend, envelope)
             if envelope.contract_id == "tobkiri.resource.ai.model.catalog.v1":
-                return {**result, "unused": "x" * ipc._OWNER_RESULT_LIMIT}
+                assert result.payload is not None
+                return replace(result, payload={**result.payload, "unused": "x" * ipc._OWNER_RESULT_LIMIT})
             return result
 
         monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", large_catalog)
