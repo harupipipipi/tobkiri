@@ -311,10 +311,12 @@ def test_local_transport_fences_before_creating_a_connection(
 
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("projected", [False, True])
-@pytest.mark.parametrize("compile_request", [False, True])
+@pytest.mark.parametrize(
+    ("compile_request", "compile_policy"), [(False, False), (True, False), (True, True)],
+)
 def test_local_adapter_uses_the_native_result_without_another_post(
     monkeypatch: pytest.MonkeyPatch, streaming: bool, projected: bool,
-    compile_request: bool,
+    compile_request: bool, compile_policy: bool,
 ) -> None:
     endpoint = "http://127.0.0.1:11434/v1"
     expected: dict[str, Any] = {
@@ -340,6 +342,7 @@ def test_local_adapter_uses_the_native_result_without_another_post(
 
     class NativeInvocation(_Invocation):
         supports_saved_local_chat_request_compilation = compile_request
+        supports_saved_local_chat_policy_compilation = compile_policy
 
         def post_saved_local_chat(
             self, connection: dict[str, Any], body: bytes, deadline: float,
@@ -352,8 +355,10 @@ def test_local_adapter_uses_the_native_result_without_another_post(
 
         def post_saved_local_chat_source(
             self, connection: dict[str, Any], source: dict[str, Any], deadline: float,
+            **options: bool,
         ) -> bytes | dict[str, Any]:
             assert compile_request
+            assert options == ({"compile_policy": True} if compile_policy else {})
             assert connection["endpoint"] == endpoint
             assert deadline <= self.envelope.deadline_monotonic
             posts.append(source)
@@ -363,6 +368,8 @@ def test_local_adapter_uses_the_native_result_without_another_post(
         pytest.fail("native result reached the raw response or HTTP path")
 
     monkeypatch.setattr(adapter.http.client, "HTTPConnection", unexpected_call)
+    if compile_policy:
+        monkeypatch.setattr(adapter, "_apply_model_access", unexpected_call)
     if compile_request:
         monkeypatch.setattr(
             adapter, "json", SimpleNamespace(loads=json.loads, dumps=unexpected_call),
@@ -385,7 +392,10 @@ def test_local_adapter_uses_the_native_result_without_another_post(
         assert isinstance(posts[0], dict)
         assert posts[0]["model_id"] == "gemma-local"
         assert posts[0]["messages"] == [{"role": "user", "content": "hello"}]
-        assert posts[0]["parameters"] == {}
+        if compile_policy:
+            assert "parameters" not in posts[0]
+        else:
+            assert posts[0]["parameters"] == {}
     else:
         assert isinstance(posts[0], bytes)
         assert posts[0] == (
@@ -395,19 +405,25 @@ def test_local_adapter_uses_the_native_result_without_another_post(
 
 
 @pytest.mark.parametrize("raw_native", [False, True])
+@pytest.mark.parametrize("compile_policy", [False, True])
 def test_local_adapter_source_decline_offers_original_body_to_native(
-    monkeypatch: pytest.MonkeyPatch, raw_native: bool,
+    monkeypatch: pytest.MonkeyPatch, raw_native: bool, compile_policy: bool,
 ) -> None:
     deadlines: list[float] = []
     raw_posts: list[bytes] = []
     posts: list[bytes] = []
+    policy_calls: list[float] = []
 
     class NativeInvocation(_Invocation):
         supports_saved_local_chat_request_compilation = True
+        supports_saved_local_chat_policy_compilation = compile_policy
 
         def post_saved_local_chat_source(
             self, connection: dict[str, Any], source: dict[str, Any], deadline: float,
+            **options: bool,
         ) -> None:
+            assert options == ({"compile_policy": True} if compile_policy else {})
+            assert bool(policy_calls) is not compile_policy
             assert connection["endpoint"] == self.endpoint
             assert source["model_id"] == "provider.local/gemma"
             deadlines.append(deadline)
@@ -415,6 +431,7 @@ def test_local_adapter_source_decline_offers_original_body_to_native(
         def post_saved_local_chat(
             self, connection: dict[str, Any], body: bytes, deadline: float,
         ) -> bytes | None:
+            assert len(policy_calls) == 1
             assert connection["endpoint"] == self.endpoint
             assert deadlines == [deadline]
             deadlines.append(deadline)
@@ -424,6 +441,14 @@ def test_local_adapter_source_decline_offers_original_body_to_native(
             return None
 
     original_lifetime = adapter.HttpRequestLifetime
+    original_policy = adapter._apply_model_access
+
+    def observe_policy(
+        request: dict[str, Any], connection: dict[str, Any],
+    ) -> dict[str, Any]:
+        assert bool(deadlines) is compile_policy
+        policy_calls.append(time.monotonic())
+        return original_policy(request, connection)
 
     def observe_lifetime(*, deadline: float, **kwargs: Any) -> Any:
         assert deadlines == [deadline, deadline]
@@ -439,6 +464,7 @@ def test_local_adapter_source_decline_offers_original_body_to_native(
             super().request(method, url, body, headers or {})
 
     monkeypatch.setattr(adapter, "HttpRequestLifetime", observe_lifetime)
+    monkeypatch.setattr(adapter, "_apply_model_access", observe_policy)
     monkeypatch.setattr(adapter.http.client, "HTTPConnection", Connection)
     with _server(lambda handler: _reply(handler, b'{"choices":[]}')) as endpoint:
         invocation = NativeInvocation(
@@ -466,17 +492,21 @@ def test_local_adapter_source_decline_offers_original_body_to_native(
 @pytest.mark.parametrize(
     "failure", ["deadline", "body", "native", "bad-response", "raw-denied"],
 )
+@pytest.mark.parametrize("compile_policy", [False, True])
 def test_local_adapter_source_errors_never_start_python_transport(
-    monkeypatch: pytest.MonkeyPatch, failure: str,
+    monkeypatch: pytest.MonkeyPatch, failure: str, compile_policy: bool,
 ) -> None:
     posts: list[str] = []
 
     class NativeInvocation(_Invocation):
         supports_saved_local_chat_request_compilation = True
+        supports_saved_local_chat_policy_compilation = compile_policy
 
         def post_saved_local_chat_source(
             self, connection: dict[str, Any], source: dict[str, Any], deadline: float,
+            **options: bool,
         ) -> bytes | None:
+            assert options == ({"compile_policy": True} if compile_policy else {})
             posts.append("source")
             if failure == "native":
                 raise GlobalContractInvocationError("denied", "native denied")
@@ -520,6 +550,56 @@ def test_local_adapter_source_errors_never_start_python_transport(
         "bad-response": ["source"],
         "raw-denied": ["source", "raw"],
     }[failure]
+
+
+@pytest.mark.parametrize(
+    ("ineligible", "source_calls"),
+    [("credential", 0), ("stored", 0), ("endpoint", 0), ("deadline", 0), ("decline", 1)],
+)
+def test_local_adapter_preserves_policy_denial_without_native_acceptance(
+    monkeypatch: pytest.MonkeyPatch, ineligible: str, source_calls: int,
+) -> None:
+    calls: list[str] = []
+
+    def unexpected_transport(*_args: Any, **_kwargs: Any) -> None:
+        pytest.fail("Python policy rejection reached transport")
+
+    class NativeInvocation(_Invocation):
+        supports_saved_local_chat_request_compilation = True
+        supports_saved_local_chat_policy_compilation = True
+
+        def invoke(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            result = super().invoke()
+            result["providers"][0]["allowed_models"] = ["different-model"]
+            if ineligible == "stored":
+                result["providers"][0]["credential_handle"] = "opaque:unexpected"
+            return result
+
+        def post_saved_local_chat_source(
+            self, connection: dict[str, Any], source: dict[str, Any], deadline: float,
+            *, compile_policy: bool = False,
+        ) -> None:
+            assert compile_policy
+            calls.append("source")
+
+        post_saved_local_chat = unexpected_transport
+
+    monkeypatch.setattr(adapter.http.client, "HTTPConnection", unexpected_transport)
+    invocation = NativeInvocation(
+        "http://localhost:11434/v1" if ineligible == "endpoint"
+        else "http://127.0.0.1:11434/v1",
+        cancellation=threading.Event(), deadline=time.monotonic() + 5,
+    )
+    request = _request()
+    if ineligible == "credential":
+        request["credential_handle"] = "opaque:unexpected"
+    if ineligible == "deadline":
+        request["deadline"] = "invalid"
+    with pytest.raises(GlobalContractInvocationError) as rejected:
+        _captured_invoke()("fixture.operation", request, invocation)
+    assert rejected.value.code == "denied"
+    assert str(rejected.value) == "model is not permitted by this connection"
+    assert calls == ["source"] * source_calls
 
 
 def test_local_timeout_cap_is_one_budget_across_headers_and_body(

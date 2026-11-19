@@ -192,21 +192,33 @@ def _operation(
             raise ValueError(f"unknown provider adapter operation: {name}")
         request = dict(payload)
         connection = _connection(client, request, streaming=streaming)
-        request = _apply_model_access(request, connection)
-        adapter_id = str(connection.get("adapter_id") or "")
-        credential_handle = _credential_handle(
-            request,
-            connection,
-            scope="ai.stream" if streaming else "ai.generate",
+        scope = "ai.stream" if streaming else "ai.generate"
+        compile_policy = (
+            connection.get("adapter_id") == "local-openai-compatible"
+            and getattr(
+                invocation, "supports_saved_local_chat_policy_compilation", False,
+            ) is True
         )
+        credential_handle = None
+        if compile_policy:
+            try:
+                credential_handle = _credential_handle(
+                    request, connection, scope=scope,
+                )
+            except GlobalContractInvocationError:
+                # Policy still takes precedence over credential or endpoint errors.
+                compile_policy = False
+        if not compile_policy:
+            request = _apply_model_access(request, connection)
+            credential_handle = _credential_handle(request, connection, scope=scope)
         adapter = _adapter(
-            adapter_id,
+            str(connection.get("adapter_id") or ""),
             provider_id=str(request.get("provider_id") or ""),
         )
         # Lifetime authority comes only from the captured Host invocation.
         # Payload fields never supply a cancellation Event or monotonic deadline.
         local_context = (
-            {"invocation": invocation}
+            {"invocation": invocation, "compile_policy": compile_policy}
             if adapter is _local_openai_compatible else {}
         )
         return adapter(
@@ -214,7 +226,7 @@ def _operation(
             request,
             connection,
             credential_handle,
-            "ai.stream" if streaming else "ai.generate",
+            scope,
             streaming,
             diagnostics=diagnostics,
             **local_context,
@@ -1029,6 +1041,7 @@ def _local_openai_compatible(
     streaming: bool,
     *,
     invocation: HostProviderInvocationContextV4 | None = None,
+    compile_policy: bool = False,
     diagnostics: RequestFailureDiagnostics | None = None,
 ) -> dict[str, Any]:
     """Call one registry-bound loopback OpenAI chat endpoint without a secret."""
@@ -1041,7 +1054,8 @@ def _local_openai_compatible(
     native_post = getattr(invocation, "post_saved_local_chat", None)
     native_source_post = (
         getattr(invocation, "post_saved_local_chat_source", None)
-        if getattr(invocation, "supports_saved_local_chat_request_compilation", False)
+        if compile_policy
+        or getattr(invocation, "supports_saved_local_chat_request_compilation", False)
         else None
     )
     envelope = invocation.envelope if invocation is not None else None
@@ -1055,10 +1069,13 @@ def _local_openai_compatible(
         except (GlobalContractInvocationError, OverflowError):
             pass
         else:
+            source_options = {"compile_policy": True} if compile_policy else {}
             value = _decode_native_local_response(
-                native_source_post(connection, request, budget[1]),
+                native_source_post(connection, request, budget[1], **source_options),
             )
     if value is None:
+        if compile_policy:
+            request = _apply_model_access(request, connection)
         body = {
             "model": _provider_model_id(request),
             "messages": list(request.get("messages") or []),

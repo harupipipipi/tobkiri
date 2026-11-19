@@ -15,7 +15,7 @@ use tauri::{AppHandle, Manager};
 use tobkiri_core::{Digest, NativeArtifactError};
 use tobkiri_harness_native::{
     LegacyLocalChatSourceError, LegacySavedTurnSettlementError, OriginalLocalChatError,
-    OriginalSavedLocalChatRole,
+    OriginalLocalChatPolicyError, OriginalSavedLocalChatRole,
 };
 use tobkiri_wasm::{
     LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT,
@@ -361,6 +361,8 @@ struct SavedLocalChatStart {
     project_response: bool,
     #[serde(default)]
     compile_request: bool,
+    #[serde(default)]
+    compile_policy: bool,
 }
 
 impl SavedLocalChatStart {
@@ -370,6 +372,7 @@ impl SavedLocalChatStart {
         }
         if self.input_bytes == 0
             || (self.compile_request && !self.project_response)
+            || (self.compile_policy && !self.compile_request)
             || !(1..=256).contains(&self.connection_id.len())
             || self.record_revision == 0
             || !(1..=2048).contains(&self.endpoint.len())
@@ -1086,6 +1089,7 @@ impl AdmittedConnection {
                     input,
                     project_response: chat.project_response,
                     compile_request: chat.compile_request,
+                    compile_policy: chat.compile_policy,
                 }
             }
         };
@@ -1213,6 +1217,14 @@ impl ReplyRole {
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
         if self == Self::SavedLocalChat {
+            if let Some(error) = error.downcast_ref::<OriginalLocalChatPolicyError>() {
+                return match (authority, error) {
+                    (WireAuthority::PublicationPermitted, _) => "unavailable",
+                    (_, OriginalLocalChatPolicyError::Denied) => "policy-model-denied",
+                    (_, OriginalLocalChatPolicyError::Model) => "policy-model-invalid",
+                    (_, OriginalLocalChatPolicyError::Parameters) => "policy-parameters-invalid",
+                };
+            }
             if authority != WireAuthority::PublicationPermitted
                 && error.is::<SavedLocalChatRequiresLegacyRequest>()
             {
@@ -1911,6 +1923,7 @@ mod tests {
             assert_eq!(chat.input_bytes, LEGACY_LOCAL_CHAT_REQUEST_LIMIT);
             assert!(!chat.project_response);
             assert!(!chat.compile_request);
+            assert!(!chat.compile_policy);
             assert_eq!(chat.validate(), Ok(()));
             assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
             for extra in [
@@ -1928,6 +1941,7 @@ mod tests {
         let mut requested = descriptor.clone();
         requested["project_response"] = json!(true);
         requested["compile_request"] = json!(true);
+        requested["compile_policy"] = json!(true);
         let frame = start_frame(&operation(&requested));
         let RequestStart::SavedLocalChat(chat) = parse_start(START, frame.as_bytes())
             .unwrap()
@@ -1938,7 +1952,11 @@ mod tests {
         };
         assert!(chat.project_response);
         assert!(chat.compile_request);
+        assert!(chat.compile_policy);
         assert_eq!(chat.validate(), Ok(()));
+        let mut missing_request = chat.clone();
+        missing_request.compile_request = false;
+        assert_eq!(missing_request.validate(), Err("invalid"));
         let mut missing_projection = chat;
         missing_projection.project_response = false;
         assert_eq!(missing_projection.validate(), Err("invalid"));
@@ -1949,6 +1967,7 @@ mod tests {
             ("input_bytes", json!(1.5)),
             ("project_response", json!("true")),
             ("compile_request", json!(1)),
+            ("compile_policy", json!(1)),
             ("profile_id", json!("override")),
             ("input", json!({})),
         ] {
@@ -2110,6 +2129,18 @@ mod tests {
             "legacy-request"
         );
         assert_eq!(role.failure_code(dispatched, &declined), "unavailable");
+        for (error, code) in [
+            (OriginalLocalChatPolicyError::Denied, "policy-model-denied"),
+            (OriginalLocalChatPolicyError::Model, "policy-model-invalid"),
+            (
+                OriginalLocalChatPolicyError::Parameters,
+                "policy-parameters-invalid",
+            ),
+        ] {
+            let error = anyhow::Error::new(error);
+            assert_eq!(role.failure_code(WireAuthority::Live, &error), code);
+            assert_eq!(role.failure_code(dispatched, &error), "unavailable");
+        }
         for (error, code) in [
             (
                 OriginalLocalChatError::from(Source::SelectionChanged).into(),

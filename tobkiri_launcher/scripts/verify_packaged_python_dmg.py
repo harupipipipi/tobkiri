@@ -37,7 +37,7 @@ ORCHESTRATION_PACK_ID = "local.saved-orchestration"
 PROVIDER_ADAPTER_PACK_ID = "local.provider-adapter"
 PINNED_REGISTRY_PACK_VERSIONS = {
     ORCHESTRATION_PACK_ID: ("0.1.0",),
-    PROVIDER_ADAPTER_PACK_ID: ("0.1.0", "0.2.0"),
+    PROVIDER_ADAPTER_PACK_ID: ("0.1.0", "0.2.0", "0.3.0"),
 }
 REGISTRY_ARCHIVES = {
     "local.provider-registry": "local.provider-registry.tpk",

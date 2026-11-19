@@ -7500,9 +7500,13 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
             assert not legacy_reads and len(provider_requests) == count
 
 
-@pytest.mark.parametrize("native_source", [False, True], ids=["encoded", "source"])
+@pytest.mark.parametrize(
+    "native_source, native_policy",
+    [(False, False), (True, False), (True, True)],
+    ids=["encoded", "source", "policy"],
+)
 def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_source: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_source: bool, native_policy: bool,
 ) -> None:
     """Exercise the signed HTTP chain with the real Provider and Model owners."""
     from core_runtime import native_provider_prepare_ipc as ipc
@@ -7585,6 +7589,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             outcome != "legacy-denied" or len(native_calls) == 1
         )
         assert request.compile_request is expecting_source
+        assert request.compile_policy is (expecting_source and native_policy)
         if expecting_source:
             keys = {"model_id", "provider_id", "messages", "parameters", "tools"}
             expected_input = {
@@ -7604,6 +7609,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         request.assert_current()
         if outcome == "legacy-denied" and request.compile_request:
             raise ipc.NativeProviderPrepareUnavailable("fixture compiler declined before dispatch")
+        if outcome == "policy-denied":
+            raise ipc.NativeSavedLocalChatFailure("policy-model-denied")
         if outcome in {"denied", "legacy-denied"}:
             raise ipc.NativeSavedLocalChatFailure("denied")
         request.assert_dispatch()
@@ -7633,6 +7640,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         )
 
     execute.supports_request_compilation = native_source
+    execute.supports_policy_compilation = native_policy
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(
         ipc, "capture_launcher_model_resolve_reader", lambda: read_model,
@@ -7714,6 +7722,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         ]
         if native_source:
             cases.append(("generate", "legacy-denied"))
+        if native_policy:
+            cases.append(("generate", "policy-denied"))
         for role, outcome in cases:
             parents.clear()
             adapter_calls.clear()
@@ -7738,7 +7748,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             expected_native_calls = 2 if outcome == "legacy-denied" else 1
             assert len(native_calls) == expected_native_calls, result
             assert len(adapter_calls) == 1, result
-            assert len(permitted_posts) == (0 if outcome in {"denied", "legacy-denied"} else 1)
+            denied = outcome in {"denied", "legacy-denied", "policy-denied"}
+            assert len(permitted_posts) == (0 if denied else 1)
             assert not legacy_connections
             with pytest.raises((AuthorityDenied, PermissionError)):
                 native_calls[0].assert_current()

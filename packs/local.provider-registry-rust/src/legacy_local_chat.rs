@@ -1,7 +1,7 @@
 //! Resolve the selected keyless route from the original Profile Registry bytes.
 
 use crate::{record, registry::validate_document, state::get};
-use ordered_python_compat::{PyValue, loads};
+use ordered_python_compat::{PyValue, dumps_bounded, loads};
 use std::{fmt, net::SocketAddr};
 
 const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
@@ -16,6 +16,15 @@ pub struct LegacyLocalChatSelection<'a> {
     pub record_revision: u64,
     /// The observed loopback OpenAI base URL, with optional trailing slash.
     pub endpoint: &'a str,
+}
+
+/// The verified numeric loopback route and its effective model policy.
+#[derive(Debug, Eq, PartialEq)]
+pub struct LegacyLocalChatPolicySnapshot {
+    /// The address obtained from the selected record's canonical endpoint.
+    pub address: SocketAddr,
+    /// Ordered compact JSON of the normalized policy, or an empty string if absent.
+    pub policy: String,
 }
 
 /// Terminal failures resolving a stored connection for native local chat.
@@ -47,6 +56,34 @@ pub fn resolve_legacy_local_chat_address(
     profile_id: &str,
     selected: &LegacyLocalChatSelection<'_>,
 ) -> Result<SocketAddr, LegacyLocalChatSourceError> {
+    with_legacy_local_chat_record(body, profile_id, selected, |address, _| Ok(address))
+}
+
+/// Resolve the exact selected address and encode only its effective model policy.
+pub fn resolve_legacy_local_chat_policy(
+    body: &[u8],
+    profile_id: &str,
+    selected: &LegacyLocalChatSelection<'_>,
+) -> Result<LegacyLocalChatPolicySnapshot, LegacyLocalChatSourceError> {
+    use LegacyLocalChatSourceError::InvalidDocument;
+
+    with_legacy_local_chat_record(body, profile_id, selected, |address, stored| {
+        let policy = record::effective_model_access(stored).map_err(|_| InvalidDocument)?;
+        let policy = if matches!(policy, PyValue::Null) {
+            String::new()
+        } else {
+            dumps_bounded(&policy, MAX_DOCUMENT_BYTES).map_err(|_| InvalidDocument)?
+        };
+        Ok(LegacyLocalChatPolicySnapshot { address, policy })
+    })
+}
+
+fn with_legacy_local_chat_record<T>(
+    body: &[u8],
+    profile_id: &str,
+    selected: &LegacyLocalChatSelection<'_>,
+    resolve: impl FnOnce(SocketAddr, &PyValue) -> Result<T, LegacyLocalChatSourceError>,
+) -> Result<T, LegacyLocalChatSourceError> {
     use LegacyLocalChatSourceError::{InvalidDocument, InvalidSelection, SelectionChanged};
 
     if body.len() > MAX_DOCUMENT_BYTES {
@@ -98,11 +135,12 @@ pub fn resolve_legacy_local_chat_address(
     }
 
     // The canonical endpoint policy already proved the host is numeric loopback.
-    endpoint
+    let address = endpoint
         .as_str()
         .and_then(|value| value.strip_prefix("http://")?.strip_suffix("/v1"))
         .and_then(|authority| authority.parse().ok())
-        .ok_or(InvalidDocument)
+        .ok_or(InvalidDocument)?;
+    resolve(address, record)
 }
 
 #[cfg(test)]
@@ -134,6 +172,68 @@ mod tests {
             "defaults",
             selected,
         )
+    }
+
+    fn observe_policy(
+        document: &Value,
+    ) -> Result<LegacyLocalChatPolicySnapshot, LegacyLocalChatSourceError> {
+        resolve_legacy_local_chat_policy(
+            &serde_json::to_vec(document).unwrap(),
+            "defaults",
+            &SELECTED,
+        )
+    }
+
+    #[test]
+    fn observes_only_the_selected_records_normalized_policy() {
+        let mut document = fixture();
+        let mut unrelated = document["providers"][SELECTED.connection_id].clone();
+        unrelated["provider_instance_id"] = json!("local/other");
+        unrelated["allowed_models"] = json!(["other-model"]);
+        document["providers"]["local/other"] = unrelated;
+
+        assert_eq!(
+            observe_policy(&document),
+            Ok(LegacyLocalChatPolicySnapshot {
+                address: "[::1]:1234".parse().unwrap(),
+                policy: String::new(),
+            }),
+        );
+
+        document["providers"][SELECTED.connection_id]["metadata"]["allowed_models"] =
+            json!(["vendor/z", "vendor/a", "vendor/z"]);
+        let legacy = observe_policy(&document).unwrap();
+        assert_eq!(
+            legacy.policy,
+            r#"{"version":"tobkiri.connection-model-access.v1","mode":"explicit","model_ids":["vendor/a","vendor/z"]}"#,
+        );
+
+        let selected = &mut document["providers"][SELECTED.connection_id];
+        selected["model_access"] = json!({
+            "model_ids": ["vendor/z", "vendor/a"],
+            "version": "tobkiri.connection-model-access.v1",
+            "mode": "explicit",
+        });
+        selected["allowed_models"] = json!([]);
+        assert_eq!(observe_policy(&document), Ok(legacy));
+
+        let selected = &mut document["providers"][SELECTED.connection_id];
+        selected.as_object_mut().unwrap().remove("model_access");
+        assert_eq!(
+            observe_policy(&document).unwrap().policy,
+            r#"{"version":"tobkiri.connection-model-access.v1","mode":"explicit","model_ids":[]}"#,
+        );
+    }
+
+    #[test]
+    fn policy_observation_rejects_invalid_documents_and_changed_selections() {
+        let mut document = fixture();
+        document["providers"][SELECTED.connection_id]["model_access"] = json!(null);
+        assert_eq!(observe_policy(&document), Err(InvalidDocument));
+
+        let mut document = fixture();
+        document["providers"][SELECTED.connection_id]["record_revision"] = json!(2);
+        assert_eq!(observe_policy(&document), Err(SelectionChanged));
     }
 
     #[test]

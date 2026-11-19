@@ -44,7 +44,7 @@ mod unix {
     pub(crate) const ORCHESTRATION_PACK_ID: &str = "local.saved-orchestration";
     pub(crate) const PROVIDER_ADAPTER_PACK_ID: &str = "local.provider-adapter";
     const ORCHESTRATION_PACK_VERSION: &str = "0.1.0";
-    const PROVIDER_ADAPTER_PACK_VERSIONS: [&str; 2] = ["0.1.0", "0.2.0"];
+    const PROVIDER_ADAPTER_PACK_VERSIONS: [&str; 3] = ["0.1.0", "0.2.0", "0.3.0"];
     const ADDITIONAL_PACK_IDS: [&str; 3] = [
         SETTLEMENT_PACK_ID,
         ORCHESTRATION_PACK_ID,

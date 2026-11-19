@@ -100,6 +100,60 @@ async fn local_provider_response_through_original_core() -> Result<()> {
         drop(wasm);
         ensure!(account.snapshot()?.charged_bytes == 0);
     }
+    let policy_operation = OpName::parse("compile-with-policy")?;
+    let source = source.replace("モデル", "org/model");
+    let request = request.replace("モデル", "org/model");
+    for allowed in [true, false] {
+        let policy = if allowed {
+            r#"{"version":"tobkiri.connection-model-access.v1","mode":"explicit","model_ids":["org/model"]}"#
+        } else {
+            r#"{"version":"tobkiri.connection-model-access.v1","mode":"explicit","model_ids":[]}"#
+        };
+        let invocation = account.begin()?;
+        let deadline = invocation.deadline()?;
+        let mut wasm = engine.native_setup_store(invocation, ())?;
+        let port = wasm
+            .prepare_declared_read_only_pair(
+                &pack,
+                [(&request_shape, &policy_operation), (&shape, &operation)],
+                &profile,
+                deadline,
+            )
+            .await?;
+        let owner = port.allocation_owners().component();
+        let input = BudgetedString::copy_from(&source, owner, 1)?;
+        let policy = BudgetedString::copy_from(policy, owner, 1)?;
+        let (compiled, next) = port
+            .invoke_with_document_limit_then(&[Val::String(input), Val::String(policy)])
+            .await?;
+        if allowed {
+            ensure!(document(&compiled)? == request);
+            drop(compiled);
+            let input =
+                BudgetedString::copy_from(original, next.allocation_owners().component(), 1)?;
+            let response = next
+                .invoke_with_document_limit(&[Val::String(input), Val::Bool(true)])
+                .await?;
+            ensure!(document(&response)? == stream);
+        } else {
+            let [Val::Result(Err(Some(error)))] = compiled.as_slice() else {
+                anyhow::bail!("policy failed to deny the unlisted model");
+            };
+            let Val::Record(fields) = &**error else {
+                anyhow::bail!("policy error had an unexpected type");
+            };
+            ensure!(
+                matches!(fields.as_slice(), [(code, Val::Enum(kind)), (message, Val::String(text))]
+                if code.as_str() == "code" && kind.as_str() == "denied"
+                    && message.as_str() == "message"
+                    && text.as_str() == "model is not permitted by this connection")
+            );
+            drop(compiled);
+            drop(next);
+        }
+        drop(wasm);
+        ensure!(account.snapshot()?.charged_bytes == 0);
+    }
     Ok(())
 }
 

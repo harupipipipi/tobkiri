@@ -1,7 +1,7 @@
 {
   "format": "tobkiri.pack/1",
   "id": "local.provider-adapter",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher_key": null,
   "runtime": {
     "kind": "wasm",

@@ -3964,17 +3964,31 @@ def capture_production_dispatch(
                 is True
             )
 
+        @property
+        def supports_saved_local_chat_policy_compilation(self) -> bool:
+            """Check the captured route and support for native saved model policy."""
+            return (
+                self.supports_saved_local_chat_request_compilation
+                and getattr(native_saved_local_chat, "supports_policy_compilation", False)
+                is True
+            )
+
         def post_saved_local_chat_source(
             self,
             connection: Mapping[str, Any],
             request: Mapping[str, Any],
             deadline_monotonic: float,
+            *,
+            compile_policy: bool = False,
         ) -> bytes | dict[str, Any] | None:
             """Borrow the same live dispatch authority for a source-form request."""
             if not self.supports_saved_local_chat_request_compilation:
                 return None
+            if compile_policy and not self.supports_saved_local_chat_policy_compilation:
+                return None
             return self._post_saved_local_chat(
                 connection, request, deadline_monotonic, compile_request=True,
+                compile_policy=compile_policy,
             )
 
         def _post_saved_local_chat(
@@ -3984,6 +3998,7 @@ def capture_production_dispatch(
             deadline_monotonic: float,
             *,
             compile_request: bool,
+            compile_policy: bool = False,
         ) -> bytes | dict[str, Any] | None:
             route, runtime = self._local_chat_route, native_provider_runtime
             executor = native_saved_local_chat
@@ -4088,6 +4103,7 @@ def capture_production_dispatch(
                     endpoint=endpoint, input=encoded, assert_dispatch=guard,
                     mark_dispatch_possible=mark_dispatch_possible,
                     compile_request=compile_request,
+                    compile_policy=compile_policy,
                 ))
             except NativeProviderPrepareUnavailable:
                 guard()
@@ -4102,11 +4118,27 @@ def capture_production_dispatch(
                 ) from None
             except NativeSavedLocalChatFailure as error:
                 guard()
-                code, message = {
+                failures = {
                     "denied": ("denied", "local provider authorization changed"),
                     "invalid": ("invalid_request", "local provider request is invalid"),
                     "invalid-response": ("invalid_response", "local provider response is too large"),
-                }.get(error.code, ("provider_unavailable", "local provider is unavailable"))
+                }
+                if compile_policy and not dispatch_possible:
+                    failures.update({
+                        "policy-model-denied": (
+                            "denied", "model is not permitted by this connection",
+                        ),
+                        "policy-model-invalid": (
+                            "invalid_request", "provider model ID is invalid",
+                        ),
+                        "policy-parameters-invalid": (
+                            "invalid_request",
+                            "request parameters cannot override the saved model route",
+                        ),
+                    })
+                code, message = failures.get(
+                    error.code, ("provider_unavailable", "local provider is unavailable"),
+                )
                 raise GlobalContractInvocationError(code, message) from None
             except (AuthorityDenied, PermissionError):
                 raise

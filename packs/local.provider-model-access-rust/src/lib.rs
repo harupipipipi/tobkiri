@@ -8,6 +8,9 @@ mod python_url;
 use failure::{SourceFailure, SourceResult};
 use ordered_python_compat::{CodecError, PyValue, dumps, loads, pytruthy};
 
+/// Compile ordered request parameters using the selected connection's model policy.
+pub use model_access::compile as compile_connection_parameters;
+
 /// Pure source helpers shared with the additive Registry translation.
 /// This module supplies no component, storage, credentials or authority.
 pub mod registry_support {

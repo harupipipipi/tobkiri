@@ -14,6 +14,11 @@ interface local-request {
   /// Serialize the already selected model, messages, parameters and tools.
   /// An empty result leaves compilation to the original codec before dispatch.
   compile: func(request: string) -> result<string, error>;
+
+  /// Apply the selected Registry record's effective model policy before serializing.
+  /// An empty policy string represents an absent policy. An empty result leaves
+  /// policy and body compilation to the original codec before dispatch.
+  compile-with-policy: func(request: string, policy: string) -> result<string, error>;
 }
 
 world pack {

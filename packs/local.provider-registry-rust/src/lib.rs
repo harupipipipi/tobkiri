@@ -19,7 +19,8 @@ mod routing;
 pub mod state;
 
 pub use legacy_local_chat::{
-    LegacyLocalChatSelection, LegacyLocalChatSourceError, resolve_legacy_local_chat_address,
+    LegacyLocalChatPolicySnapshot, LegacyLocalChatSelection, LegacyLocalChatSourceError,
+    resolve_legacy_local_chat_address, resolve_legacy_local_chat_policy,
 };
 
 #[cfg(test)]

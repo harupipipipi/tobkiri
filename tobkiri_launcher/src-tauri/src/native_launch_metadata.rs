@@ -1755,9 +1755,13 @@ pub(super) const PROVIDER_ADAPTER_SHAPE: &str = "local.provider-adapter.local-co
 pub(super) const PROVIDER_ADAPTER_OPERATION: &str = "project";
 pub(super) const PROVIDER_REQUEST_SHAPE: &str = "local.provider-adapter.local-request@1.0";
 pub(super) const PROVIDER_REQUEST_OPERATION: &str = "compile";
+pub(super) const PROVIDER_POLICY_OPERATION: &str = "compile-with-policy";
 pub(super) const PROVIDER_REQUEST_ADAPTER_VERSION: &str = "0.2.0";
+pub(super) const PROVIDER_POLICY_ADAPTER_VERSION: &str = "0.3.0";
 const PROVIDER_ADAPTER_LEGACY_WIT: &str =
     "sha256:4bb485fd5459f256fc6eaaf25eff05e43c9a485f0a67e61eafa1feeb53336610";
+const PROVIDER_ADAPTER_REQUEST_WIT: &str =
+    "sha256:ccd7db5753e6f5f1f7accf2b236767b009c879010f1a0b5dd98236c353c2337b";
 const PROVIDER_ADAPTER_WIT: &[u8] =
     include_bytes!("../../../packs/local.provider-adapter-rust/wit/pack.wit");
 const PROVIDER_ADAPTER_SHARED_FILES: [(&str, &[u8]); 2] = [
@@ -1778,7 +1782,8 @@ fn require_provider_adapter_declaration(pack: &VerifiedPack) -> Result<()> {
     let manifest = &pack.manifest;
     let (wit, ports) = match manifest.version.as_str() {
         "0.1.0" => (Digest::parse(PROVIDER_ADAPTER_LEGACY_WIT)?, 1),
-        PROVIDER_REQUEST_ADAPTER_VERSION => (Digest::hash(PROVIDER_ADAPTER_WIT), 2),
+        PROVIDER_REQUEST_ADAPTER_VERSION => (Digest::parse(PROVIDER_ADAPTER_REQUEST_WIT)?, 2),
+        PROVIDER_POLICY_ADAPTER_VERSION => (Digest::hash(PROVIDER_ADAPTER_WIT), 2),
         _ => anyhow::bail!("bundled Provider Adapter Pack has an unsupported version"),
     };
     verify_stateless_registry_surface(
@@ -1806,7 +1811,17 @@ fn require_provider_adapter_declaration(pack: &VerifiedPack) -> Result<()> {
         "bundled Provider Adapter Pack has unexpected WIT files"
     );
     require_registry_ports(pack, PROVIDER_ADAPTER_OPERATION, &[PROVIDER_ADAPTER_SHAPE])?;
-    if ports == 2 {
+    if manifest.version == PROVIDER_POLICY_ADAPTER_VERSION {
+        let shape = ShapeRef::parse(PROVIDER_REQUEST_SHAPE)?;
+        let operations = [
+            OpName::parse(PROVIDER_REQUEST_OPERATION)?,
+            OpName::parse(PROVIDER_POLICY_OPERATION)?,
+        ];
+        ensure!(
+            declares_registry_port(pack, &shape, &operations),
+            "bundled Provider Adapter has unexpected request operations"
+        );
+    } else if ports == 2 {
         require_registry_ports(pack, PROVIDER_REQUEST_OPERATION, &[PROVIDER_REQUEST_SHAPE])?;
     }
     Ok(())

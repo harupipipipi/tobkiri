@@ -13,4 +13,5 @@ component = ["dep:wit-bindgen"]
 
 [dependencies]
 ordered-python-compat = { path = "../ordered-python-compat" }
+provider_model_access = { package = "tobkiri-pack-provider-model-access-rust", path = "../local.provider-model-access-rust", default-features = false }
 wit-bindgen = { workspace = true, optional = true }

@@ -119,11 +119,18 @@ class HostProviderInvocationContextV4(Protocol):
         """Report whether this invocation can delegate local chat compilation."""
         return False
 
+    @property
+    def supports_saved_local_chat_policy_compilation(self) -> bool:
+        """Report whether this invocation can delegate saved model access policy."""
+        return False
+
     def post_saved_local_chat_source(
         self,
         connection: Mapping[str, Any],
         request: Mapping[str, Any],
         deadline_monotonic: float,
+        *,
+        compile_policy: bool = False,
     ) -> bytes | dict[str, Any] | None:
         """Delegate one authorized local chat request using its source fields.
 

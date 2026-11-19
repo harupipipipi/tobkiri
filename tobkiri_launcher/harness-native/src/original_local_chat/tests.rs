@@ -83,6 +83,7 @@ fn original_request<'a>(
             endpoint,
         },
         body: ORIGINAL_REQUEST.as_bytes(),
+        expected_policy: None,
         deadline: Instant::now() + WAIT,
         cancellation,
     }
@@ -244,4 +245,51 @@ async fn changed_or_missing_registry_selection_cannot_obtain_dispatch_or_connect
     );
     assert!(registered_connection.is_err());
     assert!(observed_connection.is_err());
+}
+
+#[tokio::test]
+async fn changed_policy_under_the_same_selection_cannot_obtain_dispatch() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = DataRoot::open_existing(temp.path().canonicalize().unwrap()).unwrap();
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+    let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
+    let profile = ProfileId::parse("defaults").unwrap();
+    let original = write_registry(&root, &profile, &endpoint, true);
+    let (engine, account) = native_account();
+    let store = engine
+        .native_setup_store(account.begin().unwrap(), ())
+        .unwrap();
+    let budget = store.allocation_owners().graph().clone();
+    let mut request = original_request(&profile, &endpoint, 1, store.cancellation());
+    let policy =
+        observe_original_local_chat_policy(&root, &profile, &request.provider, &budget).unwrap();
+    assert!(policy.document().unwrap().is_empty());
+    request.expected_policy = Some(&policy);
+
+    let mut changed: serde_json::Value = serde_json::from_str(&original).unwrap();
+    changed["providers"][CONNECTION]["allowed_models"] = serde_json::json!([]);
+    fs::write(
+        root.path()
+            .join(PROFILES)
+            .join(profile.as_str())
+            .join(STORE),
+        serde_json::to_vec(&changed).unwrap(),
+    )
+    .unwrap();
+    let result = post_original_local_chat(&root, request, &budget, |phase| {
+        assert_eq!(phase, OriginalLocalChatCheck::Live);
+        Ok(())
+    })
+    .await;
+    assert!(matches!(
+        result,
+        Err(OriginalLocalChatError::Source(
+            LegacyLocalChatSourceError::SelectionChanged,
+        ))
+    ));
+    assert!(
+        timeout(Duration::from_millis(100), listener.accept())
+            .await
+            .is_err()
+    );
 }

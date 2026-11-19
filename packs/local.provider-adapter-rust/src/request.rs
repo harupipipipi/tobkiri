@@ -1,4 +1,5 @@
 use ordered_python_compat::{MAX_BYTES, MAX_NODES, PyValue, dumps_bounded, loads, pystr, pytruthy};
+use provider_model_access::compile_connection_parameters;
 use std::collections::BTreeMap;
 
 const MAX_REQUEST_BYTES: usize = 1024 * 1024;
@@ -7,71 +8,165 @@ const MAX_SOURCE_DEPTH: usize = 256;
 /// Compile the finite loopback chat body with the local Python adapter's ordering.
 /// `None` lets the caller use its original compiler before sending a request.
 pub fn compile_local_chat_request(source: &str) -> Option<String> {
+    RequestSource::parse(source)?.compile_body()
+}
+
+/// Apply the selected local Registry record's effective policy and serialize the body.
+/// `Ok(None)` leaves unsupported representations to the original policy and codec.
+pub fn compile_local_chat_request_with_policy(
+    source: &str,
+    policy: &str,
+) -> Result<Option<String>, PolicyError> {
+    let Some(mut request) = RequestSource::parse(source) else {
+        return Ok(None);
+    };
+    let connection = if policy.is_empty() {
+        PyValue::Object(Vec::new())
+    } else {
+        let Some(policy) = load_source(policy).filter(|value| value.as_object().is_some()) else {
+            return Ok(None);
+        };
+        // The caller selects a local Registry record and passes its effective policy.
+        // No local connection can qualify for official OpenRouter native filters.
+        PyValue::Object(vec![("model_access".into(), policy)])
+    };
+
+    match compile_connection_parameters(&connection, &request.model, &request.parameters) {
+        Ok(parameters) => request.parameters = parameters,
+        Err(error) => {
+            return match PolicyError::from_source(error.exception_class, &error.message) {
+                Some(error) => Err(error),
+                None => Ok(None),
+            };
+        }
+    }
+    Ok(request.compile_body())
+}
+
+/// Policy failures with a fixed message safe to return across the component boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PolicyError {
+    Denied,
+    InvalidModel,
+    RouteOverride,
+}
+
+impl PolicyError {
+    const DENIED: &str = "model is not permitted by this connection";
+    const INVALID_MODEL: &str = "provider model ID is invalid";
+    const ROUTE_OVERRIDE: &str = "request parameters cannot override the saved model route";
+
+    fn from_source(exception_class: &str, message: &str) -> Option<Self> {
+        match (exception_class, message) {
+            ("PermissionError", Self::DENIED) => Some(Self::Denied),
+            ("ValueError", Self::INVALID_MODEL) => Some(Self::InvalidModel),
+            ("ValueError", Self::ROUTE_OVERRIDE) => Some(Self::RouteOverride),
+            _ => None,
+        }
+    }
+
+    /// The original public message for this fixed failure.
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::Denied => Self::DENIED,
+            Self::InvalidModel => Self::INVALID_MODEL,
+            Self::RouteOverride => Self::ROUTE_OVERRIDE,
+        }
+    }
+}
+
+struct RequestSource {
+    model: PyValue,
+    messages: PyValue,
+    parameters: PyValue,
+    tools: PyValue,
+}
+
+impl RequestSource {
+    fn parse(source: &str) -> Option<Self> {
+        let [
+            mut model_id,
+            mut provider_id,
+            mut messages,
+            mut parameters,
+            mut tools,
+        ] = [const { PyValue::Null }; 5];
+        for (key, value) in load_source(source)?.into_object()? {
+            let field = match key.as_str() {
+                "model_id" => &mut model_id,
+                "provider_id" => &mut provider_id,
+                "messages" => &mut messages,
+                "parameters" => &mut parameters,
+                "tools" => &mut tools,
+                _ => return None,
+            };
+            *field = value;
+        }
+
+        let mut model = model_string(&model_id);
+        let provider_id = model_string(&provider_id);
+        if !provider_id.is_empty()
+            && let Some(suffix) = model
+                .strip_prefix(&provider_id)
+                .and_then(|suffix| suffix.strip_prefix('/'))
+        {
+            model = suffix.to_owned();
+        }
+        Some(Self {
+            model: PyValue::String(model),
+            messages,
+            parameters,
+            tools,
+        })
+    }
+
+    fn compile_body(self) -> Option<String> {
+        let Self {
+            model,
+            messages,
+            parameters,
+            tools,
+        } = self;
+        let messages = if pytruthy(&messages) {
+            iterable(messages)?
+        } else {
+            Vec::new()
+        };
+        let mut entries = vec![
+            ("model".to_owned(), model),
+            ("messages".to_owned(), PyValue::Array(messages)),
+            ("stream".to_owned(), PyValue::Bool(false)),
+        ];
+        let mut positions: BTreeMap<_, _> = entries
+            .iter()
+            .enumerate()
+            .map(|(index, (key, _))| (key.clone(), index))
+            .collect();
+        for (key, value) in parameter_entries(parameters)? {
+            if let Some(index) = positions.get(&key).copied() {
+                entries[index].1 = value;
+            } else {
+                positions.insert(key.clone(), entries.len());
+                entries.push((key, value));
+            }
+        }
+        if tools.as_array().is_some_and(|items| !items.is_empty()) {
+            if let Some(index) = positions.get("tools").copied() {
+                entries[index].1 = tools;
+            } else {
+                entries.push(("tools".to_owned(), tools));
+            }
+        }
+
+        dumps_bounded(&PyValue::Object(entries), MAX_REQUEST_BYTES).ok()
+    }
+}
+
+fn load_source(source: &str) -> Option<PyValue> {
     if source.len() > MAX_BYTES || !supported_depth(source) {
         return None;
     }
-
-    let [
-        mut model_id,
-        mut provider_id,
-        mut messages,
-        mut parameters,
-        mut tools,
-    ] = [const { PyValue::Null }; 5];
-    for (key, value) in loads(source).ok()?.into_object()? {
-        let field = match key.as_str() {
-            "model_id" => &mut model_id,
-            "provider_id" => &mut provider_id,
-            "messages" => &mut messages,
-            "parameters" => &mut parameters,
-            "tools" => &mut tools,
-            _ => return None,
-        };
-        *field = value;
-    }
-
-    let model_id = model_string(&model_id);
-    let provider_id = model_string(&provider_id);
-    let model = if provider_id.is_empty() {
-        &model_id
-    } else {
-        model_id
-            .strip_prefix(&provider_id)
-            .and_then(|suffix| suffix.strip_prefix('/'))
-            .unwrap_or(&model_id)
-    };
-    let messages = if pytruthy(&messages) {
-        iterable(messages)?
-    } else {
-        Vec::new()
-    };
-    let mut entries = vec![
-        ("model".to_owned(), PyValue::String(model.to_owned())),
-        ("messages".to_owned(), PyValue::Array(messages)),
-        ("stream".to_owned(), PyValue::Bool(false)),
-    ];
-    let mut positions: BTreeMap<_, _> = entries
-        .iter()
-        .enumerate()
-        .map(|(index, (key, _))| (key.clone(), index))
-        .collect();
-    for (key, value) in parameter_entries(parameters)? {
-        if let Some(index) = positions.get(&key).copied() {
-            entries[index].1 = value;
-        } else {
-            positions.insert(key.clone(), entries.len());
-            entries.push((key, value));
-        }
-    }
-    if tools.as_array().is_some_and(|items| !items.is_empty()) {
-        if let Some(index) = positions.get("tools").copied() {
-            entries[index].1 = tools;
-        } else {
-            entries.push(("tools".to_owned(), tools));
-        }
-    }
-
-    dumps_bounded(&PyValue::Object(entries), MAX_REQUEST_BYTES).ok()
+    loads(source).ok()
 }
 
 fn model_string(value: &PyValue) -> String {
@@ -196,6 +291,96 @@ mod tests {
         );
         let expected = r#"{"model":"","messages":[],"stream":false}"#;
         assert_eq!(compile_local_chat_request("{}").as_deref(), Some(expected));
+    }
+
+    const EXPLICIT_POLICY: &str = r#"{"version":"tobkiri.connection-model-access.v1","mode":"explicit","model_ids":["local/lab/model"]}"#;
+    const ALL_POLICY: &str =
+        r#"{"version":"tobkiri.connection-model-access.v1","mode":"all","model_ids":[]}"#;
+
+    #[test]
+    fn applies_policy_to_exactly_the_serialized_model_and_keeps_body_order() {
+        let source = r#"{"model_id":"local/local/lab/model","provider_id":"local","messages":[{"role":"user","content":"東京"}],"parameters":{"z":1e-7,"tools":"old","stream":true,"a":-0.0},"tools":["工具"]}"#;
+        let expected = r#"{"model":"local/lab/model","messages":[{"role":"user","content":"東京"}],"stream":true,"z":1e-07,"tools":["工具"],"a":-0.0}"#;
+        for policy in [EXPLICIT_POLICY, ALL_POLICY, ""] {
+            assert_eq!(
+                compile_local_chat_request_with_policy(source, policy)
+                    .unwrap()
+                    .as_deref(),
+                Some(expected),
+            );
+        }
+
+        let source = r#"{"model_id":318,"parameters":null}"#;
+        let expected = r#"{"model":"318","messages":[],"stream":false}"#;
+        assert_eq!(
+            compile_local_chat_request_with_policy(source, "")
+                .unwrap()
+                .as_deref(),
+            Some(expected),
+        );
+    }
+
+    #[test]
+    fn returns_typed_failures_before_body_serialization() {
+        let source = r#"{"model_id":"local/lab/other","provider_id":"local","messages":true,"parameters":{"endpoint":"override"}}"#;
+        assert_eq!(
+            compile_local_chat_request_with_policy(source, EXPLICIT_POLICY),
+            Err(PolicyError::Denied),
+        );
+        let empty_explicit =
+            r#"{"version":"tobkiri.connection-model-access.v1","mode":"explicit","model_ids":[]}"#;
+        assert_eq!(
+            compile_local_chat_request_with_policy(source, empty_explicit),
+            Err(PolicyError::Denied),
+        );
+        assert_eq!(
+            compile_local_chat_request_with_policy(source, ""),
+            Err(PolicyError::RouteOverride),
+        );
+        let source = r#"{"model_id":"local/","provider_id":"local","messages":true,"parameters":{"model":7}}"#;
+        assert_eq!(
+            compile_local_chat_request_with_policy(source, EXPLICIT_POLICY),
+            Err(PolicyError::InvalidModel),
+        );
+        let source = r#"{"model_id":"model","parameters":[["temperature",1]]}"#;
+        assert_eq!(
+            compile_local_chat_request_with_policy(source, ALL_POLICY),
+            Err(PolicyError::RouteOverride),
+        );
+    }
+
+    #[test]
+    fn declines_unsupported_representations_and_unknown_policy_failures() {
+        let source = r#"{"model_id":"model"}"#;
+        for policy in [
+            "{",
+            "null",
+            "{}",
+            r#"{"version":"tobkiri.connection-model-access.v1","mode":"all","native_filters":{}}"#,
+        ] {
+            assert_eq!(
+                compile_local_chat_request_with_policy(source, policy),
+                Ok(None)
+            );
+        }
+        for source in [
+            r#"{"model_id":"model","messages":true}"#,
+            r#"{"model_id":"model","messages":["\ud800"]}"#,
+            r#"{"model_id":"model","parameters":{"temperature":NaN}}"#,
+        ] {
+            assert_eq!(
+                compile_local_chat_request_with_policy(source, ALL_POLICY),
+                Ok(None)
+            );
+        }
+        let source = format!(
+            r#"{{"model_id":"model","messages":["{}"]}}"#,
+            "a".repeat(MAX_REQUEST_BYTES)
+        );
+        assert_eq!(
+            compile_local_chat_request_with_policy(&source, ALL_POLICY),
+            Ok(None)
+        );
     }
 
     #[test]

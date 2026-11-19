@@ -606,7 +606,9 @@ mod unix {
                 );
             }
 
-            for (approved, unapproved) in [("0.1.0", "0.1.1"), ("0.2.0", "0.2.1")] {
+            for (approved, unapproved) in
+                [("0.1.0", "0.1.1"), ("0.2.0", "0.2.1"), ("0.3.0", "0.3.1")]
+            {
                 let fixture = Fixture::with_packs(PROVIDER_ADAPTER_RECEIPT_FORMAT, ids.clone())?;
                 let mut receipt = fixture.document.clone();
                 receipt["packs"][5]["version"] = json!(approved);

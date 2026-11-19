@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:ac269fe919bd5c8e18331a7d50c28d007a7c3f7a8dce85c323f21300ede96708",
+  "source_identity": "sha256:cac0b62c35fb266eb5c05539b4122125556d0adc9aafdd163bb974346c6e9f02",
   "variants": [
     {
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:6a2eb4f8893ee1360788d3a60bb091f833c742c82286c4a7f82e5a6b0f849a68",
+      "implementation_digest": "sha256:60e038517e1886d935c3cc7ec70a07464d89f692a5ad858de5e1b5246c5fd201",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:6a2eb4f8893ee1360788d3a60bb091f833c742c82286c4a7f82e5a6b0f849a68",
+      "implementation_digest": "sha256:60e038517e1886d935c3cc7ec70a07464d89f692a5ad858de5e1b5246c5fd201",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.embedding.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.embedding",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:6a2eb4f8893ee1360788d3a60bb091f833c742c82286c4a7f82e5a6b0f849a68",
+      "implementation_digest": "sha256:60e038517e1886d935c3cc7ec70a07464d89f692a5ad858de5e1b5246c5fd201",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -109,7 +109,7 @@
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.generate.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:6a2eb4f8893ee1360788d3a60bb091f833c742c82286c4a7f82e5a6b0f849a68",
+      "implementation_digest": "sha256:60e038517e1886d935c3cc7ec70a07464d89f692a5ad858de5e1b5246c5fd201",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -143,7 +143,7 @@
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.image.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.image",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:6a2eb4f8893ee1360788d3a60bb091f833c742c82286c4a7f82e5a6b0f849a68",
+      "implementation_digest": "sha256:60e038517e1886d935c3cc7ec70a07464d89f692a5ad858de5e1b5246c5fd201",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -177,7 +177,7 @@
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.stream.python",
       "function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
       "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:6a2eb4f8893ee1360788d3a60bb091f833c742c82286c4a7f82e5a6b0f849a68",
+      "implementation_digest": "sha256:60e038517e1886d935c3cc7ec70a07464d89f692a5ad858de5e1b5246c5fd201",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -208,6 +208,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:6ce3f742deacd5235152d20ef6790bf844ba068d6cfa39950cc139e64afcf70e",
-  "catalog_digest": "sha256:c2537e19008e92df492ce4b551beaf8176bcb3175fab3164c7fcac699f7ce22a"
+  "materialization_catalog_digest": "sha256:ee403c5bb90e61ed053cd7a5d679f1d7c56183971a20820fca3c2f7d833ba811",
+  "catalog_digest": "sha256:8b80770944df36575057ea13811d4321473b4eb478771bcdd27e81725bdbe773"
 }

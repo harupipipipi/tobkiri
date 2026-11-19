@@ -91,6 +91,9 @@ _FAILURES = frozenset({
 _LEGACY_READ_FAILURE = b"legacy-read-required"
 _CONVERSATION_LEGACY_READ_FAILURE = b"requires-legacy-read"
 _LEGACY_REQUEST_FAILURE = b"legacy-request"
+_LOCAL_CHAT_POLICY_FAILURES = frozenset({
+    b"policy-model-denied", b"policy-model-invalid", b"policy-parameters-invalid",
+})
 _PUBLICATION_UNCONFIRMED = b"publication-unconfirmed"
 _INBOUND_LIMITS = {
     _CHECK: 0,
@@ -346,6 +349,7 @@ class NativeSavedLocalChatRequest:
     assert_dispatch: Callable[[], None]
     mark_dispatch_possible: Callable[[], None]
     compile_request: bool = False
+    compile_policy: bool = False
 
 
 @dataclass(frozen=True)
@@ -437,12 +441,15 @@ class NativeSavedLocalChatExecutor:
     _launcher: _Launcher
     _project_response: bool
     supports_request_compilation: bool
+    supports_policy_compilation: bool = False
 
     def __call__(
         self, borrow: NativeSavedLocalChatRequest,
     ) -> bytes | dict[str, Any]:
         """Exchange one request in its negotiated input form."""
         if borrow.compile_request and not self.supports_request_compilation:
+            raise NativeSavedLocalChatFailure("invalid")
+        if borrow.compile_policy and not self.supports_policy_compilation:
             raise NativeSavedLocalChatFailure("invalid")
         return _invoke_saved_local_chat(
             self._launcher, borrow, project_response=self._project_response,
@@ -581,13 +588,15 @@ def capture_launcher_saved_orchestration_step() -> (
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
     """Capture the managed Launcher's opted-in endpoint for local chat."""
     version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
-    if version not in ("1", "2", "3"):
+    if version not in ("1", "2", "3", "4"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
         return None
     return NativeSavedLocalChatExecutor(
-        launcher, version in ("2", "3"), supports_request_compilation=version == "3",
+        launcher, version in ("2", "3", "4"),
+        supports_request_compilation=version in ("3", "4"),
+        supports_policy_compilation=version == "4",
     )
 
 
@@ -755,6 +764,10 @@ def _start_payload(
             frame["saved_local_chat"]["project_response"] = True
         if borrow.compile_request:
             frame["saved_local_chat"]["compile_request"] = True
+        if borrow.compile_policy:
+            if not borrow.compile_request or not project_local_chat_response:
+                raise NativeSavedLocalChatFailure("invalid")
+            frame["saved_local_chat"]["compile_policy"] = True
     elif isinstance(borrow, NativeSavedTurnSettlementRequest):
         frame["turn_settlement"] = _turn_settlement_payload(borrow)
     elif isinstance(borrow, NativeConversationConfirmationRequest):
@@ -805,6 +818,7 @@ def _saved_local_chat_start(borrow: NativeSavedLocalChatRequest) -> dict[str, An
         or type(borrow.input) is not bytes
         or not borrow.input
         or type(borrow.compile_request) is not bool
+        or type(borrow.compile_policy) is not bool
     ):
         raise NativeSavedLocalChatFailure("invalid")
     try:
@@ -1286,6 +1300,7 @@ class _Exchange:
         permits_dispatch: bool = False,
         accepts_projected_local_chat: bool = False,
         compiles_local_chat_request: bool = False,
+        compiles_local_chat_policy: bool = False,
     ) -> None:
         self.connection = connection
         self.plan_limit = plan_limit
@@ -1303,6 +1318,8 @@ class _Exchange:
             self.failure_codes |= {b"invalid-response"}
         if compiles_local_chat_request:
             self.failure_codes |= {_LEGACY_REQUEST_FAILURE}
+        if compiles_local_chat_policy:
+            self.failure_codes |= _LOCAL_CHAT_POLICY_FAILURES
         if not requires_body_ready:
             self.failure_codes |= {self.legacy_failure}
         if conversation_mutation:
@@ -1398,6 +1415,8 @@ class _Exchange:
             while True:
                 tag, payload = self.receive(wait_seconds)
                 if tag == _FAILURE and payload in self.failure_codes:
+                    if self.dispatch_possible and payload in _LOCAL_CHAT_POLICY_FAILURES:
+                        break
                     return
                 if (tag == _PLAN and self.dispatch_possible) or (
                     tag == _PROJECTED_LOCAL_CHAT and self.dispatch_permitted
@@ -1429,6 +1448,12 @@ class _Exchange:
         while True:
             tag, payload = self.receive(wait_seconds)
             if tag == _FAILURE and payload in self.failure_codes:
+                if payload in _LOCAL_CHAT_POLICY_FAILURES and (
+                    not body_ready or self.dispatch_possible
+                ):
+                    raise _ProtocolError(
+                        "native saved local chat policy result is out of order",
+                    )
                 self.terminal = True
                 wait_seconds()
                 if (
@@ -1694,6 +1719,7 @@ def _exchange_saved_local_chat(
             permits_dispatch=True,
             accepts_projected_local_chat=project_response,
             compiles_local_chat_request=borrow.compile_request,
+            compiles_local_chat_policy=borrow.compile_policy,
         )
         try:
             return exchange.run_saved_local_chat(borrow, start, wait_seconds)

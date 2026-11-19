@@ -3,7 +3,9 @@
 mod projection;
 mod request;
 pub use projection::project_local_completion;
-pub use request::compile_local_chat_request;
+pub use request::{
+    PolicyError, compile_local_chat_request, compile_local_chat_request_with_policy,
+};
 
 #[cfg(feature = "component")]
 mod component;

@@ -26,12 +26,12 @@ use tobkiri_harness_native::{
     compile_original_local_chat, invoke_original_saved_orchestration_port,
     invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
     invoke_original_saved_turn_port, invoke_original_saved_turn_read_port,
-    post_original_local_chat, project_original_local_chat, read_legacy_saved_turn,
-    settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
+    observe_original_local_chat_policy, post_original_local_chat, project_original_local_chat,
+    read_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
-    OriginalLocalChatCheck, OriginalLocalChatError, OriginalLocalChatRequest,
-    OriginalSavedLocalChatRole, OriginalSavedTurnCheck, OriginalSavedTurnStartInput,
-    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
+    OriginalLocalChatCheck, OriginalLocalChatError, OriginalLocalChatPolicy,
+    OriginalLocalChatRequest, OriginalSavedLocalChatRole, OriginalSavedTurnCheck,
+    OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
 };
 use tobkiri_store::{DataRoot, StoreError};
 use tobkiri_wasm::{LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT};
@@ -46,8 +46,9 @@ use super::{
         reacquire_saved_receipt_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
         reacquire_turn_start_pack, saved_local_chat_dispatch_bundle, ConversationReadCaller,
         SettlementCaller, VerifiedRegistryLaunch, PROVIDER_ADAPTER_OPERATION,
-        PROVIDER_ADAPTER_SHAPE, PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION,
-        PROVIDER_REQUEST_SHAPE, REGISTRY_VERIFICATION_BYTES,
+        PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
+        PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
+        REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -143,6 +144,7 @@ pub(crate) enum NativeRegistryRequest {
         input: Vec<u8>,
         project_response: bool,
         compile_request: bool,
+        compile_policy: bool,
     },
 }
 
@@ -1107,6 +1109,7 @@ async fn run(
                     input,
                     project_response,
                     compile_request,
+                    compile_policy,
                 } => {
                     revalidate()?;
                     let profile = ProfileId::parse(&identity.profile_id)?;
@@ -1131,52 +1134,70 @@ async fn run(
                     let response_shape = ShapeRef::parse(PROVIDER_ADAPTER_SHAPE)?;
                     let response_operation = OpName::parse(PROVIDER_ADAPTER_OPERATION)?;
                     let stream = matches!(role, OriginalSavedLocalChatRole::Stream);
-                    let mut post = async |body: &[u8]| {
-                        post_original_local_chat(
-                            &data,
-                            OriginalLocalChatRequest {
-                                profile: &profile,
-                                provider: LegacyLocalChatSelection {
-                                    connection_id: &connection_id,
-                                    record_revision,
-                                    endpoint: &endpoint,
-                                },
-                                body,
-                                deadline: execution_deadline,
-                                cancellation: &cancellation,
-                            },
-                            &graph,
-                            |phase| match phase {
-                                OriginalLocalChatCheck::Live => revalidate(),
-                                OriginalLocalChatCheck::Dispatch => {
-                                    bundle.revalidate(&graph, checkpoint)?;
-                                    revalidate()?;
-                                    let permit = publish_permit.take().context(
-                                        "saved local Provider dispatch permit is missing",
-                                    )?;
-                                    permit()?;
-                                    require_current_source()
-                                }
-                            },
-                        )
-                        .await
+                    let provider = LegacyLocalChatSelection {
+                        connection_id: &connection_id,
+                        record_revision,
+                        endpoint: &endpoint,
                     };
+                    let mut post =
+                        async |body: &[u8], expected_policy: Option<&OriginalLocalChatPolicy>| {
+                            post_original_local_chat(
+                                &data,
+                                OriginalLocalChatRequest {
+                                    profile: &profile,
+                                    provider,
+                                    body,
+                                    expected_policy,
+                                    deadline: execution_deadline,
+                                    cancellation: &cancellation,
+                                },
+                                &graph,
+                                |phase| match phase {
+                                    OriginalLocalChatCheck::Live => revalidate(),
+                                    OriginalLocalChatCheck::Dispatch => {
+                                        bundle.revalidate(&graph, checkpoint)?;
+                                        revalidate()?;
+                                        let permit = publish_permit.take().context(
+                                            "saved local Provider dispatch permit is missing",
+                                        )?;
+                                        permit()?;
+                                        require_current_source()
+                                    }
+                                },
+                            )
+                            .await
+                        };
                     let (wire, projected) = if compile_request {
                         let adapter = adapter
                             .as_ref()
                             .filter(|pack| {
-                                pack.manifest.version == PROVIDER_REQUEST_ADAPTER_VERSION
+                                pack.manifest.version == PROVIDER_POLICY_ADAPTER_VERSION
+                                    || (!compile_policy
+                                        && pack.manifest.version
+                                            == PROVIDER_REQUEST_ADAPTER_VERSION)
                             })
                             .ok_or(SavedLocalChatRequiresLegacyRequest)?;
                         let source = std::str::from_utf8(&input)
                             .map_err(|_| SavedLocalChatRequiresLegacyRequest)?;
+                        let policy = compile_policy
+                            .then(|| {
+                                observe_original_local_chat_policy(
+                                    &data, &profile, &provider, &graph,
+                                )
+                            })
+                            .transpose()?;
+                        let request_operation = OpName::parse(if compile_policy {
+                            PROVIDER_POLICY_OPERATION
+                        } else {
+                            PROVIDER_REQUEST_OPERATION
+                        })?;
                         let port = inspection
                             .prepare_declared_read_only_pair(
                                 adapter,
                                 [
                                     (
                                         &ShapeRef::parse(PROVIDER_REQUEST_SHAPE)?,
-                                        &OpName::parse(PROVIDER_REQUEST_OPERATION)?,
+                                        &request_operation,
                                     ),
                                     (&response_shape, &response_operation),
                                 ],
@@ -1185,12 +1206,14 @@ async fn run(
                             )
                             .await?;
                         let (compiled, response_port) =
-                            compile_original_local_chat(port, source, &graph).await?;
+                            compile_original_local_chat(port, source, policy.as_ref(), &graph)
+                                .await?;
                         let compiled = compiled.ok_or(SavedLocalChatRequiresLegacyRequest)?;
                         drop(input);
                         drop(input_funding.take());
-                        let wire = post(compiled.as_bytes()).await?;
+                        let wire = post(compiled.as_bytes(), policy.as_ref()).await?;
                         drop(compiled);
+                        drop(policy);
                         let projected = if let Ok(raw) = wire.as_str() {
                             revalidate()?;
                             project_original_local_chat(response_port, raw, stream, &graph).await?
@@ -1199,7 +1222,7 @@ async fn run(
                         };
                         (wire, projected)
                     } else {
-                        let wire = post(&input).await?;
+                        let wire = post(&input, None).await?;
                         drop(input);
                         drop(input_funding.take());
                         let projected =
@@ -1829,6 +1852,7 @@ mod tests {
             input,
             project_response: false,
             compile_request: false,
+            compile_policy: false,
         };
         assert!(!request.has_launch_proof(&orchestration));
         assert!(request.requires_publication_permit());
@@ -1845,6 +1869,7 @@ mod tests {
             input,
             project_response: false,
             compile_request: false,
+            compile_policy: false,
         };
         let empty = request(Vec::new()).input_capacity().unwrap_err();
         assert!(matches!(
