@@ -1932,6 +1932,7 @@ def capture_production_dispatch(
         CONVERSATION_CONFIRMATION_MINIMUM_MEMORY,
         CONVERSATION_GET_MAX_ID_CHARS,
         CONVERSATION_GET_MINIMUM_MEMORY,
+        GATEWAY_PROVIDER_SNAPSHOT_ROLES,
         MODEL_RESOLVE_MINIMUM_MEMORY,
         PROVIDER_SNAPSHOT_MINIMUM_MEMORY,
         SAVED_RECEIPT_MAX_ID_CHARS,
@@ -1968,6 +1969,7 @@ def capture_production_dispatch(
         NativeModelSettingsRequest,
         NativeProviderPrepareUnavailable,
         NativeProviderSnapshotRequest,
+        ProviderSnapshotRole,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
         NativeSavedOrchestrationRequest,
@@ -2735,6 +2737,60 @@ def capture_production_dispatch(
         select_original_turn({side_chat_edge.target.principal_id})
         if side_chat_edge is not None else None
     )
+    side_chat_orchestration_edge = (
+        select_original_orchestration(side_chat_turn_edge)
+        if side_chat_turn_edge is not None else None
+    )
+    gateway_pack = "rumi_ai_gateway_pack"
+    gateway_roles: tuple[tuple[ModelResolveRole, str, str, str], ...] = (
+        ("quote-generate", "tobkiri.resource.ai.route.quote.v1", "route-quote", "generate"),
+        ("quote-stream", "tobkiri.resource.ai.route.quote.v1", "route-quote", "stream"),
+        ("generate", "tobkiri.service.ai.generate.v1", "generate", "generate"),
+        ("stream", "tobkiri.service.ai.stream.v1", "stream", "stream"),
+    )
+    gateway_snapshot_routes: dict[
+        tuple[str, str],
+        list[tuple[ModelResolveRole, bool, _CapturedPlanEdge, tuple[_CapturedPlanEdge, ...]]],
+    ] = {}
+
+    def capture_gateway_snapshot_routes(
+        turn: _CapturedPlanEdge,
+        orchestration: _CapturedPlanEdge,
+        side_chat: _CapturedPlanEdge | None = None,
+    ) -> None:
+        for role, contract, gateway_kind, call_kind in gateway_roles:
+            gateway_id = f"{gateway_pack}.ai-gateway.{gateway_kind}"
+            gateway = select_original_chat_edge(
+                {orchestration.target.principal_id}, gateway_pack,
+                contract, gateway_id, gateway_id, EffectClass.PRIVILEGED,
+            )
+            if gateway is None:
+                continue
+            operation = f"{_MODEL_PROVIDER_OPERATION}.{call_kind}"
+            owner = select_original_chat_edge(
+                {gateway.target.principal_id}, "rumi_provider_registry_pack",
+                LOCAL_REGISTRY_CONTRACT, operation, _MODEL_PROVIDER_FUNCTION,
+                EffectClass.PRIVILEGED,
+            )
+            if owner is not None:
+                parents = (gateway, orchestration, turn)
+                gateway_snapshot_routes.setdefault(
+                    (gateway.target.principal_id, operation), [],
+                ).append((
+                    role, side_chat is not None, owner,
+                    (*parents, side_chat) if side_chat is not None else parents,
+                ))
+
+    if getattr(native_provider_snapshot_reader, "supports_gateway", False) is True:
+        if ordinary_turn_edge is not None and ordinary_orchestration_edge is not None:
+            capture_gateway_snapshot_routes(ordinary_turn_edge, ordinary_orchestration_edge)
+        if (
+            side_chat_edge is not None and side_chat_turn_edge is not None
+            and side_chat_orchestration_edge is not None
+        ):
+            capture_gateway_snapshot_routes(
+                side_chat_turn_edge, side_chat_orchestration_edge, side_chat_edge,
+            )
 
     saved_local_chat_routes: dict[str, list[_SavedLocalChatRoute]] = {}
     saved_local_chat_bindings: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
@@ -2744,7 +2800,6 @@ def capture_production_dispatch(
         orchestration: _CapturedPlanEdge,
         side_chat: _CapturedPlanEdge | None = None,
     ) -> None:
-        gateway_pack = "rumi_ai_gateway_pack"
         adapter_pack = "rumi_provider_adapters_pack"
         registry_pack = "rumi_provider_registry_pack"
         local_roles: tuple[tuple[str, SavedLocalChatRole, SavedLocalChatRole], ...] = (
@@ -2797,13 +2852,12 @@ def capture_production_dispatch(
         if (
             side_chat_edge is not None
             and side_chat_turn_edge is not None
+            and side_chat_orchestration_edge is not None
             and getattr(native_saved_local_chat, "supports_side_chat", False) is True
         ):
-            side_chat_orchestration = select_original_orchestration(side_chat_turn_edge)
-            if side_chat_orchestration is not None:
-                capture_saved_local_chat_routes(
-                    side_chat_turn_edge, side_chat_orchestration, side_chat_edge,
-                )
+            capture_saved_local_chat_routes(
+                side_chat_turn_edge, side_chat_orchestration_edge, side_chat_edge,
+            )
 
     turn_start_routes: dict[SavedTurnStartCaller, tuple[_CapturedPlanEdge, ...]] = {}
 
@@ -4025,15 +4079,7 @@ def capture_production_dispatch(
                 continue
             if route.via_side_chat:
                 _, _, turn, side = ancestors
-                turn_id = requested_saved_turn_id("saved-turn", turn.payload)
-                if (
-                    turn.context.profile_id != context.profile_id
-                    or turn_id is None
-                    or not matches_side_turn_request(
-                        turn.payload, turn_id, side, context.profile_id,
-                        reconcile=False,
-                    )
-                ):
+                if not is_original_side_chat_send(turn, side, context.profile_id):
                     return None
             return route
         return None
@@ -5210,7 +5256,8 @@ def capture_production_dispatch(
     def native_provider_snapshot_source(
         context: RequestContext,
         payload: Mapping[str, Any],
-    ) -> tuple[_SavedLocalChatRoute, CapturedInvocationScopeV4] | None:
+        operation_id: str,
+    ) -> tuple[ProviderSnapshotRole, _CapturedPlanEdge, CapturedInvocationScopeV4] | None:
         if native_provider_runtime is None or (
             set(payload) - {"profile_id", "_session_id"}
             or payload.get("profile_id", context.profile_id) != context.profile_id
@@ -5219,22 +5266,41 @@ def capture_production_dispatch(
         parent = parent_invocation_scopes.lookup(context.caller_session_id)
         if parent is None:
             return None
-        adapter = parent.envelope
+        caller = parent.envelope
         if (
-            adapter.target_principal != context.caller_principal
-            or adapter.context.profile_id != context.profile_id
+            caller.target_principal != context.caller_principal
+            or caller.context.profile_id != context.profile_id
         ):
             return None
-        route = saved_local_chat_lineage(adapter.context, adapter.payload, parent.parent)
-        if route is None or not matches_captured_edge(adapter, route.adapter):
-            return None
-        return route, parent
+        for role, side_chat, edge, parents in gateway_snapshot_routes.get(
+            (context.caller_principal.value, operation_id), (),
+        ):
+            ancestors = match_captured_ancestors(parent, parents)
+            if ancestors is None:
+                continue
+            if role in ("quote-generate", "quote-stream") and (
+                gateway_projection_role("quote-generate", caller.payload) != role
+            ):
+                continue
+            if side_chat and not is_original_side_chat_send(
+                ancestors[-2], ancestors[-1], context.profile_id,
+            ):
+                continue
+            return GATEWAY_PROVIDER_SNAPSHOT_ROLES[side_chat, role], edge, parent
+
+        route = saved_local_chat_lineage(caller.context, caller.payload, parent.parent)
+        if (
+            route is not None and operation_id == route.registry.binding_key[2]
+            and matches_captured_edge(caller, route.adapter)
+        ):
+            return route.role, route.registry, parent
+        return None
 
     def wrap_native_provider_snapshot(
         contribution: HostProviderContributionV4,
         reader: Callable[[NativeProviderSnapshotRequest], Mapping[str, Any]],
     ) -> HostProviderContributionV4:
-        """Use Wasm for the Adapter's independently admitted raw Registry GET."""
+        """Use Wasm for the independently admitted raw Registry GET."""
 
         def invoke(
             operation_id: str,
@@ -5245,14 +5311,14 @@ def capture_production_dispatch(
                 raise AuthorityDenied("native Provider snapshot context is unavailable")
             envelope = invocation.envelope
             context = envelope.context
-            source = native_provider_snapshot_source(context, payload)
+            source = native_provider_snapshot_source(context, payload, operation_id)
             if source is None:
                 return contribution.invoke(operation_id, payload, invocation)
-            route, parent = source
+            role, edge, parent = source
             pinned = native_provider_runtime
             if (
                 pinned is None
-                or not matches_captured_edge(envelope, route.registry)
+                or not matches_captured_edge(envelope, edge)
                 or envelope.operation_id != operation_id
                 or payload is not envelope.payload
                 or invocation.parent_invocation is not parent
@@ -5281,7 +5347,7 @@ def capture_production_dispatch(
                         runtime_instance=pinned[0],
                         deadline_monotonic=envelope.deadline_monotonic,
                         assert_current=guard,
-                        role=route.role,
+                        role=role,
                     ))
                 except (
                     NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
@@ -5837,6 +5903,18 @@ def capture_production_dispatch(
         return (
             side.payload.get("conversation_id") == source.get("conversation_id")
             and side.payload.get("expected_child_revision") == source.get("conversation_revision")
+        )
+
+    def is_original_side_chat_send(
+        turn: RequestEnvelope, side: RequestEnvelope, profile_id: str,
+    ) -> bool:
+        turn_id = requested_saved_turn_id("saved-turn", turn.payload)
+        return (
+            turn.context.profile_id == profile_id
+            and turn_id is not None
+            and matches_side_turn_request(
+                turn.payload, turn_id, side, profile_id, reconcile=False,
+            )
         )
 
     def saved_turn_ancestors(
@@ -6477,15 +6555,6 @@ def capture_production_dispatch(
             or native_ai_gateway_policy_projector is not None
         )
     ):
-        gateway_pack = "rumi_ai_gateway_pack"
-        gateway_roles: tuple[tuple[ModelResolveRole, str, str, str], ...] = (
-            ("quote-generate", "tobkiri.resource.ai.route.quote.v1",
-             "route-quote", "generate"),
-            ("quote-stream", "tobkiri.resource.ai.route.quote.v1",
-             "route-quote", "stream"),
-            ("generate", "tobkiri.service.ai.generate.v1", "generate", "generate"),
-            ("stream", "tobkiri.service.ai.stream.v1", "stream", "stream"),
-        )
         for role, gateway_contract, gateway_kind, call_kind in gateway_roles:
             gateway_id = f"{gateway_pack}.ai-gateway.{gateway_kind}"
             gateway_edge = select_original_chat_edge(
@@ -7794,12 +7863,15 @@ def capture_production_dispatch(
                 for item in contributions
             )
         if native_provider_snapshot_reader is not None:
+            snapshot_edges = (
+                *(route.registry for routes in saved_local_chat_routes.values()
+                  for route in routes),
+                *(edge for routes in gateway_snapshot_routes.values()
+                  for _, _, edge, _ in routes),
+            )
             snapshot_bindings = {
-                (*route.registry.binding_key[1:], route.registry.target.principal_id):
-                route.registry.resolved_binding
-                for routes in saved_local_chat_routes.values()
-                for route in routes
-                if route.registry.resolved_binding in captured_bindings
+                (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
+                for edge in snapshot_edges if edge.resolved_binding in captured_bindings
             }
             native_provider_snapshot_bindings.update(snapshot_bindings)
             contributions = tuple(
@@ -8117,7 +8189,8 @@ def capture_production_dispatch(
         (
             binding,
             PROVIDER_SNAPSHOT_MINIMUM_MEMORY,
-            lambda context, payload: native_provider_snapshot_source(context, payload) is not None,
+            lambda context, payload, operation_id=binding.operation.operation_id:
+                native_provider_snapshot_source(context, payload, operation_id) is not None,
         )
         for binding in native_provider_snapshot_bindings.values()
     )
@@ -9036,7 +9109,8 @@ def capture_production_dispatch(
                 or native_saved_turn_read_bindings
                 or native_saved_turn_start_key is not None
                 or native_saved_append_key is not None or native_saved_execution is not None
-                or saved_local_chat_routes or native_presentation_bindings
+                or saved_local_chat_routes or native_provider_snapshot_bindings
+                or native_presentation_bindings
                 or native_conversation is not None)
             else None
         ),

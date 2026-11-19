@@ -1995,9 +1995,11 @@ with socket.socket(socket.AF_UNIX) as listener:
                     server.kill()
 
 
-@pytest.mark.parametrize("role", ipc._SAVED_LOCAL_CHAT_ROLES)
-def test_provider_snapshot_receives_the_original_adapter_owner_reply(
-    monkeypatch: pytest.MonkeyPatch, role: ipc.SavedLocalChatRole,
+@pytest.mark.parametrize(
+    "role", (*ipc._SAVED_LOCAL_CHAT_ROLES, *ipc.GATEWAY_PROVIDER_SNAPSHOT_ROLES.values()),
+)
+def test_provider_snapshot_receives_the_original_owner_reply(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ProviderSnapshotRole,
 ) -> None:
     borrow = _Borrow()
     request = ipc.NativeProviderSnapshotRequest(
@@ -2026,6 +2028,13 @@ def test_provider_snapshot_receives_the_original_adapter_owner_reply(
         monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "1")
         reader = ipc.capture_launcher_provider_snapshot_reader()
         assert reader is not None
+        assert not reader.supports_gateway
+        if role in ipc.GATEWAY_PROVIDER_SNAPSHOT_ROLES.values():
+            with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+                reader(request)
+            monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "2")
+            reader = ipc.capture_launcher_provider_snapshot_reader()
+            assert reader is not None and reader.supports_gateway
         assert reader(request) == expected
 
 

@@ -15,6 +15,7 @@ from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache, partial
+from types import MappingProxyType
 from typing import Any, Literal, overload
 
 from core_runtime.host_provider_backend_v4 import HostPublicationUnconfirmed
@@ -478,16 +479,36 @@ SavedLocalChatRole = Literal[
 _SIDE_CHAT_LOCAL_ROLES = ("side-chat-generate", "side-chat-stream")
 _SAVED_LOCAL_CHAT_ROLES = ("generate", "stream", *_SIDE_CHAT_LOCAL_ROLES)
 
+GatewayProviderSnapshotRole = Literal[
+    "gateway-generate", "gateway-stream",
+    "gateway-quote-generate", "gateway-quote-stream",
+    "side-chat-gateway-generate", "side-chat-gateway-stream",
+    "side-chat-gateway-quote-generate", "side-chat-gateway-quote-stream",
+]
+ProviderSnapshotRole = SavedLocalChatRole | GatewayProviderSnapshotRole
+GATEWAY_PROVIDER_SNAPSHOT_ROLES: Mapping[
+    tuple[bool, ModelResolveRole], GatewayProviderSnapshotRole
+] = MappingProxyType({
+    (False, "generate"): "gateway-generate",
+    (False, "stream"): "gateway-stream",
+    (False, "quote-generate"): "gateway-quote-generate",
+    (False, "quote-stream"): "gateway-quote-stream",
+    (True, "generate"): "side-chat-gateway-generate",
+    (True, "stream"): "side-chat-gateway-stream",
+    (True, "quote-generate"): "side-chat-gateway-quote-generate",
+    (True, "quote-stream"): "side-chat-gateway-quote-stream",
+})
+
 
 @dataclass(frozen=True)
 class NativeProviderSnapshotRequest:
-    """Borrow the live Adapter-owned Registry GET from the original Broker."""
+    """Borrow the live Registry owner's GET from the original Broker."""
 
     context: RequestContext
     runtime_instance: str
     deadline_monotonic: float
     assert_current: Callable[[], None]
-    role: SavedLocalChatRole
+    role: ProviderSnapshotRole
 
 
 @dataclass(frozen=True)
@@ -701,16 +722,29 @@ def capture_launcher_provider_prepare_planner() -> NativeProviderPreparePlanner 
     )
 
 
-def capture_launcher_provider_snapshot_reader() -> (
-    Callable[[NativeProviderSnapshotRequest], Mapping[str, Any]] | None
-):
+@dataclass(frozen=True)
+class _LauncherProviderSnapshot:
+    launcher: _Launcher
+    supports_gateway: bool
+
+    def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
+        if (
+            not self.supports_gateway
+            and request.role in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values()
+        ):
+            raise NativeProviderPrepareUnavailable("native Gateway Registry read is unavailable")
+        return _invoke(self.launcher, request, operation="provider_snapshot")
+
+
+def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
-    if os.environ.get(_PROVIDER_SNAPSHOT_ENV) != "1":
+    version = os.environ.get(_PROVIDER_SNAPSHOT_ENV)
+    if version not in ("1", "2"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return partial(_invoke, launcher, operation="provider_snapshot")
+    return _LauncherProviderSnapshot(launcher, supports_gateway=version == "2")
 
 
 def capture_launcher_model_settings_reader() -> (
@@ -1066,7 +1100,10 @@ def _start_payload(
         "deadline_ns": deadline_ns,
     }
     if isinstance(borrow, NativeProviderSnapshotRequest):
-        if borrow.role not in _SAVED_LOCAL_CHAT_ROLES:
+        if (
+            borrow.role not in _SAVED_LOCAL_CHAT_ROLES
+            and borrow.role not in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values()
+        ):
             raise _ProtocolError("native Provider snapshot role is invalid")
         frame["provider_snapshot"] = {"role": borrow.role}
     elif isinstance(borrow, NativeModelSettingsRequest):
