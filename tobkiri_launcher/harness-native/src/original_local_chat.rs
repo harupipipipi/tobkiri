@@ -1,9 +1,10 @@
 //! Exact stored Provider selection for the original Broker's local JSON effect.
 
 use anyhow::{Result as AnyResult, bail, ensure};
+use sha2::{Digest as _, Sha256};
 use std::{net::SocketAddr, sync::Arc, time::Instant};
 use tobkiri_canon::{
-    AllocationBudget, AllocationKind, AllocationRequest, CoreBuffer, ids::ProfileId,
+    AllocationBudget, AllocationKind, AllocationRequest, CoreBuffer, Digest, ids::ProfileId,
 };
 use tobkiri_gate::CoreCancellation;
 pub use tobkiri_pack_provider_registry_rust::{
@@ -62,6 +63,7 @@ pub enum OriginalLocalChatError {
 pub struct OriginalLocalChatPolicy {
     address: SocketAddr,
     document: CoreBuffer,
+    source_digest: Digest,
 }
 
 impl OriginalLocalChatPolicy {
@@ -87,7 +89,51 @@ pub fn observe_original_local_chat_policy(
         address: snapshot.address,
         document: CoreBuffer::copy_from(snapshot.policy.as_bytes(), budget)
             .map_err(|_| LegacyLocalChatHttpError::Capacity)?,
+        source_digest: registry_selection_digest(&document, profile, provider),
     })
+}
+
+fn registry_selection_digest(
+    document: &[u8],
+    profile: &ProfileId,
+    provider: &LegacyLocalChatSelection<'_>,
+) -> Digest {
+    let mut hash = Sha256::new();
+    hash.update(b"tobkiri original local chat selection\0");
+    for field in [
+        profile.as_str().as_bytes(),
+        provider.connection_id.as_bytes(),
+        provider.endpoint.as_bytes(),
+        document,
+    ] {
+        hash.update((field.len() as u64).to_be_bytes());
+        hash.update(field);
+    }
+    hash.update(provider.record_revision.to_be_bytes());
+    Digest::from_sha256(hash.finalize().into())
+}
+
+fn revalidate_original_local_chat_policy(
+    root: &DataRoot,
+    profile: &ProfileId,
+    provider: &LegacyLocalChatSelection<'_>,
+    expected: &OriginalLocalChatPolicy,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<(), OriginalLocalChatError> {
+    let _charge = DocumentCharge::reserve(budget)?;
+    let document = read_registry(root, profile)?;
+    if registry_selection_digest(&document, profile, provider) == expected.source_digest {
+        return Ok(());
+    }
+
+    // Other records or formatting can change without changing the selected policy.
+    let current = resolve_legacy_local_chat_policy(&document, profile.as_str(), provider)?;
+    if current.address != expected.address
+        || current.policy.as_bytes() != expected.document.as_bytes()
+    {
+        return Err(LegacyLocalChatSourceError::SelectionChanged.into());
+    }
+    Ok(())
 }
 
 fn read_registry(root: &DataRoot, profile: &ProfileId) -> Result<Vec<u8>, OriginalLocalChatError> {
@@ -138,26 +184,16 @@ pub async fn post_original_local_chat(
         |phase| {
             if phase == OriginalLocalChatCheck::Dispatch
                 && let Some(expected) = request.expected_policy
-            {
-                let result = observe_original_local_chat_policy(
+                && let Err(error) = revalidate_original_local_chat_policy(
                     root,
                     request.profile,
                     &request.provider,
+                    expected,
                     budget,
                 )
-                .and_then(|current| {
-                    if current.address != expected.address
-                        || current.document.as_bytes() != expected.document.as_bytes()
-                    {
-                        Err(LegacyLocalChatSourceError::SelectionChanged.into())
-                    } else {
-                        Ok(())
-                    }
-                });
-                if let Err(error) = result {
-                    registry_error = Some(error);
-                    bail!("local Provider policy observation changed at dispatch");
-                }
+            {
+                registry_error = Some(error);
+                bail!("local Provider policy observation changed at dispatch");
             }
             check(phase)
         },

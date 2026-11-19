@@ -19,6 +19,8 @@ on:
       - 'tobkiri_launcher/src-tauri/src/native_harness_dispatch*.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_activation_decision.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
+      - 'tobkiri_launcher/harness-native/src/original_local_chat.rs'
+      - 'tobkiri_launcher/harness-native/src/original_local_chat/**'
       - 'tobkiri_launcher/src-tauri/src/native_setup_review*.rs'
       - 'tobkiri_launcher/src-tauri/src/native_setup_commands.rs'
       - 'tobkiri_launcher/src-tauri/capabilities/native-first-setup.json'
@@ -78,6 +80,8 @@ jobs:
       - run: cargo test --locked -p tobkiri-core --lib native_profile_review_tests
       - name: Verify the exact Setup decision input
         run: cargo test --locked -p tobkiri-harness-native --lib bootstrap_runtime::activation_decision::tests
+      - name: Verify local Provider policy and physical request dispatch
+        run: cargo test --locked -p tobkiri-harness-native --lib original_local_chat::tests
   actual-macos-host:
     runs-on: macos-15
     timeout-minutes: 50

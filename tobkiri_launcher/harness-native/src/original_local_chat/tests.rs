@@ -91,6 +91,15 @@ fn original_request<'a>(
 
 #[tokio::test]
 async fn selected_profile_posts_original_json_and_releases_real_native_capacity() {
+    assert_original_json_post(false).await;
+}
+
+#[tokio::test]
+async fn policy_checked_post_releases_real_native_capacity() {
+    assert_original_json_post(true).await;
+}
+
+async fn assert_original_json_post(check_policy: bool) {
     let temp = tempfile::tempdir().unwrap();
     let root = DataRoot::open_existing(temp.path().canonicalize().unwrap()).unwrap();
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
@@ -143,20 +152,20 @@ async fn selected_profile_posts_original_json_and_releases_real_native_capacity(
         .native_setup_store(account.begin().unwrap(), ())
         .unwrap();
     let budget = store.allocation_owners().graph().clone();
-    let initial = account.snapshot().unwrap();
     let observed = format!("{endpoint}/");
+    let mut request = original_request(&profile, &observed, 1, store.cancellation());
+    let policy = check_policy.then(|| {
+        observe_original_local_chat_policy(&root, &profile, &request.provider, &budget).unwrap()
+    });
+    request.expected_policy = policy.as_ref();
+    let initial = account.snapshot().unwrap();
     let mut dispatches = 0;
-    let output = post_original_local_chat(
-        &root,
-        original_request(&profile, &observed, 1, store.cancellation()),
-        &budget,
-        |phase| {
-            if phase == OriginalLocalChatCheck::Dispatch {
-                dispatches += 1;
-            }
-            Ok(())
-        },
-    )
+    let output = post_original_local_chat(&root, request, &budget, |phase| {
+        if phase == OriginalLocalChatCheck::Dispatch {
+            dispatches += 1;
+        }
+        Ok(())
+    })
     .await
     .unwrap();
     assert_eq!(dispatches, 1);
@@ -169,7 +178,7 @@ async fn selected_profile_posts_original_json_and_releases_real_native_capacity(
         account.snapshot().unwrap().charged_bytes,
         initial.charged_bytes
     );
-    drop((budget, store));
+    drop((policy, budget, store));
     tobkiri_wasm::reap_allocation_owners().unwrap();
     let final_state = account.snapshot().unwrap();
     assert_eq!(
@@ -266,16 +275,35 @@ async fn changed_policy_under_the_same_selection_cannot_obtain_dispatch() {
     assert!(policy.document().unwrap().is_empty());
     request.expected_policy = Some(&policy);
 
+    let different_revision = LegacyLocalChatSelection {
+        record_revision: request.provider.record_revision + 1,
+        ..request.provider
+    };
+    assert!(matches!(
+        revalidate_original_local_chat_policy(
+            &root,
+            &profile,
+            &different_revision,
+            &policy,
+            &budget
+        ),
+        Err(OriginalLocalChatError::Source(
+            LegacyLocalChatSourceError::SelectionChanged,
+        )),
+    ));
+
+    let path = root
+        .path()
+        .join(PROFILES)
+        .join(profile.as_str())
+        .join(STORE);
     let mut changed: serde_json::Value = serde_json::from_str(&original).unwrap();
+    fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
+    revalidate_original_local_chat_policy(&root, &profile, &request.provider, &policy, &budget)
+        .unwrap();
+
     changed["providers"][CONNECTION]["allowed_models"] = serde_json::json!([]);
-    fs::write(
-        root.path()
-            .join(PROFILES)
-            .join(profile.as_str())
-            .join(STORE),
-        serde_json::to_vec(&changed).unwrap(),
-    )
-    .unwrap();
+    fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
     let result = post_original_local_chat(&root, request, &budget, |phase| {
         assert_eq!(phase, OriginalLocalChatCheck::Live);
         Ok(())
