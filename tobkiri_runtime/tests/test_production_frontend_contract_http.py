@@ -1923,6 +1923,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             ipc, "capture_launcher_conversation_get_reader", lambda: native_read,
         )
         monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
+        monkeypatch.setattr(ipc, "capture_launcher_saved_turn_settlement_writer", lambda: None)
 
         if native_receipts_enabled:
             from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
@@ -2723,6 +2724,262 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert len(ai_calls) == (2 if completion == "calculator" else 1)
     finally:
         servers.close()
+
+
+@pytest.mark.parametrize(
+    "case", ["direct", "saved_retry", "reconcile", "compatibility", "publication"],
+)
+def test_native_settlement_borrows_signed_turn_http_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str,
+) -> None:
+    """Exercise the signed Turn parents with the physical SQLite and JSON stores."""
+    import io
+    from urllib.request import Request
+
+    from core_runtime import credential_transport
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import LeaseState
+    from core_runtime.provider_prepare_native_v4 import (
+        NativeProviderRegistryRequiresLegacyRead,
+    )
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+        COMPLETION_CONTRACT,
+        COMPLETION_OPERATION,
+    )
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import (
+        TARGETS,
+    )
+    from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.runtime import V4DispatchSession
+
+    user_data = tmp_path / "user-data"
+    turns = DurableTurnRuntime("defaults", user_data_root=user_data)
+    conversations = ConversationStore("defaults", user_data_root=user_data)
+    parents: list[RequestEnvelope] = []
+    receipts: list[RequestEnvelope] = []
+    confirmations: list[RequestEnvelope] = []
+    receipt_reads: list[ipc.NativeSavedReceiptRequest] = []
+    borrows: list[ipc.NativeSavedTurnSettlementRequest] = []
+    native_commits: list[str] = []
+    ai_calls = []
+    original_invoke = V4DispatchSession.invoke
+
+    def open_provider(request: Request, *, timeout: float, **_lifetime: object) -> io.BytesIO:
+        assert timeout > 0
+        assert request.full_url == "https://provider.example/v1/chat/completions"
+        assert request.get_header("Authorization") == (
+            "Bearer fixture-secret-provider-configuration"
+        )
+        assert isinstance(request.data, bytes)
+        body = json.loads(request.data)
+        assert body["model"] == "organization/raw-model"
+        assert body["messages"] == [{"role": "user", "content": "Hello"}]
+        ai_calls.append(body)
+        if body.get("stream"):
+            chunk = {
+                "choices": [{"delta": {"content": "Hi"}, "finish_reason": "stop"}],
+            }
+            return io.BytesIO(f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode())
+        return io.BytesIO(json.dumps({
+            "choices": [{"message": {"content": "Hi"}, "finish_reason": "stop"}],
+        }).encode())
+
+    def invoke(
+        session: V4DispatchSession, contract: str, operation: str,
+        payload: Mapping[str, object], **kwargs: object,
+    ) -> Mapping[str, object]:
+        result = original_invoke(session, contract, operation, payload, **kwargs)
+        if (
+            case in {"saved_retry", "reconcile"}
+            and (contract, operation) == TARGETS[3]
+            and payload.get("operation") == "append_saved"
+            and payload["message"]["role"] == "assistant"
+        ):
+            raise RuntimeError("lost assistant append reply after commit")
+        return result
+
+    def native_receipt(request: ipc.NativeSavedReceiptRequest) -> Mapping[str, object]:
+        request.assert_current()
+        envelope = receipts[-1]
+        assert request.context == envelope.context
+        assert request.deadline_monotonic == envelope.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.turn_id == "turn-1"
+        receipt_reads.append(request)
+        return {"receipt": conversations.saved_receipt(request.turn_id)}
+
+    def native_settle(request: ipc.NativeSavedTurnSettlementRequest) -> Mapping[str, object]:
+        request.assert_current()
+        parent = parents[-1]
+        kind = "saved" if request.caller == "saved-turn" else "reconcile"
+        assert parent.contract_id == f"tobkiri.action.turn.{kind}.v1"
+        assert parent.operation_id == f"rumi_turn_runtime_pack.turn-{kind}"
+        assert request.context == parent.context
+        assert request.deadline_monotonic == parent.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert parent.resource_reservation_id is not None
+        _, state, _, _ = authority.inspect_dispatch_authority(
+            parent.lease.token.decode("ascii"),
+        )
+        assert state is LeaseState.DISPATCHED
+        assert request.turn_id == "turn-1"
+        record = turns.get(request.turn_id)
+        receipt = conversations.saved_receipt(request.turn_id)
+        assert record is not None and receipt is not None
+        assert request.input_digest == record["input_digest"] == receipt["input_digest"]
+        assert request.result_reference == receipt["result_reference"]
+        if request.expected_revision is not None:
+            assert request.expected_revision == record["revision"]
+        borrows.append(request)
+        if case == "compatibility":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        request.mark_publication_possible()
+        request.assert_current()
+        if case == "publication" and len(borrows) == 1:
+            raise ipc.NativeSavedTurnSettlementPublicationUnconfirmed("lost owner reply")
+        # The simulated Launcher and captured Python owner share this SQLite file.
+        settled = turns.settle_saved_from_receipt(
+            request.turn_id, input_digest=request.input_digest,
+            result_reference=request.result_reference,
+            expected_revision=request.expected_revision,
+        )
+        native_commits.append(request.turn_id)
+        return settled
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
+    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/turn.sock")
+    for capture in (
+        "capture_launcher_provider_prepare_planner",
+        "capture_launcher_model_save_writer",
+        "capture_launcher_model_settings_reader",
+        "capture_launcher_model_resolve_reader",
+        "capture_launcher_conversation_get_reader",
+    ):
+        monkeypatch.setattr(ipc, capture, lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: native_receipt)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_saved_turn_settlement_writer", lambda: native_settle,
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as fixture:
+        server, session, authority = fixture
+        _exercise_provider_configuration_http(fixture, tmp_path, monkeypatch)
+        ModelRegistry("defaults", user_data_root=user_data).save({
+            "model_profile_id": "model-profile-1",
+            "model_id": "organization/raw-model",
+            "metadata": {"provider_connection_id": "provider.fixture"},
+            "parameters": {"max_tokens": 16},
+        }, expected_revision=0)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(
+            backend: object, envelope: RequestEnvelope, *args: object, **kwargs: object,
+        ) -> object:
+            target = (envelope.contract_id, envelope.operation_id)
+            for kind in ("saved", "reconcile"):
+                if target == (
+                    f"tobkiri.action.turn.{kind}.v1", f"rumi_turn_runtime_pack.turn-{kind}",
+                ):
+                    parents.append(envelope)
+            if (
+                target == TARGETS[0]
+                and envelope.payload.get("operation") == "saved_receipt"
+            ):
+                receipts.append(envelope)
+            if target == (COMPLETION_CONTRACT, COMPLETION_OPERATION):
+                record = turns.get("turn-1")
+                assert record is not None and record["status"] == "completed"
+                confirmations.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        conversations.create(
+            {"id": "conversation-1", "model_reference": "model-profile-1"},
+            expected_revision=0,
+        )
+        send = _contract("POST", "/api/chat/turn")
+        reconcile = _contract("POST", "/api/chat/turn/reconcile")
+        body = {"request": {
+            "turn_id": "turn-1", "conversation_id": "conversation-1",
+            "conversation_revision": 1, "content": "Hello",
+        }}
+        status, result, _ = _request(server, "POST", send, body=body)
+        assert status in {401, 403} and not parents and not borrows, result
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(route: str, payload: dict) -> dict:
+            status, result, _ = _request(
+                server, "POST", route, body=payload, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert status == 200, result
+            return result["data"]
+
+        result = post(send, body)
+        if case in {"saved_retry", "reconcile", "publication"}:
+            assert result["status"] == "reconciliation_required", result
+            assert result["turn"]["status"] in {"running", "waiting"}
+            assert not receipts and not confirmations and not native_commits
+            revision = result["turn"]["revision"]
+            assert type(revision) is int
+            if case == "publication":
+                assert [(item.caller, item.expected_revision) for item in borrows] == [
+                    ("saved-turn", None),
+                ]
+                assert turns.get("turn-1") == result["turn"]
+            else:
+                assert not borrows
+            if case == "saved_retry":
+                result = post(send, body)
+                expected = [("saved-turn", revision)]
+            else:
+                result = post(reconcile, {"turn_id": "turn-1"})
+                expected = [("saved-reconcile", revision)]
+            if case == "publication":
+                expected.insert(0, ("saved-turn", None))
+            (receipt_envelope,) = receipts
+            (receipt_read,) = receipt_reads
+            assert receipt_read.caller == expected[-1][0]
+            assert receipt_envelope.lease.token != parents[-1].lease.token
+            assert receipt_envelope.resource_reservation_id is not None
+            assert receipt_envelope.resource_reservation_id != (
+                parents[-1].resource_reservation_id
+            )
+            assert receipt_envelope.context.caller_principal == (
+                parents[-1].target_principal
+            )
+        else:
+            expected = [("saved-turn", None)]
+            assert not receipts and not receipt_reads
+        assert [(item.caller, item.expected_revision) for item in borrows] == expected
+        assert native_commits == ([] if case == "compatibility" else ["turn-1"])
+        for request in borrows:
+            with pytest.raises(PermissionError):
+                request.assert_current()
+            with pytest.raises(PermissionError):
+                request.mark_publication_possible()
+        (confirmation,) = confirmations
+        assert confirmation.payload == {
+            "profile_id": "defaults", "operation": "confirm", "turn_id": "turn-1",
+        }
+        assert confirmation.context.caller_principal == parents[-1].target_principal
+        assert confirmation.lease.token not in {
+            item.lease.token for item in parents + receipts
+        }
+        assert result["status"] == "completed", result
+        assert turns.get("turn-1") == result["turn"]
+        conversation = conversations.get("conversation-1")
+        assert conversation is not None
+        assert [message["content"] for message in conversation["messages"]] == ["Hello", "Hi"]
+        assert len(ai_calls) == 1
 
 
 def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
@@ -4104,6 +4361,7 @@ def test_model_settings_native_read_preserves_signed_http_and_legacy_owner(
     monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_turn_settlement_writer", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: None)
@@ -4283,6 +4541,7 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
     monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_turn_settlement_writer", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: None)
@@ -5717,6 +5976,11 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
             lambda: None,
         )
         monkeypatch.setattr(
+            native_provider_prepare_ipc,
+            "capture_launcher_saved_turn_settlement_writer",
+            lambda: None,
+        )
+        monkeypatch.setattr(
             native_provider_prepare_ipc, "capture_launcher_model_save_writer", lambda: None,
         )
         monkeypatch.setattr(
@@ -6124,6 +6388,7 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_turn_settlement_writer", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: read)

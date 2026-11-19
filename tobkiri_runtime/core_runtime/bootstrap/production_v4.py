@@ -22,6 +22,7 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
+from weakref import WeakValueDictionary
 
 from core_runtime.capture_guard_traversal_v4 import (
     _capture_guard_traversal,
@@ -157,6 +158,9 @@ from ..host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
     HostPublicationUnconfirmed,
+    HostSavedTurnSettlementConflict,
+    HostSavedTurnSettlementUnconfirmed,
+    SavedTurnSettlementPort,
 )
 from ..host_provider_data_v4 import HostProviderDataCaptureV4
 from ..invocation_scope_v4 import (
@@ -1837,6 +1841,7 @@ def capture_production_dispatch(
         MODEL_RESOLVE_MINIMUM_MEMORY,
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
+        SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
         ConversationGetCaller,
         ModelResolveRole,
         NativeConversationGetFailure,
@@ -1850,6 +1855,9 @@ def capture_production_dispatch(
         NativeProviderPrepareUnavailable,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
+        NativeSavedTurnSettlementFailure,
+        NativeSavedTurnSettlementPublicationUnconfirmed,
+        NativeSavedTurnSettlementRequest,
         SavedReceiptCaller,
         capture_launcher_conversation_get_reader,
         capture_launcher_model_resolve_reader,
@@ -1857,6 +1865,7 @@ def capture_production_dispatch(
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
         capture_launcher_saved_receipt_reader,
+        capture_launcher_saved_turn_settlement_writer,
         is_canonical_model_resolve_identifier,
     )
     from ..provider_prepare_native_v4 import (
@@ -1873,6 +1882,7 @@ def capture_production_dispatch(
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
+    native_saved_turn_settlement_writer = capture_launcher_saved_turn_settlement_writer()
 
     authority_path = authority_store.path.resolve()
     if authority_path.name != "v4.sqlite3" or authority_path.parent.name != "authority":
@@ -3806,6 +3816,10 @@ def capture_production_dispatch(
         selected_tool_policy_port: Callable[[Any], Any] | None = None,
         action_approval_policy_port: Any | None = None,
         workflow_port: LateBoundWorkflowAttemptPortV4 | None = None,
+        saved_turn_settlement_port: (
+            Callable[[HostProviderInvocationContextV4], SavedTurnSettlementPort | None]
+            | None
+        ) = None,
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -3852,6 +3866,7 @@ def capture_production_dispatch(
             borrow_saved_context=(borrow_turn_saved_context
                 if len(provider_bindings) == 1 and provider_bindings[0].function.function_id
                 == "rumi_turn_runtime_pack.turn-runtime.saved" else None),
+            borrow_saved_turn_settlement=saved_turn_settlement_port,
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -4202,7 +4217,10 @@ def capture_production_dispatch(
     saved_receipt_routes: dict[
         str, tuple[SavedReceiptCaller, _CapturedPlanEdge, _CapturedPlanEdge]
     ] = {}
-    if native_saved_receipt_reader is not None:
+    saved_turn_routes: dict[
+        str, tuple[SavedReceiptCaller, _CapturedPlanEdge]
+    ] = {}
+    if native_saved_receipt_reader is not None or native_saved_turn_settlement_writer is not None:
         turn_pack = "rumi_turn_runtime_pack"
         receipt_callers: tuple[tuple[SavedReceiptCaller, str], ...] = (
             ("saved-turn", "saved"), ("saved-reconcile", "reconcile"),
@@ -4224,6 +4242,10 @@ def capture_production_dispatch(
             if len(parents) != 1:
                 continue
             parent_edge, = parents
+            if native_saved_turn_settlement_writer is not None:
+                saved_turn_routes[parent_edge.target.principal_id] = (caller, parent_edge)
+            if native_saved_receipt_reader is None:
+                continue
             receipt_edges = tuple(
                 edge for edge in captured_edges
                 if edge.caller.principal_id == parent_edge.target.principal_id
@@ -4241,6 +4263,134 @@ def capture_production_dispatch(
                 saved_receipt_routes[receipt_edge.caller.principal_id] = (
                     caller, receipt_edge, parent_edge,
                 )
+
+    turn_publications: WeakValueDictionary[int, RequestEnvelope] = WeakValueDictionary()
+    turn_publication_lock = threading.Lock()
+
+    def turn_publication_possible(envelope: RequestEnvelope) -> bool:
+        with turn_publication_lock:
+            return turn_publications.get(id(envelope)) is envelope
+
+    def requested_saved_turn_id(
+        caller: SavedReceiptCaller, payload: Mapping[str, Any],
+    ) -> str | None:
+        fields = set(payload) - {"_session_id"}
+        if caller == "saved-reconcile":
+            candidate = payload.get("turn_id") if fields == {"turn_id"} else None
+        else:
+            request = payload.get("request") if fields == {"request"} else None
+            candidate = request.get("turn_id") if isinstance(request, Mapping) else None
+        return candidate if isinstance(candidate, str) and 0 < len(candidate) <= 256 else None
+
+    def is_native_saved_turn_settlement_route(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        *,
+        caller: SavedReceiptCaller,
+        edge: _CapturedPlanEdge,
+    ) -> bool:
+        return (
+            native_provider_runtime is not None
+            and context.caller_principal.value == edge.caller.principal_id
+            and parent_invocation_scopes.lookup(context.caller_session_id) is None
+            and requested_saved_turn_id(caller, payload) is not None
+        )
+
+    def capture_turn_settlement_port(
+        caller: SavedReceiptCaller,
+        edge: _CapturedPlanEdge,
+        writer: Callable[[NativeSavedTurnSettlementRequest], Mapping[str, Any]],
+    ) -> Callable[[HostProviderInvocationContextV4], SavedTurnSettlementPort | None]:
+        def borrow(invocation: HostProviderInvocationContextV4) -> SavedTurnSettlementPort | None:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native Turn settlement context is unavailable")
+            envelope = invocation.envelope
+            if not matches_captured_edge(envelope, edge) or invocation.parent_invocation is not None:
+                return None
+            invocation.assert_current()
+            root_turn_id = requested_saved_turn_id(caller, envelope.payload)
+            runtime = native_provider_runtime
+            if root_turn_id is None or runtime is None:
+                return None
+            reservation_id = envelope.resource_reservation_id
+
+            def guard() -> None:
+                invocation.assert_current()
+                if (
+                    native_provider_runtime is not runtime
+                    or parent_invocation_scopes.lookup(envelope.context.caller_session_id) is not None
+                ):
+                    raise AuthorityDenied("native Turn settlement capture changed")
+                runtime[1]()
+                production_admission.native_resources(reservation_id)
+
+            def mark_publication() -> None:
+                guard()
+                with turn_publication_lock:
+                    turn_publications[id(envelope)] = envelope
+
+            def settle(
+                turn_id: str, input_digest: str,
+                result_reference: Mapping[str, Any], expected_revision: int | None,
+            ) -> dict[str, Any] | None:
+                if (
+                    turn_id != root_turn_id
+                    or (caller == "saved-reconcile" and expected_revision is None)
+                ):
+                    raise AuthorityDenied("native Turn settlement identity changed")
+                if turn_publication_possible(envelope):
+                    raise HostSavedTurnSettlementUnconfirmed("saved Turn write is unconfirmed")
+                guard()
+                resources = production_admission.native_resources(reservation_id)
+                if (
+                    resources.memory_bytes < SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY
+                    or (type(expected_revision) is int and expected_revision >= 1 << 64)
+                ):
+                    return None
+                try:
+                    result = writer(NativeSavedTurnSettlementRequest(
+                        context=envelope.context,
+                        runtime_instance=runtime[0],
+                        deadline_monotonic=envelope.deadline_monotonic,
+                        assert_current=guard,
+                        caller=caller,
+                        turn_id=turn_id,
+                        input_digest=input_digest,
+                        expected_revision=expected_revision,
+                        result_reference=result_reference,
+                        mark_publication_possible=mark_publication,
+                    ))
+                    guard()
+                    return dict(result)
+                except Exception as error:
+                    if (
+                        turn_publication_possible(envelope)
+                        or isinstance(error, NativeSavedTurnSettlementPublicationUnconfirmed)
+                    ):
+                        raise HostSavedTurnSettlementUnconfirmed(
+                            "saved Turn write is unconfirmed",
+                        ) from None
+                    guard()
+                    if isinstance(error, (
+                        NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
+                    )):
+                        return None
+                    if isinstance(error, NativeSavedTurnSettlementFailure):
+                        if error.code == "conflict":
+                            raise HostSavedTurnSettlementConflict(
+                                "saved receipt cannot settle current turn",
+                            ) from None
+                        if error.code == "not-found":
+                            raise KeyError("turn is unknown") from None
+                        if error.code == "invalid":
+                            raise ValueError("saved Turn settlement is invalid") from None
+                        if error.code == "denied":
+                            raise PermissionError("saved Turn settlement is denied") from None
+                    raise
+
+            return settle
+
+        return borrow
 
     def saved_receipt_lineage(
         context: RequestContext,
@@ -5039,6 +5189,9 @@ def capture_production_dispatch(
     native_saved_receipt_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
+    native_turn_settlement_bindings: dict[
+        tuple[str, str, str], tuple[SavedReceiptCaller, _CapturedPlanEdge]
+    ] = {}
     native_model_resolve_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
@@ -5052,9 +5205,26 @@ def capture_production_dispatch(
             raise AuthorityDenied("captured wake declaration is invalid")
         wake_port = LateBoundWakePortV4() if declaration is not None else None
         declared_pack_data = capture_provider_pack_data(factory)
+        turn_settlement_port = None
+        if (
+            native_saved_turn_settlement_writer is not None
+            and getattr(factory, "saved_turn_settlement_v1", False) is True
+            and len(captured_bindings) == 1
+        ):
+            binding = captured_bindings[0]
+            turn_route = saved_turn_routes.get(binding.principal_ref.value)
+            if turn_route is not None and turn_route[1].resolved_binding == binding:
+                caller, edge = turn_route
+                turn_settlement_port = capture_turn_settlement_port(
+                    caller, edge, native_saved_turn_settlement_writer,
+                )
+                native_turn_settlement_bindings[(
+                    *edge.binding_key[1:], binding.principal_ref.value,
+                )] = turn_route
         provider_capture = host_provider_capture_context(
             captured_bindings,
             workspace_mutation_port=workspace_mutation_port,
+            saved_turn_settlement_port=turn_settlement_port,
             declared_pack_data=declared_pack_data,
             interactive_effect_port=(
                 interactive_effect_port
@@ -5236,6 +5406,11 @@ def capture_production_dispatch(
                     if any(item.key == native_model_save_key for item in contributions)
                     else None
                 ),
+                native_turn_settlement_publication_possible=(
+                    turn_publication_possible
+                    if any(item.key in native_turn_settlement_bindings for item in contributions)
+                    else None
+                ),
                 admission_bound_operations=frozenset(
                     item.key for item in contributions
                     if item.key in {
@@ -5246,6 +5421,7 @@ def capture_production_dispatch(
                     } or item.key in native_conversation_get_bindings
                     or item.key in native_saved_receipt_bindings
                     or item.key in native_model_resolve_bindings
+                    or item.key in native_turn_settlement_bindings
                 ),
             ),
         )
@@ -5372,6 +5548,14 @@ def capture_production_dispatch(
     native_admission_rules.extend(
         (binding, SAVED_RECEIPT_MINIMUM_MEMORY, is_native_saved_receipt_route)
         for binding in native_saved_receipt_bindings.values()
+    )
+    native_admission_rules.extend(
+        (
+            edge.resolved_binding,
+            SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
+            partial(is_native_saved_turn_settlement_route, caller=caller, edge=edge),
+        )
+        for caller, edge in native_turn_settlement_bindings.values()
     )
     native_admission_rules.extend(
         (
@@ -6139,7 +6323,8 @@ def capture_production_dispatch(
         native_provider_runtime_publish=(
             publish_native_provider_runtime
             if (native_execute_key is not None or native_conversation_get_bindings
-                or native_saved_receipt_bindings or native_model_resolve_bindings)
+                or native_saved_receipt_bindings or native_model_resolve_bindings
+                or native_turn_settlement_bindings)
             else None
         ),
     )

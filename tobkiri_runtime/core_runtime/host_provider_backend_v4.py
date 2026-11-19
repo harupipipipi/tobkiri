@@ -183,6 +183,11 @@ class CapturedHostPackDataV4:
     files: tuple[MaterializedArtifactFile, ...]
 
 
+SavedTurnSettlementPort = Callable[
+    [str, str, Mapping[str, Any], int | None], dict[str, Any] | None
+]
+
+
 @dataclass(frozen=True)
 class HostProviderCaptureContextV4:
     """Host-owned immutable inputs supplied to a built-in Provider hook."""
@@ -233,6 +238,11 @@ class HostProviderCaptureContextV4:
         Callable[[HostProviderInvocationContextV4], AbstractContextManager[SavedConversationContextPortV4 | None]]
         | None
     ) = None
+    # A private port for the current signed Turn factory, bound again per call.
+    borrow_saved_turn_settlement: (
+        Callable[[HostProviderInvocationContextV4], SavedTurnSettlementPort | None]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -260,6 +270,14 @@ class HostPublicationUnconfirmed(RuntimeError):
     """The native Host call lost confirmation of its final publication."""
 
 
+class HostSavedTurnSettlementConflict(RuntimeError):
+    """The current owner row no longer matches the settlement request."""
+
+
+class HostSavedTurnSettlementUnconfirmed(HostPublicationUnconfirmed):
+    """The owner may have published the saved-turn settlement."""
+
+
 class ExactHostProviderBackendV4:
     """Route a shared Host substrate by exact resolved Function principal."""
 
@@ -285,6 +303,9 @@ class ExactHostProviderBackendV4:
         native_model_save_publication_possible: (
             Callable[[RequestEnvelope], bool] | None
         ) = None,
+        native_turn_settlement_publication_possible: (
+            Callable[[RequestEnvelope], bool] | None
+        ) = None,
     ) -> None:
         if not contributions:
             raise ValueError("Host Provider backend requires contributions")
@@ -293,8 +314,11 @@ class ExactHostProviderBackendV4:
             raise ValueError("duplicate Host Provider contribution")
         self._invocation_context = invocation_context
         self._admission_bound_operations = admission_bound_operations
-        self._native_model_save_publication_possible = (
-            native_model_save_publication_possible
+        self._native_publication_checks = tuple(
+            check for check in (
+                native_model_save_publication_possible,
+                native_turn_settlement_publication_possible,
+            ) if check is not None
         )
         if not admission_bound_operations.issubset(self._contributions):
             raise ValueError("Host Provider admission binding is unavailable")
@@ -405,7 +429,7 @@ class ExactHostProviderBackendV4:
         return outcome
 
     def cancellation_may_leave_effect(self, request: RequestEnvelope) -> bool:
-        """Check for a workspace write or this request's native save marker."""
+        """Check for a workspace write or this request's publication marker."""
         if (
             request.contract_id,
             request.operation_id,
@@ -415,8 +439,7 @@ class ExactHostProviderBackendV4:
 
     def publication_may_have_occurred(self, request: RequestEnvelope) -> bool:
         """Return the capture-owned final permit marker for this exact request."""
-        publication_possible = self._native_model_save_publication_possible
-        return publication_possible is not None and publication_possible(request)
+        return any(check(request) for check in self._native_publication_checks)
 
     def cancel(self, request_id: str) -> None:
         """Accept cancellation; individual providers observe durable fences."""
@@ -459,4 +482,7 @@ __all__ = [
     "HostProviderFactoryV4",
     "HostProviderInvocationContextV4",
     "HostPublicationUnconfirmed",
+    "HostSavedTurnSettlementConflict",
+    "HostSavedTurnSettlementUnconfirmed",
+    "SavedTurnSettlementPort",
 ]

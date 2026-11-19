@@ -137,7 +137,7 @@
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:a3a56be2860d7a8a349db18c288bad3b8cc780d0bec80cc64f4f0d9248b04799",
+      "implementation_digest": "sha256:29a917451f0a5c767127b2df38fea20557dba578d4d827ffba2cf5272c497bb7",
       "implementation_path": "runtime/host.py",
       "legacy": {
         "contract_id": "tobkiri.event.turn.v1",
@@ -153,7 +153,7 @@
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:a3a56be2860d7a8a349db18c288bad3b8cc780d0bec80cc64f4f0d9248b04799",
+      "implementation_digest": "sha256:29a917451f0a5c767127b2df38fea20557dba578d4d827ffba2cf5272c497bb7",
       "implementation_path": "runtime/host.py",
       "legacy": {
         "contract_id": "tobkiri.action.turn.lifecycle.v1",
@@ -169,7 +169,7 @@
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:a3a56be2860d7a8a349db18c288bad3b8cc780d0bec80cc64f4f0d9248b04799",
+      "implementation_digest": "sha256:29a917451f0a5c767127b2df38fea20557dba578d4d827ffba2cf5272c497bb7",
       "implementation_path": "runtime/host.py",
       "legacy": {
         "contract_id": "tobkiri.resource.turn.v1",

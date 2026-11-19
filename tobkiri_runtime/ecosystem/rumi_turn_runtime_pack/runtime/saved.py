@@ -18,6 +18,11 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Callable, Mapping
 
 from core_runtime.global_contract_dispatch import GlobalContractClient
+from core_runtime.host_provider_backend_v4 import (
+    HostSavedTurnSettlementConflict,
+    HostSavedTurnSettlementUnconfirmed,
+    SavedTurnSettlementPort,
+)
 from tobkiri_host.errors import SavedTurnNotStartedError
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
@@ -60,6 +65,7 @@ SAVED_CONTRACTS = frozenset(
         "tobkiri.resource.project.state.v1",
     }
 )
+_BorrowSettlement = Callable[[], SavedTurnSettlementPort | None]
 
 
 def reconcile_saved_turn(
@@ -68,6 +74,7 @@ def reconcile_saved_turn(
     *,
     client: GlobalContractClient,
     guard: Callable[[], None],
+    borrow_settlement: _BorrowSettlement | None = None,
 ) -> dict[str, Any]:
     """Reconcile through receipt reads and narrow completion confirmation.
 
@@ -87,7 +94,9 @@ def reconcile_saved_turn(
         raise KeyError("saved turn is unavailable")
     if not record.get("input_digest") or not record["request_id"].startswith("saved-turn."):
         raise PermissionError("only saved turns can be reconciled")
-    recovered = _reconcile(store, record, client, guard)
+    recovered, _confirmed = _reconcile_state(
+        store, record, client, guard, borrow_settlement=borrow_settlement,
+    )
     return recovered or {"status": "existing", "turn": record}
 
 
@@ -188,6 +197,7 @@ def execute_saved_turn(
     _guidance_depth: int = 0,
     context_resolver: Any | None = None,
     context_owner: object | None = None,
+    borrow_settlement: _BorrowSettlement | None = None,
 ) -> dict[str, Any]:
     """Dispatch only a claim winner through a captured, restricted client.
 
@@ -227,7 +237,7 @@ def execute_saved_turn(
         # A running snapshot may still have a live executor. Do not rewrite it
         # as terminal or treat a repeat request as a restart/recovery signal.
         recovered, completion_confirmed = _reconcile_state(
-            store, claim["turn"], client, guard,
+            store, claim["turn"], client, guard, borrow_settlement=borrow_settlement,
         )
         result = recovered or {"status": "existing", "turn": claim["turn"]}
         if result["turn"].get("status") == "completed":
@@ -295,12 +305,12 @@ def execute_saved_turn(
         return _settle(store, record, *failure)
     guard()
     try:
-        settled = store.settle_saved_from_receipt(
-            record["id"],
-            input_digest=record["input_digest"],
-            result_reference=reference,
+        settled = _settle_receipt(
+            store, record, reference, expected_revision=None,
+            borrow_settlement=borrow_settlement,
         )
-    except TurnConflict:
+    except (TurnConflict, HostSavedTurnSettlementConflict,
+            HostSavedTurnSettlementUnconfirmed):
         current = store.get(record["id"])
         if current is None:
             raise ValueError("saved execution lost its durable record")
@@ -552,21 +562,13 @@ def _validate_saved_claim(
     return {"claimed": claim["claimed"], "turn": current}
 
 
-def _reconcile(
-    store: DurableTurnRuntime,
-    record: Mapping[str, Any],
-    client: GlobalContractClient,
-    guard: Callable[[], None],
-) -> dict[str, Any] | None:
-    result, _confirmed = _reconcile_state(store, record, client, guard)
-    return result
-
-
 def _reconcile_state(
     store: DurableTurnRuntime,
     record: Mapping[str, Any],
     client: GlobalContractClient,
     guard: Callable[[], None],
+    *,
+    borrow_settlement: _BorrowSettlement | None,
 ) -> tuple[dict[str, Any] | None, bool]:
     """Reconcile a saved turn and retain confirmation state for guidance."""
     if record["status"] == "completed":
@@ -662,19 +664,45 @@ def _reconcile_state(
         raise ValueError("saved receipt result identity is invalid")
     try:
         guard()
-        result = store.reconcile_saved(
-            record["id"],
-            expected_revision=record["revision"],
-            input_digest=record["input_digest"],
-            result_reference=reference,
+        result = _settle_receipt(
+            store, record, reference, expected_revision=record["revision"],
+            borrow_settlement=borrow_settlement,
         )
-    except TurnConflict:
+    except (TurnConflict, HostSavedTurnSettlementConflict,
+            HostSavedTurnSettlementUnconfirmed):
         return (
             {"status": "reconciliation_required", "turn": store.get(record["id"])},
             False,
         )
     return _confirm_completion(
         store, {"status": "completed", "turn": result}, client, guard,
+    )
+
+
+def _settle_receipt(
+    store: DurableTurnRuntime,
+    record: Mapping[str, Any],
+    reference: Mapping[str, Any],
+    *,
+    expected_revision: int | None,
+    borrow_settlement: _BorrowSettlement | None,
+) -> dict[str, Any]:
+    if borrow_settlement is not None:
+        settle = borrow_settlement()
+        if settle is not None:
+            settled = settle(
+                record["id"], record["input_digest"], reference, expected_revision,
+            )
+            if settled is not None:
+                return settled
+    if expected_revision is None:
+        return store.settle_saved_from_receipt(
+            record["id"], input_digest=record["input_digest"],
+            result_reference=reference,
+        )
+    return store.reconcile_saved(
+        record["id"], expected_revision=expected_revision,
+        input_digest=record["input_digest"], result_reference=reference,
     )
 
 

@@ -7,11 +7,15 @@ import multiprocessing
 from multiprocessing.connection import Connection
 from pathlib import Path
 from threading import Event
-from typing import Any
+from typing import Any, Mapping
 
 import pytest
 
 from core_runtime.global_contract_dispatch import GlobalContractClient
+from core_runtime.host_provider_backend_v4 import (
+    HostSavedTurnSettlementConflict,
+    HostSavedTurnSettlementUnconfirmed,
+)
 from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as application
 from ecosystem.rumi_prompt_studio_pack.runtime.service import PromptStudioService
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
@@ -26,6 +30,7 @@ from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
     RECONCILE_CONTRACTS,
     SAVED_CONTRACTS,
     execute_saved_turn,
+    reconcile_saved_turn,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
 from tests.test_saved_conversation_steps import _owner, _setup
@@ -48,6 +53,7 @@ class _Session:
         self.ai_calls = 0
         self.begin_calls = 0
         self.claim_calls = 0
+        self.confirm_calls = 0
         self.events = []
         self.turns = DurableTurnRuntime("defaults", user_data_root=root)
         self.begin_transform = lambda value: value
@@ -60,6 +66,7 @@ class _Session:
 
     def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
         if (contract_id, operation) == (COMPLETION_CONTRACT, COMPLETION_OPERATION):
+            self.confirm_calls += 1
             assert payload == {
                 "profile_id": "defaults", "operation": "confirm", "turn_id": "turn-1",
             }
@@ -501,6 +508,77 @@ def test_duplicate_request_can_reconcile_commit_without_reexecuting_live_turn(
     assert session.calls == 1
 
 
+@pytest.mark.parametrize("path", ["send", "retry", "reconcile"])
+@pytest.mark.parametrize("outcome", ["completed", "conflict", "unconfirmed"])
+def test_host_receipt_settlement_preserves_owner_and_confirmation_boundaries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    outcome: str,
+) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    if path != "send":
+        def lose_response(_value: dict) -> dict:
+            raise TimeoutError("original saved response was lost")
+
+        session.transform = lose_response
+        _run(store, session)
+        observed_revision = store.get("turn-1")["revision"]
+    else:
+        observed_revision = None
+
+    def reject_fallback(*_args: Any, **_kwargs: Any) -> None:
+        pytest.fail("Host disposition must not fall through to direct settlement")
+
+    monkeypatch.setattr(store, "settle_saved_from_receipt", reject_fallback)
+    monkeypatch.setattr(store, "reconcile_saved", reject_fallback)
+    calls: list[tuple[str, int | None]] = []
+
+    def settle(
+        turn_id: str,
+        input_digest: str,
+        reference: Mapping[str, Any],
+        expected_revision: int | None,
+    ) -> dict[str, Any]:
+        calls.append((turn_id, expected_revision))
+        receipt = session.conversations.saved_receipt(turn_id)
+        assert input_digest == receipt["input_digest"]
+        assert reference == receipt["result_reference"]
+        assert session.confirm_calls == 0
+        if outcome == "conflict":
+            session.turns.request_saved_cancellation(turn_id)
+            raise HostSavedTurnSettlementConflict("owner changed")
+        settled = session.turns.settle_saved_from_receipt(
+            turn_id, input_digest=input_digest, result_reference=reference,
+            expected_revision=expected_revision,
+        )
+        if outcome == "unconfirmed":
+            raise HostSavedTurnSettlementUnconfirmed("final reply was lost")
+        return settled
+
+    if path == "reconcile":
+        client = GlobalContractClient(
+            session=session, allowed_contract_ids=RECONCILE_CONTRACTS,
+            consumer_pack_id="rumi_turn_runtime_pack",
+        )
+        result = reconcile_saved_turn(
+            store, "turn-1", client=client, guard=lambda: None,
+            borrow_settlement=lambda: settle,
+        )
+    else:
+        result = _run(store, session, borrow_settlement=lambda: settle)
+    assert calls == [("turn-1", observed_revision)]
+    assert session.calls == session.ai_calls == 1
+    assert result["turn"] == store.get("turn-1")
+    if outcome == "completed":
+        assert result["status"] == "completed"
+        assert session.confirm_calls == 1
+    else:
+        assert result["status"] == "reconciliation_required"
+        assert session.confirm_calls == 0
+
+
 def test_concurrent_cancellation_is_not_overwritten_by_late_success(tmp_path: Path) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
@@ -752,7 +830,6 @@ def test_process_death_after_owner_commit_reconciles_without_reexecution(
     message_count: int,
 ) -> None:
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
-    from ecosystem.rumi_turn_runtime_pack.runtime.saved import reconcile_saved_turn
 
     context = multiprocessing.get_context("spawn")
     parent, child = context.Pipe()
@@ -854,6 +931,9 @@ def test_substituted_receipt_cannot_complete_a_waiting_turn(
 
     monkeypatch.setattr(session, "invoke", substitute)
     with pytest.raises(ValueError, match="saved receipt"):
-        _run(store, session)
+        _run(
+            store, session,
+            borrow_settlement=lambda: pytest.fail("receipt was not validated"),
+        )
     assert store.get("turn-1") == before
     assert session.calls == 1

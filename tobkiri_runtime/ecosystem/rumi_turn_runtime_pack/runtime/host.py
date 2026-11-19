@@ -14,6 +14,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderCaptureContextV4,
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
+    SavedTurnSettlementPort,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.delivery import delivery_host_factory
@@ -63,6 +64,7 @@ class TurnHostFactoryV4:
         self.kind = kind
         self.function_id = f"{_PACK}.turn-runtime.{kind}"
         self.operation_id = f"{_PACK}.{operation}"
+        self.saved_turn_settlement_v1 = kind in {"saved", "reconcile"}
         self.cancellation_group = "saved-turn" if kind in {"saved", "stop"} else None
         self.cancellation_role = {"saved": "execute", "stop": "stop"}.get(kind)
 
@@ -89,6 +91,12 @@ class TurnHostFactoryV4:
         if not domain_id:
             raise PermissionError("turn capture domain is unavailable")
         store = DurableTurnRuntime(context.profile_id, user_data_root=context.user_data_root)
+
+        def borrow_settlement(
+            invocation: HostProviderInvocationContextV4,
+        ) -> SavedTurnSettlementPort | None:
+            borrow = getattr(context, "borrow_saved_turn_settlement", None)
+            return borrow(invocation) if borrow is not None else None
 
         def invoke(
             operation_id: str,
@@ -301,6 +309,7 @@ class TurnHostFactoryV4:
                         consumer_pack_id=_PACK, include_credentials=False,
                     ),
                     guard=invocation.assert_current,
+                    borrow_settlement=lambda: borrow_settlement(invocation),
                 )
             if self.kind == "saved":
                 if operation_id != self.operation_id:
@@ -329,6 +338,7 @@ class TurnHostFactoryV4:
                             guard=invocation.assert_current,
                             track_execution=invocation.cancellation.track,
                             context_resolver=resolver, context_owner=invocation,
+                            borrow_settlement=lambda: borrow_settlement(invocation),
                         ),
                     )
             if operation_id != self.operation_id or payload.get("profile_id") != store.profile_id:
