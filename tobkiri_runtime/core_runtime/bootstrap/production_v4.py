@@ -1875,6 +1875,7 @@ def capture_production_dispatch(
 
     from ..native_provider_prepare_ipc import (
         AI_ROUTING_MINIMUM_MEMORY,
+        AI_USAGE_COST_INPUT_FIELDS,
         CONVERSATION_APPEND_MINIMUM_MEMORY,
         CONVERSATION_CONFIRMATION_MINIMUM_MEMORY,
         CONVERSATION_GET_MAX_ID_CHARS,
@@ -1923,6 +1924,7 @@ def capture_production_dispatch(
         SavedTurnStartAction,
         capture_launcher_ai_routing_evaluator,
         capture_launcher_ai_stream_result_normalizer,
+        capture_launcher_ai_usage_cost_calculator,
         capture_launcher_conversation_append_writer,
         capture_launcher_conversation_confirmation_writer,
         capture_launcher_conversation_get_reader,
@@ -1955,6 +1957,7 @@ def capture_production_dispatch(
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
     native_ai_routing_evaluator = capture_launcher_ai_routing_evaluator()
     native_ai_stream_result_normalizer = capture_launcher_ai_stream_result_normalizer()
+    native_ai_usage_cost_calculator = capture_launcher_ai_usage_cost_calculator()
     native_confirmation_writer = capture_launcher_conversation_confirmation_writer()
     native_append_writer = capture_launcher_conversation_append_writer()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
@@ -5647,6 +5650,18 @@ def capture_production_dispatch(
         tuple[str, str], tuple[ModelResolveRole, tuple[_CapturedPlanEdge, ...]]
     ] = {}
     stream_operation = "rumi_ai_stream_pack.ai-stream-normalize"
+    usage_pack = "rumi_ai_usage_pack"
+    usage_operations = {
+        role: f"{usage_pack}.ai-usage-cost.{role}" for role in ("generate", "stream")
+    }
+
+    def ai_gateway_child_kind(operation_id: str) -> str:
+        if operation_id == stream_operation:
+            return "AI stream normalization"
+        if operation_id in usage_operations.values():
+            return "AI Usage Cost"
+        return "AI routing"
+
     append_edges: tuple[_CapturedPlanEdge, _CapturedPlanEdge, _CapturedPlanEdge] | None = None
     append_function = "rumi_conversation_store_pack.conversation-store.message-manage"
     append_operation = (
@@ -5657,6 +5672,7 @@ def capture_production_dispatch(
         native_model_resolve_reader is not None
         or native_ai_routing_evaluator is not None
         or native_ai_stream_result_normalizer is not None
+        or native_ai_usage_cost_calculator is not None
         or native_append_writer is not None
     ):
         turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
@@ -5676,7 +5692,8 @@ def capture_production_dispatch(
         if (
             (native_model_resolve_reader is not None
              or native_ai_routing_evaluator is not None
-             or native_ai_stream_result_normalizer is not None)
+             or native_ai_stream_result_normalizer is not None
+             or native_ai_usage_cost_calculator is not None)
             and turn_edge is not None
             and orchestration_edge is not None
         ):
@@ -5730,6 +5747,17 @@ def capture_production_dispatch(
                     if stream_edge is not None:
                         ai_routing_routes[gateway_principal, stream_operation] = (
                             role, (stream_edge, *parents),
+                        )
+                usage_operation = usage_operations.get(role)
+                if native_ai_usage_cost_calculator is not None and usage_operation:
+                    usage_edge = select_original_chat_edge(
+                        {gateway_principal}, usage_pack, "tobkiri.service.ai.usage.cost.v1",
+                        usage_operation, f"{usage_pack}.ai-usage.cost",
+                        EffectClass.PRIVILEGED,
+                    )
+                    if usage_edge is not None:
+                        ai_routing_routes[gateway_principal, usage_operation] = (
+                            role, (usage_edge, *parents),
                         )
 
     def saved_append_lineage(
@@ -6021,11 +6049,15 @@ def capture_production_dispatch(
         operation_id: str,
     ) -> tuple[ModelResolveRole, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
         route = ai_routing_routes.get((context.caller_principal.value, operation_id))
-        expected_fields = {"request_id", "provider_attempt", "value"} if (
-            operation_id == stream_operation
-        ) else {
-            "models", "execution_providers", "health", "requirements", "decision_time",
-        }
+        if operation_id == stream_operation:
+            expected_fields = {"request_id", "provider_attempt", "value"}
+        elif operation_id in usage_operations.values():
+            expected_fields = AI_USAGE_COST_INPUT_FIELDS
+        else:
+            expected_fields = {
+                "models", "execution_providers", "health", "requirements",
+                "decision_time",
+            }
         if route is None or set(payload) != expected_fields:
             return None
         role, (router_edge, *parent_edges) = route
@@ -6052,7 +6084,8 @@ def capture_production_dispatch(
         evaluator: Callable[[NativeAiRoutingRequest], Mapping[str, Any]],
     ) -> HostProviderContributionV4:
         stream_result = contribution.operation_id == stream_operation
-        kind = "AI stream normalization" if stream_result else "AI routing"
+        usage_cost = contribution.operation_id in usage_operations.values()
+        kind = ai_gateway_child_kind(contribution.operation_id)
 
         def invoke(
             operation_id: str,
@@ -6122,6 +6155,7 @@ def capture_production_dispatch(
                     role=role,
                     input=payload,
                     stream_result=stream_result,
+                    usage_cost=usage_cost,
                 ))
             except (
                 NativeProviderPrepareUnavailable,
@@ -6781,9 +6815,10 @@ def capture_production_dispatch(
                 if item.key in resolve_bindings else item
                 for item in contributions
             )
-        for stream_result, evaluator in (
-            (False, native_ai_routing_evaluator),
-            (True, native_ai_stream_result_normalizer),
+        for kind, evaluator in (
+            ("AI routing", native_ai_routing_evaluator),
+            ("AI stream normalization", native_ai_stream_result_normalizer),
+            ("AI Usage Cost", native_ai_usage_cost_calculator),
         ):
             if evaluator is None:
                 continue
@@ -6791,7 +6826,7 @@ def capture_production_dispatch(
                 (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
                 for _role, (edge, *_parents) in ai_routing_routes.values()
                 if (
-                    (edge.binding_key[2] == stream_operation) is stream_result
+                    ai_gateway_child_kind(edge.binding_key[2]) == kind
                     and edge.resolved_binding in captured_bindings
                 )
             }

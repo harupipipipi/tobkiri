@@ -42,6 +42,7 @@ _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
 _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
 _AI_STREAM_RESULT_ENV = "TOBKIRI_NATIVE_AI_STREAM_RESULT"
+_AI_USAGE_COST_ENV = "TOBKIRI_NATIVE_AI_USAGE_COST"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -82,6 +83,9 @@ SAVED_LOCAL_CHAT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_LOCAL_CHAT_MAX_INPUT_BYTES = 1024 * 1024
 SAVED_LOCAL_CHAT_MAX_RESULT_BYTES = 4 * 1024 * 1024
 _AI_ROUTING_LIMIT = 1024 * 1024
+AI_USAGE_COST_INPUT_FIELDS = frozenset({
+    "usage", "pricing", "usage_provenance", "pricing_revision",
+})
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
 SAVED_RECEIPT_MAX_ID_CHARS = _JSON_LIMIT // 8
@@ -410,7 +414,7 @@ class NativeModelResolveRequest:
 
 @dataclass(frozen=True)
 class NativeAiRoutingRequest:
-    """Borrow one live signed Gateway routing or stream normalization invocation."""
+    """Borrow one live signed Gateway child invocation."""
 
     context: RequestContext
     runtime_instance: str
@@ -419,6 +423,7 @@ class NativeAiRoutingRequest:
     role: ModelResolveRole
     input: Mapping[str, Any]
     stream_result: bool = False
+    usage_cost: bool = False
 
 
 _NativeBorrow = (
@@ -635,6 +640,18 @@ def capture_launcher_ai_stream_result_normalizer() -> (
     return partial(_invoke_ai_route, launcher, stream_result=True)
 
 
+def capture_launcher_ai_usage_cost_calculator() -> (
+    Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for Usage Cost."""
+    if os.environ.get(_AI_USAGE_COST_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke_ai_route, launcher, stream_result=False, usage_cost=True)
+
+
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
     """Capture the managed Launcher's opted-in endpoint for local chat."""
     version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
@@ -814,6 +831,8 @@ def _start_payload(
         frame["ai_route"] = {"role": borrow.role, "input_bytes": body_input_bytes}
         if borrow.stream_result:
             frame["ai_route"]["stream_result"] = True
+        elif borrow.usage_cost:
+            frame["ai_route"]["usage_cost"] = True
     elif isinstance(borrow, NativeSavedLocalChatRequest):
         frame["saved_local_chat"] = _saved_local_chat_start(borrow)
         if project_local_chat_response:
@@ -913,7 +932,12 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
         type(borrow.role) is not str
         or borrow.role not in ("quote-generate", "quote-stream", "generate", "stream")
         or (borrow.stream_result and borrow.role != "stream")
+        or (
+            borrow.usage_cost
+            and (borrow.stream_result or borrow.role not in ("generate", "stream"))
+        )
         or not isinstance(borrow.input, Mapping)
+        or (borrow.usage_cost and borrow.input.keys() != AI_USAGE_COST_INPUT_FIELDS)
     ):
         raise NativeAiRoutingFailure("invalid")
     try:
@@ -1222,6 +1246,36 @@ def _decode_ai_stream_result(
             or (event["type"] in terminal_types) != (sequence == len(events) - 1)
         ):
             raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_ai_usage_cost(payload: bytes) -> dict[str, Any]:
+    invalid = "native AI Usage Cost result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    numeric_fields = {"input_tokens", "output_tokens", "total_tokens", "cost"}
+    if (
+        type(result) is not dict
+        or result.keys() != numeric_fields | {
+            "currency", "known", "usage_provenance", "pricing_revision",
+        }
+        or type(result["known"]) is not bool
+        or type(result["usage_provenance"]) is not str
+    ):
+        raise _ProtocolError(invalid)
+    for field in numeric_fields:
+        value = result[field]
+        if value is not None and (
+            type(value) not in (float, int) or not 0 <= value <= sys.float_info.max
+        ):
+            raise _ProtocolError(invalid)
+    has_tokens = result["input_tokens"] is not None and result["output_tokens"] is not None
+    if (result["total_tokens"] is not None) != has_tokens:
+        raise _ProtocolError(invalid)
+    if result["known"]:
+        if not has_tokens or result["cost"] is None or type(result["currency"]) is not str:
+            raise _ProtocolError(invalid)
+    elif result["cost"] is not None or result["currency"] is not None:
+        raise _ProtocolError(invalid)
     return result
 
 
@@ -1776,10 +1830,12 @@ class _Exchange:
                 elif isinstance(borrow, NativeModelSaveRequest):
                     plan = _decode_model_save(payload)
                 elif isinstance(borrow, NativeAiRoutingRequest):
-                    plan = (
-                        _decode_ai_stream_result(payload, borrow)
-                        if borrow.stream_result else _decode_ai_routing(payload)
-                    )
+                    if borrow.stream_result:
+                        plan = _decode_ai_stream_result(payload, borrow)
+                    elif borrow.usage_cost:
+                        plan = _decode_ai_usage_cost(payload)
+                    else:
+                        plan = _decode_ai_routing(payload)
                 else:
                     plan = _decode_plan(payload, self.plan_limit)
                 wait_seconds()
@@ -1891,9 +1947,13 @@ def _exchange_saved_local_chat(
 
 
 def _invoke_ai_route(
-    launcher: _Launcher, borrow: NativeAiRoutingRequest, *, stream_result: bool,
+    launcher: _Launcher,
+    borrow: NativeAiRoutingRequest,
+    *,
+    stream_result: bool,
+    usage_cost: bool = False,
 ) -> dict[str, Any]:
-    if borrow.stream_result is not stream_result:
+    if borrow.stream_result is not stream_result or borrow.usage_cost is not usage_cost:
         raise NativeAiRoutingFailure("invalid")
     return _invoke(launcher, borrow, operation="ai_route")
 

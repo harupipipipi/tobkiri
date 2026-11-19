@@ -3612,3 +3612,141 @@ def test_owner_read_requires_a_live_guard_during_result_delivery(
             model_reader = ipc.capture_launcher_model_resolve_reader()
             assert model_reader is not None
             model_reader(_model_resolve_request(borrow))
+
+
+@pytest.mark.parametrize("role", ["generate", "stream"])
+def test_ai_usage_cost_preserves_the_signed_payload_and_result(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ModelResolveRole,
+) -> None:
+    signed_input = {
+        "usage": {"prompt_tokens": "3.5", "completion_tokens": 2},
+        "pricing": {"input": 0.1, "output": 0.2, "currency": "USD"},
+        "usage_provenance": "provider_reported",
+        "pricing_revision": {"revision": 2**80, "unit": "per-token"},
+    }
+    request = replace(_ai_routing_request(_Borrow(), role, signed_input), usage_cost=True)
+    expected_input = json.dumps(signed_input, separators=(",", ":")).encode()
+    expected = {
+        "input_tokens": 3.5,
+        "output_tokens": 2.0,
+        "total_tokens": 5.5,
+        "cost": 0.7500000000000001,
+        "currency": "USD",
+        "known": True,
+        "usage_provenance": "provider_reported",
+        "pricing_revision": signed_input["pricing_revision"],
+    }
+
+    def serve(peer: socket.socket) -> None:
+        tag, body = _receive(peer)
+        assert tag == ipc._START
+        start = json.loads(body)
+        assert start.pop("ai_route") == {
+            "role": role, "input_bytes": len(expected_input), "usage_cost": True,
+        }
+        assert set(start) == {
+            "identity", "security_epoch", "runtime_instance", "deadline_ns",
+        }
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, expected_input)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, json.dumps(expected).encode())
+        assert peer.recv(1) == b""
+
+    monkeypatch.delenv(ipc._AI_ROUTING_ENV, raising=False)
+    monkeypatch.delenv(ipc._AI_STREAM_RESULT_ENV, raising=False)
+    monkeypatch.delenv(ipc._AI_USAGE_COST_ENV, raising=False)
+    with _served(monkeypatch, serve):
+        assert ipc.capture_launcher_ai_usage_cost_calculator() is None
+        monkeypatch.setenv(ipc._AI_USAGE_COST_ENV, "1")
+        calculate = ipc.capture_launcher_ai_usage_cost_calculator()
+        assert calculate is not None
+        assert ipc.capture_launcher_ai_routing_evaluator() is None
+        assert ipc.capture_launcher_ai_stream_result_normalizer() is None
+        for invalid in (
+            replace(request, stream_result=True),
+            replace(request, role="quote-generate"),
+            replace(request, usage_cost=False),
+            replace(request, input={"usage": {}}),
+        ):
+            with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+                calculate(invalid)
+        assert calculate(request) == expected
+
+
+@pytest.mark.parametrize(
+    ("phase", "tag", "payload", "expected"),
+    [
+        ("start", ipc._INAPPLICABLE, b"", ipc.NativeProviderPrepareUnavailable),
+        ("body", ipc._INAPPLICABLE, b"", ipc._ProtocolError),
+        ("start", ipc._FAILURE, b"legacy-read-required", ipc._ProtocolError),
+        ("body", ipc._FAILURE, b"legacy-read-required", ipc._ProtocolError),
+        ("live", ipc._FAILURE, b"legacy-read-required",
+         ipc.NativeProviderRegistryRequiresLegacyRead),
+        ("live", ipc._FAILURE, b"denied", ipc.NativeAiRoutingFailure),
+        ("live", ipc._FAILURE, b"unavailable", ipc.NativeAiRoutingFailure),
+        ("live", ipc._PLAN, b"{}", ipc._ProtocolError),
+    ],
+)
+def test_ai_usage_cost_limits_protocol_fallback_to_preflight_and_live_decline(
+    monkeypatch: pytest.MonkeyPatch, phase: str, tag: int, payload: bytes,
+    expected: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == ipc._START
+        if phase != "start":
+            _send(peer, ipc._BODY_READY)
+            assert _receive(peer)[0] == ipc._ORCHESTRATION_INPUT
+        if phase == "live":
+            _send(peer, ipc._CHECK)
+            assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, tag, payload)
+        if phase == "body" and tag == ipc._INAPPLICABLE:
+            assert _receive(peer) == (ipc._CANCEL, b"")
+            _send(peer, ipc._FAILURE, b"unavailable")
+        assert peer.recv(1) == b""
+
+    monkeypatch.setenv(ipc._AI_USAGE_COST_ENV, "1")
+    with _served(monkeypatch, serve), pytest.raises(expected) as failure:
+        calculate = ipc.capture_launcher_ai_usage_cost_calculator()
+        assert calculate is not None
+        request = _ai_routing_request(
+            _Borrow(), "generate", dict.fromkeys(ipc.AI_USAGE_COST_INPUT_FIELDS),
+        )
+        calculate(replace(request, usage_cost=True))
+    if isinstance(failure.value, ipc.NativeAiRoutingFailure):
+        assert failure.value.code == payload.decode()
+
+
+@pytest.mark.parametrize(
+    "replace_fields",
+    [
+        {"input_tokens": True},
+        {"total_tokens": None},
+        {"output_tokens": -1},
+        {"cost": 0},
+        {"currency": "USD"},
+        {"known": 0},
+        {"known": True},
+        {"usage_provenance": None},
+        {"pricing_revision": {"rate": float("inf")}},
+        {"unexpected_rate": 10},
+    ],
+)
+def test_ai_usage_cost_result_rejects_invalid_types_and_nonfinite_revisions(
+    replace_fields: Mapping[str, Any],
+) -> None:
+    unknown = {
+        "input_tokens": 3.5,
+        "output_tokens": 0.0,
+        "total_tokens": 3.5,
+        "cost": None,
+        "currency": None,
+        "known": False,
+        "usage_provenance": "provider_reported",
+        "pricing_revision": ["fixture", {"catalog_revision": None}],
+    }
+    assert ipc._decode_ai_usage_cost(json.dumps(unknown).encode()) == unknown
+    with pytest.raises(ipc._ProtocolError, match="AI Usage Cost result is invalid"):
+        ipc._decode_ai_usage_cost(json.dumps({**unknown, **replace_fields}).encode())

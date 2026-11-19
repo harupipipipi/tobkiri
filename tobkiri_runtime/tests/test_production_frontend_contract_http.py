@@ -7805,6 +7805,232 @@ def test_signed_saved_stream_normalizes_with_its_own_native_borrow(
         assert len(requests) == 1 and len(legacy_payloads) == 1
 
 
+
+def test_signed_saved_usage_cost_borrows_each_gateway_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the Usage Cost owner independently of the native routing children."""
+    import io
+    from types import SimpleNamespace
+
+    from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
+    from core_runtime.bootstrap import production_v4
+    from core_runtime.bootstrap.saved_bridge import SavedBridgeCallbacks
+    from core_runtime.provider_prepare_native_v4 import (
+        NativeProviderRegistryRequiresLegacyRead,
+    )
+    from ecosystem.rumi_ai_usage_pack.runtime.usage import create_cost_operation
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.models import EffectClass
+
+    root = tmp_path / "user-data"
+    usage_function = "rumi_ai_usage_pack.ai-usage.cost"
+    usage_contract = "tobkiri.service.ai.usage.cost.v1"
+    ancestors = {
+        "rumi_turn_runtime_pack.turn-saved", "saved_complete",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+        "rumi_ai_gateway_pack.ai-gateway.stream",
+    }
+    role = "generate"
+    mode = "native"
+    chain: list[RequestEnvelope] = []
+    requests: list[ipc.NativeAiRoutingRequest] = []
+    legacy_payloads: list[Mapping[str, object]] = []
+    provider_roles: list[str] = []
+    oracle = create_cost_operation(None)
+    load_factory = production_v4._load_verified_host_provider_factory
+
+    def observe_usage_factory(pack_root, function_id, bindings):
+        factory, backend_id = load_factory(pack_root, function_id, bindings)
+        if function_id != usage_function:
+            return factory, backend_id
+        assert all(
+            binding.operation.effect_class is EffectClass.PRIVILEGED
+            for binding in bindings
+        )
+
+        def observe(contribution):
+            def invoke(operation, payload, invocation):
+                legacy_payloads.append(payload)
+                return contribution.invoke(operation, payload, invocation)
+
+            return replace(contribution, invoke=invoke)
+
+        def capture(context):
+            original = factory.capture(context)
+            return replace(
+                original, contributions=tuple(map(observe, original.contributions)),
+            )
+
+        return SimpleNamespace(function_id=function_id, capture=capture), backend_id
+
+    def calculate(request: ipc.NativeAiRoutingRequest) -> Mapping[str, object]:
+        request.assert_current()
+        requests.append(request)
+        assert [item.operation_id for item in chain] == [
+            "rumi_turn_runtime_pack.turn-saved", "saved_complete",
+            f"rumi_ai_gateway_pack.ai-gateway.{role}",
+            f"rumi_ai_usage_pack.ai-usage-cost.{role}",
+        ]
+        assert len({item.lease.token for item in chain}) == 4
+        child = chain[-1]
+        assert child.resource_reservation_id and all(
+            child.resource_reservation_id != parent.resource_reservation_id
+            for parent in chain[:-1]
+        )
+        for parent, descendant in zip(chain, chain[1:]):
+            assert descendant.context.caller_principal == parent.target_principal
+            assert descendant.deadline_monotonic <= parent.deadline_monotonic
+        assert child.contract_id == usage_contract
+        assert request.context is child.context
+        assert request.deadline_monotonic == child.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.role == role and request.usage_cost and not request.stream_result
+        assert request.input is child.payload
+        assert set(request.input) == {
+            "usage", "pricing", "usage_provenance", "pricing_revision",
+        }
+        if mode == "old-peer":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if mode == "guest-decline":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode == "stale":
+            with server._lifecycle_lock:
+                server._native_provider_prepare_instance = "0" * 32
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode in {"denied", "unavailable"}:
+            raise ipc.NativeAiRoutingFailure(mode)
+        result = oracle(child.operation_id, request.input)
+        assert result == {
+            "input_tokens": 3.0,
+            "output_tokens": 2.0,
+            "total_tokens": 5.0,
+            "cost": None,
+            "currency": None,
+            "known": False,
+            "usage_provenance": "provider_reported",
+            "pricing_revision": request.input["pricing_revision"],
+        }
+        return result
+
+    def open_provider(request, *, timeout, **lifetime):
+        assert timeout > 0
+        assert request.full_url == "https://provider.example/v1/chat/completions"
+        body = json.loads(request.data)
+        usage = {"prompt_tokens": 3, "completion_tokens": 2}
+        if body.get("stream"):
+            provider_roles.append("stream")
+            chunk = {
+                "choices": [{"delta": {"content": "Reply"}, "finish_reason": "stop"}],
+                "usage": usage,
+            }
+            return io.BytesIO(f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode())
+        provider_roles.append("generate")
+        return io.BytesIO(json.dumps({
+            "choices": [{"message": {"content": "Reply"}, "finish_reason": "stop"}],
+            "usage": usage,
+        }).encode())
+
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(ipc, "capture_launcher_ai_usage_cost_calculator", lambda: calculate)
+    monkeypatch.setattr(ipc, "capture_launcher_ai_routing_evaluator", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_ai_stream_result_normalizer", lambda: None)
+    monkeypatch.setattr(
+        production_v4, "_load_verified_host_provider_factory", observe_usage_factory,
+    )
+    monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
+    stream_ready = SavedBridgeCallbacks._stream_ready
+    monkeypatch.setattr(
+        SavedBridgeCallbacks, "_stream_ready",
+        lambda *args, **kwargs: role == "stream" and stream_ready(*args, **kwargs),
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as fixture:
+        server, session, _authority = fixture
+        _exercise_provider_configuration_http(fixture, tmp_path, monkeypatch)
+        store = ConversationStore("defaults", user_data_root=root)
+        ModelRegistry("defaults", user_data_root=root).save({
+            "model_profile_id": "daily", "model_id": "organization/raw-model",
+            "parameters": {"max_tokens": 16},
+            "metadata": {"provider_connection_id": "provider.fixture"},
+        }, expected_revision=0)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            if envelope.operation_id in ancestors or envelope.contract_id == usage_contract:
+                chain.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        cookie, csrf, origin = _authenticate(server)
+
+        def post_turn(turn: Mapping[str, object]) -> tuple[int, dict[str, object]]:
+            status, response, _ = _request(
+                server, "POST", _contract("POST", "/api/chat/turn"),
+                body={"request": turn}, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+            )
+            return status, response
+
+        instance = server._native_provider_prepare_instance
+        for role, mode in (
+            ("generate", "native"), ("stream", "native"), ("stream", "old-peer"),
+            ("stream", "guest-decline"), ("stream", "stale"),
+            ("stream", "denied"), ("stream", "unavailable"),
+        ):
+            chain.clear()
+            requests.clear()
+            legacy_payloads.clear()
+            provider_roles.clear()
+            turn_id = f"{role}-{mode}"
+            store.create({"id": turn_id, "model_reference": "daily"},
+                         expected_revision=store.snapshot()["revision"])
+            turn = {"turn_id": turn_id, "conversation_id": turn_id,
+                    "conversation_revision": 1, "content": "Hello"}
+            try:
+                status, response = post_turn(turn)
+            finally:
+                with server._lifecycle_lock:
+                    server._native_provider_prepare_instance = instance
+            assert len(requests) == 1 and provider_roles == [role], response
+            with pytest.raises(PermissionError):
+                requests[0].assert_current()
+            if mode in {"stale", "denied", "unavailable"}:
+                assert status != 200 or response["data"]["status"] != "completed"
+                assert not legacy_payloads
+                continue
+            assert status == 200 and response["data"]["status"] == "completed", response
+            assert [item["content"] for item in store.get(turn_id)["messages"]] == [
+                "Hello", "Reply",
+            ]
+            if mode == "native":
+                assert not legacy_payloads
+            else:
+                assert len(legacy_payloads) == 1
+                assert legacy_payloads[0] is requests[0].input
+
+        child = chain[-1]
+        context = replace(child.context, request_id=f"request.{uuid.uuid4().hex}")
+        scope = session.effect_scope_for(
+            child.contract_id, child.operation_id, child.payload, context,
+        )
+        result = session.broker.invoke(
+            InvocationFrame(
+                contract_id=child.contract_id, version_range=None,
+                operation_id=child.operation_id, payload=child.payload,
+            ), context, effect_scope=scope,
+        )
+        assert result == oracle(child.operation_id, child.payload)
+        assert len(requests) == 1 and len(legacy_payloads) == 1
+
+
 @pytest.mark.parametrize(
     "native_source, native_policy",
     [(False, False), (True, False), (True, True)],
