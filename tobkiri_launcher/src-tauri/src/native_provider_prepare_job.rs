@@ -43,13 +43,14 @@ use super::{
         reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
         reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
         reacquire_provider_prepare_pack, reacquire_saved_local_chat_adapter,
-        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack, reacquire_turn_read_pack,
-        reacquire_turn_settlement_pack, reacquire_turn_start_pack,
-        saved_local_chat_dispatch_bundle, ConversationReadCaller, SettlementCaller,
-        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, PROVIDER_ADAPTER_OPERATION,
-        PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
-        PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
-        REGISTRY_VERIFICATION_BYTES,
+        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
+        reacquire_stream_result_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
+        reacquire_turn_start_pack, saved_local_chat_dispatch_bundle, ConversationReadCaller,
+        SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE,
+        PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION,
+        PROVIDER_POLICY_OPERATION, PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION,
+        PROVIDER_REQUEST_SHAPE, REGISTRY_VERIFICATION_BYTES, STREAM_RESULT_OPERATION,
+        STREAM_RESULT_SHAPE,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -76,8 +77,24 @@ pub(crate) const TURN_READ_REPLY_LIMIT: usize = 1024 * 1024;
 pub(crate) const TURN_START_REPLY_LIMIT: usize = TURN_READ_REPLY_LIMIT + 128;
 /// Maximum original saved-orchestration input and result JSON.
 pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
-/// Maximum original Gateway routing input and result JSON.
-pub(crate) const AI_ROUTING_FRAME_LIMIT: usize = 1024 * 1024;
+/// Maximum original Gateway DATA input and result JSON.
+pub(crate) const AI_GATEWAY_DATA_LIMIT: usize = 1024 * 1024;
+
+/// Fixed effect-free replacements for the original signed Gateway children.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AiGatewayDataOperation {
+    Route(OriginalModelResolveRole),
+    StreamResult,
+}
+
+impl AiGatewayDataOperation {
+    pub(crate) fn has_launch_proof(self, proof: &VerifiedRegistryLaunch) -> bool {
+        match self {
+            Self::Route(role) => proof.permits_ai_routing(role),
+            Self::StreamResult => proof.permits_stream_result(),
+        }
+    }
+}
 
 /// Fixed operations on the original saved Turn owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -139,8 +156,8 @@ pub(crate) enum NativeRegistryRequest {
     SavedOrchestration {
         input: Vec<u8>,
     },
-    AiRouting {
-        role: OriginalModelResolveRole,
+    AiGatewayData {
+        operation: AiGatewayDataOperation,
         input: Vec<u8>,
     },
     SavedLocalChat {
@@ -172,7 +189,7 @@ impl NativeRegistryRequest {
             Self::TurnStart { .. } => proof.permits_turn_start(),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
-            Self::AiRouting { role, .. } => proof.permits_ai_routing(*role),
+            Self::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
             Self::SavedLocalChat { role, .. } => proof.permits_saved_local_chat(*role),
         }
     }
@@ -216,9 +233,9 @@ impl NativeRegistryRequest {
                 );
                 return Ok(request.capacity());
             }
-            Self::SavedOrchestration { input } | Self::AiRouting { input, .. } => {
-                let limit = if matches!(self, Self::AiRouting { .. }) {
-                    AI_ROUTING_FRAME_LIMIT
+            Self::SavedOrchestration { input } | Self::AiGatewayData { input, .. } => {
+                let limit = if matches!(self, Self::AiGatewayData { .. }) {
+                    AI_GATEWAY_DATA_LIMIT
                 } else {
                     SAVED_ORCHESTRATION_FRAME_LIMIT
                 };
@@ -387,15 +404,15 @@ impl std::error::Error for SavedLocalChatRequiresLegacyRequest {}
 
 /// The read-only Routing Pack declined a representation before returning output.
 #[derive(Debug)]
-pub(crate) struct AiRoutingRequiresLegacyCodec;
+pub(crate) struct AiGatewayDataRequiresLegacyCodec;
 
-impl std::fmt::Display for AiRoutingRequiresLegacyCodec {
+impl std::fmt::Display for AiGatewayDataRequiresLegacyCodec {
     fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        output.write_str("AI routing requires the original codec")
+        output.write_str("AI Gateway DATA operation requires the original codec")
     }
 }
 
-impl std::error::Error for AiRoutingRequiresLegacyCodec {}
+impl std::error::Error for AiGatewayDataRequiresLegacyCodec {}
 
 /// A running Provider can narrow its Host deadline when the Core begins.
 pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
@@ -1130,20 +1147,27 @@ async fn run(
                         &graph,
                     );
                 }
-                NativeRegistryRequest::AiRouting { role, input } => {
-                    let pack = reacquire_ai_routing_pack(
-                        &inspection,
-                        listener.verified_source(),
-                        role,
-                        checkpoint,
-                    )?;
+                NativeRegistryRequest::AiGatewayData { operation, input } => {
+                    let source = listener.verified_source();
+                    let (pack, shape, function) = match operation {
+                        AiGatewayDataOperation::Route(role) => (
+                            reacquire_ai_routing_pack(&inspection, source, role, checkpoint)?,
+                            AI_ROUTING_SHAPE,
+                            AI_ROUTING_OPERATION,
+                        ),
+                        AiGatewayDataOperation::StreamResult => (
+                            reacquire_stream_result_pack(&inspection, source, checkpoint)?,
+                            STREAM_RESULT_SHAPE,
+                            STREAM_RESULT_OPERATION,
+                        ),
+                    };
                     revalidate()?;
                     let profile = ProfileId::parse(&identity.profile_id)?;
                     let port = inspection
                         .prepare_declared_read_only_port(
                             &pack,
-                            &ShapeRef::parse(AI_ROUTING_SHAPE)?,
-                            &OpName::parse(AI_ROUTING_OPERATION)?,
+                            &ShapeRef::parse(shape)?,
+                            &OpName::parse(function)?,
                             &profile,
                             execution_deadline,
                             0,
@@ -1152,16 +1176,16 @@ async fn run(
                     revalidate()?;
                     let funding = input_funding
                         .take()
-                        .context("AI routing input funding is missing")?;
+                        .context("AI Gateway DATA input funding is missing")?;
                     let output =
                         invoke_original_saved_orchestration_port(port, input, funding).await?;
                     revalidate()?;
                     if output.as_str().is_empty() {
-                        return Err(AiRoutingRequiresLegacyCodec.into());
+                        return Err(AiGatewayDataRequiresLegacyCodec.into());
                     }
                     return decode_bounded_data_reply(
                         output.as_str(),
-                        AI_ROUTING_FRAME_LIMIT,
+                        AI_GATEWAY_DATA_LIMIT,
                         &graph,
                     );
                 }

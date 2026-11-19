@@ -1,4 +1,4 @@
-use super::{MAX_OUTPUT_BYTES, evaluate};
+use super::{MAX_OUTPUT_BYTES, evaluate, normalize_stream_result};
 use ordered_python_compat::{PyValue, loads};
 
 fn route(models: &str, providers: &str, health: &str, requirements: &str) -> Option<String> {
@@ -11,6 +11,56 @@ const WILDCARD: &str = r#"{"provider_instance_id":"wild","routing_keys":"*"}"#;
 
 fn field<'a>(value: &'a PyValue, name: &str) -> &'a str {
     value.get(name).unwrap().as_str().unwrap()
+}
+
+#[test]
+fn stream_result_preserves_the_original_projection_and_nested_order() {
+    let request = r#"{"request_id":" \u2003request\u00a0","provider_attempt":"２_１","value":{"events":[{"type":"text_delta","delta":{"z":1,"a":true},"sequence":99},{"type":"tool_intent_delta","tool_intent":{"z":null,"a":"雪"}},{"type":"error","error_code":"failed","extra":"drop"}]}}"#;
+    let result = normalize_stream_result(request).unwrap();
+    assert_eq!(
+        result,
+        r#"{"events":[{"request_id":"request","sequence":0,"type":"text_delta","delta":{"z":1,"a":true},"tool_intent":null,"usage":null,"finish_reason":null,"error_code":null,"provider_attempt":21},{"request_id":"request","sequence":1,"type":"tool_intent_delta","delta":null,"tool_intent":{"z":null,"a":"雪"},"usage":null,"finish_reason":null,"error_code":null,"provider_attempt":21},{"request_id":"request","sequence":2,"type":"error","delta":null,"tool_intent":null,"usage":null,"finish_reason":null,"error_code":"failed","provider_attempt":21}]}"#
+    );
+}
+
+#[test]
+fn stream_result_declines_invalid_requests_and_streams() {
+    for request in [
+        "[]",
+        r#"{"request_id":"r","value":[{"type":"finish","usage":NaN}]}"#,
+        r#"{"request_id":"  ","value":[{"type":"finish"}]}"#,
+        r#"{"request_id":"r","provider_attempt":[],"value":[{"type":"unknown"}]}"#,
+        r#"{"request_id":"r","provider_attempt":{},"value":[{"type":"text_delta"}]}"#,
+        r#"{"request_id":"r","provider_attempt":"bad-int","value":[{"type":"finish"}]}"#,
+        r#"{"request_id":"r","value":[{"type":"finish"},{"type":"usage"}]}"#,
+    ] {
+        assert!(normalize_stream_result(request).is_none(), "{request}");
+    }
+}
+
+#[test]
+fn stream_result_accepts_the_exact_output_limit_and_declines_larger_results() {
+    fn request(usage: &str) -> String {
+        format!(r#"{{"request_id":"r","value":[{{"type":"finish","usage":"{usage}"}}]}}"#)
+    }
+
+    let envelope_size = normalize_stream_result(&request("")).unwrap().len();
+    let usage = "a".repeat(MAX_OUTPUT_BYTES - envelope_size);
+    let at_limit = normalize_stream_result(&request(&usage)).unwrap();
+    assert_eq!(at_limit.len(), MAX_OUTPUT_BYTES);
+
+    let over_limit = request(&format!("{usage}a"));
+    assert!(normalize_stream_result(&over_limit).is_none());
+    assert_eq!(
+        tobkiri_ai_stream_normalizer_core::normalize(
+            "normalize",
+            &over_limit,
+            ordered_python_compat::MAX_BYTES,
+        )
+        .unwrap()
+        .len(),
+        MAX_OUTPUT_BYTES + 1
+    );
 }
 
 #[test]

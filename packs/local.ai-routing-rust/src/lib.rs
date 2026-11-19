@@ -1,4 +1,4 @@
-//! Effect-free routing over the descriptors and health evidence supplied by the Host.
+//! Effect-free routing and Gateway stream result normalization.
 
 use std::{
     cmp::Ordering,
@@ -14,6 +14,12 @@ use ordered_python_compat::{
 mod component;
 
 const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+
+/// Project Gateway stream events while preserving ordered finite JSON.
+/// Return `None` for requests that require the original normalizer.
+pub fn normalize_stream_result(request: &str) -> Option<String> {
+    tobkiri_ai_stream_normalizer_core::normalize("normalize", request, MAX_OUTPUT_BYTES).ok()
+}
 
 /// Evaluate the legacy routing payload within the ordered finite JSON ABI.
 /// Return `None` for requests that require the original evaluator or codec.

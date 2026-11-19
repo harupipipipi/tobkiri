@@ -251,6 +251,15 @@ static AI_ROUTING_STREAM: Route = Route {
     ..AI_ROUTING_GENERATE
 };
 
+static AI_STREAM_NORMALIZE: Route = Route {
+    pack: "rumi_ai_stream_pack",
+    function: "rumi_ai_stream_pack.ai-stream.normalize",
+    contract: "tobkiri.service.ai.stream.normalize.v1",
+    operation: "rumi_ai_stream_pack.ai-stream-normalize",
+    variant: "rumi_ai_stream_pack.ai-stream.normalize.python",
+    execution: PYTHON_HOST,
+};
+
 static PROVIDER_GENERATE: Route = Route {
     pack: "rumi_provider_adapters_pack",
     function: "rumi_provider_adapters_pack.provider.compatibility.generate",
@@ -908,6 +917,31 @@ impl<'a> OriginalAiRoutingSelection<'a> {
     }
 }
 
+/// The signed Stream Normalizer grant on the ordinary saved path.
+pub struct OriginalStreamResultSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 4],
+}
+
+impl<'a> OriginalStreamResultSelection<'a> {
+    /// Capture the exact Gateway Stream chain and its independent normalization grant.
+    /// Verify the Pack and executable pins against the signed catalog before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(select_stream_result_records(active.records(), budget)?.map(|pins| Self {
+            _active: active,
+            pins,
+        }))
+    }
+
+    /// Ordered grants from Shell to the original Stream Normalizer operation.
+    pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
+}
+
 /// Immutable metadata for the two Profile grant edges to old Provider prepare.
 pub struct OriginalProviderPrepareSelection<'a> {
     _active: &'a OriginalActiveProfile,
@@ -1152,15 +1186,8 @@ fn select_ai_routing_records(
         return Ok(routes);
     };
     for role in OriginalModelResolveRole::ALL {
-        let Some([turn, orchestration]) =
-            select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)?
-        else {
+        let Some(saved) = select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)? else {
             return Ok(routes);
-        };
-        let Some(gateway) =
-            records.select_route(orchestration.function_id(), role.gateway_route())?
-        else {
-            continue;
         };
         let routing = match role {
             OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::Generate => {
@@ -1170,11 +1197,37 @@ fn select_ai_routing_records(
                 &AI_ROUTING_STREAM
             }
         };
-        routes[role.index()] = records
-            .select_route(gateway.function_id(), routing)?
-            .map(|routing| [turn, orchestration, gateway, routing]);
+        routes[role.index()] =
+            select_saved_gateway_child(&records, saved, role.gateway_route(), routing)?;
     }
     Ok(routes)
+}
+
+fn select_stream_result_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<[OriginalRoutePin; 4]>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    let Some(saved) = select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)? else {
+        return Ok(None);
+    };
+    select_saved_gateway_child(&records, saved, &GATEWAY_STREAM, &AI_STREAM_NORMALIZE)
+}
+
+fn select_saved_gateway_child(
+    records: &Records<'_>,
+    [turn, orchestration]: [OriginalRoutePin; 2],
+    gateway: &'static Route,
+    child: &'static Route,
+) -> Result<Option<[OriginalRoutePin; 4]>> {
+    let Some(gateway) = records.select_route(orchestration.function_id(), gateway)? else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(gateway.function_id(), child)?
+        .map(|child| [turn, orchestration, gateway, child]))
 }
 
 fn selected_shell_records<'a>(
@@ -1778,6 +1831,13 @@ mod tests {
                 "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
                 "sha256:962c6a7307c5fb116de10536d02bbb37b9b504dc28cfa016cafeb0cb797a215e",
             ),
+            (
+                &AI_STREAM_NORMALIZE,
+                GATEWAY_STREAM_CALLER,
+                "authority-ref:9fc03c89152fa46ceb79a7566a1e984a542bdab24d543756d82ebc928edeecba",
+                "sha256:88929a94dedfbbc04a8ca78a3c88c01bcb2703a480402e8ad0afbfea8b62d6ad",
+                "sha256:7c04f898ad54e5cb797d8d02678a523bfd8dbcf577c4fca740032bd4c14ae663",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -1946,6 +2006,7 @@ mod tests {
     const LOCAL_CHAT_STREAM_ROWS: [usize; 3] = [25, 26, 27];
     const GATEWAY_QUOTE_ROW: usize = 28;
     const AI_ROUTING_ROWS: std::ops::Range<usize> = 29..33;
+    const STREAM_RESULT_ROW: usize = 33;
 
     fn select_saved_local_chat(
         records: &Value,
@@ -1960,6 +2021,59 @@ mod tests {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
         select_ai_routing_records((&profile, &lock, &plan), &budget)
+    }
+
+    fn select_stream_result(records: &Value) -> Result<Option<[OriginalRoutePin; 4]>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_stream_result_records((&profile, &lock, &plan), &budget)
+    }
+
+    #[test]
+    fn stream_result_uses_only_the_exact_ordinary_gateway_stream_chain() {
+        let fixture = records();
+        let [turn, orchestration, gateway, normalizer] =
+            select_stream_result(&fixture).unwrap().unwrap();
+        assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
+        assert_eq!(turn.function_id(), SAVED_TURN.function);
+        assert_eq!(orchestration.caller_function_id(), turn.function_id());
+        assert_eq!(orchestration.function_id(), SAVED_ORCHESTRATION.function);
+        assert_eq!(gateway.caller_function_id(), orchestration.function_id());
+        assert_eq!(gateway.function_id(), GATEWAY_STREAM_CALLER);
+        assert_eq!(normalizer.caller_function_id(), gateway.function_id());
+        assert_eq!(normalizer.function_id(), AI_STREAM_NORMALIZE.function);
+        assert_eq!(normalizer.contract_id(), AI_STREAM_NORMALIZE.contract);
+        assert_eq!(normalizer.operation_id(), AI_STREAM_NORMALIZE.operation);
+
+        for row in [
+            SAVED_TURN_SETTLEMENT_ROW,
+            SAVED_ORCHESTRATION_ROW,
+            LOCAL_CHAT_STREAM_ROWS[0],
+            STREAM_RESULT_ROW,
+        ] {
+            let mut candidate = fixture.clone();
+            candidate["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            assert!(matches!(select_stream_result(&candidate), Err(Inconsistent(_))));
+            candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            assert!(select_stream_result(&candidate).unwrap().is_none());
+        }
+
+        let mut candidate = fixture.clone();
+        for row in AI_ROUTING_ROWS.rev() {
+            candidate["profile"]["requested_edges"].as_array_mut().unwrap().remove(row);
+            candidate["plan"]["bindings"].as_array_mut().unwrap().remove(row);
+        }
+        assert!(select_stream_result(&candidate).unwrap().is_some());
+        assert!(select_ai_routing(&candidate).unwrap().iter().all(Option::is_none));
+
+        let mut candidate = fixture.clone();
+        candidate["profile"]["requested_edges"][STREAM_RESULT_ROW]["caller_function_id"] =
+            json!(GATEWAY_GENERATE_CALLER);
+        candidate["plan"]["bindings"][STREAM_RESULT_ROW]["caller_function_id"] =
+            json!(GATEWAY_GENERATE_CALLER);
+        assert!(select_stream_result(&candidate).unwrap().is_none());
+        assert!(select_ai_routing(&candidate).unwrap().iter().all(Option::is_some));
     }
 
     #[test]

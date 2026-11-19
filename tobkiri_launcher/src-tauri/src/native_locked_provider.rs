@@ -14,7 +14,9 @@ use tobkiri_core::{
     Digest,
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-use tobkiri_harness_native::{OriginalAiRoutingSelection, OriginalSavedLocalChatChoice};
+use tobkiri_harness_native::{
+    OriginalAiRoutingSelection, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
+};
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
@@ -84,11 +86,11 @@ pub(crate) struct LockedSavedLocalChatBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// Signed Bundle documents for the four independent ordinary Routing roles.
+/// Signed Bundle documents for an ordinary Gateway call and its selected AI operation.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) struct LockedAiRoutingBundle<'pin> {
+pub(crate) struct LockedAiRoutingBundle<'pin, const ROLES: usize> {
     source: VerifiedOrdinarySavedBundle,
-    routes: [Option<[LockedRegistryRoute<'pin>; 4]>; 4],
+    routes: [Option<[LockedRegistryRoute<'pin>; 4]>; ROLES],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -163,10 +165,32 @@ impl NativeApplicationSources {
         &self,
         selection: &'pin OriginalAiRoutingSelection<'_>,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedAiRoutingBundle<'pin>> {
-        let mut routes = [None, None, None, None];
-        for (locked, role) in routes.iter_mut().zip(OriginalModelResolveRole::ALL) {
-            let Some(pins) = selection.pins(role) else {
+    ) -> Result<LockedAiRoutingBundle<'pin, 4>> {
+        self.ordinary_ai_bundle(
+            OriginalModelResolveRole::ALL.map(|role| selection.pins(role)),
+            budget,
+        )
+    }
+
+    /// Capture the normalizer's signed documents independently of the Routing grants.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn stream_result_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalStreamResultSelection<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
+        self.ordinary_ai_bundle([Some(selection.pins())], budget)
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn ordinary_ai_bundle<'pin, const ROLES: usize>(
+        &self,
+        selections: [Option<&'pin [OriginalRoutePin; 4]>; ROLES],
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin, ROLES>> {
+        let mut routes = std::array::from_fn(|_| None);
+        for (locked, selection) in routes.iter_mut().zip(selections) {
+            let Some(pins) = selection else {
                 continue;
             };
             ensure!(
@@ -174,15 +198,15 @@ impl NativeApplicationSources {
                     && pins
                         .windows(2)
                         .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
-                "old AI Routing callers differ from the selected saved chain"
+                "old AI operation callers differ from the selected saved chain"
             );
-            let [turn, orchestration, gateway, routing] = pins;
+            let [turn, orchestration, gateway, child] = pins;
             let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
             *locked = Some([
                 from_lock(turn)?,
                 from_lock(orchestration)?,
                 from_lock(gateway)?,
-                from_lock(routing)?,
+                from_lock(child)?,
             ]);
         }
         Ok(LockedAiRoutingBundle {
@@ -679,8 +703,8 @@ impl LockedSavedLocalChatBundle<'_> {
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-impl LockedAiRoutingBundle<'_> {
-    /// Verify each role against the signed Turn, Orchestration, Gateway, and Routing Packs.
+impl<const ROLES: usize> LockedAiRoutingBundle<'_, ROLES> {
+    /// Verify each role against the signed Turn, Orchestration, Gateway, and AI operation Packs.
     pub(crate) fn verify(
         self,
         checkpoint: impl FnMut() -> Result<()>,

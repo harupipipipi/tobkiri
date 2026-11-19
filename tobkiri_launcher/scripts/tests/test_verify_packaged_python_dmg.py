@@ -455,7 +455,8 @@ def test_registry_receipt_pin_is_forwarded_by_shell_wrapper(tmp_path: Path) -> N
 
 
 def _write_registry_packs(
-    app: Path, *, version: int = 1, adapter_version: str = "0.3.0"
+    app: Path, *, version: int = 1, adapter_version: str = "0.3.0",
+    ai_routing_version: str = "0.2.0",
 ) -> str:
     directory = app / "Contents/Resources/app/native-registry-packs"
     directory.mkdir(parents=True)
@@ -471,13 +472,17 @@ def _write_registry_packs(
         pack_ids.append("local.provider-adapter")
     if version >= 5:
         pack_ids.append("local.ai-routing")
+    pack_versions = {
+        "local.provider-adapter": adapter_version,
+        "local.ai-routing": ai_routing_version,
+    }
     for pack_id in pack_ids:
         archive = f"{pack_id}.tpk"
         contents = f"fixture archive for {pack_id}".encode()
         (directory / archive).write_bytes(contents)
         records.append({
             "id": pack_id,
-            "version": adapter_version if pack_id == "local.provider-adapter" else "0.1.0",
+            "version": pack_versions.get(pack_id, "0.1.0"),
             "archive": archive,
             "archive_bytes": len(contents),
             "archive_sha256": "sha256:" + hashlib.sha256(contents).hexdigest(),
@@ -497,7 +502,8 @@ def _write_registry_packs(
         pytest.param((4, {"adapter_version": "0.1.0"}), id="with-provider-adapter-0.1.0"),
         pytest.param((4, {"adapter_version": "0.2.0"}), id="with-provider-adapter-0.2.0"),
         pytest.param((4, {}), id="with-provider-adapter-0.3.0"),
-        pytest.param((5, {}), id="with-ai-routing"),
+        pytest.param((5, {"ai_routing_version": "0.1.0"}), id="with-ai-routing-0.1.0"),
+        pytest.param((5, {}), id="with-ai-routing-0.2.0"),
     ],
 )
 def registry_mount(
@@ -688,7 +694,7 @@ def test_registry_receipt_version_requires_its_exact_pack_set(
     ("receipt_version", "unapproved"),
     [
         (3, "0.1.1"), (3, "0.2.0"), (4, "0.1.1"), (4, "0.2.1"), (4, "0.3.1"),
-        (5, "0.1.1"), (5, "0.2.0"),
+        (5, "0.1.1"), (5, "0.2.1"),
     ],
 )
 def test_registry_receipt_rejects_unapproved_pack_releases(

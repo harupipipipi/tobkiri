@@ -651,6 +651,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-ai-stream-normalizer-core"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+]
+
+[[package]]
 name = "tobkiri-guest-sdk"
 version = "0.1.0"
 dependencies = [
@@ -681,6 +688,7 @@ name = "tobkiri-pack-ai-routing-rust"
 version = "0.1.0"
 dependencies = [
  "ordered-python-compat",
+ "tobkiri-ai-stream-normalizer-core",
  "wit-bindgen",
 ]
 
@@ -690,6 +698,7 @@ version = "0.1.0"
 dependencies = [
  "ordered-python-compat",
  "sha2",
+ "tobkiri-ai-stream-normalizer-core",
  "tobkiri-guest-sdk",
  "wit-bindgen",
 ]

@@ -4,7 +4,7 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use exports::local::ai_routing::routing;
+use exports::local::ai_routing::{routing, stream_result};
 use tobkiri::core::types::Error;
 
 struct Pack;
@@ -20,6 +20,12 @@ impl exports::tobkiri::core::lifecycle::Guest for Pack {
 impl routing::Guest for Pack {
     fn evaluate(request: String) -> Result<String, Error> {
         Ok(crate::evaluate(&request).unwrap_or_default())
+    }
+}
+
+impl stream_result::Guest for Pack {
+    fn normalize(request: String) -> Result<String, Error> {
+        Ok(crate::normalize_stream_result(&request).unwrap_or_default())
     }
 }
 

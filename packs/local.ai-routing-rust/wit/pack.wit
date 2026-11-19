@@ -8,8 +8,17 @@ interface routing {
   evaluate: func(request: string) -> result<string, error>;
 }
 
+interface stream-result {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Project the supplied Gateway stream events in ordered finite JSON.
+  /// An empty result leaves normalization to the original stream provider.
+  normalize: func(request: string) -> result<string, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
   export routing;
+  export stream-result;
 }

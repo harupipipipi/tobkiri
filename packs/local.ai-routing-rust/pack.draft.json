@@ -1,7 +1,7 @@
 {
   "format": "tobkiri.pack/1",
   "id": "local.ai-routing",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher_key": null,
   "runtime": {
     "kind": "wasm",
@@ -15,12 +15,23 @@
       "version": "1.0",
       "kind": "port",
       "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.ai-routing.stream-result",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
     }
   ],
   "ports": {
     "provides": [
       {
         "shape": "local.ai-routing.routing",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.ai-routing.stream-result",
         "version": "1.0",
         "optional": false
       }
@@ -35,7 +46,7 @@
     "ports": [],
     "wasm": {
       "fuel_per_call": 1400000000,
-      "memory_mib": 48,
+      "memory_mib": 64,
       "wall_ms": 30000,
       "table_elements": 10000,
       "output_bytes": 1048576
@@ -51,6 +62,7 @@
     "component.wasm",
     "wit/deps/core.wit",
     "wit/pack.wit",
-    "wit/routing.shape.json"
+    "wit/routing.shape.json",
+    "wit/stream-result.shape.json"
   ]
 }

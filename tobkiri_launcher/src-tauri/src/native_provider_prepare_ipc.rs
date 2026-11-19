@@ -26,15 +26,16 @@ use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, AiRoutingRequiresLegacyCodec, ConversationReadCaller,
-        ConversationRegistryRequiresLegacyRead, ConversationWriteRequiresLegacyRead,
-        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
-        OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
-        RegistryResponse, SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError,
-        SavedTurnStartAction, SettlementCaller, TurnSettlementRequiresLegacyCodec,
-        TurnStartRequiresLegacyCodec, AI_ROUTING_FRAME_LIMIT, CONVERSATION_APPEND_LIMIT,
-        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
-        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+        start_provider_prepare, AiGatewayDataOperation, AiGatewayDataRequiresLegacyCodec,
+        ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
+        ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
+        NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
+        PendingProviderPrepare, ProviderPrepareDeadline, RegistryResponse,
+        SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
+        SettlementCaller, TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec,
+        AI_GATEWAY_DATA_LIMIT, CONVERSATION_APPEND_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
+        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
+        TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -112,8 +113,8 @@ enum RequestStart {
         input_bytes: usize,
     },
     SavedLocalChat(SavedLocalChatStart),
-    AiRouting {
-        role: OriginalModelResolveRole,
+    AiGatewayData {
+        operation: AiGatewayDataOperation,
         input_bytes: usize,
     },
 }
@@ -291,11 +292,20 @@ impl Start<'_> {
                 None,
             ) => {
                 ensure!(
-                    (1..=AI_ROUTING_FRAME_LIMIT).contains(&routing.input_bytes),
-                    "invalid AI routing input size"
+                    (1..=AI_GATEWAY_DATA_LIMIT).contains(&routing.input_bytes),
+                    "invalid AI Gateway DATA input size"
                 );
-                return Ok(RequestStart::AiRouting {
-                    role: routing.role,
+                let operation = if routing.stream_result {
+                    ensure!(
+                        routing.role == OriginalModelResolveRole::Stream,
+                        "AI stream normalization requires the Stream role"
+                    );
+                    AiGatewayDataOperation::StreamResult
+                } else {
+                    AiGatewayDataOperation::Route(routing.role)
+                };
+                return Ok(RequestStart::AiGatewayData {
+                    operation,
                     input_bytes: routing.input_bytes,
                 });
             }
@@ -310,7 +320,7 @@ impl Start<'_> {
             RequestStart::Inline(operation) => Ok(operation),
             RequestStart::SavedOrchestration { .. }
             | RequestStart::SavedLocalChat(_)
-            | RequestStart::AiRouting { .. } => {
+            | RequestStart::AiGatewayData { .. } => {
                 bail!("request needs a body")
             }
         }
@@ -393,6 +403,8 @@ struct AiRoutingStart {
     #[serde(deserialize_with = "deserialize_model_resolve_role")]
     role: OriginalModelResolveRole,
     input_bytes: usize,
+    #[serde(default)]
+    stream_result: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -980,7 +992,7 @@ pub(crate) fn admit_connection(
     let needs_active_host = matches!(
         &request,
         RequestStart::SavedOrchestration { .. }
-            | RequestStart::AiRouting { .. }
+            | RequestStart::AiGatewayData { .. }
             | RequestStart::SavedLocalChat(_)
             | RequestStart::Inline(
                 NativeRegistryRequest::TurnRead { .. }
@@ -1049,7 +1061,7 @@ pub(crate) fn admit_connection(
     let has_launch_proof = match &request {
         RequestStart::Inline(operation) => operation.has_launch_proof(proof),
         RequestStart::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
-        RequestStart::AiRouting { role, .. } => proof.permits_ai_routing(*role),
+        RequestStart::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
         RequestStart::SavedLocalChat(chat) => proof.permits_saved_local_chat(chat.role),
     };
     if !matches_runtime || !has_launch_proof {
@@ -1123,14 +1135,17 @@ impl AdmittedConnection {
                 };
                 NativeRegistryRequest::SavedOrchestration { input }
             }
-            RequestStart::AiRouting { role, input_bytes } => {
+            RequestStart::AiGatewayData {
+                operation,
+                input_bytes,
+            } => {
                 let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
                 let Some(input) =
                     receive_orchestration_input(&mut stream, input_bytes, body_deadline)?
                 else {
                     return send_frame(&mut stream, FAILURE, b"cancelled", body_deadline);
                 };
-                NativeRegistryRequest::AiRouting { role, input }
+                NativeRegistryRequest::AiGatewayData { operation, input }
             }
             RequestStart::SavedLocalChat(chat) => {
                 let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
@@ -1166,7 +1181,7 @@ impl AdmittedConnection {
             NativeRegistryRequest::TurnStart { action, .. } => ReplyRole::TurnStart(*action),
             NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
             NativeRegistryRequest::SavedOrchestration { .. } => ReplyRole::SavedOrchestration,
-            NativeRegistryRequest::AiRouting { .. } => ReplyRole::AiRouting,
+            NativeRegistryRequest::AiGatewayData { .. } => ReplyRole::AiGatewayData,
             NativeRegistryRequest::SavedLocalChat { .. } => ReplyRole::SavedLocalChat,
         };
         let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
@@ -1216,7 +1231,7 @@ enum ReplyRole {
     TurnStart(SavedTurnStartAction),
     TurnSettlement,
     SavedOrchestration,
-    AiRouting,
+    AiGatewayData,
     SavedLocalChat,
 }
 
@@ -1263,7 +1278,7 @@ impl ReplyRole {
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
             Self::SavedOrchestration => (SAVED_ORCHESTRATION_FRAME_LIMIT, "limit-exceeded"),
-            Self::AiRouting => (AI_ROUTING_FRAME_LIMIT, "limit-exceeded"),
+            Self::AiGatewayData => (AI_GATEWAY_DATA_LIMIT, "limit-exceeded"),
             Self::SavedLocalChat => (LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, "invalid-response"),
             Self::TurnStart(_) if authority == WireAuthority::PublicationPermitted => {
                 (TURN_START_REPLY_LIMIT, "unavailable")
@@ -1318,13 +1333,13 @@ impl ReplyRole {
                 },
             };
         }
-        if self == Self::AiRouting
+        if self == Self::AiGatewayData
             && authority == WireAuthority::Live
-            && error.is::<AiRoutingRequiresLegacyCodec>()
+            && error.is::<AiGatewayDataRequiresLegacyCodec>()
         {
             return "legacy-read-required";
         }
-        if matches!(self, Self::SavedOrchestration | Self::AiRouting) {
+        if matches!(self, Self::SavedOrchestration | Self::AiGatewayData) {
             return match error.downcast_ref::<SavedOrchestrationStepError>() {
                 Some(SavedOrchestrationStepError::Invalid) => "invalid",
                 Some(SavedOrchestrationStepError::Capacity) => "limit-exceeded",
@@ -1432,7 +1447,7 @@ impl ReplyRole {
         }
         if matches!(
             self,
-            Self::TurnRead | Self::SavedOrchestration | Self::AiRouting
+            Self::TurnRead | Self::SavedOrchestration | Self::AiGatewayData
         ) {
             if authority != WireAuthority::Live {
                 return Err("unavailable");
@@ -2560,12 +2575,14 @@ mod tests {
             ("stream", OriginalModelResolveRole::Stream),
         ] {
             let frame = start_frame(&format!(
-                r#", "ai_route":{{"role":"{role}","input_bytes":{AI_ROUTING_FRAME_LIMIT}}}"#
+                r#", "ai_route":{{"role":"{role}","input_bytes":{AI_GATEWAY_DATA_LIMIT}}}"#
             ));
             assert!(matches!(
                 parse_start(START, frame.as_bytes()).unwrap().request_start(),
-                Ok(RequestStart::AiRouting { role, input_bytes })
-                    if role == expected && input_bytes == AI_ROUTING_FRAME_LIMIT
+                Ok(RequestStart::AiGatewayData {
+                    operation: AiGatewayDataOperation::Route(role),
+                    input_bytes,
+                }) if role == expected && input_bytes == AI_GATEWAY_DATA_LIMIT
             ));
         }
         for fields in [
@@ -2576,7 +2593,7 @@ mod tests {
             r#", "ai_route":{"role":"generate","input_bytes":2},"saved_orchestration":{"input_bytes":2}"#.to_owned(),
             format!(
                 r#", "ai_route":{{"role":"stream","input_bytes":{}}}"#,
-                AI_ROUTING_FRAME_LIMIT + 1
+                AI_GATEWAY_DATA_LIMIT + 1
             ),
         ] {
             let frame = start_frame(&fields);
@@ -2587,10 +2604,51 @@ mod tests {
     }
 
     #[test]
-    fn ai_routing_replies_require_live_read_only_authority() {
-        let role = ReplyRole::AiRouting;
+    fn ai_stream_result_selects_an_independent_stream_only_operation() {
+        let start = |role, flag| {
+            start_frame(&format!(
+                r#", "ai_route":{{"role":"{role}","input_bytes":12,"stream_result":{flag}}}"#
+            ))
+        };
+        let frame = start("stream", "true");
+        assert!(matches!(
+            parse_start(START, frame.as_bytes())
+                .unwrap()
+                .request_start(),
+            Ok(RequestStart::AiGatewayData {
+                operation: AiGatewayDataOperation::StreamResult,
+                input_bytes: 12,
+            })
+        ));
+        for (role, flag) in [
+            ("generate", "true"),
+            ("quote-generate", "true"),
+            ("quote-stream", "true"),
+            ("stream", "1"),
+            ("stream", "null"),
+        ] {
+            let frame = start(role, flag);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.request_start())
+                .is_err());
+        }
+        let frame = start("stream", "false");
+        assert!(matches!(
+            parse_start(START, frame.as_bytes())
+                .unwrap()
+                .request_start(),
+            Ok(RequestStart::AiGatewayData {
+                operation: AiGatewayDataOperation::Route(OriginalModelResolveRole::Stream),
+                input_bytes: 12,
+            })
+        ));
+    }
+
+    #[test]
+    fn ai_gateway_data_replies_require_live_read_only_authority() {
+        let role = ReplyRole::AiGatewayData;
         assert!(role.effect_check().is_none());
-        let declined = AiRoutingRequiresLegacyCodec.into();
+        let declined = AiGatewayDataRequiresLegacyCodec.into();
         assert_eq!(
             role.failure_code(WireAuthority::Live, &declined),
             "legacy-read-required"
@@ -2607,7 +2665,7 @@ mod tests {
         assert_eq!(role.validate_result(live, b"[]"), Err("internal"));
         assert_eq!(
             role.result_limit(live),
-            (AI_ROUTING_FRAME_LIMIT, "limit-exceeded")
+            (AI_GATEWAY_DATA_LIMIT, "limit-exceeded")
         );
         assert_eq!(
             role.failure_code(live, &ModelRegistryRequiresLegacyRead.into()),

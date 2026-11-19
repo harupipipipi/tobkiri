@@ -67,7 +67,7 @@ pub use original_provider_prepare_selection::{
     OriginalRouteSelectionError as OriginalProviderPrepareSelectionError,
     OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice,
     OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
-    OriginalSavedTurnSettlementRole, OriginalSavedTurnStartChoice,
+    OriginalSavedTurnSettlementRole, OriginalSavedTurnStartChoice, OriginalStreamResultSelection,
     select_original_saved_turn_settlement,
 };
 mod source_metadata;

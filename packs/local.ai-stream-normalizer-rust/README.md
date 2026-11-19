@@ -14,10 +14,11 @@ terminal-event rule, and fixed public error categories/messages. The shared
 Python-compatible value helpers. The request/result are DATA only; nested values
 are never interpreted as authority.
 
-The source-level candidate has not been built or executed. It adds no workspace
-registration, component receipt, production identity, or frozen-vector changes.
-Production readiness, complete Pack migration, GUI approval parity, and full
-source-level differential acceptance are not claimed here.
+The `core` library contains this projection and the shared JSON boundary. The
+standalone component keeps its WIT identity and error mapping. The separate
+`local.ai-routing` component calls the same library for its Gateway stream
+result port, where it applies the port's 1 MiB output limit and can decline
+requests for the original provider to handle.
 
 The host-side source differential test reads a `receipt.json` plus its hashed
 input/output sidecars from the original-CPython oracle tool. Set
