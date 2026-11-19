@@ -27,13 +27,14 @@ use crate::{
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
         start_provider_prepare, AiGatewayDataOperation, AiGatewayDataRequiresLegacyCodec,
-        ApplicationPresentationRole, ConversationCompletePhase, ConversationReadCaller,
-        ConversationRegistryRequiresLegacyRead, ConversationWriteRequiresLegacyRead,
-        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
-        OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
-        RegistryResponse, SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError,
-        SavedTurnStartAction, SettlementCaller, TurnSettlementRequiresLegacyCodec,
-        TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
+        ApplicationPresentationRole, ConversationAppendCaller, ConversationCompletePhase,
+        ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
+        ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
+        NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
+        PendingProviderPrepare, ProviderPrepareDeadline, RegistryResponse,
+        SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
+        SettlementCaller, TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec,
+        AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
         APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
         CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
         CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
@@ -610,8 +611,30 @@ struct ConversationConfirmation<'a> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConversationAppend<'a> {
+    #[serde(
+        default = "default_conversation_append_caller",
+        deserialize_with = "deserialize_conversation_append_caller"
+    )]
+    caller: ConversationAppendCaller,
     #[serde(borrow, deserialize_with = "deserialize_object")]
     request: &'a RawValue,
+}
+
+fn default_conversation_append_caller() -> ConversationAppendCaller {
+    ConversationAppendCaller::SavedTurn
+}
+
+fn deserialize_conversation_append_caller<'de, D>(
+    deserializer: D,
+) -> std::result::Result<ConversationAppendCaller, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "saved-turn" => Ok(ConversationAppendCaller::SavedTurn),
+        "side-chat" => Ok(ConversationAppendCaller::SideChat),
+        _ => Err(de::Error::custom("unknown Conversation append caller")),
+    }
 }
 
 #[derive(Deserialize)]
@@ -672,6 +695,7 @@ impl ConversationAppend<'_> {
             "invalid Conversation append message identity"
         );
         Ok(NativeRegistryRequest::ConversationAppend {
+            caller: self.caller,
             // The locked owner validates the complete input and receipt evidence.
             request: raw.as_bytes().to_vec(),
             expected_revision: request.expected_conversation_revision as u64,
@@ -2617,12 +2641,14 @@ mod tests {
             assert!(parse_start(START, message.as_bytes()).is_err());
             let start = parse_start(START_APPEND, message.as_bytes()).unwrap();
             let NativeRegistryRequest::ConversationAppend {
+                caller,
                 request: raw,
                 expected_revision,
             } = start.operation().unwrap()
             else {
                 panic!("expected Conversation append");
             };
+            assert_eq!(caller, ConversationAppendCaller::SavedTurn);
             assert_eq!(raw, request.as_bytes());
             assert_eq!(
                 expected_revision,
@@ -2646,6 +2672,48 @@ mod tests {
             assert!(validate_start_size(tag, limit + 1).is_err());
         }
         assert!(validate_start_size(PLAN, 2).is_err());
+    }
+
+    #[test]
+    fn append_caller_is_exact_and_preserves_the_legacy_request() {
+        let request = serde_json::to_string_pretty(&append_oracle()["user"]["request"]).unwrap();
+        let message = |caller_field: &str| {
+            start_frame(&format!(
+                r#", "conversation_append":{{{caller_field},"request":{request}}}"#
+            ))
+        };
+        for (field, expected) in [
+            (
+                r#""caller":"saved-turn""#,
+                ConversationAppendCaller::SavedTurn,
+            ),
+            (
+                r#""caller":"side-chat""#,
+                ConversationAppendCaller::SideChat,
+            ),
+        ] {
+            let wire = message(field);
+            let start = parse_start(START_APPEND, wire.as_bytes()).unwrap();
+            let NativeRegistryRequest::ConversationAppend {
+                caller,
+                request: raw,
+                ..
+            } = start.operation().unwrap()
+            else {
+                panic!("expected Conversation append");
+            };
+            assert_eq!(caller, expected);
+            assert_eq!(raw, request.as_bytes());
+        }
+        for field in [
+            r#""caller":"side_chat""#,
+            r#""caller":"saved-reconcile""#,
+            r#""caller":null"#,
+            r#""caller":"saved-turn","caller":"side-chat""#,
+            r#""Caller":"side-chat""#,
+        ] {
+            assert!(parse_start(START_APPEND, message(field).as_bytes()).is_err());
+        }
     }
 
     #[test]

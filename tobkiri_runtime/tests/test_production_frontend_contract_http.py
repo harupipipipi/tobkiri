@@ -4033,6 +4033,7 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     append_requests: list[ipc.NativeConversationAppendRequest] = []
     append_envelopes: list[RequestEnvelope] = []
     ordinary_append_requests: list[ipc.NativeConversationAppendRequest] = []
+    append_failures: list[AssertionError] = []
     backend = _SavedPackVmBackend()
     original_invoke = V4DispatchSession.invoke
     packvm_materialize = backend.materialize
@@ -4061,12 +4062,14 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ordinary_append_requests.append(request)
         raise AssertionError("Side Chat selected the ordinary append proof")
 
-    def side_append(request: ipc.NativeConversationAppendRequest) -> Mapping[str, object]:
+    def checked_side_append(
+        request: ipc.NativeConversationAppendRequest,
+    ) -> Mapping[str, object]:
         request.assert_current()
         assert request.caller == "side-chat"
         side, turn, saved = envelopes
         owner = append_envelopes[-1]
-        assert request.context is owner.context
+        assert request.context == owner.context
         assert request.runtime_instance == server._native_provider_prepare_instance
         assert request.deadline_monotonic == owner.deadline_monotonic
         chain = (side, turn, saved, owner)
@@ -4084,7 +4087,8 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             assert state is LeaseState.DISPATCHED
         args = request.request
         assert args["saved_input"] == saved.payload
-        assert args["saved_input"]["request"]["context_binding"]["parent_conversation_id"] == "parent"
+        binding = args["saved_input"]["request"]["context_binding"]
+        assert binding["parent_conversation_id"] == "parent"
         assert args["conversation_id"] == side.payload["conversation_id"]
         append_requests.append(request)
         request.mark_publication_possible()
@@ -4095,6 +4099,13 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             expected_conversation_revision=args["expected_conversation_revision"],
             saved_input=args["saved_input"],
         )
+
+    def side_append(request: ipc.NativeConversationAppendRequest) -> Mapping[str, object]:
+        try:
+            return checked_side_append(request)
+        except AssertionError as error:
+            append_failures.append(error)
+            raise
 
     def observe_packvm(
         binding: ResolvedOperationBinding, reservation_id: str,
@@ -4262,6 +4273,8 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             "conversation_id": child_id, "expected_child_revision": source["revision"],
             "expected_parent_revision": source["parent_revision"],
         })
+        if append_failures:
+            raise append_failures[0]
         assert first["status"] == "completed", first
         assert [(item.contract_id, item.operation_id) for item in envelopes] == list(targets)
         side, turn, saved = envelopes

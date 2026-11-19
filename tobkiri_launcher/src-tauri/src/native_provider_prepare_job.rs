@@ -40,7 +40,7 @@ use super::{
     caught,
     launch_metadata::{
         reacquire_ai_routing_pack, reacquire_application_presentation_pack,
-        reacquire_conversation_append_pack, reacquire_conversation_complete_pack,
+        reacquire_conversation_append_pack_for, reacquire_conversation_complete_pack,
         reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
         reacquire_failover_pack, reacquire_gateway_policy_pack, reacquire_gateway_result_pack,
         reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
@@ -49,14 +49,15 @@ use super::{
         reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
         reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack,
         reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
-        ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION,
-        AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION,
-        GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE,
-        PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION,
-        PROVIDER_POLICY_OPERATION, PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION,
-        PROVIDER_REQUEST_SHAPE, REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION,
-        REQUEST_PREPARE_SHAPE, STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE,
-        TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE, USAGE_COST_OPERATION, USAGE_COST_SHAPE,
+        ConversationAppendCaller, ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch,
+        AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE,
+        GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
+        GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
+        PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
+        PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
+        REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION, REQUEST_PREPARE_SHAPE,
+        STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE, TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE,
+        USAGE_COST_OPERATION, USAGE_COST_SHAPE,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -185,6 +186,7 @@ pub(crate) enum NativeRegistryRequest {
         terminal: Vec<u8>,
     },
     ConversationAppend {
+        caller: ConversationAppendCaller,
         request: Vec<u8>,
         expected_revision: u64,
     },
@@ -251,7 +253,9 @@ impl NativeRegistryRequest {
             Self::ConversationConfirmation { caller, .. } => {
                 proof.permits_conversation_confirmation(*caller)
             }
-            Self::ConversationAppend { .. } => proof.permits_conversation_append(),
+            Self::ConversationAppend { caller, .. } => {
+                proof.permits_conversation_append_for(*caller)
+            }
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
             Self::TurnRead { caller, .. } => proof.permits_turn_read(*caller),
             Self::TurnStart { .. } => proof.permits_turn_start(),
@@ -933,12 +937,14 @@ async fn run(
                     return Ok(reply);
                 }
                 NativeRegistryRequest::ConversationAppend {
+                    caller,
                     request,
                     expected_revision,
                 } => {
-                    let pack = reacquire_conversation_append_pack(
+                    let pack = reacquire_conversation_append_pack_for(
                         &inspection,
                         listener.verified_source(),
+                        caller,
                         checkpoint,
                     )?;
                     revalidate()?;
@@ -2609,28 +2615,38 @@ mod tests {
             activation_id: "activation:fixture".into(),
             plan_digest: "sha256:fixture".into(),
         };
-        let proof = VerifiedRegistryLaunch::test_conversation_append_proof(
-            identity.clone(),
-            "catalog:fixture",
-        );
         let confirmation = VerifiedRegistryLaunch::test_conversation_confirmation_proof(
-            identity,
+            identity.clone(),
             "catalog:fixture",
             OriginalSavedReceiptRole::SavedTurn,
         );
-        let operation = |capacity| NativeRegistryRequest::ConversationAppend {
+        let operation = |caller, capacity| NativeRegistryRequest::ConversationAppend {
+            caller,
             request: vec![b' '; capacity],
             expected_revision: 2,
         };
-        let append = operation(CONVERSATION_APPEND_LIMIT);
-        assert!(append.has_launch_proof(&proof));
-        assert!(!append.has_launch_proof(&confirmation));
-        assert!(append.requires_publication_permit());
-        assert_eq!(append.input_capacity().unwrap(), CONVERSATION_APPEND_LIMIT);
-        assert!(operation(0).input_capacity().is_err());
-        assert!(operation(CONVERSATION_APPEND_LIMIT + 1)
-            .input_capacity()
-            .is_err());
+        let callers = [
+            ConversationAppendCaller::SavedTurn,
+            ConversationAppendCaller::SideChat,
+        ];
+        for granted in callers {
+            let proof = VerifiedRegistryLaunch::test_conversation_append_proof_for(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            for caller in callers {
+                let append = operation(caller, CONVERSATION_APPEND_LIMIT);
+                assert_eq!(append.has_launch_proof(&proof), caller == granted);
+                assert!(!append.has_launch_proof(&confirmation));
+                assert!(append.requires_publication_permit());
+                assert_eq!(append.input_capacity().unwrap(), CONVERSATION_APPEND_LIMIT);
+                assert!(operation(caller, 0).input_capacity().is_err());
+                assert!(operation(caller, CONVERSATION_APPEND_LIMIT + 1)
+                    .input_capacity()
+                    .is_err());
+            }
+        }
     }
 
     #[test]

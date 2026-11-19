@@ -43,7 +43,7 @@ mod launch_metadata;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use launch_metadata::{
     read_launch_metadata, registry_pack_receipt_bound, ApplicationPresentationRole,
-    ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch,
+    ConversationAppendCaller, ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch,
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use tobkiri_harness_native::{OriginalModelResolveRole, OriginalSavedReceiptRole};

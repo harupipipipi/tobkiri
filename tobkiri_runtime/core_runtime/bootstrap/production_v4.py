@@ -2024,7 +2024,10 @@ def capture_production_dispatch(
     native_ai_tool_intents_normalizer = capture_launcher_ai_tool_intents_normalizer()
     native_ai_usage_cost_calculator = capture_launcher_ai_usage_cost_calculator()
     native_confirmation_writer = capture_launcher_conversation_confirmation_writer()
-    native_append_writers = {
+    native_append_writers: dict[
+        ConversationAppendCaller,
+        Callable[[NativeConversationAppendRequest], Mapping[str, Any]] | None,
+    ] = {
         "saved-turn": capture_launcher_conversation_append_writer(),
         "side-chat": capture_launcher_side_chat_conversation_append_writer(),
     }
@@ -2674,21 +2677,29 @@ def capture_production_dispatch(
         )
         return matches[0] if len(matches) == 1 else None
 
-    ordinary_turn_edge = select_original_chat_edge(
-        {
-            edge.caller.principal_id for edge in captured_edges
-            if edge.caller.principal_id in shell_principal_ids
-            and edge.caller.function_id == "shell.tauri.default"
-        },
-        turn_pack, "tobkiri.action.turn.saved.v1", f"{turn_pack}.turn-saved",
-        f"{turn_pack}.turn-runtime.saved", EffectClass.PRIVILEGED,
-    )
-    ordinary_orchestration_edge = (
-        select_original_chat_edge(
-            {ordinary_turn_edge.target.principal_id}, saved_pack,
+    desktop_shell_principal_ids = {
+        edge.caller.principal_id for edge in captured_edges
+        if edge.caller.principal_id in shell_principal_ids
+        and edge.caller.function_id == "shell.tauri.default"
+    }
+
+    def select_original_turn(caller_ids: set[str]) -> _CapturedPlanEdge | None:
+        return select_original_chat_edge(
+            caller_ids, turn_pack, "tobkiri.action.turn.saved.v1", f"{turn_pack}.turn-saved",
+            f"{turn_pack}.turn-runtime.saved", EffectClass.PRIVILEGED,
+        )
+
+    def select_original_orchestration(turn: _CapturedPlanEdge) -> _CapturedPlanEdge | None:
+        return select_original_chat_edge(
+            {turn.target.principal_id}, saved_pack,
             "conversation.saved-turn.v1", "saved_complete", f"{saved_pack}.saved",
             EffectClass.PURE,
-        ) if ordinary_turn_edge is not None else None
+        )
+
+    ordinary_turn_edge = select_original_turn(desktop_shell_principal_ids)
+    ordinary_orchestration_edge = (
+        select_original_orchestration(ordinary_turn_edge)
+        if ordinary_turn_edge is not None else None
     )
 
     saved_local_chat_routes: dict[str, _SavedLocalChatRoute] = {}
@@ -6143,162 +6154,141 @@ def capture_production_dispatch(
 
     if native_append_writers["side-chat"] is not None:
         side = select_original_chat_edge(
-            {
-                edge.caller.principal_id for edge in captured_edges
-                if edge.caller.principal_id in shell_principal_ids
-                and edge.caller.function_id == "shell.tauri.default"
-            },
+            desktop_shell_principal_ids,
             "tobkiri_side_chat_pack", "tobkiri.service.side-chat.turn.v1",
             "tobkiri_side_chat_pack.side-chat-turn", "tobkiri_side_chat_pack.turn",
             EffectClass.PRIVILEGED,
         )
         if side is not None:
-            turn = select_original_chat_edge(
-                {side.target.principal_id}, turn_pack, "tobkiri.action.turn.saved.v1",
-                f"{turn_pack}.turn-saved", f"{turn_pack}.turn-runtime.saved",
-                EffectClass.PRIVILEGED,
-            )
+            turn = select_original_turn({side.target.principal_id})
             if turn is not None:
-                saved = select_original_chat_edge(
-                    {turn.target.principal_id}, saved_pack, "conversation.saved-turn.v1",
-                    "saved_complete", f"{saved_pack}.saved", EffectClass.PURE,
-                )
+                saved = select_original_orchestration(turn)
                 if saved is not None:
                     capture_append_route("side-chat", (saved, turn, side))
 
+    turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
     if (
-        native_model_resolve_reader is not None
-        or native_ai_routing_evaluator is not None
-        or native_ai_stream_result_normalizer is not None
-        or native_ai_usage_cost_calculator is not None
-        or native_ai_tool_intents_normalizer is not None
-        or native_ai_pipeline_evaluator is not None
-        or native_ai_gateway_result_projector is not None
-        or native_ai_gateway_policy_projector is not None
+        turn_edge is not None and orchestration_edge is not None
+        and (
+            native_model_resolve_reader is not None
+            or native_ai_routing_evaluator is not None
+            or native_ai_stream_result_normalizer is not None
+            or native_ai_usage_cost_calculator is not None
+            or native_ai_tool_intents_normalizer is not None
+            or native_ai_pipeline_evaluator is not None
+            or native_ai_gateway_result_projector is not None
+            or native_ai_gateway_policy_projector is not None
+        )
     ):
-        turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
         gateway_pack = "rumi_ai_gateway_pack"
-
-        if (
-            (native_model_resolve_reader is not None
-             or native_ai_routing_evaluator is not None
-             or native_ai_stream_result_normalizer is not None
-             or native_ai_usage_cost_calculator is not None
-             or native_ai_tool_intents_normalizer is not None
-             or native_ai_pipeline_evaluator is not None
-             or native_ai_gateway_result_projector is not None
-             or native_ai_gateway_policy_projector is not None)
-            and turn_edge is not None
-            and orchestration_edge is not None
-        ):
-            gateway_roles: tuple[tuple[ModelResolveRole, str, str, str], ...] = (
-                ("quote-generate", "tobkiri.resource.ai.route.quote.v1",
-                 "route-quote", "generate"),
-                ("quote-stream", "tobkiri.resource.ai.route.quote.v1",
-                 "route-quote", "stream"),
-                ("generate", "tobkiri.service.ai.generate.v1", "generate", "generate"),
-                ("stream", "tobkiri.service.ai.stream.v1", "stream", "stream"),
+        gateway_roles: tuple[tuple[ModelResolveRole, str, str, str], ...] = (
+            ("quote-generate", "tobkiri.resource.ai.route.quote.v1",
+             "route-quote", "generate"),
+            ("quote-stream", "tobkiri.resource.ai.route.quote.v1",
+             "route-quote", "stream"),
+            ("generate", "tobkiri.service.ai.generate.v1", "generate", "generate"),
+            ("stream", "tobkiri.service.ai.stream.v1", "stream", "stream"),
+        )
+        for role, gateway_contract, gateway_kind, call_kind in gateway_roles:
+            gateway_id = f"{gateway_pack}.ai-gateway.{gateway_kind}"
+            gateway_edge = select_original_chat_edge(
+                {orchestration_edge.target.principal_id}, gateway_pack,
+                gateway_contract, gateway_id, gateway_id, EffectClass.PRIVILEGED,
             )
-            for role, gateway_contract, gateway_kind, call_kind in gateway_roles:
-                gateway_id = f"{gateway_pack}.ai-gateway.{gateway_kind}"
-                gateway_edge = select_original_chat_edge(
-                    {orchestration_edge.target.principal_id}, gateway_pack,
-                    gateway_contract, gateway_id, gateway_id, EffectClass.PRIVILEGED,
+            if gateway_edge is None:
+                continue
+            gateway_principal = gateway_edge.target.principal_id
+            parents = (gateway_edge, orchestration_edge, turn_edge)
+            gateway_key = (*gateway_edge.binding_key[1:], gateway_principal)
+            if native_ai_gateway_result_projector is not None and role in (
+                "generate", "stream",
+            ):
+                gateway_result_routes[gateway_key] = role, parents
+            if (
+                native_ai_gateway_policy_projector is not None
+                and role != "quote-stream"
+            ):
+                # Both quote roles use one signed edge. The live quote envelope
+                # selects the role at admission and when borrowing projection.
+                gateway_policy_routes[gateway_key] = role, parents
+            if native_model_resolve_reader is not None:
+                model_operation = f"{NATIVE_MODEL_SETTINGS_OPERATION}.{call_kind}"
+                model_edge = select_original_chat_edge(
+                    {gateway_principal}, NATIVE_MODEL_SETTINGS_PACK,
+                    NATIVE_MODEL_SETTINGS_CONTRACT, model_operation,
+                    NATIVE_MODEL_SETTINGS_FUNCTION, EffectClass.READ,
                 )
-                if gateway_edge is None:
-                    continue
-                gateway_principal = gateway_edge.target.principal_id
-                parents = (gateway_edge, orchestration_edge, turn_edge)
-                gateway_key = (*gateway_edge.binding_key[1:], gateway_principal)
-                if native_ai_gateway_result_projector is not None and role in (
-                    "generate", "stream",
-                ):
-                    gateway_result_routes[gateway_key] = role, parents
-                if (
-                    native_ai_gateway_policy_projector is not None
-                    and role != "quote-stream"
-                ):
-                    # Both quote roles use one signed edge. The live quote envelope
-                    # selects the role at admission and when borrowing projection.
-                    gateway_policy_routes[gateway_key] = role, parents
-                if native_model_resolve_reader is not None:
-                    model_operation = f"{NATIVE_MODEL_SETTINGS_OPERATION}.{call_kind}"
-                    model_edge = select_original_chat_edge(
-                        {gateway_principal}, NATIVE_MODEL_SETTINGS_PACK,
-                        NATIVE_MODEL_SETTINGS_CONTRACT, model_operation,
-                        NATIVE_MODEL_SETTINGS_FUNCTION, EffectClass.READ,
+                if model_edge is not None:
+                    model_resolve_routes[gateway_principal, model_operation] = (
+                        role, (model_edge, *parents),
                     )
-                    if model_edge is not None:
-                        model_resolve_routes[gateway_principal, model_operation] = (
-                            role, (model_edge, *parents),
-                        )
-                if native_ai_routing_evaluator is not None:
-                    router_pack = "rumi_ai_routing_pack"
-                    router_operation = f"{router_pack}.ai-route.{call_kind}"
-                    router_edge = select_original_chat_edge(
-                        {gateway_principal}, router_pack, "tobkiri.service.ai.route.v1",
-                        router_operation, f"{router_pack}.ai-routing.default",
-                        EffectClass.PRIVILEGED,
+            if native_ai_routing_evaluator is not None:
+                router_pack = "rumi_ai_routing_pack"
+                router_operation = f"{router_pack}.ai-route.{call_kind}"
+                router_edge = select_original_chat_edge(
+                    {gateway_principal}, router_pack, "tobkiri.service.ai.route.v1",
+                    router_operation, f"{router_pack}.ai-routing.default",
+                    EffectClass.PRIVILEGED,
+                )
+                if router_edge is not None:
+                    ai_routing_routes[gateway_principal, router_operation] = (
+                        role, (router_edge, *parents),
                     )
-                    if router_edge is not None:
-                        ai_routing_routes[gateway_principal, router_operation] = (
-                            role, (router_edge, *parents),
-                        )
-                if role == "stream" and native_ai_stream_result_normalizer is not None:
-                    stream_edge = select_original_chat_edge(
-                        {gateway_principal}, "rumi_ai_stream_pack",
-                        "tobkiri.service.ai.stream.normalize.v1", stream_operation,
-                        "rumi_ai_stream_pack.ai-stream.normalize", EffectClass.PRIVILEGED,
+            if role == "stream" and native_ai_stream_result_normalizer is not None:
+                stream_edge = select_original_chat_edge(
+                    {gateway_principal}, "rumi_ai_stream_pack",
+                    "tobkiri.service.ai.stream.normalize.v1", stream_operation,
+                    "rumi_ai_stream_pack.ai-stream.normalize", EffectClass.PRIVILEGED,
+                )
+                if stream_edge is not None:
+                    ai_routing_routes[gateway_principal, stream_operation] = (
+                        role, (stream_edge, *parents),
                     )
-                    if stream_edge is not None:
-                        ai_routing_routes[gateway_principal, stream_operation] = (
-                            role, (stream_edge, *parents),
-                        )
-                usage_operation = usage_operations.get(role)
-                if native_ai_usage_cost_calculator is not None and usage_operation:
-                    usage_edge = select_original_chat_edge(
-                        {gateway_principal}, usage_pack, "tobkiri.service.ai.usage.cost.v1",
-                        usage_operation, f"{usage_pack}.ai-usage.cost",
-                        EffectClass.PRIVILEGED,
+            usage_operation = usage_operations.get(role)
+            if native_ai_usage_cost_calculator is not None and usage_operation:
+                usage_edge = select_original_chat_edge(
+                    {gateway_principal}, usage_pack, "tobkiri.service.ai.usage.cost.v1",
+                    usage_operation, f"{usage_pack}.ai-usage.cost",
+                    EffectClass.PRIVILEGED,
+                )
+                if usage_edge is not None:
+                    ai_routing_routes[gateway_principal, usage_operation] = (
+                        role, (usage_edge, *parents),
                     )
-                    if usage_edge is not None:
-                        ai_routing_routes[gateway_principal, usage_operation] = (
-                            role, (usage_edge, *parents),
-                        )
-                tool_intent_operation = tool_intent_operations.get(role)
-                if native_ai_tool_intents_normalizer is not None and tool_intent_operation:
-                    tool_intent_edge = select_original_chat_edge(
-                        {gateway_principal}, tool_bridge_pack,
-                        "tobkiri.service.ai.tool_intent.normalize.v1",
-                        tool_intent_operation, f"{tool_bridge_pack}.ai-tool-bridge.normalize",
-                        EffectClass.PRIVILEGED,
+            tool_intent_operation = tool_intent_operations.get(role)
+            if native_ai_tool_intents_normalizer is not None and tool_intent_operation:
+                tool_intent_edge = select_original_chat_edge(
+                    {gateway_principal}, tool_bridge_pack,
+                    "tobkiri.service.ai.tool_intent.normalize.v1",
+                    tool_intent_operation, f"{tool_bridge_pack}.ai-tool-bridge.normalize",
+                    EffectClass.PRIVILEGED,
+                )
+                if tool_intent_edge is not None:
+                    ai_routing_routes[gateway_principal, tool_intent_operation] = (
+                        role, (tool_intent_edge, *parents),
                     )
-                    if tool_intent_edge is not None:
-                        ai_routing_routes[gateway_principal, tool_intent_operation] = (
-                            role, (tool_intent_edge, *parents),
-                        )
-                if native_ai_pipeline_evaluator is not None:
-                    prepare_operation = prepare_operations[call_kind]
-                    prepare_edge = select_original_chat_edge(
+            if native_ai_pipeline_evaluator is not None:
+                prepare_operation = prepare_operations[call_kind]
+                prepare_edge = select_original_chat_edge(
+                    {gateway_principal}, pipeline_pack,
+                    "tobkiri.service.ai.request.prepare.v1", prepare_operation,
+                    f"{pipeline_pack}.ai-pipeline.prepare", EffectClass.PRIVILEGED,
+                )
+                if prepare_edge is not None:
+                    ai_routing_routes[gateway_principal, prepare_operation] = (
+                        role, (prepare_edge, *parents),
+                    )
+                if role == "generate":
+                    failover_edge = select_original_chat_edge(
                         {gateway_principal}, pipeline_pack,
-                        "tobkiri.service.ai.request.prepare.v1", prepare_operation,
-                        f"{pipeline_pack}.ai-pipeline.prepare", EffectClass.PRIVILEGED,
+                        "tobkiri.service.ai.failover.decide.v1", failover_operation,
+                        f"{pipeline_pack}.ai-pipeline.failover",
+                        EffectClass.PRIVILEGED,
                     )
-                    if prepare_edge is not None:
-                        ai_routing_routes[gateway_principal, prepare_operation] = (
-                            role, (prepare_edge, *parents),
+                    if failover_edge is not None:
+                        ai_routing_routes[gateway_principal, failover_operation] = (
+                            role, (failover_edge, *parents),
                         )
-                    if role == "generate":
-                        failover_edge = select_original_chat_edge(
-                            {gateway_principal}, pipeline_pack,
-                            "tobkiri.service.ai.failover.decide.v1", failover_operation,
-                            f"{pipeline_pack}.ai-pipeline.failover",
-                            EffectClass.PRIVILEGED,
-                        )
-                        if failover_edge is not None:
-                            ai_routing_routes[gateway_principal, failover_operation] = (
-                                role, (failover_edge, *parents),
-                            )
 
     gateway_projection_keys = (
         gateway_result_routes.keys() | gateway_policy_routes.keys()

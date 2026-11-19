@@ -16,16 +16,17 @@ use tobkiri_core::{
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalConversationCompleteChoice, OriginalFailoverChoice, OriginalRequestPrepareChoice,
-    OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
-    OriginalToolIntentsChoice, OriginalUsageCostChoice, CONVERSATION_COMPLETE_APPLICATION_ID,
+    OriginalConversationAppendChoice, OriginalConversationCompleteChoice, OriginalFailoverChoice,
+    OriginalRequestPrepareChoice, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
+    OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
+    CONVERSATION_COMPLETE_APPLICATION_ID,
 };
 use tobkiri_harness_native::{
-    OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
-    OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
-    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
-    OriginalSavedTurnSettlementChoice, OriginalSavedTurnStartChoice,
+    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
+    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
+    OriginalSavedTurnStartChoice,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -73,11 +74,20 @@ pub(crate) struct LockedConversationConfirmationBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// Locked Bundle documents for ordinary saved orchestration and its append grant when selected.
+/// Locked Bundle documents for ordinary saved orchestration.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) struct LockedSavedOrchestrationBundle<'pin> {
     root: CoreBuffer,
     routes: [LockedRegistryRoute<'pin>; 2],
-    message_manage: Option<LockedRegistryRoute<'pin>>,
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// Locked Bundle documents for the ordinary or Side Chat saved append route.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedConversationAppendBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    side_chat: Option<LockedRegistryRoute<'pin>>,
+    routes: [LockedRegistryRoute<'pin>; 3],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -116,7 +126,7 @@ pub(crate) struct LockedConversationCompleteBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// The exact installed source from which Launcher verified an ordinary saved route.
+/// The exact installed source from which Launcher verified a signed saved route.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct VerifiedOrdinarySavedBundle {
@@ -153,7 +163,7 @@ impl VerifiedOrdinarySavedBundle {
             self.application_root == sources.application_root
                 && self.bundle_root == sources.bundle_root
                 && self.bundle_lock_digest.as_str() == sources.bundle_lock.digest,
-            "signed ordinary saved source differs from the admitted launch"
+            "signed saved source differs from the admitted launch"
         );
         Ok(())
     }
@@ -504,22 +514,43 @@ impl NativeApplicationSources {
         })
     }
 
-    /// Capture the locked Turn, Saved Orchestration, and Message Manage documents.
+    /// Capture every locked Pack and catalog through the signed append route.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn conversation_append_bundle<'pin>(
         &self,
         selection: &'pin OriginalConversationAppendChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedSavedOrchestrationBundle<'pin>> {
-        let [turn, orchestration, manage] = selection.pins();
-        self.saved_orchestration_bundle([turn, orchestration], Some(manage), budget)
+    ) -> Result<LockedConversationAppendBundle<'pin>> {
+        let side_chat = selection.side_chat();
+        let pins = selection.pins();
+        let [turn, orchestration, manage] = pins;
+        let first = side_chat.unwrap_or(turn);
+        ensure!(
+            first.caller_function_id() == self.authority.shell_provider_id
+                && side_chat.is_none_or(|side| side.function_id() == turn.caller_function_id())
+                && pins
+                    .windows(2)
+                    .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
+            "saved append callers differ from the selected Shell and caller chain"
+        );
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        Ok(LockedConversationAppendBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            side_chat: side_chat.map(from_lock).transpose()?,
+            routes: [
+                from_lock(turn)?,
+                from_lock(orchestration)?,
+                from_lock(manage)?,
+            ],
+            budget: Arc::clone(budget),
+        })
     }
 
     /// Capture locked documents from the selected ordinary saved orchestration pins.
-    /// A saved append also supplies its independently selected Message Manage pin.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn saved_orchestration_bundle<'pin>(
         &self,
         [turn, orchestration]: [&'pin OriginalRoutePin; 2],
-        message_manage: Option<&'pin OriginalRoutePin>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedSavedOrchestrationBundle<'pin>> {
         ensure!(
@@ -530,13 +561,9 @@ impl NativeApplicationSources {
             LockedRegistryRoute::from_lock(&self.bundle_lock, turn, budget)?,
             LockedRegistryRoute::from_lock(&self.bundle_lock, orchestration, budget)?,
         ];
-        let message_manage = message_manage
-            .map(|pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget))
-            .transpose()?;
         Ok(LockedSavedOrchestrationBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             routes,
-            message_manage,
             budget: Arc::clone(budget),
         })
     }
@@ -825,17 +852,41 @@ impl LockedConversationConfirmationBundle<'_> {
     }
 }
 
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 impl LockedSavedOrchestrationBundle<'_> {
-    /// Verify the original privileged Turn, pure Orchestration, and selected append operations.
+    /// Verify the original privileged Turn and pure Orchestration operations.
     pub(crate) fn verify(&self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<()> {
         let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
         let [turn, orchestration] = &self.routes;
         turn.verify(root, &self.budget, &mut checkpoint, Some("privileged"))?;
         orchestration.verify(root, &self.budget, &mut checkpoint, Some("pure"))?;
-        if let Some(manage) = &self.message_manage {
-            manage.verify(root, &self.budget, &mut checkpoint, Some("privileged"))?;
-        }
         checkpoint()
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedConversationAppendBundle<'_> {
+    /// Verify and retain the signed physical documents for the selected append caller.
+    pub(crate) fn verify(
+        self,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        let [turn, orchestration, manage] = self.routes;
+        if let Some(side_chat) = self.side_chat {
+            self.source.verify_routes(
+                &[Some([side_chat, turn, orchestration, manage])],
+                &self.budget,
+                checkpoint,
+                ["privileged", "privileged", "pure", "privileged"],
+            )
+        } else {
+            self.source.verify_routes(
+                &[Some([turn, orchestration, manage])],
+                &self.budget,
+                checkpoint,
+                ["privileged", "pure", "privileged"],
+            )
+        }
     }
 }
 
@@ -978,7 +1029,7 @@ impl VerifiedOrdinarySavedBundle {
             .iter()
             .flatten()
             .next()
-            .context("ordinary saved proof has no route")?;
+            .context("saved proof has no route")?;
         self.documents.reserve(2 * first.len());
         for route in first {
             for document in [&route.pack, &route.catalog] {

@@ -202,6 +202,15 @@ const SAVED_RECONCILE_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.reconc
 const TURN_RUNTIME_PACK: &str = "rumi_turn_runtime_pack";
 const TURN_SHELL_CALLER: &str = "shell.tauri.default";
 
+static SIDE_CHAT_TURN: Route = Route {
+    pack: "tobkiri_side_chat_pack",
+    function: "tobkiri_side_chat_pack.turn",
+    contract: "tobkiri.service.side-chat.turn.v1",
+    operation: "tobkiri_side_chat_pack.side-chat-turn",
+    variant: "tobkiri_side_chat_pack.turn.python",
+    execution: PYTHON_HOST,
+};
+
 static SAVED_TURN: Route = Route {
     pack: TURN_RUNTIME_PACK,
     function: SAVED_TURN_CALLER,
@@ -934,9 +943,19 @@ impl<'a> OriginalSavedLocalChatChoice<'a> {
     }
 }
 
-/// The signed chain from the default Shell through Saved Orchestration to Message Manage.
+/// The entry point behind a signed saved message append.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConversationAppendCaller {
+    /// The selected Shell invokes Saved Turn directly.
+    SavedTurn,
+    /// The selected Shell invokes Saved Turn through the Side Chat service.
+    SideChat,
+}
+
+/// The signed chain from the selected Shell through Saved Orchestration to Message Manage.
 pub struct OriginalConversationAppendChoice<'a> {
     _active: &'a OriginalActiveProfile,
+    side_chat: Option<OriginalRoutePin>,
     pins: [OriginalRoutePin; 3],
 }
 
@@ -947,16 +966,29 @@ impl<'a> OriginalConversationAppendChoice<'a> {
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<Self>> {
-        Ok(
-            select_conversation_append_records(active.records(), budget)?.map(|pins| Self {
-                _active: active,
-                pins,
-            }),
-        )
+        Self::select_for(active, budget, ConversationAppendCaller::SavedTurn)
     }
 
-    /// The Shell-to-Turn saved grant, followed by the Turn-to-Saved Orchestration grant
-    /// and the Saved Orchestration-to-Message Manage grant.
+    /// Select the exact append grants for the given signed entry point.
+    pub fn select_for(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        caller: ConversationAppendCaller,
+    ) -> Result<Option<Self>> {
+        let choice = select_conversation_append_records(active.records(), budget, caller)?;
+        Ok(choice.map(|(side_chat, pins)| Self {
+            _active: active,
+            side_chat,
+            pins,
+        }))
+    }
+
+    /// The Shell-to-Side Chat grant for the Side Chat entry point.
+    pub fn side_chat(&self) -> Option<&OriginalRoutePin> {
+        self.side_chat.as_ref()
+    }
+
+    /// The grant into Saved Turn, followed by the Orchestration and Message Manage grants.
     pub fn pins(&self) -> &[OriginalRoutePin; 3] {
         &self.pins
     }
@@ -1510,20 +1542,41 @@ fn select_conversation_confirmation_records(
         .map(|turn_get| [turn_caller, completion, turn_get]))
 }
 
+type ConversationAppendPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 3]);
+
 fn select_conversation_append_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<Option<[OriginalRoutePin; 3]>> {
+    caller: ConversationAppendCaller,
+) -> Result<Option<ConversationAppendPins>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some([turn, orchestration]) = select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)?
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
+        return Ok(None);
+    }
+    let side_chat = match caller {
+        ConversationAppendCaller::SavedTurn => None,
+        ConversationAppendCaller::SideChat => {
+            let Some(side_chat) = records.select_shell_route(&SIDE_CHAT_TURN)? else {
+                return Ok(None);
+            };
+            Some(side_chat)
+        }
+    };
+    let turn_caller = side_chat
+        .as_ref()
+        .map_or(TURN_SHELL_CALLER, OriginalRoutePin::function_id);
+    let Some(turn) = records.select_route(turn_caller, &SAVED_TURN)? else {
+        return Ok(None);
+    };
+    let Some(orchestration) = records.select_route(turn.function_id(), &SAVED_ORCHESTRATION)?
     else {
         return Ok(None);
     };
     Ok(records
         .select_route(orchestration.function_id(), &CONVERSATION_MESSAGE_MANAGE)?
-        .map(|manage| [turn, orchestration, manage]))
+        .map(|manage| (side_chat, [turn, orchestration, manage])))
 }
 
 fn select_saved_local_chat_records(
@@ -2513,6 +2566,20 @@ mod tests {
                 CONVERSATION_GENERATE_REVISION,
                 "sha256:aed4252c92a298de9bed574c81b5e421fa7f592541ce146b0e77b0c085f42370",
             ),
+            (
+                &SIDE_CHAT_TURN,
+                SHELL,
+                "authority-ref:aa8a670e8e7a339da934002d1423e5a39ddb7a0de6e7c0d2a0152848026ce070",
+                "sha256:1b82e55995eb061819839ac0f42a89f1ebcc2c4ca9c8bc3206253767b9d9e452",
+                "sha256:67f7c67c2400747fc1629a4ae5dd630c8a93d90eb7197387223a82d17f1a7b12",
+            ),
+            (
+                &SAVED_TURN,
+                SIDE_CHAT_TURN.function,
+                "authority-ref:fe0224ee12c57aee177055c1d1accca8444022c7efa9aa78948669ad5d621e3e",
+                "sha256:b7dda70b162f84a9af42022f3025059c074d6a66dc5b7b2b7ef8b153d48fc8c9",
+                "sha256:def47bb0d27a6a624fd7ac61b770fa148a287173f52e79416a0476927a17b930",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -2756,9 +2823,16 @@ mod tests {
     }
 
     fn select_append(records: &Value) -> Result<Option<[OriginalRoutePin; 3]>> {
+        Ok(select_append_for(records, ConversationAppendCaller::SavedTurn)?.map(|(_, pins)| pins))
+    }
+
+    fn select_append_for(
+        records: &Value,
+        caller: ConversationAppendCaller,
+    ) -> Result<Option<ConversationAppendPins>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
-        select_conversation_append_records((&profile, &lock, &plan), &budget)
+        select_conversation_append_records((&profile, &lock, &plan), &budget, caller)
     }
 
     fn select_saved_orchestration(records: &Value) -> Result<Option<[OriginalRoutePin; 2]>> {
@@ -3707,6 +3781,42 @@ mod tests {
                     .is_some()
             );
         }
+    }
+
+    #[test]
+    fn side_chat_append_selects_its_own_signed_grants() {
+        let fixture = records();
+        let select = |records: &Value| select_append_for(records, ConversationAppendCaller::SideChat);
+        let (side_chat, [turn, orchestration, manage]) = select(&fixture).unwrap().unwrap();
+        let side_chat = side_chat.unwrap();
+        assert_eq!(side_chat.caller_function_id(), TURN_SHELL_CALLER);
+        assert_eq!(side_chat.function_id(), SIDE_CHAT_TURN.function);
+        assert_eq!(turn.caller_function_id(), side_chat.function_id());
+        assert_eq!(turn.function_id(), SAVED_TURN_CALLER);
+        assert_eq!(orchestration.caller_function_id(), turn.function_id());
+        assert_eq!(manage.caller_function_id(), orchestration.function_id());
+
+        let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
+        let side_chat_rows = [edges.len() - 2, edges.len() - 1];
+        for row in side_chat_rows {
+            let mut denied = fixture.clone();
+            denied["profile"]["requested_edges"][row]["authority_mode"] = json!("interactive_only");
+            denied["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            assert!(select(&denied).unwrap().is_none());
+            assert!(select_append(&denied).unwrap().is_some());
+        }
+
+        let mut side_chat_only = fixture;
+        side_chat_only["profile"]["requested_edges"]
+            .as_array_mut()
+            .unwrap()
+            .remove(SAVED_TURN_SETTLEMENT_ROW);
+        side_chat_only["plan"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .remove(SAVED_TURN_SETTLEMENT_ROW);
+        assert!(select(&side_chat_only).unwrap().is_some());
+        assert!(select_append(&side_chat_only).unwrap().is_none());
     }
 
     #[test]
