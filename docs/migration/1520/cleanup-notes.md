@@ -4245,6 +4245,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   HTTP試験はProvider・Model Registryと署名付きBrokerを通し、LauncherのIPC呼出と
   PackVMのプロセス搬送はfixtureで再現した。ソース・Pack・実行目録・Bundle等の生成器6件の
   再照合とmacOS Launcherの型チェックも通過。最新DMGからの実モデル会話は後続。
+  クリーンな `dbe79b053` では、macOS上で同じ署名付きHTTP回帰を実Launcherの
+  UnixソケットサービスとRustワーカーに接続した。元のCPython 3.13.16クライアントを
+  Rustの直接の子プロセスにし、実際に有効化したProfile・Lock・Plan、Providerレコード、
+  起動世代を両側で共用した。GenerateとStreamで、疑似Providerが受け取った本文と
+  認証ヘッダーの不在、Rustプロセスが所有するTCP接続、返信の保存、同じターンの再送時に
+  POSTが増えないことを確認した。結合試験1件が通過した。
+  この試験のApplication管理、配布物のresolver入口、PackVMのプロセス搬送にはfixtureを
+  使った。CIでは同じ世代のWasmとRegistry Packを同梱する署名済みLauncherで、GUIのSetupと
+  Shell handoffを経たHostに、このHTTP応答と再送の検査を接続する余地がある。
   [717face1f の実Gemma 3 1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44487465311)
   は既存のHarness実行経路で通過した。
   [d3113e9b2 の再計測](https://github.com/harupipipipi/tobkiri/actions/runs/44490251513)では
