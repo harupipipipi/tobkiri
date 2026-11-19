@@ -4207,6 +4207,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   認可の確認が途中で失敗しても読み取った位置を保持し、取消と終了確認でフレームを読み続ける。
   既存のフレーム種別と上限、期限・認可確認は維持する。固定CPython 3.13.16の分離実ソケット
   回帰326件が通過。
+  `22846faa9` で、通常Launchが両ロールの5つの署名対象をインストール済みBundleの
+  Pack文書・実行カタログと照合する。各Packは一度読み、共通の文書で両ロールの操作、
+  契約、実装、effect classを個別に確認する。起動中のProfile識別子・epochの証明に、
+  元のApplication、Bundle、lockのdigestとロールごとのpinを保持する。
+  既存v4 Bundleと実際に解決されたProfile・Lock・Planを使う分離試験では、両ロールと
+  それぞれ単独のgrantを確認し、照合対象の10文書の差し替えと、別Applicationを拒否した。
+  分離試験はLauncherの実ファイル読取りを使い、署名付きresolverの戻り値はfixtureで供給した。
+  分離試験と権限選択の合計30件、macOSの実Launcherで `native-first-setup` のライブラリと
+  テストの型チェックが通過。
+  通常チャットの専用IPCでは、元の要求リースとこの起動時のBundle証明を再照合する。
+  長い推論で既存の設定・Model・続行を待たせないよう、既存の認証済みソケット内で別に
+  追跡する接続を使う。実OSの占有・終了確認と同じ64 MiBの容量を組み合わせて検証する。
+  [717face1f の実Gemma 3 1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44487465311)
+  は既存のHarness実行経路で通過した。
+- [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
+  実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
+  経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で
+  該当ファイルをRust 1.94.0で整形し、ルート全体の `cargo fmt --all -- --check` が通過した。
 - A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
   旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
   現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。
