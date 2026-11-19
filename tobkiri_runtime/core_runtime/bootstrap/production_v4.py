@@ -160,6 +160,7 @@ from ..host_provider_backend_v4 import (
     HostPublicationUnconfirmed,
     HostSavedTurnSettlementConflict,
     HostSavedTurnSettlementUnconfirmed,
+    SavedConversationConfirmationPort,
     SavedTurnSettlementPort,
 )
 from ..host_provider_data_v4 import HostProviderDataCaptureV4
@@ -1836,6 +1837,7 @@ def capture_production_dispatch(
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
     from ..native_provider_prepare_ipc import (
+        CONVERSATION_CONFIRMATION_MINIMUM_MEMORY,
         CONVERSATION_GET_MAX_ID_CHARS,
         CONVERSATION_GET_MINIMUM_MEMORY,
         MODEL_RESOLVE_MINIMUM_MEMORY,
@@ -1844,6 +1846,9 @@ def capture_production_dispatch(
         SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
         ConversationGetCaller,
         ModelResolveRole,
+        NativeConversationConfirmationFailure,
+        NativeConversationConfirmationPublicationUnconfirmed,
+        NativeConversationConfirmationRequest,
         NativeConversationGetFailure,
         NativeConversationGetRequest,
         NativeModelResolveFailure,
@@ -1859,6 +1864,7 @@ def capture_production_dispatch(
         NativeSavedTurnSettlementPublicationUnconfirmed,
         NativeSavedTurnSettlementRequest,
         SavedReceiptCaller,
+        capture_launcher_conversation_confirmation_writer,
         capture_launcher_conversation_get_reader,
         capture_launcher_model_resolve_reader,
         capture_launcher_model_save_writer,
@@ -1881,6 +1887,7 @@ def capture_production_dispatch(
     native_model_save_writer = capture_launcher_model_save_writer()
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
+    native_confirmation_writer = capture_launcher_conversation_confirmation_writer()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_turn_settlement_writer = capture_launcher_saved_turn_settlement_writer()
 
@@ -3820,6 +3827,11 @@ def capture_production_dispatch(
             Callable[[HostProviderInvocationContextV4], SavedTurnSettlementPort | None]
             | None
         ) = None,
+        conversation_confirmation_port: (
+            Callable[
+                [HostProviderInvocationContextV4], SavedConversationConfirmationPort | None
+            ] | None
+        ) = None,
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -3867,6 +3879,7 @@ def capture_production_dispatch(
                 if len(provider_bindings) == 1 and provider_bindings[0].function.function_id
                 == "rumi_turn_runtime_pack.turn-runtime.saved" else None),
             borrow_saved_turn_settlement=saved_turn_settlement_port,
+            borrow_saved_conversation_confirmation=conversation_confirmation_port,
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -4220,7 +4233,19 @@ def capture_production_dispatch(
     saved_turn_routes: dict[
         str, tuple[SavedReceiptCaller, _CapturedPlanEdge]
     ] = {}
-    if native_saved_receipt_reader is not None or native_saved_turn_settlement_writer is not None:
+    confirmation_routes: dict[
+        str, tuple[SavedReceiptCaller, _CapturedPlanEdge, _CapturedPlanEdge]
+    ] = {}
+    completion_function = "rumi_conversation_store_pack.conversation-store.completion"
+    completion_operation = (
+        "tobkiri.action.conversation.completion.v1",
+        "rumi_conversation_store_pack.conversation-completion",
+    )
+    if (
+        native_saved_receipt_reader is not None
+        or native_saved_turn_settlement_writer is not None
+        or native_confirmation_writer is not None
+    ):
         turn_pack = "rumi_turn_runtime_pack"
         receipt_callers: tuple[tuple[SavedReceiptCaller, str], ...] = (
             ("saved-turn", "saved"), ("saved-reconcile", "reconcile"),
@@ -4244,6 +4269,32 @@ def capture_production_dispatch(
             parent_edge, = parents
             if native_saved_turn_settlement_writer is not None:
                 saved_turn_routes[parent_edge.target.principal_id] = (caller, parent_edge)
+            if native_confirmation_writer is not None:
+                completion_edges = tuple(
+                    edge for edge in captured_edges
+                    if edge.caller.principal_id == parent_edge.target.principal_id
+                    and edge.binding_key[1:] == completion_operation
+                    and edge.resolved_binding.artifact.pack_id == conversation_pack
+                    and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
+                    and is_exact_original_python_edge(edge, completion_function)
+                )
+                if len(completion_edges) == 1:
+                    completion_edge, = completion_edges
+                    resource_edges = tuple(
+                        edge for edge in captured_edges
+                        if edge.caller.principal_id == completion_edge.target.principal_id
+                        and edge.binding_key[1:] == (
+                            "tobkiri.resource.turn.v1", f"{turn_pack}.turn-resource",
+                        )
+                        and edge.resolved_binding.artifact.pack_id == turn_pack
+                        and edge.resolved_binding.operation.effect_class
+                        is EffectClass.PRIVILEGED
+                        and is_exact_original_python_edge(edge, f"{turn_pack}.turn-runtime.resource")
+                    )
+                    if len(resource_edges) == 1:
+                        confirmation_routes[parent_edge.target.principal_id] = (
+                            caller, completion_edge, parent_edge,
+                        )
             if native_saved_receipt_reader is None:
                 continue
             receipt_edges = tuple(
@@ -4264,12 +4315,16 @@ def capture_production_dispatch(
                     caller, receipt_edge, parent_edge,
                 )
 
-    turn_publications: WeakValueDictionary[int, RequestEnvelope] = WeakValueDictionary()
-    turn_publication_lock = threading.Lock()
+    saved_owner_publications: WeakValueDictionary[int, RequestEnvelope] = WeakValueDictionary()
+    saved_owner_publication_lock = threading.Lock()
 
-    def turn_publication_possible(envelope: RequestEnvelope) -> bool:
-        with turn_publication_lock:
-            return turn_publications.get(id(envelope)) is envelope
+    def saved_owner_publication_possible(envelope: RequestEnvelope) -> bool:
+        with saved_owner_publication_lock:
+            return saved_owner_publications.get(id(envelope)) is envelope
+
+    def record_saved_owner_publication(envelope: RequestEnvelope) -> None:
+        with saved_owner_publication_lock:
+            saved_owner_publications[id(envelope)] = envelope
 
     def requested_saved_turn_id(
         caller: SavedReceiptCaller, payload: Mapping[str, Any],
@@ -4326,8 +4381,7 @@ def capture_production_dispatch(
 
             def mark_publication() -> None:
                 guard()
-                with turn_publication_lock:
-                    turn_publications[id(envelope)] = envelope
+                record_saved_owner_publication(envelope)
 
             def settle(
                 turn_id: str, input_digest: str,
@@ -4338,7 +4392,7 @@ def capture_production_dispatch(
                     or (caller == "saved-reconcile" and expected_revision is None)
                 ):
                     raise AuthorityDenied("native Turn settlement identity changed")
-                if turn_publication_possible(envelope):
+                if saved_owner_publication_possible(envelope):
                     raise HostSavedTurnSettlementUnconfirmed("saved Turn write is unconfirmed")
                 guard()
                 resources = production_admission.native_resources(reservation_id)
@@ -4364,7 +4418,7 @@ def capture_production_dispatch(
                     return dict(result)
                 except Exception as error:
                     if (
-                        turn_publication_possible(envelope)
+                        saved_owner_publication_possible(envelope)
                         or isinstance(error, NativeSavedTurnSettlementPublicationUnconfirmed)
                     ):
                         raise HostSavedTurnSettlementUnconfirmed(
@@ -4389,6 +4443,135 @@ def capture_production_dispatch(
                     raise
 
             return settle
+
+        return borrow
+
+    def confirmation_lineage(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        parent: CapturedInvocationScopeV4 | None,
+    ) -> tuple[SavedReceiptCaller, _CapturedPlanEdge, RequestEnvelope] | None:
+        route = confirmation_routes.get(context.caller_principal.value)
+        if (
+            route is None
+            or parent is None
+            or parent.parent is not None
+            or not matches_captured_edge(parent.envelope, route[2])
+            or set(payload) - {"_session_id"} != {"profile_id", "operation", "turn_id"}
+            or payload.get("operation") != "confirm"
+            or payload.get("profile_id") != context.profile_id
+        ):
+            return None
+        turn_id = requested_saved_turn_id(route[0], parent.envelope.payload)
+        if turn_id is None or payload["turn_id"] != turn_id:
+            return None
+        return route[0], route[1], parent.envelope
+
+    def is_native_conversation_confirmation_route(
+        context: RequestContext, payload: Mapping[str, Any],
+    ) -> bool:
+        return native_provider_runtime is not None and confirmation_lineage(
+            context, payload, parent_invocation_scopes.lookup(context.caller_session_id),
+        ) is not None
+
+    def capture_conversation_confirmation_port(
+        writer: Callable[[NativeConversationConfirmationRequest], Mapping[str, Any]],
+    ) -> Callable[
+        [HostProviderInvocationContextV4], SavedConversationConfirmationPort | None
+    ]:
+        terminal_fields = (
+            "id", "profile_id", "conversation_id", "request_id", "status", "revision",
+            "conversation_revision", "input_digest", "result_reference",
+        )
+
+        def borrow(
+            invocation: HostProviderInvocationContextV4,
+        ) -> SavedConversationConfirmationPort | None:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native Conversation confirmation context is unavailable")
+            envelope = invocation.envelope
+            context = envelope.context
+            lineage = confirmation_lineage(context, envelope.payload, invocation.parent_invocation)
+            runtime = native_provider_runtime
+            if lineage is None or runtime is None:
+                return None
+            caller, edge, parent = lineage
+            if (
+                not matches_captured_edge(envelope, edge)
+                or envelope.lease.token == parent.lease.token
+                or envelope.deadline_monotonic > parent.deadline_monotonic
+                or envelope.resource_reservation_id == parent.resource_reservation_id
+            ):
+                raise AuthorityDenied("native Conversation confirmation lineage changed")
+
+            def guard() -> None:
+                invocation.assert_current()
+                retained = parent_invocation_scopes.lookup(context.caller_session_id)
+                if (
+                    retained is None or retained.envelope is not parent
+                    or parent_invocation_scopes.lookup(parent.context.caller_session_id) is not None
+                    or native_provider_runtime is not runtime
+                ):
+                    raise AuthorityDenied("native Conversation confirmation capture changed")
+                runtime[1]()
+                production_admission.native_resources(envelope.resource_reservation_id)
+
+            def mark_publication() -> None:
+                guard()
+                record_saved_owner_publication(envelope)
+
+            def confirm(terminal: Mapping[str, Any]) -> Mapping[str, Any] | None:
+                if terminal.get("id") != envelope.payload["turn_id"]:
+                    raise AuthorityDenied("native Conversation confirmation Turn changed")
+                if saved_owner_publication_possible(envelope):
+                    raise HostPublicationUnconfirmed("Conversation confirmation is unconfirmed")
+                guard()
+                resources = production_admission.native_resources(envelope.resource_reservation_id)
+                if (
+                    resources.memory_bytes < CONVERSATION_CONFIRMATION_MINIMUM_MEMORY
+                    or terminal.get("profile_id") != context.profile_id
+                    or terminal.get("status") != "completed"
+                    or any(key not in terminal for key in terminal_fields)
+                    or any(type(terminal[key]) is not int or not 0 <= terminal[key] < 1 << 63
+                           for key in ("revision", "conversation_revision"))
+                ):
+                    return None
+                # Use the credential-free Turn resource's exact fields required
+                # by the owner. The completion call supplies only the Turn ID.
+                proof = {key: terminal[key] for key in terminal_fields}
+                try:
+                    result = writer(NativeConversationConfirmationRequest(
+                        context=context,
+                        runtime_instance=runtime[0],
+                        deadline_monotonic=envelope.deadline_monotonic,
+                        assert_current=guard,
+                        caller=caller,
+                        terminal=proof,
+                        mark_publication_possible=mark_publication,
+                    ))
+                    guard()
+                    return result
+                except Exception as error:
+                    if (
+                        saved_owner_publication_possible(envelope)
+                        or isinstance(error, NativeConversationConfirmationPublicationUnconfirmed)
+                    ):
+                        raise HostPublicationUnconfirmed(
+                            "Conversation confirmation is unconfirmed",
+                        ) from None
+                    guard()
+                    if isinstance(error, (
+                        NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
+                    )):
+                        return None
+                    if isinstance(error, NativeConversationConfirmationFailure):
+                        if error.code == "invalid":
+                            raise ValueError("Conversation confirmation input is invalid") from None
+                        if error.code == "denied":
+                            raise PermissionError("Conversation confirmation is denied") from None
+                    raise
+
+            return confirm
 
         return borrow
 
@@ -5192,6 +5375,9 @@ def capture_production_dispatch(
     native_turn_settlement_bindings: dict[
         tuple[str, str, str], tuple[SavedReceiptCaller, _CapturedPlanEdge]
     ] = {}
+    native_conversation_confirmation_bindings: dict[
+        tuple[str, str, str], ResolvedOperationBinding
+    ] = {}
     native_model_resolve_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
@@ -5221,10 +5407,24 @@ def capture_production_dispatch(
                 native_turn_settlement_bindings[(
                     *edge.binding_key[1:], binding.principal_ref.value,
                 )] = turn_route
+        confirmation_port = None
+        if (
+            native_confirmation_writer is not None
+            and getattr(factory, "saved_conversation_confirmation_v1", False) is True
+            and len(captured_bindings) == 1
+            and captured_bindings[0].function.function_id == completion_function
+        ):
+            binding = captured_bindings[0]
+            if any(edge.resolved_binding == binding for _, edge, _ in confirmation_routes.values()):
+                confirmation_port = capture_conversation_confirmation_port(native_confirmation_writer)
+                native_conversation_confirmation_bindings[(
+                    *completion_operation, binding.principal_ref.value,
+                )] = binding
         provider_capture = host_provider_capture_context(
             captured_bindings,
             workspace_mutation_port=workspace_mutation_port,
             saved_turn_settlement_port=turn_settlement_port,
+            conversation_confirmation_port=confirmation_port,
             declared_pack_data=declared_pack_data,
             interactive_effect_port=(
                 interactive_effect_port
@@ -5407,8 +5607,14 @@ def capture_production_dispatch(
                     else None
                 ),
                 native_turn_settlement_publication_possible=(
-                    turn_publication_possible
+                    saved_owner_publication_possible
                     if any(item.key in native_turn_settlement_bindings for item in contributions)
+                    else None
+                ),
+                native_conversation_confirmation_publication_possible=(
+                    saved_owner_publication_possible
+                    if any(item.key in native_conversation_confirmation_bindings
+                           for item in contributions)
                     else None
                 ),
                 admission_bound_operations=frozenset(
@@ -5422,6 +5628,7 @@ def capture_production_dispatch(
                     or item.key in native_saved_receipt_bindings
                     or item.key in native_model_resolve_bindings
                     or item.key in native_turn_settlement_bindings
+                    or item.key in native_conversation_confirmation_bindings
                 ),
             ),
         )
@@ -5556,6 +5763,14 @@ def capture_production_dispatch(
             partial(is_native_saved_turn_settlement_route, caller=caller, edge=edge),
         )
         for caller, edge in native_turn_settlement_bindings.values()
+    )
+    native_admission_rules.extend(
+        (
+            binding,
+            CONVERSATION_CONFIRMATION_MINIMUM_MEMORY,
+            is_native_conversation_confirmation_route,
+        )
+        for binding in native_conversation_confirmation_bindings.values()
     )
     native_admission_rules.extend(
         (
@@ -6324,7 +6539,7 @@ def capture_production_dispatch(
             publish_native_provider_runtime
             if (native_execute_key is not None or native_conversation_get_bindings
                 or native_saved_receipt_bindings or native_model_resolve_bindings
-                or native_turn_settlement_bindings)
+                or native_turn_settlement_bindings or native_conversation_confirmation_bindings)
             else None
         ),
     )

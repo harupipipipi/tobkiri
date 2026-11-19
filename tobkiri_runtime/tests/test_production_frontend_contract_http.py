@@ -2982,6 +2982,240 @@ def test_native_settlement_borrows_signed_turn_http_authority(
         assert len(ai_calls) == 1
 
 
+@pytest.mark.parametrize(
+    "case", ["direct", "unavailable", "unconfirmed", "reply_lost"],
+)
+def test_native_confirmation_borrows_signed_completion_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str,
+) -> None:
+    """Confirm a durable saved Turn through its independently funded child."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import LeaseState
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.rumi_conversation_store_pack.runtime.completion_host import (
+        CONTRACT_ID,
+        OPERATION_ID,
+        TURN_CONTRACT,
+        TURN_OPERATION,
+    )
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import (
+        TARGETS,
+    )
+    from tobkiri_host.runtime import V4DispatchSession
+
+    user_data = tmp_path / "user-data"
+    turns = DurableTurnRuntime("defaults", user_data_root=user_data)
+    conversations = ConversationStore("defaults", user_data_root=user_data)
+    parents: list[RequestEnvelope] = []
+    children: list[RequestEnvelope] = []
+    reads: list[tuple[RequestEnvelope, Mapping[str, object]]] = []
+    borrows: list[ipc.NativeConversationConfirmationRequest] = []
+    permitted: list[str] = []
+    ambiguous_children: list[RequestEnvelope] = []
+    ai_calls: list[Mapping[str, object]] = []
+    confirm = ConversationStore.confirm_saved_completion
+    original_invoke = V4DispatchSession.invoke
+
+    def invoke(
+        session: V4DispatchSession, contract: str, operation: str,
+        payload: Mapping[str, object], **kwargs: object,
+    ) -> Mapping[str, object]:
+        if (contract, operation) == READINESS:
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
+        if (contract, operation) == TARGETS[2]:
+            ai_calls.append(payload)
+            return {"status": "ok", "output": "Hi", "finish_reason": "stop"}
+        return original_invoke(session, contract, operation, payload, **kwargs)
+
+    def native_confirm(
+        request: ipc.NativeConversationConfirmationRequest,
+    ) -> Mapping[str, object]:
+        request.assert_current()
+        parent, child = parents[-1], children[-1]
+        read, terminal = reads[-1]
+        assert request.caller == (
+            "saved-turn" if parent.contract_id == "tobkiri.action.turn.saved.v1"
+            else "saved-reconcile"
+        )
+        assert request.context == child.context
+        assert child.context.caller_principal == parent.target_principal
+        assert read.context.caller_principal == child.target_principal
+        assert request.deadline_monotonic == child.deadline_monotonic
+        assert child.deadline_monotonic <= parent.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert child.resource_reservation_id is not None
+        assert child.resource_reservation_id != parent.resource_reservation_id
+        assert len({envelope.lease.token for envelope in (parent, child, read)}) == 3
+        for envelope in (parent, child):
+            _, state, _, _ = authority.inspect_dispatch_authority(
+                envelope.lease.token.decode("ascii"),
+            )
+            assert state is LeaseState.DISPATCHED
+        assert terminal == turns.get("turn-1")
+        assert terminal["status"] == "completed"
+        assert dict(request.terminal) == {
+            key: terminal[key] for key in (
+                "id", "request_id", "profile_id", "status", "revision",
+                "conversation_id", "conversation_revision", "input_digest",
+                "result_reference",
+            )
+        }
+        borrows.append(request)
+        if case == "unavailable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        current = conversations.get("conversation-1")
+        assert current is not None
+        if current["lifecycle"]["state"] == "completed":
+            return confirm(conversations, request.terminal)
+        request.mark_publication_possible()
+        permitted.append(request.caller)
+        request.assert_current()
+        if case == "unconfirmed" and len(borrows) == 1:
+            raise ipc.NativeConversationConfirmationPublicationUnconfirmed(
+                "fixture lost reply after final permit",
+            )
+        result = confirm(conversations, request.terminal)
+        if case == "reply_lost" and len(borrows) == 1:
+            raise RuntimeError("fixture lost reply after publication")
+        return result
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/confirm.sock")
+    for capture in (
+        "capture_launcher_provider_prepare_planner",
+        "capture_launcher_model_save_writer",
+        "capture_launcher_model_settings_reader",
+        "capture_launcher_model_resolve_reader",
+        "capture_launcher_conversation_get_reader",
+        "capture_launcher_saved_receipt_reader",
+        "capture_launcher_saved_turn_settlement_writer",
+    ):
+        monkeypatch.setattr(ipc, capture, lambda: None)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_conversation_confirmation_writer", lambda: native_confirm,
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    ) as (server, session, authority):
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(
+            backend: object, envelope: RequestEnvelope, *args: object, **kwargs: object,
+        ) -> Mapping[str, object]:
+            target = envelope.contract_id, envelope.operation_id
+            if target in {
+                ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved"),
+                (
+                    "tobkiri.action.turn.reconcile.v1",
+                    "rumi_turn_runtime_pack.turn-reconcile",
+                ),
+            }:
+                parents.append(envelope)
+            if target == (CONTRACT_ID, OPERATION_ID):
+                children.append(envelope)
+                assert envelope.payload == {
+                    "profile_id": "defaults", "operation": "confirm", "turn_id": "turn-1",
+                }
+            try:
+                result = dispatch(backend, envelope, *args, **kwargs)
+            except AmbiguousEffectError:
+                if target == (CONTRACT_ID, OPERATION_ID):
+                    ambiguous_children.append(envelope)
+                raise
+            if (
+                target == (TURN_CONTRACT, TURN_OPERATION)
+                and children
+                and envelope.context.caller_principal == children[-1].target_principal
+            ):
+                assert envelope.payload == {
+                    "profile_id": "defaults", "operation": "get", "turn_id": "turn-1",
+                }
+                reads.append((envelope, result))
+            return result
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        conversations.create(
+            {"id": "conversation-1", "model_reference": "model-profile-1"},
+            expected_revision=0,
+        )
+        send = _contract("POST", "/api/chat/turn")
+        reconcile = _contract("POST", "/api/chat/turn/reconcile")
+        body = {"request": {
+            "turn_id": "turn-1", "conversation_id": "conversation-1",
+            "conversation_revision": 1, "content": "Hello",
+        }}
+        status, result, _ = _request(server, "POST", send, body=body)
+        assert status in {401, 403} and not parents and not borrows, result
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(route: str, payload: dict) -> dict:
+            status, result, _ = _request(
+                server, "POST", route, body=payload, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert status == 200, result
+            return result["data"]
+
+        first = post(send, body)
+        uncertain = case in {"unconfirmed", "reply_lost"}
+        assert first["status"] == (
+            "reconciliation_required" if uncertain else "completed"
+        ), first
+        assert first["turn"]["status"] == "completed"
+        assert [item.caller for item in borrows] == ["saved-turn"]
+        assert ambiguous_children == ([children[0]] if uncertain else [])
+        conversation = conversations.get("conversation-1")
+        assert conversation is not None
+        assert conversation["lifecycle"]["state"] == (
+            "running" if case == "unconfirmed" else "completed"
+        )
+        before = conversations.path.read_bytes()
+        revision = conversations.snapshot()["revision"]
+        ledger_before = turns.path.read_bytes()
+        order = ((reconcile, {"turn_id": "turn-1"}), (send, body))
+        if case == "unconfirmed":
+            order = tuple(reversed(order))
+        for index, (route, payload) in enumerate(order):
+            repeated = post(route, payload)
+            assert repeated["status"] == "existing", repeated
+            assert repeated["turn"] == first["turn"]
+            if case == "unconfirmed" and index == 0:
+                assert conversations.snapshot()["revision"] == revision + 1
+                before = conversations.path.read_bytes()
+            assert conversations.path.read_bytes() == before
+            assert turns.path.read_bytes() == ledger_before
+        assert [item.caller for item in borrows] == (
+            ["saved-turn", "saved-turn", "saved-reconcile"] if case == "unconfirmed"
+            else ["saved-turn", "saved-reconcile", "saved-turn"]
+        )
+        assert len(reads) == len(children) == len(borrows)
+        assert permitted == {
+            "direct": ["saved-turn"],
+            "unavailable": [],
+            "unconfirmed": ["saved-turn", "saved-turn"],
+            "reply_lost": ["saved-turn"],
+        }[case]
+        for request in borrows:
+            with pytest.raises(PermissionError):
+                request.assert_current()
+            with pytest.raises(PermissionError):
+                request.mark_publication_possible()
+        conversation = conversations.get("conversation-1")
+        assert conversation is not None
+        assert conversation["lifecycle"]["state"] == "completed"
+        assert [message["content"] for message in conversation["messages"]] == [
+            "Hello", "Hi",
+        ]
+        assert len(ai_calls) == 1
+
+
 def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

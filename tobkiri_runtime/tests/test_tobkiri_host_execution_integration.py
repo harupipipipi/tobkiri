@@ -548,17 +548,33 @@ def test_host_control_write_timeout_cannot_be_reported_as_failed() -> None:
 
 @pytest.mark.parametrize("marked", [False, True])
 @pytest.mark.parametrize("failure", ["publication_reply", "capture_fence"])
-def test_exact_host_model_save_requires_its_own_publication_marker(
-    marked: bool, failure: str,
+@pytest.mark.parametrize(
+    ("marker_name", "contract_id", "operation_id"),
+    [
+        (
+            "native_model_save_publication_possible",
+            "tobkiri.action.ai.model.profile.manage.v1",
+            "rumi_model_registry_pack.model-profile-manage",
+        ),
+        (
+            "native_conversation_confirmation_publication_possible",
+            "tobkiri.action.conversation.completion.v1",
+            "rumi_conversation_store_pack.conversation-completion",
+        ),
+    ],
+    ids=["model-save", "conversation-confirmation"],
+)
+def test_exact_host_write_requires_its_own_publication_marker(
+    marked: bool, failure: str, marker_name: str, contract_id: str, operation_id: str,
 ) -> None:
-    """An exact final permit distinguishes an uncertain Model Manage save."""
+    """Attribute publication uncertainty only to the request that got its permit."""
     request = RequestEnvelope(
         context=context(),
         target_principal=OpaqueAuthorityRef("model-manage-principal"),
         target_domain=OpaqueAuthorityRef("model-manage-domain"),
-        contract_id="tobkiri.action.ai.model.profile.manage.v1",
+        contract_id=contract_id,
         contract_version="1.0.0",
-        operation_id="rumi_model_registry_pack.model-profile-manage",
+        operation_id=operation_id,
         payload={"operation": "save"},
         request_digest=digest("save"),
         deadline_monotonic=100.0,
@@ -590,9 +606,7 @@ def test_exact_host_model_save_requires_its_own_publication_marker(
         plan_digest=request.context.plan_digest,
         security_epoch=request.context.security_epoch,
         invocation_context=lambda envelope: invocation,
-        native_model_save_publication_possible=lambda envelope: (
-            marked and envelope is request
-        ),
+        **{marker_name: lambda envelope: marked and envelope is request},
     )
     assert not backend.cancellation_may_leave_effect(replace(request))
     assert backend.cancellation_may_leave_effect(request) is marked

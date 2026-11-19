@@ -11,6 +11,7 @@ use std::{
 };
 
 use anyhow::{anyhow, ensure, Context, Result};
+use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 use tobkiri_core::ids::{OpName, ProfileId, ShapeRef};
 use tobkiri_core::{
@@ -28,10 +29,11 @@ use tobkiri_wasm::NativeDataIoError;
 use super::{
     caught,
     launch_metadata::{
-        reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
-        reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_saved_receipt_pack, reacquire_turn_settlement_pack, ConversationReadCaller,
-        SettlementCaller, VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
+        reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
+        reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
+        reacquire_provider_prepare_pack, reacquire_saved_receipt_pack,
+        reacquire_turn_settlement_pack, ConversationReadCaller, SettlementCaller,
+        VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -46,6 +48,8 @@ type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
 const MODEL_SAVE_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded CPython Conversation read result accepted by the Host.
 pub(crate) const CONVERSATION_READ_REPLY_LIMIT: usize = 1024 * 1024;
+/// Maximum terminal evidence and result JSON in the Conversation confirmation exchange.
+pub(crate) const CONVERSATION_CONFIRMATION_LIMIT: usize = 16 * 1024;
 /// Maximum encoded CPython Model Resolve result accepted by the Host.
 pub(crate) const MODEL_RESOLVE_REPLY_LIMIT: usize = 1024 * 1024;
 
@@ -66,6 +70,11 @@ pub(crate) enum NativeRegistryRequest {
     ConversationReceipt {
         caller: OriginalSavedReceiptRole,
         turn_id: String,
+    },
+    ConversationConfirmation {
+        caller: OriginalSavedReceiptRole,
+        conversation_id: String,
+        terminal: Vec<u8>,
     },
     ModelResolve {
         role: OriginalModelResolveRole,
@@ -88,9 +97,21 @@ impl NativeRegistryRequest {
             Self::ModelSave { .. } => proof.model_save.is_some(),
             Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
             Self::ConversationReceipt { caller, .. } => proof.permits_saved_receipt(*caller),
+            Self::ConversationConfirmation { caller, .. } => {
+                proof.permits_conversation_confirmation(*caller)
+            }
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
         }
+    }
+
+    pub(crate) fn requires_publication_permit(&self) -> bool {
+        matches!(
+            self,
+            Self::ModelSave { .. }
+                | Self::ConversationConfirmation { .. }
+                | Self::TurnSettlement { .. }
+        )
     }
 
     fn input_capacity(&self) -> Result<usize> {
@@ -98,6 +119,21 @@ impl NativeRegistryRequest {
             Self::Provider { request, apply } => (request, apply.as_ref()),
             Self::ModelList => return Ok(0),
             Self::ModelSave { request, provider } => (request, Some(provider)),
+            Self::ConversationConfirmation {
+                conversation_id,
+                terminal,
+                ..
+            } => {
+                ensure!(
+                    (1..=CONVERSATION_CONFIRMATION_LIMIT).contains(&terminal.len()),
+                    "native Conversation confirmation terminal exceeds its input envelope"
+                );
+                return terminal
+                    .capacity()
+                    .checked_add(conversation_id.capacity())
+                    .filter(|capacity| *capacity <= MAX_BYTES)
+                    .context("native Conversation confirmation input capacity overflow");
+            }
             Self::TurnSettlement {
                 turn_id,
                 input_digest,
@@ -170,6 +206,18 @@ impl std::fmt::Display for ConversationRegistryRequiresLegacyRead {
 }
 
 impl std::error::Error for ConversationRegistryRequiresLegacyRead {}
+
+/// Conversation completion exceeded the native compatibility envelope before publication.
+#[derive(Debug)]
+pub(crate) struct ConversationConfirmationRequiresLegacyRead;
+
+impl std::fmt::Display for ConversationConfirmationRequiresLegacyRead {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("Conversation confirmation requires the original JSON codec")
+    }
+}
+
+impl std::error::Error for ConversationConfirmationRequiresLegacyRead {}
 
 /// The verified Turn port requires the original JSON decoder before any write.
 #[derive(Debug)]
@@ -297,10 +345,7 @@ pub(crate) fn start_provider_prepare(
         "native Registry operation has no matching Launch proof"
     );
     ensure!(
-        matches!(
-            &operation,
-            NativeRegistryRequest::ModelSave { .. } | NativeRegistryRequest::TurnSettlement { .. }
-        ) == publish_permit.is_some(),
+        operation.requires_publication_permit() == publish_permit.is_some(),
         "native Registry publication permit differs from the operation"
     );
     let input_capacity = operation.input_capacity()?;
@@ -553,6 +598,41 @@ async fn run(
                         .await
                         .map_err(conversation_registry_error)?;
                     return decode_conversation_read_reply(output, &graph);
+                }
+                NativeRegistryRequest::ConversationConfirmation {
+                    caller,
+                    conversation_id,
+                    terminal,
+                } => {
+                    let pack = reacquire_conversation_confirmation_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        caller,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let terminal = std::str::from_utf8(&terminal)?;
+                    let mut owner = inspection
+                        .legacy_conversation_store(&config.user_data_dir, &identity.profile_id)?;
+                    owner
+                        .observe_locked(&graph, || {
+                            checkpoint()
+                                .and_then(|()| continue_current())
+                                .and_then(|()| checkpoint())
+                                .map_err(publication_checkpoint_error)
+                        })?
+                        .ok_or(NativeArtifactError::Denied)?;
+                    revalidate()?;
+                    let staged = inspection
+                        .stage_legacy_conversation_confirmation(&pack, &owner, terminal)
+                        .await
+                        .map_err(conversation_confirmation_staging_error)?;
+                    let reply =
+                        decode_conversation_confirmation_reply(staged, &conversation_id, &graph)?;
+                    *registry
+                        .lock()
+                        .map_err(|_| anyhow!("Registry lock unavailable"))? = Some(owner);
+                    return Ok(reply);
                 }
                 NativeRegistryRequest::ModelResolve { role, identifier } => {
                     let pack = reacquire_model_resolve_pack(
@@ -849,6 +929,70 @@ fn model_save_staging_error(error: NativeArtifactError) -> anyhow::Error {
     }
 }
 
+fn conversation_confirmation_staging_error(error: NativeArtifactError) -> anyhow::Error {
+    match &error {
+        NativeArtifactError::TooLarge => ConversationConfirmationRequiresLegacyRead.into(),
+        NativeArtifactError::ConversationRegistryRejected(error)
+            if matches!(error.code(), "unavailable" | "limit-exceeded") =>
+        {
+            ConversationConfirmationRequiresLegacyRead.into()
+        }
+        _ => error.into(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationConfirmationReply<'a> {
+    confirmed: bool,
+    #[serde(borrow)]
+    conversation_id: std::borrow::Cow<'a, str>,
+    conversation_revision: u64,
+    #[serde(rename = "store_revision")]
+    _store_revision: u64,
+}
+
+fn decode_conversation_confirmation_reply(
+    staged: CoreValue,
+    conversation_id: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<PreparedReply> {
+    let owner_result = staged
+        .get_key("owner_result")
+        .context("native Conversation confirmation omitted its owner result")?;
+    let owner_result = owner_result
+        .as_str()
+        .context("native Conversation confirmation returned a non-string owner result")?;
+    if owner_result.len() > CONVERSATION_CONFIRMATION_LIMIT {
+        return Err(ConversationConfirmationRequiresLegacyRead.into());
+    }
+    let result: ConversationConfirmationReply<'_> = serde_json::from_str(owner_result)
+        .context("native Conversation confirmation returned an invalid owner result")?;
+    ensure!(
+        result.conversation_id == conversation_id && result.conversation_revision > 0,
+        "native Conversation confirmation returned a different owner result"
+    );
+    let next = staged
+        .get_key("next_document")
+        .context("native Conversation confirmation omitted its replacement decision")?;
+    let document = match next.inspect() {
+        CoreRef::Null => None,
+        CoreRef::Str(raw) if result.confirmed && raw.starts_with('{') && raw.ends_with('}') => {
+            Some(CoreBuffer::copy_from(raw.as_bytes(), budget)?)
+        }
+        _ => {
+            return Err(anyhow!(
+                "native Conversation confirmation returned an invalid document"
+            ))
+        }
+    };
+    Ok(PreparedReply {
+        // Preserve the original owner's exact text, including field order and whitespace.
+        wire: CoreBuffer::copy_from(owner_result.as_bytes(), budget)?,
+        document,
+    })
+}
+
 fn decode_model_save_reply(
     staged: CoreValue,
     budget: &Arc<dyn AllocationBudget>,
@@ -1053,6 +1197,86 @@ mod tests {
         }
 
         fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn confirmation_request_only_accepts_its_role_proof_and_accounts_for_terminal() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let make_request = |caller, size| NativeRegistryRequest::ConversationConfirmation {
+            caller,
+            conversation_id: "conversation".into(),
+            terminal: vec![b' '; size],
+        };
+        for granted in [SavedTurn, SavedReconcile] {
+            let confirmation = VerifiedRegistryLaunch::test_conversation_confirmation_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            let receipt = VerifiedRegistryLaunch::test_saved_receipt_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            for caller in [SavedTurn, SavedReconcile] {
+                let request = make_request(caller, CONVERSATION_CONFIRMATION_LIMIT);
+                assert_eq!(request.has_launch_proof(&confirmation), caller == granted);
+                assert!(!request.has_launch_proof(&receipt));
+                assert!(request.requires_publication_permit());
+                assert_eq!(
+                    request.input_capacity().unwrap(),
+                    CONVERSATION_CONFIRMATION_LIMIT + "conversation".len(),
+                );
+            }
+        }
+        assert!(make_request(SavedTurn, 0).input_capacity().is_err());
+        assert!(make_request(SavedTurn, CONVERSATION_CONFIRMATION_LIMIT + 1)
+            .input_capacity()
+            .is_err());
+    }
+
+    #[test]
+    fn confirmation_preserves_the_four_owner_fields_and_distinguishes_no_op() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let owner = r#"{"store_revision":9007199254740993, "confirmed":true,"conversation_id":"conv","conversation_revision":4}"#;
+        let replacement = r#"{"conversations": {}, "revision": 9007199254740993}"#;
+        let decode = |owner: &str, next_document: Option<&str>| {
+            let staged = serde_json::json!({"owner_result": owner, "next_document": next_document});
+            let staged =
+                CoreValue::parse_guest(&serde_json::to_vec(&staged).unwrap(), &budget).unwrap();
+            decode_conversation_confirmation_reply(staged, "conv", &budget)
+        };
+        let promoted = decode(owner, Some(replacement)).unwrap();
+        assert_eq!(promoted.wire.as_bytes(), owner.as_bytes());
+        assert_eq!(
+            promoted.document.unwrap().as_bytes(),
+            replacement.as_bytes()
+        );
+        let replay = decode(owner, None).unwrap();
+        assert_eq!(replay.wire.as_bytes(), owner.as_bytes());
+        assert!(replay.document.is_none());
+
+        let declined = owner.replace(":true", ":false");
+        let no_op = decode(&declined, None).unwrap();
+        assert_eq!(no_op.wire.as_bytes(), declined.as_bytes());
+        assert!(no_op.document.is_none());
+        assert!(decode(&declined, Some(replacement)).is_err());
+        assert!(decode(owner, Some("[]")).is_err());
+        assert!(decode(&owner.replace("\"conv\"", "\"another\""), Some(replacement)).is_err());
+        assert!(decode(&format!(r#"{{"extra":null,{}"#, &owner[1..]), None).is_err());
+        let oversized = format!("{}{}", " ".repeat(CONVERSATION_CONFIRMATION_LIMIT), owner);
+        let Err(error) = decode(&oversized, None) else {
+            panic!("accepted an oversized owner result");
+        };
+        assert!(error.is::<ConversationConfirmationRequiresLegacyRead>());
     }
 
     #[test]

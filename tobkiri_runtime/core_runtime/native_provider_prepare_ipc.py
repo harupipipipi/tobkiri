@@ -34,6 +34,8 @@ _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
 _TURN_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}")
 _TURN_INPUT_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _TURN_REFERENCE_LIMIT = 2 * 1024
+_SAVED_TURN_REQUEST_ID = re.compile(r"saved-turn\.[0-9a-f]{64}")
+_SAVED_MESSAGE_ID = re.compile(r"message:[0-9a-f]{64}")
 _SOL_LOCAL = 0
 _LOCAL_PEERPID = 2
 _SOCKET_PATH_MAX = 103  # Darwin sockaddr_un.sun_path includes the terminating NUL.
@@ -47,6 +49,7 @@ _OWNER_RESULT_LIMIT = 1024 * 1024
 # The Host borrows the same bridge allowance as the Registry owner routes.
 # The managed Launcher's Wasm instance has its own physical memory cap.
 CONVERSATION_GET_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+CONVERSATION_CONFIRMATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 MODEL_RESOLVE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_RECEIPT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
@@ -57,11 +60,13 @@ _MODEL_SAVE_MAX_NODES = 100_000
 _OWNER_MAX_INTEGER_DIGITS = 4300
 _FAILURES = frozenset({
     b"denied", b"approval-required", b"cancelled", b"not-found", b"invalid",
-    b"limit-exceeded", b"conflict", b"unavailable", b"internal", b"legacy-read-required",
+    b"limit-exceeded", b"conflict", b"unavailable", b"internal",
 })
+_LEGACY_READ_FAILURE = b"legacy-read-required"
+_CONFIRMATION_LEGACY_READ_FAILURE = b"requires-legacy-read"
+_PUBLICATION_UNCONFIRMED = b"publication-unconfirmed"
 _INBOUND_LIMITS = {
     _CHECK: 0,
-    _FAILURE: max(map(len, _FAILURES)),
     _INAPPLICABLE: 0,
 }
 _POLL_SECONDS = 0.05
@@ -120,6 +125,18 @@ class NativeSavedTurnSettlementFailure(RuntimeError):
 
 class NativeSavedTurnSettlementPublicationUnconfirmed(RuntimeError):
     """A permitted settlement has no confirmed Turn owner result."""
+
+
+class NativeConversationConfirmationFailure(RuntimeError):
+    """The Launcher reported a Conversation failure before publication permission."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native Conversation confirmation failed ({code})")
+        self.code = code
+
+
+class NativeConversationConfirmationPublicationUnconfirmed(RuntimeError):
+    """A permitted confirmation has no confirmed Conversation owner result."""
 
 
 class _ProtocolError(RuntimeError):
@@ -195,6 +212,19 @@ class NativeSavedTurnSettlementRequest:
     mark_publication_possible: Callable[[], None]
 
 
+@dataclass(frozen=True)
+class NativeConversationConfirmationRequest:
+    """Borrow the completion invocation and its verified durable Turn projection."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    caller: SavedReceiptCaller
+    terminal: Mapping[str, Any]
+    mark_publication_possible: Callable[[], None]
+
+
 ModelResolveRole = Literal["quote-generate", "quote-stream", "generate", "stream"]
 
 
@@ -217,6 +247,7 @@ _NativeBorrow = (
     | NativeConversationGetRequest
     | NativeSavedReceiptRequest
     | NativeSavedTurnSettlementRequest
+    | NativeConversationConfirmationRequest
     | NativeModelResolveRequest
 )
 
@@ -337,6 +368,16 @@ def capture_launcher_saved_turn_settlement_writer() -> (
     return partial(_invoke, launcher, operation="turn_settlement")
 
 
+def capture_launcher_conversation_confirmation_writer() -> (
+    Callable[[NativeConversationConfirmationRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's fixed endpoint for Conversation confirmation."""
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="conversation_confirmation")
+
+
 def capture_launcher_model_resolve_reader() -> (
     Callable[[NativeModelResolveRequest], Mapping[str, Any]] | None
 ):
@@ -423,6 +464,8 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
         }
     elif isinstance(borrow, NativeSavedTurnSettlementRequest):
         frame["turn_settlement"] = _turn_settlement_payload(borrow)
+    elif isinstance(borrow, NativeConversationConfirmationRequest):
+        frame["conversation_confirmation"] = _conversation_confirmation_payload(borrow)
     elif isinstance(borrow, NativeModelResolveRequest):
         if (
             type(borrow.role) is not str
@@ -491,6 +534,59 @@ def _turn_settlement_payload(borrow: NativeSavedTurnSettlementRequest) -> dict[s
         "expected_revision": revision,
         "result_reference": reference,
     }
+
+
+def _matches(pattern: re.Pattern[str], value: object) -> bool:
+    return type(value) is str and pattern.fullmatch(value) is not None
+
+
+def _bounded_revision(value: object, minimum: int) -> bool:
+    return type(value) is int and minimum <= value <= _U64_MAX
+
+
+def _conversation_confirmation_payload(
+    borrow: NativeConversationConfirmationRequest,
+) -> dict[str, Any]:
+    invalid = "native Conversation confirmation inputs are invalid"
+    if (
+        type(borrow.caller) is not str
+        or borrow.caller not in ("saved-turn", "saved-reconcile")
+        or not isinstance(borrow.terminal, Mapping)
+    ):
+        raise _ProtocolError(invalid)
+    terminal = dict(borrow.terminal)
+    if (
+        set(terminal) != {
+            "id", "profile_id", "conversation_id", "request_id", "status", "revision",
+            "conversation_revision", "input_digest", "result_reference",
+        }
+        or not _matches(_TURN_IDENTIFIER, terminal["id"])
+        or terminal["profile_id"] != borrow.context.profile_id
+        or not _matches(_TURN_IDENTIFIER, terminal["conversation_id"])
+        or not _matches(_SAVED_TURN_REQUEST_ID, terminal["request_id"])
+        or terminal["status"] != "completed"
+        or not _bounded_revision(terminal["revision"], 3)
+        or not _bounded_revision(terminal["conversation_revision"], 1)
+        or not _matches(_TURN_INPUT_DIGEST, terminal["input_digest"])
+        or not isinstance(terminal["result_reference"], Mapping)
+    ):
+        raise _ProtocolError(invalid)
+    reference = dict(terminal["result_reference"])
+    if (
+        set(reference) != {
+            "conversation_id", "conversation_revision", "user_message_id",
+            "assistant_message_id", "outcome_digest",
+        }
+        or reference["conversation_id"] != terminal["conversation_id"]
+        or not _bounded_revision(reference["conversation_revision"], 1)
+        or reference["conversation_revision"] != terminal["conversation_revision"] + 2
+        or not _matches(_SAVED_MESSAGE_ID, reference["user_message_id"])
+        or not _matches(_SAVED_MESSAGE_ID, reference["assistant_message_id"])
+        or not _matches(_TURN_INPUT_DIGEST, reference["outcome_digest"])
+    ):
+        raise _ProtocolError(invalid)
+    terminal["result_reference"] = reference
+    return {"caller": borrow.caller, "terminal": terminal}
 
 
 def _decode_plan(payload: bytes, limit: int) -> dict[str, Any]:
@@ -580,6 +676,29 @@ def _decode_turn_settlement(
     return result
 
 
+def _decode_conversation_confirmation(
+    payload: bytes,
+    borrow: NativeConversationConfirmationRequest,
+    *,
+    publication_possible: bool,
+) -> dict[str, Any]:
+    invalid = "native Conversation confirmation owner result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or set(result) != {
+            "confirmed", "conversation_id", "conversation_revision", "store_revision",
+        }
+        or result["conversation_id"] != borrow.terminal["conversation_id"]
+        or type(result["confirmed"]) is not bool
+        or (publication_possible and not result["confirmed"])
+        or not _bounded_revision(result["conversation_revision"], 1)
+        or not _bounded_revision(result["store_revision"], 0)
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
 def _decode_model_resolve(payload: bytes, identifier: str) -> dict[str, Any]:
     invalid = "native Model Resolve owner result is invalid"
     result = _decode_owner_result(payload, invalid)
@@ -641,10 +760,20 @@ class _Exchange:
         plan_limit: int,
         *,
         permits_publication: bool,
+        conversation_confirmation: bool,
     ) -> None:
         self.connection = connection
         self.plan_limit = plan_limit
         self.permits_publication = permits_publication
+        self.legacy_failure = (
+            _CONFIRMATION_LEGACY_READ_FAILURE
+            if conversation_confirmation
+            else _LEGACY_READ_FAILURE
+        )
+        self.failure_codes = _FAILURES | {self.legacy_failure}
+        if conversation_confirmation:
+            self.failure_codes |= {_PUBLICATION_UNCONFIRMED}
+        self.failure_limit = max(map(len, self.failure_codes))
         self.received = bytearray()
         self.partial_write = False
         self.started = False
@@ -681,7 +810,9 @@ class _Exchange:
         self._receive_until(_FRAME.size, wait_seconds)
         tag, size = _FRAME.unpack_from(self.received)
         limit = self.plan_limit if tag == _PLAN else _INBOUND_LIMITS.get(tag)
-        if tag == _PUBLISH_CHECK and self.permits_publication:
+        if tag == _FAILURE:
+            limit = self.failure_limit
+        elif tag == _PUBLISH_CHECK and self.permits_publication:
             limit = 0
         if limit is None or size > limit:
             raise _ProtocolError("native Provider preparation frame is invalid")
@@ -712,7 +843,7 @@ class _Exchange:
         try:
             while True:
                 tag, payload = self.receive(wait_seconds)
-                if tag == _FAILURE and payload in _FAILURES:
+                if tag == _FAILURE and payload in self.failure_codes:
                     return
                 if tag != _CHECK and not (
                     tag == _PUBLISH_CHECK and self.permits_publication
@@ -734,10 +865,10 @@ class _Exchange:
         conversation_get = isinstance(borrow, NativeConversationGetRequest)
         while True:
             tag, payload = self.receive(wait_seconds)
-            if tag == _FAILURE and payload in _FAILURES:
+            if tag == _FAILURE and payload in self.failure_codes:
                 self.terminal = True
                 if (
-                    payload == b"legacy-read-required"
+                    payload == self.legacy_failure
                     and entered_live_phase
                     and not self.publication_possible
                 ):
@@ -745,13 +876,21 @@ class _Exchange:
                     raise NativeProviderRegistryRequiresLegacyRead(
                         "owner requires a legacy read outside the native envelope",
                     )
-                if payload != b"legacy-read-required":
+                if payload != self.legacy_failure:
                     if isinstance(borrow, NativeModelSaveRequest):
                         wait_seconds()
                         raise NativeModelSaveFailure(payload.decode("ascii"))
                     if isinstance(borrow, NativeSavedTurnSettlementRequest):
                         wait_seconds()
                         raise NativeSavedTurnSettlementFailure(payload.decode("ascii"))
+                    if (
+                        isinstance(borrow, NativeConversationConfirmationRequest)
+                        and payload != _PUBLICATION_UNCONFIRMED
+                    ):
+                        wait_seconds()
+                        raise NativeConversationConfirmationFailure(
+                            payload.decode("ascii"),
+                        )
                 if (
                     entered_live_phase
                     and payload in (b"not-found", b"invalid", b"denied")
@@ -775,7 +914,10 @@ class _Exchange:
             elif (
                 tag == _PUBLISH_CHECK
                 and entered_live_phase
-                and isinstance(borrow, (NativeModelSaveRequest, NativeSavedTurnSettlementRequest))
+                and isinstance(borrow, (
+                    NativeModelSaveRequest, NativeSavedTurnSettlementRequest,
+                    NativeConversationConfirmationRequest,
+                ))
                 and not self.publication_possible
             ):
                 # The marker can record uncertainty even if its callback raises.
@@ -790,6 +932,10 @@ class _Exchange:
                     plan = _decode_saved_receipt(payload)
                 elif isinstance(borrow, NativeSavedTurnSettlementRequest):
                     plan = _decode_turn_settlement(payload, borrow)
+                elif isinstance(borrow, NativeConversationConfirmationRequest):
+                    plan = _decode_conversation_confirmation(
+                        payload, borrow, publication_possible=self.publication_possible,
+                    )
                 elif isinstance(borrow, NativeModelResolveRequest):
                     plan = _decode_model_resolve(payload, borrow.identifier)
                 elif isinstance(borrow, NativeModelSaveRequest):
@@ -813,6 +959,7 @@ def _invoke(
     operation: Literal[
         "provider_prepare", "model_list", "model_save", "conversation_get",
         "conversation_receipt", "model_resolve", "turn_settlement",
+        "conversation_confirmation",
     ],
 ) -> Mapping[str, Any]:
     model_settings = isinstance(borrow, NativeModelSettingsRequest)
@@ -820,6 +967,7 @@ def _invoke(
     conversation_get = isinstance(borrow, NativeConversationGetRequest)
     saved_receipt = isinstance(borrow, NativeSavedReceiptRequest)
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
+    conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
     if (
         model_settings != (operation == "model_list")
@@ -827,6 +975,7 @@ def _invoke(
         or conversation_get != (operation == "conversation_get")
         or saved_receipt != (operation == "conversation_receipt")
         or turn_settlement != (operation == "turn_settlement")
+        or conversation_confirmation != (operation == "conversation_confirmation")
         or model_resolve != (operation == "model_resolve")
     ):
         raise _ProtocolError("native Registry request role is invalid")
@@ -862,7 +1011,10 @@ def _invoke(
             else _JSON_LIMIT
         )
         exchange = _Exchange(
-            connection, plan_limit, permits_publication=model_save or turn_settlement,
+            connection,
+            plan_limit,
+            permits_publication=(model_save or turn_settlement or conversation_confirmation),
+            conversation_confirmation=conversation_confirmation,
         )
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds)
@@ -874,6 +1026,10 @@ def _invoke(
                     if not exchange.publication_possible:
                         raise cleanup_error from None
             if exchange.publication_possible:
+                if conversation_confirmation:
+                    raise NativeConversationConfirmationPublicationUnconfirmed(
+                        "native Conversation confirmation publication could not be confirmed",
+                    ) from None
                 if turn_settlement:
                     raise NativeSavedTurnSettlementPublicationUnconfirmed(
                         "native saved-turn settlement publication could not be confirmed",

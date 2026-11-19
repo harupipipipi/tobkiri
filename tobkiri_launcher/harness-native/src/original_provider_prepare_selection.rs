@@ -101,6 +101,14 @@ static CONVERSATION_READ: Route = Route {
     variant: "rumi_conversation_store_pack.conversation-store.resource.python",
 };
 
+static CONVERSATION_CONFIRMATION: Route = Route {
+    pack: "rumi_conversation_store_pack",
+    function: "rumi_conversation_store_pack.conversation-store.completion",
+    contract: "tobkiri.action.conversation.completion.v1",
+    operation: "rumi_conversation_store_pack.conversation-completion",
+    variant: "rumi_conversation_store_pack.conversation-store.completion.python",
+};
+
 const SAVED_TURN_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.saved";
 const SAVED_RECONCILE_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.reconcile";
 const TURN_RUNTIME_PACK: &str = "rumi_turn_runtime_pack";
@@ -120,6 +128,14 @@ static SAVED_RECONCILE: Route = Route {
     contract: "tobkiri.action.turn.reconcile.v1",
     operation: "rumi_turn_runtime_pack.turn-reconcile",
     variant: "rumi_turn_runtime_pack.turn-runtime.reconcile.python",
+};
+
+static TURN_GET: Route = Route {
+    pack: TURN_RUNTIME_PACK,
+    function: "rumi_turn_runtime_pack.turn-runtime.resource",
+    contract: "tobkiri.resource.turn.v1",
+    operation: "rumi_turn_runtime_pack.turn-resource",
+    variant: "rumi_turn_runtime_pack.turn-runtime.resource.python",
 };
 
 const SAVED_ORCHESTRATION_CALLER: &str = "tobkiri_conversation_orchestration_pack.saved";
@@ -371,7 +387,7 @@ impl<'a> OriginalConversationReadSelection<'a> {
     }
 }
 
-/// Turn Runtime caller of the private Conversation saved receipt read.
+/// Turn Runtime caller of the private Conversation receipt and confirmation ports.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalSavedReceiptRole {
     /// The original Saved Turn function.
@@ -381,7 +397,7 @@ pub enum OriginalSavedReceiptRole {
 }
 
 impl OriginalSavedReceiptRole {
-    /// The roles that may use the saved receipt read.
+    /// The roles that may use these Conversation owner ports.
     pub const ALL: [Self; 2] = [Self::SavedTurn, Self::SavedReconcile];
 
     /// The function identity required on the original Profile grant.
@@ -424,6 +440,46 @@ impl<'a> OriginalSavedReceiptSelection<'a> {
     /// The grant from this exact Turn Runtime caller to the Conversation owner.
     pub fn pin(&self, role: OriginalSavedReceiptRole) -> Option<&OriginalRoutePin> {
         self.pins[role.index()].as_ref()
+    }
+}
+
+/// The signed Shell, Turn Runtime, and Conversation owner chain for confirmation.
+pub struct OriginalConversationConfirmationChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 3],
+}
+
+impl<'a> OriginalConversationConfirmationChoice<'a> {
+    /// Select the role's original Shell grant, completion grant, and Turn resource grant.
+    /// Verify the selected pins against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        role: OriginalSavedReceiptRole,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_conversation_confirmation_records(active.records(), budget, role)?.map(|pins| {
+                Self {
+                    _active: active,
+                    pins,
+                }
+            }),
+        )
+    }
+
+    /// The original Shell-to-Turn grant for this role.
+    pub fn turn_caller(&self) -> &OriginalRoutePin {
+        &self.pins[0]
+    }
+
+    /// The Turn-to-Conversation confirmation grant.
+    pub fn completion(&self) -> &OriginalRoutePin {
+        &self.pins[1]
+    }
+
+    /// The Conversation owner's nested Turn resource grant used for GET.
+    pub fn turn_get(&self) -> &OriginalRoutePin {
+        &self.pins[2]
     }
 }
 
@@ -644,6 +700,34 @@ fn select_saved_receipt_records(
         pins[role.index()] = records.select_route(role.caller_function_id(), &CONVERSATION_READ)?;
     }
     Ok(pins)
+}
+
+fn select_conversation_confirmation_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalSavedReceiptRole,
+) -> Result<Option<[OriginalRoutePin; 3]>> {
+    let turn = match role {
+        OriginalSavedReceiptRole::SavedTurn => &SAVED_TURN,
+        OriginalSavedReceiptRole::SavedReconcile => &SAVED_RECONCILE,
+    };
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
+        return Ok(None);
+    }
+    let Some(turn_caller) = records.select_shell_route(turn)? else {
+        return Ok(None);
+    };
+    let Some(completion) =
+        records.select_route(turn_caller.function_id(), &CONVERSATION_CONFIRMATION)?
+    else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(completion.function_id(), &TURN_GET)?
+        .map(|turn_get| [turn_caller, completion, turn_get]))
 }
 
 fn select_saved_turn_settlement_records(
@@ -1161,6 +1245,27 @@ mod tests {
                 "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
                 "sha256:ec01327293949904e663230af519789526a68e3acafcef188a7c01a7d70bfc2c",
             ),
+            (
+                &CONVERSATION_CONFIRMATION,
+                SAVED_TURN_CALLER,
+                "authority-ref:bb6b90a4e783214c6ba9541b250150e793242d860ba60a0e36b530dee2b7a076",
+                "sha256:577b2279c630300e752f95ce310c299305d73ffc80ca92c21fbc7b6a32a43086",
+                "sha256:96f6283a9ab03e11ede03f0866094bca5c053504c679cf39c4878f3e509e7618",
+            ),
+            (
+                &CONVERSATION_CONFIRMATION,
+                SAVED_RECONCILE_CALLER,
+                "authority-ref:04ae59d737bb5eda074170713a1bca1c3d75ec64e0c58873d64685994a7eefab",
+                "sha256:577b2279c630300e752f95ce310c299305d73ffc80ca92c21fbc7b6a32a43086",
+                "sha256:96f6283a9ab03e11ede03f0866094bca5c053504c679cf39c4878f3e509e7618",
+            ),
+            (
+                &TURN_GET,
+                CONVERSATION_CONFIRMATION.function,
+                "authority-ref:7676c7efcc2b7b924b2eb95cf490b39d8f375adb1fbfd2b84e2c4d8b8f1fdfc5",
+                "sha256:acf98c5bf82405666c710bdd2a4b6199d108ffdc70deaed0157c1b0f6e9f450a",
+                "sha256:f4c5dd96f70e7e108a5b46b9adbf244990326628e62592b618ba77b2fb92de3d",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -1286,6 +1391,15 @@ mod tests {
         select_saved_receipt_records((&profile, &lock, &plan), &budget)
     }
 
+    fn select_confirmation(
+        records: &Value,
+        role: OriginalSavedReceiptRole,
+    ) -> Result<Option<[OriginalRoutePin; 3]>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_conversation_confirmation_records((&profile, &lock, &plan), &budget, role)
+    }
+
     const MODEL_MANAGE_ROW: usize = 3;
     const MODEL_PROVIDER_READ_ROW: usize = 4;
     const CONVERSATION_SHELL_ROW: usize = 6;
@@ -1295,6 +1409,9 @@ mod tests {
     const CONVERSATION_SAVED_RECONCILE_ROW: usize = 13;
     const SAVED_TURN_SETTLEMENT_ROW: usize = 14;
     const SAVED_RECONCILE_SETTLEMENT_ROW: usize = 15;
+    const SAVED_TURN_CONFIRMATION_ROW: usize = 16;
+    const SAVED_RECONCILE_CONFIRMATION_ROW: usize = 17;
+    const CONFIRMATION_TURN_GET_ROW: usize = 18;
 
     fn select_saved_turn_settlement(
         records: &Value,
@@ -1457,6 +1574,94 @@ mod tests {
             select_saved_receipt(&fixture),
             Err(Inconsistent(_))
         ));
+    }
+
+    #[test]
+    fn conversation_confirmation_requires_all_three_exact_signed_grants() {
+        use OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
+        for role in OriginalSavedReceiptRole::ALL {
+            let [turn, completion, get] = select_confirmation(&records(), role).unwrap().unwrap();
+            assert_eq!(turn.function_id(), role.caller_function_id());
+            assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(completion.caller_function_id(), turn.function_id());
+            assert_eq!(completion.variant_id(), CONVERSATION_CONFIRMATION.variant);
+            assert_eq!(get.caller_function_id(), completion.function_id());
+            assert_eq!(get.operation_id(), TURN_GET.operation);
+        }
+        for (row, denied) in [
+            (SAVED_TURN_SETTLEMENT_ROW, [true, false]),
+            (SAVED_RECONCILE_SETTLEMENT_ROW, [false, true]),
+            (SAVED_TURN_CONFIRMATION_ROW, [true, false]),
+            (SAVED_RECONCILE_CONFIRMATION_ROW, [false, true]),
+            (CONFIRMATION_TURN_GET_ROW, [true, true]),
+        ] {
+            let mut fixture = records();
+            fixture["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(matches!(
+                select_confirmation(&fixture, if denied[0] { SavedTurn } else { SavedReconcile }),
+                Err(Inconsistent(_))
+            ));
+            fixture["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            for (role, expected) in OriginalSavedReceiptRole::ALL.into_iter().zip(denied) {
+                assert_eq!(
+                    select_confirmation(&fixture, role).unwrap().is_none(),
+                    expected
+                );
+            }
+            assert!(
+                select_saved_receipt(&fixture)
+                    .unwrap()
+                    .iter()
+                    .all(Option::is_some)
+            );
+        }
+    }
+
+    #[test]
+    fn conversation_confirmation_rejects_borrowed_interactive_or_other_variant_grants() {
+        use OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
+        let mut fixture = records();
+        fixture["plan"]["bindings"][CONFIRMATION_TURN_GET_ROW]["authority_mode"] =
+            json!("interactive_only");
+        fixture["profile"]["requested_edges"][CONFIRMATION_TURN_GET_ROW]["authority_mode"] =
+            json!("interactive_only");
+        for role in OriginalSavedReceiptRole::ALL {
+            assert!(select_confirmation(&fixture, role).unwrap().is_none());
+        }
+
+        let mut fixture = records();
+        let reference =
+            fixture["plan"]["bindings"][SAVED_TURN_CONFIRMATION_ROW]["authority_reference"].clone();
+        fixture["plan"]["bindings"][SAVED_RECONCILE_CONFIRMATION_ROW]["authority_reference"] =
+            reference.clone();
+        fixture["profile"]["requested_edges"][SAVED_RECONCILE_CONFIRMATION_ROW]["authority_reference"] =
+            reference;
+        assert!(matches!(
+            select_confirmation(&fixture, SavedReconcile),
+            Err(Inconsistent(_))
+        ));
+        assert!(select_confirmation(&fixture, SavedTurn).unwrap().is_some());
+
+        let mut fixture = records();
+        let alternate = "rumi_conversation_store_pack.conversation-store.completion.alternate";
+        fixture["plan"]["bindings"][SAVED_TURN_CONFIRMATION_ROW]["variant_id"] = json!(alternate);
+        fixture["plan"]["bindings"][SAVED_RECONCILE_CONFIRMATION_ROW]["variant_id"] =
+            json!(alternate);
+        let lock = fixture["lock"]["variant_pins"].as_array_mut().unwrap();
+        let variant = lock
+            .iter_mut()
+            .find(|pin| pin["variant_id"] == CONVERSATION_CONFIRMATION.variant)
+            .unwrap();
+        variant["variant_id"] = json!(alternate);
+        for role in OriginalSavedReceiptRole::ALL {
+            assert!(select_confirmation(&fixture, role).unwrap().is_none());
+        }
     }
 
     #[test]

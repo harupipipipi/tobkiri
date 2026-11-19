@@ -20,11 +20,12 @@ use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
-        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
-        OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
-        SettlementCaller, TurnSettlementRequiresLegacyCodec, CONVERSATION_READ_REPLY_LIMIT,
-        MODEL_RESOLVE_REPLY_LIMIT,
+        start_provider_prepare, ConversationConfirmationRequiresLegacyRead, ConversationReadCaller,
+        ConversationRegistryRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
+        NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
+        PendingProviderPrepare, ProviderPrepareDeadline, SettlementCaller,
+        TurnSettlementRequiresLegacyCodec, CONVERSATION_CONFIRMATION_LIMIT,
+        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -67,6 +68,8 @@ struct Start<'a> {
     conversation_get: Option<ConversationGet>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     conversation_receipt: Option<ConversationReceipt>,
+    #[serde(borrow, default, deserialize_with = "deserialize_present")]
+    conversation_confirmation: Option<ConversationConfirmation<'a>>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     model_resolve: Option<ModelResolve>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
@@ -81,11 +84,12 @@ impl Start<'_> {
             &self.model_save,
             &self.conversation_get,
             &self.conversation_receipt,
+            &self.conversation_confirmation,
             &self.model_resolve,
             &self.turn_settlement,
             self.apply,
         ) {
-            (Some(request), None, None, None, None, None, None, apply) => {
+            (Some(request), None, None, None, None, None, None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -95,34 +99,37 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 Ok(NativeRegistryRequest::Provider { request, apply })
             }
-            (None, Some(_), None, None, None, None, None, None) => {
+            (None, Some(_), None, None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ModelList)
             }
-            (None, None, Some(save), None, None, None, None, None) => {
+            (None, None, Some(save), None, None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ModelSave {
                     request: save.request.get().as_bytes().to_vec(),
                     provider: save.provider.get().as_bytes().to_vec(),
                 })
             }
-            (None, None, None, Some(get), None, None, None, None) => {
+            (None, None, None, Some(get), None, None, None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationGet {
                     caller: get.caller,
                     conversation_id: get.conversation_id.clone(),
                 })
             }
-            (None, None, None, None, Some(receipt), None, None, None) => {
+            (None, None, None, None, Some(receipt), None, None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationReceipt {
                     caller: receipt.caller,
                     turn_id: receipt.turn_id.clone(),
                 })
             }
-            (None, None, None, None, None, Some(resolve), None, None) => {
+            (None, None, None, None, None, Some(confirmation), None, None, None) => {
+                confirmation.operation(&self.identity.profile_id)
+            }
+            (None, None, None, None, None, None, Some(resolve), None, None) => {
                 Ok(NativeRegistryRequest::ModelResolve {
                     role: resolve.role,
                     identifier: resolve.identifier.clone(),
                 })
             }
-            (None, None, None, None, None, None, Some(settlement), None) => {
+            (None, None, None, None, None, None, None, Some(settlement), None) => {
                 ensure!(
                     !matches!(settlement.caller, SettlementCaller::SavedReconcile)
                         || settlement.expected_revision.is_some(),
@@ -173,6 +180,84 @@ struct ConversationReceipt {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ConversationConfirmation<'a> {
+    #[serde(deserialize_with = "deserialize_saved_receipt_caller")]
+    caller: OriginalSavedReceiptRole,
+    #[serde(borrow, deserialize_with = "deserialize_object")]
+    terminal: &'a RawValue,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfirmationTerminal {
+    id: String,
+    profile_id: String,
+    conversation_id: String,
+    request_id: String,
+    status: String,
+    revision: u64,
+    conversation_revision: u64,
+    input_digest: String,
+    result_reference: ConfirmationReference,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfirmationReference {
+    conversation_id: String,
+    conversation_revision: u64,
+    user_message_id: String,
+    assistant_message_id: String,
+    outcome_digest: String,
+}
+
+impl ConversationConfirmation<'_> {
+    fn operation(&self, profile_id: &str) -> Result<NativeRegistryRequest> {
+        let raw = self.terminal.get();
+        ensure!(
+            raw.len() <= CONVERSATION_CONFIRMATION_LIMIT,
+            "native Conversation confirmation terminal exceeds its envelope"
+        );
+        let terminal: ConfirmationTerminal = serde_json::from_str(raw)
+            .map_err(|_| anyhow!("invalid Conversation confirmation terminal"))?;
+        let reference = terminal.result_reference;
+        ensure!(
+            terminal.profile_id == profile_id
+                && valid_saved_identifier(&terminal.id)
+                && valid_saved_identifier(&terminal.conversation_id)
+                && reference.conversation_id == terminal.conversation_id
+                && has_hex_suffix(&terminal.request_id, "saved-turn.")
+                && terminal.status == "completed"
+                && terminal.revision >= 3
+                && terminal.conversation_revision > 0
+                && terminal.conversation_revision.checked_add(2)
+                    == Some(reference.conversation_revision)
+                && has_hex_suffix(&reference.user_message_id, "message:")
+                && has_hex_suffix(&reference.assistant_message_id, "message:")
+                && Digest::parse(&terminal.input_digest).is_ok()
+                && Digest::parse(&reference.outcome_digest).is_ok(),
+            "invalid Conversation confirmation terminal identity or evidence"
+        );
+        Ok(NativeRegistryRequest::ConversationConfirmation {
+            caller: self.caller,
+            conversation_id: terminal.conversation_id,
+            // The guest authoritatively compares the exact owner evidence.
+            terminal: raw.as_bytes().to_vec(),
+        })
+    }
+}
+
+fn has_hex_suffix(value: &str, prefix: &str) -> bool {
+    value.strip_prefix(prefix).is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ModelResolve {
     #[serde(deserialize_with = "deserialize_model_resolve_role")]
     role: OriginalModelResolveRole,
@@ -213,17 +298,20 @@ where
     D: Deserializer<'de>,
 {
     let turn_id = String::deserialize(deserializer)?;
-    let mut bytes = turn_id.bytes();
-    if turn_id.len() <= 256
-        && bytes
-            .next()
-            .is_some_and(|byte| byte.is_ascii_alphanumeric())
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
-    {
+    if valid_saved_identifier(&turn_id) {
         Ok(turn_id)
     } else {
         Err(de::Error::custom("invalid Turn settlement identifier"))
     }
+}
+
+fn valid_saved_identifier(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    value.len() <= 256
+        && bytes
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
 }
 
 fn deserialize_settlement_digest<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
@@ -470,7 +558,11 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     ensure!(start.security_epoch != 0, "invalid Provider prepare epoch");
     let deadline = host_deadline(start.deadline_ns)?;
     let operation = start.operation()?;
-    let settlement = matches!(&operation, NativeRegistryRequest::TurnSettlement { .. });
+    let needs_active_host = matches!(
+        &operation,
+        NativeRegistryRequest::TurnSettlement { .. }
+            | NativeRegistryRequest::ConversationConfirmation { .. }
+    );
     let identity = ExecutionProfileIdentity::new(
         start.identity.profile_id,
         start.identity.profile_revision,
@@ -483,8 +575,8 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         .inner()
         .clone();
     let Some(candidate) = manager.admitted_provider_prepare(&identity)? else {
-        // An absent or stale admission cannot authorize a settlement fallback.
-        let (tag, payload): (u8, &[u8]) = if settlement {
+        // An absent or stale admission cannot authorize a completion fallback.
+        let (tag, payload): (u8, &[u8]) = if needs_active_host {
             (FAILURE, b"unavailable")
         } else {
             (INAPPLICABLE, &[])
@@ -503,7 +595,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     );
     let matches_runtime = candidate.matches_runtime_instance(&start.runtime_instance);
     if candidate.verified_source().security_epoch != start.security_epoch
-        || (settlement && !matches_runtime)
+        || (needs_active_host && !matches_runtime)
     {
         return send_frame(
             &mut stream,
@@ -528,6 +620,9 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
         NativeRegistryRequest::ConversationGet { .. }
         | NativeRegistryRequest::ConversationReceipt { .. } => ReplyRole::ConversationRead,
+        NativeRegistryRequest::ConversationConfirmation { .. } => {
+            ReplyRole::ConversationConfirmation
+        }
         NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
         NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
     };
@@ -571,13 +666,17 @@ enum ReplyRole {
     ModelList,
     ModelSave,
     ConversationRead,
+    ConversationConfirmation,
     ModelResolve,
     TurnSettlement,
 }
 
 impl ReplyRole {
     fn permits_publication(self) -> bool {
-        matches!(self, Self::ModelSave | Self::TurnSettlement)
+        matches!(
+            self,
+            Self::ModelSave | Self::ConversationConfirmation | Self::TurnSettlement
+        )
     }
 
     fn result_limit(self, authority: WireAuthority) -> (usize, &'static str) {
@@ -586,6 +685,10 @@ impl ReplyRole {
             Self::ModelList => (MODEL_RESULT_LIMIT, "legacy-read-required"),
             Self::ModelSave => (MODEL_RESULT_LIMIT, "limit-exceeded"),
             Self::ConversationRead => (CONVERSATION_READ_REPLY_LIMIT, "legacy-read-required"),
+            Self::ConversationConfirmation => (
+                CONVERSATION_CONFIRMATION_LIMIT,
+                conversation_confirmation_fallback(authority),
+            ),
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnSettlement if authority == WireAuthority::PublicationPermitted => {
                 (TURN_SETTLEMENT_RESULT_LIMIT, "unavailable")
@@ -595,6 +698,25 @@ impl ReplyRole {
     }
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
+        if self == Self::ConversationConfirmation {
+            if authority == WireAuthority::PublicationPermitted {
+                return "publication-unconfirmed";
+            }
+            if error.is::<ConversationConfirmationRequiresLegacyRead>()
+                || matches!(
+                    error.downcast_ref::<NativeArtifactError>(),
+                    Some(NativeArtifactError::ConversationLimitBeforePublish)
+                )
+            {
+                return conversation_confirmation_fallback(authority);
+            }
+            return match error.downcast_ref::<NativeArtifactError>() {
+                Some(NativeArtifactError::ConversationPublicationUnconfirmed(_)) => {
+                    "publication-unconfirmed"
+                }
+                _ => failure_code(error),
+            };
+        }
         if self != Self::TurnSettlement {
             return failure_code(error);
         }
@@ -622,6 +744,14 @@ impl ReplyRole {
                 code => code,
             },
         }
+    }
+}
+
+fn conversation_confirmation_fallback(authority: WireAuthority) -> &'static str {
+    match authority {
+        WireAuthority::AwaitingLive => "unavailable",
+        WireAuthority::Live => "requires-legacy-read",
+        WireAuthority::PublicationPermitted => "publication-unconfirmed",
     }
 }
 
@@ -773,6 +903,13 @@ impl Connection {
 
     fn send_failure(&self, code: &str, deadline: Instant) -> Result<()> {
         let mut wire = self.lock_wire()?;
+        let code = if self.reply == ReplyRole::ConversationConfirmation
+            && wire.authority == WireAuthority::PublicationPermitted
+        {
+            "publication-unconfirmed"
+        } else {
+            code
+        };
         send_frame(
             &mut wire.stream,
             FAILURE,
@@ -1044,6 +1181,135 @@ mod tests {
         format!(
             r#"{{"identity":{{"profile_id":"profile","profile_revision":"revision","activation_id":"activation","plan_digest":"digest"}},"runtime_instance":"0123456789abcdef0123456789abcdef","security_epoch":1,"deadline_ns":1{operation}}}"#
         )
+    }
+
+    fn confirmation_terminal() -> serde_json::Value {
+        let oracle: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../packs/local.saved-conversation-rust/fixtures/legacy-confirmation-oracle.json"
+        ))
+        .unwrap();
+        let mut terminal = oracle["turn"].clone();
+        terminal["profile_id"] = "profile".into();
+        terminal
+    }
+
+    fn confirmation_operation(caller: &str, terminal: &str) -> String {
+        format!(r#", "conversation_confirmation":{{"caller":"{caller}","terminal":{terminal}}}"#)
+    }
+
+    #[test]
+    fn confirmation_start_preserves_the_exact_terminal_json_for_both_callers() {
+        let terminal = serde_json::to_string_pretty(&confirmation_terminal()).unwrap();
+        for (wire_role, expected) in [
+            ("saved-turn", OriginalSavedReceiptRole::SavedTurn),
+            ("saved-reconcile", OriginalSavedReceiptRole::SavedReconcile),
+        ] {
+            let operation = confirmation_operation(wire_role, &terminal);
+            let message = start_frame(&operation);
+            let start: Start<'_> = serde_json::from_str(&message).unwrap();
+            let NativeRegistryRequest::ConversationConfirmation {
+                caller,
+                conversation_id,
+                terminal: raw,
+            } = start.operation().unwrap()
+            else {
+                panic!("expected Conversation confirmation");
+            };
+            assert_eq!(caller, expected);
+            assert_eq!(conversation_id, "conversation-1");
+            assert_eq!(raw, terminal.as_bytes());
+            let mixed = start_frame(&format!("{operation}{PROVIDER_REQUEST}"));
+            assert!(serde_json::from_str::<Start<'_>>(&mixed)
+                .unwrap()
+                .operation()
+                .is_err());
+            let duplicate = start_frame(&format!("{operation}{operation}"));
+            assert!(serde_json::from_str::<Start<'_>>(&duplicate).is_err());
+        }
+    }
+
+    #[test]
+    fn confirmation_start_rejects_unbound_or_malformed_terminal_evidence() {
+        use serde_json::json;
+
+        let terminal = confirmation_terminal();
+        let check = |raw: &str| {
+            let message = start_frame(&confirmation_operation("saved-turn", raw));
+            let start: Start<'_> = serde_json::from_str(&message).unwrap();
+            assert!(start.operation().is_err(), "{raw}");
+        };
+        for (field, invalid) in [
+            ("profile_id", json!("other")),
+            ("id", json!("../turn")),
+            ("conversation_id", json!("different-conversation")),
+            ("request_id", json!("saved-turn.unknown")),
+            ("status", json!("running")),
+            ("revision", json!(2)),
+            ("conversation_revision", json!(true)),
+            ("input_digest", json!("sha256:short")),
+            ("result_reference", json!({})),
+            ("unexpected", json!(0)),
+        ] {
+            let mut tampered = terminal.clone();
+            tampered[field] = invalid;
+            check(&tampered.to_string());
+        }
+        for (field, invalid) in [
+            ("conversation_revision", json!(0)),
+            ("conversation_revision", json!(42)),
+            ("user_message_id", json!("bad")),
+            ("outcome_digest", json!("bad")),
+            ("unexpected", json!(null)),
+        ] {
+            let mut tampered = terminal.clone();
+            tampered["result_reference"][field] = invalid;
+            check(&tampered.to_string());
+        }
+        let mut missing = terminal.clone();
+        missing.as_object_mut().unwrap().remove("result_reference");
+        check(&missing.to_string());
+        let raw = terminal.to_string();
+        check(&format!(r#"{{"id":"duplicate",{}"#, &raw[1..]));
+        check(&format!(
+            "{{{}{}",
+            " ".repeat(CONVERSATION_CONFIRMATION_LIMIT),
+            &raw[1..]
+        ));
+        for operation in [
+            confirmation_operation("shell", &raw),
+            confirmation_operation("saved-turn", "null"),
+            r#", "conversation_confirmation":null"#.to_owned(),
+        ] {
+            assert!(serde_json::from_str::<Start<'_>>(&start_frame(&operation)).is_err());
+        }
+    }
+
+    #[test]
+    fn confirmation_fallback_requires_live_and_cannot_follow_publication() {
+        let role = ReplyRole::ConversationConfirmation;
+        assert!(role.permits_publication());
+        for (authority, code) in [
+            (WireAuthority::AwaitingLive, "unavailable"),
+            (WireAuthority::Live, "requires-legacy-read"),
+            (
+                WireAuthority::PublicationPermitted,
+                "publication-unconfirmed",
+            ),
+        ] {
+            for error in [
+                ConversationConfirmationRequiresLegacyRead.into(),
+                NativeArtifactError::ConversationLimitBeforePublish.into(),
+            ] {
+                assert_eq!(role.failure_code(authority, &error), code);
+            }
+            assert_eq!(role.result_limit(authority), (16 * 1024, code));
+        }
+        let denied = NativeArtifactError::Denied.into();
+        assert_eq!(role.failure_code(WireAuthority::Live, &denied), "denied");
+        assert_eq!(
+            role.failure_code(WireAuthority::PublicationPermitted, &denied),
+            "publication-unconfirmed"
+        );
     }
 
     #[test]

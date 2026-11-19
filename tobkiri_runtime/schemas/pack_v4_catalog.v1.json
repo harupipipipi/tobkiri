@@ -8200,7 +8200,7 @@
               ],
               "entrypoint_id": "conversation-completion",
               "id": "rumi_conversation_store_pack.conversation-completion",
-              "implementation_digest": "sha256:7d97cf7bed10fe7b6ff4a5e2cf6f005a0412f6b3083483388cb0c0ee76acf74c"
+              "implementation_digest": "sha256:926ee0452a33b70bc8de5897ba8ca48a1029a1b7c8bf5ce4f374caad013d852d"
             }
           ],
           "owner": "rumi_conversation_store_pack",
@@ -8737,7 +8737,7 @@
           "path": "runtime/chat_reference_host.py"
         },
         {
-          "digest": "sha256:7d97cf7bed10fe7b6ff4a5e2cf6f005a0412f6b3083483388cb0c0ee76acf74c",
+          "digest": "sha256:926ee0452a33b70bc8de5897ba8ca48a1029a1b7c8bf5ce4f374caad013d852d",
           "kind": "executable",
           "path": "runtime/completion_host.py"
         },
@@ -8791,7 +8791,7 @@
         "owner": "rumi_conversation_store_pack",
         "source_format": "rumi.pack.v3.json"
       },
-      "version": "1.0.1",
+      "version": "1.0.2",
       "workspace_boundary": "host_brokered"
     },
     {

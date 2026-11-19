@@ -186,6 +186,9 @@ class CapturedHostPackDataV4:
 SavedTurnSettlementPort = Callable[
     [str, str, Mapping[str, Any], int | None], dict[str, Any] | None
 ]
+SavedConversationConfirmationPort = Callable[
+    [Mapping[str, Any]], Mapping[str, Any] | None
+]
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,12 @@ class HostProviderCaptureContextV4:
     borrow_saved_turn_settlement: (
         Callable[[HostProviderInvocationContextV4], SavedTurnSettlementPort | None]
         | None
+    ) = None
+    # The exact signed completion owner calls this after reading the Turn.
+    borrow_saved_conversation_confirmation: (
+        Callable[
+            [HostProviderInvocationContextV4], SavedConversationConfirmationPort | None
+        ] | None
     ) = None
 
 
@@ -306,6 +315,9 @@ class ExactHostProviderBackendV4:
         native_turn_settlement_publication_possible: (
             Callable[[RequestEnvelope], bool] | None
         ) = None,
+        native_conversation_confirmation_publication_possible: (
+            Callable[[RequestEnvelope], bool] | None
+        ) = None,
     ) -> None:
         if not contributions:
             raise ValueError("Host Provider backend requires contributions")
@@ -318,6 +330,7 @@ class ExactHostProviderBackendV4:
             check for check in (
                 native_model_save_publication_possible,
                 native_turn_settlement_publication_possible,
+                native_conversation_confirmation_publication_possible,
             ) if check is not None
         )
         if not admission_bound_operations.issubset(self._contributions):

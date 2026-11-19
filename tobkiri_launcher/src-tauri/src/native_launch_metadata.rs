@@ -17,11 +17,13 @@ use tobkiri_core::{
 use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
 use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
-    OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
-    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
+    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
+    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
 };
 use tobkiri_wasm::{
+    verify_legacy_conversation_confirmation_declaration,
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
 };
@@ -104,6 +106,13 @@ impl VerifiedRegistryLaunch {
             .as_ref()
             .is_some_and(|source| source.permits_saved_receipt(role))
     }
+
+    /// Require the exact Shell, Turn, and Conversation grants for this caller.
+    pub(crate) fn permits_conversation_confirmation(&self, role: OriginalSavedReceiptRole) -> bool {
+        self.conversation
+            .as_ref()
+            .is_some_and(|source| source.permits_confirmation(role))
+    }
 }
 
 /// Signed legacy Provider route pins and the receipt identity of its Wasm Pack.
@@ -160,10 +169,14 @@ struct VerifiedConversationSource {
     saved_turn: Option<VerifiedLegacyRoutePin>,
     saved_orchestration: Option<VerifiedLegacyRoutePin>,
     saved_receipt: [Option<(OriginalSavedReceiptRole, VerifiedLegacyRoutePin)>; 2],
+    confirmation: VerifiedConversationConfirmationRoles,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
 }
+
+type VerifiedConversationConfirmationRoles =
+    [Option<(OriginalSavedReceiptRole, [VerifiedLegacyRoutePin; 3])>; 2];
 
 impl VerifiedConversationSource {
     fn permits_read(&self, caller: ConversationReadCaller) -> bool {
@@ -176,6 +189,13 @@ impl VerifiedConversationSource {
 
     fn permits_saved_receipt(&self, role: OriginalSavedReceiptRole) -> bool {
         self.saved_receipt
+            .iter()
+            .flatten()
+            .any(|(granted, _)| *granted == role)
+    }
+
+    fn permits_confirmation(&self, role: OriginalSavedReceiptRole) -> bool {
+        self.confirmation
             .iter()
             .flatten()
             .any(|(granted, _)| *granted == role)
@@ -337,12 +357,31 @@ impl VerifiedRegistryLaunch {
                 saved_turn: None,
                 saved_orchestration: None,
                 saved_receipt: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
+                confirmation: [None, None],
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
             }),
             turn_settlement: None,
         }
+    }
+
+    pub(crate) fn test_conversation_confirmation_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalSavedReceiptRole,
+    ) -> Self {
+        let mut proof = Self::test_saved_receipt_proof(identity, catalog_revision, role);
+        let source = proof.conversation.as_mut().unwrap();
+        source.saved_receipt = [None, None];
+        source.confirmation = [
+            Some((
+                role,
+                std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+            )),
+            None,
+        ];
+        proof
     }
 
     pub(crate) fn test_turn_settlement_proof(
@@ -748,9 +787,6 @@ impl LaunchActivationObserver<'_> {
                 |receipt, input| {
                     let read = conversation_read_selection.as_ref();
                     let saved_receipt = saved_receipt_selection.as_ref();
-                    if read.is_none() && saved_receipt.is_none() {
-                        return Ok(None);
-                    }
                     let pack = verify_registry_archive(inspection, receipt, input)?;
                     if read.is_some() {
                         verify_legacy_conversation_read_declaration(&pack)
@@ -759,6 +795,22 @@ impl LaunchActivationObserver<'_> {
                     if saved_receipt.is_some() {
                         verify_legacy_conversation_receipt_declaration(&pack)
                             .map_err(io::Error::other)?;
+                    }
+                    let confirmation_declared =
+                        observe_conversation_confirmation_declaration(&pack)
+                            .map_err(io::Error::other)?;
+                    drop(pack);
+                    let confirmation = if confirmation_declared {
+                        verify_conversation_confirmation_source(inspection, active, checkpoint)
+                            .map_err(io::Error::other)?
+                    } else {
+                        [None, None]
+                    };
+                    if read.is_none()
+                        && saved_receipt.is_none()
+                        && confirmation.iter().all(Option::is_none)
+                    {
+                        return Ok(None);
                     }
                     Ok(Some(VerifiedConversationSource {
                         shell: read.and_then(|selection| selection.shell()).map(Into::into),
@@ -773,6 +825,7 @@ impl LaunchActivationObserver<'_> {
                                 .and_then(|selection| selection.pin(role))
                                 .map(|pin| (role, pin.into()))
                         }),
+                        confirmation,
                         archive_sha256: receipt.archive_sha256().to_owned(),
                         archive_bytes: receipt.archive_bytes(),
                         manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -791,7 +844,7 @@ impl LaunchActivationObserver<'_> {
             settlement,
         ) = verified_registry_pack_evidence;
         let turn_settlement = settlement.flatten();
-        if !has_existing_grants && turn_settlement.is_none() {
+        if !has_existing_grants && conversation.is_none() && turn_settlement.is_none() {
             return Ok(None);
         }
         let security_epoch = active
@@ -999,6 +1052,30 @@ pub(super) fn reacquire_saved_receipt_pack(
     .context("bundled Conversation saved receipt archive verification failed")
 }
 
+/// Reacquire the Conversation Pack using the exact confirmation chain for this role.
+pub(super) fn reacquire_conversation_confirmation_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalSavedReceiptRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .conversation
+        .as_ref()
+        .filter(|source| source.permits_confirmation(role))
+        .context(
+            "admitted launch has no verified Conversation confirmation source for the caller",
+        )?;
+    reacquire_conversation_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        verify_legacy_conversation_confirmation_declaration,
+    )
+    .context("bundled Conversation confirmation archive verification failed")
+}
+
 /// Reacquire the Turn settlement Pack using the caller's signed grant and pinned archive.
 pub(crate) fn reacquire_turn_settlement_pack(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
@@ -1028,6 +1105,25 @@ pub(crate) fn reacquire_turn_settlement_pack(
     )
     .context("bundled Turn settlement archive verification failed")?
     .context("bundled Registry receipt has no Turn settlement archive")
+}
+
+fn observe_conversation_confirmation_declaration(pack: &VerifiedPack) -> Result<bool> {
+    const CONFIRMATION_SHAPE: &str = "local.saved-conversation.legacy-confirmation";
+    // Older signed Conversation archives provide only the read and receipt ports.
+    let declared = pack
+        .manifest
+        .ports
+        .provides
+        .iter()
+        .any(|port| port.shape.as_str() == CONFIRMATION_SHAPE)
+        || pack
+            .shapes
+            .iter()
+            .any(|shape| shape.reference.name.as_str() == CONFIRMATION_SHAPE);
+    if declared {
+        verify_legacy_conversation_confirmation_declaration(pack)?;
+    }
+    Ok(declared)
 }
 
 fn reacquire_conversation_archive(
@@ -1096,6 +1192,39 @@ fn require_archive_receipt(
         ));
     }
     Ok(())
+}
+
+fn verify_conversation_confirmation_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedConversationConfirmationRoles> {
+    let budget = inspection.allocation_budget()?;
+    let [saved_turn, saved_reconcile] = OriginalSavedReceiptRole::ALL;
+    let choices = [
+        OriginalConversationConfirmationChoice::select(active, budget, saved_turn)?,
+        OriginalConversationConfirmationChoice::select(active, budget, saved_reconcile)?,
+    ];
+    if choices.iter().all(Option::is_none) {
+        return Ok([None, None]);
+    }
+    let locked = inspection.with_source(|sources| {
+        sources.conversation_confirmation_bundle(choices.each_ref().map(Option::as_ref), budget)
+    })??;
+    locked.verify(checkpoint)?;
+    Ok(std::array::from_fn(|index| {
+        let role = OriginalSavedReceiptRole::ALL[index];
+        choices[index].as_ref().map(|choice| {
+            (
+                role,
+                [
+                    choice.turn_caller().into(),
+                    choice.completion().into(),
+                    choice.turn_get().into(),
+                ],
+            )
+        })
+    }))
 }
 
 fn verify_turn_settlement_source(
@@ -1425,6 +1554,125 @@ mod tests {
     }
 
     #[test]
+    fn conversation_confirmation_declaration_preserves_legacy_read_and_receipt_ports() {
+        use std::{fs, path::PathBuf};
+        use tobkiri_core::pack::{generate_manifest, verify_directory};
+
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-confirmation-declaration-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("wit/deps")).unwrap();
+        let path = root.0.canonicalize().unwrap();
+        macro_rules! copy_wit {
+            ($($filename:literal),+) => {$(
+                fs::write(
+                    path.join(concat!("wit/", $filename)),
+                    include_bytes!(concat!("../../../packs/local.saved-conversation-rust/wit/", $filename)),
+                )
+                .unwrap();
+            )+};
+        }
+        copy_wit!(
+            "pack.wit",
+            "data.shape.json",
+            "legacy-confirmation.shape.json",
+            "legacy-read.shape.json",
+            "legacy-receipt.shape.json",
+            "model.shape.json"
+        );
+        fs::write(
+            path.join("wit/deps/core.wit"),
+            include_bytes!("../../../crates/tobkiri-wit/wit/core-v1-2/core.wit"),
+        )
+        .unwrap();
+        fs::write(path.join("component.wasm"), b"fixture").unwrap();
+        let draft: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../packs/local.saved-conversation-rust/pack.draft.json"
+        ))
+        .unwrap();
+        let verify = |draft: &serde_json::Value| {
+            let manifest = generate_manifest(&path, &serde_json::to_vec(draft).unwrap()).unwrap();
+            fs::write(path.join("pack.json"), manifest).unwrap();
+            verify_directory(&path, &Default::default()).unwrap()
+        };
+        let current = verify(&draft);
+        assert!(observe_conversation_confirmation_declaration(&current).unwrap());
+
+        let confirmation = "local.saved-conversation.legacy-confirmation";
+        let mut old = draft.clone();
+        old["shapes"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|row| row["name"] != confirmation);
+        old["ports"]["provides"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|row| row["shape"] != confirmation);
+        let old = verify(&old);
+        assert!(!observe_conversation_confirmation_declaration(&old).unwrap());
+        verify_legacy_conversation_read_declaration(&old).unwrap();
+        verify_legacy_conversation_receipt_declaration(&old).unwrap();
+
+        let mut optional = draft;
+        optional["ports"]["provides"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|port| port["shape"] == confirmation)
+            .unwrap()["optional"] = serde_json::json!(true);
+        assert!(observe_conversation_confirmation_declaration(&verify(&optional)).is_err());
+    }
+
+    #[test]
+    fn conversation_confirmation_evidence_keeps_roles_read_and_receipt_independent() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let revision = "catalog:fixture";
+        for granted in OriginalSavedReceiptRole::ALL {
+            let receipt = VerifiedRegistryLaunch::test_saved_receipt_proof(
+                identity.clone(),
+                revision,
+                granted,
+            );
+            let proof = VerifiedRegistryLaunch::test_conversation_confirmation_proof(
+                identity.clone(),
+                revision,
+                granted,
+            );
+            for role in OriginalSavedReceiptRole::ALL {
+                assert!(!receipt.permits_conversation_confirmation(role));
+                assert_eq!(
+                    proof.permits_conversation_confirmation(role),
+                    role == granted
+                );
+                assert!(!proof.permits_saved_receipt(role));
+            }
+            for caller in [
+                ConversationReadCaller::Shell,
+                ConversationReadCaller::SavedTurn,
+                ConversationReadCaller::SavedOrchestration,
+            ] {
+                assert!(!proof.permits_conversation_read(caller));
+            }
+            for role in SettlementCaller::ALL {
+                assert!(!proof.permits_turn_settlement(role));
+            }
+        }
+    }
+
+    #[test]
     fn turn_settlement_evidence_requires_the_original_grant_for_each_role() {
         let identity = ExecutionProfileIdentity {
             profile_id: "defaults".into(),
@@ -1493,6 +1741,7 @@ mod tests {
                 saved_turn: None,
                 saved_orchestration: None,
                 saved_receipt: [None, None],
+                confirmation: [None, None],
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),

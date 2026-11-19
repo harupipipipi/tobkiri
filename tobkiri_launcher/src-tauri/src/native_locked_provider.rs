@@ -9,10 +9,10 @@ use tobkiri_core::{
     Digest,
 };
 use tobkiri_harness_native::{
-    OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
-    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
-    OriginalSavedTurnSettlementChoice,
+    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
+    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -31,6 +31,13 @@ pub(crate) struct LockedRegistryBundle<'pin> {
 pub(crate) struct LockedTurnSettlementBundle<'pin> {
     root: CoreBuffer,
     routes: [Option<LockedRegistryRoute<'pin>>; 2],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// Original signed Bundle documents for the independent completion routes.
+pub(crate) struct LockedConversationConfirmationBundle<'pin> {
+    root: CoreBuffer,
+    routes: [Option<[LockedRegistryRoute<'pin>; 3]>; 2],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -57,6 +64,42 @@ impl NativeApplicationSources {
             }
         }
         Ok(LockedTurnSettlementBundle {
+            root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
+            routes,
+            budget: Arc::clone(budget),
+        })
+    }
+
+    /// Capture locked Bundle documents for each granted completion chain.
+    pub(crate) fn conversation_confirmation_bundle<'pin>(
+        &self,
+        selections: [Option<&'pin OriginalConversationConfirmationChoice<'_>>; 2],
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedConversationConfirmationBundle<'pin>> {
+        let mut routes = [None, None];
+        for (route, selection) in routes.iter_mut().zip(selections) {
+            if let Some(selection) = selection {
+                let turn_caller = selection.turn_caller();
+                ensure!(
+                    turn_caller.caller_function_id() == self.authority.shell_provider_id,
+                    "old Conversation confirmation caller differs from the selected Shell"
+                );
+                *route = Some([
+                    LockedRegistryRoute::from_lock(&self.bundle_lock, turn_caller, budget)?,
+                    LockedRegistryRoute::from_lock(
+                        &self.bundle_lock,
+                        selection.completion(),
+                        budget,
+                    )?,
+                    LockedRegistryRoute::from_lock(
+                        &self.bundle_lock,
+                        selection.turn_get(),
+                        budget,
+                    )?,
+                ]);
+            }
+        }
+        Ok(LockedConversationConfirmationBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             routes,
             budget: Arc::clone(budget),
@@ -225,6 +268,34 @@ impl LockedTurnSettlementBundle<'_> {
         let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
         verify_privileged_routes(
             self.routes.iter().flatten(),
+            root,
+            &self.budget,
+            &mut checkpoint,
+        )?;
+        checkpoint()
+    }
+}
+
+impl LockedConversationConfirmationBundle<'_> {
+    /// Verify each original variant and its catalog's effect class.
+    pub(crate) fn verify(&self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<()> {
+        let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
+        // Turn Resource is catalogued as privileged at the operation level.
+        // The captured Completion client restricts its use to GET.
+        verify_privileged_routes(
+            self.routes
+                .iter()
+                .flatten()
+                .flat_map(|[turn, _, get]| [turn, get]),
+            root,
+            &self.budget,
+            &mut checkpoint,
+        )?;
+        verify_privileged_routes(
+            self.routes
+                .iter()
+                .flatten()
+                .map(|[_, completion, _]| completion),
             root,
             &self.budget,
             &mut checkpoint,

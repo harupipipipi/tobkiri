@@ -643,12 +643,17 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib defaultspack_manager::tests::registry_evidence_
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 18 -- \
+              --log "$RUNNER_TEMP/harness-native-confirmation-evidence.log" --expected-passed 2 -- \
+              cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+              --target aarch64-apple-darwin --features "$features" \
+              --lib native_harness_bootstrap::launch_metadata::tests::conversation_confirmation_
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
+              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 21 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_provider_prepare_ipc::tests
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 14 -- \
+              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 16 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::provider_prepare::tests
@@ -695,6 +700,7 @@ jobs:
             ${{ runner.temp }}/harness-native-launcher-snapshot.log*
             ${{ runner.temp }}/harness-native-launcher-restart.log*
             ${{ runner.temp }}/harness-native-registry-evidence.log*
+            ${{ runner.temp }}/harness-native-confirmation-evidence.log*
             ${{ runner.temp }}/harness-native-provider-connection.log*
             ${{ runner.temp }}/harness-native-provider-job.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*

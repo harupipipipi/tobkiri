@@ -3960,8 +3960,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Pack・共有codecの38件、元の物理Storeの4件、Wasm応答契約の1件、実Pack・Coreと実ファイルの
   2件が通過した。実ファイルの試験では公開権限失効時のinode維持、別invocationの拒否、
   承認後の置換と無書込の再送を照合し、Registry Pack CIにも追加した。
-  次は既存Completion Hostが権限確認済みのTurn Resourceから得た証跡を、このポートに
-  つなぐ。Saved・Reconcileの別リースと公開直前の再確認、Calendarの追加権限照合を保持する。
+  現行Conversation Store Pack 1.0.2では、既存Completion Hostが資格情報を渡さないTurn Resource
+  のGETから得た証跡を専用Wasmに渡す。ShellからSavedまたはReconcile、独立したCompletion、
+  そのCompletionからTurn Resourceの元の署名済み権限を照合する。実際のCompletion子リース、
+  期限と予約を使い、元のロック内で最終許可を得る。確定結果が不明な場合は既存の再照合へ戻る。
+  古いWasmに専用ポートがない場合や対応外の保存形式は、公開前の互換経路を使う。
+  Calendarは既存の追加認証とowner経路を保持し、専用ポートを呼ばないことを試験した。
+  配布用生成物5件と厳格なDefaults整合性検査、元のSetup承認記録からの権限照合1件が通過した。
+  CPython 3.13.16の署名付きHTTP 4件は、実SQLiteと会話ファイルにLauncherと外部Providerの
+  fixtureを組み合わせ、通常送信、互換経路、書込み前後の応答喪失と復旧を検証した。
+  IPC、既存完了確認、Calendar、Brokerの公開結果を含む回帰299件も通過した。
+  分離macOS Launcherの66件では実Pythonプロセス、Unixソケット、実Wasm、元の会話ファイルを
+  使い、異なるcallerと不一致レシートの拒否、最終許可中断、置換と無書込の再送を確認した。
+  分離試験のTauri外側状態はfixture。DMGのインストールからSetup、承認、会話までの検証は後続。
+  既存会話の追記と候補レシートの生成は引き続き元のownerで行う。次の移植では今回と同じ
+  物理ロックと確定前の再検証を共用する。追記時刻、revision、親文脈と候補の一括保存を保持する。
   Pack 11件、旧保存領域18件、実Core＋Wasm 3件、元のSetupでの権限照合1件が通過。
   IPC 66件、実WasmとLauncherワーカーの分離検証35件、元の署名済みHTTPの会話読み取り・
   保存ターンとモデル設定の回帰が通過。HTTPのLauncher応答と、分離検証のTauriサービスは

@@ -9554,7 +9554,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_conversation_store_pack.conversation-store.completion",
-      "implementation_digest": "sha256:7d97cf7bed10fe7b6ff4a5e2cf6f005a0412f6b3083483388cb0c0ee76acf74c",
+      "implementation_digest": "sha256:926ee0452a33b70bc8de5897ba8ca48a1029a1b7c8bf5ce4f374caad013d852d",
       "implementation_path": "runtime/completion_host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -9594,7 +9594,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7d97cf7bed10fe7b6ff4a5e2cf6f005a0412f6b3083483388cb0c0ee76acf74c",
+          "implementation_digest": "sha256:926ee0452a33b70bc8de5897ba8ca48a1029a1b7c8bf5ce4f374caad013d852d",
           "implementation_path": "runtime/completion_host.py",
           "input_schema": {
             "additionalProperties": false,

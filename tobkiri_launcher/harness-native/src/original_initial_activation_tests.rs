@@ -265,6 +265,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             check_model_save_grants(&observed, budget);
             check_conversation_read_grants(&observed, budget);
             check_saved_receipt_grants(&observed, budget);
+            check_conversation_confirmation_grants(&observed, budget);
             check_model_resolve_grants(&observed, budget);
             assert_eq!(
                 observed
@@ -542,6 +543,47 @@ fn check_saved_receipt_grants(
             "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c"
         );
         assert!(authorities.insert(pin.authority_reference()));
+    }
+}
+
+fn check_conversation_confirmation_grants(
+    observed: &crate::OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+) {
+    use crate::OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
+
+    let mut confirmation_grants = std::collections::BTreeSet::new();
+    for (role, caller) in [
+        (SavedTurn, "rumi_turn_runtime_pack.turn-runtime.saved"),
+        (
+            SavedReconcile,
+            "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        ),
+    ] {
+        let choice = crate::OriginalConversationConfirmationChoice::select(observed, budget, role)
+            .expect("authenticate all three original grants")
+            .expect("confirmed Profile selects Conversation completion");
+        let turn = choice.turn_caller();
+        let completion = choice.completion();
+        let resource = choice.turn_get();
+        assert_eq!(turn.caller_function_id(), "shell.tauri.default");
+        assert_eq!(turn.function_id(), caller);
+        assert_eq!(completion.caller_function_id(), caller);
+        assert_eq!(
+            completion.contract_id(),
+            "tobkiri.action.conversation.completion.v1"
+        );
+        assert_eq!(
+            completion.function_id(),
+            "rumi_conversation_store_pack.conversation-store.completion"
+        );
+        assert_eq!(resource.caller_function_id(), completion.function_id());
+        assert_eq!(resource.contract_id(), "tobkiri.resource.turn.v1");
+        assert_eq!(
+            resource.function_id(),
+            "rumi_turn_runtime_pack.turn-runtime.resource"
+        );
+        assert!(confirmation_grants.insert(completion.authority_reference().to_owned()));
     }
 }
 

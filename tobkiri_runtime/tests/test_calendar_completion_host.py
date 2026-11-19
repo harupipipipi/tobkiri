@@ -78,6 +78,11 @@ class CalendarSession(_Session):
             ),
         )
         context.catalog_bindings += (self.calendar_binding,)
+
+        def reject_native_confirmation(_invocation: object) -> None:
+            pytest.fail("Calendar completion must use its captured owner")
+
+        context.borrow_saved_conversation_confirmation = reject_native_confirmation
         self.context = context
         self.confirm = (
             completion.ConversationCompletionHostFactoryV4()

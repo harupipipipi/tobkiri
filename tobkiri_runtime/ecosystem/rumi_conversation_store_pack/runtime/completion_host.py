@@ -33,6 +33,7 @@ class ConversationCompletionHostFactoryV4:
     """Read terminal evidence through an exact resource-only captured client."""
 
     function_id = FUNCTION_ID
+    saved_conversation_confirmation_v1 = True
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Capture finite owner and caller identities without accessing storage."""
@@ -73,6 +74,7 @@ class ConversationCompletionHostFactoryV4:
             )
             == ("tobkiri.action.job.adapter.v2", CALENDAR_FUNCTION, "2.0.0")
         )
+        borrow_confirmation = getattr(context, "borrow_saved_conversation_confirmation", None)
         store = ConversationStore(
             context.profile_id, user_data_root=context.user_data_root
         )
@@ -117,6 +119,12 @@ class ConversationCompletionHostFactoryV4:
                 raise ValueError("completion turn resource is invalid")
             if invocation.envelope.context.caller_principal.value in calendar_callers:
                 assert_calendar_completion_source(invocation, turn, context.profile_id)
+            elif borrow_confirmation is not None:
+                confirm = borrow_confirmation(invocation)
+                if confirm is not None:
+                    result = confirm(turn)
+                    if result is not None:
+                        return result
             return store.confirm_saved_completion(turn)
 
         return CapturedHostProviderV4(

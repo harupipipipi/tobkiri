@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:7de0061a40f57ab6f41e41cb4edb7836e572ee6ee234bfb389b4a75b9a4073e6",
+  "catalog_digest": "sha256:e98bfef99cb574dfb5e56c4c9d2ba74157324c7797110147debf7efadbaa39aa",
   "pack_id": "rumi_conversation_store_pack",
-  "source_identity": "sha256:6973b40cd4407b7b6c9deb9a06c6724b7434be2d583b4b71b9704cfdd5e5339c",
+  "source_identity": "sha256:7f9e2c5e12cbf754669bb837d1d48886965e6f4e9d3223a0456fbed8eb0cb06d",
   "variants": [
     {
       "architecture": "any",
@@ -247,7 +247,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_conversation_store_pack.conversation-store.completion",
-      "implementation_digest": "sha256:7d97cf7bed10fe7b6ff4a5e2cf6f005a0412f6b3083483388cb0c0ee76acf74c",
+      "implementation_digest": "sha256:926ee0452a33b70bc8de5897ba8ca48a1029a1b7c8bf5ce4f374caad013d852d",
       "implementation_path": "runtime/completion_host.py",
       "materialization_mode": "on_demand",
       "operations": [
