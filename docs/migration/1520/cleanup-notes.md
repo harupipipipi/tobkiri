@@ -4076,7 +4076,26 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   通過し、実アーカイブのv3を読み取り専用のDMGにマウントして照合した。
   v3で既存Conversationの実ストア3件も通過。実Core＋Wasmは前回の50ケースと最大画像、
   さらにWIT文字列として二重にエスケープすると4 MiBを超える正当なツール履歴も受理した。
-  通常のBrokerがVMを割り当てる前にこの経路を選ぶ実行境界の接続は後続。
+  `9a87a1be2` の通常の保存送信では、Launcher が Defaultspack の起動・自動再起動の直前に証明を取り直し、
+  有効な接続先と Wasm が揃う場合に、検証したマニフェスト digest を子へ渡す。
+  Shell 登録時の証明と子プロセス起動時の証明は用途とタイミングが異なるため、
+  Supervisor の定期確認は従来の実行 ID 照合に留める。
+  Broker は元の署名済み Function・承認・Grant・要求 digest を使い、PackVM の割当て前に
+  通常の Saved Turn が呼ぶ純粋な処理だけを登録済み Wasm ドメインに結び付ける。
+  マニフェスト digest、対象ドメイン、現在の Launcher 登録、元の親リースと予約を
+  各ステップで照合する。元の Provider が取り消された場合は、Wasm 側の実行も拒否する。
+  ステップの整形と続行、認可済みの子呼出しと最終照合は既存の Host と共用する。
+  Calendar など別の署名済み呼出元は個別の経路を選ぶ。
+  署名済み Profile を読み直す HTTP 試験で、元の Grant と Wasm ドメインの組み合わせ、
+  PackVM の割当てなし、保存結果、再試行時の重複防止、元 Provider の取消後の停止を確認した。
+  この HTTP 試験は純粋なステップを fixture で実行する。Launcher IPC と実 Wasm は分離試験で確認した。
+  `df3fad73f` で、macOS の HTTP 試験が公開するテスト用の起動インスタンスを、
+  本物の Launcher ソケットから分離する共通 fixture を使うようにした。
+  クリーンなコピーで対象208件を実行し、200件が初回に通過した。上記 fixture の修正後、
+  失敗した8件と会話の回帰6件を再実行し、14件が通過した。
+  Launcher の起動引数と環境変数の分離 Rust 試験24件と `rustfmt` も通過した。
+  [統合後の DMG 検証](https://github.com/harupipipipi/tobkiri/actions/runs/44478189713)を開始した。
+  他の PackVM 経路と Python Host を置き換えた時点で、互換起動と旧 Backend を除去できる。
   Pack 11件、旧保存領域18件、実Core＋Wasm 3件、元のSetupでの権限照合1件が通過。
   IPC 66件、実WasmとLauncherワーカーの分離検証35件、元の署名済みHTTPの会話読み取り・
   保存ターンとモデル設定の回帰が通過。HTTPのLauncher応答と、分離検証のTauriサービスは
