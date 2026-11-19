@@ -88,6 +88,8 @@ struct RuntimeState {
     retained_authority: Mutex<Vec<authority::Retained>>,
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     provider_socket: Option<crate::native_provider_prepare_service::ProviderPrepareService>,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    linked_parent: Mutex<Option<provider_prepare::PendingLinkedParentRead>>,
 }
 
 impl NativeRuntimeState {
@@ -99,6 +101,8 @@ impl NativeRuntimeState {
             retained_authority: Mutex::new(Vec::new()),
             #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
             provider_socket: None,
+            #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+            linked_parent: Mutex::new(None),
         }))
     }
 
@@ -178,6 +182,8 @@ impl NativeRuntimeState {
         if let Some(service) = self.0.provider_socket.as_ref() {
             service.join_until(deadline)?;
         }
+        #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+        self.discard_linked_parent_read();
         self.0.finalization.run_until(deadline, || {
             let owner = {
                 let mut owner = self.0.owner.lock().map_err(|_| {

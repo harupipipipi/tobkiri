@@ -8,7 +8,8 @@ Route readiness is not a credential/network probe or a promise of AI success.
 from __future__ import annotations
 
 from contextvars import ContextVar
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, contextmanager
+from dataclasses import replace
 from tobkiri_host.saved_workspace_context import (
     WORKSPACE_TARGET, SavedWorkspaceExecutionBinding,
     SavedWorkspaceExecutionRegistry, SavedWorkspacePins, resolve_saved_workspace,
@@ -18,8 +19,10 @@ from tobkiri_host.saved_workspace_context import (
 import json
 import math
 import re
+import secrets
+from threading import Event, Lock
 import time
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from tobkiri_host.saved_turn_plan import TARGETS, TOOL, SavedToolFrame
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
@@ -50,14 +53,189 @@ from tobkiri_protocol.saved_task_context import saved_task_context_messages
 from tobkiri_protocol.saved_conversation import saved_chat_reference_messages
 from tobkiri_protocol.conversation_context import (
     context_link, resolve_request_context, resolved_thinking_level,
+    validate_context_binding,
 )
+from tobkiri_host.models import RequestContext
 
 from ..authority.v4 import AuthorityDenied
+from ..native_provider_prepare_ipc import (
+    NativeConversationGetRequest,
+    NativeConversationLinkedParent,
+    NativeProviderRegistryRequiresLegacyRead,
+    is_native_linked_conversation_identifier,
+)
 from .profile_context_workflow import WORKFLOW_TARGET, selected_timing_context
 
 _WORKSPACE_PIN: ContextVar[SavedWorkspacePins | None] = ContextVar(
     "saved_workspace_pin", default=None,
 )
+
+
+class _LinkedParentRead:
+    """Share one optional child/parent hint with copied Broker contexts."""
+
+    def __init__(self, outer: object, child_id: str, parent_id: str) -> None:
+        self._outer = outer
+        self._context = getattr(outer, "context", None)
+        self._profile_id = getattr(self._context, "profile_id", None)
+        self._outer_session_id = getattr(self._context, "caller_session_id", None)
+        self._deadline = getattr(outer, "deadline_monotonic", None)
+        self._cancelled = getattr(outer, "cancellation_requested", None)
+        self._parent_id = parent_id
+        self._nonce = secrets.token_hex(16)
+        self._pending_id = child_id
+        self._next: NativeConversationLinkedParent | None = (
+            NativeConversationLinkedParent("retain", self._nonce)
+        )
+        self._dispatch_session: str | None = None
+        self._retained = False
+        self._closed = False
+        self._lock = Lock()
+
+    def _active(self) -> bool:
+        return (
+            not self._closed
+            and isinstance(self._outer_session_id, str)
+            and bool(self._outer_session_id)
+            and isinstance(self._deadline, float)
+            and self._deadline > time.monotonic()
+            and isinstance(self._cancelled, Event)
+            and not self._cancelled.is_set()
+            and getattr(self._outer, "context", None) is self._context
+            and getattr(self._context, "profile_id", None) == self._profile_id
+            and getattr(self._context, "caller_session_id", None) == self._outer_session_id
+        )
+
+    def bind_dispatch(
+        self, outer: object, conversation_id: object, session_id: str,
+    ) -> None:
+        with self._lock:
+            if (
+                outer is self._outer
+                and self._active()
+                and self._next is not None
+                and self._dispatch_session is None
+                and conversation_id == self._pending_id
+            ):
+                self._dispatch_session = session_id
+
+    def _take(
+        self, outer: object, context: RequestContext, conversation_id: str,
+    ) -> NativeConversationLinkedParent | None:
+        with self._lock:
+            if (
+                outer is not self._outer
+                or not self._active()
+                or context.profile_id != self._profile_id
+                or context.caller_session_id != self._dispatch_session
+                or self._next is None
+                or conversation_id != self._pending_id
+            ):
+                return None
+            marker = self._next
+            self._next = None
+            return marker
+
+    def _assert_current(self) -> None:
+        with self._lock:
+            if not self._active():
+                raise AuthorityDenied("saved linked Conversation GET is no longer active")
+
+    def read(
+        self,
+        outer: object,
+        borrow: NativeConversationGetRequest,
+        reader: Callable[[NativeConversationGetRequest], Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        """Use a hint only in its bound native Provider exchange."""
+        linked = (
+            self._take(outer, borrow.context, borrow.conversation_id)
+            if borrow.caller == "saved-orchestration" else None
+        )
+        if linked is None:
+            return reader(borrow)
+
+        def guard() -> None:
+            borrow.assert_current()
+            self._assert_current()
+
+        try:
+            result = reader(replace(borrow, linked_parent=linked, assert_current=guard))
+        except NativeProviderRegistryRequiresLegacyRead:
+            if linked.mode != "retain":
+                raise
+            # A retain-specific miss can retry the original native GET once.
+            guard()
+            return reader(borrow)
+        if linked.mode == "retain":
+            with self._lock:
+                self._retained = self._active()
+        return result
+
+    def arm_parent(self, child: Mapping[str, Any]) -> None:
+        with self._lock:
+            self._next = None
+            self._dispatch_session = None
+            if not self._retained or not self._active():
+                return
+            self._retained = False
+            try:
+                link = context_link(child)
+            except ValueError:
+                return  # The ordinary resolution below reports the invalid link.
+            if link is not None and link["parent_conversation_id"] == self._parent_id:
+                self._pending_id = self._parent_id
+                self._next = NativeConversationLinkedParent("reuse", self._nonce)
+
+    def close(self) -> None:
+        with self._lock:
+            self._closed = True
+            self._next = None
+            self._dispatch_session = None
+
+
+_LINKED_PARENT_READ: ContextVar[_LinkedParentRead | None] = ContextVar(
+    "saved_linked_parent_read", default=None,
+)
+
+
+def _new_linked_parent_read(
+    outer: object, request: Mapping[str, Any],
+) -> _LinkedParentRead | None:
+    child_id = request["conversation_id"]
+    if not is_native_linked_conversation_identifier(child_id):
+        return None
+    try:
+        binding = validate_context_binding(request.get("context_binding"))
+    except ValueError:
+        return None
+    parent_id = binding["parent_conversation_id"]
+    if (
+        binding["profile_id"]
+        != getattr(getattr(outer, "context", None), "profile_id", None)
+        or parent_id == child_id
+    ):
+        return None
+    return _LinkedParentRead(outer, child_id, parent_id)
+
+
+@contextmanager
+def _linked_parent_scope(
+    outer: object, request: Mapping[str, Any], *, enabled: bool,
+) -> Iterator[_LinkedParentRead | None]:
+    scope = _new_linked_parent_read(outer, request) if enabled else None
+    # Mask an enclosing read during a separate nested _conversation call.
+    if scope is None and _LINKED_PARENT_READ.get() is None:
+        yield None
+        return
+    token = _LINKED_PARENT_READ.set(scope)
+    try:
+        yield scope
+    finally:
+        if scope is not None:
+            scope.close()
+        _LINKED_PARENT_READ.reset(token)
+
 
 Target = tuple[str, str]
 
@@ -329,6 +507,7 @@ class SavedBridgeCallbacks:
         workspace_execution_registry: SavedWorkspaceExecutionRegistry | None = None,
         selected_workspace: Callable[[], Mapping[str, Any]] | None = None,
         borrow_saved_context: Callable[[object], AbstractContextManager[Any]] | None = None,
+        linked_parent_reads: bool = False,
     ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
@@ -336,6 +515,7 @@ class SavedBridgeCallbacks:
         self._workspace_execution_registry = workspace_execution_registry
         self._selected_workspace = selected_workspace
         self._borrow_saved_context = borrow_saved_context
+        self._linked_parent_reads = linked_parent_reads
 
     def _stream_ready(
         self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
@@ -371,13 +551,21 @@ class SavedBridgeCallbacks:
         self, outer: object, request: Mapping[str, Any], *,
         effect_snapshot: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
-        conversation = self._read_conversation(outer, request["conversation_id"])
+        with _linked_parent_scope(
+            outer, request, enabled=self._linked_parent_reads,
+        ) as scope:
+            conversation = self._read_conversation(outer, request["conversation_id"])
+            try:
+                if scope is not None:
+                    scope.arm_parent(conversation)
+                conversation = resolve_request_context(
+                    conversation, request,
+                    getattr(getattr(outer, "context", None), "profile_id", ""),
+                    lambda parent_id: self._read_conversation(outer, parent_id),
+                )
+            except ValueError as error:
+                raise AuthorityDenied(str(error)) from error
         try:
-            conversation = resolve_request_context(
-                conversation, request,
-                getattr(getattr(outer, "context", None), "profile_id", ""),
-                lambda parent_id: self._read_conversation(outer, parent_id),
-            )
             if self._borrow_saved_context is not None:
                 # The fixed private composition borrows already selected owner
                 # code for this operation. Only detached DATA leaves the block.

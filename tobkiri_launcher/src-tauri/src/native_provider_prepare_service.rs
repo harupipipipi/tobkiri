@@ -17,13 +17,17 @@ use std::{
 };
 
 use anyhow::{ensure, Context, Result};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
-use crate::native_provider_prepare_ipc::{admit_connection, AdmittedConnection};
+use crate::{
+    native_harness_bootstrap::NativeRuntimeState,
+    native_provider_prepare_ipc::{admit_connection, AdmittedConnection},
+};
 
 pub(crate) const SOCKET_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET";
 pub(crate) const OWNER_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER";
 pub(crate) const APPEND_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_APPEND";
+pub(crate) const LINKED_CONVERSATION_READ_ENV: &str = "TOBKIRI_NATIVE_LINKED_CONVERSATION_READ";
 pub(crate) const TURN_READ_ENV: &str = "TOBKIRI_NATIVE_SAVED_TURN_READ";
 pub(crate) const TURN_START_ENV: &str = "TOBKIRI_NATIVE_SAVED_TURN_START";
 pub(crate) const SAVED_ORCHESTRATION_ENV: &str = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION";
@@ -219,6 +223,9 @@ impl Drop for ProviderPrepareService {
 fn serve(app: AppHandle, listener: UnixListener, state: Arc<ServiceState>) {
     while !state.stopping.load(Ordering::Acquire) {
         state.active().reap_local_chat();
+        if let Some(runtime) = app.try_state::<NativeRuntimeState>() {
+            runtime.reap_linked_parent_read();
+        }
         match listener.accept() {
             Ok((stream, _)) => {
                 let monitored = match stream.try_clone().context("track Provider connection") {

@@ -17,7 +17,8 @@ use tauri::{AppHandle, Manager};
 use tobkiri_core::ids::{OpName, ProfileId, ShapeRef};
 use tobkiri_core::{
     AllocationBudget, AllocationError, CoreBuffer, CoreError, CoreRef, CoreValue,
-    LegacyRegistryRead, NativeArtifactError, NativeArtifactInspection, NativeRegistry, MAX_BYTES,
+    LegacyConversationParentRead, LegacyRegistryRead, NativeArtifactError,
+    NativeArtifactInspection, NativeRegistry, MAX_BYTES,
 };
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 pub(crate) use tobkiri_harness_native::SavedOrchestrationStepError;
@@ -180,6 +181,11 @@ pub(crate) enum NativeRegistryRequest {
     LinkedConversationContext {
         conversation_id: String,
     },
+    LinkedConversationRead {
+        conversation_id: String,
+        nonce: [u8; 32],
+        retain: bool,
+    },
     ConversationReceipt {
         caller: OriginalSavedReceiptRole,
         turn_id: String,
@@ -254,7 +260,9 @@ impl NativeRegistryRequest {
             Self::ModelList => proof.model_settings.is_some(),
             Self::ModelSave { .. } => proof.model_save.is_some(),
             Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
-            Self::LinkedConversationContext { .. } => proof.permits_linked_conversation_context(),
+            Self::LinkedConversationContext { .. } | Self::LinkedConversationRead { .. } => {
+                proof.permits_linked_conversation_context()
+            }
             Self::ConversationReceipt { caller, .. } => proof.permits_saved_receipt(*caller),
             Self::ConversationConfirmation { caller, .. } => {
                 proof.permits_conversation_confirmation(*caller)
@@ -395,6 +403,10 @@ impl NativeRegistryRequest {
             }
             | Self::LinkedConversationContext {
                 conversation_id: identifier,
+            }
+            | Self::LinkedConversationRead {
+                conversation_id: identifier,
+                ..
             }
             | Self::ConversationReceipt {
                 turn_id: identifier,
@@ -617,6 +629,82 @@ struct Prepared {
 pub(crate) enum RegistryResponse {
     Wire(CoreBuffer),
     ProjectedLocalChat(CoreBuffer),
+    LinkedChild {
+        wire: CoreBuffer,
+        publication: LinkedParentPublication,
+    },
+}
+
+pub(super) struct PendingLinkedParentRead {
+    deadline: Instant,
+    listener: Arc<ProviderPrepareListener>,
+    nonce: [u8; 32],
+    candidate: LegacyConversationParentRead,
+}
+
+/// DATA custody transferred to the socket only after the child worker joins.
+pub(crate) struct LinkedParentPublication {
+    runtime: NativeRuntimeState,
+    parent: PendingLinkedParentRead,
+}
+
+impl std::fmt::Debug for LinkedParentPublication {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LinkedParentPublication")
+            .finish_non_exhaustive()
+    }
+}
+
+impl LinkedParentPublication {
+    /// Keep one funded candidate after a successful checked child reply.
+    pub(crate) fn commit(self) {
+        let Ok(mut slot) = self.runtime.0.linked_parent.lock() else {
+            return;
+        };
+        if self.parent.deadline > Instant::now() {
+            *slot = Some(self.parent);
+        }
+    }
+}
+
+impl NativeRuntimeState {
+    pub(crate) fn reap_linked_parent_read(&self) {
+        let Ok(mut slot) = self.0.linked_parent.lock() else {
+            return;
+        };
+        if slot
+            .as_ref()
+            .is_some_and(|entry| entry.deadline <= Instant::now())
+        {
+            slot.take();
+        }
+    }
+
+    pub(super) fn discard_linked_parent_read(&self) {
+        self.0
+            .linked_parent
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+    }
+
+    fn take_linked_parent_read(
+        &self,
+        listener: &Arc<ProviderPrepareListener>,
+        nonce: &[u8; 32],
+    ) -> Option<LegacyConversationParentRead> {
+        let mut slot = self.0.linked_parent.lock().ok()?;
+        let entry = slot.as_ref()?;
+        if entry.deadline <= Instant::now() {
+            slot.take();
+            return None;
+        }
+        if entry.nonce != *nonce || !Arc::ptr_eq(&entry.listener, listener) {
+            return None;
+        }
+        slot.take().map(|entry| entry.candidate)
+    }
 }
 
 struct PreparedReply {
@@ -784,6 +872,7 @@ async fn run(
     let model_save = matches!(&operation, NativeRegistryRequest::ModelSave { .. });
     let registry = Arc::new(Mutex::new(None));
     let registry_limit = Arc::new(AtomicBool::new(false));
+    let mut linked_parent = None;
     let outcome = {
         let prepare = caught(async {
             let graph = inspection.allocation_budget()?.clone();
@@ -898,6 +987,74 @@ async fn run(
                         )
                         .await
                         .map_err(conversation_registry_error)?;
+                    return decode_conversation_read_reply(output, &graph);
+                }
+                NativeRegistryRequest::LinkedConversationRead {
+                    conversation_id,
+                    nonce,
+                    retain: true,
+                } => {
+                    let pack = reacquire_linked_conversation_context_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let (output, candidate) = inspection
+                        .prepare_legacy_linked_conversation_read(
+                            &pack,
+                            &config.user_data_dir,
+                            &identity.profile_id,
+                            &conversation_id,
+                        )
+                        .await
+                        .map_err(linked_conversation_read_error)?;
+                    let reply = decode_linked_child_reply(output, &graph)?;
+                    linked_parent = candidate.map(|candidate| PendingLinkedParentRead {
+                        deadline: execution_deadline,
+                        listener: Arc::clone(&listener),
+                        nonce,
+                        candidate,
+                    });
+                    return Ok(reply);
+                }
+                NativeRegistryRequest::LinkedConversationRead {
+                    conversation_id,
+                    nonce,
+                    retain: false,
+                } => {
+                    let pack = reacquire_conversation_read_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        ConversationReadCaller::SavedOrchestration,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let output = if let Some(candidate) =
+                        runtime.take_linked_parent_read(&listener, &nonce)
+                    {
+                        let (output, _) = inspection
+                            .get_legacy_conversation_with_candidate(
+                                &pack,
+                                &config.user_data_dir,
+                                &identity.profile_id,
+                                &conversation_id,
+                                candidate,
+                            )
+                            .await
+                            .map_err(conversation_registry_error)?;
+                        output
+                    } else {
+                        inspection
+                            .get_legacy_conversation(
+                                &pack,
+                                &config.user_data_dir,
+                                &identity.profile_id,
+                                &conversation_id,
+                            )
+                            .await
+                            .map_err(conversation_registry_error)?
+                    };
                     return decode_conversation_read_reply(output, &graph);
                 }
                 NativeRegistryRequest::LinkedConversationContext { conversation_id } => {
@@ -1685,7 +1842,15 @@ async fn run(
                             Ok(())
                         })?;
                     }
-                    Ok(if reply.projected_local_chat {
+                    Ok(if let Some(parent) = linked_parent {
+                        RegistryResponse::LinkedChild {
+                            wire: reply.wire,
+                            publication: LinkedParentPublication {
+                                runtime: runtime.clone(),
+                                parent,
+                            },
+                        }
+                    } else if reply.projected_local_chat {
                         RegistryResponse::ProjectedLocalChat(reply.wire)
                     } else {
                         RegistryResponse::Wire(reply.wire)
@@ -1871,6 +2036,15 @@ fn conversation_registry_error(error: NativeArtifactError) -> anyhow::Error {
     }
 }
 
+fn linked_conversation_read_error(error: NativeArtifactError) -> anyhow::Error {
+    if matches!(&error, NativeArtifactError::ConversationRegistryRejected(rejected)
+        if matches!(rejected.code(), "invalid" | "not-found"))
+    {
+        return ConversationRegistryRequiresLegacyRead.into();
+    }
+    conversation_registry_error(error)
+}
+
 fn model_save_staging_error(error: NativeArtifactError) -> anyhow::Error {
     match &error {
         // The fixed Save export reserves these codes for compatibility limits.
@@ -2041,6 +2215,41 @@ fn decode_conversation_read_reply(
         CONVERSATION_READ_REPLY_LIMIT,
         ConversationRegistryRequiresLegacyRead,
     )
+}
+
+fn decode_linked_child_reply(
+    output: CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<PreparedReply> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Linked<'a> {
+        #[serde(borrow)]
+        conversation: &'a RawValue,
+        #[serde(borrow, rename = "parent_context")]
+        _parent: &'a RawValue,
+    }
+    let owner = output
+        .get_key("owner_result")
+        .context("linked Conversation omitted owner data")?;
+    let owner = owner
+        .as_str()
+        .context("linked Conversation owner data is not text")?;
+    let linked: Linked<'_> = serde_json::from_str(owner)?;
+    let row = linked.conversation.get();
+    ensure!(
+        row.starts_with('{'),
+        "linked Conversation child is not an object"
+    );
+    let mut wire = CoreBuffer::builder(budget, CONVERSATION_READ_REPLY_LIMIT);
+    wire.append(b"{\"conversation\":")?;
+    wire.append(row.as_bytes())?;
+    wire.append(b"}")?;
+    Ok(PreparedReply {
+        wire: wire.finish()?,
+        document: None,
+        projected_local_chat: false,
+    })
 }
 
 fn decode_model_resolve_reply(
@@ -2816,6 +3025,19 @@ mod tests {
             CoreValue::parse_guest(&serde_json::to_vec(&output).unwrap(), &budget).unwrap();
         let reply = decode_conversation_read_reply(output, &budget).unwrap();
         assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
+        let row = r#"{"id":"child","precise":9007199254740993,"cost":-0.0}"#;
+        let linked = serde_json::json!({
+            "owner_result": format!(r#"{{"conversation":{row},"parent_context":{{"id":"parent"}}}}"#),
+            "parent_read": r#"{"conversation":{"messages":["private parent history"]}}"#,
+        });
+        let output =
+            CoreValue::parse_guest(&serde_json::to_vec(&linked).unwrap(), &budget).unwrap();
+        let child = decode_linked_child_reply(output, &budget).unwrap();
+        assert_eq!(
+            child.wire.as_str().unwrap(),
+            format!(r#"{{"conversation":{row}}}"#)
+        );
+        assert!(child.document.is_none());
         assert!(reply.document.is_none());
         let linked = serde_json::json!({
             "owner_result": owner,
@@ -2854,6 +3076,16 @@ mod tests {
         assert!(!request.requires_publication_permit());
         assert!(!request.uses_funded_input());
         assert_eq!(request.input_capacity().unwrap(), "child".len());
+        for retain in [true, false] {
+            let request = NativeRegistryRequest::LinkedConversationRead {
+                conversation_id: "child".into(),
+                nonce: *b"0123456789abcdef0123456789abcdef",
+                retain,
+            };
+            assert!(!request.has_launch_proof(&receipt));
+            assert!(request.has_launch_proof(&linked));
+            assert!(!request.requires_publication_permit());
+        }
     }
 
     #[test]

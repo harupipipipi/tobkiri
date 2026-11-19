@@ -348,6 +348,7 @@ where
         command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET");
         command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER");
         command.env_remove("TOBKIRI_NATIVE_CONVERSATION_APPEND");
+        command.env_remove("TOBKIRI_NATIVE_LINKED_CONVERSATION_READ");
         command.env_remove("TOBKIRI_NATIVE_SAVED_TURN_READ");
         command.env_remove("TOBKIRI_NATIVE_SAVED_TURN_START");
         command.env_remove("TOBKIRI_NATIVE_SAVED_ORCHESTRATION");
@@ -370,8 +371,8 @@ where
                 use crate::native_provider_prepare_service::{
                     AI_GATEWAY_POLICY_ENV, AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV,
                     AI_STREAM_RESULT_ENV, AI_TOOL_INTENTS_ENV, AI_USAGE_COST_ENV, APPEND_ENV,
-                    OWNER_ENV, SAVED_LOCAL_CHAT_ENV, SAVED_ORCHESTRATION_ENV, SOCKET_ENV,
-                    TURN_READ_ENV, TURN_START_ENV,
+                    LINKED_CONVERSATION_READ_ENV, OWNER_ENV, SAVED_LOCAL_CHAT_ENV,
+                    SAVED_ORCHESTRATION_ENV, SOCKET_ENV, TURN_READ_ENV, TURN_START_ENV,
                 };
                 command
                     .env(SOCKET_ENV, &endpoint.socket)
@@ -411,6 +412,9 @@ where
                     }
                     if native_registry.conversation_side_chat_append {
                         command.env(crate::sealed_python::CONVERSATION_SIDE_CHAT_APPEND_ENV, "1");
+                    }
+                    if native_registry.linked_conversation_read {
+                        command.env(LINKED_CONVERSATION_READ_ENV, "1");
                     }
                     if native_registry.side_chat_saved_turn_start {
                         command.env(crate::sealed_python::SIDE_CHAT_SAVED_TURN_START_ENV, "1");

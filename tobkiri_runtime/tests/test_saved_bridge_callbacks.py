@@ -1,13 +1,27 @@
 """Real-owner callback policy tests; transport/Broker adapters are explicit."""
 
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
+from threading import Event
+import time
 from types import SimpleNamespace
 
 import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
-from core_runtime.bootstrap.saved_bridge import READINESS, REQUIRED_TARGETS, SavedBridgeCallbacks
+from core_runtime.bootstrap.saved_bridge import (
+    READINESS,
+    REQUIRED_TARGETS,
+    SavedBridgeCallbacks,
+    _LINKED_PARENT_READ,
+)
+from core_runtime.native_provider_prepare_ipc import (
+    NativeConversationGetRequest,
+    NativeProviderRegistryRequiresLegacyRead,
+)
 from ecosystem.tobkiri_conversation_orchestration_pack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tobkiri_host.continuation_chain import ChainIdentity
@@ -180,6 +194,135 @@ def test_plain_linked_preflight_and_appends_read_each_owner_once(tmp_path: Path)
     assert [message["role"] for message in store.get("side-chat")["messages"]] == [
         "user", "assistant",
     ]
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_modes"),
+    [
+        ("enabled", ["retain", "reuse"]),
+        ("disabled", [None, None]),
+        ("miss", ["retain", None, None]),
+        ("legacy", ["retain", None, None]),
+        ("wrong-parent", ["retain", None]),
+        ("cancelled", ["retain", None]),
+    ],
+)
+def test_linked_native_hint_follows_original_dispatches(
+    tmp_path: Path, case: str, expected_modes: list[str | None],
+) -> None:
+    store, outer, _, _ = _setup(tmp_path)
+    outer.context.caller_session_id = "saved-orchestration-session"
+    outer.deadline_monotonic = time.monotonic() + 30
+    outer.cancellation_requested = Event()
+    store.create(
+        {
+            "id": "side-chat",
+            "parent_conversation_id": "conversation-1",
+            "context_link": {
+                "version": LINK_VERSION,
+                "parent_conversation_id": "conversation-1",
+                "slot": "side-chat",
+                "created_from_parent_revision": 1,
+            },
+        },
+        expected_revision=1,
+    )
+    request = outer.payload["request"]
+    request.update(
+        conversation_id="side-chat",
+        context_binding=context_binding(store.get("conversation-1"), "defaults"),
+    )
+    if case == "wrong-parent":
+        request["context_binding"]["parent_conversation_id"] = "caller-selected-id"
+    provider_attempts = []
+    broker_payloads = []
+    retained_contexts = []
+    denied_hints = []
+    legacy_reads = []
+
+    def guard() -> None:
+        pass
+
+    def read(borrow: NativeConversationGetRequest) -> dict:
+        borrow.assert_current()
+        provider_attempts.append(borrow)
+        if borrow.conversation_id == "side-chat" and (
+            case == "legacy" or (case == "miss" and borrow.linked_parent is not None)
+        ):
+            raise NativeProviderRegistryRequiresLegacyRead()
+        result = {"conversation": store.get(borrow.conversation_id)}
+        if case == "cancelled" and borrow.conversation_id == "side-chat":
+            outer.cancellation_requested.set()
+        return result
+
+    def dispatch(envelope: object, target: tuple[str, str], payload: dict) -> dict:
+        assert envelope is outer and target == saved.TARGETS[0]
+        broker_payloads.append(dict(payload))
+        session = f"nested-{len(broker_payloads)}"
+        context = SimpleNamespace(profile_id="defaults", caller_session_id=session)
+        borrow = NativeConversationGetRequest(
+            context, "a" * 32, outer.deadline_monotonic, guard,
+            "saved-orchestration", payload["conversation_id"],
+        )
+        scope = _LINKED_PARENT_READ.get()
+        if scope is None:
+            return {"status": "ok", "value": read(borrow)}
+        scope.bind_dispatch(outer, borrow.conversation_id, session)
+        copied = copy_context()
+        retained_contexts.append((copied, scope, borrow))
+        if case == "enabled":
+            def observe_hint(attempt: NativeConversationGetRequest) -> dict:
+                denied_hints.append(attempt.linked_parent)
+                return {}
+
+            scope.read(SimpleNamespace(**vars(outer)), borrow, observe_hint)
+            scope.read(outer, replace(borrow, caller="shell"), observe_hint)
+            for profile, other_session in (("other-profile", session), ("defaults", "other-session")):
+                unrelated = SimpleNamespace(profile_id=profile, caller_session_id=other_session)
+                scope.read(outer, replace(borrow, context=unrelated), observe_hint)
+            scope.read(outer, replace(borrow, conversation_id="other-id"), observe_hint)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            invocation = pool.submit(copied.run, scope.read, outer, borrow, read)
+            try:
+                result = invocation.result()
+            except NativeProviderRegistryRequiresLegacyRead:
+                legacy_reads.append(borrow.conversation_id)
+                result = {"conversation": store.get(borrow.conversation_id)}
+        return {"status": "ok", "value": result}
+
+    callbacks = SavedBridgeCallbacks(
+        dispatch, lambda *_: None, linked_parent_reads=case != "disabled",
+    )
+    if case == "wrong-parent":
+        with pytest.raises(AuthorityDenied, match="parent context is stale"):
+            callbacks._conversation(outer, request)
+    else:
+        assert callbacks._conversation(outer, request)["model_reference"] == "model-profile-1"
+    assert broker_payloads == [
+        {"operation": "get", "conversation_id": "side-chat"},
+        {"operation": "get", "conversation_id": "conversation-1"},
+    ]
+    assert [
+        attempt.linked_parent.mode if attempt.linked_parent else None
+        for attempt in provider_attempts
+    ] == expected_modes
+    if case == "enabled":
+        assert denied_hints == [None] * 10
+        child, parent = provider_attempts
+        assert child.linked_parent.nonce == parent.linked_parent.nonce
+        assert child.context.caller_session_id != parent.context.caller_session_id
+        copied, scope, borrow = retained_contexts[-1]
+        copied.run(scope.read, outer, borrow, lambda attempt: denied_hints.append(attempt.linked_parent))
+        assert denied_hints[-1] is None
+        with pytest.raises(AuthorityDenied, match="no longer active"):
+            parent.assert_current()
+    if case in ("miss", "legacy"):
+        candidate, retry, _ = provider_attempts
+        assert retry is retained_contexts[0][2] and retry.assert_current is guard
+        assert candidate.context is retry.context
+        assert candidate.deadline_monotonic == retry.deadline_monotonic
+    assert legacy_reads == (["side-chat"] if case == "legacy" else [])
+    assert _LINKED_PARENT_READ.get() is None
 
 
 def test_saved_image_is_flattened_for_readiness_and_retained_for_generation(

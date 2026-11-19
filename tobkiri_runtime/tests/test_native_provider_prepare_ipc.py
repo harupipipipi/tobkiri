@@ -2060,6 +2060,82 @@ def test_conversation_get_uses_closed_role_and_opaque_bounded_owner_json(
         assert reader(request) == expected
 
 
+@pytest.mark.parametrize(("mode", "identifier"), [("retain", "child"), ("reuse", "parent")])
+def test_linked_conversation_get_sends_only_the_selected_id_and_nonce(
+    monkeypatch: pytest.MonkeyPatch, mode: str, identifier: str,
+) -> None:
+    nonce = "ab" * 16
+    request = replace(
+        _conversation_get_request(_Borrow(), "saved-orchestration"),
+        conversation_id=identifier,
+        linked_parent=ipc.NativeConversationLinkedParent(mode, nonce),
+    )
+    expected = {"conversation": {"id": identifier, "messages": []}}
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == 1
+        assert json.loads(payload)["conversation_get"] == {
+            "caller": "saved-orchestration",
+            "conversation_id": identifier,
+            "linked_parent": {"mode": mode, "nonce": nonce},
+        }
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, json.dumps(expected).encode())
+        assert peer.recv(1) == b""
+
+    monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, "1")
+    with _served_conversation_get(monkeypatch, serve) as reader:
+        # Capture the opt-in once with the managed Launcher endpoint.
+        monkeypatch.delenv(ipc._LINKED_CONVERSATION_READ_ENV)
+        assert reader(request) == expected
+
+
+@pytest.mark.parametrize(
+    ("caller", "identifier", "mode", "nonce"),
+    [
+        ("shell", "child", "retain", "a" * 32),
+        ("saved-turn", "parent", "reuse", "a" * 32),
+        ("saved-orchestration", "nested/path", "retain", "a" * 32),
+        ("saved-orchestration", "parent", "reuse", "A" * 32),
+        ("saved-orchestration", "child", "retain", "a" * 31),
+        ("saved-orchestration", "child", "unknown", "a" * 32),
+    ],
+)
+def test_linked_conversation_get_rejects_unclosed_start(
+    caller: str, identifier: str, mode: str, nonce: str,
+) -> None:
+    request = replace(
+        _conversation_get_request(_Borrow(), caller),
+        conversation_id=identifier,
+        linked_parent=ipc.NativeConversationLinkedParent(mode, nonce),
+    )
+    with pytest.raises(ipc._ProtocolError, match="linked Conversation GET inputs"):
+        ipc._start_payload(request, 1)
+
+
+def test_linked_conversation_get_requires_managed_launch_capture_and_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = ipc._Launcher(b"/fixture.sock", 2, "darwin:2:1:000000")
+    monkeypatch.setattr(ipc, "_capture_launcher", lambda: launcher)
+    monkeypatch.delenv(ipc._LINKED_CONVERSATION_READ_ENV, raising=False)
+    ordinary = ipc.capture_launcher_conversation_get_reader()
+    assert ordinary is not None and ordinary.supports_linked_parent is False
+    monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, "1")
+    linked = ipc.capture_launcher_conversation_get_reader()
+    assert linked is not None and linked.supports_linked_parent is True
+    request = replace(
+        _conversation_get_request(_Borrow(), "saved-orchestration"),
+        linked_parent=ipc.NativeConversationLinkedParent("retain", "a" * 32),
+    )
+    with pytest.raises(ipc._ProtocolError, match="linked Conversation GET is unavailable"):
+        ordinary(request)
+    monkeypatch.setattr(ipc, "_capture_launcher", lambda: None)
+    assert ipc.capture_launcher_conversation_get_reader() is None
+
+
 @pytest.mark.parametrize(
     ("live", "tag", "payload", "expected"),
     [

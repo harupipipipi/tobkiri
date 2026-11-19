@@ -96,6 +96,7 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) application_presentation_manifest: Option<String>,
     pub(crate) conversation_complete_manifest: Option<String>,
     pub(crate) conversation_side_chat_append: bool,
+    pub(crate) linked_conversation_read: bool,
     pub(crate) side_chat_saved_turn_start: bool,
 }
 
@@ -154,6 +155,8 @@ impl RoleArguments {
                     crate::native_harness_bootstrap::ConversationAppendCaller::SideChat,
                 )
             }),
+            linked_conversation_read: proof
+                .is_some_and(|proof| proof.permits_linked_conversation_context()),
             side_chat_saved_turn_start: proof.is_some_and(|proof| {
                 proof.permits_turn_start_for(
                     crate::native_harness_bootstrap::SavedTurnStartCaller::SideChat,
@@ -316,6 +319,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             | CONVERSATION_COMPLETE_ENV
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
             | SIDE_CHAT_SAVED_TURN_START_ENV
+            | crate::native_provider_prepare_service::LINKED_CONVERSATION_READ_ENV
             | crate::native_provider_prepare_service::TURN_START_ENV
             | crate::native_provider_prepare_service::SAVED_LOCAL_CHAT_ENV
             | crate::native_provider_prepare_service::AI_ROUTING_ENV
@@ -4506,20 +4510,27 @@ mod tests {
         let saved_turn =
             VerifiedRegistryLaunch::test_conversation_append_proof(identity.clone(), "catalog");
         let side_chat = VerifiedRegistryLaunch::test_conversation_append_proof_for(
-            identity,
+            identity.clone(),
             "catalog",
             ConversationAppendCaller::SideChat,
         );
-        for (proof, expected) in [
-            (None, false),
-            (Some(&saved_turn), false),
-            (Some(&side_chat), true),
+        let orchestration =
+            VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
+        let linked =
+            VerifiedRegistryLaunch::test_linked_conversation_context_proof(identity, "catalog");
+        for (proof, expected_append, expected_linked_read) in [
+            (None, false, false),
+            (Some(&saved_turn), false, false),
+            (Some(&side_chat), true, false),
+            (Some(&orchestration), false, false),
+            (Some(&linked), false, true),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
                 .with_native_registry_admission(proof)
                 .split_native_registry_environment();
-            assert_eq!(environment.conversation_side_chat_append, expected);
+            assert_eq!(environment.conversation_side_chat_append, expected_append);
+            assert_eq!(environment.linked_conversation_read, expected_linked_read);
         }
     }
 
@@ -4571,8 +4582,8 @@ mod tests {
     fn saved_request_markers_are_allowed_for_defaultspack_only() {
         use crate::native_provider_prepare_service::{
             AI_GATEWAY_POLICY_ENV, AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV,
-            AI_STREAM_RESULT_ENV, AI_TOOL_INTENTS_ENV, AI_USAGE_COST_ENV, SAVED_LOCAL_CHAT_ENV,
-            TURN_START_ENV,
+            AI_STREAM_RESULT_ENV, AI_TOOL_INTENTS_ENV, AI_USAGE_COST_ENV,
+            LINKED_CONVERSATION_READ_ENV, SAVED_LOCAL_CHAT_ENV, TURN_START_ENV,
         };
 
         for key in [
@@ -4580,6 +4591,7 @@ mod tests {
             CONVERSATION_COMPLETE_ENV,
             CONVERSATION_SIDE_CHAT_APPEND_ENV,
             SIDE_CHAT_SAVED_TURN_START_ENV,
+            LINKED_CONVERSATION_READ_ENV,
             TURN_START_ENV,
             SAVED_LOCAL_CHAT_ENV,
             AI_ROUTING_ENV,

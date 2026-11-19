@@ -425,14 +425,34 @@ struct ConversationGet {
     conversation_id: String,
     #[serde(default)]
     linked_context: bool,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
+    linked_parent: Option<LinkedParent>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkedParent {
+    mode: LinkedParentMode,
+    nonce: String,
+}
+
+#[derive(Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum LinkedParentMode {
+    Retain,
+    Reuse,
 }
 
 impl ConversationGet {
     fn operation(&self) -> Result<NativeRegistryRequest> {
-        if self.linked_context {
+        ensure!(
+            !(self.linked_context && self.linked_parent.is_some()),
+            "linked Conversation read modes are mutually exclusive"
+        );
+        if self.linked_context || self.linked_parent.is_some() {
             ensure!(
                 self.caller == ConversationReadCaller::SavedOrchestration,
-                "linked Conversation context requires the Saved Orchestration caller"
+                "linked Conversation reads require the Saved Orchestration caller"
             );
             let mut bytes = self.conversation_id.bytes();
             ensure!(
@@ -443,6 +463,26 @@ impl ConversationGet {
                     && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte)),
                 "invalid linked Conversation child ID"
             );
+        }
+        if let Some(parent) = &self.linked_parent {
+            let nonce: [u8; 32] = parent
+                .nonce
+                .as_bytes()
+                .try_into()
+                .map_err(|_| anyhow!("invalid linked Conversation nonce"))?;
+            ensure!(
+                nonce
+                    .iter()
+                    .all(|&byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
+                "invalid linked Conversation nonce"
+            );
+            return Ok(NativeRegistryRequest::LinkedConversationRead {
+                conversation_id: self.conversation_id.clone(),
+                nonce,
+                retain: parent.mode == LinkedParentMode::Retain,
+            });
+        }
+        if self.linked_context {
             return Ok(NativeRegistryRequest::LinkedConversationContext {
                 conversation_id: self.conversation_id.clone(),
             });
@@ -1270,6 +1310,7 @@ pub(crate) fn admit_connection(
             | RequestStart::Inline(
                 NativeRegistryRequest::TurnRead { .. }
                     | NativeRegistryRequest::LinkedConversationContext { .. }
+                    | NativeRegistryRequest::LinkedConversationRead { .. }
                     | NativeRegistryRequest::TurnStart { .. }
                     | NativeRegistryRequest::TurnSettlement { .. }
                     | NativeRegistryRequest::ConversationAppend { .. }
@@ -1488,6 +1529,7 @@ impl AdmittedConnection {
             NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
             NativeRegistryRequest::ConversationGet { .. }
             | NativeRegistryRequest::LinkedConversationContext { .. }
+            | NativeRegistryRequest::LinkedConversationRead { .. }
             | NativeRegistryRequest::ConversationReceipt { .. } => ReplyRole::ConversationRead,
             NativeRegistryRequest::ConversationConfirmation { .. } => {
                 ReplyRole::ConversationConfirmation
@@ -1971,15 +2013,28 @@ impl Connection {
         }
         match result {
             Ok(output) => {
-                let (tag, body) = match &output {
-                    RegistryResponse::Wire(body) => (PLAN, body),
+                let (tag, body, publication) = match output {
+                    RegistryResponse::Wire(body) => (PLAN, body, None),
                     RegistryResponse::ProjectedLocalChat(body) => {
                         ensure!(self.reply == ReplyRole::SavedLocalChat);
-                        (PROJECTED_LOCAL_CHAT, body)
+                        (PROJECTED_LOCAL_CHAT, body, None)
+                    }
+                    RegistryResponse::LinkedChild {
+                        wire: body,
+                        publication,
+                    } => {
+                        ensure!(self.reply == ReplyRole::ConversationRead);
+                        (PLAN, body, Some(publication))
                     }
                 };
                 match self.reply.validate_result(wire.authority, body.as_bytes()) {
-                    Ok(()) => send_frame(&mut wire.stream, tag, body.as_bytes(), deadline),
+                    Ok(()) => {
+                        send_frame(&mut wire.stream, tag, body.as_bytes(), deadline)?;
+                        if let Some(publication) = publication {
+                            publication.commit();
+                        }
+                        Ok(())
+                    }
                     Err(code) => send_frame(&mut wire.stream, FAILURE, code.as_bytes(), deadline),
                 }
             }
@@ -3933,6 +3988,65 @@ mod tests {
             assert!(parse_start(START, frame.as_bytes())
                 .and_then(|start| start.operation())
                 .is_err());
+        }
+
+        let nonce = "0123456789abcdef0123456789abcdef";
+        let linked_get = |parent: &str, context: &str| {
+            start_frame(&format!(
+                r#", "conversation_get":{{"caller":"saved-orchestration","conversation_id":"Side.1:child","linked_parent":{parent}{context}}}"#
+            ))
+        };
+        for (mode, should_retain) in [("retain", true), ("reuse", false)] {
+            let parent = format!(r#"{{"mode":"{mode}","nonce":"{nonce}"}}"#);
+            for context in ["", r#","linked_context":false"#] {
+                let frame = linked_get(&parent, context);
+                let start = parse_start(START, frame.as_bytes()).unwrap();
+                let NativeRegistryRequest::LinkedConversationRead {
+                    conversation_id,
+                    nonce: parsed_nonce,
+                    retain,
+                } = start.operation().unwrap()
+                else {
+                    panic!("expected private linked Conversation read");
+                };
+                assert_eq!(conversation_id, "Side.1:child");
+                assert_eq!(parsed_nonce.as_slice(), nonce.as_bytes());
+                assert_eq!(retain, should_retain);
+            }
+        }
+
+        let parent = format!(r#"{{"mode":"retain","nonce":"{nonce}"}}"#);
+        let valid = linked_get(&parent, "");
+        for rejected in [
+            linked_get("null", ""),
+            linked_get("[]", ""),
+            linked_get("{}", ""),
+            linked_get(&format!(r#"["retain","{nonce}"]"#), ""),
+            linked_get(&format!(r#"{{"nonce":"{nonce}"}}"#), ""),
+            linked_get(r#"{"mode":"retain"}"#, ""),
+            linked_get(&parent.replace("retain", "fetch"), ""),
+            linked_get(&parent.replace("retain", "Retain"), ""),
+            linked_get(&parent.replace(nonce, &nonce.to_uppercase()), ""),
+            linked_get(&parent.replace(nonce, &nonce[..31]), ""),
+            linked_get(&parent.replace(nonce, &format!("{nonce}0")), ""),
+            linked_get(&parent.replace("abcd", "abcz"), ""),
+            linked_get(&parent.replace("abcd", "abc猫"), ""),
+            linked_get(&parent.replace('}', r#","parent_id":"chosen"}"#), ""),
+            linked_get(&parent.replace('}', r#","mode":"reuse"}"#), ""),
+            linked_get(&parent, r#","linked_context":true"#),
+            valid.replace("saved-orchestration", "shell"),
+            valid.replace("saved-orchestration", "saved-turn"),
+            valid.replace("Side.1:child", "../child"),
+            valid.replace("Side.1:child", "子"),
+            valid.replace("Side.1:child", &"x".repeat(257)),
+            valid.replace("Side.1:child", ""),
+        ] {
+            assert!(
+                parse_start(START, rejected.as_bytes())
+                    .and_then(|start| start.operation())
+                    .is_err(),
+                "{rejected}"
+            );
         }
     }
 

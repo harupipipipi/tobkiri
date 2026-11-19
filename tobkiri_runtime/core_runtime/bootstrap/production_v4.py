@@ -2022,6 +2022,9 @@ def capture_production_dispatch(
     native_model_settings_reader = capture_launcher_model_settings_reader()
     native_model_save_writer = capture_launcher_model_save_writer()
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
+    linked_parent_reads = (
+        getattr(native_conversation_get_reader, "supports_linked_parent", False) is True
+    )
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
     native_ai_routing_evaluator = capture_launcher_ai_routing_evaluator()
     native_ai_pipeline_evaluator = capture_launcher_ai_pipeline_evaluator()
@@ -3356,6 +3359,7 @@ def capture_production_dispatch(
         *,
         parent_cancellation_proof: NestedCancellationProof | None,
         result_projector: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        linked_parent_conversation_id: str | None = None,
     ) -> dict[str, Any]:
         """Invoke the selected Provider with one Host session and original budget."""
         outer_context = getattr(outer_request, "context", None)
@@ -3386,6 +3390,13 @@ def capture_production_dispatch(
         )
         bridge_phase = "finite_source"
         try:
+            if linked_parent_conversation_id is not None:
+                linked_read = _LINKED_PARENT_READ.get()
+                if linked_read is not None:
+                    linked_read.bind_dispatch(
+                        outer_request, linked_parent_conversation_id,
+                        bridge_authority_session_id,
+                    )
             from contextlib import nullcontext
             from tobkiri_host.finite_chat_dispatch import finite_saved_chat_source
             finite_source = (
@@ -3534,7 +3545,9 @@ def capture_production_dispatch(
 
     from .saved_bridge import (
         ALLOWED_TARGETS,
+        TARGETS as SAVED_BRIDGE_TARGETS,
         SavedBridgeCallbacks,
+        _LINKED_PARENT_READ,
         project_saved_ai_result,
         project_saved_tool_result,
     )
@@ -3600,6 +3613,12 @@ def capture_production_dispatch(
         return invoke_bridge_provider(
             outer_request, resolve_bridge_outer(outer_request), edge, arguments,
             parent_cancellation_proof=saved_bridge_cancellation_proof.get(),
+            linked_parent_conversation_id=(
+                payload.get("conversation_id")
+                if linked_parent_reads and target == SAVED_BRIDGE_TARGETS[0]
+                and payload.get("operation") == "get"
+                else None
+            ),
             result_projector=(
                 project_saved_ai_result
                 if target[0]
@@ -3681,6 +3700,7 @@ def capture_production_dispatch(
         saved_workspace_execution_registry,
         saved_selected_workspace,
         borrow_saved_context=borrow_bridge_saved_context,
+        linked_parent_reads=linked_parent_reads,
     )
 
     def saved_capability_bridge(
@@ -5129,15 +5149,23 @@ def capture_production_dispatch(
             )
             if resources.memory_bytes < CONVERSATION_GET_MINIMUM_MEMORY:
                 return legacy_read()
+            borrow = NativeConversationGetRequest(
+                context=context,
+                runtime_instance=pinned_runtime[0],
+                deadline_monotonic=envelope.deadline_monotonic,
+                assert_current=guard,
+                caller=caller,
+                conversation_id=payload["conversation_id"],
+            )
+            linked_read = (
+                _LINKED_PARENT_READ.get()
+                if linked_parent_reads and caller == "saved-orchestration" else None
+            )
             try:
-                result = reader(NativeConversationGetRequest(
-                    context=context,
-                    runtime_instance=pinned_runtime[0],
-                    deadline_monotonic=envelope.deadline_monotonic,
-                    assert_current=guard,
-                    caller=caller,
-                    conversation_id=payload["conversation_id"],
-                ))
+                result = (
+                    reader(borrow) if linked_read is None
+                    else linked_read.read(parent_envelope, borrow, reader)
+                )
             except (
                 NativeProviderPrepareUnavailable,
                 NativeProviderRegistryRequiresLegacyRead,

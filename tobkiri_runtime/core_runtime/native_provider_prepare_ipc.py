@@ -35,6 +35,7 @@ from tobkiri_protocol.canonical import (
 
 _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
+_LINKED_CONVERSATION_READ_ENV = "TOBKIRI_NATIVE_LINKED_CONVERSATION_READ"
 _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
 _SIDE_CHAT_APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
@@ -331,6 +332,14 @@ ConversationGetCaller = Literal["shell", "saved-turn", "saved-orchestration"]
 
 
 @dataclass(frozen=True)
+class NativeConversationLinkedParent:
+    """Select one Host-generated retention or reuse operation."""
+
+    mode: Literal["retain", "reuse"]
+    nonce: str
+
+
+@dataclass(frozen=True)
 class NativeConversationGetRequest:
     """Borrow the original Conversation GET capture and live guard."""
 
@@ -340,6 +349,12 @@ class NativeConversationGetRequest:
     assert_current: Callable[[], None]
     caller: ConversationGetCaller
     conversation_id: str
+    linked_parent: NativeConversationLinkedParent | None = None
+
+
+def is_native_linked_conversation_identifier(value: object) -> bool:
+    """Check the strict owner identifier accepted on the linked GET path."""
+    return isinstance(value, str) and _TURN_IDENTIFIER.fullmatch(value) is not None
 
 
 ConversationAppendCaller = Literal["saved-turn", "side-chat"]
@@ -679,14 +694,25 @@ def capture_launcher_model_settings_reader() -> (
     return partial(_invoke, launcher, operation="model_list")
 
 
-def capture_launcher_conversation_get_reader() -> (
-    Callable[[NativeConversationGetRequest], Mapping[str, Any]] | None
-):
+@dataclass(frozen=True)
+class _LauncherConversationGet:
+    launcher: _Launcher
+    supports_linked_parent: bool
+
+    def __call__(self, borrow: NativeConversationGetRequest) -> Mapping[str, Any]:
+        if borrow.linked_parent is not None and not self.supports_linked_parent:
+            raise _ProtocolError("native linked Conversation GET is unavailable")
+        return _invoke(self.launcher, borrow, operation="conversation_get")
+
+
+def capture_launcher_conversation_get_reader() -> _LauncherConversationGet | None:
     """Capture the managed Launcher's fixed endpoint for a conversation read."""
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return partial(_invoke, launcher, operation="conversation_get")
+    return _LauncherConversationGet(
+        launcher, os.environ.get(_LINKED_CONVERSATION_READ_ENV) == "1",
+    )
 
 
 def capture_launcher_conversation_append_writer() -> (
@@ -1017,10 +1043,26 @@ def _start_payload(
             "shell", "saved-turn", "saved-orchestration",
         ) or not isinstance(borrow.conversation_id, str):
             raise _ProtocolError("native Conversation GET inputs are invalid")
-        frame["conversation_get"] = {
+        conversation_get: dict[str, Any] = {
             "caller": borrow.caller,
             "conversation_id": borrow.conversation_id,
         }
+        linked_parent = borrow.linked_parent
+        if linked_parent is not None:
+            if (
+                type(linked_parent) is not NativeConversationLinkedParent
+                or linked_parent.mode not in ("retain", "reuse")
+                or not isinstance(linked_parent.nonce, str)
+                or _INSTANCE.fullmatch(linked_parent.nonce) is None
+                or borrow.caller != "saved-orchestration"
+                or not is_native_linked_conversation_identifier(borrow.conversation_id)
+            ):
+                raise _ProtocolError("native linked Conversation GET inputs are invalid")
+            conversation_get["linked_parent"] = {
+                "mode": linked_parent.mode,
+                "nonce": linked_parent.nonce,
+            }
+        frame["conversation_get"] = conversation_get
     elif isinstance(borrow, NativeConversationAppendRequest):
         frame["conversation_append"] = _conversation_append_payload(borrow)
     elif isinstance(borrow, NativeSavedReceiptRequest):
