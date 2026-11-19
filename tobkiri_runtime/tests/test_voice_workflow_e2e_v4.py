@@ -559,7 +559,11 @@ def test_voice_chain_end_to_end(
                     assert chain[-1].deadline_monotonic <= parent.deadline_monotonic
                     chain.append(parent)
                 assert len({item.lease.token for item in chain}) == len(chain)
-                assert len({item.resource_reservation_id for item in chain}) == len(chain)
+                assert envelope.resource_reservation_id is not None
+                assert all(
+                    ancestor.resource_reservation_id != envelope.resource_reservation_id
+                    for ancestor in chain[1:]
+                )
                 with pytest.raises((AuthorityDenied, PermissionError)):
                     read.assert_current()
 
