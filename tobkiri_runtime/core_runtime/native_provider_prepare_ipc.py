@@ -489,6 +489,7 @@ ProjectedProviderSnapshotRole = Literal[
     "shell-settings", "model-save", "model-search", "command-datasource",
 ]
 ModelAccessProviderSnapshotRole = Literal["model-access-read", "model-access-catalog"]
+ModelAccessProjectionPhase = Literal["policy", "prepare-catalog", "project-catalog"]
 WorkflowProviderSnapshotRole = Literal[
     "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
     "workflow-text-adapter", "workflow-messages-adapter",
@@ -502,6 +503,11 @@ ProviderSnapshotRole = (
     | WorkflowProviderSnapshotRole | ModelAccessProviderSnapshotRole
 )
 _MODEL_ACCESS_PROVIDER_SNAPSHOT_ROLES = ("model-access-read", "model-access-catalog")
+_MODEL_ACCESS_PROJECTION_ROLES: Mapping[ModelAccessProjectionPhase, ModelAccessProviderSnapshotRole] = {
+    "policy": "model-access-read",
+    "prepare-catalog": "model-access-catalog",
+    "project-catalog": "model-access-catalog",
+}
 _WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES = ("workflow-text-adapter", "workflow-messages-adapter")
 _WORKFLOW_PROVIDER_SNAPSHOT_ROLES = (
     "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
@@ -539,6 +545,7 @@ class NativeProviderSnapshotRequest:
     assert_current: Callable[[], None]
     role: ProviderSnapshotRole
     workflow_entry: WorkflowSnapshotEntry | None = None
+    model_access_projection: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -761,6 +768,7 @@ class _LauncherProviderSnapshot:
     supports_workflow: bool
     supports_workflow_adapter: bool
     supports_model_access: bool
+    supports_model_access_projection: bool
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
@@ -776,6 +784,8 @@ class _LauncherProviderSnapshot:
                 and request.role in _WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_model_access
                 and request.role in _MODEL_ACCESS_PROVIDER_SNAPSHOT_ROLES)
+            or (not self.supports_model_access_projection
+                and request.model_access_projection is not None)
         ):
             raise NativeProviderPrepareUnavailable("native Registry read role is unavailable")
         return _invoke(self.launcher, request, operation="provider_snapshot")
@@ -784,7 +794,7 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV)
-    if version not in ("1", "2", "3", "4", "5", "6", "7"):
+    if version not in ("1", "2", "3", "4", "5", "6", "7", "8"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
@@ -792,11 +802,12 @@ def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | N
     return _LauncherProviderSnapshot(
         launcher,
         supports_gateway=version != "1",
-        supports_projected=version in ("3", "4", "5", "6", "7"),
-        supports_query=version in ("4", "5", "6", "7"),
-        supports_workflow=version in ("5", "6", "7"),
-        supports_workflow_adapter=version in ("6", "7"),
-        supports_model_access=version == "7",
+        supports_projected=version in ("3", "4", "5", "6", "7", "8"),
+        supports_query=version in ("4", "5", "6", "7", "8"),
+        supports_workflow=version in ("5", "6", "7", "8"),
+        supports_workflow_adapter=version in ("6", "7", "8"),
+        supports_model_access=version in ("7", "8"),
+        supports_model_access_projection=version == "8",
     )
 
 
@@ -1167,9 +1178,19 @@ def _start_payload(
             ))
         ):
             raise _ProtocolError("native Provider snapshot role is invalid")
-        frame["provider_snapshot"] = {"role": borrow.role}
-        if workflow:
-            frame["provider_snapshot"]["entry"] = borrow.workflow_entry
+        projection = borrow.model_access_projection
+        if projection is not None:
+            phase = projection.get("phase")
+            if (
+                type(phase) is not str or _MODEL_ACCESS_PROJECTION_ROLES.get(phase) != borrow.role
+                or not 1 <= body_input_bytes <= _OWNER_RESULT_LIMIT
+            ):
+                raise _ProtocolError("native Model Access projection request is invalid")
+            frame["model_access_projection"] = {"phase": phase, "input_bytes": body_input_bytes}
+        else:
+            frame["provider_snapshot"] = {"role": borrow.role}
+            if workflow:
+                frame["provider_snapshot"]["entry"] = borrow.workflow_entry
     elif isinstance(borrow, NativeModelSettingsRequest):
         frame["model_list"] = {}
     elif isinstance(borrow, NativeModelSaveRequest):
@@ -2039,16 +2060,108 @@ def _decode_provider_snapshot(
         ):
             raise _ProtocolError(invalid)
         return result
-    if (
-        type(result) is not dict
-        or result.keys() != {"version", "profile_id", "revision", "providers"}
-        or result["version"] != "rumi.provider-registry.store.v1"
-        or result["profile_id"] != profile_id
-        or type(result["providers"]) is not list
-        or any(type(record) is not dict for record in result["providers"])
-    ):
+    if not _is_raw_provider_snapshot(result, profile_id):
         raise _ProtocolError(invalid)
     return result
+
+
+def _is_raw_provider_snapshot(result: Any, profile_id: str) -> bool:
+    return (
+        type(result) is dict
+        and result.keys() == {"version", "profile_id", "revision", "providers"}
+        and result["version"] == "rumi.provider-registry.store.v1"
+        and result["profile_id"] == profile_id
+        and type(result["providers"]) is list
+        and all(type(record) is dict for record in result["providers"])
+    )
+
+
+def _model_access_projection_input(request: Mapping[str, Any]) -> bytes:
+    """Cap the private projection before connecting, including large catalog replies."""
+    result = bytearray()
+    encoder = json.JSONEncoder(ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    try:
+        for part in encoder.iterencode(dict(request)):
+            if len(part) > _OWNER_RESULT_LIMIT - len(result):
+                break
+            encoded = part.encode("utf-8")
+            if len(encoded) > _OWNER_RESULT_LIMIT - len(result):
+                break
+            result.extend(encoded)
+        else:
+            return bytes(result)
+    except (TypeError, ValueError, UnicodeError, RecursionError) as error:
+        raise NativeProviderRegistryRequiresLegacyRead(
+            "native Model Access input is outside the projection codec",
+        ) from error
+    raise NativeProviderRegistryRequiresLegacyRead(
+        "native Model Access input exceeds the projection envelope",
+    )
+
+
+def _decode_model_access_projection(
+    payload: bytes, profile_id: str, request: Mapping[str, Any],
+) -> dict[str, Any]:
+    invalid = "native Model Access projection result is invalid"
+    reply = _decode_owner_result(payload, invalid)
+    if type(reply) is not dict:
+        raise _ProtocolError(invalid)
+    phase = request["phase"]
+    if phase == "policy":
+        result = reply
+        if result.keys() != {
+            "profile_id", "provider_instance_id", "registry_revision", "model_access",
+            "native_capability",
+        }:
+            raise _ProtocolError(invalid)
+        policy = result["model_access"]
+        if policy is not None and (
+            type(policy) is not dict
+            or not {"version", "mode", "model_ids"} <= policy.keys() <= {
+                "version", "mode", "model_ids", "native_filters",
+            }
+            or policy["version"] != "tobkiri.connection-model-access.v1"
+            or policy["mode"] not in ("all", "explicit")
+            or type(policy["model_ids"]) is not list
+            or any(type(identifier) is not str for identifier in policy["model_ids"])
+            or ("native_filters" in policy and type(policy["native_filters"]) is not dict)
+        ):
+            raise _ProtocolError(invalid)
+        if result["native_capability"] is not None and type(result["native_capability"]) is not str:
+            raise _ProtocolError(invalid)
+    else:
+        if (
+            reply.keys() != {"result", "snapshot"}
+            or not _is_raw_provider_snapshot(reply["snapshot"], profile_id)
+            or type(reply["result"]) is not dict
+        ):
+            raise _ProtocolError(invalid)
+        result = reply["result"]
+        if phase == "prepare-catalog":
+            if (
+                not {"provider_id"} <= result.keys() <= {"provider_id", "discovery_filters"}
+                or type(result["provider_id"]) is not str or not result["provider_id"]
+                or ("discovery_filters" in result and type(result["discovery_filters"]) is not dict)
+            ):
+                raise _ProtocolError(invalid)
+            return reply
+        if (
+            result.keys() != {"profile_id", "provider_instance_id", "models", "status"}
+            or result["status"] not in ("live", "unavailable")
+            or type(result["models"]) is not list
+            or any(
+                type(model) is not dict or model.keys() != {"model_id", "display_name"}
+                or any(type(value) is not str for value in model.values())
+                for model in result["models"]
+            )
+        ):
+            raise _ProtocolError(invalid)
+    if (
+        result["profile_id"] != profile_id
+        or result["provider_instance_id"] != request["provider_instance_id"]
+    ):
+        raise _ProtocolError(invalid)
+    return reply
 
 
 def _decode_conversation_get(payload: bytes) -> dict[str, Any]:
@@ -2261,6 +2374,7 @@ class _Exchange:
         requires_body_ready: bool,
         ai_routing: bool = False,
         read_only_body: bool = False,
+        model_access_projection: bool = False,
         conversation_complete: bool = False,
         permits_dispatch: bool = False,
         accepts_projected_local_chat: bool = False,
@@ -2289,7 +2403,7 @@ class _Exchange:
             self.failure_codes |= _LOCAL_CHAT_POLICY_FAILURES
         if conversation_complete:
             self.failure_codes = _CONVERSATION_COMPLETE_FAILURES
-        if not requires_body_ready or ai_routing:
+        if not requires_body_ready or ai_routing or model_access_projection:
             self.failure_codes |= {self.legacy_failure}
         if conversation_mutation:
             self.failure_codes |= {_PUBLICATION_UNCONFIRMED}
@@ -2494,6 +2608,10 @@ class _Exchange:
         self.send(_START_APPEND if conversation_append else _START, start, wait_seconds)
         self.started = True
         conversation_get = isinstance(borrow, NativeConversationGetRequest)
+        model_access_projection = (
+            borrow.model_access_projection if isinstance(borrow, NativeProviderSnapshotRequest)
+            else None
+        )
         while True:
             tag, payload = self.receive(wait_seconds)
             if tag == _FAILURE and payload in self.failure_codes:
@@ -2548,6 +2666,11 @@ class _Exchange:
                     self.entered_live_phase
                     and payload in (b"not-found", b"invalid", b"denied")
                 ):
+                    if model_access_projection is not None:
+                        wait_seconds()
+                        if payload == b"invalid":
+                            raise ValueError("native Model Access input or data is invalid")
+                        raise PermissionError("native Model Access connection is unavailable")
                     if conversation_get:
                         wait_seconds()
                         raise NativeConversationGetFailure(payload.decode("ascii"))
@@ -2614,8 +2737,12 @@ class _Exchange:
                 elif isinstance(borrow, NativeModelResolveRequest):
                     plan = _decode_model_resolve(payload, borrow.identifier)
                 elif isinstance(borrow, NativeProviderSnapshotRequest):
-                    plan = _decode_provider_snapshot(
-                        payload, borrow.context.profile_id, borrow.role,
+                    plan = (
+                        _decode_provider_snapshot(payload, borrow.context.profile_id, borrow.role)
+                        if model_access_projection is None
+                        else _decode_model_access_projection(
+                            payload, borrow.context.profile_id, model_access_projection,
+                        )
                     )
                 elif isinstance(borrow, NativeModelSaveRequest):
                     plan = _decode_model_save(payload)
@@ -2801,6 +2928,7 @@ def _invoke(
 ) -> dict[str, Any] | None:
     model_settings = isinstance(borrow, NativeModelSettingsRequest)
     provider_snapshot = isinstance(borrow, NativeProviderSnapshotRequest)
+    model_access_projection = provider_snapshot and borrow.model_access_projection is not None
     model_save = isinstance(borrow, NativeModelSaveRequest)
     conversation_get = isinstance(borrow, NativeConversationGetRequest)
     conversation_append = isinstance(borrow, NativeConversationAppendRequest)
@@ -2838,6 +2966,9 @@ def _invoke(
     if ai_routing:
         wait_seconds()
         body_input = _ai_routing_input(borrow)
+    elif model_access_projection:
+        wait_seconds()
+        body_input = _model_access_projection_input(borrow.model_access_projection)
     elif isinstance(borrow, NativeApplicationPresentationRequest):
         wait_seconds()
         body_input = canonical_json(dict(borrow.input))
@@ -2876,10 +3007,11 @@ def _invoke(
             conversation_mutation=conversation_confirmation or conversation_append,
             requires_body_ready=(
                 saved_orchestration or ai_routing or application_presentation
-                or conversation_complete
+                or conversation_complete or model_access_projection
             ),
             ai_routing=ai_routing,
-            read_only_body=application_presentation or conversation_complete,
+            read_only_body=application_presentation or conversation_complete or model_access_projection,
+            model_access_projection=model_access_projection,
             conversation_complete=conversation_complete,
         )
         try:

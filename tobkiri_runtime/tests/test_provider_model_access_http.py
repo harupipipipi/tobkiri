@@ -74,13 +74,23 @@ class _ModelsResponse:
         return self.body[:limit]
 
 
-@pytest.mark.parametrize("delete_during_discovery", [False, True], ids=["live", "changed"])
+@pytest.mark.parametrize(("flow", "delete_during_discovery"), [
+    pytest.param("snapshot", False, id="v7-live"),
+    pytest.param("snapshot", True, id="v7-changed"),
+    pytest.param("projection", False, id="v8-live"),
+    pytest.param("projection", True, id="v8-changed"),
+    pytest.param("oversize", False, id="v8-catalog-over-budget"),
+])
 def test_native_model_access_rechecks_registry_under_the_catalog_lease(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolated_catalog_cache: None,
-    delete_during_discovery: bool,
+    flow: str, delete_during_discovery: bool,
 ) -> None:
     from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.authority.v4 import AuthorityDenied
+    from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
+    from ecosystem.rumi_provider_registry_pack.runtime.model_access_presentation import (
+        project_model_access, project_model_access_catalog,
+    )
     from tobkiri_host.broker import RequestEnvelope
     from tobkiri_host.credential_store import host_credential_store_factory
 
@@ -91,9 +101,26 @@ def test_native_model_access_rechecks_registry_under_the_catalog_lease(
     def native_snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         request.assert_current()
         calls.append(request)
-        return ProviderRegistry(
+        snapshot = ProviderRegistry(
             request.context.profile_id, user_data_root=tmp_path / "user-data",
         ).snapshot()
+        projection = request.model_access_projection
+        if projection is None:
+            return snapshot
+        phase = projection["phase"]
+        identity = projection["provider_instance_id"]
+        if phase == "policy":
+            return project_model_access(snapshot, identity, native_capability_confirmed=True)
+        if phase == "prepare-catalog":
+            return {"snapshot": snapshot, "result": {
+                "provider_id": "openrouter", "discovery_filters": projection["discovery_filters"],
+            }}
+        ipc._model_access_projection_input(projection)
+        if not snapshot["providers"]:
+            raise PermissionError("native Model Access connection is unavailable")
+        return {"snapshot": snapshot, "result": project_model_access_catalog(
+            snapshot, identity, projection["catalog"],
+        )}
 
     def open_models(request: Any, **kwargs: Any) -> _ModelsResponse:
         catalog_requests.append(request)
@@ -102,11 +129,22 @@ def test_native_model_access_rechecks_registry_under_the_catalog_lease(
         return _ModelsResponse([{"id": "vendor/model", "name": "Synthetic model"}])
 
     native_snapshot.supports_model_access = True
+    native_snapshot.supports_model_access_projection = flow != "snapshot"
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(
         ipc, "capture_launcher_provider_snapshot_reader", lambda: native_snapshot,
     )
     monkeypatch.setattr(urllib.request, "urlopen", open_models)
+    if flow == "oversize":
+        invoke = ExactHostProviderBackendV4.invoke
+
+        def large_catalog(backend, envelope):
+            result = invoke(backend, envelope)
+            if envelope.contract_id == "tobkiri.resource.ai.model.catalog.v1":
+                return {**result, "unused": "x" * ipc._OWNER_RESULT_LIMIT}
+            return result
+
+        monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", large_catalog)
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch, credential_store_factory=host_credential_store_factory,
     ) as (server, session, _authority):
@@ -137,18 +175,29 @@ def test_native_model_access_rechecks_registry_under_the_catalog_lease(
             ]
         assert _MARKER not in json.dumps(catalog)
 
-        assert [call.role for call in calls] == [
-            "model-access-read", "model-access-catalog", "model-access-catalog",
+        expected_roles = ["model-access-read", "model-access-catalog", "model-access-catalog"]
+        if flow == "oversize":
+            expected_roles.append("model-access-catalog")
+        assert [call.role for call in calls] == expected_roles
+        phases = [
+            call.model_access_projection["phase"] if call.model_access_projection else None
+            for call in calls
         ]
-        read_envelope, catalog_envelope, confirmation_envelope = (
+        if flow == "snapshot":
+            assert phases == [None, None, None]
+        else:
+            assert phases == ["policy", "prepare-catalog", "project-catalog"] + (
+                [None] if flow == "oversize" else []
+            )
+        read_envelope, catalog_envelope, *confirmation_envelopes = (
             next(envelope for envelope in dispatches if envelope.context is call.context)
             for call in calls
         )
         assert read_envelope.resource_reservation_id is not None
         assert catalog_envelope.resource_reservation_id is not None
         assert read_envelope.resource_reservation_id != catalog_envelope.resource_reservation_id
-        assert catalog_envelope is confirmation_envelope
-        assert calls[1].deadline_monotonic == calls[2].deadline_monotonic
+        assert all(envelope is catalog_envelope for envelope in confirmation_envelopes)
+        assert all(call.deadline_monotonic == calls[1].deadline_monotonic for call in calls[2:])
         assert len(catalog_requests) == 1
         assert all(
             name.lower() not in {"authorization", "cookie"}

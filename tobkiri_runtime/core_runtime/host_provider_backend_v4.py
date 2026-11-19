@@ -104,6 +104,12 @@ class HostProviderInvocationContextV4(Protocol):
         """Read the current Registry for the original bound Model Access operation."""
         return None
 
+    def project_model_access(
+        self, phase: str, *, catalog: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any] | None:
+        """Run a pure projection for the admitted Model Access invocation."""
+        return None
+
     def post_saved_local_chat(
         self,
         connection: Mapping[str, Any],

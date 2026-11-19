@@ -20824,7 +20824,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.model-access.catalog",
-      "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
+      "implementation_digest": "sha256:cb5beab0d68c0887e631f1ef88aa32f584c1df97be49208724a9f070b1ee90fa",
       "implementation_path": "runtime/model_access_resource.py",
       "input_schema": {
         "type": "object"
@@ -20838,7 +20838,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
+          "implementation_digest": "sha256:cb5beab0d68c0887e631f1ef88aa32f584c1df97be49208724a9f070b1ee90fa",
           "implementation_path": "runtime/model_access_resource.py",
           "input_schema": {
             "type": "object"
@@ -20977,7 +20977,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.model-access.read",
-      "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
+      "implementation_digest": "sha256:cb5beab0d68c0887e631f1ef88aa32f584c1df97be49208724a9f070b1ee90fa",
       "implementation_path": "runtime/model_access_resource.py",
       "input_schema": {
         "type": "object"
@@ -20991,7 +20991,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
+          "implementation_digest": "sha256:cb5beab0d68c0887e631f1ef88aa32f584c1df97be49208724a9f070b1ee90fa",
           "implementation_path": "runtime/model_access_resource.py",
           "input_schema": {
             "type": "object"

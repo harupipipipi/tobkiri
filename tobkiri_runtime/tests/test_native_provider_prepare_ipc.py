@@ -2140,6 +2140,77 @@ def test_workflow_provider_snapshot_rejects_mismatched_entry(role, entry) -> Non
         ipc._start_payload(request, 1)
 
 
+@pytest.mark.parametrize("phase", ["policy", "prepare-catalog", "project-catalog"])
+def test_model_access_projection_v8_uses_the_funded_read_only_body(
+    monkeypatch: pytest.MonkeyPatch, phase: ipc.ModelAccessProjectionPhase,
+) -> None:
+    borrow = _Borrow()
+    identity = "connection/work"
+    role = "model-access-read" if phase == "policy" else "model-access-catalog"
+    request = {"phase": phase, "provider_instance_id": identity}
+    snapshot = {
+        "version": "rumi.provider-registry.store.v1", "profile_id": borrow.context.profile_id,
+        "revision": 1, "providers": [],
+    }
+    if phase == "policy":
+        reply = {
+            "profile_id": borrow.context.profile_id, "provider_instance_id": identity,
+            "registry_revision": 1, "model_access": None, "native_capability": None,
+        }
+    elif phase == "prepare-catalog":
+        request["discovery_filters"] = {"output_modalities": ["text"]}
+        reply = {"result": {"provider_id": "openrouter"}, "snapshot": snapshot}
+    else:
+        request["catalog"] = {"models": []}
+        reply = {"snapshot": snapshot, "result": {
+            "profile_id": borrow.context.profile_id, "provider_instance_id": identity,
+            "models": [], "status": "live",
+        }}
+    projection = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic, borrow.assert_current,
+        role, model_access_projection=request,
+    )
+
+    def serve(peer: socket.socket) -> None:
+        tag, frame = _receive(peer)
+        assert tag == 1
+        start = json.loads(frame)
+        assert "provider_snapshot" not in start
+        _send(peer, 14)
+        tag, data = _receive(peer)
+        assert tag == 15 and json.loads(data) == request
+        assert start["model_access_projection"] == {"phase": phase, "input_bytes": len(data)}
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, json.dumps(reply).encode())
+        assert peer.recv(1) == b""
+
+    with _served(monkeypatch, serve):
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "7")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and not reader.supports_model_access_projection
+        with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+            reader(projection)
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "8")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and reader.supports_model_access_projection
+        assert reader(projection) == reply
+
+
+@pytest.mark.parametrize("field", ["wide", "nonfinite", "surrogate"])
+def test_model_access_projection_rejects_incompatible_input_before_sending(field: str) -> None:
+    value = {
+        "wide": "界" * ipc._OWNER_RESULT_LIMIT,
+        "nonfinite": float("nan"),
+        "surrogate": "\ud800",
+    }[field]
+    with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead, match="Model Access input"):
+        ipc._model_access_projection_input({
+            "phase": "project-catalog", "provider_instance_id": "connection/work",
+            "catalog": {"ignored": value},
+        })
+
+
 @pytest.mark.parametrize("role", ipc._PROJECTED_PROVIDER_SNAPSHOT_ROLES)
 @pytest.mark.parametrize("unexpected_field", [None, "credential_handle", "endpoint"])
 def test_provider_snapshot_settings_role_only_accepts_the_public_view(

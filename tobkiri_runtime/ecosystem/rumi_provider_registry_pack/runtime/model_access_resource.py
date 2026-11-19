@@ -150,27 +150,39 @@ class ModelAccessResourceHostFactoryV4:
                         )
                     return registry.snapshot()
 
-                snapshot = read_snapshot()
                 identity = payload["provider_instance_id"]
-                connection = _connection(snapshot, identity)
-                official = is_official_openrouter(connection)
+                project = getattr(invocation, "project_model_access", None)
                 if operation_id == READ_OPERATION:
+                    result = project("policy") if project is not None else None
+                    if result is not None:
+                        return result
+                    snapshot = read_snapshot()
+                    official = is_official_openrouter(_connection(snapshot, identity))
                     invocation.assert_current()
                     return project_model_access(
                         snapshot, identity, native_capability_confirmed=official
                     )
-                provider = _catalog_identity(connection)
-                catalog_payload: dict[str, Any] = {"provider_id": provider}
-                if "discovery_filters" in payload:
-                    normalized = normalize_native_filters(
-                        {
-                            "revision": CAPABILITY_REVISION,
-                            "discovery": payload["discovery_filters"],
-                            "routing": {},
-                        },
-                        verified_openrouter=official,
-                    )
-                    catalog_payload["discovery_filters"] = normalized["discovery"]
+                prepared = project("prepare-catalog") if project is not None else None
+                if prepared is None:
+                    snapshot = read_snapshot()
+                    connection = _connection(snapshot, identity)
+                    official = is_official_openrouter(connection)
+                    provider = _catalog_identity(connection)
+                    catalog_payload = {"provider_id": provider}
+                    if "discovery_filters" in payload:
+                        normalized = normalize_native_filters(
+                            {
+                                "revision": CAPABILITY_REVISION,
+                                "discovery": payload["discovery_filters"],
+                                "routing": {},
+                            },
+                            verified_openrouter=official,
+                        )
+                        catalog_payload["discovery_filters"] = normalized["discovery"]
+                else:
+                    snapshot = prepared["snapshot"]
+                    catalog_payload = prepared["result"]
+                    provider = catalog_payload["provider_id"]
                 client = invocation.contract_client(
                     allowed_contract_ids=frozenset({MODEL_CATALOG_CONTRACT}),
                     consumer_pack_id=PACK_ID,
@@ -193,10 +205,15 @@ class ModelAccessResourceHostFactoryV4:
                     or not isinstance(catalog.get("models"), list)
                 ):
                     raise ValueError("model catalog result is invalid")
-                # Re-read after discovery to reject deletion or policy changes during dispatch.
-                current = read_snapshot()
+                projected = (
+                    project("project-catalog", catalog=catalog)
+                    if project is not None and prepared is not None else None
+                )
+                current = projected["snapshot"] if projected is not None else read_snapshot()
                 if current != snapshot:
                     raise PermissionError("provider registry changed during catalog discovery")
+                if projected is not None:
+                    return projected["result"]
                 result = project_model_access_catalog(snapshot, identity, catalog)
                 if provider != "openrouter":
                     supported = any(

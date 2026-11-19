@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_provider_registry_pack",
-  "source_identity": "sha256:cad9619ca53775daf7597a726cfa694890b6450638599f9c126690f3a28deec1",
+  "source_identity": "sha256:49be773e68d840bb8c5601338af88a06e2c4a05b9de64af6d1838c4e2aa536c7",
   "variants": [
     {
       "variant_id": "rumi_provider_registry_pack.model-access.catalog.python",
       "function_id": "rumi_provider_registry_pack.model-access.catalog",
       "implementation_path": "runtime/model_access_resource.py",
-      "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
+      "implementation_digest": "sha256:cb5beab0d68c0887e631f1ef88aa32f584c1df97be49208724a9f070b1ee90fa",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -109,7 +109,7 @@
       "variant_id": "rumi_provider_registry_pack.model-access.read.python",
       "function_id": "rumi_provider_registry_pack.model-access.read",
       "implementation_path": "runtime/model_access_resource.py",
-      "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
+      "implementation_digest": "sha256:cb5beab0d68c0887e631f1ef88aa32f584c1df97be49208724a9f070b1ee90fa",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -386,6 +386,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:6bd6b4b4e8f8027406a38c0453e6f36852b68c9e121899d6063722867b75159e",
-  "catalog_digest": "sha256:40fc04647db77cbfbba5ef432a4baae16e4699f36b8ca997dd7484e6f357d052"
+  "materialization_catalog_digest": "sha256:030d682e00a73ecc22b09048b73dfa532da61e079c116b995207656cb33ff54d",
+  "catalog_digest": "sha256:85d7806a71d0a60894f8c1a8aec82922eb3efb80ec453fd66193009b27bcf31c"
 }

@@ -4325,6 +4325,34 @@ def capture_production_dispatch(
 
         def model_access_registry_snapshot(self) -> Mapping[str, Any] | None:
             """Borrow the original Model Access operation's own Registry read."""
+            return self._read_model_access_registry()
+
+        def project_model_access(
+            self, phase: str, *, catalog: Mapping[str, Any] | None = None,
+        ) -> Mapping[str, Any] | None:
+            if getattr(native_provider_snapshot_reader, "supports_model_access_projection", False) is not True:
+                return None
+            expected_operation = {
+                "policy": "rumi_provider_registry_pack.model-access-read",
+                "prepare-catalog": "rumi_provider_registry_pack.model-access-catalog",
+                "project-catalog": "rumi_provider_registry_pack.model-access-catalog",
+            }.get(phase)
+            if (
+                expected_operation != self._envelope.operation_id
+                or (phase == "project-catalog") != (catalog is not None)
+            ):
+                raise AuthorityDenied("native Model Access phase is outside the original operation")
+            payload = self._envelope.payload
+            request = {"phase": phase, "provider_instance_id": payload.get("provider_instance_id")}
+            if phase == "prepare-catalog" and "discovery_filters" in payload:
+                request["discovery_filters"] = payload["discovery_filters"]
+            if catalog is not None:
+                request["catalog"] = dict(catalog)
+            return self._read_model_access_registry(request)
+
+        def _read_model_access_registry(
+            self, projection: Mapping[str, Any] | None = None,
+        ) -> Mapping[str, Any] | None:
             envelope = self._envelope
             source = native_model_access_snapshot_source(
                 envelope.context, envelope.payload, envelope.operation_id,
@@ -4332,7 +4360,9 @@ def capture_production_dispatch(
             if source is None:
                 return None
             role, edge = source
-            result, _ = borrow_native_provider_snapshot(self, role, edge, None)
+            result, _ = borrow_native_provider_snapshot(
+                self, role, edge, None, model_access_projection=projection,
+            )
             return result
 
         def contract_client(
@@ -5497,6 +5527,8 @@ def capture_production_dispatch(
         edge: _CapturedPlanEdge,
         parent: CapturedInvocationScopeV4 | None,
         workflow_entry: WorkflowSnapshotEntry | None = None,
+        *,
+        model_access_projection: Mapping[str, Any] | None = None,
     ) -> tuple[Mapping[str, Any] | None, Callable[[], None]]:
         envelope = invocation.envelope
         context = envelope.context
@@ -5535,6 +5567,7 @@ def capture_production_dispatch(
                 assert_current=guard,
                 role=role,
                 workflow_entry=workflow_entry,
+                model_access_projection=model_access_projection,
             ))
         except (NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead):
             result = None
