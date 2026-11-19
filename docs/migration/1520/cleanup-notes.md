@@ -4228,8 +4228,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   確認した。管理アプリ・Profile選択はfixture。分離したRustの63件、Registryの21件、
   固定CPython 3.13.16のIPC 348件とmacOS Launcherのテスト型チェックが通過。
   本文フレームから容量計上済みCoreBufferへのコピーは、受信前に同じ容量を確保できるように
-  なった段階で削減できる。通常会話への接続には、実際に完了した署名付きRegistry GETの
-  接続を既存Adapterに結び付ける処理と、Adapterの新しい版からの呼び出しが残る。
+  なった段階で削減できる。
+  `736486698` と `c77b6aebd` で、通常チャットのAdapterが完了した同じロールの
+  署名付きRegistry GETから接続ID・レコードrevision・endpointを保持し、同じBrokerの
+  lease、容量予約、起動世代を再確認してからRustへ送る。保存ターンからGatewayまでの
+  呼び出し元も照合する。旧レコードでrevisionがなく、容量不足や本文前の対象外応答の
+  場合は元のローカルHTTPを使う。他の失敗は元の期限内で再送せずに確定する。
+  本文のコンパイルと結果のJSON解釈はAdapter側に残る。書き出し済みバイトを使うため、
+  現段階では順序・Unicode・オプション・応答エラーの互換性を維持できる。
+  `763f3d7da` で有限JSONのStream応答に元のテキスト・ツール意図・終了理由を含めた。
+  Gatewayはイベントで表示を作り、終端フィールドで保存済み返信を確定する。イベントだけを
+  返す旧ローカル経路では本文を保存できないことが署名付きHTTP試験で分かった。
+  Adapterの同梱版を1.0.3に更新し、v4目録・Profile Lockと互換projectionを再生成した。
+  クリーンな`ac17cbfbf`のCPython 3.13.16で376件が通過し、署名付きHTTPからのGenerateと
+  Stream両方で返信保存と結果再送、拒否と応答喪失に対する二重送信の防止を確認した。
+  HTTP試験はProvider・Model Registryと署名付きBrokerを通し、LauncherのIPC呼出と
+  PackVMのプロセス搬送はfixtureで再現した。ソース・Pack・実行目録・Bundle等の生成器6件の
+  再照合とmacOS Launcherの型チェックも通過。最新DMGからの実モデル会話は後続。
   [717face1f の実Gemma 3 1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44487465311)
   は既存のHarness実行経路で通過した。
   [d3113e9b2 の再計測](https://github.com/harupipipipi/tobkiri/actions/runs/44490251513)では
@@ -4237,6 +4252,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   llama.cppの空きslotを観測できなかった。独立した直接クライアントでは2.450秒だったが、
   会話履歴・キャッシュ・接続の扱いが異なる。次回の失敗では、直接プローブ前に採取した
   サーバーログ末尾を認証情報を除いて保存し、3秒の合否基準を維持する。
+  [ae72bf306 の再実行](https://github.com/harupipipipi/tobkiri/actions/runs/44493529574)は
+  認証付きFlow・キー不要の保存モデルの両方で通過した。
 - [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
   実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
   経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で
