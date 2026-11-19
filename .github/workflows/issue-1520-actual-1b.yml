@@ -10,6 +10,7 @@ on:
       - 'crates/tobkiri-e2e/tests/model_registry.rs'
       - 'crates/tobkiri-e2e/tests/provider_registry.rs'
       - 'crates/tobkiri-e2e/fixtures/saved-conversation-owner.json'
+      - 'packs/local.model-registry-rust/**'
       - 'packs/local.saved-conversation-rust/**'
       - 'packs/local.openai-compat-provider/src/**'
       - 'packs/local.provider-registry-rust/**'
@@ -71,6 +72,12 @@ jobs:
             --log "$RUNNER_TEMP/registered-provider.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test provider_registry -- \
               provider_registry_uses_gated_private_storage_and_profile_revisions --ignored --exact --test-threads=1
+      - name: Verify private Model resolution against original Registry records
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/original-model-resolve.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test model_registry -- \
+              original_model_lookup_preserves_private_owner_result --ignored --exact --test-threads=1
       - name: Fetch the pinned upstream server and model on the runner
         id: registered_model_assets
         shell: bash
@@ -284,4 +291,6 @@ jobs:
             ${{ runner.temp }}/registered-1b.receipt.json
             ${{ runner.temp }}/registered-provider.log
             ${{ runner.temp }}/registered-provider.receipt.json
+            ${{ runner.temp }}/original-model-resolve.log
+            ${{ runner.temp }}/original-model-resolve.receipt.json
           if-no-files-found: warn

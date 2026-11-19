@@ -23,6 +23,14 @@ interface legacy-settings {
   list-models: func(document: option<string>) -> result<json, error>;
 }
 
+interface legacy-resolve {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Resolve one model through the authenticated Profile's physical legacy Registry.
+  /// The private owner result is encoded as an ordered JSON string.
+  resolve: func(document: option<string>, identifier: string) -> result<json, error>;
+}
+
 interface legacy-save {
   use tobkiri:core/types@1.2.0.{callback-handle, json, error};
 
@@ -48,6 +56,7 @@ world pack {
   import tobkiri:core/storage@1.2.0;
   export settings;
   export legacy-settings;
+  export legacy-resolve;
   export legacy-save;
   export routing;
 }

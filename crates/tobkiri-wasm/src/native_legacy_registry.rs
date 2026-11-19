@@ -94,6 +94,16 @@ const MODEL_LIST: RegistryExport = RegistryExport {
     reads: 0,
     clock: RegistryClock::None,
 };
+const MODEL_RESOLVE: RegistryExport = RegistryExport {
+    pack: MODEL_PACK,
+    shape: "local.model-registry.legacy-resolve@1.0",
+    interface: "local:model-registry/legacy-resolve@1.0.0",
+    function: "resolve",
+    error_subject: "legacy Model Registry resolve",
+    parameters: &["document", "identifier"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 const MODEL_SAVE: RegistryExport = RegistryExport {
     pack: MODEL_PACK,
     shape: "local.model-registry.legacy-save@1.0",
@@ -128,9 +138,9 @@ enum RegistryInput<'a> {
         read: LegacyProviderRegistryRead,
     },
     ModelList(Option<&'a str>),
-    ConversationGet {
+    DocumentLookup {
         document: Option<&'a str>,
-        conversation_id: &'a str,
+        identifier: &'a str,
     },
     ModelSave {
         request: &'a CoreValue,
@@ -174,6 +184,14 @@ pub use LegacyRegistryRead as LegacyProviderRegistryRead;
 pub fn verify_legacy_model_save_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &MODEL_SAVE)?;
     declared_registry_function(pack, &MODEL_SAVE)?;
+    Ok(())
+}
+
+/// Check the receipt-verified declaration for fixed, private Model resolution.
+/// Verify the actual Component ABI independently when it is invoked.
+pub fn verify_legacy_model_resolve_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &MODEL_RESOLVE)?;
+    declared_registry_function(pack, &MODEL_RESOLVE)?;
     Ok(())
 }
 
@@ -296,6 +314,28 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         .await
     }
 
+    /// Resolve an identifier from the original owner's file without granting
+    /// storage, Provider access, or credentials to the guest.
+    /// Only the admitted native caller receives the private owner result.
+    pub async fn resolve_legacy_model(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+        identifier: &str,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &MODEL_RESOLVE,
+            RegistryInput::DocumentLookup {
+                document,
+                identifier,
+            },
+        )
+        .await
+    }
+
     /// Stage a Model Registry save from a trusted narrowed Provider snapshot
     /// and the original Model document while the native caller holds its lock.
     /// A successful no-op neither supplies a replacement nor observes a clock.
@@ -332,9 +372,9 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             pack,
             profile_id,
             &CONVERSATION_GET,
-            RegistryInput::ConversationGet {
+            RegistryInput::DocumentLookup {
                 document,
-                conversation_id,
+                identifier: conversation_id,
             },
         )
         .await
@@ -371,7 +411,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         .is_some_and(|(_, ty)| *ty == WitType::CallbackHandle)
             }
             RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
-            RegistryInput::ModelSave { .. } | RegistryInput::ConversationGet { .. } => true,
+            RegistryInput::ModelSave { .. } | RegistryInput::DocumentLookup { .. } => true,
         };
         ensure!(
             abi_matches,
@@ -407,7 +447,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         // before instantiating anything or accepting an invocation of the host.
         let linker = registry_linker(engine, &component, &function.params, export, &owners)?;
         let model_parameters;
-        let conversation_parameters;
+        let lookup_parameters;
         let without_plan;
         let with_plan;
         let (values, read): (&[Val], _) = match input {
@@ -435,13 +475,13 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 model_parameters = [optional_document(document, &owners)?];
                 (&model_parameters, None)
             }
-            RegistryInput::ConversationGet {
+            RegistryInput::DocumentLookup {
                 document,
-                conversation_id,
+                identifier,
             } => {
-                let id = BudgetedString::copy_from(conversation_id, owners.component(), 1)?;
-                conversation_parameters = [optional_document(document, &owners)?, Val::String(id)];
-                (&conversation_parameters, None)
+                let id = BudgetedString::copy_from(identifier, owners.component(), 1)?;
+                lookup_parameters = [optional_document(document, &owners)?, Val::String(id)];
+                (&lookup_parameters, None)
             }
             RegistryInput::ModelSave {
                 request,
@@ -468,15 +508,15 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         );
         ensure_active(store.data_mut())?;
         let reply = reply?;
-        if export.shape == CONVERSATION_GET.shape {
+        if returns_owner_result(export) {
             let owner = reply
                 .get_key("owner_result")
-                .context("missing Conversation result")?;
+                .context("missing legacy owner result")?;
             ensure!(
                 matches!(reply.inspect(), CoreRef::Obj(fields) if fields.len() == 1)
                     && matches!(owner.inspect(), CoreRef::Str(value)
                         if value.starts_with('{') && value.ends_with('}')),
-                "legacy Conversation owner result differs"
+                "legacy owner result differs"
             );
         }
         let expected_clock_pending = match export.clock {
@@ -603,13 +643,17 @@ fn declared_registry_function<'a>(
             "legacy Model Registry save parameter ABI differs"
         );
     }
-    if export.shape == CONVERSATION_GET.shape {
+    if returns_owner_result(export) {
         ensure!(
             optional_string(&function.params[0].1) && function.params[1].1 == WitType::String,
-            "legacy Conversation read parameter ABI differs"
+            "legacy owner lookup parameter ABI differs"
         );
     }
     Ok(function)
+}
+
+fn returns_owner_result(export: &RegistryExport) -> bool {
+    export.shape == CONVERSATION_GET.shape || export.shape == MODEL_RESOLVE.shape
 }
 
 fn optional_document(document: Option<&str>, owners: &crate::AllocationOwners) -> Result<Val> {

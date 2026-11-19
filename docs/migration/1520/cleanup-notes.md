@@ -3896,6 +3896,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実ファイルの会話から選んだモデルで2つの独立したローカルAPIとSSE応答を照合した。
   1BのCIでも同じ実ファイルを読み、その会話のモデル参照で推論する。通常経路における
   モデルの別名・無効状態・Provider要件の解決と、一覧・会話の変更は移行を続ける。
+  元の `model_registry.store.json` から、通常会話向けのモデル解決を行う固定Rust＋Wasm
+  ポートを追加した。別名は一段だけ辿る。無効モデルも状態付きの元の結果を返し、呼び出し元の
+  Gatewayが元どおり拒否できるようにする。結果は資格情報ハンドル、ポリシー、数値、項目順を
+  含む元のJSONを、公開用のモデル一覧と分けて保持する。実ファイルを使うCore＋Wasmと
+  モデル設定の回帰4件、Pack 38件、strict Clippyが通過。quoteの2経路・通常生成・streamの
+  4つはそれぞれ現在のProfile・Plan・LockからModel Registryへの署名済み権限を選ぶ。
+  選定12件で同じ操作を呼ぶ別のcaller間でも権限を流用できないことを確認し、
+  元のSetupから発行されたProfileを使う統合試験1件で4つの権限とscopeを照合した。
+  通常の署名済み送信への接続では、元の保存ターンからGatewayまでの親リクエストを確認する。
+  `saved_bridge.py` の追記前の必須quote、任意のstream準備quote、実生成は、それぞれの
+  権限で最新のRegistryを読む。共用するのは物理読取とWasmの解決処理までとし、各回で
+  Registryの状態変更を検出する。旧Python分岐を除去する際はConversationと共通する
+  1MiBの結果枠と旧JSON判定を見直せる。入力と文書の検証順序、無効モデルの扱いと
+  Gateway側のProvider・資格情報の制御を維持する。
   Gemma 3 1BのCIは既存の認証付き通常Flowと、保存会話から選んだキー不要の経路を別々に実行する。
   [20ed649b4 の認証付き実1B 44364433650](https://github.com/harupipipipi/tobkiri/actions/runs/44364433650)
   では中断後のllama.cppスロット確認が再度失敗した。保存会話からの実1Bは独立して測る。
@@ -4965,6 +4979,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   本来のcheckoutにある成果物を署名・パッケージングし、元の検証を通す。同じコマンド列を
   macOSのNode 25.5.0で実行し、状態照合と一時領域の削除が成功した。元の667件はサイズ・モード・
   SHA-256まで一致した。CIのNode 22と実DMGの再確認は新しいrunで行う。
+  [先行DMG CI 44429185996](https://github.com/harupipipipi/tobkiri/actions/runs/44429185996) も
+  修正前の同じ上書きで128件が通過した後の3件で失敗した。失敗時と再実行時のGit blob 667件は
+  同じmanifestに一致する。修正 `314c939c4` を含む
+  [再実行44439801329](https://github.com/harupipipipi/tobkiri/actions/runs/44439801329) で確認を続ける。
   `launcher-snapshot-staging` の任意のDMG検証を、既存のCI用インストーラーワークフローへ接続。
   同じrunで生成したApp用Wasmを再照合し、先行ステージングで検証したv3レシートのSHA-256を
   Launcherビルドに渡す。検証専用のRust bindingはビルド環境へ渡さない。

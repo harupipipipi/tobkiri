@@ -1,5 +1,7 @@
 //! Registry ports for the authenticated Profile.
 
+#[path = "component_legacy_resolve.rs"]
+mod legacy_resolve;
 #[path = "component_legacy_save.rs"]
 mod legacy_save;
 
@@ -78,6 +80,13 @@ impl exports::local::model_registry::legacy_settings::Guest for Pack {
     fn list_models(document: Option<String>) -> Result<String, Error> {
         let profile = flow::current_profile()?;
         list_legacy_models(&profile, document.as_deref())
+    }
+}
+
+impl exports::local::model_registry::legacy_resolve::Guest for Pack {
+    fn resolve(document: Option<String>, identifier: String) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        legacy_resolve::resolve(&profile, document.as_deref(), identifier)
     }
 }
 

@@ -28,6 +28,8 @@ const PACK: &str = "local.model-registry";
 const SETTINGS: &str = "local.model-registry.settings@1.0";
 const DATA: &str = "local.model-registry.data@1.0";
 const STORE: &str = "model-registry";
+const ORIGINAL_MODEL_READ: &str =
+    include_str!("../../../packs/local.model-registry-rust/evidence/original-python-read.json");
 
 fn packs() -> Result<[RegistryPack; 2]> {
     Ok([registry::pack(PACK)?, registry::pack(PROVIDER_PACK)?])
@@ -60,9 +62,7 @@ async fn list(session: &Session) -> Result<Value> {
 #[tokio::test]
 #[ignore = "requires staged Model and Provider Registry Pack archives"]
 async fn existing_model_document_projects_settings_through_gate() -> Result<()> {
-    let oracle: Value = serde_json::from_str(include_str!(
-        "../../../packs/local.model-registry-rust/evidence/original-python-read.json"
-    ))?;
+    let oracle: Value = serde_json::from_str(ORIGINAL_MODEL_READ)?;
     let case = oracle["cases"]
         .as_array()
         .context("model Registry oracle cases missing")?
@@ -114,6 +114,98 @@ async fn existing_model_document_projects_settings_through_gate() -> Result<()> 
     }
     #[cfg(unix)]
     check_live_model_document(&core, root.path(), pin, original_profile, case).await?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires a staged Model Registry Pack archive"]
+async fn original_model_lookup_preserves_private_owner_result() -> Result<()> {
+    let oracle: Value = serde_json::from_str(ORIGINAL_MODEL_READ)?;
+    let cases = oracle["cases"]
+        .as_array()
+        .context("model Registry oracle cases")?;
+    let root = physical_temp()?;
+    let data = root.path().join("data");
+    let original = DataRoot::open(&data)?;
+    let pin = registry::pack(PACK)?.pin;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(root.path().join("core")),
+        Arc::new(Host::default()),
+    )?);
+    let archive = pin
+        .source
+        .strip_prefix("file:")
+        .context("staged Model archive")?;
+    let run = async |profile: &str, identifier: &str| {
+        let mut inspection = core.inspect_declared_artifacts(Source::new(root.path()))?;
+        let mut archive = std::fs::File::open(archive)?;
+        let length = archive.metadata()?.len();
+        let pack = inspection.verify_pack_archive(&mut archive, length)?;
+        ensure!(pack.hash == pin.sha256);
+        tobkiri_wasm::verify_legacy_model_resolve_declaration(&pack)?;
+        let outcome: Result<Value> = async {
+            let value = inspection
+                .resolve_legacy_model(&pack, &data, profile, identifier)
+                .await?;
+            let result = value
+                .get_key("owner_result")
+                .context("Model owner result missing")?;
+            let result = result.as_str().context("Model owner result is not text")?;
+            Ok(serde_json::from_str(result)?)
+        }
+        .await;
+        inspection.finish().await?;
+        outcome
+    };
+
+    for id in [
+        "missing-store-resolve",
+        "resolve-exact",
+        "resolve-alias",
+        "resolve-alias-shadows-exact",
+        "resolve-alias-only-once",
+        "resolve-dangling-alias",
+        "resolve-disabled-alias",
+    ] {
+        let case = cases
+            .iter()
+            .find(|case| case["id"] == id)
+            .context("Model oracle case")?;
+        let profile = case["profile_id"].as_str().context("Model Profile")?;
+        let identifier = case["identifier"].as_str().context("model identifier")?;
+        let relative =
+            format!("packs/rumi_model_registry_pack/profiles/{profile}/model_registry.store.json");
+        let saved = (!case["document"].is_null()).then(|| case["document"].to_string());
+        if let Some(document) = &saved {
+            original.write_atomic(&relative, document.as_bytes())?;
+        }
+        let outcome = run(profile, identifier).await;
+        if case["result"].is_null() {
+            let error = outcome.expect_err("unknown model must preserve the owner lookup failure");
+            ensure!(
+                matches!(error.downcast_ref::<NativeArtifactError>(),
+                    Some(NativeArtifactError::ModelRegistryRejected(error)) if error.code() == "not-found"),
+                "{id}: {error:#}"
+            );
+        } else {
+            ensure!(
+                outcome? == case["result"],
+                "Model owner result differs: {id}"
+            );
+        }
+        if let Some(document) = saved {
+            ensure!(std::fs::read(data.join(&relative))? == document.as_bytes());
+            ensure!(
+                !data
+                    .join(&relative)
+                    .with_file_name("model-registry.lock")
+                    .exists()
+            );
+        } else {
+            ensure!(!data.join("packs").exists());
+        }
+    }
     Ok(())
 }
 

@@ -86,6 +86,8 @@ pub enum NativeArtifactError {
     ProviderRejected(#[from] LegacyRegistryError),
     #[error("native Model Registry projection failed")]
     ModelSettings(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("native Model Registry resolution failed")]
+    ModelResolve(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("native Model Registry save staging failed")]
     ModelSaveStaging(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("legacy Model Registry exceeds its native publication envelope")]
@@ -401,7 +403,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             return Err(NativeArtifactError::Denied);
         }
         let framed = self
-            .read_original_document(root, profile_id, LegacyReadDocument::ModelSettings)
+            .read_original_document(root, profile_id, LegacyReadDocument::Model)
             .await?;
         let document = original_document_text(&framed, |error| {
             NativeArtifactError::ModelSettings(Box::new(error))
@@ -415,6 +417,37 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         settings.map_err(|error| match error.downcast::<LegacyRegistryError>() {
             Ok(rejected) => NativeArtifactError::ModelRegistryRejected(rejected),
             Err(error) => NativeArtifactError::ModelSettings(error.into()),
+        })
+    }
+
+    /// Resolve a model in the active Profile's original Registry, preserving
+    /// private owner metadata for the authorized native caller.
+    pub async fn resolve_legacy_model(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        identifier: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.require_ready()?;
+        if pack.manifest.id.as_str() != "local.model-registry" {
+            return Err(NativeArtifactError::Denied);
+        }
+        let framed = self
+            .read_original_document(root, profile_id, LegacyReadDocument::Model)
+            .await?;
+        let document = original_document_text(&framed, |error| {
+            NativeArtifactError::ModelResolve(Box::new(error))
+        })?;
+        self.require_live()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let resolved = store
+            .resolve_legacy_model(pack, profile_id, document, identifier)
+            .await;
+        self.require_live()?;
+        resolved.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ModelRegistryRejected(rejected),
+            Err(error) => NativeArtifactError::ModelResolve(error.into()),
         })
     }
 

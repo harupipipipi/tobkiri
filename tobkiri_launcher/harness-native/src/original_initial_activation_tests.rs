@@ -264,6 +264,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             );
             check_model_save_grants(&observed, budget);
             check_conversation_read_grants(&observed, budget);
+            check_model_resolve_grants(&observed, budget);
             assert_eq!(
                 observed
                     .identity()
@@ -504,6 +505,64 @@ fn check_conversation_read_grants(
             pin.requested_scope_digest(),
             "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c"
         );
+    }
+}
+
+fn check_model_resolve_grants(
+    observed: &crate::OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+) {
+    use crate::OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
+    const GENERATE_OPERATION: &str = "rumi_model_registry_pack.model-profile-resource.generate";
+    const STREAM_OPERATION: &str = "rumi_model_registry_pack.model-profile-resource.stream";
+    const GENERATE_SCOPE: &str =
+        "sha256:e0adca96baa7c877bc049187d16aee8eee3dbc00c5a06f5160e7c92baa7be0f6";
+    const STREAM_SCOPE: &str =
+        "sha256:f5746a0621a144db146e8e05bd24564378fb7c72fd8d3b4d07ecf7d9a4369472";
+    const QUOTE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.route-quote";
+
+    let resolve = crate::OriginalModelResolveSelection::select(observed, budget)
+        .expect("authenticate the Model Registry Resolve bindings")
+        .expect("confirmed Profile selects Model Registry Resolve");
+    let mut authorities = std::collections::BTreeSet::new();
+    for (role, caller, operation, scope) in [
+        (
+            QuoteGenerate,
+            QUOTE_CALLER,
+            GENERATE_OPERATION,
+            GENERATE_SCOPE,
+        ),
+        (QuoteStream, QUOTE_CALLER, STREAM_OPERATION, STREAM_SCOPE),
+        (
+            Generate,
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+            GENERATE_OPERATION,
+            GENERATE_SCOPE,
+        ),
+        (
+            Stream,
+            "rumi_ai_gateway_pack.ai-gateway.stream",
+            STREAM_OPERATION,
+            STREAM_SCOPE,
+        ),
+    ] {
+        let pin = resolve
+            .pin(role)
+            .expect("each role has its own signed grant");
+        assert_eq!(pin.caller_function_id(), caller);
+        assert_eq!(pin.pack_id(), "rumi_model_registry_pack");
+        assert_eq!(
+            pin.function_id(),
+            "rumi_model_registry_pack.model-registry.profile"
+        );
+        assert_eq!(
+            pin.variant_id(),
+            "rumi_model_registry_pack.model-registry.profile.python"
+        );
+        assert_eq!(pin.contract_id(), "tobkiri.resource.ai.model.profile.v1");
+        assert_eq!(pin.operation_id(), operation);
+        assert_eq!(pin.requested_scope_digest(), scope);
+        assert!(authorities.insert(pin.authority_reference()));
     }
 }
 

@@ -37,7 +37,8 @@ pub use native_setup_store::{
     NativeDataObservation, NativeDataProgram, NativeDataResultContract, NativeDataResultEntry,
     NativeDataSuccessType, NativeDataValue, NativeImportBinding, NativeImportContext,
     NativeImportInput, NativeImportOperation, NativeImportState, NativeSetupStore,
-    verify_legacy_conversation_read_declaration, verify_legacy_model_save_declaration,
+    verify_legacy_conversation_read_declaration, verify_legacy_model_resolve_declaration,
+    verify_legacy_model_save_declaration,
 };
 mod network;
 mod output;

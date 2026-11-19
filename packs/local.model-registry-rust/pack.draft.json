@@ -23,6 +23,12 @@
       "wit": "wit/pack.wit"
     },
     {
+      "name": "local.model-registry.legacy-resolve",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
       "name": "local.model-registry.legacy-save",
       "version": "1.0",
       "kind": "port",
@@ -50,6 +56,11 @@
       },
       {
         "shape": "local.model-registry.legacy-settings",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.model-registry.legacy-resolve",
         "version": "1.0",
         "optional": false
       },
@@ -109,6 +120,7 @@
     "wit/data.shape.json",
     "wit/deps/core.wit",
     "wit/deps/provider-registry.wit",
+    "wit/legacy-resolve.shape.json",
     "wit/legacy-save.shape.json",
     "wit/legacy-settings.shape.json",
     "wit/pack.wit",
