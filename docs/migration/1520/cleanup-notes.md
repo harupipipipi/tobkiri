@@ -5999,6 +5999,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   画面表示、会話完了と共通のWasm起動を担う既存モジュールで、同梱の検査4件が通過した。
   先行コミットの [DMG CI](https://github.com/harupipipipi/tobkiri/actions/runs/44558192197)
   も同じ同梱リスト検査で停止した。更新した作業ブランチでDMGを再検証する。
+- `d64729908` で `AuthorityStore.inspect_dispatch_authority` のSecurityEpochと失効対象を
+  1回の照会にまとめ、認証済みLeaseのダイジェスト計算を2回から1回に減らした。
+  各呼び出しで新しい接続を開き、元の鍵、リース、ポリシー、8組の失効対象と全体失効を
+  検査する。認可、資格情報、親呼び出しの検査とポリシーの回帰テスト129件が通過した。
+  同じストアで各800回交互に計測した中央値は2.30msから2.16ms。全経路での短縮は未計測。
 - 廃止候補は、`rumi_provider_adapters_pack/runtime/adapter.py` が持つ同じローカル要求の
   コンパイル・HTTP・応答処理。現状の置換は保存済みの認証なしOpenAI互換ローカル接続。
   APIキー付きのループバックと元のProvider種別、送信前のフォールバック条件を製品経路で
