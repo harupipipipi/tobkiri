@@ -1,5 +1,8 @@
 //! Registry ports for the authenticated Profile.
 
+#[path = "component_legacy_save.rs"]
+mod legacy_save;
+
 #[cfg(test)]
 #[path = "component_legacy_list_tests.rs"]
 mod legacy_list_tests;
@@ -139,6 +142,14 @@ fn legacy_codec_required() -> Error {
 }
 
 fn validate_provider(profile: &str, request: &PyValue) -> Result<(), Error> {
+    let binding = provider_binding(request)?;
+    let args = serde_json::json!({"payload":{"profile_id":profile}}).to_string();
+    let snapshot = flow::call_port(PROVIDER_RESOURCE, "snapshot", &args)?;
+    let snapshot = loads(&snapshot).map_err(codec_error)?;
+    validate_provider_snapshot(binding, &snapshot)
+}
+
+fn provider_binding(request: &PyValue) -> Result<(&PyValue, &str), Error> {
     let Some((expected, provider)) = request.get("provider_registry_revision").zip(
         request
             .get("record")
@@ -151,9 +162,13 @@ fn validate_provider(profile: &str, request: &PyValue) -> Result<(), Error> {
             "model route provider binding is invalid",
         ));
     };
-    let args = serde_json::json!({"payload":{"profile_id":profile}}).to_string();
-    let snapshot = flow::call_port(PROVIDER_RESOURCE, "snapshot", &args)?;
-    let snapshot = loads(&snapshot).map_err(codec_error)?;
+    Ok((expected, provider))
+}
+
+fn validate_provider_snapshot(
+    (expected, provider): (&PyValue, &str),
+    snapshot: &PyValue,
+) -> Result<(), Error> {
     if snapshot.get("revision") != Some(expected) {
         return Err(failure(
             ErrorCode::Denied,

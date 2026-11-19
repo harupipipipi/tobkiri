@@ -135,33 +135,56 @@ impl Registry {
     }
 
     pub(crate) fn read(&self) -> Result<ReadState<'_>, SourceError> {
-        let document = &self.document;
-        if document.get("version").and_then(PyValue::as_str) != Some(STORE_VERSION) {
+        self.validate_document_identity(|key, expected| {
+            self.document.get(key).and_then(PyValue::as_str) == Some(expected)
+        })?;
+        let profiles = self.document.get("profiles").and_then(PyValue::as_object);
+        let aliases = self.document.get("aliases").and_then(PyValue::as_object);
+        let (Some(profiles), Some(aliases)) = (profiles, aliases) else {
+            return Err(invalid_document());
+        };
+        Ok(ReadState {
+            revision: self.document.get("revision"),
+            profiles,
+            aliases,
+        })
+    }
+
+    #[cfg(feature = "component")]
+    /// Check the original document header without unwrapping opaque fields.
+    pub(crate) fn validate_legacy_document(
+        &self,
+        document: &ordered_python_compat::PythonJson,
+    ) -> Result<(), SourceError> {
+        self.validate_document_identity(|key, expected| document.string_field_eq(key, expected))?;
+        if !document.has_object_field("profiles") || !document.has_object_field("aliases") {
+            return Err(invalid_document());
+        }
+        Ok(())
+    }
+
+    fn validate_document_identity(
+        &self,
+        matches: impl Fn(&str, &str) -> bool,
+    ) -> Result<(), SourceError> {
+        if !matches("version", STORE_VERSION) {
             return Err(SourceError::new(
                 "ValueError",
                 "model registry store version is invalid",
             ));
         }
-        if document.get("profile_id").and_then(PyValue::as_str) != Some(self.profile_id.as_str()) {
+        if !matches("profile_id", &self.profile_id) {
             return Err(SourceError::new(
                 "ValueError",
                 "model registry profile binding is invalid",
             ));
         }
-        let profiles = document.get("profiles").and_then(PyValue::as_object);
-        let aliases = document.get("aliases").and_then(PyValue::as_object);
-        let (Some(profiles), Some(aliases)) = (profiles, aliases) else {
-            return Err(SourceError::new(
-                "ValueError",
-                "model registry store is invalid",
-            ));
-        };
-        Ok(ReadState {
-            revision: document.get("revision"),
-            profiles,
-            aliases,
-        })
+        Ok(())
     }
+}
+
+fn invalid_document() -> SourceError {
+    SourceError::new("ValueError", "model registry store is invalid")
 }
 
 pub(crate) fn identifier(value: &PyValue) -> Result<Cow<'_, str>, SourceError> {

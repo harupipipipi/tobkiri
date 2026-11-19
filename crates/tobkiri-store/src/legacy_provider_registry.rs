@@ -5,28 +5,28 @@ use tobkiri_canon::ids::ProfileId;
 
 /// Outcomes of attempting a legacy Registry publication.
 #[derive(Debug, thiserror::Error)]
-pub enum LegacyProviderRegistryPublishError<E> {
+pub enum LegacyRegistryPublishError<E> {
     /// The Registry was not replaced by this attempt.
-    #[error("Provider Registry publication failed before replacement")]
+    #[error("Registry publication failed before replacement")]
     BeforePublish(#[source] StoreError),
     /// The caller's final authority check rejected publication.
-    #[error("Provider Registry publication authority changed")]
+    #[error("Registry publication authority changed")]
     Guard(E),
     /// Replacement may have happened. Only this transaction can check it.
-    #[error("Provider Registry publication outcome is uncertain")]
+    #[error("Registry publication outcome is uncertain")]
     Uncertain(#[source] StoreError),
 }
 
-/// A native-only lock on one Profile's original Provider Registry.
+/// A native-only lock on one Profile's original Registry.
 /// The transaction is tied to the original physical lock and store directory.
-pub struct LegacyProviderRegistryTransaction {
+pub struct LegacyRegistryTransaction {
     #[cfg(unix)]
     inner: unix::Transaction,
 }
 
-impl std::fmt::Debug for LegacyProviderRegistryTransaction {
+impl std::fmt::Debug for LegacyRegistryTransaction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LegacyProviderRegistryTransaction")
+        f.debug_struct("LegacyRegistryTransaction")
             .finish_non_exhaustive()
     }
 }
@@ -42,12 +42,12 @@ impl DataRoot {
     ) -> Result<Option<Vec<u8>>, StoreError> {
         #[cfg(unix)]
         {
-            unix::read_provider_registry(self, profile, max_bytes)
+            unix::read_registry(self, profile, max_bytes, &unix::PROVIDER)
         }
         #[cfg(not(unix))]
         {
             let _ = (profile, max_bytes);
-            Err(unavailable())
+            Err(unavailable("Provider Registry"))
         }
     }
 
@@ -60,38 +60,57 @@ impl DataRoot {
     ) -> Result<Option<Vec<u8>>, StoreError> {
         #[cfg(unix)]
         {
-            unix::read_model_registry(self, profile, max_bytes)
+            unix::read_registry(self, profile, max_bytes, &unix::MODEL)
         }
         #[cfg(not(unix))]
         {
             let _ = (profile, max_bytes);
-            Err(StoreError::Unavailable(
-                "nofollow legacy Model Registry storage unavailable".into(),
-            ))
+            Err(unavailable("Model Registry"))
         }
     }
 
-    /// Acquire the original Python lock without waiting or breaking stale locks.
+    /// Acquire the original Python Provider Registry lock without waiting or
+    /// breaking stale locks.
     /// An existing owned regular lock file returns `Io(AlreadyExists)`.
     pub fn lock_legacy_provider_registry(
         &self,
         profile: &ProfileId,
-    ) -> Result<LegacyProviderRegistryTransaction, StoreError> {
+    ) -> Result<LegacyRegistryTransaction, StoreError> {
         #[cfg(unix)]
         {
-            Ok(LegacyProviderRegistryTransaction {
-                inner: unix::Transaction::lock(self, profile)?,
+            Ok(LegacyRegistryTransaction {
+                inner: unix::Transaction::lock(self, profile, &unix::PROVIDER)?,
             })
         }
         #[cfg(not(unix))]
         {
             let _ = profile;
-            Err(unavailable())
+            Err(unavailable("Provider Registry"))
+        }
+    }
+
+    /// Acquire the original Python Model Registry lock without waiting or
+    /// breaking stale locks.
+    /// An existing owned regular lock file returns `Io(AlreadyExists)`.
+    pub fn lock_legacy_model_registry(
+        &self,
+        profile: &ProfileId,
+    ) -> Result<LegacyRegistryTransaction, StoreError> {
+        #[cfg(unix)]
+        {
+            Ok(LegacyRegistryTransaction {
+                inner: unix::Transaction::lock(self, profile, &unix::MODEL)?,
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = profile;
+            Err(unavailable("Model Registry"))
         }
     }
 }
 
-impl LegacyProviderRegistryTransaction {
+impl LegacyRegistryTransaction {
     /// Return bounded owned bytes from the original Registry, or absence.
     pub fn read(&self, max_bytes: usize) -> Result<Option<Vec<u8>>, StoreError> {
         #[cfg(unix)]
@@ -101,7 +120,7 @@ impl LegacyProviderRegistryTransaction {
         #[cfg(not(unix))]
         {
             let _ = max_bytes;
-            Err(unavailable())
+            Err(unavailable("Registry"))
         }
     }
 
@@ -113,7 +132,7 @@ impl LegacyProviderRegistryTransaction {
         next: &[u8],
         max_bytes: usize,
         guard: impl FnOnce() -> Result<(), E>,
-    ) -> Result<(), LegacyProviderRegistryPublishError<E>> {
+    ) -> Result<(), LegacyRegistryPublishError<E>> {
         #[cfg(unix)]
         {
             self.inner
@@ -122,9 +141,9 @@ impl LegacyProviderRegistryTransaction {
         #[cfg(not(unix))]
         {
             let _ = (prior, next, max_bytes, guard);
-            Err(LegacyProviderRegistryPublishError::BeforePublish(
-                unavailable(),
-            ))
+            Err(LegacyRegistryPublishError::BeforePublish(unavailable(
+                "Registry",
+            )))
         }
     }
 
@@ -138,14 +157,14 @@ impl LegacyProviderRegistryTransaction {
         #[cfg(not(unix))]
         {
             let _ = (next, max_bytes);
-            Err(unavailable())
+            Err(unavailable("Registry"))
         }
     }
 }
 
 #[cfg(not(unix))]
-fn unavailable() -> StoreError {
-    StoreError::Unavailable("nofollow legacy Provider Registry storage unavailable".into())
+fn unavailable(registry: &str) -> StoreError {
+    StoreError::Unavailable(format!("nofollow legacy {registry} storage unavailable"))
 }
 
 #[cfg(unix)]
@@ -169,24 +188,28 @@ mod unix {
     };
     use tobkiri_canon::Digest;
 
-    struct RegistryLayout {
+    pub(super) struct RegistryLayout {
         directories: [&'static str; 3],
         store: &'static CStr,
+        lock: &'static CStr,
         label: &'static str,
+        private_write_directory: bool,
     }
 
-    const PROVIDER: RegistryLayout = RegistryLayout {
+    pub(super) const PROVIDER: RegistryLayout = RegistryLayout {
         directories: ["packs", "rumi_provider_registry_pack", "profiles"],
         store: c"provider_registry.store.json",
+        lock: c"provider-registry.lock",
         label: "Provider Registry",
+        private_write_directory: false,
     };
-    const MODEL: RegistryLayout = RegistryLayout {
+    pub(super) const MODEL: RegistryLayout = RegistryLayout {
         directories: ["packs", "rumi_model_registry_pack", "profiles"],
         store: c"model_registry.store.json",
+        lock: c"model-registry.lock",
         label: "Model Registry",
+        private_write_directory: true,
     };
-    const STORE: &CStr = PROVIDER.store;
-    const LOCK: &CStr = c"provider-registry.lock";
 
     // Keeping the staged descriptor open prevents inode reuse during confirmation.
     struct PendingPublication {
@@ -204,6 +227,7 @@ mod unix {
     pub(super) struct Transaction {
         root: DataRoot,
         profile: ProfileId,
+        layout: &'static RegistryLayout,
         directory: Arc<File>,
         lock: OwnedEntry,
         lock_snapshot: OwnedFileSnapshot,
@@ -211,15 +235,19 @@ mod unix {
     }
 
     impl Transaction {
-        pub(super) fn lock(root: &DataRoot, profile: &ProfileId) -> Result<Self, StoreError> {
-            verify_root(root, &PROVIDER)?;
-            let directory = Arc::new(open_registry(root, profile, true)?);
-            let lock_directory = Arc::new(owned_directory(&directory, "locks", true, &PROVIDER)?);
+        pub(super) fn lock(
+            root: &DataRoot,
+            profile: &ProfileId,
+            layout: &'static RegistryLayout,
+        ) -> Result<Self, StoreError> {
+            verify_root(root, layout)?;
+            let directory = Arc::new(open_registry(root, profile, true, layout)?);
+            let lock_directory = Arc::new(owned_directory(&directory, "locks", true, layout)?);
             let pid = std::process::id();
             let acquired_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|_| {
-                    StoreError::Unavailable("Provider Registry lock clock invalid".into())
+                    StoreError::Unavailable(format!("{} lock clock invalid", layout.label))
                 })?
                 .as_secs_f64();
             let payload = serde_json::to_vec(&serde_json::json!({
@@ -228,15 +256,17 @@ mod unix {
                 "pid": pid,
                 "stale_after_seconds": null,
             }))
-            .map_err(|_| StoreError::Invalid("Provider Registry lock payload invalid".into()))?;
-            let mut lock = match OwnedEntry::create(lock_directory.clone(), LOCK.to_owned()) {
+            .map_err(|_| StoreError::Invalid(format!("{} lock payload invalid", layout.label)))?;
+            let mut lock = match OwnedEntry::create(lock_directory.clone(), layout.lock.to_owned())
+            {
                 Ok(lock) => lock,
                 Err(StoreError::Io(busy)) if busy.kind() == ErrorKind::AlreadyExists => {
-                    match stat_entry(&lock_directory, LOCK) {
+                    match stat_entry(&lock_directory, layout.lock) {
                         Ok(entry) if !is_owned_regular(&entry) => {
-                            return Err(StoreError::Denied(
-                                "unsafe Provider Registry lock entry".into(),
-                            ));
+                            return Err(StoreError::Denied(format!(
+                                "unsafe {} lock entry",
+                                layout.label
+                            )));
                         }
                         Ok(_) => return Err(busy.into()),
                         // The cooperative holder may have just released it.
@@ -253,6 +283,7 @@ mod unix {
             let transaction = Self {
                 root: root.clone(),
                 profile: profile.clone(),
+                layout,
                 directory,
                 lock,
                 lock_snapshot,
@@ -263,15 +294,16 @@ mod unix {
         }
 
         fn verify_binding(&self) -> Result<(), StoreError> {
-            verify_root(&self.root, &PROVIDER)?;
-            let directory = open_registry(&self.root, &self.profile, false)?;
-            let locks = owned_directory(&directory, "locks", false, &PROVIDER)?;
+            let layout = self.layout;
+            verify_root(&self.root, layout)?;
+            let directory = open_registry(&self.root, &self.profile, false, layout)?;
+            let locks = owned_directory(&directory, "locks", false, layout)?;
             if file_identity(&directory)? != file_identity(&self.directory)?
                 || file_identity(&locks)? != file_identity(&self.lock.directory)?
             {
-                return Err(binding_changed(&PROVIDER));
+                return Err(binding_changed(layout));
             }
-            self.lock_snapshot.verify_current(&locks, LOCK)
+            self.lock_snapshot.verify_current(&locks, layout.lock)
         }
 
         pub(super) fn read(&self, max_bytes: usize) -> Result<Option<Vec<u8>>, StoreError> {
@@ -281,7 +313,7 @@ mod unix {
             verify_store_entry(
                 &self.directory,
                 snapshot.as_ref().map(|(_, file)| file),
-                &PROVIDER,
+                self.layout,
             )?;
             Ok(snapshot.map(|(bytes, _)| bytes))
         }
@@ -293,12 +325,14 @@ mod unix {
             max_bytes: usize,
             guard: impl FnOnce() -> Result<(), E>,
             sync_directory: impl FnOnce(&File) -> std::io::Result<()>,
-        ) -> Result<(), LegacyProviderRegistryPublishError<E>> {
-            use LegacyProviderRegistryPublishError::{BeforePublish, Guard, Uncertain};
+        ) -> Result<(), LegacyRegistryPublishError<E>> {
+            use LegacyRegistryPublishError::{BeforePublish, Guard, Uncertain};
+            let layout = self.layout;
             if !matches!(*self.publication.borrow(), Publication::Ready) {
-                return Err(BeforePublish(StoreError::Conflict(
-                    "Provider Registry transaction has already attempted publication".into(),
-                )));
+                return Err(BeforePublish(StoreError::Conflict(format!(
+                    "{} transaction has already attempted publication",
+                    layout.label
+                ))));
             }
             if next.len() > max_bytes || prior.is_some_and(|bytes| bytes.len() > max_bytes) {
                 return Err(BeforePublish(StoreError::Quota));
@@ -329,9 +363,10 @@ mod unix {
 
             let observed = self.read_store(max_bytes).map_err(BeforePublish)?;
             if observed.as_ref().map(|(bytes, _)| bytes.as_slice()) != prior {
-                return Err(BeforePublish(StoreError::Conflict(
-                    "Provider Registry bytes changed".into(),
-                )));
+                return Err(BeforePublish(StoreError::Conflict(format!(
+                    "{} bytes changed",
+                    layout.label
+                ))));
             }
             let prior = observed.as_ref().map(|(_, file)| file);
             self.verify_binding().map_err(BeforePublish)?;
@@ -341,13 +376,19 @@ mod unix {
             // The guard may cross a process boundary. Check only metadata
             // and pathname identity here, then replace within the pinned dir.
             self.verify_binding().map_err(BeforePublish)?;
-            verify_store_entry(&self.directory, prior, &PROVIDER).map_err(BeforePublish)?;
+            verify_store_entry(&self.directory, prior, layout).map_err(BeforePublish)?;
             pending
                 .file
                 .verify_current(&self.directory, &staged.name)
                 .map_err(BeforePublish)?;
+            if layout.private_write_directory {
+                self.directory
+                    .set_permissions(Permissions::from_mode(0o700))
+                    .map_err(|error| BeforePublish(error.into()))?;
+            }
             let fd = self.directory.as_raw_fd();
-            let status = unsafe { libc::renameat(fd, staged.name.as_ptr(), fd, STORE.as_ptr()) };
+            let status =
+                unsafe { libc::renameat(fd, staged.name.as_ptr(), fd, layout.store.as_ptr()) };
             if status != 0 {
                 let error = Error::last_os_error();
                 if matches!(
@@ -362,7 +403,13 @@ mod unix {
             let synced = sync_directory(&self.directory)
                 .map_err(StoreError::from)
                 .and_then(|()| self.verify_binding())
-                .and_then(|()| verify_owned_link(&self.directory, STORE, &staged.file));
+                .and_then(|()| {
+                    if has_owned_link(&self.directory, layout.store, &staged.file)? {
+                        Ok(())
+                    } else {
+                        Err(binding_changed(layout))
+                    }
+                });
             if let Err(error) = synced {
                 *self.publication.borrow_mut() = Publication::Uncertain(pending);
                 return Err(Uncertain(error));
@@ -389,7 +436,7 @@ mod unix {
                 return Ok(false);
             };
             self.verify_binding()?;
-            snapshot.verify_current(&self.directory, STORE)?;
+            snapshot.verify_current(&self.directory, self.layout.store)?;
             Ok(bytes == next && snapshot.identity() == pending.file.identity())
         }
 
@@ -397,27 +444,11 @@ mod unix {
             &self,
             max_bytes: usize,
         ) -> Result<Option<(Vec<u8>, OwnedFileSnapshot)>, StoreError> {
-            read_store(&self.directory, max_bytes, &PROVIDER)
+            read_store(&self.directory, max_bytes, self.layout)
         }
     }
 
-    pub(super) fn read_provider_registry(
-        root: &DataRoot,
-        profile: &ProfileId,
-        max_bytes: usize,
-    ) -> Result<Option<Vec<u8>>, StoreError> {
-        read_registry(root, profile, max_bytes, &PROVIDER)
-    }
-
-    pub(super) fn read_model_registry(
-        root: &DataRoot,
-        profile: &ProfileId,
-        max_bytes: usize,
-    ) -> Result<Option<Vec<u8>>, StoreError> {
-        read_registry(root, profile, max_bytes, &MODEL)
-    }
-
-    fn read_registry(
+    pub(super) fn read_registry(
         root: &DataRoot,
         profile: &ProfileId,
         max_bytes: usize,
@@ -541,11 +572,12 @@ mod unix {
         root: &DataRoot,
         profile: &ProfileId,
         create: bool,
+        layout: &RegistryLayout,
     ) -> Result<File, StoreError> {
         let base = root.directory_capability();
-        let mut directory = owned_directory(&base, PROVIDER.directories[0], create, &PROVIDER)?;
-        for name in registry_directories(profile, &PROVIDER).skip(1) {
-            directory = owned_directory(&directory, name, create, &PROVIDER)?;
+        let mut directory = owned_directory(&base, layout.directories[0], create, layout)?;
+        for name in registry_directories(profile, layout).skip(1) {
+            directory = owned_directory(&directory, name, create, layout)?;
         }
         Ok(directory)
     }
@@ -574,12 +606,9 @@ mod unix {
             && entry.st_nlink == 1
     }
 
-    fn verify_owned_link(directory: &File, name: &CStr, file: &File) -> Result<(), StoreError> {
+    fn has_owned_link(directory: &File, name: &CStr, file: &File) -> Result<bool, StoreError> {
         let entry = stat_entry(directory, name)?;
-        if !is_owned_regular(&entry) || checked_file_identity(&entry)? != file_identity(file)? {
-            return Err(binding_changed(&PROVIDER));
-        }
-        Ok(())
+        Ok(is_owned_regular(&entry) && checked_file_identity(&entry)? == file_identity(file)?)
     }
 
     struct OwnedEntry {
@@ -604,15 +633,11 @@ mod unix {
             entry.file.set_permissions(Permissions::from_mode(0o600))?;
             Ok(entry)
         }
-
-        fn verify_link(&self) -> Result<(), StoreError> {
-            verify_owned_link(&self.directory, &self.name, &self.file)
-        }
     }
 
     impl Drop for OwnedEntry {
         fn drop(&mut self) {
-            if self.verify_link().is_ok() {
+            if has_owned_link(&self.directory, &self.name, &self.file).unwrap_or(false) {
                 unsafe {
                     libc::unlinkat(self.directory.as_raw_fd(), self.name.as_ptr(), 0);
                 }

@@ -30,7 +30,8 @@ pub use audit::*;
 pub use data::*;
 pub use disk_policy::*;
 pub use legacy_provider_registry::{
-    LegacyProviderRegistryPublishError, LegacyProviderRegistryTransaction,
+    LegacyRegistryPublishError, LegacyRegistryPublishError as LegacyProviderRegistryPublishError,
+    LegacyRegistryTransaction, LegacyRegistryTransaction as LegacyProviderRegistryTransaction,
 };
 pub use native_snapshot::{NativeFileSnapshot, NativeSnapshotSource};
 pub use owner::*;

@@ -23,6 +23,17 @@ interface legacy-settings {
   list-models: func(document: option<string>) -> result<json, error>;
 }
 
+interface legacy-save {
+  use tobkiri:core/types@1.2.0.{callback-handle, json, error};
+
+  /// Stage a Settings save against the locked original Profile document.
+  /// Provider is the authorized snapshot with connection IDs and enabled flags.
+  /// The observer supplies the document and, for a write, the clock.
+  /// The response contains the optional staged document, public result and
+  /// private owner result for the original caller's reconciliation.
+  stage-model: func(request: json, provider: json, observe: callback-handle) -> result<json, error>;
+}
+
 interface routing {
   use tobkiri:core/types@1.2.0.{json, error};
 
@@ -37,5 +48,6 @@ world pack {
   import tobkiri:core/storage@1.2.0;
   export settings;
   export legacy-settings;
+  export legacy-save;
   export routing;
 }

@@ -23,10 +23,19 @@ impl Registry {
         request: &PyValue,
         now: &str,
     ) -> Result<(Option<PyValue>, PyValue), SourceError> {
+        self.apply_settings_with_clock(request, || Ok(now))
+    }
+
+    /// Resolve the clock only if the original save would write the document.
+    pub(crate) fn apply_settings_with_clock<T: AsRef<str>, E: From<SourceError>>(
+        &self,
+        request: &PyValue,
+        clock: impl FnOnce() -> Result<T, E>,
+    ) -> Result<(Option<PyValue>, PyValue), E> {
         let create = match request.get("operation").and_then(PyValue::as_str) {
             Some("create") => true,
             Some("save") => false,
-            _ => return Err(value_error("model registry operation payload is invalid")),
+            _ => return Err(value_error("model registry operation payload is invalid").into()),
         };
         let record = request
             .get("record")
@@ -35,10 +44,7 @@ impl Registry {
         let provider = create.then(|| creation_provider(record)).transpose()?;
         let mut normalized = profile_record(record)?;
         let state = self.read()?;
-        let expected = integer_or_zero(request.get("expected_revision"))?;
-        if integer_or_zero(state.revision)? != expected {
-            return Err(conflict("model registry revision is stale"));
-        }
+        assert_revision(state.revision, request)?;
         let profile_id = normalized
             .get("model_profile_id")
             .and_then(PyValue::as_str)
@@ -51,7 +57,7 @@ impl Registry {
                 return Ok((None, saved(current.clone(), state.revision()?)));
             }
             if field(state.aliases, &profile_id).is_some() {
-                return Err(conflict("model profile ID is already reserved"));
+                return Err(conflict("model profile ID is already reserved").into());
             }
         } else if let Some(current) = current.filter(|current| current.as_object().is_some()) {
             if matches!(request.get("preserve_existing"), Some(PyValue::Bool(true))) {
@@ -63,7 +69,7 @@ impl Registry {
                         || current.get("model_id") != normalized.get("model_id")
                         || provider_connection(current) != connection
                     {
-                        return Err(value_error("model profile route identity changed"));
+                        return Err(value_error("model profile route identity changed").into());
                     }
                 }
                 normalized = profile_record(&merge_record(current, record)?)?;
@@ -79,6 +85,8 @@ impl Registry {
         }
 
         let current = current.filter(|current| pytruthy(current));
+        let now = clock()?;
+        let now = now.as_ref();
         let created_at = current
             .map(|current| dictionary_get(current, "created_at"))
             .transpose()?
@@ -460,6 +468,18 @@ fn python_equal(left: &PyValue, right: &PyValue) -> bool {
         }
     }
     true
+}
+
+/// Compare the revision with the original owner's integer coercion rules.
+pub(crate) fn assert_revision(
+    current: Option<&PyValue>,
+    request: &PyValue,
+) -> Result<(), SourceError> {
+    let expected = integer_or_zero(request.get("expected_revision"))?;
+    if integer_or_zero(current)? != expected {
+        return Err(conflict("model registry revision is stale"));
+    }
+    Ok(())
 }
 
 fn integer_or_zero(value: Option<&PyValue>) -> Result<String, SourceError> {

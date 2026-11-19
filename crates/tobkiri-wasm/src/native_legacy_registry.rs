@@ -4,7 +4,9 @@ use crate::owned_values::core_to_val;
 use anyhow::{Context, Result, bail, ensure};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fmt, io, sync::Arc};
-use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, ids::ShapeRef};
+use tobkiri_canon::{
+    AllocationBudget, AllocationError, CoreBuffer, CoreRef, CoreValue, ids::ShapeRef,
+};
 use tobkiri_gate::ControlKind;
 use tobkiri_manifest::{RuntimeSpec, ShapeKind, VerifiedPack, WitFunction, WitType};
 use wasmtime::component::types::{ComponentFunc, ComponentInstance, ComponentItem, Type};
@@ -12,6 +14,7 @@ use wasmtime::component::{BudgetedBox, BudgetedString, BudgetedVec, Component, L
 use wasmtime::{Engine, Store};
 
 const PROVIDER_PACK: &str = "local.provider-registry";
+const MODEL_PACK: &str = "local.model-registry";
 const FLOW: &str = "tobkiri:core/flow@1.2.0";
 const PROFILE: &str = "current-profile";
 const CALLBACK: &str = "invoke-callback";
@@ -35,9 +38,17 @@ struct RegistryExport {
     shape: &'static str,
     interface: &'static str,
     function: &'static str,
+    error_subject: &'static str,
     parameters: &'static [&'static str],
     reads: u8,
-    clock: bool,
+    clock: RegistryClock,
+}
+
+#[derive(Clone, Copy)]
+enum RegistryClock {
+    None,
+    Required,
+    ForReplacement,
 }
 
 const PREPARE: RegistryExport = RegistryExport {
@@ -45,36 +56,50 @@ const PREPARE: RegistryExport = RegistryExport {
     shape: "local.provider-registry.legacy-configuration-live@1.0",
     interface: "local:provider-registry/legacy-configuration-live@1.0.0",
     function: "prepare-local",
+    error_subject: "legacy Provider prepare",
     parameters: &["request", "observe"],
     reads: 2,
-    clock: false,
+    clock: RegistryClock::None,
 };
 const VALIDATE_COMMIT: RegistryExport = RegistryExport {
     pack: PROVIDER_PACK,
     shape: "local.provider-registry.legacy-configuration-commit@1.0",
     interface: "local:provider-registry/legacy-configuration-commit@1.0.0",
     function: "validate-local",
+    error_subject: "legacy Provider prepare",
     parameters: &["request", "plan", "observe"],
     reads: 3,
-    clock: false,
+    clock: RegistryClock::None,
 };
 const STAGE_COMMIT: RegistryExport = RegistryExport {
     pack: PROVIDER_PACK,
     shape: "local.provider-registry.legacy-configuration-apply@1.0",
     interface: "local:provider-registry/legacy-configuration-apply@1.0.0",
     function: "stage-local",
+    error_subject: "legacy Provider prepare",
     parameters: &["request", "plan", "observe"],
     reads: 4,
-    clock: true,
+    clock: RegistryClock::Required,
 };
 const MODEL_LIST: RegistryExport = RegistryExport {
-    pack: "local.model-registry",
+    pack: MODEL_PACK,
     shape: "local.model-registry.legacy-settings@1.0",
     interface: "local:model-registry/legacy-settings@1.0.0",
     function: "list-models",
+    error_subject: "legacy Model Registry list",
     parameters: &["document"],
     reads: 0,
-    clock: false,
+    clock: RegistryClock::None,
+};
+const MODEL_SAVE: RegistryExport = RegistryExport {
+    pack: MODEL_PACK,
+    shape: "local.model-registry.legacy-save@1.0",
+    interface: "local:model-registry/legacy-save@1.0.0",
+    function: "stage-model",
+    error_subject: "legacy Model Registry save",
+    parameters: &["request", "provider", "observe"],
+    reads: 1,
+    clock: RegistryClock::ForReplacement,
 };
 
 enum LegacyProviderOperation<'a> {
@@ -90,6 +115,11 @@ enum RegistryInput<'a> {
         read: LegacyProviderRegistryRead,
     },
     ModelList(Option<&'a str>),
+    ModelSave {
+        request: &'a CoreValue,
+        provider: &'a CoreValue,
+        read: LegacyRegistryRead,
+    },
 }
 
 /// A closed domain error from a legacy Registry operation. The guest's free
@@ -97,7 +127,7 @@ enum RegistryInput<'a> {
 #[derive(Debug)]
 pub struct LegacyRegistryError {
     code: &'static str,
-    pack: &'static str,
+    subject: &'static str,
 }
 
 impl LegacyRegistryError {
@@ -109,12 +139,7 @@ impl LegacyRegistryError {
 
 impl fmt::Display for LegacyRegistryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let operation = if self.pack == PROVIDER_PACK {
-            "legacy Provider prepare"
-        } else {
-            "legacy Model Registry list"
-        };
-        write!(formatter, "{operation} returned {}", self.code)
+        write!(formatter, "{} returned {}", self.subject, self.code)
     }
 }
 
@@ -122,8 +147,10 @@ impl std::error::Error for LegacyRegistryError {}
 
 /// Trusted native reader of the original Profile's fixed legacy Registry.
 /// The supplied budget owns the bytes returned to the isolated guest.
-pub type LegacyProviderRegistryRead =
+pub type LegacyRegistryRead =
     Box<dyn FnMut(&Arc<dyn AllocationBudget>) -> Result<Option<CoreBuffer>> + Send>;
+
+pub use LegacyRegistryRead as LegacyProviderRegistryRead;
 
 pub(super) struct LiveObservations {
     read: LegacyProviderRegistryRead,
@@ -236,6 +263,30 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         .await
     }
 
+    /// Stage a Model Registry save from a trusted narrowed Provider snapshot
+    /// and the original Model document while the native caller holds its lock.
+    /// A successful no-op neither supplies a replacement nor observes a clock.
+    pub async fn stage_live_legacy_model_save(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        request: &CoreValue,
+        provider: &CoreValue,
+        read: LegacyRegistryRead,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &MODEL_SAVE,
+            RegistryInput::ModelSave {
+                request,
+                provider,
+                read,
+            },
+        )
+        .await
+    }
+
     async fn invoke_legacy_registry(
         &mut self,
         pack: &VerifiedPack,
@@ -282,6 +333,11 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         .is_some_and(|(_, ty)| *ty == WitType::CallbackHandle)
             }
             RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
+            RegistryInput::ModelSave { .. } => {
+                function.params[0].1 == WitType::Json
+                    && function.params[1].1 == WitType::Json
+                    && function.params[2].1 == WitType::CallbackHandle
+            }
         };
         ensure!(
             abi_matches,
@@ -352,6 +408,18 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 model_parameters = [model_document(document, &owners)?];
                 (&model_parameters, None)
             }
+            RegistryInput::ModelSave {
+                request,
+                provider,
+                read,
+            } => {
+                with_plan = [
+                    core_to_val(request, &function.params[0].1, &owners)?,
+                    core_to_val(provider, &function.params[1].1, &owners)?,
+                    observe_handle(&owners)?,
+                ];
+                (&with_plan, Some(read))
+            }
         };
         store.host_allocation_budget(owners.component().clone());
         let (reply, reads, clock_pending) =
@@ -360,16 +428,53 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         let reply = decode_reply(
             reply.as_slice(),
             pack.manifest.permissions.wasm.output_bytes,
-            export.pack,
+            export.error_subject,
             &owners,
         );
         ensure_active(store.data_mut())?;
         let reply = reply?;
+        let expected_clock_pending = match export.clock {
+            RegistryClock::None | RegistryClock::Required => false,
+            RegistryClock::ForReplacement => validate_model_save_reply(&reply)?,
+        };
         ensure!(
-            reads == export.reads && !clock_pending,
-            "legacy Provider operation omitted a Registry or clock observation"
+            reads == export.reads && clock_pending == expected_clock_pending,
+            "legacy Registry observations differ from the fixed operation"
         );
         Ok(reply)
+    }
+}
+
+fn validate_model_save_reply(reply: &CoreValue) -> Result<bool> {
+    let CoreRef::Obj(fields) = reply.inspect() else {
+        bail!("legacy Model Registry stage must return an object");
+    };
+    ensure!(
+        fields.len() == 3,
+        "legacy Model Registry stage fields differ"
+    );
+    let result = reply
+        .get_key("result")
+        .context("missing Model Settings result")?;
+    ensure!(
+        matches!(result.inspect(), CoreRef::Obj(_)),
+        "legacy Model Settings result must be an object"
+    );
+    let owner = reply
+        .get_key("owner_result")
+        .context("missing Model owner result")?;
+    // The owner reply remains opaque to the Core DATA codec.
+    ensure!(
+        matches!(owner.inspect(), CoreRef::Str(value) if value.starts_with('{') && value.ends_with('}')),
+        "legacy Model owner result must enclose an object"
+    );
+    let document = reply
+        .get_key("document")
+        .context("missing Model Registry stage document")?;
+    match document.inspect() {
+        CoreRef::Null => Ok(true),
+        CoreRef::Str(value) if value.ends_with('\n') => Ok(false),
+        _ => bail!("legacy Model Registry stage document differs"),
     }
 }
 
@@ -769,11 +874,12 @@ async fn call_registry<T: Send + 'static>(
         .context("legacy Provider configuration function export missing")?;
     ensure_active(store.data_mut())?;
     store.data_mut().registry_profile = Some(profile);
+    let expects_clock = !matches!(export.clock, RegistryClock::None);
     store.data_mut().provider_prepare_reads = read.map(|read| LiveObservations {
         read,
         count: 0,
         limit: export.reads,
-        clock_pending: export.clock,
+        clock_pending: expects_clock,
     });
     let result = function.call_async_owned(&mut *store, parameters).await;
     let read_profile = store.data_mut().registry_profile.take().is_none();
@@ -781,7 +887,7 @@ async fn call_registry<T: Send + 'static>(
         .data_mut()
         .provider_prepare_reads
         .take()
-        .map_or((0, export.clock), |read| (read.count, read.clock_pending));
+        .map_or((0, expects_clock), |read| (read.count, read.clock_pending));
     let result = result
         .map_err(anyhow::Error::from)
         .context("execute verified legacy Provider prepare")?;
@@ -795,7 +901,7 @@ async fn call_registry<T: Send + 'static>(
 fn decode_reply(
     values: &[Val],
     max_bytes: u64,
-    pack: &'static str,
+    subject: &'static str,
     owners: &crate::AllocationOwners,
 ) -> Result<CoreValue> {
     match values {
@@ -827,7 +933,7 @@ fn decode_reply(
                 .into_iter()
                 .find(|candidate| *candidate == code.as_str())
                 .context("legacy Provider prepare error code differs")?;
-            Err(LegacyRegistryError { code, pack }.into())
+            Err(LegacyRegistryError { code, subject }.into())
         }
         _ => bail!("legacy Provider prepare reply differs"),
     }

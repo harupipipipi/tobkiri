@@ -3,9 +3,7 @@ use crate::{CoreError, NativeArtifactError};
 use std::{io::ErrorKind, path::Path, sync::Arc, thread, time::Duration};
 use tobkiri_canon::{AllocationBudget, CoreBuffer, ids::ProfileId};
 use tobkiri_gate::{CapacityKind, NativeSetupInvocation, NativeSetupReservation};
-use tobkiri_store::{
-    DataRoot, LegacyProviderRegistryPublishError, LegacyProviderRegistryTransaction, StoreError,
-};
+use tobkiri_store::{DataRoot, LegacyRegistryPublishError, LegacyRegistryTransaction, StoreError};
 use tobkiri_wasm::NativeDataIoError;
 
 pub(crate) const DOCUMENT_LIMIT: usize = 1024 * 1024;
@@ -13,24 +11,57 @@ pub(crate) const DOCUMENT_LIMIT: usize = 1024 * 1024;
 type Result<T> = std::result::Result<T, NativeArtifactError>;
 
 struct LockedRegistry {
-    transaction: LegacyProviderRegistryTransaction,
+    transaction: LegacyRegistryTransaction,
     observed: Option<CoreBuffer>,
 }
 
 /// Bounded observations and optional save custody for one original Profile Registry.
 /// Only the native application can obtain this from its live inspection.
-pub struct NativeProviderRegistry {
+pub struct NativeRegistry {
     root: DataRoot,
     profile: ProfileId,
+    kind: LegacyRegistryKind,
     locked: Option<LockedRegistry>,
     _raw_read_funding: NativeSetupReservation,
 }
 
-impl NativeProviderRegistry {
+pub use NativeRegistry as NativeProviderRegistry;
+
+#[derive(Clone, Copy)]
+pub(crate) enum LegacyRegistryKind {
+    Provider,
+    Model,
+}
+
+impl LegacyRegistryKind {
+    fn limit(self) -> NativeArtifactError {
+        match self {
+            Self::Provider => NativeArtifactError::ProviderRegistryLimitBeforePublish,
+            Self::Model => NativeArtifactError::ModelRegistryLimitBeforePublish,
+        }
+    }
+
+    fn before_publish(self, error: StoreError) -> NativeArtifactError {
+        match error {
+            StoreError::Quota => self.limit(),
+            error => CoreError::from(error).into(),
+        }
+    }
+
+    fn unconfirmed(self, error: StoreError) -> NativeArtifactError {
+        match self {
+            Self::Provider => NativeArtifactError::ProviderRegistryPublicationUnconfirmed(error),
+            Self::Model => NativeArtifactError::ModelRegistryPublicationUnconfirmed(error),
+        }
+    }
+}
+
+impl NativeRegistry {
     pub(crate) fn open(
         invocation: &NativeSetupInvocation,
         root: &Path,
         profile_id: &str,
+        kind: LegacyRegistryKind,
     ) -> Result<Self> {
         let profile = ProfileId::parse(profile_id).map_err(CoreError::from)?;
         let funding = invocation
@@ -39,6 +70,7 @@ impl NativeProviderRegistry {
         Ok(Self {
             root: open_legacy_registry_root(root)?,
             profile,
+            kind,
             locked: None,
             _raw_read_funding: funding,
         })
@@ -49,13 +81,21 @@ impl NativeProviderRegistry {
         if self.locked.is_some() {
             return Err(NativeArtifactError::Denied);
         }
-        let bytes = self
-            .root
-            .read_legacy_provider_registry(&self.profile, DOCUMENT_LIMIT);
-        funded_observation(bytes, budget)
+        let bytes = match self.kind {
+            LegacyRegistryKind::Provider => self
+                .root
+                .read_legacy_provider_registry(&self.profile, DOCUMENT_LIMIT),
+            LegacyRegistryKind::Model => self
+                .root
+                .read_legacy_model_registry(&self.profile, DOCUMENT_LIMIT),
+        };
+        copy_document(
+            bytes.map_err(|error| self.kind.before_publish(error))?,
+            budget,
+        )
     }
 
-    /// Retain the fourth observation and its cooperative lock until publication.
+    /// Retain the original Registry observation and its cooperative lock until publication.
     /// The caller's checkpoint covers both authorization and a bounded deadline.
     pub fn observe_locked(
         &mut self,
@@ -67,7 +107,13 @@ impl NativeProviderRegistry {
         }
         let transaction = loop {
             checkpoint()?;
-            match self.root.lock_legacy_provider_registry(&self.profile) {
+            let locked = match self.kind {
+                LegacyRegistryKind::Provider => {
+                    self.root.lock_legacy_provider_registry(&self.profile)
+                }
+                LegacyRegistryKind::Model => self.root.lock_legacy_model_registry(&self.profile),
+            };
+            match locked {
                 Ok(transaction) => break transaction,
                 Err(StoreError::Io(error)) if error.kind() == ErrorKind::AlreadyExists => {
                     thread::sleep(Duration::from_millis(10));
@@ -76,7 +122,10 @@ impl NativeProviderRegistry {
             }
         };
         checkpoint()?;
-        let observed = funded_observation(transaction.read(DOCUMENT_LIMIT), budget)?;
+        let bytes = transaction
+            .read(DOCUMENT_LIMIT)
+            .map_err(|error| self.kind.before_publish(error))?;
+        let observed = copy_document(bytes, budget)?;
         checkpoint()?;
         self.locked = Some(LockedRegistry {
             transaction,
@@ -90,7 +139,7 @@ impl NativeProviderRegistry {
     pub fn publish(self, document: &[u8], checkpoint: impl Fn() -> Result<()>) -> Result<()> {
         let locked = self.locked.as_ref().ok_or(NativeArtifactError::Denied)?;
         if document.len() > DOCUMENT_LIMIT {
-            return Err(NativeArtifactError::ProviderRegistryLimitBeforePublish);
+            return Err(self.kind.limit());
         }
         checkpoint()?;
         match locked.transaction.publish(
@@ -100,11 +149,11 @@ impl NativeProviderRegistry {
             &checkpoint,
         ) {
             Ok(()) => Ok(()),
-            Err(LegacyProviderRegistryPublishError::BeforePublish(error)) => {
-                Err(before_publish(error))
+            Err(LegacyRegistryPublishError::BeforePublish(error)) => {
+                Err(self.kind.before_publish(error))
             }
-            Err(LegacyProviderRegistryPublishError::Guard(error)) => Err(error),
-            Err(LegacyProviderRegistryPublishError::Uncertain(error)) => {
+            Err(LegacyRegistryPublishError::Guard(error)) => Err(error),
+            Err(LegacyRegistryPublishError::Uncertain(error)) => {
                 if locked
                     .transaction
                     .confirm_exact(document, DOCUMENT_LIMIT)
@@ -112,9 +161,7 @@ impl NativeProviderRegistry {
                 {
                     Ok(())
                 } else {
-                    Err(NativeArtifactError::ProviderRegistryPublicationUnconfirmed(
-                        error,
-                    ))
+                    Err(self.kind.unconfirmed(error))
                 }
             }
         }
@@ -179,13 +226,6 @@ fn macos_platform_root(root: &Path) -> std::borrow::Cow<'_, Path> {
     Cow::Borrowed(root)
 }
 
-fn funded_observation(
-    bytes: std::result::Result<Option<Vec<u8>>, StoreError>,
-    budget: &Arc<dyn AllocationBudget>,
-) -> Result<Option<CoreBuffer>> {
-    copy_document(bytes.map_err(before_publish)?, budget)
-}
-
 fn copy_document(
     bytes: Option<Vec<u8>>,
     budget: &Arc<dyn AllocationBudget>,
@@ -194,11 +234,4 @@ fn copy_document(
         .map(|bytes| CoreBuffer::copy_from(&bytes, budget))
         .transpose()
         .map_err(|_| NativeDataIoError::Unavailable.into())
-}
-
-fn before_publish(error: StoreError) -> NativeArtifactError {
-    match error {
-        StoreError::Quota => NativeArtifactError::ProviderRegistryLimitBeforePublish,
-        error => CoreError::from(error).into(),
-    }
 }

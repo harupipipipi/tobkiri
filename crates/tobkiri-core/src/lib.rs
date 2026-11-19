@@ -78,11 +78,11 @@ pub use filesystem_registry::{FilesystemRights, FilesystemRoot};
 pub use journal::AuditRunJournal;
 #[cfg(unix)]
 pub use native_declared_artifact::{
-    LegacyProviderRegistryRead, NativeArtifactDeclaration, NativeArtifactError,
+    LegacyProviderRegistryRead, LegacyRegistryRead, NativeArtifactDeclaration, NativeArtifactError,
     NativeArtifactInspection, NativeDeclaredArtifactSource,
 };
 #[cfg(unix)]
-pub use native_provider_registry::NativeProviderRegistry;
+pub use native_provider_registry::{NativeProviderRegistry, NativeRegistry};
 pub use process_catalog::ProcessRegistrationError;
 pub use profile_review::{
     FilesystemPermissionReview, PermissionReview, ProfileReview, ProfileReviewCapacity,

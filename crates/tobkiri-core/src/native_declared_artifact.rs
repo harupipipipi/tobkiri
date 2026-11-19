@@ -6,7 +6,7 @@
 //! active state, invocation, jailed open, verification and physical cleanup.
 //! This is separate from ordinary Profile permissions and early Setup reads.
 
-use crate::{Core, CoreError};
+use crate::{Core, CoreError, native_provider_registry::LegacyRegistryKind};
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
@@ -27,7 +27,7 @@ use tobkiri_wasm::{
     LegacyRegistryError, NativeDataIo, NativeDataIoError, NativeInspectionOutput, NativeSetupStore,
 };
 
-pub use tobkiri_wasm::LegacyProviderRegistryRead;
+pub use tobkiri_wasm::{LegacyProviderRegistryRead, LegacyRegistryRead};
 
 #[path = "native_artifact_open_unix.rs"]
 mod opening;
@@ -83,6 +83,12 @@ pub enum NativeArtifactError {
     ProviderRejected(#[from] LegacyRegistryError),
     #[error("native Model Registry projection failed")]
     ModelSettings(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("native Model Registry save staging failed")]
+    ModelSaveStaging(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("legacy Model Registry exceeds its native publication envelope")]
+    ModelRegistryLimitBeforePublish,
+    #[error("legacy Model Registry publication is unconfirmed")]
+    ModelRegistryPublicationUnconfirmed(#[source] tobkiri_store::StoreError),
     #[error("{0}")]
     ModelRegistryRejected(#[source] LegacyRegistryError),
 }
@@ -241,9 +247,27 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         root: &Path,
         profile_id: &str,
     ) -> Result<crate::NativeProviderRegistry, NativeArtifactError> {
+        self.legacy_registry(root, profile_id, LegacyRegistryKind::Provider)
+    }
+
+    /// Bind the fixed Model Registry and its original Host lock for save staging.
+    pub fn legacy_model_registry(
+        &self,
+        root: &Path,
+        profile_id: &str,
+    ) -> Result<crate::NativeRegistry, NativeArtifactError> {
+        self.legacy_registry(root, profile_id, LegacyRegistryKind::Model)
+    }
+
+    fn legacy_registry(
+        &self,
+        root: &Path,
+        profile_id: &str,
+        kind: LegacyRegistryKind,
+    ) -> Result<crate::NativeRegistry, NativeArtifactError> {
         self.require_ready()?;
         let registry =
-            crate::NativeProviderRegistry::open(&self.work.get().invocation, root, profile_id)?;
+            crate::NativeRegistry::open(&self.work.get().invocation, root, profile_id, kind)?;
         self.require_ready()?;
         Ok(registry)
     }
@@ -330,6 +354,29 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         staged.map_err(|error| match error.downcast::<LegacyRegistryError>() {
             Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
             Err(error) => NativeArtifactError::ProviderCommitStaging(error.into()),
+        })
+    }
+
+    /// Stage a save against the original Model document while the native reader
+    /// retains the lock. The caller supplies the authorized Provider snapshot.
+    /// Only native custody may publish the staged document after physical cleanup.
+    pub async fn stage_live_legacy_model_save(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        request: &CoreValue,
+        provider: &CoreValue,
+        read: LegacyRegistryRead,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.claim_registry()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let staged = store
+            .stage_live_legacy_model_save(pack, profile_id, request, provider, read)
+            .await;
+        self.require_live()?;
+        staged.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ModelRegistryRejected(rejected),
+            Err(error) => NativeArtifactError::ModelSaveStaging(error.into()),
         })
     }
 

@@ -1,4 +1,7 @@
 //! Exercise saved model Settings through the actual Core and Wasm Packs.
+#[cfg(unix)]
+#[path = "model_registry/native_save.rs"]
+mod native_save;
 #[path = "model_registry/registered_network.rs"]
 mod registered_network;
 mod support;
@@ -6,6 +9,11 @@ mod support;
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::sync::Arc;
+#[cfg(unix)]
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 use support::registry::{PROVIDER_MANAGE, PROVIDER_PACK, RegistryPack};
 use support::{Host, canon, physical_temp, registry, within_session};
 use tobkiri_core::{Core, CoreConfig, CoreError, Session};
@@ -117,28 +125,6 @@ async fn check_live_model_document(
     profile: &str,
     case: &Value,
 ) -> Result<()> {
-    use std::{collections::BTreeMap, path::Path};
-
-    struct Hash(String);
-    impl NativeArtifactDeclaration for Hash {
-        fn digest(&self) -> &str {
-            &self.0
-        }
-    }
-    struct Source {
-        root: std::path::PathBuf,
-        declarations: BTreeMap<String, Hash>,
-    }
-    impl NativeDeclaredArtifactSource for Source {
-        type Declaration = Hash;
-        fn root(&self) -> &Path {
-            &self.root
-        }
-        fn declarations(&self) -> &BTreeMap<String, Hash> {
-            &self.declarations
-        }
-    }
-
     let data = source_root.join("original-user-data");
     let legacy = DataRoot::open(&data)?;
     let relative =
@@ -148,10 +134,7 @@ async fn check_live_model_document(
         .strip_prefix("file:")
         .context("staged Model archive")?;
     let run = || async {
-        let mut inspection = core.inspect_declared_artifacts(Source {
-            root: source_root.to_path_buf(),
-            declarations: BTreeMap::new(),
-        })?;
+        let mut inspection = core.inspect_declared_artifacts(Source::new(source_root))?;
         let budget = Arc::clone(inspection.allocation_budget()?);
         let mut archive = std::fs::File::open(archive)?;
         let length = archive.metadata()?.len();
@@ -207,6 +190,43 @@ async fn check_live_model_document(
         Some(NativeArtifactError::TooLarge)
     ));
     Ok(())
+}
+
+#[cfg(unix)]
+struct Hash(String);
+
+#[cfg(unix)]
+impl NativeArtifactDeclaration for Hash {
+    fn digest(&self) -> &str {
+        &self.0
+    }
+}
+
+#[cfg(unix)]
+struct Source {
+    root: PathBuf,
+    declarations: BTreeMap<String, Hash>,
+}
+
+#[cfg(unix)]
+impl Source {
+    fn new(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            declarations: BTreeMap::new(),
+        }
+    }
+}
+
+#[cfg(unix)]
+impl NativeDeclaredArtifactSource for Source {
+    type Declaration = Hash;
+    fn root(&self) -> &Path {
+        &self.root
+    }
+    fn declarations(&self) -> &BTreeMap<String, Hash> {
+        &self.declarations
+    }
 }
 
 async fn save_provider(session: &Session, profile: &str, name: &str, revision: u64) -> Result<()> {
@@ -350,7 +370,7 @@ async fn model_save_checks_both_registry_revisions_and_persists_the_token_limit(
     closed?;
     drop((session, core));
 
-    let core = Core::open(CoreConfig::for_test_data_root(data), host)?;
+    let core = Arc::new(Core::open(CoreConfig::for_test_data_root(data), host)?);
     let reopened = core.start(&profile.id).await?;
     let persisted = list(&reopened).await;
     reopened.close().await?;
@@ -358,5 +378,7 @@ async fn model_save_checks_both_registry_revisions_and_persists_the_token_limit(
         persisted? == expected,
         "saved model configuration changed on restart"
     );
+    #[cfg(unix)]
+    native_save::check_original_settings_save(core, root.path(), &packs[0].pin).await?;
     Ok(())
 }

@@ -23,6 +23,12 @@
       "wit": "wit/pack.wit"
     },
     {
+      "name": "local.model-registry.legacy-save",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
       "name": "local.model-registry.routing",
       "version": "1.0",
       "kind": "port",
@@ -44,6 +50,11 @@
       },
       {
         "shape": "local.model-registry.legacy-settings",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.model-registry.legacy-save",
         "version": "1.0",
         "optional": false
       },
@@ -98,6 +109,7 @@
     "wit/data.shape.json",
     "wit/deps/core.wit",
     "wit/deps/provider-registry.wit",
+    "wit/legacy-save.shape.json",
     "wit/legacy-settings.shape.json",
     "wit/pack.wit",
     "wit/routing.shape.json",

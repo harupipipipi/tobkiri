@@ -82,6 +82,83 @@ impl PythonJson {
             PythonJsonNode::Array(_) => false,
         }
     }
+
+    /// Check a top-level string field without admitting opaque Python data to
+    /// the scalar-string domain.
+    pub fn string_field_eq(&self, key: &str, expected: &str) -> bool {
+        match &self.0 {
+            PythonJsonNode::Native(value) => {
+                value.get(key).and_then(PyValue::as_str) == Some(expected)
+            }
+            PythonJsonNode::Opaque(value) => opaque_field(value, key)
+                .and_then(PyValue::as_str)
+                .is_some_and(|value| opaque_string_eq(value, expected)),
+            PythonJsonNode::Object(fields) => fields
+                .iter()
+                .find(|(name, _)| name == key)
+                .is_some_and(|(_, value)| match &value.0 {
+                    PythonJsonNode::Native(value) => value.as_str() == Some(expected),
+                    PythonJsonNode::Opaque(value) => value
+                        .as_str()
+                        .is_some_and(|value| opaque_string_eq(value, expected)),
+                    _ => false,
+                }),
+            PythonJsonNode::Array(_) => false,
+        }
+    }
+
+    /// Check whether a top-level field is a Python dictionary.
+    pub fn has_object_field(&self, key: &str) -> bool {
+        match &self.0 {
+            PythonJsonNode::Native(value) => value.get(key).and_then(PyValue::as_object).is_some(),
+            PythonJsonNode::Opaque(value) => opaque_field(value, key)
+                .and_then(PyValue::as_object)
+                .is_some(),
+            PythonJsonNode::Object(fields) => fields
+                .iter()
+                .find(|(name, _)| name == key)
+                .is_some_and(|(_, value)| value.is_object()),
+            PythonJsonNode::Array(_) => false,
+        }
+    }
+
+    /// Decode a single field into the bounded, finite JSON domain. Other
+    /// fields may remain opaque and do not affect this conversion.
+    pub fn decode_field(&self, key: &str) -> Result<Option<PyValue>, CodecError> {
+        let field = match &self.0 {
+            PythonJsonNode::Native(value) => return Ok(value.get(key).cloned()),
+            PythonJsonNode::Opaque(value) => {
+                opaque_field(value, key).map(|value| Part::Value(value, true))
+            }
+            PythonJsonNode::Object(fields) => fields
+                .iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| Part::PythonJson(value)),
+            PythonJsonNode::Array(_) => None,
+        };
+        field
+            .map(|field| encode(field, MAX_BYTES, None).and_then(|text| loads(&text)))
+            .transpose()
+    }
+}
+
+fn opaque_field<'a>(value: &'a PyValue, key: &str) -> Option<&'a PyValue> {
+    value
+        .as_object()?
+        .iter()
+        .find(|(name, _)| opaque_string_eq(name, key))
+        .map(|(_, value)| value)
+}
+
+fn opaque_string_eq(encoded: &str, expected: &str) -> bool {
+    let mut encoded = encoded.chars();
+    for character in expected.chars() {
+        if encoded.next() != Some(character) || (character == '\\' && encoded.next() != Some('\\'))
+        {
+            return false;
+        }
+    }
+    encoded.next().is_none()
 }
 
 impl From<PyValue> for PythonJson {

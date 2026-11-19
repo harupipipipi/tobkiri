@@ -14,6 +14,27 @@ fn opaque_decoded_duplicates_replace_the_first_position_only() {
 }
 
 #[test]
+fn top_level_checks_leave_unrelated_python_fields_opaque() {
+    let value = loads_python_json(
+        r#"{"profile":"first","\u0070rofile":"last","literal":"\\ud800","surrogate":"\ud800","\\ud801":{},"\ud801":[],"revision":17,"number":NaN}"#,
+    )
+    .unwrap();
+    assert!(value.string_field_eq("profile", "last"));
+    assert!(!value.string_field_eq("profile", "first"));
+    assert!(value.string_field_eq("literal", r"\ud800"));
+    assert!(!value.string_field_eq("surrogate", r"\ud800"));
+    assert!(value.has_object_field(r"\ud801"));
+    assert!(!value.has_object_field("revision"));
+    assert_eq!(
+        value.decode_field("revision").unwrap(),
+        Some(PyValue::Int("17".into()))
+    );
+    assert_eq!(value.decode_field("missing").unwrap(), None);
+    assert_eq!(value.decode_field("number"), Err(CodecError::NonFinite));
+    assert_eq!(value.decode_field("surrogate"), Err(CodecError::Invalid));
+}
+
+#[test]
 fn opaque_nonfinite_values_are_kept_until_the_finite_output_boundary() {
     for input in ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"] {
         assert!(loads_python_json(input).is_ok());

@@ -32,11 +32,11 @@ mod native_preparation;
 mod native_setup_store;
 pub use native_setup_store::LegacyRegistryError as LegacyProviderPrepareError;
 pub use native_setup_store::{
-    LegacyProviderRegistryRead, LegacyRegistryError, NativeDataBinding, NativeDataEntry,
-    NativeDataError, NativeDataErrorContract, NativeDataExport, NativeDataObservation,
-    NativeDataProgram, NativeDataResultContract, NativeDataResultEntry, NativeDataSuccessType,
-    NativeDataValue, NativeImportBinding, NativeImportContext, NativeImportInput,
-    NativeImportOperation, NativeImportState, NativeSetupStore,
+    LegacyProviderRegistryRead, LegacyRegistryError, LegacyRegistryRead, NativeDataBinding,
+    NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
+    NativeDataObservation, NativeDataProgram, NativeDataResultContract, NativeDataResultEntry,
+    NativeDataSuccessType, NativeDataValue, NativeImportBinding, NativeImportContext,
+    NativeImportInput, NativeImportOperation, NativeImportState, NativeSetupStore,
 };
 mod network;
 mod output;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::{LegacyProviderRegistryPublishError, LegacyProviderRegistryTransaction};
 use std::{
     fs::{self, OpenOptions},
     io::ErrorKind,
@@ -12,6 +13,7 @@ const STORE_NAME: &str = "provider_registry.store.json";
 const LOCK_PATH: &str = "locks/provider-registry.lock";
 const MODEL_PROFILE_PATH: &str = "packs/rumi_model_registry_pack/profiles/defaults";
 const MODEL_STORE_NAME: &str = "model_registry.store.json";
+const MODEL_LOCK_PATH: &str = "locks/model-registry.lock";
 
 fn fixture() -> (tempfile::TempDir, DataRoot, ProfileId, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
@@ -208,6 +210,100 @@ fn model_registry_rejects_symlinks_writable_directories_and_multilink_stores() {
         Err(StoreError::Denied(_))
     ));
     assert_eq!(fs::read(outside_file).unwrap(), b"foreign");
+}
+
+#[test]
+fn model_registry_transaction_uses_only_the_original_model_lock_and_store() {
+    let (_temp, root, profile, provider) = fixture();
+    let registry = root.path().join(MODEL_PROFILE_PATH);
+    let other = registry.with_file_name("other");
+    fs::create_dir_all(&provider).unwrap();
+    fs::write(provider.join(STORE_NAME), b"provider").unwrap();
+    fs::create_dir_all(&other).unwrap();
+    fs::write(other.join(MODEL_STORE_NAME), b"other profile").unwrap();
+
+    let transaction = root.lock_legacy_model_registry(&profile).unwrap();
+    let lock_path = registry.join(MODEL_LOCK_PATH);
+    let lock: serde_json::Value = serde_json::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+    assert_eq!(lock.as_object().unwrap().len(), 4);
+    assert_ne!(lock["owner"].as_str().unwrap(), "");
+    assert_eq!(lock["pid"], std::process::id());
+    assert!(lock["acquired_at"].as_f64().unwrap() > 0.0);
+    assert!(lock["stale_after_seconds"].is_null());
+    assert_eq!(
+        fs::metadata(&lock_path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_busy(root.lock_legacy_model_registry(&profile));
+    assert_eq!(transaction.read(MAX).unwrap(), None);
+    transaction
+        .publish(None, b"model", MAX, || {
+            assert!(lock_path.is_file());
+            assert!(!registry.join(MODEL_STORE_NAME).exists());
+            assert!(!provider.join("locks").exists());
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+
+    let store = registry.join(MODEL_STORE_NAME);
+    assert_eq!(fs::read(&store).unwrap(), b"model");
+    assert_eq!(
+        fs::metadata(&store).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(fs::read_dir(&registry).unwrap().count(), 2);
+    assert_eq!(fs::read(provider.join(STORE_NAME)).unwrap(), b"provider");
+    assert_eq!(
+        fs::read(other.join(MODEL_STORE_NAME)).unwrap(),
+        b"other profile"
+    );
+    drop(transaction);
+    assert!(!lock_path.exists());
+    assert!(!registry.join(LOCK_PATH).exists());
+
+    let legacy = br#"{"acquired_at":0.0,"owner":"pid:999","pid":999,"stale_after_seconds":0}"#;
+    fs::write(&lock_path, legacy).unwrap();
+    assert_busy(root.lock_legacy_model_registry(&profile));
+    assert_eq!(fs::read(&lock_path).unwrap(), legacy);
+    assert_eq!(fs::read(store).unwrap(), b"model");
+}
+
+#[test]
+fn model_registry_transaction_checks_prior_and_confirms_its_own_uncertain_replacement() {
+    let (_temp, root, profile, _) = fixture();
+    let registry = root.path().join(MODEL_PROFILE_PATH);
+    let store = registry.join(MODEL_STORE_NAME);
+    let transaction = root.lock_legacy_model_registry(&profile).unwrap();
+    fs::write(&store, b"prior").unwrap();
+    assert!(matches!(transaction.read(4), Err(StoreError::Quota)));
+    assert!(matches!(
+        transaction.publish(Some(b"stale"), b"next", MAX, || -> Result<(), ()> {
+            panic!("stale data must fail before the authority check")
+        }),
+        Err(LegacyRegistryPublishError::BeforePublish(
+            StoreError::Conflict(_)
+        ))
+    ));
+    assert_eq!(fs::read(&store).unwrap(), b"prior");
+    assert_eq!(fs::read_dir(&registry).unwrap().count(), 2);
+
+    let result = transaction.inner.publish(
+        Some(b"prior"),
+        b"next",
+        MAX,
+        || Ok::<_, ()>(()),
+        |_| Err(std::io::Error::other("injected directory sync failure")),
+    );
+    assert!(matches!(
+        result,
+        Err(LegacyRegistryPublishError::Uncertain(_))
+    ));
+    assert!(transaction.confirm_exact(b"next", MAX).unwrap());
+    assert!(!transaction.confirm_exact(b"next", 3).unwrap());
+    assert!(!transaction.confirm_exact(b"different", MAX).unwrap());
+    fs::remove_file(&store).unwrap();
+    fs::write(&store, b"next").unwrap();
+    assert!(!transaction.confirm_exact(b"next", MAX).unwrap());
 }
 
 #[test]
