@@ -4273,6 +4273,34 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   共用JSON codecは重複キーを一度再エンコードしてから有限値へ変換する。このコピーの削減は
   初出順・最終値・非有限値や孤立サロゲートの扱いを共用codecで検証してから行う。
   旧Pythonの応答解釈は、残る入力表現と例外の互換性を証明するまで必要。
+  `e8fd1dce6` は、同一の検証済みPackに宣言された二つの読取り専用ポートを一つの
+  Wasmインスタンスに接続する。先行呼出しのABI後処理・上限検査の後に後続を一度だけ実行でき、
+  元の期限・fuel・64 MiBの容量台帳を共有する。
+  `0d17af5ab` は `local.provider-adapter` 0.2.0へローカルリクエスト生成を追加した。
+  元のキー順と上書き、Unicode、有限数、1 MiB上限を維持する。Registryレシートv4は
+  0.1.0と0.2.0を版別のWITで検証する。Rust単体11件、実Wasmの単独・二段呼出し、
+  旧版も含めたDMG検証147件が通過した。
+  `692635268` は、既存の署名済みローカルAdapterが版3を使うときに、モデル等5項目の
+  データを渡す。Wasmが本文を生成し、元のBundleを読み直した後に従来の許可で一度だけ送信、
+  同じインスタンスで応答を変換する。入力を扱えない場合は送信許可前にだけ旧codecへ戻る。
+  同梱Adapter 1.0.5、生成物照合6件、macOS Launcherのテスト型チェック、CPython 3.13.16の
+  IPC・ローカルHTTP回帰400件、Rustの保存ローカルIPC・起動証明9件が通過した。
+  `692635268` のmacOS結合試験では、署名済みの5項目を版3の実IPCで受け取り、
+  v4レシートのPackで従来と同じ本文を生成した。Rust所有の各TCP接続で一度ずつ送信し、
+  Generate・Stream両方でWasm結果を受け取って返信保存と再送を確認した。
+  PackVMの搬送、Application管理、配布物resolverの入口にはfixtureを使った。
+  `2bedf7641` は変換辞退時に旧形式の本文をまず同じLauncherへ渡す。RegistryとBundleを
+  再照合する経路を維持し、送信が可能になった後の失敗は再送しない。最終ソースで
+  macOSの実IPC・実Wasmの結合試験と、辞退コードを含むRust IPC・起動証明9件を再実行した。
+  クリーンなCPython 3.13.16で403件が通過し、署名付きの経路でも変換辞退後の
+  Launcher再照合が拒否された場合に、ProviderのTCP接続を開かないことを確認した。
+  元のHostがIPCに送る5項目のJSONとWasmがProviderへ送る本文は用途が異なる。
+  前者の変換を外す条件は、モデルアクセスを含む上流処理を同じCore経路で置き換えること。
+  既存の `local.provider-model-access-rust` は `_apply_model_access` が使うパラメータ生成の
+  候補を持つ。現行経路へ接続する際は、署名付きBrokerとLauncherが照合する同じRegistry
+  レコードを入力にし、現在の拒否理由とオプション順を保つ。
+  `request.rs` と `projection.rs` の事前走査は文字列内のエスケープと深さ判定を共用できる。
+  応答だけが必要とする重複キーを含めた構造数の上限と、各経路の旧codecへの戻り方を保つ。
   [717face1f の実Gemma 3 1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44487465311)
   は既存のHarness実行経路で通過した。
   [d3113e9b2 の再計測](https://github.com/harupipipipi/tobkiri/actions/runs/44490251513)では
@@ -4292,7 +4320,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元のパッケージ検証器で97ファイルの一致を確認した。DMGは修正後のheadで再検証する。
 - [Launcher staging 44493089798](https://github.com/harupipipipi/tobkiri/actions/runs/44493089798)
   はTurnの根拠を検証する3件すべてに合格した後、CI側の期待件数2で停止した。
-  件数を3に更新し、元のテストフィルターと判定を維持した。DMG作成は修正済みheadで検証する。
+  `d7315fe5f` で件数を3に更新し、元のテストフィルターと判定を維持した。
+  [修正済みのDMG CI 44502822238](https://github.com/harupipipipi/tobkiri/actions/runs/44502822238)
+  には応答変換版までを含めた。リクエスト生成版の配布物は別途実機で検証する。
 - A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
   旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
   現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。
