@@ -5887,6 +5887,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `desktop-installers.yml` のnative Setup付きCIビルドで供給している。配布物からVMを除く前に、
   同じ証明と署名の照合を通常リリースで使えるようにし、Setupが読む認証済みDoctorの応答を維持する。
   Python Sandbox、MCP Gateway、DeepThink、メディア検査の既存PackにもVM経路が残る。
+- macOSの非配布CI用に `packvm_disabled` を追加した。native SetupとRegistryのreceiptを持つビルドが、
+  sealed起動と起動証明に無効化を含める。初回Kernel、Setup後の再起動、Harnessのデスクトップ役割で
+  同じポリシーを使う。親プロセスは役割と起動証明を照合し、子プロセスは既存の署名と厳密な
+  バンドルの照合を通す。2か所に重複していたVM初期化を共通化し、無効化ビルドではVM所有者、
+  バックエンド、監督プロセスを起動しない。認証済みDoctorは `ready: false` と明示的な無効状態を返し、
+  Setupが既存の手順を進められる。プロビジョニングや復旧の操作は認証後に利用不可を返す。
+- DMG検証は `--expect-packvm-disabled` で初回KernelのDoctorを確認する。手動Setupの検証を併用した
+  場合は、再起動後にも同じLauncherに属するKernelを認証して再確認する。このビルドでの実DMGの
+  Setup、専用承認ウィンドウ、モデル設定、llama.cppでの会話を通した後に、通常配布での切り替えと
+  PackVMの資産・互換経路の廃止を進める。
+  ローカルではsealed起動176件、PackVMのHTTP契約24件、LauncherとDMGの検証464件が通過した。
+  署名済みProfileの追加HTTP試験3件は、Launcherへの呼び出しを差し替え、無効化モードでの表示と
+  会話完了、従来のPackVM会話完了を確認した。
 
 ## 050: Side Chatのターン開始と実行権の取得
 

@@ -46,6 +46,10 @@ on:
         description: Verify and retain a non-publishable Launcher DMG after launcher-snapshot-staging
         type: boolean
         default: false
+      packvm_disabled:
+        description: Build and verify the native Setup CI installer with PackVM disabled
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -986,5 +990,6 @@ jobs:
     uses: ./.github/workflows/desktop-installers.yml
     with:
       native_setup: true
+      native_packvm_disabled: ${{ inputs.packvm_disabled }}
       native_setup_receipt_sha256: ${{ needs.execute-original-native-bootstrap.outputs.launcher_receipt_sha256 }}
       native_registry_packs_receipt_sha256: ${{ needs.build-native-registry-packs.outputs.receipt_sha256 }}

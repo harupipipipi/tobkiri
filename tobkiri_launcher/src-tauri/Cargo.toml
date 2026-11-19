@@ -10,6 +10,7 @@ native-source-inspection = ["dep:tobkiri-core", "dep:tokio", "dep:async-trait"]
 native-harness-bootstrap = ["dep:tobkiri-core", "dep:tobkiri-gate", "dep:tobkiri-harness-native", "dep:tobkiri-wasm", "dep:tokio"]
 native-setup-review = ["dep:objc2-web-kit", "dep:tokio"]
 native-first-setup = ["native-harness-bootstrap", "native-setup-review", "native-source-inspection", "dep:tobkiri-store"]
+native-packvm-disabled-probe = ["native-first-setup"]
 
 [lib]
 name = "tobkiri_launcher_lib"

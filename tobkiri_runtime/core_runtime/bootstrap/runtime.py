@@ -28,6 +28,7 @@ from ..pack_api_server import (
     PackAPIServer,
     RuntimeCaptureFactory,
     initialize_pack_api_server,
+    packvm_disabled_capture_factory,
 )
 from ..pack_control_v4 import (
     HostProfileControlSession,
@@ -128,6 +129,7 @@ class Kernel:
         self,
         *,
         packvm_lifecycle: Any | None = None,
+        packvm_disabled: bool = False,
         runtime_capture_factory: RuntimeCaptureFactory | None = None,
         capability_snapshot_factory: CapabilitySnapshotFactory | None = None,
         application_presentation: HTTPApplicationPresentation | None = None,
@@ -137,13 +139,20 @@ class Kernel:
         runtime_surface_factory: RuntimeSurfaceFactory | None = None,
         native_first_setup: bool = False,
     ) -> None:
+        if packvm_disabled and packvm_lifecycle is not None:
+            raise ValueError("PackVM disabled mode cannot own a lifecycle")
         self._lock = RLock()
         self._server: PackAPIServer | None = None
         self._dispatch_session: V4DispatchSession | HostProfileControlSession | None = (
             None
         )
         self._packvm_lifecycle = packvm_lifecycle
-        self._runtime_capture_factory = runtime_capture_factory
+        self._packvm_disabled = packvm_disabled
+        self._runtime_capture_factory = (
+            packvm_disabled_capture_factory(runtime_capture_factory)
+            if packvm_disabled
+            else runtime_capture_factory
+        )
         self._capability_snapshot_factory = capability_snapshot_factory
         self._application_presentation = application_presentation
         self._host_profile_bindings_factory = host_profile_bindings_factory
@@ -273,6 +282,7 @@ class Kernel:
                     capability_snapshot_factory=self._capability_snapshot_factory,
                     application_presentation=self._application_presentation,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    packvm_disabled=self._packvm_disabled,
                     native_first_setup=self._native_first_setup,
                 )
             except Exception:
@@ -347,6 +357,7 @@ class Kernel:
                     capability_snapshot_factory=self._capability_snapshot_factory,
                     application_presentation=self._application_presentation,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    packvm_disabled=self._packvm_disabled,
                     native_first_setup=self._native_first_setup,
                 )
             mark_runtime_ready()

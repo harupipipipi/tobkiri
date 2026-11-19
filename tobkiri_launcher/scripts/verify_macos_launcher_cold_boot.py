@@ -52,6 +52,7 @@ DESKTOP_HEALTH_CHALLENGE_HEADER = "X-Rumi-Desktop-Health-Challenge"
 PANEL_AUTH_BOOTSTRAP_PATH = "/api/panel/auth/bootstrap"
 PANEL_AUTH_EXCHANGE_PATH = "/api/panel/auth/exchange"
 SETUP_STATUS_PATH = "/api/setup/status"
+PACKVM_DOCTOR_PATH = "/api/v4/packvm/doctor"
 SETUP_PANEL_PATH = "/panel/setup"
 DEFAULT_KERNEL_PORT = 8765
 POLL_INTERVAL_SECONDS = 0.2
@@ -97,6 +98,7 @@ class ColdBootConfig:
     expect_setup: bool = False
     user_setup_timeout_seconds: float | None = None
     user_chat: UserChatObservation | None = None
+    expect_packvm_disabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -329,6 +331,8 @@ def _validate_config(config: ColdBootConfig) -> tuple[ColdBootConfig, Path]:
         not config.expect_setup or not 5.0 <= config.user_setup_timeout_seconds <= 900.0
     ):
         raise ColdBootError("user Setup wait requires fresh Setup and a 5–900 second timeout")
+    if config.expect_packvm_disabled and not config.expect_setup:
+        raise ColdBootError("the PackVM-disabled probe requires the native Setup installer")
     if config.user_chat is not None and (
         config.user_setup_timeout_seconds is None
         or not 5.0 <= config.user_chat.timeout_seconds <= 900.0
@@ -757,6 +761,24 @@ def _setup_status(
     return _successful_panel_auth_response(status)
 
 
+def _packvm_disabled_doctor(
+    config: ColdBootConfig, probes: ColdBootProbes, cookie: str, deadline: float,
+) -> bool:
+    reply = _request_before_deadline(
+        probes, deadline, config.kernel_port, "GET", PACKVM_DOCTOR_PATH,
+        {"Accept": "application/json", "Cookie": cookie}, b"",
+    )
+    data = _successful_panel_auth_response(reply)
+    return (
+        data is not None
+        and data.get("ready") is False
+        and data.get("backend_id") == "disabled"
+        and data.get("instance") == "disabled"
+        and "attestation_digest" in data
+        and data["attestation_digest"] is None
+    )
+
+
 def _fresh_setup_is_reachable(
     config: ColdBootConfig, probes: ColdBootProbes, set_cookie: str, deadline: float,
 ) -> bool:
@@ -774,6 +796,10 @@ def _fresh_setup_is_reachable(
         or state.get("host_catalog_verified") is not True
     ):
         return False
+    if config.expect_packvm_disabled and not _packvm_disabled_doctor(
+        config, probes, cookie, deadline,
+    ):
+        raise ColdBootError("authenticated Kernel Doctor did not confirm PackVM is disabled")
     panel = _request_before_deadline(
         probes, deadline, config.kernel_port, "GET", SETUP_PANEL_PATH,
         {"Accept": "text/html", "Cookie": cookie}, b"",
@@ -1014,6 +1040,13 @@ def _wait_for_readiness(
                         else False
                     )
                     if panel_reachable and probes.monotonic() < deadline:
+                        if config.expect_packvm_disabled and (
+                            probes.listener_pid(config.kernel_port) != kernel_pid
+                            or not _is_descendant(kernel_pid, int(process.pid), probes.parent_pid)
+                            or _read_host_contract(config) != contract
+                            or process.poll() is not None
+                        ):
+                            raise ColdBootError("the Launcher-owned Kernel changed after Doctor")
                         return ColdBootResult(
                             broker_port=broker_port,
                             kernel_port=config.kernel_port,
@@ -1095,6 +1128,18 @@ def _wait_for_user_setup_activation(
                     and process.poll() is None
                     and probes.monotonic() < deadline
                 ):
+                    if config.expect_packvm_disabled:
+                        if not _packvm_disabled_doctor(config, probes, watched_session[2], deadline):
+                            raise ColdBootError(
+                                "restarted Kernel Doctor did not confirm PackVM is disabled"
+                            )
+                        if (
+                            probes.listener_pid(config.kernel_port) != pid
+                            or not _is_descendant(pid, initial.launcher_pid, probes.parent_pid)
+                            or _read_host_contract(config) != contract
+                            or process.poll() is not None
+                        ):
+                            raise ColdBootError("the active Launcher-owned Kernel changed after Doctor")
                     return _ActivatedSetup(
                         replace(initial, kernel_pid=pid, setup_activation_verified=True),
                         contract,
@@ -1323,6 +1368,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kernel-port", default=DEFAULT_KERNEL_PORT, type=int)
     parser.add_argument("--timeout-seconds", default=180.0, type=float)
     parser.add_argument("--expect-setup", action="store_true")
+    parser.add_argument("--expect-packvm-disabled", action="store_true")
     parser.add_argument("--wait-for-user-setup-seconds", type=float)
     parser.add_argument(
         "--wait-for-user-chat", nargs=3, metavar=("SECONDS", "PROVIDER_ID", "MODEL_ID"),
@@ -1351,10 +1397,13 @@ def main() -> int:
             expect_setup=args.expect_setup,
             user_setup_timeout_seconds=args.wait_for_user_setup_seconds,
             user_chat=user_chat,
+            expect_packvm_disabled=args.expect_packvm_disabled,
         )
     )
     if result.setup_panel_reachable:
         print("Verified authenticated fresh Setup entry from the installed app")
+    if args.expect_packvm_disabled:
+        print("Verified authenticated PackVM-disabled status from the installed Kernel")
     if result.setup_activation_verified:
         print("Verified the confirmed Profile on the restarted Launcher-owned Kernel")
     if result.saved_chat_verified:

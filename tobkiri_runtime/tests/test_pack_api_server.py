@@ -1457,6 +1457,179 @@ def test_packvm_lifecycle_routes_require_auth_csrf_and_fresh_request_id() -> Non
         server.stop()
 
 
+def test_disabled_packvm_doctor_requires_auth_and_survives_capture_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only authenticated Doctor can observe disabled PackVM, even after refresh."""
+    from types import SimpleNamespace
+
+    from core_runtime import pack_api_server
+
+    user_data = tmp_path / "user_data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setattr(
+        pack_api_server,
+        "platform",
+        SimpleNamespace(system=lambda: "Darwin", machine=lambda: "arm64"),
+    )
+    dispatch = _Dispatch()
+    dispatch.broker = SimpleNamespace(acceptance_receipts_enabled=True)
+
+    def capture(_active: object | None = None) -> RuntimeCaptureInputs:
+        return RuntimeCaptureInputs(tmp_path, tmp_path, ())
+
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=dispatch,
+        runtime_capture_factory=capture,
+        packvm_disabled=True,
+    )
+    server.start()
+    try:
+        doctor_path = "/api/v4/packvm/doctor"
+        status, response, _ = _request(server, "GET", doctor_path)
+        assert status == 401
+        assert response.get("data") is None
+
+        cookie, csrf, origin = _panel_session(server)
+        read_headers = {"Cookie": cookie, "Origin": origin}
+        expected_doctor = {
+            "ready": False,
+            "backend_id": "disabled",
+            "platform": "macos-arm64",
+            "instance": "disabled",
+            "reason": "PackVM is disabled for this probe build",
+            "attestation_digest": None,
+        }
+        status, response, _ = _request(
+            server, "GET", doctor_path, headers=read_headers
+        )
+        assert status == 200
+        assert response["data"] == expected_doctor
+
+        post_headers = {
+            **read_headers,
+            "X-Rumi-CSRF": csrf,
+            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        }
+        prepare_path = "/api/v4/packvm/prepare"
+        status, _, _ = _request(
+            server, "POST", prepare_path, body={}, headers=read_headers
+        )
+        assert status == 401
+        status, response, _ = _request(
+            server, "POST", prepare_path, body={}, headers=post_headers
+        )
+        assert status == 503
+        assert response["error"] == "PackVM lifecycle is unavailable"
+
+        previous_handler = server.handler_class
+        server._refresh_runtime_capture(
+            dispatch, lifecycle_generation=server._lifecycle_generation
+        )
+        assert server.handler_class is not previous_handler
+
+        status, response, _ = _request(
+            server, "GET", doctor_path, headers=read_headers
+        )
+        assert status == 200
+        assert response["data"] == expected_doctor
+        status, _, _ = _request(
+            server, "POST", prepare_path, body={}, headers=post_headers
+        )
+        assert status == 409
+        for operation in ("consent", "provision", "cancel", "stop", "cleanup"):
+            status, _, _ = _request(
+                server,
+                "POST",
+                f"/api/v4/packvm/{operation}",
+                body={},
+                headers={**post_headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+            )
+            assert status == 503
+        status, _, _ = _request(
+            server,
+            "GET",
+            f"/api/v4/packvm/progress?operation_id={uuid.uuid4()}",
+            headers=read_headers,
+        )
+        assert status == 503
+        status, _, _ = _request(
+            server,
+            "POST",
+            "/api/internal/packvm-acceptance/run",
+            body={"scenario": "dispatch", "nonce": "probe"},
+            headers=post_headers,
+        )
+        assert status == 404
+        assert dispatch.calls == []
+        assert not user_data.exists()
+    finally:
+        server.stop()
+
+
+def test_packvm_doctor_remains_unavailable_without_lifecycle_by_default(
+    live_server: tuple[PackAPIServer, _Dispatch],
+) -> None:
+    """Missing production lifecycle keeps its unavailable response."""
+    server, _dispatch = live_server
+    cookie, _csrf, origin = _panel_session(server)
+    status, response, _ = _request(
+        server,
+        "GET",
+        "/api/v4/packvm/doctor",
+        headers={"Cookie": cookie, "Origin": origin},
+    )
+    assert status == 503
+    assert response["error"] == "PackVM lifecycle is unavailable"
+
+
+def test_disabled_packvm_rejects_concrete_lifecycle() -> None:
+    """A probe server or Kernel cannot own a concrete PackVM lifecycle."""
+    from core_runtime.bootstrap.runtime import Kernel
+
+    lifecycle = _PackVMLifecycle()
+    with pytest.raises(ValueError, match="cannot own a lifecycle"):
+        PackAPIServer(packvm_disabled=True, packvm_lifecycle=lifecycle)
+    with pytest.raises(ValueError, match="cannot own a lifecycle"):
+        Kernel(packvm_disabled=True, packvm_lifecycle=lifecycle)
+    assert lifecycle.calls == []
+
+
+def test_disabled_packvm_rejects_backend_factory_during_capture_refresh(
+    tmp_path: Path,
+) -> None:
+    """A refresh cannot publish an app capture that registers a PackVM backend."""
+    dispatch = _Dispatch()
+
+    def backend_factory() -> None:
+        pytest.fail("disabled PackVM must never invoke the backend factory")
+
+    def capture(_active: object | None = None) -> RuntimeCaptureInputs:
+        return RuntimeCaptureInputs(
+            tmp_path, tmp_path, (), packvm_backend_factory=backend_factory
+        )
+
+    server = PackAPIServer(
+        port=0,
+        dispatch_session=dispatch,
+        runtime_capture_factory=capture,
+        packvm_disabled=True,
+    )
+    server.start()
+    try:
+        original_handler = server.handler_class
+        with pytest.raises(ValueError, match="PackVM capture inputs are unavailable"):
+            server._refresh_runtime_capture(
+                dispatch, lifecycle_generation=server._lifecycle_generation
+            )
+        assert server.handler_class is original_handler
+    finally:
+        server.stop()
+
+
 def test_packvm_stop_commits_response_before_slow_runtime_refresh() -> None:
     """A stop must not inherit the runtime-capture refresh latency."""
 

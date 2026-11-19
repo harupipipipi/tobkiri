@@ -49,6 +49,11 @@ ROLE_APPLICATION_IMPORT_ROOTS = {
     "defaultspack": ("app/ecosystem/defaultspack",),
     "host_helper": (),
 }
+_PACKVM_DISABLED_ROLES = frozenset({"typed", "defaultspack"})
+_PACKVM_DISABLED_TARGETS = frozenset(
+    ROLE_TARGETS[role] for role in _PACKVM_DISABLED_ROLES
+)
+_PACKVM_DISABLED_ROLE_ERROR = "PackVM disabled policy is limited to Kernel and Panel roles"
 MANIFEST_NAME = "sealed-environment.v1.json"
 RUNTIME_OVERLAY_NAME = "app/runtime-resource-manifest.v1.json"
 OUTER_RUNTIME_MANIFEST_NAME = "runtime-resource-manifest.v1.json"
@@ -127,7 +132,16 @@ class _SealedDispatchScope:
         "_target",
         "_packvm_bundle_binding",
         "_native_first_setup",
+        "_packvm_disabled",
     )
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if hasattr(self, name):
+            raise AttributeError("sealed dispatch scope is immutable")
+        object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("sealed dispatch scope is immutable")
 
     def __init__(
         self,
@@ -139,6 +153,7 @@ class _SealedDispatchScope:
         target: Sequence[str],
         packvm_bundle_binding: Mapping[str, str] | None,
         native_first_setup: bool = False,
+        packvm_disabled: bool = False,
     ) -> None:
         if constructor_token is not _SCOPE_CONSTRUCTOR_TOKEN:
             raise TypeError("sealed dispatch scope is bootstrap-private")
@@ -153,6 +168,17 @@ class _SealedDispatchScope:
         if native_first_setup and self._target != ROLE_TARGETS["typed"]:
             raise SealedBootstrapError("native-first Setup is limited to the Kernel role")
         self._native_first_setup = native_first_setup
+        if packvm_disabled:
+            if self._target not in _PACKVM_DISABLED_TARGETS:
+                raise SealedBootstrapError(_PACKVM_DISABLED_ROLE_ERROR)
+            if (
+                packvm_bundle_binding is None
+                or tuple(packvm_bundle_binding) != _PACKVM_BUNDLE_BINDING_KEYS
+            ):
+                raise SealedBootstrapError(
+                    "PackVM disabled policy requires a verified macOS bundle binding"
+                )
+        self._packvm_disabled = packvm_disabled
         if packvm_bundle_binding is not None:
             if tuple(packvm_bundle_binding) not in {
                 _PACKVM_BUNDLE_BINDING_KEYS, _PORTABLE_PACKVM_BINDING_KEYS
@@ -210,6 +236,11 @@ class _SealedDispatchScope:
         """Return the sealed Setup policy for the exact application target."""
         self.app_root_for(module_file)
         return self._native_first_setup
+
+    def packvm_disabled_for(self, module_file: str | os.PathLike[str]) -> bool:
+        """Return the sealed PackVM policy for the exact application target."""
+        self.app_root_for(module_file)
+        return self._packvm_disabled
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -847,6 +878,7 @@ def _new_dispatch_scope(
     role: str,
     packvm_bundle_binding: Mapping[str, str] | None,
     native_first_setup: bool,
+    packvm_disabled: bool,
 ) -> _SealedDispatchScope:
     """Create the process-private capability for one verified role target."""
     manifest_path = root / MANIFEST_NAME
@@ -863,6 +895,7 @@ def _new_dispatch_scope(
         ROLE_TARGETS[role],
         packvm_bundle_binding,
         native_first_setup,
+        packvm_disabled,
     )
 
 
@@ -1350,6 +1383,7 @@ def _attestation(
     sys_path: Sequence[str],
     overlay_binding: dict[str, str],
     native_first_setup: bool,
+    packvm_disabled: bool,
 ) -> dict[str, Any]:
     executable, prefix, base_prefix = _validate_python_identity(root)
     evidence = {
@@ -1370,6 +1404,8 @@ def _attestation(
     }
     if native_first_setup:
         evidence["native_first_setup"] = True
+    if packvm_disabled:
+        evidence["packvm_disabled"] = True
     return evidence
 
 
@@ -1523,6 +1559,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--packvm-helper-manifest-sha256", required=True)
     parser.add_argument("--packvm-helper-team-id", required=True)
     parser.add_argument("--native-first-setup", action="store_true")
+    parser.add_argument("--packvm-disabled", action="store_true")
     return parser
 
 
@@ -1541,6 +1578,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(bootstrap_args)
     if args.native_first_setup and args.role != "typed":
         raise SealedBootstrapError("native-first Setup is limited to the Kernel role")
+    if args.packvm_disabled and args.role not in _PACKVM_DISABLED_ROLES:
+        raise SealedBootstrapError(_PACKVM_DISABLED_ROLE_ERROR)
     if len(args.nonce) != 64 or any(
         character not in "0123456789abcdef" for character in args.nonce
     ):
@@ -1548,6 +1587,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     _reject_launch_environment_injection()
     root = _environment_root(args.environment_root)
     manifest = _load_manifest(root, args.manifest)
+    if args.packvm_disabled and manifest["platform"] != "macos":
+        raise SealedBootstrapError("PackVM disabled policy requires a macOS snapshot")
     attestation_path = _attestation_destination(args.attestation, root, args.nonce)
     with _LifetimeLease(root / LEASE_NAME):
         overlay_binding = _verify_runtime_overlay(
@@ -1572,6 +1613,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.role,
             packvm_bundle_binding,
             args.native_first_setup,
+            args.packvm_disabled,
         )
         role_module, target = _load_role(root, args.role)
         role_main = _prepare_role(role_module, scope)
@@ -1602,6 +1644,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys_path,
             overlay_binding,
             args.native_first_setup,
+            args.packvm_disabled,
         )
         _publish_attestation(attestation_path, evidence)
         sealed_sys_path.freeze()

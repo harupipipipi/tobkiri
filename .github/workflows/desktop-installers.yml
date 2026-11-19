@@ -7,6 +7,9 @@ on:
       native_setup:
         type: boolean
         required: true
+      native_packvm_disabled:
+        type: boolean
+        default: false
       native_setup_receipt_sha256:
         type: string
         required: true
@@ -555,12 +558,17 @@ jobs:
         env:
           TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
           NATIVE_SETUP: ${{ inputs.native_setup || false }}
+          NATIVE_PACKVM_DISABLED: ${{ inputs.native_packvm_disabled || false }}
           EXPECTED_LAUNCHER_RECEIPT_SHA256: ${{ inputs.native_setup_receipt_sha256 }}
           EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256: ${{ inputs.native_registry_packs_receipt_sha256 }}
         run: |
           set -euo pipefail
           build_args=(--config src-tauri/tauri.macos.ci-e2e.conf.json --bundles app --ci
             ${{ matrix.signing_args }})
+          if [[ "$NATIVE_PACKVM_DISABLED" == true && "$NATIVE_SETUP" != true ]]; then
+            echo 'The PackVM-disabled probe requires the native Setup installer' >&2
+            exit 1
+          fi
           if [[ "$NATIVE_SETUP" == true ]]; then
             [[ "$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]]
             export TOBKIRI_SETUP_COMPONENT_SOURCE="$RUNNER_TEMP/harness-built/harness-native/harness-native-app-frame/work/component.wasm"
@@ -568,7 +576,11 @@ jobs:
             export TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256="$EXPECTED_LAUNCHER_RECEIPT_SHA256"
             export TOBKIRI_REGISTRY_PACK_SOURCE_DIR="$RUNNER_TEMP/native-registry-packs"
             export TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256="$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256"
-            build_args+=(--features native-first-setup)
+            features=native-first-setup
+            if [[ "$NATIVE_PACKVM_DISABLED" == true ]]; then
+              features=native-packvm-disabled-probe
+            fi
+            build_args+=(--features "$features")
           fi
           python -B scripts/run_tauri_build.py build --target ${{ matrix.target }} "${build_args[@]}"
 
@@ -685,6 +697,7 @@ jobs:
         shell: bash
         env:
           NATIVE_SETUP: ${{ inputs.native_setup || false }}
+          NATIVE_PACKVM_DISABLED: ${{ inputs.native_packvm_disabled || false }}
           EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256: ${{ inputs.native_registry_packs_receipt_sha256 }}
         run: |
           set -euo pipefail
@@ -704,6 +717,9 @@ jobs:
               --expected-native-setup-component-bytes "$TOBKIRI_EXPECTED_NATIVE_SETUP_COMPONENT_BYTES"
               --expected-native-registry-packs-receipt-sha256 "$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256"
               --installed-boot-diagnostics-dir "$diagnostics_dir")
+            if [[ "$NATIVE_PACKVM_DISABLED" == true ]]; then
+              verify_args+=(--expect-packvm-disabled)
+            fi
           fi
           bash scripts/verify_packaged_python_dmg.sh "${verify_args[@]}"
           printf 'path=%s\n' "$dmg" >> "$GITHUB_OUTPUT"
@@ -711,7 +727,7 @@ jobs:
       - name: Upload desktop installer
         uses: actions/upload-artifact@v4
         with:
-          name: tobkiri-non-publishable-ci-e2e${{ inputs.native_setup && '-native-setup' || '' }}-${{ matrix.artifact_suffix }}-${{ steps.checked_out_source.outputs.source_revision }}
+          name: tobkiri-non-publishable-ci-e2e${{ inputs.native_setup && '-native-setup' || '' }}${{ inputs.native_packvm_disabled && '-packvm-disabled' || '' }}-${{ matrix.artifact_suffix }}-${{ steps.checked_out_source.outputs.source_revision }}
           path: ${{ steps.verified_dmg.outputs.path }}
           if-no-files-found: error
 

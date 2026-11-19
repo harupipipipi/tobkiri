@@ -251,12 +251,16 @@ def _probes(
     )
 
 
-@pytest.mark.parametrize("expect_setup", [False, True])
+@pytest.mark.parametrize(("expect_setup", "expect_packvm_disabled"), [
+    (False, False), (True, False), (True, True),
+])
 def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
-    tmp_path: Path, expect_setup: bool,
+    tmp_path: Path, expect_setup: bool, expect_packvm_disabled: bool,
 ) -> None:
     config, _diagnostics = _bundle_and_config(tmp_path)
-    config = replace(config, expect_setup=expect_setup)
+    config = replace(
+        config, expect_setup=expect_setup, expect_packvm_disabled=expect_packvm_disabled,
+    )
     clock = _Clock()
     signals: list[tuple[int, signal.Signals]] = []
     calls: list[tuple[int, str, str]] = []
@@ -331,6 +335,13 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
                 200, {"content-type": "text/html; charset=utf-8"},
                 b'<div id="root"></div><script type="module" src="/panel/assets/app.js"></script>',
             )
+        if port == config.kernel_port and method == "GET" and path == VERIFY.PACKVM_DOCTOR_PATH:
+            assert headers["Cookie"] == "rumi_panel_session=sealed-session"
+            return VERIFY.HttpResponse(
+                200, {},
+                b'{"success":true,"data":{"ready":false,"backend_id":"disabled",'
+                b'"instance":"disabled","attestation_digest":null}}',
+            )
         return None
 
     class BootProcess(_Process):
@@ -372,8 +383,9 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
         (config.kernel_port, "GET", VERIFY.KERNEL_HEALTH_PATH),
         (config.kernel_port, "POST", VERIFY.PANEL_AUTH_BOOTSTRAP_PATH),
         (config.kernel_port, "POST", VERIFY.PANEL_AUTH_EXCHANGE_PATH),
-        *([(config.kernel_port, "GET", VERIFY.SETUP_STATUS_PATH),
-           (config.kernel_port, "GET", VERIFY.SETUP_PANEL_PATH)] if expect_setup else []),
+        *([(config.kernel_port, "GET", VERIFY.SETUP_STATUS_PATH)] if expect_setup else []),
+        *([(config.kernel_port, "GET", VERIFY.PACKVM_DOCTOR_PATH)] if expect_packvm_disabled else []),
+        *([(config.kernel_port, "GET", VERIFY.SETUP_PANEL_PATH)] if expect_setup else []),
     ]
     assert launched_environment["RUMI_VIEWER_BROKER_PORT"] == "18770"
     assert launched_environment[VERIFY.CI_APP_DATA_ROOT_ENV] == str(
@@ -404,12 +416,17 @@ def test_installed_shutdown_rejects_an_orphaned_kernel_listener(monkeypatch: pyt
     assert signals == [(4242, signal.SIGTERM)]
 
 
-@pytest.mark.parametrize("mode", ["adopted", "wrong-plan", "foreign-kernel", "same-kernel"])
+@pytest.mark.parametrize("mode", [
+    "adopted", "wrong-plan", "foreign-kernel", "same-kernel", "disabled", "legacy-doctor",
+])
 def test_user_setup_observes_only_matching_new_kernel(
     tmp_path: Path, mode: str,
 ) -> None:
     config, _diagnostics = _bundle_and_config(tmp_path)
-    config = replace(config, expect_setup=True, user_setup_timeout_seconds=5.0)
+    config = replace(
+        config, expect_setup=True, user_setup_timeout_seconds=5.0,
+        expect_packvm_disabled=mode in {"disabled", "legacy-doctor"},
+    )
     _write_embedded_host_contract(config.app_data_dir)
     contract = config.app_data_dir / VERIFY.HOST_CONTRACT_RELATIVE
     clock = _Clock()
@@ -426,6 +443,13 @@ def test_user_setup_observes_only_matching_new_kernel(
         elif path == VERIFY.PANEL_AUTH_EXCHANGE_PATH:
             response_headers = {"set-cookie": "rumi_panel_session=observe; HttpOnly; Path=/"}
             data = {"csrf_token": "present"}
+        elif path == VERIFY.PACKVM_DOCTOR_PATH:
+            assert headers["Cookie"] == "rumi_panel_session=observe"
+            data = {
+                "ready": False, "attestation_digest": None,
+                "backend_id": "disabled" if mode == "disabled" else "macos-vz",
+                "instance": "disabled" if mode == "disabled" else "unprovisioned",
+            }
         else:
             assert path == VERIFY.SETUP_STATUS_PATH
             assert headers["Cookie"] == "rumi_panel_session=observe"
@@ -459,7 +483,7 @@ def test_user_setup_observes_only_matching_new_kernel(
         listener_pid=listener_pid,
     )
     initial = VERIFY.ColdBootResult(18770, config.kernel_port, 4242, 4243, True, True)
-    if mode == "adopted":
+    if mode in {"adopted", "disabled"}:
         setup = VERIFY._wait_for_user_setup_activation(config, probes, _Process(), initial)
         result = setup.result
         assert result.kernel_pid == 4244
@@ -471,7 +495,11 @@ def test_user_setup_observes_only_matching_new_kernel(
             ("POST", VERIFY.PANEL_AUTH_EXCHANGE_PATH),
             ("GET", VERIFY.SETUP_STATUS_PATH),
             ("GET", VERIFY.SETUP_STATUS_PATH),
+            *([("GET", VERIFY.PACKVM_DOCTOR_PATH)] if mode == "disabled" else []),
         ]
+    elif mode == "legacy-doctor":
+        with pytest.raises(VERIFY.ColdBootError, match="restarted Kernel Doctor"):
+            VERIFY._wait_for_user_setup_activation(config, probes, _Process(), initial)
     else:
         with pytest.raises(VERIFY.ColdBootError, match="did not reach an active Profile"):
             VERIFY._wait_for_user_setup_activation(config, probes, _Process(), initial)

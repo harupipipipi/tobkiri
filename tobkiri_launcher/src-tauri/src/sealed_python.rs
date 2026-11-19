@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use rand::RngCore;
@@ -85,9 +85,29 @@ impl PythonRole {
 #[derive(Debug, Default)]
 pub struct RoleArguments {
     application: Vec<OsString>,
-    native_first_setup: bool,
+    startup_policy: SealedStartupPolicy,
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     native_registry: NativeRegistryEnvironment,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct SealedStartupPolicy {
+    native_first_setup: bool,
+    packvm_disabled: bool,
+}
+
+impl SealedStartupPolicy {
+    fn validate_role(self, role: PythonRole) -> Result<()> {
+        ensure!(
+            !self.native_first_setup || role == PythonRole::Kernel,
+            "only the sealed Kernel can require native initial Setup"
+        );
+        ensure!(
+            !self.packvm_disabled || matches!(role, PythonRole::Kernel | PythonRole::Defaultspack),
+            "only the sealed Kernel and Defaultspack can disable PackVM"
+        );
+        Ok(())
+    }
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -128,13 +148,16 @@ impl RoleArguments {
     /// Request the native initial Setup route for this sealed Kernel launch.
     pub(crate) fn kernel_native_first_setup() -> Self {
         Self {
-            native_first_setup: true,
+            startup_policy: SealedStartupPolicy {
+                native_first_setup: true,
+                ..SealedStartupPolicy::default()
+            },
             ..Self::default()
         }
     }
 
     pub(crate) fn requires_native_first_setup(&self) -> bool {
-        self.native_first_setup
+        self.startup_policy.native_first_setup
     }
 
     /// Carry verified replacement admissions into the managed Defaultspack spawn.
@@ -549,6 +572,8 @@ struct StartupAttestation {
     lifetime_lease: bool,
     #[serde(default)]
     native_first_setup: bool,
+    #[serde(default)]
+    packvm_disabled: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1079,19 +1104,20 @@ fn terminate_and_confirm_or_reap(
 pub fn spawn_packaged_role<F>(
     config: &AppConfig,
     role: PythonRole,
-    role_arguments: RoleArguments,
+    mut role_arguments: RoleArguments,
     configure: F,
 ) -> Result<PythonChild>
 where
     F: FnOnce(&mut RoleCommand<'_>) -> Result<()>,
 {
+    role_arguments.startup_policy.packvm_disabled = packvm_disabled_probe(role)?;
+    let startup_policy = role_arguments.startup_policy;
     let verified = VerifiedEnvironment::load(config)?;
     let nonce = random_nonce();
     let attestation_path = prepare_attestation_path(config, &nonce)?;
     let interpreter = fixed_interpreter(&verified.root);
     let mut command = process_utils::isolated_python(&interpreter);
     let packvm_bundle = packaged_packvm_bundle_binding(config)?;
-    let native_first_setup = role_arguments.requires_native_first_setup();
     append_launch_wire(
         &mut command,
         role,
@@ -1179,7 +1205,7 @@ where
             &nonce,
             role,
             environment,
-            native_first_setup,
+            startup_policy,
         )
     };
     if let Err(error) = attestation_result {
@@ -1205,6 +1231,32 @@ where
     Ok(child)
 }
 
+fn packvm_disabled_probe(role: PythonRole) -> Result<bool> {
+    if role == PythonRole::HostHelper {
+        return Ok(false);
+    }
+    #[cfg(all(
+        target_os = "macos",
+        tobkiri_ci_e2e_artifact,
+        feature = "native-packvm-disabled-probe"
+    ))]
+    {
+        ensure!(
+            crate::native_harness_bootstrap::native_first_setup_component_bound(),
+            "the PackVM-disabled probe requires a receipt-bound native Setup component"
+        );
+        require_sha256(option_env!("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256").unwrap_or_default())
+            .context("the PackVM-disabled probe requires a bound Registry Pack receipt")?;
+        Ok(true)
+    }
+    #[cfg(not(all(
+        target_os = "macos",
+        tobkiri_ci_e2e_artifact,
+        feature = "native-packvm-disabled-probe"
+    )))]
+    Ok(false)
+}
+
 fn append_launch_wire(
     command: &mut Command,
     role: PythonRole,
@@ -1220,9 +1272,7 @@ fn append_launch_wire(
     if role != PythonRole::Defaultspack && !role_arguments.application.is_empty() {
         bail!("only the fixed Defaultspack role accepts application arguments");
     }
-    if role != PythonRole::Kernel && role_arguments.native_first_setup {
-        bail!("only the sealed Kernel can require native initial Setup");
-    }
+    role_arguments.startup_policy.validate_role(role)?;
     command.args(protocol::launch_arguments(
         role.name(),
         nonce,
@@ -1244,8 +1294,11 @@ fn append_launch_wire(
             .map(|binding| binding.helper_team_id.as_str())
             .unwrap_or(""),
     ));
-    if role_arguments.native_first_setup {
+    if role_arguments.startup_policy.native_first_setup {
         command.arg("--native-first-setup");
+    }
+    if role_arguments.startup_policy.packvm_disabled {
+        command.arg("--packvm-disabled");
     }
     command
         .arg(protocol::ARG_SEPARATOR)
@@ -2717,7 +2770,7 @@ fn wait_for_attestation(
     nonce: &str,
     role: PythonRole,
     verified: &VerifiedEnvironment,
-    native_first_setup: bool,
+    startup_policy: SealedStartupPolicy,
 ) -> Result<()> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     loop {
@@ -2744,7 +2797,7 @@ fn wait_for_attestation(
                 let bytes = read_attestation_file(path)?;
                 let attestation: StartupAttestation = serde_json::from_slice(&bytes)
                     .context("[PYTHON_SEALED_ATTESTATION_INVALID] malformed startup attestation")?;
-                validate_attestation(&attestation, nonce, role, verified, native_first_setup)?;
+                validate_attestation(&attestation, nonce, role, verified, startup_policy)?;
                 return Ok(());
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
@@ -2896,7 +2949,7 @@ fn validate_attestation(
     nonce: &str,
     role: PythonRole,
     verified: &VerifiedEnvironment,
-    native_first_setup: bool,
+    startup_policy: SealedStartupPolicy,
 ) -> Result<()> {
     let executable = fs::canonicalize(fixed_interpreter(&verified.root))?;
     let prefix = fs::canonicalize(verified.root.join(fixed_venv_prefix()))?;
@@ -2904,8 +2957,9 @@ fn validate_attestation(
     if value.schema != ATTESTATION_SCHEMA
         || value.nonce != nonce
         || value.role != role.name()
-        || value.native_first_setup != native_first_setup
-        || (value.native_first_setup && role != PythonRole::Kernel)
+        || value.native_first_setup != startup_policy.native_first_setup
+        || value.packvm_disabled != startup_policy.packvm_disabled
+        || startup_policy.validate_role(role).is_err()
         || value.environment_digest != verified.manifest.environment_digest
         || fs::canonicalize(&value.executable).ok().as_deref() != Some(executable.as_path())
         || fs::canonicalize(&value.prefix).ok().as_deref() != Some(prefix.as_path())
@@ -4391,6 +4445,21 @@ mod tests {
         for role in [PythonRole::Defaultspack, PythonRole::HostHelper] {
             assert!(args(role, RoleArguments::kernel_native_first_setup()).is_err());
         }
+
+        let disabled = || RoleArguments {
+            startup_policy: SealedStartupPolicy {
+                packvm_disabled: true,
+                ..SealedStartupPolicy::default()
+            },
+            ..RoleArguments::default()
+        };
+        for role in [PythonRole::Kernel, PythonRole::Defaultspack] {
+            let arguments = args(role, disabled()).unwrap();
+            assert_eq!(arguments[arguments.len() - 2], "--packvm-disabled");
+            assert_eq!(arguments[arguments.len() - 1], protocol::ARG_SEPARATOR);
+        }
+        assert!(args(PythonRole::HostHelper, disabled()).is_err());
+        assert!(!legacy.iter().any(|value| value == "--packvm-disabled"));
     }
 
     #[test]
@@ -5646,16 +5715,23 @@ mod tests {
                 .clone(),
             lifetime_lease: true,
             native_first_setup: false,
+            packvm_disabled: false,
         };
-        validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, false).unwrap();
+        let normal = SealedStartupPolicy::default();
+        let native = RoleArguments::kernel_native_first_setup().startup_policy;
+        let disabled = SealedStartupPolicy {
+            packvm_disabled: true,
+            ..normal
+        };
+        validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, normal).unwrap();
         assert!(
-            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, true)
+            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, native)
                 .is_err()
         );
         attestation.native_first_setup = true;
-        validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, true).unwrap();
+        validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, native).unwrap();
         assert!(
-            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, false)
+            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, normal)
                 .is_err()
         );
         attestation.role = protocol::ROLE_DEFAULTSPACK.into();
@@ -5670,7 +5746,7 @@ mod tests {
             "nonce",
             PythonRole::Defaultspack,
             &verified,
-            true
+            native
         )
         .is_err());
         attestation.native_first_setup = false;
@@ -5679,28 +5755,54 @@ mod tests {
             "nonce",
             PythonRole::Defaultspack,
             &verified,
-            false,
+            normal,
         )
         .unwrap();
+        assert!(validate_attestation(
+            &attestation,
+            "nonce",
+            PythonRole::Defaultspack,
+            &verified,
+            disabled,
+        )
+        .is_err());
+        attestation.packvm_disabled = true;
+        validate_attestation(
+            &attestation,
+            "nonce",
+            PythonRole::Defaultspack,
+            &verified,
+            disabled,
+        )
+        .unwrap();
+        assert!(validate_attestation(
+            &attestation,
+            "nonce",
+            PythonRole::Defaultspack,
+            &verified,
+            normal,
+        )
+        .is_err());
+        attestation.packvm_disabled = false;
         attestation.sys_path.pop();
         assert!(validate_attestation(
             &attestation,
             "nonce",
             PythonRole::Defaultspack,
             &verified,
-            false
+            normal
         )
         .is_err());
         attestation.role = protocol::ROLE_TYPED.into();
         attestation.sys_path.push(attestation.sys_path[0].clone());
         assert!(
-            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, false)
+            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, normal)
                 .is_err()
         );
         attestation.sys_path.pop();
         attestation.environment_digest = digest('f');
         assert!(
-            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, false)
+            validate_attestation(&attestation, "nonce", PythonRole::Kernel, &verified, normal)
                 .is_err()
         );
         fs::remove_dir_all(root).ok();

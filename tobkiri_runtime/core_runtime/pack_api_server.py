@@ -5,6 +5,7 @@ from __future__ import annotations
 import heapq
 import logging
 import os
+import platform
 import re
 import threading
 import time
@@ -492,6 +493,25 @@ class RuntimeCaptureFactory(Protocol):
         """Return the exact app-selected inputs for one capture boundary."""
 
 
+def packvm_disabled_capture_factory(
+    factory: RuntimeCaptureFactory | None,
+) -> RuntimeCaptureFactory | None:
+    """Reject capture inputs that could register PackVM in the probe build."""
+    if factory is None:
+        return None
+
+    def capture(active: object | None = None) -> RuntimeCaptureInputs:
+        inputs = factory(active)
+        if (
+            inputs.packvm_backend_factory is not None
+            or inputs.acceptance_receipts is not None
+        ):
+            raise ValueError("PackVM capture inputs are unavailable in the probe build")
+        return inputs
+
+    return capture
+
+
 class CapabilitySnapshotFactory(Protocol):
     """App-owned contribution capture injected into the generic HTTP Host."""
 
@@ -875,6 +895,7 @@ class PackAPIHandler(
     _operation_journal: ControlReconciliationStore | None = None
     _runtime_refresh: Callable[[DispatchSession | None], None] | None = None
     _packvm_lifecycle: PackVMLifecyclePort | None = None
+    _packvm_disabled = False
     _native_pack_key_ceremony: Any | None = None
     _native_pack_owner_binding: Any | None = None
     _native_pack_owner_composed = False
@@ -909,6 +930,7 @@ class PackAPIHandler(
         runtime_refresh: Callable[[DispatchSession | None], None] | None = None,
         workspace_binding_resolver: WorkspaceBindingResolver | None = None,
         packvm_lifecycle: PackVMLifecyclePort | None = None,
+        packvm_disabled: bool = False,
         host_contract: Mapping[str, Any] | None = None,
         request_snapshot_source: (
             Callable[[], type["PackAPIHandler"] | None] | None
@@ -920,6 +942,8 @@ class PackAPIHandler(
     ) -> type["PackAPIHandler"]:
         """Create an isolated handler bound to one captured runtime session."""
 
+        if packvm_disabled and packvm_lifecycle is not None:
+            raise ValueError("PackVM disabled mode cannot own a lifecycle")
         from .native_pack_key_authorization import NativePackKeyVersionCeremony
 
         bound_key_ceremony = NativePackKeyVersionCeremony()
@@ -996,6 +1020,7 @@ class PackAPIHandler(
             _contract_replay_guard = bound_replay_guard
             _operation_journal = bound_operation_journal
             _packvm_lifecycle = bound_packvm_lifecycle
+            _packvm_disabled = packvm_disabled
             _native_pack_key_ceremony = bound_key_ceremony
             _native_pack_owner_binding = bound_native_owner
             _native_pack_owner_composed = True
@@ -1222,11 +1247,13 @@ class PackAPIHandler(
         if path != acceptance_path:
             return False
         session = self._dispatch_session
-        broker = getattr(session, "broker", None)
         if (
             method != "POST"
+            or self._packvm_disabled
             or session is None
-            or getattr(broker, "acceptance_receipts_enabled", False) is not True
+            or getattr(
+                getattr(session, "broker", None), "acceptance_receipts_enabled", False
+            ) is not True
         ):
             self._discard_request_body()
             self._send_not_found()
@@ -2108,7 +2135,31 @@ class PackAPIHandler(
             payload = {}
         lifecycle = self._packvm_lifecycle
         if lifecycle is None:
-            self._send_response(APIResponse(False, error="PackVM lifecycle is unavailable"), 503)
+            if operation == "doctor" and self._packvm_disabled:
+                system = platform.system().lower()
+                if system == "darwin":
+                    system = "macos"
+                machine = platform.machine().lower()
+                architecture = {"aarch64": "arm64", "x86_64": "amd64"}.get(
+                    machine, machine
+                )
+                self._send_response(
+                    APIResponse(
+                        True,
+                        data={
+                            "ready": False,
+                            "backend_id": "disabled",
+                            "platform": f"{system}-{architecture}",
+                            "instance": "disabled",
+                            "reason": "PackVM is disabled for this probe build",
+                            "attestation_digest": None,
+                        },
+                    )
+                )
+            else:
+                self._send_response(
+                    APIResponse(False, error="PackVM lifecycle is unavailable"), 503
+                )
             return True
         refresh_after_response = False
         try:
@@ -3573,11 +3624,14 @@ class PackAPIServer:
         web_mounts: tuple[WebMountEntry, ...] | None = None,
         workspace_binding_resolver: WorkspaceBindingResolver | None = None,
         packvm_lifecycle: PackVMLifecyclePort | None = None,
+        packvm_disabled: bool = False,
         host_contract: Mapping[str, Any] | None = None,
         native_pack_owner_root: Path | None = None,
         native_pack_trust_store_path: Path | None = None,
         native_first_setup: bool = False,
     ) -> None:
+        if packvm_disabled and packvm_lifecycle is not None:
+            raise ValueError("PackVM disabled mode cannot own a lifecycle")
         self.config = RuntimeHTTPConfig.verify(host, port)
         self.host = self.config.host
         self.port = self.config.port
@@ -3603,7 +3657,11 @@ class PackAPIServer:
         self._dispatch_cleanup_lock = threading.RLock()
         self.app_lifecycle_manager = app_lifecycle_manager
         self._contract_routes = contract_binding_map(contract_bindings)
-        self._runtime_capture_factory = runtime_capture_factory
+        self._runtime_capture_factory = (
+            packvm_disabled_capture_factory(runtime_capture_factory)
+            if packvm_disabled
+            else runtime_capture_factory
+        )
         self._capability_snapshot_factory = capability_snapshot_factory
         self._application_presentation = application_presentation
         self._web_mounts = web_mounts
@@ -3612,6 +3670,7 @@ class PackAPIServer:
             validate_host_contract(host_contract) if host_contract is not None else None
         )
         self._packvm_lifecycle = packvm_lifecycle
+        self._packvm_disabled = packvm_disabled
         self._replay_guard = _RequestReplayGuard()
         from .bootstrap.profile_capture import runtime_user_data_root
 
@@ -3668,6 +3727,7 @@ class PackAPIServer:
                     runtime_refresh=self._runtime_refresh_callback(lifecycle_generation),
                     workspace_binding_resolver=self._workspace_binding_resolver,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    packvm_disabled=self._packvm_disabled,
                     host_contract=self._host_contract_snapshot,
                     request_snapshot_source=self._request_snapshot_callback(
                         lifecycle_generation
@@ -4117,6 +4177,7 @@ class PackAPIServer:
                     runtime_refresh=self._runtime_refresh_callback(published_generation),
                     workspace_binding_resolver=self._workspace_binding_resolver,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    packvm_disabled=self._packvm_disabled,
                     host_contract=host_contract,
                     request_snapshot_source=self._request_snapshot_callback(
                         published_generation
@@ -4342,11 +4403,14 @@ def initialize_pack_api_server(
     web_mounts: tuple[WebMountEntry, ...] | None = None,
     workspace_binding_resolver: WorkspaceBindingResolver | None = None,
     packvm_lifecycle: PackVMLifecyclePort | None = None,
+    packvm_disabled: bool = False,
     host_contract: Mapping[str, Any] | None = None,
     native_first_setup: bool = False,
 ) -> PackAPIServer:
     """Replace the process-local server with one verified v4 instance."""
 
+    if packvm_disabled and packvm_lifecycle is not None:
+        raise ValueError("PackVM disabled mode cannot own a lifecycle")
     global _api_server
     if _api_server is not None:
         _api_server.stop()
@@ -4363,6 +4427,7 @@ def initialize_pack_api_server(
         web_mounts=web_mounts,
         workspace_binding_resolver=workspace_binding_resolver,
         packvm_lifecycle=packvm_lifecycle,
+        packvm_disabled=packvm_disabled,
         host_contract=host_contract,
         native_first_setup=native_first_setup,
     )
@@ -4386,5 +4451,6 @@ __all__ = [
     "RuntimeHTTPConfig",
     "get_pack_api_server",
     "initialize_pack_api_server",
+    "packvm_disabled_capture_factory",
     "shutdown_pack_api_server",
 ]

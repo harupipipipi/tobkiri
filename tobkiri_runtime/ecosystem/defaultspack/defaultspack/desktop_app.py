@@ -110,6 +110,7 @@ _DIAGNOSTIC_ENV_KEYS = (
 )
 _IMPORT_PATH_READY = False
 _SEALED_SCOPE = None
+_SEALED_PACKVM_DISABLED: bool | None = None
 
 
 def _pack_root() -> Path:
@@ -266,8 +267,8 @@ def _candidate_ecosystem_dirs(pack_root: Path) -> list[Path]:
 
 
 def prepare_for_sealed_dispatch(scope: object) -> None:
-    """Bind sealed imports and the Launcher-issued PackVM bundle identity."""
-    global _SEALED_SCOPE
+    """Bind sealed imports and the Launcher-issued PackVM policy."""
+    global _SEALED_SCOPE, _SEALED_PACKVM_DISABLED
     if _SEALED_SCOPE is not None and _SEALED_SCOPE is not scope:
         raise RuntimeError("Defaultspack sealed scope was already initialized")
     app_root_for = getattr(scope, "app_root_for", None)
@@ -276,6 +277,17 @@ def prepare_for_sealed_dispatch(scope: object) -> None:
     sealed_app_root = app_root_for(__file__)
     if not isinstance(sealed_app_root, Path):
         raise RuntimeError("Defaultspack sealed scope returned an invalid app root")
+    packvm_disabled_for = getattr(scope, "packvm_disabled_for", None)
+    if not callable(packvm_disabled_for):
+        raise RuntimeError("Defaultspack sealed scope lacks the PackVM policy")
+    packvm_disabled = packvm_disabled_for(__file__)
+    if type(packvm_disabled) is not bool:
+        raise RuntimeError("Defaultspack sealed PackVM policy is invalid")
+    if (
+        _SEALED_PACKVM_DISABLED is not None
+        and _SEALED_PACKVM_DISABLED != packvm_disabled
+    ):
+        raise RuntimeError("Defaultspack sealed PackVM policy was already established")
     _SEALED_SCOPE = scope
     _ensure_import_path()
     from core_runtime.packaged_application_bundle import (
@@ -283,6 +295,7 @@ def prepare_for_sealed_dispatch(scope: object) -> None:
     )
 
     install_packvm_bundle_binding_from_sealed_scope(scope, __file__)
+    _SEALED_PACKVM_DISABLED = packvm_disabled
 
 
 def _url() -> str:
@@ -482,13 +495,19 @@ def _active_profile_contract_context(active: Any) -> dict[str, str]:
 
 
 def _restore_active_profile_contracts(
-    packvm_lifecycle: Any,
+    packvm_lifecycle: Any | None,
     *,
     credential_store_factory: CredentialMaterialStoreFactory | None = None,
     generation_budget_template: object | None = None,
     packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None,
 ):
     """Capture the active Profile and verify its Application contract map."""
+
+    packvm_disabled = _SEALED_PACKVM_DISABLED is True
+    if packvm_disabled and (
+        packvm_lifecycle is not None or packvm_backend_factory is not None
+    ):
+        raise ValueError("PackVM-disabled capture cannot use a PackVM backend")
 
     if credential_store_factory is None:
         from tobkiri_host.credential_store import host_credential_store_factory
@@ -539,17 +558,21 @@ def _restore_active_profile_contracts(
         artifact_root=_pack_root(),
         **context,
     )
-    delegates = defaultspack_dispatch_delegates()
+    delegates = defaultspack_dispatch_delegates(packvm_disabled=packvm_disabled)
+    backend_factory = None
+    readiness_reader = None
+    if not packvm_disabled:
+        backend_factory = packvm_backend_factory or defaultspack_packvm_backend_factory(
+            packvm_lifecycle
+        )
+        readiness_reader = packvm_lifecycle.presentation_readiness_reader()
     session = capture_production_dispatch(
         active,
         bundle_root=bundle_root,
         ecosystem_root=ecosystem_root,
         authority_store=AuthorityStore(runtime_user_data_root() / "authority" / "v4.sqlite3"),
-        packvm_provisioner=(
-            packvm_backend_factory
-            or defaultspack_packvm_backend_factory(packvm_lifecycle)
-        ),
-        packvm_readiness_reader=packvm_lifecycle.presentation_readiness_reader(),
+        packvm_provisioner=backend_factory,
+        packvm_readiness_reader=readiness_reader,
         http_contract_bindings=bindings,
         activation_snapshot_loader=defaultspack_activation_snapshot_loader,
         runtime_surface_factory=create_runtime_surface_services,
@@ -817,14 +840,6 @@ def main(
     from ecosystem.defaultspack.domain.runtime_v4 import (
         ProfileReconfirmationRequired,
     )
-    from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
-    from core_runtime.di_container import get_container
-    from ecosystem.defaultspack.backend.sandbox.isolation import (
-        ManagedSandboxSupervisor,
-    )
-    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
-        default_packvm_provisioner,
-    )
     from ecosystem.defaultspack.defaultspack.http_contract_composition import (
         defaultspack_capability_snapshot,
     )
@@ -832,21 +847,18 @@ def main(
         DefaultspackHTTPPresentation,
     )
     from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        create_defaultspack_packvm_lifecycle,
         defaultspack_runtime_capture_inputs,
     )
 
-    from ecosystem.defaultspack.defaultspack.development_host_handover import (
-        DevelopmentHostHandover,
+    packvm_disabled = _SEALED_PACKVM_DISABLED is True
+    packvm_lifecycle = (
+        None if packvm_disabled else create_defaultspack_packvm_lifecycle()
     )
-    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import MacOSVZProvisioner
-
-    provisioner = default_packvm_provisioner()
-    handover = DevelopmentHostHandover(provisioner, bootstrap_profile_id="defaults") if isinstance(provisioner, MacOSVZProvisioner) else None
-    packvm_lifecycle = PackVMLifecycleV4(provisioner, development_host_handover=handover)
-    get_container().register("managed_sandbox_supervisor", ManagedSandboxSupervisor)
     runtime_capture_factory = partial(
         defaultspack_runtime_capture_inputs,
         packvm_provisioner=packvm_lifecycle,
+        packvm_disabled=packvm_disabled,
         credential_store_factory=host_credential_store_factory,
         generation_budget_template=generation_budget_template,
     )
@@ -887,6 +899,7 @@ def main(
 
         web_mounts = defaultspack_web_mounts(_pack_root())
         auth = _require_host_panel_auth_manager(host_contract)
+        packvm_options = {"packvm_disabled": True} if packvm_disabled else {}
         server = PackAPIServer(
             host="127.0.0.1",
             port=int(port),
@@ -900,6 +913,7 @@ def main(
             web_mounts=web_mounts,
             packvm_lifecycle=packvm_lifecycle,
             host_contract=host_contract,
+            **packvm_options,
         )
         _write_launch_event("server_start_attempt", port=port, url=url)
         try:

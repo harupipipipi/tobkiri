@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -125,6 +126,67 @@ def test_defaultspack_kernel_preserves_host_credential_factory_injection(
         assert capture_factory.keywords["credential_store_factory"] is (
             credential_store_factory
         )
+    finally:
+        kernel.shutdown()
+
+
+def test_defaultspack_kernel_with_packvm_disabled_skips_vm_composition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The disabled Kernel still composes signed Profile and Setup services."""
+
+    import core_runtime.profile_runtime_port as profile_port
+    from ecosystem.defaultspack.defaultspack import (
+        frontend_contract_loader,
+        runtime_composition,
+    )
+    from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+
+    def forbid_vm_composition(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("PackVM-disabled Kernel constructed a PackVM component")
+
+    for target in (
+        "core_runtime.packvm_lifecycle_v4.PackVMLifecycleV4",
+        "core_runtime.di_container.get_container",
+        "ecosystem.defaultspack.backend.sandbox.isolation."
+        "macos_vz_provisioner.default_packvm_provisioner",
+    ):
+        monkeypatch.setattr(target, forbid_vm_composition)
+    for factory in (
+        "defaultspack_packvm_backend_factory",
+        "_packvm_acceptance_receipts",
+    ):
+        monkeypatch.setattr(runtime_composition, factory, forbid_vm_composition)
+    monkeypatch.setattr(profile_port, "_PROFILE_RUNTIME", None)
+    catalog = SimpleNamespace(
+        packs={"application": {"pack": {"kind": "application"}}},
+    )
+    monkeypatch.setattr(BundledCatalog, "load", Mock(return_value=catalog))
+    monkeypatch.setattr(
+        frontend_contract_loader, "resolve_frontend_contract_map_path", Mock(),
+    )
+    monkeypatch.setattr(
+        frontend_contract_loader, "load_frontend_contract_bindings", Mock(return_value=()),
+    )
+    kernel = runtime_composition.create_defaultspack_kernel(
+        bundle_root=Path("bundle"), native_first_setup=True, packvm_disabled=True,
+    )
+    try:
+        assert (
+            profile_port.require_profile_runtime().bootstrap_profile_id() == "defaults"
+        )
+        assert kernel._native_first_setup is True
+        assert kernel._packvm_disabled is True
+        assert kernel._packvm_lifecycle is None
+        assert kernel._lifecycle.packvm_lifecycle is None
+        capture_factory = kernel._runtime_capture_factory
+        inputs = capture_factory()
+        assert inputs.packvm_backend_factory is None
+        assert inputs.acceptance_receipts is None
+        assert inputs.chat_continuation_approve is not None
+        assert inputs.authority_approval_window_open is not None
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            capture_factory(packvm_provisioner=object())
     finally:
         kernel.shutdown()
 

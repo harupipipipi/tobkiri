@@ -143,10 +143,9 @@ def _fixture_sources(base: Path, target: str) -> tuple[Path, Path, Path]:
         "def prepare_for_sealed_dispatch(scope):\n"
         "    if scope.app_root_for(__file__).name != 'app':\n"
         "        raise RuntimeError('invalid sealed app root')\n"
-        "    if scope.packvm_bundle_binding_for(__file__) is not None:\n"
-        "        raise RuntimeError('unexpected PackVM bundle binding')\n"
-        "    global native_first_setup\n"
+        "    global native_first_setup, packvm_disabled\n"
         "    native_first_setup = scope.native_first_setup_for(__file__)\n"
+        "    packvm_disabled = scope.packvm_disabled_for(__file__)\n"
         "    try:\n"
         "        scope.native_first_setup_for(__file__.replace('app.py', 'kernel_entry.py'))\n"
         "    except RuntimeError:\n"
@@ -158,6 +157,8 @@ def _fixture_sources(base: Path, target: str) -> tuple[Path, Path, Path]:
         "        handle.write(json.dumps(['typed', list(argv or [])]) + '\\n')\n"
         "        if native_first_setup:\n"
         "            handle.write(json.dumps(['native_first_setup', True]) + '\\n')\n"
+        "        if packvm_disabled:\n"
+        "            handle.write(json.dumps(['packvm_disabled', 'typed']) + '\\n')\n"
         "    return 7\n",
         encoding="utf-8",
     )
@@ -165,6 +166,8 @@ def _fixture_sources(base: Path, target: str) -> tuple[Path, Path, Path]:
         "import json, os, sys\n"
         "from pathlib import Path\n"
         "def prepare_for_sealed_dispatch(scope):\n"
+        "    global packvm_disabled\n"
+        "    packvm_disabled = scope.packvm_disabled_for(__file__)\n"
         "    app_root = scope.app_root_for(__file__)\n"
         "    pack_root = Path(__file__).resolve().parents[1]\n"
         "    if str(pack_root) not in sys.path:\n"
@@ -174,6 +177,8 @@ def _fixture_sources(base: Path, target: str) -> tuple[Path, Path, Path]:
         "def main(argv=None):\n"
         "    with open(os.environ['ROLE_MARKER'], 'a') as handle:\n"
         "        handle.write(json.dumps(['defaultspack', list(argv or [])]) + '\\n')\n"
+        "        if packvm_disabled:\n"
+        "            handle.write(json.dumps(['packvm_disabled', 'defaultspack']) + '\\n')\n"
         "    return 8\n",
         encoding="utf-8",
     )
@@ -212,11 +217,12 @@ def _fixture_sys_path(output: Path, *, include_missing_zip: bool = False) -> lis
     return [str(path) for path in entries]
 
 
-def _install_runtime_overlay(output: Path) -> tuple[str, str]:
+def _install_runtime_overlay(
+    output: Path, *, outer_digest: str = "f" * 64
+) -> tuple[str, str]:
     """Install the sole Host overlay after the sealed base fixture is verified."""
     manifest_path = output / BUILDER.MANIFEST_FILENAME
     sealed = json.loads(manifest_path.read_text(encoding="utf-8"))
-    outer_digest = "f" * 64
     document = {
         "schema": "io.tobkiri.runtime-resource-manifest.v1",
         "overlay": {
@@ -246,8 +252,12 @@ def _install_runtime_overlay(output: Path) -> tuple[str, str]:
     return hashlib.sha256(payload).hexdigest(), outer_digest
 
 
-def _runtime_overlay_arguments(output: Path) -> list[str]:
-    overlay_digest, outer_digest = _install_runtime_overlay(output)
+def _runtime_overlay_arguments(
+    output: Path, *, outer_digest: str = "f" * 64
+) -> list[str]:
+    overlay_digest, outer_digest = _install_runtime_overlay(
+        output, outer_digest=outer_digest
+    )
     return [
         "--runtime-overlay-sha256",
         overlay_digest,
@@ -1470,14 +1480,37 @@ def test_runtime_link_materializer_rejects_outside_target(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize("native_first_setup", (False, True))
+@pytest.mark.parametrize(
+    ("target", "packvm_disabled"),
+    (
+        ("x86_64-unknown-linux-gnu", False),
+        ("aarch64-apple-darwin", False),
+        ("aarch64-apple-darwin", True),
+    ),
+)
 def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     native_first_setup: bool,
+    target: str,
+    packvm_disabled: bool,
 ) -> None:
     """The parent wire reaches each canonical role with exact argv/stdin."""
-    output = _fixture_sources(tmp_path / "sealed", "x86_64-unknown-linux-gnu")[2]
-    overlay_arguments = _runtime_overlay_arguments(output)
+    output = _fixture_sources(tmp_path / "sealed", target)[2]
+    if target.endswith("-apple-darwin"):
+        bundle, digests = _packvm_bundle_fixture(tmp_path / "bundle")
+        overlay_arguments = _runtime_overlay_arguments(
+            output, outer_digest=digests["outer"]
+        )
+        bundle_arguments = {
+            "--application-bundle-root": str(bundle),
+            "--packvm-provisioning-sha256": digests["provisioning"],
+            "--packvm-helper-manifest-sha256": digests["helper"],
+            "--packvm-helper-team-id": "ABC1234567",
+        }
+    else:
+        overlay_arguments = _runtime_overlay_arguments(output)
+        bundle_arguments = {}
     assert output.name != "python-runtime"
     marker = tmp_path / "roles.jsonl"
 
@@ -1504,6 +1537,7 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
     sys.modules.pop("tobkiri_sealed.bootstrap", None)
     sys.modules.pop("tobkiri_sealed", None)
     monkeypatch.setenv("ROLE_MARKER", str(marker))
+    monkeypatch.setenv("TOBKIRI_PACKVM_DISABLED", "1")
     monkeypatch.setenv(
         "TOBKIRI_SEALED_PYTHON_MANIFEST_SHA256",
         BUILDER._sha256_file(output / BUILDER.MANIFEST_FILENAME),
@@ -1515,8 +1549,8 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
         sys.path = _fixture_sys_path(output, include_missing_zip=True)
 
         for role, role_args, expected_return in (
-            ("typed", ("--health", "--native-first-setup"), 7),
-            ("defaultspack", ("--port", "8766"), 8),
+            ("typed", ("--health", "--native-first-setup", "--packvm-disabled"), 7),
+            ("defaultspack", ("--port", "8766", "--packvm-disabled"), 8),
             ("host_helper", (), 9),
         ):
             attestation_dir = tmp_path / f"attestation-{role}"
@@ -1543,9 +1577,40 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
                 with pytest.raises(bootstrap.SealedBootstrapError, match="Kernel role"):
                     bootstrap.main([*parent_args, "--native-first-setup", "--", *role_args])
                 assert not attestation.exists()
+            if role == "host_helper":
+                with pytest.raises(
+                    bootstrap.SealedBootstrapError, match="Kernel and Panel"
+                ):
+                    bootstrap.main([*parent_args, "--packvm-disabled", "--", *role_args])
+                assert not attestation.exists()
+            elif packvm_disabled:
+                with pytest.raises(
+                    bootstrap.SealedBootstrapError, match="macOS bundle binding"
+                ):
+                    bootstrap.main([*parent_args, "--packvm-disabled", "--", *role_args])
+                assert not attestation.exists()
+            elif not bundle_arguments and role == "typed":
+                with pytest.raises(
+                    bootstrap.SealedBootstrapError, match="macOS snapshot"
+                ):
+                    bootstrap.main([*parent_args, "--packvm-disabled", "--", *role_args])
+                assert not attestation.exists()
+            for option, value in bundle_arguments.items():
+                parent_args[parent_args.index(option) + 1] = value
             carries_native_policy = native_first_setup and role == "typed"
             if carries_native_policy:
                 parent_args.append("--native-first-setup")
+            carries_packvm_policy = packvm_disabled and role != "host_helper"
+            if carries_packvm_policy:
+                parent_args.append("--packvm-disabled")
+                helper_digest_index = parent_args.index("--packvm-helper-manifest-sha256") + 1
+                changed_args = parent_args.copy()
+                changed_args[helper_digest_index] = "0" * 64
+                with pytest.raises(
+                    bootstrap.SealedBootstrapError, match="bundle binding changed"
+                ):
+                    bootstrap.main([*changed_args, "--", *role_args])
+                assert not attestation.exists()
             result = bootstrap.main([*parent_args, "--", *role_args])
             assert result == expected_return
             evidence = json.loads(attestation.read_text(encoding="utf-8"))
@@ -1565,9 +1630,12 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
                 "outer_runtime_manifest_sha256",
                 "lifetime_lease",
                 *(["native_first_setup"] if carries_native_policy else []),
+                *(["packvm_disabled"] if carries_packvm_policy else []),
             ]
             if carries_native_policy:
                 assert evidence["native_first_setup"] is True
+            if carries_packvm_policy:
+                assert evidence["packvm_disabled"] is True
             assert evidence["role"] == role
             assert evidence["nonce"] == nonce
             assert evidence["lifetime_lease"] is True
@@ -1586,9 +1654,11 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
             sys.stdout = old_stdout
         records = [json.loads(line) for line in marker.read_text().splitlines()]
         assert records == [
-            ["typed", ["--health", "--native-first-setup"]],
+            ["typed", ["--health", "--native-first-setup", "--packvm-disabled"]],
             *([["native_first_setup", True]] if native_first_setup else []),
-            ["defaultspack", ["--port", "8766"]],
+            *([["packvm_disabled", "typed"]] if packvm_disabled else []),
+            ["defaultspack", ["--port", "8766", "--packvm-disabled"]],
+            *([["packvm_disabled", "defaultspack"]] if packvm_disabled else []),
             ["host_helper", {"function_id": "computer.observe"}],
         ]
     finally:
@@ -3467,10 +3537,33 @@ def test_packvm_bundle_binding_is_scope_only_immutable_and_raw_bound(
             "a" * 64,
             bootstrap.ROLE_TARGETS["typed"],
             binding,
+            packvm_disabled=True,
         )
         assert scope.packvm_bundle_binding_for(output / "app" / "app.py") == binding
+        assert scope.packvm_disabled_for(output / "app" / "app.py") is True
         with pytest.raises(bootstrap.SealedBootstrapError, match="manifest-bound"):
             scope.packvm_bundle_binding_for(output / "app" / "kernel_entry.py")
+        with pytest.raises(bootstrap.SealedBootstrapError, match="manifest-bound"):
+            scope.packvm_disabled_for(output / "app" / "kernel_entry.py")
+        with pytest.raises(AttributeError, match="immutable"):
+            scope._packvm_disabled = False
+        with pytest.raises(AttributeError, match="immutable"):
+            del scope._packvm_disabled
+        with pytest.raises(bootstrap.SealedBootstrapError, match="macOS bundle binding"):
+            bootstrap._SealedDispatchScope(
+                bootstrap._SCOPE_CONSTRUCTOR_TOKEN,
+                output,
+                manifest,
+                BUILDER._sha256_file(manifest),
+                "a" * 64,
+                bootstrap.ROLE_TARGETS["typed"],
+                {
+                    "root": str(bundle),
+                    "provisioning_sha256": "sha256:" + digests["provisioning"],
+                    "platform": "linux",
+                },
+                packvm_disabled=True,
+            )
 
         provisioning = bundle / "Contents/Resources/packvm-vz-provisioning.v1.json"
         _make_test_mutable(provisioning)
@@ -3492,6 +3585,10 @@ def test_packvm_bundle_binding_is_scope_only_immutable_and_raw_bound(
                 "ABC1234567",
                 digests["outer"],
             )
+        _make_test_mutable(manifest)
+        manifest.write_bytes(manifest.read_bytes() + b"\n")
+        with pytest.raises(bootstrap.SealedBootstrapError, match="target is unavailable"):
+            scope.packvm_disabled_for(output / "app" / "app.py")
     finally:
         sys.path = old_path
         sys.modules.pop("tobkiri_sealed.bootstrap", None)

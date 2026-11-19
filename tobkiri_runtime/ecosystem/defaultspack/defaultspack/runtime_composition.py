@@ -20,6 +20,7 @@ from ecosystem.defaultspack.domain.safety import chat_continuation
 
 if TYPE_CHECKING:
     from core_runtime.bootstrap.runtime import Kernel
+    from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
 
 
 def _approve_chat_continuation(
@@ -202,6 +203,7 @@ def defaultspack_runtime_capture_inputs(
     active: object | None = None,
     *,
     packvm_provisioner: object | None = None,
+    packvm_disabled: bool = False,
     bundle_root: Path | None = None,
     credential_store_factory: CredentialMaterialStoreFactory = (
         host_credential_store_factory
@@ -209,6 +211,9 @@ def defaultspack_runtime_capture_inputs(
     generation_budget_template: NativeGenerationBudgetTemplate | None = None,
 ) -> RuntimeCaptureInputs:
     """Select one signed Defaultspack application map for a runtime refresh."""
+
+    if packvm_disabled and packvm_provisioner is not None:
+        raise ValueError("PackVM-disabled capture cannot use a PackVM provisioner")
 
     from ecosystem.defaultspack.defaultspack.frontend_contract_loader import (
         resolve_frontend_contract_map_path,
@@ -243,7 +248,7 @@ def defaultspack_runtime_capture_inputs(
         **context,
     )
     _require_http_provider_selection(active, bindings)
-    delegates = defaultspack_dispatch_delegates()
+    delegates = defaultspack_dispatch_delegates(packvm_disabled=packvm_disabled)
     return RuntimeCaptureInputs(
         bundle_root=bundle_root,
         ecosystem_root=runtime_root / "ecosystem",
@@ -300,7 +305,10 @@ class DefaultspackDispatchDelegates:
     ]
 
 
-def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
+def defaultspack_dispatch_delegates(
+    *,
+    packvm_disabled: bool = False,
+) -> DefaultspackDispatchDelegates:
     """Return the exact Host delegates every dispatch capture must bind.
 
     Fresh captures through ``defaultspack_runtime_capture_inputs`` and the
@@ -310,7 +318,7 @@ def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
     """
 
     return DefaultspackDispatchDelegates(
-        acceptance_receipts=_packvm_acceptance_receipts(),
+        acceptance_receipts=None if packvm_disabled else _packvm_acceptance_receipts(),
         chat_continuation_approve=_approve_chat_continuation,
         chat_continuation_resume=_resume_chat_continuation,
         authority_approval_window_open=_open_authority_approval_window,
@@ -401,6 +409,32 @@ def defaultspack_packvm_backend_factory(
     return build
 
 
+def create_defaultspack_packvm_lifecycle() -> PackVMLifecycleV4:
+    """Compose the native PackVM lifecycle and register its managed supervisor."""
+
+    from core_runtime.di_container import get_container
+    from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
+    from ecosystem.defaultspack.backend.sandbox.isolation import (
+        ManagedSandboxSupervisor,
+    )
+    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
+        MacOSVZProvisioner,
+        default_packvm_provisioner,
+    )
+
+    from .development_host_handover import DevelopmentHostHandover
+
+    provisioner = default_packvm_provisioner()
+    handover = (
+        DevelopmentHostHandover(provisioner, bootstrap_profile_id="defaults")
+        if isinstance(provisioner, MacOSVZProvisioner)
+        else None
+    )
+    lifecycle = PackVMLifecycleV4(provisioner, development_host_handover=handover)
+    get_container().register("managed_sandbox_supervisor", ManagedSandboxSupervisor)
+    return lifecycle
+
+
 def create_defaultspack_kernel(
     *,
     bundle_root: Path | None = None,
@@ -409,18 +443,11 @@ def create_defaultspack_kernel(
     ),
     generation_budget_template: NativeGenerationBudgetTemplate | None = None,
     native_first_setup: bool = False,
+    packvm_disabled: bool = False,
 ) -> Kernel:
     """Compose the generic Host bootstrap with Defaultspack-owned services."""
 
     from core_runtime.bootstrap.runtime import Kernel
-    from core_runtime.di_container import get_container
-    from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
-    from ecosystem.defaultspack.backend.sandbox.isolation import (
-        ManagedSandboxSupervisor,
-    )
-    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
-        default_packvm_provisioner,
-    )
     from ecosystem.defaultspack.defaultspack.http_contract_composition import (
         defaultspack_capability_snapshot,
     )
@@ -438,18 +465,14 @@ def create_defaultspack_kernel(
     )
 
     install_defaultspack_profile_runtime()
-    provisioner = default_packvm_provisioner()
-    from .development_host_handover import DevelopmentHostHandover
-    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import MacOSVZProvisioner
-
-    handover = DevelopmentHostHandover(provisioner, bootstrap_profile_id="defaults") if isinstance(provisioner, MacOSVZProvisioner) else None
-    lifecycle = PackVMLifecycleV4(provisioner, development_host_handover=handover)
-    get_container().register("managed_sandbox_supervisor", ManagedSandboxSupervisor)
+    lifecycle = None if packvm_disabled else create_defaultspack_packvm_lifecycle()
+    packvm_options = {"packvm_disabled": True} if packvm_disabled else {}
     return Kernel(
         packvm_lifecycle=lifecycle,
         runtime_capture_factory=partial(
             defaultspack_runtime_capture_inputs,
             packvm_provisioner=lifecycle,
+            packvm_disabled=packvm_disabled,
             bundle_root=bundle_root,
             credential_store_factory=credential_store_factory,
             generation_budget_template=generation_budget_template,
@@ -459,6 +482,7 @@ def create_defaultspack_kernel(
         host_profile_bindings_factory=host_profile_control_bindings,
         runtime_surface_factory=create_runtime_surface_services,
         native_first_setup=native_first_setup,
+        **packvm_options,
     )
 
 
@@ -509,6 +533,7 @@ def _contract_context(active: object | None) -> dict[str, str]:
 __all__ = [
     "DefaultspackDispatchDelegates",
     "create_defaultspack_kernel",
+    "create_defaultspack_packvm_lifecycle",
     "defaultspack_activation_snapshot_loader",
     "defaultspack_dispatch_delegates",
     "defaultspack_packvm_backend_factory",

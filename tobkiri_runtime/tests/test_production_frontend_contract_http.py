@@ -459,6 +459,7 @@ def _captured_production_server(
     monkeypatch: pytest.MonkeyPatch,
     *,
     packvm_backends: BackendRegistry | None = None,
+    packvm_disabled: bool = False,
     existing_activation: bool = False,
     credential_store_factory=None,
     native_provider_prepare_planner=None,
@@ -503,7 +504,7 @@ def _captured_production_server(
         """Bind refreshes to this test's explicit packaged Profile bundle."""
 
         inputs = replace(
-            defaultspack_runtime_capture_inputs(current),
+            defaultspack_runtime_capture_inputs(current, packvm_disabled=packvm_disabled),
             bundle_root=bundle_root,
             ecosystem_root=RUNTIME_ROOT / "ecosystem",
         )
@@ -518,7 +519,7 @@ def _captured_production_server(
         MAP_PATH,
         catalog.packs["runtime.tauri.application.default"],
     )
-    composition = defaultspack_runtime_capture_inputs(active)
+    composition = defaultspack_runtime_capture_inputs(active, packvm_disabled=packvm_disabled)
     if authority_approval_window_open is not None:
         composition = replace(
             composition, authority_approval_window_open=authority_approval_window_open
@@ -553,6 +554,7 @@ def _captured_production_server(
         runtime_capture_factory=runtime_capture_inputs,
         capability_snapshot_factory=defaultspack_capability_snapshot,
         application_presentation=DefaultspackHTTPPresentation(),
+        packvm_disabled=packvm_disabled,
     )
 
     def publish_current_host_contract() -> None:
@@ -5305,7 +5307,7 @@ def test_native_presentation_preserves_exact_nested_broker_edges_without_packvm(
         ipc, "capture_launcher_application_presentation", lambda: (manifest, present),
     )
     with contextmanager(_captured_production_server)(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry(()),
+        tmp_path, monkeypatch, packvm_disabled=True,
     ) as (server, session, authority):
         session.assert_operation_ready(*target)
         original_dispatch = session.broker._dispatch
@@ -5319,6 +5321,10 @@ def test_native_presentation_preserves_exact_nested_broker_edges_without_packvm(
             session.context_for(*target, "external-panel")
         cookie, csrf, origin = _authenticate(server)
         headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+        status, doctor, _ = _request(server, "GET", "/api/v4/packvm/doctor", headers=headers)
+        assert status == 200, doctor
+        assert doctor["data"]["backend_id"] == "disabled"
+        assert doctor["data"]["ready"] is False
         for role, path in routes.items():
             status, payload, _ = _request(
                 server, "GET", _contract("GET", path),
@@ -5478,7 +5484,9 @@ def test_conversation_complete_health_uses_signed_http_broker(
     )
     packvm = None if native_complete else ConversationPackVmBackend()
     with contextmanager(_captured_production_server)(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry((packvm,) if packvm else ()),
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((packvm,)) if packvm else None,
+        packvm_disabled=native_complete,
     ) as (server, session, authority):
         server.assert_runtime_startup_ready()
         assert not executions

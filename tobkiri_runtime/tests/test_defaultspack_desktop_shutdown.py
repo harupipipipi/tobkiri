@@ -50,6 +50,7 @@ def desktop_shutdown(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict:
     server.issue_panel_login_code.return_value = {"code": "test-login"}
     server_factory = Mock(return_value=server)
     surface = Mock(return_value="webview")
+    restore_profile = desktop_app._restore_active_profile_contracts
     for name, value in {
         "_configure_persistent_user_state": Mock(),
         "_configure_http_environment": Mock(),
@@ -87,6 +88,7 @@ def desktop_shutdown(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict:
         "server": server,
         "server_factory": server_factory,
         "surface": surface,
+        "restore_profile": restore_profile,
     }
 
 
@@ -104,6 +106,93 @@ def test_blocking_webview_quit_drains_before_releasing_capture(
     ]
     assert not state["overlay"].exists()
     state["server"].stop.assert_called_once_with()
+
+
+def test_packvm_disabled_desktop_keeps_normal_capture_and_panel_auth(
+    desktop_shutdown: dict,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The Desktop and its first capture omit VM services, keeping Host ports."""
+
+    from core_runtime.authority import v4 as authority
+    from core_runtime.bootstrap import production_v4, profile_capture
+    from core_runtime.di_container import get_container
+    from ecosystem.defaultspack.defaultspack import frontend_contract_loader
+    from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+    from tobkiri_host import runtime
+
+    def forbid_vm_composition(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("PackVM-disabled Desktop constructed a PackVM component")
+
+    for target in (
+        "core_runtime.packvm_lifecycle_v4.PackVMLifecycleV4",
+        "ecosystem.defaultspack.backend.sandbox.isolation."
+        "macos_vz_provisioner.default_packvm_provisioner",
+        "ecosystem.defaultspack.defaultspack.runtime_composition."
+        "defaultspack_packvm_backend_factory",
+        "ecosystem.defaultspack.defaultspack.runtime_composition."
+        "_packvm_acceptance_receipts",
+    ):
+        monkeypatch.setattr(target, forbid_vm_composition)
+
+    get_container.return_value.register.side_effect = forbid_vm_composition
+    active = object()
+    capture = Mock(return_value=desktop_shutdown["session"])
+    monkeypatch.setattr(
+        desktop_app,
+        "_restore_active_profile_contracts",
+        desktop_shutdown["restore_profile"],
+    )
+    monkeypatch.setattr(desktop_app, "_SEALED_PACKVM_DISABLED", True)
+    monkeypatch.setattr(desktop_app, "_active_application_manifest", Mock())
+    monkeypatch.setattr(
+        desktop_app, "_active_profile_contract_context", Mock(return_value={}),
+    )
+    monkeypatch.setattr(profile_capture, "_bundle_root", Mock(return_value=tmp_path))
+    monkeypatch.setattr(
+        profile_capture, "runtime_user_data_root", Mock(return_value=tmp_path),
+    )
+    monkeypatch.setattr(
+        profile_capture, "capture_active_profile", Mock(return_value=active),
+    )
+    monkeypatch.setattr(production_v4, "capture_production_dispatch", capture)
+    monkeypatch.setattr(authority, "AuthorityStore", Mock())
+    monkeypatch.setattr(BundledCatalog, "load", Mock())
+    monkeypatch.setattr(
+        frontend_contract_loader, "resolve_frontend_contract_map_path", Mock(),
+    )
+    monkeypatch.setattr(
+        frontend_contract_loader, "load_frontend_contract_bindings", Mock(return_value=()),
+    )
+    monkeypatch.setattr(runtime, "install_dispatch_session", Mock())
+
+    with pytest.raises(ValueError, match="cannot use a PackVM backend"):
+        desktop_app._restore_active_profile_contracts(
+            None, packvm_backend_factory=forbid_vm_composition,
+        )
+    capture.assert_not_called()
+
+    assert desktop_app.main() == 0
+    assert capture.call_args.args == (active,)
+    capture_args = capture.call_args.kwargs
+    assert capture_args["packvm_provisioner"] is None
+    assert capture_args["packvm_readiness_reader"] is None
+    assert capture_args["acceptance_receipts"] is None
+    assert capture_args["chat_continuation_approve"] is not None
+    assert capture_args["authority_approval_window_open"] is not None
+    desktop_app._capture_launch_host_contract.assert_called_once_with(
+        desktop_shutdown["session"],
+    )
+    desktop_app._require_host_panel_auth_manager.assert_called_once_with({})
+    server_args = desktop_shutdown["server_factory"].call_args.kwargs
+    assert server_args["panel_auth_manager"] is (
+        desktop_app._require_host_panel_auth_manager.return_value
+    )
+    assert server_args["packvm_disabled"] is True
+    assert server_args["packvm_lifecycle"] is None
+    assert server_args["runtime_capture_factory"].keywords["packvm_disabled"] is True
+    desktop_shutdown["surface"].assert_called_once()
 
 
 @pytest.mark.parametrize(

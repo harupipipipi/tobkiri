@@ -16,16 +16,17 @@ from collections.abc import Sequence
 from typing import Any
 
 _SEALED_NATIVE_FIRST_SETUP: bool | None = None
+_SEALED_PACKVM_DISABLED: bool | None = None
 
 
 def prepare_for_sealed_dispatch(scope: object) -> None:
-    """Capture the Launcher-issued bundle identity and Setup policy."""
+    """Capture the Launcher-issued bundle identity and startup policies."""
 
     from core_runtime.packaged_application_bundle import (
         install_packvm_bundle_binding_from_sealed_scope,
     )
 
-    global _SEALED_NATIVE_FIRST_SETUP
+    global _SEALED_NATIVE_FIRST_SETUP, _SEALED_PACKVM_DISABLED
     native_first_setup_for = getattr(scope, "native_first_setup_for", None)
     if not callable(native_first_setup_for):
         raise RuntimeError("sealed dispatch scope lacks the Kernel Setup policy")
@@ -37,8 +38,20 @@ def prepare_for_sealed_dispatch(scope: object) -> None:
         and _SEALED_NATIVE_FIRST_SETUP != native_first_setup
     ):
         raise RuntimeError("sealed Kernel Setup policy was already established")
+    packvm_disabled_for = getattr(scope, "packvm_disabled_for", None)
+    if not callable(packvm_disabled_for):
+        raise RuntimeError("sealed dispatch scope lacks the Kernel PackVM policy")
+    packvm_disabled = packvm_disabled_for(__file__)
+    if type(packvm_disabled) is not bool:
+        raise RuntimeError("sealed Kernel PackVM policy is invalid")
+    if (
+        _SEALED_PACKVM_DISABLED is not None
+        and _SEALED_PACKVM_DISABLED != packvm_disabled
+    ):
+        raise RuntimeError("sealed Kernel PackVM policy was already established")
     install_packvm_bundle_binding_from_sealed_scope(scope, __file__)
     _SEALED_NATIVE_FIRST_SETUP = native_first_setup
+    _SEALED_PACKVM_DISABLED = packvm_disabled
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -65,6 +78,7 @@ def _create_defaultspack_kernel() -> Any:
 
     return create_defaultspack_kernel(
         native_first_setup=_SEALED_NATIVE_FIRST_SETUP is True,
+        packvm_disabled=_SEALED_PACKVM_DISABLED is True,
     )
 
 

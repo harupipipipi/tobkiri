@@ -40,13 +40,17 @@
     "runtime_overlay_sha256": {"$ref": "#/$defs/sha256"},
     "outer_runtime_manifest_sha256": {"$ref": "#/$defs/sha256"},
     "lifetime_lease": {"const": true},
-    "native_first_setup": {"type": "boolean"}
+    "native_first_setup": {"type": "boolean"},
+    "packvm_disabled": {"const": true}
   },
   "if": {
     "required": ["native_first_setup"],
     "properties": {"native_first_setup": {"const": true}}
   },
   "then": {"properties": {"role": {"const": "typed"}}},
+  "dependentSchemas": {
+    "packvm_disabled": {"properties": {"role": {"enum": ["typed", "defaultspack"]}}}
+  },
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
   },

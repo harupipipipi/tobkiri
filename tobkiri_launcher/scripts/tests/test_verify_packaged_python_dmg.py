@@ -863,12 +863,14 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
 
 
 @pytest.mark.parametrize("shutdown_verified", [False, True])
+@pytest.mark.parametrize("expect_packvm_disabled", [False, True])
 @pytest.mark.parametrize(("user_setup_timeout_seconds", "user_chat"), [
     (None, None), (180.0, None), (180.0, ["180", "connection/llama", "gemma-3-1b"]),
 ])
 def test_installed_boot_uses_the_verified_copy_after_detach(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shutdown_verified: bool,
     user_setup_timeout_seconds: float | None, user_chat: list[str] | None,
+    expect_packvm_disabled: bool,
 ) -> None:
     source = tmp_path / "mounted" / "Tobkiri Launcher CI E2E.app"
     source.mkdir(parents=True)
@@ -902,6 +904,7 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
             assert (installed_paths[0] / "exact-resource").read_bytes() == b"verified"
             assert arguments[arguments.index("--diagnostics-dir") + 1] == str(diagnostics)
             assert "--expect-setup" in arguments
+            assert ("--expect-packvm-disabled" in arguments) is expect_packvm_disabled
             assert not Path(arguments[arguments.index("--app-data-dir") + 1]).exists()
             wait_option = "--wait-for-user-setup-seconds"
             if user_setup_timeout_seconds is None:
@@ -912,7 +915,8 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
             if user_chat is None:
                 assert chat_option not in arguments
             else:
-                assert arguments[arguments.index(chat_option) + 1:] == user_chat
+                start = arguments.index(chat_option) + 1
+                assert arguments[start:start + len(user_chat)] == user_chat
             return subprocess.CompletedProcess(arguments, 0 if shutdown_verified else 1)
         return subprocess.CompletedProcess(arguments, 0)
 
@@ -922,7 +926,10 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
     )
     monkeypatch.setattr(MODULE, "_resolve_executable", lambda name: name)
     monkeypatch.setattr(MODULE, "_run", run)
-    inputs = (Mount(), source, diagnostics, "python", "codesign", user_setup_timeout_seconds, user_chat)
+    inputs = (
+        Mount(), source, diagnostics, "python", "codesign", user_setup_timeout_seconds,
+        user_chat, expect_packvm_disabled,
+    )
     if shutdown_verified:
         MODULE._cold_boot_installed_launcher(*inputs)
     else:
