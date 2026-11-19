@@ -6201,10 +6201,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - [前回の DMG CI](https://github.com/harupipipipi/tobkiri/actions/runs/44595543404) では、従来 Launcher
   構成のテスト用証明を作る2か所で `provider_snapshot` の初期化が欠けていた。両方に初期値を追加し、
   Workflow の呼び出し元と入口を個別に照合するテストを DMG の CI に組み込んだ。
-- Workflow のテキスト生成と Messages API は、Gateway の後に共通の汎用生成 Adapter
-  `rumi_provider_adapters_pack.provider.compatibility.generate` も Registry を独自に読む。
-  次の移植では、同じ Adapter に通じる二つの親 Gateway を区別し、それぞれの元の
-  署名済み権限を照合する。他の旧経路も移植と検証を終えてから、Python の共通読み取りを廃止する。
+- `2791b4223` と `a7c9e94a6` は、Workflow のテキスト生成と Messages API が共用する
+  `rumi_provider_adapters_pack.provider.compatibility.generate` の Registry 読み取りも移した。
+  元の Gateway ごとに Workflow までの親を照合し、Adapter 自身の署名済み Grant と
+  個別の Broker Lease・容量予約を使う。旧 Launcher はこの二つの読み取りに従来の経路を使う。
+  Host の関連116件、Rust の IPC・ジョブ・サービス91件、署名選択3件、起動証明2件が通過した。
+  macOS の実ソケットと配布用 Wasm では、署名済み Workflow からの全6読み取りが元の
+  Registry 応答と一致した。追加した2読み取りは1.49秒（テキスト生成）と1.24秒（Messages API）。
+  Launcher のプロセス管理と外部 Provider への通信には試験用の実装を使用した。
+- 次は設定画面の Model Access の `model-access-read` と `model-access-catalog` を移す。
+  両方とも `rumi_provider_registry_pack/runtime/model_access_resource.py` が同じ Profile の
+  Registry を直接読む。カタログの取得後に読み直して、途中の削除・変更を拒否する。
+  既存のカタログ用の個別認可と、接続 ID・検索フィルター・公開応答の形式を保つ。
+  他の旧経路も移植と検証を終えてから、Python の共通読み取りを廃止する。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 
