@@ -32,8 +32,9 @@ use tobkiri_harness_native::{
     read_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
     OriginalLocalChatCheck, OriginalLocalChatError, OriginalLocalChatPolicy,
-    OriginalLocalChatRequest, OriginalSavedLocalChatRole, OriginalSavedTurnCheck,
-    OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
+    OriginalLocalChatRequest, OriginalProviderSnapshotRole, OriginalSavedLocalChatRole,
+    OriginalSavedTurnCheck, OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome,
+    OriginalSavedTurnStartStep,
 };
 use tobkiri_store::{DataRoot, StoreError};
 use tobkiri_wasm::{LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT};
@@ -185,7 +186,7 @@ pub(crate) enum NativeRegistryRequest {
     },
     ModelList,
     ProviderSnapshot {
-        role: OriginalSavedLocalChatRole,
+        role: OriginalProviderSnapshotRole,
     },
     ModelSave {
         request: Vec<u8>,
@@ -2593,19 +2594,7 @@ mod tests {
         let proofs = roles.map(|role| {
             VerifiedRegistryLaunch::test_saved_local_chat_proof(identity.clone(), "catalog", role)
         });
-        let snapshot_proofs = roles.map(|role| {
-            VerifiedRegistryLaunch::test_provider_snapshot_proof(identity.clone(), "catalog", role)
-        });
         for role in roles {
-            let snapshot = NativeRegistryRequest::ProviderSnapshot { role };
-            assert!(!snapshot.requires_publication_permit());
-            assert_eq!(snapshot.input_capacity().unwrap(), 0);
-            assert!(!snapshot.has_launch_proof(&orchestration));
-            assert!(proofs.iter().all(|proof| !snapshot.has_launch_proof(proof)));
-            for (granted, proof) in roles.into_iter().zip(&snapshot_proofs) {
-                assert_eq!(snapshot.has_launch_proof(proof), role == granted);
-            }
-
             let mut connection_id = String::with_capacity(64);
             connection_id.push_str("provider");
             let mut endpoint = String::with_capacity(128);
@@ -2629,6 +2618,62 @@ mod tests {
             }
             assert!(request.requires_publication_permit());
             assert_eq!(request.input_capacity().unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn provider_snapshot_requires_its_exact_role_and_carries_no_input() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
+        use OriginalProviderSnapshotRole::{Adapter, Gateway};
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let adapter_roles = [
+            OriginalSavedLocalChatRole::Generate,
+            OriginalSavedLocalChatRole::Stream,
+            OriginalSavedLocalChatRole::SideChatGenerate,
+            OriginalSavedLocalChatRole::SideChatStream,
+        ];
+        let chat_proofs = adapter_roles.map(|role| {
+            VerifiedRegistryLaunch::test_saved_local_chat_proof(identity.clone(), "catalog", role)
+        });
+        let orchestration =
+            VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
+        let snapshot_roles = adapter_roles
+            .into_iter()
+            .map(Adapter)
+            .chain(
+                [Generate, Stream, QuoteGenerate, QuoteStream]
+                    .into_iter()
+                    .flat_map(|role| [false, true].map(|side_chat| Gateway { role, side_chat })),
+            )
+            .collect::<Vec<_>>();
+        let snapshot_proofs = snapshot_roles
+            .iter()
+            .map(|&role| {
+                VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                    identity.clone(),
+                    "catalog",
+                    role,
+                )
+            })
+            .collect::<Vec<_>>();
+        for &role in &snapshot_roles {
+            let snapshot = NativeRegistryRequest::ProviderSnapshot { role };
+            assert!(!snapshot.requires_publication_permit());
+            assert_eq!(snapshot.input_capacity().unwrap(), 0);
+            assert!(!snapshot.has_launch_proof(&orchestration));
+            assert!(chat_proofs
+                .iter()
+                .all(|proof| !snapshot.has_launch_proof(proof)));
+            for (&granted, proof) in snapshot_roles.iter().zip(&snapshot_proofs) {
+                assert_eq!(snapshot.has_launch_proof(proof), role == granted);
+            }
         }
     }
 

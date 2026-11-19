@@ -394,8 +394,8 @@ where
                         .env(AI_PIPELINE_ENV, "1")
                         .env(AI_GATEWAY_RESULT_ENV, "1")
                         .env(AI_GATEWAY_POLICY_ENV, "1");
-                    if native_registry.provider_snapshot {
-                        command.env(crate::sealed_python::PROVIDER_SNAPSHOT_ENV, "1");
+                    if let Some(version) = native_registry.provider_snapshot_version {
+                        command.env(crate::sealed_python::PROVIDER_SNAPSHOT_ENV, version);
                     }
                     if let Some(manifest) = native_registry.saved_orchestration_manifest.as_deref()
                     {

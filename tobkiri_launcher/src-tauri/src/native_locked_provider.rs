@@ -17,9 +17,10 @@ use tobkiri_core::{
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
     OriginalConversationAppendChoice, OriginalConversationCompleteChoice, OriginalFailoverChoice,
-    OriginalRequestPrepareChoice, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
-    OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice, CONVERSATION_COMPLETE_APPLICATION_ID,
+    OriginalGatewayProviderSnapshotChoice, OriginalRequestPrepareChoice,
+    OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalSideChatSavedReceiptChoice,
+    OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
+    CONVERSATION_COMPLETE_APPLICATION_ID,
 };
 use tobkiri_harness_native::{
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
@@ -121,12 +122,13 @@ pub(crate) struct LockedSideChatSavedReceiptBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// The installed documents for the Generate and Stream grants of one entry point.
+/// The installed documents for the Registry grants of one saved entry point.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) struct LockedSavedLocalChatBundle<'pin> {
+pub(crate) struct LockedSavedProviderBundle<'pin, const ROLES: usize, const PINS: usize> {
     source: VerifiedOrdinarySavedBundle,
-    side_chat: [Option<[LockedRegistryRoute<'pin>; 1]>; 2],
-    routes: [Option<[LockedRegistryRoute<'pin>; 5]>; 2],
+    side_chat: [Option<[LockedRegistryRoute<'pin>; 1]>; ROLES],
+    routes: [Option<[LockedRegistryRoute<'pin>; PINS]>; ROLES],
+    effects: [&'static str; PINS],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -420,7 +422,7 @@ impl NativeApplicationSources {
         selections: [Option<&'pin OriginalSavedLocalChatChoice<'_>>; 2],
         via_side_chat: bool,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedSavedLocalChatBundle<'pin>> {
+    ) -> Result<LockedSavedProviderBundle<'pin, 2, 5>> {
         let mut side_chat = [None, None];
         let mut routes = [None, None];
         for ((locked, locked_side), selection) in
@@ -433,16 +435,10 @@ impl NativeApplicationSources {
             let side = selection.side_chat();
             let [turn, orchestration, gateway, adapter, registry] = pins;
             ensure!(
-                selection.role().is_side_chat() == via_side_chat
-                    && side.is_some() == via_side_chat
-                    && side.unwrap_or(turn).caller_function_id()
-                        == self.authority.shell_provider_id
-                    && side.is_none_or(|pin| pin.function_id() == turn.caller_function_id())
-                    && pins
-                        .windows(2)
-                        .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
+                selection.role().is_side_chat() == via_side_chat,
                 "old local chat callers differ from the selected saved chain"
             );
+            self.require_saved_provider_callers(side, pins, via_side_chat)?;
             let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
             *locked_side = side
                 .map(|pin| from_lock(pin).map(|route| [route]))
@@ -459,12 +455,86 @@ impl NativeApplicationSources {
             routes.iter().any(Option::is_some),
             "old local chat has no selected role"
         );
-        Ok(LockedSavedLocalChatBundle {
+        Ok(LockedSavedProviderBundle {
             source: VerifiedOrdinarySavedBundle::new(self)?,
             side_chat,
             routes,
+            effects: [
+                "privileged",
+                "pure",
+                "privileged",
+                "privileged",
+                "privileged",
+            ],
             budget: Arc::clone(budget),
         })
+    }
+
+    /// Capture the signed Gateway-to-Registry grants for the selected saved entry point.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn gateway_provider_snapshot_bundle<'pin>(
+        &self,
+        selections: [Option<&'pin OriginalGatewayProviderSnapshotChoice<'_>>; 4],
+        via_side_chat: bool,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedSavedProviderBundle<'pin, 4, 4>> {
+        let mut side_chat = [None, None, None, None];
+        let mut routes = [None, None, None, None];
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        for ((locked, locked_side), selection) in
+            routes.iter_mut().zip(&mut side_chat).zip(selections)
+        {
+            let Some(selection) = selection else {
+                continue;
+            };
+            let pins = selection.pins();
+            let side = selection.side_chat();
+            self.require_saved_provider_callers(side, pins, via_side_chat)?;
+            let [turn, orchestration, gateway, registry] = pins;
+            *locked = Some([
+                from_lock(turn)?,
+                from_lock(orchestration)?,
+                from_lock(gateway)?,
+                from_lock(registry)?,
+            ]);
+            *locked_side = side
+                .map(|pin| from_lock(pin).map(|route| [route]))
+                .transpose()?;
+        }
+        ensure!(
+            routes.iter().any(Option::is_some),
+            "old Gateway Provider Registry has no selected role"
+        );
+        Ok(LockedSavedProviderBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            side_chat,
+            routes,
+            effects: ["privileged", "pure", "privileged", "privileged"],
+            budget: Arc::clone(budget),
+        })
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn require_saved_provider_callers(
+        &self,
+        side_chat: Option<&OriginalRoutePin>,
+        pins: &[OriginalRoutePin],
+        via_side_chat: bool,
+    ) -> Result<()> {
+        ensure!(
+            side_chat.is_some() == via_side_chat
+                && pins.first().is_some_and(|turn| {
+                    side_chat.unwrap_or(turn).caller_function_id()
+                        == self.authority.shell_provider_id
+                        && side_chat
+                            .is_none_or(|pin| pin.function_id() == turn.caller_function_id())
+                })
+                && pins
+                    .windows(2)
+                    .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
+            "old Provider Registry callers differ from the selected saved chain"
+        );
+        Ok(())
     }
 
     /// Capture the signed Bundle documents for the selected start caller's grants.
@@ -1121,23 +1191,16 @@ impl LockedSideChatSavedReceiptBundle<'_> {
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-impl LockedSavedLocalChatBundle<'_> {
+impl<const ROLES: usize, const PINS: usize> LockedSavedProviderBundle<'_, ROLES, PINS> {
     /// Verify each role against the selected Packs, including Side Chat for its own entry.
     pub(crate) fn verify(
         self,
         mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<VerifiedOrdinarySavedBundle> {
         self.source.revalidate(&self.budget, &mut checkpoint)?;
-        let effects = [
-            "privileged",
-            "pure",
-            "privileged",
-            "privileged",
-            "privileged",
-        ];
         let source =
             self.source
-                .verify_routes(&self.routes, &self.budget, &mut checkpoint, effects)?;
+                .verify_routes(&self.routes, &self.budget, &mut checkpoint, self.effects)?;
         if self.side_chat.iter().any(Option::is_some) {
             return source.verify_routes(&self.side_chat, &self.budget, checkpoint, ["privileged"]);
         }

@@ -93,7 +93,7 @@ pub struct RoleArguments {
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[derive(Debug, Default)]
 pub(crate) struct NativeRegistryEnvironment {
-    pub(crate) provider_snapshot: bool,
+    pub(crate) provider_snapshot_version: Option<&'static str>,
     pub(crate) saved_orchestration_manifest: Option<String>,
     pub(crate) application_presentation_manifest: Option<String>,
     pub(crate) conversation_complete_manifest: Option<String>,
@@ -142,14 +142,22 @@ impl RoleArguments {
         mut self,
         proof: Option<&crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
     ) -> Self {
+        use tobkiri_harness_native::OriginalProviderSnapshotRole::Adapter;
         use tobkiri_harness_native::OriginalSavedLocalChatRole::{
             Generate, SideChatGenerate, SideChatStream, Stream,
         };
         self.native_registry = NativeRegistryEnvironment {
-            provider_snapshot: proof.is_some_and(|proof| {
-                [Generate, Stream, SideChatGenerate, SideChatStream]
+            provider_snapshot_version: proof.and_then(|proof| {
+                if proof.permits_gateway_provider_snapshot() {
+                    Some("2")
+                } else if [Generate, Stream, SideChatGenerate, SideChatStream]
                     .into_iter()
-                    .any(|role| proof.permits_provider_snapshot(role))
+                    .any(|role| proof.permits_provider_snapshot(Adapter(role)))
+                {
+                    Some("1")
+                } else {
+                    None
+                }
             }),
             saved_orchestration_manifest: proof
                 .and_then(|proof| proof.saved_orchestration_manifest())
@@ -4547,7 +4555,11 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
-    fn side_chat_turn_start_environment_requires_its_own_launch_proof() {
+    fn side_chat_turn_start_and_provider_snapshot_markers_use_independent_launch_proofs() {
+        use tobkiri_harness_native::{
+            OriginalModelResolveRole, OriginalProviderSnapshotRole, OriginalSavedLocalChatRole,
+        };
+
         use crate::host_contract::ExecutionProfileIdentity;
         use crate::native_harness_bootstrap::{
             ConversationAppendCaller, SavedTurnStartCaller, VerifiedRegistryLaunch,
@@ -4577,21 +4589,39 @@ mod tests {
         let snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
             side_chat.identity.clone(),
             "catalog",
-            tobkiri_harness_native::OriginalSavedLocalChatRole::SideChatStream,
+            OriginalProviderSnapshotRole::Adapter(OriginalSavedLocalChatRole::SideChatStream),
+        );
+        let gateway_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            side_chat.identity.clone(),
+            "catalog",
+            OriginalProviderSnapshotRole::Gateway {
+                role: OriginalModelResolveRole::QuoteGenerate,
+                side_chat: false,
+            },
+        );
+        let side_chat_gateway_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            side_chat.identity.clone(),
+            "catalog",
+            OriginalProviderSnapshotRole::Gateway {
+                role: OriginalModelResolveRole::QuoteStream,
+                side_chat: true,
+            },
         );
         for (proof, expected_turn_start, expected_snapshot) in [
-            (None, false, false),
-            (Some(&append), false, false),
-            (Some(&saved_turn), false, false),
-            (Some(&side_chat), true, false),
-            (Some(&snapshot), false, true),
+            (None, false, None),
+            (Some(&append), false, None),
+            (Some(&saved_turn), false, None),
+            (Some(&side_chat), true, None),
+            (Some(&snapshot), false, Some("1")),
+            (Some(&gateway_snapshot), false, Some("2")),
+            (Some(&side_chat_gateway_snapshot), false, Some("2")),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
                 .with_native_registry_admission(proof)
                 .split_native_registry_environment();
             assert_eq!(environment.side_chat_saved_turn_start, expected_turn_start);
-            assert_eq!(environment.provider_snapshot, expected_snapshot);
+            assert_eq!(environment.provider_snapshot_version, expected_snapshot);
         }
     }
 

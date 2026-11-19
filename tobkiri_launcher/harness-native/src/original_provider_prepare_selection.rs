@@ -1215,6 +1215,68 @@ impl OriginalModelResolveRole {
     }
 }
 
+/// The exact original caller of a raw Provider Registry snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalProviderSnapshotRole {
+    /// The Provider Adapter owns this child grant on the selected saved chain.
+    Adapter(OriginalSavedLocalChatRole),
+    /// AI Gateway owns this child grant on the selected saved chain.
+    Gateway {
+        /// The Gateway function and the Registry operation it selects.
+        role: OriginalModelResolveRole,
+        /// Whether the selected Shell enters Saved Turn through Side Chat.
+        side_chat: bool,
+    },
+}
+
+impl From<OriginalSavedLocalChatRole> for OriginalProviderSnapshotRole {
+    fn from(role: OriginalSavedLocalChatRole) -> Self {
+        Self::Adapter(role)
+    }
+}
+
+/// The signed saved chain and the Gateway's separate Provider Registry grant.
+pub struct OriginalGatewayProviderSnapshotChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    side_chat: Option<OriginalRoutePin>,
+    pins: [OriginalRoutePin; 4],
+}
+
+impl<'a> OriginalGatewayProviderSnapshotChoice<'a> {
+    /// Select the exact saved entry, Gateway caller, and raw Registry operation.
+    /// Verify all returned pins against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        role: OriginalModelResolveRole,
+        via_side_chat: bool,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_gateway_provider_snapshot_records(
+                active.records(),
+                budget,
+                role,
+                via_side_chat,
+            )?
+            .map(|(side_chat, pins)| Self {
+                _active: active,
+                side_chat,
+                pins,
+            }),
+        )
+    }
+
+    /// The original Shell-to-Side Chat grant when entering via Side Chat.
+    pub fn side_chat(&self) -> Option<&OriginalRoutePin> {
+        self.side_chat.as_ref()
+    }
+
+    /// Ordered grants to Turn, Saved Orchestration, Gateway, and Provider Registry.
+    pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
+}
+
 /// Signed Model Registry Resolve grants for the four supported Gateway routes.
 pub struct OriginalModelResolveSelection<'a> {
     _active: &'a OriginalActiveProfile,
@@ -1839,6 +1901,41 @@ fn select_model_resolve_records(
         pins[role.index()] = records.select_route(role.gateway_route().function, route)?;
     }
     Ok(pins)
+}
+
+type GatewayProviderSnapshotPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 4]);
+
+fn select_gateway_provider_snapshot_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalModelResolveRole,
+    via_side_chat: bool,
+) -> Result<Option<GatewayProviderSnapshotPins>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    let Some((side_chat, turn)) = select_turn_entry(&records, via_side_chat, &SAVED_TURN)? else {
+        return Ok(None);
+    };
+    let Some(orchestration) = records.select_route(turn.function_id(), &SAVED_ORCHESTRATION)?
+    else {
+        return Ok(None);
+    };
+    let registry = match role {
+        OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::Generate => {
+            &PROVIDER_READ_GENERATE
+        }
+        OriginalModelResolveRole::QuoteStream | OriginalModelResolveRole::Stream => {
+            &PROVIDER_READ_STREAM
+        }
+    };
+    Ok(select_saved_gateway_child(
+        &records,
+        [turn, orchestration],
+        role.gateway_route(),
+        registry,
+    )?
+    .map(|pins| (side_chat, pins)))
 }
 
 fn select_ai_routing_records(
@@ -2764,6 +2861,34 @@ mod tests {
                 "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
                 "sha256:ec01327293949904e663230af519789526a68e3acafcef188a7c01a7d70bfc2c",
             ),
+            (
+                &PROVIDER_READ_GENERATE,
+                GATEWAY_QUOTE_CALLER,
+                "authority-ref:9cc5cd380a7e7f7f051d2ae9e1c9fbe1a217d717936cc8de0d2c2d9f15bab44c",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:01dea66907528b42fe211fda67bf9c09aeeecf6bf092de43f15317a0f37c6184",
+            ),
+            (
+                &PROVIDER_READ_STREAM,
+                GATEWAY_QUOTE_CALLER,
+                "authority-ref:f6200e8ce9d2f4dd8fb4690d366be879dcddc812e97781d6c00d5bc0bee20ce6",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:ba31ddc2fe6a194376c0130d1cce5b2bd6af8c36c5c7353584443247786bf883",
+            ),
+            (
+                &PROVIDER_READ_GENERATE,
+                GATEWAY_GENERATE_CALLER,
+                "authority-ref:cd2620de5dee7efe90a04b878da3aa32fde40b9dab313a662bd539f988b0b521",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:01dea66907528b42fe211fda67bf9c09aeeecf6bf092de43f15317a0f37c6184",
+            ),
+            (
+                &PROVIDER_READ_STREAM,
+                GATEWAY_STREAM_CALLER,
+                "authority-ref:3de4d2eec347e6f6d995739d9187f0898fc2e8a6978a360674e52a9fd7116c18",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:ba31ddc2fe6a194376c0130d1cce5b2bd6af8c36c5c7353584443247786bf883",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -3061,6 +3186,7 @@ mod tests {
     const FAILOVER_STREAM_ROW: usize = 43;
     const SIDE_CHAT_TURN_ROW: usize = 52;
     const SIDE_CHAT_SAVED_TURN_ROW: usize = 53;
+    const GATEWAY_PROVIDER_SNAPSHOT_ROWS: std::ops::Range<usize> = 55..59;
 
     fn select_saved_local_chat(
         records: &Value,
@@ -3483,6 +3609,90 @@ mod tests {
                 denied
             );
         }
+    }
+
+    #[test]
+    fn gateway_provider_snapshot_requires_its_own_registry_grant_and_saved_entry() {
+        let select = |fixture: &Value, role, via_side_chat| {
+            let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_gateway_provider_snapshot_records(
+                (&profile, &lock, &plan),
+                &budget,
+                role,
+                via_side_chat,
+            )
+        };
+        let fixture = records();
+        for (role, row) in OriginalModelResolveRole::ALL
+            .into_iter()
+            .zip(GATEWAY_PROVIDER_SNAPSHOT_ROWS)
+        {
+            for via_side_chat in [false, true] {
+                let (side_chat, [turn, orchestration, gateway, registry]) =
+                    select(&fixture, role, via_side_chat).unwrap().unwrap();
+                assert_eq!(side_chat.is_some(), via_side_chat);
+                let caller = side_chat.as_ref().map_or(TURN_SHELL_CALLER, |pin| {
+                    assert_eq!(pin.caller_function_id(), TURN_SHELL_CALLER);
+                    assert_eq!(pin.function_id(), SIDE_CHAT_TURN.function);
+                    pin.function_id()
+                });
+                assert_eq!(turn.caller_function_id(), caller);
+                assert_eq!(turn.function_id(), SAVED_TURN.function);
+                assert_eq!(orchestration.caller_function_id(), turn.function_id());
+                assert_eq!(orchestration.function_id(), SAVED_ORCHESTRATION.function);
+                assert_eq!(gateway.caller_function_id(), orchestration.function_id());
+                assert_eq!(gateway.function_id(), role.gateway_route().function);
+                assert_eq!(registry.caller_function_id(), gateway.function_id());
+                let binding = &fixture["plan"]["bindings"][row];
+                assert_eq!(registry.operation_id(), binding["operation_id"]);
+                assert_eq!(
+                    registry.authority_reference(),
+                    binding["authority_reference"]
+                );
+            }
+            let mut no_child = fixture.clone();
+            no_child["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            assert!(matches!(
+                select(&no_child, role, false),
+                Err(Inconsistent(_))
+            ));
+            no_child["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            for sibling in OriginalModelResolveRole::ALL {
+                for via_side_chat in [false, true] {
+                    assert_eq!(
+                        select(&no_child, sibling, via_side_chat).unwrap().is_none(),
+                        sibling == role
+                    );
+                }
+            }
+        }
+
+        let mut no_side_chat = fixture.clone();
+        no_side_chat["profile"]["requested_edges"][SIDE_CHAT_TURN_ROW]["authority_mode"] =
+            json!("interactive_only");
+        no_side_chat["plan"]["bindings"][SIDE_CHAT_TURN_ROW]["authority_mode"] =
+            json!("interactive_only");
+        for role in OriginalModelResolveRole::ALL {
+            assert!(select(&no_side_chat, role, false).unwrap().is_some());
+            assert!(select(&no_side_chat, role, true).unwrap().is_none());
+        }
+
+        let mut no_adapter = fixture;
+        for [_, _, row] in [LOCAL_CHAT_GENERATE_ROWS, LOCAL_CHAT_STREAM_ROWS] {
+            no_adapter["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            no_adapter["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+        }
+        for role in OriginalModelResolveRole::ALL {
+            assert!(select(&no_adapter, role, false).unwrap().is_some());
+        }
+        assert!(
+            select_saved_local_chat(&no_adapter, OriginalSavedLocalChatRole::Generate)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

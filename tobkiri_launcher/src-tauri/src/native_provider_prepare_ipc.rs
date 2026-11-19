@@ -15,7 +15,7 @@ use tauri::{AppHandle, Manager};
 use tobkiri_core::{Digest, NativeArtifactError};
 use tobkiri_harness_native::{
     LegacyLocalChatSourceError, LegacySavedTurnSettlementError, OriginalLocalChatError,
-    OriginalLocalChatPolicyError, OriginalSavedLocalChatRole,
+    OriginalLocalChatPolicyError, OriginalProviderSnapshotRole, OriginalSavedLocalChatRole,
 };
 use tobkiri_wasm::{
     LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT,
@@ -420,8 +420,8 @@ struct ModelList {}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProviderSnapshot {
-    #[serde(deserialize_with = "deserialize_saved_local_chat_role")]
-    role: OriginalSavedLocalChatRole,
+    #[serde(deserialize_with = "deserialize_provider_snapshot_role")]
+    role: OriginalProviderSnapshotRole,
 }
 
 #[derive(Deserialize)]
@@ -1096,6 +1096,32 @@ where
         "side-chat-stream" => Ok(OriginalSavedLocalChatRole::SideChatStream),
         _ => Err(de::Error::custom("unknown Saved Local Chat role")),
     }
+}
+
+fn deserialize_provider_snapshot_role<'de, D>(
+    deserializer: D,
+) -> std::result::Result<OriginalProviderSnapshotRole, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use OriginalProviderSnapshotRole::{Adapter, Gateway};
+
+    let (role, side_chat) = match String::deserialize(deserializer)?.as_str() {
+        "generate" => return Ok(Adapter(OriginalSavedLocalChatRole::Generate)),
+        "stream" => return Ok(Adapter(OriginalSavedLocalChatRole::Stream)),
+        "side-chat-generate" => return Ok(Adapter(OriginalSavedLocalChatRole::SideChatGenerate)),
+        "side-chat-stream" => return Ok(Adapter(OriginalSavedLocalChatRole::SideChatStream)),
+        "gateway-generate" => (OriginalModelResolveRole::Generate, false),
+        "gateway-stream" => (OriginalModelResolveRole::Stream, false),
+        "gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, false),
+        "gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, false),
+        "side-chat-gateway-generate" => (OriginalModelResolveRole::Generate, true),
+        "side-chat-gateway-stream" => (OriginalModelResolveRole::Stream, true),
+        "side-chat-gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, true),
+        "side-chat-gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, true),
+        _ => return Err(de::Error::custom("unknown Provider Snapshot role")),
+    };
+    Ok(Gateway { role, side_chat })
 }
 
 fn deserialize_conversation_caller<'de, D>(
@@ -3078,7 +3104,21 @@ mod tests {
             list.operation().unwrap(),
             NativeRegistryRequest::ModelList
         ));
+    }
 
+    #[test]
+    fn provider_snapshot_start_decodes_closed_adapter_and_gateway_roles() {
+        use OriginalProviderSnapshotRole::{Adapter, Gateway};
+
+        let assert_role = |name: &str, expected| {
+            let frame = start_frame(&format!(r#", "provider_snapshot":{{"role":"{name}"}}"#));
+            let start = parse_start(START, frame.as_bytes()).unwrap();
+            assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+            assert!(matches!(
+                start.operation().unwrap(),
+                NativeRegistryRequest::ProviderSnapshot { role } if role == expected
+            ));
+        };
         for (name, expected) in [
             ("generate", OriginalSavedLocalChatRole::Generate),
             ("stream", OriginalSavedLocalChatRole::Stream),
@@ -3091,13 +3131,28 @@ mod tests {
                 OriginalSavedLocalChatRole::SideChatStream,
             ),
         ] {
-            let frame = start_frame(&format!(r#", "provider_snapshot":{{"role":"{name}"}}"#));
-            let start = parse_start(START, frame.as_bytes()).unwrap();
-            assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
-            assert!(matches!(
-                start.operation().unwrap(),
-                NativeRegistryRequest::ProviderSnapshot { role } if role == expected
-            ));
+            assert_role(name, Adapter(expected));
+        }
+        for (name, role) in [
+            ("generate", OriginalModelResolveRole::Generate),
+            ("stream", OriginalModelResolveRole::Stream),
+            ("quote-generate", OriginalModelResolveRole::QuoteGenerate),
+            ("quote-stream", OriginalModelResolveRole::QuoteStream),
+        ] {
+            assert_role(
+                &format!("gateway-{name}"),
+                Gateway {
+                    role,
+                    side_chat: false,
+                },
+            );
+            assert_role(
+                &format!("side-chat-gateway-{name}"),
+                Gateway {
+                    role,
+                    side_chat: true,
+                },
+            );
         }
     }
 
@@ -3129,6 +3184,10 @@ mod tests {
             r#", "provider_snapshot":["stream"]"#,
             r#", "provider_snapshot":{}"#,
             r#", "provider_snapshot":{"role":"quote-generate"}"#,
+            r#", "provider_snapshot":{"role":"side-chat-quote-stream"}"#,
+            r#", "provider_snapshot":{"role":"gateway-side-chat-stream"}"#,
+            r#", "provider_snapshot":{"role":{"role":"generate","side_chat":true}}"#,
+            r#", "provider_snapshot":{"role":"gateway-quote-stream","side_chat":true}"#,
             r#", "provider_snapshot":{"role":"stream","role":"generate"}"#,
             r#", "provider_snapshot":{"role":"stream","profile_id":"elsewhere"}"#,
             r#", "provider_snapshot":{"role":"stream"}, "provider_snapshot":{"role":"stream"}"#,
