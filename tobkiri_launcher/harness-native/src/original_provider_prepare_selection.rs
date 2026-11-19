@@ -2873,7 +2873,10 @@ mod tests {
             assert_eq!(caller.caller_function_id(), TURN_SHELL_CALLER);
             assert_eq!(caller.operation_id(), role.caller().operation);
             assert_eq!(presentation.caller_function_id(), caller.function_id());
-            assert_eq!(presentation.operation_id(), "defaultspack.presentation.read");
+            assert_eq!(
+                presentation.operation_id(),
+                "defaultspack.presentation.read"
+            );
             assert_eq!(presentation.execution_kind(), "pack_vm");
             for pin in [&caller, &presentation] {
                 let row = fixture["profile"]["requested_edges"]
@@ -2885,7 +2888,8 @@ mod tests {
                 let mut wrong_caller = fixture.clone();
                 wrong_caller["profile"]["requested_edges"][row]["caller_function_id"] =
                     json!("unrelated.call");
-                wrong_caller["plan"]["bindings"][row]["caller_function_id"] = json!("unrelated.call");
+                wrong_caller["plan"]["bindings"][row]["caller_function_id"] =
+                    json!("unrelated.call");
                 assert!(select(&wrong_caller, role).unwrap().is_none());
                 for unrelated in ApplicationPresentationRole::ALL {
                     if unrelated != role {
@@ -4240,7 +4244,8 @@ mod tests {
     #[test]
     fn side_chat_append_selects_its_own_signed_grants() {
         let fixture = records();
-        let select = |records: &Value| select_append_for(records, ConversationAppendCaller::SideChat);
+        let select =
+            |records: &Value| select_append_for(records, ConversationAppendCaller::SideChat);
         let (side_chat, [turn, orchestration, manage]) = select(&fixture).unwrap().unwrap();
         let side_chat = side_chat.unwrap();
         assert_eq!(side_chat.caller_function_id(), TURN_SHELL_CALLER);
