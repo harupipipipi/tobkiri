@@ -60,8 +60,8 @@ from tests.conformance_support.packaged_profile import (
 from tests.test_workflow_v4_pack_control_integration import (
     _capture_defaultspack_dispatch,
 )
+from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.credential_store import host_credential_store_factory
-from tobkiri_host.models import RequestEnvelope
 from tobkiri_host.ports import InteractiveApprovalDecisionCommand
 from tobkiri_protocol.canonical import canonical_json
 
