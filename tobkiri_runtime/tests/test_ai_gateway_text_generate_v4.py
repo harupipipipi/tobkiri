@@ -318,8 +318,7 @@ def test_text_generate_returns_typed_text_over_the_real_gateway_path() -> None:
         "provider_instance_id": "provider.fixture",
         "text": "canonical provider result",
     }
-    # The credential handle resolved by the registry stays inside the
-    # Gateway boundary and never appears in the typed projection.
+    # Legacy model profile credential metadata stays out of the text response.
     assert "private-handle" not in repr(result)
     canonical_json(result)
 
@@ -374,7 +373,8 @@ def test_text_generate_returns_typed_text_over_the_real_gateway_path() -> None:
         for contract, _, payload in dispatch.calls
         if contract == GENERATE_PROVIDER_CONTRACT
     )
-    assert provider["credential_handle"] == "private-handle"
+    # The adapter takes credentials from the current Provider connection.
+    assert provider["credential_handle"] is None
     assert provider["request_surface"] == "chat"
     assert provider["required_modalities"] == ["text"]
 
