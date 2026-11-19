@@ -4036,6 +4036,28 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   未許可の役割、破損、旧codecの応答も確認した。ここではTauri管理状態と稼働証明をfixtureで
   供給した。固定CPythonのIPC 269件、同梱アーカイブを使う実Conversationストア3件、
   ワークフロー契約16件も通過した。
+  `bfaf5bf92` で、元の `saved_complete` の開始と再開を純粋なRust＋Wasm Packに移植した。
+  既存のJSON続行フレームと最大4 MiB、ユーザー入力3 MiBを維持する。会話の読み取り、追記、
+  ストリーミングとStrategyの選択、ツール呼出順序と定義のpin、保存が不明な時の再照合を
+  同じ状態遷移で判定する。結果のintentはデータであり、実行は元のBrokerの承認とリースを
+  必要とする。サイズ検査だけの箇所は直列化結果のバッファを作らない。
+  元のguest用の `_history` はこの入口から呼ばれず、会話履歴は現在のHostの投影が作る。
+  署名済み旧guestを廃止する際に未使用処理も除去する。既存の追記receipt検証とは、
+  IDや画像の構文検査を共用できる。Strategyのコスト項目と未解決参照の受理条件が違うので、
+  入力validator全体の統合はそれぞれの受理範囲の維持が条件。
+  Rust 18件とstrict Clippy、固定CPython 3.13.16との50ケースのバイト照合が通過した。
+  実Core＋Wasmで同じ50ケースと、最大1 MiBの画像2枚を含む開始、読み取り後の追記、
+  保存応答を照合した。画像の読取り後の段階では約9.40億fuelを使ったため、ゲストの上限を
+  14億とした。Coreの64 MiBとゲストの48 MiBの枠内で実行し、各回の計上が0へ戻ることを確認。
+  Pack作成と検証を通常CLIで行い、元のguestと比較するCIをインストーラー用アーカイブと
+  独立した領域に追加した。ワークフロー契約16件が通過した。
+  元のShell→Saved Turn→Saved Orchestrationの2段だけを物理確認する処理を既存追記と共用した。
+  追記は引き続きMessage Manageの3段目も必須。権限欠損・不正、Calendar呼出元の隔離を含む
+  選択試験23件と、分離環境でのLauncher関連ソースの型検査が通過した。
+  InstallされたLauncherからこのPackを呼ぶ経路は後続。現行のBrokerは同じSaved principalを
+  通常送信とCalendarで使い、物理backendの証跡をprincipal単位で保持する。
+  元の論理経路と承認を保ったまま、VMの割当て前に実際のWasm実行境界を選び、各続行で
+  元のHostのpreflightと子dispatch、完了ダイジェスト、取消を保持する必要がある。
   Pack 11件、旧保存領域18件、実Core＋Wasm 3件、元のSetupでの権限照合1件が通過。
   IPC 66件、実WasmとLauncherワーカーの分離検証35件、元の署名済みHTTPの会話読み取り・
   保存ターンとモデル設定の回帰が通過。HTTPのLauncher応答と、分離検証のTauriサービスは
