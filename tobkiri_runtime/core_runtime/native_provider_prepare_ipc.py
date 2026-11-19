@@ -45,6 +45,7 @@ _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
 _CONVERSATION_COMPLETE_ENV = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
+_PROVIDER_SNAPSHOT_ENV = "TOBKIRI_NATIVE_PROVIDER_SNAPSHOT"
 _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
 _AI_STREAM_RESULT_ENV = "TOBKIRI_NATIVE_AI_STREAM_RESULT"
 _AI_USAGE_COST_ENV = "TOBKIRI_NATIVE_AI_USAGE_COST"
@@ -93,6 +94,7 @@ _APPLICATION_PRESENTATION_INPUT_LIMIT = 128 * 1024
 CONVERSATION_COMPLETE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 _CONVERSATION_COMPLETE_INPUT_LIMITS = {"prepare": 1024 * 1024, "finish": 512 * 1024}
 SAVED_LOCAL_CHAT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+PROVIDER_SNAPSHOT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_LOCAL_CHAT_MAX_INPUT_BYTES = 1024 * 1024
 SAVED_LOCAL_CHAT_MAX_RESULT_BYTES = 4 * 1024 * 1024
 _AI_ROUTING_LIMIT = 1024 * 1024
@@ -478,6 +480,17 @@ _SAVED_LOCAL_CHAT_ROLES = ("generate", "stream", *_SIDE_CHAT_LOCAL_ROLES)
 
 
 @dataclass(frozen=True)
+class NativeProviderSnapshotRequest:
+    """Borrow the live Adapter-owned Registry GET from the original Broker."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    role: SavedLocalChatRole
+
+
+@dataclass(frozen=True)
 class NativeSavedLocalChatRequest:
     """Borrow the saved invocation, local chat input, and live dispatch guard."""
 
@@ -561,6 +574,7 @@ class NativeAiRoutingRequest:
 
 _NativeBorrow = (
     NativeProviderPrepareBorrow
+    | NativeProviderSnapshotRequest
     | NativeModelSettingsRequest
     | NativeModelSaveRequest
     | NativeConversationGetRequest
@@ -577,7 +591,7 @@ _NativeBorrow = (
     | NativeAiRoutingRequest
 )
 _NativeOperation = Literal[
-    "provider_prepare", "model_list", "model_save", "conversation_get",
+    "provider_prepare", "provider_snapshot", "model_list", "model_save", "conversation_get",
     "conversation_receipt", "model_resolve", "turn_start", "turn_settlement",
     "conversation_confirmation", "conversation_append", "saved_orchestration", "ai_route",
     "application_presentation", "conversation_complete",
@@ -685,6 +699,18 @@ def capture_launcher_provider_prepare_planner() -> NativeProviderPreparePlanner 
     return NativeProviderPreparePlanner(
         MINIMUM_PREPARE_MEMORY, partial(_invoke, launcher, operation="provider_prepare"),
     )
+
+
+def capture_launcher_provider_snapshot_reader() -> (
+    Callable[[NativeProviderSnapshotRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed endpoint's exact Provider owner read capability."""
+    if os.environ.get(_PROVIDER_SNAPSHOT_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="provider_snapshot")
 
 
 def capture_launcher_model_settings_reader() -> (
@@ -1039,7 +1065,11 @@ def _start_payload(
         "runtime_instance": runtime_instance,
         "deadline_ns": deadline_ns,
     }
-    if isinstance(borrow, NativeModelSettingsRequest):
+    if isinstance(borrow, NativeProviderSnapshotRequest):
+        if borrow.role not in _SAVED_LOCAL_CHAT_ROLES:
+            raise _ProtocolError("native Provider snapshot role is invalid")
+        frame["provider_snapshot"] = {"role": borrow.role}
+    elif isinstance(borrow, NativeModelSettingsRequest):
         frame["model_list"] = {}
     elif isinstance(borrow, NativeModelSaveRequest):
         if not isinstance(borrow.request, Mapping) or not isinstance(
@@ -1864,6 +1894,21 @@ def _decode_ai_tool_intents(
     return result
 
 
+def _decode_provider_snapshot(payload: bytes, profile_id: str) -> dict[str, Any]:
+    invalid = "native Provider snapshot result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or result.keys() != {"version", "profile_id", "revision", "providers"}
+        or result["version"] != "rumi.provider-registry.store.v1"
+        or result["profile_id"] != profile_id
+        or type(result["providers"]) is not list
+        or any(type(record) is not dict for record in result["providers"])
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
 def _decode_conversation_get(payload: bytes) -> dict[str, Any]:
     invalid = "native Conversation GET owner result is invalid"
     result = _decode_owner_result(payload, invalid)
@@ -2426,6 +2471,8 @@ class _Exchange:
                     )
                 elif isinstance(borrow, NativeModelResolveRequest):
                     plan = _decode_model_resolve(payload, borrow.identifier)
+                elif isinstance(borrow, NativeProviderSnapshotRequest):
+                    plan = _decode_provider_snapshot(payload, borrow.context.profile_id)
                 elif isinstance(borrow, NativeModelSaveRequest):
                     plan = _decode_model_save(payload)
                 elif isinstance(borrow, NativeAiRoutingRequest):
@@ -2609,6 +2656,7 @@ def _invoke(
     operation: _NativeOperation | Literal["turn_read"],
 ) -> dict[str, Any] | None:
     model_settings = isinstance(borrow, NativeModelSettingsRequest)
+    provider_snapshot = isinstance(borrow, NativeProviderSnapshotRequest)
     model_save = isinstance(borrow, NativeModelSaveRequest)
     conversation_get = isinstance(borrow, NativeConversationGetRequest)
     conversation_append = isinstance(borrow, NativeConversationAppendRequest)
@@ -2624,6 +2672,7 @@ def _invoke(
     ai_routing = isinstance(borrow, NativeAiRoutingRequest)
     if (
         model_settings != (operation == "model_list")
+        or provider_snapshot != (operation == "provider_snapshot")
         or model_save != (operation == "model_save")
         or conversation_get != (operation == "conversation_get")
         or conversation_append != (operation == "conversation_append")
@@ -2665,7 +2714,7 @@ def _invoke(
         elif ai_routing:
             plan_limit = _AI_ROUTING_LIMIT
         elif (
-            model_settings or model_save or conversation_get
+            model_settings or model_save or conversation_get or provider_snapshot
             or saved_receipt or model_resolve or turn_read or turn_settlement
             or conversation_append
             or application_presentation

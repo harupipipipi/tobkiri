@@ -10135,6 +10135,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     adapter_calls: list[RequestEnvelope] = []
     adapter_results: list[Mapping[str, object]] = []
     registry_reads: list[tuple[RequestEnvelope, Mapping[str, object]]] = []
+    registry_dispatches: list[RequestEnvelope] = []
+    native_snapshot_reads: list[ipc.NativeProviderSnapshotRequest] = []
     native_calls: list[ipc.NativeSavedLocalChatRequest] = []
     permitted_posts: list[bytes] = []
     fixture_failures: list[AssertionError] = []
@@ -10165,6 +10167,30 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         if role == "generate" and request.role == "quote-stream":
             raise ipc.NativeModelResolveFailure("not-found")
         raise ipc.NativeProviderPrepareUnavailable()
+
+    def read_snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, object]:
+        try:
+            owner = registry_dispatches[-1]
+            adapter, = adapter_calls
+            assert request.context is owner.context
+            assert request.runtime_instance == server._native_provider_prepare_instance
+            assert request.deadline_monotonic == owner.deadline_monotonic
+            assert owner.deadline_monotonic <= adapter.deadline_monotonic
+            assert owner.context.caller_principal == adapter.target_principal
+            assert request.role == f"side-chat-{role}"
+            assert owner.lease.token != adapter.lease.token
+            assert owner.resource_reservation_id != adapter.resource_reservation_id
+            for envelope in (adapter, owner):
+                _, state = authority.inspect_lease_token(envelope.lease.token.decode("ascii"))
+                assert state is LeaseState.DISPATCHED
+            request.assert_current()
+            native_snapshot_reads.append(request)
+        except AssertionError as error:
+            fixture_failures.append(error)
+            raise
+        if outcome == "legacy-denied":
+            raise ipc.NativeProviderRegistryRequiresLegacyRead()
+        return providers.snapshot()
 
     def checked_execute(
         request: ipc.NativeSavedLocalChatRequest,
@@ -10288,6 +10314,10 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     monkeypatch.setattr(
         ipc, "capture_launcher_saved_local_chat_executor", lambda: execute,
     )
+    if side_chat:
+        monkeypatch.setattr(
+            ipc, "capture_launcher_provider_snapshot_reader", lambda: read_snapshot,
+        )
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch,
         packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
@@ -10331,6 +10361,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             }
             if adapter:
                 adapter_calls.append(envelope)
+            if envelope.contract_id == "tobkiri.resource.ai.provider.registry.v1":
+                registry_dispatches.append(envelope)
             value = dispatch(backend, envelope, *args, **kwargs)
             if adapter:
                 adapter_results.append(value)
@@ -10404,6 +10436,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             adapter_calls.clear()
             adapter_results.clear()
             registry_reads.clear()
+            registry_dispatches.clear()
+            native_snapshot_reads.clear()
             native_calls.clear()
             permitted_posts.clear()
             turn_id = f"{role}-{outcome}"
@@ -10438,6 +10472,11 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                 status, result = post(turn)
             if fixture_failures:
                 raise fixture_failures[0]
+            if side_chat:
+                snapshot, = native_snapshot_reads
+                assert snapshot.context is registry_reads[-1][0].context
+                with pytest.raises((AuthorityDenied, PermissionError)):
+                    snapshot.assert_current()
             expected_native_calls = 2 if outcome == "legacy-denied" else 1
             assert len(native_calls) == expected_native_calls, result
             assert len(adapter_calls) == 1, result

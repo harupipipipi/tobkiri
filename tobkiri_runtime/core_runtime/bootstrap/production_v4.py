@@ -1933,6 +1933,7 @@ def capture_production_dispatch(
         CONVERSATION_GET_MAX_ID_CHARS,
         CONVERSATION_GET_MINIMUM_MEMORY,
         MODEL_RESOLVE_MINIMUM_MEMORY,
+        PROVIDER_SNAPSHOT_MINIMUM_MEMORY,
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
         SAVED_ORCHESTRATION_MINIMUM_MEMORY,
@@ -1966,6 +1967,7 @@ def capture_production_dispatch(
         NativeModelSaveRequest,
         NativeModelSettingsRequest,
         NativeProviderPrepareUnavailable,
+        NativeProviderSnapshotRequest,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
         NativeSavedOrchestrationRequest,
@@ -1998,6 +2000,7 @@ def capture_production_dispatch(
         capture_launcher_model_save_writer,
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
+        capture_launcher_provider_snapshot_reader,
         capture_launcher_saved_receipt_reader,
         capture_launcher_saved_orchestration_step,
         capture_launcher_saved_local_chat_executor,
@@ -2020,6 +2023,7 @@ def capture_production_dispatch(
     if launcher_provider_prepare:
         native_provider_prepare_planner = capture_launcher_provider_prepare_planner()
     native_model_settings_reader = capture_launcher_model_settings_reader()
+    native_provider_snapshot_reader = capture_launcher_provider_snapshot_reader()
     native_model_save_writer = capture_launcher_model_save_writer()
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
     linked_parent_reads = (
@@ -5203,6 +5207,96 @@ def capture_production_dispatch(
             and (envelope.contract_id, envelope.operation_id) == edge.binding_key[1:]
         )
 
+    def native_provider_snapshot_source(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+    ) -> tuple[_SavedLocalChatRoute, CapturedInvocationScopeV4] | None:
+        if native_provider_runtime is None or (
+            set(payload) - {"_session_id"} != {"profile_id"}
+            or payload.get("profile_id") != context.profile_id
+        ):
+            return None
+        parent = parent_invocation_scopes.lookup(context.caller_session_id)
+        if parent is None:
+            return None
+        adapter = parent.envelope
+        if (
+            adapter.target_principal != context.caller_principal
+            or adapter.context.profile_id != context.profile_id
+        ):
+            return None
+        route = saved_local_chat_lineage(adapter.context, adapter.payload, parent.parent)
+        if route is None or not matches_captured_edge(adapter, route.adapter):
+            return None
+        return route, parent
+
+    def wrap_native_provider_snapshot(
+        contribution: HostProviderContributionV4,
+        reader: Callable[[NativeProviderSnapshotRequest], Mapping[str, Any]],
+    ) -> HostProviderContributionV4:
+        """Use Wasm for the Adapter's independently admitted raw Registry GET."""
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native Provider snapshot context is unavailable")
+            envelope = invocation.envelope
+            context = envelope.context
+            source = native_provider_snapshot_source(context, payload)
+            if source is None:
+                return contribution.invoke(operation_id, payload, invocation)
+            route, parent = source
+            pinned = native_provider_runtime
+            if (
+                pinned is None
+                or not matches_captured_edge(envelope, route.registry)
+                or envelope.operation_id != operation_id
+                or payload is not envelope.payload
+                or invocation.parent_invocation is not parent
+                or envelope.lease.token == parent.envelope.lease.token
+                or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
+                or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
+            ):
+                raise AuthorityDenied("native Provider snapshot lineage changed")
+
+            def guard() -> None:
+                invocation.assert_current()
+                if (
+                    native_provider_runtime is not pinned
+                    or parent_invocation_scopes.lookup(context.caller_session_id) is not parent
+                ):
+                    raise AuthorityDenied("native Provider snapshot capture changed")
+                pinned[1]()
+                production_admission.native_resources(envelope.resource_reservation_id)
+
+            guard()
+            resources = production_admission.native_resources(envelope.resource_reservation_id)
+            if resources.memory_bytes >= PROVIDER_SNAPSHOT_MINIMUM_MEMORY:
+                try:
+                    result = reader(NativeProviderSnapshotRequest(
+                        context=context,
+                        runtime_instance=pinned[0],
+                        deadline_monotonic=envelope.deadline_monotonic,
+                        assert_current=guard,
+                        role=route.role,
+                    ))
+                except (
+                    NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
+                ):
+                    pass
+                else:
+                    guard()
+                    return result
+                guard()
+            result = contribution.invoke(operation_id, payload, invocation)
+            guard()
+            return result
+
+        return replace(contribution, invoke=invoke)
+
     signed_saved_parents = tuple(
         edge for edge in captured_edges
         if ordinary_turn_edge is not None
@@ -7519,6 +7613,9 @@ def capture_production_dispatch(
     native_execute_key: tuple[str, str, str] | None = None
     native_model_settings_key: tuple[str, str, str] | None = None
     native_model_save_key: tuple[str, str, str] | None = None
+    native_provider_snapshot_bindings: dict[
+        tuple[str, str, str], ResolvedOperationBinding
+    ] = {}
     native_conversation_get_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
@@ -7696,6 +7793,20 @@ def capture_production_dispatch(
                 if item.key in resolve_bindings else item
                 for item in contributions
             )
+        if native_provider_snapshot_reader is not None:
+            snapshot_bindings = {
+                (*route.registry.binding_key[1:], route.registry.target.principal_id):
+                route.registry.resolved_binding
+                for routes in saved_local_chat_routes.values()
+                for route in routes
+                if route.registry.resolved_binding in captured_bindings
+            }
+            native_provider_snapshot_bindings.update(snapshot_bindings)
+            contributions = tuple(
+                wrap_native_provider_snapshot(item, native_provider_snapshot_reader)
+                if item.key in snapshot_bindings else item
+                for item in contributions
+            )
         for kind, evaluator in (
             ("AI routing", native_ai_routing_evaluator),
             ("AI stream normalization", native_ai_stream_result_normalizer),
@@ -7870,6 +7981,7 @@ def capture_production_dispatch(
                         native_saved_append_key,
                         native_saved_turn_start_key,
                     } or item.key in native_conversation_get_bindings
+                    or item.key in native_provider_snapshot_bindings
                     or item.key in native_saved_receipt_bindings
                     or item.key in native_model_resolve_bindings
                     or item.key in native_ai_routing_bindings
@@ -8001,6 +8113,14 @@ def capture_production_dispatch(
         )
         for binding in native_conversation_get_bindings.values()
     ]
+    native_admission_rules.extend(
+        (
+            binding,
+            PROVIDER_SNAPSHOT_MINIMUM_MEMORY,
+            lambda context, payload: native_provider_snapshot_source(context, payload) is not None,
+        )
+        for binding in native_provider_snapshot_bindings.values()
+    )
     native_admission_rules.extend(
         (binding, SAVED_RECEIPT_MINIMUM_MEMORY, is_native_saved_receipt_route)
         for binding in native_saved_receipt_bindings.values()

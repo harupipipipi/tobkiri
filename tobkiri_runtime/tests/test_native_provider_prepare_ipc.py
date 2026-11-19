@@ -1995,6 +1995,82 @@ with socket.socket(socket.AF_UNIX) as listener:
                     server.kill()
 
 
+@pytest.mark.parametrize("role", ipc._SAVED_LOCAL_CHAT_ROLES)
+def test_provider_snapshot_receives_the_original_adapter_owner_reply(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.SavedLocalChatRole,
+) -> None:
+    borrow = _Borrow()
+    request = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
+        borrow.assert_current, role,
+    )
+    expected = {
+        "version": "rumi.provider-registry.store.v1",
+        "profile_id": borrow.context.profile_id,
+        "revision": 1 << 140,
+        "providers": [{"metadata": {"weight": 0.25, "note": "接続" * 6000}}],
+    }
+
+    def serve(peer: socket.socket) -> None:
+        tag, frame = _receive(peer)
+        assert tag == 1
+        assert json.loads(frame)["provider_snapshot"] == {"role": role}
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, json.dumps(expected, ensure_ascii=False).encode())
+        assert peer.recv(1) == b""
+
+    monkeypatch.delenv(ipc._PROVIDER_SNAPSHOT_ENV, raising=False)
+    with _served(monkeypatch, serve):
+        assert ipc.capture_launcher_provider_snapshot_reader() is None
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "1")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None
+        assert reader(request) == expected
+
+
+@pytest.mark.parametrize(
+    ("live", "tag", "response", "error"),
+    [
+        (False, 10, b"", ipc.NativeProviderPrepareUnavailable),
+        (False, 8, b"legacy-read-required", ipc._ProtocolError),
+        (True, 8, b"legacy-read-required", ipc.NativeProviderRegistryRequiresLegacyRead),
+        (True, 8, b"denied", ipc._ProtocolError),
+        (True, 7, b'{"version":"rumi.provider-registry.store.v1","profile_id":"other",'
+         b'"revision":0,"providers":[]}', ipc._ProtocolError),
+    ],
+)
+def test_provider_snapshot_only_falls_back_on_authenticated_compatibility(
+    monkeypatch: pytest.MonkeyPatch, live: bool, tag: int, response: bytes,
+    error: type[RuntimeError],
+) -> None:
+    borrow = _Borrow()
+    request = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
+        borrow.assert_current, "side-chat-stream",
+    )
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, tag, response)
+        if tag == 7:
+            assert _receive(peer) == (9, b"")
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "1")
+    with _served(monkeypatch, serve):
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None
+        with pytest.raises(error) as failure:
+            reader(request)
+        if tag == 7:
+            assert str(failure.value) == "native Provider snapshot result is invalid"
+
+
 def _conversation_get_request(
     borrow: _Borrow, caller: ipc.ConversationGetCaller = "shell",
 ) -> ipc.NativeConversationGetRequest:
