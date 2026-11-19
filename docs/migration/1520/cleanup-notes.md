@@ -5828,3 +5828,39 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 同じ署名済みHTTPの要求をmacOSの実Unixソケットとv7の実Wasmまで通した。2段階の出力を
   Python原本と比較し、Gatewayの呼出し数と権限失効後の拒否を確認した。Appハンドル、配布物の
   resolver、Gatewayの応答はfixtureを使用した。インストールしたDMGのGUI経由の検証は未了。
+
+## 048: Side Chatの署名済みメッセージ追記
+
+- `b44103aa5` と `818682b58` は Side Chat の送信から保存ターンのメッセージ追記まで、
+  Shell → Side Chat → Turn → Saved Orchestration → Message Manage の元の署名経路を
+  保持して既存のWasm追記を選ぶ。通常チャットとは別にLauncherが起動証明を持ち、両経路の
+  証明はそれぞれの呼出しにだけ使う。現在の親のリース、期限、Profile、会話・turnのIDと、
+  追記自身の容量予約を照合してから、元の会話ストアのロック下で書き込む。
+- IPCは以前の要求形式を通常チャットとして扱う。Side Chatの要求には呼出し元を明示し、
+  Launcherが保存前に署名済みPackと実行カタログを再検証する。元の保存形式、親子会話の
+  照合、保存結果が不明なときの再実行禁止を維持する。署名経路の選択、IPC 54件、Launcher
+  ジョブ28件と、Pythonの追記IPC 41件、Tauriテストの型検査が通過した。
+- `e59696a33` のクリーンなmacOS試験で、同じ署名済みHTTP要求を実Launcherソケット、
+  v7レシートのWasmオーケストレーションとWasm追記まで通した。ユーザー文とassistant文を
+  既存の子会話へ保存し、親は維持された。再照合後の会話が一致し、推論は1回だった。
+  Appハンドル、resolver、推論応答はfixtureを使った。Turn開始、確認、配布DMGとGUIへの
+  置換完了はこの試験の対象外。
+- `message_host.py` の従来書込みを整理するには、Side Chatの原本互換と通常チャットの
+  追記の置換に加え、別の呼出し元および保存前にネイティブ側が受付不能になる場合の扱いも
+  製品経路で確認する必要がある。Side Chatの開始、推論、確認の各Portは独立して比較する。
+
+## 049: Launcherから製品Pythonを外す際の接続点
+
+- macOSのLaunchボタンは、初期状態でPackVMが未準備でも利用できる。通常起動の判定は
+  認証済みループバックの `/health` と、現在のProfileでの会話・表示Portの検証で行う。
+  既存Setupは選択画面の前にDoctorの応答を要求する。実機でゲストを作らずにこの経路を
+  通し、配布物・署名済み設定・承認ウィンドウを保った状態で確認する。
+- `kernel_manager.rs` の管理対象Kernelと、`dock_registration.rs` の選択済みデスクトップ
+  listenerは別のsealed Pythonプロセス。後者がHTTP、パネルの認証、署名済みSessionを
+  所有する。Wasmに移した操作もこのSessionから呼ばれる。既存Launcherの
+  `NativeRuntimeState::adopt_core` へ実ProfileのSession・起動時の現在性と認証済み
+  Shellへの引き渡しを結び付け、元のUIと接続後に両プロセスを整理する。
+- 現在のsealed Python起動がmacOS配布物内のPackVMマニフェストも照合するため、
+  ゲストが未準備の配布物での起動と、PackVMを含まない配布物での起動は別の検証になる。
+  `spawn_defaultspack_local_server` 付近の古いpack-shell表記も、実際の永続プロセス所有と
+  揃える。配布ファイルの削除前にPythonの依存を外した同じLauncherの起動を確認する。
