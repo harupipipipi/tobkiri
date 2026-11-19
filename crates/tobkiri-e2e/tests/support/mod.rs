@@ -7,6 +7,7 @@ pub(crate) mod shared_modules;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::{
+    borrow::Cow,
     collections::{BTreeSet, VecDeque},
     future::Future,
     path::{Path, PathBuf},
@@ -33,6 +34,25 @@ pub fn repo() -> PathBuf {
         .nth(2)
         .unwrap()
         .to_path_buf()
+}
+
+/// Select the isolated tree for the immutable inputs to the historical Python
+/// replays. Callers still verify every byte against the original receipts.
+pub fn preserved_source_root<'a>(repo: &'a Path, relative: &str) -> Result<Cow<'a, Path>> {
+    if matches!(
+        relative,
+        "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+            | "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+            | "tobkiri_runtime/core_runtime/global_contract_dispatch.py"
+            | "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py"
+            | "tobkiri_runtime/tobkiri_host/broker.py"
+    ) && let Some(root) = std::env::var_os("TOBKIRI_TEST_PRESERVED_SOURCE")
+    {
+        let root = PathBuf::from(root);
+        anyhow::ensure!(root.is_absolute(), "absolute frozen source root required");
+        return Ok(Cow::Owned(root));
+    }
+    Ok(Cow::Borrowed(repo))
 }
 pub fn canon(value: &serde_json::Value) -> Result<CanonValue> {
     Ok(tobkiri_canon::parse(

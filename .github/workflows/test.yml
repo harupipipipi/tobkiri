@@ -45,10 +45,12 @@ jobs:
         id: root_pytest
         run: |
           if [ "${{ matrix.python-version }}" = "3.11" ]; then
+            git fetch --no-tags --depth=1 origin 42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8
+            git fetch --no-tags --depth=1 origin 0e87a8e1a6dfc13e86482af9db48c6011494020b
             python scripts/quality/compact_test_runner.py \
               --log-dir "$RUNNER_TEMP" \
               --log-file "root-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-py${{ matrix.python-version }}.log" \
-              -- pytest tests/ -v
+              -- python -B tools/quality/run_root_pytest.py -v
           else
             python scripts/quality/compact_test_runner.py \
               --log-dir "$RUNNER_TEMP" \

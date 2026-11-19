@@ -11,7 +11,7 @@ health:
 # Run root-level contract tests.
 root-test *args:
     python -c "from pathlib import Path; Path('.test-logs').mkdir(exist_ok=True)"
-    python scripts/quality/compact_test_runner.py --log-dir .test-logs --log-file "root-test-{run}.log" -- pytest tests/ {{args}}
+    python scripts/quality/compact_test_runner.py --log-dir .test-logs --log-file "root-test-{run}.log" -- python -B tools/quality/run_root_pytest.py {{args}}
 
 # Run tobkiri_runtime tests. Pass pytest selectors after the recipe name.
 test *args:

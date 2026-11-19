@@ -49,9 +49,10 @@ jobs:
           python3 -B tools/component-unbundle/test_materialize.py
           cargo fmt --manifest-path tools/component-unbundle/Cargo.toml -- --check
           cargo test --locked --manifest-path tools/component-unbundle/Cargo.toml
-      - name: Stage immutable Profile inputs for the preserved transport tests
+      - name: Stage immutable Profile and Gateway inputs for the preserved transport tests
         run: |
           git fetch --no-tags --depth=1 origin 42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8
+          git fetch --no-tags --depth=1 origin 0e87a8e1a6dfc13e86482af9db48c6011494020b
           python3 -B tools/quality/stage_1520_preserved_source.py \
             --output "$RUNNER_TEMP/issue-1520-preserved-source"
       - name: Preserved ordered Python component transport regression
@@ -370,12 +371,13 @@ jobs:
         with:
           targets: wasm32-wasip2
           components: rustfmt, clippy
-      - name: Stage immutable Profile inputs for native replay
+      - name: Stage immutable Profile and Gateway inputs for native replay
         run: |
           git fetch --no-tags --depth=1 origin 42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8
+          git fetch --no-tags --depth=1 origin 0e87a8e1a6dfc13e86482af9db48c6011494020b
           preserved="$RUNNER_TEMP/issue-1520-preserved-source"
           python3 -B tools/quality/stage_1520_preserved_source.py --output "$preserved"
-          printf 'TOBKIRI_TEST_PRESERVED_PROFILE_SOURCE=%s\n' "$preserved" >> "$GITHUB_ENV"
+          printf 'TOBKIRI_TEST_PRESERVED_SOURCE=%s\n' "$preserved" >> "$GITHUB_ENV"
       - name: Build typed Wasm test guests
         run: cargo build --manifest-path crates/test-guests/Cargo.toml --workspace --locked --target wasm32-wasip2
       - name: Build and bind real Pack fixtures

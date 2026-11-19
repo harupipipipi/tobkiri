@@ -179,8 +179,9 @@ pub fn checked(root: &Path, record: &Value) -> Result<Vec<u8>> {
 fn source_manifest(repo: &Path, records: &Value) -> Result<String> {
     let mut rows = BTreeMap::new();
     for record in records.as_array().context("source bindings missing")? {
-        checked(repo, record)?;
         let path = text(record, "path")?;
+        let root = crate::support::preserved_source_root(repo, path)?;
+        checked(&root, record)?;
         ensure!(
             path.is_ascii(),
             "source manifest expects canonical ASCII paths"

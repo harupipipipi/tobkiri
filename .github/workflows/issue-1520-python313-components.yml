@@ -34,9 +34,10 @@ jobs:
         with:
           python-version: '3.13'
       - uses: dtolnay/rust-toolchain@1.94.0
-      - name: Stage immutable Profile inputs for the five preserved components
+      - name: Stage immutable Profile and Gateway inputs for the five preserved components
         run: |
           git fetch --no-tags --depth=1 origin 42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8
+          git fetch --no-tags --depth=1 origin 0e87a8e1a6dfc13e86482af9db48c6011494020b
           python3 -B tools/quality/stage_1520_preserved_source.py \
             --output "$RUNNER_TEMP/issue-1520-preserved-source"
       - name: Check original source and artifact boundaries
