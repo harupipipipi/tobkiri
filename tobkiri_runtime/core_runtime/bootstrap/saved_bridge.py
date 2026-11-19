@@ -59,6 +59,7 @@ from tobkiri_host.models import RequestContext
 
 from ..authority.v4 import AuthorityDenied
 from ..native_provider_prepare_ipc import (
+    LinkedConversationMode,
     NativeConversationGetRequest,
     NativeConversationLinkedParent,
     NativeProviderRegistryRequiresLegacyRead,
@@ -74,7 +75,10 @@ _WORKSPACE_PIN: ContextVar[SavedWorkspacePins | None] = ContextVar(
 class _LinkedParentRead:
     """Share one optional child/parent hint with copied Broker contexts."""
 
-    def __init__(self, outer: object, child_id: str, parent_id: str) -> None:
+    def __init__(
+        self, outer: object, child_id: str, parent_id: str, *,
+        nonce: str | None = None, rechecking: bool = False,
+    ) -> None:
         self._outer = outer
         self._context = getattr(outer, "context", None)
         self._profile_id = getattr(self._context, "profile_id", None)
@@ -82,10 +86,18 @@ class _LinkedParentRead:
         self._deadline = getattr(outer, "deadline_monotonic", None)
         self._cancelled = getattr(outer, "cancellation_requested", None)
         self._parent_id = parent_id
-        self._nonce = secrets.token_hex(16)
+        self._nonce = nonce if nonce is not None else secrets.token_hex(16)
+        self._parent_mode: LinkedConversationMode = "recheck-parent" if rechecking else "reuse"
+        child_mode: LinkedConversationMode
+        if rechecking:
+            child_mode = "recheck-child"
+        elif nonce is not None:
+            child_mode = "retain-for-recheck"
+        else:
+            child_mode = "retain"
         self._pending_id = child_id
         self._next: NativeConversationLinkedParent | None = (
-            NativeConversationLinkedParent("retain", self._nonce)
+            NativeConversationLinkedParent(child_mode, self._nonce)
         )
         self._dispatch_session: str | None = None
         self._retained = False
@@ -162,12 +174,12 @@ class _LinkedParentRead:
         try:
             result = reader(replace(borrow, linked_parent=linked, assert_current=guard))
         except NativeProviderRegistryRequiresLegacyRead:
-            if linked.mode != "retain":
+            if linked.mode not in ("retain", "retain-for-recheck"):
                 raise
             # A retain-specific miss can retry the original native GET once.
             guard()
             return reader(borrow)
-        if linked.mode == "retain":
+        if linked.mode in ("retain", "retain-for-recheck", "recheck-child"):
             with self._lock:
                 self._retained = self._active()
         return result
@@ -185,7 +197,7 @@ class _LinkedParentRead:
                 return  # The ordinary resolution below reports the invalid link.
             if link is not None and link["parent_conversation_id"] == self._parent_id:
                 self._pending_id = self._parent_id
-                self._next = NativeConversationLinkedParent("reuse", self._nonce)
+                self._next = NativeConversationLinkedParent(self._parent_mode, self._nonce)
 
     def close(self) -> None:
         with self._lock:
@@ -200,7 +212,8 @@ _LINKED_PARENT_READ: ContextVar[_LinkedParentRead | None] = ContextVar(
 
 
 def _new_linked_parent_read(
-    outer: object, request: Mapping[str, Any],
+    outer: object, request: Mapping[str, Any], *,
+    nonce: str | None, rechecking: bool,
 ) -> _LinkedParentRead | None:
     child_id = request["conversation_id"]
     if not is_native_linked_conversation_identifier(child_id):
@@ -216,14 +229,18 @@ def _new_linked_parent_read(
         or parent_id == child_id
     ):
         return None
-    return _LinkedParentRead(outer, child_id, parent_id)
+    return _LinkedParentRead(outer, child_id, parent_id, nonce=nonce, rechecking=rechecking)
 
 
 @contextmanager
 def _linked_parent_scope(
     outer: object, request: Mapping[str, Any], *, enabled: bool,
+    nonce: str | None = None, rechecking: bool = False,
 ) -> Iterator[_LinkedParentRead | None]:
-    scope = _new_linked_parent_read(outer, request) if enabled else None
+    scope = (
+        _new_linked_parent_read(outer, request, nonce=nonce, rechecking=rechecking)
+        if enabled else None
+    )
     # Mask an enclosing read during a separate nested _conversation call.
     if scope is None and _LINKED_PARENT_READ.get() is None:
         yield None
@@ -508,6 +525,7 @@ class SavedBridgeCallbacks:
         selected_workspace: Callable[[], Mapping[str, Any]] | None = None,
         borrow_saved_context: Callable[[object], AbstractContextManager[Any]] | None = None,
         linked_parent_reads: bool = False,
+        linked_parent_rechecks: bool = False,
     ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
@@ -516,6 +534,7 @@ class SavedBridgeCallbacks:
         self._selected_workspace = selected_workspace
         self._borrow_saved_context = borrow_saved_context
         self._linked_parent_reads = linked_parent_reads
+        self._linked_parent_rechecks = linked_parent_rechecks
 
     def _stream_ready(
         self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
@@ -550,9 +569,12 @@ class SavedBridgeCallbacks:
     def _conversation(
         self, outer: object, request: Mapping[str, Any], *,
         effect_snapshot: Mapping[str, Any] | None = None,
+        linked_nonce: str | None = None,
+        rechecking: bool = False,
     ) -> Mapping[str, Any]:
         with _linked_parent_scope(
             outer, request, enabled=self._linked_parent_reads,
+            nonce=linked_nonce, rechecking=rechecking,
         ) as scope:
             conversation = self._read_conversation(outer, request["conversation_id"])
             try:
@@ -625,13 +647,16 @@ class SavedBridgeCallbacks:
 
     def _recheck_linked_context(
         self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+        *, linked_nonce: str | None = None,
     ) -> Mapping[str, Any]:
         """Adopt the last owner snapshot immediately before effect admission."""
         if (context_link(conversation) is None
                 and workspace_resolution(conversation) is None
                 and owned_context_resolution(conversation) is None):
             return conversation
-        fresh = self._conversation(outer, request)
+        fresh = self._conversation(
+            outer, request, linked_nonce=linked_nonce, rechecking=linked_nonce is not None,
+        )
         try:
             recheck_saved_workspace(conversation, fresh)
         except ValueError as error:
@@ -1002,12 +1027,21 @@ class SavedBridgeCallbacks:
                 key: value for key, value in payload.items() if key != "system_prompt_digest"
             }
         elif stage == "ai":
-            conversation = self._conversation(outer, request)
+            strategy_reference = request.get("strategy_reference")
+            linked_nonce = (
+                secrets.token_hex(16)
+                if self._linked_parent_rechecks
+                and request.get("context_binding") is not None
+                and request.get("tool_selection", {}).get("mode", "none") == "none"
+                and strategy_reference is None
+                and owner_revision is not None and owner_current_node_id is not None
+                else None
+            )
+            conversation = self._conversation(outer, request, linked_nonce=linked_nonce)
             self._require_acknowledged_branch(
                 conversation, owner_revision, owner_current_node_id
             )
             prompt = self._system_prompt(outer, conversation)
-            strategy_reference = request.get("strategy_reference")
             provider_payload = payload
             if strategy_reference is not None:
                 if (
@@ -1039,15 +1073,16 @@ class SavedBridgeCallbacks:
                 raise AuthorityDenied("saved bridge AI input differs from the owner")
             selected = self._tools(outer, request)
             self._check_history_capacity(conversation, request, prompt, append_user=False)
+            timing_context = selected_timing_context(
+                outer, conversation, dispatch=self._dispatch,
+                read_owner=lambda: self._read_conversation(outer, conversation["id"]),
+            )
             arguments = _generation_arguments(
                 outer, request, conversation,
                 messages=[
                     *_messages(
                         conversation, system_prompt=prompt,
-                        timing_context=selected_timing_context(
-                            outer, conversation, dispatch=self._dispatch,
-                            read_owner=lambda: self._read_conversation(outer, conversation["id"]),
-                        ),
+                        timing_context=timing_context,
                     ),
                     *saved_task_context_messages(request),
                     *saved_chat_reference_messages(request),
@@ -1063,7 +1098,15 @@ class SavedBridgeCallbacks:
                 if strategy_reference is not None
                 else arguments
             )
-            conversation = self._recheck_linked_context(outer, request, conversation)
+            if linked_nonce is not None and (
+                prompt is not None or timing_context[0]
+                or workspace_resolution(conversation) is not None
+                or owned_context_resolution(conversation) is not None
+            ):
+                linked_nonce = None
+            conversation = self._recheck_linked_context(
+                outer, request, conversation, linked_nonce=linked_nonce,
+            )
             if target == AI_STREAM:
                 outer_context = getattr(outer, "context", None)
                 arguments["request_id"] = str(getattr(outer_context, "request_id", ""))

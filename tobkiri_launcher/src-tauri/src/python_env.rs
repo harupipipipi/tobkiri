@@ -414,7 +414,7 @@ where
                         command.env(crate::sealed_python::CONVERSATION_SIDE_CHAT_APPEND_ENV, "1");
                     }
                     if native_registry.linked_conversation_read {
-                        command.env(LINKED_CONVERSATION_READ_ENV, "1");
+                        command.env(LINKED_CONVERSATION_READ_ENV, "2");
                     }
                     if native_registry.side_chat_saved_turn_start {
                         command.env(crate::sealed_python::SIDE_CHAT_SAVED_TURN_START_ENV, "1");

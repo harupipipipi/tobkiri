@@ -17,8 +17,9 @@ use tauri::{AppHandle, Manager};
 use tobkiri_core::ids::{OpName, ProfileId, ShapeRef};
 use tobkiri_core::{
     AllocationBudget, AllocationError, CoreBuffer, CoreError, CoreRef, CoreValue,
-    LegacyConversationParentRead, LegacyRegistryRead, NativeArtifactError,
-    NativeArtifactInspection, NativeRegistry, MAX_BYTES,
+    LegacyConversationReadCandidate, LegacyConversationRecheck, LegacyRegistryRead,
+    NativeArtifactError, NativeArtifactInspection, NativeRegistry,
+    PreparedLegacyConversationRecheck, MAX_BYTES,
 };
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 pub(crate) use tobkiri_harness_native::SavedOrchestrationStepError;
@@ -164,6 +165,17 @@ pub(crate) enum SavedTurnStartAction {
     Claim,
 }
 
+/// Host-selected phase of a separately authorized Conversation GET.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum LinkedConversationReadMode {
+    Retain,
+    Reuse,
+    RetainForRecheck,
+    RecheckChild,
+    RecheckParent,
+}
+
 pub(crate) enum NativeRegistryRequest {
     Provider {
         request: Vec<u8>,
@@ -184,7 +196,7 @@ pub(crate) enum NativeRegistryRequest {
     LinkedConversationRead {
         conversation_id: String,
         nonce: [u8; 32],
-        retain: bool,
+        mode: LinkedConversationReadMode,
     },
     ConversationReceipt {
         caller: OriginalSavedReceiptRole,
@@ -629,81 +641,117 @@ struct Prepared {
 pub(crate) enum RegistryResponse {
     Wire(CoreBuffer),
     ProjectedLocalChat(CoreBuffer),
-    LinkedChild {
+    LinkedConversationRead {
         wire: CoreBuffer,
-        publication: LinkedParentPublication,
+        publication: LinkedConversationPublication,
     },
 }
 
-pub(super) struct PendingLinkedParentRead {
+pub(super) struct PendingLinkedConversationRead<
+    Listener = ProviderPrepareListener,
+    State = LinkedConversationReadState,
+> {
     deadline: Instant,
-    listener: Arc<ProviderPrepareListener>,
+    listener: Arc<Listener>,
     nonce: [u8; 32],
-    candidate: LegacyConversationParentRead,
+    state: State,
 }
 
-/// DATA custody transferred to the socket only after the child worker joins.
-pub(crate) struct LinkedParentPublication {
+impl<Listener, State> PendingLinkedConversationRead<Listener, State> {
+    fn take(
+        slot: &Mutex<Option<Self>>,
+        listener: &Arc<Listener>,
+        nonce: &[u8; 32],
+        mode: LinkedConversationReadMode,
+        next_mode: impl FnOnce(&State) -> LinkedConversationReadMode,
+    ) -> Option<Self> {
+        let mut slot = slot.lock().ok()?;
+        let entry = slot.as_ref()?;
+        if entry.deadline <= Instant::now() {
+            let expired = slot.take();
+            drop(slot);
+            drop(expired);
+            return None;
+        }
+        if entry.nonce != *nonce
+            || !Arc::ptr_eq(&entry.listener, listener)
+            || next_mode(&entry.state) != mode
+        {
+            return None;
+        }
+        slot.take()
+    }
+}
+
+pub(super) enum LinkedConversationReadState {
+    Parent(LegacyConversationReadCandidate),
+    ConfirmParent(PreparedLegacyConversationRecheck),
+    RecheckChild(LegacyConversationRecheck),
+    RecheckParent(LegacyConversationReadCandidate),
+}
+
+impl LinkedConversationReadState {
+    fn next_mode(&self) -> LinkedConversationReadMode {
+        match self {
+            Self::Parent(_) | Self::ConfirmParent(_) => LinkedConversationReadMode::Reuse,
+            Self::RecheckChild(_) => LinkedConversationReadMode::RecheckChild,
+            Self::RecheckParent(_) => LinkedConversationReadMode::RecheckParent,
+        }
+    }
+}
+
+/// DATA custody transferred to the socket after the GET worker joins.
+pub(crate) struct LinkedConversationPublication {
     runtime: NativeRuntimeState,
-    parent: PendingLinkedParentRead,
+    pending: PendingLinkedConversationRead,
 }
 
-impl std::fmt::Debug for LinkedParentPublication {
+impl std::fmt::Debug for LinkedConversationPublication {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("LinkedParentPublication")
+            .debug_struct("LinkedConversationPublication")
             .finish_non_exhaustive()
     }
 }
 
-impl LinkedParentPublication {
-    /// Keep one funded candidate after a successful checked child reply.
+impl LinkedConversationPublication {
+    /// Publish the next phase once after a successful checked reply.
     pub(crate) fn commit(self) {
-        let Ok(mut slot) = self.runtime.0.linked_parent.lock() else {
+        let Ok(mut slot) = self.runtime.0.linked_conversation_read.lock() else {
             return;
         };
-        if self.parent.deadline > Instant::now() {
-            *slot = Some(self.parent);
+        if self.pending.deadline > Instant::now() {
+            let replaced = slot.replace(self.pending);
+            drop(slot);
+            drop(replaced);
         }
     }
 }
 
 impl NativeRuntimeState {
+    /// Release any expired linked Conversation DATA between service requests.
     pub(crate) fn reap_linked_parent_read(&self) {
-        let Ok(mut slot) = self.0.linked_parent.lock() else {
+        let Ok(mut slot) = self.0.linked_conversation_read.lock() else {
             return;
         };
         if slot
             .as_ref()
             .is_some_and(|entry| entry.deadline <= Instant::now())
         {
-            slot.take();
+            let expired = slot.take();
+            drop(slot);
+            drop(expired);
         }
     }
 
-    pub(super) fn discard_linked_parent_read(&self) {
-        self.0
-            .linked_parent
+    pub(super) fn discard_linked_conversation_read(&self) {
+        let discarded = self
+            .0
+            .linked_conversation_read
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .take();
-    }
-
-    fn take_linked_parent_read(
-        &self,
-        listener: &Arc<ProviderPrepareListener>,
-        nonce: &[u8; 32],
-    ) -> Option<LegacyConversationParentRead> {
-        let mut slot = self.0.linked_parent.lock().ok()?;
-        let entry = slot.as_ref()?;
-        if entry.deadline <= Instant::now() {
-            slot.take();
-            return None;
-        }
-        if entry.nonce != *nonce || !Arc::ptr_eq(&entry.listener, listener) {
-            return None;
-        }
-        slot.take().map(|entry| entry.candidate)
+        drop(discarded);
     }
 }
 
@@ -872,7 +920,7 @@ async fn run(
     let model_save = matches!(&operation, NativeRegistryRequest::ModelSave { .. });
     let registry = Arc::new(Mutex::new(None));
     let registry_limit = Arc::new(AtomicBool::new(false));
-    let mut linked_parent = None;
+    let mut linked_conversation_read = None;
     let outcome = {
         let prepare = caught(async {
             let graph = inspection.allocation_budget()?.clone();
@@ -992,7 +1040,9 @@ async fn run(
                 NativeRegistryRequest::LinkedConversationRead {
                     conversation_id,
                     nonce,
-                    retain: true,
+                    mode:
+                        mode @ (LinkedConversationReadMode::Retain
+                        | LinkedConversationReadMode::RetainForRecheck),
                 } => {
                     let pack = reacquire_linked_conversation_context_pack(
                         &inspection,
@@ -1000,28 +1050,45 @@ async fn run(
                         checkpoint,
                     )?;
                     revalidate()?;
-                    let (output, candidate) = inspection
-                        .prepare_legacy_linked_conversation_read(
-                            &pack,
-                            &config.user_data_dir,
-                            &identity.profile_id,
-                            &conversation_id,
+                    let (output, state) = if mode == LinkedConversationReadMode::RetainForRecheck {
+                        let (output, prepared) = inspection
+                            .prepare_legacy_linked_conversation_recheck(
+                                &pack,
+                                &config.user_data_dir,
+                                &identity.profile_id,
+                                &conversation_id,
+                            )
+                            .await
+                            .map_err(linked_conversation_read_error)?;
+                        (
+                            output,
+                            prepared.map(LinkedConversationReadState::ConfirmParent),
                         )
-                        .await
-                        .map_err(linked_conversation_read_error)?;
+                    } else {
+                        let (output, candidate) = inspection
+                            .prepare_legacy_linked_conversation_read(
+                                &pack,
+                                &config.user_data_dir,
+                                &identity.profile_id,
+                                &conversation_id,
+                            )
+                            .await
+                            .map_err(linked_conversation_read_error)?;
+                        (output, candidate.map(LinkedConversationReadState::Parent))
+                    };
                     let reply = decode_linked_child_reply(output, &graph)?;
-                    linked_parent = candidate.map(|candidate| PendingLinkedParentRead {
+                    linked_conversation_read = state.map(|state| PendingLinkedConversationRead {
                         deadline: execution_deadline,
                         listener: Arc::clone(&listener),
                         nonce,
-                        candidate,
+                        state,
                     });
                     return Ok(reply);
                 }
                 NativeRegistryRequest::LinkedConversationRead {
                     conversation_id,
                     nonce,
-                    retain: false,
+                    mode,
                 } => {
                     let pack = reacquire_conversation_read_pack(
                         &inspection,
@@ -1030,32 +1097,72 @@ async fn run(
                         checkpoint,
                     )?;
                     revalidate()?;
-                    let output = if let Some(candidate) =
-                        runtime.take_linked_parent_read(&listener, &nonce)
-                    {
-                        let (output, _) = inspection
-                            .get_legacy_conversation_with_candidate(
-                                &pack,
-                                &config.user_data_dir,
-                                &identity.profile_id,
-                                &conversation_id,
-                                candidate,
+                    let root = &config.user_data_dir;
+                    let profile = &identity.profile_id;
+                    let id = &conversation_id;
+                    let pending = PendingLinkedConversationRead::take(
+                        &runtime.0.linked_conversation_read,
+                        &listener,
+                        &nonce,
+                        mode,
+                        LinkedConversationReadState::next_mode,
+                    );
+                    let deadline = pending.as_ref().map_or(execution_deadline, |read| {
+                        execution_deadline.min(read.deadline)
+                    });
+                    let (output, next) = match pending.map(|read| read.state) {
+                        Some(
+                            LinkedConversationReadState::Parent(candidate)
+                            | LinkedConversationReadState::RecheckParent(candidate),
+                        ) => {
+                            let (output, _) = inspection
+                                .get_legacy_conversation_with_candidate(
+                                    &pack, root, profile, id, candidate,
+                                )
+                                .await
+                                .map_err(conversation_registry_error)?;
+                            (output, None)
+                        }
+                        Some(LinkedConversationReadState::ConfirmParent(prepared)) => {
+                            let (output, confirmed) = inspection
+                                .confirm_legacy_linked_conversation_parent(
+                                    &pack, root, profile, id, prepared,
+                                )
+                                .await
+                                .map_err(conversation_registry_error)?;
+                            (
+                                output,
+                                confirmed.map(LinkedConversationReadState::RecheckChild),
                             )
-                            .await
-                            .map_err(conversation_registry_error)?;
-                        output
-                    } else {
-                        inspection
-                            .get_legacy_conversation(
-                                &pack,
-                                &config.user_data_dir,
-                                &identity.profile_id,
-                                &conversation_id,
+                        }
+                        Some(LinkedConversationReadState::RecheckChild(confirmed)) => {
+                            let (output, candidate) = inspection
+                                .recheck_legacy_linked_conversation_child(
+                                    &pack, root, profile, id, confirmed,
+                                )
+                                .await
+                                .map_err(conversation_registry_error)?;
+                            (
+                                output,
+                                candidate.map(LinkedConversationReadState::RecheckParent),
                             )
-                            .await
-                            .map_err(conversation_registry_error)?
+                        }
+                        None => {
+                            let output = inspection
+                                .get_legacy_conversation(&pack, root, profile, id)
+                                .await
+                                .map_err(conversation_registry_error)?;
+                            (output, None)
+                        }
                     };
-                    return decode_conversation_read_reply(output, &graph);
+                    let reply = decode_conversation_read_reply(output, &graph)?;
+                    linked_conversation_read = next.map(|state| PendingLinkedConversationRead {
+                        deadline,
+                        listener: Arc::clone(&listener),
+                        nonce,
+                        state,
+                    });
+                    return Ok(reply);
                 }
                 NativeRegistryRequest::LinkedConversationContext { conversation_id } => {
                     let pack = reacquire_linked_conversation_context_pack(
@@ -1842,12 +1949,12 @@ async fn run(
                             Ok(())
                         })?;
                     }
-                    Ok(if let Some(parent) = linked_parent {
-                        RegistryResponse::LinkedChild {
+                    Ok(if let Some(pending) = linked_conversation_read {
+                        RegistryResponse::LinkedConversationRead {
                             wire: reply.wire,
-                            publication: LinkedParentPublication {
+                            publication: LinkedConversationPublication {
                                 runtime: runtime.clone(),
-                                parent,
+                                pending,
                             },
                         }
                     } else if reply.projected_local_chat {
@@ -3076,16 +3183,56 @@ mod tests {
         assert!(!request.requires_publication_permit());
         assert!(!request.uses_funded_input());
         assert_eq!(request.input_capacity().unwrap(), "child".len());
-        for retain in [true, false] {
+        for mode in [
+            LinkedConversationReadMode::Retain,
+            LinkedConversationReadMode::Reuse,
+            LinkedConversationReadMode::RetainForRecheck,
+            LinkedConversationReadMode::RecheckChild,
+            LinkedConversationReadMode::RecheckParent,
+        ] {
             let request = NativeRegistryRequest::LinkedConversationRead {
                 conversation_id: "child".into(),
                 nonce: *b"0123456789abcdef0123456789abcdef",
-                retain,
+                mode,
             };
             assert!(!request.has_launch_proof(&receipt));
             assert!(request.has_launch_proof(&linked));
             assert!(!request.requires_publication_permit());
         }
+
+        let listener = Arc::new(());
+        let other_listener = Arc::new(());
+        let nonce = *b"0123456789abcdef0123456789abcdef";
+        let now = Instant::now();
+        let slot = Mutex::new(None);
+        let take = |listener: &Arc<()>, nonce: &[u8; 32], mode| {
+            PendingLinkedConversationRead::take(&slot, listener, nonce, mode, |state| *state)
+        };
+        for expected in [
+            LinkedConversationReadMode::Reuse,
+            LinkedConversationReadMode::RecheckChild,
+            LinkedConversationReadMode::RecheckParent,
+        ] {
+            *slot.lock().unwrap() = Some(PendingLinkedConversationRead {
+                deadline: now + Duration::from_secs(60),
+                listener: listener.clone(),
+                nonce,
+                state: expected,
+            });
+            assert!(take(&other_listener, &nonce, expected).is_none());
+            assert!(take(&listener, b"fedcba9876543210fedcba9876543210", expected).is_none());
+            assert!(take(&listener, &nonce, LinkedConversationReadMode::Retain).is_none());
+            assert_eq!(take(&listener, &nonce, expected).unwrap().state, expected);
+            assert!(take(&listener, &nonce, expected).is_none());
+        }
+        *slot.lock().unwrap() = Some(PendingLinkedConversationRead {
+            deadline: now,
+            listener: listener.clone(),
+            nonce,
+            state: LinkedConversationReadMode::RecheckParent,
+        });
+        assert!(take(&listener, &nonce, LinkedConversationReadMode::RecheckParent).is_none());
+        assert!(slot.lock().unwrap().is_none());
     }
 
     #[test]

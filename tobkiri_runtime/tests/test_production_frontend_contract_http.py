@@ -4378,6 +4378,7 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         return {"conversation": conversations.get(request.conversation_id)}
 
     conversation_get.supports_linked_parent = True
+    conversation_get.supports_linked_recheck = True
 
     def observe_packvm(
         binding: ResolvedOperationBinding, reservation_id: str,
@@ -4612,7 +4613,7 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         assert saved.payload["request"]["conversation_id"] == child_id
         if linked_get_enabled:
             assert linked_gets
-            nonces: set[str] = set()
+            modes_by_nonce: dict[str, list[str]] = {}
             for (child_read, child_owner), (parent_read, parent_owner) in zip(
                 linked_gets[::2], linked_gets[1::2], strict=True,
             ):
@@ -4620,13 +4621,20 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
                 assert parent_read.conversation_id == "parent"
                 child_hint, parent_hint = child_read.linked_parent, parent_read.linked_parent
                 assert child_hint is not None and parent_hint is not None
-                assert (child_hint.mode, parent_hint.mode) == ("retain", "reuse")
-                assert child_hint.nonce == parent_hint.nonce and child_hint.nonce not in nonces
-                nonces.add(child_hint.nonce)
-                assert child_owner.lease.token != parent_owner.lease.token
+                assert child_hint.nonce == parent_hint.nonce
+                modes_by_nonce.setdefault(child_hint.nonce, []).extend(
+                    (child_hint.mode, parent_hint.mode),
+                )
                 for owner in (child_owner, parent_owner):
                     _, state = authority.inspect_lease_token(owner.lease.token.decode("ascii"))
                     assert state is LeaseState.COMMITTED
+            recheck_modes = ["retain-for-recheck", "reuse", "recheck-child", "recheck-parent"]
+            assert recheck_modes in modes_by_nonce.values()
+            assert all(
+                modes in (["retain", "reuse"], recheck_modes)
+                for modes in modes_by_nonce.values()
+            )
+            assert len({owner.lease.token for _, owner in linked_gets}) == len(linked_gets)
         assert len({item.lease.token for item in envelopes}) == 3
         assert saved.deadline_monotonic <= turn.deadline_monotonic <= side.deadline_monotonic
         chain = []

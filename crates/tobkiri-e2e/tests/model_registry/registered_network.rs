@@ -13,7 +13,10 @@ use std::{
 use support::registry::{PROVIDER_COMMIT, PROVIDER_CONFIGURATION};
 use tobkiri_canon::ids::ProfileId;
 #[cfg(unix)]
-use tobkiri_core::{CoreValue, LegacyConversationParentRead, NativeArtifactInspection};
+use tobkiri_core::{
+    CoreValue, LegacyConversationReadCandidate, LegacyConversationRecheck,
+    NativeArtifactInspection, PreparedLegacyConversationRecheck,
+};
 use tobkiri_core::{ProfileStartBinding, RuntimeOwner, UiAttachment};
 #[cfg(unix)]
 use tobkiri_manifest::VerifiedPack;
@@ -406,7 +409,9 @@ impl<'a> LiveConversationFixture<'a> {
         Self::result_text(&outcome?, "owner_result")
     }
 
-    async fn prepare_parent_read(&self) -> Result<(Value, String, LegacyConversationParentRead)> {
+    async fn prepare_parent_read(
+        &self,
+    ) -> Result<(Value, String, LegacyConversationReadCandidate)> {
         let (mut inspection, pack) = self.inspection()?;
         let outcome: Result<_> = async {
             tobkiri_wasm::verify_legacy_conversation_linked_context_declaration(&pack)?;
@@ -432,7 +437,7 @@ impl<'a> LiveConversationFixture<'a> {
     async fn get_with_candidate(
         &self,
         id: &str,
-        candidate: LegacyConversationParentRead,
+        candidate: LegacyConversationReadCandidate,
     ) -> Result<(String, bool)> {
         let (mut inspection, pack) = self.inspection()?;
         let outcome: Result<_> = async {
@@ -451,6 +456,60 @@ impl<'a> LiveConversationFixture<'a> {
         inspection.finish().await?;
         let (result, reused) = outcome?;
         Ok((Self::result_text(&result, "owner_result")?, reused))
+    }
+
+    async fn prepare_recheck(&self) -> Result<PreparedLegacyConversationRecheck> {
+        let (mut inspection, pack) = self.inspection()?;
+        let result = inspection
+            .prepare_legacy_linked_conversation_recheck(
+                &pack,
+                &self.data,
+                self.profile.as_str(),
+                "child",
+            )
+            .await;
+        inspection.finish().await?;
+        result?
+            .1
+            .context("missing child and parent read candidates")
+    }
+
+    async fn confirm_parent(
+        &self,
+        prepared: PreparedLegacyConversationRecheck,
+    ) -> Result<(String, Option<LegacyConversationRecheck>)> {
+        let (mut inspection, pack) = self.inspection()?;
+        let result = inspection
+            .confirm_legacy_linked_conversation_parent(
+                &pack,
+                &self.data,
+                self.profile.as_str(),
+                "parent",
+                prepared,
+            )
+            .await;
+        inspection.finish().await?;
+        let (reply, candidates) = result?;
+        Ok((Self::result_text(&reply, "owner_result")?, candidates))
+    }
+
+    async fn recheck_child(
+        &self,
+        confirmed: LegacyConversationRecheck,
+    ) -> Result<(String, Option<LegacyConversationReadCandidate>)> {
+        let (mut inspection, pack) = self.inspection()?;
+        let result = inspection
+            .recheck_legacy_linked_conversation_child(
+                &pack,
+                &self.data,
+                self.profile.as_str(),
+                "child",
+                confirmed,
+            )
+            .await;
+        inspection.finish().await?;
+        let (reply, parent) = result?;
+        Ok((Self::result_text(&reply, "owner_result")?, parent))
     }
 }
 
@@ -478,7 +537,7 @@ async fn original_saved_linked_context_reads_the_physical_owner() -> Result<()> 
                     "parent_conversation_id": "parent", "slot": "side-chat",
                     "created_from_parent_revision": 1,
                 },
-                "messages": [{"id": "child-message"}],
+                "messages": [{"id": "child-message", "opaque": 9_007_199_254_740_993u64}],
             },
             "parent": {
                 "id": "parent", "conversation_revision": 7, "model_reference": "m-local",
@@ -515,12 +574,44 @@ async fn original_saved_linked_context_reads_the_physical_owner() -> Result<()> 
         ensure!(fs::read(&file)? == bytes);
     }
 
+    let child_get = live
+        .lookup("child", OriginalConversationLookup::Conversation)
+        .await?;
+    let parent_get = live
+        .lookup("parent", OriginalConversationLookup::Conversation)
+        .await?;
+    let (actual, confirmed) = live.confirm_parent(live.prepare_recheck().await?).await?;
+    ensure!(actual == parent_get);
+    let confirmed = confirmed.context("same owner bytes should confirm the pair")?;
+    let (child, parent) = live.recheck_child(confirmed).await?;
+    ensure!(child == child_get);
+    let parent = parent.context("exact child should retain parent DATA")?;
+    let (parent, reused) = live.get_with_candidate("parent", parent).await?;
+    ensure!(reused && parent == parent_get);
+
+    let prepared_before_change = live.prepare_recheck().await?;
+    let (_, confirmed) = live.confirm_parent(live.prepare_recheck().await?).await?;
+    let confirmed = confirmed.context("first parent GET should confirm the pair")?;
+    let (child, retained_parent) = live.recheck_child(confirmed).await?;
+    ensure!(child == child_get);
+    let retained_parent = retained_parent.context("recheck should retain parent DATA")?;
+    let (_, confirmed_before_change) = live.confirm_parent(live.prepare_recheck().await?).await?;
+    let confirmed_before_change =
+        confirmed_before_change.context("first parent GET should confirm the pair")?;
+
     let (_, parent_read, candidate) = live.prepare_parent_read().await?;
     // Change the bytes in place without changing the file length or declared revisions.
     document["conversations"]["parent"]["model_reference"] = json!("m-current");
     let bytes = serde_json::to_vec(&document)?;
     ensure!(fs::metadata(&file)?.len() == bytes.len() as u64);
     fs::write(&file, &bytes)?;
+    let (parent, reused) = live.get_with_candidate("parent", retained_parent).await?;
+    ensure!(!reused && parent != parent_get);
+    let (fresh, discarded_pair) = live.confirm_parent(prepared_before_change).await?;
+    ensure!(fresh == parent && discarded_pair.is_none());
+    let (child, discarded_parent) = live.recheck_child(confirmed_before_change).await?;
+    ensure!(child == child_get && discarded_parent.is_none());
+
     let (actual, reused) = live.get_with_candidate("parent", candidate).await?;
     ensure!(!reused, "changed owner bytes require a fresh read");
     ensure!(actual != parent_read);

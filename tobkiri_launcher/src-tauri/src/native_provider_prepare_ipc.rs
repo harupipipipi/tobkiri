@@ -29,16 +29,16 @@ use crate::{
         start_provider_prepare, AiGatewayDataOperation, AiGatewayDataRequiresLegacyCodec,
         ApplicationPresentationRole, ConversationAppendCaller, ConversationCompletePhase,
         ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
-        ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
-        NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
-        PendingProviderPrepare, ProviderPrepareDeadline, RegistryResponse,
-        SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
-        SavedTurnStartCaller, SettlementCaller, TurnSettlementRequiresLegacyCodec,
-        TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
-        APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
-        CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
-        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
-        TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+        ConversationWriteRequiresLegacyRead, LinkedConversationReadMode,
+        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
+        OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
+        RegistryResponse, SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError,
+        SavedTurnStartAction, SavedTurnStartCaller, SettlementCaller,
+        TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT,
+        APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
+        CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT,
+        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -432,15 +432,8 @@ struct ConversationGet {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LinkedParent {
-    mode: LinkedParentMode,
+    mode: LinkedConversationReadMode,
     nonce: String,
-}
-
-#[derive(Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum LinkedParentMode {
-    Retain,
-    Reuse,
 }
 
 impl ConversationGet {
@@ -479,7 +472,7 @@ impl ConversationGet {
             return Ok(NativeRegistryRequest::LinkedConversationRead {
                 conversation_id: self.conversation_id.clone(),
                 nonce,
-                retain: parent.mode == LinkedParentMode::Retain,
+                mode: parent.mode,
             });
         }
         if self.linked_context {
@@ -2019,7 +2012,7 @@ impl Connection {
                         ensure!(self.reply == ReplyRole::SavedLocalChat);
                         (PROJECTED_LOCAL_CHAT, body, None)
                     }
-                    RegistryResponse::LinkedChild {
+                    RegistryResponse::LinkedConversationRead {
                         wire: body,
                         publication,
                     } => {
@@ -3996,7 +3989,16 @@ mod tests {
                 r#", "conversation_get":{{"caller":"saved-orchestration","conversation_id":"Side.1:child","linked_parent":{parent}{context}}}"#
             ))
         };
-        for (mode, should_retain) in [("retain", true), ("reuse", false)] {
+        for (mode, expected) in [
+            ("retain", LinkedConversationReadMode::Retain),
+            ("reuse", LinkedConversationReadMode::Reuse),
+            (
+                "retain-for-recheck",
+                LinkedConversationReadMode::RetainForRecheck,
+            ),
+            ("recheck-child", LinkedConversationReadMode::RecheckChild),
+            ("recheck-parent", LinkedConversationReadMode::RecheckParent),
+        ] {
             let parent = format!(r#"{{"mode":"{mode}","nonce":"{nonce}"}}"#);
             for context in ["", r#","linked_context":false"#] {
                 let frame = linked_get(&parent, context);
@@ -4004,14 +4006,14 @@ mod tests {
                 let NativeRegistryRequest::LinkedConversationRead {
                     conversation_id,
                     nonce: parsed_nonce,
-                    retain,
+                    mode: parsed_mode,
                 } = start.operation().unwrap()
                 else {
                     panic!("expected private linked Conversation read");
                 };
                 assert_eq!(conversation_id, "Side.1:child");
                 assert_eq!(parsed_nonce.as_slice(), nonce.as_bytes());
-                assert_eq!(retain, should_retain);
+                assert_eq!(parsed_mode, expected);
             }
         }
 

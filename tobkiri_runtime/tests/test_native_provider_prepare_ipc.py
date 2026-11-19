@@ -2060,9 +2060,16 @@ def test_conversation_get_uses_closed_role_and_opaque_bounded_owner_json(
         assert reader(request) == expected
 
 
-@pytest.mark.parametrize(("mode", "identifier"), [("retain", "child"), ("reuse", "parent")])
+@pytest.mark.parametrize(
+    ("version", "mode", "identifier"),
+    [
+        ("1", "retain", "child"), ("1", "reuse", "parent"),
+        ("2", "retain-for-recheck", "child"), ("2", "reuse", "parent"),
+        ("2", "recheck-child", "child"), ("2", "recheck-parent", "parent"),
+    ],
+)
 def test_linked_conversation_get_sends_only_the_selected_id_and_nonce(
-    monkeypatch: pytest.MonkeyPatch, mode: str, identifier: str,
+    monkeypatch: pytest.MonkeyPatch, version: str, mode: str, identifier: str,
 ) -> None:
     nonce = "ab" * 16
     request = replace(
@@ -2085,7 +2092,7 @@ def test_linked_conversation_get_sends_only_the_selected_id_and_nonce(
         _send(peer, 7, json.dumps(expected).encode())
         assert peer.recv(1) == b""
 
-    monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, "1")
+    monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, version)
     with _served_conversation_get(monkeypatch, serve) as reader:
         # Capture the opt-in once with the managed Launcher endpoint.
         monkeypatch.delenv(ipc._LINKED_CONVERSATION_READ_ENV)
@@ -2126,12 +2133,18 @@ def test_linked_conversation_get_requires_managed_launch_capture_and_opt_in(
     monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, "1")
     linked = ipc.capture_launcher_conversation_get_reader()
     assert linked is not None and linked.supports_linked_parent is True
+    assert linked.supports_linked_recheck is False
     request = replace(
         _conversation_get_request(_Borrow(), "saved-orchestration"),
         linked_parent=ipc.NativeConversationLinkedParent("retain", "a" * 32),
     )
     with pytest.raises(ipc._ProtocolError, match="linked Conversation GET is unavailable"):
         ordinary(request)
+    recheck = replace(
+        request, linked_parent=ipc.NativeConversationLinkedParent("recheck-child", "a" * 32),
+    )
+    with pytest.raises(ipc._ProtocolError, match="linked Conversation recheck is unavailable"):
+        linked(recheck)
     monkeypatch.setattr(ipc, "_capture_launcher", lambda: None)
     assert ipc.capture_launcher_conversation_get_reader() is None
 

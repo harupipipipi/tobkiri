@@ -329,13 +329,16 @@ class NativeModelSaveRequest:
 
 
 ConversationGetCaller = Literal["shell", "saved-turn", "saved-orchestration"]
+LinkedConversationMode = Literal[
+    "retain", "reuse", "retain-for-recheck", "recheck-child", "recheck-parent",
+]
 
 
 @dataclass(frozen=True)
 class NativeConversationLinkedParent:
     """Select one Host-generated retention or reuse operation."""
 
-    mode: Literal["retain", "reuse"]
+    mode: LinkedConversationMode
     nonce: str
 
 
@@ -698,10 +701,20 @@ def capture_launcher_model_settings_reader() -> (
 class _LauncherConversationGet:
     launcher: _Launcher
     supports_linked_parent: bool
+    supports_linked_recheck: bool
 
     def __call__(self, borrow: NativeConversationGetRequest) -> Mapping[str, Any]:
-        if borrow.linked_parent is not None and not self.supports_linked_parent:
-            raise _ProtocolError("native linked Conversation GET is unavailable")
+        linked = borrow.linked_parent
+        if linked is not None:
+            if not self.supports_linked_parent:
+                raise _ProtocolError("native linked Conversation GET is unavailable")
+            if (
+                getattr(linked, "mode", None) in (
+                    "retain-for-recheck", "recheck-child", "recheck-parent",
+                )
+                and not self.supports_linked_recheck
+            ):
+                raise _ProtocolError("native linked Conversation recheck is unavailable")
         return _invoke(self.launcher, borrow, operation="conversation_get")
 
 
@@ -710,9 +723,8 @@ def capture_launcher_conversation_get_reader() -> _LauncherConversationGet | Non
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return _LauncherConversationGet(
-        launcher, os.environ.get(_LINKED_CONVERSATION_READ_ENV) == "1",
-    )
+    version = os.environ.get(_LINKED_CONVERSATION_READ_ENV)
+    return _LauncherConversationGet(launcher, version in ("1", "2"), version == "2")
 
 
 def capture_launcher_conversation_append_writer() -> (
@@ -1051,7 +1063,10 @@ def _start_payload(
         if linked_parent is not None:
             if (
                 type(linked_parent) is not NativeConversationLinkedParent
-                or linked_parent.mode not in ("retain", "reuse")
+                or linked_parent.mode not in (
+                    "retain", "reuse", "retain-for-recheck", "recheck-child",
+                    "recheck-parent",
+                )
                 or not isinstance(linked_parent.nonce, str)
                 or _INSTANCE.fullmatch(linked_parent.nonce) is None
                 or borrow.caller != "saved-orchestration"

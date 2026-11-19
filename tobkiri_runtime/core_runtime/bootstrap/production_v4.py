@@ -2025,6 +2025,10 @@ def capture_production_dispatch(
     linked_parent_reads = (
         getattr(native_conversation_get_reader, "supports_linked_parent", False) is True
     )
+    linked_parent_rechecks = (
+        linked_parent_reads
+        and getattr(native_conversation_get_reader, "supports_linked_recheck", False) is True
+    )
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
     native_ai_routing_evaluator = capture_launcher_ai_routing_evaluator()
     native_ai_pipeline_evaluator = capture_launcher_ai_pipeline_evaluator()
@@ -3701,6 +3705,7 @@ def capture_production_dispatch(
         saved_selected_workspace,
         borrow_saved_context=borrow_bridge_saved_context,
         linked_parent_reads=linked_parent_reads,
+        linked_parent_rechecks=linked_parent_rechecks,
     )
 
     def saved_capability_bridge(

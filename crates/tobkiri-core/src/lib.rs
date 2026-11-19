@@ -78,9 +78,9 @@ pub use filesystem_registry::{FilesystemRights, FilesystemRoot};
 pub use journal::AuditRunJournal;
 #[cfg(unix)]
 pub use native_declared_artifact::{
-    LegacyConversationParentRead, LegacyProviderRegistryRead, LegacyRegistryRead,
-    NativeArtifactDeclaration, NativeArtifactError, NativeArtifactInspection,
-    NativeDeclaredArtifactSource,
+    LegacyConversationParentRead, LegacyConversationReadCandidate, LegacyConversationRecheck,
+    LegacyProviderRegistryRead, LegacyRegistryRead, NativeArtifactDeclaration, NativeArtifactError,
+    NativeArtifactInspection, NativeDeclaredArtifactSource, PreparedLegacyConversationRecheck,
 };
 #[cfg(unix)]
 pub use native_provider_registry::{NativeProviderRegistry, NativeRegistry};

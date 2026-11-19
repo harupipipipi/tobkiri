@@ -55,12 +55,13 @@ mod provider_prepare;
 pub(crate) use provider_prepare::{
     start_provider_prepare, AiGatewayDataOperation, AiGatewayDataRequiresLegacyCodec,
     ConversationCompletePhase, ConversationRegistryRequiresLegacyRead,
-    ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
-    PendingProviderPrepare, ProviderPrepareDeadline, RegistryResponse,
-    SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
-    TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT,
-    APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
-    CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
+    ConversationWriteRequiresLegacyRead, LinkedConversationReadMode,
+    ModelRegistryRequiresLegacyRead, NativeRegistryRequest, PendingProviderPrepare,
+    ProviderPrepareDeadline, RegistryResponse, SavedLocalChatRequiresLegacyRequest,
+    SavedOrchestrationStepError, SavedTurnStartAction, TurnSettlementRequiresLegacyCodec,
+    TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
+    APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
+    CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
     CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
     TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
 };
@@ -89,7 +90,7 @@ struct RuntimeState {
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     provider_socket: Option<crate::native_provider_prepare_service::ProviderPrepareService>,
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    linked_parent: Mutex<Option<provider_prepare::PendingLinkedParentRead>>,
+    linked_conversation_read: Mutex<Option<provider_prepare::PendingLinkedConversationRead>>,
 }
 
 impl NativeRuntimeState {
@@ -102,7 +103,7 @@ impl NativeRuntimeState {
             #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
             provider_socket: None,
             #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-            linked_parent: Mutex::new(None),
+            linked_conversation_read: Mutex::new(None),
         }))
     }
 
@@ -183,7 +184,7 @@ impl NativeRuntimeState {
             service.join_until(deadline)?;
         }
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-        self.discard_linked_parent_read();
+        self.discard_linked_conversation_read();
         self.0.finalization.run_until(deadline, || {
             let owner = {
                 let mut owner = self.0.owner.lock().map_err(|_| {
