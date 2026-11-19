@@ -2708,6 +2708,16 @@ def capture_production_dispatch(
         )
         return matches[0] if len(matches) == 1 else None
 
+    def select_original_registry_read(
+        caller_ids: set[str],
+        operation_id: str = _MODEL_PROVIDER_OPERATION,
+        function_id: str = _MODEL_PROVIDER_FUNCTION,
+    ) -> _CapturedPlanEdge | None:
+        return select_original_chat_edge(
+            caller_ids, "rumi_provider_registry_pack", _MODEL_PROVIDER_CONTRACT,
+            operation_id, function_id, EffectClass.PRIVILEGED,
+        )
+
     desktop_shell_principal_ids = {
         edge.caller.principal_id for edge in captured_edges
         if edge.caller.principal_id in shell_principal_ids
@@ -2772,11 +2782,7 @@ def capture_production_dispatch(
             if gateway is None:
                 continue
             operation = f"{_MODEL_PROVIDER_OPERATION}.{call_kind}"
-            owner = select_original_chat_edge(
-                {gateway.target.principal_id}, "rumi_provider_registry_pack",
-                LOCAL_REGISTRY_CONTRACT, operation, _MODEL_PROVIDER_FUNCTION,
-                EffectClass.PRIVILEGED,
-            )
+            owner = select_original_registry_read({gateway.target.principal_id}, operation)
             if owner is not None:
                 parents = (gateway, orchestration, turn)
                 gateway_snapshot_routes.setdefault(
@@ -2806,7 +2812,6 @@ def capture_production_dispatch(
         side_chat: _CapturedPlanEdge | None = None,
     ) -> None:
         adapter_pack = "rumi_provider_adapters_pack"
-        registry_pack = "rumi_provider_registry_pack"
         local_roles: tuple[tuple[str, SavedLocalChatRole, SavedLocalChatRole], ...] = (
             ("generate", "generate", "side-chat-generate"),
             ("stream", "stream", "side-chat-stream"),
@@ -2829,10 +2834,8 @@ def capture_production_dispatch(
             )
             if adapter is None:
                 continue
-            registry = select_original_chat_edge(
-                {adapter.target.principal_id}, registry_pack, LOCAL_REGISTRY_CONTRACT,
-                f"{registry_pack}.provider-registry-resource.{delivery}",
-                f"{registry_pack}.provider-registry.resource", EffectClass.PRIVILEGED,
+            registry = select_original_registry_read(
+                {adapter.target.principal_id}, f"{_MODEL_PROVIDER_OPERATION}.{delivery}",
             )
             if registry is not None:
                 parents = (gateway, orchestration, turn)
@@ -5072,10 +5075,8 @@ def capture_production_dispatch(
                     parents.append(selected)
                     caller_id = selected.target.principal_id
                 else:
-                    read = select_original_chat_edge(
-                        {caller_id}, "rumi_provider_registry_pack", _MODEL_PROVIDER_CONTRACT,
-                        f"{_MODEL_PROVIDER_OPERATION}.generate", _MODEL_PROVIDER_FUNCTION,
-                        EffectClass.PRIVILEGED,
+                    read = select_original_registry_read(
+                        {caller_id}, f"{_MODEL_PROVIDER_OPERATION}.generate",
                     )
                     if read is not None:
                         workflow_snapshot_routes.setdefault(caller_id, []).append(
@@ -5169,16 +5170,6 @@ def capture_production_dispatch(
     supports_projected_snapshot = (
         getattr(native_provider_snapshot_reader, "supports_projected", False) is True
     )
-
-    def select_original_registry_read(
-        caller_ids: set[str],
-        operation_id: str = _MODEL_PROVIDER_OPERATION,
-        function_id: str = _MODEL_PROVIDER_FUNCTION,
-    ) -> _CapturedPlanEdge | None:
-        return select_original_chat_edge(
-            caller_ids, "rumi_provider_registry_pack", _MODEL_PROVIDER_CONTRACT,
-            operation_id, function_id, EffectClass.PRIVILEGED,
-        )
 
     if supports_projected_snapshot:
         settings_read = select_original_registry_read(desktop_shell_principal_ids)
