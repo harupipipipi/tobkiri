@@ -661,6 +661,7 @@ def _cold_boot_installed_launcher(
     mount: MountedDmg, app_bundle: Path, diagnostics: Path,
     python: Executable, codesign: Executable,
     user_setup_timeout_seconds: float | None = None,
+    user_chat: list[str] | None = None,
 ) -> None:
     """Copy the verified app, detach the DMG, and boot the installed copy."""
     ditto = _resolve_executable("ditto")
@@ -690,8 +691,10 @@ def _cold_boot_installed_launcher(
         ]
         if user_setup_timeout_seconds is not None:
             arguments.extend(["--wait-for-user-setup-seconds", str(user_setup_timeout_seconds)])
+        if user_chat is not None:
+            arguments.extend(["--wait-for-user-chat", *user_chat])
         if _run(python, arguments).returncode:
-            raise DmgVerificationError("installed Launcher Setup or shutdown verification failed")
+            raise DmgVerificationError("installed Launcher verification failed")
         shutdown_verified = True
     finally:
         if not launch_attempted or shutdown_verified:
@@ -768,6 +771,7 @@ def verify_dmg(args: argparse.Namespace) -> None:
             _cold_boot_installed_launcher(
                 mount, app_bundle, args.installed_boot_diagnostics_dir, python, codesign,
                 args.wait_for_user_setup_seconds,
+                args.wait_for_user_chat,
             )
     except BaseException as error:
         primary_error = error
@@ -802,6 +806,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-native-registry-packs-receipt-sha256")
     parser.add_argument("--installed-boot-diagnostics-dir", type=Path)
     parser.add_argument("--wait-for-user-setup-seconds", type=float)
+    parser.add_argument(
+        "--wait-for-user-chat", nargs=3, metavar=("SECONDS", "PROVIDER_ID", "MODEL_ID"),
+    )
     args = parser.parse_args()
     sha256 = args.expected_native_setup_component_sha256
     size = args.expected_native_setup_component_bytes
@@ -825,6 +832,19 @@ def parse_args() -> argparse.Namespace:
         or not 5.0 <= args.wait_for_user_setup_seconds <= 900.0
     ):
         parser.error("user Setup wait requires installed diagnostics and a 5–900 second timeout")
+    if args.wait_for_user_chat is not None:
+        if args.wait_for_user_setup_seconds is None:
+            parser.error("user chat wait requires --wait-for-user-setup-seconds")
+        seconds, provider_id, model_id = args.wait_for_user_chat
+        try:
+            timeout = float(seconds)
+        except ValueError:
+            parser.error("user chat timeout must be numeric")
+        if not 5.0 <= timeout <= 900.0 or any(
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", value) is None
+            for value in (provider_id, model_id)
+        ):
+            parser.error("user chat wait requires a 5–900 second timeout and valid route IDs")
     return args
 
 

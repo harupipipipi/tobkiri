@@ -5976,6 +5976,21 @@ def test_connection_status_reads_canonical_registry_without_writing(
         "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
         "X-Tobkiri-Request-ID": str(uuid.uuid4()),
     }
+    legacy_path = "/api/ui/provider-health"
+    for path, expected_data in (
+        (legacy_path, None),
+        (_contract("GET", legacy_path), {
+            "state": "contract_dispatch_denied", "code": "CONTRACT_OPERATION_UNKNOWN",
+        }),
+    ):
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, denied, _ = _request(server, "GET", path, headers=headers)
+        assert status == 404, (path, denied)
+        assert denied["success"] is False
+        assert denied["data"] == expected_data
+    assert registry.path.read_bytes() == before
+
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
     route = _contract("GET", "/api/connections/status")
     status, payload, _ = _request(server, "GET", route, headers=headers)
     assert status == 200, payload

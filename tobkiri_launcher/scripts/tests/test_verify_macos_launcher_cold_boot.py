@@ -10,10 +10,12 @@ import stat
 import sys
 import threading
 import time
+import uuid
 from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Mapping, Optional
+from urllib.parse import unquote, urlencode
 
 import pytest
 
@@ -458,9 +460,11 @@ def test_user_setup_observes_only_matching_new_kernel(
     )
     initial = VERIFY.ColdBootResult(18770, config.kernel_port, 4242, 4243, True, True)
     if mode == "adopted":
-        result = VERIFY._wait_for_user_setup_activation(config, probes, _Process(), initial)
+        setup = VERIFY._wait_for_user_setup_activation(config, probes, _Process(), initial)
+        result = setup.result
         assert result.kernel_pid == 4244
         assert result.setup_activation_verified is True
+        assert setup.contract.activation_id == active
         assert calls == [
             ("GET", VERIFY.KERNEL_HEALTH_PATH),
             ("POST", VERIFY.PANEL_AUTH_BOOTSTRAP_PATH),
@@ -473,6 +477,139 @@ def test_user_setup_observes_only_matching_new_kernel(
             VERIFY._wait_for_user_setup_activation(config, probes, _Process(), initial)
         if mode in ("foreign-kernel", "same-kernel"):
             assert calls == []
+
+
+@pytest.mark.parametrize("mode", [
+    "matches", "wrong-provider", "wrong-model", "old-prompt", "partial",
+    "wrong-reference", "changed-kernel", "foreign-kernel", "changed-activation",
+])
+def test_user_chat_checks_the_persisted_turn_on_the_setup_kernel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    mode: str,
+) -> None:
+    config, _ = _bundle_and_config(tmp_path)
+    _write_embedded_host_contract(config.app_data_dir)
+    contract = VERIFY._read_host_contract(config)
+    assert contract is not None
+    result = VERIFY.ColdBootResult(18770, config.kernel_port, 4242, 4244, True, True, True)
+    active = VERIFY._ActivatedSetup(result, contract, "rumi_panel_session=observer-secret")
+    expected = VERIFY.UserChatObservation(5.0, "connection/llama", "gemma-3-1b")
+    clock = _Clock()
+    nonce = "test-nonce"
+    prompt = f"Reply with a short greeting. Tobkiri verification {nonce}."
+    conversation_id = "chat:test"
+    records = {
+        "/api/connections/status": {"providers": [{
+            "provider_instance_id": "connection/llama",
+            "enabled": True,
+            "credential_status": "missing" if mode == "wrong-provider" else "not_required",
+        }]},
+        "/api/ai/profiles": {"profiles": [{
+            "profile_id": "local-gemma",
+            "model_id": "other" if mode == "wrong-model" else "gemma-3-1b",
+            "provider_id": "connection/llama",
+            "route_configured": True,
+        }]},
+        "/api/chat/conversations": {"conversations": [{
+            "id": conversation_id, "model": "local-gemma",
+        }]},
+        "/api/chat/conversation?" + urlencode({"conversation_id": conversation_id}): {
+            "id": conversation_id, "model": "local-gemma", "conversation_revision": 3,
+            "messages": [
+                {"id": "user", "role": "user", "content": "old" if mode == "old-prompt" else prompt},
+                {"id": "reply", "role": "assistant", "content": [{"type": "text", "text": "Hello"}]},
+            ],
+        },
+        "/api/chat/turns?" + urlencode({"conversation_id": conversation_id}): {"turns": [{
+            "profile_id": contract.profile_id,
+            "conversation_id": conversation_id,
+            "status": "running" if mode == "partial" else "completed",
+            "result_reference": {
+                "conversation_id": conversation_id, "conversation_revision": 3,
+                "user_message_id": "user",
+                "assistant_message_id": "other" if mode == "wrong-reference" else "reply",
+            },
+        }]},
+    }
+    request_ids: set[uuid.UUID] = set()
+    observed: list[str] = []
+
+    def request(port, method, path, headers, body, _timeout):
+        assert port == config.kernel_port and method == "GET" and body == b""
+        assert headers["Cookie"] == active.cookie
+        request_id = uuid.UUID(headers["X-Tobkiri-Request-ID"])
+        assert request_id.version == 4 and request_id not in request_ids
+        request_ids.add(request_id)
+        prefix = "/api/contracts/defaultspack/"
+        assert path.startswith(prefix)
+        target = unquote(path[len(prefix):]).removeprefix("GET ")
+        observed.append(target)
+        if mode == "changed-activation" and target.startswith("/api/chat/turns?"):
+            monkeypatch.setattr(VERIFY, "_read_host_contract", lambda _: None)
+        return VERIFY.HttpResponse(
+            200, {}, json.dumps({"success": True, "data": records[target]}).encode(),
+        )
+
+    probes = replace(
+        _probes(clock, request, lambda _pid: 1 if mode == "foreign-kernel" else 4242, []),
+        listener_pid=lambda _port: 4245 if mode == "changed-kernel" else 4244,
+    )
+    monkeypatch.setattr(VERIFY.secrets, "token_hex", lambda _: nonce)
+    if mode == "matches":
+        checked = VERIFY._wait_for_user_chat(config, probes, _Process(), active, expected)
+        assert checked == replace(result, saved_chat_verified=True)
+        assert observed == list(records)
+    elif mode in {"changed-kernel", "foreign-kernel", "changed-activation"}:
+        with pytest.raises(VERIFY.ColdBootError, match="Launcher-owned Kernel changed"):
+            VERIFY._wait_for_user_chat(config, probes, _Process(), active, expected)
+        if mode != "changed-activation":
+            assert observed == []
+    else:
+        with pytest.raises(VERIFY.ColdBootError, match="did not complete and persist"):
+            VERIFY._wait_for_user_chat(config, probes, _Process(), active, expected)
+    output = capsys.readouterr().out
+    assert prompt in output
+    assert "observer-secret" not in output and "Hello" not in output
+
+
+def test_user_chat_failure_shuts_down_without_copying_app_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, diagnostics = _bundle_and_config(tmp_path)
+    config = replace(
+        config, expect_setup=True, user_setup_timeout_seconds=5.0,
+        user_chat=VERIFY.UserChatObservation(5.0, "connection/llama", "gemma-3-1b"),
+    )
+    signals: list[tuple[int, signal.Signals]] = []
+
+    class App(_Process):
+        def poll(self) -> int | None:
+            return 0 if signals else None
+
+    class Output:
+        def __init__(self, _app: App) -> None:
+            pass
+
+        def text(self) -> str:
+            raise AssertionError("manual observation must omit captured application output")
+
+    def failed_chat(*_args: object) -> None:
+        raise VERIFY.ColdBootError("chat verification timed out")
+
+    result = VERIFY.ColdBootResult(18770, config.kernel_port, 4242, 4244, True, True, True)
+    monkeypatch.setattr(VERIFY, "_OutputCollector", Output)
+    monkeypatch.setattr(VERIFY, "_wait_for_readiness", lambda *_: result)
+    monkeypatch.setattr(VERIFY, "_wait_for_user_setup_activation", lambda *_: object())
+    monkeypatch.setattr(VERIFY, "_wait_for_user_chat", failed_chat)
+    with pytest.raises(VERIFY.ColdBootError, match="chat verification timed out"):
+        VERIFY.verify_cold_boot(
+            config, probes=_probes(_Clock(), lambda *_: None, lambda _: 4242, signals),
+            launch=lambda *_: App(), base_environment={"HOME": str(tmp_path), "PATH": "/usr/bin"},
+        )
+    assert signals == [(4242, signal.SIGTERM)]
+    diagnostic = json.loads((diagnostics / VERIFY.DIAGNOSTIC_FILENAME).read_text())
+    assert diagnostic["error"] == "chat verification timed out"
+    assert diagnostic["process_output_tail"] == ""
 
 
 def test_panel_auth_response_rejects_unauthenticated_static_panel() -> None:

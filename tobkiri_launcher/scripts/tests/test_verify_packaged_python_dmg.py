@@ -432,6 +432,37 @@ def test_registry_receipt_cli_accepts_only_bare_lowercase_sha256(
         )
 
 
+@pytest.mark.parametrize(("setup", "seconds", "model", "error"), [
+    (False, "60", "gemma-3-1b", "requires --wait-for-user-setup-seconds"),
+    (True, "invalid", "gemma-3-1b", "timeout must be numeric"),
+    (True, "nan", "gemma-3-1b", "requires a 5–900 second timeout"),
+    (True, "60", "broken model id", "valid route IDs"),
+    (True, "60", "gemma-3-1b", ""),
+])
+def test_observing_gui_chat_requires_valid_setup_and_route_arguments(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    setup: bool, seconds: str, model: str, error: str,
+) -> None:
+    argv = [
+        os.fspath(SCRIPT), "--dmg", "fixture.dmg", "--repo-root", ".",
+        "--target", "aarch64-apple-darwin", "--expected-manifest-sha256", "b" * 64,
+        "--expected-native-setup-component-sha256", "c" * 64,
+        "--expected-native-setup-component-bytes", "10000",
+        "--expected-native-registry-packs-receipt-sha256", "d" * 64,
+        "--installed-boot-diagnostics-dir", "diagnostics",
+        "--wait-for-user-chat", seconds, "connection/llama", model,
+    ]
+    if setup:
+        argv.extend(("--wait-for-user-setup-seconds", "60"))
+    monkeypatch.setattr(sys, "argv", argv)
+    if error:
+        with pytest.raises(SystemExit, match="2"):
+            MODULE.parse_args()
+        assert error in capsys.readouterr().err
+    else:
+        assert MODULE.parse_args().wait_for_user_chat == [seconds, "connection/llama", model]
+
+
 def test_registry_receipt_pin_is_forwarded_by_shell_wrapper(tmp_path: Path) -> None:
     dmg = tmp_path / "fixture.dmg"
     dmg.touch()
@@ -832,10 +863,12 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
 
 
 @pytest.mark.parametrize("shutdown_verified", [False, True])
-@pytest.mark.parametrize("user_setup_timeout_seconds", [None, 180.0])
+@pytest.mark.parametrize(("user_setup_timeout_seconds", "user_chat"), [
+    (None, None), (180.0, None), (180.0, ["180", "connection/llama", "gemma-3-1b"]),
+])
 def test_installed_boot_uses_the_verified_copy_after_detach(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shutdown_verified: bool,
-    user_setup_timeout_seconds: float | None,
+    user_setup_timeout_seconds: float | None, user_chat: list[str] | None,
 ) -> None:
     source = tmp_path / "mounted" / "Tobkiri Launcher CI E2E.app"
     source.mkdir(parents=True)
@@ -875,6 +908,11 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
                 assert wait_option not in arguments
             else:
                 assert arguments[arguments.index(wait_option) + 1] == "180.0"
+            chat_option = "--wait-for-user-chat"
+            if user_chat is None:
+                assert chat_option not in arguments
+            else:
+                assert arguments[arguments.index(chat_option) + 1:] == user_chat
             return subprocess.CompletedProcess(arguments, 0 if shutdown_verified else 1)
         return subprocess.CompletedProcess(arguments, 0)
 
@@ -884,11 +922,11 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
     )
     monkeypatch.setattr(MODULE, "_resolve_executable", lambda name: name)
     monkeypatch.setattr(MODULE, "_run", run)
-    inputs = (Mount(), source, diagnostics, "python", "codesign", user_setup_timeout_seconds)
+    inputs = (Mount(), source, diagnostics, "python", "codesign", user_setup_timeout_seconds, user_chat)
     if shutdown_verified:
         MODULE._cold_boot_installed_launcher(*inputs)
     else:
-        with pytest.raises(MODULE.DmgVerificationError, match="Setup or shutdown verification failed"):
+        with pytest.raises(MODULE.DmgVerificationError, match="installed Launcher verification failed"):
             MODULE._cold_boot_installed_launcher(*inputs)
     assert events == ["verify-mount", "ditto", "verify-mount", "detach", "codesign", "python"]
     assert installed_paths[0].parent.name == "Applications"

@@ -28,11 +28,13 @@ import stat
 import subprocess
 import threading
 import time
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote, urlencode
 
 
 CI_BUNDLE_IDENTIFIER = "dev.tobkiri.launcher.ci-e2e"
@@ -94,6 +96,16 @@ class ColdBootConfig:
     timeout_seconds: float
     expect_setup: bool = False
     user_setup_timeout_seconds: float | None = None
+    user_chat: UserChatObservation | None = None
+
+
+@dataclass(frozen=True)
+class UserChatObservation:
+    """Expected saved Registry route for the operator's ordinary GUI chat."""
+
+    timeout_seconds: float
+    provider_id: str
+    model_id: str
 
 
 @dataclass(frozen=True)
@@ -107,6 +119,7 @@ class ColdBootResult:
     panel_reachable: bool
     setup_panel_reachable: bool = False
     setup_activation_verified: bool = False
+    saved_chat_verified: bool = False
 
 
 @dataclass(frozen=True)
@@ -116,6 +129,13 @@ class _HostContract:
     plan_digest: str
     activation_id: str
     bootstrap_secret: str = field(repr=False)
+
+
+@dataclass(frozen=True)
+class _ActivatedSetup:
+    result: ColdBootResult
+    contract: _HostContract
+    cookie: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -309,15 +329,24 @@ def _validate_config(config: ColdBootConfig) -> tuple[ColdBootConfig, Path]:
         not config.expect_setup or not 5.0 <= config.user_setup_timeout_seconds <= 900.0
     ):
         raise ColdBootError("user Setup wait requires fresh Setup and a 5–900 second timeout")
+    if config.user_chat is not None and (
+        config.user_setup_timeout_seconds is None
+        or not 5.0 <= config.user_chat.timeout_seconds <= 900.0
+        or any(
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", value) is None
+            for value in (config.user_chat.provider_id, config.user_chat.model_id)
+        )
+    ):
+        raise ColdBootError(
+            "user chat wait requires user Setup, a 5–900 second timeout and valid route IDs"
+        )
     return (
-        ColdBootConfig(
+        replace(
+            config,
             app_bundle=app_bundle,
             app_data_dir=app_data_dir,
             diagnostics_dir=diagnostics_dir,
             kernel_port=kernel_port,
-            timeout_seconds=config.timeout_seconds,
-            expect_setup=config.expect_setup,
-            user_setup_timeout_seconds=config.user_setup_timeout_seconds,
         ),
         executable,
     )
@@ -1012,7 +1041,7 @@ def _wait_for_readiness(
 
 def _wait_for_user_setup_activation(
     config: ColdBootConfig, probes: ColdBootProbes, process: Any, initial: ColdBootResult,
-) -> ColdBootResult:
+) -> _ActivatedSetup:
     """Verify that the manually reviewed Setup was adopted by a new owned Kernel."""
     assert config.user_setup_timeout_seconds is not None
     deadline = probes.monotonic() + config.user_setup_timeout_seconds
@@ -1066,11 +1095,150 @@ def _wait_for_user_setup_activation(
                     and process.poll() is None
                     and probes.monotonic() < deadline
                 ):
-                    return replace(initial, kernel_pid=pid, setup_activation_verified=True)
+                    return _ActivatedSetup(
+                        replace(initial, kernel_pid=pid, setup_activation_verified=True),
+                        contract,
+                        watched_session[2],
+                    )
         else:
             watched_session = None
         probes.sleep(1.0)
     raise ColdBootError("user Setup did not reach an active Profile on the restarted Kernel")
+
+
+def _read_panel_contract(
+    config: ColdBootConfig, probes: ColdBootProbes, cookie: str, deadline: float,
+    path: str, **query: str,
+) -> dict[str, object]:
+    target = path + ("?" + urlencode(query) if query else "")
+    response = _request_before_deadline(
+        probes, deadline, config.kernel_port, "GET",
+        "/api/contracts/defaultspack/" + quote(f"GET {target}", safe=""),
+        {
+            "Accept": "application/json",
+            "Cookie": cookie,
+            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        },
+        b"",
+    )
+    return _successful_panel_auth_response(response) or {}
+
+
+def _read_records(document: Mapping[str, object], key: str) -> list[dict[str, object]]:
+    records = document.get(key)
+    if not isinstance(records, list):
+        return []
+    return [item for item in records if isinstance(item, dict)]
+
+
+def _chat_message_text(message: Mapping[str, object]) -> str:
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part["text"] for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+            and isinstance(part.get("text"), str)
+        )
+    return ""
+
+
+def _has_saved_chat(
+    config: ColdBootConfig, probes: ColdBootProbes, active: _ActivatedSetup,
+    expected: UserChatObservation, prompt: str, deadline: float,
+) -> bool:
+    def get(path: str, **query: str) -> dict[str, object]:
+        return _read_panel_contract(config, probes, active.cookie, deadline, path, **query)
+
+    providers = _read_records(get("/api/connections/status"), "providers")
+    if not any(
+        row.get("provider_instance_id") == expected.provider_id
+        and row.get("enabled") is True
+        and row.get("credential_status") in ("configured", "not_required")
+        for row in providers
+    ):
+        return False
+    models = {
+        row["profile_id"] for row in _read_records(get("/api/ai/profiles"), "profiles")
+        if isinstance(row.get("profile_id"), str)
+        and row.get("model_id") == expected.model_id
+        and row.get("provider_id") == expected.provider_id
+        and row.get("route_configured") is True
+    }
+    if not models:
+        return False
+    for item in _read_records(get("/api/chat/conversations"), "conversations"):
+        conversation_id = item.get("id")
+        model = item.get("model")
+        if (
+            not isinstance(conversation_id, str) or not conversation_id
+            or not isinstance(model, str) or model not in models
+        ):
+            continue
+        conversation = get("/api/chat/conversation", conversation_id=conversation_id)
+        if conversation.get("id") != conversation_id or conversation.get("model") != model:
+            continue
+        messages = _read_records(conversation, "messages")
+        users = {
+            msg["id"] for msg in messages if isinstance(msg.get("id"), str)
+            and msg.get("role") == "user" and _chat_message_text(msg) == prompt
+        }
+        replies = {
+            msg["id"] for msg in messages if isinstance(msg.get("id"), str)
+            and msg.get("role") == "assistant" and _chat_message_text(msg).strip()
+        }
+        if not users or not replies:
+            continue
+        for turn in _read_records(get("/api/chat/turns", conversation_id=conversation_id), "turns"):
+            reference = turn.get("result_reference")
+            if (
+                turn.get("profile_id") == active.contract.profile_id
+                and turn.get("conversation_id") == conversation_id
+                and turn.get("status") == "completed"
+                and isinstance(reference, dict)
+                and reference.get("conversation_id") == conversation_id
+                and isinstance(reference.get("user_message_id"), str)
+                and isinstance(reference.get("assistant_message_id"), str)
+                and reference["user_message_id"] in users
+                and reference["assistant_message_id"] in replies
+                and type(reference.get("conversation_revision")) is int
+                and type(conversation.get("conversation_revision")) is int
+                and 0 < reference["conversation_revision"] <= conversation["conversation_revision"]
+            ):
+                return True
+    return False
+
+
+def _wait_for_user_chat(
+    config: ColdBootConfig, probes: ColdBootProbes, process: Any, active: _ActivatedSetup,
+    expected: UserChatObservation,
+) -> ColdBootResult:
+    deadline = probes.monotonic() + expected.timeout_seconds
+    prompt = f"Reply with a short greeting. Tobkiri verification {secrets.token_hex(12)}."
+    print("Launch Harness, configure the Provider in the GUI, then select the saved model in a new chat.")
+    print(f"Send this message in Harness: {prompt}", flush=True)
+
+    def check_owner() -> None:
+        result = active.result
+        if (
+            process.poll() is not None
+            or probes.listener_pid(config.kernel_port) != result.kernel_pid
+            or not _is_descendant(result.kernel_pid, result.launcher_pid, probes.parent_pid)
+            or _read_host_contract(config) != active.contract
+        ):
+            raise ColdBootError("the active Launcher-owned Kernel changed while observing chat")
+
+    while probes.monotonic() < deadline:
+        check_owner()
+        if _has_saved_chat(config, probes, active, expected, prompt, deadline):
+            check_owner()
+            if probes.monotonic() < deadline:
+                return replace(active.result, saved_chat_verified=True)
+        probes.sleep(2.0)
+    raise ColdBootError(
+        "the GUI chat did not complete and persist with the expected saved model"
+    )
 
 
 def verify_cold_boot(
@@ -1113,7 +1281,10 @@ def verify_cold_boot(
         result = _wait_for_readiness(config, probes, process, broker_port)
         if config.user_setup_timeout_seconds is not None:
             print("Open Setup in the isolated Launcher and review the confirmation.", flush=True)
-            return _wait_for_user_setup_activation(config, probes, process, result)
+            active = _wait_for_user_setup_activation(config, probes, process, result)
+            if config.user_chat is not None:
+                return _wait_for_user_chat(config, probes, process, active, config.user_chat)
+            return active.result
         return result
     except BaseException as error:
         failure = error
@@ -1136,7 +1307,8 @@ def verify_cold_boot(
                 broker_port,
                 None if process is None else int(process.pid),
                 diagnostic,
-                "" if collector is None else collector.text(),
+                # Manual Settings and chat can put private text in application logs.
+                collector.text() if collector is not None and config.user_chat is None else "",
             )
         if failure is None and shutdown_failure is not None:
             raise shutdown_failure
@@ -1152,12 +1324,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", default=180.0, type=float)
     parser.add_argument("--expect-setup", action="store_true")
     parser.add_argument("--wait-for-user-setup-seconds", type=float)
+    parser.add_argument(
+        "--wait-for-user-chat", nargs=3, metavar=("SECONDS", "PROVIDER_ID", "MODEL_ID"),
+        help="observe a message sent in the installed GUI after user-confirmed Setup",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     """Execute the verifier without printing app output or sensitive state."""
     args = parse_args()
+    user_chat = None
+    if args.wait_for_user_chat is not None:
+        seconds, provider_id, model_id = args.wait_for_user_chat
+        try:
+            user_chat = UserChatObservation(float(seconds), provider_id, model_id)
+        except ValueError:
+            raise ColdBootError("user chat timeout must be numeric") from None
     result = verify_cold_boot(
         ColdBootConfig(
             app_bundle=args.app_bundle,
@@ -1167,12 +1350,15 @@ def main() -> int:
             timeout_seconds=args.timeout_seconds,
             expect_setup=args.expect_setup,
             user_setup_timeout_seconds=args.wait_for_user_setup_seconds,
+            user_chat=user_chat,
         )
     )
     if result.setup_panel_reachable:
         print("Verified authenticated fresh Setup entry from the installed app")
     if result.setup_activation_verified:
         print("Verified the confirmed Profile on the restarted Launcher-owned Kernel")
+    if result.saved_chat_verified:
+        print("Verified a completed GUI chat saved with the expected model")
     print(
         "Verified local macOS CI/E2E cold boot "
         f"(broker={result.broker_port}, kernel={result.kernel_port}, "
