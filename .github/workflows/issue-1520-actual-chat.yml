@@ -16,6 +16,8 @@ on:
       - 'packs/local.harness-ui/**'
       - 'crates/tobkiri-e2e/tests/ui.rs'
       - 'crates/tobkiri-cli/**'
+      - 'crates/tobkiri-core/src/core.rs'
+      - 'tools/quality/issue_1520_cli_pack_overlay.py'
       - 'tools/quality/issue_1520_cli_roundtrip.py'
   workflow_dispatch:
 
@@ -75,6 +77,11 @@ jobs:
           cargo build --locked -p tobkiri-cli --bin tobkiri
           python3 -B tools/quality/issue_1520_cli_roundtrip.py \
             "$CARGO_TARGET_DIR/debug/tobkiri" 2>&1 | tee "$RUNNER_TEMP/actual-cli-publication.log"
+      - name: Install and run an independent Flow overlay through the actual CLI
+        shell: bash
+        run: |
+          python3 -B tools/quality/issue_1520_cli_pack_overlay.py \
+            "$CARGO_TARGET_DIR/debug/tobkiri" 2>&1 | tee "$RUNNER_TEMP/actual-cli-pack-overlay.log"
       - name: Retain test receipts
         if: always()
         uses: actions/upload-artifact@v4
@@ -86,4 +93,5 @@ jobs:
             ${{ runner.temp }}/actual-ui-ports.log*
             ${{ runner.temp }}/pack-manifest.log*
             ${{ runner.temp }}/actual-cli-publication.log
+            ${{ runner.temp }}/actual-cli-pack-overlay.log
           if-no-files-found: warn
