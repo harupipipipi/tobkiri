@@ -160,7 +160,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         orchestration = step(registry, "Replay original saved orchestration against its Wasm component")
         self.assertIn("/native-registry-packs/local.saved-orchestration.tpk", orchestration)
         self.assertIn("original_saved_steps_through_core -- --ignored --exact", orchestration)
-        adapter = step(registry, "Project ordinary local Provider responses through the packaged Wasm port")
+        adapter = step(registry, "Compile and project ordinary local Provider chat through the packaged Wasm ports")
         self.assertIn("/native-registry-packs/local.provider-adapter.tpk", adapter)
         self.assertIn("local_provider_response_through_original_core -- --ignored --exact", adapter)
         self.assertLess(registry.index(adapter), registry.index("name: native-registry-packs"))

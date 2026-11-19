@@ -838,7 +838,7 @@ jobs:
             --log "$RUNNER_TEMP/saved-orchestration-check.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test saved_orchestration \
               original_saved_steps_through_core -- --ignored --exact --nocapture
-      - name: Project ordinary local Provider responses through the packaged Wasm port
+      - name: Compile and project ordinary local Provider chat through the packaged Wasm ports
         env:
           TOBKIRI_PROVIDER_ADAPTER_TPK: ${{ runner.temp }}/native-registry-packs/local.provider-adapter.tpk
         run: |

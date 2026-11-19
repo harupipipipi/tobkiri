@@ -1,0 +1,238 @@
+use ordered_python_compat::{MAX_BYTES, MAX_NODES, PyValue, dumps_bounded, loads, pystr, pytruthy};
+use std::collections::BTreeMap;
+
+const MAX_REQUEST_BYTES: usize = 1024 * 1024;
+const MAX_SOURCE_DEPTH: usize = 256;
+
+/// Compile the finite loopback chat body with the local Python adapter's ordering.
+/// `None` lets the caller use its original compiler before sending a request.
+pub fn compile_local_chat_request(source: &str) -> Option<String> {
+    if source.len() > MAX_BYTES || !supported_depth(source) {
+        return None;
+    }
+
+    let [
+        mut model_id,
+        mut provider_id,
+        mut messages,
+        mut parameters,
+        mut tools,
+    ] = [const { PyValue::Null }; 5];
+    for (key, value) in loads(source).ok()?.into_object()? {
+        let field = match key.as_str() {
+            "model_id" => &mut model_id,
+            "provider_id" => &mut provider_id,
+            "messages" => &mut messages,
+            "parameters" => &mut parameters,
+            "tools" => &mut tools,
+            _ => return None,
+        };
+        *field = value;
+    }
+
+    let model_id = model_string(&model_id);
+    let provider_id = model_string(&provider_id);
+    let model = if provider_id.is_empty() {
+        &model_id
+    } else {
+        model_id
+            .strip_prefix(&provider_id)
+            .and_then(|suffix| suffix.strip_prefix('/'))
+            .unwrap_or(&model_id)
+    };
+    let messages = if pytruthy(&messages) {
+        iterable(messages)?
+    } else {
+        Vec::new()
+    };
+    let mut entries = vec![
+        ("model".to_owned(), PyValue::String(model.to_owned())),
+        ("messages".to_owned(), PyValue::Array(messages)),
+        ("stream".to_owned(), PyValue::Bool(false)),
+    ];
+    let mut positions: BTreeMap<_, _> = entries
+        .iter()
+        .enumerate()
+        .map(|(index, (key, _))| (key.clone(), index))
+        .collect();
+    for (key, value) in parameter_entries(parameters)? {
+        if let Some(index) = positions.get(&key).copied() {
+            entries[index].1 = value;
+        } else {
+            positions.insert(key.clone(), entries.len());
+            entries.push((key, value));
+        }
+    }
+    if tools.as_array().is_some_and(|items| !items.is_empty()) {
+        if let Some(index) = positions.get("tools").copied() {
+            entries[index].1 = tools;
+        } else {
+            entries.push(("tools".to_owned(), tools));
+        }
+    }
+
+    dumps_bounded(&PyValue::Object(entries), MAX_REQUEST_BYTES).ok()
+}
+
+fn model_string(value: &PyValue) -> String {
+    if pytruthy(value) {
+        pystr(value)
+    } else {
+        String::new()
+    }
+}
+
+fn iterable(value: PyValue) -> Option<Vec<PyValue>> {
+    match value {
+        value @ PyValue::Array(_) => value.into_array(),
+        value @ PyValue::Object(_) => Some(
+            value
+                .into_object()?
+                .into_iter()
+                .map(|(key, _)| PyValue::String(key))
+                .collect(),
+        ),
+        PyValue::String(ref text) => {
+            if text.chars().take(MAX_NODES + 1).count() > MAX_NODES {
+                return None;
+            }
+            Some(
+                text.chars()
+                    .map(|character| PyValue::String(character.to_string()))
+                    .collect(),
+            )
+        }
+        _ => None,
+    }
+}
+
+fn parameter_entries(value: PyValue) -> Option<Vec<(String, PyValue)>> {
+    if !pytruthy(&value) {
+        return Some(Vec::new());
+    }
+    match value {
+        value @ PyValue::Object(_) => value.into_object(),
+        value @ PyValue::Array(_) => value
+            .into_array()?
+            .into_iter()
+            .map(|pair| {
+                let [key, value]: [PyValue; 2] = iterable(pair)?.try_into().ok()?;
+                // Python accepts other hashable keys, some of which collide
+                // after JSON encoding. Leave those keys to the original path.
+                Some((key.into_string()?, value))
+            })
+            .collect(),
+        _ => None,
+    }
+}
+
+fn supported_depth(source: &str) -> bool {
+    let mut bytes = source.bytes();
+    let mut quoted = false;
+    let mut depth: usize = 0;
+    while let Some(byte) = bytes.next() {
+        match byte {
+            b'\\' if quoted => {
+                bytes.next();
+            }
+            b'"' => quoted = !quoted,
+            b'[' | b'{' if !quoted => {
+                depth += 1;
+                if depth > MAX_SOURCE_DEPTH {
+                    return false;
+                }
+            }
+            b']' | b'}' if !quoted => {
+                if depth == 0 {
+                    return false;
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    depth == 0 && !quoted
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Expected documents were generated by the original body builder and
+    // json.dumps(body, ensure_ascii=False, separators=(",", ":")) in Python.
+    #[test]
+    fn preserves_parameter_order_and_replaces_tools_in_place() {
+        let source = r#"{"model_id":"local/lab/model","provider_id":"local","messages":[{"role":"user","content":"東京"}],"parameters":{"z":1e-7,"messages":{"custom":true},"stream":true,"tools":"older","model":77,"a":-0.0},"tools":[{"type":"function","function":{"name":"été","parameters":{"large":9007199254740995}}}]}"#;
+        let expected = r#"{"model":77,"messages":{"custom":true},"stream":true,"z":1e-07,"tools":[{"type":"function","function":{"name":"été","parameters":{"large":9007199254740995}}}],"a":-0.0}"#;
+        assert_eq!(
+            compile_local_chat_request(source).as_deref(),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn strips_one_exact_provider_prefix_and_appends_new_tools() {
+        let source = r#"{"model_id":"ll/α/ll/α/model","provider_id":"ll/α","messages":{"z":1,"a":2},"parameters":{"temperature":1e16},"tools":["工具"]}"#;
+        let expected = r#"{"model":"ll/α/model","messages":["z","a"],"stream":false,"temperature":1e+16,"tools":["工具"]}"#;
+        assert_eq!(
+            compile_local_chat_request(source).as_deref(),
+            Some(expected)
+        );
+        let source = r#"{"model_id":"locality/model","provider_id":"local","messages":"文🦀","tools":{"ignored":true}}"#;
+        let expected = r#"{"model":"locality/model","messages":["文","🦀"],"stream":false}"#;
+        assert_eq!(
+            compile_local_chat_request(source).as_deref(),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn follows_python_coercion_defaults_and_iterable_dict_order() {
+        let source = r#"{"model_id":{"model":["ブ",true]},"provider_id":false,"messages":0,"parameters":[["tools",{"z":1}],"xy",{"temperature":0,"hot":0},["x","updated"]],"tools":[]}"#;
+        let expected = r#"{"model":"{'model': ['ブ', True]}","messages":[],"stream":false,"tools":{"z":1},"x":"updated","temperature":"hot"}"#;
+        assert_eq!(
+            compile_local_chat_request(source).as_deref(),
+            Some(expected)
+        );
+        let expected = r#"{"model":"","messages":[],"stream":false}"#;
+        assert_eq!(compile_local_chat_request("{}").as_deref(), Some(expected));
+    }
+
+    #[test]
+    fn leaves_inputs_outside_the_compiler_domain_to_python() {
+        for source in [
+            r#"[]"#,
+            r#"{"endpoint":"loopback"}"#,
+            r#"{"parameters":{"temperature":NaN}}"#,
+            r#"{"parameters":[[1,2]]}"#,
+            r#"{"parameters":{"model":1,"model":2}}"#,
+            r#"{"messages":true}"#,
+            r#"{"messages":["\ud800"]}"#,
+        ] {
+            assert_eq!(compile_local_chat_request(source), None, "{source}");
+        }
+        let source = format!(
+            r#"{{"messages":{}null{}}}"#,
+            "[".repeat(MAX_SOURCE_DEPTH),
+            "]".repeat(MAX_SOURCE_DEPTH),
+        );
+        assert_eq!(compile_local_chat_request(&source), None);
+    }
+
+    #[test]
+    fn counts_utf8_bytes_at_the_legacy_request_limit() {
+        let empty = r#"{"model":"","messages":[],"stream":false}"#;
+        let bytes = MAX_REQUEST_BYTES - empty.len();
+        let mut model = "é".repeat(bytes / 2);
+        if bytes % 2 != 0 {
+            model.push('x');
+        }
+        let source = format!(r#"{{"model_id":"{model}"}}"#);
+        assert_eq!(
+            compile_local_chat_request(&source).map(|body| body.len()),
+            Some(MAX_REQUEST_BYTES)
+        );
+        let source = format!(r#"{{"model_id":"{model}x"}}"#);
+        assert_eq!(compile_local_chat_request(&source), None);
+    }
+}

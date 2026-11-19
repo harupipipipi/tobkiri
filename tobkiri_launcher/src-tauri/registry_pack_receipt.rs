@@ -44,7 +44,7 @@ mod unix {
     pub(crate) const ORCHESTRATION_PACK_ID: &str = "local.saved-orchestration";
     pub(crate) const PROVIDER_ADAPTER_PACK_ID: &str = "local.provider-adapter";
     const ORCHESTRATION_PACK_VERSION: &str = "0.1.0";
-    const PROVIDER_ADAPTER_PACK_VERSION: &str = "0.1.0";
+    const PROVIDER_ADAPTER_PACK_VERSIONS: [&str; 2] = ["0.1.0", "0.2.0"];
     const ADDITIONAL_PACK_IDS: [&str; 3] = [
         SETTLEMENT_PACK_ID,
         ORCHESTRATION_PACK_ID,
@@ -212,7 +212,8 @@ mod unix {
                 || pack.archive != format!("{id}.tpk")
                 || !valid_version(&pack.version)
                 || (id == ORCHESTRATION_PACK_ID && pack.version != ORCHESTRATION_PACK_VERSION)
-                || (id == PROVIDER_ADAPTER_PACK_ID && pack.version != PROVIDER_ADAPTER_PACK_VERSION)
+                || (id == PROVIDER_ADAPTER_PACK_ID
+                    && !PROVIDER_ADAPTER_PACK_VERSIONS.contains(&pack.version.as_str()))
                 || !(1..=ARCHIVE_LIMIT).contains(&pack.archive_bytes)
                 || !tagged_sha256(&pack.archive_sha256)
                 || !tagged_sha256(&pack.manifest_sha256)

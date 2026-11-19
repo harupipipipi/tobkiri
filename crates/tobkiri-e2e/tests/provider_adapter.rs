@@ -35,6 +35,8 @@ async fn local_provider_response_through_original_core() -> Result<()> {
     let engine = WasmEngine::new_with_control(&control)?;
     let shape = ShapeRef::parse("local.provider-adapter.local-completion@1.0")?;
     let operation = OpName::parse("project")?;
+    let request_shape = ShapeRef::parse("local.provider-adapter.local-request@1.0")?;
+    let request_operation = OpName::parse("compile")?;
     let profile = ProfileId::parse("defaults")?;
     let original = r#"{"usage":{"completion_tokens":3,"prompt_tokens":4},"choices":[{"message":{"content":"こんにちは","tool_calls":[{"id":"local-tool"},42]},"finish_reason":"stop"}]}"#;
     let generate = r#"{"output":"こんにちは","tool_intents":[{"id":"local-tool"},42],"usage":{"completion_tokens":3,"prompt_tokens":4},"finish_reason":"stop"}"#;
@@ -60,19 +62,53 @@ async fn local_provider_response_through_original_core() -> Result<()> {
         let result = port
             .invoke_with_document_limit(&[Val::String(text), Val::Bool(streaming)])
             .await?;
-        let [Val::Result(Ok(Some(value)))] = result.as_slice() else {
-            anyhow::bail!("local Provider Adapter omitted its result");
-        };
-        let Val::String(text) = &**value else {
-            anyhow::bail!("local Provider Adapter returned a different result type");
-        };
         ensure!(
-            text.as_str() == expected,
+            document(&result)? == expected,
             "local Provider projection differs"
         );
         drop(result);
         drop(wasm);
         ensure!(account.snapshot()?.charged_bytes == 0);
     }
+    let source = r#"{"model_id":"local/モデル","provider_id":"local","messages":[{"role":"user","content":"こんにちは"}],"parameters":{"max_tokens":16,"tools":[0],"temperature":-0.0},"tools":[{"id":"順番"}]}"#;
+    let request = r#"{"model":"モデル","messages":[{"role":"user","content":"こんにちは"}],"stream":false,"max_tokens":16,"tools":[{"id":"順番"}],"temperature":-0.0}"#;
+    for (streaming, expected) in [(false, generate), (true, stream)] {
+        let invocation = account.begin()?;
+        let deadline = invocation.deadline()?;
+        let mut wasm = engine.native_setup_store(invocation, ())?;
+        let port = wasm
+            .prepare_declared_read_only_pair(
+                &pack,
+                [(&request_shape, &request_operation), (&shape, &operation)],
+                &profile,
+                deadline,
+            )
+            .await?;
+        let input = BudgetedString::copy_from(source, port.allocation_owners().component(), 1)?;
+        let (compiled, next) = port
+            .invoke_with_document_limit_then(&[Val::String(input)])
+            .await?;
+        ensure!(document(&compiled)? == request);
+        drop(compiled);
+        let input = BudgetedString::copy_from(original, next.allocation_owners().component(), 1)?;
+        let response = next
+            .invoke_with_document_limit(&[Val::String(input), Val::Bool(streaming)])
+            .await?;
+        ensure!(document(&response)? == expected);
+        ensure!(wasm.fuel_remaining()? < pack.manifest.permissions.wasm.fuel_per_call);
+        drop(response);
+        drop(wasm);
+        ensure!(account.snapshot()?.charged_bytes == 0);
+    }
     Ok(())
+}
+
+fn document(output: &[Val]) -> Result<&str> {
+    let [Val::Result(Ok(Some(value)))] = output else {
+        anyhow::bail!("local Provider Adapter omitted its result");
+    };
+    let Val::String(text) = &**value else {
+        anyhow::bail!("local Provider Adapter returned a different result type");
+    };
+    Ok(text.as_str())
 }

@@ -8,8 +8,17 @@ interface local-completion {
   project: func(response: string, streaming: bool) -> result<string, error>;
 }
 
+interface local-request {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Serialize the already selected model, messages, parameters and tools.
+  /// An empty result leaves compilation to the original codec before dispatch.
+  compile: func(request: string) -> result<string, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
   export local-completion;
+  export local-request;
 }

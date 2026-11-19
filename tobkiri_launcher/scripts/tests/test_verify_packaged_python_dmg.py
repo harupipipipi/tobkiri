@@ -454,7 +454,9 @@ def test_registry_receipt_pin_is_forwarded_by_shell_wrapper(tmp_path: Path) -> N
     assert "expected native Registry Packs receipt SHA-256 is invalid" in result.stderr
 
 
-def _write_registry_packs(app: Path, *, version: int = 1) -> str:
+def _write_registry_packs(
+    app: Path, *, version: int = 1, adapter_version: str = "0.2.0"
+) -> str:
     directory = app / "Contents/Resources/app/native-registry-packs"
     directory.mkdir(parents=True)
     records = []
@@ -473,7 +475,7 @@ def _write_registry_packs(app: Path, *, version: int = 1) -> str:
         (directory / archive).write_bytes(contents)
         records.append({
             "id": pack_id,
-            "version": "0.1.0",
+            "version": adapter_version if pack_id == "local.provider-adapter" else "0.1.0",
             "archive": archive,
             "archive_bytes": len(contents),
             "archive_sha256": "sha256:" + hashlib.sha256(contents).hexdigest(),
@@ -486,15 +488,21 @@ def _write_registry_packs(app: Path, *, version: int = 1) -> str:
 
 
 @pytest.fixture(
-    params=[1, 2, 3, 4],
-    ids=["three-packs", "with-settlement", "with-orchestration", "with-provider-adapter"],
+    params=[
+        pytest.param((1, {}), id="three-packs"),
+        pytest.param((2, {}), id="with-settlement"),
+        pytest.param((3, {}), id="with-orchestration"),
+        pytest.param((4, {"adapter_version": "0.1.0"}), id="with-provider-adapter-0.1.0"),
+        pytest.param((4, {}), id="with-provider-adapter-0.2.0"),
+    ],
 )
 def registry_mount(
     tmp_path: Path, request: pytest.FixtureRequest,
 ) -> Iterator[tuple[MODULE.MountedDmg, Path, str]]:
     root = tmp_path.resolve() / "mounted"
     app = root / "Fixture.app"
-    receipt_digest = _write_registry_packs(app, version=request.param)
+    version, options = request.param
+    receipt_digest = _write_registry_packs(app, version=version, **options)
     mount = MODULE.MountedDmg.__new__(MODULE.MountedDmg)
     mount.path = root
     mount.name = root.name
@@ -672,15 +680,18 @@ def test_registry_receipt_version_requires_its_exact_pack_set(
         mount.verify_native_registry_packs(app, hashlib.sha256(payload).hexdigest())
 
 
-@pytest.mark.parametrize("receipt_version", [3, 4], ids=["orchestration", "adapter"])
-def test_registry_receipt_pins_the_latest_pack_release(
-    tmp_path: Path, receipt_version: int,
+@pytest.mark.parametrize(
+    ("receipt_version", "unapproved"),
+    [(3, "0.1.1"), (3, "0.2.0"), (4, "0.1.1"), (4, "0.2.1")],
+)
+def test_registry_receipt_rejects_unapproved_pack_releases(
+    tmp_path: Path, receipt_version: int, unapproved: str,
 ) -> None:
     app = tmp_path / "Fixture.app"
     _write_registry_packs(app, version=receipt_version)
     path = app / MODULE.NATIVE_REGISTRY_PACKS / "receipt.json"
     receipt = json.loads(path.read_bytes())
-    receipt["packs"][-1]["version"] = "0.1.1"
+    receipt["packs"][-1]["version"] = unapproved
     with pytest.raises(MODULE.DmgVerificationError, match="receipt has an invalid pin"):
         MODULE._registry_archive_pins(json.dumps(receipt).encode())
 

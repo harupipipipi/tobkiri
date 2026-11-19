@@ -606,43 +606,46 @@ mod unix {
                 );
             }
 
-            let fixture = Fixture::with_packs(PROVIDER_ADAPTER_RECEIPT_FORMAT, ids)?;
-            let input = fixture.write_receipt(&fixture.document)?;
-            input.stage(&fixture.stage)?;
-            let pin = input.receipt_sha256();
-            let inspect = || {
-                verify_installed_with_provider_adapter(
-                    &fixture.stage,
-                    pin,
-                    || Ok(()),
-                    |pack, archive| {
-                        assert_eq!(pack.id(), PROVIDER_ADAPTER_PACK_ID);
-                        assert_eq!(pack.version(), "0.1.0");
-                        let mut prefix = [0; 6];
-                        archive.read_exact(&mut prefix)?;
-                        Ok(prefix)
-                    },
-                )
-            };
-            assert_eq!(inspect()?, Some(*b"local."));
+            for (approved, unapproved) in [("0.1.0", "0.1.1"), ("0.2.0", "0.2.1")] {
+                let fixture = Fixture::with_packs(PROVIDER_ADAPTER_RECEIPT_FORMAT, ids.clone())?;
+                let mut receipt = fixture.document.clone();
+                receipt["packs"][5]["version"] = json!(approved);
+                let input = fixture.write_receipt(&receipt)?;
+                input.stage(&fixture.stage)?;
+                let pin = input.receipt_sha256();
+                let inspect = || {
+                    verify_installed_with_provider_adapter(
+                        &fixture.stage,
+                        pin,
+                        || Ok(()),
+                        |pack, archive| {
+                            assert_eq!(pack.id(), PROVIDER_ADAPTER_PACK_ID);
+                            assert_eq!(pack.version(), approved);
+                            let mut prefix = [0; 6];
+                            archive.read_exact(&mut prefix)?;
+                            Ok(prefix)
+                        },
+                    )
+                };
+                assert_eq!(inspect()?, Some(*b"local."));
 
-            let archive = fixture
-                .stage
-                .join(DIRECTORY)
-                .join(format!("{PROVIDER_ADAPTER_PACK_ID}.tpk"));
-            fs::write(&archive, b"local.provider-adapteR")?;
-            assert!(inspect().is_err());
-            assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
-            fs::remove_file(&archive)?;
-            assert!(inspect().is_err());
+                let archive = fixture
+                    .stage
+                    .join(DIRECTORY)
+                    .join(format!("{PROVIDER_ADAPTER_PACK_ID}.tpk"));
+                fs::write(&archive, b"local.provider-adapteR")?;
+                assert!(inspect().is_err());
+                assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
+                fs::remove_file(&archive)?;
+                assert!(inspect().is_err());
 
-            let mut invalid = fixture.document.clone();
-            invalid["packs"][5]["version"] = json!("0.1.1");
-            let error = fixture
-                .write_receipt(&invalid)?
-                .stage(&fixture.root)
-                .unwrap_err();
-            assert!(error.to_string().contains(PROVIDER_ADAPTER_PACK_ID));
+                receipt["packs"][5]["version"] = json!(unapproved);
+                let error = fixture
+                    .write_receipt(&receipt)?
+                    .stage(&fixture.root)
+                    .unwrap_err();
+                assert!(error.to_string().contains(PROVIDER_ADAPTER_PACK_ID));
+            }
             Ok(())
         }
 

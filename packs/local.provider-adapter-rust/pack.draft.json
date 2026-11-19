@@ -1,7 +1,7 @@
 {
   "format": "tobkiri.pack/1",
   "id": "local.provider-adapter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher_key": null,
   "runtime": {
     "kind": "wasm",
@@ -15,12 +15,23 @@
       "version": "1.0",
       "kind": "port",
       "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.provider-adapter.local-request",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
     }
   ],
   "ports": {
     "provides": [
       {
         "shape": "local.provider-adapter.local-completion",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.provider-adapter.local-request",
         "version": "1.0",
         "optional": false
       }
@@ -36,7 +47,7 @@
     "wasm": {
       "fuel_per_call": 1400000000,
       "memory_mib": 48,
-      "wall_ms": 10000,
+      "wall_ms": 30000,
       "table_elements": 10000,
       "output_bytes": 4194304
     },
@@ -51,6 +62,7 @@
     "component.wasm",
     "wit/deps/core.wit",
     "wit/local-completion.shape.json",
+    "wit/local-request.shape.json",
     "wit/pack.wit"
   ]
 }

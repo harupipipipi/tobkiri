@@ -36,8 +36,8 @@ PROVIDER_ADAPTER_RECEIPT_FORMAT = "tobkiri.registry-packs/4"
 ORCHESTRATION_PACK_ID = "local.saved-orchestration"
 PROVIDER_ADAPTER_PACK_ID = "local.provider-adapter"
 PINNED_REGISTRY_PACK_VERSIONS = {
-    ORCHESTRATION_PACK_ID: "0.1.0",
-    PROVIDER_ADAPTER_PACK_ID: "0.1.0",
+    ORCHESTRATION_PACK_ID: ("0.1.0",),
+    PROVIDER_ADAPTER_PACK_ID: ("0.1.0", "0.2.0"),
 }
 REGISTRY_ARCHIVES = {
     "local.provider-registry": "local.provider-registry.tpk",
@@ -610,7 +610,7 @@ def _registry_archive_pins(payload: bytes) -> list[_RegistryArchivePin]:
             or not _matches(PACK_VERSION, record["version"])
             or (
                 pack_id in PINNED_REGISTRY_PACK_VERSIONS
-                and record["version"] != PINNED_REGISTRY_PACK_VERSIONS[pack_id]
+                and record["version"] not in PINNED_REGISTRY_PACK_VERSIONS[pack_id]
             )
         ):
             raise DmgVerificationError(

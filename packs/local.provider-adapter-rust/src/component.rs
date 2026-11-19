@@ -4,7 +4,7 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use exports::local::provider_adapter::local_completion::Guest;
+use exports::local::provider_adapter::{local_completion, local_request};
 use tobkiri::core::types::Error;
 
 struct Pack;
@@ -17,9 +17,15 @@ impl exports::tobkiri::core::lifecycle::Guest for Pack {
     fn shutdown() {}
 }
 
-impl Guest for Pack {
+impl local_completion::Guest for Pack {
     fn project(response: String, stream: bool) -> Result<String, Error> {
         Ok(crate::project_local_completion(&response, stream).unwrap_or_default())
+    }
+}
+
+impl local_request::Guest for Pack {
+    fn compile(request: String) -> Result<String, Error> {
+        Ok(crate::compile_local_chat_request(&request).unwrap_or_default())
     }
 }
 
