@@ -57,6 +57,13 @@ impl exports::local::saved_conversation::legacy_read::Guest for Pack {
     }
 }
 
+impl exports::local::saved_conversation::legacy_receipt::Guest for Pack {
+    fn get(document: Option<String>, turn_id: String) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        legacy_read::saved_receipt(&profile, document.as_deref(), &turn_id).map_err(read_error)
+    }
+}
+
 export!(Pack);
 
 fn read_error(error: ReadError) -> Error {
@@ -72,6 +79,10 @@ fn read_error(error: ReadError) -> Error {
         ReadError::LegacyCodec => failure(
             ErrorCode::Unavailable,
             "saved conversation needs the legacy JSON codec",
+        ),
+        ReadError::LegacyReceiptInventory => failure(
+            ErrorCode::Unavailable,
+            "saved receipt inventory needs the original Conversation reader",
         ),
         ReadError::Internal => failure(ErrorCode::Internal, "saved conversation read failed"),
     }

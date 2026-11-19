@@ -1,4 +1,4 @@
-//! The ordinary owner `get` projection over the original Profile document.
+//! Read-only projections over the original Conversation owner document.
 
 use crate::saved_model::{STORE_VERSION, valid_conversation_id};
 use ordered_python_compat::{
@@ -16,6 +16,7 @@ pub(super) enum ReadError {
     NotFound,
     Limits,
     LegacyCodec,
+    LegacyReceiptInventory,
     Internal,
 }
 
@@ -26,13 +27,7 @@ pub(super) fn get(
     document: Option<&str>,
     conversation_id: &str,
 ) -> Result<String, ReadError> {
-    if profile.is_empty()
-        || profile != pystrip(profile)
-        || profile.contains(['/', '\\', '\0'])
-        || profile.contains("..")
-    {
-        return Err(ReadError::Profile);
-    }
+    validate_profile(profile)?;
     // The Host checks for an empty argument before opening the owner store.
     if conversation_id.is_empty() {
         return Err(ReadError::InvalidIdentifier);
@@ -42,11 +37,7 @@ pub(super) fn get(
         validate_identifier(conversation_id)?;
         return Err(ReadError::NotFound);
     };
-    if document.len() > MAX_BYTES {
-        return Err(ReadError::Limits);
-    }
-
-    let mut state = decode_document(document, profile, conversation_id)?;
+    let mut state = decode_document(document, profile, Some(conversation_id))?;
     let Some(PyValue::Object(conversations)) = field(&mut state, "conversations") else {
         return Err(ReadError::InvalidDocument);
     };
@@ -57,7 +48,40 @@ pub(super) fn get(
     let conversation = std::mem::take(conversation);
     drop(state);
 
-    let owner = PyValue::Object(vec![("conversation".into(), PyValue::Object(conversation))]);
+    owner_reply("conversation", PyValue::Object(conversation))
+}
+
+/// Read the immutable receipt as stored, including user-only append evidence.
+pub(super) fn saved_receipt(
+    profile: &str,
+    document: Option<&str>,
+    turn_id: &str,
+) -> Result<String, ReadError> {
+    validate_profile(profile)?;
+    let turn_id = pystrip(turn_id);
+    let Some(document) = document else {
+        validate_identifier(turn_id)?;
+        return owner_reply("receipt", PyValue::Null);
+    };
+    // The Python owner reads the document and obtains saved_receipts.get
+    // before validating the turn ID. A present non-map has no .get method.
+    let mut state = decode_document(document, profile, None)?;
+    let receipts = match field(&mut state, "saved_receipts") {
+        None => None,
+        Some(PyValue::Object(receipts)) => Some(receipts),
+        Some(_) => return Err(ReadError::LegacyReceiptInventory),
+    };
+    validate_identifier(turn_id)?;
+    let receipt = match receipts.and_then(|receipts| field(receipts, turn_id)) {
+        Some(PyValue::Object(receipt)) => PyValue::Object(std::mem::take(receipt)),
+        _ => PyValue::Null,
+    };
+    drop(state);
+    owner_reply("receipt", receipt)
+}
+
+fn owner_reply(field: &str, value: PyValue) -> Result<String, ReadError> {
+    let owner = PyValue::Object(vec![(field.into(), value)]);
     let owner = dumps_bounded(&owner, MAX_BYTES).map_err(output_error)?;
     let reply = PyValue::Object(vec![("owner_result".into(), PyValue::String(owner))]);
     dumps_bounded(&reply, MAX_BYTES).map_err(output_error)
@@ -66,8 +90,11 @@ pub(super) fn get(
 fn decode_document(
     raw: &str,
     profile: &str,
-    conversation_id: &str,
+    conversation_id: Option<&str>,
 ) -> Result<Vec<(String, PyValue)>, ReadError> {
+    if raw.len() > MAX_BYTES {
+        return Err(ReadError::Limits);
+    }
     let state = match loads(raw) {
         Ok(state) => state,
         Err(CodecError::Invalid | CodecError::NonFinite | CodecError::NodeLimit) => {
@@ -83,7 +110,9 @@ fn decode_document(
                     _ => ReadError::InvalidDocument,
                 });
             }
-            validate_identifier(conversation_id)?;
+            if let Some(conversation_id) = conversation_id {
+                validate_identifier(conversation_id)?;
+            }
             return Err(ReadError::LegacyCodec);
         }
         Err(error) => return Err(input_error(error)),
@@ -102,7 +131,9 @@ fn decode_document(
     if owner != profile {
         return Err(ReadError::Profile);
     }
-    validate_identifier(conversation_id)?;
+    if let Some(conversation_id) = conversation_id {
+        validate_identifier(conversation_id)?;
+    }
     // Python's decoder and its recursive `_utf8_safe` copy can reject deep
     // documents, including metadata on other rows. Their exact headroom
     // depends on the interpreter and caller, so let the original reader
@@ -131,8 +162,19 @@ fn within_container_depth(value: &PyValue, remaining: usize) -> bool {
     }
 }
 
-fn validate_identifier(conversation_id: &str) -> Result<(), ReadError> {
-    if valid_conversation_id(conversation_id) {
+fn validate_profile(profile: &str) -> Result<(), ReadError> {
+    if profile.is_empty()
+        || profile != pystrip(profile)
+        || profile.contains(['/', '\\', '\0'])
+        || profile.contains("..")
+    {
+        return Err(ReadError::Profile);
+    }
+    Ok(())
+}
+
+fn validate_identifier(identifier: &str) -> Result<(), ReadError> {
+    if valid_conversation_id(identifier) {
         Ok(())
     } else {
         Err(ReadError::InvalidIdentifier)

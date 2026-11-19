@@ -3,10 +3,18 @@ use super::*;
 const PROFILE: &str = "profile-1";
 const DOCUMENT: &str = include_str!("../fixtures/legacy-get-document.json");
 const OWNER: &str = include_str!("../fixtures/legacy-get-owner-result.json");
+const RECEIPT_DOCUMENT: &str = include_str!("../fixtures/legacy-receipt-document.json");
+const RECEIPT_OWNER: &str = include_str!("../fixtures/legacy-receipt-owner-result.json");
 
 fn document(conversations: &str) -> String {
     format!(
         r#"{{"version":"{STORE_VERSION}","profile_id":"{PROFILE}","conversations":{conversations}}}"#
+    )
+}
+
+fn receipt_document(receipts: &str) -> String {
+    format!(
+        r#"{{"version":"{STORE_VERSION}","profile_id":"{PROFILE}","conversations":{{}},"saved_receipts":{receipts}}}"#
     )
 }
 
@@ -196,4 +204,115 @@ fn uses_legacy_recursion_behavior_for_deep_sibling_metadata() {
     let deep = nested(1_000);
     assert_eq!(get(PROFILE, Some(&deep), "a"), Err(ReadError::LegacyCodec));
     assert_eq!(get("foreign", Some(&deep), "a"), Err(ReadError::Profile));
+}
+
+#[test]
+fn saved_receipt_matches_the_python_owner_without_projecting_fields() {
+    for id in ["Turn.1_x-y:z", "\u{001c}Turn.1_x-y:z\u{3000}\t"] {
+        let reply = saved_receipt(PROFILE, Some(RECEIPT_DOCUMENT), id).unwrap();
+        assert_eq!(owner(&reply), RECEIPT_OWNER.trim_end());
+    }
+    for (id, expected) in [
+        (
+            "user-only",
+            r#"{"receipt":{"turn_id":"user-only","user_revision":2}}"#,
+        ),
+        ("empty", r#"{"receipt":{}}"#),
+    ] {
+        let reply = saved_receipt(PROFILE, Some(RECEIPT_DOCUMENT), id).unwrap();
+        assert_eq!(owner(&reply), expected);
+    }
+}
+
+#[test]
+fn saved_receipt_returns_null_for_only_absence_or_non_mapping_rows() {
+    for id in [
+        "missing",
+        "turn.1_x-y:z",
+        "null",
+        "integer",
+        "array",
+        "boolean",
+        "text",
+    ] {
+        let reply = saved_receipt(PROFILE, Some(RECEIPT_DOCUMENT), id).unwrap();
+        assert_eq!(owner(&reply), r#"{"receipt":null}"#);
+    }
+    for raw in [None, Some(document("{}")), Some(receipt_document("{}"))] {
+        let reply = saved_receipt(PROFILE, raw.as_deref(), "missing").unwrap();
+        assert_eq!(owner(&reply), r#"{"receipt":null}"#);
+    }
+}
+
+#[test]
+fn saved_receipt_reads_the_document_and_inventory_before_validating_the_id() {
+    for (raw, id, expected) in [
+        (Some("invalid"), "", ReadError::InvalidDocument),
+        (Some("{}"), "-id", ReadError::InvalidDocument),
+        (None, "", ReadError::InvalidIdentifier),
+        (Some(RECEIPT_DOCUMENT), "-id", ReadError::InvalidIdentifier),
+        (Some(RECEIPT_DOCUMENT), "é", ReadError::InvalidIdentifier),
+        (
+            Some(RECEIPT_DOCUMENT),
+            "user-only\u{200b}",
+            ReadError::InvalidIdentifier,
+        ),
+    ] {
+        assert_eq!(saved_receipt(PROFILE, raw, id), Err(expected), "{id:?}");
+    }
+    for inventory in ["null", "true", "0", "[]", r#""{}""#] {
+        let raw = receipt_document(inventory);
+        for id in ["", "-id", "valid"] {
+            assert_eq!(
+                saved_receipt(PROFILE, Some(&raw), id),
+                Err(ReadError::LegacyReceiptInventory)
+            );
+        }
+        assert_eq!(
+            saved_receipt("foreign", Some(&raw), ""),
+            Err(ReadError::Profile)
+        );
+    }
+    assert!(saved_receipt(PROFILE, None, &"x".repeat(256)).is_ok());
+    assert_eq!(
+        saved_receipt(PROFILE, None, &"x".repeat(257)),
+        Err(ReadError::InvalidIdentifier)
+    );
+}
+
+#[test]
+fn saved_receipt_only_defers_python_compatible_documents_or_limits() {
+    for inventory in [
+        r#"{"id":{"value":NaN}}"#,
+        r#"{"id":{"\ud800":"\ud800"}}"#,
+        r#"{"id":{"value":1,"value":2}}"#,
+    ] {
+        let raw = receipt_document(inventory);
+        assert_eq!(
+            saved_receipt(PROFILE, Some(&raw), "id"),
+            Err(ReadError::LegacyCodec)
+        );
+        assert_eq!(
+            saved_receipt("foreign", Some(&raw), "id"),
+            Err(ReadError::Profile)
+        );
+        assert_eq!(
+            saved_receipt(PROFILE, Some(&format!("{raw}!")), ""),
+            Err(ReadError::InvalidDocument)
+        );
+    }
+    let wrong_owner_shape = document("[]");
+    assert_eq!(
+        saved_receipt(PROFILE, Some(&wrong_owner_shape), "id"),
+        Err(ReadError::InvalidDocument)
+    );
+    let large_row = receipt_document(&format!(
+        r#"{{"id":{{"value":"{}"}}}}"#,
+        r#"\""#.repeat(300_000)
+    ));
+    assert!(large_row.len() < MAX_BYTES);
+    assert_eq!(
+        saved_receipt(PROFILE, Some(&large_row), "id"),
+        Err(ReadError::LegacyCodec)
+    );
 }

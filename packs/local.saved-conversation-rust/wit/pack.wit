@@ -21,9 +21,19 @@ interface legacy-read {
   get: func(document: option<string>, conversation-id: string) -> result<json, error>;
 }
 
+interface legacy-receipt {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Read the saved append receipt from the authenticated Profile's owner
+  /// document. None represents an absent file. The original owner reply is
+  /// enclosed as the owner-result JSON string.
+  get: func(document: option<string>, turn-id: string) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
   export model;
   export legacy-read;
+  export legacy-receipt;
 }

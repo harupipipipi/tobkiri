@@ -124,6 +124,11 @@ struct Funding {
 }
 type Held<S> = ControlHandle<Work<S>>;
 
+enum LegacyConversationLookup<'a> {
+    Conversation(&'a str),
+    SavedReceipt(&'a str),
+}
+
 /// Move-only native action owned by Core or its trusted native composition.
 ///
 /// One invocation, Store, deadline, 64MiB account and physical IO slot serve all
@@ -461,6 +466,40 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         profile_id: &str,
         conversation_id: &str,
     ) -> Result<CoreValue, NativeArtifactError> {
+        self.lookup_legacy_conversation(
+            pack,
+            root,
+            profile_id,
+            LegacyConversationLookup::Conversation(conversation_id),
+        )
+        .await
+    }
+
+    /// Read original saved evidence in the active Profile. Settlement and
+    /// publication remain with their existing authorized owners.
+    pub async fn get_legacy_saved_receipt(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        turn_id: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.lookup_legacy_conversation(
+            pack,
+            root,
+            profile_id,
+            LegacyConversationLookup::SavedReceipt(turn_id),
+        )
+        .await
+    }
+
+    async fn lookup_legacy_conversation(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        lookup: LegacyConversationLookup<'_>,
+    ) -> Result<CoreValue, NativeArtifactError> {
         self.require_ready()?;
         if pack.manifest.id.as_str() != "local.saved-conversation" {
             return Err(NativeArtifactError::Denied);
@@ -473,9 +512,18 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         })?;
         self.require_live()?;
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
-        let result = store
-            .get_legacy_conversation(pack, profile_id, document, conversation_id)
-            .await;
+        let result = match lookup {
+            LegacyConversationLookup::Conversation(id) => {
+                store
+                    .get_legacy_conversation(pack, profile_id, document, id)
+                    .await
+            }
+            LegacyConversationLookup::SavedReceipt(id) => {
+                store
+                    .get_legacy_saved_receipt(pack, profile_id, document, id)
+                    .await
+            }
+        };
         self.require_live()?;
         result.map_err(|error| match error.downcast::<LegacyRegistryError>() {
             Ok(rejected) => NativeArtifactError::ConversationRegistryRejected(rejected),

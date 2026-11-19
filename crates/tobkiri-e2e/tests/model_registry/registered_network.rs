@@ -303,6 +303,12 @@ struct LiveConversationFixture<'a> {
 }
 
 #[cfg(unix)]
+enum OriginalConversationLookup {
+    Conversation,
+    SavedReceipt,
+}
+
+#[cfg(unix)]
 impl<'a> LiveConversationFixture<'a> {
     async fn import(core: &'a Arc<Core>, root: &'a Path, profile: &'a ProfileId) -> Result<Self> {
         let data = root.join("original-conversation-data");
@@ -334,6 +340,13 @@ impl<'a> LiveConversationFixture<'a> {
     }
 
     async fn get(&self, id: &str) -> Result<Value> {
+        let wire = self
+            .lookup(id, OriginalConversationLookup::Conversation)
+            .await?;
+        Ok(serde_json::from_str(&wire)?)
+    }
+
+    async fn lookup(&self, id: &str, lookup: OriginalConversationLookup) -> Result<String> {
         let mut inspection = self
             .core
             .inspect_declared_artifacts(Source::new(self.root))?;
@@ -346,23 +359,86 @@ impl<'a> LiveConversationFixture<'a> {
         let length = archive.metadata()?.len();
         let pack = inspection.verify_pack_archive(&mut archive, length)?;
         ensure!(pack.hash == self.pin.sha256);
-        tobkiri_wasm::verify_legacy_conversation_read_declaration(&pack)?;
-        let outcome: Result<Value> = async {
-            let result = inspection
-                .get_legacy_conversation(&pack, &self.data, self.profile.as_str(), id)
-                .await?;
+        let outcome: Result<String> = async {
+            let profile_id = self.profile.as_str();
+            let result = match lookup {
+                OriginalConversationLookup::Conversation => {
+                    tobkiri_wasm::verify_legacy_conversation_read_declaration(&pack)?;
+                    inspection
+                        .get_legacy_conversation(&pack, &self.data, profile_id, id)
+                        .await?
+                }
+                OriginalConversationLookup::SavedReceipt => {
+                    tobkiri_wasm::verify_legacy_conversation_receipt_declaration(&pack)?;
+                    inspection
+                        .get_legacy_saved_receipt(&pack, &self.data, profile_id, id)
+                        .await?
+                }
+            };
             let wire = result
                 .get_key("owner_result")
                 .context("missing Conversation owner result")?;
             let wire = wire
                 .as_str()
                 .context("Conversation owner result was not text")?;
-            Ok(serde_json::from_str(wire)?)
+            Ok(wire.to_owned())
         }
         .await;
         inspection.finish().await?;
         outcome
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires the staged Conversation Registry Pack archive"]
+async fn original_saved_receipt_reads_physical_store_without_writes() -> Result<()> {
+    const DOCUMENT: &str = include_str!(
+        "../../../../packs/local.saved-conversation-rust/fixtures/legacy-receipt-document.json"
+    );
+    const PYTHON_REPLY: &str = include_str!(
+        "../../../../packs/local.saved-conversation-rust/fixtures/legacy-receipt-owner-result.json"
+    );
+    let root = physical_temp()?;
+    let data = root.path().join("owner");
+    let store = DataRoot::open(&data)?;
+    let mut original: Value = serde_json::from_str(DOCUMENT)?;
+    let profile = original["profile_id"]
+        .as_str()
+        .context("original Profile")?;
+    let profile = ProfileId::parse(profile)?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(root.path().join("core")),
+        Arc::new(Host::default()),
+    )?);
+    let fixture = LiveConversationFixture {
+        core: &core,
+        root: root.path(),
+        data,
+        pin: registry::pack(SAVED_PACK)?.pin,
+        profile: &profile,
+    };
+    let receipt = |id| fixture.lookup(id, OriginalConversationLookup::SavedReceipt);
+    ensure!(receipt("Turn.1_x-y:z").await? == r#"{"receipt":null}"#);
+    ensure!(!fixture.data.join("packs").exists());
+    let relative = fixture.relative_path();
+    store.write_atomic(&relative, DOCUMENT.as_bytes())?;
+    ensure!(receipt(" Turn.1_x-y:z ").await? == PYTHON_REPLY.trim_end());
+    ensure!(receipt("empty").await? == r#"{"receipt":{}}"#);
+    ensure!(receipt("array").await? == r#"{"receipt":null}"#);
+    let file = fixture.data.join(&relative);
+    ensure!(fs::read(&file)? == DOCUMENT.as_bytes());
+    ensure!(!file.with_file_name("conversations.lock").exists());
+
+    original["saved_receipts"] = Value::Null;
+    store.write_atomic(&relative, &serde_json::to_vec(&original)?)?;
+    let error = receipt("!")
+        .await
+        .expect_err("malformed inventory needs legacy handling");
+    ensure!(matches!(error.downcast_ref::<NativeArtifactError>(),
+            Some(NativeArtifactError::ConversationRegistryRejected(error))
+                if error.code() == "unavailable"));
+    Ok(())
 }
 
 fn admitted_ui(session: &Session) -> Result<UiAttachment> {

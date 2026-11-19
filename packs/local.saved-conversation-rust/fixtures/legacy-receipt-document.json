@@ -1,0 +1,38 @@
+{
+  "version": "rumi.conversation-store.v1",
+  "profile_id": "profile-1",
+  "revision": 3,
+  "conversations": {
+    "conversation-1": {"metadata": {"icon_svg": "conversation markup"}}
+  },
+  "saved_receipts": {
+    "Turn.1_x-y:z": {
+      "turn_id": "Turn.1_x-y:z",
+      "conversation_id": "conversation-1",
+      "initial_revision": 1,
+      "user_revision": 2,
+      "user_message_id": "message:user",
+      "assistant_message_id": "message:assistant",
+      "result_reference": {
+        "conversation_id": "conversation-1",
+        "user_message_id": "message:user",
+        "assistant_message_id": "message:assistant",
+        "conversation_revision": 3,
+        "outcome_digest": "sha256:fixture"
+      },
+      "legacy": {
+        "integer": 10000000000000000000000000000001,
+        "float": -0.0,
+        "text": "結果",
+        "icon_svg": "receipt field"
+      }
+    },
+    "user-only": {"turn_id": "user-only", "user_revision": 2},
+    "empty": {},
+    "null": null,
+    "integer": 123,
+    "array": [{"turn_id": "array"}],
+    "boolean": false,
+    "text": "{}"
+  }
+}

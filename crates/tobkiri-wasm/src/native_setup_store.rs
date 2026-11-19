@@ -47,8 +47,8 @@ pub use imports::{
 };
 pub use legacy_registry::{
     LegacyProviderRegistryRead, LegacyRegistryError, LegacyRegistryRead,
-    verify_legacy_conversation_read_declaration, verify_legacy_model_resolve_declaration,
-    verify_legacy_model_save_declaration,
+    verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
+    verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
 };
 
 struct NativePhysical {

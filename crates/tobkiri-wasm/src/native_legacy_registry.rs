@@ -124,6 +124,16 @@ const CONVERSATION_GET: RegistryExport = RegistryExport {
     reads: 0,
     clock: RegistryClock::None,
 };
+const CONVERSATION_RECEIPT: RegistryExport = RegistryExport {
+    pack: CONVERSATION_PACK,
+    shape: "local.saved-conversation.legacy-receipt@1.0",
+    interface: "local:saved-conversation/legacy-receipt@1.0.0",
+    function: "get",
+    error_subject: "legacy Conversation saved receipt read",
+    parameters: &["document", "turn-id"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 
 enum LegacyProviderOperation<'a> {
     Prepare,
@@ -200,6 +210,13 @@ pub fn verify_legacy_model_resolve_declaration(pack: &VerifiedPack) -> Result<()
 pub fn verify_legacy_conversation_read_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &CONVERSATION_GET)?;
     declared_registry_function(pack, &CONVERSATION_GET)?;
+    Ok(())
+}
+
+/// Check the fixed saved receipt declaration independently from Conversation GET.
+pub fn verify_legacy_conversation_receipt_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &CONVERSATION_RECEIPT)?;
+    declared_registry_function(pack, &CONVERSATION_RECEIPT)?;
     Ok(())
 }
 
@@ -375,6 +392,26 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             RegistryInput::DocumentLookup {
                 document,
                 identifier: conversation_id,
+            },
+        )
+        .await
+    }
+
+    /// Read one original saved receipt without exposing storage or settlement.
+    pub async fn get_legacy_saved_receipt(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+        turn_id: &str,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &CONVERSATION_RECEIPT,
+            RegistryInput::DocumentLookup {
+                document,
+                identifier: turn_id,
             },
         )
         .await
@@ -653,7 +690,12 @@ fn declared_registry_function<'a>(
 }
 
 fn returns_owner_result(export: &RegistryExport) -> bool {
-    export.shape == CONVERSATION_GET.shape || export.shape == MODEL_RESOLVE.shape
+    [
+        CONVERSATION_GET.shape,
+        CONVERSATION_RECEIPT.shape,
+        MODEL_RESOLVE.shape,
+    ]
+    .contains(&export.shape)
 }
 
 fn optional_document(document: Option<&str>, owners: &crate::AllocationOwners) -> Result<Val> {
