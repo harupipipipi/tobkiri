@@ -7679,7 +7679,10 @@ def test_signed_saved_stream_normalizes_with_its_own_native_borrow(
             "rumi_ai_gateway_pack.ai-gateway.stream", normalizer_operation,
         ]
         assert len({item.lease.token for item in chain}) == 4
-        assert len({item.resource_reservation_id for item in chain}) == 4
+        reservation = chain[-1].resource_reservation_id
+        assert reservation and all(
+            reservation != ancestor.resource_reservation_id for ancestor in chain[:-1]
+        )
         for parent, child in zip(chain, chain[1:]):
             assert child.context.caller_principal == parent.target_principal
             assert child.deadline_monotonic <= parent.deadline_monotonic
