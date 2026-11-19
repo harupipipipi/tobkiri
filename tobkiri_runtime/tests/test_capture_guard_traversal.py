@@ -68,6 +68,8 @@ def harness():
         "dispatch_holder": [SimpleNamespace(assert_current=capture)],
         "assert_current_capture": capture,
         "AuthorityDenied": PermissionError,
+        "native_conversation": None,
+        "native_saved_execution": None,
         "saved_tool_entry_guards": SavedToolEntryGuardRegistry(),
         "saved_workspace_execution_registry": _EmptySavedWorkspaceRegistry(),
         "_capture_guard_traversal": helper._capture_guard_traversal,

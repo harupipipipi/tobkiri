@@ -3303,6 +3303,39 @@ def test_saved_orchestration_inapplicable_rechecks_the_guard(
         step(_saved_orchestration_request(borrow, {"request": {}}))
 
 
+@pytest.mark.parametrize("tag", [ipc._BODY_READY, ipc._CHECK])
+def test_saved_orchestration_guards_reply_before_its_first_byte(
+    monkeypatch: pytest.MonkeyPatch, tag: int,
+) -> None:
+    borrow = _Borrow()
+    receive = ipc._Exchange.receive
+
+    def receive_and_revoke(
+        exchange: ipc._Exchange, wait_seconds: Callable[[], float],
+    ) -> tuple[int, bytes]:
+        frame = receive(exchange, wait_seconds)
+        if frame == (tag, b""):
+            borrow.revoked.set()
+        return frame
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == ipc._START
+        if tag == ipc._CHECK:
+            _send(peer, ipc._BODY_READY)
+            assert _receive(peer)[0] == ipc._ORCHESTRATION_INPUT
+        _send(peer, tag)
+        assert _receive(peer) == (ipc._CANCEL, b"")
+        _send(peer, ipc._FAILURE, b"cancelled")
+        assert peer.recv(1) == b""
+
+    monkeypatch.setattr(ipc._Exchange, "receive", receive_and_revoke)
+    with (
+        _served_saved_orchestration(monkeypatch, serve) as step,
+        pytest.raises(PermissionError, match="fixture lease revoked"),
+    ):
+        step(_saved_orchestration_request(borrow, {"request": {}}))
+
+
 @pytest.mark.parametrize(
     ("phase", "tag", "payload", "invalid_header"),
     [

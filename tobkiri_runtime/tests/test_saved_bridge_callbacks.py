@@ -131,8 +131,8 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
     ]
 
 
-def test_linked_assistant_append_reads_each_owner_once(tmp_path: Path) -> None:
-    """Read the linked child and parent immediately before the owner append."""
+def test_linked_appends_without_prompt_read_each_owner_once(tmp_path: Path) -> None:
+    """Read the linked child and parent once during each owner append."""
     store, outer, calls, callbacks = _setup(tmp_path)
     store.create(
         {
@@ -153,19 +153,18 @@ def test_linked_assistant_append_reads_each_owner_once(tmp_path: Path) -> None:
         context_binding=context_binding(store.get("conversation-1"), "defaults"),
     )
     intent = saved.start(request)
-    for _ in range(3):
+    for hop in range(4):
+        calls.clear()
         intent = saved.resume(intent["state"], callbacks(outer, _frame(intent)))
+        if hop in (1, 3):
+            assert [target for target, _ in calls] == [
+                saved.TARGETS[0], saved.TARGETS[0], saved.TARGETS[hop],
+            ]
+            assert [payload["conversation_id"] for _, payload in calls] == [
+                "side-chat", "conversation-1", "side-chat",
+            ]
 
-    calls.clear()
-    result = saved.resume(intent["state"], callbacks(outer, _frame(intent)))
-
-    assert result["status"] == "ok"
-    assert [target for target, _ in calls] == [
-        saved.TARGETS[0], saved.TARGETS[0], saved.TARGETS[3],
-    ]
-    assert [payload["conversation_id"] for _, payload in calls] == [
-        "side-chat", "conversation-1", "side-chat",
-    ]
+    assert intent["status"] == "ok"
     assert [message["role"] for message in store.get("side-chat")["messages"]] == [
         "user", "assistant",
     ]

@@ -2319,14 +2319,18 @@ class _Exchange:
             if self.read_only_body and tag == _PLAN and self.entered_live_phase:
                 # The Launcher sends PLAN only after the pure worker drains.
                 self.terminal = True
-            wait_seconds()
+            # Sending a frame checks the guard before its first byte and on
+            # every retry. These replies do no local work before that check.
             if tag == _BODY_READY and body_input is not None:
                 self.send(_ORCHESTRATION_INPUT, body_input, wait_seconds)
                 body_input = None
-            elif tag == _CHECK and body_input is None:
+                continue
+            if tag == _CHECK and body_input is None:
                 self.send(_LIVE, b"", wait_seconds)
                 self.entered_live_phase = True
-            elif (
+                continue
+            wait_seconds()
+            if (
                 tag == _PUBLISH_CHECK
                 and self.entered_live_phase
                 and isinstance(borrow, (

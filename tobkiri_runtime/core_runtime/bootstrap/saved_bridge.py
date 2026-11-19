@@ -1023,10 +1023,12 @@ class SavedBridgeCallbacks:
                 except Exception:
                     # Provisional display failure cannot prevent or retry the effect.
                     pass
-        conversation = self._recheck_linked_context(outer, request, conversation)
         if stage == "user":
-            # Recompute on the fresh owner snapshot immediately before its CAS
-            # append; a previous preflight is not a capacity/currentness grant.
+            if prompt is not None:
+                # The prompt owner was consulted after reading the conversation.
+                conversation = self._recheck_linked_context(outer, request, conversation)
+            # Check capacity on this stage's owner snapshot. The append owner
+            # verifies the child revision and linked parent under its lock.
             if self._check_history_capacity(conversation, request, prompt, append_user=True):
                 raise AuthorityDenied("saved bridge turn requires reconciliation")
             _generation_arguments(
@@ -1039,6 +1041,8 @@ class SavedBridgeCallbacks:
                 ],
                 selected=selected, prompt=prompt,
             )
+        else:
+            self._recheck_linked_context(outer, request, conversation)
         if stage == "tool" and workspace_execution is not None:
             assert self._workspace_execution_registry is not None
             with self._workspace_execution_registry.register(workspace_execution):

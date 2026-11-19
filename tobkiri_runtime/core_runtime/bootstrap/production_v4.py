@@ -3571,8 +3571,15 @@ def capture_production_dispatch(
         return edge
 
     def require_saved_targets(outer_request: object, targets: tuple[tuple[str, str], ...]) -> None:
-        for target in targets:
-            saved_target(outer_request, target)
+        # A batch only inspects the selected targets. Check the shared capture
+        # at entry and exit while still verifying every selected target domain.
+        traversal = (
+            _capture_guard_traversal(assert_current_capture)
+            if len(targets) > 2 else nullcontext()
+        )
+        with traversal:
+            for target in targets:
+                saved_target(outer_request, target)
 
     def saved_dispatch(
         outer_request: object, target: tuple[str, str], payload: Mapping[str, Any],
