@@ -26,9 +26,9 @@ mod deferred_pack_successor;
 
 #[path = "native_harness_source.rs"]
 mod native_harness_source;
-#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) use native_harness_source::VerifiedTurnStartBundle;
 pub(crate) use native_harness_source::{NativeApplicationSources, NativeSourceRoot};
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) use native_harness_source::{VerifiedSavedLocalChatBundle, VerifiedTurnStartBundle};
 
 use crate::config::AppConfig;
 

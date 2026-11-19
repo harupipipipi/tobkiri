@@ -13,6 +13,8 @@ use tobkiri_core::{
     read_relative_with, AllocationBudget, AllocationError, CanonError, CoreBuffer, CoreValue,
     Digest,
 };
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+use tobkiri_harness_native::OriginalSavedLocalChatChoice;
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
@@ -74,7 +76,83 @@ pub(crate) struct LockedSavedOrchestrationBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
+/// The installed documents for the independent Generate and Stream grants.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedSavedLocalChatBundle<'pin> {
+    source: VerifiedSavedLocalChatBundle,
+    routes: [Option<[LockedRegistryRoute<'pin>; 5]>; 2],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// The exact installed source from which Launcher verified the saved local roles.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VerifiedSavedLocalChatBundle {
+    application_root: PathBuf,
+    bundle_root: PathBuf,
+    bundle_lock_digest: Digest,
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl VerifiedSavedLocalChatBundle {
+    /// Require the same resolver-owned roots and lock that selected the verified files.
+    pub(crate) fn require_source(&self, sources: &NativeApplicationSources) -> Result<()> {
+        ensure!(
+            self.application_root == sources.application_root
+                && self.bundle_root == sources.bundle_root
+                && self.bundle_lock_digest.as_str() == sources.bundle_lock.digest,
+            "signed local chat source differs from the admitted launch"
+        );
+        Ok(())
+    }
+}
+
 impl NativeApplicationSources {
+    /// Capture the Bundle files already pinned by the original signed resolver.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn saved_local_chat_bundle<'pin>(
+        &self,
+        selections: [Option<&'pin OriginalSavedLocalChatChoice<'_>>; 2],
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedSavedLocalChatBundle<'pin>> {
+        let mut routes = [None, None];
+        for (locked, selection) in routes.iter_mut().zip(selections) {
+            let Some(selection) = selection else {
+                continue;
+            };
+            let pins = selection.pins();
+            ensure!(
+                pins[0].caller_function_id() == self.authority.shell_provider_id
+                    && pins
+                        .windows(2)
+                        .all(|pair| { pair[0].function_id() == pair[1].caller_function_id() }),
+                "old local chat callers differ from the selected saved chain"
+            );
+            let [turn, orchestration, gateway, adapter, registry] = pins;
+            let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+            *locked = Some([
+                from_lock(turn)?,
+                from_lock(orchestration)?,
+                from_lock(gateway)?,
+                from_lock(adapter)?,
+                from_lock(registry)?,
+            ]);
+        }
+        ensure!(
+            routes.iter().any(Option::is_some),
+            "old local chat has no selected role"
+        );
+        Ok(LockedSavedLocalChatBundle {
+            source: VerifiedSavedLocalChatBundle {
+                application_root: self.application_root.clone(),
+                bundle_root: self.bundle_root.clone(),
+                bundle_lock_digest: Digest::parse(&self.bundle_lock.digest)?,
+            },
+            routes,
+            budget: Arc::clone(budget),
+        })
+    }
+
     /// Capture the originally signed Turn Pack and catalog for both start grants.
     pub(crate) fn turn_start_bundle<'pin>(
         &self,
@@ -501,11 +579,49 @@ impl LockedSavedOrchestrationBundle<'_> {
     }
 }
 
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedSavedLocalChatBundle<'_> {
+    /// Verify each role against the same bytes for each of the five selected Packs.
+    pub(crate) fn verify(
+        self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedSavedLocalChatBundle> {
+        let effects = [
+            "privileged",
+            "pure",
+            "privileged",
+            "privileged",
+            "privileged",
+        ];
+        for (index, effect) in effects.into_iter().enumerate() {
+            verify_locked_routes(
+                self.routes.iter().flatten().map(|routes| &routes[index]),
+                &self.source.bundle_root,
+                &self.budget,
+                &mut checkpoint,
+                effect,
+            )?;
+        }
+        checkpoint()?;
+        Ok(self.source)
+    }
+}
+
 fn verify_privileged_routes<'a>(
+    routes: impl Iterator<Item = &'a LockedRegistryRoute<'a>>,
+    root: &Path,
+    budget: &Arc<dyn AllocationBudget>,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<()> {
+    verify_locked_routes(routes, root, budget, checkpoint, "privileged")
+}
+
+fn verify_locked_routes<'a>(
     mut routes: impl Iterator<Item = &'a LockedRegistryRoute<'a>>,
     root: &Path,
     budget: &Arc<dyn AllocationBudget>,
     checkpoint: &mut impl FnMut() -> Result<()>,
+    effect: &str,
 ) -> Result<()> {
     if let Some(first) = routes.next() {
         let pack = first.pack.read(root, budget, checkpoint)?;
@@ -517,7 +633,7 @@ fn verify_privileged_routes<'a>(
                     && route.catalog.digest == first.catalog.digest,
                 "legacy Registry routes select different Bundle documents"
             );
-            route.verify_documents(&pack, &catalog, Some("privileged"))?;
+            route.verify_documents(&pack, &catalog, Some(effect))?;
         }
     }
     Ok(())

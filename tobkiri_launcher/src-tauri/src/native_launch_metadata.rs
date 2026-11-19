@@ -20,8 +20,9 @@ use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin, OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole,
-    OriginalSavedReceiptSelection, OriginalSavedTurnStartChoice,
+    OriginalRoutePin, OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole,
+    OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
+    OriginalSavedTurnStartChoice,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
@@ -37,7 +38,7 @@ use super::{
 use crate::{
     defaultspack_authority::{
         require_current_launch_identity, NativeApplicationSources, NativeSourceRoot,
-        SignedApplicationResolver, VerifiedTurnStartBundle,
+        SignedApplicationResolver, VerifiedSavedLocalChatBundle, VerifiedTurnStartBundle,
     },
     dock_registration::{
         assemble_defaultspack_desktop_metadata, DefaultspackDesktopMetadata, LaunchMetadataUse,
@@ -68,6 +69,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     conversation: Option<VerifiedConversationSource>,
     turn: Option<VerifiedTurnSource>,
     orchestration: Option<VerifiedSavedOrchestrationSource>,
+    local_chat: Option<VerifiedSavedLocalChatSource>,
 }
 
 /// The caller of the original conversation-owner read grant.
@@ -259,6 +261,13 @@ struct VerifiedSavedOrchestrationSource {
     manifest_sha256: String,
 }
 
+/// The exact installed Bundle and independent signed roles available for local chat.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedSavedLocalChatSource {
+    bundle: VerifiedSavedLocalChatBundle,
+    roles: [Option<(OriginalSavedLocalChatRole, [VerifiedLegacyRoutePin; 5])>; 2],
+}
+
 impl VerifiedTurnSource {
     fn permits_settlement(&self, role: SettlementCaller) -> bool {
         self.settlement
@@ -319,6 +328,7 @@ impl VerifiedRegistryLaunch {
             conversation: None,
             turn: None,
             orchestration: None,
+            local_chat: None,
         }
     }
 
@@ -342,6 +352,7 @@ impl VerifiedRegistryLaunch {
             conversation: None,
             turn: None,
             orchestration: None,
+            local_chat: None,
         }
     }
 
@@ -366,6 +377,7 @@ impl VerifiedRegistryLaunch {
             conversation: None,
             turn: None,
             orchestration: None,
+            local_chat: None,
         }
     }
 
@@ -395,6 +407,7 @@ impl VerifiedRegistryLaunch {
             conversation: None,
             turn: None,
             orchestration: None,
+            local_chat: None,
         }
     }
 
@@ -424,6 +437,7 @@ impl VerifiedRegistryLaunch {
             }),
             turn: None,
             orchestration: None,
+            local_chat: None,
         }
     }
 
@@ -483,6 +497,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             orchestration: None,
+            local_chat: None,
         }
     }
 
@@ -996,10 +1011,12 @@ impl LaunchActivationObserver<'_> {
         ) = verified_registry_pack_evidence;
         let turn = turn.flatten();
         let orchestration = orchestration.flatten();
+        let local_chat = verify_saved_local_chat_source(inspection, active, checkpoint)?;
         if !has_existing_grants
             && conversation.is_none()
             && turn.is_none()
             && orchestration.is_none()
+            && local_chat.is_none()
         {
             return Ok(None);
         }
@@ -1036,7 +1053,7 @@ impl LaunchActivationObserver<'_> {
         if turn.as_ref().is_some_and(|source| source.start.is_some()) {
             log::info!("verified the ordinary Saved Turn Lifecycle grants and their bundled Wasm replacement for this activation");
         }
-        Ok(Some(VerifiedRegistryLaunch {
+        let verified = VerifiedRegistryLaunch {
             identity: self.identity.clone(),
             security_epoch,
             catalog_revision,
@@ -1047,7 +1064,16 @@ impl LaunchActivationObserver<'_> {
             conversation,
             turn,
             orchestration,
-        }))
+            local_chat,
+        };
+        if let Some(local_chat) = &verified.local_chat {
+            inspection.with_source(|sources| local_chat.bundle.require_source(sources))??;
+            log::info!(
+                "verified {} ordinary saved local Provider role(s) for this activation",
+                local_chat.roles.iter().flatten().count()
+            );
+        }
+        Ok(Some(verified))
     }
 }
 
@@ -1609,6 +1635,30 @@ fn verify_saved_orchestration_source(
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
     }))
+}
+
+fn verify_saved_local_chat_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<VerifiedSavedLocalChatSource>> {
+    use OriginalSavedLocalChatRole::{Generate, Stream};
+
+    let budget = inspection.allocation_budget()?;
+    let [generate, stream] =
+        [Generate, Stream].map(|role| OriginalSavedLocalChatChoice::select(active, budget, role));
+    let selections = [generate?, stream?];
+    if selections.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    let locked = inspection.with_source(|sources| {
+        sources.saved_local_chat_bundle(selections.each_ref().map(Option::as_ref), budget)
+    })??;
+    let bundle = locked.verify(checkpoint)?;
+    let roles = selections.map(|selection| {
+        selection.map(|selected| (selected.role(), selected.pins().each_ref().map(Into::into)))
+    });
+    Ok(Some(VerifiedSavedLocalChatSource { bundle, roles }))
 }
 
 fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
