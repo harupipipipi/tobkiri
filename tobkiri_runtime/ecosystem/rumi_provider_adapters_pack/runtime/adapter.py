@@ -1015,6 +1015,11 @@ def _openai_compatible(
     return result
 
 
+class _ProjectedLocalChatResponse:
+    def __init__(self, result: dict[str, Any]) -> None:
+        self.result = result
+
+
 def _local_openai_compatible(
     client: GlobalContractClient,
     request: Mapping[str, Any],
@@ -1050,6 +1055,8 @@ def _local_openai_compatible(
         deadline=envelope.deadline_monotonic if envelope is not None else None,
         native_post=partial(native_post, connection) if callable(native_post) else None,
     )
+    if isinstance(value, _ProjectedLocalChatResponse):
+        return value.result
     choices = value.get("choices") if isinstance(value, Mapping) else None
     first = choices[0] if isinstance(choices, list) and choices else {}
     message = first.get("message") if isinstance(first, Mapping) else {}
@@ -1076,8 +1083,8 @@ def _local_post(
     *,
     cancellation: threading.Event | None = None,
     deadline: float | None = None,
-    native_post: Callable[[bytes, float], bytes | None] | None = None,
-) -> dict[str, Any]:
+    native_post: Callable[[bytes, float], bytes | dict[str, Any] | None] | None = None,
+) -> dict[str, Any] | _ProjectedLocalChatResponse:
     """Send bounded JSON to the finite local chat route without proxy use."""
     parsed = urllib.parse.urlsplit(local_openai_endpoint(endpoint))
     hostname = parsed.hostname
@@ -1095,9 +1102,11 @@ def _local_post(
     if deadline is not None:
         deadline_monotonic = min(deadline_monotonic, deadline)
     if native_post is not None:
-        raw = native_post(encoded, deadline_monotonic)
-        if raw is not None:
-            return _decode_local_response(raw)
+        native_response = native_post(encoded, deadline_monotonic)
+        if isinstance(native_response, dict):
+            return _ProjectedLocalChatResponse(native_response)
+        if native_response is not None:
+            return _decode_local_response(native_response)
 
     lifetime: HttpRequestLifetime | None = None
     connection: http.client.HTTPConnection | None = None

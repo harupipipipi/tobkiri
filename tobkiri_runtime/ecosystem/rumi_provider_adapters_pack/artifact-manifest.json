@@ -13,7 +13,7 @@
     {
       "path": "runtime/adapter.py",
       "role": "runtime",
-      "sha256": "sha256:dee63cb5a80911cf1b1376328cdca80bc93dbd10e021c002164e210c6c52cc93"
+      "sha256": "sha256:a645654411a699d35676d717f66a8bfbadee7bec7988541df94f5f9afba49f4d"
     },
     {
       "path": "runtime/local_endpoint.py",

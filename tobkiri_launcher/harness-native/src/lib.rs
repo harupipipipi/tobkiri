@@ -25,6 +25,7 @@ mod original_saved_orchestration;
 pub use original_local_chat::{
     LegacyLocalChatSelection, LegacyLocalChatSourceError, OriginalLocalChatCheck,
     OriginalLocalChatError, OriginalLocalChatRequest, post_original_local_chat,
+    project_original_local_chat,
 };
 #[cfg(unix)]
 pub use original_saved_orchestration::{

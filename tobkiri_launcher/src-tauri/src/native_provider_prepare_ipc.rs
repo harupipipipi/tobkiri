@@ -29,11 +29,11 @@ use crate::{
         start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
         ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
         NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
-        PendingProviderPrepare, ProviderPrepareDeadline, SavedOrchestrationStepError,
-        SavedTurnStartAction, SettlementCaller, TurnSettlementRequiresLegacyCodec,
-        TurnStartRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
-        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
-        TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+        PendingProviderPrepare, ProviderPrepareDeadline, RegistryResponse,
+        SavedOrchestrationStepError, SavedTurnStartAction, SettlementCaller,
+        TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT,
+        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -53,6 +53,7 @@ const ORCHESTRATION_INPUT: u8 = 15;
 const SAVED_LOCAL_CHAT_INPUT: u8 = 16;
 const DISPATCH_CHECK: u8 = 17;
 const DISPATCH_PERMIT: u8 = 18;
+const PROJECTED_LOCAL_CHAT: u8 = 19;
 const JSON_LIMIT: usize = 16 * 1024;
 const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
 const SAVED_RECEIPT_TURN_ID_MAX_CHARS: usize = 2048;
@@ -355,6 +356,8 @@ struct SavedLocalChatStart {
     record_revision: u64,
     endpoint: String,
     input_bytes: usize,
+    #[serde(default)]
+    project_response: bool,
 }
 
 impl SavedLocalChatStart {
@@ -1077,6 +1080,7 @@ impl AdmittedConnection {
                     record_revision: chat.record_revision,
                     endpoint: chat.endpoint,
                     input,
+                    project_response: chat.project_response,
                 }
             }
         };
@@ -1487,13 +1491,19 @@ impl Connection {
             return self.send_stopped(stop);
         }
         match result {
-            Ok(output) => match self
-                .reply
-                .validate_result(wire.authority, output.as_bytes())
-            {
-                Ok(()) => send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline),
-                Err(code) => send_frame(&mut wire.stream, FAILURE, code.as_bytes(), deadline),
-            },
+            Ok(output) => {
+                let (tag, body) = match &output {
+                    RegistryResponse::Wire(body) => (PLAN, body),
+                    RegistryResponse::ProjectedLocalChat(body) => {
+                        ensure!(self.reply == ReplyRole::SavedLocalChat);
+                        (PROJECTED_LOCAL_CHAT, body)
+                    }
+                };
+                match self.reply.validate_result(wire.authority, body.as_bytes()) {
+                    Ok(()) => send_frame(&mut wire.stream, tag, body.as_bytes(), deadline),
+                    Err(code) => send_frame(&mut wire.stream, FAILURE, code.as_bytes(), deadline),
+                }
+            }
             Err(error) => {
                 let code = self.reply.failure_code(wire.authority, &error);
                 send_frame(&mut wire.stream, FAILURE, code.as_bytes(), deadline)
@@ -1889,6 +1899,7 @@ mod tests {
             assert_eq!(chat.record_revision, u64::MAX);
             assert_eq!(chat.endpoint, "http://[::1]:1234/v1/");
             assert_eq!(chat.input_bytes, LEGACY_LOCAL_CHAT_REQUEST_LIMIT);
+            assert!(!chat.project_response);
             assert_eq!(chat.validate(), Ok(()));
             assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
             for extra in [
@@ -1903,11 +1914,23 @@ mod tests {
                     .is_err());
             }
         }
+        let mut requested = descriptor.clone();
+        requested["project_response"] = json!(true);
+        let frame = start_frame(&operation(&requested));
+        let RequestStart::SavedLocalChat(chat) = parse_start(START, frame.as_bytes())
+            .unwrap()
+            .request_start()
+            .unwrap()
+        else {
+            panic!("expected Saved Local Chat");
+        };
+        assert!(chat.project_response);
         for (key, value) in [
             ("role", json!("shell")),
             ("record_revision", json!(true)),
             ("record_revision", json!(-1)),
             ("input_bytes", json!(1.5)),
+            ("project_response", json!("true")),
             ("profile_id", json!("override")),
             ("input", json!({})),
         ] {

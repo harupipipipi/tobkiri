@@ -55,6 +55,8 @@ def _reply(handler: BaseHTTPRequestHandler, raw: bytes) -> None:
 class _Invocation:
     """Represent the Host-owned context, outside the model's payload mapping."""
 
+    parent_invocation = None
+
     def __init__(
         self,
         endpoint: str,
@@ -67,6 +69,7 @@ class _Invocation:
         self.streaming = streaming
         self.envelope = SimpleNamespace(
             cancellation_requested=cancellation, deadline_monotonic=deadline,
+            context=SimpleNamespace(request_id="fixture-request"),
         )
 
     def assert_current(self) -> None:
@@ -304,6 +307,67 @@ def test_local_transport_fences_before_creating_a_connection(
         )
     assert rejected.value.code == "provider_unavailable"
     assert _watchers() == before
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("projected", [False, True])
+def test_local_adapter_uses_the_native_result_without_another_post(
+    monkeypatch: pytest.MonkeyPatch, streaming: bool, projected: bool,
+) -> None:
+    endpoint = "http://127.0.0.1:11434/v1"
+    expected: dict[str, Any] = {
+        "output": False,
+        "tool_intents": [{"id": "call_1"}, 0],
+        "usage": {"completion_tokens": 1},
+        "finish_reason": 0,
+    }
+    if streaming:
+        expected["events"] = [
+            {"type": "tool_intent_delta", "tool_intent": {"id": "call_1"}},
+            {"type": "usage", "usage": {"completion_tokens": 1}},
+            {"type": "finish", "finish_reason": 0},
+        ]
+    raw = json.dumps({
+        "choices": [{
+            "message": {"content": False, "tool_calls": expected["tool_intents"]},
+            "finish_reason": 0,
+        }],
+        "usage": expected["usage"],
+    }).encode()
+    posts: list[bytes] = []
+
+    class NativeInvocation(_Invocation):
+        def post_saved_local_chat(
+            self, connection: dict[str, Any], body: bytes, deadline: float,
+        ) -> bytes | dict[str, Any]:
+            assert connection["endpoint"] == endpoint
+            assert deadline <= self.envelope.deadline_monotonic
+            posts.append(body)
+            return expected if projected else raw
+
+    def unexpected_call(*_args: Any, **_kwargs: Any) -> None:
+        pytest.fail("native result reached the raw response or HTTP path")
+
+    monkeypatch.setattr(adapter.http.client, "HTTPConnection", unexpected_call)
+    if projected:
+        monkeypatch.setattr(adapter, "_decode_local_response", unexpected_call)
+        monkeypatch.setattr(adapter, "_stream_result", unexpected_call)
+    invocation = NativeInvocation(
+        endpoint, cancellation=threading.Event(), deadline=time.monotonic() + 5,
+        streaming=streaming,
+    )
+    result = _captured_invoke(streaming=streaming)(
+        "fixture.operation", _request(), invocation,
+    )
+    assert result == expected
+    assert result["output"] is False
+    assert type(result["finish_reason"]) is int
+    assert len(posts) == 1
+    assert json.loads(posts[0]) == {
+        "model": "gemma-local",
+        "messages": [{"role": "user", "content": "hello"}],
+        "stream": False,
+    }
 
 
 def test_local_timeout_cap_is_one_budget_across_headers_and_body(

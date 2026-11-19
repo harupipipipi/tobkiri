@@ -105,12 +105,12 @@ class HostProviderInvocationContextV4(Protocol):
         connection: Mapping[str, Any],
         encoded: bytes,
         deadline_monotonic: float,
-    ) -> bytes | None:
+    ) -> bytes | dict[str, Any] | None:
         """POST one compiled local chat request under this invocation's authority.
 
-        Return raw response bytes, or None if the route is ineligible or the
-        authenticated launcher declined before requesting the body. Failures
-        raise and must never trigger a second POST.
+        Return raw response bytes or the projected adapter result. None means
+        the route is ineligible or the authenticated launcher declined before
+        requesting the body. Failures raise and must never trigger a second POST.
         """
         return None
 

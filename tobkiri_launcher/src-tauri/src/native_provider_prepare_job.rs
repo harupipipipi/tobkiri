@@ -25,8 +25,8 @@ use tobkiri_harness_native::{
     begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
     invoke_original_saved_orchestration_port, invoke_original_saved_turn_begin_port,
     invoke_original_saved_turn_claim_port, invoke_original_saved_turn_port,
-    invoke_original_saved_turn_read_port, post_original_local_chat, read_legacy_saved_turn,
-    settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
+    invoke_original_saved_turn_read_port, post_original_local_chat, project_original_local_chat,
+    read_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
     OriginalLocalChatCheck, OriginalLocalChatError, OriginalLocalChatRequest,
     OriginalSavedLocalChatRole, OriginalSavedTurnCheck, OriginalSavedTurnStartInput,
@@ -41,10 +41,11 @@ use super::{
         reacquire_conversation_append_pack, reacquire_conversation_confirmation_pack,
         reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
         reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_saved_local_chat_source, reacquire_saved_orchestration_pack,
-        reacquire_saved_receipt_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
-        reacquire_turn_start_pack, ConversationReadCaller, SettlementCaller,
-        VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
+        reacquire_saved_local_chat_adapter, reacquire_saved_local_chat_source,
+        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack, reacquire_turn_read_pack,
+        reacquire_turn_settlement_pack, reacquire_turn_start_pack, ConversationReadCaller,
+        SettlementCaller, VerifiedRegistryLaunch, PROVIDER_ADAPTER_OPERATION,
+        PROVIDER_ADAPTER_SHAPE, REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -138,6 +139,7 @@ pub(crate) enum NativeRegistryRequest {
         record_revision: u64,
         endpoint: String,
         input: Vec<u8>,
+        project_response: bool,
     },
 }
 
@@ -400,7 +402,7 @@ impl PendingProviderPrepare {
 
     /// Take one terminal result after the actual worker and its sources have ended.
     /// A planner rejection remains downcastable to `NativeArtifactError`.
-    pub(crate) fn finish_until(&self, deadline: Instant) -> Result<CoreBuffer> {
+    pub(crate) fn finish_until(&self, deadline: Instant) -> Result<RegistryResponse> {
         self.join_until(deadline)?;
         self.check_delivery_live()?;
         (self.continue_current)()?;
@@ -441,12 +443,20 @@ struct Request {
 struct Prepared {
     manager: Arc<ApplicationProcessManager>,
     listener: Arc<ProviderPrepareListener>,
-    result: Result<CoreBuffer>,
+    result: Result<RegistryResponse>,
+}
+
+/// The fixed wire document or a typed result from the local Adapter Pack.
+#[derive(Debug)]
+pub(crate) enum RegistryResponse {
+    Wire(CoreBuffer),
+    ProjectedLocalChat(CoreBuffer),
 }
 
 struct PreparedReply {
     wire: CoreBuffer,
     document: Option<CoreBuffer>,
+    projected_local_chat: bool,
 }
 
 /// Run one verified request on the managed native worker.
@@ -671,6 +681,7 @@ async fn run(
                     return Ok(PreparedReply {
                         wire: output.encode_guest(&graph)?,
                         document: None,
+                        projected_local_chat: false,
                     });
                 }
                 NativeRegistryRequest::ModelSave { request, provider } => {
@@ -869,6 +880,7 @@ async fn run(
                     return Ok(PreparedReply {
                         wire,
                         document: None,
+                        projected_local_chat: false,
                     });
                 }
                 NativeRegistryRequest::TurnStart {
@@ -965,6 +977,7 @@ async fn run(
                     return Ok(PreparedReply {
                         wire: encode_turn_start_reply(&body, claimed, &graph)?,
                         document: None,
+                        projected_local_chat: false,
                     });
                 }
                 NativeRegistryRequest::TurnSettlement {
@@ -1040,6 +1053,7 @@ async fn run(
                     return Ok(PreparedReply {
                         wire,
                         document: None,
+                        projected_local_chat: false,
                     });
                 }
                 NativeRegistryRequest::SavedOrchestration { input } => {
@@ -1076,11 +1090,22 @@ async fn run(
                     record_revision,
                     endpoint,
                     input,
+                    project_response,
                 } => {
                     revalidate()?;
                     let profile = ProfileId::parse(&identity.profile_id)?;
                     let data = DataRoot::open_legacy_registry(&config.user_data_dir)
                         .map_err(|_| OriginalLocalChatError::RegistryUnavailable)?;
+                    let adapter = if project_response {
+                        reacquire_saved_local_chat_adapter(
+                            &inspection,
+                            listener.verified_source(),
+                            role,
+                            checkpoint,
+                        )?
+                    } else {
+                        None
+                    };
                     let wire = post_original_local_chat(
                         &data,
                         OriginalLocalChatRequest {
@@ -1114,9 +1139,35 @@ async fn run(
                         },
                     )
                     .await?;
+                    drop(input);
+                    drop(input_funding.take());
+                    if let (Some(adapter), Ok(raw)) = (adapter, wire.as_str()) {
+                        revalidate()?;
+                        let port = inspection
+                            .prepare_declared_read_only_port(
+                                &adapter,
+                                &ShapeRef::parse(PROVIDER_ADAPTER_SHAPE)?,
+                                &OpName::parse(PROVIDER_ADAPTER_OPERATION)?,
+                                &profile,
+                                execution_deadline,
+                                0,
+                            )
+                            .await?;
+                        let stream = matches!(role, OriginalSavedLocalChatRole::Stream);
+                        if let Some(projected) =
+                            project_original_local_chat(port, raw, stream, &graph).await?
+                        {
+                            return Ok(PreparedReply {
+                                wire: projected,
+                                document: None,
+                                projected_local_chat: true,
+                            });
+                        }
+                    }
                     return Ok(PreparedReply {
                         wire,
                         document: None,
+                        projected_local_chat: false,
                     });
                 }
             };
@@ -1168,6 +1219,7 @@ async fn run(
             Ok::<_, anyhow::Error>(PreparedReply {
                 wire: output.encode_guest(&graph)?,
                 document: None,
+                projected_local_chat: false,
             })
         });
         tokio::pin!(prepare);
@@ -1216,7 +1268,11 @@ async fn run(
                             Ok(())
                         })?;
                     }
-                    Ok(reply.wire)
+                    Ok(if reply.projected_local_chat {
+                        RegistryResponse::ProjectedLocalChat(reply.wire)
+                    } else {
+                        RegistryResponse::Wire(reply.wire)
+                    })
                 }),
                 execution_returned,
             )
@@ -1337,6 +1393,7 @@ fn decode_saved_orchestration_reply(
     Ok(PreparedReply {
         wire,
         document: None,
+        projected_local_chat: false,
     })
 }
 
@@ -1425,6 +1482,7 @@ fn decode_conversation_confirmation_reply(
         // Preserve the original owner's exact text, including field order and whitespace.
         wire: CoreBuffer::copy_from(owner_result.as_bytes(), budget)?,
         document,
+        projected_local_chat: false,
     })
 }
 
@@ -1473,6 +1531,7 @@ fn decode_conversation_append_reply(
     Ok(PreparedReply {
         wire: CoreBuffer::copy_from(owner_result.as_bytes(), budget)?,
         document: Some(CoreBuffer::copy_from(document.as_bytes(), budget)?),
+        projected_local_chat: false,
     })
 }
 
@@ -1506,6 +1565,7 @@ fn decode_model_save_reply(
         // CPython owns this JSON. Preserve its spelling and numeric literals.
         wire: CoreBuffer::copy_from(owner_result.as_bytes(), budget)?,
         document,
+        projected_local_chat: false,
     })
 }
 
@@ -1556,6 +1616,7 @@ fn decode_owner_read_reply(
         // CPython owns the result, including its numeric literals and spelling.
         wire: CoreBuffer::copy_from(owner_result.as_bytes(), budget)?,
         document: None,
+        projected_local_chat: false,
     })
 }
 
@@ -1592,6 +1653,7 @@ fn decode_staged_reply(
     Ok(PreparedReply {
         wire: reply.encode_guest(budget)?,
         document: Some(CoreBuffer::copy_from(raw.as_bytes(), budget)?),
+        projected_local_chat: false,
     })
 }
 
@@ -1708,6 +1770,7 @@ mod tests {
             record_revision: 1,
             endpoint,
             input,
+            project_response: false,
         };
         assert!(!request.has_launch_proof(&orchestration));
         assert!(request.requires_publication_permit());
@@ -1722,6 +1785,7 @@ mod tests {
             record_revision: 1,
             endpoint: "http://127.0.0.1:8080/v1".into(),
             input,
+            project_response: false,
         };
         let empty = request(Vec::new()).input_capacity().unwrap_err();
         assert!(matches!(

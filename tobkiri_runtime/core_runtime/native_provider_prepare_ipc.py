@@ -59,6 +59,7 @@ _PUBLISH_CHECK, _PUBLISH_PERMIT = 11, 12
 _START_APPEND = 13
 _BODY_READY, _ORCHESTRATION_INPUT = 14, 15
 _SAVED_LOCAL_CHAT_INPUT, _DISPATCH_CHECK, _DISPATCH_PERMIT = 16, 17, 18
+_PROJECTED_LOCAL_CHAT = 19
 _JSON_LIMIT = 16 * 1024
 _APPEND_START_LIMIT = 1024 * 1024
 _OWNER_RESULT_LIMIT = 1024 * 1024
@@ -557,15 +558,16 @@ def capture_launcher_saved_orchestration_step() -> (
 
 
 def capture_launcher_saved_local_chat_executor() -> (
-    Callable[[NativeSavedLocalChatRequest], bytes] | None
+    Callable[[NativeSavedLocalChatRequest], bytes | dict[str, Any]] | None
 ):
     """Capture the managed Launcher's opted-in endpoint for local chat."""
-    if os.environ.get(_SAVED_LOCAL_CHAT_ENV) != "1":
+    version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
+    if version not in ("1", "2"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return partial(_invoke_saved_local_chat, launcher)
+    return partial(_invoke_saved_local_chat, launcher, project_response=version == "2")
 
 
 def is_native_saved_turn_read_identifier(value: object) -> bool:
@@ -656,6 +658,7 @@ def _start_payload(
     deadline_ns: int,
     *,
     orchestration_input_bytes: int = 0,
+    project_local_chat_response: bool = False,
 ) -> bytes:
     context = borrow.context
     runtime_instance = borrow.runtime_instance
@@ -727,6 +730,8 @@ def _start_payload(
         frame["saved_orchestration"] = {"input_bytes": orchestration_input_bytes}
     elif isinstance(borrow, NativeSavedLocalChatRequest):
         frame["saved_local_chat"] = _saved_local_chat_start(borrow)
+        if project_local_chat_response:
+            frame["saved_local_chat"]["project_response"] = True
     elif isinstance(borrow, NativeSavedTurnSettlementRequest):
         frame["turn_settlement"] = _turn_settlement_payload(borrow)
     elif isinstance(borrow, NativeConversationConfirmationRequest):
@@ -1027,6 +1032,25 @@ def _decode_owner_result(payload: bytes, invalid: str) -> Any:
         raise _ProtocolError(invalid) from None
 
 
+def _decode_projected_local_chat(
+    payload: bytes, role: SavedLocalChatRole,
+) -> dict[str, Any]:
+    invalid = "native saved local chat projection is invalid"
+    result = _decode_owner_result(payload, invalid)
+    keys = {"output", "tool_intents", "usage", "finish_reason"}
+    if role == "stream":
+        keys.add("events")
+    if (
+        type(result) is not dict
+        or set(result) != keys
+        or type(result["tool_intents"]) is not list
+        or type(result["usage"]) is not dict
+        or (role == "stream" and type(result["events"]) is not list)
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
 def _decode_conversation_get(payload: bytes) -> dict[str, Any]:
     invalid = "native Conversation GET owner result is invalid"
     result = _decode_owner_result(payload, invalid)
@@ -1236,11 +1260,13 @@ class _Exchange:
         conversation_mutation: bool,
         requires_body_ready: bool,
         permits_dispatch: bool = False,
+        accepts_projected_local_chat: bool = False,
     ) -> None:
         self.connection = connection
         self.plan_limit = plan_limit
         self.permits_publication = permits_publication
         self.permits_dispatch = permits_dispatch
+        self.accepts_projected_local_chat = accepts_projected_local_chat
         self.requires_body_ready = requires_body_ready
         self.legacy_failure = (
             _CONVERSATION_LEGACY_READ_FAILURE
@@ -1263,6 +1289,7 @@ class _Exchange:
         self.terminal = False
         self.publication_possible = False
         self.dispatch_possible = False
+        self.dispatch_permitted = False
 
     def send(
         self, tag: int, payload: bytes, wait_seconds: Callable[[], float],
@@ -1300,6 +1327,8 @@ class _Exchange:
         limit = self.plan_limit if tag == _PLAN else _INBOUND_LIMITS.get(tag)
         if tag == _FAILURE:
             limit = self.failure_limit
+        elif tag == _PROJECTED_LOCAL_CHAT and self.accepts_projected_local_chat:
+            limit = self.plan_limit
         elif tag == _PUBLISH_CHECK and self.permits_publication:
             limit = 0
         elif tag == _DISPATCH_CHECK and self.permits_dispatch:
@@ -1343,7 +1372,9 @@ class _Exchange:
                 tag, payload = self.receive(wait_seconds)
                 if tag == _FAILURE and payload in self.failure_codes:
                     return
-                if tag == _PLAN and self.dispatch_possible:
+                if (tag == _PLAN and self.dispatch_possible) or (
+                    tag == _PROJECTED_LOCAL_CHAT and self.dispatch_permitted
+                ):
                     # The worker already finished. The caller still discards the
                     # result because its live guard failed before acceptance.
                     return
@@ -1363,7 +1394,7 @@ class _Exchange:
         borrow: NativeSavedLocalChatRequest,
         start: bytes,
         wait_seconds: Callable[[], float],
-    ) -> bytes | None:
+    ) -> bytes | dict[str, Any] | None:
         self.send(_START, start, wait_seconds)
         self.started = True
         body_ready = False
@@ -1396,6 +1427,13 @@ class _Exchange:
                 self.dispatch_possible = True
                 borrow.mark_dispatch_possible()
                 self.send(_DISPATCH_PERMIT, b"", wait_seconds)
+                self.dispatch_permitted = True
+            elif tag == _PROJECTED_LOCAL_CHAT and self.dispatch_permitted:
+                self.terminal = True
+                wait_seconds()
+                result = _decode_projected_local_chat(payload, borrow.role)
+                wait_seconds()
+                return result
             elif tag == _PLAN and self.dispatch_possible:
                 self.terminal = True
                 wait_seconds()
@@ -1584,10 +1622,15 @@ def _connect_launcher(
 
 
 def _invoke_saved_local_chat(
-    launcher: _Launcher, borrow: NativeSavedLocalChatRequest,
-) -> bytes:
+    launcher: _Launcher,
+    borrow: NativeSavedLocalChatRequest,
+    *,
+    project_response: bool,
+) -> bytes | dict[str, Any]:
     try:
-        result = _exchange_saved_local_chat(launcher, borrow)
+        result = _exchange_saved_local_chat(
+            launcher, borrow, project_response=project_response,
+        )
     except NativeProviderPrepareUnavailable:
         # Borrowed callbacks cannot authorize fallback for this exchange.
         raise NativeSavedLocalChatFailure("unavailable") from None
@@ -1597,11 +1640,16 @@ def _invoke_saved_local_chat(
 
 
 def _exchange_saved_local_chat(
-    launcher: _Launcher, borrow: NativeSavedLocalChatRequest,
-) -> bytes | None:
+    launcher: _Launcher,
+    borrow: NativeSavedLocalChatRequest,
+    *,
+    project_response: bool,
+) -> bytes | dict[str, Any] | None:
     deadline_ns, wait_seconds = _launcher_deadline(launcher, borrow)
     wait_seconds()
-    start = _start_payload(borrow, deadline_ns)
+    start = _start_payload(
+        borrow, deadline_ns, project_local_chat_response=project_response,
+    )
     with _connect_launcher(launcher, wait_seconds) as connection:
         exchange = _Exchange(
             connection,
@@ -1610,6 +1658,7 @@ def _exchange_saved_local_chat(
             conversation_mutation=False,
             requires_body_ready=True,
             permits_dispatch=True,
+            accepts_projected_local_chat=project_response,
         )
         try:
             return exchange.run_saved_local_chat(borrow, start, wait_seconds)

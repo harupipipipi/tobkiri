@@ -1,5 +1,6 @@
 //! Exact stored Provider selection for the original Broker's local JSON effect.
 
+use anyhow::{Result as AnyResult, bail, ensure};
 use std::{sync::Arc, time::Instant};
 use tobkiri_canon::{
     AllocationBudget, AllocationKind, AllocationRequest, CoreBuffer, ids::ProfileId,
@@ -12,9 +13,10 @@ pub use tobkiri_pack_provider_registry_rust::{
 use tobkiri_store::DataRoot;
 pub use tobkiri_wasm::LegacyLocalChatHttpCheck as OriginalLocalChatCheck;
 use tobkiri_wasm::{
-    LEGACY_LOCAL_CHAT_REQUEST_LIMIT, LegacyLocalChatHttpError, LegacyLocalChatHttpRequest,
-    post_brokered_legacy_local_chat,
+    LEGACY_LOCAL_CHAT_REQUEST_LIMIT, LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, LegacyLocalChatHttpError,
+    LegacyLocalChatHttpRequest, NativeReadOnlyPort, post_brokered_legacy_local_chat,
 };
+use wasmtime::component::{BudgetedString, Val};
 
 #[cfg(test)]
 mod tests;
@@ -30,7 +32,7 @@ pub struct OriginalLocalChatRequest<'a> {
     pub profile: &'a ProfileId,
     /// The selected connection as observed by the original adapter.
     pub provider: LegacyLocalChatSelection<'a>,
-    /// The original encoded JSON. The adapter retains response decoding.
+    /// The original encoded request JSON.
     pub body: &'a [u8],
     /// The earliest deadline of the original lease and Provider request.
     pub deadline: Instant,
@@ -94,6 +96,32 @@ pub async fn post_original_local_chat(
         check,
     )
     .await?)
+}
+
+/// Project a completed response through the verified effect-free Adapter port.
+/// Unsupported response syntax or representation retains the original bytes.
+pub async fn project_original_local_chat<T: Send + 'static>(
+    port: NativeReadOnlyPort<'_, T>,
+    raw: &str,
+    stream: bool,
+    budget: &Arc<dyn AllocationBudget>,
+) -> AnyResult<Option<CoreBuffer>> {
+    ensure!(raw.len() <= LEGACY_LOCAL_CHAT_RESPONSE_LIMIT);
+    let input = BudgetedString::copy_from(raw, port.allocation_owners().component(), 1)?;
+    let output = port
+        .invoke_with_document_limit(&[Val::String(input), Val::Bool(stream)])
+        .await?;
+    match output.as_slice() {
+        [Val::Result(Ok(Some(value)))] => match &**value {
+            Val::String(text) if text.as_str().is_empty() => Ok(None),
+            Val::String(text) if text.as_str().starts_with('{') => Ok(Some(CoreBuffer::copy_from(
+                text.as_str().as_bytes(),
+                budget,
+            )?)),
+            _ => bail!("local Provider Adapter returned a different result type"),
+        },
+        _ => bail!("local Provider Adapter omitted its projected result"),
+    }
 }
 
 struct DocumentCharge<'a>(&'a Arc<dyn AllocationBudget>);

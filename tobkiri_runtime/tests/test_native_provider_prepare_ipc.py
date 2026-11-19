@@ -2594,9 +2594,12 @@ def test_saved_orchestration_cancels_after_guard_revocation(
 
 @contextmanager
 def _served_saved_local_chat(
-    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
-) -> Iterator[Callable[[ipc.NativeSavedLocalChatRequest], bytes]]:
-    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, "1")
+    monkeypatch: pytest.MonkeyPatch,
+    serve: Callable[[socket.socket], None],
+    *,
+    version: str = "1",
+) -> Iterator[Callable[[ipc.NativeSavedLocalChatRequest], bytes | dict[str, Any]]]:
+    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, version)
     with _served(monkeypatch, serve):
         execute = ipc.capture_launcher_saved_local_chat_executor()
         assert execute is not None
@@ -2651,13 +2654,15 @@ def test_saved_local_chat_capture_requires_managed_opt_in(
     assert ipc.capture_launcher_saved_local_chat_executor() is None
     monkeypatch.delenv(ipc._SAVED_LOCAL_CHAT_ENV)
     assert ipc.capture_launcher_saved_local_chat_executor() is None
-    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, "1")
-    assert ipc.capture_launcher_saved_local_chat_executor() is not None
+    for version in ("1", "2"):
+        monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, version)
+        assert ipc.capture_launcher_saved_local_chat_executor() is not None
 
 
+@pytest.mark.parametrize("version", ["1", "2"])
 @pytest.mark.parametrize("role", ["generate", "stream"])
 def test_saved_local_chat_passes_exact_bytes_and_permits_dispatch_once(
-    monkeypatch: pytest.MonkeyPatch, role: ipc.SavedLocalChatRole,
+    monkeypatch: pytest.MonkeyPatch, role: ipc.SavedLocalChatRole, version: str,
 ) -> None:
     borrow = _Borrow()
     original = ('{ "z": "ローカル", "stream": false, "a": "value" }\n').encode()
@@ -2689,7 +2694,7 @@ def test_saved_local_chat_passes_exact_bytes_and_permits_dispatch_once(
         tag, payload = _receive(peer)
         numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
         assert tag == 1
-        assert json.loads(payload) == {
+        expected = {
             "identity": {
                 key: value for key, value in vars(borrow.context).items()
                 if key != "security_epoch"
@@ -2705,6 +2710,11 @@ def test_saved_local_chat_passes_exact_bytes_and_permits_dispatch_once(
                 "input_bytes": len(body),
             },
         }
+        if version == "2":
+            expected["saved_local_chat"]["project_response"] = True
+        assert payload == json.dumps(
+            expected, ensure_ascii=False, separators=(",", ":"),
+        ).encode()
         peer.settimeout(0.02)
         with pytest.raises(TimeoutError):
             peer.recv(1)
@@ -2718,11 +2728,97 @@ def test_saved_local_chat_passes_exact_bytes_and_permits_dispatch_once(
         _send(peer, 7, reply)
         assert peer.recv(1) == b""
 
-    with _served_saved_local_chat(monkeypatch, serve) as execute:
+    with _served_saved_local_chat(monkeypatch, serve, version=version) as execute:
         monkeypatch.delenv(ipc._SAVED_LOCAL_CHAT_ENV)
         monkeypatch.delenv(ipc._SOCKET_ENV)
         monkeypatch.delenv(ipc._OWNER_ENV)
         assert execute(request) == reply
+
+
+@pytest.mark.parametrize("role", ["generate", "stream"])
+def test_saved_local_chat_decodes_projected_terminal_after_permit(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.SavedLocalChatRole,
+) -> None:
+    request = _saved_local_chat_request(_Borrow(), role=role)
+    expected: dict[str, Any] = {
+        "output": False,
+        "tool_intents": [{"id": "call_1"}, 0],
+        "usage": {"fixture": {"large": -int("7" * 4300)}},
+        "finish_reason": 0,
+    }
+    if role == "stream":
+        expected["events"] = [
+            {"type": "tool_intent_delta", "tool_intent": {"id": "call_1"}},
+            {"type": "usage", "usage": expected["usage"]},
+            {"type": "finish", "finish_reason": 0},
+        ]
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _accept_saved_local_chat_body(peer, request.input)
+        _check_saved_local_chat_live(peer)
+        _send(peer, 17)
+        assert _receive(peer) == (18, b"")
+        _send(peer, 19, json.dumps(expected, separators=(",", ":")).encode())
+        assert peer.recv(1) == b""
+
+    with _served_saved_local_chat(monkeypatch, serve, version="2") as execute:
+        result = execute(request)
+    assert isinstance(result, dict)
+    assert result == expected
+    assert type(result["output"]) is bool
+    assert type(result["finish_reason"]) is int
+
+
+@pytest.mark.parametrize(
+    ("version", "role", "response", "exception_type"),
+    [
+        (
+            "1", "generate",
+            b'{"output":"","usage":{},"tool_intents":[],"finish_reason":null}',
+            ipc.NativeSavedLocalChatDispatchUnconfirmed,
+        ),
+        ("2", "generate", b"not JSON", ipc._ProtocolError),
+        (
+            "2", "generate",
+            b'{"output":"","usage":{},"tool_intents":[],"finish_reason":null,"events":[]}',
+            ipc._ProtocolError,
+        ),
+        (
+            "2", "stream",
+            b'{"output":"","usage":{},"tool_intents":[],"finish_reason":null}',
+            ipc._ProtocolError,
+        ),
+        (
+            "2", "generate",
+            b'{"output":"","usage":{},"tool_intents":{},"finish_reason":null}',
+            ipc._ProtocolError,
+        ),
+    ],
+)
+def test_saved_local_chat_rejects_invalid_or_unrequested_projection(
+    monkeypatch: pytest.MonkeyPatch, version: str, role: ipc.SavedLocalChatRole,
+    response: bytes, exception_type: type[RuntimeError],
+) -> None:
+    request = _saved_local_chat_request(_Borrow(), role=role)
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _accept_saved_local_chat_body(peer, request.input)
+        _check_saved_local_chat_live(peer)
+        _send(peer, 17)
+        assert _receive(peer) == (18, b"")
+        _send(peer, 19, response)
+        if version == "1":
+            assert _receive(peer) == (9, b"")
+        else:
+            assert peer.recv(1) == b""
+
+    with (
+        _served_saved_local_chat(monkeypatch, serve, version=version) as execute,
+        pytest.raises(exception_type),
+    ):
+        execute(request)
 
 
 @pytest.mark.parametrize(
@@ -2759,6 +2855,7 @@ def test_saved_local_chat_rejects_out_of_bounds_body_before_connection(
         ("body", 10, b"", ipc._ProtocolError),
         ("body", 17, b"", ipc._ProtocolError),
         ("live", 7, b"premature", ipc._ProtocolError),
+        ("live", 19, b"premature", ipc._ProtocolError),
         ("permit", 17, b"", ipc._ProtocolError),
     ],
 )
@@ -2784,7 +2881,9 @@ def test_saved_local_chat_enforces_terminal_and_dispatch_order(
             assert peer.recv(1) == b""
 
     with (
-        _served_saved_local_chat(monkeypatch, serve) as execute,
+        _served_saved_local_chat(
+            monkeypatch, serve, version="2" if tag == 19 else "1",
+        ) as execute,
         pytest.raises(exception_type) as failure,
     ):
         execute(request)
@@ -2858,9 +2957,9 @@ def test_saved_local_chat_rejects_fallback_requested_by_authority_callback(
     assert failure.value.code == "unavailable"
 
 
-@pytest.mark.parametrize("oversized_result", [False, True])
+@pytest.mark.parametrize("oversized_tag", [None, 7, 19])
 def test_saved_local_chat_reports_unconfirmed_dispatch_without_cleanup_proof(
-    monkeypatch: pytest.MonkeyPatch, oversized_result: bool,
+    monkeypatch: pytest.MonkeyPatch, oversized_tag: int | None,
 ) -> None:
     request = _saved_local_chat_request(_Borrow())
 
@@ -2870,19 +2969,21 @@ def test_saved_local_chat_reports_unconfirmed_dispatch_without_cleanup_proof(
         _check_saved_local_chat_live(peer)
         _send(peer, 17)
         assert _receive(peer) == (18, b"")
-        if oversized_result:
-            peer.sendall(_HEADER.pack(7, 4 * 1024 * 1024 + 1))
+        if oversized_tag is not None:
+            peer.sendall(_HEADER.pack(oversized_tag, 4 * 1024 * 1024 + 1))
             assert _receive(peer) == (9, b"")
             assert peer.recv(1) == b""
 
     with (
-        _served_saved_local_chat(monkeypatch, serve) as execute,
+        _served_saved_local_chat(
+            monkeypatch, serve, version="2" if oversized_tag == 19 else "1",
+        ) as execute,
         pytest.raises(ipc.NativeSavedLocalChatDispatchUnconfirmed),
     ):
         execute(request)
 
 
-@pytest.mark.parametrize("terminal_tag", [7, 8])
+@pytest.mark.parametrize("terminal_tag", [7, 8, 19])
 def test_saved_local_chat_drains_to_terminal_after_original_deadline(
     monkeypatch: pytest.MonkeyPatch, terminal_tag: int,
 ) -> None:
@@ -2895,12 +2996,14 @@ def test_saved_local_chat_drains_to_terminal_after_original_deadline(
         _send(peer, 17)
         assert _receive(peer) == (18, b"")
         assert _receive(peer) == (9, b"")
-        payload = b"late successful response" if terminal_tag == 7 else b"cancelled"
+        payload = b"cancelled" if terminal_tag == 8 else b"late successful response"
         _send(peer, terminal_tag, payload)
         assert peer.recv(1) == b""
 
     with (
-        _served_saved_local_chat(monkeypatch, serve) as execute,
+        _served_saved_local_chat(
+            monkeypatch, serve, version="2" if terminal_tag == 19 else "1",
+        ) as execute,
         pytest.raises(TimeoutError, match="deadline elapsed"),
     ):
         execute(request)

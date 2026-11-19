@@ -277,6 +277,14 @@ struct VerifiedSavedOrchestrationSource {
 struct VerifiedSavedLocalChatSource {
     bundle: VerifiedSavedLocalChatBundle,
     roles: [Option<(OriginalSavedLocalChatRole, [VerifiedLegacyRoutePin; 5])>; 2],
+    adapter: Option<VerifiedProviderAdapterSource>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedProviderAdapterSource {
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
 }
 
 impl VerifiedTurnSource {
@@ -874,7 +882,7 @@ impl LaunchActivationObserver<'_> {
             locked.verify(checkpoint)?;
         }
         let verified_registry_pack_evidence =
-            registry_pack_receipt::verify_installed_with_orchestration_archives(
+            registry_pack_receipt::verify_installed_with_provider_adapter_archives(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
                 || checkpoint().map_err(io::Error::other),
@@ -1011,6 +1019,15 @@ impl LaunchActivationObserver<'_> {
                     )
                     .map_err(io::Error::other)
                 },
+                |receipt, input| {
+                    let pack = verify_registry_archive(inspection, receipt, input)?;
+                    require_provider_adapter_declaration(&pack).map_err(io::Error::other)?;
+                    Ok(VerifiedProviderAdapterSource {
+                        archive_sha256: receipt.archive_sha256().to_owned(),
+                        archive_bytes: receipt.archive_bytes(),
+                        manifest_sha256: receipt.manifest_sha256().to_owned(),
+                    })
+                },
             )
             .context("bundled Registry Pack verification failed during Launch")?;
         let (
@@ -1019,10 +1036,11 @@ impl LaunchActivationObserver<'_> {
             conversation,
             turn,
             orchestration,
+            adapter,
         ) = verified_registry_pack_evidence;
         let turn = turn.flatten();
         let orchestration = orchestration.flatten();
-        let local_chat = verify_saved_local_chat_source(inspection, active, checkpoint)?;
+        let local_chat = verify_saved_local_chat_source(inspection, active, adapter, checkpoint)?;
         if !has_existing_grants
             && conversation.is_none()
             && turn.is_none()
@@ -1411,6 +1429,43 @@ pub(super) fn reacquire_saved_local_chat_source(
         .revalidate(inspection.allocation_budget()?, checkpoint)
 }
 
+/// Reopen the effect-free Adapter paired with this exact original Provider grant.
+pub(super) fn reacquire_saved_local_chat_adapter(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalSavedLocalChatRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<VerifiedPack>> {
+    let Some(adapter) = proof
+        .local_chat
+        .as_ref()
+        .filter(|_| proof.permits_saved_local_chat(role))
+        .and_then(|source| source.adapter.as_ref())
+    else {
+        return Ok(None);
+    };
+    let app_root = registry_pack_root(inspection, proof)?;
+    let pack = registry_pack_receipt::verify_installed_with_provider_adapter(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &adapter.archive_sha256,
+                adapter.archive_bytes,
+                &adapter.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            require_provider_adapter_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )?;
+    Ok(Some(pack.context(
+        "bundled Registry receipt has no Provider Adapter archive",
+    )?))
+}
+
 /// Reopen the installed candidate under the original authority source and Launch receipt.
 pub(super) fn reacquire_saved_orchestration_pack(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
@@ -1671,6 +1726,7 @@ fn verify_saved_orchestration_source(
 fn verify_saved_local_chat_source(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     active: &OriginalActiveProfile,
+    adapter: Option<VerifiedProviderAdapterSource>,
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<Option<VerifiedSavedLocalChatSource>> {
     use OriginalSavedLocalChatRole::{Generate, Stream};
@@ -1689,7 +1745,45 @@ fn verify_saved_local_chat_source(
     let roles = selections.map(|selection| {
         selection.map(|selected| (selected.role(), selected.pins().each_ref().map(Into::into)))
     });
-    Ok(Some(VerifiedSavedLocalChatSource { bundle, roles }))
+    Ok(Some(VerifiedSavedLocalChatSource {
+        bundle,
+        roles,
+        adapter,
+    }))
+}
+
+pub(super) const PROVIDER_ADAPTER_SHAPE: &str = "local.provider-adapter.local-completion@1.0";
+pub(super) const PROVIDER_ADAPTER_OPERATION: &str = "project";
+const PROVIDER_ADAPTER_WIT_FILES: [(&str, &[u8]); 3] = [
+    (
+        "wit/pack.wit",
+        include_bytes!("../../../packs/local.provider-adapter-rust/wit/pack.wit"),
+    ),
+    CORE_V1_2_WIT,
+    (
+        "wit/local-completion.shape.json",
+        include_bytes!(
+            "../../../packs/local.provider-adapter-rust/wit/local-completion.shape.json"
+        ),
+    ),
+];
+
+fn require_provider_adapter_declaration(pack: &VerifiedPack) -> Result<()> {
+    verify_stateless_registry_surface(pack, registry_pack_receipt::PROVIDER_ADAPTER_PACK_ID, 1)?;
+    let manifest = &pack.manifest;
+    ensure!(
+        manifest.version == "0.1.0"
+            && manifest.files.len() == PROVIDER_ADAPTER_WIT_FILES.len() + 1
+            && manifest.shapes[0].wit == "wit/pack.wit"
+            && PROVIDER_ADAPTER_WIT_FILES.into_iter().all(|(path, bytes)| {
+                pack.files
+                    .get(path)
+                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))
+            }),
+        "bundled Provider Adapter Pack has an unexpected WIT or version"
+    );
+    require_registry_ports(pack, PROVIDER_ADAPTER_OPERATION, &[PROVIDER_ADAPTER_SHAPE])?;
+    Ok(())
 }
 
 fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
@@ -1709,15 +1803,17 @@ fn require_turn_start_declaration(pack: &VerifiedPack) -> Result<()> {
     Ok(())
 }
 
+const CORE_V1_2_WIT: (&str, &[u8]) = (
+    "wit/deps/core.wit",
+    include_bytes!("../../../crates/tobkiri-wit/wit/core-v1-2/core.wit"),
+);
+
 const ORCHESTRATION_WIT_FILES: [(&str, &[u8]); 3] = [
     (
         "wit/pack.wit",
         include_bytes!("../../../packs/local.saved-orchestration-rust/wit/pack.wit"),
     ),
-    (
-        "wit/deps/core.wit",
-        include_bytes!("../../../crates/tobkiri-wit/wit/core-v1-2/core.wit"),
-    ),
+    CORE_V1_2_WIT,
     (
         "wit/legacy-step.shape.json",
         include_bytes!("../../../packs/local.saved-orchestration-rust/wit/legacy-step.shape.json"),

@@ -7543,7 +7543,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             raise ipc.NativeModelResolveFailure("not-found")
         raise ipc.NativeProviderPrepareUnavailable()
 
-    def execute(request: ipc.NativeSavedLocalChatRequest) -> bytes:
+    def execute(request: ipc.NativeSavedLocalChatRequest) -> bytes | dict[str, object]:
         native_calls.append(request)
         adapter, = adapter_calls
         turn, orchestration, gateway = parents
@@ -7599,6 +7599,20 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         permitted_posts.append(request.input)
         if outcome == "unconfirmed":
             raise ipc.NativeSavedLocalChatDispatchUnconfirmed("fixture reply lost")
+        if outcome == "projected":
+            projected: dict[str, object] = {
+                "output": "Local reply",
+                "tool_intents": [],
+                "usage": {},
+                "finish_reason": "stop",
+            }
+            if role == "stream":
+                projected["events"] = [
+                    {"type": "text_delta", "delta": "Local reply"},
+                    {"type": "usage", "usage": {}},
+                    {"type": "finish", "finish_reason": "stop"},
+                ]
+            return projected
         return (
             b'{"choices":[{"message":{"content":"Local reply"},'
             b'"finish_reason":"stop"}]}'
@@ -7678,6 +7692,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         for role, outcome in (
             ("generate", "success"),
             ("stream", "success"),
+            ("generate", "projected"),
+            ("stream", "projected"),
             ("generate", "denied"),
             ("stream", "unconfirmed"),
         ):
@@ -7706,7 +7722,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             assert not legacy_connections
             with pytest.raises((AuthorityDenied, PermissionError)):
                 native_calls[0].assert_current()
-            if outcome == "success":
+            if outcome in {"success", "projected"}:
                 assert status == 200 and result["data"]["status"] == "completed", result
                 messages = store.get(conversation_id)["messages"]
                 assert [item["content"] for item in messages] == [

@@ -3946,7 +3946,7 @@ def capture_production_dispatch(
             connection: Mapping[str, Any],
             encoded: bytes,
             deadline_monotonic: float,
-        ) -> bytes | None:
+        ) -> bytes | dict[str, Any] | None:
             """Borrow the live signed local Adapter invocation for one POST."""
             route, runtime = self._local_chat_route, native_provider_runtime
             executor = native_saved_local_chat
@@ -4053,7 +4053,7 @@ def capture_production_dispatch(
                     "provider_unavailable", "local provider is unavailable",
                 ) from None
             guard()
-            if not dispatch_possible or type(result) is not bytes:
+            if not dispatch_possible or type(result) not in (bytes, dict):
                 raise AuthorityDenied("local provider result is not confirmed")
             return result
 

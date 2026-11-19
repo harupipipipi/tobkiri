@@ -372,7 +372,7 @@ where
                 if role == PythonRole::Defaultspack {
                     command
                         .env(TURN_START_ENV, "1")
-                        .env(SAVED_LOCAL_CHAT_ENV, "1");
+                        .env(SAVED_LOCAL_CHAT_ENV, "2");
                     if let Some(manifest) = saved_orchestration_manifest.as_deref() {
                         command.env(
                             crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV,
