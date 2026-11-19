@@ -4463,6 +4463,32 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ゲスト辞退、リース失効・実行拒否・実行不能、親のない呼出しが通過した。
   Launchで同じPipeline Packと目録を役割ごとに読み直す。起動計測で重複を確認できたら、
   読み取りを共用しつつ、各役割の署名済み操作と呼出しごとの物理再照合を維持できる。
+- `1250fe3e8` は通常の保存済みチャットで、Provider応答からGenerateの基本結果を作る処理と
+  Streamの最終結果を組み立てる処理を `local.ai-routing` 0.6.0へ移した。既存のRust Finalizer
+  と純粋な処理を共用し、Provider呼出し、Stream Normalizer、Tool Bridge、Usage Costは元の
+  署名済みGatewayから同じ順で呼ぶ。GenerateでProviderが返したエラーや、JSONの1 MiB境界を
+  超えるなどゲストが扱えない値は、元の結果整形に戻して同じ挙動を維持する。Streamの場合、
+  既に終えた子呼出しを繰り返さず手元のDATAだけで組み立てる。
+  Shell、Saved Turn、Saved Orchestration、Gatewayの3段の署名済み辺を照合する。
+  `58d9b6fe4` は現行Bundleと収録ソースを再生成し、親が予約の証明を持たないときも既存の
+  親リースを照合する。`f988bda4b` は元のGatewayに割り当てられた予約をHost側の実行証明に
+  渡す。古いWasmアーカイブ5版は既存のWITとv5レシートで引き続き照合する。
+  固定CPython 3.13.16の原本との2,300ケースで、1,329件の順序付き結果と971件の互換経路選択が
+  一致した。Rustゲスト31件とdoctest 1件、権限選択36件、Python IPC481件、Rust IPC45件、
+  Gateway回帰71件、レシート15件、DMG検証とワークフロー構成338件が通過した。
+  macOS Launcherのテスト型検査、ゲストのstrict Clippy、アーキテクチャ検証、生成物照合6件、
+  実Pack6版の宣言検証とCore経由の全ポート実行が通過した。
+  クリーンな `89aa81414` のmacOS結合試験で、GenerateとStreamが同じ署名済みGateway
+  から実IPCと0.6.0の実Wasmを呼び、Python原本と同じ結果を保存した。Provider応答、配布物
+  resolver入口、Application管理とPackVM搬送はfixtureで供給した。
+  同じソースの署名済みHTTP回帰では、両ロール、旧Launcherの非適用、元の整形への辞退、
+  リース失効・実行拒否・実行不能の7ケースを確認した。各ケースでProvider呼出しは1回だった。
+  `46701e9c1` は過去の独立比較を物理的に分け、当時のコードとProfileを固定Gitオブジェクト
+  から取得し、過去のレシートと生成ソースを照合する。固定CPythonによる旧Provider 94件と
+  Tool Bridge 81件の観測再生成、履歴側のソース照合と現在側CI契約の抜粋11件が通過した。
+  ローカルでの過去の全ケースと実コンポーネント比較は、空き容量が尽きたため未完了。
+  現行GatewayとBrokerをCore所有に移したら、結果整形のIPCと、PackVM用の結果エンコードを
+  除去できる。保存済み応答、型付きエラー、署名済み子呼出しの順序と非重複を前提とする。
 - [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
   実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
   経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で
