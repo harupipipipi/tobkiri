@@ -39,6 +39,7 @@ _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
 _SIDE_CHAT_APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
+_SIDE_CHAT_START_ENV = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
 _CONVERSATION_COMPLETE_ENV = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE"
@@ -385,6 +386,7 @@ class NativeSavedTurnReadRequest:
 
 
 SavedTurnStartAction = Literal["begin", "claim"]
+SavedTurnStartCaller = Literal["saved-turn", "side-chat"]
 
 
 @dataclass(frozen=True)
@@ -402,6 +404,7 @@ class NativeSavedTurnStartRequest:
     input_digest: str
     source_digest: str
     mark_publication_possible: Callable[[], None]
+    caller: SavedTurnStartCaller = "saved-turn"
 
 
 @dataclass(frozen=True)
@@ -880,7 +883,20 @@ def capture_launcher_saved_turn_start_writer() -> (
     Callable[[NativeSavedTurnStartRequest], Mapping[str, Any]] | None
 ):
     """Capture the managed Launcher's opted-in endpoint for saved Turn start."""
-    if os.environ.get(_SAVED_TURN_START_ENV) != "1":
+    return _capture_saved_turn_start_writer(_SAVED_TURN_START_ENV)
+
+
+def capture_launcher_side_chat_turn_start_writer() -> (
+    Callable[[NativeSavedTurnStartRequest], Mapping[str, Any]] | None
+):
+    """Capture the independently admitted Side Chat Turn start endpoint."""
+    return _capture_saved_turn_start_writer(_SIDE_CHAT_START_ENV)
+
+
+def _capture_saved_turn_start_writer(
+    environment: str,
+) -> Callable[[NativeSavedTurnStartRequest], Mapping[str, Any]] | None:
+    if os.environ.get(environment) != "1":
         return None
     launcher = _capture_launcher()
     if launcher is None:
@@ -1332,7 +1348,8 @@ def _bounded_revision(value: object, minimum: int) -> bool:
 
 def _turn_start_payload(borrow: NativeSavedTurnStartRequest) -> dict[str, Any]:
     if (
-        type(borrow.action) is not str
+        borrow.caller not in ("saved-turn", "side-chat")
+        or type(borrow.action) is not str
         or borrow.action not in ("begin", "claim")
         or not is_native_saved_turn_start_identifier(borrow.turn_id)
         or not is_native_saved_turn_start_identifier(borrow.conversation_id)
@@ -1343,6 +1360,7 @@ def _turn_start_payload(borrow: NativeSavedTurnStartRequest) -> dict[str, Any]:
     ):
         raise _ProtocolError("native saved Turn start inputs are invalid")
     return {
+        **({"caller": "side-chat"} if borrow.caller == "side-chat" else {}),
         "action": borrow.action,
         "turn_id": borrow.turn_id,
         "conversation_id": borrow.conversation_id,

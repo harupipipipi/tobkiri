@@ -675,6 +675,28 @@ def test_turn_start_capture_requires_managed_endpoint_and_exact_opt_in(
             assert ipc.capture_launcher_saved_turn_start_writer() is None
 
 
+def test_side_chat_turn_start_uses_separate_admission_and_exact_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, "1")
+    monkeypatch.delenv(ipc._SIDE_CHAT_START_ENV, raising=False)
+    monkeypatch.setattr(ipc, "_capture_launcher", lambda: object())
+    assert ipc.capture_launcher_saved_turn_start_writer() is not None
+    assert ipc.capture_launcher_side_chat_turn_start_writer() is None
+    monkeypatch.delenv(ipc._SAVED_TURN_START_ENV)
+    monkeypatch.setenv(ipc._SIDE_CHAT_START_ENV, "1")
+    assert ipc.capture_launcher_saved_turn_start_writer() is None
+    assert ipc.capture_launcher_side_chat_turn_start_writer() is not None
+    ordinary = _turn_start_request(_Borrow(), lambda: None)
+    linked = replace(ordinary, caller="side-chat")
+    assert "caller" not in ipc._turn_start_payload(ordinary)
+    assert ipc._turn_start_payload(linked) == {
+        **ipc._turn_start_payload(ordinary), "caller": "side-chat",
+    }
+    with pytest.raises(ipc._ProtocolError):
+        ipc._turn_start_payload(replace(ordinary, caller="forged"))  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize("action", ["begin", "claim"])
 @pytest.mark.parametrize("published", [False, True])
 def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(

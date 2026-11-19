@@ -3648,6 +3648,7 @@ def test_native_saved_turn_start_borrows_signed_lifecycle_lease_and_owner_input(
 
     def write(request: ipc.NativeSavedTurnStartRequest) -> Mapping[str, object]:
         request.assert_current()
+        assert request.caller == "saved-turn"
         borrows.append(request)
         child, parent = children[-1], parents[-1]
         assert request.context is child.context
@@ -4001,19 +4002,20 @@ def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
 
 
 @pytest.mark.parametrize(
-    "use_native,use_native_append",
-    [(False, False), (True, False), (True, True)],
-    ids=["packvm", "native-orchestration", "native"],
+    "use_native,use_native_append,use_native_start",
+    [(False, False, False), (True, False, False), (True, True, False), (True, True, True)],
+    ids=["packvm", "native-orchestration", "native", "native-start"],
 )
 def test_signed_side_chat_http_uses_shared_saved_orchestration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    use_native: bool, use_native_append: bool,
+    use_native: bool, use_native_append: bool, use_native_start: bool,
 ) -> None:
-    """Inspect signed Side Chat ancestry at the native step and append ports."""
+    """Inspect signed Side Chat ancestry at the start, step and append ports."""
     from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.authority.v4 import DomainBoundary, LeaseState
     from core_runtime.bootstrap.saved_bridge import READINESS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
     from ecosystem.tobkiri_conversation_orchestration_pack.runtime import (
         saved_conversation,
     )
@@ -4024,16 +4026,20 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     manifest = canonical_digest({"manifest": "fixture-side-chat-orchestration"})
     pack_id = "tobkiri_side_chat_pack"
     conversations = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+    turns = DurableTurnRuntime("defaults", user_data_root=tmp_path / "user-data")
     side_target = ("tobkiri.service.side-chat.turn.v1", f"{pack_id}.side-chat-turn")
     saved_target = (_SavedPackVmBackend._CONTRACT_ID, _SavedPackVmBackend._OPERATION_ID)
     message_target = saved_conversation.TARGETS[1]
+    start_target = ("tobkiri.action.turn.lifecycle.v1", "rumi_turn_runtime_pack.turn-lifecycle")
     step_inputs: list[Mapping[str, object]] = []
     materializations: list[RuntimeEvidence] = []
     ai_calls: list[Mapping[str, object]] = []
     append_requests: list[ipc.NativeConversationAppendRequest] = []
     append_envelopes: list[RequestEnvelope] = []
     ordinary_append_requests: list[ipc.NativeConversationAppendRequest] = []
-    append_failures: list[AssertionError] = []
+    start_requests: list[ipc.NativeSavedTurnStartRequest] = []
+    start_envelopes: list[RequestEnvelope] = []
+    fixture_failures: list[AssertionError] = []
     backend = _SavedPackVmBackend()
     original_invoke = V4DispatchSession.invoke
     packvm_materialize = backend.materialize
@@ -4107,7 +4113,55 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         try:
             return checked_side_append(request)
         except AssertionError as error:
-            append_failures.append(error)
+            fixture_failures.append(error)
+            raise
+
+    def ordinary_start(_request: ipc.NativeSavedTurnStartRequest) -> Mapping[str, object]:
+        error = AssertionError("Side Chat selected the ordinary Turn start proof")
+        fixture_failures.append(error)
+        raise error
+
+    def checked_side_start(
+        request: ipc.NativeSavedTurnStartRequest,
+    ) -> Mapping[str, object]:
+        request.assert_current()
+        assert request.caller == "side-chat"
+        side, turn = envelopes
+        owner = start_envelopes[-1]
+        assert request.context == owner.context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic == owner.deadline_monotonic
+        assert owner.deadline_monotonic <= turn.deadline_monotonic <= side.deadline_monotonic
+        assert owner.resource_reservation_id is not None
+        assert owner.resource_reservation_id not in {
+            side.resource_reservation_id, turn.resource_reservation_id,
+        }
+        assert turn.context.caller_principal == side.target_principal
+        assert owner.context.caller_principal == turn.target_principal
+        chain = (side, turn, owner)
+        assert len({item.lease.token for item in chain}) == len(chain)
+        for item in chain:
+            _, state, _, _ = authority.inspect_dispatch_authority(
+                item.lease.token.decode("ascii"),
+            )
+            assert state is LeaseState.DISPATCHED
+        accepted = {"request": owner.payload["request"]}
+        assert request.input_digest == canonical_digest(accepted)
+        assert request.source_digest == canonical_digest(turn.payload)
+        assert request.turn_id == side.payload["turn_id"]
+        assert request.conversation_id == side.payload["conversation_id"]
+        start_requests.append(request)
+        request.mark_publication_possible()
+        request.assert_current()
+        if request.action == "begin":
+            return {"claimed": False, "turn": turns.begin_saved(accepted)}
+        return turns.claim_saved(accepted)
+
+    def side_start(request: ipc.NativeSavedTurnStartRequest) -> Mapping[str, object]:
+        try:
+            return checked_side_start(request)
+        except AssertionError as error:
+            fixture_failures.append(error)
             raise
 
     def observe_packvm(
@@ -4135,6 +4189,11 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     monkeypatch.setattr(
         ipc, "capture_launcher_side_chat_conversation_append_writer",
         lambda: side_append if use_native_append else None,
+    )
+    monkeypatch.setattr(ipc, "capture_launcher_saved_turn_start_writer", lambda: ordinary_start)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_side_chat_turn_start_writer",
+        lambda: side_start if use_native_start else None,
     )
     if use_native:
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
@@ -4166,6 +4225,11 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
                 and envelope.payload.get("operation") == "append_saved"
             ):
                 append_envelopes.append(envelope)
+            if (
+                (envelope.contract_id, envelope.operation_id) == start_target
+                and envelope.payload.get("operation") in {"begin_saved", "claim_saved"}
+            ):
+                start_envelopes.append(envelope)
             return dispatch(selected, envelope, *args, **kwargs)
 
         monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
@@ -4276,8 +4340,8 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             "conversation_id": child_id, "expected_child_revision": source["revision"],
             "expected_parent_revision": source["parent_revision"],
         })
-        if append_failures:
-            raise append_failures[0]
+        if fixture_failures:
+            raise fixture_failures[0]
         assert first["status"] == "completed", first
         assert [(item.contract_id, item.operation_id) for item in envelopes] == list(targets)
         side, turn, saved = envelopes
@@ -4334,6 +4398,13 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             ["user", "assistant"] if use_native_append else []
         )
         for request in append_requests:
+            with pytest.raises(PermissionError):
+                request.assert_current()
+        assert len(start_envelopes) == 2
+        assert [request.action for request in start_requests] == (
+            ["begin", "claim"] if use_native_start else []
+        )
+        for request in start_requests:
             with pytest.raises(PermissionError):
                 request.assert_current()
 

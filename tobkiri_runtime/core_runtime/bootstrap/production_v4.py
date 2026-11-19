@@ -1976,6 +1976,7 @@ def capture_production_dispatch(
         NativeSavedTurnStartRequest,
         SavedReceiptCaller,
         SavedTurnStartAction,
+        SavedTurnStartCaller,
         capture_launcher_ai_gateway_policy_projector,
         capture_launcher_ai_gateway_result_projector,
         capture_launcher_ai_pipeline_evaluator,
@@ -1999,6 +2000,7 @@ def capture_production_dispatch(
         capture_launcher_saved_turn_settlement_writer,
         capture_launcher_saved_turn_start_writer,
         capture_launcher_side_chat_conversation_append_writer,
+        capture_launcher_side_chat_turn_start_writer,
         is_canonical_model_resolve_identifier,
         is_native_saved_turn_read_identifier,
         is_native_saved_turn_start_identifier,
@@ -2041,7 +2043,13 @@ def capture_production_dispatch(
         require_digest(native_saved_manifest, "admitted Saved Orchestration manifest")
     native_saved_turn_reader = capture_launcher_saved_turn_reader()
     native_saved_turn_settlement_writer = capture_launcher_saved_turn_settlement_writer()
-    native_saved_turn_start_writer = capture_launcher_saved_turn_start_writer()
+    native_turn_start_writers: dict[
+        SavedTurnStartCaller,
+        Callable[[NativeSavedTurnStartRequest], Mapping[str, Any]] | None,
+    ] = {
+        "saved-turn": capture_launcher_saved_turn_start_writer(),
+        "side-chat": capture_launcher_side_chat_turn_start_writer(),
+    }
 
     authority_path = authority_store.path.resolve()
     if authority_path.name != "v4.sqlite3" or authority_path.parent.name != "authority":
@@ -2701,6 +2709,16 @@ def capture_production_dispatch(
         select_original_orchestration(ordinary_turn_edge)
         if ordinary_turn_edge is not None else None
     )
+    side_chat_edge = select_original_chat_edge(
+        desktop_shell_principal_ids,
+        "tobkiri_side_chat_pack", "tobkiri.service.side-chat.turn.v1",
+        "tobkiri_side_chat_pack.side-chat-turn", "tobkiri_side_chat_pack.turn",
+        EffectClass.PRIVILEGED,
+    )
+    side_chat_turn_edge = (
+        select_original_turn({side_chat_edge.target.principal_id})
+        if side_chat_edge is not None else None
+    )
 
     saved_local_chat_routes: dict[str, _SavedLocalChatRoute] = {}
     if (
@@ -2743,18 +2761,28 @@ def capture_production_dispatch(
         for route in saved_local_chat_routes.values()
     }
 
-    turn_start_edge = (
-        select_original_chat_edge(
-            {ordinary_turn_edge.target.principal_id},
+    turn_start_routes: dict[SavedTurnStartCaller, tuple[_CapturedPlanEdge, ...]] = {}
+
+    def capture_turn_start_route(
+        caller: SavedTurnStartCaller, turn: _CapturedPlanEdge, *parents: _CapturedPlanEdge,
+    ) -> None:
+        if native_turn_start_writers[caller] is None:
+            return
+        lifecycle = select_original_chat_edge(
+            {turn.target.principal_id},
             turn_pack,
             "tobkiri.action.turn.lifecycle.v1",
             f"{turn_pack}.turn-lifecycle",
             f"{turn_pack}.turn-runtime.lifecycle",
             EffectClass.PRIVILEGED,
         )
-        if ordinary_turn_edge is not None and native_saved_turn_start_writer is not None
-        else None
-    )
+        if lifecycle is not None:
+            turn_start_routes[caller] = (lifecycle, turn, *parents)
+
+    if ordinary_turn_edge is not None:
+        capture_turn_start_route("saved-turn", ordinary_turn_edge)
+    if side_chat_edge is not None and side_chat_turn_edge is not None:
+        capture_turn_start_route("side-chat", side_chat_turn_edge, side_chat_edge)
 
     native_saved_execution: NativeWasmBinding | None = None
     native_saved_original_provider: str | None = None
@@ -5413,19 +5441,16 @@ def capture_production_dispatch(
         with saved_owner_publication_lock:
             saved_owner_publications[id(envelope)] = envelope
 
-    def saved_turn_start_action(
+    def saved_turn_start_lineage(
         context: RequestContext,
         payload: Mapping[str, Any],
         parent: CapturedInvocationScopeV4 | None,
-    ) -> SavedTurnStartAction | None:
+    ) -> tuple[
+        SavedTurnStartCaller, SavedTurnStartAction, _CapturedPlanEdge,
+        tuple[RequestEnvelope, ...],
+    ] | None:
         if (
-            turn_start_edge is None
-            or ordinary_turn_edge is None
-            or parent is None
-            or parent.parent is not None
-            or not matches_captured_edge(parent.envelope, ordinary_turn_edge)
-            or parent.envelope.context.profile_id != context.profile_id
-            or context.caller_principal.value != turn_start_edge.caller.principal_id
+            parent is None or parent.envelope.context.profile_id != context.profile_id
             or set(payload) - {"_session_id"} != {"operation", "profile_id", "request"}
             or payload["profile_id"] != context.profile_id
         ):
@@ -5450,21 +5475,36 @@ def capture_production_dispatch(
             or revision != source.get("conversation_revision")
         ):
             return None
-        return "begin" if action == "begin_saved" else "claim"
+        for caller, (lifecycle, *parents) in turn_start_routes.items():
+            if context.caller_principal.value != lifecycle.caller.principal_id:
+                continue
+            ancestors = match_captured_ancestors(parent, parents)
+            if ancestors is None:
+                continue
+            if caller == "side-chat":
+                side = ancestors[1].payload
+                if (
+                    side.get("operation") != "send"
+                    or side.get("turn_id") != turn_id
+                    or side.get("conversation_id") != conversation_id
+                    or side.get("expected_child_revision") != revision
+                    or side.get("content") != source.get("content")
+                ):
+                    return None
+            return caller, "begin" if action == "begin_saved" else "claim", lifecycle, ancestors
+        return None
 
     def is_native_saved_turn_start_route(
         context: RequestContext, payload: Mapping[str, Any],
     ) -> bool:
-        return native_provider_runtime is not None and saved_turn_start_action(
+        return native_provider_runtime is not None and saved_turn_start_lineage(
             context, payload, parent_invocation_scopes.lookup(context.caller_session_id),
         ) is not None
 
     def wrap_native_saved_turn_start(
         contribution: HostProviderContributionV4,
-        edge: _CapturedPlanEdge,
-        writer: Callable[[NativeSavedTurnStartRequest], Mapping[str, Any]],
     ) -> HostProviderContributionV4:
-        """Borrow the existing ordinary lifecycle lease for one owner transaction."""
+        """Borrow the matching signed lifecycle lease for one owner transaction."""
         def invoke(
             operation_id: str,
             payload: Mapping[str, Any],
@@ -5475,32 +5515,31 @@ def capture_production_dispatch(
             envelope = invocation.envelope
             parent = invocation.parent_invocation
             runtime = native_provider_runtime
-            action = saved_turn_start_action(envelope.context, payload, parent)
-            if action is None or parent is None or runtime is None:
+            lineage = saved_turn_start_lineage(envelope.context, payload, parent)
+            if lineage is None or parent is None or runtime is None:
                 return contribution.invoke(operation_id, payload, invocation)
+            caller, action, edge, ancestors = lineage
+            writer = native_turn_start_writers[caller]
+            chain = (envelope, *ancestors)
             if (
-                operation_id != envelope.operation_id
+                writer is None or operation_id != envelope.operation_id
                 or payload is not envelope.payload
                 or not matches_captured_edge(envelope, edge)
                 or envelope.resource_reservation_id is None
-                or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
-                or envelope.lease.token == parent.envelope.lease.token
-                or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
+                or any(item.resource_reservation_id == envelope.resource_reservation_id
+                       for item in ancestors)
+                or len({item.lease.token for item in chain}) != len(chain)
+                or any(child.deadline_monotonic > ancestor.deadline_monotonic
+                       for child, ancestor in zip(chain[:-1], ancestors, strict=True))
             ):
                 raise AuthorityDenied("native saved Turn start lineage changed")
             reservation_id = envelope.resource_reservation_id
 
             def guard() -> None:
                 invocation.assert_current()
-                retained = parent_invocation_scopes.lookup(envelope.context.caller_session_id)
-                if (
-                    native_provider_runtime is not runtime
-                    or retained is None
-                    or retained.envelope is not parent.envelope
-                    or parent_invocation_scopes.lookup(parent.envelope.context.caller_session_id)
-                    is not None
-                ):
+                if native_provider_runtime is not runtime:
                     raise AuthorityDenied("native saved Turn start capture changed")
+                require_retained_ancestors(envelope, ancestors)
                 runtime[1]()
                 production_admission.native_resources(reservation_id)
 
@@ -5552,6 +5591,7 @@ def capture_production_dispatch(
                     input_digest=canonical_digest(accepted),
                     source_digest=canonical_digest(source),
                     mark_publication_possible=mark_publication,
+                    caller=caller,
                 ))
                 guard()
                 if (
@@ -6152,19 +6192,13 @@ def capture_production_dispatch(
     ):
         capture_append_route("saved-turn", (ordinary_orchestration_edge, ordinary_turn_edge))
 
-    if native_append_writers["side-chat"] is not None:
-        side = select_original_chat_edge(
-            desktop_shell_principal_ids,
-            "tobkiri_side_chat_pack", "tobkiri.service.side-chat.turn.v1",
-            "tobkiri_side_chat_pack.side-chat-turn", "tobkiri_side_chat_pack.turn",
-            EffectClass.PRIVILEGED,
-        )
-        if side is not None:
-            turn = select_original_turn({side.target.principal_id})
-            if turn is not None:
-                saved = select_original_orchestration(turn)
-                if saved is not None:
-                    capture_append_route("side-chat", (saved, turn, side))
+    if (
+        native_append_writers["side-chat"] is not None
+        and side_chat_edge is not None and side_chat_turn_edge is not None
+    ):
+        saved = select_original_orchestration(side_chat_turn_edge)
+        if saved is not None:
+            capture_append_route("side-chat", (saved, side_chat_turn_edge, side_chat_edge))
 
     turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
     if (
@@ -6371,17 +6405,9 @@ def capture_production_dispatch(
 
         def guard() -> None:
             invocation.assert_current()
-            child = envelope
-            for ancestor in ancestors:
-                retained = parent_invocation_scopes.lookup(child.context.caller_session_id)
-                if retained is None or retained.envelope is not ancestor:
-                    raise AuthorityDenied("native saved append parent changed")
-                child = ancestor
-            if (
-                native_provider_runtime is not runtime
-                or parent_invocation_scopes.lookup(child.context.caller_session_id) is not None
-            ):
+            if native_provider_runtime is not runtime:
                 raise AuthorityDenied("native saved append capture changed")
+            require_retained_ancestors(envelope, ancestors)
             runtime[1]()
             production_admission.native_resources(envelope.resource_reservation_id)
 
@@ -6462,6 +6488,17 @@ def capture_production_dispatch(
             ancestors.append(parent.envelope)
             parent = parent.parent
         return tuple(ancestors) if parent is None else None
+
+    def require_retained_ancestors(
+        child: RequestEnvelope, ancestors: Sequence[RequestEnvelope],
+    ) -> None:
+        for ancestor in ancestors:
+            retained = parent_invocation_scopes.lookup(child.context.caller_session_id)
+            if retained is None or retained.envelope is not ancestor:
+                raise AuthorityDenied("native saved operation parent changed")
+            child = ancestor
+        if parent_invocation_scopes.lookup(child.context.caller_session_id) is not None:
+            raise AuthorityDenied("native saved operation root changed")
 
     def gateway_projection_role(
         role: ModelResolveRole, payload: Mapping[str, Any],
@@ -7329,6 +7366,7 @@ def capture_production_dispatch(
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
     native_saved_turn_start_key: tuple[str, str, str] | None = None
+    turn_start_edge = next((route[0] for route in turn_start_routes.values()), None)
     native_saved_append_binding: ResolvedOperationBinding | None = None
     native_saved_append_key: tuple[str, str, str] | None = None
     native_model_resolve_bindings: dict[
@@ -7464,16 +7502,14 @@ def capture_production_dispatch(
         contributions = captured_provider.contributions
         if (
             turn_start_edge is not None
-            and native_saved_turn_start_writer is not None
             and turn_start_edge.resolved_binding in captured_bindings
         ):
             native_saved_turn_start_key = (
                 *turn_start_edge.binding_key[1:], turn_start_edge.target.principal_id,
             )
             contributions = tuple(
-                wrap_native_saved_turn_start(
-                    item, turn_start_edge, native_saved_turn_start_writer,
-                ) if item.key == native_saved_turn_start_key else item
+                wrap_native_saved_turn_start(item)
+                if item.key == native_saved_turn_start_key else item
                 for item in contributions
             )
         if native_model_resolve_reader is not None:
