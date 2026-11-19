@@ -1113,7 +1113,9 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
         use OriginalProviderSnapshotRole::{
             Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings, Workflow,
         };
-        use OriginalWorkflowSnapshotCaller::{AudioSpeech, AudioTranscribe, Messages, Text};
+        use OriginalWorkflowSnapshotCaller::{
+            AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
+        };
         use OriginalWorkflowSnapshotEntry::{
             Advance, Cancel, Selected, StepExecute, StepResume, StepRetry,
         };
@@ -1122,6 +1124,8 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
             let caller = match wire.role.as_str() {
                 "workflow-text" => Text,
                 "workflow-messages" => Messages,
+                "workflow-text-adapter" => TextAdapter,
+                "workflow-messages-adapter" => MessagesAdapter,
                 "workflow-audio-transcribe" => AudioTranscribe,
                 "workflow-audio-speech" => AudioSpeech,
                 _ => return Err("Provider Snapshot entry requires a Workflow role"),
@@ -3207,7 +3211,9 @@ mod tests {
 
     #[test]
     fn workflow_provider_snapshot_start_decodes_exact_callers_and_entries() {
-        use OriginalWorkflowSnapshotCaller::{AudioSpeech, AudioTranscribe, Messages, Text};
+        use OriginalWorkflowSnapshotCaller::{
+            AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
+        };
         use OriginalWorkflowSnapshotEntry::{
             Advance, Cancel, Selected, StepExecute, StepResume, StepRetry,
         };
@@ -3215,6 +3221,8 @@ mod tests {
         for (role_name, caller) in [
             ("workflow-text", Text),
             ("workflow-messages", Messages),
+            ("workflow-text-adapter", TextAdapter),
+            ("workflow-messages-adapter", MessagesAdapter),
             ("workflow-audio-transcribe", AudioTranscribe),
             ("workflow-audio-speech", AudioSpeech),
         ] {
@@ -3295,6 +3303,11 @@ mod tests {
             r#", "provider_snapshot":{"role":"workflow-text","entry":"run.advance","input_bytes":32}"#,
             r#", "provider_snapshot":{"role":"workflow-text","entry":"run.advance","settings_projection":true}"#,
             r#", "provider_snapshot":{"role":"workflow-text","entry":"run.advance","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"workflow-text-adapter"}"#,
+            r#", "provider_snapshot":{"role":"workflow-messages-adapter","entry":null}"#,
+            r#", "provider_snapshot":{"role":"workflow-text-adapter","entry":"run.step.cancel"}"#,
+            r#", "provider_snapshot":{"role":"workflow-messages-adapter","entry":"run.advance","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"workflow-generate-adapter","entry":"run.advance"}"#,
             r#", "provider_snapshot":{"role":"workflow-stream","entry":"run.advance"}"#,
             r#", "provider_snapshot":["workflow-text","run.advance"]"#,
             r#", "provider_snapshot":{"role":"stream"}, "provider_snapshot":{"role":"stream"}"#,

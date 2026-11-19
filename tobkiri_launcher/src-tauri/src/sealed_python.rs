@@ -148,7 +148,9 @@ impl RoleArguments {
         };
         self.native_registry = NativeRegistryEnvironment {
             provider_snapshot_version: proof.and_then(|proof| {
-                if proof.permits_workflow_provider_snapshot() {
+                if proof.permits_workflow_adapter_provider_snapshot() {
+                    Some("6")
+                } else if proof.permits_workflow_provider_snapshot() {
                     Some("5")
                 } else if proof.permits_query_provider_snapshot() {
                     Some("4")
@@ -4642,6 +4644,20 @@ mod tests {
                 entry: OriginalWorkflowSnapshotEntry::StepExecute,
             },
         );
+        let [workflow_text_adapter_snapshot, workflow_messages_adapter_snapshot] = [
+            OriginalWorkflowSnapshotCaller::TextAdapter,
+            OriginalWorkflowSnapshotCaller::MessagesAdapter,
+        ]
+        .map(|caller| {
+            VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                side_chat.identity.clone(),
+                "catalog",
+                OriginalProviderSnapshotRole::Workflow {
+                    caller,
+                    entry: OriginalWorkflowSnapshotEntry::StepExecute,
+                },
+            )
+        });
         for (proof, expected_turn_start, expected_snapshot) in [
             (None, false, None),
             (Some(&append), false, None),
@@ -4655,6 +4671,8 @@ mod tests {
             (Some(&model_search_snapshot), false, Some("4")),
             (Some(&command_datasource_snapshot), false, Some("4")),
             (Some(&workflow_snapshot), false, Some("5")),
+            (Some(&workflow_text_adapter_snapshot), false, Some("6")),
+            (Some(&workflow_messages_adapter_snapshot), false, Some("6")),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()

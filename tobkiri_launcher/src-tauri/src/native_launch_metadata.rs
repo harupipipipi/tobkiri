@@ -156,11 +156,26 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.gateway.iter().any(Option::is_some))
     }
 
-    /// Whether any Workflow entry can reach a verified Registry resource caller.
+    /// Whether a Workflow entry has a verified Gateway or audio adapter Registry grant.
     pub(crate) fn permits_workflow_provider_snapshot(&self) -> bool {
-        self.provider_snapshot
-            .as_ref()
-            .is_some_and(|source| source.workflow.callers.iter().any(Option::is_some))
+        use OriginalWorkflowSnapshotCaller::{AudioSpeech, AudioTranscribe, Messages, Text};
+
+        self.provider_snapshot.as_ref().is_some_and(|source| {
+            [Text, Messages, AudioTranscribe, AudioSpeech]
+                .into_iter()
+                .any(|caller| source.workflow.permits_any_entry(caller))
+        })
+    }
+
+    /// Whether a Workflow entry has a verified Text or Messages Generate adapter Registry grant.
+    pub(crate) fn permits_workflow_adapter_provider_snapshot(&self) -> bool {
+        use OriginalWorkflowSnapshotCaller::{MessagesAdapter, TextAdapter};
+
+        self.provider_snapshot.as_ref().is_some_and(|source| {
+            [TextAdapter, MessagesAdapter]
+                .into_iter()
+                .any(|caller| source.workflow.permits_any_entry(caller))
+        })
     }
 
     /// Whether Shell Settings or Model Save has its own verified read grant.
@@ -760,8 +775,18 @@ struct VerifiedProviderSnapshotSource {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct VerifiedWorkflowProviderSnapshot {
-    entries_by_caller: [[bool; 6]; 4],
-    callers: [Option<VerifiedOrdinarySavedBundle>; 4],
+    entries_by_caller: [[bool; OriginalWorkflowSnapshotEntry::ALL.len()];
+        OriginalWorkflowSnapshotCaller::ALL.len()],
+    callers: [Option<VerifiedOrdinarySavedBundle>; OriginalWorkflowSnapshotCaller::ALL.len()],
+}
+
+impl VerifiedWorkflowProviderSnapshot {
+    fn permits_any_entry(&self, caller: OriginalWorkflowSnapshotCaller) -> bool {
+        self.callers[caller.index()].is_some()
+            && self.entries_by_caller[caller.index()]
+                .iter()
+                .any(|entry| *entry)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1835,7 +1860,7 @@ impl LaunchActivationObserver<'_> {
                         if caller.is_some() {
                             entries
                         } else {
-                            [false; 6]
+                            [false; OriginalWorkflowSnapshotEntry::ALL.len()]
                         }
                     }),
                     callers,
@@ -4483,6 +4508,7 @@ mod tests {
             [workflow[0], workflow[1], gateway, ShellSettings],
         );
         assert!(proof.permits_workflow_provider_snapshot());
+        assert!(!proof.permits_workflow_adapter_provider_snapshot());
         assert!(proof.permits_gateway_provider_snapshot());
         assert!(proof.permits_projected_provider_snapshot());
         for caller in OriginalWorkflowSnapshotCaller::ALL {
@@ -4498,6 +4524,52 @@ mod tests {
             VerifiedRegistryLaunch::test_provider_snapshot_proof(identity, "catalog", gateway);
         assert!(!gateway_only.permits_workflow_provider_snapshot());
         assert!(!gateway_only.permits_provider_snapshot(workflow[0]));
+    }
+
+    #[test]
+    fn workflow_adapter_provider_snapshot_proof_requires_its_exact_caller_and_entry() {
+        use OriginalProviderSnapshotRole::{Adapter, Workflow};
+        use OriginalWorkflowSnapshotCaller::{MessagesAdapter, TextAdapter};
+        use OriginalWorkflowSnapshotEntry::{StepExecute, StepRetry};
+
+        let digest = Digest::hash(b"workflow-adapter-provider-snapshot-activation");
+        let identity = ExecutionProfileIdentity::new(
+            "defaults",
+            digest.as_str(),
+            "activation:workflow-adapter-provider-snapshot",
+            Digest::hash(b"plan").as_str(),
+        )
+        .unwrap();
+        let saved = Adapter(OriginalSavedLocalChatRole::Generate);
+        let saved_only = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            identity.clone(),
+            "catalog",
+            saved,
+        );
+        assert!(saved_only.permits_provider_snapshot(saved));
+        assert!(!saved_only.permits_workflow_adapter_provider_snapshot());
+
+        for (caller, entry) in [(TextAdapter, StepExecute), (MessagesAdapter, StepRetry)] {
+            let granted = Workflow { caller, entry };
+            let proof = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                identity.clone(),
+                "catalog",
+                granted,
+            );
+            assert!(proof.permits_workflow_adapter_provider_snapshot());
+            assert!(!proof.permits_workflow_provider_snapshot());
+            assert!(!proof.permits_provider_snapshot(saved));
+            for caller in OriginalWorkflowSnapshotCaller::ALL {
+                for entry in OriginalWorkflowSnapshotEntry::ALL {
+                    let candidate = Workflow { caller, entry };
+                    assert_eq!(
+                        proof.permits_provider_snapshot(candidate),
+                        candidate == granted
+                    );
+                    assert!(!saved_only.permits_provider_snapshot(candidate));
+                }
+            }
+        }
     }
 
     #[test]

@@ -643,10 +643,10 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib defaultspack_manager::tests::registry_evidence_
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-workflow-registry-evidence.log" --expected-passed 1 -- \
+              --log "$RUNNER_TEMP/harness-native-workflow-registry-evidence.log" --expected-passed 2 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
-              --lib native_harness_bootstrap::launch_metadata::tests::workflow_provider_snapshot_proof_keeps_caller_entry_pairs_independent -- --exact
+              --lib native_harness_bootstrap::launch_metadata::tests::workflow_
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
               --log "$RUNNER_TEMP/harness-native-conversation-evidence.log" --expected-passed 5 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \

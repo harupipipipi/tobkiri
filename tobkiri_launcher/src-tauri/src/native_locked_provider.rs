@@ -148,19 +148,23 @@ pub(crate) struct LockedProjectedProviderBundle<'pin> {
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) struct LockedWorkflowProviderSnapshotBundle<'pin> {
     source: VerifiedOrdinarySavedBundle,
-    entries: [Option<[LockedRegistryRoute<'pin>; 1]>; 6],
-    callers: [Option<LockedWorkflowProviderSnapshotCaller<'pin>>; 4],
+    entries: [Option<[LockedRegistryRoute<'pin>; 1]>; OriginalWorkflowSnapshotEntry::ALL.len()],
+    callers: [Option<LockedWorkflowProviderSnapshotCaller<'pin>>;
+        OriginalWorkflowSnapshotCaller::ALL.len()],
     budget: Arc<dyn AllocationBudget>,
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 enum LockedWorkflowProviderSnapshotCaller<'pin> {
-    Gateway([LockedRegistryRoute<'pin>; 2]),
-    Audio([LockedRegistryRoute<'pin>; 3]),
+    Direct([LockedRegistryRoute<'pin>; 2]),
+    Nested([LockedRegistryRoute<'pin>; 3]),
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-type VerifiedWorkflowProviderSnapshotRoutes = ([bool; 6], [Option<VerifiedOrdinarySavedBundle>; 4]);
+type VerifiedWorkflowProviderSnapshotRoutes = (
+    [bool; OriginalWorkflowSnapshotEntry::ALL.len()],
+    [Option<VerifiedOrdinarySavedBundle>; OriginalWorkflowSnapshotCaller::ALL.len()],
+);
 
 /// Signed Bundle documents for an ordinary Gateway call and its selected AI operation.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -552,7 +556,7 @@ impl NativeApplicationSources {
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedWorkflowProviderSnapshotBundle<'pin>> {
         let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
-        let mut entries = [None, None, None, None, None, None];
+        let mut entries = [const { None }; OriginalWorkflowSnapshotEntry::ALL.len()];
         for entry in OriginalWorkflowSnapshotEntry::ALL {
             if let Some(pin) = selection.entry(entry) {
                 ensure!(
@@ -563,28 +567,28 @@ impl NativeApplicationSources {
                 entries[entry.index()] = Some([from_lock(pin)?]);
             }
         }
-        let mut callers = [None, None, None, None];
+        let mut callers = [const { None }; OriginalWorkflowSnapshotCaller::ALL.len()];
         for caller in OriginalWorkflowSnapshotCaller::ALL {
-            let Some((modality, [caller_pin, registry])) = selection.caller(caller) else {
+            let Some((parent, [caller_pin, registry])) = selection.caller(caller) else {
                 continue;
             };
-            let prefix = modality.unwrap_or(caller_pin);
+            let prefix = parent.unwrap_or(caller_pin);
             ensure!(
                 prefix.caller_function_id() == "tobkiri.workflow.provider"
-                    && modality
+                    && parent
                         .is_none_or(|pin| caller_pin.caller_function_id() == pin.function_id())
                     && registry.caller_function_id() == caller_pin.function_id(),
                 "Workflow Provider Registry chain does not match its selected callers"
             );
             let caller_pin = from_lock(caller_pin)?;
             let registry = from_lock(registry)?;
-            callers[caller.index()] = Some(match modality {
-                Some(modality) => LockedWorkflowProviderSnapshotCaller::Audio([
-                    from_lock(modality)?,
+            callers[caller.index()] = Some(match parent {
+                Some(parent) => LockedWorkflowProviderSnapshotCaller::Nested([
+                    from_lock(parent)?,
                     caller_pin,
                     registry,
                 ]),
-                None => LockedWorkflowProviderSnapshotCaller::Gateway([caller_pin, registry]),
+                None => LockedWorkflowProviderSnapshotCaller::Direct([caller_pin, registry]),
             });
         }
         Ok(LockedWorkflowProviderSnapshotBundle {
@@ -1379,13 +1383,13 @@ impl LockedWorkflowProviderSnapshotBundle<'_> {
             &mut checkpoint,
             ["privileged"],
         )?;
-        let mut callers = [None, None, None, None];
+        let mut callers = [const { None }; OriginalWorkflowSnapshotCaller::ALL.len()];
         for (verified, caller) in callers.iter_mut().zip(self.callers) {
             let Some(caller) = caller else {
                 continue;
             };
             *verified = Some(match caller {
-                LockedWorkflowProviderSnapshotCaller::Gateway(routes) => {
+                LockedWorkflowProviderSnapshotCaller::Direct(routes) => {
                     prefix.clone().verify_routes(
                         &[Some(routes)],
                         &self.budget,
@@ -1393,7 +1397,7 @@ impl LockedWorkflowProviderSnapshotBundle<'_> {
                         ["privileged"; 2],
                     )?
                 }
-                LockedWorkflowProviderSnapshotCaller::Audio(routes) => {
+                LockedWorkflowProviderSnapshotCaller::Nested(routes) => {
                     prefix.clone().verify_routes(
                         &[Some(routes)],
                         &self.budget,

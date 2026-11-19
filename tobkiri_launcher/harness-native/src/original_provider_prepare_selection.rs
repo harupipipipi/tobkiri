@@ -1399,15 +1399,21 @@ pub enum OriginalWorkflowSnapshotCaller {
     AudioTranscribe,
     /// Speech provider adapter.
     AudioSpeech,
+    /// Generic Generate provider adapter reached through the Text Gateway.
+    TextAdapter,
+    /// Generic Generate provider adapter reached through the Messages Gateway.
+    MessagesAdapter,
 }
 
 impl OriginalWorkflowSnapshotCaller {
     /// All fixed callers.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 6] = [
         Self::Text,
         Self::Messages,
         Self::AudioTranscribe,
         Self::AudioSpeech,
+        Self::TextAdapter,
+        Self::MessagesAdapter,
     ];
 
     /// Position in `ALL` and in the corresponding verification results.
@@ -1421,6 +1427,8 @@ impl OriginalWorkflowSnapshotCaller {
             Self::Messages => (None, &GATEWAY_MESSAGES),
             Self::AudioTranscribe => (Some(&MODALITY_TRANSCRIBE), &ADAPTER_TRANSCRIBE),
             Self::AudioSpeech => (Some(&MODALITY_SPEECH), &ADAPTER_SPEECH),
+            Self::TextAdapter => (Some(&GATEWAY_TEXT), &PROVIDER_GENERATE),
+            Self::MessagesAdapter => (Some(&GATEWAY_MESSAGES), &PROVIDER_GENERATE),
         }
     }
 }
@@ -1484,7 +1492,7 @@ pub enum OriginalProviderSnapshotRole {
     },
     /// The Workflow attempt entry and its exact raw Registry caller.
     Workflow {
-        /// The Gateway or audio adapter with its own Registry grant.
+        /// The Gateway or provider adapter with its own Registry grant.
         caller: OriginalWorkflowSnapshotCaller,
         /// The operation selected by the desktop Shell.
         entry: OriginalWorkflowSnapshotEntry,
@@ -1508,12 +1516,12 @@ impl From<OriginalSavedLocalChatRole> for OriginalProviderSnapshotRole {
 /// The signed Workflow entries and their outgoing Provider Registry chains.
 pub struct OriginalWorkflowProviderSnapshotSelection<'a> {
     _active: &'a OriginalActiveProfile,
-    entries: [Option<OriginalRoutePin>; 6],
-    callers: [Option<WorkflowProviderSnapshotPins>; 4],
+    entries: [Option<OriginalRoutePin>; OriginalWorkflowSnapshotEntry::ALL.len()],
+    callers: [Option<WorkflowProviderSnapshotPins>; OriginalWorkflowSnapshotCaller::ALL.len()],
 }
 
 struct WorkflowProviderSnapshotPins {
-    modality: Option<OriginalRoutePin>,
+    prefix: Option<OriginalRoutePin>,
     caller: OriginalRoutePin,
     registry: OriginalRoutePin,
 }
@@ -1541,13 +1549,13 @@ impl<'a> OriginalWorkflowProviderSnapshotSelection<'a> {
         self.entries[entry.index()].as_ref()
     }
 
-    /// The optional audio modality pin and ordered caller and Registry grants.
+    /// The optional parent Gateway or audio modality and ordered caller and Registry grants.
     pub fn caller(
         &self,
         caller: OriginalWorkflowSnapshotCaller,
     ) -> Option<(Option<&OriginalRoutePin>, [&OriginalRoutePin; 2])> {
         let pins = self.callers[caller.index()].as_ref()?;
-        Some((pins.modality.as_ref(), [&pins.caller, &pins.registry]))
+        Some((pins.prefix.as_ref(), [&pins.caller, &pins.registry]))
     }
 }
 
@@ -2252,8 +2260,8 @@ fn select_model_resolve_records(
 type GatewayProviderSnapshotPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 4]);
 
 type WorkflowProviderSnapshotSelection = (
-    [Option<OriginalRoutePin>; 6],
-    [Option<WorkflowProviderSnapshotPins>; 4],
+    [Option<OriginalRoutePin>; OriginalWorkflowSnapshotEntry::ALL.len()],
+    [Option<WorkflowProviderSnapshotPins>; OriginalWorkflowSnapshotCaller::ALL.len()],
 );
 
 fn select_workflow_provider_snapshot_records(
@@ -2266,7 +2274,7 @@ fn select_workflow_provider_snapshot_records(
     if records.shell_caller.as_str() != Some("shell.tauri.default") {
         return Ok(None);
     }
-    let mut entries = [None, None, None, None, None, None];
+    let mut entries = [const { None }; OriginalWorkflowSnapshotEntry::ALL.len()];
     for entry in OriginalWorkflowSnapshotEntry::ALL {
         entries[entry.index()] = records.select_shell_route(entry.route())?;
     }
@@ -2274,10 +2282,10 @@ fn select_workflow_provider_snapshot_records(
         return Ok(None);
     }
     // Outgoing edges are keyed by the Workflow function, shared by its allowed entries.
-    let mut callers = [None, None, None, None];
+    let mut callers = [const { None }; OriginalWorkflowSnapshotCaller::ALL.len()];
     for caller in OriginalWorkflowSnapshotCaller::ALL {
-        let (modality, caller_route) = caller.routes();
-        let (modality, caller_function) = if let Some(route) = modality {
+        let (prefix_route, caller_route) = caller.routes();
+        let (prefix, caller_function) = if let Some(route) = prefix_route {
             let Some(pin) = records.select_route(WORKFLOW_ADVANCE.function, route)? else {
                 continue;
             };
@@ -2294,7 +2302,7 @@ fn select_workflow_provider_snapshot_records(
             continue;
         };
         callers[caller.index()] = Some(WorkflowProviderSnapshotPins {
-            modality,
+            prefix,
             caller: caller_pin,
             registry,
         });
@@ -3433,6 +3441,19 @@ mod tests {
         let mut fixture = records();
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let mut add = |caller, route: &Route| {
+            if fixture["profile"]["requested_edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|edge| {
+                    edge["caller_function_id"] == caller
+                        && edge["operation_id"] == route.operation
+                        && edge["contract_id"] == route.contract
+                        && edge["target_provider_id"] == route.function
+                })
+            {
+                return;
+            }
             let snapshot = fixture["profile"]["profile_authority_snapshot_digest"]
                 .as_str()
                 .unwrap();
@@ -3464,11 +3485,11 @@ mod tests {
             add("shell.tauri.default", entry.route());
         }
         for caller in OriginalWorkflowSnapshotCaller::ALL {
-            let (modality, route) = caller.routes();
-            if let Some(modality) = modality {
-                add(WORKFLOW_ADVANCE.function, modality);
+            let (prefix, route) = caller.routes();
+            if let Some(prefix) = prefix {
+                add(WORKFLOW_ADVANCE.function, prefix);
             }
-            add(modality.unwrap_or(&WORKFLOW_ADVANCE).function, route);
+            add(prefix.unwrap_or(&WORKFLOW_ADVANCE).function, route);
             add(route.function, &PROVIDER_READ_GENERATE);
         }
         fixture
@@ -3495,15 +3516,15 @@ mod tests {
             assert_eq!(pin.operation_id(), entry.route().operation);
         }
         for caller in OriginalWorkflowSnapshotCaller::ALL {
-            let (modality, route) = caller.routes();
+            let (prefix, route) = caller.routes();
             let pins = callers[caller.index()].as_ref().unwrap();
             assert_eq!(
-                pins.modality.as_ref().map(OriginalRoutePin::operation_id),
-                modality.map(|route| route.operation)
+                pins.prefix.as_ref().map(OriginalRoutePin::operation_id),
+                prefix.map(|route| route.operation)
             );
             assert_eq!(
                 pins.caller.caller_function_id(),
-                modality.unwrap_or(&WORKFLOW_ADVANCE).function
+                prefix.unwrap_or(&WORKFLOW_ADVANCE).function
             );
             assert_eq!(pins.caller.operation_id(), route.operation);
             assert_eq!(pins.registry.caller_function_id(), route.function);
@@ -3522,7 +3543,11 @@ mod tests {
             .iter()
             .position(|edge| edge["operation_id"] == WORKFLOW_ADVANCE.operation)
             .unwrap();
-        for (row, edge) in edges.iter().enumerate().skip(first_workflow_edge) {
+        for (row, edge) in edges.iter().enumerate().filter(|(row, edge)| {
+            *row >= first_workflow_edge
+                || (edge["operation_id"] == PROVIDER_READ_GENERATE.operation
+                    && edge["caller_function_id"] == PROVIDER_GENERATE.function)
+        }) {
             let mut candidate = fixture.clone();
             candidate["profile"]["requested_edges"][row]["authority_mode"] =
                 json!("interactive_only");
@@ -3539,18 +3564,27 @@ mod tests {
                 );
             }
             for caller in OriginalWorkflowSnapshotCaller::ALL {
-                let (modality, route) = caller.routes();
+                let (prefix, route) = caller.routes();
                 assert_eq!(
                     callers[caller.index()].is_none(),
-                    edge["operation_id"] == route.operation
-                        || modality.is_some_and(|route| edge["operation_id"] == route.operation)
+                    (edge["operation_id"] == route.operation
+                        && edge["caller_function_id"]
+                            == prefix.unwrap_or(&WORKFLOW_ADVANCE).function)
+                        || prefix.is_some_and(|route| edge["operation_id"] == route.operation
+                            && edge["caller_function_id"] == WORKFLOW_ADVANCE.function)
                         || (edge["operation_id"] == PROVIDER_READ_GENERATE.operation
                             && edge["caller_function_id"] == route.function),
                 );
             }
         }
 
-        let row = edges.len() - 1;
+        let row = edges
+            .iter()
+            .position(|edge| {
+                edge["operation_id"] == PROVIDER_READ_GENERATE.operation
+                    && edge["caller_function_id"] == ADAPTER_SPEECH.function
+            })
+            .unwrap();
         let mut candidate = fixture;
         let scope = &mut candidate["profile"]["requested_edges"][row]["requested_scope_template"];
         scope["dimensions"]["operation"] = json!([PROVIDER_READ_GENERATE.operation, "extra"]);
@@ -3563,8 +3597,54 @@ mod tests {
         let (_, callers) = select_workflow_snapshot(&candidate).unwrap().unwrap();
         assert_eq!(
             callers.map(|role| role.is_some()),
-            [true, true, true, false]
+            [true, true, true, false, true, true]
         );
+    }
+
+    #[test]
+    fn workflow_provider_snapshot_adapter_requires_the_same_gateway_on_both_edges() {
+        use OriginalWorkflowSnapshotCaller::{MessagesAdapter, TextAdapter};
+        use OriginalWorkflowSnapshotEntry::StepResume;
+
+        let fixture = workflow_snapshot_records();
+        let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
+        let first_workflow_edge = edges
+            .iter()
+            .position(|edge| edge["operation_id"] == WORKFLOW_ADVANCE.operation)
+            .unwrap();
+        for (workflow_gateway, adapter_gateway, expected) in [
+            (&GATEWAY_TEXT, &GATEWAY_TEXT, Some(TextAdapter)),
+            (&GATEWAY_MESSAGES, &GATEWAY_MESSAGES, Some(MessagesAdapter)),
+            (&GATEWAY_TEXT, &GATEWAY_MESSAGES, None),
+            (&GATEWAY_MESSAGES, &GATEWAY_TEXT, None),
+        ] {
+            let mut candidate = fixture.clone();
+            for (row, edge) in edges.iter().enumerate().skip(first_workflow_edge) {
+                let keep = edge["operation_id"] == StepResume.route().operation
+                    || (edge["caller_function_id"] == WORKFLOW_ADVANCE.function
+                        && edge["operation_id"] == workflow_gateway.operation)
+                    || (edge["caller_function_id"] == adapter_gateway.function
+                        && edge["operation_id"] == PROVIDER_GENERATE.operation);
+                if !keep {
+                    candidate["profile"]["requested_edges"][row]["authority_mode"] =
+                        json!("interactive_only");
+                    candidate["plan"]["bindings"][row]["authority_mode"] =
+                        json!("interactive_only");
+                }
+            }
+            let selection = select_workflow_snapshot(&candidate).unwrap();
+            if let Some(expected) = expected {
+                let (entries, callers) = selection.unwrap();
+                for entry in OriginalWorkflowSnapshotEntry::ALL {
+                    assert_eq!(entries[entry.index()].is_some(), entry == StepResume);
+                }
+                for caller in OriginalWorkflowSnapshotCaller::ALL {
+                    assert_eq!(callers[caller.index()].is_some(), caller == expected);
+                }
+            } else {
+                assert!(selection.is_none());
+            }
+        }
     }
 
     fn select(records: &Value) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {

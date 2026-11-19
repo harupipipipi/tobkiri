@@ -2643,7 +2643,9 @@ mod tests {
         use OriginalProviderSnapshotRole::{
             Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings, Workflow,
         };
-        use OriginalWorkflowSnapshotCaller::{AudioSpeech, AudioTranscribe, Messages, Text};
+        use OriginalWorkflowSnapshotCaller::{
+            AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
+        };
         use OriginalWorkflowSnapshotEntry::{
             Advance, Cancel, Selected, StepExecute, StepResume, StepRetry,
         };
@@ -2674,19 +2676,26 @@ mod tests {
                     .flat_map(|role| [false, true].map(|side_chat| Gateway { role, side_chat })),
             )
             .chain(
-                [Text, Messages, AudioTranscribe, AudioSpeech]
-                    .into_iter()
-                    .flat_map(|caller| {
-                        [
-                            Advance,
-                            Cancel,
-                            Selected,
-                            StepExecute,
-                            StepResume,
-                            StepRetry,
-                        ]
-                        .map(|entry| Workflow { caller, entry })
-                    }),
+                [
+                    Text,
+                    Messages,
+                    TextAdapter,
+                    MessagesAdapter,
+                    AudioTranscribe,
+                    AudioSpeech,
+                ]
+                .into_iter()
+                .flat_map(|caller| {
+                    [
+                        Advance,
+                        Cancel,
+                        Selected,
+                        StepExecute,
+                        StepResume,
+                        StepRetry,
+                    ]
+                    .map(|entry| Workflow { caller, entry })
+                }),
             )
             .map(|role| (role, false))
             .chain(
