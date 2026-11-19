@@ -44,7 +44,7 @@ def _targets(lease):
 def test_each_guard_opens_one_fresh_connection_for_all_durable_checks(
     dispatched: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """One fresh connection reads all exact targets with one guarded query."""
+    """Every guard reads the lease, epoch and targets on a fresh connection."""
     authority, envelope = dispatched
     store = authority.store
     lease = store.inspect_lease_token(envelope.lease.token.decode())[0]
@@ -74,12 +74,13 @@ def test_each_guard_opens_one_fresh_connection_for_all_durable_checks(
     expected = tuple(value for pair in _targets(lease) for value in pair)
     for current in opened:
         queries = [entry for entry in checked if entry[0] is current]
-        revocations = [entry for entry in queries if "FROM revocations" in entry[1]]
-        assert len(queries) == 3  # Lease, original epoch, finite revocations.
-        assert len(revocations) == 1
-        assert revocations[0][2] == expected
-        assert "target_kind='global'" in revocations[0][1]
-        assert revocations[0][1].count("target_kind=? AND target_id=?") == 8
+        assert len(queries) == 2
+        assert "FROM invocation_leases" in queries[0][1]
+        _, statement, parameters = queries[1]
+        assert "FROM authority_meta WHERE key='security_epoch'" in statement
+        assert "FROM revocations WHERE target_kind='global'" in statement
+        assert statement.count("target_kind=? AND target_id=?") == 8
+        assert parameters == expected
 
 
 @pytest.mark.parametrize(

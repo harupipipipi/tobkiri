@@ -3510,17 +3510,12 @@ class AuthorityStore(PolicyDerivedStoreMixin):
                     self._decrypt(row["encrypted_payload"])
                 )
                 self._check_policy_derived_guard(connection, lease.grant_id)
-                if not hmac.compare_digest(lease.digest, str(row["lease_digest"])):
+                lease_digest = lease.digest
+                if not hmac.compare_digest(lease_digest, str(row["lease_digest"])):
                     raise AuthorityStoreError("InvocationLease digest mismatch")
-                if not hmac.compare_digest(lease.digest, expected_digest):
+                if not hmac.compare_digest(lease_digest, expected_digest):
                     raise AuthorityDenied("InvocationLease digest does not match")
                 state = LeaseState(str(row["state"]))
-                epoch_row = connection.execute(
-                    "SELECT value FROM authority_meta WHERE key='security_epoch'"
-                ).fetchone()
-                if epoch_row is None or int(epoch_row["value"]) < 1:
-                    raise AuthorityStoreError("security epoch is unavailable")
-                epoch = int(epoch_row["value"])
                 revocation_targets = (
                     ("function_principal", lease.caller.principal_id),
                     ("function_principal", lease.target.principal_id),
@@ -3531,19 +3526,24 @@ class AuthorityStore(PolicyDerivedStoreMixin):
                     ("grant", lease.grant_id),
                     ("provider_authority", lease.provider_authority_id),
                 )
-                # Inspect the same finite targets in one fresh SQL read. Each
-                # remaining execute retains the identity-bound I/O validator.
-                revoked = connection.execute(
-                    "SELECT 1 FROM revocations WHERE target_kind='global' OR "
+                # Read the epoch and exact revocations from one fresh snapshot.
+                current = connection.execute(
+                    "SELECT value, EXISTS(SELECT 1 FROM revocations"
+                    " WHERE target_kind='global' OR "
                     + " OR ".join(
                         "(target_kind=? AND target_id=?)"
                         for _ in revocation_targets
                     )
-                    + " LIMIT 1",
+                    + ") AS revoked FROM authority_meta WHERE key='security_epoch'",
                     tuple(value for pair in revocation_targets for value in pair),
-                ).fetchone() is not None
+                ).fetchone()
+                if current is None:
+                    raise AuthorityStoreError("security epoch is unavailable")
+                epoch = int(current["value"])
+                if epoch < 1:
+                    raise AuthorityStoreError("security epoch is unavailable")
                 self._assert_crypto_material()
-                return lease, state, epoch, revoked
+                return lease, state, epoch, bool(current["revoked"])
         except sqlite3.Error as exc:
             raise AuthorityStoreError("dispatch authority inspection failed") from exc
 
