@@ -4046,9 +4046,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Pack 14件、実オーナー23件、strict Clippy、ワークフロー契約16件が通過した。
   実Wasmの3件では開始・取得・許可拒否時のロールバックと、既存読取り・確定を検証した。
   実アーカイブの0.1.0、0.2.0、0.3.0はLauncherのポート定義照合を通過した。
-  通常Launcherへの接続には、既存のShell→Saved Turn→Lifecycleの署名・親子リースと
-  `saved_inputs` の受理済み入力digestを照合する専用IPCが必要。ここまでの物理試験は
-  その製品経路とSetup・承認画面の通し検証を含まない。
+  `8f78fafb7` で通常LauncherのShell→Saved Turn→Lifecycleを専用IPCにつないだ。
+  既存の親子リース・子の容量予約・期限を使い、元のBundleと両方の署名済み権限を照合する。
+  起動後も同じBundleとPackを読み直す。SQLiteの両方のロック内で `saved_inputs` の
+  親入力と受理済み入力のdigestを照合する。コンテキスト等の投影を受理しても、
+  元の会話・ターン・本文とその他の要求内容は保持する。
+  公開許可後に応答が失われた場合は従来の未確認効果として扱う。再送で取得済みの行を
+  観測したときは新たな推論を開始しない。旧版や旧codecへの切替は公開許可前の応答に限る。
+  元のSetupの2系統の物理Bundleを含む選択・再照合27件、Python IPC 324件、分離Rust
+  Launcher 112件が通過した。実CPython→Unixソケット→ワーカー→実Wasm→SQLiteの
+  9ケースで、digest不一致、許可拒否、開始、取得、無書込みの再送を確認した。
+  Tauriの管理状態はfixture。署名付きHTTPでは元のSQLiteを使い、Launcher応答はfixture。
+  受理済みコンテキスト、旧経路に戻る開始、取得確定後の応答喪失、重複推論と保存の防止を
+  確認した。クリーンなコピーでPython IPCと署名付きHTTPの327件、元のWasmとSQLiteを
+  使うRust 24件が通過した。[接続後のDMG検証](https://github.com/harupipipipi/tobkiri/actions/runs/44484324397)を開始した。
+  実DMGのSetup・承認から実モデルでの会話までの検証は後続。
   `bfaf5bf92` で、元の `saved_complete` の開始と再開を純粋なRust＋Wasm Packに移植した。
   既存のJSON続行フレームと最大4 MiB、ユーザー入力3 MiBを維持する。会話の読み取り、追記、
   ストリーミングとStrategyの選択、ツール呼出順序と定義のpin、保存が不明な時の再照合を
