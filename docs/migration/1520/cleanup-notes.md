@@ -5732,9 +5732,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   空の候補、重複とUnicodeを含む候補、64 KiB境界、拒否、全50コマンドを検証した。
   Rust単体4件とdoctest 1件、strict Clippy、Pythonの表示と呼出し元31件、CI構成22件が通過した。
   コマンド一覧の既存テストは署名済みスキーマで既に使う `models.strategy_reference` に揃えた。
+- クリーンな `346d55d91` で署名済みHTTP 3件が通過した。設定の通常表示と全表示、UIカタログ、
+  コマンド一覧の4呼出しに同じ入力を渡し、実Wasmと元のPythonの全出力を照合した。設定保存値の
+  非公開フィールド、秘密値、コマンド承認表示と容量拒否のHTTP 503も確認した。搬送はテスト用の
+  PackVMアダプターで、Wasmゲストだけを置換した。現行製品の起動とbackend選択は未検証。
+  差し替え候補の生成物、パッケージのソース目録、v4アーキテクチャ検証、CIの該当stepもローカルで通過。
 - 旧汎用Wasm workerはLinuxのcgroup v2が必要で、macOSでは起動準備に使えない。
   macOSの製品接続には、各署名済み呼出しの親と現在のリースを証明し、64 MiBの枠で動く
   Launcher/Core側の経路を使う。元の3経路の設定と表示、秘密値の非公開、PackVMの
   割当て回数を実際の署名済みHTTPで再検証した後に、旧表示実行を撤去する。
 - `conversation.turn.v1/complete` は別の起動条件として残る。通常チャットのWasm実行は
   `shell.tauri.default` の署名済み経路に束縛されているため、Side Chatは別に検証する。
+- `57e7bbfd4` の[実Gemma 3 1B CI 44530373823](https://github.com/harupipipipi/tobkiri/actions/runs/44530373823)
+  は、実Wasmの認証付きloopbackと保存済みRegistryのモデル選択の両方に成功した。配布用DMGの
+  Setup、GUI承認、同じアプリからのモデル設定と会話は、別の実機検証が必要。
