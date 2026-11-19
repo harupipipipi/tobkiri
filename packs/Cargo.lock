@@ -762,6 +762,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-conversation-complete-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tobkiri-canon",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-echo-input"
 version = "0.1.0"
 dependencies = [

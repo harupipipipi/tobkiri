@@ -1,0 +1,56 @@
+{
+  "format": "tobkiri.pack/1",
+  "id": "local.conversation-complete",
+  "version": "0.1.0",
+  "publisher_key": null,
+  "runtime": {
+    "kind": "wasm",
+    "component": "component.wasm",
+    "toolchain": "rust/1.94.0",
+    "config": null
+  },
+  "shapes": [
+    {
+      "name": "local.conversation-complete.data",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    }
+  ],
+  "ports": {
+    "provides": [
+      {
+        "shape": "local.conversation-complete.data",
+        "version": "1.0",
+        "optional": false
+      }
+    ],
+    "consumes": [],
+    "untyped": []
+  },
+  "flows": [],
+  "overlays": [],
+  "stores": [],
+  "permissions": {
+    "ports": [],
+    "wasm": {
+      "fuel_per_call": 1400000000,
+      "memory_mib": 48,
+      "wall_ms": 10000,
+      "table_elements": 10000,
+      "output_bytes": 4194304
+    },
+    "loops": {
+      "max_iterations": 100,
+      "max_wall_ms": 10000,
+      "max_cost_units": 10000
+    }
+  },
+  "ui": null,
+  "files": [
+    "component.wasm",
+    "wit/data.shape.json",
+    "wit/deps/core.wit",
+    "wit/pack.wit"
+  ]
+}

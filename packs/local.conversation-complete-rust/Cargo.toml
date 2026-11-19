@@ -1,0 +1,20 @@
+[package]
+name = "tobkiri-pack-conversation-complete-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+component = ["dep:wit-bindgen"]
+
+[dependencies]
+ordered-python-compat = { path = "../ordered-python-compat" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+thiserror = "=2.0.21"
+tobkiri-canon = { path = "../../crates/tobkiri-canon" }
+wit-bindgen = { workspace = true, optional = true }

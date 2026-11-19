@@ -114,6 +114,34 @@ jobs:
           export TOBKIRI_TEST_APPLICATION_PRESENTATION_WASM="$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/tobkiri_pack_application_presentation_rust.wasm"
           PYTHONPATH=tobkiri_runtime python3 -B -m pytest --noconftest -q -p no:cacheprovider \
             tobkiri_runtime/tests/test_application_presentation.py
+      - name: Replay the original Conversation complete guest through Rust Wasm
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path packs/Cargo.toml -p tobkiri-pack-conversation-complete-rust
+          host="$(rustc -vV | sed -n 's/^host: //p')"
+          export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER="$(rustc --print sysroot)/lib/rustlib/$host/bin/wasm-component-ld"
+          cargo rustc --locked --release --target wasm32-unknown-unknown --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-conversation-complete-rust --features component -- -C link-arg=--wasi-adapter=none
+          cargo build --locked -p tobkiri-cli --bin tobkiri
+          work="$RUNNER_TEMP/conversation-complete"
+          mkdir "$work"
+          PYTHONPATH=packs python3 -B - "$work" "$CARGO_TARGET_DIR" <<'PY'
+          from pathlib import Path
+          import sys
+
+          from stage_registry_packs import stage_pack
+
+          work, target = map(Path, sys.argv[1:])
+          stage_pack(target / "debug/tobkiri", "conversation-complete",
+                     target / "wasm32-unknown-unknown/release", work, work)
+          PY
+          python3 -B -I -S tools/quality/export_conversation_complete_reference.py --output "$work/reference.json"
+          export TOBKIRI_CONVERSATION_COMPLETE_TPK="$work/local.conversation-complete.tpk"
+          export TOBKIRI_CONVERSATION_COMPLETE_REFERENCE="$work/reference.json"
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/conversation-complete.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test conversation_complete \
+              conversation_complete_replays_original_guest -- --ignored --exact
       - name: Pure Flow dependency graph
         run: |
           cargo tree --locked -p tobkiri-flow > flow-dependencies.txt

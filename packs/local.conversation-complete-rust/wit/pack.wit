@@ -1,0 +1,17 @@
+package local:conversation-complete@1.0.0;
+
+interface data {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Extract the bounded generation request from the original turn payload.
+  prepare: func(input: string) -> result<string, error>;
+
+  /// Project the outcome of generation after Host admission and dispatch.
+  finish: func(input: string) -> result<string, error>;
+}
+
+world pack {
+  import tobkiri:core/types@1.2.0;
+  export tobkiri:core/lifecycle@1.2.0;
+  export data;
+}
