@@ -726,6 +726,20 @@ impl Core {
         source: String,
         update: bool,
     ) -> Result<Digest, CoreError> {
+        self.add_pack_with_limits(id, source, update, None).await
+    }
+
+    /// Add or update a pin with explicit limits for that Pack only. Omitting
+    /// limits keeps the existing entry on update and defaults to deny on add.
+    /// The normal Profile save verifies the candidate and obtains approval for
+    /// additional effects before committing the new head and permission grants.
+    pub async fn add_pack_with_limits(
+        &self,
+        id: &ProfileId,
+        source: String,
+        update: bool,
+        limits: Option<PermissionSet>,
+    ) -> Result<Digest, CoreError> {
         let (mut profile, head) = self.profile(id)?;
         let path = std::path::Path::new(source.strip_prefix("file:").unwrap_or(&source));
         let source_catalog = tobkiri_manifest::source::SourceCatalog::new(&self.control)?;
@@ -762,6 +776,18 @@ impl Core {
             sha256: pack.hash.clone(),
             source,
         };
+        if let Some(limits) = limits {
+            if has_duplicate_permission_keys(&limits)
+                || !limits.is_subset_of(&pack.manifest.permissions)
+                || !limits.is_subset_of(&profile.ceiling)
+            {
+                return Err(CoreError::Invalid(
+                    "Pack limits must narrow both the verified declaration and Profile ceiling"
+                        .into(),
+                ));
+            }
+            profile.pack_limits.insert(pin.id.clone(), limits);
+        }
         if let Some(index) = existing {
             profile.packs[index] = pin;
         } else {

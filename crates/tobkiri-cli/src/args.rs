@@ -83,6 +83,9 @@ pub enum ProfileCommand {
         profile: String,
         #[arg(long)]
         pack: PathBuf,
+        /// JSON permissions that narrow the Pack declaration and Profile ceiling.
+        #[arg(long)]
+        limits: Option<PathBuf>,
     },
     /// Update an installed pin, approving only newly added permissions.
     Update {
@@ -90,6 +93,9 @@ pub enum ProfileCommand {
         profile: String,
         #[arg(long)]
         pack: PathBuf,
+        /// Replacement Pack limits JSON. If omitted, keep the installed limits.
+        #[arg(long)]
+        limits: Option<PathBuf>,
     },
     /// Remove only when every required port remains satisfied.
     Remove {

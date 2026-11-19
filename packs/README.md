@@ -56,6 +56,19 @@ For a signed Pack, declare the publisher key in the template and run
 binding. Regenerate the manifest after changing payload bytes, and re-sign if
 applicable.
 
+Install the verified archive into an existing Profile. If the Pack needs
+permissions or Wasm capacity, put the Pack's limits in a JSON file with the same
+fields as the manifest's `permissions` object.
+
+```sh
+tobkiri profile add --profile "$profile_id" --pack ./my-pack.tpk --limits ./limits.json
+```
+
+Limits must fit within the verified Pack declaration and the Profile ceiling.
+Review any new permissions in the ordinary approval prompt. To change the
+limits when upgrading the Pack, pass `--limits` to `profile update`. An update
+that omits the flag retains the installed limits.
+
 Unsigned development Packs use `local.*`. The Rust guest workspace is separate
 from the host workspace, targets `wasm32-wasip2`, and pins wit-bindgen 0.62.0
 (published 2026-09-10; 0.63.0 was too new under the reviewed dependency rule).

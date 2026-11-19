@@ -201,22 +201,32 @@ async fn profile(core: &Core, command: ProfileCommand) -> Result<()> {
                 .await?;
             println!("{id}");
         }
-        ProfileCommand::Add { profile, pack } => {
+        ProfileCommand::Add {
+            profile,
+            pack,
+            limits,
+        } => {
             let digest = core
-                .add_pack(
+                .add_pack_with_limits(
                     &ProfileId::parse(&profile)?,
                     format!("file:{}", std::fs::canonicalize(pack)?.display()),
                     false,
+                    limits.as_deref().map(json).transpose()?,
                 )
                 .await?;
             println!("{digest}");
         }
-        ProfileCommand::Update { profile, pack } => {
+        ProfileCommand::Update {
+            profile,
+            pack,
+            limits,
+        } => {
             let digest = core
-                .add_pack(
+                .add_pack_with_limits(
                     &ProfileId::parse(&profile)?,
                     format!("file:{}", std::fs::canonicalize(pack)?.display()),
                     true,
+                    limits.as_deref().map(json).transpose()?,
                 )
                 .await?;
             println!("{digest}");
