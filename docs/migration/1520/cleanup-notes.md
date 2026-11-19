@@ -4232,6 +4232,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   接続を既存Adapterに結び付ける処理と、Adapterの新しい版からの呼び出しが残る。
   [717face1f の実Gemma 3 1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44487465311)
   は既存のHarness実行経路で通過した。
+  [d3113e9b2 の再計測](https://github.com/harupipipipi/tobkiri/actions/runs/44490251513)では
+  キー不要の保存モデル経路が通過し、認証付きFlowは32 msで取消が確定した後、3秒以内に
+  llama.cppの空きslotを観測できなかった。独立した直接クライアントでは2.450秒だったが、
+  会話履歴・キャッシュ・接続の扱いが異なる。次回の失敗では、直接プローブ前に採取した
+  サーバーログ末尾を認証情報を除いて保存し、3秒の合否基準を維持する。
 - [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
   実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
   経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で

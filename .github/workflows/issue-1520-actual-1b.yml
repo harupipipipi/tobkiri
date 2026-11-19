@@ -229,6 +229,26 @@ jobs:
             --log "$RUNNER_TEMP/actual-1b.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test llama -- --ignored --exact --nocapture \
               real_1b_input_flow_wasm_stream_persist_and_cancel || test_status=$?
+          if [[ "$test_status" -ne 0 ]]; then
+            python3 -B - "$work/server.log" "$work/api-key" "$RUNNER_TEMP/authenticated-1b-server-tail.log" <<'PY' || echo "Authenticated server diagnostic unavailable" >&2
+          from pathlib import Path
+          import sys
+
+          log, key_file, output = map(Path, sys.argv[1:])
+          token = key_file.read_bytes().strip()
+          with log.open("rb") as stream:
+              size = stream.seek(0, 2)
+              start = max(0, size - 32 * 1024)
+              stream.seek(start)
+              tail = stream.read(32 * 1024)
+          if start:
+              tail = tail.partition(b"\n")[2]
+          tail = tail.rpartition(b"\n")[0]
+          if token:
+              tail = tail.replace(token, b"[redacted]")
+          output.write_bytes(b"\n".join(tail.splitlines()[-80:]) + b"\n")
+          PY
+          fi
           python3 -B tools/quality/issue_1520_llama_cancel_probe.py \
             --origin http://127.0.0.1:18080 --key-file "$work/api-key" \
             > "$RUNNER_TEMP/direct-1b-cancel-probe.log" 2>&1 || true
@@ -286,6 +306,7 @@ jobs:
             ${{ runner.temp }}/actual-1b.log
             ${{ runner.temp }}/actual-1b.receipt.json
             ${{ runner.temp }}/direct-1b-cancel-probe.log
+            ${{ runner.temp }}/authenticated-1b-server-tail.log
             ${{ runner.temp }}/registered-1b.log
             ${{ runner.temp }}/registry-packs/
             ${{ runner.temp }}/registered-1b.receipt.json
