@@ -2646,6 +2646,10 @@ def capture_production_dispatch(
                     role, adapter, registry,
                     (gateway, ordinary_orchestration_edge, ordinary_turn_edge),
                 )
+    saved_local_chat_keys = {
+        (*route.adapter.binding_key[1:], route.adapter.target.principal_id)
+        for route in saved_local_chat_routes.values()
+    }
 
     turn_start_edge = (
         select_original_chat_edge(
@@ -3742,7 +3746,7 @@ def capture_production_dispatch(
                 route if route is not None and matches_captured_edge(envelope, route.adapter)
                 else None
             )
-            self._local_chat_selection: tuple[str, int, str] | None = None
+            self._local_chat_selection: tuple[str, int | None, str] | None = None
             self._local_chat_attempted = False
 
         @property
@@ -3929,10 +3933,13 @@ def capture_production_dispatch(
                 record.get("adapter_id") == "local-openai-compatible"
                 and record.get("enabled") is True
                 and record.get("credential_handle") is None
-                and type(revision) is int and 1 <= revision <= MAX_SAFE_INTEGER
                 and isinstance(endpoint, str) and endpoint
             ):
-                self._local_chat_selection = expected, revision, endpoint
+                native_revision = (
+                    revision if type(revision) is int and 1 <= revision <= MAX_SAFE_INTEGER
+                    else None
+                )
+                self._local_chat_selection = expected, native_revision, endpoint
 
         def post_saved_local_chat(
             self,
@@ -3953,16 +3960,23 @@ def capture_production_dispatch(
                 or connection.get("adapter_id") != "local-openai-compatible"
                 or connection.get("enabled") is not True
                 or connection.get("credential_handle") is not None
-                or type(connection.get("record_revision")) is not int
-                or selection != (
-                    connection.get("provider_instance_id"),
-                    connection.get("record_revision"),
-                    connection.get("endpoint"),
-                )
+                or connection.get("provider_instance_id") != selection[0]
+                or connection.get("endpoint") != selection[2]
                 or self._local_chat_attempted
             ):
                 raise GlobalContractInvocationError(
                     "denied", "local provider connection binding changed",
+                )
+            instance, revision, endpoint = selection
+            if revision is None:
+                # Some older Registry documents predate record revisions.
+                return None
+            if (
+                type(connection.get("record_revision")) is not int
+                or connection["record_revision"] != revision
+            ):
+                raise GlobalContractInvocationError(
+                    "denied", "local provider connection revision changed",
                 )
             reservation = envelope.resource_reservation_id
             if production_admission.native_resources(reservation).memory_bytes < (
@@ -3985,7 +3999,10 @@ def capture_production_dispatch(
                         or retained.envelope is not scope.envelope
                         or not matches_captured_edge(scope.envelope, edge)
                         or scope.envelope.lease.token == child.lease.token
-                        or scope.envelope.resource_reservation_id == child.resource_reservation_id
+                        or (
+                            child.resource_reservation_id is not None
+                            and child.resource_reservation_id == scope.envelope.resource_reservation_id
+                        )
                         or scope.envelope.deadline_monotonic < child.deadline_monotonic
                     ):
                         raise AuthorityDenied("local provider retained invocation changed")
@@ -4005,7 +4022,6 @@ def capture_production_dispatch(
                 dispatch_possible = True
 
             self._local_chat_attempted = True
-            instance, revision, endpoint = selection
             guard()
             try:
                 result = executor(NativeSavedLocalChatRequest(
@@ -4030,7 +4046,7 @@ def capture_production_dispatch(
                     "invalid-response": ("invalid_response", "local provider response is too large"),
                 }.get(error.code, ("provider_unavailable", "local provider is unavailable"))
                 raise GlobalContractInvocationError(code, message) from None
-            except PermissionError:
+            except (AuthorityDenied, PermissionError):
                 raise
             except (OSError, RuntimeError):
                 raise GlobalContractInvocationError(
@@ -6648,6 +6664,7 @@ def capture_production_dispatch(
                     or item.key in native_turn_settlement_bindings
                     or item.key in native_conversation_confirmation_bindings
                     or item.key in native_saved_turn_read_bindings
+                    or item.key in saved_local_chat_keys
                 ),
             ),
         )
