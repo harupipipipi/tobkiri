@@ -10041,7 +10041,10 @@ def test_signed_saved_tool_intents_borrows_each_gateway_role(
 
 @pytest.mark.parametrize(
     "native_source, native_policy, side_chat",
-    [(False, False, False), (True, False, False), (True, True, False), (True, True, True)],
+    [
+        (False, False, False), (True, False, False),
+        (True, True, False), (True, True, True),
+    ],
     ids=["encoded", "source", "policy", "side-chat"],
 )
 def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
@@ -10104,7 +10107,9 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             raise ipc.NativeModelResolveFailure("not-found")
         raise ipc.NativeProviderPrepareUnavailable()
 
-    def checked_execute(request: ipc.NativeSavedLocalChatRequest) -> bytes | dict[str, object]:
+    def checked_execute(
+        request: ipc.NativeSavedLocalChatRequest,
+    ) -> bytes | dict[str, object]:
         native_calls.append(request)
         adapter, = adapter_calls
         turn, orchestration, gateway = parents[-3:]
@@ -10123,7 +10128,9 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         if side_chat:
             side, *_ = parents
             assert side.payload["operation"] == "send"
-            _, side_state = authority.inspect_lease_token(side.lease.token.decode("ascii"))
+            _, side_state = authority.inspect_lease_token(
+                side.lease.token.decode("ascii"),
+            )
             assert side_state is LeaseState.DISPATCHED
             source = turn.payload["request"]
             assert source["turn_id"] == side.payload["turn_id"]
@@ -10401,11 +10408,15 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                         "operation": "reconcile", "conversation_id": conversation_id,
                         "turn_id": turn_id,
                     })
-                    assert status == 200 and replay["data"]["turn"] == result["data"]["turn"], replay
+                    assert (
+                        status == 200 and replay["data"]["turn"] == result["data"]["turn"]
+                    ), replay
                     assert store.get(turn_id)["messages"] == []
                 else:
                     status, replay = post(turn)
-                    assert status == 200 and replay["data"]["status"] == "existing", replay
+                    assert status == 200 and replay["data"]["status"] == "existing", (
+                        replay
+                    )
             else:
                 assert status != 200 or result["data"]["status"] != "completed", result
                 receipt = store.saved_receipt(turn_id)

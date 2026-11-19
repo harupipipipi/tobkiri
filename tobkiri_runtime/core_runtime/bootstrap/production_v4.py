@@ -2751,8 +2751,10 @@ def capture_production_dispatch(
                 continue
             adapter = select_original_chat_edge(
                 {gateway.target.principal_id}, adapter_pack,
-                f"tobkiri.service.ai.provider.{delivery}.v1", f"{adapter_pack}.provider-{delivery}",
-                f"{adapter_pack}.provider.compatibility.{delivery}", EffectClass.PRIVILEGED,
+                f"tobkiri.service.ai.provider.{delivery}.v1",
+                f"{adapter_pack}.provider-{delivery}",
+                f"{adapter_pack}.provider.compatibility.{delivery}",
+                EffectClass.PRIVILEGED,
             )
             if adapter is None:
                 continue
@@ -2769,14 +2771,18 @@ def capture_production_dispatch(
                     (*parents, side_chat) if side_chat is not None else parents,
                     side_chat is not None,
                 )
-                saved_local_chat_routes.setdefault(adapter.caller.principal_id, []).append(route)
+                saved_local_chat_routes.setdefault(
+                    adapter.caller.principal_id, [],
+                ).append(route)
                 saved_local_chat_bindings[
                     (*adapter.binding_key[1:], adapter.target.principal_id)
                 ] = adapter.resolved_binding
 
     if native_saved_local_chat is not None:
         if ordinary_turn_edge is not None and ordinary_orchestration_edge is not None:
-            capture_saved_local_chat_routes(ordinary_turn_edge, ordinary_orchestration_edge)
+            capture_saved_local_chat_routes(
+                ordinary_turn_edge, ordinary_orchestration_edge,
+            )
         if (
             side_chat_edge is not None
             and side_chat_turn_edge is not None
@@ -3988,7 +3994,8 @@ def capture_production_dispatch(
                     turn.context.profile_id != context.profile_id
                     or turn_id is None
                     or not matches_side_turn_request(
-                        turn.payload, turn_id, side, context.profile_id, reconcile=False,
+                        turn.payload, turn_id, side, context.profile_id,
+                        reconcile=False,
                     )
                 ):
                     return None
@@ -5709,7 +5716,8 @@ def capture_production_dispatch(
         turn = ancestors[0]
         if turn.context.profile_id != profile_id or (
             route.side_chat is not None and not matches_side_turn_request(
-                turn.payload, turn_id, ancestors[1], profile_id, reconcile=route.is_reconcile(),
+                turn.payload, turn_id, ancestors[1], profile_id,
+                reconcile=route.is_reconcile(),
             )
         ):
             return None
@@ -5734,7 +5742,8 @@ def capture_production_dispatch(
             if ancestors is None:
                 continue
             if ancestors and not matches_side_turn_request(
-                payload, turn_id, ancestors[0], context.profile_id, reconcile=route.is_reconcile(),
+                payload, turn_id, ancestors[0], context.profile_id,
+                reconcile=route.is_reconcile(),
             ):
                 return None
             return route, turn_id, ancestors

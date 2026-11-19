@@ -598,7 +598,9 @@ class NativeSavedLocalChatExecutor:
     ) -> bytes | dict[str, Any]:
         """Exchange one request in its negotiated input form."""
         if borrow.role in _SIDE_CHAT_LOCAL_ROLES and not self.supports_side_chat:
-            raise NativeProviderPrepareUnavailable("Launcher does not support Side Chat")
+            raise NativeProviderPrepareUnavailable(
+                "Launcher does not support Side Chat",
+            )
         if borrow.compile_request and not self.supports_request_compilation:
             raise NativeSavedLocalChatFailure("invalid")
         if borrow.compile_policy and not self.supports_policy_compilation:
