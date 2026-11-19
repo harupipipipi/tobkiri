@@ -4036,6 +4036,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   未許可の役割、破損、旧codecの応答も確認した。ここではTauri管理状態と稼働証明をfixtureで
   供給した。固定CPythonのIPC 269件、同梱アーカイブを使う実Conversationストア3件、
   ワークフロー契約16件も通過した。
+  `7da875c403` は通常保存の `begin_saved` と `claim_saved` の判定を
+  Turn Pack 0.3.0の `legacy-start` へ移した。元の request ID、入力 digest、
+  メッセージ ID、JSON の順とイベント時刻を用い、既存のSQLiteと二つの書込みロックを保つ。
+  `DurableTurnRuntime.begin` の再送では候補を生成せず、会話の競合判定では
+  `delivery._rows` の再デコードと全行の保持を減らす。既存と同じ順で全行を検証する。
+  停止要求を持つ行や取得済みの行は元のバイトを返す。新しい行は対象と時刻を照合し、
+  SQLiteの確定用ロック内で公開許可を確認する。旧codecや未初期化のDBでは公開前に戻る。
+  Pack 14件、実オーナー23件、strict Clippy、ワークフロー契約16件が通過した。
+  実Wasmの3件では開始・取得・許可拒否時のロールバックと、既存読取り・確定を検証した。
+  実アーカイブの0.1.0、0.2.0、0.3.0はLauncherのポート定義照合を通過した。
+  通常Launcherへの接続には、既存のShell→Saved Turn→Lifecycleの署名・親子リースと
+  `saved_inputs` の受理済み入力digestを照合する専用IPCが必要。ここまでの物理試験は
+  その製品経路とSetup・承認画面の通し検証を含まない。
   `bfaf5bf92` で、元の `saved_complete` の開始と再開を純粋なRust＋Wasm Packに移植した。
   既存のJSON続行フレームと最大4 MiB、ユーザー入力3 MiBを維持する。会話の読み取り、追記、
   ストリーミングとStrategyの選択、ツール呼出順序と定義のpin、保存が不明な時の再照合を
