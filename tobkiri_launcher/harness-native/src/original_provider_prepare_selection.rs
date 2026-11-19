@@ -930,10 +930,12 @@ impl<'a> OriginalStreamResultSelection<'a> {
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<Self>> {
-        Ok(select_stream_result_records(active.records(), budget)?.map(|pins| Self {
-            _active: active,
-            pins,
-        }))
+        Ok(
+            select_stream_result_records(active.records(), budget)?.map(|pins| Self {
+                _active: active,
+                pins,
+            }),
+        )
     }
 
     /// Ordered grants from Shell to the original Stream Normalizer operation.
@@ -2054,18 +2056,32 @@ mod tests {
             let mut candidate = fixture.clone();
             candidate["profile"]["requested_edges"][row]["authority_mode"] =
                 json!("interactive_only");
-            assert!(matches!(select_stream_result(&candidate), Err(Inconsistent(_))));
+            assert!(matches!(
+                select_stream_result(&candidate),
+                Err(Inconsistent(_))
+            ));
             candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
             assert!(select_stream_result(&candidate).unwrap().is_none());
         }
 
         let mut candidate = fixture.clone();
         for row in AI_ROUTING_ROWS.rev() {
-            candidate["profile"]["requested_edges"].as_array_mut().unwrap().remove(row);
-            candidate["plan"]["bindings"].as_array_mut().unwrap().remove(row);
+            candidate["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            candidate["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
         }
         assert!(select_stream_result(&candidate).unwrap().is_some());
-        assert!(select_ai_routing(&candidate).unwrap().iter().all(Option::is_none));
+        assert!(
+            select_ai_routing(&candidate)
+                .unwrap()
+                .iter()
+                .all(Option::is_none)
+        );
 
         let mut candidate = fixture.clone();
         candidate["profile"]["requested_edges"][STREAM_RESULT_ROW]["caller_function_id"] =
@@ -2073,7 +2089,12 @@ mod tests {
         candidate["plan"]["bindings"][STREAM_RESULT_ROW]["caller_function_id"] =
             json!(GATEWAY_GENERATE_CALLER);
         assert!(select_stream_result(&candidate).unwrap().is_none());
-        assert!(select_ai_routing(&candidate).unwrap().iter().all(Option::is_some));
+        assert!(
+            select_ai_routing(&candidate)
+                .unwrap()
+                .iter()
+                .all(Option::is_some)
+        );
     }
 
     #[test]

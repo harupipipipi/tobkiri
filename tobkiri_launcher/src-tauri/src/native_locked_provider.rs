@@ -1109,7 +1109,10 @@ mod tests {
         for document in [normalizer, bundle_lock] {
             fs::write(root.0.join(document), b"changed").unwrap();
             let error = bundle.revalidate(&budget, || Ok(())).unwrap_err();
-            assert_eq!(error.to_string(), format!("locked Bundle digest changed: {document}"));
+            assert_eq!(
+                error.to_string(),
+                format!("locked Bundle digest changed: {document}")
+            );
             fs::write(root.0.join(document), document).unwrap();
         }
     }
