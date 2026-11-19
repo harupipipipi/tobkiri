@@ -4077,9 +4077,12 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         assert all(
             child.context.caller_principal == parent.target_principal
             and child.deadline_monotonic <= parent.deadline_monotonic
-            and child.resource_reservation_id != parent.resource_reservation_id
             for parent, child in zip(chain[:-1], chain[1:], strict=True)
         )
+        assert owner.resource_reservation_id is not None
+        assert owner.resource_reservation_id not in {
+            item.resource_reservation_id for item in chain[:-1]
+        }
         for item in chain:
             _, state, _, _ = authority.inspect_dispatch_authority(
                 item.lease.token.decode("ascii"),
