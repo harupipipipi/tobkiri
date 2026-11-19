@@ -2532,7 +2532,16 @@ mod tests {
             activation_id: "activation:fixture".into(),
             plan_digest: "sha256:fixture".into(),
         };
-        for granted in OriginalSavedReceiptRole::ALL {
+        for (granted, settlement_caller) in [
+            (
+                OriginalSavedReceiptRole::SavedTurn,
+                SettlementCaller::SavedTurn,
+            ),
+            (
+                OriginalSavedReceiptRole::SavedReconcile,
+                SettlementCaller::SavedReconcile,
+            ),
+        ] {
             let read = VerifiedRegistryLaunch::test_turn_read_proof(
                 identity.clone(),
                 "catalog:fixture",
@@ -2551,10 +2560,7 @@ mod tests {
             let settlement = VerifiedRegistryLaunch::test_turn_settlement_proof(
                 identity.clone(),
                 "catalog:fixture",
-                match granted {
-                    OriginalSavedReceiptRole::SavedTurn => SettlementCaller::SavedTurn,
-                    OriginalSavedReceiptRole::SavedReconcile => SettlementCaller::SavedReconcile,
-                },
+                settlement_caller,
             );
             assert!(!read.permits_conversation_confirmation(granted));
             for caller in OriginalSavedReceiptRole::ALL {
@@ -2783,7 +2789,9 @@ mod tests {
     #[test]
     fn saved_receipt_request_requires_its_own_caller_proof() {
         use crate::host_contract::ExecutionProfileIdentity;
-        use OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
+        use OriginalSavedReceiptRole::{
+            SavedReconcile, SavedTurn, SideChatReconcile, SideChatTurn,
+        };
 
         let identity = ExecutionProfileIdentity {
             profile_id: "defaults".into(),
@@ -2795,19 +2803,36 @@ mod tests {
             caller: ConversationReadCaller::SavedTurn,
             conversation_id: "stored".into(),
         };
-        for granted in [SavedTurn, SavedReconcile] {
+        let callers = [SavedTurn, SavedReconcile, SideChatTurn, SideChatReconcile];
+        for granted in callers {
             let proof = VerifiedRegistryLaunch::test_saved_receipt_proof(
                 identity.clone(),
                 "catalog:fixture",
                 granted,
             );
             assert!(!conversation.has_launch_proof(&proof));
-            for caller in [SavedTurn, SavedReconcile] {
+            for caller in callers {
                 let request = NativeRegistryRequest::ConversationReceipt {
                     caller,
                     turn_id: "turn".into(),
                 };
                 assert_eq!(request.has_launch_proof(&proof), caller == granted);
+                assert!(!request.requires_publication_permit());
+                assert!(!request.uses_funded_input());
+                assert_eq!(request.input_capacity().unwrap(), "turn".len());
+            }
+            for caller in OriginalSavedReceiptRole::ALL {
+                let read = NativeRegistryRequest::TurnRead {
+                    caller,
+                    turn_id: "turn".into(),
+                };
+                let confirmation = NativeRegistryRequest::ConversationConfirmation {
+                    caller,
+                    conversation_id: "stored".into(),
+                    terminal: b"{}".to_vec(),
+                };
+                assert!(!read.has_launch_proof(&proof));
+                assert!(!confirmation.has_launch_proof(&proof));
             }
         }
     }

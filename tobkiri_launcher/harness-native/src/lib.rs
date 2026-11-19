@@ -70,8 +70,9 @@ pub use original_provider_prepare_selection::{
     OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole,
     OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
     OriginalSavedTurnSettlementChoice, OriginalSavedTurnSettlementRole,
-    OriginalSavedTurnStartChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice, SavedTurnStartCaller, select_original_saved_turn_settlement,
+    OriginalSavedTurnStartChoice, OriginalSideChatSavedReceiptChoice,
+    OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
+    SavedTurnStartCaller, select_original_saved_turn_settlement,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

@@ -18,8 +18,8 @@ use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
     OriginalConversationAppendChoice, OriginalConversationCompleteChoice, OriginalFailoverChoice,
     OriginalRequestPrepareChoice, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
-    OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
-    CONVERSATION_COMPLETE_APPLICATION_ID,
+    OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
+    OriginalUsageCostChoice, CONVERSATION_COMPLETE_APPLICATION_ID,
 };
 use tobkiri_harness_native::{
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
@@ -101,6 +101,14 @@ pub(crate) struct LockedSavedOrchestrationBundle<'pin> {
 pub(crate) struct LockedConversationAppendBundle<'pin> {
     source: VerifiedOrdinarySavedBundle,
     side_chat: Option<LockedRegistryRoute<'pin>>,
+    routes: [LockedRegistryRoute<'pin>; 3],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// Locked Bundle documents for one Side Chat saved receipt caller.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedSideChatSavedReceiptBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
     routes: [LockedRegistryRoute<'pin>; 3],
     budget: Arc<dyn AllocationBudget>,
 }
@@ -571,6 +579,30 @@ impl NativeApplicationSources {
         })
     }
 
+    /// Capture the signed documents behind this exact Side Chat receipt chain.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn side_chat_saved_receipt_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalSideChatSavedReceiptChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedSideChatSavedReceiptBundle<'pin>> {
+        let pins = selection.pins();
+        let [side_chat, turn, receipt] = pins;
+        ensure!(
+            side_chat.caller_function_id() == self.authority.shell_provider_id
+                && pins
+                    .windows(2)
+                    .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
+            "Side Chat saved receipt callers differ from the selected Shell and caller chain"
+        );
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        Ok(LockedSideChatSavedReceiptBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            routes: [from_lock(side_chat)?, from_lock(turn)?, from_lock(receipt)?],
+            budget: Arc::clone(budget),
+        })
+    }
+
     /// Capture locked documents from the selected ordinary saved orchestration pins.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn saved_orchestration_bundle<'pin>(
@@ -992,6 +1024,22 @@ impl LockedConversationAppendBundle<'_> {
                 ["privileged", "pure", "privileged"],
             )
         }
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedSideChatSavedReceiptBundle<'_> {
+    /// Verify the grant chain and retain the physical source for subsequent reads.
+    pub(crate) fn verify(
+        self,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        self.source.verify_routes(
+            &[Some(self.routes)],
+            &self.budget,
+            checkpoint,
+            ["privileged"; 3],
+        )
     }
 }
 
