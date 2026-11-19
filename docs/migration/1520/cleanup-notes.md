@@ -4290,6 +4290,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   は、元のLauncherがHost原本のinventoryを検証する段階で停止した。
   `972baeb39` で `native_saved_orchestration.py` と `saved_rejection.py` を正規一覧に追加し、
   元のパッケージ検証器で97ファイルの一致を確認した。DMGは修正後のheadで再検証する。
+- [Launcher staging 44493089798](https://github.com/harupipipipi/tobkiri/actions/runs/44493089798)
+  はTurnの根拠を検証する3件すべてに合格した後、CI側の期待件数2で停止した。
+  件数を3に更新し、元のテストフィルターと判定を維持した。DMG作成は修正済みheadで検証する。
 - A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
   旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
   現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。

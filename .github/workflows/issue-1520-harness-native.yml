@@ -648,7 +648,7 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::launch_metadata::tests::conversation_
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-turn-evidence.log" --expected-passed 2 -- \
+              --log "$RUNNER_TEMP/harness-native-turn-evidence.log" --expected-passed 3 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::launch_metadata::tests::turn_
