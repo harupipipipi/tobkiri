@@ -4216,15 +4216,30 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   分離試験はLauncherの実ファイル読取りを使い、署名付きresolverの戻り値はfixtureで供給した。
   分離試験と権限選択の合計30件、macOSの実Launcherで `native-first-setup` のライブラリと
   テストの型チェックが通過。
-  通常チャットの専用IPCでは、元の要求リースとこの起動時のBundle証明を再照合する。
-  長い推論で既存の設定・Model・続行を待たせないよう、既存の認証済みソケット内で別に
-  追跡する接続を使う。実OSの占有・終了確認と同じ64 MiBの容量を組み合わせて検証する。
+  `0a6927322` で、元の管理対象HostのUnixソケットに保存済みローカルProvider専用の
+  操作を接続した。プロセス、Profile、起動世代、epochとロール固有の起動証明を確認する。
+  本文は1 MiB以内で保持し、実POSTの直前にBundle lockと10文書を読み直して、
+  元の要求の専用送信許可を一回だけ取得する。最大4 MiBの生応答を実ワーカーの終了後に返す。
+  HTTPを待つ接続は元のBrokerの同時処理数を上限に別スレッドで追跡し、既存の短い操作は
+  元の入口で処理する。停止時は両方のソケットを閉じてjoinする。既存のネイティブ容量台帳を
+  使用し、元のmacOSの`/tmp`・`/var`の扱いを既存Registryと共用した。
+  分離したCPython→実Launcherソケットサービス→実ワーカー→loopback HTTPの5ケースで、
+  Generate、Stream、推論中の既存Wasm Model一覧、送信拒否、古いrevision、未許可ロールを
+  確認した。管理アプリ・Profile選択はfixture。分離したRustの63件、Registryの21件、
+  固定CPython 3.13.16のIPC 348件とmacOS Launcherのテスト型チェックが通過。
+  本文フレームから容量計上済みCoreBufferへのコピーは、受信前に同じ容量を確保できるように
+  なった段階で削減できる。通常会話への接続には、実際に完了した署名付きRegistry GETの
+  接続を既存Adapterに結び付ける処理と、Adapterの新しい版からの呼び出しが残る。
   [717face1f の実Gemma 3 1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44487465311)
   は既存のHarness実行経路で通過した。
 - [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
   実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
   経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で
   該当ファイルをRust 1.94.0で整形し、ルート全体の `cargo fmt --all -- --check` が通過した。
+- [Launcher staging 44484324397](https://github.com/harupipipipi/tobkiri/actions/runs/44484324397)
+  は、元のLauncherがHost原本のinventoryを検証する段階で停止した。
+  `972baeb39` で `native_saved_orchestration.py` と `saved_rejection.py` を正規一覧に追加し、
+  元のパッケージ検証器で97ファイルの一致を確認した。DMGは修正後のheadで再検証する。
 - A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
   旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
   現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。
