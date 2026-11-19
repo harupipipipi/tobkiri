@@ -371,7 +371,7 @@ impl NativeApplicationSources {
     ) -> Result<LockedSavedProviderBundle<'pin, 1, 4>> {
         self.gateway_registry_bundle(
             [Some((choice.side_chat(), choice.pins()))],
-            choice.role().is_side_chat(),
+            choice.is_side_chat(),
             budget,
         )
     }

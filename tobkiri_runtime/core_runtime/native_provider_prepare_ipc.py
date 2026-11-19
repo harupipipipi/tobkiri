@@ -490,18 +490,28 @@ GatewayProviderSnapshotRole = Literal[
 GatewayProviderHealthRole = Literal[
     "gateway-health-generate", "gateway-health-stream",
     "side-chat-gateway-health-generate", "side-chat-gateway-health-stream",
+    "gateway-health-quote-generate", "gateway-health-quote-stream",
+    "side-chat-gateway-health-quote-generate", "side-chat-gateway-health-quote-stream",
 ]
-_SIDE_CHAT_GATEWAY_HEALTH_ROLES = (
+_SIDE_CHAT_GATEWAY_DIRECT_HEALTH_ROLES = (
     "side-chat-gateway-health-generate", "side-chat-gateway-health-stream",
 )
 GATEWAY_PROVIDER_HEALTH_ROLES: Mapping[
-    tuple[bool, Literal["generate", "stream"]], GatewayProviderHealthRole
+    tuple[bool, ModelResolveRole], GatewayProviderHealthRole
 ] = MappingProxyType({
     (False, "generate"): "gateway-health-generate",
     (False, "stream"): "gateway-health-stream",
     (True, "generate"): "side-chat-gateway-health-generate",
     (True, "stream"): "side-chat-gateway-health-stream",
+    (False, "quote-generate"): "gateway-health-quote-generate",
+    (False, "quote-stream"): "gateway-health-quote-stream",
+    (True, "quote-generate"): "side-chat-gateway-health-quote-generate",
+    (True, "quote-stream"): "side-chat-gateway-health-quote-stream",
 })
+_GATEWAY_QUOTE_HEALTH_ROLES = frozenset(
+    wire_role for (_, role), wire_role in GATEWAY_PROVIDER_HEALTH_ROLES.items()
+    if role in ("quote-generate", "quote-stream")
+)
 ProjectedProviderSnapshotRole = Literal[
     "shell-settings", "model-save", "model-search", "command-datasource",
 ]
@@ -789,6 +799,7 @@ class _LauncherProviderSnapshot:
     supports_model_access_projection: bool
     supports_gateway_health: bool = False
     supports_side_chat_gateway_health: bool = False
+    supports_gateway_quote_health: bool = False
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
@@ -797,7 +808,9 @@ class _LauncherProviderSnapshot:
             or (not self.supports_gateway_health
                 and request.role in GATEWAY_PROVIDER_HEALTH_ROLES.values())
             or (not self.supports_side_chat_gateway_health
-                and request.role in _SIDE_CHAT_GATEWAY_HEALTH_ROLES)
+                and request.role in _SIDE_CHAT_GATEWAY_DIRECT_HEALTH_ROLES)
+            or (not self.supports_gateway_quote_health
+                and request.role in _GATEWAY_QUOTE_HEALTH_ROLES)
             or (not self.supports_projected
                 and request.role in _PROJECTED_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_query
@@ -818,7 +831,7 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV, "")
-    if re.fullmatch(r"[1-9]|10", version) is None:
+    if re.fullmatch(r"[1-9]|1[01]", version) is None:
         return None
     level = int(version)
     launcher = _capture_launcher()
@@ -834,7 +847,8 @@ def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | N
         supports_model_access=level >= 7,
         supports_model_access_projection=level >= 8,
         supports_gateway_health=level >= 9,
-        supports_side_chat_gateway_health=level == 10,
+        supports_side_chat_gateway_health=level >= 10,
+        supports_gateway_quote_health=level == 11,
     )
 
 

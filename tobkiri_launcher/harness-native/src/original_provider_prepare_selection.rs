@@ -1212,24 +1212,6 @@ pub enum OriginalSavedLocalChatRole {
 }
 
 impl OriginalSavedLocalChatRole {
-    /// The ordinary and Side Chat roles in their proof-slot order.
-    pub const ALL: [Self; 4] = [
-        Self::Generate,
-        Self::Stream,
-        Self::SideChatGenerate,
-        Self::SideChatStream,
-    ];
-
-    /// The proof slot associated with this saved entry and operation.
-    pub fn index(self) -> usize {
-        match self {
-            Self::Generate => 0,
-            Self::Stream => 1,
-            Self::SideChatGenerate => 2,
-            Self::SideChatStream => 3,
-        }
-    }
-
     /// Whether the selected Gateway and Provider operations stream their results.
     pub fn is_stream(self) -> bool {
         matches!(self, Self::Stream | Self::SideChatStream)
@@ -1453,7 +1435,8 @@ impl OriginalModelResolveRole {
         Self::Stream,
     ];
 
-    const fn index(self) -> usize {
+    /// Position in `ALL` and in the verification results for each saved entry.
+    pub const fn index(self) -> usize {
         match self {
             Self::QuoteGenerate => 0,
             Self::QuoteStream => 1,
@@ -1574,7 +1557,12 @@ pub enum OriginalProviderSnapshotRole {
         side_chat: bool,
     },
     /// The saved Gateway's own Provider Registry health grant for this entry.
-    GatewayHealth(OriginalSavedLocalChatRole),
+    GatewayHealth {
+        /// The Gateway function and the health operation it selects.
+        role: OriginalModelResolveRole,
+        /// Whether the selected Shell enters Saved Turn through Side Chat.
+        side_chat: bool,
+    },
     /// The Workflow attempt entry and its exact raw Registry caller.
     Workflow {
         /// The Gateway or provider adapter with its own Registry grant.
@@ -1693,34 +1681,34 @@ impl<'a> OriginalGatewayProviderSnapshotChoice<'a> {
 /// The signed saved entry and the Gateway's separate health grant.
 pub struct OriginalGatewayProviderHealthChoice<'a> {
     _active: &'a OriginalActiveProfile,
-    role: OriginalSavedLocalChatRole,
+    via_side_chat: bool,
     side_chat: Option<OriginalRoutePin>,
     pins: [OriginalRoutePin; 4],
 }
 
 impl<'a> OriginalGatewayProviderHealthChoice<'a> {
-    /// Select the saved Generate or Stream chain and its exact health operation.
+    /// Select the saved Gateway chain and its exact health operation.
     /// Verify all returned pins against the signed Bundle before use.
     pub fn select(
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
-        role: OriginalSavedLocalChatRole,
+        role: OriginalModelResolveRole,
+        via_side_chat: bool,
     ) -> Result<Option<Self>> {
         Ok(
-            select_gateway_provider_health_records(active.records(), budget, role)?.map(
-                |(side_chat, pins)| Self {
+            select_gateway_provider_health_records(active.records(), budget, role, via_side_chat)?
+                .map(|(side_chat, pins)| Self {
                     _active: active,
-                    role,
+                    via_side_chat,
                     side_chat,
                     pins,
-                },
-            ),
+                }),
         )
     }
 
-    /// The saved entry and Gateway operation selected by the authenticated Profile.
-    pub fn role(&self) -> OriginalSavedLocalChatRole {
-        self.role
+    /// Whether the authenticated choice enters the saved chain via Side Chat.
+    pub fn is_side_chat(&self) -> bool {
+        self.via_side_chat
     }
 
     /// The original Shell-to-Side Chat grant when entering via Side Chat.
@@ -2479,14 +2467,24 @@ fn select_gateway_provider_snapshot_records(
 fn select_gateway_provider_health_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
-    role: OriginalSavedLocalChatRole,
+    role: OriginalModelResolveRole,
+    via_side_chat: bool,
 ) -> Result<Option<SavedGatewayChildPins>> {
-    let (gateway, health) = if role.is_stream() {
-        (&GATEWAY_STREAM, &PROVIDER_HEALTH_STREAM)
-    } else {
-        (&GATEWAY_GENERATE, &PROVIDER_HEALTH_GENERATE)
+    let health = match role {
+        OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::Generate => {
+            &PROVIDER_HEALTH_GENERATE
+        }
+        OriginalModelResolveRole::QuoteStream | OriginalModelResolveRole::Stream => {
+            &PROVIDER_HEALTH_STREAM
+        }
     };
-    select_saved_gateway_registry_records(active, budget, role.is_side_chat(), gateway, health)
+    select_saved_gateway_registry_records(
+        active,
+        budget,
+        via_side_chat,
+        role.gateway_route(),
+        health,
+    )
 }
 
 fn select_saved_gateway_registry_records(
@@ -3534,6 +3532,20 @@ mod tests {
                 "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
                 "sha256:ab3b9f63a045331009f2ef9c397a8b365e7b61007111d2401bf9659ac3397d7a",
             ),
+            (
+                &PROVIDER_HEALTH_GENERATE,
+                GATEWAY_QUOTE_CALLER,
+                "authority-ref:efd1c3283d7868bb3f4b94d2c8115248ff0e123451c6c11b040ff8e87dd8d4c1",
+                "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+                "sha256:5c6f9da7c4f8f248a5223cf8ab714b18615b83fff1fe967d07072fbdb49b3718",
+            ),
+            (
+                &PROVIDER_HEALTH_STREAM,
+                GATEWAY_QUOTE_CALLER,
+                "authority-ref:c08a9d7e2639a0b17ff724f986e2da492318e5f295d73d685b09919853e19f9c",
+                "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+                "sha256:ab3b9f63a045331009f2ef9c397a8b365e7b61007111d2401bf9659ac3397d7a",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             add_record(
@@ -4063,7 +4075,7 @@ mod tests {
     const SIDE_CHAT_TURN_ROW: usize = 52;
     const SIDE_CHAT_SAVED_TURN_ROW: usize = 53;
     const GATEWAY_PROVIDER_SNAPSHOT_ROWS: std::ops::Range<usize> = 55..59;
-    const GATEWAY_PROVIDER_HEALTH_ROWS: [usize; 2] = [63, 64];
+    const GATEWAY_PROVIDER_HEALTH_ROWS: [usize; 4] = [65, 66, 63, 64];
 
     fn select_saved_local_chat(
         records: &Value,
@@ -4490,30 +4502,38 @@ mod tests {
 
     #[test]
     fn gateway_health_requires_each_saved_entry_and_its_exact_grant() {
-        let select = |fixture: &Value, role| {
+        use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
+
+        let select = |fixture: &Value, role, via_side_chat| {
             let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
             let [profile, lock, plan] = parse_records(fixture, &budget);
-            select_gateway_provider_health_records((&profile, &lock, &plan), &budget, role)
+            select_gateway_provider_health_records(
+                (&profile, &lock, &plan),
+                &budget,
+                role,
+                via_side_chat,
+            )
+        };
+        let gateway_row = |role| match role {
+            QuoteGenerate | QuoteStream => GATEWAY_QUOTE_ROW,
+            Generate => LOCAL_CHAT_GENERATE_ROWS[0],
+            Stream => LOCAL_CHAT_STREAM_ROWS[0],
         };
         let fixture = records();
-        for role in OriginalSavedLocalChatRole::ALL {
-            let (gateway, gateway_row, health) = if role.is_stream() {
-                (
-                    &GATEWAY_STREAM,
-                    LOCAL_CHAT_STREAM_ROWS[0],
-                    &PROVIDER_HEALTH_STREAM,
-                )
-            } else {
-                (
-                    &GATEWAY_GENERATE,
-                    LOCAL_CHAT_GENERATE_ROWS[0],
-                    &PROVIDER_HEALTH_GENERATE,
-                )
+        let roles = || {
+            [false, true].into_iter().flat_map(|via_side_chat| {
+                OriginalModelResolveRole::ALL.map(|role| (role, via_side_chat))
+            })
+        };
+        for (role, via_side_chat) in roles() {
+            let health = match role {
+                QuoteGenerate | Generate => &PROVIDER_HEALTH_GENERATE,
+                QuoteStream | Stream => &PROVIDER_HEALTH_STREAM,
             };
-            let health_row = GATEWAY_PROVIDER_HEALTH_ROWS[usize::from(role.is_stream())];
+            let health_row = GATEWAY_PROVIDER_HEALTH_ROWS[role.index()];
             let (side_chat, [turn, orchestration, gateway_pin, child]) =
-                select(&fixture, role).unwrap().unwrap();
-            assert_eq!(side_chat.is_some(), role.is_side_chat());
+                select(&fixture, role, via_side_chat).unwrap().unwrap();
+            assert_eq!(side_chat.is_some(), via_side_chat);
             let turn_caller = side_chat.as_ref().map_or(TURN_SHELL_CALLER, |pin| {
                 assert_eq!(pin.caller_function_id(), TURN_SHELL_CALLER);
                 assert_eq!(pin.function_id(), SIDE_CHAT_TURN.function);
@@ -4528,35 +4548,45 @@ mod tests {
                 gateway_pin.caller_function_id(),
                 orchestration.function_id()
             );
-            assert_eq!(gateway_pin.function_id(), gateway.function);
+            assert_eq!(gateway_pin.function_id(), role.gateway_route().function);
             assert_eq!(child.caller_function_id(), gateway_pin.function_id());
             assert_eq!(child.function_id(), health.function);
             assert_eq!(child.contract_id(), health.contract);
             assert_eq!(child.operation_id(), health.operation);
 
-            let entry_rows = if role.is_side_chat() {
+            let entry_rows = if via_side_chat {
                 &[SIDE_CHAT_TURN_ROW, SIDE_CHAT_SAVED_TURN_ROW][..]
             } else {
                 &[SAVED_TURN_SETTLEMENT_ROW][..]
             };
-            for row in
-                entry_rows
-                    .iter()
-                    .copied()
-                    .chain([SAVED_ORCHESTRATION_ROW, gateway_row, health_row])
-            {
+            for row in entry_rows.iter().copied().chain([
+                SAVED_ORCHESTRATION_ROW,
+                gateway_row(role),
+                health_row,
+            ]) {
                 let mut denied = fixture.clone();
                 denied["profile"]["requested_edges"][row]["authority_mode"] =
                     json!("interactive_only");
-                assert!(matches!(select(&denied, role), Err(Inconsistent(_))));
+                assert!(matches!(
+                    select(&denied, role, via_side_chat),
+                    Err(Inconsistent(_))
+                ));
                 denied["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
-                for candidate in OriginalSavedLocalChatRole::ALL {
+                for (candidate, candidate_side_chat) in roles() {
                     let denied_by_row = if entry_rows.contains(&row) {
-                        candidate.is_side_chat() == role.is_side_chat()
+                        candidate_side_chat == via_side_chat
                     } else {
-                        row == SAVED_ORCHESTRATION_ROW || candidate.is_stream() == role.is_stream()
+                        row == SAVED_ORCHESTRATION_ROW
+                            || row == gateway_row(candidate)
+                            || row == GATEWAY_PROVIDER_HEALTH_ROWS[candidate.index()]
                     };
-                    assert_eq!(select(&denied, candidate).unwrap().is_none(), denied_by_row);
+                    assert_eq!(
+                        select(&denied, candidate, candidate_side_chat)
+                            .unwrap()
+                            .is_none(),
+                        denied_by_row,
+                        "{candidate:?}, side chat {candidate_side_chat}, disabled row {row}"
+                    );
                 }
             }
         }
@@ -4567,8 +4597,10 @@ mod tests {
                 json!("interactive_only");
             no_raw_snapshot["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
         }
-        for role in OriginalSavedLocalChatRole::ALL {
-            assert!(select(&no_raw_snapshot, role).unwrap().is_some());
+        for (role, via_side_chat) in roles() {
+            assert!(select(&no_raw_snapshot, role, via_side_chat)
+                .unwrap()
+                .is_some());
         }
     }
 

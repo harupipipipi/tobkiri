@@ -1094,12 +1094,17 @@ fn deserialize_model_resolve_role<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    match String::deserialize(deserializer)?.as_str() {
-        "quote-generate" => Ok(OriginalModelResolveRole::QuoteGenerate),
-        "quote-stream" => Ok(OriginalModelResolveRole::QuoteStream),
-        "generate" => Ok(OriginalModelResolveRole::Generate),
-        "stream" => Ok(OriginalModelResolveRole::Stream),
-        _ => Err(de::Error::custom("unknown Model Resolve role")),
+    let role = String::deserialize(deserializer)?;
+    model_resolve_role(&role).ok_or_else(|| de::Error::custom("unknown Model Resolve role"))
+}
+
+fn model_resolve_role(role: &str) -> Option<OriginalModelResolveRole> {
+    match role {
+        "quote-generate" => Some(OriginalModelResolveRole::QuoteGenerate),
+        "quote-stream" => Some(OriginalModelResolveRole::QuoteStream),
+        "generate" => Some(OriginalModelResolveRole::Generate),
+        "stream" => Some(OriginalModelResolveRole::Stream),
+        _ => None,
     }
 }
 
@@ -1188,7 +1193,7 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
             });
         }
         let snapshot = |role| Ok(Self { role });
-        let (role, side_chat) = match wire.role.as_str() {
+        match wire.role.as_str() {
             "generate" => return snapshot(Adapter(OriginalSavedLocalChatRole::Generate)),
             "stream" => return snapshot(Adapter(OriginalSavedLocalChatRole::Stream)),
             "side-chat-generate" => {
@@ -1197,35 +1202,29 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
             "side-chat-stream" => {
                 return snapshot(Adapter(OriginalSavedLocalChatRole::SideChatStream))
             }
-            "gateway-generate" => (OriginalModelResolveRole::Generate, false),
-            "gateway-stream" => (OriginalModelResolveRole::Stream, false),
-            "gateway-health-generate" => {
-                return snapshot(GatewayHealth(OriginalSavedLocalChatRole::Generate))
-            }
-            "gateway-health-stream" => {
-                return snapshot(GatewayHealth(OriginalSavedLocalChatRole::Stream))
-            }
-            "side-chat-gateway-health-generate" => {
-                return snapshot(GatewayHealth(OriginalSavedLocalChatRole::SideChatGenerate))
-            }
-            "side-chat-gateway-health-stream" => {
-                return snapshot(GatewayHealth(OriginalSavedLocalChatRole::SideChatStream))
-            }
-            "gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, false),
-            "gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, false),
-            "side-chat-gateway-generate" => (OriginalModelResolveRole::Generate, true),
-            "side-chat-gateway-stream" => (OriginalModelResolveRole::Stream, true),
-            "side-chat-gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, true),
-            "side-chat-gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, true),
             "shell-settings" => return snapshot(ShellSettings),
             "model-save" => return snapshot(ModelSave),
             "model-search" => return snapshot(ModelSearch),
             "command-datasource" => return snapshot(CommandDatasource),
             "model-access-read" => return snapshot(ModelAccessRead),
             "model-access-catalog" => return snapshot(ModelAccessCatalog),
-            _ => return Err("unknown Provider Snapshot role or missing Workflow entry"),
-        };
-        snapshot(Gateway { role, side_chat })
+            _ => {}
+        }
+        let unknown_role = "unknown Provider Snapshot role or missing Workflow entry";
+        let (wire_role, side_chat) = wire
+            .role
+            .strip_prefix("side-chat-")
+            .map_or((wire.role.as_str(), false), |role| (role, true));
+        let gateway_role = wire_role.strip_prefix("gateway-").ok_or(unknown_role)?;
+        let (delivery, health) = gateway_role
+            .strip_prefix("health-")
+            .map_or((gateway_role, false), |role| (role, true));
+        let role = model_resolve_role(delivery).ok_or(unknown_role)?;
+        snapshot(if health {
+            GatewayHealth { role, side_chat }
+        } else {
+            Gateway { role, side_chat }
+        })
     }
 }
 
@@ -3289,20 +3288,16 @@ mod tests {
             ("quote-generate", OriginalModelResolveRole::QuoteGenerate),
             ("quote-stream", OriginalModelResolveRole::QuoteStream),
         ] {
-            assert_role(
-                &format!("gateway-{name}"),
-                Gateway {
-                    role,
-                    side_chat: false,
-                },
-            );
-            assert_role(
-                &format!("side-chat-gateway-{name}"),
-                Gateway {
-                    role,
-                    side_chat: true,
-                },
-            );
+            for (prefix, side_chat) in [("", false), ("side-chat-", true)] {
+                assert_role(
+                    &format!("{prefix}gateway-{name}"),
+                    Gateway { role, side_chat },
+                );
+                assert_role(
+                    &format!("{prefix}gateway-health-{name}"),
+                    GatewayHealth { role, side_chat },
+                );
+            }
         }
         assert_role("shell-settings", ShellSettings);
         assert_role("model-save", ModelSave);
@@ -3310,22 +3305,6 @@ mod tests {
         assert_role("command-datasource", CommandDatasource);
         assert_role("model-access-read", ModelAccessRead);
         assert_role("model-access-catalog", ModelAccessCatalog);
-        assert_role(
-            "gateway-health-generate",
-            GatewayHealth(OriginalSavedLocalChatRole::Generate),
-        );
-        assert_role(
-            "gateway-health-stream",
-            GatewayHealth(OriginalSavedLocalChatRole::Stream),
-        );
-        assert_role(
-            "side-chat-gateway-health-generate",
-            GatewayHealth(OriginalSavedLocalChatRole::SideChatGenerate),
-        );
-        assert_role(
-            "side-chat-gateway-health-stream",
-            GatewayHealth(OriginalSavedLocalChatRole::SideChatStream),
-        );
     }
 
     #[test]
@@ -3429,8 +3408,9 @@ mod tests {
             r#", "provider_snapshot":{"role":"quote-generate"}"#,
             r#", "provider_snapshot":{"role":"side-chat-quote-stream"}"#,
             r#", "provider_snapshot":{"role":"gateway-side-chat-stream"}"#,
-            r#", "provider_snapshot":{"role":"side-chat-gateway-health-quote-stream"}"#,
-            r#", "provider_snapshot":{"role":"gateway-health-quote-stream"}"#,
+            r#", "provider_snapshot":{"role":"side-chat-gateway-quote-health-stream"}"#,
+            r#", "provider_snapshot":{"role":"gateway-health-quote-reconcile"}"#,
+            r#", "provider_snapshot":{"role":"gateway-health-quote-stream","delivery_mode":"incremental"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-stream","entry":"run.advance"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-stream","profile_id":"elsewhere"}"#,
             r#", "provider_snapshot":{"role":"side-chat-gateway-health-stream","entry":"run.advance"}"#,

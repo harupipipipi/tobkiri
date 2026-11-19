@@ -1046,7 +1046,7 @@ async fn run(
                     )?;
                     revalidate()?;
                     let output = match role {
-                        OriginalProviderSnapshotRole::GatewayHealth(_) => {
+                        OriginalProviderSnapshotRole::GatewayHealth { .. } => {
                             inspection
                                 .read_legacy_provider_health(
                                     &pack,
@@ -2207,7 +2207,7 @@ fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool
         ShellSettings | ModelSave | ModelSearch | CommandDatasource => true,
         Adapter(_)
         | Gateway { .. }
-        | GatewayHealth(_)
+        | GatewayHealth { .. }
         | Workflow { .. }
         | ModelAccessRead
         | ModelAccessCatalog => false,
@@ -2803,7 +2803,14 @@ mod tests {
             .chain(
                 [Generate, Stream, QuoteGenerate, QuoteStream]
                     .into_iter()
-                    .flat_map(|role| [false, true].map(|side_chat| Gateway { role, side_chat })),
+                    .flat_map(|role| {
+                        [false, true].into_iter().flat_map(move |side_chat| {
+                            [
+                                Gateway { role, side_chat },
+                                GatewayHealth { role, side_chat },
+                            ]
+                        })
+                    }),
             )
             .chain(
                 [
@@ -2828,7 +2835,6 @@ mod tests {
                 }),
             )
             .chain([ModelAccessRead, ModelAccessCatalog])
-            .chain(adapter_roles.map(GatewayHealth))
             .map(|role| (role, false))
             .chain(
                 [ShellSettings, ModelSave, ModelSearch, CommandDatasource].map(|role| (role, true)),

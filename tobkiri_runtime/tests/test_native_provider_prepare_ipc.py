@@ -2039,12 +2039,20 @@ def test_provider_snapshot_receives_the_original_owner_reply(
 
 
 @pytest.mark.parametrize("delivery", ("generate", "stream"))
-@pytest.mark.parametrize(("side_chat", "version"), ((False, "9"), (False, "10"), (True, "10")))
+@pytest.mark.parametrize(
+    ("side_chat", "quote", "version"),
+    [
+        (False, False, 9), (False, False, 10), (False, False, 11),
+        (True, False, 10), (True, False, 11),
+        (False, True, 11), (True, True, 11),
+    ],
+)
 def test_gateway_provider_health_uses_the_opaque_read_frame(
-    monkeypatch: pytest.MonkeyPatch, delivery: str, side_chat: bool, version: str,
+    monkeypatch: pytest.MonkeyPatch, delivery: str, side_chat: bool, quote: bool, version: int,
 ) -> None:
     borrow = _Borrow()
-    role = ipc.GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, delivery]
+    kind = f"quote-{delivery}" if quote else delivery
+    role = ipc.GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, kind]
     request = ipc.NativeProviderSnapshotRequest(
         borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
         borrow.assert_current, role,
@@ -2064,7 +2072,7 @@ def test_gateway_provider_health_uses_the_opaque_read_frame(
             "identity", "security_epoch", "runtime_instance", "deadline_ns", "provider_snapshot",
         }
         prefix = "side-chat-" if side_chat else ""
-        assert start["provider_snapshot"] == {"role": f"{prefix}gateway-health-{delivery}"}
+        assert start["provider_snapshot"] == {"role": f"{prefix}gateway-health-{kind}"}
         assert start["identity"]["profile_id"] == borrow.context.profile_id
         _send(peer, ipc._CHECK)
         assert _receive(peer) == (ipc._LIVE, b"")
@@ -2072,26 +2080,24 @@ def test_gateway_provider_health_uses_the_opaque_read_frame(
         assert peer.recv(1) == b""
 
     with _served(monkeypatch, serve):
-        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "8")
-        reader = ipc.capture_launcher_provider_snapshot_reader()
-        assert reader is not None and reader.supports_model_access_projection
-        assert not reader.supports_gateway_health and not reader.supports_side_chat_gateway_health
-        with pytest.raises(ipc.NativeProviderPrepareUnavailable):
-            reader(request)
-        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "11")
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "12")
         assert ipc.capture_launcher_provider_snapshot_reader() is None
-        if side_chat:
-            monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "9")
+        minimum = 11 if quote else 10 if side_chat else 9
+        for older in range(8, minimum):
+            monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, str(older))
             reader = ipc.capture_launcher_provider_snapshot_reader()
-            assert reader is not None and reader.supports_gateway_health
-            assert not reader.supports_side_chat_gateway_health
+            assert reader is not None and reader.supports_model_access_projection
+            assert reader.supports_gateway_health is (older >= 9)
+            assert reader.supports_side_chat_gateway_health is (older >= 10)
+            assert not reader.supports_gateway_quote_health
             with pytest.raises(ipc.NativeProviderPrepareUnavailable):
                 reader(request)
-        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, version)
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, str(version))
         reader = ipc.capture_launcher_provider_snapshot_reader()
         assert reader is not None and reader.supports_gateway_health
         assert reader.supports_model_access_projection
-        assert reader.supports_side_chat_gateway_health is (version == "10")
+        assert reader.supports_side_chat_gateway_health is (version >= 10)
+        assert reader.supports_gateway_quote_health is (version == 11)
         assert reader(request) == expected
 
 
@@ -2099,6 +2105,7 @@ def test_gateway_provider_health_uses_the_opaque_read_frame(
     "role,result",
     [
         ("gateway-generate", {"providers": []}),
+        ("side-chat-gateway-quote-stream", {"providers": []}),
         ("gateway-health-generate", {
             "version": "rumi.provider-registry.store.v1",
             "profile_id": "defaults", "revision": 0, "providers": [],
@@ -2107,6 +2114,10 @@ def test_gateway_provider_health_uses_the_opaque_read_frame(
             {"provider_instance_id": "fixture", "status": "available",
              "observed_at": True, "verified": True},
         ]}),
+        ("gateway-health-quote-generate", {
+            "version": "rumi.provider-registry.store.v1",
+            "profile_id": "defaults", "revision": 0, "providers": [],
+        }),
     ],
 )
 def test_gateway_health_rejects_results_outside_the_owner_shape(role, result) -> None:

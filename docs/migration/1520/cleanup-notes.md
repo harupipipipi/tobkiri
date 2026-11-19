@@ -6262,7 +6262,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - [実1BのCI](https://github.com/harupipipipi/tobkiri/actions/runs/44611137608) は前の
   `d73f334bf` で成功した。認証付きのGemma 3 1Bは37個の差分を返し、完了したターンを保存した。
   次のターンをキャンセルするとFlowは61 msで終了し、その後2.350秒でllama.cppのスロットが
-  空いた。保存済みのRegistryから同じモデルを選ぶ試験も通過した。
+  空いた。保存済みのRegistryから同じモデルを選び、鍵なしのllama.cppへ接続する試験も通過した。
 - Gatewayはルート選択時に、Registryのスナップショットに加えて独立した署名済みポートで
   Providerの利用可否を読む。Wasmの `local.provider-registry.legacy-health@1.0` を追加し、
   既存Rustの `Registry::health` を、Coreが選んだProfileの物理Registryに接続した。
@@ -6289,6 +6289,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rustの経路選択52件、PythonのIPC 627件、署名済みHTTPの通常チャットとSide Chatが通過した。
   HTTPではネイティブ呼び出しを差し替え、両方の配信方式、権限拒否、親の終了後の拒否と
   互換処理を比較した。インストールしたLauncherでの実呼び出しは配布物で確認する。
+- 通常チャットとSide Chatのルート見積もりもWasmのHealthポートにつないだ。元のProfileは
+  `ai-gateway.route-quote` に `.generate` と `.stream` のヘルス参照を個別に認可する。
+  起動時は会話入口、Gateway機能、Health処理を組み合わせて照合し、対応する証明があれば
+  IPCレベル11を通知する。Hostは `buffered` または `incremental` の実リクエストから
+  見積もり方式を決め、親を保持した状態で合致する読み取りを実行する。Registry一覧とHealthは
+  同じPackの独立したWasmポートを使い、各操作の署名とLeaseを照合する。
+  Rustの経路選択52件とPythonのIPC 637件が通過。署名済みHTTPの4件では、ネイティブ呼び出しを
+  差し替え、4種の見積もり、反対側の配信方式を元の所有者で処理すること、親の終了後の拒否、
+  従来の互換経路を確認した。Launcherのソケットとバンドルを含む試験は配布CIで行う。
+- PythonのHealth所有者を廃止するには、WorkflowのTextとMessages、
+  `conversation.turn.v1/complete` 経由のGenerate、権限レビューのQuoteとGenerateにも対応が必要。
+  Workflowの同梱Profileは `run.advance` と `run.step.resume` からTextまたはMessagesに入り、
+  各Gatewayが自分の `.generate` のヘルス権限を使う。既存のWorkflowのRegistry一覧から
+  入口の照合を共用し、Healthの認可と応答は専用ポートで検証する。設定画面の旧
+  `/api/ui/provider-health` はv3互換契約に属するため、元の投影と呼び出し経路を別途照合する。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 

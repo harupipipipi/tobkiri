@@ -222,8 +222,8 @@ impl VerifiedRegistryLaunch {
     )> {
         let source = self.provider_snapshot.as_ref()?;
         let bundle = match role {
-            OriginalProviderSnapshotRole::GatewayHealth(role) => {
-                source.gateway_health[role.index()].as_ref()?
+            OriginalProviderSnapshotRole::GatewayHealth { role, side_chat } => {
+                source.gateway_health[usize::from(side_chat)][role.index()].as_ref()?
             }
             _ if !source.raw_snapshot_declared => return None,
             OriginalProviderSnapshotRole::Adapter(role) => {
@@ -799,7 +799,7 @@ struct VerifiedProviderAdapterSource {
 struct VerifiedProviderSnapshotSource {
     raw_snapshot_declared: bool,
     gateway: [Option<VerifiedGatewayProviderSnapshotEntry>; 2],
-    gateway_health: [Option<VerifiedOrdinarySavedBundle>; OriginalSavedLocalChatRole::ALL.len()],
+    gateway_health: [[Option<VerifiedOrdinarySavedBundle>; OriginalModelResolveRole::ALL.len()]; 2],
     workflow: VerifiedWorkflowProviderSnapshot,
     shell_settings: Option<VerifiedOrdinarySavedBundle>,
     model_save: Option<VerifiedOrdinarySavedBundle>,
@@ -946,7 +946,7 @@ impl VerifiedRegistryLaunch {
         let mut source = VerifiedProviderSnapshotSource {
             raw_snapshot_declared: false,
             gateway: [None, None],
-            gateway_health: [const { None }; OriginalSavedLocalChatRole::ALL.len()],
+            gateway_health: [const { [const { None }; OriginalModelResolveRole::ALL.len()] }; 2],
             workflow: VerifiedWorkflowProviderSnapshot::default(),
             shell_settings: None,
             model_save: None,
@@ -961,10 +961,10 @@ impl VerifiedRegistryLaunch {
         };
         for role in roles {
             source.raw_snapshot_declared |=
-                !matches!(role, OriginalProviderSnapshotRole::GatewayHealth(_));
+                !matches!(role, OriginalProviderSnapshotRole::GatewayHealth { .. });
             let bundle = match role {
-                OriginalProviderSnapshotRole::GatewayHealth(role) => {
-                    &mut source.gateway_health[role.index()]
+                OriginalProviderSnapshotRole::GatewayHealth { role, side_chat } => {
+                    &mut source.gateway_health[usize::from(side_chat)][role.index()]
                 }
                 OriginalProviderSnapshotRole::Adapter(role) => {
                     proof.add_test_saved_local_chat_role(role);
@@ -978,11 +978,7 @@ impl VerifiedRegistryLaunch {
                             roles: [None, None, None, None],
                         }
                     });
-                    let slot = OriginalModelResolveRole::ALL
-                        .iter()
-                        .position(|candidate| *candidate == role)
-                        .expect("Gateway role must have a fixture slot");
-                    entry.roles[slot] = Some((
+                    entry.roles[role.index()] = Some((
                         role,
                         std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
                     ));
@@ -1954,12 +1950,21 @@ impl LaunchActivationObserver<'_> {
             verify_gateway_provider_snapshot_entry(inspection, active, via_side_chat, checkpoint)
         });
         let gateway = [gateway_direct?, gateway_side_chat?];
-        let mut gateway_health_selections = [const { None }; OriginalSavedLocalChatRole::ALL.len()];
-        for role in OriginalSavedLocalChatRole::ALL {
-            gateway_health_selections[role.index()] =
-                OriginalGatewayProviderHealthChoice::select(active, budget, role)?;
+        let mut gateway_health_selections =
+            [const { [const { None }; OriginalModelResolveRole::ALL.len()] }; 2];
+        for (side_chat, selections) in [false, true]
+            .into_iter()
+            .zip(&mut gateway_health_selections)
+        {
+            for role in OriginalModelResolveRole::ALL {
+                selections[role.index()] =
+                    OriginalGatewayProviderHealthChoice::select(active, budget, role, side_chat)?;
+            }
         }
-        let has_health_grants = gateway_health_selections.iter().any(Option::is_some);
+        let has_health_grants = gateway_health_selections
+            .iter()
+            .flatten()
+            .any(Option::is_some);
         let has_snapshot_grants = local_chat.is_some()
             || gateway.iter().any(Option::is_some)
             || workflow.callers.iter().any(Option::is_some)
@@ -1999,12 +2004,14 @@ impl LaunchActivationObserver<'_> {
                         && observe_provider_snapshot_declaration(&pack)
                             .map_err(io::Error::other)?;
                     let mut gateway_health =
-                        [const { None }; OriginalSavedLocalChatRole::ALL.len()];
+                        [const { [const { None }; OriginalModelResolveRole::ALL.len()] }; 2];
                     if has_health_grants
                         && observe_provider_health_declaration(&pack).map_err(io::Error::other)?
                     {
-                        for (entry, choice) in
-                            gateway_health.iter_mut().zip(gateway_health_selections)
+                        for (entry, choice) in gateway_health
+                            .iter_mut()
+                            .flatten()
+                            .zip(gateway_health_selections.into_iter().flatten())
                         {
                             let Some(choice) = choice else {
                                 continue;
@@ -2018,27 +2025,28 @@ impl LaunchActivationObserver<'_> {
                             *entry = Some(locked.verify(&checkpoint).map_err(io::Error::other)?);
                         }
                     }
-                    let snapshot =
-                        if raw_snapshot_declared || gateway_health.iter().any(Option::is_some) {
-                            Some(VerifiedProviderSnapshotSource {
-                                raw_snapshot_declared,
-                                gateway,
-                                gateway_health,
-                                workflow,
-                                shell_settings,
-                                model_save: model_save_snapshot,
-                                model_search,
-                                command_datasource,
-                                model_access_read,
-                                model_access_catalog,
-                                model_access_projection_declared,
-                                archive_sha256: receipt.archive_sha256().to_owned(),
-                                archive_bytes: receipt.archive_bytes(),
-                                manifest_sha256: receipt.manifest_sha256().to_owned(),
-                            })
-                        } else {
-                            None
-                        };
+                    let snapshot = if raw_snapshot_declared
+                        || gateway_health.iter().flatten().any(Option::is_some)
+                    {
+                        Some(VerifiedProviderSnapshotSource {
+                            raw_snapshot_declared,
+                            gateway,
+                            gateway_health,
+                            workflow,
+                            shell_settings,
+                            model_save: model_save_snapshot,
+                            model_search,
+                            command_datasource,
+                            model_access_read,
+                            model_access_catalog,
+                            model_access_projection_declared,
+                            archive_sha256: receipt.archive_sha256().to_owned(),
+                            archive_bytes: receipt.archive_bytes(),
+                            manifest_sha256: receipt.manifest_sha256().to_owned(),
+                        })
+                    } else {
+                        None
+                    };
                     Ok((prepare, snapshot))
                 },
                 |receipt, input| {
@@ -2441,7 +2449,7 @@ pub(super) fn reacquire_provider_snapshot_pack(
             )?;
             let pack = verify_registry_archive(inspection, receipt, input)?;
             match role {
-                OriginalProviderSnapshotRole::GatewayHealth(_) => {
+                OriginalProviderSnapshotRole::GatewayHealth { .. } => {
                     verify_legacy_provider_health_declaration(&pack).map_err(io::Error::other)?;
                 }
                 _ => {
@@ -4548,18 +4556,22 @@ mod tests {
         );
         assert!(older_pack.permits_provider_snapshot(gateway));
 
-        for role in OriginalSavedLocalChatRole::ALL {
-            assert!(!older_pack.permits_provider_snapshot(GatewayHealth(role)));
-            let health = GatewayHealth(role);
+        let health_roles = || {
+            [false, true].into_iter().flat_map(|side_chat| {
+                OriginalModelResolveRole::ALL.map(|role| GatewayHealth { role, side_chat })
+            })
+        };
+        for health in health_roles() {
+            assert!(!older_pack.permits_provider_snapshot(health));
             let mut proof = VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
                 identity.clone(),
                 "catalog",
                 [health, gateway, Generate.into()],
             );
-            for candidate in OriginalSavedLocalChatRole::ALL {
+            for candidate in health_roles() {
                 assert_eq!(
-                    proof.permits_provider_snapshot(GatewayHealth(candidate)),
-                    candidate == role,
+                    proof.permits_provider_snapshot(candidate),
+                    candidate == health,
                 );
             }
             assert!(proof.permits_provider_snapshot(gateway));

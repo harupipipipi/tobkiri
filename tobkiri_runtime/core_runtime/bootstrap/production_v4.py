@@ -1953,7 +1953,6 @@ def capture_production_dispatch(
         ConversationAppendCaller,
         ConversationGetCaller,
         ConversationCompletePhase,
-        GatewayProviderHealthRole,
         ModelResolveRole,
         ModelAccessProviderSnapshotRole,
         NativeAiRoutingFailure,
@@ -2775,7 +2774,7 @@ def capture_production_dispatch(
     ] = {}
     gateway_health_routes: dict[
         tuple[str, str],
-        list[tuple[GatewayProviderHealthRole, bool, _CapturedPlanEdge, tuple[_CapturedPlanEdge, ...]]],
+        list[tuple[ModelResolveRole, bool, _CapturedPlanEdge, tuple[_CapturedPlanEdge, ...]]],
     ] = {}
     supports_gateway_snapshot = (
         getattr(native_provider_snapshot_reader, "supports_gateway", False) is True
@@ -2787,6 +2786,9 @@ def capture_production_dispatch(
         getattr(native_provider_snapshot_reader, "supports_side_chat_gateway_health", False)
         is True
     )
+    supports_gateway_quote_health = (
+        getattr(native_provider_snapshot_reader, "supports_gateway_quote_health", False) is True
+    )
 
     def capture_gateway_snapshot_routes(
         turn: _CapturedPlanEdge,
@@ -2794,7 +2796,7 @@ def capture_production_dispatch(
         side_chat: _CapturedPlanEdge | None = None,
     ) -> None:
         is_side_chat = side_chat is not None
-        supports_health = (
+        supports_direct_health = (
             supports_side_chat_gateway_health if is_side_chat else supports_gateway_health
         )
         for role, contract, gateway_kind, call_kind in gateway_roles:
@@ -2818,7 +2820,11 @@ def capture_production_dispatch(
                     ).append((
                         role, is_side_chat, owner, parents,
                     ))
-            if supports_health and role in ("generate", "stream"):
+            supports_health = (
+                supports_gateway_quote_health if role in ("quote-generate", "quote-stream")
+                else supports_direct_health
+            )
+            if supports_health:
                 operation = f"{_PROVIDER_HEALTH_OPERATION}.{call_kind}"
                 health_owner = select_original_chat_edge(
                     gateway_callers, "rumi_provider_registry_pack", _PROVIDER_HEALTH_CONTRACT,
@@ -2828,17 +2834,17 @@ def capture_production_dispatch(
                     gateway_health_routes.setdefault(
                         (gateway.target.principal_id, operation), [],
                     ).append((
-                        GATEWAY_PROVIDER_HEALTH_ROLES[is_side_chat, role],
-                        is_side_chat, health_owner, parents,
+                        role, is_side_chat, health_owner, parents,
                     ))
 
     if (
-        (supports_gateway_snapshot or supports_gateway_health)
+        (supports_gateway_snapshot or supports_gateway_health or supports_gateway_quote_health)
         and ordinary_turn_edge is not None and ordinary_orchestration_edge is not None
     ):
         capture_gateway_snapshot_routes(ordinary_turn_edge, ordinary_orchestration_edge)
     if (
-        (supports_gateway_snapshot or supports_side_chat_gateway_health)
+        (supports_gateway_snapshot or supports_side_chat_gateway_health
+         or supports_gateway_quote_health)
         and side_chat_edge is not None and side_chat_turn_edge is not None
         and side_chat_orchestration_edge is not None
     ):
@@ -5489,19 +5495,29 @@ def capture_production_dispatch(
         context: RequestContext,
         parent: CapturedInvocationScopeV4 | None,
         operation_id: str,
-    ) -> tuple[GatewayProviderHealthRole, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
+    ) -> tuple[
+        ModelResolveRole, bool, _CapturedPlanEdge, tuple[RequestEnvelope, ...],
+    ] | None:
         for role, side_chat, edge, parents in gateway_health_routes.get(
             (context.caller_principal.value, operation_id), (),
         ):
             ancestors = match_captured_ancestors(parent, parents)
             if ancestors is None:
                 continue
+            if not matches_gateway_health_delivery(role, ancestors[0]):
+                continue
             if side_chat and not is_original_side_chat_send(
                 ancestors[-2], ancestors[-1], context.profile_id,
             ):
                 continue
-            return role, edge, ancestors
+            return role, side_chat, edge, ancestors
         return None
+
+    def matches_gateway_health_delivery(role: ModelResolveRole, gateway: RequestEnvelope) -> bool:
+        return (
+            role not in ("quote-generate", "quote-stream")
+            or gateway_projection_role("quote-generate", gateway.payload) == role
+        )
 
     def native_provider_snapshot_source(
         context: RequestContext,
@@ -5544,8 +5560,8 @@ def capture_production_dispatch(
         if not payload:
             health = gateway_health_lineage(context, parent, operation_id)
             if health is not None:
-                health_role, health_edge, _ = health
-                return health_role, health_edge, parent, None
+                health_role, side_chat, health_edge, _ = health
+                return GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, health_role], health_edge, parent, None
 
         for role, side_chat, edge, parents in gateway_snapshot_routes.get(
             (context.caller_principal.value, operation_id), (),
@@ -5627,12 +5643,13 @@ def capture_production_dispatch(
             raise AuthorityDenied("native Provider snapshot lineage changed")
 
         ancestors = None
+        health_role = None
         if role in GATEWAY_PROVIDER_HEALTH_ROLES.values():
             health = gateway_health_lineage(context, parent, envelope.operation_id)
             if health is None or envelope.payload:
                 raise AuthorityDenied("native Provider health lineage changed")
-            health_role, health_edge, ancestors = health
-            if role != health_role or edge is not health_edge:
+            health_role, side_chat, health_edge, ancestors = health
+            if role != GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, health_role] or edge is not health_edge:
                 raise AuthorityDenied("native Provider health lineage changed")
             chain = (envelope, *ancestors)
             if (
@@ -5652,6 +5669,10 @@ def capture_production_dispatch(
             invocation.assert_current()
             if ancestors is not None:
                 require_retained_ancestors(envelope, ancestors)
+                if health_role is None or not matches_gateway_health_delivery(
+                    health_role, ancestors[0],
+                ):
+                    raise AuthorityDenied("native Provider health delivery changed")
             if (
                 native_provider_runtime is not pinned
                 or parent_invocation_scopes.lookup(context.caller_session_id) is not parent

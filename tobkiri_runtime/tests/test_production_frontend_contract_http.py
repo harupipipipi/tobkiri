@@ -10349,6 +10349,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     health_reads: list[ipc.NativeProviderSnapshotRequest] = []
     health_results: list[tuple[RequestEnvelope, Mapping[str, object]]] = []
     rejected_health_roles: list[str] = []
+    quote_health_probes: set[str] = set()
+    probing_quote_health = False
     native_health_result = {"providers": [{
         "provider_instance_id": provider_id, "status": "available",
         "observed_at": time.time() + 0.125, "verified": True,
@@ -10364,22 +10366,30 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         session: V4DispatchSession, contract: str, operation: str,
         payload: Mapping[str, object], **kwargs: object,
     ) -> Mapping[str, object]:
+        nonlocal probing_quote_health
         if (
             side_chat and role == "generate" and (contract, operation) == READINESS
             and payload.get("delivery_mode") == "incremental"
         ):
             return {"ready": False, "model_profile_id": model_profile_id}
-        if (
-            native_policy and contract == HEALTH_CONTRACT
-            and gateway_calls[-1].operation_id == f"rumi_ai_gateway_pack.ai-gateway.{role}"
-        ):
+        if native_policy and contract == HEALTH_CONTRACT and gateway_calls:
             wrong = (
-                HEALTH_STREAM_OPERATION if role == "generate" else HEALTH_GENERATE_OPERATION
+                HEALTH_STREAM_OPERATION if operation == HEALTH_GENERATE_OPERATION
+                else HEALTH_GENERATE_OPERATION
             )
-            try:
-                invoke_provider(session, contract, wrong, payload, **kwargs)
-            except AuthorityDenied:
-                rejected_health_roles.append(wrong)
+            gateway = gateway_calls[-1]
+            if gateway.operation_id == QUOTE and outcome == "success":
+                probing_quote_health = True
+                try:
+                    # Both health operations have grants for this quote caller.
+                    invoke_provider(session, contract, wrong, payload, **kwargs)
+                finally:
+                    probing_quote_health = False
+            elif gateway.operation_id == f"rumi_ai_gateway_pack.ai-gateway.{role}":
+                try:
+                    invoke_provider(session, contract, wrong, payload, **kwargs)
+                except AuthorityDenied:
+                    rejected_health_roles.append(wrong)
         return invoke_provider(session, contract, operation, payload, **kwargs)
 
     def connect(
@@ -10399,28 +10409,34 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         try:
             if request.role in ipc.GATEWAY_PROVIDER_HEALTH_ROLES.values():
                 owner, caller = health_dispatches[-1]
+                is_quote = caller.operation_id == QUOTE
+                delivery = (
+                    "stream" if caller.payload.get("delivery_mode") == "incremental" else "generate"
+                ) if is_quote else role
+                health_role = f"quote-{delivery}" if is_quote else delivery
                 assert owner.contract_id == HEALTH_CONTRACT and owner.payload == {}
                 assert owner.operation_id == {
                     "generate": HEALTH_GENERATE_OPERATION, "stream": HEALTH_STREAM_OPERATION,
-                }[role]
-                assert caller.operation_id == f"rumi_ai_gateway_pack.ai-gateway.{role}"
-                assert request.role == ipc.GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, role]
+                }[delivery]
+                assert is_quote or caller.operation_id == f"rumi_ai_gateway_pack.ai-gateway.{role}"
+                assert request.role == ipc.GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, health_role]
+                assert owner.context.request_id not in quote_health_probes
                 assert request.context is owner.context
                 assert request.runtime_instance == server._native_provider_prepare_instance
                 assert request.deadline_monotonic == owner.deadline_monotonic
-                turn, orchestration, gateway = parents[-3:]
+                turn, orchestration = parents[-2:] if is_quote else parents[-3:-1]
                 assert turn.operation_id == "rumi_turn_runtime_pack.turn-saved"
                 assert orchestration.operation_id == "saved_complete"
-                assert gateway is caller
+                assert is_quote or parents[-1] is caller
                 if side_chat:
                     side, *_ = parents
                     assert side.operation_id == "tobkiri_side_chat_pack.side-chat-turn"
                     assert side.payload["operation"] == "send"
                     assert side.payload["turn_id"] == turn.payload["request"]["turn_id"]
                     assert side.payload["conversation_id"] == turn.payload["request"]["conversation_id"]
-                    chain = (side, turn, orchestration, gateway, owner)
+                    chain = (side, turn, orchestration, caller, owner)
                 else:
-                    chain = (turn, orchestration, gateway, owner)
+                    chain = (turn, orchestration, caller, owner)
                 assert chain[-2] is caller
                 assert len({item.lease.token for item in chain}) == len(chain)
                 assert owner.resource_reservation_id is not None
@@ -10448,7 +10464,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                 health_reads.append(request)
                 if outcome == "legacy-denied":
                     raise ipc.NativeProviderRegistryRequiresLegacyRead()
-                if outcome == "denied":
+                if outcome == "denied" and not is_quote:
                     raise ipc._ProtocolError("native Provider preparation failed (denied)")
                 return native_health_result
             owner = registry_dispatches[-1]
@@ -10487,6 +10503,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     read_snapshot.supports_gateway = True
     read_snapshot.supports_gateway_health = True
     read_snapshot.supports_side_chat_gateway_health = side_chat
+    read_snapshot.supports_gateway_quote_health = True
 
     def checked_execute(
         request: ipc.NativeSavedLocalChatRequest,
@@ -10667,6 +10684,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                 registry_dispatches.append(envelope)
             if envelope.contract_id == HEALTH_CONTRACT:
                 health_dispatches.append((envelope, gateway_calls[-1]))
+                if probing_quote_health:
+                    quote_health_probes.add(envelope.context.request_id)
             value = dispatch(backend, envelope, *args, **kwargs)
             if adapter:
                 adapter_results.append(value)
@@ -10750,6 +10769,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             health_reads.clear()
             health_results.clear()
             rejected_health_roles.clear()
+            quote_health_probes.clear()
             native_calls.clear()
             permitted_posts.clear()
             turn_id = f"{role}-{outcome}"
@@ -10804,27 +10824,47 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             ]
             quote_health = [
                 owner for owner, caller in health_dispatches if caller.operation_id == QUOTE
+                and owner.context.request_id not in quote_health_probes
             ]
-            assert len(matching_health) == 1 and quote_health, result
+            deliveries = ["generate", "stream"] if role == "stream" else ["generate"]
+            assert len(matching_health) == 1 and len(quote_health) == len(deliveries), result
             if native_policy:
-                borrowed, = health_reads
-                assert borrowed.context is matching_health[0].context
+                assert [borrowed.role for borrowed in health_reads] == [
+                    *(ipc.GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, f"quote-{delivery}"]
+                      for delivery in deliveries),
+                    ipc.GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, role],
+                ]
+                assert [borrowed.context for borrowed in health_reads] == [
+                    owner.context for owner in (*quote_health, *matching_health)
+                ]
+                assert not {item.context.request_id for item in health_reads}.intersection(
+                    item.context.request_id for item in gateway_snapshot_reads
+                )
                 assert rejected_health_roles == [
                     HEALTH_STREAM_OPERATION if role == "generate" else HEALTH_GENERATE_OPERATION
                 ]
-                with pytest.raises((AuthorityDenied, PermissionError)):
-                    borrowed.assert_current()
+                assert [
+                    owner.operation_id for owner, _ in health_dispatches
+                    if owner.context.request_id in quote_health_probes
+                ] == ([
+                    HEALTH_STREAM_OPERATION if delivery == "generate" else HEALTH_GENERATE_OPERATION
+                    for delivery in deliveries
+                ] if outcome == "success" else [])
+                for borrowed in health_reads:
+                    with pytest.raises((AuthorityDenied, PermissionError)):
+                        borrowed.assert_current()
             else:
-                assert not health_reads and not rejected_health_roles
+                assert not health_reads and not rejected_health_roles and not quote_health_probes
             legacy_health = providers.health()
-            if native_policy and outcome == "denied":
-                assert health_results == [(owner, legacy_health) for owner in quote_health]
-            else:
-                assert health_results == [
-                    *((owner, legacy_health) for owner in quote_health),
-                    (matching_health[0], native_health_result
-                     if native_policy and outcome != "legacy-denied" else legacy_health),
-                ]
+            assert health_results == [
+                (
+                    owner,
+                    native_health_result if native_policy and outcome != "legacy-denied"
+                    and owner.context.request_id not in quote_health_probes else legacy_health,
+                )
+                for owner, caller in health_dispatches
+                if not (native_policy and outcome == "denied" and caller.operation_id != QUOTE)
+            ]
             expected_native_calls = 2 if outcome == "legacy-denied" else 1
             assert len(native_calls) == expected_native_calls, result
             assert len(adapter_calls) == 1, result
