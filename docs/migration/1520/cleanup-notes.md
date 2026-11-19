@@ -6209,10 +6209,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   macOS の実ソケットと配布用 Wasm では、署名済み Workflow からの全6読み取りが元の
   Registry 応答と一致した。追加した2読み取りは1.49秒（テキスト生成）と1.24秒（Messages API）。
   Launcher のプロセス管理と外部 Provider への通信には試験用の実装を使用した。
-- 次は設定画面の Model Access の `model-access-read` と `model-access-catalog` を移す。
-  両方とも `rumi_provider_registry_pack/runtime/model_access_resource.py` が同じ Profile の
-  Registry を直接読む。カタログの取得後に読み直して、途中の削除・変更を拒否する。
-  既存のカタログ用の個別認可と、接続 ID・検索フィルター・公開応答の形式を保つ。
+- `b1aa43d94` と `a41cdbca1` は、設定画面の Model Access の `model-access-read` と
+  `model-access-catalog` が行う物理 Registry 読み取りを Rust＋Wasm へ移した。
+  元の Shell の各署名済み Grant を別々に検証する。カタログ取得の前後の2回も同じ
+  Broker Lease と期限で読み、途中の削除や変更は拒否する。カタログの取得は元の個別認可を使う。
+  `12207e06f` は Gateway、Adapter、Workflow と設定の Registry 経路選択を既存の照合に集約した。
+- 関連91件、Rust の IPC・ジョブ・サービス92件と追加の署名選択・起動証明2件が通過した。
+  macOS の実ソケットと配布用 Wasm では、表示とカタログ取得前後の3読み取りが元の応答と一致した。
+  各読み取りは0.34〜0.36秒で、取得中の削除に対する拒否も確認した。プロセス管理と外部
+  カタログ通信には試験用の実装を使った。
+- Model Access の公開応答の生成と検索フィルターの正規化を Rust＋Wasm へつなぐ作業が残る。
+  `rumi_provider_registry_pack/runtime/model_access_presentation.py` のポリシーとカタログの投影は、
+  `local.provider-model-access-rust` のポリシー検証・正規化を共用できる候補。
+  接続 ID、公式カタログの判定、フィルター、別 Provider の結果と資格情報を除く公開形式を維持する。
   他の旧経路も移植と検証を終えてから、Python の共通読み取りを廃止する。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
