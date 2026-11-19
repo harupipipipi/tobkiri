@@ -197,6 +197,19 @@ static PROVIDER_READ_STREAM: Route = Route {
     ..PROVIDER_READ
 };
 
+static PROVIDER_HEALTH_GENERATE: Route = Route {
+    function: "rumi_provider_registry_pack.provider-registry.health",
+    contract: "tobkiri.resource.ai.provider.health.v1",
+    operation: "rumi_provider_registry_pack.provider-registry-health.generate",
+    variant: "rumi_provider_registry_pack.provider-registry.health.python",
+    ..PROVIDER_READ
+};
+
+static PROVIDER_HEALTH_STREAM: Route = Route {
+    operation: "rumi_provider_registry_pack.provider-registry-health.stream",
+    ..PROVIDER_HEALTH_GENERATE
+};
+
 static MODEL_ACCESS_READ: Route = Route {
     function: "rumi_provider_registry_pack.model-access.read",
     operation: "rumi_provider_registry_pack.model-access-read",
@@ -1530,7 +1543,7 @@ impl OriginalWorkflowSnapshotEntry {
     }
 }
 
-/// The exact original caller of a raw or projected Provider Registry snapshot.
+/// The exact original caller of a read-only Provider Registry operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalProviderSnapshotRole {
     /// The Provider Adapter owns this child grant on the selected saved chain.
@@ -1542,6 +1555,8 @@ pub enum OriginalProviderSnapshotRole {
         /// Whether the selected Shell enters Saved Turn through Side Chat.
         side_chat: bool,
     },
+    /// The ordinary saved Gateway's own Provider Registry health grant.
+    GatewayHealth(OriginalSavedLocalChatRole),
     /// The Workflow attempt entry and its exact raw Registry caller.
     Workflow {
         /// The Gateway or provider adapter with its own Registry grant.
@@ -1652,6 +1667,36 @@ impl<'a> OriginalGatewayProviderSnapshotChoice<'a> {
     }
 
     /// Ordered grants to Turn, Saved Orchestration, Gateway, and Provider Registry.
+    pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
+}
+
+/// The signed ordinary saved chain and the Gateway's separate health grant.
+pub struct OriginalGatewayProviderHealthChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 4],
+}
+
+impl<'a> OriginalGatewayProviderHealthChoice<'a> {
+    /// Select the ordinary Generate or Stream chain and its exact health operation.
+    /// Verify all returned pins against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        role: OriginalSavedLocalChatRole,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_gateway_provider_health_records(active.records(), budget, role)?.map(|pins| {
+                Self {
+                    _active: active,
+                    pins,
+                }
+            }),
+        )
+    }
+
+    /// Ordered grants to Turn, Saved Orchestration, Gateway, and Registry health.
     pub fn pins(&self) -> &[OriginalRoutePin; 4] {
         &self.pins
     }
@@ -2407,6 +2452,27 @@ fn select_gateway_provider_snapshot_records(
         registry,
     )?
     .map(|pins| (side_chat, pins)))
+}
+
+fn select_gateway_provider_health_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalSavedLocalChatRole,
+) -> Result<Option<[OriginalRoutePin; 4]>> {
+    let (gateway, health) = match role {
+        OriginalSavedLocalChatRole::Generate => (
+            OriginalModelResolveRole::Generate,
+            &PROVIDER_HEALTH_GENERATE,
+        ),
+        OriginalSavedLocalChatRole::Stream => {
+            (OriginalModelResolveRole::Stream, &PROVIDER_HEALTH_STREAM)
+        }
+        OriginalSavedLocalChatRole::SideChatGenerate
+        | OriginalSavedLocalChatRole::SideChatStream => {
+            return Ok(None);
+        }
+    };
+    select_ordinary_gateway_child(active, budget, gateway, health)
 }
 
 fn select_ai_routing_records(
@@ -3417,6 +3483,20 @@ mod tests {
                 "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
                 "sha256:1b58a95d7c67e6f789b5e17a10a61c360c706443adbbe3026502e7e29395bd6f",
             ),
+            (
+                &PROVIDER_HEALTH_GENERATE,
+                GATEWAY_GENERATE_CALLER,
+                "authority-ref:51bde75f30a996b2f0be7732403363148c56fe3a170c9e9df20acd6722d6c5eb",
+                "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+                "sha256:5c6f9da7c4f8f248a5223cf8ab714b18615b83fff1fe967d07072fbdb49b3718",
+            ),
+            (
+                &PROVIDER_HEALTH_STREAM,
+                GATEWAY_STREAM_CALLER,
+                "authority-ref:a6111c21e6d567a83a31c1b5da7efdf9609de66717d436d1066d67874ca17a17",
+                "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+                "sha256:ab3b9f63a045331009f2ef9c397a8b365e7b61007111d2401bf9659ac3397d7a",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             add_record(
@@ -3946,6 +4026,7 @@ mod tests {
     const SIDE_CHAT_TURN_ROW: usize = 52;
     const SIDE_CHAT_SAVED_TURN_ROW: usize = 53;
     const GATEWAY_PROVIDER_SNAPSHOT_ROWS: std::ops::Range<usize> = 55..59;
+    const GATEWAY_PROVIDER_HEALTH_ROWS: [usize; 2] = [63, 64];
 
     fn select_saved_local_chat(
         records: &Value,
@@ -4368,6 +4449,81 @@ mod tests {
                 denied
             );
         }
+    }
+
+    #[test]
+    fn gateway_health_requires_its_exact_ordinary_saved_grant() {
+        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
+
+        let select = |fixture: &Value, role| {
+            let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_gateway_provider_health_records((&profile, &lock, &plan), &budget, role)
+        };
+        let fixture = records();
+        assert!(select(&fixture, SideChatGenerate).unwrap().is_none());
+        assert!(select(&fixture, SideChatStream).unwrap().is_none());
+
+        for (role, other, gateway, gateway_row, health, health_row) in [
+            (
+                Generate,
+                Stream,
+                &GATEWAY_GENERATE,
+                LOCAL_CHAT_GENERATE_ROWS[0],
+                &PROVIDER_HEALTH_GENERATE,
+                GATEWAY_PROVIDER_HEALTH_ROWS[0],
+            ),
+            (
+                Stream,
+                Generate,
+                &GATEWAY_STREAM,
+                LOCAL_CHAT_STREAM_ROWS[0],
+                &PROVIDER_HEALTH_STREAM,
+                GATEWAY_PROVIDER_HEALTH_ROWS[1],
+            ),
+        ] {
+            let [turn, orchestration, gateway_pin, child] =
+                select(&fixture, role).unwrap().unwrap();
+            assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(turn.function_id(), SAVED_TURN.function);
+            assert_eq!(orchestration.caller_function_id(), turn.function_id());
+            assert_eq!(orchestration.function_id(), SAVED_ORCHESTRATION.function);
+            assert_eq!(
+                gateway_pin.caller_function_id(),
+                orchestration.function_id()
+            );
+            assert_eq!(gateway_pin.function_id(), gateway.function);
+            assert_eq!(child.caller_function_id(), gateway_pin.function_id());
+            assert_eq!(child.function_id(), health.function);
+            assert_eq!(child.contract_id(), health.contract);
+            assert_eq!(child.operation_id(), health.operation);
+
+            for row in [
+                SAVED_TURN_SETTLEMENT_ROW,
+                SAVED_ORCHESTRATION_ROW,
+                gateway_row,
+                health_row,
+            ] {
+                let mut denied = fixture.clone();
+                denied["profile"]["requested_edges"][row]["authority_mode"] =
+                    json!("interactive_only");
+                assert!(matches!(select(&denied, role), Err(Inconsistent(_))));
+                denied["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+                assert!(select(&denied, role).unwrap().is_none());
+                if row == gateway_row || row == health_row {
+                    assert!(select(&denied, other).unwrap().is_some());
+                }
+            }
+        }
+
+        let mut no_raw_snapshot = fixture;
+        for row in GATEWAY_PROVIDER_SNAPSHOT_ROWS {
+            no_raw_snapshot["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            no_raw_snapshot["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+        }
+        assert!(select(&no_raw_snapshot, Generate).unwrap().is_some());
+        assert!(select(&no_raw_snapshot, Stream).unwrap().is_some());
     }
 
     #[test]

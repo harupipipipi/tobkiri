@@ -6270,6 +6270,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   コンポーネントを含むRustの単体76件が通過した。元のPythonで採取した確認済み・未確認・
   不正な確認時刻の結果を照合し、別Profileとシンボリックリンクからの読取りを検査した。
   同じ物理検証を配布用のmacOS CIにも追加した。
+- 通常チャットのGenerateとStreamをこのポートへ接続した。Launcherはそれぞれの
+  Shell→Turn→Orchestration→Gateway→Healthの署名済み経路とWITを照合し、起動時に
+  通知した経路だけ再検証して開く。Hostは個別のBroker Leaseと使用量予約、親の期限と
+  現在性を確認してから渡す。Side Chat、Workflow、route quoteには各経路の既存処理を使う。
+  古い配布物や互換範囲の入力では元のRegistry所有者へ戻る。
+  Rustの署名済み経路の回帰52件と、PythonのIPC回帰623件が通過した。署名済みHTTPの通常
+  Generate・Streamで、Healthの戻り値、別の操作権限の拒否、Borrow終了後の拒否を照合した。
+  Launcher側のバンドルと起動時証明を含む試験も配布CIに追加した。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 

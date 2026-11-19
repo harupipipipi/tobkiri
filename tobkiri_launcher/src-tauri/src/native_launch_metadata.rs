@@ -20,10 +20,10 @@ use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
     OriginalConversationAppendChoice, OriginalConversationCompleteChoice,
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalFailoverChoice, OriginalGatewayProviderSnapshotChoice,
-    OriginalModelAccessProviderSnapshotSelection, OriginalModelResolveRole,
-    OriginalModelResolveSelection, OriginalModelSaveSelection, OriginalModelSettingsSelection,
-    OriginalProviderPrepareSelection, OriginalProviderSnapshotRole,
+    OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,
+    OriginalGatewayProviderSnapshotChoice, OriginalModelAccessProviderSnapshotSelection,
+    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalProviderSnapshotRole,
     OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice, OriginalRoutePin,
     OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole,
     OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
@@ -38,7 +38,8 @@ use tobkiri_wasm::{
     verify_legacy_conversation_linked_context_declaration,
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
-    verify_legacy_provider_model_access_declaration, verify_legacy_provider_snapshot_declaration,
+    verify_legacy_provider_health_declaration, verify_legacy_provider_model_access_declaration,
+    verify_legacy_provider_snapshot_declaration,
 };
 
 use super::{
@@ -152,8 +153,7 @@ impl VerifiedRegistryLaunch {
 
     /// Whether any saved Gateway caller has a verified Registry resource grant.
     pub(crate) fn permits_gateway_provider_snapshot(&self) -> bool {
-        self.provider_snapshot
-            .as_ref()
+        self.raw_provider_snapshot()
             .is_some_and(|source| source.gateway.iter().any(Option::is_some))
     }
 
@@ -161,7 +161,7 @@ impl VerifiedRegistryLaunch {
     pub(crate) fn permits_workflow_provider_snapshot(&self) -> bool {
         use OriginalWorkflowSnapshotCaller::{AudioSpeech, AudioTranscribe, Messages, Text};
 
-        self.provider_snapshot.as_ref().is_some_and(|source| {
+        self.raw_provider_snapshot().is_some_and(|source| {
             [Text, Messages, AudioTranscribe, AudioSpeech]
                 .into_iter()
                 .any(|caller| source.workflow.permits_any_entry(caller))
@@ -172,7 +172,7 @@ impl VerifiedRegistryLaunch {
     pub(crate) fn permits_workflow_adapter_provider_snapshot(&self) -> bool {
         use OriginalWorkflowSnapshotCaller::{MessagesAdapter, TextAdapter};
 
-        self.provider_snapshot.as_ref().is_some_and(|source| {
+        self.raw_provider_snapshot().is_some_and(|source| {
             [TextAdapter, MessagesAdapter]
                 .into_iter()
                 .any(|caller| source.workflow.permits_any_entry(caller))
@@ -181,21 +181,20 @@ impl VerifiedRegistryLaunch {
 
     /// Whether Shell Settings or Model Save has its own verified read grant.
     pub(crate) fn permits_projected_provider_snapshot(&self) -> bool {
-        self.provider_snapshot
-            .as_ref()
+        self.raw_provider_snapshot()
             .is_some_and(|source| source.shell_settings.is_some() || source.model_save.is_some())
     }
 
     /// Whether a query owner has its own verified projected Registry read grant.
     pub(crate) fn permits_query_provider_snapshot(&self) -> bool {
-        self.provider_snapshot.as_ref().is_some_and(|source| {
+        self.raw_provider_snapshot().is_some_and(|source| {
             source.model_search.is_some() || source.command_datasource.is_some()
         })
     }
 
     /// Whether either original Model Access operation has a verified Registry read proof.
     pub(crate) fn permits_model_access_provider_snapshot(&self) -> bool {
-        self.provider_snapshot.as_ref().is_some_and(|source| {
+        self.raw_provider_snapshot().is_some_and(|source| {
             source.model_access_read.is_some() || source.model_access_catalog.is_some()
         })
     }
@@ -223,6 +222,10 @@ impl VerifiedRegistryLaunch {
     )> {
         let source = self.provider_snapshot.as_ref()?;
         let bundle = match role {
+            OriginalProviderSnapshotRole::GatewayHealth(role) => {
+                source.gateway_health[ordinary_gateway_health_slot(role)?].as_ref()?
+            }
+            _ if !source.raw_snapshot_declared => return None,
             OriginalProviderSnapshotRole::Adapter(role) => {
                 &self.local_chat.as_ref()?.entry(role)?.bundle
             }
@@ -257,6 +260,12 @@ impl VerifiedRegistryLaunch {
             }
         };
         Some((bundle, source))
+    }
+
+    fn raw_provider_snapshot(&self) -> Option<&VerifiedProviderSnapshotSource> {
+        self.provider_snapshot
+            .as_ref()
+            .filter(|source| source.raw_snapshot_declared)
     }
 
     /// Require the original ordinary saved chain and verified pure Wasm computation.
@@ -788,7 +797,9 @@ struct VerifiedProviderAdapterSource {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedProviderSnapshotSource {
+    raw_snapshot_declared: bool,
     gateway: [Option<VerifiedGatewayProviderSnapshotEntry>; 2],
+    gateway_health: [Option<VerifiedOrdinarySavedBundle>; 2],
     workflow: VerifiedWorkflowProviderSnapshot,
     shell_settings: Option<VerifiedOrdinarySavedBundle>,
     model_save: Option<VerifiedOrdinarySavedBundle>,
@@ -800,6 +811,15 @@ struct VerifiedProviderSnapshotSource {
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
+}
+
+fn ordinary_gateway_health_slot(role: OriginalSavedLocalChatRole) -> Option<usize> {
+    match role {
+        OriginalSavedLocalChatRole::Generate => Some(0),
+        OriginalSavedLocalChatRole::Stream => Some(1),
+        OriginalSavedLocalChatRole::SideChatGenerate
+        | OriginalSavedLocalChatRole::SideChatStream => None,
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -933,7 +953,9 @@ impl VerifiedRegistryLaunch {
         let mut proof = Self::test_proof(identity, catalog_revision);
         proof.provider_prepare = None;
         let mut source = VerifiedProviderSnapshotSource {
+            raw_snapshot_declared: false,
             gateway: [None, None],
+            gateway_health: [None, None],
             workflow: VerifiedWorkflowProviderSnapshot::default(),
             shell_settings: None,
             model_save: None,
@@ -947,7 +969,15 @@ impl VerifiedRegistryLaunch {
             manifest_sha256: Digest::hash(b"provider-snapshot-manifest").to_string(),
         };
         for role in roles {
+            source.raw_snapshot_declared |=
+                !matches!(role, OriginalProviderSnapshotRole::GatewayHealth(_));
             let bundle = match role {
+                OriginalProviderSnapshotRole::GatewayHealth(role) => {
+                    let Some(slot) = ordinary_gateway_health_slot(role) else {
+                        continue;
+                    };
+                    &mut source.gateway_health[slot]
+                }
                 OriginalProviderSnapshotRole::Adapter(role) => {
                     proof.add_test_saved_local_chat_role(role);
                     continue;
@@ -1936,6 +1966,13 @@ impl LaunchActivationObserver<'_> {
             verify_gateway_provider_snapshot_entry(inspection, active, via_side_chat, checkpoint)
         });
         let gateway = [gateway_direct?, gateway_side_chat?];
+        let [health_generate, health_stream] = [
+            OriginalSavedLocalChatRole::Generate,
+            OriginalSavedLocalChatRole::Stream,
+        ]
+        .map(|role| OriginalGatewayProviderHealthChoice::select(active, budget, role));
+        let gateway_health_selections = [health_generate?, health_stream?];
+        let has_health_grants = gateway_health_selections.iter().any(Option::is_some);
         let has_snapshot_grants = local_chat.is_some()
             || gateway.iter().any(Option::is_some)
             || workflow.callers.iter().any(Option::is_some)
@@ -1951,7 +1988,7 @@ impl LaunchActivationObserver<'_> {
                 REGISTRY_RECEIPT_SHA256,
                 || checkpoint().map_err(io::Error::other),
                 |receipt, input| {
-                    if provider_selection.is_none() && !has_snapshot_grants {
+                    if provider_selection.is_none() && !has_snapshot_grants && !has_health_grants {
                         return Ok((None, None));
                     }
                     let pack = verify_registry_archive(inspection, receipt, input)?;
@@ -1971,26 +2008,49 @@ impl LaunchActivationObserver<'_> {
                             })
                         })
                         .transpose()?;
-                    let snapshot = if has_snapshot_grants
-                        && observe_provider_snapshot_declaration(&pack).map_err(io::Error::other)?
+                    let raw_snapshot_declared = has_snapshot_grants
+                        && observe_provider_snapshot_declaration(&pack)
+                            .map_err(io::Error::other)?;
+                    let mut gateway_health = [None, None];
+                    if has_health_grants
+                        && observe_provider_health_declaration(&pack).map_err(io::Error::other)?
                     {
-                        Some(VerifiedProviderSnapshotSource {
-                            gateway,
-                            workflow,
-                            shell_settings,
-                            model_save: model_save_snapshot,
-                            model_search,
-                            command_datasource,
-                            model_access_read,
-                            model_access_catalog,
-                            model_access_projection_declared,
-                            archive_sha256: receipt.archive_sha256().to_owned(),
-                            archive_bytes: receipt.archive_bytes(),
-                            manifest_sha256: receipt.manifest_sha256().to_owned(),
-                        })
-                    } else {
-                        None
-                    };
+                        for (entry, choice) in
+                            gateway_health.iter_mut().zip(gateway_health_selections)
+                        {
+                            let Some(choice) = choice else {
+                                continue;
+                            };
+                            let locked = inspection
+                                .with_source(|sources| {
+                                    sources.gateway_provider_health_bundle(&choice, budget)
+                                })
+                                .map_err(io::Error::other)?
+                                .map_err(io::Error::other)?;
+                            *entry = Some(locked.verify(&checkpoint).map_err(io::Error::other)?);
+                        }
+                    }
+                    let snapshot =
+                        if raw_snapshot_declared || gateway_health.iter().any(Option::is_some) {
+                            Some(VerifiedProviderSnapshotSource {
+                                raw_snapshot_declared,
+                                gateway,
+                                gateway_health,
+                                workflow,
+                                shell_settings,
+                                model_save: model_save_snapshot,
+                                model_search,
+                                command_datasource,
+                                model_access_read,
+                                model_access_catalog,
+                                model_access_projection_declared,
+                                archive_sha256: receipt.archive_sha256().to_owned(),
+                                archive_bytes: receipt.archive_bytes(),
+                                manifest_sha256: receipt.manifest_sha256().to_owned(),
+                            })
+                        } else {
+                            None
+                        };
                     Ok((prepare, snapshot))
                 },
                 |receipt, input| {
@@ -2375,7 +2435,7 @@ pub(super) fn reacquire_provider_snapshot_pack(
 ) -> Result<VerifiedPack> {
     let (bundle, source) = proof
         .provider_snapshot(role)
-        .context("admitted launch has no verified Provider Registry snapshot grant for the role")?;
+        .context("admitted launch has no verified Provider Registry read grant for the role")?;
     checkpoint()?;
     let app_root = registry_pack_root(inspection, proof)?;
     inspection.with_source(|sources| bundle.require_source(sources))??;
@@ -2392,7 +2452,14 @@ pub(super) fn reacquire_provider_snapshot_pack(
                 &source.manifest_sha256,
             )?;
             let pack = verify_registry_archive(inspection, receipt, input)?;
-            verify_legacy_provider_snapshot_declaration(&pack).map_err(io::Error::other)?;
+            match role {
+                OriginalProviderSnapshotRole::GatewayHealth(_) => {
+                    verify_legacy_provider_health_declaration(&pack).map_err(io::Error::other)?;
+                }
+                _ => {
+                    verify_legacy_provider_snapshot_declaration(&pack).map_err(io::Error::other)?;
+                }
+            }
             if proof.permits_model_access_projection(role) {
                 verify_legacy_provider_model_access_declaration(&pack).map_err(io::Error::other)?;
             }
@@ -3051,6 +3118,14 @@ fn observe_provider_snapshot_declaration(pack: &VerifiedPack) -> Result<bool> {
     let declared = registry_port_declared(pack, "local.provider-registry.legacy-resource");
     if declared {
         verify_legacy_provider_snapshot_declaration(pack)?;
+    }
+    Ok(declared)
+}
+
+fn observe_provider_health_declaration(pack: &VerifiedPack) -> Result<bool> {
+    let declared = registry_port_declared(pack, "local.provider-registry.legacy-health");
+    if declared {
+        verify_legacy_provider_health_declaration(pack)?;
     }
     Ok(declared)
 }
@@ -4464,6 +4539,57 @@ mod tests {
     }
 
     #[test]
+    fn gateway_health_launch_proof_keeps_saved_roles_and_snapshot_port_independent() {
+        use OriginalProviderSnapshotRole::{Gateway, GatewayHealth};
+        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let gateway = Gateway {
+            role: OriginalModelResolveRole::Generate,
+            side_chat: false,
+        };
+        let older_pack = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            identity.clone(),
+            "catalog",
+            gateway,
+        );
+        assert!(!older_pack.permits_provider_snapshot(GatewayHealth(Generate)));
+        assert!(older_pack.permits_provider_snapshot(gateway));
+
+        for role in [Generate, Stream] {
+            let health = GatewayHealth(role);
+            let mut proof = VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
+                identity.clone(),
+                "catalog",
+                [health, gateway, Generate.into()],
+            );
+            for candidate in [Generate, Stream, SideChatGenerate, SideChatStream] {
+                assert_eq!(
+                    proof.permits_provider_snapshot(GatewayHealth(candidate)),
+                    candidate == role,
+                );
+            }
+            assert!(proof.permits_provider_snapshot(gateway));
+            assert!(proof.permits_provider_snapshot(Generate.into()));
+
+            proof
+                .provider_snapshot
+                .as_mut()
+                .unwrap()
+                .raw_snapshot_declared = false;
+            assert!(proof.permits_provider_snapshot(health));
+            assert!(!proof.permits_provider_snapshot(gateway));
+            assert!(!proof.permits_provider_snapshot(Generate.into()));
+            assert!(!proof.permits_gateway_provider_snapshot());
+        }
+    }
+
+    #[test]
     fn provider_snapshot_requires_the_exact_gateway_grant_and_saved_entry() {
         let digest = Digest::hash(b"gateway-provider-snapshot-activation");
         let identity = ExecutionProfileIdentity::new(
@@ -5615,7 +5741,7 @@ mod tests {
             }
         }
         let root = Root(std::env::temp_dir().join(format!(
-            "tobkiri-model-access-projection-declaration-{}-{}",
+            "tobkiri-provider-registry-declaration-{}-{}",
             std::process::id(),
             rand::random::<u64>()
         )));
@@ -5648,10 +5774,37 @@ mod tests {
         };
         let current = verify(&draft);
         assert!(observe_model_access_projection_declaration(&current).unwrap());
+        assert!(observe_provider_health_declaration(&current).unwrap());
         assert!(observe_provider_snapshot_declaration(&current).unwrap());
 
+        let health = "local.provider-registry.legacy-health";
+        let mut malformed_health = draft.clone();
+        malformed_health["ports"]["provides"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|port| port["shape"] == health)
+            .unwrap()["optional"] = serde_json::json!(true);
+        let malformed_health = verify(&malformed_health);
+        assert!(observe_provider_health_declaration(&malformed_health).is_err());
+        assert!(observe_provider_snapshot_declaration(&malformed_health).unwrap());
+
+        let mut no_snapshot = draft.clone();
+        let snapshot = "local.provider-registry.legacy-resource";
+        no_snapshot["ports"]["provides"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|port| port["shape"] != snapshot);
+        no_snapshot["shapes"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|shape| shape["name"] != snapshot);
+        let no_snapshot = verify(&no_snapshot);
+        assert!(observe_provider_health_declaration(&no_snapshot).unwrap());
+        assert!(!observe_provider_snapshot_declaration(&no_snapshot).unwrap());
+
         let projection = "local.provider-registry.model-access-projection";
-        let mut malformed = draft;
+        let mut malformed = draft.clone();
         malformed["ports"]["provides"]
             .as_array_mut()
             .unwrap()
@@ -5667,13 +5820,30 @@ mod tests {
         assert!(observe_model_access_projection_declaration(&verify(&malformed)).is_err());
 
         let mut previous = malformed;
+        previous["ports"]["provides"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|port| port["shape"] != health);
         previous["shapes"]
             .as_array_mut()
             .unwrap()
-            .retain(|shape| shape["name"] != projection);
+            .retain(|shape| shape["name"] != projection && shape["name"] != health);
         let previous = verify(&previous);
         assert!(!observe_model_access_projection_declaration(&previous).unwrap());
+        assert!(!observe_provider_health_declaration(&previous).unwrap());
         assert!(observe_provider_snapshot_declaration(&previous).unwrap());
+
+        let wit_path = path.join("wit/pack.wit");
+        let wit = fs::read_to_string(&wit_path).unwrap();
+        let malformed_wit = wit.replace(
+            "health: func(document: option<string>)",
+            "health: func(document: string)",
+        );
+        assert_ne!(malformed_wit, wit);
+        fs::write(wit_path, malformed_wit).unwrap();
+        let wrong_abi = verify(&draft);
+        assert!(observe_provider_health_declaration(&wrong_abi).is_err());
+        assert!(observe_provider_snapshot_declaration(&wrong_abi).unwrap());
     }
 
     #[test]

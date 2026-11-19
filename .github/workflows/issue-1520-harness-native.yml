@@ -658,6 +658,15 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::launch_metadata::tests::optional_model_access_projection_declaration_preserves_legacy_registry_read -- --exact
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
+              --log "$RUNNER_TEMP/harness-native-gateway-health-choice.log" --expected-passed 1 -- \
+              cargo test --locked -p tobkiri-harness-native --lib \
+              original_provider_prepare_selection::tests::gateway_health_requires_its_exact_ordinary_saved_grant -- --exact
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
+              --log "$RUNNER_TEMP/harness-native-gateway-health-evidence.log" --expected-passed 1 -- \
+              cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+              --target aarch64-apple-darwin --features "$features" \
+              --lib native_harness_bootstrap::launch_metadata::tests::gateway_health_launch_proof_keeps_saved_roles_and_snapshot_port_independent -- --exact
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
               --log "$RUNNER_TEMP/harness-native-conversation-evidence.log" --expected-passed 5 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
@@ -750,6 +759,8 @@ jobs:
             ${{ runner.temp }}/harness-native-workflow-registry-evidence.log*
             ${{ runner.temp }}/harness-native-model-access-registry-evidence.log*
             ${{ runner.temp }}/harness-native-model-access-projection-declaration.log*
+            ${{ runner.temp }}/harness-native-gateway-health-choice.log*
+            ${{ runner.temp }}/harness-native-gateway-health-evidence.log*
             ${{ runner.temp }}/harness-native-application-presentation.log*
             ${{ runner.temp }}/harness-native-conversation-complete.log*
             ${{ runner.temp }}/harness-native-conversation-evidence.log*

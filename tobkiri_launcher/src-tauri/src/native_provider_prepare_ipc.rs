@@ -1154,8 +1154,8 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
 
     fn try_from(wire: ProviderSnapshotWire) -> std::result::Result<Self, Self::Error> {
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, ModelAccessCatalog, ModelAccessRead, ModelSave,
-            ModelSearch, ShellSettings, Workflow,
+            Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog,
+            ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -1199,6 +1199,12 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
             }
             "gateway-generate" => (OriginalModelResolveRole::Generate, false),
             "gateway-stream" => (OriginalModelResolveRole::Stream, false),
+            "gateway-health-generate" => {
+                return snapshot(GatewayHealth(OriginalSavedLocalChatRole::Generate))
+            }
+            "gateway-health-stream" => {
+                return snapshot(GatewayHealth(OriginalSavedLocalChatRole::Stream))
+            }
             "gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, false),
             "gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, false),
             "side-chat-gateway-generate" => (OriginalModelResolveRole::Generate, true),
@@ -3244,8 +3250,8 @@ mod tests {
     #[test]
     fn provider_snapshot_start_decodes_the_closed_role_set() {
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, ModelAccessCatalog, ModelAccessRead, ModelSave,
-            ModelSearch, ShellSettings,
+            Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog,
+            ModelAccessRead, ModelSave, ModelSearch, ShellSettings,
         };
 
         let assert_role = |name: &str, expected| {
@@ -3298,6 +3304,14 @@ mod tests {
         assert_role("command-datasource", CommandDatasource);
         assert_role("model-access-read", ModelAccessRead);
         assert_role("model-access-catalog", ModelAccessCatalog);
+        assert_role(
+            "gateway-health-generate",
+            GatewayHealth(OriginalSavedLocalChatRole::Generate),
+        );
+        assert_role(
+            "gateway-health-stream",
+            GatewayHealth(OriginalSavedLocalChatRole::Stream),
+        );
     }
 
     #[test]
@@ -3401,6 +3415,10 @@ mod tests {
             r#", "provider_snapshot":{"role":"quote-generate"}"#,
             r#", "provider_snapshot":{"role":"side-chat-quote-stream"}"#,
             r#", "provider_snapshot":{"role":"gateway-side-chat-stream"}"#,
+            r#", "provider_snapshot":{"role":"side-chat-gateway-health-stream"}"#,
+            r#", "provider_snapshot":{"role":"gateway-health-quote-stream"}"#,
+            r#", "provider_snapshot":{"role":"gateway-health-stream","entry":"run.advance"}"#,
+            r#", "provider_snapshot":{"role":"gateway-health-stream","profile_id":"elsewhere"}"#,
             r#", "provider_snapshot":{"role":{"role":"generate","side_chat":true}}"#,
             r#", "provider_snapshot":{"role":"gateway-quote-stream","side_chat":true}"#,
             r#", "provider_snapshot":{"role":"stream","role":"generate"}"#,

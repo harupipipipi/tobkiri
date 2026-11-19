@@ -1045,15 +1045,28 @@ async fn run(
                         checkpoint,
                     )?;
                     revalidate()?;
-                    let output = inspection
-                        .read_legacy_provider_snapshot(
-                            &pack,
-                            &config.user_data_dir,
-                            &identity.profile_id,
-                            uses_provider_settings_projection(role),
-                        )
-                        .await
-                        .map_err(provider_snapshot_error)?;
+                    let output = match role {
+                        OriginalProviderSnapshotRole::GatewayHealth(_) => {
+                            inspection
+                                .read_legacy_provider_health(
+                                    &pack,
+                                    &config.user_data_dir,
+                                    &identity.profile_id,
+                                )
+                                .await
+                        }
+                        _ => {
+                            inspection
+                                .read_legacy_provider_snapshot(
+                                    &pack,
+                                    &config.user_data_dir,
+                                    &identity.profile_id,
+                                    uses_provider_settings_projection(role),
+                                )
+                                .await
+                        }
+                    }
+                    .map_err(provider_snapshot_error)?;
                     return decode_owner_read_reply(
                         output,
                         &graph,
@@ -2186,15 +2199,18 @@ fn encode_turn_start_reply(
 
 fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool {
     use OriginalProviderSnapshotRole::{
-        Adapter, CommandDatasource, Gateway, ModelAccessCatalog, ModelAccessRead, ModelSave,
-        ModelSearch, ShellSettings, Workflow,
+        Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog, ModelAccessRead,
+        ModelSave, ModelSearch, ShellSettings, Workflow,
     };
 
     match role {
         ShellSettings | ModelSave | ModelSearch | CommandDatasource => true,
-        Adapter(_) | Gateway { .. } | Workflow { .. } | ModelAccessRead | ModelAccessCatalog => {
-            false
-        }
+        Adapter(_)
+        | Gateway { .. }
+        | GatewayHealth(_)
+        | Workflow { .. }
+        | ModelAccessRead
+        | ModelAccessCatalog => false,
     }
 }
 
@@ -2754,8 +2770,8 @@ mod tests {
 
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, ModelAccessCatalog, ModelAccessRead, ModelSave,
-            ModelSearch, ShellSettings, Workflow,
+            Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog,
+            ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -2812,6 +2828,10 @@ mod tests {
                 }),
             )
             .chain([ModelAccessRead, ModelAccessCatalog])
+            .chain([
+                GatewayHealth(OriginalSavedLocalChatRole::Generate),
+                GatewayHealth(OriginalSavedLocalChatRole::Stream),
+            ])
             .map(|role| (role, false))
             .chain(
                 [ShellSettings, ModelSave, ModelSearch, CommandDatasource].map(|role| (role, true)),

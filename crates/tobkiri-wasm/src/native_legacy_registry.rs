@@ -272,6 +272,13 @@ pub fn verify_legacy_provider_snapshot_declaration(pack: &VerifiedPack) -> Resul
     Ok(())
 }
 
+/// Verify the private read-only Provider Registry health declaration from the receipt.
+pub fn verify_legacy_provider_health_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &PROVIDER_HEALTH)?;
+    declared_registry_function(pack, &PROVIDER_HEALTH)?;
+    Ok(())
+}
+
 /// Verify the private Model Access projection declaration of the receipt-bound Registry Pack.
 pub fn verify_legacy_provider_model_access_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &MODEL_ACCESS_PROJECTION)?;
@@ -990,6 +997,12 @@ fn declared_registry_function<'a>(
         ensure!(
             definition.cardinality == Cardinality::One,
             "legacy Model Access projection requires a single provider"
+        );
+    }
+    if export.shape == PROVIDER_HEALTH.shape {
+        ensure!(
+            definition.cardinality == Cardinality::One && optional_string(&function.params[0].1),
+            "legacy Provider Registry health parameter ABI or cardinality differs"
         );
     }
     if [CONVERSATION_CONFIRMATION.shape, CONVERSATION_APPEND.shape].contains(&export.shape) {

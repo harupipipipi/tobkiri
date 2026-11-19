@@ -143,14 +143,19 @@ impl RoleArguments {
         proof: Option<&crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
     ) -> Self {
         use tobkiri_harness_native::OriginalProviderSnapshotRole::{
-            Adapter, ModelAccessCatalog, ModelAccessRead,
+            Adapter, GatewayHealth, ModelAccessCatalog, ModelAccessRead,
         };
         use tobkiri_harness_native::OriginalSavedLocalChatRole::{
             Generate, SideChatGenerate, SideChatStream, Stream,
         };
         self.native_registry = NativeRegistryEnvironment {
             provider_snapshot_version: proof.and_then(|proof| {
-                if [ModelAccessRead, ModelAccessCatalog]
+                if [Generate, Stream]
+                    .into_iter()
+                    .any(|role| proof.permits_provider_snapshot(GatewayHealth(role)))
+                {
+                    Some("9")
+                } else if [ModelAccessRead, ModelAccessCatalog]
                     .into_iter()
                     .any(|role| proof.permits_model_access_projection(role))
                 {
@@ -4691,6 +4696,18 @@ mod tests {
                     role,
                 )
             });
+        let [health_generate, health_stream, side_chat_health] = [
+            OriginalSavedLocalChatRole::Generate,
+            OriginalSavedLocalChatRole::Stream,
+            OriginalSavedLocalChatRole::SideChatStream,
+        ]
+        .map(|role| {
+            VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                side_chat.identity.clone(),
+                "catalog",
+                OriginalProviderSnapshotRole::GatewayHealth(role),
+            )
+        });
         for (proof, expected_turn_start, expected_snapshot) in [
             (None, false, None),
             (Some(&append), false, None),
@@ -4711,6 +4728,9 @@ mod tests {
             (Some(&model_access_read_projection), false, Some("8")),
             (Some(&model_access_catalog_projection), false, Some("8")),
             (Some(&unrelated_projection), false, Some("3")),
+            (Some(&health_generate), false, Some("9")),
+            (Some(&health_stream), false, Some("9")),
+            (Some(&side_chat_health), false, None),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()

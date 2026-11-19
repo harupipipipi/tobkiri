@@ -2038,6 +2038,72 @@ def test_provider_snapshot_receives_the_original_owner_reply(
         assert reader(request) == expected
 
 
+@pytest.mark.parametrize("delivery", ("generate", "stream"))
+def test_gateway_provider_health_uses_the_opaque_read_frame(
+    monkeypatch: pytest.MonkeyPatch, delivery: str,
+) -> None:
+    borrow = _Borrow()
+    role = ipc.GATEWAY_PROVIDER_HEALTH_ROLES[delivery]
+    request = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
+        borrow.assert_current, role,
+    )
+    expected = {"providers": [
+        {"provider_instance_id": "fixture", "status": "available",
+         "observed_at": 1_901_234_567.125, "verified": True},
+        {"provider_instance_id": "unverified", "status": "unknown",
+         "observed_at": None, "verified": False},
+    ]}
+
+    def serve(peer: socket.socket) -> None:
+        tag, frame = _receive(peer)
+        assert tag == ipc._START
+        start = json.loads(frame)
+        assert start.keys() == {
+            "identity", "security_epoch", "runtime_instance", "deadline_ns", "provider_snapshot",
+        }
+        assert start["provider_snapshot"] == {"role": role}
+        assert start["identity"]["profile_id"] == borrow.context.profile_id
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, json.dumps(expected).encode())
+        assert peer.recv(1) == b""
+
+    with _served(monkeypatch, serve):
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "8")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and reader.supports_model_access_projection
+        assert not reader.supports_gateway_health
+        with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+            reader(request)
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "10")
+        assert ipc.capture_launcher_provider_snapshot_reader() is None
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "9")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and reader.supports_gateway_health
+        assert reader.supports_model_access_projection
+        assert reader(request) == expected
+
+
+@pytest.mark.parametrize(
+    "role,result",
+    [
+        ("gateway-generate", {"providers": []}),
+        ("gateway-health-generate", {
+            "version": "rumi.provider-registry.store.v1",
+            "profile_id": "defaults", "revision": 0, "providers": [],
+        }),
+        ("gateway-health-stream", {"providers": [
+            {"provider_instance_id": "fixture", "status": "available",
+             "observed_at": True, "verified": True},
+        ]}),
+    ],
+)
+def test_gateway_health_rejects_results_outside_the_owner_shape(role, result) -> None:
+    with pytest.raises(ipc._ProtocolError, match="snapshot result is invalid"):
+        ipc._decode_provider_snapshot(json.dumps(result).encode(), "defaults", role)
+
+
 @pytest.mark.parametrize("role", ipc._WORKFLOW_PROVIDER_SNAPSHOT_ROLES)
 @pytest.mark.parametrize("entry", ipc.WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES)
 def test_workflow_provider_snapshot_carries_the_exact_entry(

@@ -17,8 +17,9 @@ use tobkiri_core::{
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
     OriginalConversationAppendChoice, OriginalConversationCompleteChoice, OriginalFailoverChoice,
-    OriginalGatewayProviderSnapshotChoice, OriginalModelAccessProviderSnapshotSelection,
-    OriginalModelSaveSelection, OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice,
+    OriginalGatewayProviderHealthChoice, OriginalGatewayProviderSnapshotChoice,
+    OriginalModelAccessProviderSnapshotSelection, OriginalModelSaveSelection,
+    OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice,
     OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
     OriginalShellProviderSnapshotSelection, OriginalSideChatSavedReceiptChoice,
     OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
@@ -353,6 +354,16 @@ impl NativeApplicationSources {
     pub(crate) fn usage_cost_bundle<'pin>(
         &self,
         choice: &'pin OriginalUsageCostChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
+        self.ordinary_ai_bundle([Some(choice.pins())], budget)
+    }
+
+    /// Capture the signed Bundle documents behind an ordinary Gateway health grant.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn gateway_provider_health_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalGatewayProviderHealthChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
         self.ordinary_ai_bundle([Some(choice.pins())], budget)
