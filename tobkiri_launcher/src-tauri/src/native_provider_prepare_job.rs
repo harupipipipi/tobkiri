@@ -22,10 +22,13 @@ use tobkiri_core::{
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 pub(crate) use tobkiri_harness_native::SavedOrchestrationStepError;
 use tobkiri_harness_native::{
-    invoke_original_saved_orchestration_port, invoke_original_saved_turn_port,
+    begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
+    invoke_original_saved_orchestration_port, invoke_original_saved_turn_begin_port,
+    invoke_original_saved_turn_claim_port, invoke_original_saved_turn_port,
     invoke_original_saved_turn_read_port, read_legacy_saved_turn,
     settle_legacy_saved_turn_from_admitted_port, LegacySavedTurnSettlementError,
-    LegacySavedTurnSettlementRequest, OriginalSavedTurnCheck,
+    LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest, OriginalSavedTurnCheck,
+    OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
 };
 use tobkiri_store::{DataRoot, StoreError};
 use tobkiri_wasm::NativeDataIoError;
@@ -37,8 +40,8 @@ use super::{
         reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
         reacquire_model_settings_pack, reacquire_provider_prepare_pack,
         reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack, reacquire_turn_read_pack,
-        reacquire_turn_settlement_pack, ConversationReadCaller, SettlementCaller,
-        VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
+        reacquire_turn_settlement_pack, reacquire_turn_start_pack, ConversationReadCaller,
+        SettlementCaller, VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -61,8 +64,17 @@ pub(crate) const CONVERSATION_APPEND_LIMIT: usize = 1024 * 1024;
 pub(crate) const MODEL_RESOLVE_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded saved Turn GET result accepted by the Host.
 pub(crate) const TURN_READ_REPLY_LIMIT: usize = 1024 * 1024;
+/// Maximum encoded saved Turn start result including its wire envelope.
+pub(crate) const TURN_START_REPLY_LIMIT: usize = TURN_READ_REPLY_LIMIT + 128;
 /// Maximum original saved-orchestration input and result JSON.
 pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
+
+/// Fixed operations on the original saved Turn owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SavedTurnStartAction {
+    Begin,
+    Claim,
+}
 
 pub(crate) enum NativeRegistryRequest {
     Provider {
@@ -99,6 +111,14 @@ pub(crate) enum NativeRegistryRequest {
         caller: OriginalSavedReceiptRole,
         turn_id: String,
     },
+    TurnStart {
+        action: SavedTurnStartAction,
+        turn_id: String,
+        conversation_id: String,
+        conversation_revision: u64,
+        input_digest: String,
+        source_digest: String,
+    },
     TurnSettlement {
         caller: SettlementCaller,
         turn_id: String,
@@ -125,6 +145,7 @@ impl NativeRegistryRequest {
             Self::ConversationAppend { .. } => proof.permits_conversation_append(),
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
             Self::TurnRead { caller, .. } => proof.permits_turn_read(*caller),
+            Self::TurnStart { .. } => proof.permits_turn_start(),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
         }
@@ -136,6 +157,7 @@ impl NativeRegistryRequest {
             Self::ModelSave { .. }
                 | Self::ConversationConfirmation { .. }
                 | Self::ConversationAppend { .. }
+                | Self::TurnStart { .. }
                 | Self::TurnSettlement { .. }
         )
     }
@@ -181,21 +203,15 @@ impl NativeRegistryRequest {
                 input_digest,
                 result_reference,
                 ..
+            } => return turn_input_capacity([turn_id, input_digest, result_reference]),
+            Self::TurnStart {
+                turn_id,
+                conversation_id,
+                input_digest,
+                source_digest,
+                ..
             } => {
-                return [turn_id, input_digest, result_reference]
-                    .into_iter()
-                    .try_fold(0usize, |total, value| {
-                        total
-                            .checked_add(value.capacity())
-                            .context("native Turn input capacity overflow")
-                    })
-                    .and_then(|capacity| {
-                        ensure!(
-                            capacity <= MAX_BYTES,
-                            "native Turn request exceeds its input envelope"
-                        );
-                        Ok(capacity)
-                    });
+                return turn_input_capacity([turn_id, conversation_id, input_digest, source_digest])
             }
             Self::ConversationGet {
                 conversation_id: identifier,
@@ -228,6 +244,19 @@ impl NativeRegistryRequest {
         );
         Ok(size)
     }
+}
+
+fn turn_input_capacity<'a>(values: impl IntoIterator<Item = &'a String>) -> Result<usize> {
+    let capacity = values.into_iter().try_fold(0usize, |total, value| {
+        total
+            .checked_add(value.capacity())
+            .context("native Turn input capacity overflow")
+    })?;
+    ensure!(
+        capacity <= MAX_BYTES,
+        "native Turn request exceeds its input envelope"
+    );
+    Ok(capacity)
 }
 
 #[derive(Debug)]
@@ -276,6 +305,18 @@ impl std::fmt::Display for TurnSettlementRequiresLegacyCodec {
 }
 
 impl std::error::Error for TurnSettlementRequiresLegacyCodec {}
+
+/// The verified Turn owner needs its original implementation before any write.
+#[derive(Debug)]
+pub(crate) struct TurnStartRequiresLegacyCodec;
+
+impl std::fmt::Display for TurnStartRequiresLegacyCodec {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("Turn start requires the original owner")
+    }
+}
+
+impl std::error::Error for TurnStartRequiresLegacyCodec {}
 
 /// A running Provider can narrow its Host deadline when the Core begins.
 pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
@@ -792,6 +833,102 @@ async fn run(
                         document: None,
                     });
                 }
+                NativeRegistryRequest::TurnStart {
+                    action,
+                    turn_id,
+                    conversation_id,
+                    conversation_revision,
+                    input_digest,
+                    source_digest,
+                } => {
+                    let pack = reacquire_turn_start_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-start@1.0")?;
+                    let operation = OpName::parse(match action {
+                        SavedTurnStartAction::Begin => "begin",
+                        SavedTurnStartAction::Claim => "claim",
+                    })?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &shape,
+                            &operation,
+                            &profile,
+                            execution_deadline,
+                            2,
+                        )
+                        .await?;
+                    let data = DataRoot::open_existing(&config.user_data_dir)
+                        .map_err(|_| LegacySavedTurnSettlementError::Storage)?;
+                    let input = OriginalSavedTurnStartInput {
+                        request: LegacySavedTurnStartRequest {
+                            turn_id: &turn_id,
+                            conversation_id: &conversation_id,
+                            conversation_revision,
+                            input_digest: &input_digest,
+                        },
+                        source_digest: &source_digest,
+                    };
+                    let permit = Arc::clone(
+                        publish_permit
+                            .as_ref()
+                            .context("Turn start permit is missing")?,
+                    );
+                    let authorize = original_saved_turn_authority(OriginalSavedTurnAuthority {
+                        app: app.clone(),
+                        manager: Arc::clone(&manager),
+                        listener: Arc::clone(&listener),
+                        current: Arc::clone(&continue_current),
+                        permit,
+                        cancellation: cancellation.clone(),
+                        deadline: execution_deadline,
+                    });
+                    let handle = tokio::runtime::Handle::current();
+                    let outcome = tokio::task::block_in_place(|| {
+                        let evaluate = |step: OriginalSavedTurnStartStep<'_>| match step {
+                            OriginalSavedTurnStartStep::Begin => handle.block_on(
+                                invoke_original_saved_turn_begin_port(port, &input.request, &graph),
+                            ),
+                            OriginalSavedTurnStartStep::Claim(row) => {
+                                handle.block_on(invoke_original_saved_turn_claim_port(
+                                    port,
+                                    row,
+                                    &input.request,
+                                    &graph,
+                                ))
+                            }
+                        };
+                        let execute = match action {
+                            SavedTurnStartAction::Begin => {
+                                begin_legacy_saved_turn_from_admitted_port
+                            }
+                            SavedTurnStartAction::Claim => {
+                                claim_legacy_saved_turn_from_admitted_port
+                            }
+                        };
+                        execute(
+                            &data,
+                            &profile,
+                            &input,
+                            &graph,
+                            execution_deadline,
+                            authorize,
+                            evaluate,
+                        )
+                    })?;
+                    let OriginalSavedTurnStartOutcome::Turn { body, claimed } = outcome else {
+                        return Err(TurnStartRequiresLegacyCodec.into());
+                    };
+                    return Ok(PreparedReply {
+                        wire: encode_turn_start_reply(&body, claimed, &graph)?,
+                        document: None,
+                    });
+                }
                 NativeRegistryRequest::TurnSettlement {
                     caller,
                     turn_id,
@@ -831,7 +968,7 @@ async fn run(
                             .as_ref()
                             .context("Turn settlement permit is missing")?,
                     );
-                    let authorize = turn_settlement_authority(TurnSettlementAuthority {
+                    let authorize = original_saved_turn_authority(OriginalSavedTurnAuthority {
                         app: app.clone(),
                         manager: Arc::clone(&manager),
                         listener: Arc::clone(&listener),
@@ -1022,7 +1159,7 @@ async fn run(
     )
 }
 
-struct TurnSettlementAuthority {
+struct OriginalSavedTurnAuthority {
     app: AppHandle,
     manager: Arc<ApplicationProcessManager>,
     listener: Arc<ProviderPrepareListener>,
@@ -1032,8 +1169,8 @@ struct TurnSettlementAuthority {
     deadline: Instant,
 }
 
-fn turn_settlement_authority(
-    authority: TurnSettlementAuthority,
+fn original_saved_turn_authority(
+    authority: OriginalSavedTurnAuthority,
 ) -> impl FnMut(OriginalSavedTurnCheck) -> std::result::Result<(), LegacySavedTurnSettlementError> {
     move |phase| {
         const REVOKED: LegacySavedTurnSettlementError = LegacySavedTurnSettlementError::Revoked;
@@ -1058,6 +1195,29 @@ fn turn_settlement_authority(
         .map_err(|_| REVOKED)?;
         check()
     }
+}
+
+fn encode_turn_start_reply(
+    body: &CoreBuffer,
+    claimed: bool,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer, LegacySavedTurnSettlementError> {
+    if body.len() > TURN_READ_REPLY_LIMIT {
+        return Err(LegacySavedTurnSettlementError::Capacity);
+    }
+    let prefix: &[u8] = if claimed {
+        b"{\"claimed\":true,\"turn\":"
+    } else {
+        b"{\"claimed\":false,\"turn\":"
+    };
+    let row_end = prefix.len() + body.len();
+    CoreBuffer::write_exact(row_end + 1, budget, |output| {
+        output[..prefix.len()].copy_from_slice(prefix);
+        output[prefix.len()..row_end].copy_from_slice(body.as_bytes());
+        output[row_end] = b'}';
+        Ok(())
+    })
+    .map_err(|_| LegacySavedTurnSettlementError::Capacity)
 }
 
 fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
@@ -1875,6 +2035,34 @@ mod tests {
             Some(NativeArtifactError::Execution(
                 NativeDataIoError::Unavailable
             ))
+        ));
+    }
+
+    #[test]
+    fn turn_start_reply_preserves_original_row_bytes_and_enforces_the_row_limit() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let prefix = r#"{"text": "日本語","padding":""#;
+        let suffix = r#""}"#;
+        let padding = "a".repeat(TURN_READ_REPLY_LIMIT - prefix.len() - suffix.len());
+        let row = format!("{prefix}{padding}{suffix}");
+        let row = CoreBuffer::copy_from(row.as_bytes(), &budget).unwrap();
+        for (claimed, prefix) in [
+            (false, b"{\"claimed\":false,\"turn\":".as_slice()),
+            (true, b"{\"claimed\":true,\"turn\":".as_slice()),
+        ] {
+            let reply = encode_turn_start_reply(&row, claimed, &budget).unwrap();
+            let reply = reply.as_bytes();
+            assert!(reply.len() <= TURN_START_REPLY_LIMIT);
+            assert_eq!(
+                reply.strip_prefix(prefix).unwrap().strip_suffix(b"}"),
+                Some(row.as_bytes()),
+            );
+        }
+        let oversized =
+            CoreBuffer::copy_from(&vec![b' '; TURN_READ_REPLY_LIMIT + 1], &budget).unwrap();
+        assert!(matches!(
+            encode_turn_start_reply(&oversized, false, &budget),
+            Err(LegacySavedTurnSettlementError::Capacity)
         ));
     }
 

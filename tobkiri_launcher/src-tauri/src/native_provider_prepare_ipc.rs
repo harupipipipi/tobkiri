@@ -24,9 +24,10 @@ use crate::{
         ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
         NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
         PendingProviderPrepare, ProviderPrepareDeadline, SavedOrchestrationStepError,
-        SettlementCaller, TurnSettlementRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT,
-        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
-        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT,
+        SavedTurnStartAction, SettlementCaller, TurnSettlementRequiresLegacyCodec,
+        TurnStartRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
+        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
+        TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -47,6 +48,7 @@ const JSON_LIMIT: usize = 16 * 1024;
 const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
 const SAVED_RECEIPT_TURN_ID_MAX_CHARS: usize = 2048;
 const TURN_READ_ID_MAX_CHARS: usize = 256;
+const MAX_SAFE_JSON_REVISION: u64 = (1 << 53) - 1;
 const TURN_SETTLEMENT_RESULT_LIMIT: usize = 1024 * 1024;
 const TURN_SETTLEMENT_REFERENCE_LIMIT: usize = 2 * 1024;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(3);
@@ -80,6 +82,8 @@ struct Start<'a> {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     turn_read: Option<TurnRead>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
+    turn_start: Option<TurnStart>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     turn_settlement: Option<TurnSettlement>,
     #[serde(borrow, default, deserialize_with = "deserialize_present")]
     conversation_append: Option<ConversationAppend<'a>>,
@@ -94,6 +98,32 @@ enum RequestStart {
 
 impl Start<'_> {
     fn request_start(&self) -> Result<RequestStart> {
+        let turn_mutation = match (&self.turn_start, &self.turn_settlement) {
+            (None, None) => None,
+            (Some(start), None) => Some(NativeRegistryRequest::TurnStart {
+                action: start.action,
+                turn_id: start.turn_id.clone(),
+                conversation_id: start.conversation_id.clone(),
+                conversation_revision: start.conversation_revision,
+                input_digest: start.input_digest.clone(),
+                source_digest: start.source_digest.clone(),
+            }),
+            (None, Some(settlement)) => {
+                ensure!(
+                    !matches!(settlement.caller, SettlementCaller::SavedReconcile)
+                        || settlement.expected_revision.is_some(),
+                    "Turn settlement reconciliation requires an expected revision"
+                );
+                Some(NativeRegistryRequest::TurnSettlement {
+                    caller: settlement.caller,
+                    turn_id: settlement.turn_id.clone(),
+                    input_digest: settlement.input_digest.clone(),
+                    expected_revision: settlement.expected_revision,
+                    result_reference: settlement.result_reference.clone(),
+                })
+            }
+            (Some(_), Some(_)) => bail!("native Registry start must name exactly one operation"),
+        };
         let operation = match (
             &self.request,
             &self.model_list,
@@ -103,7 +133,7 @@ impl Start<'_> {
             &self.conversation_confirmation,
             &self.model_resolve,
             &self.turn_read,
-            &self.turn_settlement,
+            turn_mutation,
             &self.conversation_append,
             &self.saved_orchestration,
             self.apply,
@@ -165,32 +195,8 @@ impl Start<'_> {
                     turn_id: read.turn_id.clone(),
                 }
             }
-            (
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(settlement),
-                None,
-                None,
-                None,
-            ) => {
-                ensure!(
-                    !matches!(settlement.caller, SettlementCaller::SavedReconcile)
-                        || settlement.expected_revision.is_some(),
-                    "Turn settlement reconciliation requires an expected revision"
-                );
-                NativeRegistryRequest::TurnSettlement {
-                    caller: settlement.caller,
-                    turn_id: settlement.turn_id.clone(),
-                    input_digest: settlement.input_digest.clone(),
-                    expected_revision: settlement.expected_revision,
-                    result_reference: settlement.result_reference.clone(),
-                }
+            (None, None, None, None, None, None, None, None, Some(operation), None, None, None) => {
+                operation
             }
             (None, None, None, None, None, None, None, None, None, Some(append), None, None) => {
                 append.operation()?
@@ -255,6 +261,31 @@ struct TurnRead {
     caller: OriginalSavedReceiptRole,
     #[serde(deserialize_with = "deserialize_turn_read_id")]
     turn_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TurnStart {
+    #[serde(deserialize_with = "deserialize_turn_start_action")]
+    action: SavedTurnStartAction,
+    #[serde(deserialize_with = "deserialize_turn_start_id")]
+    turn_id: String,
+    #[serde(deserialize_with = "deserialize_turn_start_id")]
+    conversation_id: String,
+    #[serde(deserialize_with = "deserialize_turn_start_revision")]
+    conversation_revision: u64,
+    #[serde(deserialize_with = "deserialize_digest")]
+    input_digest: String,
+    #[serde(deserialize_with = "deserialize_digest")]
+    source_digest: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TurnStartReply<'a> {
+    claimed: bool,
+    #[serde(borrow, deserialize_with = "deserialize_object")]
+    turn: &'a RawValue,
 }
 
 #[derive(Deserialize)]
@@ -429,7 +460,7 @@ struct TurnSettlement {
     caller: SettlementCaller,
     #[serde(deserialize_with = "deserialize_settlement_turn_id")]
     turn_id: String,
-    #[serde(deserialize_with = "deserialize_settlement_digest")]
+    #[serde(deserialize_with = "deserialize_digest")]
     input_digest: String,
     #[serde(deserialize_with = "deserialize_settlement_revision")]
     expected_revision: Option<u64>,
@@ -471,7 +502,44 @@ fn valid_saved_identifier(value: &str) -> bool {
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
 }
 
-fn deserialize_settlement_digest<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+fn deserialize_turn_start_action<'de, D>(
+    deserializer: D,
+) -> std::result::Result<SavedTurnStartAction, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "begin" => Ok(SavedTurnStartAction::Begin),
+        "claim" => Ok(SavedTurnStartAction::Claim),
+        _ => Err(de::Error::custom("unknown Turn start action")),
+    }
+}
+
+fn deserialize_turn_start_id<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let id = String::deserialize(deserializer)?;
+    if !valid_saved_identifier(&id) {
+        return Err(de::Error::custom("invalid Turn start identifier"));
+    }
+    Ok(id)
+}
+
+fn deserialize_turn_start_revision<'de, D>(deserializer: D) -> std::result::Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let revision = u64::deserialize(deserializer)?;
+    if !(1..=MAX_SAFE_JSON_REVISION).contains(&revision) {
+        return Err(de::Error::custom(
+            "invalid Turn start conversation revision",
+        ));
+    }
+    Ok(revision)
+}
+
+fn deserialize_digest<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -721,6 +789,11 @@ fn parse_start(tag: u8, bytes: &[u8]) -> Result<Start<'_>> {
     let start: Start<'_> =
         serde_json::from_slice(bytes).map_err(|_| anyhow!("invalid native Registry start"))?;
     ensure!(
+        start.turn_start.is_none()
+            || bytes.iter().find(|byte| !byte.is_ascii_whitespace()) == Some(&b'{'),
+        "Turn start requires a named operation"
+    );
+    ensure!(
         (tag == START_APPEND) == start.conversation_append.is_some(),
         "native Registry start tag does not match its operation"
     );
@@ -754,6 +827,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         RequestStart::SavedOrchestration { .. }
             | RequestStart::Inline(
                 NativeRegistryRequest::TurnRead { .. }
+                    | NativeRegistryRequest::TurnStart { .. }
                     | NativeRegistryRequest::TurnSettlement { .. }
                     | NativeRegistryRequest::ConversationAppend { .. }
                     | NativeRegistryRequest::ConversationConfirmation { .. }
@@ -839,6 +913,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         NativeRegistryRequest::ConversationAppend { .. } => ReplyRole::ConversationAppend,
         NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
         NativeRegistryRequest::TurnRead { .. } => ReplyRole::TurnRead,
+        NativeRegistryRequest::TurnStart { action, .. } => ReplyRole::TurnStart(*action),
         NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
         NativeRegistryRequest::SavedOrchestration { .. } => ReplyRole::SavedOrchestration,
     };
@@ -885,6 +960,7 @@ enum ReplyRole {
     ConversationAppend,
     ModelResolve,
     TurnRead,
+    TurnStart(SavedTurnStartAction),
     TurnSettlement,
     SavedOrchestration,
 }
@@ -892,7 +968,10 @@ enum ReplyRole {
 impl ReplyRole {
     fn permits_publication(self) -> bool {
         self.uses_conversation_publication()
-            || matches!(self, Self::ModelSave | Self::TurnSettlement)
+            || matches!(
+                self,
+                Self::ModelSave | Self::TurnStart(_) | Self::TurnSettlement
+            )
     }
 
     fn uses_conversation_publication(self) -> bool {
@@ -919,6 +998,10 @@ impl ReplyRole {
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
             Self::SavedOrchestration => (SAVED_ORCHESTRATION_FRAME_LIMIT, "limit-exceeded"),
+            Self::TurnStart(_) if authority == WireAuthority::PublicationPermitted => {
+                (TURN_START_REPLY_LIMIT, "unavailable")
+            }
+            Self::TurnStart(_) => (TURN_START_REPLY_LIMIT, "limit-exceeded"),
             Self::TurnSettlement if authority == WireAuthority::PublicationPermitted => {
                 (TURN_SETTLEMENT_RESULT_LIMIT, "unavailable")
             }
@@ -975,13 +1058,17 @@ impl ReplyRole {
                 },
             };
         }
-        if self != Self::TurnSettlement {
+        if !matches!(self, Self::TurnStart(_) | Self::TurnSettlement) {
             return failure_code(error);
         }
         if authority == WireAuthority::PublicationPermitted {
             return "unavailable";
         }
-        if authority == WireAuthority::Live && error.is::<TurnSettlementRequiresLegacyCodec>() {
+        let needs_legacy_codec = match self {
+            Self::TurnStart(_) => error.is::<TurnStartRequiresLegacyCodec>(),
+            _ => error.is::<TurnSettlementRequiresLegacyCodec>(),
+        };
+        if authority == WireAuthority::Live && needs_legacy_codec {
             return "legacy-read-required";
         }
         match error.downcast_ref::<SettlementError>() {
@@ -1007,6 +1094,24 @@ impl ReplyRole {
         let (limit, overflow_code) = self.result_limit(authority);
         if output.len() > limit {
             return Err(overflow_code);
+        }
+        if let Self::TurnStart(action) = self {
+            if authority == WireAuthority::AwaitingLive {
+                return Err("unavailable");
+            }
+            let permitted = authority == WireAuthority::PublicationPermitted;
+            let malformed = if permitted { "unavailable" } else { "internal" };
+            let text = std::str::from_utf8(output).map_err(|_| malformed)?;
+            if !text.trim_start().starts_with('{') {
+                return Err(malformed);
+            }
+            let result: TurnStartReply<'_> = serde_json::from_str(text).map_err(|_| malformed)?;
+            if result.claimed != (action == SavedTurnStartAction::Claim && permitted) {
+                return Err(malformed);
+            }
+            if result.turn.get().len() > TURN_READ_REPLY_LIMIT {
+                return Err(overflow_code);
+            }
         }
         if matches!(self, Self::TurnRead | Self::SavedOrchestration) {
             if authority != WireAuthority::Live {
@@ -2366,6 +2471,205 @@ mod tests {
             role.validate_result(live, oversized.as_bytes()),
             Err("limit-exceeded")
         );
+    }
+
+    fn turn_start_body() -> serde_json::Value {
+        serde_json::json!({
+            "action": "begin",
+            "turn_id": "turn:one-2",
+            "conversation_id": "conversation.1",
+            "conversation_revision": MAX_SAFE_JSON_REVISION,
+            "input_digest": format!("sha256:{}", "a".repeat(64)),
+            "source_digest": format!("sha256:{}", "b".repeat(64)),
+        })
+    }
+
+    #[test]
+    fn turn_start_requires_one_named_inline_operation() {
+        let mut body = turn_start_body();
+        let max_id = format!("A._:-{}", "0".repeat(251));
+        body["turn_id"] = max_id.as_str().into();
+        for (action, expected, revision) in [
+            ("begin", SavedTurnStartAction::Begin, 1),
+            ("claim", SavedTurnStartAction::Claim, MAX_SAFE_JSON_REVISION),
+        ] {
+            body["action"] = action.into();
+            body["conversation_revision"] = revision.into();
+            let operation = format!(r#", "turn_start":{body}"#);
+            let frame = start_frame(&operation);
+            let start = parse_start(START, frame.as_bytes()).unwrap();
+            let NativeRegistryRequest::TurnStart {
+                action,
+                turn_id,
+                conversation_id,
+                conversation_revision,
+                input_digest,
+                source_digest,
+            } = start.operation().unwrap()
+            else {
+                panic!("expected Turn start operation");
+            };
+            assert_eq!(action, expected);
+            assert_eq!(turn_id, max_id);
+            assert_eq!(conversation_id, "conversation.1");
+            assert_eq!(conversation_revision, revision);
+            assert_eq!(input_digest, body["input_digest"].as_str().unwrap());
+            assert_eq!(source_digest, body["source_digest"].as_str().unwrap());
+            assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+            for other in [PROVIDER_REQUEST, r#", "apply":{}"#, r#", "model_list":{}"#] {
+                let frame = start_frame(&format!("{operation}{other}"));
+                assert!(parse_start(START, frame.as_bytes())
+                    .unwrap()
+                    .operation()
+                    .is_err());
+            }
+            let duplicate = start_frame(&format!("{operation}{operation}"));
+            assert!(parse_start(START, duplicate.as_bytes()).is_err());
+        }
+    }
+
+    #[test]
+    fn turn_start_rejects_invalid_fields_and_duplicate_names() {
+        use serde_json::json;
+
+        for (key, value) in [
+            ("action", json!("saved-turn")),
+            ("action", json!({"begin": null})),
+            ("turn_id", json!("-turn")),
+            ("turn_id", json!("turn/path")),
+            ("conversation_id", json!("")),
+            ("conversation_id", json!("猫")),
+            ("conversation_id", json!("x".repeat(257))),
+            ("conversation_revision", json!(0)),
+            ("conversation_revision", json!(MAX_SAFE_JSON_REVISION + 1)),
+            ("conversation_revision", json!(-1)),
+            ("conversation_revision", json!(true)),
+            ("conversation_revision", json!(1.0)),
+            ("conversation_revision", json!("1")),
+            ("input_digest", json!(format!("sha256:{}", "A".repeat(64)))),
+            ("source_digest", json!("sha256:abcd")),
+            ("source_digest", json!(null)),
+            ("publish", json!(true)),
+        ] {
+            let mut body = turn_start_body();
+            body[key] = value;
+            let frame = start_frame(&format!(r#", "turn_start":{body}"#));
+            assert!(parse_start(START, frame.as_bytes()).is_err(), "{key}");
+        }
+
+        let original = turn_start_body();
+        for field in original.as_object().unwrap().keys() {
+            let mut missing = original.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            let frame = start_frame(&format!(r#", "turn_start":{missing}"#));
+            assert!(parse_start(START, frame.as_bytes()).is_err(), "{field}");
+        }
+        let compact = original.to_string();
+        let duplicate = format!(r#"{{"action":"begin",{}"#, &compact[1..]);
+        for body in ["null", "[]", &duplicate] {
+            let frame = start_frame(&format!(r#", "turn_start":{body}"#));
+            assert!(parse_start(START, frame.as_bytes()).is_err());
+        }
+    }
+
+    #[test]
+    fn turn_start_validates_the_raw_reply_and_claim_phase() {
+        let begin = ReplyRole::TurnStart(SavedTurnStartAction::Begin);
+        let claim = ReplyRole::TurnStart(SavedTurnStartAction::Claim);
+        let live = WireAuthority::Live;
+        let permitted = WireAuthority::PublicationPermitted;
+        let unchanged = br#"{"claimed":false,"turn": { "revision":9007199254740993 }}"#;
+        let claimed = br#"{"claimed":true,"turn":{"status":"running"}}"#;
+        assert!(begin.permits_publication());
+        assert!(claim.permits_publication());
+        assert!(begin.validate_result(live, unchanged).is_ok());
+        assert!(begin.validate_result(permitted, unchanged).is_ok());
+        assert!(claim.validate_result(live, unchanged).is_ok());
+        assert!(claim.validate_result(permitted, claimed).is_ok());
+        assert_eq!(
+            begin.validate_result(WireAuthority::AwaitingLive, unchanged),
+            Err("unavailable")
+        );
+        assert_eq!(claim.validate_result(live, claimed), Err("internal"));
+        assert_eq!(begin.validate_result(live, claimed), Err("internal"));
+        assert_eq!(
+            begin.validate_result(permitted, claimed),
+            Err("unavailable")
+        );
+        assert_eq!(
+            claim.validate_result(permitted, unchanged),
+            Err("unavailable")
+        );
+        for malformed in [
+            r#"[false,{}]"#,
+            r#"{"claimed":false,"turn":null}"#,
+            r#"{"claimed":false,"turn":[]}"#,
+            r#"{"claimed":0,"turn":{}}"#,
+            r#"{"claimed":false}"#,
+            r#"{"claimed":false,"claimed":false,"turn":{}}"#,
+            r#"{"claimed":false,"turn":{},"turn":{}}"#,
+            r#"{"claimed":false,"turn":{},"publish":false}"#,
+            r#"{"claimed":false,"turn":{}} null"#,
+        ] {
+            assert_eq!(
+                claim.validate_result(live, malformed.as_bytes()),
+                Err("internal")
+            );
+        }
+        let parsed: TurnStartReply<'_> = serde_json::from_slice(unchanged).unwrap();
+        assert_eq!(parsed.turn.get(), r#"{ "revision":9007199254740993 }"#);
+        let row = format!(r#"{{"id":"{}"}}"#, "a".repeat(TURN_READ_REPLY_LIMIT - 8));
+        assert_eq!(row.len(), TURN_READ_REPLY_LIMIT + 1);
+        let wrapped = format!(r#"{{"claimed":false,"turn":{row}}}"#);
+        assert!(wrapped.len() <= TURN_START_REPLY_LIMIT);
+        assert_eq!(
+            begin.validate_result(live, wrapped.as_bytes()),
+            Err("limit-exceeded")
+        );
+        assert_eq!(
+            begin.validate_result(permitted, wrapped.as_bytes()),
+            Err("unavailable")
+        );
+    }
+
+    #[test]
+    fn turn_start_fallback_requires_live_and_the_specific_codec_error() {
+        use LegacySavedTurnSettlementError as Error;
+
+        for action in [SavedTurnStartAction::Begin, SavedTurnStartAction::Claim] {
+            let role = ReplyRole::TurnStart(action);
+            let codec = TurnStartRequiresLegacyCodec.into();
+            let live = WireAuthority::Live;
+            assert_eq!(role.failure_code(live, &codec), "legacy-read-required");
+            for authority in [
+                WireAuthority::AwaitingLive,
+                WireAuthority::PublicationPermitted,
+            ] {
+                assert_eq!(role.failure_code(authority, &codec), "unavailable");
+            }
+            for other_legacy in [
+                TurnSettlementRequiresLegacyCodec.into(),
+                Error::RequiresLegacyCodec.into(),
+            ] {
+                assert_eq!(role.failure_code(live, &other_legacy), "unavailable");
+            }
+            for (error, code) in [
+                (Error::InvalidRequest, "invalid"),
+                (Error::InvalidRecord, "invalid"),
+                (Error::NotFound, "not-found"),
+                (Error::Conflict, "conflict"),
+                (Error::Capacity, "limit-exceeded"),
+                (Error::Revoked, "cancelled"),
+                (Error::Storage, "internal"),
+            ] {
+                let error = error.into();
+                assert_eq!(role.failure_code(live, &error), code);
+                assert_eq!(
+                    role.failure_code(WireAuthority::PublicationPermitted, &error),
+                    "unavailable"
+                );
+            }
+        }
     }
 
     #[test]

@@ -320,6 +320,9 @@ class ExactHostProviderBackendV4:
         native_turn_settlement_publication_possible: (
             Callable[[RequestEnvelope], bool] | None
         ) = None,
+        native_turn_start_publication_possible: (
+            Callable[[RequestEnvelope], bool] | None
+        ) = None,
         native_conversation_confirmation_publication_possible: (
             Callable[[RequestEnvelope], bool] | None
         ) = None,
@@ -338,6 +341,7 @@ class ExactHostProviderBackendV4:
             check for check in (
                 native_model_save_publication_possible,
                 native_turn_settlement_publication_possible,
+                native_turn_start_publication_possible,
                 native_conversation_confirmation_publication_possible,
                 native_conversation_append_publication_possible,
             ) if check is not None

@@ -27,6 +27,7 @@ const COUNT_TABLES: &str =
     "SELECT count(*) FROM main.sqlite_schema WHERE type = 'table' AND name IN
     ('turns', 'saved_inputs', 'message_deliveries', 'message_interrupts', 'calendar_preparations')";
 const COUNT_TURNS: &str = "SELECT count(*) FROM turns";
+const SELECT_INPUT: &str = "SELECT source_digest, accepted_digest FROM saved_inputs WHERE id = ?1";
 // Sort only bounded index fields. Read each body by its exact id below so the
 // SQLite sorter never retains the history's JSON. Noncanonical indexed types
 // take the legacy route, which can preserve SQLite's dynamic sort ordering.
@@ -59,6 +60,14 @@ pub enum OriginalSavedTurnStartStep<'a> {
     Claim(OriginalSavedTurnRow<'a>),
 }
 
+/// Source and accepted identities retained by the original Saved Turn owner.
+pub struct OriginalSavedTurnStartInput<'a> {
+    /// Finite identity validated by the component before preparing a row.
+    pub request: LegacySavedTurnStartRequest<'a>,
+    /// Digest of the authenticated parent's saved request before projection.
+    pub source_digest: &'a str,
+}
+
 /// Begin one ordinary saved Turn in the original owner's initialized database.
 ///
 /// The evaluator receives only the new-record path under the writer lock.
@@ -66,14 +75,14 @@ pub enum OriginalSavedTurnStartStep<'a> {
 pub fn begin_legacy_saved_turn_from_admitted_port(
     root: &DataRoot,
     profile: &ProfileId,
-    request: &LegacySavedTurnStartRequest<'_>,
+    input: &OriginalSavedTurnStartInput<'_>,
     budget: &Arc<dyn AllocationBudget>,
     deadline: Instant,
     guard: impl FnMut(OriginalSavedTurnCheck) -> Result<()> + Send + 'static,
     evaluate: impl FnOnce(OriginalSavedTurnStartStep<'_>) -> Result<OriginalSavedTurnDecision>,
 ) -> Result<OriginalSavedTurnStartOutcome> {
     start_in_original_store(
-        root, profile, request, budget, deadline, guard, evaluate, false,
+        root, profile, input, budget, deadline, guard, evaluate, false,
     )
 }
 
@@ -85,14 +94,14 @@ pub fn begin_legacy_saved_turn_from_admitted_port(
 pub fn claim_legacy_saved_turn_from_admitted_port(
     root: &DataRoot,
     profile: &ProfileId,
-    request: &LegacySavedTurnStartRequest<'_>,
+    input: &OriginalSavedTurnStartInput<'_>,
     budget: &Arc<dyn AllocationBudget>,
     deadline: Instant,
     guard: impl FnMut(OriginalSavedTurnCheck) -> Result<()> + Send + 'static,
     evaluate: impl FnOnce(OriginalSavedTurnStartStep<'_>) -> Result<OriginalSavedTurnDecision>,
 ) -> Result<OriginalSavedTurnStartOutcome> {
     start_in_original_store(
-        root, profile, request, budget, deadline, guard, evaluate, true,
+        root, profile, input, budget, deadline, guard, evaluate, true,
     )
 }
 
@@ -100,13 +109,17 @@ pub fn claim_legacy_saved_turn_from_admitted_port(
 fn start_in_original_store(
     root: &DataRoot,
     profile: &ProfileId,
-    request: &LegacySavedTurnStartRequest<'_>,
+    input: &OriginalSavedTurnStartInput<'_>,
     budget: &Arc<dyn AllocationBudget>,
     deadline: Instant,
     mut guard: impl FnMut(OriginalSavedTurnCheck) -> Result<()> + Send + 'static,
     evaluate: impl FnOnce(OriginalSavedTurnStartStep<'_>) -> Result<OriginalSavedTurnDecision>,
     claiming: bool,
 ) -> Result<OriginalSavedTurnStartOutcome> {
+    if tobkiri_canon::Digest::parse(input.source_digest).is_err() {
+        return Err(Error::InvalidRequest);
+    }
+    let request = &input.request;
     let now = Instant::now();
     let mut check = move |phase| {
         if Instant::now() >= deadline {
@@ -133,6 +146,7 @@ fn start_in_original_store(
             transaction.rollback().map_err(sql)?;
             return Ok(OriginalSavedTurnStartOutcome::LegacyFallback);
         }
+        require_accepted_input(&transaction, input)?;
         let replay = replay_begin(
             &transaction,
             profile,
@@ -152,7 +166,7 @@ fn start_in_original_store(
                 require_absent_turn(&transaction, request.turn_id)?;
                 let count = require_idle(&transaction, profile, request, budget, &mut live)?;
                 if count >= TURN_CAPACITY {
-                    return Err(Error::Capacity);
+                    return Err(Error::Conflict);
                 }
                 live()?;
                 let decision = evaluate(OriginalSavedTurnStartStep::Begin)?;
@@ -174,6 +188,7 @@ fn start_in_original_store(
                 let lock_deadline = (Instant::now() + SQLITE_LOCK_TIMEOUT).min(deadline);
                 let claim_transaction = begin_immediate(connection, lock_deadline, &mut live)?;
                 live()?;
+                require_accepted_input(&claim_transaction, input)?;
                 match evaluate_claim(
                     &claim_transaction,
                     profile,
@@ -409,6 +424,28 @@ fn schema_present(transaction: &Transaction<'_>) -> Result<bool> {
         .map_err(read_sql)
 }
 
+fn require_accepted_input(
+    transaction: &Transaction<'_>,
+    input: &OriginalSavedTurnStartInput<'_>,
+) -> Result<()> {
+    let mut statement = prepare(transaction, SELECT_INPUT)?;
+    let mut rows = statement.query([input.request.turn_id]).map_err(read_sql)?;
+    let row = rows.next().map_err(read_sql)?.ok_or(Error::Conflict)?;
+    let digest = |index| {
+        row.get_ref(index)
+            .map_err(read_sql)?
+            .as_str()
+            .map_err(|_| Error::InvalidRecord)
+    };
+    if digest(0)? != input.source_digest
+        || digest(1)? != input.request.input_digest
+        || rows.next().map_err(read_sql)?.is_some()
+    {
+        return Err(Error::Conflict);
+    }
+    Ok(())
+}
+
 fn prepare<'db>(connection: &'db Connection, statement: &str) -> Result<rusqlite::Statement<'db>> {
     connection
         .prepare_with_flags(statement, PrepFlags::SQLITE_PREPARE_NO_VTAB)
@@ -450,6 +487,13 @@ fn prepare_start_connection(
                     | AuthAction::Transaction { .. }
                     | AuthAction::Function {
                         function_name: "count" | "length" | "typeof",
+                    },
+                )
+                | (
+                    Some("main"),
+                    AuthAction::Read {
+                        table_name: "saved_inputs",
+                        column_name: "id" | "source_digest" | "accepted_digest",
                     },
                 )
                 | (

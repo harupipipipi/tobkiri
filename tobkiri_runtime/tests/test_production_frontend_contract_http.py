@@ -3574,6 +3574,160 @@ def test_native_append_borrows_signed_saved_orchestration_child(
                 request.mark_publication_possible()
 
 
+def test_native_saved_turn_start_borrows_signed_lifecycle_lease_and_owner_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the native start selection with the durable owner as its oracle."""
+    import sqlite3
+
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import LeaseState
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from core_runtime.provider_prepare_native_v4 import NativeProviderRegistryRequiresLegacyRead
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
+    from tobkiri_host.runtime import V4DispatchSession
+
+    parent_target = ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+    child_target = (
+        "tobkiri.action.turn.lifecycle.v1", "rumi_turn_runtime_pack.turn-lifecycle",
+    )
+    parents: list[RequestEnvelope] = []
+    children: list[RequestEnvelope] = []
+    borrows: list[ipc.NativeSavedTurnStartRequest] = []
+    writes: list[tuple[str, ipc.SavedTurnStartAction]] = []
+    generations: list[object] = []
+    original = V4DispatchSession.invoke
+    user_data = tmp_path / "user-data"
+    owner = DurableTurnRuntime("defaults", user_data_root=user_data)
+
+    def invoke(session, contract, operation, payload, **kwargs):
+        if (contract, operation) == READINESS:
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
+        if (contract, operation) == TARGETS[2]:
+            generations.append(payload)
+            return {"status": "ok", "output": "Hi", "finish_reason": "stop"}
+        return original(session, contract, operation, payload, **kwargs)
+
+    def write(request: ipc.NativeSavedTurnStartRequest) -> Mapping[str, object]:
+        request.assert_current()
+        borrows.append(request)
+        child, parent = children[-1], parents[-1]
+        assert request.context is child.context
+        assert child.context.caller_principal == parent.target_principal
+        assert request.deadline_monotonic == child.deadline_monotonic
+        assert child.deadline_monotonic <= parent.deadline_monotonic
+        assert child.resource_reservation_id is not None
+        assert child.resource_reservation_id != parent.resource_reservation_id
+        assert child.lease.token != parent.lease.token
+        for envelope in (child, parent):
+            _, state = authority.inspect_lease_token(envelope.lease.token.decode("ascii"))
+            assert state is LeaseState.DISPATCHED
+        with sqlite3.connect(owner.path) as connection:
+            identities = connection.execute(
+                "SELECT source_digest, accepted_digest FROM saved_inputs WHERE id=?",
+                (request.turn_id,),
+            ).fetchone()
+        assert identities == (request.source_digest, request.input_digest)
+        accepted = {"request": child.payload["request"]}
+        assert canonical_digest(accepted) == request.input_digest
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        if request.turn_id == "compatibility" and request.action == "begin":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        current = owner.get(request.turn_id)
+        if current is None or (request.action == "claim" and current["status"] == "queued"):
+            request.mark_publication_possible()
+            writes.append((request.turn_id, request.action))
+        if request.action == "begin":
+            return {"claimed": False, "turn": owner.begin_saved(accepted)}
+        result = owner.claim_saved(accepted)
+        if request.turn_id == "ambiguous" and result["claimed"]:
+            raise OSError("fixture lost the reply after SQLite commit")
+        return result
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_turn_start_writer", lambda: write)
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    ) as (server, session, authority):
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(selected, envelope, *args, **kwargs):
+            target = envelope.contract_id, envelope.operation_id
+            if target == parent_target:
+                parents.append(envelope)
+            if target == child_target:
+                children.append(envelope)
+            return dispatch(selected, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        conversations = ConversationStore("defaults", user_data_root=user_data)
+        route = _contract("POST", "/api/chat/turn")
+        cookie, csrf, origin = _authenticate(server)
+
+        def send(body: dict) -> tuple[int, dict]:
+            status, result, _ = _request(
+                server, "POST", route, body=body, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+            )
+            return status, result
+
+        for name in ("projected", "compatibility", "ambiguous"):
+            conversations.create(
+                {"id": name, "model_reference": "model-profile-1"},
+                expected_revision=conversations.snapshot()["revision"],
+            )
+            body = {"request": {
+                "turn_id": name, "conversation_id": name,
+                "conversation_revision": 1, "content": "Hello",
+            }}
+            if name == "projected":
+                body["request"]["task_context"] = {
+                    "version": "tobkiri.saved-task-context.v1", "source_id": "fixture-context",
+                    "conversation_id": name, "recipient_id": f"conversation:{name}",
+                    "input_id": name, "source_revision": 1, "generation": 1,
+                    "items": [{"id": "note", "kind": "goal", "body": "Untrusted input context"}],
+                }
+            status, result = send(body)
+            if name == "ambiguous":
+                assert status != 200 or result["data"]["status"] != "completed", result
+                assert owner.get(name)["status"] == "running"
+                assert conversations.get(name)["messages"] == []
+            else:
+                assert status == 200 and result["data"]["status"] == "completed", result
+                assert [message["role"] for message in conversations.get(name)["messages"]] == [
+                    "user", "assistant",
+                ]
+            stored = owner.get(name)
+            before_retry = conversations.path.read_bytes()
+            status, replay = send(body)
+            assert status == 200 and replay["data"]["status"] == "existing", replay
+            assert owner.get(name) == stored
+            assert conversations.path.read_bytes() == before_retry
+
+        assert writes == [
+            ("projected", "begin"), ("projected", "claim"), ("compatibility", "claim"),
+            ("ambiguous", "begin"), ("ambiguous", "claim"),
+        ]
+        assert len(generations) == 2
+        assert [item.action for item in borrows] == ["begin", "claim"] * 6
+        assert all(
+            item.source_digest != item.input_digest for item in borrows
+            if item.turn_id == "projected"
+        )
+        for borrow in borrows:
+            with pytest.raises(PermissionError):
+                borrow.assert_current()
+
+
 def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -21,7 +21,7 @@ use tobkiri_harness_native::{
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
     OriginalRoutePin, OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole,
-    OriginalSavedReceiptSelection,
+    OriginalSavedReceiptSelection, OriginalSavedTurnStartChoice,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
@@ -37,7 +37,7 @@ use super::{
 use crate::{
     defaultspack_authority::{
         require_current_launch_identity, NativeApplicationSources, NativeSourceRoot,
-        SignedApplicationResolver,
+        SignedApplicationResolver, VerifiedTurnStartBundle,
     },
     dock_registration::{
         assemble_defaultspack_desktop_metadata, DefaultspackDesktopMetadata, LaunchMetadataUse,
@@ -120,6 +120,13 @@ impl VerifiedRegistryLaunch {
         self.turn
             .as_ref()
             .is_some_and(|source| source.permits_read(role))
+    }
+
+    /// Require the exact ordinary Saved Turn-to-Lifecycle chain and verified Turn start port.
+    pub(crate) fn permits_turn_start(&self) -> bool {
+        self.turn
+            .as_ref()
+            .is_some_and(|source| source.start.is_some())
     }
 
     /// Require the receipt caller's own legacy edge and verified receipt declaration.
@@ -232,11 +239,12 @@ impl VerifiedConversationSource {
     }
 }
 
-/// Independent signed grants for settlement and completion reads of the Turn Pack.
+/// Independent signed grants for starting, settling, and reading a Turn.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedTurnSource {
     settlement: [Option<(SettlementCaller, VerifiedLegacyRoutePin)>; 2],
     read: VerifiedConversationConfirmationRoles,
+    start: Option<VerifiedTurnStartBundle>,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -469,6 +477,7 @@ impl VerifiedRegistryLaunch {
             turn: Some(VerifiedTurnSource {
                 settlement: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
                 read: [None, None],
+                start: None,
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
@@ -488,9 +497,27 @@ impl VerifiedRegistryLaunch {
         proof.turn = Some(VerifiedTurnSource {
             settlement: [None, None],
             read: confirmation.confirmation,
+            start: None,
             archive_sha256: confirmation.archive_sha256,
             archive_bytes: confirmation.archive_bytes,
             manifest_sha256: confirmation.manifest_sha256,
+        });
+        proof
+    }
+
+    pub(crate) fn test_turn_start_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
+        proof.provider_prepare = None;
+        proof.turn = Some(VerifiedTurnSource {
+            settlement: [None, None],
+            read: [None, None],
+            start: Some(VerifiedTurnStartBundle::fixture()),
+            archive_sha256: "sha256:archive".into(),
+            archive_bytes: 512,
+            manifest_sha256: "sha256:manifest".into(),
         });
         proof
     }
@@ -1006,6 +1033,9 @@ impl LaunchActivationObserver<'_> {
         {
             log::info!("verified selected old Turn settlement grants and their bundled Wasm replacement for this activation");
         }
+        if turn.as_ref().is_some_and(|source| source.start.is_some()) {
+            log::info!("verified the ordinary Saved Turn Lifecycle grants and their bundled Wasm replacement for this activation");
+        }
         Ok(Some(VerifiedRegistryLaunch {
             identity: self.identity.clone(),
             security_epoch,
@@ -1270,6 +1300,33 @@ pub(super) fn reacquire_turn_read_pack(
     .context("bundled Turn read archive verification failed")
 }
 
+/// Reacquire the fixed Turn start port from the installed Bundle verified at Launch.
+pub(super) fn reacquire_turn_start_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .turn
+        .as_ref()
+        .context("admitted launch has no verified Turn source")?;
+    let start = source
+        .start
+        .as_ref()
+        .context("admitted launch has no verified ordinary Turn start source")?;
+    checkpoint()?;
+    inspection.with_source(|sources| start.require_source(sources))??;
+    start.revalidate(inspection.allocation_budget()?, &checkpoint)?;
+    reacquire_turn_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        require_turn_start_declaration,
+    )
+    .context("bundled Turn start archive verification failed")
+}
+
 fn reacquire_turn_archive(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
@@ -1489,16 +1546,29 @@ fn verify_turn_source(
     } else {
         [None, None]
     };
+    let start = if receipt.version() == "0.3.0" {
+        OriginalSavedTurnStartChoice::select(active, budget)?
+    } else {
+        None
+    };
     let has_read = read.iter().any(Option::is_some);
-    if selections.iter().all(Option::is_none) && !has_read {
+    if selections.iter().all(Option::is_none) && !has_read && start.is_none() {
         return Ok(None);
     }
     if selections.iter().any(Option::is_some) {
         let locked = inspection.with_source(|sources| {
             sources.turn_settlement_bundle(selections.each_ref().map(Option::as_ref), budget)
         })??;
-        locked.verify(checkpoint)?;
+        locked.verify(&checkpoint)?;
     }
+    let start = start
+        .as_ref()
+        .map(|choice| {
+            let locked =
+                inspection.with_source(|sources| sources.turn_start_bundle(choice, budget))??;
+            locked.verify(&checkpoint)
+        })
+        .transpose()?;
     let pack = verify_registry_archive(inspection, receipt, input)?;
     let declares_read = require_turn_settlement_declaration(&pack)?;
     ensure!(
@@ -1509,6 +1579,7 @@ fn verify_turn_source(
         settlement: selections
             .map(|choice| choice.map(|choice| (choice.role(), choice.pin().into()))),
         read,
+        start,
         archive_sha256: receipt.archive_sha256().to_owned(),
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -1545,6 +1616,15 @@ fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
         require_turn_settlement_declaration(pack)?,
         "bundled Turn Pack has no read port"
     );
+    Ok(())
+}
+
+fn require_turn_start_declaration(pack: &VerifiedPack) -> Result<()> {
+    ensure!(
+        pack.manifest.version == "0.3.0",
+        "bundled Turn Pack has no verified start port"
+    );
+    require_turn_settlement_declaration(pack)?;
     Ok(())
 }
 
@@ -1973,6 +2053,7 @@ mod tests {
         let current = verify(draft);
         assert!(require_turn_settlement_declaration(&current).unwrap());
         assert!(require_turn_read_declaration(&current).is_ok());
+        assert!(require_turn_start_declaration(&current).is_ok());
 
         let mut extra: serde_json::Value = serde_json::from_slice(draft).unwrap();
         extra["permissions"]["storage"] = serde_json::json!({"private": true});
@@ -1992,6 +2073,7 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("unexpected WIT"));
+        assert!(require_turn_start_declaration(&verify(draft)).is_err());
         fs::write(
             path.join("wit/pack.wit"),
             current_wit.replace("option<u64>", "option<u32>"),
@@ -2020,7 +2102,9 @@ mod tests {
             .as_array_mut()
             .unwrap()
             .retain(|file| file != TURN_START_SHAPE.0);
-        assert!(require_turn_read_declaration(&verify(&serde_json::to_vec(&old).unwrap())).is_ok());
+        let previous = verify(&serde_json::to_vec(&old).unwrap());
+        assert!(require_turn_read_declaration(&previous).is_ok());
+        assert!(require_turn_start_declaration(&previous).is_err());
 
         let (settlement, after) = previous_wit.split_once("interface legacy-read {").unwrap();
         let (_, world) = after.split_once("world pack {").unwrap();
@@ -2043,6 +2127,7 @@ mod tests {
         let original = verify(&old);
         assert!(!require_turn_settlement_declaration(&original).unwrap());
         assert!(require_turn_read_declaration(&original).is_err());
+        assert!(require_turn_start_declaration(&original).is_err());
     }
 
     #[test]
@@ -2213,6 +2298,43 @@ mod tests {
             for role in SettlementCaller::ALL {
                 assert!(!proof.permits_turn_settlement(role));
             }
+        }
+    }
+
+    #[test]
+    fn turn_start_evidence_is_independent_of_settlement_read_and_orchestration() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let revision = "catalog:fixture";
+        let start = VerifiedRegistryLaunch::test_turn_start_proof(identity.clone(), revision);
+        assert!(start.permits_turn_start());
+        assert!(!start.permits_saved_orchestration());
+        assert!(!VerifiedRegistryLaunch::test_saved_orchestration_proof(
+            identity.clone(),
+            revision
+        )
+        .permits_turn_start());
+        for role in SettlementCaller::ALL {
+            assert!(!start.permits_turn_settlement(role));
+            assert!(!VerifiedRegistryLaunch::test_turn_settlement_proof(
+                identity.clone(),
+                revision,
+                role
+            )
+            .permits_turn_start());
+        }
+        for role in OriginalSavedReceiptRole::ALL {
+            assert!(!start.permits_turn_read(role));
+            assert!(!VerifiedRegistryLaunch::test_turn_read_proof(
+                identity.clone(),
+                revision,
+                role
+            )
+            .permits_turn_start());
         }
     }
 

@@ -150,6 +150,15 @@ static SAVED_TURN: Route = Route {
     execution: PYTHON_HOST,
 };
 
+static TURN_LIFECYCLE: Route = Route {
+    pack: TURN_RUNTIME_PACK,
+    function: "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+    contract: "tobkiri.action.turn.lifecycle.v1",
+    operation: "rumi_turn_runtime_pack.turn-lifecycle",
+    variant: "rumi_turn_runtime_pack.turn-runtime.lifecycle.python",
+    execution: PYTHON_HOST,
+};
+
 static SAVED_RECONCILE: Route = Route {
     pack: TURN_RUNTIME_PACK,
     function: SAVED_RECONCILE_CALLER,
@@ -531,6 +540,32 @@ impl<'a> OriginalConversationConfirmationChoice<'a> {
     }
 }
 
+/// The signed chain from the default Shell through Saved Turn to Turn Lifecycle.
+pub struct OriginalSavedTurnStartChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 2],
+}
+
+impl<'a> OriginalSavedTurnStartChoice<'a> {
+    /// Select the two exact ordinary saved grants. Verify both pins against the signed Bundle.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_saved_turn_start_records(active.records(), budget)?.map(|pins| Self {
+                _active: active,
+                pins,
+            }),
+        )
+    }
+
+    /// The Shell-to-Saved Turn grant followed by the Saved Turn-to-Lifecycle grant.
+    pub fn pins(&self) -> &[OriginalRoutePin; 2] {
+        &self.pins
+    }
+}
+
 /// The signed chain from the default Shell to Saved Turn and Saved Orchestration.
 pub struct OriginalSavedOrchestrationChoice<'a> {
     _active: &'a OriginalActiveProfile,
@@ -548,7 +583,7 @@ impl<'a> OriginalSavedOrchestrationChoice<'a> {
             return Ok(None);
         };
         Ok(
-            select_saved_orchestration_records(&records)?.map(|pins| Self {
+            select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)?.map(|pins| Self {
                 _active: active,
                 pins,
             }),
@@ -843,7 +878,8 @@ fn select_conversation_append_records(
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some([turn, orchestration]) = select_saved_orchestration_records(&records)? else {
+    let Some([turn, orchestration]) = select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)?
+    else {
         return Ok(None);
     };
     Ok(records
@@ -851,8 +887,9 @@ fn select_conversation_append_records(
         .map(|manage| [turn, orchestration, manage]))
 }
 
-fn select_saved_orchestration_records(
+fn select_ordinary_saved_chain(
     records: &Records<'_>,
+    nested_target: &'static Route,
 ) -> Result<Option<[OriginalRoutePin; 2]>> {
     if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
         return Ok(None);
@@ -861,8 +898,18 @@ fn select_saved_orchestration_records(
         return Ok(None);
     };
     Ok(records
-        .select_route(turn.function_id(), &SAVED_ORCHESTRATION)?
-        .map(|orchestration| [turn, orchestration]))
+        .select_route(turn.function_id(), nested_target)?
+        .map(|nested| [turn, nested]))
+}
+
+fn select_saved_turn_start_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<[OriginalRoutePin; 2]>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    select_ordinary_saved_chain(&records, &TURN_LIFECYCLE)
 }
 
 fn select_saved_turn_settlement_records(
@@ -1416,6 +1463,13 @@ mod tests {
                 "sha256:9dd8f4b40122ccebecee571c81ad10a71b07bc791baee7dedfa96ed8214e5fc4",
                 "sha256:f3ab7b69d73b0e79b262bc2900c652da5f92e15d13c44c160eb8e7f8b2f9f3e3",
             ),
+            (
+                &TURN_LIFECYCLE,
+                SAVED_TURN_CALLER,
+                "authority-ref:d72a9902e8d29286524595021657b7031e8a3377f578468e34624047478ff616",
+                "sha256:a7cf23d352ca9838379fd3acc501c52fb5cb7e4b0b708d4d0c5c637a3bb680f5",
+                "sha256:812396986fe5f82a4d98677f28cdb70e74759d81fdea3bb3887695f3721555eb",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -1562,7 +1616,7 @@ mod tests {
         let Some(records) = selected_shell_records((&profile, &lock, &plan), &budget)? else {
             return Ok(None);
         };
-        select_saved_orchestration_records(&records)
+        select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)
     }
 
     const MODEL_MANAGE_ROW: usize = 3;
@@ -1579,6 +1633,100 @@ mod tests {
     const CONFIRMATION_TURN_GET_ROW: usize = 18;
     const SAVED_ORCHESTRATION_ROW: usize = 19;
     const MESSAGE_MANAGE_ROW: usize = 20;
+    const TURN_LIFECYCLE_ROW: usize = 21;
+
+    fn select_saved_turn_start(records: &Value) -> Result<Option<[OriginalRoutePin; 2]>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_saved_turn_start_records((&profile, &lock, &plan), &budget)
+    }
+
+    #[test]
+    fn saved_turn_start_requires_both_ordinary_profile_grants() {
+        let fixture = records();
+        let [turn, lifecycle] = select_saved_turn_start(&fixture).unwrap().unwrap();
+        assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
+        assert_eq!(turn.function_id(), SAVED_TURN.function);
+        assert_eq!(lifecycle.caller_function_id(), turn.function_id());
+        assert_eq!(lifecycle.function_id(), TURN_LIFECYCLE.function);
+        assert_eq!(lifecycle.variant_id(), TURN_LIFECYCLE.variant);
+        assert_eq!(lifecycle.artifact_digest(), turn.artifact_digest());
+
+        for row in [SAVED_TURN_SETTLEMENT_ROW, TURN_LIFECYCLE_ROW] {
+            let mut candidate = fixture.clone();
+            candidate["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            assert!(select_saved_turn_start(&candidate).unwrap().is_none());
+
+            let mut candidate = fixture.clone();
+            candidate["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            candidate["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(select_saved_turn_start(&candidate).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn saved_turn_start_rejects_other_callers_scopes_and_variants() {
+        let fixture = records();
+        let row = TURN_LIFECYCLE_ROW;
+        for caller in [
+            "rumi_turn_runtime_pack.chat-saved-job-adapter",
+            "tobkiri_calendar_pack.calendar-turn",
+            SAVED_RECONCILE_CALLER,
+            MODEL_MANAGE.function,
+        ] {
+            let mut candidate = fixture.clone();
+            candidate["profile"]["requested_edges"][row]["caller_function_id"] = json!(caller);
+            candidate["plan"]["bindings"][row]["caller_function_id"] = json!(caller);
+            assert!(select_saved_turn_start(&candidate).unwrap().is_none());
+        }
+
+        let mut candidate = fixture.clone();
+        let scope = &mut candidate["profile"]["requested_edges"][row]["requested_scope_template"];
+        scope["quotas"] = json!({"calls": 1});
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let wire = serde_json::to_vec(scope).unwrap();
+        let digest = CoreValue::parse_guest(&wire, &budget)
+            .unwrap()
+            .digest_guest(&budget)
+            .unwrap();
+        candidate["plan"]["bindings"][row]["requested_scope_digest"] = json!(digest.as_str());
+        assert!(select_saved_turn_start(&candidate).unwrap().is_none());
+
+        for (field, alternate) in [
+            (
+                "variant_id",
+                "rumi_turn_runtime_pack.turn-runtime.lifecycle.alt",
+            ),
+            ("platform", "linux"),
+            ("architecture", "x86_64"),
+            ("runtime_abi", "python3.12"),
+            ("backend", "tobkiri.python-pack-v4"),
+            ("execution_kind", "pack_vm"),
+            ("domain_kind", "pack_vm"),
+        ] {
+            let mut candidate = fixture.clone();
+            let pin = candidate["lock"]["variant_pins"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|pin| pin["variant_id"] == TURN_LIFECYCLE.variant)
+                .unwrap();
+            pin[field] = json!(alternate);
+            candidate["plan"]["bindings"][row][field] = json!(alternate);
+            assert!(
+                select_saved_turn_start(&candidate).unwrap().is_none(),
+                "{field}"
+            );
+        }
+    }
 
     fn select_saved_turn_settlement(
         records: &Value,

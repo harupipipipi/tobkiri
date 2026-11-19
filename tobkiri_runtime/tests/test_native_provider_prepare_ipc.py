@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 from core_runtime import native_provider_prepare_ipc as ipc
+from core_runtime.host_provider_backend_v4 import HostPublicationUnconfirmed
 from core_runtime.process_identity import process_start_identity
 from core_runtime.provider_prepare_native_v4 import NativeProviderPreparePlanner
 
@@ -440,6 +441,13 @@ _TURN_REFERENCE = {
     "outcome_digest": "sha256:" + "e" * 64,
 }
 _TURN_DIGEST = "sha256:" + "b" * 64
+_SOURCE_DIGEST = "sha256:" + "c" * 64
+_STARTED_TURN = {
+    "id": "turn-1", "profile_id": "defaults", "request_id": "saved-turn." + "d" * 64,
+    "conversation_id": "conversation-1", "conversation_revision": 3,
+    "status": "queued", "revision": 1, "input_digest": _TURN_DIGEST,
+    "guidance": [], "events": [{"name": "turn.queued", "wide": 1 << 128}],
+}
 _SETTLED_TURN = {
     "id": "turn-1", "profile_id": "defaults", "request_id": "saved-turn.fixture",
     "conversation_id": "conversation-1", "conversation_revision": 3,
@@ -447,6 +455,241 @@ _SETTLED_TURN = {
     "result_reference": _TURN_REFERENCE, "created_at": 100, "updated_at": 200,
     "guidance": [], "events": [{"name": "turn.completed", "wide": 1 << 128}],
 }
+
+
+def _turn_start_request(
+    borrow: _Borrow,
+    marker: Callable[[], None],
+    action: ipc.SavedTurnStartAction = "claim",
+) -> ipc.NativeSavedTurnStartRequest:
+    return ipc.NativeSavedTurnStartRequest(
+        context=borrow.context, runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic, assert_current=borrow.assert_current,
+        action=action, turn_id="turn-1", conversation_id="conversation-1",
+        conversation_revision=3, input_digest=_TURN_DIGEST, source_digest=_SOURCE_DIGEST,
+        mark_publication_possible=marker,
+    )
+
+
+@contextmanager
+def _served_turn_start(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeSavedTurnStartRequest], Mapping[str, Any]]]:
+    with _served(monkeypatch, serve):
+        monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, "1")
+        writer = ipc.capture_launcher_saved_turn_start_writer()
+        assert writer is not None
+        yield writer
+
+
+def test_turn_start_capture_requires_managed_endpoint_and_exact_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ipc._SAVED_TURN_START_ENV, raising=False)
+    monkeypatch.delenv(ipc._SOCKET_ENV, raising=False)
+    monkeypatch.delenv(ipc._OWNER_ENV, raising=False)
+    assert ipc.capture_launcher_saved_turn_start_writer() is None
+    monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, "1")
+    assert ipc.capture_launcher_saved_turn_start_writer() is None
+    monkeypatch.setenv(ipc._SOCKET_ENV, "/missing")
+    with pytest.raises(ipc._ProtocolError, match="launch binding is invalid"):
+        ipc.capture_launcher_saved_turn_start_writer()
+    with _listener() as (_, address):
+        monkeypatch.setenv(ipc._SOCKET_ENV, address)
+        monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+        monkeypatch.setattr(ipc.os, "getppid", os.getpid)
+        assert ipc.capture_launcher_saved_turn_start_writer() is not None
+        for invalid_value in ("0", "true", " 1"):
+            monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, invalid_value)
+            assert ipc.capture_launcher_saved_turn_start_writer() is None
+
+
+@pytest.mark.parametrize("action", ["begin", "claim"])
+@pytest.mark.parametrize("published", [False, True])
+def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
+    monkeypatch: pytest.MonkeyPatch, action: ipc.SavedTurnStartAction, published: bool,
+) -> None:
+    borrow = _Borrow()
+    marks: list[bool] = []
+    guarded_after_marker = threading.Event()
+
+    def guard() -> None:
+        borrow.assert_current()
+        if marks:
+            guarded_after_marker.set()
+
+    request = replace(
+        _turn_start_request(borrow, lambda: marks.append(True), action),
+        assert_current=guard,
+    )
+    status = "queued" if action == "begin" and published else "running"
+    row = dict(_STARTED_TURN, status=status, details="会話")
+    encoded = json.dumps(row, ensure_ascii=False).encode()
+    row["details"] += "x" * (1024 * 1024 - len(encoded))
+    encoded = json.dumps(row, ensure_ascii=False).encode()
+    assert len(encoded) == 1024 * 1024
+    claimed = action == "claim" and published
+    response = b'{"claimed":' + json.dumps(claimed).encode() + b',"turn":' + encoded + b'}'
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == 1
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "turn_start": {
+                "action": action, "turn_id": "turn-1", "conversation_id": "conversation-1",
+                "conversation_revision": 3, "input_digest": _TURN_DIGEST,
+                "source_digest": _SOURCE_DIGEST,
+            },
+        }
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        assert not marks
+        if published:
+            _send(peer, 11)
+            assert _receive(peer) == (12, b"")
+            assert marks == [True] and guarded_after_marker.is_set()
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, 7, response)
+        assert peer.recv(1) == b""
+
+    with _served_turn_start(monkeypatch, serve) as writer:
+        monkeypatch.delenv(ipc._SAVED_TURN_START_ENV)
+        assert writer(request) == {"claimed": claimed, "turn": row}
+    assert marks == ([True] if published else [])
+
+
+@pytest.mark.parametrize("change", [
+    {"action": "reconcile"}, {"turn_id": "é"}, {"turn_id": "a" * 257},
+    {"conversation_id": "a/b"}, {"conversation_revision": 0},
+    {"conversation_revision": True}, {"conversation_revision": 1 << 53},
+    {"input_digest": "sha256:" + "A" * 64}, {"source_digest": "absent"},
+])
+def test_turn_start_rejects_out_of_contract_fields_before_start(
+    change: dict[str, Any],
+) -> None:
+    request = replace(_turn_start_request(_Borrow(), _unexpected_marker), **change)
+    with pytest.raises(ipc._ProtocolError, match="saved Turn start inputs are invalid"):
+        ipc._start_payload(request, 1)
+
+
+@pytest.mark.parametrize("live, code, exception", [
+    (False, b"legacy-read-required", ipc._ProtocolError),
+    (True, b"legacy-read-required", ipc.NativeProviderRegistryRequiresLegacyRead),
+    (True, b"conflict", ipc.NativeSavedTurnStartFailure),
+    (True, b"invalid", ipc.NativeSavedTurnStartFailure),
+    (True, b"not-found", ipc.NativeSavedTurnStartFailure),
+    (True, b"unavailable", ipc.NativeSavedTurnStartFailure),
+])
+def test_turn_start_distinguishes_fallback_from_typed_failure(
+    monkeypatch: pytest.MonkeyPatch, live: bool, code: bytes,
+    exception: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, 8, code)
+        assert peer.recv(1) == b""
+
+    with _served_turn_start(monkeypatch, serve) as writer, pytest.raises(exception) as exc:
+        writer(_turn_start_request(_Borrow(), _unexpected_marker))
+    if isinstance(exc.value, ipc.NativeSavedTurnStartFailure):
+        assert exc.value.code == code.decode("ascii")
+
+
+@pytest.mark.parametrize("action, permitted, claimed, exception", [
+    ("claim", False, True, ipc._ProtocolError),
+    ("begin", True, True, HostPublicationUnconfirmed),
+    ("claim", True, False, HostPublicationUnconfirmed),
+])
+def test_turn_start_rejects_claimed_results_that_mismatch_the_action_or_permit(
+    monkeypatch: pytest.MonkeyPatch, action: ipc.SavedTurnStartAction, permitted: bool,
+    claimed: bool, exception: type[RuntimeError],
+) -> None:
+    marks: list[bool] = []
+    row = dict(_STARTED_TURN, status="running" if action == "claim" else "queued")
+    payload = json.dumps({"claimed": claimed, "turn": row}).encode()
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        if permitted:
+            _send(peer, 11)
+            assert _receive(peer) == (12, b"")
+        _send(peer, 7, payload)
+        assert _receive(peer) == (9, b"")
+        _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with _served_turn_start(monkeypatch, serve) as writer, pytest.raises(exception):
+        writer(_turn_start_request(_Borrow(), lambda: marks.append(True), action))
+    assert marks == ([True] if permitted else [])
+
+
+@pytest.mark.parametrize("code", [b"legacy-read-required", b"unavailable", None])
+def test_turn_start_never_retries_after_permission_when_the_reply_is_unconfirmed(
+    monkeypatch: pytest.MonkeyPatch, code: bytes | None,
+) -> None:
+    marked = threading.Event()
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 11)
+        assert _receive(peer) == (12, b"")
+        if code is not None:
+            _send(peer, 8, code)
+            assert peer.recv(1) == b""
+
+    with (
+        _served_turn_start(monkeypatch, serve) as writer,
+        pytest.raises(HostPublicationUnconfirmed),
+    ):
+        writer(_turn_start_request(_Borrow(), marked.set))
+    assert marked.is_set()
+
+
+def test_turn_start_rejects_an_over_limit_reply_before_reading_its_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        peer.sendall(_HEADER.pack(7, 1024 * 1024 + 129))
+        assert _receive(peer) == (9, b"")
+
+    with (
+        _served_turn_start(monkeypatch, serve) as writer,
+        pytest.raises(ipc._ProtocolError, match="cleanup was unconfirmed"),
+    ):
+        writer(_turn_start_request(_Borrow(), _unexpected_marker))
+
+
+@pytest.mark.parametrize("change", [
+    {"id": "other"}, {"profile_id": "other"}, {"conversation_id": "other"},
+    {"conversation_revision": 3.0}, {"input_digest": _SOURCE_DIGEST},
+])
+def test_turn_start_checks_owner_row_binding_without_normalizing(
+    change: dict[str, Any],
+) -> None:
+    request = _turn_start_request(_Borrow(), _unexpected_marker, "begin")
+    row = dict(_STARTED_TURN, **change)
+    payload = json.dumps({"claimed": False, "turn": row}).encode()
+    with pytest.raises(ipc._ProtocolError, match="owner result is invalid"):
+        ipc._decode_turn_start(payload, request, publication_possible=False)
 
 
 def _settlement_request(

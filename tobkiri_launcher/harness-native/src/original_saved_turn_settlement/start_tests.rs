@@ -7,6 +7,8 @@ const TURN: &str = "turn-original-start";
 const CONVERSATION: &str = "conversation-original-start";
 const INPUT_DIGEST: &str =
     "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+const SOURCE_DIGEST: &str =
+    "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 const LEGACY_SCHEMA: &str = "
     CREATE TABLE turns (
         id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
@@ -70,6 +72,9 @@ impl OriginalStartStore {
         fs::create_dir_all(self.path.parent().unwrap()).unwrap();
         let connection = self.connection();
         connection.execute_batch(LEGACY_SCHEMA).unwrap();
+        for turn_id in [TURN, "new-turn"] {
+            bind_input(&connection, turn_id);
+        }
         connection
     }
 
@@ -86,7 +91,7 @@ impl OriginalStartStore {
         begin_legacy_saved_turn_from_admitted_port(
             &self.root,
             &self.profile,
-            request,
+            &input(request),
             &self.budget,
             Instant::now() + Duration::from_secs(15),
             guard,
@@ -103,7 +108,7 @@ impl OriginalStartStore {
         claim_legacy_saved_turn_from_admitted_port(
             &self.root,
             &self.profile,
-            request,
+            &input(request),
             &self.budget,
             Instant::now() + Duration::from_secs(15),
             guard,
@@ -164,6 +169,22 @@ impl OriginalStartStore {
                 ],
             )
             .unwrap();
+    }
+}
+
+fn bind_input(connection: &Connection, turn_id: &str) {
+    connection
+        .execute(
+            "INSERT INTO saved_inputs VALUES (?1, ?2, ?3, '{}')",
+            params![turn_id, SOURCE_DIGEST, INPUT_DIGEST],
+        )
+        .unwrap();
+}
+
+fn input<'a>(request: &LegacySavedTurnStartRequest<'a>) -> OriginalSavedTurnStartInput<'a> {
+    OriginalSavedTurnStartInput {
+        request: *request,
+        source_digest: SOURCE_DIGEST,
     }
 }
 
@@ -277,12 +298,45 @@ fn original_start_leaves_absent_schema_and_preliminary_row_for_legacy_owner() {
             accepted_digest TEXT NOT NULL, context TEXT NOT NULL)",
         )
         .unwrap();
+    bind_input(&store.connection(), TURN);
     let bytes = fs::read(&store.path).unwrap();
     assert!(matches!(
         store.claim(&request, no_publication, never_evaluate),
         Ok(OriginalSavedTurnStartOutcome::LegacyFallback)
     ));
     assert_eq!(fs::read(&store.path).unwrap(), bytes);
+}
+
+#[test]
+fn start_requires_the_exact_owners_source_and_accepted_input() {
+    let store = OriginalStartStore::new();
+    let connection = store.initialize();
+    let requested = request(TURN);
+    for column in ["source_digest", "accepted_digest"] {
+        let value = Digest::hash(column.as_bytes()).to_string();
+        connection
+            .execute(
+                &format!("UPDATE saved_inputs SET {column} = ?1 WHERE id = ?2"),
+                params![value, TURN],
+            )
+            .unwrap();
+        let original = fs::read(&store.path).unwrap();
+        assert!(matches!(
+            store.begin(&requested, no_publication, never_evaluate),
+            Err(Error::Conflict),
+        ));
+        assert!(matches!(
+            store.claim(&requested, no_publication, never_evaluate),
+            Err(Error::Conflict),
+        ));
+        assert_eq!(fs::read(&store.path).unwrap(), original);
+        connection
+            .execute(
+                "UPDATE saved_inputs SET source_digest = ?1, accepted_digest = ?2 WHERE id = ?3",
+                params![SOURCE_DIGEST, INPUT_DIGEST, TURN],
+            )
+            .unwrap();
+    }
 }
 
 #[test]
@@ -433,7 +487,7 @@ fn original_start_stops_new_inserts_at_existing_capacity() {
     let bytes = fs::read(&store.path).unwrap();
     assert!(matches!(
         store.begin(&request(TURN), no_publication, never_evaluate),
-        Err(Error::Capacity)
+        Err(Error::Conflict)
     ));
     assert_eq!(fs::read(&store.path).unwrap(), bytes);
 }

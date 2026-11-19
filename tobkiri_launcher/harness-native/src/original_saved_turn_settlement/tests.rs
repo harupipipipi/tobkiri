@@ -1002,6 +1002,11 @@ async fn actual_wasm_starts_and_claims_in_the_original_sqlite_owner() -> anyhow:
          CREATE TABLE message_interrupts (id TEXT PRIMARY KEY, body TEXT NOT NULL);
          CREATE TABLE calendar_preparations (id TEXT PRIMARY KEY, body TEXT NOT NULL);",
     )?;
+    let source = Digest::hash(b"the original request before owner projection");
+    connection.execute(
+        "INSERT INTO saved_inputs VALUES (?1, ?2, ?3, '{}')",
+        params![TURN, source.as_str(), SOURCE_DIGEST],
+    )?;
     drop(connection);
     let request = LegacySavedTurnStartRequest {
         turn_id: TURN,
@@ -1010,6 +1015,10 @@ async fn actual_wasm_starts_and_claims_in_the_original_sqlite_owner() -> anyhow:
         input_digest: SOURCE_DIGEST,
     };
     let request_id = request.request_id(PROFILE)?;
+    let start_input = OriginalSavedTurnStartInput {
+        request,
+        source_digest: source.as_str(),
+    };
     let control = CoreControl::default();
     let ledger = CapacityLedger::new();
     let account = ledger.native_setup_account(&control, || Ok(Arc::new(Proof)))?;
@@ -1071,7 +1080,7 @@ async fn actual_wasm_starts_and_claims_in_the_original_sqlite_owner() -> anyhow:
             execute(
                 &original.root,
                 &original.profile,
-                &request,
+                &start_input,
                 &budget,
                 deadline,
                 guard,

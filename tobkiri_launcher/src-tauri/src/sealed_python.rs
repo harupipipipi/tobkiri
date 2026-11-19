@@ -276,7 +276,10 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         return false;
     };
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    if key == SAVED_ORCHESTRATION_MANIFEST_ENV {
+    if matches!(
+        key,
+        SAVED_ORCHESTRATION_MANIFEST_ENV | crate::native_provider_prepare_service::TURN_START_ENV
+    ) {
         return role == PythonRole::Defaultspack;
     }
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -4357,6 +4360,21 @@ mod tests {
         }
 
         let key = OsStr::new(SAVED_ORCHESTRATION_MANIFEST_ENV);
+        assert!(packaged_environment_key_allowed(
+            PythonRole::Defaultspack,
+            key
+        ));
+        assert!(!packaged_environment_key_allowed(PythonRole::Kernel, key));
+        assert!(!packaged_environment_key_allowed(
+            PythonRole::HostHelper,
+            key
+        ));
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
+    fn saved_turn_start_marker_is_allowed_for_defaultspack_only() {
+        let key = OsStr::new(crate::native_provider_prepare_service::TURN_START_ENV);
         assert!(packaged_environment_key_allowed(
             PythonRole::Defaultspack,
             key

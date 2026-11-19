@@ -26,6 +26,8 @@ mod deferred_pack_successor;
 
 #[path = "native_harness_source.rs"]
 mod native_harness_source;
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) use native_harness_source::VerifiedTurnStartBundle;
 pub(crate) use native_harness_source::{NativeApplicationSources, NativeSourceRoot};
 
 use crate::config::AppConfig;
@@ -252,6 +254,7 @@ enum BundleEntryKind {
 
 #[derive(Debug, PartialEq, Eq)]
 struct VerifiedBundleLock {
+    digest: String,
     authority_digests: BTreeMap<String, String>,
     sidecar_digests: BTreeMap<String, String>,
     pack_paths: BTreeMap<String, String>,
@@ -2775,6 +2778,7 @@ fn verify_bundle_lock(root: &Path) -> Result<VerifiedBundleLock> {
         bail!("Pack v4 bundle inventory differs from its lock");
     }
     Ok(VerifiedBundleLock {
+        digest: sha256(&raw),
         authority_digests,
         sidecar_digests,
         pack_paths,
@@ -6293,6 +6297,7 @@ mod external_pack_restart_tests {
         let mut signed_catalog = catalog();
         signed_catalog.source_manifest_digests.clear();
         let mut lock = VerifiedBundleLock {
+            digest: digest('a'),
             pack_paths: BTreeMap::new(),
             authority_digests: BTreeMap::new(),
             sidecar_digests: BTreeMap::new(),
@@ -6440,6 +6445,7 @@ mod external_pack_restart_tests {
         let mut signed_catalog = catalog();
         signed_catalog.source_manifest_digests.clear();
         let mut lock = VerifiedBundleLock {
+            digest: digest('a'),
             pack_paths: BTreeMap::new(),
             authority_digests: BTreeMap::new(),
             sidecar_digests: BTreeMap::new(),

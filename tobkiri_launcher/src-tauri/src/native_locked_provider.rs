@@ -3,7 +3,12 @@
 use super::super::{BundleEntryKind, VerifiedBundleLock, MAX_CANONICAL_JSON_BYTES};
 use super::NativeApplicationSources;
 use anyhow::{bail, ensure, Context, Result};
-use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path, sync::Arc};
+use std::{
+    ffi::OsStr,
+    os::unix::ffi::OsStrExt,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tobkiri_core::{
     read_relative_with, AllocationBudget, AllocationError, CanonError, CoreBuffer, CoreValue,
     Digest,
@@ -13,7 +18,7 @@ use tobkiri_harness_native::{
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
     OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
-    OriginalSavedTurnSettlementChoice,
+    OriginalSavedTurnSettlementChoice, OriginalSavedTurnStartChoice,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -35,6 +40,25 @@ pub(crate) struct LockedTurnSettlementBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
+/// Signed Bundle files for the exact ordinary Saved Turn and Lifecycle grants.
+pub(crate) struct LockedTurnStartBundle<'pin> {
+    application_root: CoreBuffer,
+    bundle_root: CoreBuffer,
+    bundle_lock_digest: Digest,
+    routes: [LockedRegistryRoute<'pin>; 2],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// Owned evidence of the installed source whose signed bytes proved the start role.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VerifiedTurnStartBundle {
+    application_root: PathBuf,
+    bundle_root: PathBuf,
+    bundle_lock_digest: Digest,
+    pack: (String, Digest),
+    catalog: (String, Digest),
+}
+
 /// Original signed Bundle documents for the independent completion routes.
 pub(crate) struct LockedConversationConfirmationBundle<'pin> {
     root: CoreBuffer,
@@ -51,6 +75,33 @@ pub(crate) struct LockedSavedOrchestrationBundle<'pin> {
 }
 
 impl NativeApplicationSources {
+    /// Capture the originally signed Turn Pack and catalog for both start grants.
+    pub(crate) fn turn_start_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalSavedTurnStartChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedTurnStartBundle<'pin>> {
+        let [turn, lifecycle] = selection.pins();
+        ensure!(
+            turn.caller_function_id() == self.authority.shell_provider_id
+                && lifecycle.caller_function_id() == turn.function_id(),
+            "old Turn start callers differ from the selected Shell and Saved Turn"
+        );
+        Ok(LockedTurnStartBundle {
+            application_root: CoreBuffer::copy_from(
+                self.application_root.as_os_str().as_bytes(),
+                budget,
+            )?,
+            bundle_root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
+            bundle_lock_digest: Digest::parse(&self.bundle_lock.digest)?,
+            routes: [
+                LockedRegistryRoute::from_lock(&self.bundle_lock, turn, budget)?,
+                LockedRegistryRoute::from_lock(&self.bundle_lock, lifecycle, budget)?,
+            ],
+            budget: Arc::clone(budget),
+        })
+    }
+
     /// Capture the originally signed Turn Pack and catalog for each settlement grant.
     pub(crate) fn turn_settlement_bundle<'pin>(
         &self,
@@ -319,6 +370,92 @@ impl LockedTurnSettlementBundle<'_> {
             &mut checkpoint,
         )?;
         checkpoint()
+    }
+}
+
+impl LockedTurnStartBundle<'_> {
+    /// Verify both Python variants and their privileged operations before detaching evidence.
+    pub(crate) fn verify(
+        &self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedTurnStartBundle> {
+        let bundle_root = Path::new(OsStr::from_bytes(self.bundle_root.as_bytes()));
+        verify_privileged_routes(
+            self.routes.iter(),
+            bundle_root,
+            &self.budget,
+            &mut checkpoint,
+        )?;
+        checkpoint()?;
+        let [turn, _] = &self.routes;
+        Ok(VerifiedTurnStartBundle {
+            application_root: Path::new(OsStr::from_bytes(self.application_root.as_bytes())).into(),
+            bundle_root: bundle_root.into(),
+            bundle_lock_digest: self.bundle_lock_digest.clone(),
+            pack: (
+                turn.pack.path.as_str()?.to_owned(),
+                turn.pack.digest.clone(),
+            ),
+            catalog: (
+                turn.catalog.path.as_str()?.to_owned(),
+                turn.catalog.digest.clone(),
+            ),
+        })
+    }
+}
+
+impl VerifiedTurnStartBundle {
+    /// Bind the current signed resolution to the exact installed source used for admission.
+    pub(crate) fn require_source(&self, sources: &NativeApplicationSources) -> Result<()> {
+        let lock = &sources.bundle_lock;
+        let (pack_path, pack_digest) = &self.pack;
+        let (catalog_path, catalog_digest) = &self.catalog;
+        ensure!(
+            self.application_root == sources.application_root
+                && self.bundle_root == sources.bundle_root
+                && self.bundle_lock_digest.as_str() == lock.digest
+                && sources.authority.shell_provider_id == "shell.tauri.default"
+                && lock.pack_paths.get("rumi_turn_runtime_pack") == Some(pack_path)
+                && lock.authority_roles.get(pack_path) == Some(&BundleEntryKind::Pack)
+                && lock.authority_digests.get(pack_path).map(String::as_str)
+                    == Some(pack_digest.as_str())
+                && lock.sidecar_digests.get(catalog_path).map(String::as_str)
+                    == Some(catalog_digest.as_str()),
+            "signed Turn start source differs from the admitted launch"
+        );
+        Ok(())
+    }
+
+    /// Recheck the same locked bytes that established both privileged operation identities.
+    pub(crate) fn revalidate(
+        &self,
+        budget: &Arc<dyn AllocationBudget>,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let documents = [
+            ("bundle.lock.json", &self.bundle_lock_digest),
+            (self.pack.0.as_str(), &self.pack.1),
+            (self.catalog.0.as_str(), &self.catalog.1),
+        ];
+        for (path, digest) in documents {
+            LockedDocument::new(path, digest.as_str(), budget)?.read_bytes(
+                &self.bundle_root,
+                budget,
+                &mut checkpoint,
+            )?;
+        }
+        checkpoint()
+    }
+
+    #[cfg(all(test, target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn fixture() -> Self {
+        Self {
+            application_root: PathBuf::new(),
+            bundle_root: PathBuf::new(),
+            bundle_lock_digest: Digest::hash(b"test Bundle lock"),
+            pack: (String::new(), Digest::hash(b"test Turn Pack")),
+            catalog: (String::new(), Digest::hash(b"test Turn catalog")),
+        }
     }
 }
 
@@ -591,6 +728,18 @@ impl LockedDocument {
         budget: &Arc<dyn AllocationBudget>,
         checkpoint: &mut impl FnMut() -> Result<()>,
     ) -> Result<CoreValue> {
+        let path = self.path.as_str()?;
+        let bytes = self.read_bytes(root, budget, checkpoint)?;
+        CoreValue::parse_guest(bytes.as_bytes(), budget)
+            .with_context(|| format!("could not decode locked Bundle entry {path}"))
+    }
+
+    fn read_bytes(
+        &self,
+        root: &Path,
+        budget: &Arc<dyn AllocationBudget>,
+        checkpoint: &mut impl FnMut() -> Result<()>,
+    ) -> Result<CoreBuffer> {
         checkpoint()?;
         let path = self.path.as_str()?;
         let mut failure = None;
@@ -623,8 +772,7 @@ impl LockedDocument {
             Digest::hash(bytes.as_bytes()) == self.digest,
             "locked Bundle digest changed: {path}"
         );
-        CoreValue::parse_guest(bytes.as_bytes(), budget)
-            .with_context(|| format!("could not decode locked Bundle entry {path}"))
+        Ok(bytes)
     }
 }
 

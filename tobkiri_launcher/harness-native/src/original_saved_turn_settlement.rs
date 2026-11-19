@@ -27,7 +27,7 @@ use wasmtime::component::{BudgetedBox, BudgetedString, Val};
 mod start;
 mod start_port;
 pub use start::{
-    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
+    OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
     begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
 };
 pub use start_port::{

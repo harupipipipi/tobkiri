@@ -266,6 +266,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             check_conversation_read_grants(&observed, budget);
             check_saved_receipt_grants(&observed, budget);
             check_conversation_confirmation_grants(&observed, budget);
+            check_saved_turn_start_grants(&observed, budget);
             check_conversation_append_grants(&observed, budget);
             check_model_resolve_grants(&observed, budget);
             assert_eq!(
@@ -586,6 +587,40 @@ fn check_conversation_confirmation_grants(
         );
         assert!(confirmation_grants.insert(completion.authority_reference().to_owned()));
     }
+}
+
+fn check_saved_turn_start_grants(
+    observed: &crate::OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+) {
+    let choice = crate::OriginalSavedTurnStartChoice::select(observed, budget)
+        .expect("authenticate both ordinary Saved Turn Lifecycle grants")
+        .expect("confirmed Profile selects Saved Turn and Turn Lifecycle");
+    let [turn, lifecycle] = choice.pins();
+    assert_eq!(turn.caller_function_id(), "shell.tauri.default");
+    assert_eq!(
+        turn.function_id(),
+        "rumi_turn_runtime_pack.turn-runtime.saved"
+    );
+    assert_eq!(lifecycle.caller_function_id(), turn.function_id());
+    assert_eq!(lifecycle.contract_id(), "tobkiri.action.turn.lifecycle.v1");
+    assert_eq!(
+        lifecycle.operation_id(),
+        "rumi_turn_runtime_pack.turn-lifecycle"
+    );
+    assert_eq!(
+        lifecycle.variant_id(),
+        "rumi_turn_runtime_pack.turn-runtime.lifecycle.python"
+    );
+    assert_eq!(lifecycle.artifact_digest(), turn.artifact_digest());
+    assert_eq!(
+        lifecycle.executable_catalog_digest(),
+        turn.executable_catalog_digest()
+    );
+    assert_eq!(
+        lifecycle.requested_scope_digest(),
+        "sha256:812396986fe5f82a4d98677f28cdb70e74759d81fdea3bb3887695f3721555eb"
+    );
 }
 
 fn check_conversation_append_grants(

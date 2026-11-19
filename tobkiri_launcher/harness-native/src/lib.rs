@@ -29,7 +29,7 @@ mod original_saved_turn_settlement;
 pub use original_saved_turn_settlement::{
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
     OriginalSavedTurnCheck, OriginalSavedTurnDecision, OriginalSavedTurnRow,
-    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
+    OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
     begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
     invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
     invoke_original_saved_turn_port, invoke_original_saved_turn_read_port, read_legacy_saved_turn,
@@ -57,7 +57,7 @@ pub use original_provider_prepare_selection::{
     OriginalRouteSelectionError as OriginalProviderPrepareSelectionError,
     OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
     OriginalSavedTurnSettlementChoice, OriginalSavedTurnSettlementRole,
-    select_original_saved_turn_settlement,
+    OriginalSavedTurnStartChoice, select_original_saved_turn_settlement,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

@@ -6,6 +6,7 @@ use ordered_python_compat::{PyValue, dumps, pystrip};
 use tobkiri_canon::{Digest, MAX_SAFE_INTEGER};
 
 /// Identity of an ordinary saved input validated by the captured owner.
+#[derive(Clone, Copy)]
 pub struct LegacySavedTurnStartRequest<'a> {
     /// Stable turn identifier in the captured Profile.
     pub turn_id: &'a str,

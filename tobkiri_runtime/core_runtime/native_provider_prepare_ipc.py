@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from functools import lru_cache, partial
 from typing import Any, Literal, overload
 
+from core_runtime.host_provider_backend_v4 import HostPublicationUnconfirmed
 from core_runtime.process_identity import process_start_identity
 from core_runtime.provider_prepare_native_v4 import (
     MINIMUM_PREPARE_MEMORY,
@@ -26,6 +27,7 @@ from core_runtime.provider_prepare_native_v4 import (
 from tobkiri_host.models import RequestContext
 from tobkiri_protocol.canonical import (
     MAX_CANONICAL_JSON_BYTES,
+    MAX_SAFE_INTEGER,
     canonical_json,
     strict_loads,
 )
@@ -34,6 +36,7 @@ _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
 _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
+_SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
@@ -56,6 +59,7 @@ _BODY_READY, _ORCHESTRATION_INPUT = 14, 15
 _JSON_LIMIT = 16 * 1024
 _APPEND_START_LIMIT = 1024 * 1024
 _OWNER_RESULT_LIMIT = 1024 * 1024
+_TURN_START_RESULT_LIMIT = _OWNER_RESULT_LIMIT + 128
 # The Host borrows the same bridge allowance as the Registry owner routes.
 # The managed Launcher's Wasm instance has its own physical memory cap.
 CONVERSATION_GET_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
@@ -64,6 +68,7 @@ CONVERSATION_CONFIRMATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 MODEL_RESOLVE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_RECEIPT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_READ_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+SAVED_TURN_START_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_ORCHESTRATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 # Reserve START identity space even if each ID character needs a JSON escape.
@@ -142,6 +147,14 @@ class NativeSavedTurnReadFailure(RuntimeError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"native saved Turn read failed ({code})")
+        self.code = code
+
+
+class NativeSavedTurnStartFailure(RuntimeError):
+    """The Launcher returned a typed saved Turn failure before any permit."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native saved Turn start failed ({code})")
         self.code = code
 
 
@@ -262,6 +275,26 @@ class NativeSavedTurnReadRequest:
     turn_id: str
 
 
+SavedTurnStartAction = Literal["begin", "claim"]
+
+
+@dataclass(frozen=True)
+class NativeSavedTurnStartRequest:
+    """Borrow the original saved Turn start binding and publication guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    action: SavedTurnStartAction
+    turn_id: str
+    conversation_id: str
+    conversation_revision: int
+    input_digest: str
+    source_digest: str
+    mark_publication_possible: Callable[[], None]
+
+
 @dataclass(frozen=True)
 class NativeSavedOrchestrationRequest:
     """Borrow the signed Saved Orchestration invocation and step input."""
@@ -325,6 +358,7 @@ _NativeBorrow = (
     | NativeConversationAppendRequest
     | NativeSavedReceiptRequest
     | NativeSavedTurnReadRequest
+    | NativeSavedTurnStartRequest
     | NativeSavedOrchestrationRequest
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
@@ -332,7 +366,7 @@ _NativeBorrow = (
 )
 _NativeOperation = Literal[
     "provider_prepare", "model_list", "model_save", "conversation_get",
-    "conversation_receipt", "model_resolve", "turn_settlement",
+    "conversation_receipt", "model_resolve", "turn_start", "turn_settlement",
     "conversation_confirmation", "conversation_append", "saved_orchestration",
 ]
 
@@ -498,6 +532,23 @@ def is_native_saved_turn_read_identifier(value: object) -> bool:
     return True
 
 
+def capture_launcher_saved_turn_start_writer() -> (
+    Callable[[NativeSavedTurnStartRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for saved Turn start."""
+    if os.environ.get(_SAVED_TURN_START_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="turn_start")
+
+
+def is_native_saved_turn_start_identifier(value: object) -> bool:
+    """Check a Turn start identifier against the durable owner's grammar."""
+    return _matches(_TURN_IDENTIFIER, value)
+
+
 def capture_launcher_saved_turn_settlement_writer() -> (
     Callable[[NativeSavedTurnSettlementRequest], Mapping[str, Any]] | None
 ):
@@ -614,6 +665,8 @@ def _start_payload(
         ):
             raise _ProtocolError("native saved Turn read inputs are invalid")
         frame["turn_read"] = {"caller": borrow.caller, "turn_id": borrow.turn_id}
+    elif isinstance(borrow, NativeSavedTurnStartRequest):
+        frame["turn_start"] = _turn_start_payload(borrow)
     elif isinstance(borrow, NativeSavedOrchestrationRequest):
         if not 0 < orchestration_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Orchestration input size is invalid")
@@ -734,6 +787,28 @@ def _matches(pattern: re.Pattern[str], value: object) -> bool:
 
 def _bounded_revision(value: object, minimum: int) -> bool:
     return type(value) is int and minimum <= value <= _U64_MAX
+
+
+def _turn_start_payload(borrow: NativeSavedTurnStartRequest) -> dict[str, Any]:
+    if (
+        type(borrow.action) is not str
+        or borrow.action not in ("begin", "claim")
+        or not is_native_saved_turn_start_identifier(borrow.turn_id)
+        or not is_native_saved_turn_start_identifier(borrow.conversation_id)
+        or type(borrow.conversation_revision) is not int
+        or not 1 <= borrow.conversation_revision <= MAX_SAFE_INTEGER
+        or not _matches(_TURN_INPUT_DIGEST, borrow.input_digest)
+        or not _matches(_TURN_INPUT_DIGEST, borrow.source_digest)
+    ):
+        raise _ProtocolError("native saved Turn start inputs are invalid")
+    return {
+        "action": borrow.action,
+        "turn_id": borrow.turn_id,
+        "conversation_id": borrow.conversation_id,
+        "conversation_revision": borrow.conversation_revision,
+        "input_digest": borrow.input_digest,
+        "source_digest": borrow.source_digest,
+    }
 
 
 def _conversation_append_payload(
@@ -931,6 +1006,36 @@ def _decode_saved_turn_read(
         type(result) is not dict
         or result.get("id") != borrow.turn_id
         or result.get("profile_id") != borrow.context.profile_id
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_turn_start(
+    payload: bytes,
+    borrow: NativeSavedTurnStartRequest,
+    *,
+    publication_possible: bool,
+) -> dict[str, Any]:
+    invalid = "native saved Turn start owner result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or set(result) != {"claimed", "turn"}
+        or result["claimed"] is not (borrow.action == "claim" and publication_possible)
+        or type(result["turn"]) is not dict
+    ):
+        raise _ProtocolError(invalid)
+    turn = result["turn"]
+    published_status = "running" if borrow.action == "claim" else "queued"
+    if (
+        turn.get("id") != borrow.turn_id
+        or turn.get("profile_id") != borrow.context.profile_id
+        or turn.get("conversation_id") != borrow.conversation_id
+        or type(turn.get("conversation_revision")) is not int
+        or turn["conversation_revision"] != borrow.conversation_revision
+        or turn.get("input_digest") != borrow.input_digest
+        or (publication_possible and turn.get("status") != published_status)
     ):
         raise _ProtocolError(invalid)
     return result
@@ -1193,6 +1298,9 @@ class _Exchange:
                     if isinstance(borrow, NativeModelSaveRequest):
                         wait_seconds()
                         raise NativeModelSaveFailure(payload.decode("ascii"))
+                    if isinstance(borrow, NativeSavedTurnStartRequest):
+                        wait_seconds()
+                        raise NativeSavedTurnStartFailure(payload.decode("ascii"))
                     if isinstance(borrow, NativeSavedTurnSettlementRequest):
                         wait_seconds()
                         raise NativeSavedTurnSettlementFailure(payload.decode("ascii"))
@@ -1234,7 +1342,8 @@ class _Exchange:
                 tag == _PUBLISH_CHECK
                 and entered_live_phase
                 and isinstance(borrow, (
-                    NativeModelSaveRequest, NativeSavedTurnSettlementRequest,
+                    NativeModelSaveRequest, NativeSavedTurnStartRequest,
+                    NativeSavedTurnSettlementRequest,
                     NativeConversationConfirmationRequest, NativeConversationAppendRequest,
                 ))
                 and not self.publication_possible
@@ -1256,6 +1365,10 @@ class _Exchange:
                     plan = _decode_saved_receipt(payload)
                 elif isinstance(borrow, NativeSavedTurnReadRequest):
                     plan = _decode_saved_turn_read(payload, borrow)
+                elif isinstance(borrow, NativeSavedTurnStartRequest):
+                    plan = _decode_turn_start(
+                        payload, borrow, publication_possible=self.publication_possible,
+                    )
                 elif isinstance(borrow, NativeSavedTurnSettlementRequest):
                     plan = _decode_turn_settlement(payload, borrow)
                 elif isinstance(borrow, NativeConversationConfirmationRequest):
@@ -1312,6 +1425,7 @@ def _invoke(
     conversation_append = isinstance(borrow, NativeConversationAppendRequest)
     saved_receipt = isinstance(borrow, NativeSavedReceiptRequest)
     turn_read = isinstance(borrow, NativeSavedTurnReadRequest)
+    turn_start = isinstance(borrow, NativeSavedTurnStartRequest)
     saved_orchestration = isinstance(borrow, NativeSavedOrchestrationRequest)
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
@@ -1323,6 +1437,7 @@ def _invoke(
         or conversation_append != (operation == "conversation_append")
         or saved_receipt != (operation == "conversation_receipt")
         or turn_read != (operation == "turn_read")
+        or turn_start != (operation == "turn_start")
         or saved_orchestration != (operation == "saved_orchestration")
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
@@ -1354,6 +1469,8 @@ def _invoke(
         _authenticate(connection, launcher)
         if saved_orchestration:
             plan_limit = MAX_CANONICAL_JSON_BYTES
+        elif turn_start:
+            plan_limit = _TURN_START_RESULT_LIMIT
         elif (
             model_settings or model_save or conversation_get
             or saved_receipt or model_resolve or turn_read or turn_settlement
@@ -1366,7 +1483,7 @@ def _invoke(
             connection,
             plan_limit,
             permits_publication=(
-                model_save or turn_settlement or conversation_confirmation
+                model_save or turn_start or turn_settlement or conversation_confirmation
                 or conversation_append
             ),
             conversation_mutation=conversation_confirmation or conversation_append,
@@ -1389,6 +1506,10 @@ def _invoke(
                 if conversation_confirmation:
                     raise NativeConversationConfirmationPublicationUnconfirmed(
                         "native Conversation confirmation publication could not be confirmed",
+                    ) from None
+                if turn_start:
+                    raise HostPublicationUnconfirmed(
+                        "native saved Turn start publication could not be confirmed",
                     ) from None
                 if turn_settlement:
                     raise NativeSavedTurnSettlementPublicationUnconfirmed(
