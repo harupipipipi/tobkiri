@@ -356,6 +356,24 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             .map_err(|error| NativeArtifactError::ReadOnlyPort(error.into()))
     }
 
+    /// Bind an ordered pair of read-only operations in this inspection's Store.
+    /// Both use the authenticated Pack and Profile from the trusted caller and
+    /// share the original execution budget. Finish the inspection on every path.
+    pub async fn prepare_declared_read_only_pair<'a>(
+        &'a mut self,
+        pack: &'a VerifiedPack,
+        declarations: [(&ShapeRef, &OpName); 2],
+        profile: &ProfileId,
+        deadline: Instant,
+    ) -> Result<NativeReadOnlyPort<'a, ()>, NativeArtifactError> {
+        self.claim_execution()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        store
+            .prepare_declared_read_only_pair(pack, declarations, profile, deadline)
+            .await
+            .map_err(|error| NativeArtifactError::ReadOnlyPort(error.into()))
+    }
+
     /// Execute read-only preparation in the same Store, obtaining original
     /// Registry observations in the order required by the fixed Wasm planner.
     /// The caller owns the activated Profile and must finish the inspection,

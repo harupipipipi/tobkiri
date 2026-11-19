@@ -12,8 +12,8 @@ use tobkiri_manifest::{Cardinality, RuntimeSpec, ShapeKind, VerifiedPack, WitFun
 use wasmtime::{
     Engine, Store,
     component::{
-        BudgetedBox, BudgetedString, BudgetedVec, Component, Func, Linker, Val,
-        types::ComponentItem,
+        BudgetedBox, BudgetedString, BudgetedVec, Component, ComponentExportIndex, Func, Linker,
+        Val, types::ComponentItem,
     },
 };
 
@@ -28,16 +28,21 @@ pub(super) struct ActiveCall {
     clock_remaining: u8,
 }
 
-/// Single invocation of the verified typed port, bound to its original Store.
+struct ReadOnlyOperation<'a> {
+    function: Func,
+    signature: &'a WitFunction,
+    call: Option<ActiveCall>,
+}
+
+/// One call, or an ordered pair of calls, bound to the original native Store.
 ///
 /// The native caller selects a stateless port, owns the real Profile and
 /// application authorization, and retains its worker through physical cleanup.
 /// The returned values are DATA and carry no authority to publish an effect.
 pub struct NativeReadOnlyPort<'a, T: 'static> {
     store: &'a mut NativeSetupStore<T>,
-    function: Func,
-    signature: &'a WitFunction,
-    call: Option<ActiveCall>,
+    operation: ReadOnlyOperation<'a>,
+    next: Option<ReadOnlyOperation<'a>>,
     output_bytes: u64,
 }
 
@@ -58,6 +63,44 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         deadline: Instant,
         max_wall_clock_calls: u8,
     ) -> Result<NativeReadOnlyPort<'a, T>> {
+        self.prepare_read_only_port(
+            pack,
+            (shape, operation),
+            None,
+            profile,
+            deadline,
+            max_wall_clock_calls,
+        )
+        .await
+    }
+
+    /// Bind two distinct operations from one verified Pack in the original Store.
+    /// Both calls share the instance, fuel, deadline and allocation owners. The
+    /// pair has no wall-clock allowance. The first call uses the document path.
+    pub async fn prepare_declared_read_only_pair<'a>(
+        &'a mut self,
+        pack: &'a VerifiedPack,
+        [first, second]: [(&ShapeRef, &OpName); 2],
+        profile: &ProfileId,
+        deadline: Instant,
+    ) -> Result<NativeReadOnlyPort<'a, T>> {
+        ensure!(
+            first != second,
+            "native read-only pair repeats an operation"
+        );
+        self.prepare_read_only_port(pack, first, Some(second), profile, deadline, 0)
+            .await
+    }
+
+    async fn prepare_read_only_port<'a>(
+        &'a mut self,
+        pack: &'a VerifiedPack,
+        (shape, operation): (&ShapeRef, &OpName),
+        next: Option<(&ShapeRef, &OpName)>,
+        profile: &ProfileId,
+        deadline: Instant,
+        max_wall_clock_calls: u8,
+    ) -> Result<NativeReadOnlyPort<'a, T>> {
         let store = self.store.as_mut().context("native Store was retired")?;
         ensure_active(store.data_mut())?;
         store.data_mut().claim_component()?;
@@ -66,6 +109,12 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             "native read-only clock allowance exceeds its limit"
         );
         let signature = declared_function(pack, shape, operation)?;
+        let next_signature = next
+            .map(|(shape, operation)| declared_function(pack, shape, operation))
+            .transpose()?;
+        if next_signature.is_some() {
+            require_document_output(signature)?;
+        }
         let permissions = &pack.manifest.permissions.wasm;
         let manifest_deadline = Instant::now()
             .checked_add(Duration::from_millis(permissions.wall_ms))
@@ -142,18 +191,10 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 .iter()
                 .find(|shape| shape.reference == *reference)
         })?;
-        let interface = crate::host::interface_name(shape);
-        let Some(ComponentItem::ComponentInstance(interface_type)) = component_type
-            .get_export(engine, &interface)
-            .map(|item| item.ty)
-        else {
-            bail!("native read-only interface export is missing")
-        };
-        ensure!(
-            matches!(interface_type.get_export(engine, operation.as_str()).map(|item| item.ty),
-                Some(ComponentItem::ComponentFunc(function)) if !function.async_()),
-            "native read-only function export is missing or asynchronous"
-        );
+        let export = read_only_export(&component, shape, operation)?;
+        let next_export = next
+            .map(|(shape, operation)| read_only_export(&component, shape, operation))
+            .transpose()?;
         let mut linker = Linker::new(engine);
         linker.define_unknown_imports_as_traps(&component)?;
         linker.allow_shadowing(true);
@@ -167,21 +208,35 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             .map_err(anyhow::Error::from)
             .context("instantiate verified native read-only component")?;
         ensure_active(store.data_mut())?;
-        let interface = instance
-            .get_export_index(&mut *store, None, &interface)
-            .context("native read-only interface export is missing")?;
         let function = instance
-            .get_export_index(&mut *store, Some(&interface), operation.as_str())
-            .and_then(|index| instance.get_func(&mut *store, index))
+            .get_func(&mut *store, &export)
             .context("native read-only function export is missing")?;
+        let next = if let Some((export, signature)) = next_export.zip(next_signature) {
+            let function = instance
+                .get_func(&mut *store, &export)
+                .context("native read-only function export is missing")?;
+            Some(ReadOnlyOperation {
+                function,
+                signature,
+                call: Some(ActiveCall {
+                    profile: Some(profile.share()),
+                    clock_remaining: 0,
+                }),
+            })
+        } else {
+            None
+        };
         Ok(NativeReadOnlyPort {
             store: self,
-            function,
-            signature,
-            call: Some(ActiveCall {
-                profile: Some(profile),
-                clock_remaining: max_wall_clock_calls,
-            }),
+            operation: ReadOnlyOperation {
+                function,
+                signature,
+                call: Some(ActiveCall {
+                    profile: Some(profile),
+                    clock_remaining: max_wall_clock_calls,
+                }),
+            },
+            next,
             output_bytes: permissions.output_bytes.min(MAX_BYTES as u64),
         })
     }
@@ -196,7 +251,8 @@ impl<T: Send + 'static> NativeReadOnlyPort<'_, T> {
     /// Invoke once, keeping argument and result allocations in the original
     /// account. Arguments must use the original allocation owners. Successful
     /// lifting includes canonical post-return and the declared output bound.
-    pub async fn invoke(self, parameters: &[Val]) -> Result<BudgetedVec<Val>> {
+    pub async fn invoke(mut self, parameters: &[Val]) -> Result<BudgetedVec<Val>> {
+        self.require_final_call()?;
         self.invoke_bounded(parameters, false).await
     }
 
@@ -205,17 +261,40 @@ impl<T: Send + 'static> NativeReadOnlyPort<'_, T> {
     /// Only a declared result with a string success type supports this path.
     /// The result and errors still use the verified canonical ABI. The caller
     /// validates the document before consuming it or dispatching a child.
-    pub async fn invoke_with_document_limit(self, parameters: &[Val]) -> Result<BudgetedVec<Val>> {
-        ensure!(
-            matches!(self.signature.result.as_ref(), Some(WitType::Result { ok, .. })
-                if matches!(ok.as_deref(), Some(WitType::String))),
-            "native read-only document output requires a string result"
-        );
+    pub async fn invoke_with_document_limit(
+        mut self,
+        parameters: &[Val],
+    ) -> Result<BudgetedVec<Val>> {
+        self.require_final_call()?;
+        require_document_output(self.operation.signature)?;
         self.invoke_bounded(parameters, true).await
     }
 
-    async fn invoke_bounded(
+    /// Run the first call of a prepared pair with the document limit. Yield the
+    /// second call only after canonical post-return and all output checks pass.
+    pub async fn invoke_with_document_limit_then(
         mut self,
+        parameters: &[Val],
+    ) -> Result<(BudgetedVec<Val>, Self)> {
+        let next = self
+            .next
+            .take()
+            .context("native read-only pair is unavailable")?;
+        let values = self.invoke_bounded(parameters, true).await?;
+        self.operation = next;
+        Ok((values, self))
+    }
+
+    fn require_final_call(&self) -> Result<()> {
+        ensure!(
+            self.next.is_none(),
+            "native read-only pair requires the first document call"
+        );
+        Ok(())
+    }
+
+    async fn invoke_bounded(
+        &mut self,
         parameters: &[Val],
         document_limit: bool,
     ) -> Result<BudgetedVec<Val>> {
@@ -225,8 +304,9 @@ impl<T: Send + 'static> NativeReadOnlyPort<'_, T> {
             .as_mut()
             .context("native Store was retired")?;
         ensure_active(store.data_mut())?;
-        store.data_mut().read_only_call = self.call.take();
+        store.data_mut().read_only_call = self.operation.call.take();
         let result = self
+            .operation
             .function
             .call_async_owned(&mut *store, parameters)
             .await;
@@ -244,7 +324,12 @@ impl<T: Send + 'static> NativeReadOnlyPort<'_, T> {
                 "native read-only port document exceeds its declared budget"
             );
         } else {
-            check_output(store, self.signature, values.as_slice(), self.output_bytes)?;
+            check_output(
+                store,
+                self.operation.signature,
+                values.as_slice(),
+                self.output_bytes,
+            )?;
         }
         ensure_active(store.data_mut())?;
         Ok(values)
@@ -256,6 +341,32 @@ impl<T: 'static> Drop for NativeReadOnlyPort<'_, T> {
         if let Some(store) = self.store.store.as_mut() {
             store.data_mut().read_only_call = None;
         }
+    }
+}
+
+fn require_document_output(signature: &WitFunction) -> Result<()> {
+    ensure!(
+        matches!(signature.result.as_ref(), Some(WitType::Result { ok, .. })
+            if matches!(ok.as_deref(), Some(WitType::String))),
+        "native read-only document output requires a string result"
+    );
+    Ok(())
+}
+
+fn read_only_export(
+    component: &Component,
+    shape: &ShapeRef,
+    operation: &OpName,
+) -> Result<ComponentExportIndex> {
+    let interface = crate::host::interface_name(shape);
+    let Some((ComponentItem::ComponentInstance(_), interface)) =
+        component.get_export(None, interface.as_str())
+    else {
+        bail!("native read-only interface export is missing")
+    };
+    match component.get_export(Some(&interface), operation.as_str()) {
+        Some((ComponentItem::ComponentFunc(function), export)) if !function.async_() => Ok(export),
+        _ => bail!("native read-only function export is missing or asynchronous"),
     }
 }
 
