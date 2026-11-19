@@ -19,7 +19,13 @@ impl Decoder {
         while let Some((end, delimiter)) = boundary(&self.pending) {
             let frame = self.pending.drain(..end + delimiter).collect::<Vec<_>>();
             let text = std::str::from_utf8(&frame[..end]).map_err(|_| "invalid SSE UTF-8")?;
-            let data = text.lines().filter_map(|line| line.strip_prefix("data:").map(|value| value.strip_prefix(' ').unwrap_or(value))).collect::<Vec<_>>();
+            let data = text
+                .lines()
+                .filter_map(|line| {
+                    line.strip_prefix("data:")
+                        .map(|value| value.strip_prefix(' ').unwrap_or(value))
+                })
+                .collect::<Vec<_>>();
             if !data.is_empty() {
                 self.frames.push_back(data.join("\n"));
             }
@@ -34,14 +40,22 @@ impl Decoder {
 
     /// EOF with an unterminated frame is invalid, not a successful completion.
     pub fn finish(&self) -> Result<(), &'static str> {
-        if self.pending.iter().all(u8::is_ascii_whitespace) { Ok(()) } else { Err("truncated SSE frame") }
+        if self.pending.iter().all(u8::is_ascii_whitespace) {
+            Ok(())
+        } else {
+            Err("truncated SSE frame")
+        }
     }
 }
 
 fn boundary(bytes: &[u8]) -> Option<(usize, usize)> {
     for index in 0..bytes.len() {
-        if bytes[index..].starts_with(b"\n\n") { return Some((index, 2)); }
-        if bytes[index..].starts_with(b"\r\n\r\n") { return Some((index, 4)); }
+        if bytes[index..].starts_with(b"\n\n") {
+            return Some((index, 2));
+        }
+        if bytes[index..].starts_with(b"\r\n\r\n") {
+            return Some((index, 4));
+        }
     }
     None
 }
@@ -53,8 +67,11 @@ mod tests {
     #[test]
     fn fragmented_utf8_crlf_and_multiple_data_lines() {
         let mut decoder = Decoder::default();
-        let value = ":heartbeat\r\ndata: {\"text\":\"猫\"}\r\n\r\ndata: first\ndata: second\n\n".as_bytes();
-        for chunk in value.chunks(1) { decoder.feed(chunk).unwrap(); }
+        let value =
+            ":heartbeat\r\ndata: {\"text\":\"猫\"}\r\n\r\ndata: first\ndata: second\n\n".as_bytes();
+        for chunk in value.chunks(1) {
+            decoder.feed(chunk).unwrap();
+        }
         assert_eq!(decoder.next_frame().unwrap(), "{\"text\":\"猫\"}");
         assert_eq!(decoder.next_frame().unwrap(), "first\nsecond");
         assert!(decoder.next_frame().is_none());
