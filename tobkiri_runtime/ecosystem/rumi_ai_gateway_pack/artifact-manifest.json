@@ -6,7 +6,7 @@
     },
     {
       "path": "runtime/gateway.py",
-      "sha256": "sha256:b27f9be09ba37eb881aa2c96dd024a4b0dde90d950317069cbe031599c9516ba"
+      "sha256": "sha256:ffa7e623bcebaadc75f10e7ba1b89ac2134c7fd27212e2b9c0a7e76aa4f43efe"
     },
     {
       "path": "runtime/model_parameters.py",
