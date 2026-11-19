@@ -1018,38 +1018,57 @@ impl<'a> OriginalConversationAppendChoice<'a> {
     }
 }
 
-/// The original Shell grant under which a Turn owner may settle a saved receipt.
+/// The original caller chain under which a Turn owner may settle a saved receipt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalSavedTurnSettlementRole {
     /// The saved execution path after validating the owner result.
     SavedTurn,
     /// The explicit reconciliation path after validating the saved receipt.
     SavedReconcile,
+    /// The saved execution path invoked through Side Chat.
+    SideChatTurn,
+    /// The explicit reconciliation path invoked through Side Chat.
+    SideChatReconcile,
 }
 
 impl OriginalSavedTurnSettlementRole {
     /// The distinct original Turn Runtime grants used for settlement.
-    pub const ALL: [Self; 2] = [Self::SavedTurn, Self::SavedReconcile];
+    pub const ALL: [Self; 4] = [
+        Self::SavedTurn,
+        Self::SavedReconcile,
+        Self::SideChatTurn,
+        Self::SideChatReconcile,
+    ];
 
     fn route(self) -> &'static Route {
         match self {
-            Self::SavedTurn => &SAVED_TURN,
-            Self::SavedReconcile => &SAVED_RECONCILE,
+            Self::SavedTurn | Self::SideChatTurn => &SAVED_TURN,
+            Self::SavedReconcile | Self::SideChatReconcile => &SAVED_RECONCILE,
         }
+    }
+
+    fn via_side_chat(self) -> bool {
+        matches!(self, Self::SideChatTurn | Self::SideChatReconcile)
     }
 }
 
-/// The exact Profile grant from the selected default Shell to the Turn owner.
+/// The exact Profile grants from the selected default Shell to the Turn owner.
 pub struct OriginalSavedTurnSettlementChoice<'a> {
     _active: &'a OriginalActiveProfile,
     role: OriginalSavedTurnSettlementRole,
+    side_chat: Option<OriginalRoutePin>,
     pin: OriginalRoutePin,
 }
 
 impl OriginalSavedTurnSettlementChoice<'_> {
-    /// The settlement role selected by the original Shell grant.
+    /// The settlement role selected by the original caller chain.
     pub fn role(&self) -> OriginalSavedTurnSettlementRole {
         self.role
+    }
+
+    /// The Shell-to-Side Chat grant for a Side Chat settlement role.
+    pub fn side_chat(&self) -> Option<&OriginalRoutePin> {
+        self.side_chat.as_ref()
     }
 
     /// The exact grant and Python execution pins for the Turn owner.
@@ -1058,23 +1077,24 @@ impl OriginalSavedTurnSettlementChoice<'_> {
     }
 }
 
-/// Select one original Shell-to-Turn grant from the active Profile, Lock, and Plan.
+/// Select one original settlement chain from the active Profile, Lock, and Plan.
 ///
 /// An absent or unsupported grant yields `None`. The packaged catalog must
-/// independently attest the returned pin and its privileged effect class.
+/// independently attest each returned pin and its privileged effect class.
 pub fn select_original_saved_turn_settlement<'a>(
     active: &'a OriginalActiveProfile,
     budget: &Arc<dyn AllocationBudget>,
     role: OriginalSavedTurnSettlementRole,
 ) -> Result<Option<OriginalSavedTurnSettlementChoice<'a>>> {
     Ok(
-        select_saved_turn_settlement_records(active.records(), budget, role)?.map(|pin| {
-            OriginalSavedTurnSettlementChoice {
+        select_saved_turn_settlement_records(active.records(), budget, role)?.map(
+            |(side_chat, pin)| OriginalSavedTurnSettlementChoice {
                 _active: active,
                 role,
+                side_chat,
                 pin,
-            }
-        }),
+            },
+        ),
     )
 }
 
@@ -1576,9 +1596,10 @@ fn select_conversation_append_records(
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some((side_chat, turn)) = select_saved_turn_entry(
+    let Some((side_chat, turn)) = select_turn_entry(
         &records,
         matches!(caller, ConversationAppendCaller::SideChat),
+        &SAVED_TURN,
     )?
     else {
         return Ok(None);
@@ -1592,10 +1613,13 @@ fn select_conversation_append_records(
         .map(|manage| (side_chat, [turn, orchestration, manage])))
 }
 
-fn select_saved_turn_entry(
+type TurnEntryPins = (Option<OriginalRoutePin>, OriginalRoutePin);
+
+fn select_turn_entry(
     records: &Records<'_>,
     via_side_chat: bool,
-) -> Result<Option<(Option<OriginalRoutePin>, OriginalRoutePin)>> {
+    turn: &'static Route,
+) -> Result<Option<TurnEntryPins>> {
     if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
         return Ok(None);
     }
@@ -1611,7 +1635,7 @@ fn select_saved_turn_entry(
         .as_ref()
         .map_or(TURN_SHELL_CALLER, OriginalRoutePin::function_id);
     Ok(records
-        .select_route(turn_caller, &SAVED_TURN)?
+        .select_route(turn_caller, turn)?
         .map(|turn| (side_chat, turn)))
 }
 
@@ -1664,8 +1688,11 @@ fn select_saved_turn_start_records(
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some((side_chat, turn)) =
-        select_saved_turn_entry(&records, matches!(caller, SavedTurnStartCaller::SideChat))?
+    let Some((side_chat, turn)) = select_turn_entry(
+        &records,
+        matches!(caller, SavedTurnStartCaller::SideChat),
+        &SAVED_TURN,
+    )?
     else {
         return Ok(None);
     };
@@ -1678,14 +1705,11 @@ fn select_saved_turn_settlement_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
     role: OriginalSavedTurnSettlementRole,
-) -> Result<Option<OriginalRoutePin>> {
+) -> Result<Option<TurnEntryPins>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
-        return Ok(None);
-    }
-    records.select_shell_route(role.route())
+    select_turn_entry(&records, role.via_side_chat(), role.route())
 }
 
 fn select_model_resolve_records(
@@ -2625,6 +2649,13 @@ mod tests {
                 "authority-ref:fe0224ee12c57aee177055c1d1accca8444022c7efa9aa78948669ad5d621e3e",
                 "sha256:b7dda70b162f84a9af42022f3025059c074d6a66dc5b7b2b7ef8b153d48fc8c9",
                 "sha256:def47bb0d27a6a624fd7ac61b770fa148a287173f52e79416a0476927a17b930",
+            ),
+            (
+                &SAVED_RECONCILE,
+                SIDE_CHAT_TURN.function,
+                "authority-ref:a88cffd09547e22e7ab688a8a6a1172943a2aed40a17abae535c3e8a4c56b3bc",
+                "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
+                "sha256:ec01327293949904e663230af519789526a68e3acafcef188a7c01a7d70bfc2c",
             ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
@@ -3616,7 +3647,7 @@ mod tests {
     fn select_saved_turn_settlement(
         records: &Value,
         role: OriginalSavedTurnSettlementRole,
-    ) -> Result<Option<OriginalRoutePin>> {
+    ) -> Result<Option<TurnEntryPins>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
         select_saved_turn_settlement_records((&profile, &lock, &plan), &budget, role)
@@ -3632,9 +3663,10 @@ mod tests {
             (SavedReconcile, SAVED_RECONCILE_SETTLEMENT_ROW),
         ] {
             let binding = &fixture["plan"]["bindings"][row];
-            let pin = select_saved_turn_settlement(&fixture, role)
+            let (side_chat, pin) = select_saved_turn_settlement(&fixture, role)
                 .unwrap()
                 .unwrap();
+            assert!(side_chat.is_none());
             assert_eq!(pin.caller_function_id(), "shell.tauri.default");
             assert_eq!(pin.pack_id(), "rumi_turn_runtime_pack");
             assert_eq!(pin.contract_id(), binding["contract_id"]);
@@ -3679,6 +3711,93 @@ mod tests {
                     .unwrap()
                     .iter()
                     .all(Option::is_some)
+            );
+        }
+    }
+
+    #[test]
+    fn side_chat_settlement_requires_its_own_shell_and_nested_grants() {
+        use OriginalSavedTurnSettlementRole::{
+            SavedReconcile, SavedTurn, SideChatReconcile, SideChatTurn,
+        };
+
+        let fixture = records();
+        let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
+        for (role, target, other) in [
+            (SideChatTurn, &SAVED_TURN, SideChatReconcile),
+            (SideChatReconcile, &SAVED_RECONCILE, SideChatTurn),
+        ] {
+            let (side_chat, turn) = select_saved_turn_settlement(&fixture, role)
+                .unwrap()
+                .unwrap();
+            let side_chat = side_chat.unwrap();
+            assert_eq!(side_chat.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(side_chat.operation_id(), SIDE_CHAT_TURN.operation);
+            assert_eq!(turn.caller_function_id(), side_chat.function_id());
+            assert_eq!(turn.operation_id(), target.operation);
+
+            for pin in [&side_chat, &turn] {
+                let row = edges
+                    .iter()
+                    .position(|edge| edge["authority_reference"] == pin.authority_reference())
+                    .unwrap();
+                let mut candidate = fixture.clone();
+                candidate["profile"]["requested_edges"][row]["authority_mode"] =
+                    json!("interactive_only");
+                candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+                assert!(
+                    select_saved_turn_settlement(&candidate, role)
+                        .unwrap()
+                        .is_none()
+                );
+                assert_eq!(
+                    select_saved_turn_settlement(&candidate, other)
+                        .unwrap()
+                        .is_none(),
+                    pin.operation_id() == SIDE_CHAT_TURN.operation
+                );
+                for ordinary in [SavedTurn, SavedReconcile] {
+                    assert!(
+                        select_saved_turn_settlement(&candidate, ordinary)
+                            .unwrap()
+                            .is_some()
+                    );
+                }
+
+                candidate["profile"]["requested_edges"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                assert!(matches!(
+                    select_saved_turn_settlement(&candidate, role),
+                    Err(Inconsistent(_))
+                ));
+                candidate["plan"]["bindings"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                assert!(
+                    select_saved_turn_settlement(&candidate, role)
+                        .unwrap()
+                        .is_none()
+                );
+            }
+
+            let mut candidate = fixture.clone();
+            for row in [SAVED_RECONCILE_SETTLEMENT_ROW, SAVED_TURN_SETTLEMENT_ROW] {
+                candidate["profile"]["requested_edges"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                candidate["plan"]["bindings"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+            }
+            assert!(
+                select_saved_turn_settlement(&candidate, role)
+                    .unwrap()
+                    .is_some()
             );
         }
     }

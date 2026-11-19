@@ -41,11 +41,18 @@ pub(crate) struct LockedRegistryBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// An original Shell's signed Turn owner routes, independent of Conversation grants.
+/// Signed Bundle files for the exact Turn settlement chains.
 pub(crate) struct LockedTurnSettlementBundle<'pin> {
-    root: CoreBuffer,
-    routes: [Option<LockedRegistryRoute<'pin>>; 2],
+    application_root: CoreBuffer,
+    bundle_root: CoreBuffer,
+    bundle_lock_digest: Digest,
+    routes: [Option<LockedTurnSettlementRoute<'pin>>; 4],
     budget: Arc<dyn AllocationBudget>,
+}
+
+struct LockedTurnSettlementRoute<'pin> {
+    side_chat: Option<LockedRegistryRoute<'pin>>,
+    turn: LockedRegistryRoute<'pin>,
 }
 
 /// Signed Bundle files for one exact Saved Turn start chain.
@@ -58,18 +65,18 @@ pub(crate) struct LockedTurnStartBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// Owned evidence of the installed source whose signed bytes proved the start role.
+/// Owned evidence of the installed source whose signed bytes proved the Turn entry point.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct VerifiedTurnStartBundle {
+pub(crate) struct VerifiedTurnEntryBundle {
     application_root: PathBuf,
     bundle_root: PathBuf,
     bundle_lock_digest: Digest,
-    side_chat: Option<VerifiedTurnStartDocuments>,
-    turn: VerifiedTurnStartDocuments,
+    side_chat: Option<VerifiedTurnEntryDocuments>,
+    turn: VerifiedTurnEntryDocuments,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct VerifiedTurnStartDocuments {
+struct VerifiedTurnEntryDocuments {
     pack: (String, Digest),
     catalog: (String, Digest),
 }
@@ -459,29 +466,38 @@ impl NativeApplicationSources {
         })
     }
 
-    /// Capture the originally signed Turn Pack and catalog for each settlement grant.
+    /// Capture the signed Bundle documents for each settlement caller's chain.
     pub(crate) fn turn_settlement_bundle<'pin>(
         &self,
-        selections: [Option<&'pin OriginalSavedTurnSettlementChoice<'_>>; 2],
+        selections: [Option<&'pin OriginalSavedTurnSettlementChoice<'_>>; 4],
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedTurnSettlementBundle<'pin>> {
-        let mut routes = [None, None];
+        let mut routes = [None, None, None, None];
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
         for (route, selection) in routes.iter_mut().zip(selections) {
             if let Some(selection) = selection {
-                let pin = selection.pin();
+                let turn = selection.pin();
+                let side_chat = selection.side_chat();
+                let first = side_chat.unwrap_or(turn);
                 ensure!(
-                    pin.caller_function_id() == self.authority.shell_provider_id,
-                    "old Turn settlement caller differs from the selected Shell"
+                    first.caller_function_id() == self.authority.shell_provider_id
+                        && side_chat
+                            .is_none_or(|side| side.function_id() == turn.caller_function_id()),
+                    "old Turn settlement callers differ from the selected Shell and caller chain"
                 );
-                *route = Some(LockedRegistryRoute::from_lock(
-                    &self.bundle_lock,
-                    pin,
-                    budget,
-                )?);
+                *route = Some(LockedTurnSettlementRoute {
+                    side_chat: side_chat.map(from_lock).transpose()?,
+                    turn: from_lock(turn)?,
+                });
             }
         }
         Ok(LockedTurnSettlementBundle {
-            root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
+            application_root: CoreBuffer::copy_from(
+                self.application_root.as_os_str().as_bytes(),
+                budget,
+            )?,
+            bundle_root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
+            bundle_lock_digest: Digest::parse(&self.bundle_lock.digest)?,
             routes,
             budget: Arc::clone(budget),
         })
@@ -734,16 +750,41 @@ impl LockedRegistryBundle<'_> {
 }
 
 impl LockedTurnSettlementBundle<'_> {
-    /// Verify the original Turn Pack and both independently granted operations.
-    pub(crate) fn verify(&self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<()> {
-        let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
+    /// Verify each operation and retain the exact documents for each admitted caller.
+    pub(crate) fn verify(
+        &self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<[Option<VerifiedTurnEntryBundle>; 4]> {
+        let bundle_root = Path::new(OsStr::from_bytes(self.bundle_root.as_bytes()));
         verify_privileged_routes(
-            self.routes.iter().flatten(),
-            root,
+            self.routes
+                .iter()
+                .flatten()
+                .filter_map(|route| route.side_chat.as_ref()),
+            bundle_root,
             &self.budget,
             &mut checkpoint,
         )?;
-        checkpoint()
+        verify_privileged_routes(
+            self.routes.iter().flatten().map(|route| &route.turn),
+            bundle_root,
+            &self.budget,
+            &mut checkpoint,
+        )?;
+        checkpoint()?;
+        let mut verified = [None, None, None, None];
+        for (result, route) in verified.iter_mut().zip(&self.routes) {
+            if let Some(route) = route {
+                *result = Some(VerifiedTurnEntryBundle::from_routes(
+                    &self.application_root,
+                    bundle_root,
+                    &self.bundle_lock_digest,
+                    route.side_chat.as_ref(),
+                    &route.turn,
+                )?);
+            }
+        }
+        Ok(verified)
     }
 }
 
@@ -752,7 +793,7 @@ impl LockedTurnStartBundle<'_> {
     pub(crate) fn verify(
         &self,
         mut checkpoint: impl FnMut() -> Result<()>,
-    ) -> Result<VerifiedTurnStartBundle> {
+    ) -> Result<VerifiedTurnEntryBundle> {
         let bundle_root = Path::new(OsStr::from_bytes(self.bundle_root.as_bytes()));
         if let Some(side_chat) = &self.side_chat {
             side_chat.verify(
@@ -770,21 +811,17 @@ impl LockedTurnStartBundle<'_> {
         )?;
         checkpoint()?;
         let [turn, _] = &self.routes;
-        Ok(VerifiedTurnStartBundle {
-            application_root: Path::new(OsStr::from_bytes(self.application_root.as_bytes())).into(),
-            bundle_root: bundle_root.into(),
-            bundle_lock_digest: self.bundle_lock_digest.clone(),
-            side_chat: self
-                .side_chat
-                .as_ref()
-                .map(VerifiedTurnStartDocuments::from_route)
-                .transpose()?,
-            turn: VerifiedTurnStartDocuments::from_route(turn)?,
-        })
+        VerifiedTurnEntryBundle::from_routes(
+            &self.application_root,
+            bundle_root,
+            &self.bundle_lock_digest,
+            self.side_chat.as_ref(),
+            turn,
+        )
     }
 }
 
-impl VerifiedTurnStartDocuments {
+impl VerifiedTurnEntryDocuments {
     fn from_route(route: &LockedRegistryRoute<'_>) -> Result<Self> {
         Ok(Self {
             pack: (
@@ -810,7 +847,25 @@ impl VerifiedTurnStartDocuments {
     }
 }
 
-impl VerifiedTurnStartBundle {
+impl VerifiedTurnEntryBundle {
+    fn from_routes(
+        application_root: &CoreBuffer,
+        bundle_root: &Path,
+        bundle_lock_digest: &Digest,
+        side_chat: Option<&LockedRegistryRoute<'_>>,
+        turn: &LockedRegistryRoute<'_>,
+    ) -> Result<Self> {
+        Ok(Self {
+            application_root: Path::new(OsStr::from_bytes(application_root.as_bytes())).into(),
+            bundle_root: bundle_root.into(),
+            bundle_lock_digest: bundle_lock_digest.clone(),
+            side_chat: side_chat
+                .map(VerifiedTurnEntryDocuments::from_route)
+                .transpose()?,
+            turn: VerifiedTurnEntryDocuments::from_route(turn)?,
+        })
+    }
+
     /// Bind the current signed resolution to the exact installed source used for admission.
     pub(crate) fn require_source(&self, sources: &NativeApplicationSources) -> Result<()> {
         let lock = &sources.bundle_lock;
@@ -824,12 +879,12 @@ impl VerifiedTurnStartBundle {
                     .side_chat
                     .as_ref()
                     .is_none_or(|documents| documents.matches_lock(lock, "tobkiri_side_chat_pack")),
-            "signed Turn start source differs from the admitted launch"
+            "signed Turn entry source differs from the admitted launch"
         );
         Ok(())
     }
 
-    /// Recheck the locked bytes for every operation in the admitted start chain.
+    /// Recheck the locked bytes for every Pack in the admitted caller chain.
     pub(crate) fn revalidate(
         &self,
         budget: &Arc<dyn AllocationBudget>,
@@ -857,18 +912,16 @@ impl VerifiedTurnStartBundle {
     }
 
     #[cfg(all(test, target_os = "macos", feature = "native-first-setup"))]
-    pub(crate) fn fixture(caller: tobkiri_harness_native::SavedTurnStartCaller) -> Self {
+    pub(crate) fn fixture(via_side_chat: bool) -> Self {
         Self {
             application_root: PathBuf::new(),
             bundle_root: PathBuf::new(),
             bundle_lock_digest: Digest::hash(b"test Bundle lock"),
-            side_chat: (caller == tobkiri_harness_native::SavedTurnStartCaller::SideChat).then(
-                || VerifiedTurnStartDocuments {
-                    pack: (String::new(), Digest::hash(b"test Side Chat Pack")),
-                    catalog: (String::new(), Digest::hash(b"test Side Chat catalog")),
-                },
-            ),
-            turn: VerifiedTurnStartDocuments {
+            side_chat: via_side_chat.then(|| VerifiedTurnEntryDocuments {
+                pack: (String::new(), Digest::hash(b"test Side Chat Pack")),
+                catalog: (String::new(), Digest::hash(b"test Side Chat catalog")),
+            }),
+            turn: VerifiedTurnEntryDocuments {
                 pack: (String::new(), Digest::hash(b"test Turn Pack")),
                 catalog: (String::new(), Digest::hash(b"test Turn catalog")),
             },
@@ -1424,7 +1477,7 @@ mod tests {
     }
 
     #[test]
-    fn side_chat_start_revalidates_both_packs_and_the_bundle_lock() {
+    fn side_chat_turn_entry_revalidates_both_packs_and_the_bundle_lock() {
         struct Root(PathBuf);
         impl Drop for Root {
             fn drop(&mut self) {
@@ -1454,18 +1507,18 @@ mod tests {
             fs::write(root_path.join(path), path).unwrap();
         }
         let document = |path: &str| (path.to_owned(), Digest::hash(path.as_bytes()));
-        let ordinary = VerifiedTurnStartBundle {
+        let ordinary = VerifiedTurnEntryBundle {
             application_root: root_path.clone(),
             bundle_root: root_path.clone(),
             bundle_lock_digest: Digest::hash(bundle_lock.as_bytes()),
             side_chat: None,
-            turn: VerifiedTurnStartDocuments {
+            turn: VerifiedTurnEntryDocuments {
                 pack: document(turn_pack),
                 catalog: document(turn_catalog),
             },
         };
-        let side_chat = VerifiedTurnStartBundle {
-            side_chat: Some(VerifiedTurnStartDocuments {
+        let side_chat = VerifiedTurnEntryBundle {
+            side_chat: Some(VerifiedTurnEntryDocuments {
                 pack: document(side_pack),
                 catalog: document(side_catalog),
             }),

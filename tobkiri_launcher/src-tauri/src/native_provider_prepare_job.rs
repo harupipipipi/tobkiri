@@ -2916,6 +2916,55 @@ mod tests {
     }
 
     #[test]
+    fn turn_settlement_requires_its_exact_caller_proof_and_publication_permit() {
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let start = VerifiedRegistryLaunch::test_turn_start_proof_for(
+            identity.clone(),
+            "catalog:fixture",
+            SavedTurnStartCaller::SideChat,
+        );
+        let callers = [
+            (SettlementCaller::SavedTurn, None),
+            (SettlementCaller::SavedReconcile, Some(2)),
+            (SettlementCaller::SideChatTurn, None),
+            (SettlementCaller::SideChatReconcile, Some(2)),
+        ];
+        for (granted, _) in callers {
+            let proof = VerifiedRegistryLaunch::test_turn_settlement_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            for (caller, expected_revision) in callers {
+                let [turn_id, input_digest, result_reference] =
+                    ["turn", "input", "{}"].map(str::to_owned);
+                let expected_capacity = [&turn_id, &input_digest, &result_reference]
+                    .into_iter()
+                    .map(String::capacity)
+                    .sum::<usize>();
+                let request = NativeRegistryRequest::TurnSettlement {
+                    caller,
+                    turn_id,
+                    input_digest,
+                    expected_revision,
+                    result_reference,
+                };
+                assert_eq!(request.has_launch_proof(&proof), caller == granted);
+                assert!(!request.has_launch_proof(&start));
+                assert!(request.requires_publication_permit());
+                assert_eq!(request.input_capacity().unwrap(), expected_capacity);
+            }
+        }
+    }
+
+    #[test]
     fn turn_start_reply_preserves_original_row_bytes_and_enforces_the_row_limit() {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let prefix = r#"{"text": "日本語","padding":""#;

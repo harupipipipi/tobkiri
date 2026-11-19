@@ -673,7 +673,7 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib native_provider_prepare_ipc::tests
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 29 -- \
+              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 30 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::provider_prepare::tests

@@ -28,7 +28,7 @@ mod deferred_pack_successor;
 mod native_harness_source;
 pub(crate) use native_harness_source::{NativeApplicationSources, NativeSourceRoot};
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) use native_harness_source::{VerifiedOrdinarySavedBundle, VerifiedTurnStartBundle};
+pub(crate) use native_harness_source::{VerifiedOrdinarySavedBundle, VerifiedTurnEntryBundle};
 
 use crate::config::AppConfig;
 

@@ -4376,6 +4376,7 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
                     "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
                     "X-Tobkiri-Request-ID": str(uuid.uuid4()),
                 },
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
             )
             assert status == expected_status, reply
             return reply["data"]
@@ -4471,10 +4472,20 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             raise fixture_failures[0]
         assert recovered["turn"]["status"] == "completed", recovered
         assert recovered["turn"]["result_reference"] == receipt["result_reference"]
-        if settlement != "reconcile":
+        if settlement == "reconcile":
+            confirmed_child = conversations.get(child_id)
+            assert confirmed_child["lifecycle"]["state"] == "completed"
+            assert confirmed_child["messages"] == child["messages"]
+            assert confirmed_child["conversation_revision"] == child["conversation_revision"]
+            replay = post(thread["reconcile"]["operation"], {
+                "operation": "reconcile", "conversation_id": child_id, "turn_id": turn_id,
+            })
+            assert replay["turn"] == recovered["turn"]
+            assert conversations.get(child_id) == confirmed_child
+        else:
             assert recovered["turn"] == first["turn"]
+            assert conversations.get(child_id) == child
         assert len(ai_calls) == len(materializations) == 1
-        assert conversations.get(child_id) == child
         assert len(append_envelopes) == 2
         assert not ordinary_append_requests
         assert [request.request["message"]["role"] for request in append_requests] == (

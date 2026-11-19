@@ -172,8 +172,10 @@ impl Start<'_> {
             }),
             (None, Some(settlement)) => {
                 ensure!(
-                    !matches!(settlement.caller, SettlementCaller::SavedReconcile)
-                        || settlement.expected_revision.is_some(),
+                    !matches!(
+                        settlement.caller,
+                        SettlementCaller::SavedReconcile | SettlementCaller::SideChatReconcile
+                    ) || settlement.expected_revision.is_some(),
                     "Turn settlement reconciliation requires an expected revision"
                 );
                 Some(NativeRegistryRequest::TurnSettlement {
@@ -811,6 +813,8 @@ where
     match String::deserialize(deserializer)?.as_str() {
         "saved-turn" => Ok(SettlementCaller::SavedTurn),
         "saved-reconcile" => Ok(SettlementCaller::SavedReconcile),
+        "side-chat-turn" => Ok(SettlementCaller::SideChatTurn),
+        "side-chat-reconcile" => Ok(SettlementCaller::SideChatReconcile),
         _ => Err(de::Error::custom("unknown Turn settlement caller")),
     }
 }
@@ -4059,6 +4063,20 @@ mod tests {
                 maximal_id.as_str(),
                 maximal_reference.as_str(),
             ),
+            (
+                "side-chat-turn",
+                SettlementCaller::SideChatTurn,
+                None,
+                "turn:one-2",
+                r#"{"conversation_id":"会話 \"1\"","conversation_revision":7}"#,
+            ),
+            (
+                "side-chat-reconcile",
+                SettlementCaller::SideChatReconcile,
+                Some(7),
+                maximal_id.as_str(),
+                maximal_reference.as_str(),
+            ),
         ] {
             let mut body = settlement_body();
             body["caller"] = role.into();
@@ -4084,13 +4102,17 @@ mod tests {
             assert_eq!(result_reference, reference);
         }
 
-        let mut body = settlement_body();
-        body["caller"] = "saved-reconcile".into();
-        let frame = settlement_frame(&body);
-        let start: Start<'_> = serde_json::from_str(&frame).unwrap();
-        assert!(start.operation().is_err());
-        body.as_object_mut().unwrap().remove("expected_revision");
-        assert!(serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err());
+        for role in ["saved-reconcile", "side-chat-reconcile"] {
+            let mut body = settlement_body();
+            body["caller"] = role.into();
+            let frame = settlement_frame(&body);
+            let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+            assert!(start.operation().is_err(), "{role}");
+            body["expected_revision"] = 0.into();
+            assert!(serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err());
+            body.as_object_mut().unwrap().remove("expected_revision");
+            assert!(serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err());
+        }
     }
 
     #[test]
@@ -4424,6 +4446,10 @@ mod tests {
     fn turn_settlement_rejects_invalid_envelopes_and_other_operations() {
         let invalid_fields = [
             ("caller", serde_json::json!("shell")),
+            ("caller", serde_json::json!("side-chat")),
+            ("caller", serde_json::json!("side_chat_turn")),
+            ("caller", serde_json::json!("side-chat-reconcile ")),
+            ("caller", serde_json::Value::Null),
             ("turn_id", serde_json::json!("")),
             ("turn_id", serde_json::json!("-turn")),
             ("turn_id", serde_json::json!("turn/child")),
@@ -4461,6 +4487,9 @@ mod tests {
         for body in [serde_json::Value::Null, serde_json::json!([])] {
             assert!(serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err());
         }
+        let mut body = settlement_body();
+        body.as_object_mut().unwrap().remove("caller");
+        assert!(serde_json::from_str::<Start<'_>>(&settlement_frame(&body)).is_err());
         let body = settlement_body().to_string();
         let settlement = format!(r#", "turn_settlement":{body}"#);
         for other in [

@@ -41,7 +41,7 @@ use super::{
 use crate::{
     defaultspack_authority::{
         require_current_launch_identity, NativeApplicationSources, NativeSourceRoot,
-        SignedApplicationResolver, VerifiedOrdinarySavedBundle, VerifiedTurnStartBundle,
+        SignedApplicationResolver, VerifiedOrdinarySavedBundle, VerifiedTurnEntryBundle,
     },
     dock_registration::{
         assemble_defaultspack_desktop_metadata, DefaultspackDesktopMetadata, LaunchMetadataUse,
@@ -60,7 +60,7 @@ pub(crate) use tobkiri_harness_native::ConversationAppendCaller;
 /// The signed entry point authorizing this saved Turn start.
 pub(crate) use tobkiri_harness_native::SavedTurnStartCaller;
 
-/// The signed Shell-to-Turn grant authorizing this settlement caller.
+/// The signed entry point authorizing this Turn settlement caller.
 pub(crate) use tobkiri_harness_native::OriginalSavedTurnSettlementRole as SettlementCaller;
 
 const REGISTRY_RECEIPT_SHA256: &str = env!("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256");
@@ -522,7 +522,7 @@ impl VerifiedConversationSource {
 /// Independent signed grants for starting, settling, and reading a Turn.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedTurnSource {
-    settlement: [Option<(SettlementCaller, VerifiedLegacyRoutePin)>; 2],
+    settlement: [Option<VerifiedTurnSettlementGrant>; 4],
     read: VerifiedConversationConfirmationRoles,
     start: VerifiedTurnStartRoles,
     archive_sha256: String,
@@ -530,10 +530,18 @@ struct VerifiedTurnSource {
     manifest_sha256: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedTurnSettlementGrant {
+    caller: SettlementCaller,
+    side_chat: Option<VerifiedLegacyRoutePin>,
+    turn: VerifiedLegacyRoutePin,
+    bundle: VerifiedTurnEntryBundle,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct VerifiedTurnStartRoles {
-    saved_turn: Option<VerifiedTurnStartBundle>,
-    side_chat: Option<VerifiedTurnStartBundle>,
+    saved_turn: Option<VerifiedTurnEntryBundle>,
+    side_chat: Option<VerifiedTurnEntryBundle>,
 }
 
 impl VerifiedTurnStartRoles {
@@ -541,7 +549,7 @@ impl VerifiedTurnStartRoles {
         self.saved_turn.is_none() && self.side_chat.is_none()
     }
 
-    fn bundle(&self, caller: SavedTurnStartCaller) -> Option<&VerifiedTurnStartBundle> {
+    fn bundle(&self, caller: SavedTurnStartCaller) -> Option<&VerifiedTurnEntryBundle> {
         match caller {
             SavedTurnStartCaller::SavedTurn => self.saved_turn.as_ref(),
             SavedTurnStartCaller::SideChat => self.side_chat.as_ref(),
@@ -575,10 +583,14 @@ struct VerifiedProviderAdapterSource {
 
 impl VerifiedTurnSource {
     fn permits_settlement(&self, role: SettlementCaller) -> bool {
+        self.settlement_grant(role).is_some()
+    }
+
+    fn settlement_grant(&self, role: SettlementCaller) -> Option<&VerifiedTurnSettlementGrant> {
         self.settlement
             .iter()
             .flatten()
-            .any(|(granted, _)| *granted == role)
+            .find(|grant| grant.caller == role)
     }
 
     fn permits_read(&self, role: OriginalSavedReceiptRole) -> bool {
@@ -1048,6 +1060,10 @@ impl VerifiedRegistryLaunch {
         catalog_revision: &str,
         role: SettlementCaller,
     ) -> Self {
+        let via_side_chat = matches!(
+            role,
+            SettlementCaller::SideChatTurn | SettlementCaller::SideChatReconcile
+        );
         Self {
             identity,
             security_epoch: 7,
@@ -1059,7 +1075,17 @@ impl VerifiedRegistryLaunch {
             ai_routing: None,
             conversation: None,
             turn: Some(VerifiedTurnSource {
-                settlement: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
+                settlement: [
+                    Some(VerifiedTurnSettlementGrant {
+                        caller: role,
+                        side_chat: via_side_chat.then(VerifiedLegacyRoutePin::fixture),
+                        turn: VerifiedLegacyRoutePin::fixture(),
+                        bundle: VerifiedTurnEntryBundle::fixture(via_side_chat),
+                    }),
+                    None,
+                    None,
+                    None,
+                ],
                 read: [None, None],
                 start: VerifiedTurnStartRoles::default(),
                 archive_sha256: "sha256:archive".into(),
@@ -1082,7 +1108,7 @@ impl VerifiedRegistryLaunch {
             Self::test_conversation_confirmation_proof(identity, catalog_revision, role);
         let confirmation = proof.conversation.take().unwrap();
         proof.turn = Some(VerifiedTurnSource {
-            settlement: [None, None],
+            settlement: [None, None, None, None],
             read: confirmation.confirmation,
             start: VerifiedTurnStartRoles::default(),
             archive_sha256: confirmation.archive_sha256,
@@ -1100,13 +1126,15 @@ impl VerifiedRegistryLaunch {
         let mut proof = Self::test_proof(identity, catalog_revision);
         proof.provider_prepare = None;
         let mut start = VerifiedTurnStartRoles::default();
-        let bundle = Some(VerifiedTurnStartBundle::fixture(caller));
+        let bundle = Some(VerifiedTurnEntryBundle::fixture(
+            caller == SavedTurnStartCaller::SideChat,
+        ));
         match caller {
             SavedTurnStartCaller::SavedTurn => start.saved_turn = bundle,
             SavedTurnStartCaller::SideChat => start.side_chat = bundle,
         }
         proof.turn = Some(VerifiedTurnSource {
-            settlement: [None, None],
+            settlement: [None, None, None, None],
             read: [None, None],
             start,
             archive_sha256: "sha256:archive".into(),
@@ -2223,8 +2251,15 @@ pub(crate) fn reacquire_turn_settlement_pack(
     let source = proof
         .turn
         .as_ref()
-        .filter(|source| source.permits_settlement(role))
+        .context("admitted launch has no verified Turn source")?;
+    let grant = source
+        .settlement_grant(role)
         .context("admitted launch has no verified Turn settlement source for the caller")?;
+    checkpoint()?;
+    inspection.with_source(|sources| grant.bundle.require_source(sources))??;
+    grant
+        .bundle
+        .revalidate(inspection.allocation_budget()?, &checkpoint)?;
     reacquire_turn_archive(inspection, proof, source, checkpoint, |pack| {
         require_turn_settlement_declaration(pack).map(|_| ())
     })
@@ -2613,11 +2648,10 @@ fn verify_turn_source(
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<Option<VerifiedTurnSource>> {
     let budget = inspection.allocation_budget()?;
-    let [saved_turn, saved_reconcile] = SettlementCaller::ALL;
-    let selections = [
-        select_original_saved_turn_settlement(active, budget, saved_turn)?,
-        select_original_saved_turn_settlement(active, budget, saved_reconcile)?,
-    ];
+    let mut selections = [None, None, None, None];
+    for (selection, caller) in selections.iter_mut().zip(SettlementCaller::ALL) {
+        *selection = select_original_saved_turn_settlement(active, budget, caller)?;
+    }
     let read = if matches!(receipt.version(), "0.2.0" | "0.3.0") {
         verify_conversation_confirmation_source(inspection, active, &checkpoint)?
     } else {
@@ -2629,14 +2663,29 @@ fn verify_turn_source(
         VerifiedTurnStartRoles::default()
     };
     let has_read = read.iter().any(Option::is_some);
-    if selections.iter().all(Option::is_none) && !has_read && start.is_empty() {
+    let has_settlement = selections.iter().any(Option::is_some);
+    if !has_settlement && !has_read && start.is_empty() {
         return Ok(None);
     }
-    if selections.iter().any(Option::is_some) {
+    let mut settlement = [None, None, None, None];
+    if has_settlement {
         let locked = inspection.with_source(|sources| {
             sources.turn_settlement_bundle(selections.each_ref().map(Option::as_ref), budget)
         })??;
-        locked.verify(&checkpoint)?;
+        let bundles = locked.verify(&checkpoint)?;
+        for (grant, (selection, bundle)) in
+            settlement.iter_mut().zip(selections.iter().zip(bundles))
+        {
+            if let Some(selection) = selection {
+                *grant = Some(VerifiedTurnSettlementGrant {
+                    caller: selection.role(),
+                    side_chat: selection.side_chat().map(Into::into),
+                    turn: selection.pin().into(),
+                    bundle: bundle
+                        .context("verified Turn settlement caller has no Bundle documents")?,
+                });
+            }
+        }
     }
     let pack = verify_registry_archive(inspection, receipt, input)?;
     let declares_read = require_turn_settlement_declaration(&pack)?;
@@ -2645,8 +2694,7 @@ fn verify_turn_source(
         "bundled Turn Pack has no read port"
     );
     Ok(Some(VerifiedTurnSource {
-        settlement: selections
-            .map(|choice| choice.map(|choice| (choice.role(), choice.pin().into()))),
+        settlement,
         read,
         start,
         archive_sha256: receipt.archive_sha256().to_owned(),
@@ -2661,7 +2709,7 @@ fn verify_turn_start_source(
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<VerifiedTurnStartRoles> {
     let budget = inspection.allocation_budget()?;
-    let verify = |caller| -> Result<Option<VerifiedTurnStartBundle>> {
+    let verify = |caller| -> Result<Option<VerifiedTurnEntryBundle>> {
         let Some(choice) = OriginalSavedTurnStartChoice::select_for(active, budget, caller)? else {
             return Ok(None);
         };
