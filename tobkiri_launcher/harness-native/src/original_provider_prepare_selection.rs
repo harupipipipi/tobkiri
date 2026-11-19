@@ -1,4 +1,4 @@
-//! Select legacy Registry routes from authenticated v5 records.
+//! Select legacy Pack routes from authenticated v5 records.
 use crate::OriginalActiveProfile;
 use sha2::{Digest as _, Sha256};
 use std::{fmt, sync::Arc};
@@ -118,6 +118,16 @@ static PROVIDER_READ: Route = Route {
     execution: PYTHON_HOST,
 };
 
+static PROVIDER_READ_GENERATE: Route = Route {
+    operation: "rumi_provider_registry_pack.provider-registry-resource.generate",
+    ..PROVIDER_READ
+};
+
+static PROVIDER_READ_STREAM: Route = Route {
+    operation: "rumi_provider_registry_pack.provider-registry-resource.stream",
+    ..PROVIDER_READ
+};
+
 static CONVERSATION_READ: Route = Route {
     pack: "rumi_conversation_store_pack",
     function: "rumi_conversation_store_pack.conversation-store.resource",
@@ -199,6 +209,42 @@ static CONVERSATION_MESSAGE_MANAGE: Route = Route {
 const GATEWAY_QUOTE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.route-quote";
 const GATEWAY_GENERATE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.generate";
 const GATEWAY_STREAM_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.stream";
+
+static GATEWAY_GENERATE: Route = Route {
+    pack: "rumi_ai_gateway_pack",
+    function: GATEWAY_GENERATE_CALLER,
+    contract: "tobkiri.service.ai.generate.v1",
+    operation: GATEWAY_GENERATE_CALLER,
+    variant: "rumi_ai_gateway_pack.ai-gateway.generate.python",
+    execution: PYTHON_HOST,
+};
+
+static GATEWAY_STREAM: Route = Route {
+    pack: "rumi_ai_gateway_pack",
+    function: GATEWAY_STREAM_CALLER,
+    contract: "tobkiri.service.ai.stream.v1",
+    operation: GATEWAY_STREAM_CALLER,
+    variant: "rumi_ai_gateway_pack.ai-gateway.stream.python",
+    execution: PYTHON_HOST,
+};
+
+static PROVIDER_GENERATE: Route = Route {
+    pack: "rumi_provider_adapters_pack",
+    function: "rumi_provider_adapters_pack.provider.compatibility.generate",
+    contract: "tobkiri.service.ai.provider.generate.v1",
+    operation: "rumi_provider_adapters_pack.provider-generate",
+    variant: "rumi_provider_adapters_pack.provider.compatibility.generate.python",
+    execution: PYTHON_HOST,
+};
+
+static PROVIDER_STREAM: Route = Route {
+    pack: "rumi_provider_adapters_pack",
+    function: "rumi_provider_adapters_pack.provider.compatibility.stream",
+    contract: "tobkiri.service.ai.provider.stream.v1",
+    operation: "rumi_provider_adapters_pack.provider-stream",
+    variant: "rumi_provider_adapters_pack.provider.compatibility.stream.python",
+    execution: PYTHON_HOST,
+};
 
 /// The authenticated route is inconsistent or its verification budget is unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -596,6 +642,66 @@ impl<'a> OriginalSavedOrchestrationChoice<'a> {
     }
 }
 
+/// The saved chat role used for Gateway, Provider Adapter, and Registry selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalSavedLocalChatRole {
+    /// The ordinary saved generate chain, including the Registry's generate child operation.
+    Generate,
+    /// The ordinary saved stream chain, including the Registry's stream child operation.
+    Stream,
+}
+
+impl OriginalSavedLocalChatRole {
+    fn routes(self) -> [&'static Route; 3] {
+        match self {
+            Self::Generate => [
+                &GATEWAY_GENERATE,
+                &PROVIDER_GENERATE,
+                &PROVIDER_READ_GENERATE,
+            ],
+            Self::Stream => [&GATEWAY_STREAM, &PROVIDER_STREAM, &PROVIDER_READ_STREAM],
+        }
+    }
+}
+
+/// The signed grant chain for one ordinary saved local chat role.
+pub struct OriginalSavedLocalChatChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    role: OriginalSavedLocalChatRole,
+    pins: [OriginalRoutePin; 5],
+}
+
+impl<'a> OriginalSavedLocalChatChoice<'a> {
+    /// Select one complete role from the authenticated active Profile, Lock, and Plan.
+    ///
+    /// An absent or unsupported grant yields `None`. Verify every returned pin
+    /// against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        role: OriginalSavedLocalChatRole,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_saved_local_chat_records(active.records(), budget, role)?.map(|pins| Self {
+                _active: active,
+                role,
+                pins,
+            }),
+        )
+    }
+
+    /// The saved local chat role attested by all five grants.
+    pub fn role(&self) -> OriginalSavedLocalChatRole {
+        self.role
+    }
+
+    /// The chain from Shell through Saved Turn, Saved Orchestration, Gateway,
+    /// and Provider Adapter to the original Provider Registry.
+    pub fn pins(&self) -> &[OriginalRoutePin; 5] {
+        &self.pins
+    }
+}
+
 /// The signed chain from the default Shell through Saved Orchestration to Message Manage.
 pub struct OriginalConversationAppendChoice<'a> {
     _active: &'a OriginalActiveProfile,
@@ -885,6 +991,30 @@ fn select_conversation_append_records(
     Ok(records
         .select_route(orchestration.function_id(), &CONVERSATION_MESSAGE_MANAGE)?
         .map(|manage| [turn, orchestration, manage]))
+}
+
+fn select_saved_local_chat_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalSavedLocalChatRole,
+) -> Result<Option<[OriginalRoutePin; 5]>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    let Some([turn, orchestration]) = select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)?
+    else {
+        return Ok(None);
+    };
+    let [gateway_route, adapter_route, registry_route] = role.routes();
+    let Some(gateway) = records.select_route(orchestration.function_id(), gateway_route)? else {
+        return Ok(None);
+    };
+    let Some(adapter) = records.select_route(gateway.function_id(), adapter_route)? else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(adapter.function_id(), registry_route)?
+        .map(|registry| [turn, orchestration, gateway, adapter, registry]))
 }
 
 fn select_ordinary_saved_chain(
@@ -1470,6 +1600,48 @@ mod tests {
                 "sha256:a7cf23d352ca9838379fd3acc501c52fb5cb7e4b0b708d4d0c5c637a3bb680f5",
                 "sha256:812396986fe5f82a4d98677f28cdb70e74759d81fdea3bb3887695f3721555eb",
             ),
+            (
+                &GATEWAY_GENERATE,
+                SAVED_ORCHESTRATION_CALLER,
+                "authority-ref:00942f218466c4f67a5d9477359f3806ef90503f6ce3888dc5ae4dd01f6e98a7",
+                "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
+                "sha256:aed4252c92a298de9bed574c81b5e421fa7f592541ce146b0e77b0c085f42370",
+            ),
+            (
+                &PROVIDER_GENERATE,
+                GATEWAY_GENERATE_CALLER,
+                "authority-ref:84c54fcdf4984c8a65048eccb3bc4796c7392c919e12a8a9318f5ccac91a93aa",
+                "sha256:729e08de33262fe2c1b9269ed22d4090f0fcd29321301c46d093c808c9211e95",
+                "sha256:cc0b26b4271cc311db4b05c068ee4b617706c3bc8e9cc22d0941511ac836dde9",
+            ),
+            (
+                &PROVIDER_READ_GENERATE,
+                PROVIDER_GENERATE.function,
+                "authority-ref:d764a130d302fa9d8cf4824a35f6d1db94e7ffe949edfb18d304b7defab5a18f",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:01dea66907528b42fe211fda67bf9c09aeeecf6bf092de43f15317a0f37c6184",
+            ),
+            (
+                &GATEWAY_STREAM,
+                SAVED_ORCHESTRATION_CALLER,
+                "authority-ref:ca32a2e15ecf8b67f5b5a602daac59a9af9916e44cd3fc35923165a97400318d",
+                "sha256:487608b15370de52d2d22aef5b42ee1947a37476b3588c3ee8ce60bf35ee5597",
+                "sha256:407fbb8fc1f1900189e702154de234f1331aae8af49db8a95e7729e57a206881",
+            ),
+            (
+                &PROVIDER_STREAM,
+                GATEWAY_STREAM_CALLER,
+                "authority-ref:d2e09001de0a825ab0972538092b7eaff52576f0a263df4eea7fa62ab167baaa",
+                "sha256:8fd2fa8b32bf0d21ffbf0ca8976feeefe042ed54a3e8c6ef93bf00bb9cba971d",
+                "sha256:4b677e26ac0d03b73e6b01e4225462d2af517b0561bd9ff56faeef1c1f677f4a",
+            ),
+            (
+                &PROVIDER_READ_STREAM,
+                PROVIDER_STREAM.function,
+                "authority-ref:a9caaf6ac6edc7bc9fc015e4ba67991d11a11e8d701c04a6155639c0e0692837",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:ba31ddc2fe6a194376c0130d1cce5b2bd6af8c36c5c7353584443247786bf883",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -1634,6 +1806,129 @@ mod tests {
     const SAVED_ORCHESTRATION_ROW: usize = 19;
     const MESSAGE_MANAGE_ROW: usize = 20;
     const TURN_LIFECYCLE_ROW: usize = 21;
+    const LOCAL_CHAT_GENERATE_ROWS: [usize; 3] = [22, 23, 24];
+    const LOCAL_CHAT_STREAM_ROWS: [usize; 3] = [25, 26, 27];
+
+    fn select_saved_local_chat(
+        records: &Value,
+        role: OriginalSavedLocalChatRole,
+    ) -> Result<Option<[OriginalRoutePin; 5]>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_saved_local_chat_records((&profile, &lock, &plan), &budget, role)
+    }
+
+    #[test]
+    fn saved_local_chat_selects_exact_grants_for_each_role() {
+        use OriginalSavedLocalChatRole::{Generate, Stream};
+
+        let fixture = records();
+        for (role, [gateway, adapter, registry]) in [
+            (Generate, LOCAL_CHAT_GENERATE_ROWS),
+            (Stream, LOCAL_CHAT_STREAM_ROWS),
+        ] {
+            let pins = select_saved_local_chat(&fixture, role).unwrap().unwrap();
+            let rows = [
+                SAVED_TURN_SETTLEMENT_ROW,
+                SAVED_ORCHESTRATION_ROW,
+                gateway,
+                adapter,
+                registry,
+            ];
+            let mut caller = TURN_SHELL_CALLER;
+            for (pin, row) in pins.iter().zip(rows) {
+                let binding = &fixture["plan"]["bindings"][row];
+                assert_eq!(pin.caller_function_id(), caller);
+                assert_eq!(
+                    pin.function_id(),
+                    binding["function_principal"]["function_id"]
+                );
+                assert_eq!(pin.contract_id(), binding["contract_id"]);
+                assert_eq!(pin.operation_id(), binding["operation_id"]);
+                assert_eq!(pin.variant_id(), binding["variant_id"]);
+                assert_eq!(pin.authority_reference(), binding["authority_reference"]);
+                assert_eq!(
+                    pin.requested_scope_digest(),
+                    binding["requested_scope_digest"]
+                );
+                caller = pin.function_id();
+            }
+        }
+    }
+
+    #[test]
+    fn saved_local_chat_requires_every_ordinary_grant_without_role_substitution() {
+        use OriginalSavedLocalChatRole::{Generate, Stream};
+
+        let fixture = records();
+        for row in [SAVED_TURN_SETTLEMENT_ROW, SAVED_ORCHESTRATION_ROW] {
+            let mut candidate = fixture.clone();
+            candidate["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            for role in [Generate, Stream] {
+                assert!(select_saved_local_chat(&candidate, role).unwrap().is_none());
+            }
+        }
+
+        for (role, other, rows) in [
+            (Generate, Stream, LOCAL_CHAT_GENERATE_ROWS),
+            (Stream, Generate, LOCAL_CHAT_STREAM_ROWS),
+        ] {
+            for row in rows {
+                let mut candidate = fixture.clone();
+                candidate["profile"]["requested_edges"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                assert!(matches!(
+                    select_saved_local_chat(&candidate, role),
+                    Err(Inconsistent(_))
+                ));
+                candidate["plan"]["bindings"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                assert!(select_saved_local_chat(&candidate, role).unwrap().is_none());
+                assert!(
+                    select_saved_local_chat(&candidate, other)
+                        .unwrap()
+                        .is_some()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn saved_local_chat_rejects_cross_role_scope_with_matching_plan_digest() {
+        use OriginalSavedLocalChatRole::{Generate, Stream};
+
+        let fixture = records();
+        for (generate_row, stream_row) in LOCAL_CHAT_GENERATE_ROWS
+            .into_iter()
+            .zip(LOCAL_CHAT_STREAM_ROWS)
+        {
+            let mut candidate = fixture.clone();
+            let stream_scope =
+                fixture["profile"]["requested_edges"][stream_row]["requested_scope_template"]
+                    .clone();
+            let stream_digest =
+                fixture["plan"]["bindings"][stream_row]["requested_scope_digest"].clone();
+            candidate["profile"]["requested_edges"][generate_row]["requested_scope_template"] =
+                stream_scope;
+            candidate["plan"]["bindings"][generate_row]["requested_scope_digest"] = stream_digest;
+            assert!(
+                select_saved_local_chat(&candidate, Generate)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                select_saved_local_chat(&candidate, Stream)
+                    .unwrap()
+                    .is_some()
+            );
+        }
+    }
 
     fn select_saved_turn_start(records: &Value) -> Result<Option<[OriginalRoutePin; 2]>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);

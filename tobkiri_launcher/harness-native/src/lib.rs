@@ -62,9 +62,10 @@ pub use original_provider_prepare_selection::{
     OriginalRouteSelectionError as OriginalModelSaveSelectionError,
     OriginalRouteSelectionError as OriginalModelSettingsSelectionError,
     OriginalRouteSelectionError as OriginalProviderPrepareSelectionError,
-    OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
-    OriginalSavedTurnSettlementChoice, OriginalSavedTurnSettlementRole,
-    OriginalSavedTurnStartChoice, select_original_saved_turn_settlement,
+    OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice,
+    OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
+    OriginalSavedTurnSettlementRole, OriginalSavedTurnStartChoice,
+    select_original_saved_turn_settlement,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]
