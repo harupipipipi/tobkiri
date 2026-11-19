@@ -5901,3 +5901,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - SQLite側の確定の後、Conversation Storeに確定を反映する呼出しと、再照合が先に読む
   Receiptは別の署名済み経路。Side Chatの両経路に接続し、元の結果を再生してから
   Pythonの重複する保存と参照処理を外す。
+
+## 052: Side Chatの保存済みレシート読取り
+
+- `22d5756e8` はSide Chatの送信と再照合から、署名済みTurnの結果を同じConversation
+  Storeで読み取る経路を既存のWasmに接続した。ターン確定と同じ経路選択を共用し、
+  レシートを返す前にSide Chatの親、ターンと子会話の一致を確認する。
+- `e2181d739` のLauncherはSide Chatの2経路に専用の証明を持ち、読取り前にBundle Lock、
+  対象Packと実行カタログを再検証する。IPCは通常経路とSide Chatの4種類を区別する。
+  Conversationの確定とTurnの読取りは従来の呼出し元を使う。元のバイト上限と
+  保存データの投影を維持する。
+- PythonのIPC 59件、レシートと署名証明のRust試験7件、Rust IPC 55件とジョブ30件、
+  Side Chat・通常チャットの署名済みHTTP 2件、Tauriテストの型検査が通過した。
+- macOSで送信時の結果喪失を模擬し、再照合を実Launcherソケットとv7のWasmまで通した。
+  レシートが従来の読取り結果と一致し、読取りの前後で会話ファイルの全バイトが変わらない
+  ことを確認した。既存結果でターンを確定し、2回目の再照合でも再推論・再追記はなかった。
+  App、resolver、推論応答はfixture。配布DMGとGUIはこの試験の対象外。
