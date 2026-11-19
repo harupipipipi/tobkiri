@@ -4063,6 +4063,9 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     confirmation_envelopes: list[RequestEnvelope] = []
     turn_read_requests: list[ipc.NativeSavedTurnReadRequest] = []
     turn_read_envelopes: list[RequestEnvelope] = []
+    linked_get_enabled = use_native_start and settlement is None
+    linked_get_envelopes: list[RequestEnvelope] = []
+    linked_gets: list[tuple[ipc.NativeConversationGetRequest, RequestEnvelope]] = []
     fixture_failures: list[AssertionError] = []
     backend = _SavedPackVmBackend()
     original_invoke = V4DispatchSession.invoke
@@ -4355,6 +4358,27 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             fixture_failures.append(error)
             raise
 
+    def conversation_get(request: ipc.NativeConversationGetRequest) -> Mapping[str, object]:
+        if request.linked_parent is not None:
+            try:
+                owner = linked_get_envelopes[-1]
+                assert request.context is owner.context
+                assert request.caller == "saved-orchestration"
+                assert request.deadline_monotonic == owner.deadline_monotonic
+                assert request.conversation_id == owner.payload["conversation_id"]
+                assert "linked_parent" not in owner.payload
+                assert owner.context.caller_principal == envelopes[-1].target_principal
+                _, state = authority.inspect_lease_token(owner.lease.token.decode("ascii"))
+                assert state is LeaseState.DISPATCHED
+                request.assert_current()
+                linked_gets.append((request, owner))
+            except AssertionError as error:
+                fixture_failures.append(error)
+                raise
+        return {"conversation": conversations.get(request.conversation_id)}
+
+    conversation_get.supports_linked_parent = True
+
     def observe_packvm(
         binding: ResolvedOperationBinding, reservation_id: str,
     ) -> RuntimeEvidence:
@@ -4402,6 +4426,10 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ipc, "capture_launcher_saved_turn_reader",
         lambda: side_turn_read if settlement else None,
     )
+    if linked_get_enabled:
+        monkeypatch.setattr(
+            ipc, "capture_launcher_conversation_get_reader", lambda: conversation_get,
+        )
     if use_native:
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", manifest)
@@ -4436,6 +4464,12 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
                 and envelope.payload.get("operation") == "saved_receipt"
             ):
                 receipt_envelopes.append(envelope)
+            if (
+                linked_get_enabled
+                and (envelope.contract_id, envelope.operation_id) == receipt_target
+                and envelope.payload.get("operation") == "get"
+            ):
+                linked_get_envelopes.append(envelope)
             if (envelope.contract_id, envelope.operation_id) == (
                 completion_host.CONTRACT_ID, completion_host.OPERATION_ID,
             ):
@@ -4576,6 +4610,23 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         side, turn, saved = envelopes
         assert saved.payload["request"]["context_binding"]["parent_conversation_id"] == "parent"
         assert saved.payload["request"]["conversation_id"] == child_id
+        if linked_get_enabled:
+            assert linked_gets
+            nonces: set[str] = set()
+            for (child_read, child_owner), (parent_read, parent_owner) in zip(
+                linked_gets[::2], linked_gets[1::2], strict=True,
+            ):
+                assert child_read.conversation_id == child_id
+                assert parent_read.conversation_id == "parent"
+                child_hint, parent_hint = child_read.linked_parent, parent_read.linked_parent
+                assert child_hint is not None and parent_hint is not None
+                assert (child_hint.mode, parent_hint.mode) == ("retain", "reuse")
+                assert child_hint.nonce == parent_hint.nonce and child_hint.nonce not in nonces
+                nonces.add(child_hint.nonce)
+                assert child_owner.lease.token != parent_owner.lease.token
+                for owner in (child_owner, parent_owner):
+                    _, state = authority.inspect_lease_token(owner.lease.token.decode("ascii"))
+                    assert state is LeaseState.COMMITTED
         assert len({item.lease.token for item in envelopes}) == 3
         assert saved.deadline_monotonic <= turn.deadline_monotonic <= side.deadline_monotonic
         chain = []
