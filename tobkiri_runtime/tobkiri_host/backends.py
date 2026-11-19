@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, Iterable, Protocol, runtime_checkable
 
 from .contracts import ResolvedOperationBinding
 from .errors import BackendUnavailableError
-from .models import ExecutionKind, RuntimeEvidence
+from .models import (
+    ExecutionKind,
+    OpaqueAuthorityRef,
+    RequestContext,
+    RuntimeEvidence,
+    require_digest,
+)
 
 if TYPE_CHECKING:
     from .artifact_materialization import MaterializedPackArtifact
@@ -92,6 +98,55 @@ class RequestScopedBackend(ExecutionBackend, Protocol):
         Raise if termination cannot be confirmed; the Broker retains the charge.
         Resident backends instead own continuing resource accounting separately.
         """
+
+
+@dataclass(frozen=True)
+class NativeWasmBinding:
+    """Host-captured physical implementation of one signed operation binding."""
+
+    binding: ResolvedOperationBinding
+    backend: ExecutionBackend
+    caller_principal: OpaqueAuthorityRef
+    domain_id: str
+    executable_digest: str
+    backend_digest: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        require_digest(self.executable_digest, "native Wasm executable")
+        OpaqueAuthorityRef(self.domain_id)
+        backend_digest = self.backend.status.backend_digest
+        require_digest(backend_digest, "native Wasm backend")
+        object.__setattr__(self, "backend_digest", backend_digest)
+
+    def matches(
+        self, context: RequestContext, binding: ResolvedOperationBinding
+    ) -> bool:
+        """Check the captured logical binding and exact Host execution route."""
+
+        status = self.backend.status
+        return (
+            binding == self.binding
+            and context.caller_principal == self.caller_principal
+            and context.target_domain_id == self.domain_id
+            and context.target_backend_digest == self.backend_digest
+            and status.backend_digest == self.backend_digest
+            and status.execution_kind is ExecutionKind.WASM
+            and status.ready_for_production
+            and isinstance(self.backend, RequestScopedBackend)
+        )
+
+    def matches_evidence(self, evidence: RuntimeEvidence) -> bool:
+        """Check the Host evidence against the verified v3 Wasm manifest."""
+
+        return (
+            evidence.domain_ref.value == self.domain_id
+            and evidence.executable_digest == self.executable_digest
+            and evidence.backend_digest == self.backend_digest
+            and evidence.guest_artifact_identity == self.executable_digest
+            and evidence.guest_execution_boundary == "wasm-component"
+            and evidence.authenticated_channel
+            and evidence.nonce_fresh
+        )
 
 
 class BackendRegistry:
@@ -202,6 +257,7 @@ __all__ = [
     "BackendRegistry",
     "BackendStatus",
     "ExecutionBackend",
+    "NativeWasmBinding",
     "RequestScopedBackend",
     "REQUIRED_PRODUCTION_GATES",
     "production_backend_registry",

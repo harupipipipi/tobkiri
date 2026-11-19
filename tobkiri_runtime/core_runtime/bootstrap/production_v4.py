@@ -48,7 +48,9 @@ from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_host.authority_approval_window import (
     AuthorityApprovalWindowController,
 )
-from tobkiri_host.backends import BackendRegistry, BackendStatus, ExecutionBackend
+from tobkiri_host.backends import (
+    BackendRegistry, BackendStatus, ExecutionBackend, NativeWasmBinding,
+)
 from tobkiri_host.broker import (
     AdmissionTicket,
     NestedCancellationProof,
@@ -82,6 +84,7 @@ from tobkiri_host.models import (
     PackageKind,
     PackArtifact,
     RequestContext,
+    require_digest,
 )
 from tobkiri_host.operation_cancellation import (
     OwnedCancellationBinding,
@@ -1215,6 +1218,7 @@ def _commit_plan_authority(
     authority_mode: str = "profile_grant",
     pack_approval_revision: str | None = None,
     host_extension_binding: ResolvedOperationBinding | None = None,
+    execution_provider_label: str | None = None,
 ) -> tuple[Any, Any | None]:
     if authority_mode not in _REQUESTED_EDGE_AUTHORITY_MODES:
         raise AuthorityDenied("Profile edge authority mode is invalid")
@@ -1240,6 +1244,24 @@ def _commit_plan_authority(
         if pack_approval_revision is not None
         else identity_suffix
     )
+    provider_suffix = (
+        f"{contract_suffix}.{operation_suffix}.{caller_suffix}."
+        f"{target_suffix}.{record_identity}"
+    )
+    logical_record_suffix = f"{profile_identity}.{authority_label}.{provider_suffix}"
+    logical_provider_id = f"provider.{logical_record_suffix}"
+    provider_label = execution_provider_label or authority_label
+    provider_id = f"provider.{profile_identity}.{provider_label}.{provider_suffix}"
+    previous_provider = None
+    if execution_provider_label is not None:
+        if authority_mode != "profile_grant" or host_extension_binding is not None:
+            raise AuthorityDenied("native bounded execution requires the original Profile Grant")
+        previous_provider = store.get_provider_authority(logical_provider_id)
+        if (
+            (previous_provider is not None and previous_provider.revoked)
+            or store.is_revoked("provider_authority", logical_provider_id)
+        ):
+            raise AuthorityDenied("original Provider authority was revoked")
     host_extension_trust = (
         _host_extension_trust_record(
             active=active,
@@ -1250,11 +1272,7 @@ def _commit_plan_authority(
         else None
     )
     provider = ProviderAuthorityRecord(
-        record_id=(
-            f"provider.{profile_identity}.{authority_label}."
-            f"{contract_suffix}.{operation_suffix}.{caller_suffix}."
-            f"{target_suffix}.{record_identity}"
-        ),
+        record_id=provider_id,
         provider=target,
         execution_domain_id=target_domain.domain_id,
         execution_domain_identity_digest=target_domain.identity_digest,
@@ -1279,6 +1297,13 @@ def _commit_plan_authority(
         valid_from=decided_at,
         host_broker_binding="tobkiri.request-broker.v4",
     )
+    if previous_provider is not None and replace(
+        provider,
+        record_id=previous_provider.record_id,
+        execution_domain_id=previous_provider.execution_domain_id,
+        execution_domain_identity_digest=previous_provider.execution_domain_identity_digest,
+    ) != previous_provider:
+        raise AuthorityDenied("original Provider authority snapshot changed")
     if authority_mode == "interactive_only":
         interactive_existing = (
             (
@@ -1310,11 +1335,7 @@ def _commit_plan_authority(
     # of its durable identity.  This preserves prior rows without replaying or
     # colliding with them when an unchanged Pack is activated again.
     approval = ApprovalRecord(
-        approval_id=(
-            f"approval.{profile_identity}.{authority_label}."
-            f"{contract_suffix}.{operation_suffix}.{caller_suffix}."
-            f"{target_suffix}.{record_identity}"
-        ),
+        approval_id=f"approval.{logical_record_suffix}",
         snapshot_digest=pack_approval_snapshot_digest(
             profile_id=profile_identity,
             activation_id=activation["activation_id"],
@@ -1338,11 +1359,7 @@ def _commit_plan_authority(
         security_epoch=int(activation["security_epoch"]),
     )
     grant = GrantRecord(
-        grant_id=(
-            f"grant.{profile_identity}.{authority_label}."
-            f"{contract_suffix}.{operation_suffix}.{caller_suffix}."
-            f"{target_suffix}.{record_identity}"
-        ),
+        grant_id=f"grant.{logical_record_suffix}",
         caller=caller,
         target=target,
         profile_id=str(profile["profile_id"]),
@@ -1367,13 +1384,23 @@ def _commit_plan_authority(
         store.get_grant(grant.grant_id),
     )
     expected = (host_extension_trust, approval, provider, grant)
-    if existing == (None, None, None, None):
+    if existing == (None, None, None, None) and previous_provider is None:
         control.commit_approval_bundle(
             approval,
             host_extension_trust=host_extension_trust,
             provider_authorities=(provider,),
             grants=(grant,),
         )
+    elif (
+        execution_provider_label is not None
+        and existing == (None, approval, None, grant)
+    ):
+        if (
+            store.is_revoked("grant", grant.grant_id)
+            or store.is_revoked("provider_authority", provider.record_id)
+        ):
+            raise AuthorityDenied("original saved execution authority was revoked")
+        control.commit_provider_authority_bundle(provider_authorities=(provider,))
     elif (
         host_extension_trust is not None
         and existing == (host_extension_trust, None, None, None)
@@ -1845,6 +1872,7 @@ def capture_production_dispatch(
         MODEL_RESOLVE_MINIMUM_MEMORY,
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
+        SAVED_ORCHESTRATION_MINIMUM_MEMORY,
         SAVED_TURN_READ_MINIMUM_MEMORY,
         SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
         ConversationGetCaller,
@@ -1866,6 +1894,7 @@ def capture_production_dispatch(
         NativeProviderPrepareUnavailable,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
+        NativeSavedOrchestrationRequest,
         NativeSavedTurnReadFailure,
         NativeSavedTurnReadRequest,
         NativeSavedTurnSettlementFailure,
@@ -1880,6 +1909,7 @@ def capture_production_dispatch(
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
         capture_launcher_saved_receipt_reader,
+        capture_launcher_saved_orchestration_step,
         capture_launcher_saved_turn_reader,
         capture_launcher_saved_turn_settlement_writer,
         is_canonical_model_resolve_identifier,
@@ -1901,6 +1931,10 @@ def capture_production_dispatch(
     native_confirmation_writer = capture_launcher_conversation_confirmation_writer()
     native_append_writer = capture_launcher_conversation_append_writer()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
+    native_saved_step = capture_launcher_saved_orchestration_step()
+    native_saved_manifest = os.environ.get("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST")
+    if native_saved_step is not None and native_saved_manifest is not None:
+        require_digest(native_saved_manifest, "admitted Saved Orchestration manifest")
     native_saved_turn_reader = capture_launcher_saved_turn_reader()
     native_saved_turn_settlement_writer = capture_launcher_saved_turn_settlement_writer()
 
@@ -2485,6 +2519,112 @@ def capture_production_dispatch(
             str(item["artifact_digest"]),
             set(),
         ).add(str(item["identity"]))
+
+    def is_exact_original_python_edge(
+        edge: _CapturedPlanEdge,
+        function_id: str,
+        mode: str = "profile_grant",
+        *,
+        backend: str = "tobkiri.python-host-v4",
+        execution_kind: str = "host_extension",
+        domain_kind: str = "dedicated_process",
+    ) -> bool:
+        binding = edge.binding
+        return (
+            edge.authority_mode == mode
+            and edge.target.function_id == function_id
+            and binding.get("variant_id") == function_id + ".python"
+            and binding.get("platform") == binding.get("architecture") == "any"
+            and binding.get("runtime_abi") == "python3.13"
+            and binding.get("backend") == backend
+            and binding.get("execution_kind") == execution_kind
+            and binding.get("domain_kind") == domain_kind
+            and binding.get("adapter_digests") == []
+            and edge.edge.get("requested_scope_template") == _operation_scope(
+                binding["contract_id"], binding["operation_id"], edge.target,
+            ).to_dict()
+        )
+
+    turn_pack = "rumi_turn_runtime_pack"
+    saved_pack = "tobkiri_conversation_orchestration_pack"
+
+    def select_original_chat_edge(
+        caller_ids: set[str],
+        pack_id: str,
+        contract_id: str,
+        operation_id: str,
+        function_id: str,
+        effect: EffectClass,
+    ) -> _CapturedPlanEdge | None:
+        matches = tuple(
+            edge for edge in captured_edges
+            if edge.caller.principal_id in caller_ids
+            and edge.resolved_binding.artifact.pack_id == pack_id
+            and edge.binding_key[1:] == (contract_id, operation_id)
+            and edge.resolved_binding.operation.effect_class is effect
+            and (
+                is_exact_original_python_edge(
+                    edge, function_id, backend="tobkiri.python-pack-v4",
+                    execution_kind="pack_vm", domain_kind="pack_vm",
+                ) if pack_id == saved_pack
+                else is_exact_original_python_edge(edge, function_id)
+            )
+        )
+        return matches[0] if len(matches) == 1 else None
+
+    ordinary_turn_edge = select_original_chat_edge(
+        {
+            edge.caller.principal_id for edge in captured_edges
+            if edge.caller.principal_id in shell_principal_ids
+            and edge.caller.function_id == "shell.tauri.default"
+        },
+        turn_pack, "tobkiri.action.turn.saved.v1", f"{turn_pack}.turn-saved",
+        f"{turn_pack}.turn-runtime.saved", EffectClass.PRIVILEGED,
+    )
+    ordinary_orchestration_edge = (
+        select_original_chat_edge(
+            {ordinary_turn_edge.target.principal_id}, saved_pack,
+            "conversation.saved-turn.v1", "saved_complete", f"{saved_pack}.saved",
+            EffectClass.PURE,
+        ) if ordinary_turn_edge is not None else None
+    )
+
+    native_saved_execution: NativeWasmBinding | None = None
+    native_saved_original_provider: str | None = None
+    if (
+        native_saved_step is not None
+        and native_saved_manifest is not None
+        and ordinary_orchestration_edge is not None
+    ):
+        from tobkiri_host.native_saved_orchestration import NativeSavedOrchestrationBackend
+
+        edge = ordinary_orchestration_edge
+        target_suffix = edge.target.principal_id.removeprefix("sha256:")[:24]
+        manifest_hex = native_saved_manifest.removeprefix("sha256:")
+        native_domain = (
+            f"domain.provider.saved-wasm.{target_suffix}.{activation_suffix}.{manifest_hex}"
+        )
+        wasm_backend = NativeSavedOrchestrationBackend(
+            edge.resolved_binding,
+            native_domain,
+            native_saved_manifest,
+            execute=lambda invocation, data, guard: execute_native_saved_step(
+                invocation, data, guard,
+            ),
+            preflight=lambda invocation, proof: saved_preflight(invocation, proof),
+            dispatch=lambda invocation, frame, proof: saved_capability_bridge(
+                invocation, frame, proof,
+            ),
+            capture_current=lambda invocation: capture_current_native_saved(invocation),
+        )
+        native_saved_execution = NativeWasmBinding(
+            binding=edge.resolved_binding,
+            backend=wasm_backend,
+            caller_principal=OpaqueAuthorityRef(edge.caller.principal_id),
+            domain_id=native_domain,
+            executable_digest=native_saved_manifest,
+        )
+
     selected_backend_registry = BackendRegistry(registered_backends)
     for captured_edge in sorted(captured_edges, key=lambda item: item.key):
         if captured_edge.resolved_binding.operation.contract_id in _CONTROL_CONTRACTS:
@@ -2551,15 +2691,21 @@ def capture_production_dispatch(
             ExecutionKind.WASM,
         }:
             continue
-        try:
-            backend = selected_backend_registry.select(resolved_binding)
-        except Exception:
-            # A selected isolated backend remains visible in the catalog but receives no
-            # domain, Grant, or Provider authority until its exact backend is
-            # authenticated and production-ready.
-            continue
-        if not callable(getattr(backend, "bind_target_domain_resolver", None)):
-            continue
+        physical_wasm = (
+            native_saved_execution
+            if captured_edge is ordinary_orchestration_edge else None
+        )
+        if physical_wasm is not None:
+            backend = physical_wasm.backend
+        else:
+            try:
+                backend = selected_backend_registry.select(resolved_binding)
+            except Exception:
+                # A selected isolated backend remains visible in the catalog but
+                # receives no authority until it is authenticated and ready.
+                continue
+            if not callable(getattr(backend, "bind_target_domain_resolver", None)):
+                continue
         provenance_valid, approval_pack_id = _packvm_approval_provenance(
             caller_artifact_digest=captured_edge.caller.parent_artifact_digest,
             target_pack_id=resolved_binding.artifact.pack_id,
@@ -2580,16 +2726,16 @@ def capture_production_dispatch(
                 # recreate runtime authority for it.
                 continue
             captured_dynamic_approvals[approval_pack_id] = pack_approval_revision
-        execution_kind = resolved_binding.variant.execution_kind
+        execution_kind = backend.status.execution_kind
         authority_label = (
             "profile-pack-vm"
-            if execution_kind is ExecutionKind.PACK_VM
+            if resolved_binding.variant.execution_kind is ExecutionKind.PACK_VM
             else "profile-wasm-component"
         )
         target_domain = _execution_domain(
             domain_id=(
-                f"domain.provider.{target.principal_id.removeprefix('sha256:')[:24]}."
-                f"{activation_suffix}"
+                physical_wasm.domain_id if physical_wasm is not None else
+                f"domain.provider.{target.principal_id.removeprefix('sha256:')[:24]}.{activation_suffix}"
             ),
             principal=target,
             active=active,
@@ -2608,9 +2754,9 @@ def capture_production_dispatch(
             authority_control,
             target_domain,
             session_id=(
+                f"session.{physical_wasm.domain_id}" if physical_wasm is not None else
                 f"session.provider.{execution_kind.value}."
-                f"{target.principal_id.removeprefix('sha256:')[:24]}."
-                f"{activation_suffix}"
+                f"{target.principal_id.removeprefix('sha256:')[:24]}.{activation_suffix}"
             ),
             principal=target,
         )
@@ -2628,8 +2774,18 @@ def capture_production_dispatch(
             authority_label=authority_label,
             authority_mode=captured_edge.authority_mode,
             pack_approval_revision=pack_approval_revision,
+            execution_provider_label=(
+                "profile-saved-wasm-" + physical_wasm.executable_digest[7:31]
+                if physical_wasm is not None else None
+            ),
         )
-        target_backend_digests[target.principal_id] = backend.status.backend_digest
+        if physical_wasm is None:
+            target_backend_digests[target.principal_id] = backend.status.backend_digest
+        else:
+            _, logical_grant = profile_edge_authority_records[captured_edge.binding_key]
+            if logical_grant is None:
+                raise AuthorityDenied("native Saved Orchestration original Grant is unavailable")
+            native_saved_original_provider = "provider." + logical_grant.grant_id.removeprefix("grant.")
 
     # An optional Pack approval is part of the captured runtime boundary even
     # when its selected PackVM backend is unavailable.  The absence of a
@@ -2710,8 +2866,15 @@ def capture_production_dispatch(
         )
         if outer_edge is None or outer_edge.key not in bridge_targets:
             raise AuthorityDenied("PackVM capability bridge outer edge is not selected")
-        expected_target_domain = authority_target_domain(outer_edge.resolved_binding)
-        expected_target_backend_digest = target_backend_digests.get(outer_target)
+        physical_wasm = (
+            native_saved_execution if outer_edge is ordinary_orchestration_edge else None
+        )
+        if physical_wasm is None:
+            expected_target_domain = authority_target_domain(outer_edge.resolved_binding)
+            expected_target_backend_digest = target_backend_digests.get(outer_target)
+        else:
+            expected_target_domain = physical_wasm.domain_id
+            expected_target_backend_digest = physical_wasm.backend_digest
         if (
             outer_target != outer_edge.target.principal_id
             or outer_domain != expected_target_domain
@@ -3252,6 +3415,11 @@ def capture_production_dispatch(
         def guard() -> None:
             with _capture_guard_traversal(assert_current_capture):
                 assert_dispatched_invocation(envelope, authority_store)
+                if (
+                    native_saved_execution is not None
+                    and envelope.context.target_domain_id == native_saved_execution.domain_id
+                ):
+                    assert_original_saved_provider_current()
                 if saved_tool_entry_guard is not None:
                     saved_tool_entry_guard()
                 if saved_workspace_binding is not None:
@@ -3972,31 +4140,6 @@ def capture_production_dispatch(
         nonlocal native_provider_runtime
         native_provider_runtime = (instance, check)
 
-    def is_exact_original_python_edge(
-        edge: _CapturedPlanEdge,
-        function_id: str,
-        mode: str = "profile_grant",
-        *,
-        backend: str = "tobkiri.python-host-v4",
-        execution_kind: str = "host_extension",
-        domain_kind: str = "dedicated_process",
-    ) -> bool:
-        binding = edge.binding
-        return (
-            edge.authority_mode == mode
-            and edge.target.function_id == function_id
-            and binding.get("variant_id") == function_id + ".python"
-            and binding.get("platform") == binding.get("architecture") == "any"
-            and binding.get("runtime_abi") == "python3.13"
-            and binding.get("backend") == backend
-            and binding.get("execution_kind") == execution_kind
-            and binding.get("domain_kind") == domain_kind
-            and binding.get("adapter_digests") == []
-            and edge.edge.get("requested_scope_template") == _operation_scope(
-                binding["contract_id"], binding["operation_id"], edge.target,
-            ).to_dict()
-        )
-
     if (
         native_provider_prepare_planner is not None
         and interactive_effect_coordinator is not None
@@ -4243,6 +4386,101 @@ def capture_production_dispatch(
             and envelope.target_principal == edge.resolved_binding.principal_ref
             and (envelope.contract_id, envelope.operation_id) == edge.binding_key[1:]
         )
+
+    signed_saved_parents = tuple(
+        edge for edge in captured_edges
+        if ordinary_turn_edge is not None
+        and edge.target == ordinary_turn_edge.target
+        and edge.binding_key[1:] == ordinary_turn_edge.binding_key[1:]
+    )
+
+    def native_saved_parent(context: RequestContext) -> CapturedInvocationScopeV4:
+        parent = parent_invocation_scopes.lookup(context.caller_session_id)
+        if parent is None or not any(
+            matches_captured_edge(parent.envelope, edge) for edge in signed_saved_parents
+        ):
+            raise AuthorityDenied("native Saved Orchestration parent is unavailable")
+        return parent
+
+    def assert_original_saved_provider_current() -> None:
+        provider_id = native_saved_original_provider
+        if provider_id is None or authority_store.is_revoked("provider_authority", provider_id):
+            raise AuthorityDenied("original Saved Orchestration Provider was revoked")
+
+    def selected_native_saved_authority(
+        context: RequestContext, target: OpaqueAuthorityRef,
+    ) -> NativeWasmBinding | None:
+        native = native_saved_execution
+        if native is None:
+            return None
+        exact_edge = (
+            context.caller_principal == native.caller_principal
+            and target == native.binding.principal_ref
+        )
+        if exact_edge:
+            assert_original_saved_provider_current()
+            native_saved_parent(context).assert_current()
+            return native
+        if (
+            context.target_domain_id == native.domain_id
+            or context.target_backend_digest == native.backend_digest
+        ):
+            raise AuthorityDenied("native Saved Orchestration authority identity changed")
+        return None
+
+    def selected_native_saved_binding(
+        context: RequestContext, binding: ResolvedOperationBinding,
+    ) -> NativeWasmBinding | None:
+        native = selected_native_saved_authority(context, binding.principal_ref)
+        if native is not None and binding != native.binding:
+            raise AuthorityDenied("native Saved Orchestration signed binding changed")
+        return native
+
+    def capture_current_native_saved(envelope: RequestEnvelope) -> Callable[[], None]:
+        captured_runtime = native_provider_runtime
+        scope = capture_invocation_scope(envelope)
+        parent = native_saved_parent(envelope.context)
+        if (
+            captured_runtime is None
+            or scope.parent is None
+            or scope.parent.envelope is not parent.envelope
+            or resolve_bridge_outer(envelope) is not ordinary_orchestration_edge
+            or envelope.lease.token == parent.envelope.lease.token
+            or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
+            or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
+        ):
+            raise AuthorityDenied("native Saved Orchestration captured scope changed")
+
+        def guard() -> None:
+            if (
+                native_provider_runtime is not captured_runtime
+                or native_saved_parent(envelope.context).envelope is not parent.envelope
+            ):
+                raise AuthorityDenied("native Saved Orchestration capture changed")
+            scope.assert_current()
+            captured_runtime[1]()
+            resources = production_admission.native_resources(envelope.resource_reservation_id)
+            if resources.memory_bytes < SAVED_ORCHESTRATION_MINIMUM_MEMORY:
+                raise AuthorityDenied("native Saved Orchestration capacity is unavailable")
+
+        return guard
+
+    def execute_native_saved_step(
+        envelope: RequestEnvelope,
+        step_input: Mapping[str, Any],
+        guard: Callable[[], None],
+    ) -> Mapping[str, Any]:
+        launcher_runtime = native_provider_runtime
+        guard()
+        if native_saved_step is None or launcher_runtime is None:
+            raise AuthorityDenied("native Saved Orchestration Launcher is unavailable")
+        return native_saved_step(NativeSavedOrchestrationRequest(
+            context=envelope.context,
+            runtime_instance=launcher_runtime[0],
+            deadline_monotonic=envelope.deadline_monotonic,
+            assert_current=guard,
+            input=step_input,
+        ))
 
     @dataclass(frozen=True)
     class _SavedCompletionRoute:
@@ -4863,52 +5101,9 @@ def capture_production_dispatch(
         "rumi_conversation_store_pack.message-manage",
     )
     if native_model_resolve_reader is not None or native_append_writer is not None:
-        # These are the original Profile edges, including the guest's saved
-        # entry point. A different caller of the same Gateway stays on Python.
-        turn_pack = "rumi_turn_runtime_pack"
-        saved_pack = "tobkiri_conversation_orchestration_pack"
+        turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
         gateway_pack = "rumi_ai_gateway_pack"
 
-        def select_original_chat_edge(
-            caller_ids: set[str],
-            pack_id: str,
-            contract_id: str,
-            operation_id: str,
-            function_id: str,
-            effect: EffectClass,
-        ) -> _CapturedPlanEdge | None:
-            matches = tuple(
-                edge for edge in captured_edges
-                if edge.caller.principal_id in caller_ids
-                and edge.resolved_binding.artifact.pack_id == pack_id
-                and edge.binding_key[1:] == (contract_id, operation_id)
-                and edge.resolved_binding.operation.effect_class is effect
-                and (
-                    is_exact_original_python_edge(
-                        edge, function_id, backend="tobkiri.python-pack-v4",
-                        execution_kind="pack_vm", domain_kind="pack_vm",
-                    ) if pack_id == saved_pack
-                    else is_exact_original_python_edge(edge, function_id)
-                )
-            )
-            return matches[0] if len(matches) == 1 else None
-
-        turn_edge = select_original_chat_edge(
-            {
-                edge.caller.principal_id for edge in captured_edges
-                if edge.caller.principal_id in shell_principal_ids
-                and edge.caller.function_id == "shell.tauri.default"
-            },
-            turn_pack, "tobkiri.action.turn.saved.v1", f"{turn_pack}.turn-saved",
-            f"{turn_pack}.turn-runtime.saved", EffectClass.PRIVILEGED,
-        )
-        orchestration_edge = (
-            select_original_chat_edge(
-                {turn_edge.target.principal_id}, saved_pack,
-                "conversation.saved-turn.v1", "saved_complete", f"{saved_pack}.saved",
-                EffectClass.PURE,
-            ) if turn_edge is not None else None
-        )
         if (
             native_append_writer is not None
             and turn_edge is not None
@@ -6161,6 +6356,12 @@ def capture_production_dispatch(
             CONVERSATION_APPEND_MINIMUM_MEMORY,
             is_native_saved_append_route,
         ))
+    if native_saved_execution is not None:
+        native_admission_rules.append((
+            native_saved_execution.binding,
+            SAVED_ORCHESTRATION_MINIMUM_MEMORY,
+            lambda context, _: context.target_domain_id == native_saved_execution.domain_id,
+        ))
     if native_model_save_key is not None and native_model_save_edge is not None:
         native_admission_rules.append((
             native_model_save_edge.resolved_binding,
@@ -6195,6 +6396,8 @@ def capture_production_dispatch(
         confirmed_supervisor_release=confirmed_supervisor_release,
         native_bindings=tuple(native_admission_rules),
     )
+    if native_saved_execution is not None:
+        authority_control.install_native_wasm_binding_resolver(selected_native_saved_authority)
     broker = runtime.broker(
         authority_store=authority_store,
         adapters=AdapterPlanner(()),
@@ -6205,6 +6408,9 @@ def capture_production_dispatch(
         reconciliation=InMemoryReconciliationStore(),
         authority_adapter=authority_control,
         acceptance_receipts=acceptance_receipts,
+        native_wasm_binding_for=(
+            selected_native_saved_binding if native_saved_execution is not None else None
+        ),
     )
     activation_digest = canonical_digest(active.activation)
     edge_candidates_by_operation: dict[tuple[str, str], list[_CapturedPlanEdge]] = {}
@@ -6254,6 +6460,7 @@ def capture_production_dispatch(
         caller = captured_edge.caller
         target = captured_edge.target
         target_suffix = target.principal_id.removeprefix("sha256:")[:24]
+        native = native_saved_execution if captured_edge is ordinary_orchestration_edge else None
         # One authenticated panel session may invoke operations whose
         # resolved Shell caller principals differ.  Authority session
         # bindings are principal-specific, so include that exact caller in
@@ -6282,16 +6489,19 @@ def capture_production_dispatch(
             caller_session_id=resolved_authority_session_id,
             caller_domain_id=f"domain.panel.{caller_suffix}.{activation_suffix}",
             caller_boot_epoch=1,
-            target_domain_id=f"domain.provider.{target_suffix}.{activation_suffix}",
+            target_domain_id=(
+                native.domain_id if native is not None
+                else f"domain.provider.{target_suffix}.{activation_suffix}"
+            ),
             target_boot_epoch=1,
-            target_backend_digest=target_backend_digests.get(
-                target.principal_id,
-                canonical_digest(
-                    {
+            target_backend_digest=(
+                native.backend_digest if native is not None else target_backend_digests.get(
+                    target.principal_id,
+                    canonical_digest({
                         "backend": "captured-but-not-materialized",
                         "target": target.principal_id,
-                    }
-                ),
+                    }),
+                )
             ),
             profile_authority_digest=str(active.activation["profile_authority_snapshot_digest"]),
             fencing_token=int(active.activation["fencing_token"]),
@@ -6336,7 +6546,12 @@ def capture_production_dispatch(
         backend_error: str | None = None
         projected_backend: ExecutionBackend | None
         try:
-            projected_backend = broker._backends.select(resolved_binding)
+            projected_backend = (
+                native_saved_execution.backend
+                if native_saved_execution is not None
+                and resolved_binding == native_saved_execution.binding
+                else broker._backends.select(resolved_binding)
+            )
         except Exception as error:
             projected_backend = None
             backend_error = str(error) or "production backend is unavailable"
@@ -6922,7 +7137,7 @@ def capture_production_dispatch(
                 or native_saved_receipt_bindings or native_model_resolve_bindings
                 or native_turn_settlement_bindings or native_conversation_confirmation_bindings
                 or native_saved_turn_read_bindings
-                or native_saved_append_key is not None)
+                or native_saved_append_key is not None or native_saved_execution is not None)
             else None
         ),
     )

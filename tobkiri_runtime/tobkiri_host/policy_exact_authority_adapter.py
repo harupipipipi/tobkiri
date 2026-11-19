@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping
 from core_runtime.authority.v4 import (
     AuthorityDenied,
     AuthorityScope,
+    DomainBoundary,
     FunctionPrincipal,
     InvocationContext,
     LeaseState,
@@ -274,9 +275,12 @@ class PolicyExactAuthorityV4Adapter(AuthorityV4Adapter):
         target_ref: OpaqueAuthorityRef,
         request_digest: str,
         effect_scope: Mapping[str, object],
+        *,
+        required_target_boundary: DomainBoundary | None = None,
     ) -> Any:
         invocation, scope = super()._translate_query(
-            context, target_ref, request_digest, effect_scope
+            context, target_ref, request_digest, effect_scope,
+            required_target_boundary=required_target_boundary,
         )
         if scope.dimensions.get("authorization_kind") == (KIND,):
             identifiers = scope.dimensions.get("policy_derivation_id", ())

@@ -15,11 +15,11 @@ from core_runtime.authority.v4 import AuthorityStore
 
 from .artifact_compiler import CompiledPack, compile_pack_root, routes_for_plan
 from .acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
-from .backends import BackendRegistry
+from .backends import BackendRegistry, NativeWasmBinding
 from .broker import NestedCancellationProof, RequestAdmissionPort, RequestBroker
 from .authority_v4 import AuthorityV4Adapter
 from .composition import AuthorityCeilings, HostV4Composition
-from .contracts import AdapterExecutor, AdapterPlanner
+from .contracts import AdapterExecutor, AdapterPlanner, ResolvedOperationBinding
 from .effects import ReconciliationStore
 from .materialization import MaterializationCoordinator
 from .models import InvocationFrame, PackArtifact, RequestContext
@@ -112,6 +112,10 @@ class ProductionRuntimeV4:
         terminate_domain: Callable[[str], None] | None = None,
         authority_adapter: AuthorityV4Adapter | None = None,
         acceptance_receipts: AcceptanceReceiptPort | None = None,
+        native_wasm_binding_for: (
+            Callable[[RequestContext, ResolvedOperationBinding], NativeWasmBinding | None]
+            | None
+        ) = None,
     ) -> RequestBroker:
         """Build the sole request Broker using this captured authority adapter."""
         authority = authority_adapter or self.composition.authority_adapter(
@@ -128,6 +132,7 @@ class ProductionRuntimeV4:
             audit=authority,
             reconciliation=reconciliation,
             acceptance_receipts=acceptance_receipts,
+            native_wasm_binding_for=native_wasm_binding_for,
         )
 
     def dispatch_session(

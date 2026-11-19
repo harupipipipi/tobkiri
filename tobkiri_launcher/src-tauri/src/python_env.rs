@@ -341,13 +341,17 @@ pub fn spawn_python_role<F>(
 where
     F: FnOnce(&mut RoleCommand<'_>) -> Result<()>,
 {
-    let configure = |command: &mut RoleCommand<'_>| {
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    let (role_arguments, saved_orchestration_manifest) =
+        role_arguments.split_saved_orchestration_manifest();
+    let configure = |command: &mut RoleCommand<'_>| -> Result<()> {
         configure(command)?;
         command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET");
         command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER");
         command.env_remove("TOBKIRI_NATIVE_CONVERSATION_APPEND");
         command.env_remove("TOBKIRI_NATIVE_SAVED_TURN_READ");
         command.env_remove("TOBKIRI_NATIVE_SAVED_ORCHESTRATION");
+        command.env_remove(crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV);
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
         if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
             if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
@@ -362,6 +366,14 @@ where
                     .env(APPEND_ENV, "1")
                     .env(TURN_READ_ENV, "1")
                     .env(SAVED_ORCHESTRATION_ENV, "1");
+                if let (PythonRole::Defaultspack, Some(manifest)) =
+                    (role, saved_orchestration_manifest.as_deref())
+                {
+                    command.env(
+                        crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV,
+                        manifest,
+                    );
+                }
             }
         }
         Ok(())

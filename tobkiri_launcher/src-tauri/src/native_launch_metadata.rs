@@ -84,7 +84,14 @@ pub(crate) enum ConversationReadCaller {
 impl VerifiedRegistryLaunch {
     /// Require the original ordinary saved chain and verified pure Wasm computation.
     pub(crate) fn permits_saved_orchestration(&self) -> bool {
-        self.orchestration.is_some()
+        self.saved_orchestration_manifest().is_some()
+    }
+
+    /// Exact replacement manifest digest verified for the original saved chain.
+    pub(crate) fn saved_orchestration_manifest(&self) -> Option<&str> {
+        self.orchestration
+            .as_ref()
+            .map(|source| source.manifest_sha256.as_str())
     }
 
     /// Require the Gateway role's own signed grant against the verified Model Pack.
@@ -496,9 +503,9 @@ impl VerifiedRegistryLaunch {
         proof.provider_prepare = None;
         proof.orchestration = Some(VerifiedSavedOrchestrationSource {
             route: std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
-            archive_sha256: "sha256:archive".into(),
+            archive_sha256: format!("sha256:{}", "a".repeat(64)),
             archive_bytes: 512,
-            manifest_sha256: "sha256:manifest".into(),
+            manifest_sha256: format!("sha256:{}", "b".repeat(64)),
         });
         proof
     }
@@ -593,8 +600,12 @@ async fn collect_on_worker(
         Ok(admitted) => admitted,
         Err(error) => return (Err(error), true),
     };
-    let observe_activation =
-        matches!(purpose, LaunchMetadataUse::Shell) && registry_pack_receipt_bound();
+    let observe_activation = registry_pack_receipt_bound()
+        && match purpose {
+            LaunchMetadataUse::Shell => true,
+            LaunchMetadataUse::Spawn => config.native_provider_prepare_endpoint.is_some(),
+            LaunchMetadataUse::Supervision => false,
+        };
     let (result, cleanup_verified) = {
         let observer = LaunchActivationObserver {
             app,

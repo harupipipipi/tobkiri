@@ -58,7 +58,6 @@ import threading
 import time
 from typing import Any, Callable, Mapping, Protocol
 
-from core_runtime.authority.v4 import AuthorityDenied
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
@@ -74,6 +73,8 @@ from tobkiri_protocol.saved_conversation import (
 
 from .continuation_chain import ChainIdentity, ContinuationChains
 from .saved_host_exchange import SavedHostExchange
+from .saved_rejection import is_packvm_gate_busy as _is_gate_busy_error
+from .saved_rejection import saved_turn_rejection
 from .saved_turn_plan import SavedToolFrame
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 
@@ -82,8 +83,6 @@ from .effects import ProviderOutcome
 from .errors import (
     BackendUnavailableError,
     PackVMAcceptanceError,
-    ResolutionError,
-    SavedTurnRejectedError,
 )
 from .models import require_digest
 from .platform_backends import (
@@ -451,85 +450,6 @@ class MacOSVZDomainAllocation:
         }
 
 
-def _is_gate_busy_error(exc: BaseException) -> bool:
-    """Whether the allocator reported transient lifecycle-gate contention.
-
-    The allocator is injected through :class:`MacOSVZDomainAllocator`, so the
-    concrete error type stays provisioner-side; it is matched by name across
-    the exception's MRO without importing the provisioner module.  Wrappers
-    that chain the busy error through ``__cause__``/``__context__`` count as
-    busy too — a wrapped retryable error must never latch compromise.
-    """
-
-    seen: set[int] = set()
-    pending: list[BaseException] = [exc]
-    while pending:
-        current = pending.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        if "PackVMGateBusyError" in {
-            cls.__name__ for cls in type(current).__mro__
-        }:
-            return True
-        if current.__cause__ is not None:
-            pending.append(current.__cause__)
-        if current.__context__ is not None:
-            pending.append(current.__context__)
-    return False
-
-
-def _saved_terminal_code(exc: BaseException, *, default: str) -> str | None:
-    """Return a bounded diagnostic code only for a definitive saved rejection.
-
-    Both marked call sites run before the guest invoke envelope, so a
-    deterministic denial there can never produce an outcome receipt and the
-    durable turn settles ``failed`` with this code.  Transient lifecycle-gate
-    contention and opaque failures stay unmarked: an unknown outcome keeps
-    the fail-closed ``waiting``/reconciliation state.
-    """
-
-    if _is_gate_busy_error(exc):
-        return None
-    if isinstance(exc, (AuthorityDenied, ResolutionError, ValueError)):
-        code = getattr(exc, "code", None)
-        return code if type(code) is str and code else default
-    code = getattr(exc, "code", None)
-    if type(code) is str and callable(getattr(exc, "to_dict", None)):
-        return code
-    return None
-
-
-def _saved_terminal_details(exc: BaseException) -> dict[str, int]:
-    """Return bounded capacity counters from a typed deterministic refusal."""
-
-    seen: set[int] = set()
-    pending: list[BaseException] = [exc]
-    while pending:
-        current = pending.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        required = getattr(current, "required_bytes", None)
-        available = getattr(current, "available_bytes", None)
-        if (
-            getattr(current, "code", None)
-            == "PACKVM_HOST_CAPACITY_INSUFFICIENT"
-            and type(required) is int
-            and type(available) is int
-            and required > available >= 0
-        ):
-            return {
-                "required_bytes": required,
-                "available_bytes": available,
-            }
-        if current.__cause__ is not None:
-            pending.append(current.__cause__)
-        if current.__context__ is not None:
-            pending.append(current.__context__)
-    return {}
-
-
 class MacOSVZDomainAllocator(Protocol):
     """Create/release one unique private COW disk and EFI store per domain."""
 
@@ -760,17 +680,10 @@ class MacOSVZSupervisorDriver:
                 channel_key=channel_key,
             )
         except Exception as exc:
-            code = _saved_terminal_code(exc, default="BACKEND_UNAVAILABLE")
-            if code is not None:
-                # A deterministic provisioning refusal (for example the
-                # free-space floor) can never produce a guest outcome for
-                # this request; the saved turn coordinator settles failed.
-                raise SavedTurnRejectedError(
-                    "macOS VZ domain allocation failed",
-                    error_code=code,
-                    terminal_details=_saved_terminal_details(exc),
-                ) from exc
-            raise BackendUnavailableError("macOS VZ domain allocation failed") from exc
+            raise saved_turn_rejection(
+                exc, reason="macOS VZ domain allocation failed",
+                default="BACKEND_UNAVAILABLE",
+            ) from exc
         if (
             allocation.domain_id != request.target_domain_id
             or allocation.reservation_id != request.reservation_id
@@ -928,18 +841,10 @@ class MacOSVZSupervisorDriver:
                     if saved_bridge[1](request) is not None:
                         raise BackendUnavailableError("macOS VZ saved preflight acknowledgement is invalid")
                 except Exception as exc:
-                    code = _saved_terminal_code(exc, default="SAVED_REQUEST_REJECTED")
-                    if code is not None:
-                        # Preflight runs entirely Host-side before the invoke
-                        # envelope, so a definitive denial can never produce a
-                        # guest outcome receipt; the durable turn settles
-                        # failed instead of waiting for reconciliation.
-                        raise SavedTurnRejectedError(
-                            "macOS VZ saved preflight rejected request",
-                            error_code=code,
-                            terminal_details=_saved_terminal_details(exc),
-                        ) from exc
-                    raise BackendUnavailableError("macOS VZ saved preflight rejected request") from exc
+                    raise saved_turn_rejection(
+                        exc, reason="macOS VZ saved preflight rejected request",
+                        default="SAVED_REQUEST_REJECTED",
+                    ) from exc
                 self._require_saved_budget(request, active)
             response = self._exchange(
                 self._invoke_envelope(

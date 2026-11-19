@@ -313,6 +313,8 @@ jobs:
             tests/test_continuation_chain.py \
             tests/test_continuation_envelope.py \
             tests/test_continuation_session.py \
+            tests/test_native_saved_orchestration.py \
+            tests/test_native_wasm_execution_binding.py \
             tests/test_macos_vz_supervisor.py \
             tests/test_macos_vz_registration.py \
             tests/test_macos_vz_provisioner.py \

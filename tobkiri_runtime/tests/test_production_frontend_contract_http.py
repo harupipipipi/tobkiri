@@ -430,6 +430,7 @@ def _captured_production_server(
     monkeypatch: pytest.MonkeyPatch,
     *,
     packvm_backends: BackendRegistry | None = None,
+    existing_activation: bool = False,
     credential_store_factory=None,
     native_provider_prepare_planner=None,
     generation_budget_template: NativeGenerationBudgetTemplate | None = None,
@@ -442,7 +443,13 @@ def _captured_production_server(
     user_data = tmp_path / "user-data"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
-    active = capture_default_profile(confirmation=prepare_default_profile_confirmation())
+    active = (
+        profile_capture.capture_active_profile()
+        if existing_activation
+        else capture_default_profile(
+            confirmation=prepare_default_profile_confirmation(),
+        )
+    )
     contract_path = user_data / "host_contract.json"
     contract_path.write_text(
         json.dumps(
@@ -3559,6 +3566,257 @@ def test_native_append_borrows_signed_saved_orchestration_child(
                 request.assert_current()
             with pytest.raises(PermissionError):
                 request.mark_publication_possible()
+
+
+def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the native Broker route with the original pure step as its oracle."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import DomainBoundary, LeaseState
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import (
+        saved_conversation,
+    )
+    from tobkiri_host.contracts import ResolvedOperationBinding
+    from tobkiri_host.native_saved_orchestration import NativeSavedOrchestrationBackend
+    from tobkiri_host.runtime import V4DispatchSession
+    from tobkiri_protocol.saved_conversation import (
+        SAVED_CONVERSATION_CONTRACT,
+        SAVED_CONVERSATION_OPERATION,
+    )
+
+    manifest = canonical_digest({"manifest": "fixture-saved-orchestration"})
+    for capture in (
+        "capture_launcher_provider_prepare_planner",
+        "capture_launcher_model_save_writer",
+        "capture_launcher_model_settings_reader",
+        "capture_launcher_model_resolve_reader",
+        "capture_launcher_conversation_get_reader",
+        "capture_launcher_conversation_append_writer",
+        "capture_launcher_saved_receipt_reader",
+        "capture_launcher_saved_turn_reader",
+        "capture_launcher_saved_turn_settlement_writer",
+        "capture_launcher_conversation_confirmation_writer",
+    ):
+        monkeypatch.setattr(ipc, capture, lambda: None)
+
+    turn_target = ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+    saved_target = (SAVED_CONVERSATION_CONTRACT, SAVED_CONVERSATION_OPERATION)
+    parents: list[RequestEnvelope] = []
+    orchestrations: list[RequestEnvelope] = []
+    children: list[RequestEnvelope] = []
+    steps: list[ipc.NativeSavedOrchestrationRequest] = []
+    ai_calls: list[Mapping[str, object]] = []
+    packvm_materializations: list[object] = []
+    native_materializations: list[RuntimeEvidence] = []
+    original_invoke = V4DispatchSession.invoke
+    original_materialize = NativeSavedOrchestrationBackend.materialize
+    backend = _SavedPackVmBackend()
+
+    def invoke(
+        session: V4DispatchSession, contract: str, operation: str,
+        payload: Mapping[str, object], **kwargs: object,
+    ) -> Mapping[str, object]:
+        if (contract, operation) == READINESS:
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
+        if (contract, operation) == saved_conversation.TARGETS[2]:
+            ai_calls.append(payload)
+            return {"status": "ok", "output": "Hi", "finish_reason": "stop"}
+        return original_invoke(session, contract, operation, payload, **kwargs)
+
+    def forbid_packvm(binding: object, _reservation_id: str) -> RuntimeEvidence:
+        packvm_materializations.append(binding)
+        raise AssertionError("ordinary saved orchestration tried to materialize PackVM")
+
+    def observe_native_materialization(
+        selected: NativeSavedOrchestrationBackend, binding: ResolvedOperationBinding,
+        reservation_id: str,
+    ) -> RuntimeEvidence:
+        evidence = original_materialize(selected, binding, reservation_id)
+        native_materializations.append(evidence)
+        return evidence
+
+    def step(request: ipc.NativeSavedOrchestrationRequest) -> Mapping[str, object]:
+        request.assert_current()
+        steps.append(request)
+        return saved_conversation.tobkiri_packvm_invoke(
+            SAVED_CONVERSATION_OPERATION, dict(request.input),
+        )
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    monkeypatch.setattr(backend, "materialize", forbid_packvm)
+    monkeypatch.setattr(
+        NativeSavedOrchestrationBackend, "materialize", observe_native_materialization,
+    )
+    with monkeypatch.context() as legacy:
+        legacy.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", raising=False)
+        legacy.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", raising=False)
+        with contextmanager(_captured_production_server)(
+            tmp_path, monkeypatch,
+            packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        ) as (_, _, authority):
+            grants_before = {grant.grant_id: grant for grant in authority.list_grants()}
+            domains_before = {domain.domain_id for domain in authority.list_domains()}
+            providers_before = {
+                provider.record_id: provider
+                for provider in authority.list_provider_authorities()
+            }
+
+    monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", manifest)
+    monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
+    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/saved.sock")
+    monkeypatch.setattr(ipc, "capture_launcher_saved_orchestration_step", lambda: step)
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((backend,)),
+        existing_activation=True,
+    ) as (server, session, authority):
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(
+            selected: object, envelope: RequestEnvelope,
+            *args: object, **kwargs: object,
+        ) -> object:
+            target = envelope.contract_id, envelope.operation_id
+            if target == turn_target:
+                parents.append(envelope)
+            if target == saved_target:
+                orchestrations.append(envelope)
+            if (
+                target == saved_conversation.TARGETS[1]
+                and envelope.payload.get("operation") == "append_saved"
+            ):
+                children.append(envelope)
+            return dispatch(selected, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        user_data = tmp_path / "user-data"
+        conversations = ConversationStore("defaults", user_data_root=user_data)
+        turns = DurableTurnRuntime("defaults", user_data_root=user_data)
+        conversations.create(
+            {"id": "conversation-1", "model_reference": "model-profile-1"},
+            expected_revision=0,
+        )
+        send = _contract("POST", "/api/chat/turn")
+        reconcile = _contract("POST", "/api/chat/turn/reconcile")
+        body = {"request": {
+            "turn_id": "turn-1", "conversation_id": "conversation-1",
+            "conversation_revision": 1, "content": "Hello",
+        }}
+        status, result, _ = _request(server, "POST", send, body=body)
+        assert status in {401, 403}, result
+        assert not parents and not steps
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(route: str, payload: dict) -> dict:
+            status, result, _ = _request(
+                server, "POST", route, body=payload, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert status == 200, result
+            return result["data"]
+
+        first = post(send, body)
+        assert first["status"] == "completed", first
+        assert first["turn"] == turns.get("turn-1")
+        (parent,) = parents
+        (orchestration,) = orchestrations
+        assert orchestration.payload == body
+        assert orchestration.context.caller_principal == parent.target_principal
+        assert orchestration.deadline_monotonic <= parent.deadline_monotonic
+        assert orchestration.resource_reservation_id is not None
+        assert orchestration.resource_reservation_id != parent.resource_reservation_id
+        (evidence,) = native_materializations
+        assert evidence.domain_ref == orchestration.target_domain
+        assert evidence.executable_digest == manifest
+        assert evidence.guest_artifact_identity == manifest
+        assert evidence.guest_execution_boundary == "wasm-component"
+        assert evidence.backend_digest != backend.status.backend_digest
+        assert evidence.resource_reservation_id == orchestration.resource_reservation_id
+        target_domain = authority.get_domain(orchestration.target_domain.value)
+        assert target_domain is not None
+        assert target_domain.boundary is DomainBoundary.WASM_COMPONENT
+        assert target_domain.domain_id not in domains_before
+        lease, state = authority.inspect_lease_token(
+            orchestration.lease.token.decode("ascii"),
+        )
+        assert state is LeaseState.COMMITTED
+        parent_lease, parent_state = authority.inspect_lease_token(
+            parent.lease.token.decode("ascii"),
+        )
+        assert parent_state is LeaseState.COMMITTED
+        assert parent_lease.caller.function_id == "shell.tauri.default"
+        assert parent_lease.target == lease.caller
+        assert lease.caller.function_id == "rumi_turn_runtime_pack.turn-runtime.saved"
+        assert lease.target.function_id == _SavedPackVmBackend._FUNCTION_ID
+        assert lease.target_domain_id == target_domain.domain_id
+        assert lease.target in target_domain.principals
+        assert lease.grant_id in grants_before
+        assert authority.get_grant(lease.grant_id) == grants_before[lease.grant_id]
+        assert [request.input.get("state", {}).get("stage") for request in steps] == [
+            None, "read", "user", "ai", "assistant",
+        ]
+        assert steps[0].input == body
+        for request in steps:
+            assert request.context == orchestration.context
+            assert request.context.target_domain_id == target_domain.domain_id
+            assert request.context.target_backend_digest == evidence.backend_digest
+            assert request.runtime_instance == server._native_provider_prepare_instance
+            assert request.deadline_monotonic == orchestration.deadline_monotonic
+            with pytest.raises(ValueError, match="saved guest request is cancelled"):
+                request.assert_current()
+
+        conversation = conversations.get("conversation-1")
+        assert conversation is not None
+        assert [(msg["role"], msg["content"]) for msg in conversation["messages"]] == [
+            ("user", "Hello"), ("assistant", "Hi"),
+        ]
+        assert conversation["conversation_revision"] == 3
+        receipt = conversations.saved_receipt("turn-1")
+        assert receipt is not None
+        assert receipt["result_reference"] == first["turn"]["result_reference"]
+        before_retry = conversations.path.read_bytes()
+        for route, payload in ((send, body), (reconcile, {"turn_id": "turn-1"})):
+            replay = post(route, payload)
+            assert replay["status"] == "existing", replay
+            assert replay["turn"] == first["turn"]
+        assert conversations.path.read_bytes() == before_retry
+
+        original_provider_id = "provider." + lease.grant_id.removeprefix("grant.")
+        original_provider = providers_before[original_provider_id]
+        assert original_provider.provider == lease.target
+        assert original_provider.execution_domain_id in domains_before
+        assert original_provider_id != lease.provider_authority_id
+        authority.revoke(
+            target_kind="provider_authority", target_id=original_provider_id,
+            reason="original Saved Orchestration Provider revoked",
+        )
+        blocked = post(send, {"request": {
+            "turn_id": "turn-2", "conversation_id": "conversation-1",
+            "conversation_revision": 3, "content": "Second request",
+        }})
+        assert blocked["status"] == "reconciliation_required", blocked
+        assert blocked["turn"]["id"] == "turn-2"
+        assert conversations.saved_receipt("turn-2") is None
+        assert conversations.path.read_bytes() == before_retry
+        assert [child.payload["message"]["role"] for child in children] == [
+            "user", "assistant",
+        ]
+        assert all(
+            child.context.caller_principal == orchestration.target_principal
+            and child.deadline_monotonic <= orchestration.deadline_monotonic
+            for child in children
+        )
+        assert len(ai_calls) == len(orchestrations) == 1
+        assert len(steps) == 5 and len(native_materializations) == 1
+        assert not packvm_materializations
 
 
 def test_saved_http_rejects_owned_context_before_writes_but_allows_text(

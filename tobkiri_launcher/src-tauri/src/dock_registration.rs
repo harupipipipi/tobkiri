@@ -781,8 +781,8 @@ fn ensure_defaultspack_desktop_ready(
     let api_token = read_desktop_api_token_from_config(config)
         .context("failed to read Viewer local auth token for Defaultspack launch")?;
     let panel_bootstrap_secret = read_panel_bootstrap_secret_from_config(config)?;
-    let read_metadata = || read_launch_metadata(app, config, deadline);
-    let metadata = match read_launch_metadata_for(app, config, deadline, purpose) {
+    let read_metadata = |purpose| read_launch_metadata(app, config, deadline, purpose);
+    let metadata = match read_metadata(purpose) {
         Ok(m) => {
             info!("launch_defaultspack_desktop_impl: metadata loaded (port={}, entrypoint={}, argv_count={}, working_dir={})",
                 m.port, m.entrypoint.display(), m.argv.len(), m.app_working_dir.display());
@@ -1110,21 +1110,14 @@ pub(crate) fn read_defaultspack_desktop_metadata(
     )
 }
 
-pub(crate) fn read_launch_metadata(
-    app: &AppHandle,
-    config: &AppConfig,
-    deadline: Instant,
-) -> AnyResult<DefaultspackDesktopMetadata> {
-    read_launch_metadata_for(app, config, deadline, LaunchMetadataUse::Supervision)
-}
-
 #[derive(Clone, Copy)]
 pub(crate) enum LaunchMetadataUse {
     Shell,
+    Spawn,
     Supervision,
 }
 
-fn read_launch_metadata_for(
+pub(crate) fn read_launch_metadata(
     app: &AppHandle,
     config: &AppConfig,
     deadline: Instant,
@@ -1393,6 +1386,9 @@ pub(crate) fn spawn_defaultspack_local_server(
     // listener orphaned and cannot provide a process-lifetime guardian.
     let role_arguments =
         crate::python_env::RoleArguments::defaultspack(metadata.argv.iter().cloned())?;
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    let role_arguments = role_arguments
+        .with_saved_orchestration_admission(metadata.native_provider_prepare.as_ref());
     crate::python_env::spawn_python_role(
         config,
         crate::python_env::PythonRole::Defaultspack,

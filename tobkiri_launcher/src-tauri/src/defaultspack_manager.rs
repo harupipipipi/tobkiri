@@ -20,7 +20,9 @@ use rand::{distributions::Alphanumeric, Rng};
 
 use crate::config::AppConfig;
 use crate::debug_approval::DebugApprovalManager;
-use crate::dock_registration::{spawn_defaultspack_local_server, DefaultspackDesktopMetadata};
+use crate::dock_registration::{
+    spawn_defaultspack_local_server, DefaultspackDesktopMetadata, LaunchMetadataUse,
+};
 use crate::host_broker::BrokerAttestationIdentity;
 use crate::process_utils;
 use crate::shutdown_budget;
@@ -255,7 +257,7 @@ struct ApplicationProcessState {
 
 /// Compatibility alias for the existing Launcher composition root.
 pub(crate) type DefaultspackManager = ApplicationProcessManager;
-type MetadataReader<'a> = dyn Fn() -> Result<DefaultspackDesktopMetadata> + 'a;
+type MetadataReader<'a> = dyn Fn(LaunchMetadataUse) -> Result<DefaultspackDesktopMetadata> + 'a;
 
 /// Compatibility alias for focused lifecycle tests and old internal names.
 type DefaultspackState = ApplicationProcessState;
@@ -663,8 +665,13 @@ impl ApplicationProcessManager {
             }
 
             let deadline = Instant::now() + crate::preparation_budget::TIMEOUT;
-            if let Err(error) = manager.monitor_once(&|| {
-                crate::dock_registration::read_launch_metadata(&app, &manager.config, deadline)
+            if let Err(error) = manager.monitor_once(&|purpose| {
+                crate::dock_registration::read_launch_metadata(
+                    &app,
+                    &manager.config,
+                    deadline,
+                    purpose,
+                )
             }) {
                 error!("Defaultspack lifecycle monitor failed: {error:#}");
             }
@@ -835,7 +842,7 @@ impl ApplicationProcessManager {
         // a Profile rotation (pack enable/disable, recapture) commits a new
         // execution identity, and respawning the stale one would publish a
         // Host contract the restored session cannot match.
-        let metadata = match read_metadata() {
+        let metadata = match read_metadata(LaunchMetadataUse::Supervision) {
             Ok(metadata) => metadata,
             Err(error) => {
                 self.defer_restart_for_resolution_failure(&error)?;
@@ -847,7 +854,7 @@ impl ApplicationProcessManager {
         // once more before this result may overwrite an identity adopted by a
         // concurrent launch, so an older in-flight resolution can never
         // displace a newer one.
-        match read_metadata() {
+        match read_metadata(LaunchMetadataUse::Supervision) {
             Ok(current) if application_metadata_matches(&current, &metadata) => {}
             Ok(_) => {
                 info!(
@@ -907,10 +914,9 @@ impl ApplicationProcessManager {
         let run_id = managed_defaultspack_run_id();
         // The authority can rotate between the caller's resolution and this
         // spawn. Re-verify the resolved identity immediately before the Host
-        // contract is written so a superseded execution identity is never
-        // bound into a new child.
-        match read_metadata() {
-            Ok(current) if application_metadata_matches(&current, &metadata) => {}
+        // contract is written and use the fresh Registry evidence for startup.
+        let metadata = match read_metadata(LaunchMetadataUse::Spawn) {
+            Ok(current) if application_metadata_matches(&current, &metadata) => current,
             Ok(_) => {
                 info!(
                     "Defaultspack {reason} aborted; the active execution Profile rotated before the Host contract was written"
@@ -926,7 +932,7 @@ impl ApplicationProcessManager {
                     "Defaultspack {reason} could not re-verify the active execution Profile"
                 ));
             }
-        }
+        };
         let mut child = match spawn_defaultspack_local_server(
             &self.config,
             &metadata,
@@ -966,7 +972,7 @@ impl ApplicationProcessManager {
         // The authority may also have rotated while the child was being
         // created; confirm the spawned identity once more before it is
         // registered as the guardian and allowed to own `state.child`.
-        let spawned_identity_is_current = match read_metadata() {
+        let spawned_identity_is_current = match read_metadata(LaunchMetadataUse::Supervision) {
             Ok(current) => application_metadata_matches(&current, &metadata),
             Err(error) => {
                 warn!(
@@ -1920,7 +1926,9 @@ mod tests {
         }
 
         manager
-            .start_or_reuse(requested.clone(), &|| panic!("restart already in progress"))
+            .start_or_reuse(requested.clone(), &|_| {
+                panic!("restart already in progress")
+            })
             .unwrap();
 
         let state = manager.lock_state().unwrap();
@@ -1947,7 +1955,9 @@ mod tests {
         }
 
         manager
-            .start_or_reuse(requested.clone(), &|| panic!("restart already in progress"))
+            .start_or_reuse(requested.clone(), &|_| {
+                panic!("restart already in progress")
+            })
             .unwrap();
 
         let state = manager.lock_state().unwrap();
@@ -1977,7 +1987,7 @@ mod tests {
         manager
             .start_or_reuse(
                 DefaultspackDesktopMetadata::test_metadata(identity.clone()),
-                &|| panic!("restart already in progress"),
+                &|_| panic!("restart already in progress"),
             )
             .unwrap();
 
@@ -2618,7 +2628,7 @@ mod tests {
         }
 
         manager
-            .monitor_once(&|| read_test_metadata(&manager))
+            .monitor_once(&|_| read_test_metadata(&manager))
             .unwrap();
         assert!(listener.borrow().is_some());
         assert!(manager.debug_approval.current_guardian().is_err());
@@ -2633,7 +2643,7 @@ mod tests {
         let retired = std::cell::Cell::new(false);
         manager
             .monitor_once_with(
-                &|| panic!("an occupied port must defer authority resolution"),
+                &|_| panic!("an occupied port must defer authority resolution"),
                 || {
                     assert!(listener.borrow().is_some());
                     Ok(PendingRestartPort::AdoptedListener(listener_pid))
@@ -2661,7 +2671,7 @@ mod tests {
         // deferred by the same orphan forever. This fixture has no signed
         // catalog, so resolution must enter its bounded failure path.
         manager
-            .monitor_once(&|| read_test_metadata(&manager))
+            .monitor_once(&|_| read_test_metadata(&manager))
             .unwrap();
         let state = manager.lock_state().unwrap();
         assert_eq!(state.consecutive_resolve_failures, 1);
@@ -2721,7 +2731,7 @@ mod tests {
         // The test fixture has no signed catalog, so resolution fails and the
         // monitor must defer with a recorded failure instead of spinning.
         manager
-            .monitor_once(&|| read_test_metadata(&manager))
+            .monitor_once(&|_| read_test_metadata(&manager))
             .unwrap();
 
         let state = manager.lock_state().unwrap();
@@ -2741,7 +2751,7 @@ mod tests {
         }
 
         manager
-            .monitor_once(&|| read_test_metadata(&manager))
+            .monitor_once(&|_| read_test_metadata(&manager))
             .unwrap();
 
         let state = manager.lock_state().unwrap();
@@ -2761,7 +2771,10 @@ mod tests {
         }
 
         let error = manager
-            .spawn_and_track(metadata, "test launch", &|| read_test_metadata(&manager))
+            .spawn_and_track(metadata, "test launch", &|purpose| {
+                assert!(matches!(purpose, LaunchMetadataUse::Spawn));
+                read_test_metadata(&manager)
+            })
             .unwrap_err();
 
         assert!(format!("{error:#}").contains("could not re-verify"));
@@ -2785,10 +2798,10 @@ mod tests {
         let reads = std::cell::Cell::new(0);
         manager
             .monitor_once_with(
-                &|| {
+                &|_| {
                     reads.set(reads.get() + 1);
                     if reads.get() == 2 {
-                        manager.start_or_reuse(adopted.clone(), &|| {
+                        manager.start_or_reuse(adopted.clone(), &|_| {
                             panic!("foreground launch must reuse the in-flight restart")
                         })?;
                     }

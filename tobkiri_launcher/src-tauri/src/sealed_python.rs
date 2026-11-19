@@ -56,6 +56,8 @@ const CHILD_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ATTESTATION_BYTES: u64 = 64 * 1024;
 const SNAPSHOT_RUNTIME_MANIFEST: &str = "app/runtime-resource-manifest.v1.json";
 const RUNTIME_OVERLAY_SCHEMA: &str = "io.tobkiri.sealed-runtime-overlay.v1";
+pub(crate) const SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
+    "TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PythonRole {
@@ -78,6 +80,8 @@ impl PythonRole {
 pub struct RoleArguments {
     application: Vec<OsString>,
     native_first_setup: bool,
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    saved_orchestration_manifest: Option<String>,
 }
 
 impl RoleArguments {
@@ -112,6 +116,24 @@ impl RoleArguments {
 
     pub(crate) fn requires_native_first_setup(&self) -> bool {
         self.native_first_setup
+    }
+
+    /// Carry the verified replacement digest into the managed Defaultspack spawn.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn with_saved_orchestration_admission(
+        mut self,
+        proof: Option<&crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
+    ) -> Self {
+        self.saved_orchestration_manifest = proof
+            .and_then(|proof| proof.saved_orchestration_manifest())
+            .map(str::to_owned);
+        self
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn split_saved_orchestration_manifest(mut self) -> (Self, Option<String>) {
+        let manifest = self.saved_orchestration_manifest.take();
+        (self, manifest)
     }
 
     pub(crate) fn into_values(self) -> Vec<OsString> {
@@ -253,6 +275,10 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
     let Some(key) = key.to_str() else {
         return false;
     };
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    if key == SAVED_ORCHESTRATION_MANIFEST_ENV {
+        return role == PythonRole::Defaultspack;
+    }
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack)
         && matches!(
@@ -4299,6 +4325,47 @@ mod tests {
             assert!(error.to_string().contains(key));
             assert!(!error.to_string().contains("/untrusted/metadata"));
         }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
+    fn saved_orchestration_admission_carries_the_exact_manifest_for_defaultspack() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use crate::native_harness_bootstrap::VerifiedRegistryLaunch;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: digest('c'),
+            activation_id: "activation".into(),
+            plan_digest: digest('d'),
+        };
+        let other_proof = VerifiedRegistryLaunch::test_proof(identity.clone(), "catalog");
+        let verified = VerifiedRegistryLaunch::test_saved_orchestration_proof(identity, "catalog");
+        let expected = format!("sha256:{}", digest('b'));
+
+        for (proof, digest) in [
+            (None, None),
+            (Some(&other_proof), None),
+            (Some(&verified), Some(expected.as_str())),
+        ] {
+            let (args, admission) = RoleArguments::defaultspack([OsString::from("serve")])
+                .unwrap()
+                .with_saved_orchestration_admission(proof)
+                .split_saved_orchestration_manifest();
+            assert_eq!(admission.as_deref(), digest);
+            assert_eq!(args.into_values(), [OsString::from("serve")]);
+        }
+
+        let key = OsStr::new(SAVED_ORCHESTRATION_MANIFEST_ENV);
+        assert!(packaged_environment_key_allowed(
+            PythonRole::Defaultspack,
+            key
+        ));
+        assert!(!packaged_environment_key_allowed(PythonRole::Kernel, key));
+        assert!(!packaged_environment_key_allowed(
+            PythonRole::HostHelper,
+            key
+        ));
     }
 
     #[test]

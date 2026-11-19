@@ -15,7 +15,12 @@ from typing import Any, Callable, Mapping, Protocol, Sequence, cast
 
 from .admission import AdmissionEstimate, QueueScope, ResourceReservation
 from .acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
-from .backends import BackendRegistry, ExecutionBackend, RequestScopedBackend
+from .backends import (
+    BackendRegistry,
+    ExecutionBackend,
+    NativeWasmBinding,
+    RequestScopedBackend,
+)
 from .contracts import (
     AdapterExecutor,
     AdapterPlanner,
@@ -203,6 +208,7 @@ class PreparedInvocation:
     binding_fingerprint: Mapping[str, Any]
     context_fingerprint: Mapping[str, Any]
     allow_lossy_adapters: bool
+    native_wasm_binding: NativeWasmBinding | None = None
 
     def to_snapshot(self) -> "PreparedInvocationSnapshot":
         """Create a JSON-only Host-private snapshot for durable pending work."""
@@ -361,6 +367,10 @@ class RequestBroker:
         production: bool = True,
         max_workers: int = 16,
         acceptance_receipts: AcceptanceReceiptPort | None = None,
+        native_wasm_binding_for: (
+            Callable[[RequestContext, ResolvedOperationBinding], NativeWasmBinding | None]
+            | None
+        ) = None,
     ) -> None:
         self._catalog = catalog
         self._adapters = adapters
@@ -374,6 +384,7 @@ class RequestBroker:
         if acceptance_receipts is not None and type(acceptance_receipts) is not AcceptanceReceiptPort:
             raise TypeError("acceptance receipt port is invalid")
         self._acceptance_receipts = acceptance_receipts
+        self._native_wasm_binding_for = native_wasm_binding_for
         # Host-owned test/conformance mode; never caller-controlled request data.
         self._production = production
         self._lifecycle_lock = threading.RLock()
@@ -522,17 +533,7 @@ class RequestBroker:
         if parent_deadline_monotonic is not None:
             deadline = min(deadline, parent_deadline_monotonic)
         return self._execute_prepared(
-            PreparedInvocation(
-                binding=prepared.binding,
-                normalized_payload=prepared.normalized_payload,
-                request_digest=prepared.request_digest,
-                timeout_ms=prepared.timeout_ms,
-                deadline_monotonic=deadline,
-                idempotency_key=prepared.idempotency_key,
-                binding_fingerprint=prepared.binding_fingerprint,
-                context_fingerprint=prepared.context_fingerprint,
-                allow_lossy_adapters=prepared.allow_lossy_adapters,
-            ),
+            replace(prepared, deadline_monotonic=deadline),
             context,
             effect_scope=effect_scope,
             monotonic_clock=monotonic_clock,
@@ -563,11 +564,14 @@ class RequestBroker:
         """Run the shared static-auth through dispatch pipeline once."""
 
         binding = prepared.binding
+        native_wasm = prepared.native_wasm_binding
         payload = _thaw_payload(prepared.normalized_payload)
         request_digest = prepared.request_digest
         deadline = prepared.deadline_monotonic
         if execution_guard is not None:
             execution_guard()
+        if native_wasm is not None and not native_wasm.matches(context, binding):
+            raise AuthorizationError("native Wasm execution binding changed")
         try:
             self._authority.check_static_path(
                 StaticAuthorityQuery(
@@ -580,7 +584,11 @@ class RequestBroker:
         except Exception as exc:
             raise AuthorizationError("static authorization failed") from exc
         estimate = self._admission.estimate(context, binding, payload)
-        backend = self._backends.select(binding, production=self._production)
+        backend = (
+            native_wasm.backend
+            if native_wasm is not None
+            else self._backends.select(binding, production=self._production)
+        )
         if isinstance(backend, RequestScopedBackend):
             floor = backend.memory_reservation_bytes
             if isinstance(floor, bool) or not isinstance(floor, int) or floor <= 0:
@@ -592,6 +600,7 @@ class RequestBroker:
             estimate = replace(
                 estimate,
                 backend_overhead_bytes=max(overhead, floor),
+                detached=False if native_wasm is not None else estimate.detached,
             )
         remaining = deadline - monotonic_clock()
         if remaining <= 0:
@@ -686,7 +695,13 @@ class RequestBroker:
                 binding,
                 ticket.reservation.reservation_id,
             )
-            self._validate_evidence(binding, backend, evidence)
+            self._validate_evidence(
+                binding,
+                backend,
+                evidence,
+                native_wasm=native_wasm,
+                reservation_id=ticket.reservation.reservation_id,
+            )
             if (
                 self._acceptance_receipts is not None
                 and self._acceptance_receipts.is_candidate(
@@ -807,10 +822,9 @@ class RequestBroker:
     ) -> PreparedInvocation:
         """Resolve and normalize an invocation without exercising authority.
 
-        This Host-only API intentionally stops before admission,
-        materialization, audit, backend selection, or provider dispatch.  A
-        future durable pending-effect Host primitive can consume this exact
-        snapshot, but no Pack receives it directly.
+        This Host-only API captures any alternate physical pin and stops before
+        admission, materialization, audit, or provider dispatch. No Pack
+        receives the snapshot directly.
         """
 
         with self._lifecycle_lock:
@@ -857,6 +871,7 @@ class RequestBroker:
             payload=payload,
             idempotency_key=frame.idempotency_key,
         )
+        native_wasm = self._resolve_native_wasm(context, binding)
         return PreparedInvocation(
             binding=binding,
             normalized_payload=_freeze_payload(payload),
@@ -864,10 +879,28 @@ class RequestBroker:
             timeout_ms=timeout_ms,
             deadline_monotonic=deadline,
             idempotency_key=frame.idempotency_key,
-            binding_fingerprint=_binding_fingerprint(binding, adapter_plan),
+            binding_fingerprint=_binding_fingerprint(binding, adapter_plan, native_wasm),
             context_fingerprint=_context_fingerprint(context),
             allow_lossy_adapters=allow_lossy_adapters,
+            native_wasm_binding=native_wasm,
         )
+
+    def _resolve_native_wasm(
+        self,
+        context: RequestContext,
+        binding: ResolvedOperationBinding,
+    ) -> NativeWasmBinding | None:
+        if self._native_wasm_binding_for is None:
+            return None
+        native_wasm = self._native_wasm_binding_for(context, binding)
+        if native_wasm is not None and (
+            type(native_wasm) is not NativeWasmBinding
+            or not native_wasm.matches(context, binding)
+        ):
+            raise AuthorizationError(
+                "native Wasm execution binding does not match request"
+            )
+        return native_wasm
 
     def validate_prepared_snapshot(
         self, snapshot: PreparedInvocationSnapshot, context: RequestContext
@@ -907,8 +940,9 @@ class RequestBroker:
             binding.route.adapter_ids,
             allow_lossy=snapshot.allow_lossy_adapters,
         )
+        native_wasm = self._resolve_native_wasm(context, binding)
         if _thaw_payload(snapshot.binding_fingerprint) != _thaw_payload(
-            _binding_fingerprint(binding, adapter_plan)
+            _binding_fingerprint(binding, adapter_plan, native_wasm)
         ):
             raise AuthorizationError("prepared invocation binding changed")
         if snapshot.timeout_ms > binding.operation.timeout_hard_max_ms:
@@ -933,6 +967,7 @@ class RequestBroker:
             binding_fingerprint=snapshot.binding_fingerprint,
             context_fingerprint=snapshot.context_fingerprint,
             allow_lossy_adapters=snapshot.allow_lossy_adapters,
+            native_wasm_binding=native_wasm,
         )
 
     def _authorize(
@@ -1447,13 +1482,22 @@ class RequestBroker:
         binding: ResolvedOperationBinding,
         backend: ExecutionBackend,
         evidence: RuntimeEvidence,
+        *,
+        native_wasm: NativeWasmBinding | None = None,
+        reservation_id: str | None = None,
     ) -> None:
-        mismatch = (
-            evidence.executable_digest != binding.function.implementation_digest
-            or evidence.backend_digest != backend.status.backend_digest
-            or not evidence.authenticated_channel
-            or not evidence.nonce_fresh
-        )
+        if native_wasm is None:
+            mismatch = (
+                evidence.executable_digest != binding.function.implementation_digest
+                or evidence.backend_digest != backend.status.backend_digest
+                or not evidence.authenticated_channel
+                or not evidence.nonce_fresh
+            )
+        else:
+            mismatch = (
+                not native_wasm.matches_evidence(evidence)
+                or evidence.resource_reservation_id != reservation_id
+            )
         if backend.status.requires_platform_attestation:
             mismatch = mismatch or (
                 evidence.platform != backend.status.platform
@@ -1546,6 +1590,7 @@ def _request_digest(
 def _binding_fingerprint(
     binding: ResolvedOperationBinding,
     adapter_plan: Sequence[Any],
+    native_wasm: NativeWasmBinding | None = None,
 ) -> Mapping[str, Any]:
     """Capture every catalog identity a durable effect must revalidate."""
 
@@ -1617,6 +1662,18 @@ def _binding_fingerprint(
                 }
                 for adapter in adapter_plan
             ],
+            **(
+                {
+                    "native_wasm": {
+                        "caller_principal": native_wasm.caller_principal.value,
+                        "domain_id": native_wasm.domain_id,
+                        "backend_digest": native_wasm.backend_digest,
+                        "executable_digest": native_wasm.executable_digest,
+                    },
+                }
+                if native_wasm is not None
+                else {}
+            ),
         },
         "binding fingerprint",
     )

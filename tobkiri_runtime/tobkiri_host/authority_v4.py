@@ -11,13 +11,14 @@ import hmac
 import secrets
 from dataclasses import dataclass
 from threading import RLock
-from typing import Mapping, Protocol
+from typing import Callable, Mapping, Protocol
 
 from core_runtime.authority.v4 import (
     ApprovalRecord,
     AuthorityDenied,
     AuthorityKernel,
     AuthorityScope,
+    DomainBoundary,
     ExecutionDomain,
     FunctionPrincipal,
     GrantLifetime,
@@ -38,6 +39,7 @@ from core_runtime.authority.ui_operator import (
     verify_interactive_ui_operator,
 )
 
+from .backends import NativeWasmBinding
 from .contracts import ResolvedOperationBinding
 from .models import OpaqueAuthorityRef, RequestContext
 from .ports import (
@@ -123,12 +125,28 @@ class AuthorityV4Adapter:
         principal_resolver: PrincipalReferenceResolver,
         *,
         trigger_resolver: TriggerAuthorityResolver | None = None,
+        native_wasm_binding_for: (
+            Callable[[RequestContext, OpaqueAuthorityRef], NativeWasmBinding | None]
+            | None
+        ) = None,
     ) -> None:
         self._kernel = kernel
         self._principals = principal_resolver
         self._triggers = trigger_resolver
+        self._native_wasm_binding_for = native_wasm_binding_for
         self._issued_by_request: dict[str, _IssuedLease] = {}
         self._lock = RLock()
+
+    def install_native_wasm_binding_resolver(
+        self,
+        resolver: Callable[[RequestContext, OpaqueAuthorityRef], NativeWasmBinding | None],
+    ) -> None:
+        """Install the Host's immutable native routing resolver during capture."""
+
+        with self._lock:
+            if self._native_wasm_binding_for is not None:
+                raise ValueError("native Wasm binding resolver is already installed")
+            self._native_wasm_binding_for = resolver
 
     def register_execution_domain(
         self,
@@ -487,20 +505,48 @@ class AuthorityV4Adapter:
     ) -> OpaqueInvocationLease:
         """Issue exactly one v4 lease after evidence and identity revalidation."""
 
+        resolver = self._native_wasm_binding_for
+        native_wasm = (
+            resolver(query.context, query.target_principal)
+            if resolver is not None
+            else None
+        )
         context, scope = self._translate_query(
             query.context,
             query.target_principal,
             query.request_digest,
             query.effect_scope,
+            required_target_boundary=(
+                DomainBoundary.WASM_COMPONENT if native_wasm is not None else None
+            ),
         )
-        if (
-            query.evidence.domain_ref.value != query.context.target_domain_id
-            or query.evidence.executable_digest
-            != context.target.function_implementation_digest
-            or query.evidence.backend_digest != query.context.target_backend_digest
-            or not query.evidence.authenticated_channel
-            or not query.evidence.nonce_fresh
-        ):
+        if native_wasm is None:
+            evidence_matches = (
+                query.evidence.domain_ref.value == query.context.target_domain_id
+                and query.evidence.executable_digest
+                == context.target.function_implementation_digest
+                and query.evidence.backend_digest == query.context.target_backend_digest
+                and query.evidence.authenticated_channel
+                and query.evidence.nonce_fresh
+            )
+        elif type(native_wasm) is NativeWasmBinding:
+            binding = native_wasm.binding
+            signed_target = FunctionPrincipal(
+                parent_artifact_digest=binding.artifact.digest,
+                function_implementation_digest=binding.function.implementation_digest,
+                function_id=binding.function.function_id,
+                contract_revision_digest=binding.operation.revision_digest,
+                operation_id=binding.operation.operation_id,
+            )
+            evidence_matches = (
+                binding.principal_ref == query.target_principal
+                and signed_target == context.target
+                and native_wasm.matches(query.context, binding)
+                and native_wasm.matches_evidence(query.evidence)
+            )
+        else:
+            evidence_matches = False
+        if not evidence_matches:
             raise AuthorityDenied("runtime evidence does not match captured binding")
         result = self._kernel.authorize(context, scope)
         issued = _IssuedLease(
@@ -694,6 +740,8 @@ class AuthorityV4Adapter:
         target_ref: OpaqueAuthorityRef,
         request_digest: str,
         effect_scope: Mapping[str, object],
+        *,
+        required_target_boundary: DomainBoundary | None = None,
     ) -> tuple[InvocationContext, AuthorityScope]:
         target = self._resolve_exact(target_ref)
         caller = self._resolve_exact(context.caller_principal)
@@ -711,6 +759,10 @@ class AuthorityV4Adapter:
             target_domain is None
             or target_domain.boot_epoch != context.target_boot_epoch
             or target.principal_id not in target_domain.principal_ids
+            or (
+                required_target_boundary is not None
+                and target_domain.boundary is not required_target_boundary
+            )
         ):
             raise AuthorityDenied("target identity or boot epoch changed")
         scope = AuthorityScope.from_dict(effect_scope)
