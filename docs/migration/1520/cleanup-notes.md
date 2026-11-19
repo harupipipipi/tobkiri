@@ -4017,6 +4017,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実ディレクトリ配下に`TMPDIR`を指定して実行した。新旧アーカイブでの実Wasm確定と新しい
   読み取りも通過し、元の行バイト、無書込み、計上量の解放を確認した。同じCIで作った
   アーカイブを使う実Wasmの2件を、DMGのPackアーカイブ生成ジョブに追加した。
+  通常送信と明示Reconcileの `Shell → Saved Turn/Reconcile → Conversation Completion →
+  Turn Resource GET` に読み取りを接続した。元の3つの署名済み権限と新しいTurn Packの
+  固定WITを独立して検証し、読み取りに同じターンの子リース、期限、容量予約を使用する。
+  親のHostがRust書込みに未移行の場合も、子の予約は独立して確認できる。同じTurnの公開GET、
+  Events、Calendar等の別契約からは選択しない。旧形式は生きている子リースで確認してから
+  従来の読取りに戻る。ストレージの破損、権限失効、未確認の通信はそのまま失敗として扱う。
+  LaunchではConversationの確定とTurnの読取りに同じ署名付き三段の照合があり、両方を
+  同梱する場合は確認を共用できる。Packのダイジェスト、機能、役割は個別に照合し続ける。
+  配布パックの所有者試験は [CI 44466303817](https://github.com/harupipipipi/tobkiri/actions/runs/44466303817/job/135368446132)
+  でLinuxの所有権証明が未対応のため停止した。証明を要求できるarm64・Darwin 24.6.0・APFS
+  で同じ成果物と試験を実行するよう変更した。workspaceと実パスに解決した一時領域を検証する。
+  `2a82008a0` の署名付きHTTPでは通常送信・再試行・明示Reconcileを通し、読み取り用の
+  独立した子リースと、書込みが旧実装のままでも接続できることを確認した。公開GETは同じ
+  応答を返し、専用IPCの回数に加わらない。旧版・旧codec用の互換応答を含む追加4件が通過。
+  HTTP試験のProviderとLauncher応答はfixture。別のmacOS分離Launcher試験74件では、
+  実CPython、Unixソケット、同梱Wasm、実SQLiteで元の行バイトと欠損を照合した。
+  未許可の役割、破損、旧codecの応答も確認した。ここではTauri管理状態と稼働証明をfixtureで
+  供給した。固定CPythonのIPC 269件、同梱アーカイブを使う実Conversationストア3件、
+  ワークフロー契約16件も通過した。
   Pack 11件、旧保存領域18件、実Core＋Wasm 3件、元のSetupでの権限照合1件が通過。
   IPC 66件、実WasmとLauncherワーカーの分離検証35件、元の署名済みHTTPの会話読み取り・
   保存ターンとモデル設定の回帰が通過。HTTPのLauncher応答と、分離検証のTauriサービスは
