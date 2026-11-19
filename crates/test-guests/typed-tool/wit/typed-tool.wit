@@ -1,0 +1,11 @@
+package local:acceptance-typed-tool@1.0.0;
+
+interface transform {
+  use tobkiri:core/types@1.0.0.{error};
+  rewrite: func(text: string) -> result<string, error>;
+}
+
+world typed-tool {
+  include tobkiri:core/pack-minimal@1.0.0;
+  export transform;
+}

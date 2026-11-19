@@ -196,6 +196,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-test-typed-tool"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"

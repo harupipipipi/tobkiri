@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["provider", "consumer"]
+members = ["provider", "consumer", "typed-tool"]
 
 [workspace.dependencies]
 wit-bindgen = "=0.62.0"

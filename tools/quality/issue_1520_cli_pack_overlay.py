@@ -47,6 +47,19 @@ class Snapshot:
     publication: bytes
 
 
+@dataclass(frozen=True)
+class ProfileFixture:
+    """A fresh Profile with the preset's original Pack pins and input."""
+
+    profile: Path
+    definition: dict[str, Any]
+    entry: dict[str, str]
+    store_pack: str
+    conversation: str
+    role: str
+    pins: dict[str, str]
+
+
 def author(
     cli: list[str], directory: Path, pack: str, version: str,
     role: str, marker: str, resources: dict[str, Any], *, audit_append: bool = False,
@@ -67,14 +80,21 @@ def author(
             }},
         }],
     }))
-    draft = directory / "draft.json"
-    draft.write_text(json.dumps({
+    return build_pack(cli, directory, {
         "format": "tobkiri.pack/1", "id": pack, "version": version,
         "runtime": {"kind": "data"}, "shapes": [],
         "ports": {"provides": [], "consumes": [], "untyped": []},
         "flows": [], "overlays": [source], "stores": [], "files": [source],
         "permissions": resources | {"ports": [role], "audit_append": audit_append},
-    }))
+    })
+
+
+def build_pack(cli: list[str], directory: Path, spec: dict[str, Any]) -> Artifact:
+    """Hash explicit staged files and build and verify the public Pack archive."""
+    stage = directory / "stage"
+    pack, version = spec["id"], spec["version"]
+    draft = directory / "draft.json"
+    draft.write_text(json.dumps(spec))
     manifest = stage / "pack.json"
     subprocess.run(cli + [
         "pack", "manifest", str(stage), "--template", str(draft),
@@ -135,7 +155,7 @@ def review_edit(
     grant = answer.removeprefix("approve ")
     events = [
         event for event in audit_events(profile)
-        if event["payload"].get("grant") == grant
+        if isinstance(event["payload"], dict) and event["payload"].get("grant") == grant
     ]
     assert [event["kind"] for event in events] == (
         ["permission-update", "outcome"] if accept else ["outcome"]
@@ -166,14 +186,9 @@ def turn(
     if store.is_file():
         with closing(open_readonly(store)) as connection:
             history = connection.execute(MESSAGES).fetchall()
-    command = cli + [
-        "profile", "run", "--profile", profile.name, "--source", entry["source_pack"],
-        "--input-shape", entry["exact_input_view"], "--input-op", entry["operation"],
-        "--once",
-    ]
     reply = f"Echo: {replacement or marker}"
     before = len(audit_events(profile))
-    with Terminal(command) as terminal:
+    with Terminal(run_turn(cli, profile, entry)) as terminal:
         assert terminal.expect(b"> ") == ""
         terminal.send(marker)
         output = terminal.finish(success=True)
@@ -201,8 +216,19 @@ def turn(
     assert dispatches == [args], dispatches
 
 
-def replay(cli: list[str], root: Path, directory: Path, stock: Path) -> None:
-    """Previously admitted configurations survive refused additions and conflicts."""
+def run_turn(cli: list[str], profile: Path, entry: dict[str, str]) -> list[str]:
+    """Use the preset's ordinary input source and configured entry point."""
+    return cli + [
+        "profile", "run", "--profile", profile.name, "--source", entry["source_pack"],
+        "--input-shape", entry["exact_input_view"], "--input-op", entry["operation"],
+        "--once",
+    ]
+
+
+def profile_fixture(
+    cli: list[str], root: Path, directory: Path, stock: Path,
+) -> ProfileFixture:
+    """Approve a fresh copy whose ceiling includes the chosen extension ports."""
     directory.mkdir()
     definition = json.loads(stock.read_bytes())
     for pin in definition["packs"]:
@@ -217,15 +243,31 @@ def replay(cli: list[str], root: Path, directory: Path, stock: Path) -> None:
     role = f"{domain}.assemble-prompt@1.0"
     # The bundled Pack pins and startup configuration are copied as-is. The
     # user-selected ceiling explicitly permits this already verified open role.
-    if role not in definition["ceiling"]["ports"]:
-        definition["ceiling"]["ports"].append(role)
+    ports = definition["ceiling"]["ports"]
+    if role not in ports:
+        ports.append(role)
     derived = directory / "definition.json"
     derived.write_text(json.dumps(definition))
     pins = {pin["id"]: pin["sha256"] for pin in definition["packs"]}
     profile_id = approve(cli + [
         "profile", "create", "--definition", str(derived), "--name", definition["name"],
     ], pins, root)
-    profile = root / "profiles" / profile_id
+    return ProfileFixture(
+        root / "profiles" / profile_id, definition, entry, store_pack, conversation,
+        role, pins,
+    )
+
+
+def replay(cli: list[str], root: Path, directory: Path, stock: Path) -> None:
+    """Previously admitted configurations survive refused additions and conflicts."""
+    fixture = profile_fixture(cli, root, directory, stock)
+    profile = fixture.profile
+    definition = fixture.definition
+    entry = fixture.entry
+    store_pack, conversation = fixture.store_pack, fixture.conversation
+    role, pins = fixture.role, fixture.pins
+    profile_id = profile.name
+    domain = entry["exact_input_view"].rsplit(".", 2)[0]
     turn(cli, profile, entry, store_pack, conversation, "baseline")
     before = snapshot(cli, profile, directory / "before.json")
     resources = {key: definition["ceiling"][key] for key in ("wasm", "loops")}
