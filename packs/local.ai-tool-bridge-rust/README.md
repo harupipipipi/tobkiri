@@ -43,7 +43,8 @@ and ordered-v2 request semantics are unchanged. No source review establishes
 parity: every independently captured original-Python case remains mandatory.
 
 The unchanged 33-case CPython 3.13.5 / Unicode 15.1 v1 oracle is exercised by a
-separate test-only v1 transport fixture (safe integers and depth 64). Its 12
+separate test-only v1 transport fixture (safe integers and depth 64) in
+`tobkiri-ai-tool-bridge-core`. Its 12
 successful, 12 invalid and 9 excluded rows remain their historical categories;
 the excluded rows are not counted as successful semantic parity. This fixture
 does not redefine the v2 component's behavior or its expectations.
@@ -66,6 +67,7 @@ is explicitly unexecuted. Original-source native fixtures, real Wasm execution,
 Core owner/Gate/audit acceptance and composition are separate evidence. Source
 formatting or a native test pass does not activate a Pack or establish them.
 
-This directory does not change original Python, WIT, frozen expectations,
-workspace members, locks, existing targets, signatures, Profile or the 64 MiB
-component cap. Root owns adoption, builds, oracle generation and actual replay.
+The routing component shares `tobkiri-ai-tool-bridge-core` with this standalone
+adapter. Its Gateway port uses a 1 MiB input and output envelope and declines
+unsupported values so the admitted Host call can fall back to the original
+provider. The standalone v2 ABI retains its own limits and error categories.

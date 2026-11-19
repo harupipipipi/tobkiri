@@ -4412,9 +4412,32 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   両方をLauncherの実IPCから実Wasmへ通した。Python原本との結果の一致、返信保存、再送で
   Providerを呼び直さないことを確認した。Application管理、配布物resolver入口、PackVM搬送、
   Providerのバッファ・SSE応答はfixtureで供給した。
-  Routing・Stream・使用量に共通するPython IPCは、モードごとの契約・入力項目・結果検証を
-  共通の型で表現できる。既存のワイヤ形式、各モード別の有効化、元の権限境界、互換処理の条件を
-  維持する。署名済みGatewayをRust所有に移した段階で、同じDATAをIPC用に変換する処理を除ける。
+  Routing・Stream・使用量・ツール呼び出し情報に共通するPython IPCは、モードごとの契約・
+  入力項目・結果検証を共通の型で表現できる。既存のワイヤ形式、各モード別の有効化、元の
+  権限境界、互換処理の条件を維持する。署名済みGatewayをRust所有に移した段階で、同じDATAを
+  IPC用に変換する処理を除ける。
+- `37d264686` は既存Generate・Streamのツール呼び出し情報を
+  `local.ai-routing` 0.4.0の独立したポートで正規化する。各ロールで元の署名済み四段の
+  呼出しを個別に検証し、以前の3版のPack宣言とv5レシートも受理する。既存の単体Tool Bridgeと
+  共通のRust処理でツール名、要求ID、呼出し順、引数JSONを保つ。すべての結果で承認と
+  実行権限は未付与。1 MiBの入力・出力境界内で計算し、ゲストが扱えない値や元のエラーは、
+  既存のリースを再確認して元のTool Bridgeで扱う。権限失効や実行不能は終端エラーとして扱う。
+  固定CPython 3.13.16から独立生成した単体版の81件は全件一致した。
+  Rust Routing 18件、Tool Bridge core 4件（旧v1の33ケースを含む）、共通codec 19件、
+  権限選択33件、Python IPC459件、Rust IPC43件、Packレシート15件、DMG検証とCI構成288件が通過した。
+  macOS Launcherのテスト型検査、Harness Nativeとゲストのstrict Clippy、生成物照合6件も通過した。
+  物理検証で0.1.0〜0.4.0の実Packを照合した。Core経由の実Wasm試験では正規化と範囲外の
+  戻り値を検証し、各呼出し後に確保量が0へ戻ることを確認した。
+  クリーンな `37d264686` で、GenerateとStreamを元の署名済みHTTP入口からLauncherの
+  実IPCと検証済みWasmへ通してPython原本と照合した。Providerが返したツール呼出し情報も
+  実行権限なしのデータとしてのみ返した。Application管理、配布物resolver入口、PackVM搬送、
+  Providerのバッファ・SSE応答はfixtureで供給した。
+  同じコミットの署名付きHTTP回帰では、両ロール、旧Launcherとゲスト辞退の互換経路、
+  権限失効、拒否、実行不能、Providerが返した未要求のツール呼出し情報、親のない呼出しを確認した。
+  [0.2.0のGemma 3 1B実モデルCI 44516968539](https://github.com/harupipipipi/tobkiri/actions/runs/44516968539)
+  は、認証付きloopbackのWasm Flowと、保存済みRegistryから選ぶキーレス会話が通過した。
+  Tool BridgeとRoutingで共通化した正規化処理は、単体版のABIが不要になるまで保持する。
+  元の署名宣言、固定CPythonとの差分試験、通常Gatewayの呼出し結果の一致を除去の前提とする。
 - [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
   実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
   経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で
