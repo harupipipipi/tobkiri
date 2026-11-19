@@ -3,7 +3,9 @@
 Tobkiri Launcher is the desktop shell for the Tobkiri runtime. The packaged
 macOS app can be opened from Finder. For source development in a checkout,
 start it from `tobkiri_launcher/frontend` so the shell can find and launch the
-local runtime kernel.
+local runtime kernel. The interface displays **Tobkiri Harness**. Existing
+Profiles and Launcher API values use the compatibility identifiers `defaults`
+and `defaultspack`.
 
 ## Open an already built Launcher on Windows
 
@@ -13,9 +15,9 @@ without a terminal:
 1. Open File Explorer and navigate to the checkout's
    `tobkiri_launcher\src-tauri\target\x86_64-pc-windows-msvc\debug` folder.
 2. Double-click `tobkiri-launcher.exe`.
-3. If setup is offered, choose **Open Setup**, review the listed Defaults
-   Profile, select its confirmation checkbox, and choose **Activate Defaults
-   Profile**. Submit it only once. Verification can take several minutes while
+3. If setup is offered, choose **Open Setup**, review the listed Profile,
+   select its confirmation checkbox, and choose **Activate Tobkiri Harness**.
+   Submit it only once. Verification can take several minutes while
    the Host restarts; if **Verify activation** becomes available, choose it.
    Do not submit the Profile again while verification is pending. An existing
    active Profile may hide **Open Setup**. If the Launcher instead reports a
@@ -51,8 +53,8 @@ to include and verify those files.
    first open, and you trust the copy you downloaded, use **System Settings** →
    **Privacy & Security** → **Open Anyway**, then confirm **Open**. See
    [Apple's instructions](https://support.apple.com/en-us/102445).
-2. In the Launcher, choose **Open Setup**. Review the Defaults Profile, select
-   its confirmation checkbox, and choose **Activate Defaults Profile**. If
+2. In the Launcher, choose **Open Setup**. Review the Profile, select
+   its confirmation checkbox, and choose **Activate Tobkiri Harness**. If
    prompted, choose **Verify activation**.
 3. Open **Packs** → **Tobkiri Host Pack Control** and find **PackVM lifecycle**.
    On Apple Silicon, choose
