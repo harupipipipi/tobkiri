@@ -4902,6 +4902,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   通過した。次の確認は、この派生Appコンポーネントを封印済みLauncherへ組み込む段階。
   既存 `desktop-installers.yml` のCI用DMGは `.app` をビルド後に署名・検証して包む。
   現行の冷起動試験はKernelとパネルまで。実DMGのSetup確認・公開・Launchには別の検証が要る。
+  [DMG CI 44418243523](https://github.com/harupipipipi/tobkiri/actions/runs/44418243523) は
+  Launcher 670件の後、ソース検証3件で失敗した。先行するVite buildが検証対象の
+  `ui/shell-defaultspack-app.js` をcheckout内で2,689,881バイトから約2,690,660バイトへ変更した。
+  CIの対象コミットからwebappとuiを一時領域へ展開し、`npm ci`、Vite、生成物照合をそこで実行する。
+  本来のcheckoutにある成果物を署名・パッケージングし、元の検証を通す。同じコマンド列を
+  macOSのNode 25.5.0で実行し、状態照合と一時領域の削除が成功した。元の667件はサイズ・モード・
+  SHA-256まで一致した。CIのNode 22と実DMGの再確認は新しいrunで行う。
   `launcher-snapshot-staging` の任意のDMG検証を、既存のCI用インストーラーワークフローへ接続。
   同じrunで生成したApp用Wasmを再照合し、先行ステージングで検証したv3レシートのSHA-256を
   Launcherビルドに渡す。検証専用のRust bindingはビルド環境へ渡さない。

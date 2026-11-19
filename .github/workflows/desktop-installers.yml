@@ -405,10 +405,6 @@ jobs:
         working-directory: tobkiri_launcher/frontend
         run: npm ci
 
-      - name: Install defaultspack frontend dependencies
-        working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
-        run: npm ci
-
       - name: Run viewer frontend checks
         working-directory: tobkiri_launcher/frontend
         run: |
@@ -421,8 +417,19 @@ jobs:
           TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
         run: npm run build
       - name: Build defaultspack frontend
-        working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
-        run: npm run build
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The build regenerates ../ui, which the installer verifies against the committed manifest.
+          frontend_check_root="$(mktemp -d "$RUNNER_TEMP/tobkiri-defaultspack-frontend.XXXXXXXX")"
+          trap '/bin/rm -rf -- "$frontend_check_root"' EXIT
+          defaultspack_path=tobkiri_runtime/ecosystem/defaultspack
+          "$TOBKIRI_PACKAGING_GIT" --no-replace-objects archive "$GITHUB_SHA" -- \
+            "$defaultspack_path/webapp" "$defaultspack_path/ui" |
+            /usr/bin/tar -xf - -C "$frontend_check_root"
+          cd "$frontend_check_root/$defaultspack_path/webapp"
+          npm ci
+          npm run build
 
       - name: Build debug Pack Shell for viewer Rust tests
         run: cargo build --locked --manifest-path pack-shell/Cargo.toml --target ${{ matrix.target }}
