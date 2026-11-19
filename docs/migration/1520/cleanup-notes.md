@@ -5864,3 +5864,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ゲストが未準備の配布物での起動と、PackVMを含まない配布物での起動は別の検証になる。
   `spawn_defaultspack_local_server` 付近の古いpack-shell表記も、実際の永続プロセス所有と
   揃える。配布ファイルの削除前にPythonの依存を外した同じLauncherの起動を確認する。
+
+## 050: Side Chatのターン開始と実行権の取得
+
+- `f4c82701a` はSide Chatからの `begin_saved` と `claim_saved` を、通常のターンとは別の
+  Launcher証明で既存のWasmに接続した。Shell → Side Chat → Saved Turn → Turn Lifecycle
+  の経路をたどり、Side Chatの送信と同じターン、子会話、リビジョン、内容だけを扱う。
+  リース・期限・予約は実行中の呼出しから確認し、SQLiteの既存の入力digest、ステータスと
+  公開確認を維持する。書込みが確認できなければ、元の経路で勝手にやり直さない。
+- `71ab11293` のLauncherは、両経路に別々の起動証明を持ち、開始直前に対象の署名済みPackと
+  実行カタログを再検証する。古いIPC要求の呼出し元は従来どおり通常チャット。
+  署名とファイル改変の回帰、Rust IPC 55件、Launcherジョブ29件、Python IPC 33件、
+  署名済みHTTP 2件、Tauriテストの型検査が通過した。
+- macOSで実Launcherソケットとv7の同じ実Wasm配布用アーカイブを使い、Side Chatの開始、
+  実行権の取得、ユーザー文・assistant文の追記を確認した。再照合後の子会話と親の履歴が一致し、
+  推論呼出しは1回だった。App、resolverと推論応答はfixture。実際にインストールしたDMGとGUIは
+  この試験の対象外。
+- Side Chatの開始・メッセージ追記で、Hostが保持する現在の親を辿る検査を共有した。
+  構成に関わらず最上位の呼出しまで一致させる。ターン開始側のPythonの書込みを外すには、
+  この2経路以外の元の呼出しと、開始後の確認・再照合・実行データの保存経路も検証する。
