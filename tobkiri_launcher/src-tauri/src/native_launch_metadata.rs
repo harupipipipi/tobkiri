@@ -26,8 +26,8 @@ use tobkiri_harness_native::{
     OriginalRoutePin, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
     OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole,
     OriginalSavedReceiptSelection, OriginalSavedTurnStartChoice,
-    OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice,
+    OriginalShellProviderSnapshotSelection, OriginalSideChatSavedReceiptChoice,
+    OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
@@ -154,6 +154,13 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.gateway.iter().any(Option::is_some))
     }
 
+    /// Whether either projected Registry caller has its own verified read grant.
+    pub(crate) fn permits_projected_provider_snapshot(&self) -> bool {
+        self.provider_snapshot
+            .as_ref()
+            .is_some_and(|source| source.shell_settings.is_some() || source.model_save.is_some())
+    }
+
     fn provider_snapshot(
         &self,
         role: OriginalProviderSnapshotRole,
@@ -179,6 +186,8 @@ impl VerifiedRegistryLaunch {
                 }
                 &entry.bundle
             }
+            OriginalProviderSnapshotRole::ShellSettings => source.shell_settings.as_ref()?,
+            OriginalProviderSnapshotRole::ModelSave => source.model_save.as_ref()?,
         };
         Some((bundle, source))
     }
@@ -713,6 +722,8 @@ struct VerifiedProviderAdapterSource {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedProviderSnapshotSource {
     gateway: [Option<VerifiedGatewayProviderSnapshotEntry>; 2],
+    shell_settings: Option<VerifiedOrdinarySavedBundle>,
+    model_save: Option<VerifiedOrdinarySavedBundle>,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -804,8 +815,9 @@ impl VerifiedRegistryLaunch {
         catalog_revision: &str,
         role: impl Into<OriginalProviderSnapshotRole>,
     ) -> Self {
+        let role = role.into();
         let mut gateway = [None, None];
-        let mut proof = match role.into() {
+        let mut proof = match role {
             OriginalProviderSnapshotRole::Adapter(role) => {
                 Self::test_saved_local_chat_proof(identity, catalog_revision, role)
             }
@@ -822,13 +834,18 @@ impl VerifiedRegistryLaunch {
                         })
                     }),
                 });
-                let mut proof = Self::test_proof(identity, catalog_revision);
-                proof.provider_prepare = None;
-                proof
+                Self::test_proof(identity, catalog_revision)
             }
+            OriginalProviderSnapshotRole::ShellSettings
+            | OriginalProviderSnapshotRole::ModelSave => Self::test_proof(identity, catalog_revision),
         };
+        proof.provider_prepare = None;
         proof.provider_snapshot = Some(VerifiedProviderSnapshotSource {
             gateway,
+            shell_settings: (role == OriginalProviderSnapshotRole::ShellSettings)
+                .then(VerifiedOrdinarySavedBundle::fixture),
+            model_save: (role == OriginalProviderSnapshotRole::ModelSave)
+                .then(VerifiedOrdinarySavedBundle::fixture),
             archive_sha256: Digest::hash(b"provider-snapshot-archive").to_string(),
             archive_bytes: 512,
             manifest_sha256: Digest::hash(b"provider-snapshot-manifest").to_string(),
@@ -1659,6 +1676,10 @@ impl LaunchActivationObserver<'_> {
             .map(|active| OriginalModelSaveSelection::select(active, budget))
             .transpose()?
             .flatten();
+        let shell_snapshot_selection = active
+            .map(|active| OriginalShellProviderSnapshotSelection::select(active, budget))
+            .transpose()?
+            .flatten();
         let model_resolve_selection = active
             .map(|active| OriginalModelResolveSelection::select(active, budget))
             .transpose()?
@@ -1673,36 +1694,47 @@ impl LaunchActivationObserver<'_> {
             .flatten();
         let has_existing_grants = provider_selection.is_some()
             || model_selection.is_some()
-            || model_save_selection.is_some()
             || model_resolve_selection.is_some()
             || conversation_read_selection.is_some()
             || saved_receipt_selection.is_some();
-        let (app_root, catalog_revision, locked) = inspection.with_source(|sources| {
-            let catalog_revision = &sources.authority().catalog_revision;
-            if let Some(active) = active {
-                validate_observed_activation(active, self.identity, catalog_revision)?;
-            }
-            let locked = has_existing_grants
-                .then(|| {
-                    sources.registry_bundle(
-                        provider_selection.as_ref(),
-                        model_selection.as_ref(),
-                        model_save_selection.as_ref(),
-                        model_resolve_selection.as_ref(),
-                        (
-                            conversation_read_selection.as_ref(),
-                            saved_receipt_selection.as_ref(),
-                        ),
-                        budget,
-                    )
-                })
-                .transpose()?;
-            Ok::<_, anyhow::Error>((
-                sources.root(NativeSourceRoot::Application).to_path_buf(),
-                catalog_revision.clone(),
-                locked,
-            ))
-        })??;
+        let has_projected_grants =
+            shell_snapshot_selection.is_some() || model_save_selection.is_some();
+        let (app_root, catalog_revision, locked, projected) =
+            inspection.with_source(|sources| {
+                let catalog_revision = &sources.authority().catalog_revision;
+                if let Some(active) = active {
+                    validate_observed_activation(active, self.identity, catalog_revision)?;
+                }
+                let locked = has_existing_grants
+                    .then(|| {
+                        sources.registry_bundle(
+                            provider_selection.as_ref(),
+                            model_selection.as_ref(),
+                            model_resolve_selection.as_ref(),
+                            (
+                                conversation_read_selection.as_ref(),
+                                saved_receipt_selection.as_ref(),
+                            ),
+                            budget,
+                        )
+                    })
+                    .transpose()?;
+                let projected = has_projected_grants
+                    .then(|| {
+                        sources.projected_provider_snapshot_bundle(
+                            shell_snapshot_selection.as_ref(),
+                            model_save_selection.as_ref(),
+                            budget,
+                        )
+                    })
+                    .transpose()?;
+                Ok::<_, anyhow::Error>((
+                    sources.root(NativeSourceRoot::Application).to_path_buf(),
+                    catalog_revision.clone(),
+                    locked,
+                    projected,
+                ))
+            })??;
         let Some(active) = active else {
             registry_pack_receipt::verify_installed(&app_root, REGISTRY_RECEIPT_SHA256, || {
                 checkpoint().map_err(io::Error::other)
@@ -1713,12 +1745,19 @@ impl LaunchActivationObserver<'_> {
         if let Some(locked) = locked {
             locked.verify(checkpoint)?;
         }
+        let [shell_settings, model_save_snapshot] = projected
+            .map(|bundle| bundle.verify(checkpoint))
+            .transpose()?
+            .unwrap_or_default();
         let mut local_chat = verify_saved_local_chat_source(inspection, active, checkpoint)?;
         let [gateway_direct, gateway_side_chat] = [false, true].map(|via_side_chat| {
             verify_gateway_provider_snapshot_entry(inspection, active, via_side_chat, checkpoint)
         });
         let gateway = [gateway_direct?, gateway_side_chat?];
-        let has_snapshot_grants = local_chat.is_some() || gateway.iter().any(Option::is_some);
+        let has_snapshot_grants = local_chat.is_some()
+            || gateway.iter().any(Option::is_some)
+            || shell_settings.is_some()
+            || model_save_snapshot.is_some();
         let verified_registry_pack_evidence =
             registry_pack_receipt::verify_installed_with_ai_routing_archives(
                 &app_root,
@@ -1747,6 +1786,8 @@ impl LaunchActivationObserver<'_> {
                     {
                         Some(VerifiedProviderSnapshotSource {
                             gateway,
+                            shell_settings,
+                            model_save: model_save_snapshot,
                             archive_sha256: receipt.archive_sha256().to_owned(),
                             archive_bytes: receipt.archive_bytes(),
                             manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -1941,6 +1982,7 @@ impl LaunchActivationObserver<'_> {
             .context("bundled Conversation Complete Pack verification failed during Launch")?
             .flatten();
         if !has_existing_grants
+            && model_save.is_none()
             && conversation.is_none()
             && turn.is_none()
             && orchestration.is_none()
@@ -2128,7 +2170,7 @@ pub(super) fn reacquire_provider_prepare_pack(
     .context("bundled Provider prepare archive verification failed")
 }
 
-/// Reopen the read-only Registry Pack after revalidating this saved caller's signed chain.
+/// Reopen the read-only Registry Pack after revalidating the caller's signed chain.
 pub(super) fn reacquire_provider_snapshot_pack(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
@@ -4204,6 +4246,7 @@ mod tests {
             );
             assert!(proof.provider_prepare.is_none());
             assert!(!proof.permits_gateway_provider_snapshot());
+            assert!(!proof.permits_projected_provider_snapshot());
             for candidate in roles {
                 assert_eq!(
                     proof.permits_provider_snapshot(candidate.into()),
@@ -4232,6 +4275,7 @@ mod tests {
                     granted,
                 );
                 assert!(proof.permits_gateway_provider_snapshot());
+                assert!(!proof.permits_projected_provider_snapshot());
                 assert!(
                     !proof.permits_provider_snapshot(OriginalSavedLocalChatRole::Generate.into())
                 );
@@ -4248,6 +4292,52 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn projected_provider_snapshot_proof_is_independent_of_raw_reads_and_native_model_save() {
+        use OriginalProviderSnapshotRole::{Adapter, Gateway, ModelSave, ShellSettings};
+
+        let digest = Digest::hash(b"projected-provider-snapshot-activation");
+        let identity = ExecutionProfileIdentity::new(
+            "defaults",
+            digest.as_str(),
+            "activation:projected-provider-snapshot-test",
+            Digest::hash(b"plan").as_str(),
+        )
+        .unwrap();
+        let native_save =
+            VerifiedRegistryLaunch::test_model_save_proof(identity.clone(), digest.as_str());
+        assert!(!native_save.permits_projected_provider_snapshot());
+        for role in [ShellSettings, ModelSave] {
+            assert!(!native_save.permits_provider_snapshot(role));
+            let mut proof = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                identity.clone(),
+                digest.as_str(),
+                role,
+            );
+            assert!(proof.model_save.is_none());
+            assert!(proof.permits_projected_provider_snapshot());
+            assert!(!proof.permits_gateway_provider_snapshot());
+            for candidate in [
+                ShellSettings,
+                ModelSave,
+                Adapter(OriginalSavedLocalChatRole::Generate),
+                Gateway {
+                    role: OriginalModelResolveRole::Generate,
+                    side_chat: false,
+                },
+            ] {
+                assert_eq!(
+                    proof.permits_provider_snapshot(candidate),
+                    candidate == role
+                );
+            }
+
+            proof.provider_snapshot = None;
+            assert!(!proof.permits_projected_provider_snapshot());
+            assert!(!proof.permits_provider_snapshot(role));
         }
     }
 

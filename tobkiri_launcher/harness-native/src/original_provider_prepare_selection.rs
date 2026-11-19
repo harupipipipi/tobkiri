@@ -645,6 +645,35 @@ impl<'a> OriginalModelSettingsSelection<'a> {
     }
 }
 
+/// Immutable metadata for the desktop Shell's direct Provider Registry read.
+pub struct OriginalShellProviderSnapshotSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    provider_read: OriginalRoutePin,
+}
+
+impl<'a> OriginalShellProviderSnapshotSelection<'a> {
+    /// Select the exact desktop Shell and its signed Registry operation.
+    /// Verify the returned pin against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_shell_provider_snapshot_records(active.records(), budget)?.map(
+                |provider_read| Self {
+                    _active: active,
+                    provider_read,
+                },
+            ),
+        )
+    }
+
+    /// The selected Shell-to-Provider Registry read grant target.
+    pub fn provider_read(&self) -> &OriginalRoutePin {
+        &self.provider_read
+    }
+}
+
 /// Immutable metadata for the two original Profile grant edges used by Model Save.
 pub struct OriginalModelSaveSelection<'a> {
     _active: &'a OriginalActiveProfile,
@@ -1215,7 +1244,7 @@ impl OriginalModelResolveRole {
     }
 }
 
-/// The exact original caller of a raw Provider Registry snapshot.
+/// The exact original caller of a raw or projected Provider Registry snapshot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalProviderSnapshotRole {
     /// The Provider Adapter owns this child grant on the selected saved chain.
@@ -1227,6 +1256,10 @@ pub enum OriginalProviderSnapshotRole {
         /// Whether the selected Shell enters Saved Turn through Side Chat.
         side_chat: bool,
     },
+    /// The desktop Shell owns this direct settings read grant.
+    ShellSettings,
+    /// Model Manage owns a nested read grant on the selected Model Save chain.
+    ModelSave,
 }
 
 impl From<OriginalSavedLocalChatRole> for OriginalProviderSnapshotRole {
@@ -1667,6 +1700,19 @@ fn select_model_list_records(
         return Ok(None);
     };
     records.select_shell_route(&MODEL_LIST)
+}
+
+fn select_shell_provider_snapshot_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<OriginalRoutePin>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
+        return Ok(None);
+    }
+    records.select_shell_route(&PROVIDER_READ)
 }
 
 fn select_conversation_read_records(
@@ -3159,6 +3205,7 @@ mod tests {
 
     const MODEL_MANAGE_ROW: usize = 3;
     const MODEL_PROVIDER_READ_ROW: usize = 4;
+    const SHELL_PROVIDER_READ_ROW: usize = 5;
     const CONVERSATION_SHELL_ROW: usize = 6;
     const CONVERSATION_SAVED_TURN_ROW: usize = 7;
     const CONVERSATION_SAVED_ORCHESTRATION_ROW: usize = 8;
@@ -4860,6 +4907,44 @@ mod tests {
                 "the Profile edge and Plan Authority modes differ"
             ))
         ));
+    }
+
+    #[test]
+    fn shell_provider_snapshot_requires_the_desktop_shells_own_settings_grant() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_shell_provider_snapshot_records((&profile, &lock, &plan), &budget)
+        };
+        let mut fixture = records();
+        let pin = select(&fixture).unwrap().unwrap();
+        assert_eq!(pin.caller_function_id(), TURN_SHELL_CALLER);
+        assert_eq!(pin.function_id(), PROVIDER_READ.function);
+        assert_eq!(pin.contract_id(), PROVIDER_READ.contract);
+        assert_eq!(pin.operation_id(), PROVIDER_READ.operation);
+        assert_eq!(pin.variant_id(), PROVIDER_READ.variant);
+        assert_eq!(
+            pin.authority_reference(),
+            fixture["profile"]["requested_edges"][SHELL_PROVIDER_READ_ROW]["authority_reference"]
+        );
+
+        let mut other_shell = fixture.clone();
+        for record in ["profile", "lock", "plan"] {
+            other_shell[record]["shell"]["provider_id"] = json!("unrelated.shell");
+        }
+        assert!(select(&other_shell).unwrap().is_none());
+
+        fixture["profile"]["requested_edges"]
+            .as_array_mut()
+            .unwrap()
+            .remove(SHELL_PROVIDER_READ_ROW);
+        assert!(matches!(select(&fixture), Err(Inconsistent(_))));
+        fixture["plan"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .remove(SHELL_PROVIDER_READ_ROW);
+        assert!(select(&fixture).unwrap().is_none());
+        assert!(select_model_save(&fixture).unwrap().is_some());
     }
 
     #[test]

@@ -17,17 +17,17 @@ use tobkiri_core::{
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
     OriginalConversationAppendChoice, OriginalConversationCompleteChoice, OriginalFailoverChoice,
-    OriginalGatewayProviderSnapshotChoice, OriginalRequestPrepareChoice,
-    OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalSideChatSavedReceiptChoice,
+    OriginalGatewayProviderSnapshotChoice, OriginalModelSaveSelection,
+    OriginalRequestPrepareChoice, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
+    OriginalShellProviderSnapshotSelection, OriginalSideChatSavedReceiptChoice,
     OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
     CONVERSATION_COMPLETE_APPLICATION_ID,
 };
 use tobkiri_harness_native::{
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
-    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
-    OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
-    OriginalSavedTurnStartChoice,
+    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSettingsSelection,
+    OriginalProviderPrepareSelection, OriginalRoutePin, OriginalSavedReceiptRole,
+    OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice, OriginalSavedTurnStartChoice,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -35,7 +35,6 @@ pub(crate) struct LockedRegistryBundle<'pin> {
     root: CoreBuffer,
     provider_prepare: Option<[LockedRegistryRoute<'pin>; 2]>,
     model_list: Option<LockedRegistryRoute<'pin>>,
-    model_save: Option<[LockedRegistryRoute<'pin>; 2]>,
     model_resolve: [Option<LockedRegistryRoute<'pin>>; 4],
     conversation_read: [Option<LockedRegistryRoute<'pin>>; 3],
     saved_receipt: [Option<LockedRegistryRoute<'pin>>; 2],
@@ -129,6 +128,15 @@ pub(crate) struct LockedSavedProviderBundle<'pin, const ROLES: usize, const PINS
     side_chat: [Option<[LockedRegistryRoute<'pin>; 1]>; ROLES],
     routes: [Option<[LockedRegistryRoute<'pin>; PINS]>; ROLES],
     effects: [&'static str; PINS],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// Locked Pack documents for the direct Shell read and nested Model Save read.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedProjectedProviderBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    shell_settings: Option<[LockedRegistryRoute<'pin>; 1]>,
+    model_save: Option<[LockedRegistryRoute<'pin>; 2]>,
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -514,6 +522,46 @@ impl NativeApplicationSources {
         })
     }
 
+    /// Capture the signed Bundle Pack and sidecars for the selected caller's projected read.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn projected_provider_snapshot_bundle<'pin>(
+        &self,
+        shell: Option<&'pin OriginalShellProviderSnapshotSelection<'_>>,
+        model_save: Option<&'pin OriginalModelSaveSelection<'_>>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedProjectedProviderBundle<'pin>> {
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        let shell_settings = shell
+            .map(|selection| {
+                let read = selection.provider_read();
+                ensure!(
+                    read.caller_function_id() == self.authority.shell_provider_id
+                        && self.authority.shell_provider_id == "shell.tauri.default",
+                    "old Provider Registry settings caller differs from the selected desktop Shell"
+                );
+                Ok::<_, anyhow::Error>([from_lock(read)?])
+            })
+            .transpose()?;
+        let model_save = model_save
+            .map(|selection| {
+                let model_manage = selection.model_manage();
+                let provider_read = selection.provider_read();
+                ensure!(
+                    model_manage.caller_function_id() == self.authority.shell_provider_id
+                        && provider_read.caller_function_id() == model_manage.function_id(),
+                    "old Model Save Provider Registry callers differ from the selected chain"
+                );
+                Ok::<_, anyhow::Error>([from_lock(model_manage)?, from_lock(provider_read)?])
+            })
+            .transpose()?;
+        Ok(LockedProjectedProviderBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            shell_settings,
+            model_save,
+            budget: Arc::clone(budget),
+        })
+    }
+
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     fn require_saved_provider_callers(
         &self,
@@ -761,7 +809,6 @@ impl NativeApplicationSources {
         &self,
         provider: Option<&'pin OriginalProviderPrepareSelection<'_>>,
         model: Option<&'pin OriginalModelSettingsSelection<'_>>,
-        model_save: Option<&'pin OriginalModelSaveSelection<'_>>,
         model_resolve: Option<&'pin OriginalModelResolveSelection<'_>>,
         (conversation_read, saved_receipt): (
             Option<&'pin OriginalConversationReadSelection<'_>>,
@@ -797,24 +844,6 @@ impl NativeApplicationSources {
                     "old Model list caller differs from the selected Shell"
                 );
                 LockedRegistryRoute::from_lock(&self.bundle_lock, selection.model_list(), budget)
-            })
-            .transpose()?;
-        let model_save = model_save
-            .map(|selection| {
-                let model_manage = selection.model_manage();
-                let provider_read = selection.provider_read();
-                ensure!(
-                    model_manage.caller_function_id() == self.authority.shell_provider_id,
-                    "old Model manage caller differs from the selected Shell"
-                );
-                ensure!(
-                    provider_read.caller_function_id() == model_manage.function_id(),
-                    "old Model save Provider read caller differs from Model manage"
-                );
-                Ok::<_, anyhow::Error>([
-                    LockedRegistryRoute::from_lock(&self.bundle_lock, model_manage, budget)?,
-                    LockedRegistryRoute::from_lock(&self.bundle_lock, provider_read, budget)?,
-                ])
             })
             .transpose()?;
         let mut model_resolve_routes = [None, None, None, None];
@@ -863,7 +892,6 @@ impl NativeApplicationSources {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             provider_prepare,
             model_list,
-            model_save,
             model_resolve: model_resolve_routes,
             conversation_read: conversation_routes,
             saved_receipt: receipt_routes,
@@ -882,10 +910,6 @@ impl LockedRegistryBundle<'_> {
         }
         if let Some(model_list) = &self.model_list {
             model_list.verify(root, &self.budget, &mut checkpoint, None)?;
-        }
-        if let Some([model_manage, provider_read]) = &self.model_save {
-            model_manage.verify(root, &self.budget, &mut checkpoint, None)?;
-            provider_read.verify(root, &self.budget, &mut checkpoint, None)?;
         }
         let mut model_resolve = self.model_resolve.iter().flatten();
         if let Some(first) = model_resolve.next() {
@@ -1205,6 +1229,40 @@ impl<const ROLES: usize, const PINS: usize> LockedSavedProviderBundle<'_, ROLES,
             return source.verify_routes(&self.side_chat, &self.budget, checkpoint, ["privileged"]);
         }
         Ok(source)
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedProjectedProviderBundle<'_> {
+    /// Verify and retain only the documents behind each projected caller's own grant.
+    pub(crate) fn verify(
+        self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<[Option<VerifiedOrdinarySavedBundle>; 2]> {
+        self.source.revalidate(&self.budget, &mut checkpoint)?;
+        let shell_settings = self
+            .shell_settings
+            .map(|routes| {
+                self.source.clone().verify_routes(
+                    &[Some(routes)],
+                    &self.budget,
+                    &mut checkpoint,
+                    ["privileged"],
+                )
+            })
+            .transpose()?;
+        let model_save = self
+            .model_save
+            .map(|routes| {
+                self.source.verify_routes(
+                    &[Some(routes)],
+                    &self.budget,
+                    checkpoint,
+                    ["privileged"; 2],
+                )
+            })
+            .transpose()?;
+        Ok([shell_settings, model_save])
     }
 }
 

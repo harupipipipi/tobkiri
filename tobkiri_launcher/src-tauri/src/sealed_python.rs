@@ -148,7 +148,9 @@ impl RoleArguments {
         };
         self.native_registry = NativeRegistryEnvironment {
             provider_snapshot_version: proof.and_then(|proof| {
-                if proof.permits_gateway_provider_snapshot() {
+                if proof.permits_projected_provider_snapshot() {
+                    Some("3")
+                } else if proof.permits_gateway_provider_snapshot() {
                     Some("2")
                 } else if [Generate, Stream, SideChatGenerate, SideChatStream]
                     .into_iter()
@@ -4607,6 +4609,16 @@ mod tests {
                 side_chat: true,
             },
         );
+        let shell_settings_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            side_chat.identity.clone(),
+            "catalog",
+            OriginalProviderSnapshotRole::ShellSettings,
+        );
+        let model_save_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            side_chat.identity.clone(),
+            "catalog",
+            OriginalProviderSnapshotRole::ModelSave,
+        );
         for (proof, expected_turn_start, expected_snapshot) in [
             (None, false, None),
             (Some(&append), false, None),
@@ -4615,6 +4627,8 @@ mod tests {
             (Some(&snapshot), false, Some("1")),
             (Some(&gateway_snapshot), false, Some("2")),
             (Some(&side_chat_gateway_snapshot), false, Some("2")),
+            (Some(&shell_settings_snapshot), false, Some("3")),
+            (Some(&model_save_snapshot), false, Some("3")),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()

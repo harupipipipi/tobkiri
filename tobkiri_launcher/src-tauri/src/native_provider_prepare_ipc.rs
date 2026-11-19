@@ -1104,7 +1104,7 @@ fn deserialize_provider_snapshot_role<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    use OriginalProviderSnapshotRole::{Adapter, Gateway};
+    use OriginalProviderSnapshotRole::{Adapter, Gateway, ModelSave, ShellSettings};
 
     let (role, side_chat) = match String::deserialize(deserializer)?.as_str() {
         "generate" => return Ok(Adapter(OriginalSavedLocalChatRole::Generate)),
@@ -1119,6 +1119,8 @@ where
         "side-chat-gateway-stream" => (OriginalModelResolveRole::Stream, true),
         "side-chat-gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, true),
         "side-chat-gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, true),
+        "shell-settings" => return Ok(ShellSettings),
+        "model-save" => return Ok(ModelSave),
         _ => return Err(de::Error::custom("unknown Provider Snapshot role")),
     };
     Ok(Gateway { role, side_chat })
@@ -3107,8 +3109,8 @@ mod tests {
     }
 
     #[test]
-    fn provider_snapshot_start_decodes_closed_adapter_and_gateway_roles() {
-        use OriginalProviderSnapshotRole::{Adapter, Gateway};
+    fn provider_snapshot_start_decodes_closed_adapter_gateway_and_settings_roles() {
+        use OriginalProviderSnapshotRole::{Adapter, Gateway, ModelSave, ShellSettings};
 
         let assert_role = |name: &str, expected| {
             let frame = start_frame(&format!(r#", "provider_snapshot":{{"role":"{name}"}}"#));
@@ -3154,6 +3156,8 @@ mod tests {
                 },
             );
         }
+        assert_role("shell-settings", ShellSettings);
+        assert_role("model-save", ModelSave);
     }
 
     #[test]
@@ -3190,6 +3194,9 @@ mod tests {
             r#", "provider_snapshot":{"role":"gateway-quote-stream","side_chat":true}"#,
             r#", "provider_snapshot":{"role":"stream","role":"generate"}"#,
             r#", "provider_snapshot":{"role":"stream","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"stream","settings_projection":true}"#,
+            r#", "provider_snapshot":{"role":"shell-settings","settings_projection":false}"#,
+            r#", "provider_snapshot":{"role":"model-save","settings_projection":false}"#,
             r#", "provider_snapshot":{"role":"stream"}, "provider_snapshot":{"role":"stream"}"#,
         ] {
             let payload = start_frame(extra);

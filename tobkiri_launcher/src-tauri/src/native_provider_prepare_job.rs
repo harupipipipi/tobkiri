@@ -995,12 +995,18 @@ async fn run(
                         checkpoint,
                     )?;
                     revalidate()?;
+                    let settings_projection = match role {
+                        OriginalProviderSnapshotRole::ShellSettings
+                        | OriginalProviderSnapshotRole::ModelSave => true,
+                        OriginalProviderSnapshotRole::Adapter(_)
+                        | OriginalProviderSnapshotRole::Gateway { .. } => false,
+                    };
                     let output = inspection
                         .read_legacy_provider_snapshot(
                             &pack,
                             &config.user_data_dir,
                             &identity.profile_id,
-                            false,
+                            settings_projection,
                         )
                         .await
                         .map_err(provider_snapshot_error)?;
@@ -2625,7 +2631,7 @@ mod tests {
     fn provider_snapshot_requires_its_exact_role_and_carries_no_input() {
         use crate::host_contract::ExecutionProfileIdentity;
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
-        use OriginalProviderSnapshotRole::{Adapter, Gateway};
+        use OriginalProviderSnapshotRole::{Adapter, Gateway, ModelSave, ShellSettings};
 
         let identity = ExecutionProfileIdentity {
             profile_id: "defaults".into(),
@@ -2652,6 +2658,7 @@ mod tests {
                     .into_iter()
                     .flat_map(|role| [false, true].map(|side_chat| Gateway { role, side_chat })),
             )
+            .chain([ShellSettings, ModelSave])
             .collect::<Vec<_>>();
         let snapshot_proofs = snapshot_roles
             .iter()
