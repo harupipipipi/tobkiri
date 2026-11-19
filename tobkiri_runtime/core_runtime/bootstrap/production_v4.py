@@ -5212,8 +5212,8 @@ def capture_production_dispatch(
         payload: Mapping[str, Any],
     ) -> tuple[_SavedLocalChatRoute, CapturedInvocationScopeV4] | None:
         if native_provider_runtime is None or (
-            set(payload) - {"_session_id"} != {"profile_id"}
-            or payload.get("profile_id") != context.profile_id
+            set(payload) - {"profile_id", "_session_id"}
+            or payload.get("profile_id", context.profile_id) != context.profile_id
         ):
             return None
         parent = parent_invocation_scopes.lookup(context.caller_session_id)
