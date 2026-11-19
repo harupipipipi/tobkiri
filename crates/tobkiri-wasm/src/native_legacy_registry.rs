@@ -98,6 +98,16 @@ const PROVIDER_SNAPSHOT: RegistryExport = RegistryExport {
     reads: 0,
     clock: RegistryClock::None,
 };
+const MODEL_ACCESS_PROJECTION: RegistryExport = RegistryExport {
+    pack: PROVIDER_PACK,
+    shape: "local.provider-registry.model-access-projection@1.0",
+    interface: "local:provider-registry/model-access-projection@1.0.0",
+    function: "project",
+    error_subject: "legacy Provider Model Access projection",
+    parameters: &["document", "request"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 const MODEL_LIST: RegistryExport = RegistryExport {
     pack: MODEL_PACK,
     shape: "local.model-registry.legacy-settings@1.0",
@@ -195,6 +205,10 @@ enum RegistryInput<'a> {
         document: Option<&'a str>,
         settings_projection: bool,
     },
+    ModelAccessProjection {
+        document: Option<&'a str>,
+        request: &'a str,
+    },
     ModelList(Option<&'a str>),
     DocumentLookup {
         document: Option<&'a str>,
@@ -245,6 +259,13 @@ pub use LegacyRegistryRead as LegacyProviderRegistryRead;
 pub fn verify_legacy_provider_snapshot_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &PROVIDER_SNAPSHOT)?;
     declared_registry_function(pack, &PROVIDER_SNAPSHOT)?;
+    Ok(())
+}
+
+/// Verify the private Model Access projection declaration of the receipt-bound Registry Pack.
+pub fn verify_legacy_provider_model_access_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &MODEL_ACCESS_PROJECTION)?;
+    declared_registry_function(pack, &MODEL_ACCESS_PROJECTION)?;
     Ok(())
 }
 
@@ -413,6 +434,23 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 document,
                 settings_projection,
             },
+        )
+        .await
+    }
+
+    /// Apply one Model Access phase to the native caller's physical Registry observation.
+    pub async fn project_legacy_provider_model_access(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+        request: &str,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &MODEL_ACCESS_PROJECTION,
+            RegistryInput::ModelAccessProjection { document, request },
         )
         .await
     }
@@ -615,6 +653,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
             RegistryInput::ModelSave { .. }
             | RegistryInput::ProviderSnapshot { .. }
+            | RegistryInput::ModelAccessProjection { .. }
             | RegistryInput::DocumentLookup { .. }
             | RegistryInput::ConversationStage { .. } => true,
         };
@@ -691,6 +730,13 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 two_parameters = [
                     optional_document(document, &owners)?,
                     Val::Bool(settings_projection),
+                ];
+                (&two_parameters, None)
+            }
+            RegistryInput::ModelAccessProjection { document, request } => {
+                two_parameters = [
+                    optional_document(document, &owners)?,
+                    raw_document(request, &owners)?,
                 ];
                 (&two_parameters, None)
             }
@@ -904,14 +950,20 @@ fn declared_registry_function<'a>(
         );
     }
     if returns_owner_result(export) {
-        let expected_second = if export.shape == PROVIDER_SNAPSHOT.shape {
-            WitType::Bool
-        } else {
-            WitType::String
+        let expected_second = match export.shape {
+            shape if shape == PROVIDER_SNAPSHOT.shape => WitType::Bool,
+            shape if shape == MODEL_ACCESS_PROJECTION.shape => WitType::Json,
+            _ => WitType::String,
         };
         ensure!(
             optional_string(&function.params[0].1) && function.params[1].1 == expected_second,
             "legacy owner lookup parameter ABI differs"
+        );
+    }
+    if export.shape == MODEL_ACCESS_PROJECTION.shape {
+        ensure!(
+            definition.cardinality == Cardinality::One,
+            "legacy Model Access projection requires a single provider"
         );
     }
     if [CONVERSATION_CONFIRMATION.shape, CONVERSATION_APPEND.shape].contains(&export.shape) {
@@ -936,6 +988,7 @@ fn returns_owner_result(export: &RegistryExport) -> bool {
         CONVERSATION_RECEIPT.shape,
         MODEL_RESOLVE.shape,
         PROVIDER_SNAPSHOT.shape,
+        MODEL_ACCESS_PROJECTION.shape,
     ]
     .contains(&export.shape)
 }

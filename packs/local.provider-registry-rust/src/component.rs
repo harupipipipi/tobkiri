@@ -20,6 +20,7 @@ use crate::{
         MANAGE_OPERATION, READONLY_RESOURCE_OPERATION, invoke_manage, invoke_readonly,
         provider_connection_snapshot,
     },
+    model_access_projection,
     registry::Registry,
     routing,
     state::{Clock, DocumentStore, object, put, text},
@@ -77,20 +78,63 @@ fn legacy_snapshot(
     document: Option<&str>,
     settings_projection: bool,
 ) -> Result<String, Error> {
+    let snapshot = observed_snapshot(profile, document)?;
+    let reply = if settings_projection {
+        provider_connection_snapshot(&snapshot).map_err(source_error)?
+    } else {
+        snapshot
+    };
+    encode_owner_reply(&reply)
+}
+
+impl exports::local::provider_registry::model_access_projection::Guest for Pack {
+    fn project(document: Option<String>, request: String) -> Result<String, Error> {
+        project_model_access(&current_profile()?, document.as_deref(), &request)
+    }
+}
+
+fn project_model_access(
+    profile: &str,
+    document: Option<&str>,
+    request: &str,
+) -> Result<String, Error> {
+    if request.len() > MAX_DOCUMENT_BYTES {
+        return Err(boundary_error(
+            ErrorCode::LimitExceeded,
+            "model access projection request exceeds limits",
+        ));
+    }
+    let request = loads(request).map_err(codec_error)?;
+    let snapshot = observed_snapshot(profile, document)?;
+    let result = model_access_projection::project(&snapshot, &request).map_err(source_error)?;
+    let reply = match request.get("phase").and_then(PyValue::as_str) {
+        Some("policy") => result,
+        Some("prepare-catalog" | "project-catalog") => {
+            object([("result", result), ("snapshot", snapshot)])
+        }
+        _ => {
+            return Err(boundary_error(
+                ErrorCode::Invalid,
+                "model access projection phase is invalid",
+            ));
+        }
+    };
+    encode_owner_reply(&reply)
+}
+
+fn observed_snapshot(profile: &str, document: Option<&str>) -> Result<PyValue, Error> {
     let mut registry = Registry::new(
         &text(profile),
         ObservedRegistry([document].into_iter()),
         ObservationClock,
     )
     .map_err(source_error)?;
-    let snapshot = registry.snapshot().map_err(source_error)?;
-    let reply = if settings_projection {
-        provider_connection_snapshot(&snapshot).map_err(source_error)?
-    } else {
-        snapshot
-    };
+    registry.snapshot().map_err(source_error)
+}
+
+fn encode_owner_reply(reply: &PyValue) -> Result<String, Error> {
     // Core validates the envelope without interpreting Python's numeric values.
-    let owner = dumps_bounded(&reply, MAX_DOCUMENT_BYTES).map_err(codec_error)?;
+    let owner = dumps_bounded(reply, MAX_DOCUMENT_BYTES).map_err(codec_error)?;
     let envelope = object([("owner_result", text(owner))]);
     let encoded = dumps_bounded(&envelope, MAX_DOCUMENT_BYTES).map_err(codec_error)?;
     core_json(&encoded)?;
@@ -512,6 +556,63 @@ mod tests {
             .unwrap_err();
             assert!(matches!(error.code, ErrorCode::Denied));
         }
+    }
+
+    #[test]
+    fn model_access_projection_keeps_registry_observations_in_catalog_phases() {
+        const DOCUMENT: &str = include_str!(
+            "../evidence/original-python/cases/ui-redacted-versus-raw-host-readers/actions/host-ui-reader.store-before.json"
+        );
+        let document = DOCUMENT.replace("1700000000.75", "9007199254740993");
+        let document = Some(document.as_str());
+        let policy = project_model_access(
+            "defaults",
+            document,
+            r#"{"phase":"policy","provider_instance_id":"connection/work"}"#,
+        )
+        .unwrap();
+        let policy = snapshot_owner(&policy);
+        let decoded = loads(&policy).unwrap();
+        assert!(decoded.get("model_access").is_some());
+        assert!(decoded.get("snapshot").is_none());
+        assert!(!policy.contains("synthetic-registry-key"));
+
+        let legacy = legacy_snapshot("defaults", document, false).unwrap();
+        let expected_snapshot = loads(&snapshot_owner(&legacy)).unwrap();
+        for (request, result_key) in [
+            (
+                r#"{"phase":"prepare-catalog","provider_instance_id":"connection/work"}"#,
+                "provider_id",
+            ),
+            (
+                r#"{"phase":"project-catalog","provider_instance_id":"connection/work","catalog":{"models":[],"providers":[{"provider_id":"vendor"}]}}"#,
+                "models",
+            ),
+        ] {
+            let reply = project_model_access("defaults", document, request).unwrap();
+            let owner = snapshot_owner(&reply);
+            assert!(owner.contains(r#""observed_at":9007199254740993"#));
+            let decoded = loads(&owner).unwrap();
+            assert_eq!(decoded.get("snapshot"), Some(&expected_snapshot));
+            assert!(decoded.get("result").unwrap().get(result_key).is_some());
+        }
+    }
+
+    #[test]
+    fn model_access_projection_rejects_oversize_requests_and_foreign_documents() {
+        let oversized = " ".repeat(MAX_DOCUMENT_BYTES + 1);
+        let error = project_model_access("defaults", None, &oversized).unwrap_err();
+        assert!(matches!(error.code, ErrorCode::LimitExceeded));
+
+        let error = project_model_access(
+            "defaults",
+            Some(
+                r#"{"version":"rumi.provider-registry.store.v1","profile_id":"foreign","revision":0,"providers":{}}"#,
+            ),
+            r#"{"phase":"policy","provider_instance_id":"connection/work"}"#,
+        )
+        .unwrap_err();
+        assert!(matches!(error.code, ErrorCode::Denied));
     }
 
     #[test]

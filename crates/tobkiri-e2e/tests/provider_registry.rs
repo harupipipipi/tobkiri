@@ -773,6 +773,122 @@ async fn original_provider_snapshot_reads_physical_owner_with_exact_projection()
     Ok(())
 }
 
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires a staged Provider Registry Pack archive"]
+async fn original_provider_model_access_projects_physical_policy_and_catalog() -> Result<()> {
+    const DOCUMENT: &str = include_str!(
+        "../../../packs/local.provider-registry-rust/evidence/original-python/cases/health-evidence-and-ui-time-projection/actions/host-ui-projection.store-before.json"
+    );
+    const RELATIVE: &str =
+        "packs/rumi_provider_registry_pack/profiles/defaults/provider_registry.store.json";
+    let directory = physical_temp()?;
+    let data = directory.path().join("owner");
+    let original = DataRoot::open(&data)?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(directory.path().join("core")),
+        Arc::new(Host::default()),
+    )?);
+    let expected = registry::pack(PACK)?;
+    let archive = expected
+        .pin
+        .source
+        .strip_prefix("file:")
+        .context("Pack file")?;
+    let project = |request: Value| {
+        let (core, data, pin, source_root) = (&core, &data, &expected.pin, directory.path());
+        async move {
+            let mut inspection =
+                core.inspect_declared_artifacts(original_source::OriginalSource::new(source_root))?;
+            let result: Result<_> = async {
+                let mut file = std::fs::File::open(archive)?;
+                let length = file.metadata()?.len();
+                let pack = inspection.verify_pack_archive(&mut file, length)?;
+                ensure!(pack.hash == pin.sha256);
+                tobkiri_wasm::verify_legacy_provider_model_access_declaration(&pack)?;
+                Ok(inspection
+                    .project_legacy_provider_model_access(
+                        &pack,
+                        data,
+                        "defaults",
+                        &serde_json::to_string(&request)?,
+                    )
+                    .await?)
+            }
+            .await;
+            inspection.finish().await?;
+            let result = result?;
+            let owner = result
+                .get_key("owner_result")
+                .context("Model Access owner reply")?;
+            Ok::<Value, anyhow::Error>(serde_json::from_str(
+                owner.as_str().context("opaque Model Access owner reply")?,
+            )?)
+        }
+    };
+
+    let mut document: Value = serde_json::from_str(DOCUMENT)?;
+    let connection = &mut document["providers"]["connection/work"];
+    connection["endpoint"] = json!("https://openrouter.ai/api/v1");
+    connection["metadata"]["catalog_provider_id"] = json!("openrouter");
+    let policy = json!({
+        "version": "tobkiri.connection-model-access.v1", "mode": "explicit",
+        "model_ids": ["vendor/model"],
+    });
+    connection["model_access"] = policy.clone();
+    let encoded = serde_json::to_vec(&document)?;
+    original.write_atomic(RELATIVE, &encoded)?;
+
+    let response = project(json!({
+        "phase": "policy", "provider_instance_id": "connection/work",
+    }))
+    .await?;
+    let expected_policy = json!({
+        "profile_id": "defaults", "provider_instance_id": "connection/work",
+        "registry_revision": 1, "model_access": policy,
+        "native_capability": "openrouter.official-filters.2026-10-07.v1",
+    });
+    ensure!(response == expected_policy);
+    let prepared = project(json!({
+        "phase": "prepare-catalog", "provider_instance_id": "connection/work",
+        "discovery_filters": {"output_modalities": ["text"]}
+    }))
+    .await?;
+    ensure!(
+        prepared["result"]
+            == json!({
+                "provider_id": "openrouter", "discovery_filters": {"output_modalities": ["text"]},
+            })
+    );
+    let request = json!({
+        "phase": "project-catalog", "provider_instance_id": "connection/work",
+        "catalog": {
+            "models": [
+                {"provider_id":"openrouter", "provider_model_id":"vendor/model", "display_name":"Model"},
+                {"provider_id":"foreign", "provider_model_id":"foreign/model"}
+            ],
+            "inventory": {"openrouter": {"stale": false, "source": "openrouter_models_api_filtered"}},
+        }
+    });
+    let projected = project(request.clone()).await?;
+    ensure!(
+        projected["result"]
+            == json!({
+                "profile_id": "defaults", "provider_instance_id": "connection/work", "status": "live",
+                "models": [{"model_id":"vendor/model", "display_name":"Model"}],
+            })
+    );
+    ensure!(projected["snapshot"] == prepared["snapshot"]);
+    ensure!(std::fs::read(data.join(RELATIVE))? == encoded);
+
+    document["revision"] = json!(2);
+    original.write_atomic(RELATIVE, &serde_json::to_vec(&document)?)?;
+    let changed = project(request).await?;
+    ensure!(changed["snapshot"] != prepared["snapshot"]);
+    ensure!(changed["result"] == projected["result"]);
+    Ok(())
+}
+
 async fn verify_local_commit(
     sa: &Session,
     sb: &Session,

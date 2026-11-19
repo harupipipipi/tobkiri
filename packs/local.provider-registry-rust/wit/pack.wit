@@ -19,6 +19,14 @@ interface legacy-resource {
   snapshot: func(document: option<string>, settings-projection: bool) -> result<json, error>;
 }
 
+interface model-access-projection {
+  use tobkiri:core/types@1.2.0.{error, json};
+
+  /// Project Model Access from one observation of the active Profile's Registry.
+  /// Catalog calls also return the observation to Core for its freshness check.
+  project: func(document: option<string>, request: json) -> result<json, error>;
+}
+
 interface manage {
   use tobkiri:core/types@1.2.0.{json, error};
 
@@ -103,6 +111,7 @@ world pack {
   import tobkiri:core/storage@1.2.0;
   export %resource;
   export legacy-resource;
+  export model-access-projection;
   export manage;
   export routing;
   export configuration;

@@ -42,7 +42,7 @@ pub use native_setup_store::{
     verify_legacy_conversation_linked_context_declaration,
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
-    verify_legacy_provider_snapshot_declaration,
+    verify_legacy_provider_model_access_declaration, verify_legacy_provider_snapshot_declaration,
 };
 mod network;
 pub use network::{

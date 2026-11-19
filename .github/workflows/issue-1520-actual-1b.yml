@@ -84,6 +84,12 @@ jobs:
             --log "$RUNNER_TEMP/original-provider-snapshot.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test provider_registry -- \
               original_provider_snapshot_reads_physical_owner_with_exact_projection --ignored --exact
+      - name: Verify Model Access policy and catalog projections on the physical Registry
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/original-provider-model-access.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test provider_registry -- \
+              original_provider_model_access_projects_physical_policy_and_catalog --ignored --exact
       - name: Fetch the pinned upstream server and model on the runner
         id: registered_model_assets
         shell: bash

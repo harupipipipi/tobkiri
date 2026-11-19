@@ -656,6 +656,39 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         })
     }
 
+    /// Project Model Access under the original Registry owner's read-only authority.
+    ///
+    /// The request denotes one fixed phase and carries no storage path or Profile.
+    /// Catalog phases return a private snapshot for the admitted caller's freshness check.
+    pub async fn project_legacy_provider_model_access(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        request: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.require_ready()?;
+        if pack.manifest.id.as_str() != "local.provider-registry" {
+            return Err(NativeArtifactError::Denied);
+        }
+        let framed = self
+            .read_original_document(root, profile_id, LegacyReadDocument::Provider)
+            .await?;
+        let document = original_document_text(&framed, |error| {
+            NativeArtifactError::ProviderSnapshot(Box::new(error))
+        })?;
+        self.require_live()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let projection = store
+            .project_legacy_provider_model_access(pack, profile_id, document, request)
+            .await;
+        self.require_live()?;
+        projection.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+            Err(error) => NativeArtifactError::ProviderSnapshot(error.into()),
+        })
+    }
+
     /// Read the original Model Registry in place, then run the fixed Settings
     /// projection. The verified Pack and physical data root are selected by the
     /// trusted native caller. No file selection or write is exposed to the guest.

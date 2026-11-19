@@ -12,6 +12,7 @@ pub mod configuration;
 pub mod failure;
 pub mod host;
 mod legacy_local_chat;
+pub mod model_access_projection;
 pub mod record;
 pub mod registry;
 #[cfg(any(feature = "component", test))]

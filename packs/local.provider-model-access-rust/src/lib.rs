@@ -14,9 +14,15 @@ pub use model_access::compile as compile_connection_parameters;
 /// Pure source helpers shared with the additive Registry translation.
 /// This module supplies no component, storage, credentials or authority.
 pub mod registry_support {
-    pub use crate::failure::{SourceFailure, SourceResult, contains, get, mapping, type_name};
+    pub use crate::failure::{
+        SourceFailure, SourceResult, contains, get, hashable, mapping, type_name,
+    };
     pub use crate::model_access::{
         effective as effective_model_access, identifier, normalize as normalize_model_access,
+    };
+    pub use crate::native_filters::{
+        REVISION as NATIVE_FILTER_REVISION, normalize as normalize_native_filters,
+        official as is_official_openrouter,
     };
     pub use crate::python_url::{Parts as UrlParts, split as split_url};
 }
