@@ -146,6 +146,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         for pack in (
             "provider-registry", "model-registry", "saved-conversation",
             "saved-turn-runtime", "saved-orchestration", "provider-adapter",
+            "ai-routing",
         ):
             self.assertIn(f"-p tobkiri-pack-{pack}-rust", archives)
             self.assertIn(f"--pack {pack}", archives)
@@ -164,6 +165,13 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn("/native-registry-packs/local.provider-adapter.tpk", adapter)
         self.assertIn("local_provider_response_through_original_core -- --ignored --exact", adapter)
         self.assertLess(registry.index(adapter), registry.index("name: native-registry-packs"))
+        routing = step(registry, "Verify AI Routing through the packaged Wasm port")
+        self.assertIn("TOBKIRI_AI_ROUTING_TPK:", routing)
+        self.assertIn("/native-registry-packs/local.ai-routing.tpk", routing)
+        self.assertIn("ai_routing_uses_verified_wasm_port -- --ignored --exact", routing)
+        self.assertIn("--expected-passed 1", routing)
+        self.assertLess(registry.index(adapter), registry.index(routing))
+        self.assertLess(registry.index(routing), registry.index("name: native-registry-packs"))
         self.assertIn("--expected-passed 1", orchestration)
         self.assertLess(registry.index(orchestration), registry.index("name: native-registry-packs"))
         self.assertNotIn("stage_pack(", orchestration)

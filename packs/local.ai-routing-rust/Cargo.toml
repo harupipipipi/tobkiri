@@ -1,0 +1,16 @@
+[package]
+name = "tobkiri-pack-ai-routing-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+component = ["dep:wit-bindgen"]
+
+[dependencies]
+ordered-python-compat = { path = "../ordered-python-compat" }
+wit-bindgen = { workspace = true, optional = true }

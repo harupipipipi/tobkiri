@@ -1,0 +1,15 @@
+package local:ai-routing@1.0.0;
+
+interface routing {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Route over supplied model and provider descriptors, health and decision time.
+  /// An empty result leaves evaluation to the original router.
+  evaluate: func(request: string) -> result<string, error>;
+}
+
+world pack {
+  import tobkiri:core/types@1.2.0;
+  export tobkiri:core/lifecycle@1.2.0;
+  export routing;
+}

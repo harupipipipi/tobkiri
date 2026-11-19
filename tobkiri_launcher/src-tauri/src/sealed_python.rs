@@ -281,6 +281,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         SAVED_ORCHESTRATION_MANIFEST_ENV
             | crate::native_provider_prepare_service::TURN_START_ENV
             | crate::native_provider_prepare_service::SAVED_LOCAL_CHAT_ENV
+            | crate::native_provider_prepare_service::AI_ROUTING_ENV
     ) {
         return role == PythonRole::Defaultspack;
     }
@@ -4376,9 +4377,11 @@ mod tests {
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
     fn saved_request_markers_are_allowed_for_defaultspack_only() {
-        use crate::native_provider_prepare_service::{SAVED_LOCAL_CHAT_ENV, TURN_START_ENV};
+        use crate::native_provider_prepare_service::{
+            AI_ROUTING_ENV, SAVED_LOCAL_CHAT_ENV, TURN_START_ENV,
+        };
 
-        for key in [TURN_START_ENV, SAVED_LOCAL_CHAT_ENV].map(OsStr::new) {
+        for key in [TURN_START_ENV, SAVED_LOCAL_CHAT_ENV, AI_ROUTING_ENV].map(OsStr::new) {
             assert!(packaged_environment_key_allowed(
                 PythonRole::Defaultspack,
                 key

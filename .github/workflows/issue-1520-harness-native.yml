@@ -803,6 +803,7 @@ jobs:
             -p tobkiri-pack-provider-registry-rust -p tobkiri-pack-model-registry-rust \
             -p tobkiri-pack-saved-conversation-rust -p tobkiri-pack-saved-turn-runtime-rust \
             -p tobkiri-pack-saved-orchestration-rust -p tobkiri-pack-provider-adapter-rust \
+            -p tobkiri-pack-ai-routing-rust \
             --features component
           cargo build --locked -p tobkiri-cli --bin tobkiri
           python3 -B packs/stage_registry_packs.py \
@@ -810,6 +811,7 @@ jobs:
             --components "$CARGO_TARGET_DIR/wasm32-wasip2/release" \
             --pack provider-registry --pack model-registry --pack saved-conversation \
             --pack saved-turn-runtime --pack saved-orchestration --pack provider-adapter \
+            --pack ai-routing \
             --output "$RUNNER_TEMP/native-registry-packs"
           receipt_sha256="$(shasum -a 256 "$RUNNER_TEMP/native-registry-packs/receipt.json" | cut -d ' ' -f 1)"
           printf 'receipt_sha256=%s\n' "$receipt_sha256" >> "$GITHUB_OUTPUT"
@@ -846,6 +848,14 @@ jobs:
             --log "$RUNNER_TEMP/provider-adapter-check.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test provider_adapter \
               local_provider_response_through_original_core -- --ignored --exact --nocapture
+      - name: Verify AI Routing through the packaged Wasm port
+        env:
+          TOBKIRI_AI_ROUTING_TPK: ${{ runner.temp }}/native-registry-packs/local.ai-routing.tpk
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/ai-routing-check.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test ai_routing \
+              ai_routing_uses_verified_wasm_port -- --ignored --exact --nocapture
       - uses: actions/upload-artifact@v4
         with:
           name: native-registry-packs

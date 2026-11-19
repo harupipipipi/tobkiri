@@ -32,6 +32,7 @@ mod unix {
     pub(crate) const SETTLEMENT_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/2";
     pub(crate) const ORCHESTRATION_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/3";
     pub(crate) const PROVIDER_ADAPTER_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/4";
+    pub(crate) const AI_ROUTING_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/5";
     const RECEIPT_LIMIT: u64 = 16 * 1024;
     // The Pack authoring CLI's .tpk size ceiling.
     pub(crate) const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
@@ -43,12 +44,15 @@ mod unix {
     pub(crate) const SETTLEMENT_PACK_ID: &str = "local.saved-turn-runtime";
     pub(crate) const ORCHESTRATION_PACK_ID: &str = "local.saved-orchestration";
     pub(crate) const PROVIDER_ADAPTER_PACK_ID: &str = "local.provider-adapter";
+    pub(crate) const AI_ROUTING_PACK_ID: &str = "local.ai-routing";
     const ORCHESTRATION_PACK_VERSION: &str = "0.1.0";
     const PROVIDER_ADAPTER_PACK_VERSIONS: [&str; 3] = ["0.1.0", "0.2.0", "0.3.0"];
-    const ADDITIONAL_PACK_IDS: [&str; 3] = [
+    const AI_ROUTING_PACK_VERSION: &str = "0.1.0";
+    const ADDITIONAL_PACK_IDS: [&str; 4] = [
         SETTLEMENT_PACK_ID,
         ORCHESTRATION_PACK_ID,
         PROVIDER_ADAPTER_PACK_ID,
+        AI_ROUTING_PACK_ID,
     ];
 
     #[derive(Deserialize)]
@@ -198,7 +202,8 @@ mod unix {
             RECEIPT_FORMAT => PACK_IDS.len(),
             SETTLEMENT_RECEIPT_FORMAT => PACK_IDS.len() + 1,
             ORCHESTRATION_RECEIPT_FORMAT => PACK_IDS.len() + 2,
-            PROVIDER_ADAPTER_RECEIPT_FORMAT => PACK_IDS.len() + ADDITIONAL_PACK_IDS.len(),
+            PROVIDER_ADAPTER_RECEIPT_FORMAT => PACK_IDS.len() + 3,
+            AI_ROUTING_RECEIPT_FORMAT => PACK_IDS.len() + ADDITIONAL_PACK_IDS.len(),
             _ => return Err(invalid("Registry Pack receipt format is invalid")),
         };
         if receipt.packs.len() != expected_count {
@@ -214,6 +219,7 @@ mod unix {
                 || (id == ORCHESTRATION_PACK_ID && pack.version != ORCHESTRATION_PACK_VERSION)
                 || (id == PROVIDER_ADAPTER_PACK_ID
                     && !PROVIDER_ADAPTER_PACK_VERSIONS.contains(&pack.version.as_str()))
+                || (id == AI_ROUTING_PACK_ID && pack.version != AI_ROUTING_PACK_VERSION)
                 || !(1..=ARCHIVE_LIMIT).contains(&pack.archive_bytes)
                 || !tagged_sha256(&pack.archive_sha256)
                 || !tagged_sha256(&pack.manifest_sha256)
@@ -611,7 +617,7 @@ mod unix {
     pub(crate) fn verify_installed_with_provider_adapter_archives<P, M, C, S, O, A>(
         app_root: &Path,
         expected_sha256: &str,
-        mut checkpoint: impl FnMut() -> io::Result<()>,
+        checkpoint: impl FnMut() -> io::Result<()>,
         inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
         inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
         inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
@@ -619,6 +625,65 @@ mod unix {
         inspect_orchestration: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<O>,
         inspect_provider_adapter: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<A>,
     ) -> io::Result<(P, M, C, Option<S>, Option<O>, Option<A>)> {
+        let (provider, model, conversation, settlement, orchestration, provider_adapter, _) =
+            verify_installed_with_ai_routing_archives(
+                app_root,
+                expected_sha256,
+                checkpoint,
+                inspect_provider,
+                inspect_model,
+                inspect_conversation,
+                inspect_settlement,
+                inspect_orchestration,
+                inspect_provider_adapter,
+                discard_archive,
+            )?;
+        Ok((
+            provider,
+            model,
+            conversation,
+            settlement,
+            orchestration,
+            provider_adapter,
+        ))
+    }
+
+    /// Inspect the AI Routing archive when the installed receipt includes it.
+    pub(crate) fn verify_installed_with_ai_routing<R>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_ai_routing: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
+    ) -> io::Result<Option<R>> {
+        let (_, _, _, _, _, _, ai_routing) = verify_installed_with_ai_routing_archives(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            inspect_ai_routing,
+        )?;
+        Ok(ai_routing)
+    }
+
+    /// Inspect the installed archives in receipt order before returning any results.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    pub(crate) fn verify_installed_with_ai_routing_archives<P, M, C, S, O, A, R>(
+        app_root: &Path,
+        expected_sha256: &str,
+        mut checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
+        inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
+        inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
+        inspect_settlement: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<S>,
+        inspect_orchestration: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<O>,
+        inspect_provider_adapter: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<A>,
+        inspect_ai_routing: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
+    ) -> io::Result<(P, M, C, Option<S>, Option<O>, Option<A>, Option<R>)> {
         checkpoint()?;
         let app = open_directory(app_root)?;
         let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
@@ -650,6 +715,10 @@ mod unix {
                 inspect_archive(&directory, pack, &mut checkpoint, inspect_provider_adapter)
             })
             .transpose()?;
+        let ai_routing = newest
+            .get(3)
+            .map(|pack| inspect_archive(&directory, pack, &mut checkpoint, inspect_ai_routing))
+            .transpose()?;
         Ok((
             provider,
             model,
@@ -657,6 +726,7 @@ mod unix {
             settlement,
             orchestration,
             provider_adapter,
+            ai_routing,
         ))
     }
 

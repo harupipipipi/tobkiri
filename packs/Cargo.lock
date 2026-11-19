@@ -677,6 +677,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-ai-routing-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-ai-stream-normalizer-rust"
 version = "0.1.0"
 dependencies = [

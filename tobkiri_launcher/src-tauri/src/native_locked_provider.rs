@@ -14,7 +14,7 @@ use tobkiri_core::{
     Digest,
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-use tobkiri_harness_native::OriginalSavedLocalChatChoice;
+use tobkiri_harness_native::{OriginalAiRoutingSelection, OriginalSavedLocalChatChoice};
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
@@ -79,15 +79,23 @@ pub(crate) struct LockedSavedOrchestrationBundle<'pin> {
 /// The installed documents for the independent Generate and Stream grants.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) struct LockedSavedLocalChatBundle<'pin> {
-    source: VerifiedSavedLocalChatBundle,
+    source: VerifiedOrdinarySavedBundle,
     routes: [Option<[LockedRegistryRoute<'pin>; 5]>; 2],
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// The exact installed source from which Launcher verified the saved local roles.
+/// Signed Bundle documents for the four independent ordinary Routing roles.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedAiRoutingBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    routes: [Option<[LockedRegistryRoute<'pin>; 4]>; 4],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// The exact installed source from which Launcher verified an ordinary saved route.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct VerifiedSavedLocalChatBundle {
+pub(crate) struct VerifiedOrdinarySavedBundle {
     application_root: PathBuf,
     bundle_root: PathBuf,
     bundle_lock_digest: Digest,
@@ -95,14 +103,33 @@ pub(crate) struct VerifiedSavedLocalChatBundle {
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-impl VerifiedSavedLocalChatBundle {
+impl VerifiedOrdinarySavedBundle {
+    fn new(sources: &NativeApplicationSources) -> Result<Self> {
+        Ok(Self {
+            application_root: sources.application_root.clone(),
+            bundle_root: sources.bundle_root.clone(),
+            bundle_lock_digest: Digest::parse(&sources.bundle_lock.digest)?,
+            documents: Vec::new(),
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture() -> Self {
+        Self {
+            application_root: PathBuf::new(),
+            bundle_root: PathBuf::new(),
+            bundle_lock_digest: Digest::hash(b"test"),
+            documents: Vec::new(),
+        }
+    }
+
     /// Require the same resolver-owned roots and lock that selected the verified files.
     pub(crate) fn require_source(&self, sources: &NativeApplicationSources) -> Result<()> {
         ensure!(
             self.application_root == sources.application_root
                 && self.bundle_root == sources.bundle_root
                 && self.bundle_lock_digest.as_str() == sources.bundle_lock.digest,
-            "signed local chat source differs from the admitted launch"
+            "signed ordinary saved source differs from the admitted launch"
         );
         Ok(())
     }
@@ -130,6 +157,41 @@ impl VerifiedSavedLocalChatBundle {
 }
 
 impl NativeApplicationSources {
+    /// Capture the original resolver's signed documents for every selected Routing role.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn ai_routing_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalAiRoutingSelection<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin>> {
+        let mut routes = [None, None, None, None];
+        for (locked, role) in routes.iter_mut().zip(OriginalModelResolveRole::ALL) {
+            let Some(pins) = selection.pins(role) else {
+                continue;
+            };
+            ensure!(
+                pins[0].caller_function_id() == self.authority.shell_provider_id
+                    && pins
+                        .windows(2)
+                        .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
+                "old AI Routing callers differ from the selected saved chain"
+            );
+            let [turn, orchestration, gateway, routing] = pins;
+            let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+            *locked = Some([
+                from_lock(turn)?,
+                from_lock(orchestration)?,
+                from_lock(gateway)?,
+                from_lock(routing)?,
+            ]);
+        }
+        Ok(LockedAiRoutingBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            routes,
+            budget: Arc::clone(budget),
+        })
+    }
+
     /// Capture the Bundle files already pinned by the original signed resolver.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn saved_local_chat_bundle<'pin>(
@@ -165,12 +227,7 @@ impl NativeApplicationSources {
             "old local chat has no selected role"
         );
         Ok(LockedSavedLocalChatBundle {
-            source: VerifiedSavedLocalChatBundle {
-                application_root: self.application_root.clone(),
-                bundle_root: self.bundle_root.clone(),
-                bundle_lock_digest: Digest::parse(&self.bundle_lock.digest)?,
-                documents: Vec::new(),
-            },
+            source: VerifiedOrdinarySavedBundle::new(self)?,
             routes,
             budget: Arc::clone(budget),
         })
@@ -606,9 +663,9 @@ impl LockedSavedOrchestrationBundle<'_> {
 impl LockedSavedLocalChatBundle<'_> {
     /// Verify each role against the same bytes for each of the five selected Packs.
     pub(crate) fn verify(
-        mut self,
-        mut checkpoint: impl FnMut() -> Result<()>,
-    ) -> Result<VerifiedSavedLocalChatBundle> {
+        self,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
         let effects = [
             "privileged",
             "pure",
@@ -616,31 +673,59 @@ impl LockedSavedLocalChatBundle<'_> {
             "privileged",
             "privileged",
         ];
+        self.source
+            .verify_routes(&self.routes, &self.budget, checkpoint, effects)
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedAiRoutingBundle<'_> {
+    /// Verify each role against the signed Turn, Orchestration, Gateway, and Routing Packs.
+    pub(crate) fn verify(
+        self,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        self.source.verify_routes(
+            &self.routes,
+            &self.budget,
+            checkpoint,
+            ["privileged", "pure", "privileged", "privileged"],
+        )
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl VerifiedOrdinarySavedBundle {
+    fn verify_routes<const N: usize>(
+        mut self,
+        routes: &[Option<[LockedRegistryRoute<'_>; N]>],
+        budget: &Arc<dyn AllocationBudget>,
+        mut checkpoint: impl FnMut() -> Result<()>,
+        effects: [&str; N],
+    ) -> Result<Self> {
         for (index, effect) in effects.into_iter().enumerate() {
             verify_locked_routes(
-                self.routes.iter().flatten().map(|routes| &routes[index]),
-                &self.source.bundle_root,
-                &self.budget,
+                routes.iter().flatten().map(|routes| &routes[index]),
+                &self.bundle_root,
+                budget,
                 &mut checkpoint,
                 effect,
             )?;
         }
         checkpoint()?;
-        let first = self
-            .routes
+        let first = routes
             .iter()
             .flatten()
             .next()
-            .context("local chat proof has no route")?;
-        self.source.documents.reserve(2 * first.len());
+            .context("ordinary saved proof has no route")?;
+        self.documents.reserve(2 * first.len());
         for route in first {
             for document in [&route.pack, &route.catalog] {
-                self.source
-                    .documents
+                self.documents
                     .push((document.path.as_str()?.to_owned(), document.digest.clone()));
             }
         }
-        Ok(self.source)
+        Ok(self)
     }
 }
 

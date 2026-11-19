@@ -17,10 +17,16 @@ ORIGINAL_PACKS = ("provider-registry", "model-registry", "saved-conversation")
 SETTLEMENT_PACK = "saved-turn-runtime"
 ORCHESTRATION_PACK = "saved-orchestration"
 PROVIDER_ADAPTER_PACK = "provider-adapter"
+AI_ROUTING_PACK = "ai-routing"
 SETTLEMENT_PACKS = (*ORIGINAL_PACKS, SETTLEMENT_PACK)
 ORCHESTRATION_PACKS = (*SETTLEMENT_PACKS, ORCHESTRATION_PACK)
-PACKS = (*ORCHESTRATION_PACKS, PROVIDER_ADAPTER_PACK)
-PINNED_VERSIONS = {ORCHESTRATION_PACK: "0.1.0", PROVIDER_ADAPTER_PACK: "0.3.0"}
+PROVIDER_ADAPTER_PACKS = (*ORCHESTRATION_PACKS, PROVIDER_ADAPTER_PACK)
+PACKS = (*PROVIDER_ADAPTER_PACKS, AI_ROUTING_PACK)
+PINNED_VERSIONS = {
+    ORCHESTRATION_PACK: "0.1.0",
+    PROVIDER_ADAPTER_PACK: "0.3.0",
+    AI_ROUTING_PACK: "0.1.0",
+}
 CORE_WIT = REPO / "crates/tobkiri-wit/wit/core-v1-2/core.wit"
 
 
@@ -86,8 +92,12 @@ def main() -> None:
     args = parser.parse_args()
     selected = set(args.pack or ORIGINAL_PACKS)
     receipt_version = 1
-    if PROVIDER_ADAPTER_PACK in selected:
+    if AI_ROUTING_PACK in selected:
         if selected != set(PACKS):
+            parser.error("the ai-routing Pack requires the full Registry Pack set")
+        receipt_version = 5
+    elif PROVIDER_ADAPTER_PACK in selected:
+        if selected != set(PROVIDER_ADAPTER_PACKS):
             parser.error("the provider-adapter Pack requires the full Registry Pack set")
         receipt_version = 4
     elif ORCHESTRATION_PACK in selected:

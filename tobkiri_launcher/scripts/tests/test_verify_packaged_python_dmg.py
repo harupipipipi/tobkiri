@@ -469,6 +469,8 @@ def _write_registry_packs(
         pack_ids.append("local.saved-orchestration")
     if version >= 4:
         pack_ids.append("local.provider-adapter")
+    if version >= 5:
+        pack_ids.append("local.ai-routing")
     for pack_id in pack_ids:
         archive = f"{pack_id}.tpk"
         contents = f"fixture archive for {pack_id}".encode()
@@ -495,6 +497,7 @@ def _write_registry_packs(
         pytest.param((4, {"adapter_version": "0.1.0"}), id="with-provider-adapter-0.1.0"),
         pytest.param((4, {"adapter_version": "0.2.0"}), id="with-provider-adapter-0.2.0"),
         pytest.param((4, {}), id="with-provider-adapter-0.3.0"),
+        pytest.param((5, {}), id="with-ai-routing"),
     ],
 )
 def registry_mount(
@@ -683,7 +686,10 @@ def test_registry_receipt_version_requires_its_exact_pack_set(
 
 @pytest.mark.parametrize(
     ("receipt_version", "unapproved"),
-    [(3, "0.1.1"), (3, "0.2.0"), (4, "0.1.1"), (4, "0.2.1"), (4, "0.3.1")],
+    [
+        (3, "0.1.1"), (3, "0.2.0"), (4, "0.1.1"), (4, "0.2.1"), (4, "0.3.1"),
+        (5, "0.1.1"), (5, "0.2.0"),
+    ],
 )
 def test_registry_receipt_rejects_unapproved_pack_releases(
     tmp_path: Path, receipt_version: int, unapproved: str,

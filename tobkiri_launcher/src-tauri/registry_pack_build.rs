@@ -123,10 +123,11 @@ mod unix {
     mod tests {
         use super::super::super::raw_byte_digest;
         use super::super::super::registry_pack_receipt::{
-            verify_installed, verify_installed_with_conversation, verify_installed_with_model,
-            verify_installed_with_orchestration, verify_installed_with_orchestration_archives,
-            verify_installed_with_provider, verify_installed_with_provider_adapter,
-            verify_installed_with_provider_and_model, verify_installed_with_settlement, Pack,
+            verify_installed, verify_installed_with_ai_routing, verify_installed_with_conversation,
+            verify_installed_with_model, verify_installed_with_orchestration,
+            verify_installed_with_orchestration_archives, verify_installed_with_provider,
+            verify_installed_with_provider_adapter, verify_installed_with_provider_and_model,
+            verify_installed_with_settlement, Pack, AI_ROUTING_PACK_ID, AI_ROUTING_RECEIPT_FORMAT,
             ARCHIVE_LIMIT, ORCHESTRATION_PACK_ID, ORCHESTRATION_RECEIPT_FORMAT, PACK_IDS,
             PROVIDER_ADAPTER_PACK_ID, PROVIDER_ADAPTER_RECEIPT_FORMAT, RECEIPT_FORMAT,
             SETTLEMENT_PACK_ID, SETTLEMENT_RECEIPT_FORMAT,
@@ -648,6 +649,87 @@ mod unix {
                     .unwrap_err();
                 assert!(error.to_string().contains(PROVIDER_ADAPTER_PACK_ID));
             }
+            Ok(())
+        }
+
+        #[test]
+        fn v5_receipts_require_the_pinned_ai_routing_archive() -> io::Result<()> {
+            let ids = PACK_IDS.into_iter().chain([
+                SETTLEMENT_PACK_ID,
+                ORCHESTRATION_PACK_ID,
+                PROVIDER_ADAPTER_PACK_ID,
+                AI_ROUTING_PACK_ID,
+            ]);
+            for (format, count) in [
+                (RECEIPT_FORMAT, 3),
+                (SETTLEMENT_RECEIPT_FORMAT, 4),
+                (ORCHESTRATION_RECEIPT_FORMAT, 5),
+                (PROVIDER_ADAPTER_RECEIPT_FORMAT, 6),
+            ] {
+                let fixture = Fixture::with_packs(format, ids.clone().take(count))?;
+                let input = fixture.write_receipt(&fixture.document)?;
+                input.stage(&fixture.stage)?;
+                assert_eq!(
+                    verify_installed_with_ai_routing(
+                        &fixture.stage,
+                        input.receipt_sha256(),
+                        || Ok(()),
+                        |_, _| panic!("the receipt has no AI Routing archive"),
+                    )?,
+                    None::<()>,
+                );
+            }
+
+            let fixture = Fixture::with_packs(AI_ROUTING_RECEIPT_FORMAT, ids)?;
+            let mut receipt = fixture.document.clone();
+            receipt["packs"][5]["version"] = json!("0.3.0");
+            let input = fixture.write_receipt(&receipt)?;
+            input.stage(&fixture.stage)?;
+            let pin = input.receipt_sha256();
+            let inspect = || {
+                verify_installed_with_ai_routing(
+                    &fixture.stage,
+                    pin,
+                    || Ok(()),
+                    |pack, archive| {
+                        assert_eq!(pack.id(), AI_ROUTING_PACK_ID);
+                        assert_eq!(pack.version(), "0.1.0");
+                        let mut prefix = [0; 6];
+                        archive.read_exact(&mut prefix)?;
+                        Ok(prefix)
+                    },
+                )
+            };
+            assert_eq!(inspect()?, Some(*b"local."));
+
+            let archive = fixture
+                .stage
+                .join(DIRECTORY)
+                .join(format!("{AI_ROUTING_PACK_ID}.tpk"));
+            fs::write(&archive, b"local.ai-routinG")?;
+            assert!(inspect().is_err());
+            assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
+            fs::remove_file(&archive)?;
+            assert!(inspect().is_err());
+
+            let mut downgraded = receipt.clone();
+            downgraded["format"] = json!(PROVIDER_ADAPTER_RECEIPT_FORMAT);
+            assert!(fixture
+                .write_receipt(&downgraded)?
+                .stage(&fixture.root)
+                .is_err());
+            let mut reordered = receipt.clone();
+            reordered["packs"].as_array_mut().unwrap().swap(5, 6);
+            assert!(fixture
+                .write_receipt(&reordered)?
+                .stage(&fixture.root)
+                .is_err());
+            receipt["packs"][6]["version"] = json!("0.1.1");
+            let error = fixture
+                .write_receipt(&receipt)?
+                .stage(&fixture.root)
+                .unwrap_err();
+            assert!(error.to_string().contains(AI_ROUTING_PACK_ID));
             Ok(())
         }
 

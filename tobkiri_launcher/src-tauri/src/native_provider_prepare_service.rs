@@ -28,6 +28,7 @@ pub(crate) const TURN_READ_ENV: &str = "TOBKIRI_NATIVE_SAVED_TURN_READ";
 pub(crate) const TURN_START_ENV: &str = "TOBKIRI_NATIVE_SAVED_TURN_START";
 pub(crate) const SAVED_ORCHESTRATION_ENV: &str = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION";
 pub(crate) const SAVED_LOCAL_CHAT_ENV: &str = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT";
+pub(crate) const AI_ROUTING_ENV: &str = "TOBKIRI_NATIVE_AI_ROUTING";
 
 // The original production Broker can execute at most sixteen requests.
 // Keep their socket handlers bounded while the native Jobs own actual admission.

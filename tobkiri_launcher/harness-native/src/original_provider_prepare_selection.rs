@@ -210,6 +210,15 @@ const GATEWAY_QUOTE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.route-quote"
 const GATEWAY_GENERATE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.generate";
 const GATEWAY_STREAM_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.stream";
 
+static GATEWAY_QUOTE: Route = Route {
+    pack: "rumi_ai_gateway_pack",
+    function: GATEWAY_QUOTE_CALLER,
+    contract: "tobkiri.resource.ai.route.quote.v1",
+    operation: GATEWAY_QUOTE_CALLER,
+    variant: "rumi_ai_gateway_pack.ai-gateway.route-quote.python",
+    execution: PYTHON_HOST,
+};
+
 static GATEWAY_GENERATE: Route = Route {
     pack: "rumi_ai_gateway_pack",
     function: GATEWAY_GENERATE_CALLER,
@@ -226,6 +235,20 @@ static GATEWAY_STREAM: Route = Route {
     operation: GATEWAY_STREAM_CALLER,
     variant: "rumi_ai_gateway_pack.ai-gateway.stream.python",
     execution: PYTHON_HOST,
+};
+
+static AI_ROUTING_GENERATE: Route = Route {
+    pack: "rumi_ai_routing_pack",
+    function: "rumi_ai_routing_pack.ai-routing.default",
+    contract: "tobkiri.service.ai.route.v1",
+    operation: "rumi_ai_routing_pack.ai-route.generate",
+    variant: "rumi_ai_routing_pack.ai-routing.default.python",
+    execution: PYTHON_HOST,
+};
+
+static AI_ROUTING_STREAM: Route = Route {
+    operation: "rumi_ai_routing_pack.ai-route.stream",
+    ..AI_ROUTING_GENERATE
 };
 
 static PROVIDER_GENERATE: Route = Route {
@@ -804,12 +827,28 @@ pub enum OriginalModelResolveRole {
 }
 
 impl OriginalModelResolveRole {
+    /// The four Gateway caller and operation combinations on the ordinary saved path.
+    pub const ALL: [Self; 4] = [
+        Self::QuoteGenerate,
+        Self::QuoteStream,
+        Self::Generate,
+        Self::Stream,
+    ];
+
     const fn index(self) -> usize {
         match self {
             Self::QuoteGenerate => 0,
             Self::QuoteStream => 1,
             Self::Generate => 2,
             Self::Stream => 3,
+        }
+    }
+
+    const fn gateway_route(self) -> &'static Route {
+        match self {
+            Self::QuoteGenerate | Self::QuoteStream => &GATEWAY_QUOTE,
+            Self::Generate => &GATEWAY_GENERATE,
+            Self::Stream => &GATEWAY_STREAM,
         }
     }
 }
@@ -840,6 +879,32 @@ impl<'a> OriginalModelResolveSelection<'a> {
     /// The exact signed grant for this Gateway caller and child operation.
     pub fn pin(&self, role: OriginalModelResolveRole) -> Option<&OriginalRoutePin> {
         self.pins[role.index()].as_ref()
+    }
+}
+
+/// Signed AI Routing grants on the ordinary saved path, selected independently by Gateway role.
+pub struct OriginalAiRoutingSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    routes: [Option<[OriginalRoutePin; 4]>; 4],
+}
+
+impl<'a> OriginalAiRoutingSelection<'a> {
+    /// Capture complete Shell, Turn, Orchestration, and Gateway grants for each available role.
+    /// Verify their Pack and executable pins against the signed catalog before using them.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        let routes = select_ai_routing_records(active.records(), budget)?;
+        Ok(routes.iter().any(Option::is_some).then_some(Self {
+            _active: active,
+            routes,
+        }))
+    }
+
+    /// Ordered grants from Shell to the selected original Routing operation.
+    pub fn pins(&self, role: OriginalModelResolveRole) -> Option<&[OriginalRoutePin; 4]> {
+        self.routes[role.index()].as_ref()
     }
 }
 
@@ -1064,16 +1129,52 @@ fn select_model_resolve_records(
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(pins);
     };
-    use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
-    for (role, caller, route) in [
-        (QuoteGenerate, GATEWAY_QUOTE_CALLER, &MODEL_RESOLVE_GENERATE),
-        (QuoteStream, GATEWAY_QUOTE_CALLER, &MODEL_RESOLVE_STREAM),
-        (Generate, GATEWAY_GENERATE_CALLER, &MODEL_RESOLVE_GENERATE),
-        (Stream, GATEWAY_STREAM_CALLER, &MODEL_RESOLVE_STREAM),
-    ] {
-        pins[role.index()] = records.select_route(caller, route)?;
+    for role in OriginalModelResolveRole::ALL {
+        let route = match role {
+            OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::Generate => {
+                &MODEL_RESOLVE_GENERATE
+            }
+            OriginalModelResolveRole::QuoteStream | OriginalModelResolveRole::Stream => {
+                &MODEL_RESOLVE_STREAM
+            }
+        };
+        pins[role.index()] = records.select_route(role.gateway_route().function, route)?;
     }
     Ok(pins)
+}
+
+fn select_ai_routing_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<[Option<[OriginalRoutePin; 4]>; 4]> {
+    let mut routes = [None, None, None, None];
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(routes);
+    };
+    for role in OriginalModelResolveRole::ALL {
+        let Some([turn, orchestration]) =
+            select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)?
+        else {
+            return Ok(routes);
+        };
+        let Some(gateway) =
+            records.select_route(orchestration.function_id(), role.gateway_route())?
+        else {
+            continue;
+        };
+        let routing = match role {
+            OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::Generate => {
+                &AI_ROUTING_GENERATE
+            }
+            OriginalModelResolveRole::QuoteStream | OriginalModelResolveRole::Stream => {
+                &AI_ROUTING_STREAM
+            }
+        };
+        routes[role.index()] = records
+            .select_route(gateway.function_id(), routing)?
+            .map(|routing| [turn, orchestration, gateway, routing]);
+    }
+    Ok(routes)
 }
 
 fn selected_shell_records<'a>(
@@ -1642,6 +1743,41 @@ mod tests {
                 "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
                 "sha256:ba31ddc2fe6a194376c0130d1cce5b2bd6af8c36c5c7353584443247786bf883",
             ),
+            (
+                &GATEWAY_QUOTE,
+                SAVED_ORCHESTRATION_CALLER,
+                "authority-ref:10f5f34aede0c4c5358a45de469203685618b642f69c6862fd437bc896afee88",
+                "sha256:fd30d5ee7dc57aae6f8a968a52015109157bef92bc516ec83b53ec3edaf56038",
+                "sha256:88f5ab50ea4d55c1c824fd011bbf1856582fef634a19983f163bc14da7b760c8",
+            ),
+            (
+                &AI_ROUTING_GENERATE,
+                GATEWAY_QUOTE_CALLER,
+                "authority-ref:85be80c40b116f74bf1f10c7278270e516401ebfba0dd7537e2590872c9f4b4f",
+                "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+                "sha256:113b941fe721b9bb4036199df0dcb16d73222867a621820fe246d1214249eff7",
+            ),
+            (
+                &AI_ROUTING_STREAM,
+                GATEWAY_QUOTE_CALLER,
+                "authority-ref:6aff2449611187e4113a479af443f7df8100c5b7f4edc07b26ab44566c3e70aa",
+                "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+                "sha256:962c6a7307c5fb116de10536d02bbb37b9b504dc28cfa016cafeb0cb797a215e",
+            ),
+            (
+                &AI_ROUTING_GENERATE,
+                GATEWAY_GENERATE_CALLER,
+                "authority-ref:1050c40bbacd533e78039af2311e7651bca548ca36edc52f0189e077d1fc93f1",
+                "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+                "sha256:113b941fe721b9bb4036199df0dcb16d73222867a621820fe246d1214249eff7",
+            ),
+            (
+                &AI_ROUTING_STREAM,
+                GATEWAY_STREAM_CALLER,
+                "authority-ref:1a847c2f3b3ba831ddab7efd0869b725268fc9e9f849a5fe4fb41d34a5aef428",
+                "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+                "sha256:962c6a7307c5fb116de10536d02bbb37b9b504dc28cfa016cafeb0cb797a215e",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -1808,6 +1944,8 @@ mod tests {
     const TURN_LIFECYCLE_ROW: usize = 21;
     const LOCAL_CHAT_GENERATE_ROWS: [usize; 3] = [22, 23, 24];
     const LOCAL_CHAT_STREAM_ROWS: [usize; 3] = [25, 26, 27];
+    const GATEWAY_QUOTE_ROW: usize = 28;
+    const AI_ROUTING_ROWS: std::ops::Range<usize> = 29..33;
 
     fn select_saved_local_chat(
         records: &Value,
@@ -1816,6 +1954,95 @@ mod tests {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
         select_saved_local_chat_records((&profile, &lock, &plan), &budget, role)
+    }
+
+    fn select_ai_routing(records: &Value) -> Result<[Option<[OriginalRoutePin; 4]>; 4]> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_ai_routing_records((&profile, &lock, &plan), &budget)
+    }
+
+    #[test]
+    fn ai_routing_selects_only_the_exact_ordinary_gateway_chain_for_each_role() {
+        let mut fixture = records();
+        for row in [LOCAL_CHAT_STREAM_ROWS, LOCAL_CHAT_GENERATE_ROWS]
+            .into_iter()
+            .flat_map(|[_, adapter, registry]| [registry, adapter])
+        {
+            fixture["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            fixture["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+        }
+        // Provider Adapter and Provider Registry grants are separate from Routing.
+        let roles = select_ai_routing(&fixture).unwrap();
+        let mut references = std::collections::BTreeSet::new();
+        for (role, routing_op) in [
+            (
+                OriginalModelResolveRole::QuoteGenerate,
+                AI_ROUTING_GENERATE.operation,
+            ),
+            (
+                OriginalModelResolveRole::QuoteStream,
+                AI_ROUTING_STREAM.operation,
+            ),
+            (
+                OriginalModelResolveRole::Generate,
+                AI_ROUTING_GENERATE.operation,
+            ),
+            (
+                OriginalModelResolveRole::Stream,
+                AI_ROUTING_STREAM.operation,
+            ),
+        ] {
+            let [turn, orchestration, gateway, routing] = roles[role.index()].as_ref().unwrap();
+            assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(turn.function_id(), SAVED_TURN.function);
+            assert_eq!(orchestration.caller_function_id(), turn.function_id());
+            assert_eq!(orchestration.function_id(), SAVED_ORCHESTRATION.function);
+            assert_eq!(gateway.caller_function_id(), orchestration.function_id());
+            assert_eq!(gateway.operation_id(), role.gateway_route().operation);
+            assert_eq!(routing.caller_function_id(), gateway.function_id());
+            assert_eq!(routing.function_id(), AI_ROUTING_GENERATE.function);
+            assert_eq!(routing.contract_id(), AI_ROUTING_GENERATE.contract);
+            assert_eq!(routing.operation_id(), routing_op);
+            assert!(references.insert(routing.authority_reference()));
+        }
+    }
+
+    #[test]
+    fn ai_routing_denies_interactive_grants_and_detects_inconsistent_records() {
+        let fixture = records();
+        for (row, denied) in [
+            (SAVED_TURN_SETTLEMENT_ROW, [true, true, true, true]),
+            (SAVED_ORCHESTRATION_ROW, [true, true, true, true]),
+            (GATEWAY_QUOTE_ROW, [true, true, false, false]),
+        ]
+        .into_iter()
+        .chain(
+            AI_ROUTING_ROWS
+                .enumerate()
+                .map(|(role_index, row)| (row, std::array::from_fn(|index| index == role_index))),
+        ) {
+            let mut candidate = fixture.clone();
+            candidate["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            assert!(matches!(
+                select_ai_routing(&candidate),
+                Err(Inconsistent(_))
+            ));
+            candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            assert_eq!(
+                select_ai_routing(&candidate)
+                    .unwrap()
+                    .map(|pins| pins.is_none()),
+                denied
+            );
+        }
     }
 
     #[test]

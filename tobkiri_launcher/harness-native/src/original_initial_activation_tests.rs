@@ -269,6 +269,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             check_saved_turn_start_grants(&observed, budget);
             check_conversation_append_grants(&observed, budget);
             check_model_resolve_grants(&observed, budget);
+            check_ai_routing_grants(&observed, budget);
             assert_eq!(
                 observed
                     .identity()
@@ -717,6 +718,58 @@ fn check_model_resolve_grants(
         assert_eq!(pin.operation_id(), operation);
         assert_eq!(pin.requested_scope_digest(), scope);
         assert!(authorities.insert(pin.authority_reference()));
+    }
+}
+
+fn check_ai_routing_grants(
+    observed: &crate::OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+) {
+    use crate::OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
+    const ROUTE_GENERATE: &str = "rumi_ai_routing_pack.ai-route.generate";
+    const ROUTE_STREAM: &str = "rumi_ai_routing_pack.ai-route.stream";
+    const QUOTE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.route-quote";
+    let routing = crate::OriginalAiRoutingSelection::select(observed, budget)
+        .expect("authenticate the original ordinary AI Routing chains")
+        .expect("confirmed Profile selects AI Routing");
+    let mut authorities = std::collections::BTreeSet::new();
+    for (role, caller, operation) in [
+        (QuoteGenerate, QUOTE_CALLER, ROUTE_GENERATE),
+        (QuoteStream, QUOTE_CALLER, ROUTE_STREAM),
+        (
+            Generate,
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+            ROUTE_GENERATE,
+        ),
+        (
+            Stream,
+            "rumi_ai_gateway_pack.ai-gateway.stream",
+            ROUTE_STREAM,
+        ),
+    ] {
+        let [turn, orchestration, gateway, route] = routing
+            .pins(role)
+            .expect("each role has its own full chain");
+        assert_eq!(turn.caller_function_id(), "shell.tauri.default");
+        assert_eq!(
+            turn.function_id(),
+            "rumi_turn_runtime_pack.turn-runtime.saved"
+        );
+        assert_eq!(orchestration.caller_function_id(), turn.function_id());
+        assert_eq!(
+            orchestration.function_id(),
+            "tobkiri_conversation_orchestration_pack.saved"
+        );
+        assert_eq!(gateway.caller_function_id(), orchestration.function_id());
+        assert_eq!(gateway.function_id(), caller);
+        assert_eq!(route.caller_function_id(), gateway.function_id());
+        assert_eq!(
+            route.function_id(),
+            "rumi_ai_routing_pack.ai-routing.default"
+        );
+        assert_eq!(route.contract_id(), "tobkiri.service.ai.route.v1");
+        assert_eq!(route.operation_id(), operation);
+        assert!(authorities.insert(route.authority_reference()));
     }
 }
 

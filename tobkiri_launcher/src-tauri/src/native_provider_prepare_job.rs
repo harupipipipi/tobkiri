@@ -39,13 +39,14 @@ use tobkiri_wasm::{LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHA
 use super::{
     caught,
     launch_metadata::{
-        reacquire_conversation_append_pack, reacquire_conversation_confirmation_pack,
-        reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
-        reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
-        reacquire_saved_receipt_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
-        reacquire_turn_start_pack, saved_local_chat_dispatch_bundle, ConversationReadCaller,
-        SettlementCaller, VerifiedRegistryLaunch, PROVIDER_ADAPTER_OPERATION,
+        reacquire_ai_routing_pack, reacquire_conversation_append_pack,
+        reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
+        reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
+        reacquire_provider_prepare_pack, reacquire_saved_local_chat_adapter,
+        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack, reacquire_turn_read_pack,
+        reacquire_turn_settlement_pack, reacquire_turn_start_pack,
+        saved_local_chat_dispatch_bundle, ConversationReadCaller, SettlementCaller,
+        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, PROVIDER_ADAPTER_OPERATION,
         PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
         REGISTRY_VERIFICATION_BYTES,
@@ -75,6 +76,8 @@ pub(crate) const TURN_READ_REPLY_LIMIT: usize = 1024 * 1024;
 pub(crate) const TURN_START_REPLY_LIMIT: usize = TURN_READ_REPLY_LIMIT + 128;
 /// Maximum original saved-orchestration input and result JSON.
 pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
+/// Maximum original Gateway routing input and result JSON.
+pub(crate) const AI_ROUTING_FRAME_LIMIT: usize = 1024 * 1024;
 
 /// Fixed operations on the original saved Turn owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,6 +139,10 @@ pub(crate) enum NativeRegistryRequest {
     SavedOrchestration {
         input: Vec<u8>,
     },
+    AiRouting {
+        role: OriginalModelResolveRole,
+        input: Vec<u8>,
+    },
     SavedLocalChat {
         role: OriginalSavedLocalChatRole,
         connection_id: String,
@@ -165,6 +172,7 @@ impl NativeRegistryRequest {
             Self::TurnStart { .. } => proof.permits_turn_start(),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
+            Self::AiRouting { role, .. } => proof.permits_ai_routing(*role),
             Self::SavedLocalChat { role, .. } => proof.permits_saved_local_chat(*role),
         }
     }
@@ -208,11 +216,16 @@ impl NativeRegistryRequest {
                 );
                 return Ok(request.capacity());
             }
-            Self::SavedOrchestration { input } => {
+            Self::SavedOrchestration { input } | Self::AiRouting { input, .. } => {
+                let limit = if matches!(self, Self::AiRouting { .. }) {
+                    AI_ROUTING_FRAME_LIMIT
+                } else {
+                    SAVED_ORCHESTRATION_FRAME_LIMIT
+                };
                 if input.is_empty() {
                     return Err(SavedOrchestrationStepError::Invalid.into());
                 }
-                if input.capacity() > SAVED_ORCHESTRATION_FRAME_LIMIT {
+                if input.capacity() > limit {
                     return Err(SavedOrchestrationStepError::Capacity.into());
                 }
                 return Ok(input.capacity());
@@ -371,6 +384,18 @@ impl std::fmt::Display for SavedLocalChatRequiresLegacyRequest {
 }
 
 impl std::error::Error for SavedLocalChatRequiresLegacyRequest {}
+
+/// The read-only Routing Pack declined a representation before returning output.
+#[derive(Debug)]
+pub(crate) struct AiRoutingRequiresLegacyCodec;
+
+impl std::fmt::Display for AiRoutingRequiresLegacyCodec {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("AI routing requires the original codec")
+    }
+}
+
+impl std::error::Error for AiRoutingRequiresLegacyCodec {}
 
 /// A running Provider can narrow its Host deadline when the Core begins.
 pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
@@ -1099,7 +1124,46 @@ async fn run(
                         .context("saved orchestration input funding is missing")?;
                     let output =
                         invoke_original_saved_orchestration_port(port, input, funding).await?;
-                    return decode_saved_orchestration_reply(output.as_str(), &graph);
+                    return decode_bounded_data_reply(
+                        output.as_str(),
+                        SAVED_ORCHESTRATION_FRAME_LIMIT,
+                        &graph,
+                    );
+                }
+                NativeRegistryRequest::AiRouting { role, input } => {
+                    let pack = reacquire_ai_routing_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        role,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &ShapeRef::parse(AI_ROUTING_SHAPE)?,
+                            &OpName::parse(AI_ROUTING_OPERATION)?,
+                            &profile,
+                            execution_deadline,
+                            0,
+                        )
+                        .await?;
+                    revalidate()?;
+                    let funding = input_funding
+                        .take()
+                        .context("AI routing input funding is missing")?;
+                    let output =
+                        invoke_original_saved_orchestration_port(port, input, funding).await?;
+                    revalidate()?;
+                    if output.as_str().is_empty() {
+                        return Err(AiRoutingRequiresLegacyCodec.into());
+                    }
+                    return decode_bounded_data_reply(
+                        output.as_str(),
+                        AI_ROUTING_FRAME_LIMIT,
+                        &graph,
+                    );
                 }
                 NativeRegistryRequest::SavedLocalChat {
                     role,
@@ -1455,18 +1519,19 @@ fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
     }
 }
 
-fn decode_saved_orchestration_reply(
+fn decode_bounded_data_reply(
     output: &str,
+    limit: usize,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<PreparedReply> {
-    if output.len() > SAVED_ORCHESTRATION_FRAME_LIMIT {
+    if output.len() > limit {
         return Err(SavedOrchestrationStepError::Capacity.into());
     }
     let raw: &RawValue =
-        serde_json::from_str(output).context("saved orchestration port returned invalid JSON")?;
+        serde_json::from_str(output).context("native DATA port returned invalid JSON")?;
     ensure!(
         raw.get().starts_with('{'),
-        "saved orchestration port returned a non-object result"
+        "native DATA port returned a non-object result"
     );
     let wire = CoreBuffer::copy_from(output.as_bytes(), budget)
         .map_err(|_| SavedOrchestrationStepError::Capacity)?;
@@ -1938,17 +2003,23 @@ mod tests {
     fn saved_orchestration_returns_only_bounded_original_object_bytes() {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let output = r#" {"kind":"intent", "sample":"日本語"} "#;
-        let reply = decode_saved_orchestration_reply(output, &budget).unwrap();
+        let reply =
+            decode_bounded_data_reply(output, SAVED_ORCHESTRATION_FRAME_LIMIT, &budget).unwrap();
         assert_eq!(reply.wire.as_bytes(), output.as_bytes());
         assert!(reply.document.is_none());
         for invalid in ["null", "[]", "{broken}", "{} {}"] {
-            assert!(decode_saved_orchestration_reply(invalid, &budget).is_err());
+            assert!(
+                decode_bounded_data_reply(invalid, SAVED_ORCHESTRATION_FRAME_LIMIT, &budget)
+                    .is_err()
+            );
         }
         let oversized = format!(
             "{{\"data\":\"{}\"}}",
             "a".repeat(SAVED_ORCHESTRATION_FRAME_LIMIT)
         );
-        let Err(error) = decode_saved_orchestration_reply(&oversized, &budget) else {
+        let Err(error) =
+            decode_bounded_data_reply(&oversized, SAVED_ORCHESTRATION_FRAME_LIMIT, &budget)
+        else {
             panic!("accepted an oversized result");
         };
         assert_eq!(

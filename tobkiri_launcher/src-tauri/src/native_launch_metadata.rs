@@ -17,10 +17,11 @@ use tobkiri_core::{
 use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
 use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
-    OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
-    OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
-    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin, OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole,
+    OriginalAiRoutingSelection, OriginalConversationAppendChoice,
+    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
+    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole,
     OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
     OriginalSavedTurnStartChoice,
 };
@@ -38,7 +39,7 @@ use super::{
 use crate::{
     defaultspack_authority::{
         require_current_launch_identity, NativeApplicationSources, NativeSourceRoot,
-        SignedApplicationResolver, VerifiedSavedLocalChatBundle, VerifiedTurnStartBundle,
+        SignedApplicationResolver, VerifiedOrdinarySavedBundle, VerifiedTurnStartBundle,
     },
     dock_registration::{
         assemble_defaultspack_desktop_metadata, DefaultspackDesktopMetadata, LaunchMetadataUse,
@@ -66,6 +67,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     pub(crate) model_settings: Option<VerifiedModelSettingsSource>,
     pub(crate) model_save: Option<VerifiedModelSaveSource>,
     model_resolve: Option<VerifiedModelResolveSource>,
+    ai_routing: Option<VerifiedAiRoutingSource>,
     conversation: Option<VerifiedConversationSource>,
     turn: Option<VerifiedTurnSource>,
     orchestration: Option<VerifiedSavedOrchestrationSource>,
@@ -110,6 +112,13 @@ impl VerifiedRegistryLaunch {
     /// Require the Gateway role's own signed grant against the verified Model Pack.
     pub(crate) fn permits_model_resolve(&self, role: OriginalModelResolveRole) -> bool {
         self.model_resolve
+            .as_ref()
+            .is_some_and(|source| source.permits(role))
+    }
+
+    /// Require the Gateway role's own complete ordinary saved chain and verified Routing Pack.
+    pub(crate) fn permits_ai_routing(&self, role: OriginalModelResolveRole) -> bool {
+        self.ai_routing
             .as_ref()
             .is_some_and(|source| source.permits(role))
     }
@@ -211,6 +220,25 @@ impl VerifiedModelResolveSource {
     }
 }
 
+/// The original ordinary saved grants and the receipt identity of their Routing replacement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedAiRoutingSource {
+    bundle: VerifiedOrdinarySavedBundle,
+    roles: [Option<(OriginalModelResolveRole, [VerifiedLegacyRoutePin; 4])>; 4],
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
+}
+
+impl VerifiedAiRoutingSource {
+    fn permits(&self, role: OriginalModelResolveRole) -> bool {
+        self.roles
+            .iter()
+            .flatten()
+            .any(|(granted, _)| *granted == role)
+    }
+}
+
 /// Separate signed conversation-owner edges and the receipt identity they share.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedConversationSource {
@@ -275,7 +303,7 @@ struct VerifiedSavedOrchestrationSource {
 /// The exact installed Bundle and independent signed roles available for local chat.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedSavedLocalChatSource {
-    bundle: VerifiedSavedLocalChatBundle,
+    bundle: VerifiedOrdinarySavedBundle,
     roles: [Option<(OriginalSavedLocalChatRole, [VerifiedLegacyRoutePin; 5])>; 2],
     adapter: Option<VerifiedProviderAdapterSource>,
 }
@@ -344,6 +372,7 @@ impl VerifiedRegistryLaunch {
             model_settings: None,
             model_save: None,
             model_resolve: None,
+            ai_routing: None,
             conversation: None,
             turn: None,
             orchestration: None,
@@ -368,6 +397,7 @@ impl VerifiedRegistryLaunch {
             }),
             model_save: None,
             model_resolve: None,
+            ai_routing: None,
             conversation: None,
             turn: None,
             orchestration: None,
@@ -393,6 +423,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             model_resolve: None,
+            ai_routing: None,
             conversation: None,
             turn: None,
             orchestration: None,
@@ -423,11 +454,36 @@ impl VerifiedRegistryLaunch {
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
             }),
+            ai_routing: None,
             conversation: None,
             turn: None,
             orchestration: None,
             local_chat: None,
         }
+    }
+
+    pub(crate) fn test_ai_routing_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalModelResolveRole,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
+        proof.provider_prepare = None;
+        proof.ai_routing = Some(VerifiedAiRoutingSource {
+            bundle: VerifiedOrdinarySavedBundle::fixture(),
+            roles: OriginalModelResolveRole::ALL.map(|granted| {
+                (granted == role).then(|| {
+                    (
+                        role,
+                        std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+                    )
+                })
+            }),
+            archive_sha256: "sha256:archive".into(),
+            archive_bytes: 512,
+            manifest_sha256: "sha256:manifest".into(),
+        });
+        proof
     }
 
     pub(crate) fn test_saved_receipt_proof(
@@ -443,6 +499,7 @@ impl VerifiedRegistryLaunch {
             model_settings: None,
             model_save: None,
             model_resolve: None,
+            ai_routing: None,
             conversation: Some(VerifiedConversationSource {
                 shell: None,
                 saved_turn: None,
@@ -506,6 +563,7 @@ impl VerifiedRegistryLaunch {
             model_settings: None,
             model_save: None,
             model_resolve: None,
+            ai_routing: None,
             conversation: None,
             turn: Some(VerifiedTurnSource {
                 settlement: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
@@ -882,7 +940,7 @@ impl LaunchActivationObserver<'_> {
             locked.verify(checkpoint)?;
         }
         let verified_registry_pack_evidence =
-            registry_pack_receipt::verify_installed_with_provider_adapter_archives(
+            registry_pack_receipt::verify_installed_with_ai_routing_archives(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
                 || checkpoint().map_err(io::Error::other),
@@ -937,10 +995,7 @@ impl LaunchActivationObserver<'_> {
                         .map(|selection| {
                             verify_legacy_model_resolve_declaration(&pack)
                                 .map_err(io::Error::other)?;
-                            use OriginalModelResolveRole::{
-                                Generate, QuoteGenerate, QuoteStream, Stream,
-                            };
-                            let roles = [QuoteGenerate, QuoteStream, Generate, Stream]
+                            let roles = OriginalModelResolveRole::ALL
                                 .map(|role| selection.pin(role).map(|pin| (role, pin.into())));
                             Ok::<_, io::Error>(VerifiedModelResolveSource {
                                 roles,
@@ -1028,6 +1083,10 @@ impl LaunchActivationObserver<'_> {
                         manifest_sha256: receipt.manifest_sha256().to_owned(),
                     })
                 },
+                |receipt, input| {
+                    verify_ai_routing_source(inspection, active, receipt, input, checkpoint)
+                        .map_err(io::Error::other)
+                },
             )
             .context("bundled Registry Pack verification failed during Launch")?;
         let (
@@ -1037,15 +1096,18 @@ impl LaunchActivationObserver<'_> {
             turn,
             orchestration,
             adapter,
+            ai_routing,
         ) = verified_registry_pack_evidence;
         let turn = turn.flatten();
         let orchestration = orchestration.flatten();
+        let ai_routing = ai_routing.flatten();
         let local_chat = verify_saved_local_chat_source(inspection, active, adapter, checkpoint)?;
         if !has_existing_grants
             && conversation.is_none()
             && turn.is_none()
             && orchestration.is_none()
             && local_chat.is_none()
+            && ai_routing.is_none()
         {
             return Ok(None);
         }
@@ -1066,6 +1128,12 @@ impl LaunchActivationObserver<'_> {
         }
         if model_resolve.is_some() {
             log::info!("verified selected old Model Resolve grants and their bundled Wasm replacement for this activation");
+        }
+        if let Some(source) = &ai_routing {
+            log::info!(
+                "verified {} ordinary saved AI Routing role(s) for this activation",
+                source.roles.iter().flatten().count()
+            );
         }
         if conversation_read_selection.is_some() {
             log::info!("verified selected old Conversation read grants and their bundled Wasm replacement for this activation");
@@ -1090,6 +1158,7 @@ impl LaunchActivationObserver<'_> {
             model_settings,
             model_save,
             model_resolve,
+            ai_routing,
             conversation,
             turn,
             orchestration,
@@ -1222,6 +1291,44 @@ pub(super) fn reacquire_model_resolve_pack(
         },
     )
     .context("bundled Model Resolve archive verification failed")
+}
+
+/// Reacquire Routing only behind the original installed grants and pinned archive.
+pub(super) fn reacquire_ai_routing_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalModelResolveRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .ai_routing
+        .as_ref()
+        .filter(|source| source.permits(role))
+        .context("admitted launch has no verified AI Routing source for the Gateway role")?;
+    checkpoint()?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    inspection.with_source(|sources| source.bundle.require_source(sources))??;
+    source
+        .bundle
+        .revalidate(inspection.allocation_budget()?, &checkpoint)?;
+    registry_pack_receipt::verify_installed_with_ai_routing(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            require_ai_routing_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )
+    .context("bundled AI Routing archive verification failed")?
+    .context("bundled Registry receipt has no AI Routing archive")
 }
 
 /// Reacquire the Conversation Pack using the caller's own grant and pinned archive.
@@ -1416,7 +1523,7 @@ pub(super) fn saved_local_chat_dispatch_bundle<'proof>(
     proof: &'proof VerifiedRegistryLaunch,
     role: OriginalSavedLocalChatRole,
     checkpoint: impl Fn() -> Result<()>,
-) -> Result<&'proof VerifiedSavedLocalChatBundle> {
+) -> Result<&'proof VerifiedOrdinarySavedBundle> {
     let source = proof
         .local_chat
         .as_ref()
@@ -1749,6 +1856,69 @@ fn verify_saved_local_chat_source(
         roles,
         adapter,
     }))
+}
+
+fn verify_ai_routing_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<VerifiedAiRoutingSource>> {
+    let budget = inspection.allocation_budget()?;
+    let Some(selection) = OriginalAiRoutingSelection::select(active, budget)? else {
+        return Ok(None);
+    };
+    let locked =
+        inspection.with_source(|sources| sources.ai_routing_bundle(&selection, budget))??;
+    let bundle = locked.verify(checkpoint)?;
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_ai_routing_declaration(&pack)?;
+    let roles = OriginalModelResolveRole::ALL.map(|role| {
+        selection
+            .pins(role)
+            .map(|pins| (role, pins.each_ref().map(Into::into)))
+    });
+    Ok(Some(VerifiedAiRoutingSource {
+        bundle,
+        roles,
+        archive_sha256: receipt.archive_sha256().to_owned(),
+        archive_bytes: receipt.archive_bytes(),
+        manifest_sha256: receipt.manifest_sha256().to_owned(),
+    }))
+}
+
+pub(super) const AI_ROUTING_SHAPE: &str = "local.ai-routing.routing@1.0";
+pub(super) const AI_ROUTING_OPERATION: &str = "evaluate";
+
+const AI_ROUTING_WIT_FILES: [(&str, &[u8]); 3] = [
+    (
+        "wit/pack.wit",
+        include_bytes!("../../../packs/local.ai-routing-rust/wit/pack.wit"),
+    ),
+    CORE_V1_2_WIT,
+    (
+        "wit/routing.shape.json",
+        include_bytes!("../../../packs/local.ai-routing-rust/wit/routing.shape.json"),
+    ),
+];
+
+fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<()> {
+    verify_stateless_registry_surface(pack, registry_pack_receipt::AI_ROUTING_PACK_ID, 1)?;
+    let manifest = &pack.manifest;
+    ensure!(
+        manifest.version == "0.1.0"
+            && manifest.files.len() == AI_ROUTING_WIT_FILES.len() + 1
+            && manifest.shapes[0].wit == "wit/pack.wit"
+            && AI_ROUTING_WIT_FILES.into_iter().all(|(path, bytes)| {
+                pack.files
+                    .get(path)
+                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))
+            }),
+        "bundled AI Routing Pack has an unexpected WIT or version"
+    );
+    require_registry_ports(pack, AI_ROUTING_OPERATION, &[AI_ROUTING_SHAPE])?;
+    Ok(())
 }
 
 pub(super) const PROVIDER_ADAPTER_SHAPE: &str = "local.provider-adapter.local-completion@1.0";
@@ -2108,6 +2278,92 @@ fn validate_observed_activation(
 mod tests {
     use super::*;
     use crate::native_harness_bootstrap::NativeRegistryRequest;
+
+    #[test]
+    fn ai_routing_declaration_pins_the_stateless_evaluate_port() {
+        use std::{fs, path::PathBuf};
+        use tobkiri_core::pack::{generate_manifest, verify_directory};
+
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-ai-routing-declaration-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("wit/deps")).unwrap();
+        let path = root.0.canonicalize().unwrap();
+        for (relative, wit) in AI_ROUTING_WIT_FILES {
+            fs::write(path.join(relative), wit).unwrap();
+        }
+        fs::write(path.join("component.wasm"), b"fixture").unwrap();
+        let draft = include_bytes!("../../../packs/local.ai-routing-rust/pack.draft.json");
+        let verify = |draft: &[u8]| {
+            let manifest = generate_manifest(&path, draft).unwrap();
+            fs::write(path.join("pack.json"), manifest).unwrap();
+            verify_directory(&path, &Default::default()).unwrap()
+        };
+        require_ai_routing_declaration(&verify(draft)).unwrap();
+
+        let mut modified: serde_json::Value = serde_json::from_slice(draft).unwrap();
+        modified["permissions"]["storage"] = serde_json::json!({"private": true});
+        assert!(
+            require_ai_routing_declaration(&verify(&serde_json::to_vec(&modified).unwrap()))
+                .unwrap_err()
+                .to_string()
+                .contains("unexpected capabilities")
+        );
+        modified = serde_json::from_slice(draft).unwrap();
+        modified["version"] = serde_json::json!("0.1.1");
+        assert!(
+            require_ai_routing_declaration(&verify(&serde_json::to_vec(&modified).unwrap()))
+                .is_err()
+        );
+
+        let wit = std::str::from_utf8(AI_ROUTING_WIT_FILES[0].1).unwrap();
+        fs::write(
+            path.join("wit/pack.wit"),
+            format!("{wit}\n// changed WIT\n"),
+        )
+        .unwrap();
+        assert!(
+            require_ai_routing_declaration(&verify(draft))
+                .unwrap_err()
+                .to_string()
+                .contains("unexpected WIT")
+        );
+    }
+
+    #[test]
+    fn ai_routing_evidence_requires_its_own_exact_gateway_role() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        for granted in OriginalModelResolveRole::ALL {
+            let model = VerifiedRegistryLaunch::test_model_resolve_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            let routing = VerifiedRegistryLaunch::test_ai_routing_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            for role in OriginalModelResolveRole::ALL {
+                assert!(!model.permits_ai_routing(role));
+                assert!(!routing.permits_model_resolve(role));
+                assert_eq!(routing.permits_ai_routing(role), role == granted);
+            }
+        }
+    }
 
     #[test]
     fn saved_orchestration_declaration_pins_the_effect_free_step() {

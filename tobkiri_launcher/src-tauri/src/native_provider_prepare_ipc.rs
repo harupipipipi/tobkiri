@@ -26,15 +26,15 @@ use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
-        ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
-        NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
-        PendingProviderPrepare, ProviderPrepareDeadline, RegistryResponse,
-        SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
-        SettlementCaller, TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec,
-        CONVERSATION_APPEND_LIMIT, CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT,
-        MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT,
-        TURN_START_REPLY_LIMIT,
+        start_provider_prepare, AiRoutingRequiresLegacyCodec, ConversationReadCaller,
+        ConversationRegistryRequiresLegacyRead, ConversationWriteRequiresLegacyRead,
+        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
+        OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
+        RegistryResponse, SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError,
+        SavedTurnStartAction, SettlementCaller, TurnSettlementRequiresLegacyCodec,
+        TurnStartRequiresLegacyCodec, AI_ROUTING_FRAME_LIMIT, CONVERSATION_APPEND_LIMIT,
+        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -102,17 +102,26 @@ struct Start<'a> {
     saved_orchestration: Option<SavedOrchestrationStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     saved_local_chat: Option<SavedLocalChatStart>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
+    ai_route: Option<AiRoutingStart>,
 }
 
 enum RequestStart {
     Inline(NativeRegistryRequest),
-    SavedOrchestration { input_bytes: usize },
+    SavedOrchestration {
+        input_bytes: usize,
+    },
     SavedLocalChat(SavedLocalChatStart),
+    AiRouting {
+        role: OriginalModelResolveRole,
+        input_bytes: usize,
+    },
 }
 
 enum BodyStart<'a> {
     SavedOrchestration(&'a SavedOrchestrationStart),
     SavedLocalChat(&'a SavedLocalChatStart),
+    AiRouting(&'a AiRoutingStart),
 }
 
 impl Start<'_> {
@@ -143,11 +152,16 @@ impl Start<'_> {
             }
             (Some(_), Some(_)) => bail!("native Registry start must name exactly one operation"),
         };
-        let body = match (&self.saved_orchestration, &self.saved_local_chat) {
-            (None, None) => None,
-            (Some(saved), None) => Some(BodyStart::SavedOrchestration(saved)),
-            (None, Some(chat)) => Some(BodyStart::SavedLocalChat(chat)),
-            (Some(_), Some(_)) => bail!("native Registry start must name exactly one operation"),
+        let body = match (
+            &self.saved_orchestration,
+            &self.saved_local_chat,
+            &self.ai_route,
+        ) {
+            (None, None, None) => None,
+            (Some(saved), None, None) => Some(BodyStart::SavedOrchestration(saved)),
+            (None, Some(chat), None) => Some(BodyStart::SavedLocalChat(chat)),
+            (None, None, Some(routing)) => Some(BodyStart::AiRouting(routing)),
+            _ => bail!("native Registry start must name exactly one operation"),
         };
         let operation = match (
             &self.request,
@@ -262,6 +276,29 @@ impl Start<'_> {
                 Some(BodyStart::SavedLocalChat(chat)),
                 None,
             ) => return Ok(RequestStart::SavedLocalChat(chat.clone())),
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(BodyStart::AiRouting(routing)),
+                None,
+            ) => {
+                ensure!(
+                    (1..=AI_ROUTING_FRAME_LIMIT).contains(&routing.input_bytes),
+                    "invalid AI routing input size"
+                );
+                return Ok(RequestStart::AiRouting {
+                    role: routing.role,
+                    input_bytes: routing.input_bytes,
+                });
+            }
             _ => bail!("native Registry start must name exactly one operation"),
         };
         Ok(RequestStart::Inline(operation))
@@ -271,7 +308,9 @@ impl Start<'_> {
     fn operation(&self) -> Result<NativeRegistryRequest> {
         match self.request_start()? {
             RequestStart::Inline(operation) => Ok(operation),
-            RequestStart::SavedOrchestration { .. } | RequestStart::SavedLocalChat(_) => {
+            RequestStart::SavedOrchestration { .. }
+            | RequestStart::SavedLocalChat(_)
+            | RequestStart::AiRouting { .. } => {
                 bail!("request needs a body")
             }
         }
@@ -345,6 +384,14 @@ struct TurnStartReply<'a> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SavedOrchestrationStart {
+    input_bytes: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AiRoutingStart {
+    #[serde(deserialize_with = "deserialize_model_resolve_role")]
+    role: OriginalModelResolveRole,
     input_bytes: usize,
 }
 
@@ -933,6 +980,7 @@ pub(crate) fn admit_connection(
     let needs_active_host = matches!(
         &request,
         RequestStart::SavedOrchestration { .. }
+            | RequestStart::AiRouting { .. }
             | RequestStart::SavedLocalChat(_)
             | RequestStart::Inline(
                 NativeRegistryRequest::TurnRead { .. }
@@ -1001,6 +1049,7 @@ pub(crate) fn admit_connection(
     let has_launch_proof = match &request {
         RequestStart::Inline(operation) => operation.has_launch_proof(proof),
         RequestStart::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
+        RequestStart::AiRouting { role, .. } => proof.permits_ai_routing(*role),
         RequestStart::SavedLocalChat(chat) => proof.permits_saved_local_chat(chat.role),
     };
     if !matches_runtime || !has_launch_proof {
@@ -1074,6 +1123,15 @@ impl AdmittedConnection {
                 };
                 NativeRegistryRequest::SavedOrchestration { input }
             }
+            RequestStart::AiRouting { role, input_bytes } => {
+                let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
+                let Some(input) =
+                    receive_orchestration_input(&mut stream, input_bytes, body_deadline)?
+                else {
+                    return send_frame(&mut stream, FAILURE, b"cancelled", body_deadline);
+                };
+                NativeRegistryRequest::AiRouting { role, input }
+            }
             RequestStart::SavedLocalChat(chat) => {
                 let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
                 let Some(input) =
@@ -1108,6 +1166,7 @@ impl AdmittedConnection {
             NativeRegistryRequest::TurnStart { action, .. } => ReplyRole::TurnStart(*action),
             NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
             NativeRegistryRequest::SavedOrchestration { .. } => ReplyRole::SavedOrchestration,
+            NativeRegistryRequest::AiRouting { .. } => ReplyRole::AiRouting,
             NativeRegistryRequest::SavedLocalChat { .. } => ReplyRole::SavedLocalChat,
         };
         let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
@@ -1157,6 +1216,7 @@ enum ReplyRole {
     TurnStart(SavedTurnStartAction),
     TurnSettlement,
     SavedOrchestration,
+    AiRouting,
     SavedLocalChat,
 }
 
@@ -1203,6 +1263,7 @@ impl ReplyRole {
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
             Self::SavedOrchestration => (SAVED_ORCHESTRATION_FRAME_LIMIT, "limit-exceeded"),
+            Self::AiRouting => (AI_ROUTING_FRAME_LIMIT, "limit-exceeded"),
             Self::SavedLocalChat => (LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, "invalid-response"),
             Self::TurnStart(_) if authority == WireAuthority::PublicationPermitted => {
                 (TURN_START_REPLY_LIMIT, "unavailable")
@@ -1257,7 +1318,13 @@ impl ReplyRole {
                 },
             };
         }
-        if self == Self::SavedOrchestration {
+        if self == Self::AiRouting
+            && authority == WireAuthority::Live
+            && error.is::<AiRoutingRequiresLegacyCodec>()
+        {
+            return "legacy-read-required";
+        }
+        if matches!(self, Self::SavedOrchestration | Self::AiRouting) {
             return match error.downcast_ref::<SavedOrchestrationStepError>() {
                 Some(SavedOrchestrationStepError::Invalid) => "invalid",
                 Some(SavedOrchestrationStepError::Capacity) => "limit-exceeded",
@@ -1363,7 +1430,10 @@ impl ReplyRole {
                 return Err(overflow_code);
             }
         }
-        if matches!(self, Self::TurnRead | Self::SavedOrchestration) {
+        if matches!(
+            self,
+            Self::TurnRead | Self::SavedOrchestration | Self::AiRouting
+        ) {
             if authority != WireAuthority::Live {
                 return Err("unavailable");
             }
@@ -2479,6 +2549,70 @@ mod tests {
         let mut received = [0u8; 11];
         read_exact(&mut receiver, &mut received[..utf8.len()], deadline).unwrap();
         assert_eq!(received[..utf8.len()], *utf8);
+    }
+
+    #[test]
+    fn ai_routing_requires_one_known_role_and_a_bounded_body() {
+        for (role, expected) in [
+            ("quote-generate", OriginalModelResolveRole::QuoteGenerate),
+            ("quote-stream", OriginalModelResolveRole::QuoteStream),
+            ("generate", OriginalModelResolveRole::Generate),
+            ("stream", OriginalModelResolveRole::Stream),
+        ] {
+            let frame = start_frame(&format!(
+                r#", "ai_route":{{"role":"{role}","input_bytes":{AI_ROUTING_FRAME_LIMIT}}}"#
+            ));
+            assert!(matches!(
+                parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                Ok(RequestStart::AiRouting { role, input_bytes })
+                    if role == expected && input_bytes == AI_ROUTING_FRAME_LIMIT
+            ));
+        }
+        for fields in [
+            r#", "ai_route":null"#.to_owned(),
+            r#", "ai_route":{"role":"stream","input_bytes":0}"#.to_owned(),
+            r#", "ai_route":{"role":"shell","input_bytes":2}"#.to_owned(),
+            r#", "ai_route":{"role":"generate","input_bytes":2},"model_list":{}"#.to_owned(),
+            r#", "ai_route":{"role":"generate","input_bytes":2},"saved_orchestration":{"input_bytes":2}"#.to_owned(),
+            format!(
+                r#", "ai_route":{{"role":"stream","input_bytes":{}}}"#,
+                AI_ROUTING_FRAME_LIMIT + 1
+            ),
+        ] {
+            let frame = start_frame(&fields);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.request_start())
+                .is_err());
+        }
+    }
+
+    #[test]
+    fn ai_routing_replies_require_live_read_only_authority() {
+        let role = ReplyRole::AiRouting;
+        assert!(role.effect_check().is_none());
+        let declined = AiRoutingRequiresLegacyCodec.into();
+        assert_eq!(
+            role.failure_code(WireAuthority::Live, &declined),
+            "legacy-read-required"
+        );
+        for phase in [
+            WireAuthority::AwaitingLive,
+            WireAuthority::PublicationPermitted,
+        ] {
+            assert_eq!(role.validate_result(phase, b"{}"), Err("unavailable"));
+            assert_eq!(role.failure_code(phase, &declined), "unavailable");
+        }
+        let live = WireAuthority::Live;
+        assert_eq!(role.validate_result(live, b"{}"), Ok(()));
+        assert_eq!(role.validate_result(live, b"[]"), Err("internal"));
+        assert_eq!(
+            role.result_limit(live),
+            (AI_ROUTING_FRAME_LIMIT, "limit-exceeded")
+        );
+        assert_eq!(
+            role.failure_code(live, &ModelRegistryRequiresLegacyRead.into()),
+            "unavailable"
+        );
     }
 
     #[test]

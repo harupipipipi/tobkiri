@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 #[path = "native_locked_provider.rs"]
 mod native_locked_provider;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) use native_locked_provider::{VerifiedSavedLocalChatBundle, VerifiedTurnStartBundle};
+pub(crate) use native_locked_provider::{VerifiedOrdinarySavedBundle, VerifiedTurnStartBundle};
 
 /// Distinct original root roles. Equal path values never merge these roles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
