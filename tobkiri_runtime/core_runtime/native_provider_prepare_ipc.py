@@ -1166,7 +1166,9 @@ class _Exchange:
         if conversation_mutation:
             self.failure_codes |= {_PUBLICATION_UNCONFIRMED}
         self.failure_limit = max(map(len, self.failure_codes))
-        self.received = bytearray()
+        self.frame_header = bytearray(_FRAME.size)
+        self.frame_payload: bytearray | None = None
+        self.frame_received = 0
         self.partial_write = False
         self.started = False
         self.terminal = False
@@ -1187,20 +1189,24 @@ class _Exchange:
             frame = frame[sent:]
             self.partial_write = bool(frame)
 
-    def _receive_until(self, size: int, wait_seconds: Callable[[], float]) -> None:
-        while len(self.received) < size:
+    def _receive_into(
+        self, buffer: bytearray, wait_seconds: Callable[[], float],
+    ) -> None:
+        view = memoryview(buffer)
+        while self.frame_received < len(view):
             self.connection.settimeout(wait_seconds())
             try:
-                part = self.connection.recv(size - len(self.received))
+                count = self.connection.recv_into(view[self.frame_received:])
             except TimeoutError:
                 continue
-            if not part:
+            if not count:
                 raise _ProtocolError("native Provider preparation connection closed")
-            self.received.extend(part)
+            self.frame_received += count
 
     def receive(self, wait_seconds: Callable[[], float]) -> tuple[int, bytes]:
-        self._receive_until(_FRAME.size, wait_seconds)
-        tag, size = _FRAME.unpack_from(self.received)
+        if self.frame_payload is None:
+            self._receive_into(self.frame_header, wait_seconds)
+        tag, size = _FRAME.unpack(self.frame_header)
         limit = self.plan_limit if tag == _PLAN else _INBOUND_LIMITS.get(tag)
         if tag == _FAILURE:
             limit = self.failure_limit
@@ -1210,9 +1216,15 @@ class _Exchange:
             limit = 0
         if limit is None or size > limit:
             raise _ProtocolError("native Provider preparation frame is invalid")
-        self._receive_until(_FRAME.size + size, wait_seconds)
-        payload = bytes(self.received[_FRAME.size:])
-        self.received.clear()
+        if self.frame_payload is None:
+            # Keep progress across a failed lease check so cleanup can finish
+            # draining a partial frame before recognizing terminal proof.
+            self.frame_payload = bytearray(size)
+            self.frame_received = 0
+        self._receive_into(self.frame_payload, wait_seconds)
+        payload = bytes(self.frame_payload)
+        self.frame_payload = None
+        self.frame_received = 0
         return tag, payload
 
     def cancel_and_confirm(self) -> None:

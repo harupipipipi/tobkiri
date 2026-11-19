@@ -79,6 +79,39 @@ def _send(peer: socket.socket, tag: int, payload: bytes = b"") -> None:
     peer.sendall(_HEADER.pack(tag, len(payload)) + payload)
 
 
+@pytest.mark.parametrize(("split", "checks"), [(3, 1), (_HEADER.size + 3, 2)])
+def test_receive_retains_partial_frame_when_lease_check_fails(
+    split: int, checks: int,
+) -> None:
+    body = b"exact bytes"
+    frame = _HEADER.pack(ipc._PLAN, len(body)) + body
+    connection, launcher = socket.socketpair()
+    with connection, launcher:
+        exchange = ipc._Exchange(
+            connection,
+            len(body),
+            permits_publication=False,
+            conversation_mutation=False,
+            requires_body_ready=False,
+        )
+        launcher.sendall(frame[:split])
+
+        def assert_lease() -> float:
+            nonlocal checks
+            if not checks:
+                raise PermissionError("fixture lease revoked")
+            checks -= 1
+            return 1.0
+
+        with pytest.raises(PermissionError, match="fixture lease revoked"):
+            exchange.receive(assert_lease)
+
+        launcher.sendall(frame[split:])
+        _send(launcher, ipc._CHECK)
+        assert exchange.receive(lambda: 1.0) == (ipc._PLAN, body)
+        assert exchange.receive(lambda: 1.0) == (ipc._CHECK, b"")
+
+
 def _owner() -> str:
     evidence = process_start_identity(os.getpid())
     assert evidence.state == "live"
