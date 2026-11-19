@@ -30,10 +30,11 @@ use crate::{
         ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
         NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
         PendingProviderPrepare, ProviderPrepareDeadline, RegistryResponse,
-        SavedOrchestrationStepError, SavedTurnStartAction, SettlementCaller,
-        TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT,
-        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
-        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+        SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
+        SettlementCaller, TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec,
+        CONVERSATION_APPEND_LIMIT, CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT,
+        MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT,
+        TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -358,6 +359,8 @@ struct SavedLocalChatStart {
     input_bytes: usize,
     #[serde(default)]
     project_response: bool,
+    #[serde(default)]
+    compile_request: bool,
 }
 
 impl SavedLocalChatStart {
@@ -366,6 +369,7 @@ impl SavedLocalChatStart {
             return Err("limit-exceeded");
         }
         if self.input_bytes == 0
+            || (self.compile_request && !self.project_response)
             || !(1..=256).contains(&self.connection_id.len())
             || self.record_revision == 0
             || !(1..=2048).contains(&self.endpoint.len())
@@ -1081,6 +1085,7 @@ impl AdmittedConnection {
                     endpoint: chat.endpoint,
                     input,
                     project_response: chat.project_response,
+                    compile_request: chat.compile_request,
                 }
             }
         };
@@ -1208,6 +1213,11 @@ impl ReplyRole {
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
         if self == Self::SavedLocalChat {
+            if authority != WireAuthority::PublicationPermitted
+                && error.is::<SavedLocalChatRequiresLegacyRequest>()
+            {
+                return "legacy-request";
+            }
             use LegacyLocalChatHttpError as Transport;
             use LegacyLocalChatSourceError as Source;
             return match error.downcast_ref::<OriginalLocalChatError>() {
@@ -1900,6 +1910,7 @@ mod tests {
             assert_eq!(chat.endpoint, "http://[::1]:1234/v1/");
             assert_eq!(chat.input_bytes, LEGACY_LOCAL_CHAT_REQUEST_LIMIT);
             assert!(!chat.project_response);
+            assert!(!chat.compile_request);
             assert_eq!(chat.validate(), Ok(()));
             assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
             for extra in [
@@ -1916,6 +1927,7 @@ mod tests {
         }
         let mut requested = descriptor.clone();
         requested["project_response"] = json!(true);
+        requested["compile_request"] = json!(true);
         let frame = start_frame(&operation(&requested));
         let RequestStart::SavedLocalChat(chat) = parse_start(START, frame.as_bytes())
             .unwrap()
@@ -1925,12 +1937,15 @@ mod tests {
             panic!("expected Saved Local Chat");
         };
         assert!(chat.project_response);
+        assert!(chat.compile_request);
+        assert_eq!(chat.validate(), Ok(()));
         for (key, value) in [
             ("role", json!("shell")),
             ("record_revision", json!(true)),
             ("record_revision", json!(-1)),
             ("input_bytes", json!(1.5)),
             ("project_response", json!("true")),
+            ("compile_request", json!(1)),
             ("profile_id", json!("override")),
             ("input", json!({})),
         ] {

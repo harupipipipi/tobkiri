@@ -114,6 +114,23 @@ class HostProviderInvocationContextV4(Protocol):
         """
         return None
 
+    @property
+    def supports_saved_local_chat_request_compilation(self) -> bool:
+        """Report whether this invocation can delegate local chat compilation."""
+        return False
+
+    def post_saved_local_chat_source(
+        self,
+        connection: Mapping[str, Any],
+        request: Mapping[str, Any],
+        deadline_monotonic: float,
+    ) -> bytes | dict[str, Any] | None:
+        """Delegate one authorized local chat request using its source fields.
+
+        Return None when the caller can safely use the compatibility transport.
+        """
+        return None
+
     def dispatch_bounded(
         self,
         *,

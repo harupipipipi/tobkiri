@@ -1882,6 +1882,7 @@ def capture_production_dispatch(
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
         SAVED_ORCHESTRATION_MINIMUM_MEMORY,
+        SAVED_LOCAL_CHAT_MAX_INPUT_BYTES,
         SAVED_LOCAL_CHAT_MINIMUM_MEMORY,
         SAVED_TURN_READ_MINIMUM_MEMORY,
         SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
@@ -3948,6 +3949,41 @@ def capture_production_dispatch(
             deadline_monotonic: float,
         ) -> bytes | dict[str, Any] | None:
             """Borrow the live signed local Adapter invocation for one POST."""
+            return self._post_saved_local_chat(
+                connection, encoded, deadline_monotonic, compile_request=False,
+            )
+
+        @property
+        def supports_saved_local_chat_request_compilation(self) -> bool:
+            """Check the captured route and the Launcher's negotiated input form."""
+            return (
+                self._local_chat_route is not None
+                and native_provider_runtime is not None
+                and getattr(native_saved_local_chat, "supports_request_compilation", False)
+                is True
+            )
+
+        def post_saved_local_chat_source(
+            self,
+            connection: Mapping[str, Any],
+            request: Mapping[str, Any],
+            deadline_monotonic: float,
+        ) -> bytes | dict[str, Any] | None:
+            """Borrow the same live dispatch authority for a source-form request."""
+            if not self.supports_saved_local_chat_request_compilation:
+                return None
+            return self._post_saved_local_chat(
+                connection, request, deadline_monotonic, compile_request=True,
+            )
+
+        def _post_saved_local_chat(
+            self,
+            connection: Mapping[str, Any],
+            request: bytes | Mapping[str, Any],
+            deadline_monotonic: float,
+            *,
+            compile_request: bool,
+        ) -> bytes | dict[str, Any] | None:
             route, runtime = self._local_chat_route, native_provider_runtime
             executor = native_saved_local_chat
             if route is None or runtime is None or executor is None:
@@ -4023,6 +4059,23 @@ def capture_production_dispatch(
 
             self._local_chat_attempted = True
             guard()
+            if isinstance(request, bytes):
+                encoded = request
+            else:
+                source_fields = {"model_id", "provider_id", "messages", "parameters", "tools"}
+                source = {
+                    key: value for key, value in request.items() if key in source_fields
+                }
+                try:
+                    encoded = json.dumps(
+                        source, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+                    ).encode("utf-8")
+                except (TypeError, ValueError, RecursionError):
+                    guard()
+                    return None
+                if len(encoded) > SAVED_LOCAL_CHAT_MAX_INPUT_BYTES:
+                    guard()
+                    return None
             try:
                 result = executor(NativeSavedLocalChatRequest(
                     context=envelope.context, runtime_instance=runtime[0],
@@ -4030,6 +4083,7 @@ def capture_production_dispatch(
                     role=route.role, connection_id=instance, record_revision=revision,
                     endpoint=endpoint, input=encoded, assert_dispatch=guard,
                     mark_dispatch_possible=mark_dispatch_possible,
+                    compile_request=compile_request,
                 ))
             except NativeProviderPrepareUnavailable:
                 guard()

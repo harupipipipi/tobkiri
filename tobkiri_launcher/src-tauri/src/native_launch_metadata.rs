@@ -1409,13 +1409,14 @@ fn reacquire_turn_archive(
     .context("bundled Registry receipt has no Turn archive")
 }
 
-/// Recheck the installed source used to admit this exact local Provider role.
-pub(super) fn reacquire_saved_local_chat_source(
+/// Bind the already admitted local Provider role to the original physical source.
+/// The caller revalidates the retained bundle at the actual dispatch boundary.
+pub(super) fn saved_local_chat_dispatch_bundle<'proof>(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
-    proof: &VerifiedRegistryLaunch,
+    proof: &'proof VerifiedRegistryLaunch,
     role: OriginalSavedLocalChatRole,
     checkpoint: impl Fn() -> Result<()>,
-) -> Result<()> {
+) -> Result<&'proof VerifiedSavedLocalChatBundle> {
     let source = proof
         .local_chat
         .as_ref()
@@ -1424,9 +1425,7 @@ pub(super) fn reacquire_saved_local_chat_source(
     checkpoint()?;
     registry_pack_root(inspection, proof)?;
     inspection.with_source(|sources| source.bundle.require_source(sources))??;
-    source
-        .bundle
-        .revalidate(inspection.allocation_budget()?, checkpoint)
+    Ok(&source.bundle)
 }
 
 /// Reopen the effect-free Adapter paired with this exact original Provider grant.
@@ -1754,11 +1753,14 @@ fn verify_saved_local_chat_source(
 
 pub(super) const PROVIDER_ADAPTER_SHAPE: &str = "local.provider-adapter.local-completion@1.0";
 pub(super) const PROVIDER_ADAPTER_OPERATION: &str = "project";
-const PROVIDER_ADAPTER_WIT_FILES: [(&str, &[u8]); 3] = [
-    (
-        "wit/pack.wit",
-        include_bytes!("../../../packs/local.provider-adapter-rust/wit/pack.wit"),
-    ),
+pub(super) const PROVIDER_REQUEST_SHAPE: &str = "local.provider-adapter.local-request@1.0";
+pub(super) const PROVIDER_REQUEST_OPERATION: &str = "compile";
+pub(super) const PROVIDER_REQUEST_ADAPTER_VERSION: &str = "0.2.0";
+const PROVIDER_ADAPTER_LEGACY_WIT: &str =
+    "sha256:4bb485fd5459f256fc6eaaf25eff05e43c9a485f0a67e61eafa1feeb53336610";
+const PROVIDER_ADAPTER_WIT: &[u8] =
+    include_bytes!("../../../packs/local.provider-adapter-rust/wit/pack.wit");
+const PROVIDER_ADAPTER_SHARED_FILES: [(&str, &[u8]); 2] = [
     CORE_V1_2_WIT,
     (
         "wit/local-completion.shape.json",
@@ -1767,22 +1769,46 @@ const PROVIDER_ADAPTER_WIT_FILES: [(&str, &[u8]); 3] = [
         ),
     ),
 ];
+const PROVIDER_REQUEST_SIDECAR: (&str, &[u8]) = (
+    "wit/local-request.shape.json",
+    include_bytes!("../../../packs/local.provider-adapter-rust/wit/local-request.shape.json"),
+);
 
 fn require_provider_adapter_declaration(pack: &VerifiedPack) -> Result<()> {
-    verify_stateless_registry_surface(pack, registry_pack_receipt::PROVIDER_ADAPTER_PACK_ID, 1)?;
     let manifest = &pack.manifest;
+    let (wit, ports) = match manifest.version.as_str() {
+        "0.1.0" => (Digest::parse(PROVIDER_ADAPTER_LEGACY_WIT)?, 1),
+        PROVIDER_REQUEST_ADAPTER_VERSION => (Digest::hash(PROVIDER_ADAPTER_WIT), 2),
+        _ => anyhow::bail!("bundled Provider Adapter Pack has an unsupported version"),
+    };
+    verify_stateless_registry_surface(
+        pack,
+        registry_pack_receipt::PROVIDER_ADAPTER_PACK_ID,
+        ports,
+    )?;
     ensure!(
-        manifest.version == "0.1.0"
-            && manifest.files.len() == PROVIDER_ADAPTER_WIT_FILES.len() + 1
-            && manifest.shapes[0].wit == "wit/pack.wit"
-            && PROVIDER_ADAPTER_WIT_FILES.into_iter().all(|(path, bytes)| {
-                pack.files
+        manifest.files.len() == PROVIDER_ADAPTER_SHARED_FILES.len() + ports + 1
+            && manifest
+                .shapes
+                .iter()
+                .all(|shape| shape.wit == "wit/pack.wit")
+            && pack
+                .files
+                .get("wit/pack.wit")
+                .is_some_and(|file| *file.digest() == wit)
+            && PROVIDER_ADAPTER_SHARED_FILES
+                .into_iter()
+                .chain((ports == 2).then_some(PROVIDER_REQUEST_SIDECAR))
+                .all(|(path, bytes)| pack
+                    .files
                     .get(path)
-                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))
-            }),
-        "bundled Provider Adapter Pack has an unexpected WIT or version"
+                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))),
+        "bundled Provider Adapter Pack has unexpected WIT files"
     );
     require_registry_ports(pack, PROVIDER_ADAPTER_OPERATION, &[PROVIDER_ADAPTER_SHAPE])?;
+    if ports == 2 {
+        require_registry_ports(pack, PROVIDER_REQUEST_OPERATION, &[PROVIDER_REQUEST_SHAPE])?;
+    }
     Ok(())
 }
 

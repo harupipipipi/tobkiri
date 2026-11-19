@@ -23,10 +23,11 @@ use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 pub(crate) use tobkiri_harness_native::SavedOrchestrationStepError;
 use tobkiri_harness_native::{
     begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
-    invoke_original_saved_orchestration_port, invoke_original_saved_turn_begin_port,
-    invoke_original_saved_turn_claim_port, invoke_original_saved_turn_port,
-    invoke_original_saved_turn_read_port, post_original_local_chat, project_original_local_chat,
-    read_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
+    compile_original_local_chat, invoke_original_saved_orchestration_port,
+    invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
+    invoke_original_saved_turn_port, invoke_original_saved_turn_read_port,
+    post_original_local_chat, project_original_local_chat, read_legacy_saved_turn,
+    settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
     OriginalLocalChatCheck, OriginalLocalChatError, OriginalLocalChatRequest,
     OriginalSavedLocalChatRole, OriginalSavedTurnCheck, OriginalSavedTurnStartInput,
@@ -41,11 +42,12 @@ use super::{
         reacquire_conversation_append_pack, reacquire_conversation_confirmation_pack,
         reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
         reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_saved_local_chat_adapter, reacquire_saved_local_chat_source,
-        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack, reacquire_turn_read_pack,
-        reacquire_turn_settlement_pack, reacquire_turn_start_pack, ConversationReadCaller,
+        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
+        reacquire_saved_receipt_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
+        reacquire_turn_start_pack, saved_local_chat_dispatch_bundle, ConversationReadCaller,
         SettlementCaller, VerifiedRegistryLaunch, PROVIDER_ADAPTER_OPERATION,
-        PROVIDER_ADAPTER_SHAPE, REGISTRY_VERIFICATION_BYTES,
+        PROVIDER_ADAPTER_SHAPE, PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION,
+        PROVIDER_REQUEST_SHAPE, REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -140,6 +142,7 @@ pub(crate) enum NativeRegistryRequest {
         endpoint: String,
         input: Vec<u8>,
         project_response: bool,
+        compile_request: bool,
     },
 }
 
@@ -354,6 +357,18 @@ impl std::fmt::Display for TurnStartRequiresLegacyCodec {
 }
 
 impl std::error::Error for TurnStartRequiresLegacyCodec {}
+
+/// The no-effect Adapter compiler declined this input before dispatch.
+#[derive(Debug)]
+pub(crate) struct SavedLocalChatRequiresLegacyRequest;
+
+impl std::fmt::Display for SavedLocalChatRequiresLegacyRequest {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("saved local Provider requires the original request compiler")
+    }
+}
+
+impl std::error::Error for SavedLocalChatRequiresLegacyRequest {}
 
 /// A running Provider can narrow its Host deadline when the Core begins.
 pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
@@ -1091,11 +1106,18 @@ async fn run(
                     endpoint,
                     input,
                     project_response,
+                    compile_request,
                 } => {
                     revalidate()?;
                     let profile = ProfileId::parse(&identity.profile_id)?;
                     let data = DataRoot::open_legacy_registry(&config.user_data_dir)
                         .map_err(|_| OriginalLocalChatError::RegistryUnavailable)?;
+                    let bundle = saved_local_chat_dispatch_bundle(
+                        &inspection,
+                        listener.verified_source(),
+                        role,
+                        checkpoint,
+                    )?;
                     let adapter = if project_response {
                         reacquire_saved_local_chat_adapter(
                             &inspection,
@@ -1106,68 +1128,103 @@ async fn run(
                     } else {
                         None
                     };
-                    let wire = post_original_local_chat(
-                        &data,
-                        OriginalLocalChatRequest {
-                            profile: &profile,
-                            provider: LegacyLocalChatSelection {
-                                connection_id: &connection_id,
-                                record_revision,
-                                endpoint: &endpoint,
+                    let response_shape = ShapeRef::parse(PROVIDER_ADAPTER_SHAPE)?;
+                    let response_operation = OpName::parse(PROVIDER_ADAPTER_OPERATION)?;
+                    let stream = matches!(role, OriginalSavedLocalChatRole::Stream);
+                    let mut post = async |body: &[u8]| {
+                        post_original_local_chat(
+                            &data,
+                            OriginalLocalChatRequest {
+                                profile: &profile,
+                                provider: LegacyLocalChatSelection {
+                                    connection_id: &connection_id,
+                                    record_revision,
+                                    endpoint: &endpoint,
+                                },
+                                body,
+                                deadline: execution_deadline,
+                                cancellation: &cancellation,
                             },
-                            body: &input,
-                            deadline: execution_deadline,
-                            cancellation: &cancellation,
-                        },
-                        &graph,
-                        |phase| match phase {
-                            OriginalLocalChatCheck::Live => revalidate(),
-                            OriginalLocalChatCheck::Dispatch => {
-                                reacquire_saved_local_chat_source(
-                                    &inspection,
-                                    listener.verified_source(),
-                                    role,
-                                    checkpoint,
-                                )?;
-                                revalidate()?;
-                                let permit = publish_permit
-                                    .take()
-                                    .context("saved local Provider dispatch permit is missing")?;
-                                permit()?;
-                                require_current_source()
-                            }
-                        },
-                    )
-                    .await?;
-                    drop(input);
-                    drop(input_funding.take());
-                    if let (Some(adapter), Ok(raw)) = (adapter, wire.as_str()) {
-                        revalidate()?;
+                            &graph,
+                            |phase| match phase {
+                                OriginalLocalChatCheck::Live => revalidate(),
+                                OriginalLocalChatCheck::Dispatch => {
+                                    bundle.revalidate(&graph, checkpoint)?;
+                                    revalidate()?;
+                                    let permit = publish_permit.take().context(
+                                        "saved local Provider dispatch permit is missing",
+                                    )?;
+                                    permit()?;
+                                    require_current_source()
+                                }
+                            },
+                        )
+                        .await
+                    };
+                    let (wire, projected) = if compile_request {
+                        let adapter = adapter
+                            .as_ref()
+                            .filter(|pack| {
+                                pack.manifest.version == PROVIDER_REQUEST_ADAPTER_VERSION
+                            })
+                            .ok_or(SavedLocalChatRequiresLegacyRequest)?;
+                        let source = std::str::from_utf8(&input)
+                            .map_err(|_| SavedLocalChatRequiresLegacyRequest)?;
                         let port = inspection
-                            .prepare_declared_read_only_port(
-                                &adapter,
-                                &ShapeRef::parse(PROVIDER_ADAPTER_SHAPE)?,
-                                &OpName::parse(PROVIDER_ADAPTER_OPERATION)?,
+                            .prepare_declared_read_only_pair(
+                                adapter,
+                                [
+                                    (
+                                        &ShapeRef::parse(PROVIDER_REQUEST_SHAPE)?,
+                                        &OpName::parse(PROVIDER_REQUEST_OPERATION)?,
+                                    ),
+                                    (&response_shape, &response_operation),
+                                ],
                                 &profile,
                                 execution_deadline,
-                                0,
                             )
                             .await?;
-                        let stream = matches!(role, OriginalSavedLocalChatRole::Stream);
-                        if let Some(projected) =
-                            project_original_local_chat(port, raw, stream, &graph).await?
-                        {
-                            return Ok(PreparedReply {
-                                wire: projected,
-                                document: None,
-                                projected_local_chat: true,
-                            });
-                        }
-                    }
+                        let (compiled, response_port) =
+                            compile_original_local_chat(port, source, &graph).await?;
+                        let compiled = compiled.ok_or(SavedLocalChatRequiresLegacyRequest)?;
+                        drop(input);
+                        drop(input_funding.take());
+                        let wire = post(compiled.as_bytes()).await?;
+                        drop(compiled);
+                        let projected = if let Ok(raw) = wire.as_str() {
+                            revalidate()?;
+                            project_original_local_chat(response_port, raw, stream, &graph).await?
+                        } else {
+                            None
+                        };
+                        (wire, projected)
+                    } else {
+                        let wire = post(&input).await?;
+                        drop(input);
+                        drop(input_funding.take());
+                        let projected =
+                            if let (Some(adapter), Ok(raw)) = (adapter.as_ref(), wire.as_str()) {
+                                revalidate()?;
+                                let port = inspection
+                                    .prepare_declared_read_only_port(
+                                        adapter,
+                                        &response_shape,
+                                        &response_operation,
+                                        &profile,
+                                        execution_deadline,
+                                        0,
+                                    )
+                                    .await?;
+                                project_original_local_chat(port, raw, stream, &graph).await?
+                            } else {
+                                None
+                            };
+                        (wire, projected)
+                    };
                     return Ok(PreparedReply {
-                        wire,
+                        projected_local_chat: projected.is_some(),
+                        wire: projected.unwrap_or(wire),
                         document: None,
-                        projected_local_chat: false,
                     });
                 }
             };
@@ -1771,6 +1828,7 @@ mod tests {
             endpoint,
             input,
             project_response: false,
+            compile_request: false,
         };
         assert!(!request.has_launch_proof(&orchestration));
         assert!(request.requires_publication_permit());
@@ -1786,6 +1844,7 @@ mod tests {
             endpoint: "http://127.0.0.1:8080/v1".into(),
             input,
             project_response: false,
+            compile_request: false,
         };
         let empty = request(Vec::new()).input_capacity().unwrap_err();
         assert!(matches!(

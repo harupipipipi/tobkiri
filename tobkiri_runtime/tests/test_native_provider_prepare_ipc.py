@@ -2654,12 +2654,14 @@ def test_saved_local_chat_capture_requires_managed_opt_in(
     assert ipc.capture_launcher_saved_local_chat_executor() is None
     monkeypatch.delenv(ipc._SAVED_LOCAL_CHAT_ENV)
     assert ipc.capture_launcher_saved_local_chat_executor() is None
-    for version in ("1", "2"):
+    for version in ("1", "2", "3"):
         monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, version)
-        assert ipc.capture_launcher_saved_local_chat_executor() is not None
+        execute = ipc.capture_launcher_saved_local_chat_executor()
+        assert execute is not None
+        assert execute.supports_request_compilation is (version == "3")
 
 
-@pytest.mark.parametrize("version", ["1", "2"])
+@pytest.mark.parametrize("version", ["1", "2", "3"])
 @pytest.mark.parametrize("role", ["generate", "stream"])
 def test_saved_local_chat_passes_exact_bytes_and_permits_dispatch_once(
     monkeypatch: pytest.MonkeyPatch, role: ipc.SavedLocalChatRole, version: str,
@@ -2710,7 +2712,7 @@ def test_saved_local_chat_passes_exact_bytes_and_permits_dispatch_once(
                 "input_bytes": len(body),
             },
         }
-        if version == "2":
+        if version in ("2", "3"):
             expected["saved_local_chat"]["project_response"] = True
         assert payload == json.dumps(
             expected, ensure_ascii=False, separators=(",", ":"),
@@ -2733,6 +2735,65 @@ def test_saved_local_chat_passes_exact_bytes_and_permits_dispatch_once(
         monkeypatch.delenv(ipc._SOCKET_ENV)
         monkeypatch.delenv(ipc._OWNER_ENV)
         assert execute(request) == reply
+
+
+@pytest.mark.parametrize(
+    ("phase", "compile_request", "exception"),
+    [
+        ("start", True, ipc.NativeSavedLocalChatFailure),
+        ("body", True, ipc.NativeProviderPrepareUnavailable),
+        ("live", True, ipc.NativeProviderPrepareUnavailable),
+        ("permit", True, ipc.NativeSavedLocalChatFailure),
+        ("live", False, ipc._ProtocolError),
+    ],
+)
+def test_saved_local_chat_allows_legacy_request_only_before_dispatch_offer(
+    monkeypatch: pytest.MonkeyPatch, phase: str, compile_request: bool,
+    exception: type[RuntimeError],
+) -> None:
+    body = '{"messages":[{"role":"user","content":"ローカル"}],"model_id":"m"}'.encode()
+    dispatches: list[bool] = []
+    request = replace(
+        _saved_local_chat_request(_Borrow(), body=body),
+        compile_request=compile_request,
+        mark_dispatch_possible=lambda: dispatches.append(True),
+    )
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == 1
+        expected = {
+            "role": "generate",
+            "connection_id": "fixture-local",
+            "record_revision": 7,
+            "endpoint": "http://127.0.0.1:11434/v1",
+            "input_bytes": len(body),
+            "project_response": True,
+        }
+        if compile_request:
+            expected["compile_request"] = True
+        assert json.loads(payload)["saved_local_chat"] == expected
+        if phase != "start":
+            _accept_saved_local_chat_body(peer, body)
+        if phase in ("live", "permit"):
+            _check_saved_local_chat_live(peer)
+        if phase == "permit":
+            _send(peer, 17)
+            assert _receive(peer) == (18, b"")
+        _send(peer, 8, b"legacy-request")
+        if exception is ipc._ProtocolError:
+            _confirm_saved_local_chat_cancellation(peer)
+        else:
+            assert peer.recv(1) == b""
+
+    with (
+        _served_saved_local_chat(monkeypatch, serve, version="3") as execute,
+        pytest.raises(exception) as failure,
+    ):
+        execute(request)
+    if isinstance(failure.value, ipc.NativeSavedLocalChatFailure):
+        assert failure.value.code == "legacy-request"
+    assert bool(dispatches) is (phase == "permit")
 
 
 @pytest.mark.parametrize("role", ["generate", "stream"])
@@ -2822,16 +2883,24 @@ def test_saved_local_chat_rejects_invalid_or_unrequested_projection(
 
 
 @pytest.mark.parametrize(
-    ("body", "code"), [(b"", "invalid"), (b"x" * (1024 * 1024 + 1), "limit-exceeded")],
+    ("version", "compile_request", "body", "code"),
+    [
+        ("1", False, b"", "invalid"),
+        ("1", False, b"x" * (1024 * 1024 + 1), "limit-exceeded"),
+        ("2", True, b'{"model_id":"m"}', "invalid"),
+        ("3", True, b"", "invalid"),
+        ("3", True, b"x" * (1024 * 1024 + 1), "limit-exceeded"),
+    ],
 )
 def test_saved_local_chat_rejects_out_of_bounds_body_before_connection(
-    monkeypatch: pytest.MonkeyPatch, body: bytes, code: str,
+    monkeypatch: pytest.MonkeyPatch, version: str, compile_request: bool,
+    body: bytes, code: str,
 ) -> None:
     class UnexpectedSocket:
         def __init__(self, *args: Any) -> None:
             pytest.fail("invalid input reached the Launcher socket")
 
-    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, "1")
+    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, version)
     monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
     monkeypatch.setenv(ipc._OWNER_ENV, _owner())
     monkeypatch.setattr(ipc.os, "getppid", os.getpid)
@@ -2839,7 +2908,10 @@ def test_saved_local_chat_rejects_out_of_bounds_body_before_connection(
     execute = ipc.capture_launcher_saved_local_chat_executor()
     assert execute is not None
     with pytest.raises(ipc.NativeSavedLocalChatFailure) as failure:
-        execute(_saved_local_chat_request(_Borrow(), body=body))
+        execute(replace(
+            _saved_local_chat_request(_Borrow(), body=body),
+            compile_request=compile_request,
+        ))
     assert failure.value.code == code
 
 

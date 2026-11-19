@@ -1038,23 +1038,44 @@ def _local_openai_compatible(
             "denied", "local provider credentials are not permitted"
         )
     endpoint = local_openai_endpoint(connection.get("endpoint"))
-    body = {
-        "model": _provider_model_id(request),
-        "messages": list(request.get("messages") or []),
-        "stream": False,
-        **dict(request.get("parameters") or {}),
-    }
-    tools = request.get("tools")
-    if isinstance(tools, list) and tools:
-        body["tools"] = tools
     native_post = getattr(invocation, "post_saved_local_chat", None)
-    envelope = invocation.envelope if invocation is not None else None
-    value = _local_post(
-        endpoint, body, request,
-        cancellation=envelope.cancellation_requested if envelope is not None else None,
-        deadline=envelope.deadline_monotonic if envelope is not None else None,
-        native_post=partial(native_post, connection) if callable(native_post) else None,
+    native_source_post = (
+        getattr(invocation, "post_saved_local_chat_source", None)
+        if getattr(invocation, "supports_saved_local_chat_request_compilation", False)
+        else None
     )
+    envelope = invocation.envelope if invocation is not None else None
+    deadline = envelope.deadline_monotonic if envelope is not None else None
+    budget = None
+    value = None
+    if callable(native_source_post):
+        # Preserve the compatibility path's body errors before a deadline error.
+        try:
+            budget = _local_budget(request, deadline)
+        except (GlobalContractInvocationError, OverflowError):
+            pass
+        else:
+            value = _decode_native_local_response(
+                native_source_post(connection, request, budget[1]),
+            )
+        native_post = None
+    if value is None:
+        body = {
+            "model": _provider_model_id(request),
+            "messages": list(request.get("messages") or []),
+            "stream": False,
+            **dict(request.get("parameters") or {}),
+        }
+        tools = request.get("tools")
+        if isinstance(tools, list) and tools:
+            body["tools"] = tools
+        value = _local_post(
+            endpoint, body, request,
+            cancellation=envelope.cancellation_requested if envelope is not None else None,
+            deadline=deadline,
+            native_post=partial(native_post, connection) if callable(native_post) else None,
+            budget=budget,
+        )
     if isinstance(value, _ProjectedLocalChatResponse):
         return value.result
     choices = value.get("choices") if isinstance(value, Mapping) else None
@@ -1084,6 +1105,7 @@ def _local_post(
     cancellation: threading.Event | None = None,
     deadline: float | None = None,
     native_post: Callable[[bytes, float], bytes | dict[str, Any] | None] | None = None,
+    budget: tuple[float, float] | None = None,
 ) -> dict[str, Any] | _ProjectedLocalChatResponse:
     """Send bounded JSON to the finite local chat route without proxy use."""
     parsed = urllib.parse.urlsplit(local_openai_endpoint(endpoint))
@@ -1097,16 +1119,15 @@ def _local_post(
         raise GlobalContractInvocationError(
             "invalid_request", "local provider request is too large"
         )
-    timeout = _local_timeout(request)
-    deadline_monotonic = time.monotonic() + timeout
-    if deadline is not None:
-        deadline_monotonic = min(deadline_monotonic, deadline)
+    timeout, deadline_monotonic = (
+        budget if budget is not None else _local_budget(request, deadline)
+    )
     if native_post is not None:
-        native_response = native_post(encoded, deadline_monotonic)
-        if isinstance(native_response, dict):
-            return _ProjectedLocalChatResponse(native_response)
+        native_response = _decode_native_local_response(
+            native_post(encoded, deadline_monotonic),
+        )
         if native_response is not None:
-            return _decode_local_response(native_response)
+            return native_response
 
     lifetime: HttpRequestLifetime | None = None
     connection: http.client.HTTPConnection | None = None
@@ -1165,6 +1186,14 @@ def _local_post(
     return _decode_local_response(raw)
 
 
+def _decode_native_local_response(
+    response: bytes | dict[str, Any] | None,
+) -> dict[str, Any] | _ProjectedLocalChatResponse | None:
+    if isinstance(response, dict):
+        return _ProjectedLocalChatResponse(response)
+    return _decode_local_response(response) if response is not None else None
+
+
 def _decode_local_response(raw: bytes) -> dict[str, Any]:
     if len(raw) > _MAX_LOCAL_RESPONSE_BYTES:
         raise GlobalContractInvocationError(
@@ -1181,6 +1210,16 @@ def _decode_local_response(raw: bytes) -> dict[str, Any]:
             "invalid_response", "local provider returned a non-object response"
         )
     return value
+
+
+def _local_budget(
+    request: Mapping[str, Any], deadline: float | None,
+) -> tuple[float, float]:
+    timeout = _local_timeout(request)
+    deadline_monotonic = time.monotonic() + timeout
+    if deadline is not None:
+        deadline_monotonic = min(deadline_monotonic, deadline)
+    return timeout, deadline_monotonic
 
 
 def _local_timeout(request: Mapping[str, Any]) -> float:

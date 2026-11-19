@@ -311,8 +311,10 @@ def test_local_transport_fences_before_creating_a_connection(
 
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("projected", [False, True])
+@pytest.mark.parametrize("compile_request", [False, True])
 def test_local_adapter_uses_the_native_result_without_another_post(
     monkeypatch: pytest.MonkeyPatch, streaming: bool, projected: bool,
+    compile_request: bool,
 ) -> None:
     endpoint = "http://127.0.0.1:11434/v1"
     expected: dict[str, Any] = {
@@ -334,21 +336,37 @@ def test_local_adapter_uses_the_native_result_without_another_post(
         }],
         "usage": expected["usage"],
     }).encode()
-    posts: list[bytes] = []
+    posts: list[bytes | dict[str, Any]] = []
 
     class NativeInvocation(_Invocation):
+        supports_saved_local_chat_request_compilation = compile_request
+
         def post_saved_local_chat(
             self, connection: dict[str, Any], body: bytes, deadline: float,
         ) -> bytes | dict[str, Any]:
+            assert not compile_request
             assert connection["endpoint"] == endpoint
             assert deadline <= self.envelope.deadline_monotonic
             posts.append(body)
+            return expected if projected else raw
+
+        def post_saved_local_chat_source(
+            self, connection: dict[str, Any], source: dict[str, Any], deadline: float,
+        ) -> bytes | dict[str, Any]:
+            assert compile_request
+            assert connection["endpoint"] == endpoint
+            assert deadline <= self.envelope.deadline_monotonic
+            posts.append(source)
             return expected if projected else raw
 
     def unexpected_call(*_args: Any, **_kwargs: Any) -> None:
         pytest.fail("native result reached the raw response or HTTP path")
 
     monkeypatch.setattr(adapter.http.client, "HTTPConnection", unexpected_call)
+    if compile_request:
+        monkeypatch.setattr(
+            adapter, "json", SimpleNamespace(loads=json.loads, dumps=unexpected_call),
+        )
     if projected:
         monkeypatch.setattr(adapter, "_decode_local_response", unexpected_call)
         monkeypatch.setattr(adapter, "_stream_result", unexpected_call)
@@ -363,11 +381,118 @@ def test_local_adapter_uses_the_native_result_without_another_post(
     assert result["output"] is False
     assert type(result["finish_reason"]) is int
     assert len(posts) == 1
-    assert json.loads(posts[0]) == {
-        "model": "gemma-local",
-        "messages": [{"role": "user", "content": "hello"}],
-        "stream": False,
-    }
+    if compile_request:
+        assert isinstance(posts[0], dict)
+        assert posts[0]["model_id"] == "gemma-local"
+        assert posts[0]["messages"] == [{"role": "user", "content": "hello"}]
+        assert posts[0]["parameters"] == {}
+    else:
+        assert isinstance(posts[0], bytes)
+        assert posts[0] == (
+            b'{"model":"gemma-local","messages":[{"role":"user","content":"hello"}],'
+            b'"stream":false}'
+        )
+
+
+def test_local_adapter_source_decline_uses_one_original_post_and_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deadlines: list[float] = []
+    posts: list[bytes] = []
+
+    class NativeInvocation(_Invocation):
+        supports_saved_local_chat_request_compilation = True
+
+        def post_saved_local_chat_source(
+            self, connection: dict[str, Any], source: dict[str, Any], deadline: float,
+        ) -> None:
+            assert connection["endpoint"] == self.endpoint
+            assert source["model_id"] == "provider.local/gemma"
+            deadlines.append(deadline)
+
+        def post_saved_local_chat(self, *_args: Any) -> None:
+            pytest.fail("source decline offered a second request to the Launcher")
+
+    original_lifetime = adapter.HttpRequestLifetime
+
+    def observe_lifetime(*, deadline: float, **kwargs: Any) -> Any:
+        assert deadlines == [deadline]
+        return original_lifetime(deadline=deadline, **kwargs)
+
+    class Connection(http.client.HTTPConnection):
+        def request(
+            self, method: str, url: str, body: bytes = b"",
+            headers: dict[str, str] | None = None,
+        ) -> None:
+            posts.append(body)
+            super().request(method, url, body, headers or {})
+
+    monkeypatch.setattr(adapter, "HttpRequestLifetime", observe_lifetime)
+    monkeypatch.setattr(adapter.http.client, "HTTPConnection", Connection)
+    with _server(lambda handler: _reply(handler, b'{"choices":[]}')) as endpoint:
+        invocation = NativeInvocation(
+            endpoint, cancellation=threading.Event(), deadline=time.monotonic() + 5,
+        )
+        _captured_invoke()(
+            "fixture.operation",
+            _request(
+                model_id="provider.local/gemma", provider_id="provider.local",
+                messages=[{"role": "user", "content": "日本語"}],
+                parameters={"max_tokens": 16},
+            ),
+            invocation,
+        )
+    assert len(deadlines) == 1
+    assert posts == [
+        ('{"model":"gemma","messages":[{"role":"user","content":"日本語"}],'
+         '"stream":false,"max_tokens":16}').encode(),
+    ]
+
+
+@pytest.mark.parametrize("failure", ["deadline", "body", "native", "bad-response"])
+def test_local_adapter_source_errors_never_start_python_transport(
+    monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    posts: list[bool] = []
+
+    class NativeInvocation(_Invocation):
+        supports_saved_local_chat_request_compilation = True
+
+        def post_saved_local_chat_source(
+            self, connection: dict[str, Any], source: dict[str, Any], deadline: float,
+        ) -> bytes:
+            posts.append(True)
+            if failure == "native":
+                raise GlobalContractInvocationError("denied", "native denied")
+            return b"not JSON"
+
+        def post_saved_local_chat(self, *_args: Any) -> None:
+            pytest.fail("source failure reached raw native path")
+
+    def unexpected_connection(*_args: Any, **_kwargs: Any) -> None:
+        pytest.fail("source failure reached Python HTTP")
+
+    monkeypatch.setattr(adapter.http.client, "HTTPConnection", unexpected_connection)
+    invocation = NativeInvocation(
+        "http://127.0.0.1:11434/v1",
+        cancellation=threading.Event(), deadline=time.monotonic() + 5,
+    )
+    request = _request()
+    if failure in ("deadline", "body"):
+        request["deadline"] = "invalid"
+    if failure == "body":
+        request["messages"] = 1
+        with pytest.raises(TypeError):
+            _captured_invoke()("fixture.operation", request, invocation)
+    else:
+        with pytest.raises(GlobalContractInvocationError) as rejected:
+            _captured_invoke()("fixture.operation", request, invocation)
+        assert rejected.value.code == {
+            "deadline": "invalid_request",
+            "native": "denied",
+            "bad-response": "invalid_response",
+        }[failure]
+    assert bool(posts) is (failure in ("native", "bad-response"))
 
 
 def test_local_timeout_cap_is_one_budget_across_headers_and_body(

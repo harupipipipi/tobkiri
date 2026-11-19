@@ -7500,8 +7500,9 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
             assert not legacy_reads and len(provider_requests) == count
 
 
+@pytest.mark.parametrize("native_source", [False, True], ids=["encoded", "source"])
 def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_source: bool,
 ) -> None:
     """Exercise the signed HTTP chain with the real Provider and Model owners."""
     from core_runtime import native_provider_prepare_ipc as ipc
@@ -7509,6 +7510,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
     from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.broker import _thaw_payload
     from tobkiri_host.credential_store import host_credential_store_factory
 
     root = tmp_path / "user-data"
@@ -7579,15 +7581,22 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         assert request.connection_id == provider_id
         assert request.record_revision == 2
         assert request.endpoint == endpoint
-        assert request.input == json.dumps(
-            {
+        assert request.compile_request is native_source
+        if native_source:
+            keys = {"model_id", "provider_id", "messages", "parameters", "tools"}
+            expected_input = {
+                key: value for key, value in _thaw_payload(adapter.payload).items()
+                if key in keys
+            }
+        else:
+            expected_input = {
                 "model": model_id,
                 "messages": [{"role": "user", "content": content}],
                 "stream": False,
                 "max_tokens": 16,
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
+            }
+        assert request.input == json.dumps(
+            expected_input, ensure_ascii=False, separators=(",", ":"),
         ).encode("utf-8")
         request.assert_current()
         if outcome == "denied":
@@ -7618,6 +7627,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             b'"finish_reason":"stop"}]}'
         )
 
+    execute.supports_request_compilation = native_source
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(
         ipc, "capture_launcher_model_resolve_reader", lambda: read_model,

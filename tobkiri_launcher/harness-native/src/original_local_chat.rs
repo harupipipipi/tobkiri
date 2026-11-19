@@ -111,16 +111,43 @@ pub async fn project_original_local_chat<T: Send + 'static>(
     let output = port
         .invoke_with_document_limit(&[Val::String(input), Val::Bool(stream)])
         .await?;
-    match output.as_slice() {
+    adapter_document(&output, LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, budget)
+}
+
+/// Compile the selected Provider inputs and retain the response port.
+pub async fn compile_original_local_chat<'a, T: Send + 'static>(
+    port: NativeReadOnlyPort<'a, T>,
+    source: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> AnyResult<(Option<CoreBuffer>, NativeReadOnlyPort<'a, T>)> {
+    ensure!(source.len() <= LEGACY_LOCAL_CHAT_REQUEST_LIMIT);
+    let input = BudgetedString::copy_from(source, port.allocation_owners().component(), 1)?;
+    let (output, response_port) = port
+        .invoke_with_document_limit_then(&[Val::String(input)])
+        .await?;
+    Ok((
+        adapter_document(&output, LEGACY_LOCAL_CHAT_REQUEST_LIMIT, budget)?,
+        response_port,
+    ))
+}
+
+fn adapter_document(
+    output: &[Val],
+    limit: usize,
+    budget: &Arc<dyn AllocationBudget>,
+) -> AnyResult<Option<CoreBuffer>> {
+    match output {
         [Val::Result(Ok(Some(value)))] => match &**value {
             Val::String(text) if text.as_str().is_empty() => Ok(None),
-            Val::String(text) if text.as_str().starts_with('{') => Ok(Some(CoreBuffer::copy_from(
-                text.as_str().as_bytes(),
-                budget,
-            )?)),
+            Val::String(text) if text.as_str().len() <= limit && text.as_str().starts_with('{') => {
+                Ok(Some(CoreBuffer::copy_from(
+                    text.as_str().as_bytes(),
+                    budget,
+                )?))
+            }
             _ => bail!("local Provider Adapter returned a different result type"),
         },
-        _ => bail!("local Provider Adapter omitted its projected result"),
+        _ => bail!("local Provider Adapter omitted its result"),
     }
 }
 
