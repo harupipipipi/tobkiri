@@ -10256,7 +10256,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
 
         if side_chat:
             status, ui, _ = _request(
-                server, "GET", _contract("GET", "/api/ui/catalog"), headers=headers,
+                server, "GET", _contract("GET", "/api/ui/catalog"),
+                headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
             )
             assert status == 200, ui
             catalog = ui["data"]["dynamic_host"]
