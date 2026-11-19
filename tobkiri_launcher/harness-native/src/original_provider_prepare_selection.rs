@@ -531,6 +531,36 @@ impl<'a> OriginalConversationConfirmationChoice<'a> {
     }
 }
 
+/// The signed chain from the default Shell to Saved Turn and Saved Orchestration.
+pub struct OriginalSavedOrchestrationChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 2],
+}
+
+impl<'a> OriginalSavedOrchestrationChoice<'a> {
+    /// Select the exact ordinary saved grants for orchestration computation.
+    /// Verify both returned pins against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        let Some(records) = selected_shell_records(active.records(), budget)? else {
+            return Ok(None);
+        };
+        Ok(
+            select_saved_orchestration_records(&records)?.map(|pins| Self {
+                _active: active,
+                pins,
+            }),
+        )
+    }
+
+    /// The original Shell-to-Turn grant and the Turn-to-Saved Orchestration grant.
+    pub fn pins(&self) -> &[OriginalRoutePin; 2] {
+        &self.pins
+    }
+}
+
 /// The signed chain from the default Shell through Saved Orchestration to Message Manage.
 pub struct OriginalConversationAppendChoice<'a> {
     _active: &'a OriginalActiveProfile,
@@ -813,19 +843,26 @@ fn select_conversation_append_records(
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
+    let Some([turn, orchestration]) = select_saved_orchestration_records(&records)? else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(orchestration.function_id(), &CONVERSATION_MESSAGE_MANAGE)?
+        .map(|manage| [turn, orchestration, manage]))
+}
+
+fn select_saved_orchestration_records(
+    records: &Records<'_>,
+) -> Result<Option<[OriginalRoutePin; 2]>> {
     if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
         return Ok(None);
     }
     let Some(turn) = records.select_shell_route(&SAVED_TURN)? else {
         return Ok(None);
     };
-    let Some(orchestration) = records.select_route(turn.function_id(), &SAVED_ORCHESTRATION)?
-    else {
-        return Ok(None);
-    };
     Ok(records
-        .select_route(orchestration.function_id(), &CONVERSATION_MESSAGE_MANAGE)?
-        .map(|manage| [turn, orchestration, manage]))
+        .select_route(turn.function_id(), &SAVED_ORCHESTRATION)?
+        .map(|orchestration| [turn, orchestration]))
 }
 
 fn select_saved_turn_settlement_records(
@@ -1519,6 +1556,15 @@ mod tests {
         select_conversation_append_records((&profile, &lock, &plan), &budget)
     }
 
+    fn select_saved_orchestration(records: &Value) -> Result<Option<[OriginalRoutePin; 2]>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        let Some(records) = selected_shell_records((&profile, &lock, &plan), &budget)? else {
+            return Ok(None);
+        };
+        select_saved_orchestration_records(&records)
+    }
+
     const MODEL_MANAGE_ROW: usize = 3;
     const MODEL_PROVIDER_READ_ROW: usize = 4;
     const CONVERSATION_SHELL_ROW: usize = 6;
@@ -1698,6 +1744,73 @@ mod tests {
     }
 
     #[test]
+    fn saved_orchestration_proof_is_independent_of_message_manage() {
+        let mut fixture = records();
+        let [turn, orchestration, _] = select_append(&fixture).unwrap().unwrap();
+        let expect_ordinary = |fixture: &Value| {
+            let pins = select_saved_orchestration(fixture).unwrap().unwrap();
+            for (pin, original) in pins.into_iter().zip([&turn, &orchestration]) {
+                assert_eq!(pin.caller_function_id(), original.caller_function_id());
+                assert_eq!(pin.function_id(), original.function_id());
+                assert_eq!(pin.authority_reference(), original.authority_reference());
+                assert_eq!(pin.artifact_digest(), original.artifact_digest());
+                assert_eq!(
+                    pin.requested_scope_digest(),
+                    original.requested_scope_digest()
+                );
+            }
+        };
+        expect_ordinary(&fixture);
+
+        fixture["plan"]["bindings"][MESSAGE_MANAGE_ROW]["authority_reference"] = json!("invalid");
+        assert!(matches!(select_append(&fixture), Err(Inconsistent(_))));
+        expect_ordinary(&fixture);
+
+        fixture["profile"]["requested_edges"]
+            .as_array_mut()
+            .unwrap()
+            .remove(MESSAGE_MANAGE_ROW);
+        fixture["plan"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .remove(MESSAGE_MANAGE_ROW);
+        assert!(select_append(&fixture).unwrap().is_none());
+        expect_ordinary(&fixture);
+    }
+
+    #[test]
+    fn saved_orchestration_proof_rejects_malformed_or_missing_grants() {
+        for row in [SAVED_TURN_SETTLEMENT_ROW, SAVED_ORCHESTRATION_ROW] {
+            let mut fixture = records();
+            fixture["plan"]["bindings"][row]["requested_scope_digest"] = json!("malformed");
+            assert!(matches!(
+                select_saved_orchestration(&fixture),
+                Err(Inconsistent(_))
+            ));
+
+            fixture["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            fixture["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(select_saved_orchestration(&fixture).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn saved_orchestration_proof_rejects_calendar_caller() {
+        let mut fixture = records();
+        let calendar = json!("rumi_turn_runtime_pack.chat-saved-job-adapter");
+        fixture["profile"]["requested_edges"][SAVED_ORCHESTRATION_ROW]["caller_function_id"] =
+            calendar.clone();
+        fixture["plan"]["bindings"][SAVED_ORCHESTRATION_ROW]["caller_function_id"] = calendar;
+        assert!(select_saved_orchestration(&fixture).unwrap().is_none());
+    }
+
+    #[test]
     fn conversation_append_requires_each_original_grant_independently() {
         let fixture = records();
         let [turn, orchestration, manage] = select_append(&fixture).unwrap().unwrap();
@@ -1770,6 +1883,10 @@ mod tests {
                 .unwrap();
             pin[field] = json!(alternate);
             fixture["plan"]["bindings"][SAVED_ORCHESTRATION_ROW][field] = json!(alternate);
+            assert!(
+                select_saved_orchestration(&fixture).unwrap().is_none(),
+                "{field}"
+            );
             assert!(select_append(&fixture).unwrap().is_none(), "{field}");
         }
 

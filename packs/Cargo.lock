@@ -871,6 +871,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-saved-orchestration-rust"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde_json",
+ "thiserror",
+ "tobkiri-canon",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-saved-turn-runtime-rust"
 version = "0.1.0"
 dependencies = [

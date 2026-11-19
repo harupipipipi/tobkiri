@@ -1,0 +1,15 @@
+package local:saved-orchestration@1.0.0;
+
+interface legacy-step {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Evaluate a single original saved conversation computation envelope.
+  /// The result carries no permission to run a provider or publish an effect.
+  advance: func(input: string) -> result<string, error>;
+}
+
+world pack {
+  import tobkiri:core/types@1.2.0;
+  export tobkiri:core/lifecycle@1.2.0;
+  export legacy-step;
+}

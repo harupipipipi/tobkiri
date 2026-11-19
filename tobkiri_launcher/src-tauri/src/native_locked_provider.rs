@@ -42,10 +42,11 @@ pub(crate) struct LockedConversationConfirmationBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// The locked Bundle documents for the three grants in the ordinary saved append chain.
-pub(crate) struct LockedConversationAppendBundle<'pin> {
+/// Locked Bundle documents for ordinary saved orchestration and its append grant when selected.
+pub(crate) struct LockedSavedOrchestrationBundle<'pin> {
     root: CoreBuffer,
-    routes: [LockedRegistryRoute<'pin>; 3],
+    routes: [LockedRegistryRoute<'pin>; 2],
+    message_manage: Option<LockedRegistryRoute<'pin>>,
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -119,20 +120,34 @@ impl NativeApplicationSources {
         &self,
         selection: &'pin OriginalConversationAppendChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedConversationAppendBundle<'pin>> {
+    ) -> Result<LockedSavedOrchestrationBundle<'pin>> {
         let [turn, orchestration, manage] = selection.pins();
+        self.saved_orchestration_bundle([turn, orchestration], Some(manage), budget)
+    }
+
+    /// Capture locked documents from the selected ordinary saved orchestration pins.
+    /// A saved append also supplies its independently selected Message Manage pin.
+    pub(crate) fn saved_orchestration_bundle<'pin>(
+        &self,
+        [turn, orchestration]: [&'pin OriginalRoutePin; 2],
+        message_manage: Option<&'pin OriginalRoutePin>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedSavedOrchestrationBundle<'pin>> {
         ensure!(
             turn.caller_function_id() == self.authority.shell_provider_id,
-            "old Conversation append caller differs from the selected Shell"
+            "old Saved Turn caller differs from the selected Shell"
         );
         let routes = [
             LockedRegistryRoute::from_lock(&self.bundle_lock, turn, budget)?,
             LockedRegistryRoute::from_lock(&self.bundle_lock, orchestration, budget)?,
-            LockedRegistryRoute::from_lock(&self.bundle_lock, manage, budget)?,
         ];
-        Ok(LockedConversationAppendBundle {
+        let message_manage = message_manage
+            .map(|pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget))
+            .transpose()?;
+        Ok(LockedSavedOrchestrationBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             routes,
+            message_manage,
             budget: Arc::clone(budget),
         })
     }
@@ -335,12 +350,15 @@ impl LockedConversationConfirmationBundle<'_> {
     }
 }
 
-impl LockedConversationAppendBundle<'_> {
-    /// Verify both privileged host routes and the pure Pack VM operation between them.
+impl LockedSavedOrchestrationBundle<'_> {
+    /// Verify the original privileged Turn, pure Orchestration, and selected append operations.
     pub(crate) fn verify(&self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<()> {
         let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
-        for (route, effect_class) in self.routes.iter().zip(["privileged", "pure", "privileged"]) {
-            route.verify(root, &self.budget, &mut checkpoint, Some(effect_class))?;
+        let [turn, orchestration] = &self.routes;
+        turn.verify(root, &self.budget, &mut checkpoint, Some("privileged"))?;
+        orchestration.verify(root, &self.budget, &mut checkpoint, Some("pure"))?;
+        if let Some(manage) = &self.message_manage {
+            manage.verify(root, &self.budget, &mut checkpoint, Some("privileged"))?;
         }
         checkpoint()
     }

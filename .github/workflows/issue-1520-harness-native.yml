@@ -779,6 +779,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
           targets: wasm32-wasip2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
       - name: Build and verify the Registry Pack archives
         id: archives
         shell: bash
@@ -813,6 +816,30 @@ jobs:
             --log "$RUNNER_TEMP/saved-turn-owner.log" --expected-passed 2 -- \
             cargo test --locked -p tobkiri-harness-native \
               original_saved_turn_settlement::tests::actual_wasm_ -- --ignored
+      - name: Replay original saved orchestration against its Wasm component
+        env:
+          TOBKIRI_SAVED_ORCHESTRATION_ORACLE_PYTHON: python3
+          TOBKIRI_SAVED_ORCHESTRATION_TPK: ${{ runner.temp }}/saved-orchestration-check/local.saved-orchestration.tpk
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --target wasm32-wasip2 --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-saved-orchestration-rust --features component
+          PYTHONPATH="$GITHUB_WORKSPACE/packs" python3 -B - <<'PY'
+          import os
+          from pathlib import Path
+          from stage_registry_packs import stage_pack
+          target = Path(os.environ["CARGO_TARGET_DIR"])
+          check = Path(os.environ["TOBKIRI_SAVED_ORCHESTRATION_TPK"]).parent
+          check.mkdir()
+          stage_pack(
+              target / "debug/tobkiri", "saved-orchestration",
+              target / "wasm32-wasip2/release", check, check,
+          )
+          PY
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/saved-orchestration-check.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test saved_orchestration \
+              original_saved_steps_through_core -- --ignored --exact --nocapture
       - uses: actions/upload-artifact@v4
         with:
           name: native-registry-packs

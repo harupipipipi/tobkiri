@@ -1,0 +1,19 @@
+[package]
+name = "tobkiri-pack-saved-orchestration-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+component = ["dep:wit-bindgen"]
+
+[dependencies]
+base64 = "=0.22.1"
+serde_json.workspace = true
+thiserror = "=2.0.21"
+tobkiri-canon = { path = "../../crates/tobkiri-canon" }
+wit-bindgen = { workspace = true, optional = true }
