@@ -57,6 +57,9 @@ pub(crate) use tobkiri_harness_native::ApplicationPresentationRole;
 /// The signed entry point authorizing this saved append.
 pub(crate) use tobkiri_harness_native::ConversationAppendCaller;
 
+/// The signed entry point authorizing this saved Turn start.
+pub(crate) use tobkiri_harness_native::SavedTurnStartCaller;
+
 /// The signed Shell-to-Turn grant authorizing this settlement caller.
 pub(crate) use tobkiri_harness_native::OriginalSavedTurnSettlementRole as SettlementCaller;
 
@@ -238,11 +241,12 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.permits_read(role))
     }
 
-    /// Require the exact ordinary Saved Turn-to-Lifecycle chain and verified Turn start port.
-    pub(crate) fn permits_turn_start(&self) -> bool {
+    /// Require this caller's exact Saved Turn-to-Lifecycle chain and verified Turn start port.
+    pub(crate) fn permits_turn_start_for(&self, caller: SavedTurnStartCaller) -> bool {
         self.turn
             .as_ref()
-            .is_some_and(|source| source.start.is_some())
+            .and_then(|source| source.start.bundle(caller))
+            .is_some()
     }
 
     /// Require the receipt caller's own legacy edge and verified receipt declaration.
@@ -520,10 +524,29 @@ impl VerifiedConversationSource {
 struct VerifiedTurnSource {
     settlement: [Option<(SettlementCaller, VerifiedLegacyRoutePin)>; 2],
     read: VerifiedConversationConfirmationRoles,
-    start: Option<VerifiedTurnStartBundle>,
+    start: VerifiedTurnStartRoles,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct VerifiedTurnStartRoles {
+    saved_turn: Option<VerifiedTurnStartBundle>,
+    side_chat: Option<VerifiedTurnStartBundle>,
+}
+
+impl VerifiedTurnStartRoles {
+    fn is_empty(&self) -> bool {
+        self.saved_turn.is_none() && self.side_chat.is_none()
+    }
+
+    fn bundle(&self, caller: SavedTurnStartCaller) -> Option<&VerifiedTurnStartBundle> {
+        match caller {
+            SavedTurnStartCaller::SavedTurn => self.saved_turn.as_ref(),
+            SavedTurnStartCaller::SideChat => self.side_chat.as_ref(),
+        }
+    }
 }
 
 /// The ordinary saved chain and its bundled executable computation.
@@ -1038,7 +1061,7 @@ impl VerifiedRegistryLaunch {
             turn: Some(VerifiedTurnSource {
                 settlement: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
                 read: [None, None],
-                start: None,
+                start: VerifiedTurnStartRoles::default(),
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
@@ -1061,7 +1084,7 @@ impl VerifiedRegistryLaunch {
         proof.turn = Some(VerifiedTurnSource {
             settlement: [None, None],
             read: confirmation.confirmation,
-            start: None,
+            start: VerifiedTurnStartRoles::default(),
             archive_sha256: confirmation.archive_sha256,
             archive_bytes: confirmation.archive_bytes,
             manifest_sha256: confirmation.manifest_sha256,
@@ -1069,16 +1092,23 @@ impl VerifiedRegistryLaunch {
         proof
     }
 
-    pub(crate) fn test_turn_start_proof(
+    pub(crate) fn test_turn_start_proof_for(
         identity: ExecutionProfileIdentity,
         catalog_revision: &str,
+        caller: SavedTurnStartCaller,
     ) -> Self {
         let mut proof = Self::test_proof(identity, catalog_revision);
         proof.provider_prepare = None;
+        let mut start = VerifiedTurnStartRoles::default();
+        let bundle = Some(VerifiedTurnStartBundle::fixture(caller));
+        match caller {
+            SavedTurnStartCaller::SavedTurn => start.saved_turn = bundle,
+            SavedTurnStartCaller::SideChat => start.side_chat = bundle,
+        }
         proof.turn = Some(VerifiedTurnSource {
             settlement: [None, None],
             read: [None, None],
-            start: Some(VerifiedTurnStartBundle::fixture()),
+            start,
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -1652,7 +1682,7 @@ impl LaunchActivationObserver<'_> {
         {
             log::info!("verified selected old Turn settlement grants and their bundled Wasm replacement for this activation");
         }
-        if turn.as_ref().is_some_and(|source| source.start.is_some()) {
+        if turn.as_ref().is_some_and(|source| !source.start.is_empty()) {
             log::info!("verified the ordinary Saved Turn Lifecycle grants and their bundled Wasm replacement for this activation");
         }
         let verified = VerifiedRegistryLaunch {
@@ -2223,10 +2253,11 @@ pub(super) fn reacquire_turn_read_pack(
     .context("bundled Turn read archive verification failed")
 }
 
-/// Reacquire the fixed Turn start port from the installed Bundle verified at Launch.
-pub(super) fn reacquire_turn_start_pack(
+/// Reacquire the Turn start port with the exact caller chain verified at Launch.
+pub(super) fn reacquire_turn_start_pack_for(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
+    caller: SavedTurnStartCaller,
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<VerifiedPack> {
     let source = proof
@@ -2235,8 +2266,8 @@ pub(super) fn reacquire_turn_start_pack(
         .context("admitted launch has no verified Turn source")?;
     let start = source
         .start
-        .as_ref()
-        .context("admitted launch has no verified ordinary Turn start source")?;
+        .bundle(caller)
+        .context("admitted launch has no verified Turn start source for the caller")?;
     checkpoint()?;
     inspection.with_source(|sources| start.require_source(sources))??;
     start.revalidate(inspection.allocation_budget()?, &checkpoint)?;
@@ -2593,12 +2624,12 @@ fn verify_turn_source(
         [None, None]
     };
     let start = if receipt.version() == "0.3.0" {
-        OriginalSavedTurnStartChoice::select(active, budget)?
+        verify_turn_start_source(inspection, active, &checkpoint)?
     } else {
-        None
+        VerifiedTurnStartRoles::default()
     };
     let has_read = read.iter().any(Option::is_some);
-    if selections.iter().all(Option::is_none) && !has_read && start.is_none() {
+    if selections.iter().all(Option::is_none) && !has_read && start.is_empty() {
         return Ok(None);
     }
     if selections.iter().any(Option::is_some) {
@@ -2607,14 +2638,6 @@ fn verify_turn_source(
         })??;
         locked.verify(&checkpoint)?;
     }
-    let start = start
-        .as_ref()
-        .map(|choice| {
-            let locked =
-                inspection.with_source(|sources| sources.turn_start_bundle(choice, budget))??;
-            locked.verify(&checkpoint)
-        })
-        .transpose()?;
     let pack = verify_registry_archive(inspection, receipt, input)?;
     let declares_read = require_turn_settlement_declaration(&pack)?;
     ensure!(
@@ -2630,6 +2653,26 @@ fn verify_turn_source(
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
     }))
+}
+
+fn verify_turn_start_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedTurnStartRoles> {
+    let budget = inspection.allocation_budget()?;
+    let verify = |caller| -> Result<Option<VerifiedTurnStartBundle>> {
+        let Some(choice) = OriginalSavedTurnStartChoice::select_for(active, budget, caller)? else {
+            return Ok(None);
+        };
+        let locked =
+            inspection.with_source(|sources| sources.turn_start_bundle(&choice, budget))??;
+        Ok(Some(locked.verify(&checkpoint)?))
+    };
+    Ok(VerifiedTurnStartRoles {
+        saved_turn: verify(SavedTurnStartCaller::SavedTurn)?,
+        side_chat: verify(SavedTurnStartCaller::SideChat)?,
+    })
 }
 
 fn verify_saved_orchestration_source(
@@ -4573,7 +4616,7 @@ mod tests {
     }
 
     #[test]
-    fn turn_start_evidence_is_independent_of_settlement_read_and_orchestration() {
+    fn turn_start_evidence_is_specific_to_its_caller_and_operation() {
         let identity = ExecutionProfileIdentity {
             profile_id: "defaults".into(),
             profile_revision: "revision:fixture".into(),
@@ -4581,31 +4624,55 @@ mod tests {
             plan_digest: "sha256:fixture".into(),
         };
         let revision = "catalog:fixture";
-        let start = VerifiedRegistryLaunch::test_turn_start_proof(identity.clone(), revision);
-        assert!(start.permits_turn_start());
-        assert!(!start.permits_saved_orchestration());
-        assert!(!VerifiedRegistryLaunch::test_saved_orchestration_proof(
-            identity.clone(),
-            revision
-        )
-        .permits_turn_start());
-        for role in SettlementCaller::ALL {
-            assert!(!start.permits_turn_settlement(role));
-            assert!(!VerifiedRegistryLaunch::test_turn_settlement_proof(
+        let callers = [
+            SavedTurnStartCaller::SavedTurn,
+            SavedTurnStartCaller::SideChat,
+        ];
+        for caller in callers {
+            let start = VerifiedRegistryLaunch::test_turn_start_proof_for(
                 identity.clone(),
                 revision,
-                role
-            )
-            .permits_turn_start());
-        }
-        for role in OriginalSavedReceiptRole::ALL {
-            assert!(!start.permits_turn_read(role));
-            assert!(!VerifiedRegistryLaunch::test_turn_read_proof(
+                caller,
+            );
+            for requested in callers {
+                assert_eq!(start.permits_turn_start_for(requested), requested == caller);
+            }
+            assert!(!start.permits_saved_orchestration());
+            assert!(!VerifiedRegistryLaunch::test_saved_orchestration_proof(
                 identity.clone(),
-                revision,
-                role
+                revision
             )
-            .permits_turn_start());
+            .permits_turn_start_for(caller));
+            for role in SettlementCaller::ALL {
+                assert!(!start.permits_turn_settlement(role));
+                assert!(!VerifiedRegistryLaunch::test_turn_settlement_proof(
+                    identity.clone(),
+                    revision,
+                    role
+                )
+                .permits_turn_start_for(caller));
+            }
+            for role in OriginalSavedReceiptRole::ALL {
+                assert!(!start.permits_turn_read(role));
+                assert!(!VerifiedRegistryLaunch::test_turn_read_proof(
+                    identity.clone(),
+                    revision,
+                    role
+                )
+                .permits_turn_start_for(caller));
+            }
+            for append in [
+                ConversationAppendCaller::SavedTurn,
+                ConversationAppendCaller::SideChat,
+            ] {
+                assert!(!start.permits_conversation_append_for(append));
+                assert!(!VerifiedRegistryLaunch::test_conversation_append_proof_for(
+                    identity.clone(),
+                    revision,
+                    append
+                )
+                .permits_turn_start_for(caller));
+            }
         }
     }
 

@@ -48,11 +48,12 @@ pub(crate) struct LockedTurnSettlementBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// Signed Bundle files for the exact ordinary Saved Turn and Lifecycle grants.
+/// Signed Bundle files for one exact Saved Turn start chain.
 pub(crate) struct LockedTurnStartBundle<'pin> {
     application_root: CoreBuffer,
     bundle_root: CoreBuffer,
     bundle_lock_digest: Digest,
+    side_chat: Option<LockedRegistryRoute<'pin>>,
     routes: [LockedRegistryRoute<'pin>; 2],
     budget: Arc<dyn AllocationBudget>,
 }
@@ -63,6 +64,12 @@ pub(crate) struct VerifiedTurnStartBundle {
     application_root: PathBuf,
     bundle_root: PathBuf,
     bundle_lock_digest: Digest,
+    side_chat: Option<VerifiedTurnStartDocuments>,
+    turn: VerifiedTurnStartDocuments,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedTurnStartDocuments {
     pack: (String, Digest),
     catalog: (String, Digest),
 }
@@ -423,18 +430,22 @@ impl NativeApplicationSources {
         })
     }
 
-    /// Capture the originally signed Turn Pack and catalog for both start grants.
+    /// Capture the signed Bundle documents for the selected start caller's grants.
     pub(crate) fn turn_start_bundle<'pin>(
         &self,
         selection: &'pin OriginalSavedTurnStartChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedTurnStartBundle<'pin>> {
         let [turn, lifecycle] = selection.pins();
+        let side_chat = selection.side_chat();
+        let first = side_chat.unwrap_or(turn);
         ensure!(
-            turn.caller_function_id() == self.authority.shell_provider_id
+            first.caller_function_id() == self.authority.shell_provider_id
+                && side_chat.is_none_or(|side| side.function_id() == turn.caller_function_id())
                 && lifecycle.caller_function_id() == turn.function_id(),
-            "old Turn start callers differ from the selected Shell and Saved Turn"
+            "old Turn start callers differ from the selected Shell and caller chain"
         );
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
         Ok(LockedTurnStartBundle {
             application_root: CoreBuffer::copy_from(
                 self.application_root.as_os_str().as_bytes(),
@@ -442,10 +453,8 @@ impl NativeApplicationSources {
             )?,
             bundle_root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             bundle_lock_digest: Digest::parse(&self.bundle_lock.digest)?,
-            routes: [
-                LockedRegistryRoute::from_lock(&self.bundle_lock, turn, budget)?,
-                LockedRegistryRoute::from_lock(&self.bundle_lock, lifecycle, budget)?,
-            ],
+            side_chat: side_chat.map(from_lock).transpose()?,
+            routes: [from_lock(turn)?, from_lock(lifecycle)?],
             budget: Arc::clone(budget),
         })
     }
@@ -739,12 +748,20 @@ impl LockedTurnSettlementBundle<'_> {
 }
 
 impl LockedTurnStartBundle<'_> {
-    /// Verify both Python variants and their privileged operations before detaching evidence.
+    /// Verify every original variant and privileged operation for this start caller.
     pub(crate) fn verify(
         &self,
         mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<VerifiedTurnStartBundle> {
         let bundle_root = Path::new(OsStr::from_bytes(self.bundle_root.as_bytes()));
+        if let Some(side_chat) = &self.side_chat {
+            side_chat.verify(
+                bundle_root,
+                &self.budget,
+                &mut checkpoint,
+                Some("privileged"),
+            )?;
+        }
         verify_privileged_routes(
             self.routes.iter(),
             bundle_root,
@@ -757,15 +774,39 @@ impl LockedTurnStartBundle<'_> {
             application_root: Path::new(OsStr::from_bytes(self.application_root.as_bytes())).into(),
             bundle_root: bundle_root.into(),
             bundle_lock_digest: self.bundle_lock_digest.clone(),
+            side_chat: self
+                .side_chat
+                .as_ref()
+                .map(VerifiedTurnStartDocuments::from_route)
+                .transpose()?,
+            turn: VerifiedTurnStartDocuments::from_route(turn)?,
+        })
+    }
+}
+
+impl VerifiedTurnStartDocuments {
+    fn from_route(route: &LockedRegistryRoute<'_>) -> Result<Self> {
+        Ok(Self {
             pack: (
-                turn.pack.path.as_str()?.to_owned(),
-                turn.pack.digest.clone(),
+                route.pack.path.as_str()?.to_owned(),
+                route.pack.digest.clone(),
             ),
             catalog: (
-                turn.catalog.path.as_str()?.to_owned(),
-                turn.catalog.digest.clone(),
+                route.catalog.path.as_str()?.to_owned(),
+                route.catalog.digest.clone(),
             ),
         })
+    }
+
+    fn matches_lock(&self, lock: &VerifiedBundleLock, pack_id: &str) -> bool {
+        let (pack_path, pack_digest) = &self.pack;
+        let (catalog_path, catalog_digest) = &self.catalog;
+        lock.pack_paths.get(pack_id) == Some(pack_path)
+            && lock.authority_roles.get(pack_path) == Some(&BundleEntryKind::Pack)
+            && lock.authority_digests.get(pack_path).map(String::as_str)
+                == Some(pack_digest.as_str())
+            && lock.sidecar_digests.get(catalog_path).map(String::as_str)
+                == Some(catalog_digest.as_str())
     }
 }
 
@@ -773,35 +814,38 @@ impl VerifiedTurnStartBundle {
     /// Bind the current signed resolution to the exact installed source used for admission.
     pub(crate) fn require_source(&self, sources: &NativeApplicationSources) -> Result<()> {
         let lock = &sources.bundle_lock;
-        let (pack_path, pack_digest) = &self.pack;
-        let (catalog_path, catalog_digest) = &self.catalog;
         ensure!(
             self.application_root == sources.application_root
                 && self.bundle_root == sources.bundle_root
                 && self.bundle_lock_digest.as_str() == lock.digest
                 && sources.authority.shell_provider_id == "shell.tauri.default"
-                && lock.pack_paths.get("rumi_turn_runtime_pack") == Some(pack_path)
-                && lock.authority_roles.get(pack_path) == Some(&BundleEntryKind::Pack)
-                && lock.authority_digests.get(pack_path).map(String::as_str)
-                    == Some(pack_digest.as_str())
-                && lock.sidecar_digests.get(catalog_path).map(String::as_str)
-                    == Some(catalog_digest.as_str()),
+                && self.turn.matches_lock(lock, "rumi_turn_runtime_pack")
+                && self
+                    .side_chat
+                    .as_ref()
+                    .is_none_or(|documents| documents.matches_lock(lock, "tobkiri_side_chat_pack")),
             "signed Turn start source differs from the admitted launch"
         );
         Ok(())
     }
 
-    /// Recheck the same locked bytes that established both privileged operation identities.
+    /// Recheck the locked bytes for every operation in the admitted start chain.
     pub(crate) fn revalidate(
         &self,
         budget: &Arc<dyn AllocationBudget>,
         mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<()> {
-        let documents = [
-            ("bundle.lock.json", &self.bundle_lock_digest),
-            (self.pack.0.as_str(), &self.pack.1),
-            (self.catalog.0.as_str(), &self.catalog.1),
-        ];
+        let documents = std::iter::once(("bundle.lock.json", &self.bundle_lock_digest)).chain(
+            self.side_chat
+                .iter()
+                .chain(std::iter::once(&self.turn))
+                .flat_map(|documents| {
+                    [
+                        (documents.pack.0.as_str(), &documents.pack.1),
+                        (documents.catalog.0.as_str(), &documents.catalog.1),
+                    ]
+                }),
+        );
         for (path, digest) in documents {
             LockedDocument::new(path, digest.as_str(), budget)?.read_bytes(
                 &self.bundle_root,
@@ -813,13 +857,21 @@ impl VerifiedTurnStartBundle {
     }
 
     #[cfg(all(test, target_os = "macos", feature = "native-first-setup"))]
-    pub(crate) fn fixture() -> Self {
+    pub(crate) fn fixture(caller: tobkiri_harness_native::SavedTurnStartCaller) -> Self {
         Self {
             application_root: PathBuf::new(),
             bundle_root: PathBuf::new(),
             bundle_lock_digest: Digest::hash(b"test Bundle lock"),
-            pack: (String::new(), Digest::hash(b"test Turn Pack")),
-            catalog: (String::new(), Digest::hash(b"test Turn catalog")),
+            side_chat: (caller == tobkiri_harness_native::SavedTurnStartCaller::SideChat).then(
+                || VerifiedTurnStartDocuments {
+                    pack: (String::new(), Digest::hash(b"test Side Chat Pack")),
+                    catalog: (String::new(), Digest::hash(b"test Side Chat catalog")),
+                },
+            ),
+            turn: VerifiedTurnStartDocuments {
+                pack: (String::new(), Digest::hash(b"test Turn Pack")),
+                catalog: (String::new(), Digest::hash(b"test Turn catalog")),
+            },
         }
     }
 }
@@ -1369,6 +1421,71 @@ mod tests {
         }
 
         fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn side_chat_start_revalidates_both_packs_and_the_bundle_lock() {
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-turn-start-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("packs")).unwrap();
+        let root_path = root.0.canonicalize().unwrap();
+        let bundle_lock = "bundle.lock.json";
+        let turn_pack = "packs/rumi_turn_runtime_pack.json";
+        let turn_catalog = "packs/rumi_turn_runtime_pack.executables.v4.json";
+        let side_pack = "packs/tobkiri_side_chat_pack.json";
+        let side_catalog = "packs/tobkiri_side_chat_pack.executables.v4.json";
+        let paths = [
+            bundle_lock,
+            turn_pack,
+            turn_catalog,
+            side_pack,
+            side_catalog,
+        ];
+        for path in paths {
+            fs::write(root_path.join(path), path).unwrap();
+        }
+        let document = |path: &str| (path.to_owned(), Digest::hash(path.as_bytes()));
+        let ordinary = VerifiedTurnStartBundle {
+            application_root: root_path.clone(),
+            bundle_root: root_path.clone(),
+            bundle_lock_digest: Digest::hash(bundle_lock.as_bytes()),
+            side_chat: None,
+            turn: VerifiedTurnStartDocuments {
+                pack: document(turn_pack),
+                catalog: document(turn_catalog),
+            },
+        };
+        let side_chat = VerifiedTurnStartBundle {
+            side_chat: Some(VerifiedTurnStartDocuments {
+                pack: document(side_pack),
+                catalog: document(side_catalog),
+            }),
+            ..ordinary.clone()
+        };
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        for path in paths {
+            side_chat.revalidate(&budget, || Ok(())).unwrap();
+            fs::write(root_path.join(path), b"changed").unwrap();
+            let error = side_chat.revalidate(&budget, || Ok(())).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!("locked Bundle digest changed: {path}")
+            );
+            assert_eq!(
+                ordinary.revalidate(&budget, || Ok(())).is_ok(),
+                [side_pack, side_catalog].contains(&path)
+            );
+            fs::write(root_path.join(path), path).unwrap();
+        }
     }
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]

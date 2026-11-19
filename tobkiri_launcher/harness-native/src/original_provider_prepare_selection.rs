@@ -827,9 +827,19 @@ impl<'a> OriginalConversationConfirmationChoice<'a> {
     }
 }
 
-/// The signed chain from the default Shell through Saved Turn to Turn Lifecycle.
+/// The entry point behind a signed saved Turn start.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SavedTurnStartCaller {
+    /// The selected Shell invokes Saved Turn directly.
+    SavedTurn,
+    /// The selected Shell invokes Saved Turn through the Side Chat service.
+    SideChat,
+}
+
+/// The signed chain from the selected Shell through Saved Turn to Turn Lifecycle.
 pub struct OriginalSavedTurnStartChoice<'a> {
     _active: &'a OriginalActiveProfile,
+    side_chat: Option<OriginalRoutePin>,
     pins: [OriginalRoutePin; 2],
 }
 
@@ -839,15 +849,29 @@ impl<'a> OriginalSavedTurnStartChoice<'a> {
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<Self>> {
-        Ok(
-            select_saved_turn_start_records(active.records(), budget)?.map(|pins| Self {
-                _active: active,
-                pins,
-            }),
-        )
+        Self::select_for(active, budget, SavedTurnStartCaller::SavedTurn)
     }
 
-    /// The Shell-to-Saved Turn grant followed by the Saved Turn-to-Lifecycle grant.
+    /// Select this caller's exact start grants. Verify every pin against the signed Bundle.
+    pub fn select_for(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        caller: SavedTurnStartCaller,
+    ) -> Result<Option<Self>> {
+        let choice = select_saved_turn_start_records(active.records(), budget, caller)?;
+        Ok(choice.map(|(side_chat, pins)| Self {
+            _active: active,
+            side_chat,
+            pins,
+        }))
+    }
+
+    /// The Shell-to-Side Chat grant for the Side Chat entry point.
+    pub fn side_chat(&self) -> Option<&OriginalRoutePin> {
+        self.side_chat.as_ref()
+    }
+
+    /// The grant into Saved Turn followed by the Saved Turn-to-Lifecycle grant.
     pub fn pins(&self) -> &[OriginalRoutePin; 2] {
         &self.pins
     }
@@ -1552,22 +1576,11 @@ fn select_conversation_append_records(
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
-        return Ok(None);
-    }
-    let side_chat = match caller {
-        ConversationAppendCaller::SavedTurn => None,
-        ConversationAppendCaller::SideChat => {
-            let Some(side_chat) = records.select_shell_route(&SIDE_CHAT_TURN)? else {
-                return Ok(None);
-            };
-            Some(side_chat)
-        }
-    };
-    let turn_caller = side_chat
-        .as_ref()
-        .map_or(TURN_SHELL_CALLER, OriginalRoutePin::function_id);
-    let Some(turn) = records.select_route(turn_caller, &SAVED_TURN)? else {
+    let Some((side_chat, turn)) = select_saved_turn_entry(
+        &records,
+        matches!(caller, ConversationAppendCaller::SideChat),
+    )?
+    else {
         return Ok(None);
     };
     let Some(orchestration) = records.select_route(turn.function_id(), &SAVED_ORCHESTRATION)?
@@ -1577,6 +1590,29 @@ fn select_conversation_append_records(
     Ok(records
         .select_route(orchestration.function_id(), &CONVERSATION_MESSAGE_MANAGE)?
         .map(|manage| (side_chat, [turn, orchestration, manage])))
+}
+
+fn select_saved_turn_entry(
+    records: &Records<'_>,
+    via_side_chat: bool,
+) -> Result<Option<(Option<OriginalRoutePin>, OriginalRoutePin)>> {
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
+        return Ok(None);
+    }
+    let side_chat = if via_side_chat {
+        let Some(side_chat) = records.select_shell_route(&SIDE_CHAT_TURN)? else {
+            return Ok(None);
+        };
+        Some(side_chat)
+    } else {
+        None
+    };
+    let turn_caller = side_chat
+        .as_ref()
+        .map_or(TURN_SHELL_CALLER, OriginalRoutePin::function_id);
+    Ok(records
+        .select_route(turn_caller, &SAVED_TURN)?
+        .map(|turn| (side_chat, turn)))
 }
 
 fn select_saved_local_chat_records(
@@ -1618,14 +1654,24 @@ fn select_ordinary_saved_chain(
         .map(|nested| [turn, nested]))
 }
 
+type SavedTurnStartPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 2]);
+
 fn select_saved_turn_start_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<Option<[OriginalRoutePin; 2]>> {
+    caller: SavedTurnStartCaller,
+) -> Result<Option<SavedTurnStartPins>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    select_ordinary_saved_chain(&records, &TURN_LIFECYCLE)
+    let Some((side_chat, turn)) =
+        select_saved_turn_entry(&records, matches!(caller, SavedTurnStartCaller::SideChat))?
+    else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(turn.function_id(), &TURN_LIFECYCLE)?
+        .map(|lifecycle| (side_chat, [turn, lifecycle])))
 }
 
 fn select_saved_turn_settlement_records(
@@ -3408,9 +3454,19 @@ mod tests {
     }
 
     fn select_saved_turn_start(records: &Value) -> Result<Option<[OriginalRoutePin; 2]>> {
+        Ok(
+            select_saved_turn_start_for(records, SavedTurnStartCaller::SavedTurn)?
+                .map(|(_, pins)| pins),
+        )
+    }
+
+    fn select_saved_turn_start_for(
+        records: &Value,
+        caller: SavedTurnStartCaller,
+    ) -> Result<Option<SavedTurnStartPins>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
-        select_saved_turn_start_records((&profile, &lock, &plan), &budget)
+        select_saved_turn_start_records((&profile, &lock, &plan), &budget, caller)
     }
 
     #[test]
@@ -3498,6 +3554,63 @@ mod tests {
                 "{field}"
             );
         }
+    }
+
+    #[test]
+    fn side_chat_start_requires_its_own_entry_and_shared_lifecycle_grants() {
+        let fixture = records();
+        let side_start =
+            |records: &Value| select_saved_turn_start_for(records, SavedTurnStartCaller::SideChat);
+        let (side_chat, [turn, lifecycle]) = side_start(&fixture).unwrap().unwrap();
+        let side_chat = side_chat.unwrap();
+        assert_eq!(side_chat.caller_function_id(), TURN_SHELL_CALLER);
+        assert_eq!(side_chat.function_id(), SIDE_CHAT_TURN.function);
+        assert_eq!(turn.caller_function_id(), side_chat.function_id());
+        assert_eq!(turn.function_id(), SAVED_TURN.function);
+        assert_eq!(lifecycle.caller_function_id(), turn.function_id());
+        assert_eq!(lifecycle.function_id(), TURN_LIFECYCLE.function);
+        assert_eq!(lifecycle.artifact_digest(), turn.artifact_digest());
+
+        let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
+        for pin in [&side_chat, &turn, &lifecycle] {
+            let row = edges
+                .iter()
+                .position(|edge| edge["authority_reference"] == pin.authority_reference())
+                .unwrap();
+            let mut interactive = fixture.clone();
+            interactive["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            interactive["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            assert!(side_start(&interactive).unwrap().is_none());
+            assert_eq!(
+                select_saved_turn_start(&interactive).unwrap().is_none(),
+                row == TURN_LIFECYCLE_ROW
+            );
+
+            let mut absent = fixture.clone();
+            absent["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(matches!(side_start(&absent), Err(Inconsistent(_))));
+            absent["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(side_start(&absent).unwrap().is_none());
+        }
+
+        let mut side_chat_only = fixture;
+        side_chat_only["profile"]["requested_edges"]
+            .as_array_mut()
+            .unwrap()
+            .remove(SAVED_TURN_SETTLEMENT_ROW);
+        side_chat_only["plan"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .remove(SAVED_TURN_SETTLEMENT_ROW);
+        assert!(side_start(&side_chat_only).unwrap().is_some());
+        assert!(select_saved_turn_start(&side_chat_only).unwrap().is_none());
     }
 
     fn select_saved_turn_settlement(

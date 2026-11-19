@@ -33,8 +33,8 @@ use crate::{
         NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
         PendingProviderPrepare, ProviderPrepareDeadline, RegistryResponse,
         SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
-        SettlementCaller, TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec,
-        AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
+        SavedTurnStartCaller, SettlementCaller, TurnSettlementRequiresLegacyCodec,
+        TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
         APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
         CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
         CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
@@ -162,6 +162,7 @@ impl Start<'_> {
         let turn_mutation = match (&self.turn_start, &self.turn_settlement) {
             (None, None) => None,
             (Some(start), None) => Some(NativeRegistryRequest::TurnStart {
+                caller: start.caller,
                 action: start.action,
                 turn_id: start.turn_id.clone(),
                 conversation_id: start.conversation_id.clone(),
@@ -446,6 +447,11 @@ struct TurnRead {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TurnStart {
+    #[serde(
+        default = "default_turn_start_caller",
+        deserialize_with = "deserialize_turn_start_caller"
+    )]
+    caller: SavedTurnStartCaller,
     #[serde(deserialize_with = "deserialize_turn_start_action")]
     action: SavedTurnStartAction,
     #[serde(deserialize_with = "deserialize_turn_start_id")]
@@ -828,6 +834,23 @@ fn valid_saved_identifier(value: &str) -> bool {
             .next()
             .is_some_and(|byte| byte.is_ascii_alphanumeric())
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+}
+
+fn default_turn_start_caller() -> SavedTurnStartCaller {
+    SavedTurnStartCaller::SavedTurn
+}
+
+fn deserialize_turn_start_caller<'de, D>(
+    deserializer: D,
+) -> std::result::Result<SavedTurnStartCaller, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "saved-turn" => Ok(SavedTurnStartCaller::SavedTurn),
+        "side-chat" => Ok(SavedTurnStartCaller::SideChat),
+        _ => Err(de::Error::custom("unknown Turn start caller")),
+    }
 }
 
 fn deserialize_turn_start_action<'de, D>(
@@ -4188,6 +4211,7 @@ mod tests {
             let frame = start_frame(&operation);
             let start = parse_start(START, frame.as_bytes()).unwrap();
             let NativeRegistryRequest::TurnStart {
+                caller,
                 action,
                 turn_id,
                 conversation_id,
@@ -4198,6 +4222,7 @@ mod tests {
             else {
                 panic!("expected Turn start operation");
             };
+            assert_eq!(caller, SavedTurnStartCaller::SavedTurn);
             assert_eq!(action, expected);
             assert_eq!(turn_id, max_id);
             assert_eq!(conversation_id, "conversation.1");
@@ -4214,6 +4239,40 @@ mod tests {
             }
             let duplicate = start_frame(&format!("{operation}{operation}"));
             assert!(parse_start(START, duplicate.as_bytes()).is_err());
+        }
+    }
+
+    #[test]
+    fn turn_start_accepts_exact_explicit_callers() {
+        let body = turn_start_body().to_string();
+        let message = |caller_field: &str| {
+            start_frame(&format!(
+                r#", "turn_start":{{{caller_field},{}"#,
+                &body[1..]
+            ))
+        };
+        for (field, expected) in [
+            (r#""caller":"saved-turn""#, SavedTurnStartCaller::SavedTurn),
+            (r#""caller":"side-chat""#, SavedTurnStartCaller::SideChat),
+        ] {
+            let frame = message(field);
+            let start = parse_start(START, frame.as_bytes()).unwrap();
+            let NativeRegistryRequest::TurnStart { caller, .. } = start.operation().unwrap() else {
+                panic!("expected Turn start operation");
+            };
+            assert_eq!(caller, expected);
+        }
+        for field in [
+            r#""caller":"side_chat""#,
+            r#""caller":"saved-reconcile""#,
+            r#""caller":null"#,
+            r#""caller":"side-chat","caller":"saved-turn""#,
+            r#""Caller":"side-chat""#,
+        ] {
+            assert!(
+                parse_start(START, message(field).as_bytes()).is_err(),
+                "{field}"
+            );
         }
     }
 

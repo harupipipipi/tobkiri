@@ -668,15 +668,20 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib conversation_complete_
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 54 -- \
+              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 55 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_provider_prepare_ipc::tests
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 28 -- \
+              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 29 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::provider_prepare::tests
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
+              --log "$RUNNER_TEMP/harness-native-side-chat-env.log" --expected-passed 2 -- \
+              cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+              --target aarch64-apple-darwin --features "$features" \
+              --lib _environment_requires_its_own_launch_proof
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
               --log "$RUNNER_TEMP/harness-native-provider-service.log" --expected-passed 1 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
@@ -728,6 +733,7 @@ jobs:
             ${{ runner.temp }}/harness-native-conversation-evidence.log*
             ${{ runner.temp }}/harness-native-provider-connection.log*
             ${{ runner.temp }}/harness-native-provider-job.log*
+            ${{ runner.temp }}/harness-native-side-chat-env.log*
             ${{ runner.temp }}/harness-native-provider-service.log*
             ${{ runner.temp }}/harness-native-turn-evidence.log*
             ${{ runner.temp }}/harness-native-orchestration-evidence.log*

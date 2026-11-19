@@ -47,11 +47,11 @@ use super::{
         reacquire_provider_prepare_pack, reacquire_request_prepare_pack,
         reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
         reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
-        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack,
+        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack_for,
         reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
-        ConversationAppendCaller, ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch,
-        AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE,
-        GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
+        ConversationAppendCaller, ConversationReadCaller, SavedTurnStartCaller, SettlementCaller,
+        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION,
+        FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
         GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
         PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
@@ -199,6 +199,7 @@ pub(crate) enum NativeRegistryRequest {
         turn_id: String,
     },
     TurnStart {
+        caller: SavedTurnStartCaller,
         action: SavedTurnStartAction,
         turn_id: String,
         conversation_id: String,
@@ -258,7 +259,7 @@ impl NativeRegistryRequest {
             }
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
             Self::TurnRead { caller, .. } => proof.permits_turn_read(*caller),
-            Self::TurnStart { .. } => proof.permits_turn_start(),
+            Self::TurnStart { caller, .. } => proof.permits_turn_start_for(*caller),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
             Self::ApplicationPresentation { role, .. } => {
@@ -1045,6 +1046,7 @@ async fn run(
                     });
                 }
                 NativeRegistryRequest::TurnStart {
+                    caller,
                     action,
                     turn_id,
                     conversation_id,
@@ -1052,9 +1054,10 @@ async fn run(
                     input_digest,
                     source_digest,
                 } => {
-                    let pack = reacquire_turn_start_pack(
+                    let pack = reacquire_turn_start_pack_for(
                         &inspection,
                         listener.verified_source(),
+                        caller,
                         checkpoint,
                     )?;
                     revalidate()?;
@@ -2858,6 +2861,58 @@ mod tests {
                 NativeDataIoError::Unavailable
             ))
         ));
+    }
+
+    #[test]
+    fn turn_start_requires_its_own_caller_proof_and_publication_permit() {
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let append = VerifiedRegistryLaunch::test_conversation_append_proof_for(
+            identity.clone(),
+            "catalog:fixture",
+            ConversationAppendCaller::SideChat,
+        );
+        let callers = [
+            SavedTurnStartCaller::SavedTurn,
+            SavedTurnStartCaller::SideChat,
+        ];
+        for granted in callers {
+            let proof = VerifiedRegistryLaunch::test_turn_start_proof_for(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            for caller in callers {
+                for action in [SavedTurnStartAction::Begin, SavedTurnStartAction::Claim] {
+                    let [turn_id, conversation_id, input_digest, source_digest] =
+                        ["turn", "conv", "input", "source"].map(str::to_owned);
+                    let expected_capacity =
+                        [&turn_id, &conversation_id, &input_digest, &source_digest]
+                            .into_iter()
+                            .map(String::capacity)
+                            .sum::<usize>();
+                    let request = NativeRegistryRequest::TurnStart {
+                        caller,
+                        action,
+                        turn_id,
+                        conversation_id,
+                        conversation_revision: 2,
+                        input_digest,
+                        source_digest,
+                    };
+                    assert_eq!(request.has_launch_proof(&proof), caller == granted);
+                    assert!(!request.has_launch_proof(&append));
+                    assert!(request.requires_publication_permit());
+                    assert_eq!(request.input_capacity().unwrap(), expected_capacity);
+                }
+            }
+        }
     }
 
     #[test]

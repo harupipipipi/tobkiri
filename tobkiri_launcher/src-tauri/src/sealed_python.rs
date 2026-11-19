@@ -62,6 +62,7 @@ pub(crate) const APPLICATION_PRESENTATION_ENV: &str = "TOBKIRI_NATIVE_APPLICATIO
 pub(crate) const CONVERSATION_COMPLETE_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE";
 pub(crate) const CONVERSATION_SIDE_CHAT_APPEND_ENV: &str =
     "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND";
+pub(crate) const SIDE_CHAT_SAVED_TURN_START_ENV: &str = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PythonRole {
@@ -95,6 +96,7 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) application_presentation_manifest: Option<String>,
     pub(crate) conversation_complete_manifest: Option<String>,
     pub(crate) conversation_side_chat_append: bool,
+    pub(crate) side_chat_saved_turn_start: bool,
 }
 
 impl RoleArguments {
@@ -150,6 +152,11 @@ impl RoleArguments {
             conversation_side_chat_append: proof.is_some_and(|proof| {
                 proof.permits_conversation_append_for(
                     crate::native_harness_bootstrap::ConversationAppendCaller::SideChat,
+                )
+            }),
+            side_chat_saved_turn_start: proof.is_some_and(|proof| {
+                proof.permits_turn_start_for(
+                    crate::native_harness_bootstrap::SavedTurnStartCaller::SideChat,
                 )
             }),
         };
@@ -308,6 +315,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             | APPLICATION_PRESENTATION_ENV
             | CONVERSATION_COMPLETE_ENV
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
+            | SIDE_CHAT_SAVED_TURN_START_ENV
             | crate::native_provider_prepare_service::TURN_START_ENV
             | crate::native_provider_prepare_service::SAVED_LOCAL_CHAT_ENV
             | crate::native_provider_prepare_service::AI_ROUTING_ENV
@@ -4517,6 +4525,49 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
+    fn side_chat_turn_start_environment_requires_its_own_launch_proof() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use crate::native_harness_bootstrap::{
+            ConversationAppendCaller, SavedTurnStartCaller, VerifiedRegistryLaunch,
+        };
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: digest('c'),
+            activation_id: "activation".into(),
+            plan_digest: digest('d'),
+        };
+        let append = VerifiedRegistryLaunch::test_conversation_append_proof_for(
+            identity.clone(),
+            "catalog",
+            ConversationAppendCaller::SideChat,
+        );
+        let saved_turn = VerifiedRegistryLaunch::test_turn_start_proof_for(
+            identity.clone(),
+            "catalog",
+            SavedTurnStartCaller::SavedTurn,
+        );
+        let side_chat = VerifiedRegistryLaunch::test_turn_start_proof_for(
+            identity,
+            "catalog",
+            SavedTurnStartCaller::SideChat,
+        );
+        for (proof, expected) in [
+            (None, false),
+            (Some(&append), false),
+            (Some(&saved_turn), false),
+            (Some(&side_chat), true),
+        ] {
+            let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
+                .unwrap()
+                .with_native_registry_admission(proof)
+                .split_native_registry_environment();
+            assert_eq!(environment.side_chat_saved_turn_start, expected);
+        }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
     fn saved_request_markers_are_allowed_for_defaultspack_only() {
         use crate::native_provider_prepare_service::{
             AI_GATEWAY_POLICY_ENV, AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV,
@@ -4528,6 +4579,7 @@ mod tests {
             APPLICATION_PRESENTATION_ENV,
             CONVERSATION_COMPLETE_ENV,
             CONVERSATION_SIDE_CHAT_APPEND_ENV,
+            SIDE_CHAT_SAVED_TURN_START_ENV,
             TURN_START_ENV,
             SAVED_LOCAL_CHAT_ENV,
             AI_ROUTING_ENV,
