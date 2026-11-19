@@ -17,6 +17,7 @@ on:
       - 'crates/tobkiri-e2e/tests/ui.rs'
       - 'crates/tobkiri-cli/**'
       - 'crates/tobkiri-core/src/core.rs'
+      - 'crates/tobkiri-store/src/tiered.rs'
       - 'crates/test-guests/typed-tool/**'
       - 'crates/test-guests/Cargo.toml'
       - 'crates/test-guests/Cargo.lock'
@@ -75,18 +76,22 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/pack-manifest.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-cli --test pack_manifest
+      - name: Build the actual CLI for Profile and Pack verification
+        id: actual_cli
+        run: cargo build --locked -p tobkiri-cli --bin tobkiri
       - name: Create, run, publish and import a Profile through the actual CLI
         shell: bash
         run: |
-          cargo build --locked -p tobkiri-cli --bin tobkiri
           python3 -B tools/quality/issue_1520_cli_roundtrip.py \
             "$CARGO_TARGET_DIR/debug/tobkiri" 2>&1 | tee "$RUNNER_TEMP/actual-cli-publication.log"
       - name: Install and run an independent Flow overlay through the actual CLI
+        if: ${{ !cancelled() && steps.actual_cli.conclusion == 'success' }}
         shell: bash
         run: |
           python3 -B tools/quality/issue_1520_cli_pack_overlay.py \
             "$CARGO_TARGET_DIR/debug/tobkiri" 2>&1 | tee "$RUNNER_TEMP/actual-cli-pack-overlay.log"
       - name: Build and call an independent typed Wasm tool through the actual CLI
+        if: ${{ !cancelled() && steps.actual_cli.conclusion == 'success' }}
         shell: bash
         run: |
           cargo build --locked --manifest-path crates/test-guests/Cargo.toml \

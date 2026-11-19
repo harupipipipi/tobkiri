@@ -39,6 +39,28 @@ def step(source: str, name: str) -> str:
 
 
 class RuntimeRoutingTests(unittest.TestCase):
+    def test_actual_cli_pack_proofs_run_after_independent_fixture_failure(self) -> None:
+        source = (ROOT / ".github/workflows/issue-1520-actual-chat.yml").read_text()
+        chat = job(source, "actual-chat")
+        build = step(chat, "Build the actual CLI for Profile and Pack verification")
+        self.assertIn("id: actual_cli", build)
+        self.assertIn("cargo build --locked -p tobkiri-cli --bin tobkiri", build)
+        for name, script in (
+            ("Install and run an independent Flow overlay through the actual CLI",
+             "issue_1520_cli_pack_overlay.py"),
+            ("Build and call an independent typed Wasm tool through the actual CLI",
+             "issue_1520_cli_typed_tool.py"),
+        ):
+            with self.subTest(name=name):
+                proof = step(chat, name)
+                self.assertLess(chat.index(build), chat.index(proof))
+                self.assertIn(
+                    "if: ${{ !cancelled() && steps.actual_cli.conclusion == 'success' }}",
+                    proof,
+                )
+                self.assertIn(script, proof)
+        self.assertNotIn("continue-on-error", chat)
+
     def test_import_audit_diagnostic_is_separate_failure_only_and_original_limits_remain(self) -> None:
         source = (ROOT / '.github/workflows/issue-1520-native-input-stack-import-diagnostics.yml').read_text()
         producer = job(source, 'build-import-diagnostics')

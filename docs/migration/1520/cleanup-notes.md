@@ -3697,6 +3697,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [実1B再試験44375207327](https://github.com/harupipipipi/tobkiri/actions/runs/44375207327) を実行中。
   SQL書込み全体の競合原因はこの監査コードだけでは特定できず、承認・commit fenceと再試行の
   条件は維持する。
+  [44618237213](https://github.com/harupipipipi/tobkiri/actions/runs/44618237213) では
+  通常の公開再生とUser overlayの公開元のターンが通過し、承認して取り込んだProfileでの
+  最初のターンがストアの初期化中に失敗した。初回の `load` はハンドラーの前に
+  Wasmの `init` を呼ぶ。監査は初期化DDLの書込み許可が出た後の失敗を示し、SQLiteの
+  実行エラーとProfileの承認DBのcommit fenceによる拒否は同じコードに集約されていた。
+  次回は、SQL本体・引数・エラー本文を含まない分類と、そのPackの `init` の結果も採取する。
+  Flow overlayと型付きツールは独立したProfileで検証するため、公開再生の失敗時もCLIの
+  ビルドが成功していれば実行する。各試験の失敗は引き続きCIの失敗になる。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。

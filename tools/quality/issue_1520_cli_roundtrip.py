@@ -27,6 +27,7 @@ PROFILE_ID = re.compile(r"prof_[0-9A-Z]{26}")
 RESERVATION_ID = re.compile(r"grant_[0-9a-f]{64}")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 FLOW_PACK = "local.echo-chat"
+STORE_PACK = "local.echo-store"
 STORE_SHAPE = "local.echo-chat.conversation-store@1.0"
 OUTPUT_SHAPE = "local.echo-chat.assistant-output@1.0"
 OVERLAY_MARKER = "cli-user-overlay-replaced-save"
@@ -172,15 +173,19 @@ def open_readonly(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
 
 
-def report_echo_store_failure(root: Path, identity: str) -> None:
+def report_echo_store_failure(root: Path, identity: str, store_hash: str) -> None:
     """Print only the recent audit states for the failed fixture's store calls."""
     effects = {
         json_digest({"kind": "port-call", "shape": STORE_SHAPE, "op": operation}): operation
         for operation in ("load", "append")
     }
+    effects[json_digest({
+        "kind": "wasm-entry", "pack": STORE_PACK, "hash": store_hash,
+        "entry": {"kind": "init"},
+    })] = "init"
     for operation in ("open", "sql-read", "sql-write"):
         effects[json_digest({
-            "kind": "storage", "profile": identity, "owner": "local.echo-store",
+            "kind": "storage", "profile": identity, "owner": STORE_PACK,
             "store": "conversations", "tier": "private", "operation": operation,
         })] = operation
     path = root / "profiles" / identity / "audit.sqlite"
@@ -238,7 +243,7 @@ def approve(
     return identity
 
 
-def turn(cli: list[str], root: Path, identity: str, marker: str) -> str:
+def turn(cli: list[str], root: Path, identity: str, marker: str, store_hash: str) -> str:
     """Drive a real Echo input and return its terminal transcript."""
     command = cli + [
         "profile", "run", "--profile", identity, "--source", "local.echo-input",
@@ -252,7 +257,7 @@ def turn(cli: list[str], root: Path, identity: str, marker: str) -> str:
             assert f"Echo: {marker}" in output, output
             return output
     except AssertionError:
-        report_echo_store_failure(root, identity)
+        report_echo_store_failure(root, identity, store_hash)
         raise
 
 
@@ -321,7 +326,7 @@ def overlay_roundtrip(
         "profile", "create", "--definition", str(definition),
         "--name", "CLI User overlay",
     ], pins, root, user_policy=policy)
-    check_overlay_turn(cli, root, source, source_input, pins[FLOW_PACK])
+    check_overlay_turn(cli, root, source, source_input, pins)
 
     publication = root.parent / "overlay-publication.json"
     published = publish(cli, source, publication)
@@ -349,18 +354,18 @@ def overlay_roundtrip(
 
     imported = approve(command, pins, root, user_policy=policy)
     assert len({source, refused, imported}) == 3
-    check_overlay_turn(cli, root, imported, "cli-overlay-import-input", pins[FLOW_PACK])
+    check_overlay_turn(cli, root, imported, "cli-overlay-import-input", pins)
     assert publish(cli, imported, root.parent / "overlay-reexport.json") == published
     print("CLI User overlay replay: replace closed save, reject stale response, "
           "import, run, re-export")
 
 
 def check_overlay_turn(
-    cli: list[str], root: Path, identity: str, marker: str, flow_hash: str,
+    cli: list[str], root: Path, identity: str, marker: str, pins: dict[str, str],
 ) -> None:
     """Observe the replacement output and verify the original append left no rows."""
     assert messages(root, identity) == []
-    output = turn(cli, root, identity, marker)
+    output = turn(cli, root, identity, marker, pins[STORE_PACK])
     lines = output.splitlines()
     assert lines[-2] == OVERLAY_MARKER, output
     assert json.loads(lines[-1]) == {
@@ -386,7 +391,7 @@ def check_overlay_turn(
             assert effect != append, event
             if effect == emit and event["payload"]["args_digest"] == emit_args:
                 replacement.append(event["principal"])
-    assert replacement == [{"kind": "pack", "pack": FLOW_PACK, "hash": flow_hash}]
+    assert replacement == [{"kind": "pack", "pack": FLOW_PACK, "hash": pins[FLOW_PACK]}]
 
 
 def main(binary: str) -> None:
@@ -412,7 +417,7 @@ def main(binary: str) -> None:
             "--name", "CLI source",
         ], pins, root)
         original = "cli-source-only-marker"
-        turn(cli, root, source, original)
+        turn(cli, root, source, original, pins[STORE_PACK])
         expected = [("user", original), ("assistant", f"Echo: {original}")]
         assert messages(root, source) == expected
 
@@ -436,7 +441,7 @@ def main(binary: str) -> None:
         assert imported not in {source, refused}
         assert messages(root, imported) == []
         marker = "cli-import-only-marker"
-        turn(cli, root, imported, marker)
+        turn(cli, root, imported, marker, pins[STORE_PACK])
         assert messages(root, imported) == [
             ("user", marker), ("assistant", f"Echo: {marker}"),
         ]

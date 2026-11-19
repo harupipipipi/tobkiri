@@ -3332,17 +3332,39 @@ async fn execute_store_sql(
             Ok(result)
         }
         Err(error) => {
-            let code = if matches!(error, StoreError::CommitUnknown) {
-                "storage-sql-commit-unknown"
-            } else {
-                "storage-sql-failed"
-            };
             let _ = gate
-                .record_outcome(grant_id, Outcome::Failed { code: code.into() })
+                .record_outcome(
+                    grant_id,
+                    Outcome::Failed {
+                        code: sql_failure_audit_code(&error),
+                    },
+                )
                 .await;
             Err(error)
         }
     }
+}
+
+fn sql_failure_audit_code(error: &StoreError) -> String {
+    use rusqlite::{Error::SqliteFailure, ErrorCode};
+
+    // Retain fixed native categories without recording SQL or error messages.
+    match error {
+        StoreError::CommitUnknown => "storage-sql-commit-unknown",
+        StoreError::Gate(error) => return format!("storage-sql-gate-{}", error.code()),
+        StoreError::Conflict(_) => "storage-sql-conflict",
+        StoreError::Quota => "storage-sql-quota",
+        StoreError::Unavailable(_) => "storage-sql-unavailable",
+        StoreError::Sql(SqliteFailure(error, _)) => match error.code {
+            ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked => "storage-sql-sqlite-busy",
+            ErrorCode::SystemIoFailure | ErrorCode::DiskFull => "storage-sql-sqlite-io",
+            ErrorCode::OperationInterrupted => "storage-sql-sqlite-interrupted",
+            ErrorCode::AuthorizationForStatementDenied => "storage-sql-sqlite-authorizer",
+            _ => "storage-sql-failed",
+        },
+        _ => "storage-sql-failed",
+    }
+    .into()
 }
 
 fn storage_request(
@@ -3979,6 +4001,27 @@ mod native_review_tests {
     use super::*;
     use tobkiri_canon::{AllocationError, ids::RequestId};
     use tobkiri_gate::{CancellationToken, CoreControl, Principal, ResourceLimits};
+
+    #[test]
+    fn sql_failure_audit_categorizes_native_errors_without_messages() {
+        let payload = "SQL text and arguments may appear here".to_string();
+        let busy = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some(payload.clone()),
+        );
+        let cases = [
+            (StoreError::Sql(busy), "storage-sql-sqlite-busy"),
+            (
+                StoreError::Gate(tobkiri_gate::GateError::Persistence(payload.clone())),
+                "storage-sql-gate-persistence",
+            ),
+            (StoreError::Unavailable(payload), "storage-sql-unavailable"),
+            (StoreError::CommitUnknown, "storage-sql-commit-unknown"),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(sql_failure_audit_code(&error), expected);
+        }
+    }
 
     fn context() -> CallCx {
         CallCx::root(
