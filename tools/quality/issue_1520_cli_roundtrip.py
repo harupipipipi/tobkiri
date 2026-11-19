@@ -173,22 +173,24 @@ def open_readonly(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
 
 
-def report_echo_store_failure(root: Path, identity: str, store_hash: str) -> None:
+def report_conversation_store_failure(
+    profile: Path, store_pack: str, store_hash: str, shape: str,
+) -> None:
     """Print only the recent audit states for the failed fixture's store calls."""
     effects = {
-        json_digest({"kind": "port-call", "shape": STORE_SHAPE, "op": operation}): operation
+        json_digest({"kind": "port-call", "shape": shape, "op": operation}): operation
         for operation in ("load", "append")
     }
     effects[json_digest({
-        "kind": "wasm-entry", "pack": STORE_PACK, "hash": store_hash,
+        "kind": "wasm-entry", "pack": store_pack, "hash": store_hash,
         "entry": {"kind": "init"},
     })] = "init"
     for operation in ("open", "sql-read", "sql-write"):
         effects[json_digest({
-            "kind": "storage", "profile": identity, "owner": STORE_PACK,
+            "kind": "storage", "profile": profile.name, "owner": store_pack,
             "store": "conversations", "tier": "private", "operation": operation,
         })] = operation
-    path = root / "profiles" / identity / "audit.sqlite"
+    path = profile / "audit.sqlite"
     try:
         with closing(open_readonly(path)) as connection:
             rows = connection.execute("""
@@ -200,7 +202,7 @@ def report_echo_store_failure(root: Path, identity: str, store_hash: str) -> Non
                       ORDER BY seq DESC LIMIT 64)
             """).fetchall()
     except sqlite3.Error:
-        print("Echo store audit unavailable", file=sys.stderr)
+        print("Conversation store audit unavailable", file=sys.stderr)
         return
     states = []
     for effect, *fields in reversed(rows):
@@ -209,7 +211,7 @@ def report_echo_store_failure(root: Path, identity: str, store_hash: str) -> Non
                 label if isinstance(label, str) and re.fullmatch(r"[a-z0-9-]{1,64}", label)
                 else None for label in fields
             )])
-    print(f"Echo store audit states: {json.dumps(states)}", file=sys.stderr)
+    print(f"Conversation store audit states: {json.dumps(states)}", file=sys.stderr)
 
 
 def approve(
@@ -257,7 +259,9 @@ def turn(cli: list[str], root: Path, identity: str, marker: str, store_hash: str
             assert f"Echo: {marker}" in output, output
             return output
     except AssertionError:
-        report_echo_store_failure(root, identity, store_hash)
+        report_conversation_store_failure(
+            root / "profiles" / identity, STORE_PACK, store_hash, STORE_SHAPE,
+        )
         raise
 
 

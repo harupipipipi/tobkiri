@@ -3705,6 +3705,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   次回は、SQL本体・引数・エラー本文を含まない分類と、そのPackの `init` の結果も採取する。
   Flow overlayと型付きツールは独立したProfileで検証するため、公開再生の失敗時もCLIの
   ビルドが成功していれば実行する。各試験の失敗は引き続きCIの失敗になる。
+  [44621810345](https://github.com/harupipipipi/tobkiri/actions/runs/44621810345) は
+  通常の公開とUser overlay、型付きWasmツールが通過。独立したFlow overlayでは更新・公開と
+  取込みまで進み、取込み直後の最初の `load` が `internal` で止まった。この試験にも
+  取込み先の会話ストアのpinとポートに合わせて、同じ限定監査を出すようにした。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。

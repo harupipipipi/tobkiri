@@ -20,6 +20,7 @@ from issue_1520_cli_roundtrip import (
     json_digest,
     open_readonly,
     publish,
+    report_conversation_store_failure,
     review_prompt,
 )
 
@@ -177,10 +178,12 @@ def review_edit(
 
 
 def turn(
-    cli: list[str], profile: Path, entry: dict[str, str],
-    store_pack: str, conversation: str, marker: str, replacement: str | None = None,
+    cli: list[str], profile: Path, fixture: ProfileFixture,
+    marker: str, replacement: str | None = None,
 ) -> None:
     """Observe the rewritten typed prompt, terminal output and actual saved turn."""
+    entry, store_pack = fixture.entry, fixture.store_pack
+    domain = entry["exact_input_view"].rsplit(".", 2)[0]
     store = profile / "data" / store_pack / "private.sqlite"
     history = []
     if store.is_file():
@@ -188,10 +191,17 @@ def turn(
             history = connection.execute(MESSAGES).fetchall()
     reply = f"Echo: {replacement or marker}"
     before = len(audit_events(profile))
-    with Terminal(run_turn(cli, profile, entry)) as terminal:
-        assert terminal.expect(b"> ") == ""
-        terminal.send(marker)
-        output = terminal.finish(success=True)
+    try:
+        with Terminal(run_turn(cli, profile, entry)) as terminal:
+            assert terminal.expect(b"> ") == ""
+            terminal.send(marker)
+            output = terminal.finish(success=True)
+    except AssertionError:
+        report_conversation_store_failure(
+            profile, store_pack, fixture.pins[store_pack],
+            f"{domain}.conversation-store@1.0",
+        )
+        raise
     lines = output.splitlines()
     assert lines[-2] == f"> {reply}", output
     assert json.loads(lines[-1])["status"] == "succeeded", output
@@ -199,15 +209,14 @@ def turn(
         assert connection.execute(MESSAGES).fetchall() == history + [
             ("user", marker), ("assistant", reply),
         ]
-    domain = entry["exact_input_view"].rsplit(".", 2)[0]
     effect = json_digest({
         "kind": "port-call", "shape": f"{domain}.prompt-builder@1.0", "op": "build",
     })
     args = json_digest({
-        "ctx": {"conversation": conversation, "messages": [
+        "ctx": {"conversation": fixture.conversation, "messages": [
             {"role": role, "content": content} for role, content in history
         ]},
-        "input": {"conversation": conversation, "text": replacement or marker},
+        "input": {"conversation": fixture.conversation, "text": replacement or marker},
     })
     dispatches = [
         event["payload"]["args_digest"] for event in audit_events(profile)[before:]
@@ -264,11 +273,11 @@ def replay(cli: list[str], root: Path, directory: Path, stock: Path) -> None:
     profile = fixture.profile
     definition = fixture.definition
     entry = fixture.entry
-    store_pack, conversation = fixture.store_pack, fixture.conversation
+    store_pack = fixture.store_pack
     role, pins = fixture.role, fixture.pins
     profile_id = profile.name
     domain = entry["exact_input_view"].rsplit(".", 2)[0]
-    turn(cli, profile, entry, store_pack, conversation, "baseline")
+    turn(cli, profile, fixture, "baseline")
     before = snapshot(cli, profile, directory / "before.json")
     resources = {key: definition["ceiling"][key] for key in ("wasm", "loops")}
     marker = "overlay v1"
@@ -302,7 +311,7 @@ def replay(cli: list[str], root: Path, directory: Path, stock: Path) -> None:
         overlay.pack: overlay.digest,
     }
     assert installed["pack_limits"][overlay.pack] == overlay.permissions
-    turn(cli, profile, entry, store_pack, conversation, "after install", marker)
+    turn(cli, profile, fixture, "after install", marker)
 
     conflict = author(
         cli, directory / "conflicting", "local.acceptance-conflicting-overlay", "1.0.0",
@@ -314,7 +323,7 @@ def replay(cli: list[str], root: Path, directory: Path, stock: Path) -> None:
     ]) as terminal:
         assert "overlay-order" in terminal.finish(success=False)
     assert snapshot(cli, profile, directory / "after-conflict.json") == active
-    turn(cli, profile, entry, store_pack, conversation, "after conflict", marker)
+    turn(cli, profile, fixture, "after conflict", marker)
     print(f"{stock.stem}: decline, add, run, reject conflict and rerun", flush=True)
 
     updated_marker = "overlay v2"
@@ -350,7 +359,7 @@ def replay(cli: list[str], root: Path, directory: Path, stock: Path) -> None:
     ]) as terminal:
         assert "required-port" in terminal.finish(success=False)
     assert snapshot(cli, profile, directory / "after-removal.json") == final
-    turn(cli, profile, entry, store_pack, conversation, "after update", updated_marker)
+    turn(cli, profile, fixture, "after update", updated_marker)
 
     imported_id = approve(cli + [
         "profile", "import", str(publication_path), "--name", "Imported overlay",
@@ -364,7 +373,7 @@ def replay(cli: list[str], root: Path, directory: Path, stock: Path) -> None:
         for pack, digest in final_pins.items()
     }
     assert not (imported / "data" / store_pack / "private.sqlite").is_file()
-    turn(cli, imported, entry, store_pack, conversation, "after import", updated_marker)
+    turn(cli, imported, fixture, "after import", updated_marker)
     print(f"{stock.stem}: update, reject removal, fresh import and run", flush=True)
 
 
