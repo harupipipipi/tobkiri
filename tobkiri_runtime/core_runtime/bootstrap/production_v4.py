@@ -5336,15 +5336,6 @@ def capture_production_dispatch(
         ))
 
     @dataclass(frozen=True)
-    class _SavedCompletionRoute:
-        """The exact signed edges for saved completion and its nested Turn read."""
-
-        caller: SavedReceiptCaller
-        completion: _CapturedPlanEdge
-        parent: _CapturedPlanEdge
-        resource: _CapturedPlanEdge
-
-    @dataclass(frozen=True)
     class _SavedTurnRoute:
         caller: SavedTurnOrigin
         edge: _CapturedPlanEdge
@@ -5353,11 +5344,19 @@ def capture_production_dispatch(
         def is_reconcile(self) -> bool:
             return self.caller in {"saved-reconcile", "side-chat-reconcile"}
 
+    @dataclass(frozen=True)
+    class _SavedCompletionRoute:
+        """The signed Turn, completion and nested Resource edges."""
+
+        turn: _SavedTurnRoute
+        completion: _CapturedPlanEdge
+        resource: _CapturedPlanEdge
+
     saved_receipt_routes: dict[
         str, list[tuple[_SavedTurnRoute, _CapturedPlanEdge]]
     ] = {}
     saved_turn_routes: dict[str, list[_SavedTurnRoute]] = {}
-    confirmation_routes: dict[str, _SavedCompletionRoute] = {}
+    confirmation_routes: dict[str, list[_SavedCompletionRoute]] = {}
     completion_function = "rumi_conversation_store_pack.conversation-store.completion"
     completion_operation = (
         "tobkiri.action.conversation.completion.v1",
@@ -5376,6 +5375,21 @@ def capture_production_dispatch(
             )
             if receipt is not None:
                 saved_receipt_routes.setdefault(turn_principal, []).append((route, receipt))
+        if native_confirmation_writer is not None or native_saved_turn_reader is not None:
+            completion = select_original_chat_edge(
+                {turn_principal}, conversation_pack, *completion_operation,
+                completion_function, EffectClass.PRIVILEGED,
+            )
+            if completion is not None:
+                resource = select_original_chat_edge(
+                    {completion.target.principal_id}, turn_pack,
+                    "tobkiri.resource.turn.v1", f"{turn_pack}.turn-resource",
+                    f"{turn_pack}.turn-runtime.resource", EffectClass.PRIVILEGED,
+                )
+                if resource is not None:
+                    confirmation_routes.setdefault(turn_principal, []).append(
+                        _SavedCompletionRoute(route, completion, resource),
+                    )
 
     if (
         native_saved_receipt_reader is not None
@@ -5405,34 +5419,11 @@ def capture_production_dispatch(
                 continue
             parent_edge, = parents
             capture_saved_turn_route(_SavedTurnRoute(caller, parent_edge))
-            if native_confirmation_writer is not None or native_saved_turn_reader is not None:
-                completion_edges = tuple(
-                    edge for edge in captured_edges
-                    if edge.caller.principal_id == parent_edge.target.principal_id
-                    and edge.binding_key[1:] == completion_operation
-                    and edge.resolved_binding.artifact.pack_id == conversation_pack
-                    and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
-                    and is_exact_original_python_edge(edge, completion_function)
-                )
-                if len(completion_edges) == 1:
-                    completion_edge, = completion_edges
-                    resource_edges = tuple(
-                        edge for edge in captured_edges
-                        if edge.caller.principal_id == completion_edge.target.principal_id
-                        and edge.binding_key[1:] == (
-                            "tobkiri.resource.turn.v1", f"{turn_pack}.turn-resource",
-                        )
-                        and edge.resolved_binding.artifact.pack_id == turn_pack
-                        and edge.resolved_binding.operation.effect_class
-                        is EffectClass.PRIVILEGED
-                        and is_exact_original_python_edge(edge, f"{turn_pack}.turn-runtime.resource")
-                    )
-                    if len(resource_edges) == 1:
-                        confirmation_routes[parent_edge.target.principal_id] = _SavedCompletionRoute(
-                            caller, completion_edge, parent_edge, resource_edges[0],
-                        )
     if side_chat_edge is not None and (
-        native_saved_turn_settlement_writer is not None or native_saved_receipt_reader is not None
+        native_saved_turn_settlement_writer is not None
+        or native_saved_receipt_reader is not None
+        or native_confirmation_writer is not None
+        or native_saved_turn_reader is not None
     ):
         side_reconcile = select_original_chat_edge(
             {side_chat_edge.target.principal_id},
@@ -5672,6 +5663,23 @@ def capture_production_dispatch(
             and side.payload.get("expected_child_revision") == source.get("conversation_revision")
         )
 
+    def saved_turn_ancestors(
+        route: _SavedTurnRoute, parent: CapturedInvocationScopeV4 | None,
+        turn_id: str, profile_id: str,
+    ) -> tuple[RequestEnvelope, ...] | None:
+        edges = (route.edge,) if route.side_chat is None else (route.edge, route.side_chat)
+        ancestors = match_captured_ancestors(parent, edges)
+        if ancestors is None:
+            return None
+        turn = ancestors[0]
+        if turn.context.profile_id != profile_id or (
+            route.side_chat is not None and not matches_side_turn_request(
+                route, turn.payload, turn_id, ancestors[1], profile_id,
+            )
+        ):
+            return None
+        return ancestors
+
     def saved_turn_settlement_lineage(
         context: RequestContext,
         payload: Mapping[str, Any],
@@ -5816,22 +5824,26 @@ def capture_production_dispatch(
         context: RequestContext,
         payload: Mapping[str, Any],
         parent: CapturedInvocationScopeV4 | None,
-    ) -> tuple[SavedReceiptCaller, _CapturedPlanEdge, RequestEnvelope] | None:
-        route = confirmation_routes.get(context.caller_principal.value)
+    ) -> tuple[_SavedCompletionRoute, tuple[RequestEnvelope, ...]] | None:
+        turn_id = payload.get("turn_id")
         if (
-            route is None
-            or parent is None
-            or parent.parent is not None
-            or not matches_captured_edge(parent.envelope, route.parent)
+            not isinstance(turn_id, str)
             or set(payload) - {"_session_id"} != {"profile_id", "operation", "turn_id"}
             or payload.get("operation") != "confirm"
             or payload.get("profile_id") != context.profile_id
         ):
             return None
-        turn_id = requested_saved_turn_id(route.caller, parent.envelope.payload)
-        if turn_id is None or payload["turn_id"] != turn_id:
-            return None
-        return route.caller, route.completion, parent.envelope
+        for route in confirmation_routes.get(context.caller_principal.value, ()):
+            ancestors = saved_turn_ancestors(route.turn, parent, turn_id, context.profile_id)
+            if ancestors is None:
+                continue
+            if turn_id != requested_saved_turn_id(
+                "saved-reconcile" if route.turn.is_reconcile() else "saved-turn",
+                ancestors[0].payload,
+            ):
+                return None
+            return route, ancestors
+        return None
 
     def is_native_conversation_confirmation_route(
         context: RequestContext, payload: Mapping[str, Any],
@@ -5844,7 +5856,7 @@ def capture_production_dispatch(
         context: RequestContext,
         payload: Mapping[str, Any],
         parent: CapturedInvocationScopeV4 | None,
-    ) -> tuple[SavedReceiptCaller, _CapturedPlanEdge] | None:
+    ) -> tuple[SavedTurnOrigin, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
         turn_id = payload.get("turn_id")
         if (
             parent is None
@@ -5855,19 +5867,18 @@ def capture_production_dispatch(
         ):
             return None
         completion = parent.envelope
-        route = confirmation_routes.get(completion.context.caller_principal.value)
+        lineage = confirmation_lineage(completion.context, completion.payload, parent.parent)
+        if lineage is None:
+            return None
+        route, ancestors = lineage
         if (
-            route is None
-            or not matches_captured_edge(completion, route.completion)
+            not matches_captured_edge(completion, route.completion)
             or context.caller_principal.value != route.resource.caller.principal_id
             or completion.context.profile_id != context.profile_id
             or completion.payload.get("turn_id") != turn_id
-            or confirmation_lineage(
-                completion.context, completion.payload, parent.parent,
-            ) is None
         ):
             return None
-        return route.caller, route.resource
+        return route.turn.caller, route.resource, (completion, *ancestors)
 
     def is_native_saved_turn_read_route(
         context: RequestContext, payload: Mapping[str, Any],
@@ -5896,48 +5907,43 @@ def capture_production_dispatch(
             runtime = native_provider_runtime
             if lineage is None or runtime is None:
                 return contribution.invoke(operation_id, payload, invocation)
-            caller, edge = lineage
-            assert parent is not None and parent.parent is not None
-            grandparent = parent.parent
-            ancestors = (parent.envelope, grandparent.envelope)
+            caller, edge, ancestors = lineage
+            chain = (envelope, *ancestors)
             if (
                 operation_id != envelope.operation_id
                 or payload is not envelope.payload
                 or not matches_captured_edge(envelope, edge)
-                or len({item.lease.token for item in (envelope, *ancestors)}) != 3
+                or len({item.lease.token for item in chain}) != len(chain)
                 or envelope.resource_reservation_id is None
                 or any(
                     envelope.resource_reservation_id == item.resource_reservation_id
                     for item in ancestors
                 )
-                or envelope.deadline_monotonic > ancestors[0].deadline_monotonic
-                or ancestors[0].deadline_monotonic > ancestors[1].deadline_monotonic
+                or any(child.deadline_monotonic > ancestor.deadline_monotonic
+                       for child, ancestor in zip(chain[:-1], ancestors, strict=True))
             ):
                 raise AuthorityDenied("native saved Turn read lineage changed")
 
             def guard() -> None:
                 invocation.assert_current()
-                retained = parent_invocation_scopes.lookup(context.caller_session_id)
-                retained_grandparent = parent_invocation_scopes.lookup(
-                    parent.envelope.context.caller_session_id,
-                )
-                if (
-                    retained is None or retained.envelope is not parent.envelope
-                    or retained.parent is None
-                    or retained.parent.envelope is not grandparent.envelope
-                    or retained_grandparent is None
-                    or retained_grandparent.envelope is not grandparent.envelope
-                    or native_provider_runtime is not runtime
-                ):
+                if native_provider_runtime is not runtime:
                     raise AuthorityDenied("native saved Turn read capture changed")
+                require_retained_ancestors(envelope, ancestors)
                 runtime[1]()
                 production_admission.native_resources(envelope.resource_reservation_id)
+
+            def checked_turn(result: Mapping[str, Any]) -> Mapping[str, Any]:
+                if len(ancestors) > 2 and result.get("conversation_id") != (
+                    ancestors[-1].payload.get("conversation_id")
+                ):
+                    raise AuthorityDenied("native saved Turn belongs to another conversation")
+                return result
 
             def legacy_read() -> Mapping[str, Any]:
                 guard()
                 result = contribution.invoke(operation_id, payload, invocation)
                 guard()
-                return result
+                return checked_turn(result)
 
             guard()
             resources = production_admission.native_resources(
@@ -5969,7 +5975,7 @@ def capture_production_dispatch(
             guard()
             if result is None:
                 raise KeyError("turn is unavailable")
-            return result
+            return checked_turn(result)
 
         return replace(contribution, invoke=invoke)
 
@@ -5994,24 +6000,23 @@ def capture_production_dispatch(
             runtime = native_provider_runtime
             if lineage is None or runtime is None:
                 return None
-            caller, edge, parent = lineage
+            route, ancestors = lineage
+            chain = (envelope, *ancestors)
             if (
-                not matches_captured_edge(envelope, edge)
-                or envelope.lease.token == parent.lease.token
-                or envelope.deadline_monotonic > parent.deadline_monotonic
-                or envelope.resource_reservation_id == parent.resource_reservation_id
+                not matches_captured_edge(envelope, route.completion)
+                or len({item.lease.token for item in chain}) != len(chain)
+                or any(child.deadline_monotonic > ancestor.deadline_monotonic
+                       for child, ancestor in zip(chain[:-1], ancestors, strict=True))
+                or any(item.resource_reservation_id == envelope.resource_reservation_id
+                       for item in ancestors)
             ):
                 raise AuthorityDenied("native Conversation confirmation lineage changed")
 
             def guard() -> None:
                 invocation.assert_current()
-                retained = parent_invocation_scopes.lookup(context.caller_session_id)
-                if (
-                    retained is None or retained.envelope is not parent
-                    or parent_invocation_scopes.lookup(parent.context.caller_session_id) is not None
-                    or native_provider_runtime is not runtime
-                ):
+                if native_provider_runtime is not runtime:
                     raise AuthorityDenied("native Conversation confirmation capture changed")
+                require_retained_ancestors(envelope, ancestors)
                 runtime[1]()
                 production_admission.native_resources(envelope.resource_reservation_id)
 
@@ -6020,7 +6025,10 @@ def capture_production_dispatch(
                 record_saved_owner_publication(envelope)
 
             def confirm(terminal: Mapping[str, Any]) -> Mapping[str, Any] | None:
-                if terminal.get("id") != envelope.payload["turn_id"]:
+                if terminal.get("id") != envelope.payload["turn_id"] or (
+                    route.turn.side_chat is not None
+                    and terminal.get("conversation_id") != ancestors[-1].payload.get("conversation_id")
+                ):
                     raise AuthorityDenied("native Conversation confirmation Turn changed")
                 if saved_owner_publication_possible(envelope):
                     raise HostPublicationUnconfirmed("Conversation confirmation is unconfirmed")
@@ -6044,7 +6052,7 @@ def capture_production_dispatch(
                         runtime_instance=runtime[0],
                         deadline_monotonic=envelope.deadline_monotonic,
                         assert_current=guard,
-                        caller=caller,
+                        caller=route.turn.caller,
                         terminal=proof,
                         mark_publication_possible=mark_publication,
                     ))
@@ -6093,17 +6101,9 @@ def capture_production_dispatch(
         except UnicodeEncodeError:
             return None
         for route, receipt in saved_receipt_routes.get(context.caller_principal.value, ()):
-            parents = (route.edge,) if route.side_chat is None else (route.edge, route.side_chat)
-            ancestors = match_captured_ancestors(parent, parents)
+            ancestors = saved_turn_ancestors(route, parent, turn_id, context.profile_id)
             if ancestors is None:
                 continue
-            turn = ancestors[0]
-            if turn.context.profile_id != context.profile_id or (
-                route.side_chat is not None and not matches_side_turn_request(
-                    route, turn.payload, turn_id, ancestors[1], context.profile_id,
-                )
-            ):
-                return None
             return route.caller, receipt, ancestors
         return None
 
@@ -7498,7 +7498,8 @@ def capture_production_dispatch(
             binding = captured_bindings[0]
             if any(
                 route.completion.resolved_binding == binding
-                for route in confirmation_routes.values()
+                for routes in confirmation_routes.values()
+                for route in routes
             ):
                 confirmation_port = capture_conversation_confirmation_port(native_confirmation_writer)
                 native_conversation_confirmation_bindings[(
@@ -7665,9 +7666,11 @@ def capture_production_dispatch(
             )
         if native_saved_turn_reader is not None:
             turn_read_bindings = {
-                (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
-                for edge in (route.resource for route in confirmation_routes.values())
-                if edge.resolved_binding in captured_bindings
+                (*route.resource.binding_key[1:], route.resource.target.principal_id):
+                    route.resource.resolved_binding
+                for routes in confirmation_routes.values()
+                for route in routes
+                if route.resource.resolved_binding in captured_bindings
             }
             native_saved_turn_read_bindings.update(turn_read_bindings)
             contributions = tuple(

@@ -4025,6 +4025,7 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.authority.v4 import DomainBoundary, LeaseState
     from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.rumi_conversation_store_pack.runtime import completion_host
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
     from ecosystem.tobkiri_conversation_orchestration_pack.runtime import (
@@ -4058,6 +4059,10 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     receipt_target = saved_conversation.TARGETS[0]
     receipt_reads: list[ipc.NativeSavedReceiptRequest] = []
     receipt_envelopes: list[RequestEnvelope] = []
+    confirmation_requests: list[ipc.NativeConversationConfirmationRequest] = []
+    confirmation_envelopes: list[RequestEnvelope] = []
+    turn_read_requests: list[ipc.NativeSavedTurnReadRequest] = []
+    turn_read_envelopes: list[RequestEnvelope] = []
     fixture_failures: list[AssertionError] = []
     backend = _SavedPackVmBackend()
     original_invoke = V4DispatchSession.invoke
@@ -4274,6 +4279,82 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             fixture_failures.append(error)
             raise
 
+    def check_confirmation_scope(
+        request: ipc.NativeSavedTurnReadRequest | ipc.NativeConversationConfirmationRequest,
+        chain: tuple[RequestEnvelope, ...],
+    ) -> None:
+        request.assert_current()
+        side, *parents, owner = chain
+        assert request.caller == (
+            "side-chat-reconcile" if side.payload["operation"] == "reconcile"
+            else "side-chat-turn"
+        )
+        assert request.context == owner.context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic == owner.deadline_monotonic
+        assert owner.resource_reservation_id is not None
+        assert owner.resource_reservation_id not in {
+            item.resource_reservation_id for item in (side, *parents)
+        }
+        assert len({item.lease.token for item in chain}) == len(chain)
+        for parent, child in zip(chain[:-1], chain[1:], strict=True):
+            assert child.context.caller_principal == parent.target_principal
+            assert child.deadline_monotonic <= parent.deadline_monotonic
+        for item in chain:
+            _, state, _, _ = authority.inspect_dispatch_authority(
+                item.lease.token.decode("ascii"),
+            )
+            assert state is LeaseState.DISPATCHED
+
+    def checked_side_turn_read(request: ipc.NativeSavedTurnReadRequest) -> Mapping[str, object]:
+        side, turn = settlement_envelopes[-2:]
+        completion = confirmation_envelopes[-1]
+        owner = turn_read_envelopes[-1]
+        check_confirmation_scope(request, (side, turn, completion, owner))
+        assert request.turn_id == completion.payload["turn_id"] == side.payload["turn_id"]
+        before = turns.path.read_bytes()
+        record = turns.get(request.turn_id)
+        assert record is not None and record["status"] == "completed"
+        assert record["conversation_id"] == side.payload["conversation_id"]
+        assert turns.path.read_bytes() == before
+        turn_read_requests.append(request)
+        return record
+
+    def side_turn_read(request: ipc.NativeSavedTurnReadRequest) -> Mapping[str, object]:
+        try:
+            return checked_side_turn_read(request)
+        except AssertionError as error:
+            fixture_failures.append(error)
+            raise
+
+    def checked_side_confirmation(
+        request: ipc.NativeConversationConfirmationRequest,
+    ) -> Mapping[str, object]:
+        side, turn = settlement_envelopes[-2:]
+        owner = confirmation_envelopes[-1]
+        check_confirmation_scope(request, (side, turn, owner))
+        assert turn_read_requests[-1].caller == request.caller
+        assert request.terminal["id"] == owner.payload["turn_id"] == side.payload["turn_id"]
+        assert request.terminal["conversation_id"] == side.payload["conversation_id"]
+        row = turns.get(request.terminal["id"])
+        assert row is not None and row["status"] == "completed"
+        assert request.terminal == {key: row[key] for key in request.terminal}
+        confirmation_requests.append(request)
+        current = conversations.get(request.terminal["conversation_id"])
+        if current["lifecycle"]["state"] != "completed":
+            request.mark_publication_possible()
+            request.assert_current()
+        return conversations.confirm_saved_completion(request.terminal)
+
+    def side_confirmation(
+        request: ipc.NativeConversationConfirmationRequest,
+    ) -> Mapping[str, object]:
+        try:
+            return checked_side_confirmation(request)
+        except AssertionError as error:
+            fixture_failures.append(error)
+            raise
+
     def observe_packvm(
         binding: ResolvedOperationBinding, reservation_id: str,
     ) -> RuntimeEvidence:
@@ -4313,6 +4394,14 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ipc, "capture_launcher_saved_receipt_reader",
         lambda: side_receipt if settlement == "reconcile" else None,
     )
+    monkeypatch.setattr(
+        ipc, "capture_launcher_conversation_confirmation_writer",
+        lambda: side_confirmation if settlement else None,
+    )
+    monkeypatch.setattr(
+        ipc, "capture_launcher_saved_turn_reader",
+        lambda: side_turn_read if settlement else None,
+    )
     if use_native:
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", manifest)
@@ -4347,6 +4436,16 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
                 and envelope.payload.get("operation") == "saved_receipt"
             ):
                 receipt_envelopes.append(envelope)
+            if (envelope.contract_id, envelope.operation_id) == (
+                completion_host.CONTRACT_ID, completion_host.OPERATION_ID,
+            ):
+                confirmation_envelopes.append(envelope)
+            if (
+                (envelope.contract_id, envelope.operation_id)
+                == (completion_host.TURN_CONTRACT, completion_host.TURN_OPERATION)
+                and envelope.payload.get("operation") == "get"
+            ):
+                turn_read_envelopes.append(envelope)
             if (
                 (envelope.contract_id, envelope.operation_id) == message_target
                 and envelope.payload.get("operation") == "append_saved"
@@ -4564,6 +4663,16 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         for request in receipt_reads:
             with pytest.raises(PermissionError):
                 request.assert_current()
+        expected_confirmations = {
+            None: [],
+            "send": ["side-chat-turn", "side-chat-reconcile"],
+            "reconcile": ["side-chat-reconcile", "side-chat-reconcile"],
+        }[settlement]
+        for requests in (turn_read_requests, confirmation_requests):
+            assert [request.caller for request in requests] == expected_confirmations
+            for request in requests:
+                with pytest.raises(PermissionError):
+                    request.assert_current()
 
 
 def test_saved_http_rejects_owned_context_before_writes_but_allows_text(

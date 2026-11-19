@@ -362,6 +362,7 @@ SavedReceiptCaller = Literal["saved-turn", "saved-reconcile"]
 SavedTurnOrigin = Literal[
     "saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile",
 ]
+_SAVED_TURN_ORIGINS = ("saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile")
 
 
 @dataclass(frozen=True)
@@ -384,7 +385,7 @@ class NativeSavedTurnReadRequest:
     runtime_instance: str
     deadline_monotonic: float
     assert_current: Callable[[], None]
-    caller: SavedReceiptCaller
+    caller: SavedTurnOrigin
     turn_id: str
 
 
@@ -497,7 +498,7 @@ class NativeConversationConfirmationRequest:
     runtime_instance: str
     deadline_monotonic: float
     assert_current: Callable[[], None]
-    caller: SavedReceiptCaller
+    caller: SavedTurnOrigin
     terminal: Mapping[str, Any]
     mark_publication_possible: Callable[[], None]
 
@@ -1015,9 +1016,7 @@ def _start_payload(
     elif isinstance(borrow, NativeSavedReceiptRequest):
         if (
             type(borrow.caller) is not str
-            or borrow.caller not in {
-                "saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile",
-            }
+            or borrow.caller not in _SAVED_TURN_ORIGINS
             or not isinstance(borrow.turn_id, str)
             or len(borrow.turn_id) > SAVED_RECEIPT_MAX_ID_CHARS
         ):
@@ -1029,7 +1028,7 @@ def _start_payload(
     elif isinstance(borrow, NativeSavedTurnReadRequest):
         if (
             type(borrow.caller) is not str
-            or borrow.caller not in ("saved-turn", "saved-reconcile")
+            or borrow.caller not in _SAVED_TURN_ORIGINS
             or not is_native_saved_turn_read_identifier(borrow.turn_id)
         ):
             raise _ProtocolError("native saved Turn read inputs are invalid")
@@ -1312,9 +1311,7 @@ def _turn_settlement_payload(borrow: NativeSavedTurnSettlementRequest) -> dict[s
     revision = borrow.expected_revision
     if (
         type(borrow.caller) is not str
-        or borrow.caller not in {
-            "saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile",
-        }
+        or borrow.caller not in _SAVED_TURN_ORIGINS
         or not isinstance(borrow.turn_id, str)
         or _TURN_IDENTIFIER.fullmatch(borrow.turn_id) is None
         or not isinstance(borrow.input_digest, str)
@@ -1431,7 +1428,7 @@ def _conversation_confirmation_payload(
     invalid = "native Conversation confirmation inputs are invalid"
     if (
         type(borrow.caller) is not str
-        or borrow.caller not in ("saved-turn", "saved-reconcile")
+        or borrow.caller not in _SAVED_TURN_ORIGINS
         or not isinstance(borrow.terminal, Mapping)
     ):
         raise _ProtocolError(invalid)

@@ -1063,7 +1063,7 @@ _CONFIRMATION_RESULT = {
 def _confirmation_request(
     borrow: _Borrow,
     marker: Callable[[], None],
-    caller: ipc.SavedReceiptCaller = "saved-turn",
+    caller: ipc.SavedTurnOrigin = "saved-turn",
 ) -> ipc.NativeConversationConfirmationRequest:
     return ipc.NativeConversationConfirmationRequest(
         context=borrow.context,
@@ -1086,11 +1086,13 @@ def _served_confirmation(
         yield writer
 
 
-@pytest.mark.parametrize("caller", ["saved-turn", "saved-reconcile"])
+@pytest.mark.parametrize(
+    "caller", ["saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile"],
+)
 @pytest.mark.parametrize("confirmed, publish", [(True, True), (True, False), (False, False)])
 def test_conversation_confirmation_binds_terminal_and_permits_only_publication(
     monkeypatch: pytest.MonkeyPatch,
-    caller: ipc.SavedReceiptCaller,
+    caller: ipc.SavedTurnOrigin,
     confirmed: bool,
     publish: bool,
 ) -> None:
@@ -2325,7 +2327,7 @@ def test_saved_receipt_rejects_malformed_results_and_publication(
 
 def _saved_turn_read_request(
     borrow: _Borrow,
-    caller: ipc.SavedReceiptCaller = "saved-turn",
+    caller: ipc.SavedTurnOrigin = "saved-turn",
     turn_id: str = "turn-1",
 ) -> ipc.NativeSavedTurnReadRequest:
     return ipc.NativeSavedTurnReadRequest(
@@ -2375,11 +2377,13 @@ def test_saved_turn_read_capture_requires_managed_opt_in(
         ("saved-turn", "absent", False),
         ("saved-reconcile", "もの\x1c/🧪", True),
         ("saved-turn", "🧪" * ipc.SAVED_TURN_READ_MAX_ID_CHARS, True),
+        ("side-chat-turn", "side-turn", True),
+        ("side-chat-reconcile", "side-reconcile", True),
     ],
 )
 def test_saved_turn_read_preserves_owner_values_through_the_bounded_wire(
     monkeypatch: pytest.MonkeyPatch,
-    caller: ipc.SavedReceiptCaller,
+    caller: ipc.SavedTurnOrigin,
     turn_id: str,
     present: bool,
 ) -> None:
