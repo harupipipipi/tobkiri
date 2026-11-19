@@ -7271,13 +7271,16 @@ def test_saved_settings_reach_host_credential_transport(
 def test_saved_model_resolve_borrows_each_signed_gateway_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Exercise the original saved-turn chain with a private Launcher reader."""
+    """Exercise private Model Resolve and AI routing on the signed saved chain."""
     import io
+    from types import SimpleNamespace
 
     from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
+    from core_runtime.bootstrap import production_v4
     from core_runtime.provider_prepare_native_v4 import (
         NativeProviderRegistryRequiresLegacyRead,
     )
+    from ecosystem.rumi_ai_routing_pack.runtime.router import create_route_operation
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
     from tobkiri_host.admission import (
@@ -7292,10 +7295,35 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
     mode = "buffered"
     reads: list[ipc.NativeModelResolveRequest] = []
     envelopes: list[RequestEnvelope] = []
+    routing_requests: list[ipc.NativeAiRoutingRequest] = []
+    routing_envelopes: list[RequestEnvelope] = []
+    legacy_routes: list[Mapping[str, object]] = []
     legacy_reads: list[str] = []
     provider_requests: list[Mapping[str, object]] = []
     legacy_read = Path.read_text
     reserve = DurableResourceLedger.reserve
+    load_factory = production_v4._load_verified_host_provider_factory
+    route_oracle = create_route_operation(None)
+
+    def observe_router_factory(pack_root, function_id, bindings):
+        factory, backend_id = load_factory(pack_root, function_id, bindings)
+        if function_id != "rumi_ai_routing_pack.ai-routing.default":
+            return factory, backend_id
+
+        def observe(contribution):
+            def invoke(operation, payload, invocation):
+                legacy_routes.append(payload)
+                return contribution.invoke(operation, payload, invocation)
+
+            return replace(contribution, invoke=invoke)
+
+        def capture(context):
+            original = factory.capture(context)
+            return replace(
+                original, contributions=tuple(map(observe, original.contributions)),
+            )
+
+        return SimpleNamespace(function_id=function_id, capture=capture), backend_id
 
     def observe_legacy_read(path: Path, *args, **kwargs) -> str:
         if path == models.path:
@@ -7345,6 +7373,34 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
             "store_revision": document["revision"],
         }
 
+    def evaluate(request: ipc.NativeAiRoutingRequest) -> Mapping[str, object]:
+        request.assert_current()
+        routing_requests.append(request)
+        envelope = next(
+            item for item in routing_envelopes if item.context is request.context
+        )
+        assert request.deadline_monotonic == envelope.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert envelope.resource_reservation_id
+        assert envelope.payload is request.input
+        assert set(request.input) == {
+            "models", "execution_providers", "health", "requirements", "decision_time",
+        }
+        assert isinstance(request.input["decision_time"], float)
+        suffix = request.role.removeprefix("quote-")
+        assert envelope.operation_id == f"rumi_ai_routing_pack.ai-route.{suffix}"
+        if mode == "inapplicable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if mode == "compatibility":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode == "routing-stale":
+            with server._lifecycle_lock:
+                server._native_provider_prepare_instance = "0" * 32
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode.startswith("routing-"):
+            raise ipc.NativeAiRoutingFailure(mode.removeprefix("routing-"))
+        return route_oracle(envelope.operation_id, request.input)
+
     def open_provider(request, *, timeout, **lifetime):
         assert timeout > 0
         assert request.full_url == "https://provider.example/v1/chat/completions"
@@ -7365,6 +7421,9 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
         }).encode())
 
     monkeypatch.setattr(Path, "read_text", observe_legacy_read)
+    monkeypatch.setattr(
+        production_v4, "_load_verified_host_provider_factory", observe_router_factory,
+    )
     monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_read)
     monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
     _publish_native_runtime_fixture(monkeypatch)
@@ -7375,6 +7434,7 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
     monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: read)
+    monkeypatch.setattr(ipc, "capture_launcher_ai_routing_evaluator", lambda: evaluate)
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch,
         packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
@@ -7398,6 +7458,8 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
                 "rumi_model_registry_pack.model-profile-resource.stream",
             }:
                 envelopes.append(envelope)
+            if envelope.contract_id == "tobkiri.service.ai.route.v1":
+                routing_envelopes.append(envelope)
             return dispatch(backend, envelope, *args, **kwargs)
 
         monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
@@ -7430,6 +7492,8 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
             turn = new_turn(mode)
             reads.clear()
             envelopes.clear()
+            routing_requests.clear()
+            routing_envelopes.clear()
             status, response = post_turn(turn)
             assert status == 200 and response["data"]["status"] == "completed", response
             assert [item.role for item in reads] == [
@@ -7440,14 +7504,27 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
             reservation_ids = {item.resource_reservation_id for item in envelopes}
             assert len(reservation_ids) == len(reads)
             assert not legacy_reads
+            assert [item.role for item in routing_requests] == (
+                ["quote-generate", "generate"] if mode == "buffered"
+                else ["quote-generate", "quote-stream", "stream"]
+            )
+            assert len({item.lease.token for item in routing_envelopes}) == len(
+                routing_requests,
+            )
+            assert len({
+                item.resource_reservation_id for item in routing_envelopes
+            }) == len(routing_requests)
+            assert not legacy_routes
             assert [item["content"] for item in store.get(mode)["messages"]] == [
                 "Hello", "Reply",
             ]
             count = len(provider_requests)
+            routing_count = len(routing_requests)
             status, replay = post_turn(turn)
             assert status == 200 and replay["data"]["status"] == "existing", replay
             assert len(reads) == 3 and len(provider_requests) == count
-            for request in reads:
+            assert len(routing_requests) == routing_count
+            for request in (*reads, *routing_requests):
                 with pytest.raises(PermissionError):
                     request.assert_current()
 
@@ -7473,17 +7550,52 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
         assert result["resolved_profile_id"] == "daily"
         assert len(reads) == 3 and legacy_reads == [mode]
 
+        child = routing_envelopes[0]
+        context = replace(child.context, request_id=f"request.{uuid.uuid4().hex}")
+        scope = session.effect_scope_for(
+            child.contract_id, child.operation_id, child.payload, context,
+        )
+        result = session.broker.invoke(
+            InvocationFrame(
+                contract_id=child.contract_id, version_range=None,
+                operation_id=child.operation_id, payload=child.payload,
+            ), context, effect_scope=scope,
+        )
+        assert result["deterministic"] is True
+        assert len(routing_requests) == routing_count and len(legacy_routes) == 1
+
         for mode in ("inapplicable", "compatibility", "unfunded"):
             reads.clear()
             legacy_reads.clear()
+            routing_requests.clear()
+            legacy_routes.clear()
             status, response = post_turn(new_turn(mode))
             assert status == 200 and response["data"]["status"] == "completed", response
             assert len(legacy_reads) == 3
             assert len(reads) == (0 if mode == "unfunded" else 3)
+            assert len(legacy_routes) == 3
+            assert len(routing_requests) == (0 if mode == "unfunded" else 3)
+            assert all(
+                request.input is payload
+                for request, payload in zip(routing_requests, legacy_routes)
+            )
 
         count = len(provider_requests)
-        models.save({**model, "enabled": False}, expected_revision=2)
         instance = server._native_provider_prepare_instance
+        for mode in ("routing-invalid", "routing-denied", "routing-unavailable", "routing-stale"):
+            routing_requests.clear()
+            legacy_routes.clear()
+            try:
+                status, response = post_turn(new_turn(mode))
+            finally:
+                with server._lifecycle_lock:
+                    server._native_provider_prepare_instance = instance
+            assert status != 200 or response["data"]["status"] != "completed", response
+            assert [item.role for item in routing_requests] == ["quote-generate"]
+            assert store.get(mode)["messages"] == []
+            assert not legacy_routes and len(provider_requests) == count
+
+        models.save({**model, "enabled": False}, expected_revision=2)
         for mode in (
             "disabled", "not-found", "invalid", "denied", "transport", "stale",
         ):

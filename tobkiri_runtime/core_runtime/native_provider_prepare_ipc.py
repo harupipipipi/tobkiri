@@ -40,6 +40,7 @@ _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
+_AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -70,6 +71,7 @@ CONVERSATION_GET_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 CONVERSATION_APPEND_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 CONVERSATION_CONFIRMATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 MODEL_RESOLVE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+AI_ROUTING_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_RECEIPT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_READ_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_START_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
@@ -78,6 +80,7 @@ SAVED_ORCHESTRATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_LOCAL_CHAT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_LOCAL_CHAT_MAX_INPUT_BYTES = 1024 * 1024
 SAVED_LOCAL_CHAT_MAX_RESULT_BYTES = 4 * 1024 * 1024
+_AI_ROUTING_LIMIT = 1024 * 1024
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
 SAVED_RECEIPT_MAX_ID_CHARS = _JSON_LIMIT // 8
@@ -143,6 +146,14 @@ class NativeModelResolveFailure(RuntimeError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"native Model Resolve failed ({code})")
+        self.code = code
+
+
+class NativeAiRoutingFailure(RuntimeError):
+    """A typed routing failure that does not permit compatibility fallback."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native AI routing failed ({code})")
         self.code = code
 
 
@@ -396,6 +407,18 @@ class NativeModelResolveRequest:
     identifier: str
 
 
+@dataclass(frozen=True)
+class NativeAiRoutingRequest:
+    """Borrow one live signed Gateway routing invocation."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    role: ModelResolveRole
+    input: Mapping[str, Any]
+
+
 _NativeBorrow = (
     NativeProviderPrepareBorrow
     | NativeModelSettingsRequest
@@ -409,11 +432,12 @@ _NativeBorrow = (
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
     | NativeModelResolveRequest
+    | NativeAiRoutingRequest
 )
 _NativeOperation = Literal[
     "provider_prepare", "model_list", "model_save", "conversation_get",
     "conversation_receipt", "model_resolve", "turn_start", "turn_settlement",
-    "conversation_confirmation", "conversation_append", "saved_orchestration",
+    "conversation_confirmation", "conversation_append", "saved_orchestration", "ai_route",
 ]
 
 
@@ -585,6 +609,18 @@ def capture_launcher_saved_orchestration_step() -> (
     return partial(_invoke, launcher, operation="saved_orchestration")
 
 
+def capture_launcher_ai_routing_evaluator() -> (
+    Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for saved AI routing."""
+    if os.environ.get(_AI_ROUTING_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="ai_route")
+
+
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
     """Capture the managed Launcher's opted-in endpoint for local chat."""
     version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
@@ -687,7 +723,7 @@ def _start_payload(
     borrow: _NativeBorrow | NativeSavedLocalChatRequest,
     deadline_ns: int,
     *,
-    orchestration_input_bytes: int = 0,
+    body_input_bytes: int = 0,
     project_local_chat_response: bool = False,
 ) -> bytes:
     context = borrow.context
@@ -755,9 +791,13 @@ def _start_payload(
     elif isinstance(borrow, NativeSavedTurnStartRequest):
         frame["turn_start"] = _turn_start_payload(borrow)
     elif isinstance(borrow, NativeSavedOrchestrationRequest):
-        if not 0 < orchestration_input_bytes <= MAX_CANONICAL_JSON_BYTES:
+        if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Orchestration input size is invalid")
-        frame["saved_orchestration"] = {"input_bytes": orchestration_input_bytes}
+        frame["saved_orchestration"] = {"input_bytes": body_input_bytes}
+    elif isinstance(borrow, NativeAiRoutingRequest):
+        if not 0 < body_input_bytes <= _AI_ROUTING_LIMIT:
+            raise _ProtocolError("native AI routing input size is invalid")
+        frame["ai_route"] = {"role": borrow.role, "input_bytes": body_input_bytes}
     elif isinstance(borrow, NativeSavedLocalChatRequest):
         frame["saved_local_chat"] = _saved_local_chat_start(borrow)
         if project_local_chat_response:
@@ -850,6 +890,28 @@ def _saved_orchestration_input(borrow: NativeSavedOrchestrationRequest) -> bytes
         return canonical_json(step_input)
     except (ValueError, RecursionError):
         raise _ProtocolError(invalid) from None
+
+
+def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
+    if (
+        type(borrow.role) is not str
+        or borrow.role not in ("quote-generate", "quote-stream", "generate", "stream")
+        or not isinstance(borrow.input, Mapping)
+    ):
+        raise NativeAiRoutingFailure("invalid")
+    try:
+        payload = json.dumps(
+            dict(borrow.input), ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError):
+        raise NativeProviderRegistryRequiresLegacyRead(
+            "AI routing input is outside the native JSON envelope",
+        ) from None
+    if len(payload) > _AI_ROUTING_LIMIT:
+        raise NativeProviderRegistryRequiresLegacyRead(
+            "AI routing input is outside the native byte limit",
+        )
+    return payload
 
 
 def _encode_append_start(frame: dict[str, Any]) -> bytes:
@@ -1089,6 +1151,23 @@ def _decode_projected_local_chat(
     return result
 
 
+def _decode_ai_routing(payload: bytes) -> dict[str, Any]:
+    invalid = "native AI routing result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or set(result) != {"selected", "candidates", "excluded", "deterministic"}
+        or result["deterministic"] is not True
+        or type(result["candidates"]) is not list
+        or type(result["excluded"]) is not list
+        or any(type(item) is not dict for item in result["candidates"])
+        or any(type(item) is not dict for item in result["excluded"])
+        or result["selected"] != next(iter(result["candidates"]), None)
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
 def _decode_conversation_get(payload: bytes) -> dict[str, Any]:
     invalid = "native Conversation GET owner result is invalid"
     result = _decode_owner_result(payload, invalid)
@@ -1297,6 +1376,7 @@ class _Exchange:
         permits_publication: bool,
         conversation_mutation: bool,
         requires_body_ready: bool,
+        ai_routing: bool = False,
         permits_dispatch: bool = False,
         accepts_projected_local_chat: bool = False,
         compiles_local_chat_request: bool = False,
@@ -1308,6 +1388,7 @@ class _Exchange:
         self.permits_dispatch = permits_dispatch
         self.accepts_projected_local_chat = accepts_projected_local_chat
         self.requires_body_ready = requires_body_ready
+        self.ai_routing = ai_routing
         self.legacy_failure = (
             _CONVERSATION_LEGACY_READ_FAILURE
             if conversation_mutation
@@ -1320,7 +1401,7 @@ class _Exchange:
             self.failure_codes |= {_LEGACY_REQUEST_FAILURE}
         if compiles_local_chat_policy:
             self.failure_codes |= _LOCAL_CHAT_POLICY_FAILURES
-        if not requires_body_ready:
+        if not requires_body_ready or ai_routing:
             self.failure_codes |= {self.legacy_failure}
         if conversation_mutation:
             self.failure_codes |= {_PUBLICATION_UNCONFIRMED}
@@ -1331,6 +1412,7 @@ class _Exchange:
         self.partial_write = False
         self.started = False
         self.terminal = False
+        self.entered_live_phase = False
         self.publication_possible = False
         self.dispatch_possible = False
         self.dispatch_permitted = False
@@ -1418,7 +1500,9 @@ class _Exchange:
                     if self.dispatch_possible and payload in _LOCAL_CHAT_POLICY_FAILURES:
                         break
                     return
-                if (tag == _PLAN and self.dispatch_possible) or (
+                if (tag == _PLAN and (
+                    self.dispatch_possible or (self.ai_routing and self.entered_live_phase)
+                )) or (
                     tag == _PROJECTED_LOCAL_CHAT and self.dispatch_permitted
                 ):
                     # The worker already finished. The caller still discards the
@@ -1505,24 +1589,22 @@ class _Exchange:
         borrow: _NativeBorrow,
         deadline_ns: int,
         wait_seconds: Callable[[], float],
+        *,
+        body_input: bytes | None = None,
     ) -> dict[str, Any] | None:
         conversation_append = isinstance(borrow, NativeConversationAppendRequest)
-        orchestration_input = (
-            _saved_orchestration_input(borrow)
-            if isinstance(borrow, NativeSavedOrchestrationRequest)
-            else None
-        )
+        if isinstance(borrow, NativeSavedOrchestrationRequest):
+            body_input = _saved_orchestration_input(borrow)
         try:
             start = _start_payload(
                 borrow, deadline_ns,
-                orchestration_input_bytes=len(orchestration_input or b""),
+                body_input_bytes=len(body_input or b""),
             )
         except NativeProviderRegistryRequiresLegacyRead:
             wait_seconds()
             raise
         self.send(_START_APPEND if conversation_append else _START, start, wait_seconds)
         self.started = True
-        entered_live_phase = False
         conversation_get = isinstance(borrow, NativeConversationGetRequest)
         while True:
             tag, payload = self.receive(wait_seconds)
@@ -1530,7 +1612,7 @@ class _Exchange:
                 self.terminal = True
                 if (
                     payload == self.legacy_failure
-                    and entered_live_phase
+                    and self.entered_live_phase
                     and not self.publication_possible
                 ):
                     wait_seconds()
@@ -1541,7 +1623,10 @@ class _Exchange:
                     if isinstance(borrow, NativeSavedOrchestrationRequest):
                         wait_seconds()
                         raise NativeSavedOrchestrationFailure(payload.decode("ascii"))
-                    if entered_live_phase and isinstance(
+                    if self.ai_routing:
+                        wait_seconds()
+                        raise NativeAiRoutingFailure(payload.decode("ascii"))
+                    if self.entered_live_phase and isinstance(
                         borrow, NativeSavedTurnReadRequest,
                     ):
                         wait_seconds()
@@ -1567,7 +1652,7 @@ class _Exchange:
                             payload.decode("ascii"),
                         )
                 if (
-                    entered_live_phase
+                    self.entered_live_phase
                     and payload in (b"not-found", b"invalid", b"denied")
                 ):
                     if conversation_get:
@@ -1582,16 +1667,19 @@ class _Exchange:
                 raise _ProtocolError(
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
+            if self.ai_routing and tag == _PLAN and self.entered_live_phase:
+                # The Launcher sends PLAN only after the pure worker drains.
+                self.terminal = True
             wait_seconds()
-            if tag == _BODY_READY and orchestration_input is not None:
-                self.send(_ORCHESTRATION_INPUT, orchestration_input, wait_seconds)
-                orchestration_input = None
-            elif tag == _CHECK and orchestration_input is None:
+            if tag == _BODY_READY and body_input is not None:
+                self.send(_ORCHESTRATION_INPUT, body_input, wait_seconds)
+                body_input = None
+            elif tag == _CHECK and body_input is None:
                 self.send(_LIVE, b"", wait_seconds)
-                entered_live_phase = True
+                self.entered_live_phase = True
             elif (
                 tag == _PUBLISH_CHECK
-                and entered_live_phase
+                and self.entered_live_phase
                 and isinstance(borrow, (
                     NativeModelSaveRequest, NativeSavedTurnStartRequest,
                     NativeSavedTurnSettlementRequest,
@@ -1604,7 +1692,7 @@ class _Exchange:
                 borrow.mark_publication_possible()
                 # send() checks the current guard again before offering any byte.
                 self.send(_PUBLISH_PERMIT, b"", wait_seconds)
-            elif tag == _PLAN and entered_live_phase:
+            elif tag == _PLAN and self.entered_live_phase:
                 plan: dict[str, Any] | None
                 if conversation_get:
                     plan = _decode_conversation_get(payload)
@@ -1630,6 +1718,8 @@ class _Exchange:
                     plan = _decode_model_resolve(payload, borrow.identifier)
                 elif isinstance(borrow, NativeModelSaveRequest):
                     plan = _decode_model_save(payload)
+                elif self.ai_routing:
+                    plan = _decode_ai_routing(payload)
                 else:
                     plan = _decode_plan(payload, self.plan_limit)
                 wait_seconds()
@@ -1637,8 +1727,8 @@ class _Exchange:
                 return plan
             elif (
                 tag == _INAPPLICABLE
-                and not entered_live_phase
-                and (not self.requires_body_ready or orchestration_input is not None)
+                and not self.entered_live_phase
+                and (not self.requires_body_ready or body_input is not None)
             ):
                 self.terminal = True
                 raise NativeProviderPrepareUnavailable("native Provider is unavailable")
@@ -1775,6 +1865,7 @@ def _invoke(
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
+    ai_routing = isinstance(borrow, NativeAiRoutingRequest)
     if (
         model_settings != (operation == "model_list")
         or model_save != (operation == "model_save")
@@ -1787,15 +1878,22 @@ def _invoke(
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
         or model_resolve != (operation == "model_resolve")
+        or ai_routing != (operation == "ai_route")
     ):
         raise _ProtocolError("native Registry request role is invalid")
 
     deadline_ns, wait_seconds = _launcher_deadline(launcher, borrow)
+    body_input = None
+    if ai_routing:
+        wait_seconds()
+        body_input = _ai_routing_input(borrow)
     with _connect_launcher(launcher, wait_seconds) as connection:
         if saved_orchestration:
             plan_limit = MAX_CANONICAL_JSON_BYTES
         elif turn_start:
             plan_limit = _TURN_START_RESULT_LIMIT
+        elif ai_routing:
+            plan_limit = _AI_ROUTING_LIMIT
         elif (
             model_settings or model_save or conversation_get
             or saved_receipt or model_resolve or turn_read or turn_settlement
@@ -1812,10 +1910,11 @@ def _invoke(
                 or conversation_append
             ),
             conversation_mutation=conversation_confirmation or conversation_append,
-            requires_body_ready=saved_orchestration,
+            requires_body_ready=saved_orchestration or ai_routing,
+            ai_routing=ai_routing,
         )
         try:
-            return exchange.run(borrow, deadline_ns, wait_seconds)
+            return exchange.run(borrow, deadline_ns, wait_seconds, body_input=body_input)
         except Exception as error:
             if exchange.started and not exchange.terminal:
                 try:
