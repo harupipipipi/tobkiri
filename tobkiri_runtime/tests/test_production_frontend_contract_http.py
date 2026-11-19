@@ -8039,12 +8039,15 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
     from types import SimpleNamespace
     from urllib.error import HTTPError
 
-    from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
+    from core_runtime import credential_transport
+    from core_runtime import global_contract_dispatch
+    from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.bootstrap import production_v4
     from core_runtime.bootstrap.saved_bridge import SavedBridgeCallbacks
     from core_runtime.provider_prepare_native_v4 import (
         NativeProviderRegistryRequiresLegacyRead,
     )
+    from ecosystem.rumi_ai_gateway_pack.runtime import gateway as signed_gateway
     from ecosystem.rumi_ai_pipeline_pack.runtime.pipeline import (
         create_failover_operation,
         create_prepare_operation,
@@ -8052,6 +8055,7 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
     from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.errors import ProviderExecutionError
     from tobkiri_host.models import EffectClass
 
     pack = "rumi_ai_pipeline_pack"
@@ -8070,9 +8074,21 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
     original_calls: list[Mapping[str, object]] = []
     provider_roles: list[str] = []
     failover_decisions: list[Mapping[str, object]] = []
+    typed_errors: list[str] = []
     delivery_role = "generate"
     mode = "native"
     load_factory = production_v4._load_verified_host_provider_factory
+    invoke_provider = global_contract_dispatch.invoke_selected_global_provider
+    provider_operations = {
+        (
+            signed_gateway.GENERATE_PROVIDER_CONTRACT,
+            signed_gateway.GENERATE_PROVIDER_OPERATION,
+        ),
+        (
+            signed_gateway.STREAM_PROVIDER_CONTRACT,
+            signed_gateway.STREAM_PROVIDER_OPERATION,
+        ),
+    }
 
     def observe_factory(pack_root, function_id, bindings):
         factory, backend_id = load_factory(pack_root, function_id, bindings)
@@ -8166,7 +8182,7 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
         body = json.loads(request.data)
         streaming = body.get("stream") is True
         provider_roles.append("stream" if streaming else "generate")
-        if mode == "provider-error":
+        if mode in {"provider-error", "typed-provider-error"}:
             raise HTTPError(request.full_url, 503, "fixture unavailable", {}, None)
         message = {"content": "Reply"}
         body_key = "delta" if streaming else "message"
@@ -8175,12 +8191,33 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
             return io.BytesIO(f"data: {json.dumps(reply)}\n\ndata: [DONE]\n\n".encode())
         return io.BytesIO(json.dumps(reply).encode())
 
+    def observe_provider_result(session, contract, instance, operation, payload):
+        try:
+            return invoke_provider(session, contract, instance, operation, payload)
+        except ProviderExecutionError as error:
+            if mode != "typed-provider-error" or (contract, operation) not in (
+                provider_operations
+            ):
+                raise
+            # Exercise the Gateway's existing typed-error branch separately
+            # from a provider failure wrapped by the production Broker.
+            cause = error.__cause__
+            assert isinstance(
+                cause, global_contract_dispatch.GlobalContractInvocationError,
+            )
+            typed_errors.append(cause.code)
+            raise cause from None
+
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(ipc, "capture_launcher_ai_pipeline_evaluator", lambda: evaluate)
     monkeypatch.setattr(
         production_v4, "_load_verified_host_provider_factory", observe_factory,
     )
     monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
+    monkeypatch.setattr(
+        global_contract_dispatch, "invoke_selected_global_provider",
+        observe_provider_result,
+    )
     stream_ready = SavedBridgeCallbacks._stream_ready
     monkeypatch.setattr(
         SavedBridgeCallbacks, "_stream_ready",
@@ -8216,12 +8253,14 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
         retired_children = {}
         for delivery_role, mode in (
             ("generate", "native"), ("stream", "native"),
+            ("generate", "typed-provider-error"), ("stream", "typed-provider-error"),
+            ("generate", "provider-error"),
             ("generate", "old-peer"), ("stream", "guest-decline"),
             ("stream", "stale"), ("generate", "denied"), ("stream", "unavailable"),
-            ("generate", "provider-error"), ("stream", "provider-error"),
         ):
             for recorded in (
-                dispatches, requests, original_calls, provider_roles, failover_decisions,
+                dispatches, requests, original_calls, provider_roles,
+                failover_decisions, typed_errors,
             ):
                 recorded.clear()
             turn_id = f"{delivery_role}-{mode}"
@@ -8248,17 +8287,25 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
             if delivery_role == "stream":
                 expected.append(("prepare", "quote-stream"))
             expected.append(("prepare", delivery_role))
-            if mode == "provider-error" and delivery_role == "generate":
+            if mode == "typed-provider-error" and delivery_role == "generate":
                 expected.append(("failover", "generate"))
                 assert len(failover_decisions) == 1, response
                 assert failover_decisions[0]["allowed"] is False
             else:
                 assert not failover_decisions
+            if mode == "typed-provider-error":
+                expected_error = (
+                    "provider_unavailable" if delivery_role == "generate"
+                    else "stream_failed"
+                )
+                assert typed_errors == [expected_error]
+            else:
+                assert not typed_errors
             assert [(request.pipeline, request.role) for request in requests] == expected, response
-            terminal = mode in {"stale", "denied", "unavailable"}
-            assert provider_roles == ([] if terminal else [delivery_role]), response
+            dispatch_blocked = mode in {"stale", "denied", "unavailable"}
+            assert provider_roles == ([] if dispatch_blocked else [delivery_role]), response
             completed = status == 200 and response["data"]["status"] == "completed"
-            assert completed is (not terminal and mode != "provider-error"), response
+            assert completed is (mode in {"native", "old-peer", "guest-decline"}), response
             for item in requests:
                 with pytest.raises(PermissionError):
                     item.assert_current()
