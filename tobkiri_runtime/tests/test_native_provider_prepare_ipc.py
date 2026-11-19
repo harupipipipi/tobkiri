@@ -2211,6 +2211,61 @@ def test_model_access_projection_rejects_incompatible_input_before_sending(field
         })
 
 
+def test_model_access_catalog_pages_keep_order_and_projection_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ipc, "_MODEL_ACCESS_CATALOG_PAGE_BYTES", 480)
+    rows = [{
+        "provider_id": "openrouter", "provider_model_id": f"vendor/{index}",
+        "display_name": f"モデル {index}", "unused": "x" * ipc._OWNER_RESULT_LIMIT,
+    } for index in range(6)]
+    request = {
+        "phase": "project-catalog",
+        "provider_instance_id": "connection/work",
+        "catalog": {
+            "models": rows,
+            "inventory": {"openrouter": {
+                "source": "openrouter_models_api", "stale": False, "unused": "x",
+            }},
+            "providers": [{"provider_id": "openrouter", "unused": "x"}],
+            "unused": "x" * ipc._OWNER_RESULT_LIMIT,
+        },
+    }
+    batches = list(ipc._model_access_catalog_pages(request))
+    assert len(batches) > 1
+    observed = []
+    for page in batches:
+        assert len(ipc._model_access_projection_input(page)) <= 480
+        catalog = page["catalog"]
+        assert catalog["inventory"] == {
+            "openrouter": {"source": "openrouter_models_api", "stale": False},
+        }
+        assert catalog["providers"] == [{"provider_id": "openrouter"}]
+        assert catalog.keys() == {"inventory", "providers", "models"}
+        observed.extend(catalog["models"])
+    assert observed == [
+        {key: value for key, value in row.items() if key != "unused"} for row in rows
+    ]
+
+
+def test_model_access_catalog_pages_keep_a_live_empty_result() -> None:
+    request = {
+        "phase": "project-catalog",
+        "provider_instance_id": "connection/work",
+        "catalog": {"models": [None, "ignored"], "unused": "irrelevant data"},
+    }
+    calls = []
+
+    def project(page):
+        calls.append(page)
+        return {"snapshot": {"revision": 2}, "result": {"status": "live", "models": []}}
+
+    assert ipc.project_model_access_catalog_pages(request, project) == {
+        "snapshot": {"revision": 2}, "result": {"status": "live", "models": []},
+    }
+    assert calls == [{**request, "catalog": {"models": []}}]
+
+
 @pytest.mark.parametrize("role", ipc._PROJECTED_PROVIDER_SNAPSHOT_ROLES)
 @pytest.mark.parametrize("unexpected_field", [None, "credential_handle", "endpoint"])
 def test_provider_snapshot_settings_role_only_accepts_the_public_view(

@@ -81,6 +81,10 @@ class _ModelsResponse:
     pytest.param("projection", False, id="v8-live"),
     pytest.param("projection", True, id="v8-changed"),
     pytest.param("oversize", False, id="v8-catalog-over-budget"),
+    pytest.param("paged", False, id="v8-catalog-paged"),
+    pytest.param(
+        "paged-registry-changed", False, id="v8-catalog-paged-registry-changed",
+    ),
 ])
 def test_native_model_access_rechecks_registry_under_the_catalog_lease(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolated_catalog_cache: None,
@@ -98,14 +102,41 @@ def test_native_model_access_rechecks_registry_under_the_catalog_lease(
     calls: list[ipc.NativeProviderSnapshotRequest] = []
     dispatches: list[RequestEnvelope] = []
     catalog_requests = []
+    projected_pages = 0
+    change_between_pages = flow == "paged-registry-changed"
+    paged_catalog = flow in {"paged", "paged-registry-changed"}
+    models = [{"id": "vendor/model", "name": "Synthetic model"}]
+    if paged_catalog:
+        models = [
+            {
+                "id": f"vendor/model-{index:04d}-" + "x" * 96,
+                "name": f"Synthetic model {index:04d} ".ljust(240, "X"),
+            }
+            for index in reversed(range(4000))
+        ]
+    expected_models = [
+        {"model_id": model["id"], "display_name": model["name"]} for model in models
+    ]
+    if paged_catalog:
+        public_bytes = len(json.dumps(expected_models, separators=(",", ":")).encode())
+        assert ipc._OWNER_RESULT_LIMIT < public_bytes < 2 * ipc._OWNER_RESULT_LIMIT
 
     def native_snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, Any]:
+        nonlocal projected_pages
         request.assert_current()
         calls.append(request)
+        projection = request.model_access_projection
+        if projection is not None and projection["phase"] == "project-catalog":
+            if change_between_pages and projected_pages == 1:
+                connection = registry.snapshot()["providers"][0]
+                registry.save(
+                    {**connection, "display_name": "Changed between pages"},
+                    expected_revision=1,
+                )
+            projected_pages += 1
         snapshot = ProviderRegistry(
             request.context.profile_id, user_data_root=tmp_path / "user-data",
         ).snapshot()
-        projection = request.model_access_projection
         if projection is None:
             return snapshot
         phase = projection["phase"]
@@ -127,7 +158,7 @@ def test_native_model_access_rechecks_registry_under_the_catalog_lease(
         catalog_requests.append(request)
         if delete_during_discovery:
             registry.delete("connection/work", expected_revision=1)
-        return _ModelsResponse([{"id": "vendor/model", "name": "Synthetic model"}])
+        return _ModelsResponse(models)
 
     native_snapshot.supports_model_access = True
     native_snapshot.supports_model_access_projection = flow != "snapshot"
@@ -170,17 +201,20 @@ def test_native_model_access_rechecks_registry_under_the_catalog_lease(
         if delete_during_discovery:
             assert status != 200, catalog
             assert registry.snapshot()["providers"] == []
+        elif change_between_pages:
+            assert status != 200, catalog
+            assert "models" not in (catalog.get("data") or {})
+            assert registry.snapshot()["providers"][0]["display_name"] == (
+                "Changed between pages"
+            )
         else:
             assert status == 200, catalog
-            assert catalog["data"]["models"] == [
-                {"model_id": "vendor/model", "display_name": "Synthetic model"},
-            ]
+            assert catalog["data"]["status"] == "live"
+            assert catalog["data"]["models"] == expected_models
         assert _MARKER not in json.dumps(catalog)
 
-        expected_roles = ["model-access-read", "model-access-catalog", "model-access-catalog"]
-        if flow == "oversize":
-            expected_roles.append("model-access-catalog")
-        assert [call.role for call in calls] == expected_roles
+        assert calls[0].role == "model-access-read"
+        assert all(call.role == "model-access-catalog" for call in calls[1:])
         phases = [
             call.model_access_projection["phase"] if call.model_access_projection else None
             for call in calls
@@ -188,9 +222,22 @@ def test_native_model_access_rechecks_registry_under_the_catalog_lease(
         if flow == "snapshot":
             assert phases == [None, None, None]
         else:
-            assert phases == ["policy", "prepare-catalog", "project-catalog"] + (
-                [None] if flow == "oversize" else []
-            )
+            assert phases[:2] == ["policy", "prepare-catalog"]
+            page_phases = phases[2:]
+            assert page_phases == ["project-catalog"] * len(page_phases)
+            if change_between_pages:
+                assert len(page_phases) == 2
+            elif paged_catalog:
+                assert len(page_phases) >= 2
+                assert [
+                    row["provider_model_id"]
+                    for call in calls[2:]
+                    for row in call.model_access_projection["catalog"]["models"]
+                ] == [model["id"] for model in models]
+            else:
+                assert len(page_phases) == 1
+            if flow == "oversize":
+                assert "unused" not in calls[2].model_access_projection["catalog"]
         read_envelope, catalog_envelope, *confirmation_envelopes = (
             next(envelope for envelope in dispatches if envelope.context is call.context)
             for call in calls

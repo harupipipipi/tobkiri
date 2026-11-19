@@ -77,6 +77,8 @@ _PROJECTED_LOCAL_CHAT = 19
 _JSON_LIMIT = 16 * 1024
 _APPEND_START_LIMIT = 1024 * 1024
 _OWNER_RESULT_LIMIT = 1024 * 1024
+# Model Access replies also carry the fresh Registry and a quoted owner result.
+_MODEL_ACCESS_CATALOG_PAGE_BYTES = _OWNER_RESULT_LIMIT // 2
 _TURN_START_RESULT_LIMIT = _OWNER_RESULT_LIMIT + 128
 # The Host borrows the same bridge allowance as the Registry owner routes.
 # The managed Launcher's Wasm instance has its own physical memory cap.
@@ -2097,6 +2099,89 @@ def _model_access_projection_input(request: Mapping[str, Any]) -> bytes:
     raise NativeProviderRegistryRequiresLegacyRead(
         "native Model Access input exceeds the projection envelope",
     )
+
+
+def _model_access_catalog_pages(
+    request: Mapping[str, Any],
+) -> Iterator[Mapping[str, Any]]:
+    """Carry just the fields read by the existing catalog projection."""
+    catalog = request["catalog"]
+    if not isinstance(catalog, Mapping) or not isinstance(catalog.get("models"), list):
+        raise ValueError("model catalog result is invalid")
+    fixed = {
+        key: catalog[key]
+        for key in ("success", "ok", "is_error", "status", "inventory", "providers")
+        if key in catalog
+    }
+    inventory = fixed.get("inventory")
+    if isinstance(inventory, Mapping):
+        fixed["inventory"] = {
+            provider: {key: entry[key] for key in ("source", "stale") if key in entry}
+            for provider, entry in inventory.items()
+            if isinstance(entry, Mapping)
+        }
+    providers = fixed.get("providers")
+    if isinstance(providers, list):
+        fixed["providers"] = [
+            {"provider_id": provider["provider_id"]}
+            for provider in providers
+            if isinstance(provider, Mapping) and "provider_id" in provider
+        ]
+    envelope = {**request, "catalog": {**fixed, "models": []}}
+    overhead = len(_model_access_projection_input(envelope))
+    page_bytes = overhead
+    models = []
+    for row in catalog["models"]:
+        if not isinstance(row, Mapping):
+            continue
+        model = {
+            key: row[key]
+            for key in ("provider_id", "provider_model_id", "display_name")
+            if key in row
+        }
+        size = len(_model_access_projection_input(model))
+        if overhead + size > _OWNER_RESULT_LIMIT:
+            raise NativeProviderRegistryRequiresLegacyRead(
+                "native Model Access model exceeds the projection envelope",
+            )
+        if models and page_bytes + size + 1 > _MODEL_ACCESS_CATALOG_PAGE_BYTES:
+            yield {**envelope, "catalog": {**fixed, "models": models}}
+            models = []
+            page_bytes = overhead
+        page_bytes += size + bool(models)
+        models.append(model)
+    yield {**envelope, "catalog": {**fixed, "models": models}}
+
+
+def project_model_access_catalog_pages(
+    request: Mapping[str, Any],
+    project: Callable[[Mapping[str, Any]], Mapping[str, Any] | None],
+) -> dict[str, Any] | None:
+    """Merge ordered Wasm results after checking each fresh Registry observation."""
+    snapshot = None
+    header = None
+    models = []
+    try:
+        for page in _model_access_catalog_pages(request):
+            projected = project(page)
+            if projected is None:
+                return None
+            result = projected["result"]
+            current_header = {
+                key: value for key, value in result.items() if key != "models"
+            }
+            if snapshot is None:
+                snapshot = projected["snapshot"]
+                header = current_header
+            elif snapshot != projected["snapshot"] or header != current_header:
+                raise PermissionError(
+                    "provider registry changed during catalog projection",
+                )
+            models.extend(result["models"])
+    except NativeProviderRegistryRequiresLegacyRead:
+        return None
+    assert header is not None
+    return {"snapshot": snapshot, "result": {**header, "models": models}}
 
 
 def _decode_model_access_projection(

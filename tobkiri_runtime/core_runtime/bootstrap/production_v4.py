@@ -2017,6 +2017,7 @@ def capture_production_dispatch(
         capture_launcher_side_chat_conversation_append_writer,
         capture_launcher_side_chat_turn_start_writer,
         is_canonical_model_resolve_identifier,
+        project_model_access_catalog_pages,
         is_native_saved_turn_read_identifier,
         is_native_saved_turn_start_identifier,
     )
@@ -4360,6 +4361,20 @@ def capture_production_dispatch(
             if source is None:
                 return None
             role, edge = source
+            if projection is not None and projection.get("phase") == "project-catalog":
+                pinned = native_provider_runtime
+
+                def project_page(page: Mapping[str, Any]) -> Mapping[str, Any] | None:
+                    if native_provider_runtime is not pinned:
+                        raise AuthorityDenied(
+                            "native Model Access projection capture changed",
+                        )
+                    result, _ = borrow_native_provider_snapshot(
+                        self, role, edge, None, model_access_projection=page,
+                    )
+                    return result
+
+                return project_model_access_catalog_pages(projection, project_page)
             result, _ = borrow_native_provider_snapshot(
                 self, role, edge, None, model_access_projection=projection,
             )
