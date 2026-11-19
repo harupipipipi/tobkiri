@@ -36,6 +36,7 @@ from tobkiri_protocol.canonical import (
 _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
 _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
+_SIDE_CHAT_APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
@@ -340,6 +341,9 @@ class NativeConversationGetRequest:
     conversation_id: str
 
 
+ConversationAppendCaller = Literal["saved-turn", "side-chat"]
+
+
 @dataclass(frozen=True)
 class NativeConversationAppendRequest:
     """Borrow the signed Conversation append payload and its live guard."""
@@ -350,6 +354,7 @@ class NativeConversationAppendRequest:
     assert_current: Callable[[], None]
     request: Mapping[str, Any]
     mark_publication_possible: Callable[[], None]
+    caller: ConversationAppendCaller = "saved-turn"
 
 
 SavedReceiptCaller = Literal["saved-turn", "saved-reconcile"]
@@ -672,7 +677,20 @@ def capture_launcher_conversation_append_writer() -> (
     Callable[[NativeConversationAppendRequest], Mapping[str, Any]] | None
 ):
     """Capture the managed Launcher's fixed endpoint for a saved append."""
-    if os.environ.get(_APPEND_ENV) != "1":
+    return _capture_conversation_append_writer(_APPEND_ENV)
+
+
+def capture_launcher_side_chat_conversation_append_writer() -> (
+    Callable[[NativeConversationAppendRequest], Mapping[str, Any]] | None
+):
+    """Capture the independently admitted Side Chat append endpoint."""
+    return _capture_conversation_append_writer(_SIDE_CHAT_APPEND_ENV)
+
+
+def _capture_conversation_append_writer(
+    environment: str,
+) -> Callable[[NativeConversationAppendRequest], Mapping[str, Any]] | None:
+    if os.environ.get(environment) != "1":
         return None
     launcher = _capture_launcher()
     if launcher is None:
@@ -1348,7 +1366,8 @@ def _conversation_append_payload(
     message = request["message"]
     saved = request["saved_input"]
     if (
-        not _matches(_TURN_IDENTIFIER, conversation_id)
+        borrow.caller not in ("saved-turn", "side-chat")
+        or not _matches(_TURN_IDENTIFIER, conversation_id)
         or type(revision) is not int
         or revision < 1
         or not isinstance(message, Mapping)
@@ -1371,6 +1390,7 @@ def _conversation_append_payload(
             "native Conversation append revision exceeds its bound",
         )
     return {
+        **({"caller": "side-chat"} if borrow.caller == "side-chat" else {}),
         "request": {
             "conversation_id": conversation_id,
             "expected_conversation_revision": revision,

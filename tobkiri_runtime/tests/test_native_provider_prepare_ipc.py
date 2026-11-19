@@ -1299,6 +1299,28 @@ def test_conversation_append_requires_exact_version_hint(
     assert ipc.capture_launcher_conversation_append_writer() is None
 
 
+def test_side_chat_append_uses_separate_admission_and_exact_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ipc._APPEND_ENV, "1")
+    monkeypatch.setattr(ipc, "_capture_launcher", lambda: object())
+    assert ipc.capture_launcher_conversation_append_writer() is not None
+    assert ipc.capture_launcher_side_chat_conversation_append_writer() is None
+    monkeypatch.delenv(ipc._APPEND_ENV)
+    monkeypatch.setenv(ipc._SIDE_CHAT_APPEND_ENV, "1")
+    assert ipc.capture_launcher_conversation_append_writer() is None
+    assert ipc.capture_launcher_side_chat_conversation_append_writer() is not None
+    ordinary = _append_request(_Borrow(), lambda: None)
+    linked = replace(ordinary, caller="side-chat")
+    assert ipc._conversation_append_payload(ordinary) == {"request": _APPEND_REQUEST}
+    assert ipc._conversation_append_payload(linked) == {
+        "caller": "side-chat",
+        "request": _APPEND_REQUEST,
+    }
+    with pytest.raises(ipc._ProtocolError):
+        ipc._conversation_append_payload(replace(ordinary, caller="forged"))  # type: ignore[arg-type]
+
+
 def test_conversation_append_binds_full_start_and_permits_one_mib_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

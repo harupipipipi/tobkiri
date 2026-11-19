@@ -1939,6 +1939,7 @@ def capture_production_dispatch(
         SAVED_TURN_START_MINIMUM_MEMORY,
         AiPipelineStep,
         ApplicationPresentationRole,
+        ConversationAppendCaller,
         ConversationGetCaller,
         ConversationCompletePhase,
         ModelResolveRole,
@@ -1997,6 +1998,7 @@ def capture_production_dispatch(
         capture_launcher_saved_turn_reader,
         capture_launcher_saved_turn_settlement_writer,
         capture_launcher_saved_turn_start_writer,
+        capture_launcher_side_chat_conversation_append_writer,
         is_canonical_model_resolve_identifier,
         is_native_saved_turn_read_identifier,
         is_native_saved_turn_start_identifier,
@@ -2022,7 +2024,10 @@ def capture_production_dispatch(
     native_ai_tool_intents_normalizer = capture_launcher_ai_tool_intents_normalizer()
     native_ai_usage_cost_calculator = capture_launcher_ai_usage_cost_calculator()
     native_confirmation_writer = capture_launcher_conversation_confirmation_writer()
-    native_append_writer = capture_launcher_conversation_append_writer()
+    native_append_writers = {
+        "saved-turn": capture_launcher_conversation_append_writer(),
+        "side-chat": capture_launcher_side_chat_conversation_append_writer(),
+    }
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
     native_presentation = capture_launcher_application_presentation()
@@ -6113,12 +6118,54 @@ def capture_production_dispatch(
             return "AI pipeline"
         return "AI routing"
 
-    append_edges: tuple[_CapturedPlanEdge, _CapturedPlanEdge, _CapturedPlanEdge] | None = None
     append_function = "rumi_conversation_store_pack.conversation-store.message-manage"
     append_operation = (
         "tobkiri.action.message.manage.v1",
         "rumi_conversation_store_pack.message-manage",
     )
+    append_routes: dict[ConversationAppendCaller, tuple[_CapturedPlanEdge, ...]] = {}
+
+    def capture_append_route(
+        caller: ConversationAppendCaller, parents: tuple[_CapturedPlanEdge, ...],
+    ) -> None:
+        message_edge = select_original_chat_edge(
+            {parents[0].target.principal_id}, "rumi_conversation_store_pack",
+            *append_operation, append_function, EffectClass.PRIVILEGED,
+        )
+        if message_edge is not None:
+            append_routes[caller] = (message_edge, *parents)
+
+    if (
+        native_append_writers["saved-turn"] is not None
+        and ordinary_turn_edge is not None and ordinary_orchestration_edge is not None
+    ):
+        capture_append_route("saved-turn", (ordinary_orchestration_edge, ordinary_turn_edge))
+
+    if native_append_writers["side-chat"] is not None:
+        side = select_original_chat_edge(
+            {
+                edge.caller.principal_id for edge in captured_edges
+                if edge.caller.principal_id in shell_principal_ids
+                and edge.caller.function_id == "shell.tauri.default"
+            },
+            "tobkiri_side_chat_pack", "tobkiri.service.side-chat.turn.v1",
+            "tobkiri_side_chat_pack.side-chat-turn", "tobkiri_side_chat_pack.turn",
+            EffectClass.PRIVILEGED,
+        )
+        if side is not None:
+            turn = select_original_chat_edge(
+                {side.target.principal_id}, turn_pack, "tobkiri.action.turn.saved.v1",
+                f"{turn_pack}.turn-saved", f"{turn_pack}.turn-runtime.saved",
+                EffectClass.PRIVILEGED,
+            )
+            if turn is not None:
+                saved = select_original_chat_edge(
+                    {turn.target.principal_id}, saved_pack, "conversation.saved-turn.v1",
+                    "saved_complete", f"{saved_pack}.saved", EffectClass.PURE,
+                )
+                if saved is not None:
+                    capture_append_route("side-chat", (saved, turn, side))
+
     if (
         native_model_resolve_reader is not None
         or native_ai_routing_evaluator is not None
@@ -6128,22 +6175,10 @@ def capture_production_dispatch(
         or native_ai_pipeline_evaluator is not None
         or native_ai_gateway_result_projector is not None
         or native_ai_gateway_policy_projector is not None
-        or native_append_writer is not None
     ):
         turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
         gateway_pack = "rumi_ai_gateway_pack"
 
-        if (
-            native_append_writer is not None
-            and turn_edge is not None
-            and orchestration_edge is not None
-        ):
-            message_edge = select_original_chat_edge(
-                {orchestration_edge.target.principal_id}, "rumi_conversation_store_pack",
-                *append_operation, append_function, EffectClass.PRIVILEGED,
-            )
-            if message_edge is not None:
-                append_edges = message_edge, orchestration_edge, turn_edge
         if (
             (native_model_resolve_reader is not None
              or native_ai_routing_evaluator is not None
@@ -6273,17 +6308,9 @@ def capture_production_dispatch(
         context: RequestContext,
         payload: Mapping[str, Any],
         parent: CapturedInvocationScopeV4 | None,
-    ) -> tuple[RequestEnvelope, RequestEnvelope] | None:
-        if append_edges is None or parent is None or parent.parent is None:
-            return None
-        message_edge, saved_edge, turn_edge = append_edges
-        saved, turn = parent.envelope, parent.parent.envelope
+    ) -> tuple[ConversationAppendCaller, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
         if (
-            context.caller_principal.value != message_edge.caller.principal_id
-            or not matches_captured_edge(saved, saved_edge)
-            or not matches_captured_edge(turn, turn_edge)
-            or parent.parent.parent is not None
-            or set(payload) - {"_session_id"} != {
+            set(payload) - {"_session_id"} != {
                 "profile_id", "operation", "conversation_id",
                 "expected_conversation_revision", "message", "saved_input",
             }
@@ -6293,15 +6320,30 @@ def capture_production_dispatch(
             return None
         initial = payload["saved_input"]
         request = initial.get("request") if isinstance(initial, Mapping) else None
-        turn_id = requested_saved_turn_id("saved-turn", turn.payload)
         if (
-            turn_id is None
-            or not isinstance(request, Mapping)
-            or request.get("turn_id") != turn_id
+            not isinstance(request, Mapping)
             or request.get("conversation_id") != payload["conversation_id"]
         ):
             return None
-        return saved, turn
+        for caller, (message_edge, *parent_edges) in append_routes.items():
+            if context.caller_principal.value != message_edge.caller.principal_id:
+                continue
+            ancestors = match_captured_ancestors(parent, parent_edges)
+            if ancestors is None:
+                continue
+            turn_id = requested_saved_turn_id("saved-turn", ancestors[1].payload)
+            if turn_id is None or request.get("turn_id") != turn_id:
+                return None
+            if caller == "side-chat":
+                side = ancestors[2].payload
+                if (
+                    side.get("operation") != "send"
+                    or side.get("turn_id") != turn_id
+                    or side.get("conversation_id") != payload["conversation_id"]
+                ):
+                    return None
+            return caller, message_edge, ancestors
+        return None
 
     def is_native_saved_append_route(
         context: RequestContext, payload: Mapping[str, Any],
@@ -6310,117 +6352,116 @@ def capture_production_dispatch(
             context, payload, parent_invocation_scopes.lookup(context.caller_session_id),
         ) is not None
 
-    def capture_saved_append_port(
-        edge: _CapturedPlanEdge,
-        writer: Callable[[NativeConversationAppendRequest], Mapping[str, Any]],
-    ) -> Callable[[HostProviderInvocationContextV4], SavedMessageAppendPort | None]:
-        def borrow(
-            invocation: HostProviderInvocationContextV4,
-        ) -> SavedMessageAppendPort | None:
-            if type(invocation) is not _HostInvocation:
-                raise AuthorityDenied("native saved append context is unavailable")
-            envelope = invocation.envelope
-            payload = envelope.payload
-            parent = invocation.parent_invocation
-            ancestors = saved_append_lineage(envelope.context, payload, parent)
-            runtime = native_provider_runtime
-            if ancestors is None or runtime is None:
-                return None
-            saved, turn = ancestors
+    def borrow_saved_append_port(
+        invocation: HostProviderInvocationContextV4,
+    ) -> SavedMessageAppendPort | None:
+        if type(invocation) is not _HostInvocation:
+            raise AuthorityDenied("native saved append context is unavailable")
+        envelope = invocation.envelope
+        payload = envelope.payload
+        parent = invocation.parent_invocation
+        lineage = saved_append_lineage(envelope.context, payload, parent)
+        runtime = native_provider_runtime
+        if lineage is None or runtime is None:
+            return None
+        caller, edge, ancestors = lineage
+        writer = native_append_writers[caller]
+        chain = (envelope, *ancestors)
+        if (
+            writer is None or parent is None or not matches_captured_edge(envelope, edge)
+            or len({item.lease.token for item in chain}) != len(chain)
+            or any(
+                child.deadline_monotonic > ancestor.deadline_monotonic
+                for child, ancestor in zip(chain[:-1], ancestors, strict=True)
+            )
+            or any(envelope.resource_reservation_id == item.resource_reservation_id
+                   for item in ancestors)
+        ):
+            raise AuthorityDenied("native saved append lineage changed")
+
+        def guard() -> None:
+            invocation.assert_current()
+            child = envelope
+            for ancestor in ancestors:
+                retained = parent_invocation_scopes.lookup(child.context.caller_session_id)
+                if retained is None or retained.envelope is not ancestor:
+                    raise AuthorityDenied("native saved append parent changed")
+                child = ancestor
             if (
-                not matches_captured_edge(envelope, edge)
-                or parent is None
-                or len({envelope.lease.token, saved.lease.token, turn.lease.token}) != 3
-                or not envelope.deadline_monotonic <= saved.deadline_monotonic <= turn.deadline_monotonic
-                or any(envelope.resource_reservation_id == item.resource_reservation_id
-                       for item in ancestors)
+                native_provider_runtime is not runtime
+                or parent_invocation_scopes.lookup(child.context.caller_session_id) is not None
             ):
-                raise AuthorityDenied("native saved append lineage changed")
+                raise AuthorityDenied("native saved append capture changed")
+            runtime[1]()
+            production_admission.native_resources(envelope.resource_reservation_id)
 
-            def guard() -> None:
-                invocation.assert_current()
-                child = envelope
-                for ancestor in ancestors:
-                    retained = parent_invocation_scopes.lookup(child.context.caller_session_id)
-                    if retained is None or retained.envelope is not ancestor:
-                        raise AuthorityDenied("native saved append parent changed")
-                    child = ancestor
-                if (
-                    native_provider_runtime is not runtime
-                    or parent_invocation_scopes.lookup(turn.context.caller_session_id) is not None
-                ):
-                    raise AuthorityDenied("native saved append capture changed")
-                runtime[1]()
-                production_admission.native_resources(envelope.resource_reservation_id)
+        def mark_publication() -> None:
+            guard()
+            record_saved_owner_publication(envelope)
 
-            def mark_publication() -> None:
+        def append() -> Mapping[str, Any] | None:
+            if saved_owner_publication_possible(envelope):
+                raise HostPublicationUnconfirmed("Conversation append is unconfirmed")
+            guard()
+            resources = production_admission.native_resources(envelope.resource_reservation_id)
+            revision = payload["expected_conversation_revision"]
+            if (
+                resources.memory_bytes < CONVERSATION_APPEND_MINIMUM_MEMORY
+                or type(revision) is not int or not 1 <= revision < 1 << 63
+            ):
+                return None
+            initial = payload["saved_input"]
+            if canonical_digest(initial) != canonical_digest(parent.public_payload()):
+                raise AuthorityDenied("native saved append input changed")
+            message = dict(payload["message"])
+            # The original owner chooses a missing message timestamp before
+            # taking the physical lock. The guest chooses lifecycle and
+            # conversation write times inside that lock.
+            if not message.get("created_at") and not message.get("timestamp"):
+                message["created_at"] = int(time.time() * 1000)
+            request = {
+                "conversation_id": payload["conversation_id"],
+                "expected_conversation_revision": revision,
+                "message": message,
+                "saved_input": initial,
+            }
+            try:
+                result = writer(NativeConversationAppendRequest(
+                    context=envelope.context,
+                    runtime_instance=runtime[0],
+                    deadline_monotonic=envelope.deadline_monotonic,
+                    assert_current=guard,
+                    request=request,
+                    mark_publication_possible=mark_publication,
+                    caller=caller,
+                ))
                 guard()
-                record_saved_owner_publication(envelope)
-
-            def append() -> Mapping[str, Any] | None:
-                if saved_owner_publication_possible(envelope):
-                    raise HostPublicationUnconfirmed("Conversation append is unconfirmed")
-                guard()
-                resources = production_admission.native_resources(envelope.resource_reservation_id)
-                revision = payload["expected_conversation_revision"]
+                return result
+            except Exception as error:
                 if (
-                    resources.memory_bytes < CONVERSATION_APPEND_MINIMUM_MEMORY
-                    or type(revision) is not int or not 1 <= revision < 1 << 63
+                    saved_owner_publication_possible(envelope)
+                    or isinstance(error, NativeConversationAppendPublicationUnconfirmed)
                 ):
+                    raise HostPublicationUnconfirmed(
+                        "Conversation append is unconfirmed",
+                    ) from None
+                guard()
+                if isinstance(error, (
+                    NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
+                )):
                     return None
-                initial = payload["saved_input"]
-                if canonical_digest(initial) != canonical_digest(parent.public_payload()):
-                    raise AuthorityDenied("native saved append input changed")
-                message = dict(payload["message"])
-                # The original owner chooses a missing message timestamp before
-                # taking the physical lock. The guest chooses lifecycle and
-                # conversation write times inside that lock.
-                if not message.get("created_at") and not message.get("timestamp"):
-                    message["created_at"] = int(time.time() * 1000)
-                request = {
-                    "conversation_id": payload["conversation_id"],
-                    "expected_conversation_revision": revision,
-                    "message": message,
-                    "saved_input": initial,
-                }
-                try:
-                    result = writer(NativeConversationAppendRequest(
-                        context=envelope.context,
-                        runtime_instance=runtime[0],
-                        deadline_monotonic=envelope.deadline_monotonic,
-                        assert_current=guard,
-                        request=request,
-                        mark_publication_possible=mark_publication,
-                    ))
-                    guard()
-                    return result
-                except Exception as error:
-                    if (
-                        saved_owner_publication_possible(envelope)
-                        or isinstance(error, NativeConversationAppendPublicationUnconfirmed)
-                    ):
-                        raise HostPublicationUnconfirmed(
-                            "Conversation append is unconfirmed",
-                        ) from None
-                    guard()
-                    if isinstance(error, (
-                        NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
-                    )):
-                        return None
-                    if isinstance(error, NativeConversationAppendFailure):
-                        if error.code == "invalid":
-                            raise ValueError("Conversation append input is invalid") from None
-                        if error.code == "denied":
-                            raise PermissionError("Conversation append is denied") from None
-                        if error.code == "not-found":
-                            raise KeyError("Conversation append owner is unavailable") from None
-                    raise
+                if isinstance(error, NativeConversationAppendFailure):
+                    if error.code == "invalid":
+                        raise ValueError("Conversation append input is invalid") from None
+                    if error.code == "denied":
+                        raise PermissionError("Conversation append is denied") from None
+                    if error.code == "not-found":
+                        raise KeyError("Conversation append owner is unavailable") from None
+                raise
 
-            return append
+        return append
 
-        return borrow
-
-    def match_saved_gateway_ancestors(
+    def match_captured_ancestors(
         parent: CapturedInvocationScopeV4 | None,
         parent_edges: Sequence[_CapturedPlanEdge],
     ) -> tuple[RequestEnvelope, ...] | None:
@@ -6455,7 +6496,7 @@ def capture_production_dispatch(
             native_provider_runtime is not None
             and context.caller_principal.value == edges[0].caller.principal_id
             and gateway_projection_role(role, payload) is not None
-            and match_saved_gateway_ancestors(
+            and match_captured_ancestors(
                 parent_invocation_scopes.lookup(context.caller_session_id), edges[1:],
             ) is not None
         )
@@ -6484,7 +6525,7 @@ def capture_production_dispatch(
         role = gateway_projection_role(captured_role, envelope.payload)
         if role is None:
             return None
-        ancestors = match_saved_gateway_ancestors(
+        ancestors = match_captured_ancestors(
             invocation.parent_invocation, parent_edges,
         )
         if ancestors is None or not matches_captured_edge(envelope, gateway_edge):
@@ -6566,7 +6607,7 @@ def capture_production_dispatch(
         ):
             return None
         role, (model_edge, *parent_edges) = route
-        ancestors = match_saved_gateway_ancestors(parent, parent_edges)
+        ancestors = match_captured_ancestors(parent, parent_edges)
         return (role, model_edge, ancestors) if ancestors is not None else None
 
     def is_native_model_resolve_route(
@@ -6699,7 +6740,7 @@ def capture_production_dispatch(
         if not matches_input:
             return None
         role, (router_edge, *parent_edges) = route
-        ancestors = match_saved_gateway_ancestors(parent, parent_edges)
+        ancestors = match_captured_ancestors(parent, parent_edges)
         if ancestors is None:
             return None
         if role in ("quote-generate", "quote-stream"):
@@ -7350,17 +7391,17 @@ def capture_production_dispatch(
                 )] = binding
         saved_append_port = None
         if (
-            native_append_writer is not None
-            and append_edges is not None
+            append_routes
             and getattr(factory, "saved_message_append_v1", False) is True
             and len(captured_bindings) == 1
             and captured_bindings[0].function.function_id == append_function
-            and captured_bindings[0] == append_edges[0].resolved_binding
+            and any(captured_bindings[0] == edges[0].resolved_binding
+                    for edges in append_routes.values())
         ):
             binding = captured_bindings[0]
             native_saved_append_binding = binding
             native_saved_append_key = (*append_operation, binding.principal_ref.value)
-            saved_append_port = capture_saved_append_port(append_edges[0], native_append_writer)
+            saved_append_port = borrow_saved_append_port
         provider_capture = host_provider_capture_context(
             captured_bindings,
             workspace_mutation_port=workspace_mutation_port,

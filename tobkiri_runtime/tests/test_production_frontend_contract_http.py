@@ -3400,6 +3400,7 @@ def test_native_append_borrows_signed_saved_orchestration_child(
         request: ipc.NativeConversationAppendRequest,
     ) -> Mapping[str, object]:
         request.assert_current()
+        assert request.caller == "saved-turn"
         turn, orchestration, child = parents[-1], orchestrations[-1], children[-1]
         assert orchestration.context.caller_principal == turn.target_principal
         assert child.context.caller_principal == orchestration.target_principal
@@ -3999,11 +4000,16 @@ def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
         assert not packvm_materializations
 
 
-@pytest.mark.parametrize("use_native", [False, True], ids=["packvm", "native"])
+@pytest.mark.parametrize(
+    "use_native,use_native_append",
+    [(False, False), (True, False), (True, True)],
+    ids=["packvm", "native-orchestration", "native"],
+)
 def test_signed_side_chat_http_uses_shared_saved_orchestration(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, use_native: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    use_native: bool, use_native_append: bool,
 ) -> None:
-    """Inspect signed Side Chat ancestry with a Python oracle at the native step port."""
+    """Inspect signed Side Chat ancestry at the native step and append ports."""
     from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.authority.v4 import DomainBoundary, LeaseState
     from core_runtime.bootstrap.saved_bridge import READINESS
@@ -4017,11 +4023,16 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
 
     manifest = canonical_digest({"manifest": "fixture-side-chat-orchestration"})
     pack_id = "tobkiri_side_chat_pack"
+    conversations = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
     side_target = ("tobkiri.service.side-chat.turn.v1", f"{pack_id}.side-chat-turn")
     saved_target = (_SavedPackVmBackend._CONTRACT_ID, _SavedPackVmBackend._OPERATION_ID)
+    message_target = saved_conversation.TARGETS[1]
     step_inputs: list[Mapping[str, object]] = []
     materializations: list[RuntimeEvidence] = []
     ai_calls: list[Mapping[str, object]] = []
+    append_requests: list[ipc.NativeConversationAppendRequest] = []
+    append_envelopes: list[RequestEnvelope] = []
+    ordinary_append_requests: list[ipc.NativeConversationAppendRequest] = []
     backend = _SavedPackVmBackend()
     original_invoke = V4DispatchSession.invoke
     packvm_materialize = backend.materialize
@@ -4046,6 +4057,45 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         step_inputs.append(request.input)
         return saved_conversation.tobkiri_packvm_invoke(saved_target[1], dict(request.input))
 
+    def ordinary_append(request: ipc.NativeConversationAppendRequest) -> None:
+        ordinary_append_requests.append(request)
+        raise AssertionError("Side Chat selected the ordinary append proof")
+
+    def side_append(request: ipc.NativeConversationAppendRequest) -> Mapping[str, object]:
+        request.assert_current()
+        assert request.caller == "side-chat"
+        side, turn, saved = envelopes
+        owner = append_envelopes[-1]
+        assert request.context is owner.context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic == owner.deadline_monotonic
+        chain = (side, turn, saved, owner)
+        assert len({item.lease.token for item in chain}) == len(chain)
+        assert all(
+            child.context.caller_principal == parent.target_principal
+            and child.deadline_monotonic <= parent.deadline_monotonic
+            and child.resource_reservation_id != parent.resource_reservation_id
+            for parent, child in zip(chain[:-1], chain[1:], strict=True)
+        )
+        for item in chain:
+            _, state, _, _ = authority.inspect_dispatch_authority(
+                item.lease.token.decode("ascii"),
+            )
+            assert state is LeaseState.DISPATCHED
+        args = request.request
+        assert args["saved_input"] == saved.payload
+        assert args["saved_input"]["request"]["context_binding"]["parent_conversation_id"] == "parent"
+        assert args["conversation_id"] == side.payload["conversation_id"]
+        append_requests.append(request)
+        request.mark_publication_possible()
+        request.assert_current()
+        return conversations.append_message(
+            args["conversation_id"],
+            args["message"],
+            expected_conversation_revision=args["expected_conversation_revision"],
+            saved_input=args["saved_input"],
+        )
+
     def observe_packvm(
         binding: ResolvedOperationBinding, reservation_id: str,
     ) -> RuntimeEvidence:
@@ -4065,6 +4115,13 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     monkeypatch.setattr(backend, "materialize", observe_packvm)
     monkeypatch.setattr(NativeSavedOrchestrationBackend, "materialize", observe_native)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_conversation_append_writer", lambda: ordinary_append,
+    )
+    monkeypatch.setattr(
+        ipc, "capture_launcher_side_chat_conversation_append_writer",
+        lambda: side_append if use_native_append else None,
+    )
     if use_native:
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", manifest)
@@ -4090,10 +4147,14 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ) -> object:
             if (envelope.contract_id, envelope.operation_id) in targets:
                 envelopes.append(envelope)
+            if (
+                (envelope.contract_id, envelope.operation_id) == message_target
+                and envelope.payload.get("operation") == "append_saved"
+            ):
+                append_envelopes.append(envelope)
             return dispatch(selected, envelope, *args, **kwargs)
 
         monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
-        conversations = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
         conversations.create(
             {"id": "parent", "model_reference": "model-profile-1"}, expected_revision=0,
         )
@@ -4251,6 +4312,14 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         assert recovered["turn"] == first["turn"]
         assert len(ai_calls) == len(materializations) == 1
         assert conversations.get(child_id) == child
+        assert len(append_envelopes) == 2
+        assert not ordinary_append_requests
+        assert [request.request["message"]["role"] for request in append_requests] == (
+            ["user", "assistant"] if use_native_append else []
+        )
+        for request in append_requests:
+            with pytest.raises(PermissionError):
+                request.assert_current()
 
 
 def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
