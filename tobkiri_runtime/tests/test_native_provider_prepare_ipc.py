@@ -3948,7 +3948,17 @@ def test_ai_pipeline_borrows_only_its_signed_gateway_input(
             evaluate(replace(request, input={
                 **signed_input, "decision_time": "x" * (1024 * 1024),
             }))
-        if step == "failover":
+        for unsupported in ([{"nested": {1: "value"}}], ("tuple",)):
+            with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
+                evaluate(replace(request, input={
+                    **signed_input, "tools": unsupported,
+                }))
+        if step == "prepare":
+            with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
+                evaluate(replace(request, input={
+                    **signed_input, "credential_handle": "raw-fixture-value",
+                }))
+        else:
             for invalid_role in ("stream", "quote-generate", "quote-stream"):
                 with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
                     evaluate(replace(request, role=invalid_role))
@@ -3977,7 +3987,7 @@ def test_ai_pipeline_result_rejects_extra_fields_and_inconsistent_values(
         changes = [
             {"request_id": "different"}, {"deadline": 10}, {"deadline": True},
             {"credential_handle": "opaque:other"}, {"credential_handle": None},
-            {"requirements": []}, {"allow_failover": "true"},
+            {"requirements": []}, {"allow_failover": "true"}, {"allow_failover": True},
         ]
     else:
         expected = create_failover_operation(None)("decide", {})

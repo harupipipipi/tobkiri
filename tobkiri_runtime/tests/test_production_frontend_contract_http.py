@@ -8069,6 +8069,7 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
     requests: list[ipc.NativeAiRoutingRequest] = []
     original_calls: list[Mapping[str, object]] = []
     provider_roles: list[str] = []
+    failover_decisions: list[Mapping[str, object]] = []
     delivery_role = "generate"
     mode = "native"
     load_factory = production_v4._load_verified_host_provider_factory
@@ -8129,7 +8130,7 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
             assert request.input["request_id"]
             if request.role.startswith("quote-"):
                 assert parent.operation_id == f"{gateway}.route-quote"
-                assert parent.payload["delivery_mode"] == (
+                assert parent.payload.get("delivery_mode", "buffered") == (
                     "incremental" if suffix == "stream" else "buffered"
                 )
                 assert request.input["resolve_only"] is True
@@ -8142,7 +8143,7 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
             assert request.role == "generate" and parent.operation_id == f"{gateway}.generate"
             assert child.operation_id == f"{pack}.ai-failover-decide.generate"
             assert request.input.keys() == ipc.AI_PIPELINE_FAILOVER_INPUT_FIELDS
-            assert request.input["error_code"] == "quota"
+            assert request.input["error_code"] == "provider_unavailable"
             assert request.input["attempt"] == 1
         if mode == "old-peer":
             raise ipc.NativeProviderPrepareUnavailable()
@@ -8156,7 +8157,7 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
             raise ipc.NativeAiRoutingFailure(mode)
         result = oracles[child.contract_id](child.operation_id, child.payload)
         if step == "failover":
-            assert result["allowed"] is False
+            failover_decisions.append(result)
         return result
 
     def open_provider(request, *, timeout, **lifetime):
@@ -8165,8 +8166,8 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
         body = json.loads(request.data)
         streaming = body.get("stream") is True
         provider_roles.append("stream" if streaming else "generate")
-        if mode == "quota":
-            raise HTTPError(request.full_url, 429, "fixture quota", {}, None)
+        if mode == "provider-error":
+            raise HTTPError(request.full_url, 503, "fixture unavailable", {}, None)
         message = {"content": "Reply"}
         body_key = "delta" if streaming else "message"
         reply = {"choices": [{body_key: message, "finish_reason": "stop"}]}
@@ -8217,9 +8218,11 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
             ("generate", "native"), ("stream", "native"),
             ("generate", "old-peer"), ("stream", "guest-decline"),
             ("stream", "stale"), ("generate", "denied"), ("stream", "unavailable"),
-            ("generate", "quota"), ("stream", "quota"),
+            ("generate", "provider-error"), ("stream", "provider-error"),
         ):
-            for recorded in (dispatches, requests, original_calls, provider_roles):
+            for recorded in (
+                dispatches, requests, original_calls, provider_roles, failover_decisions,
+            ):
                 recorded.clear()
             turn_id = f"{delivery_role}-{mode}"
             store.create(
@@ -8241,17 +8244,21 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
             finally:
                 with server._lifecycle_lock:
                     server._native_provider_prepare_instance = instance
-            expected = [
-                ("prepare", "quote-generate"), ("prepare", "quote-stream"),
-                ("prepare", delivery_role),
-            ]
-            if mode == "quota" and delivery_role == "generate":
+            expected = [("prepare", "quote-generate")]
+            if delivery_role == "stream":
+                expected.append(("prepare", "quote-stream"))
+            expected.append(("prepare", delivery_role))
+            if mode == "provider-error" and delivery_role == "generate":
                 expected.append(("failover", "generate"))
+                assert len(failover_decisions) == 1, response
+                assert failover_decisions[0]["allowed"] is False
+            else:
+                assert not failover_decisions
             assert [(request.pipeline, request.role) for request in requests] == expected, response
             terminal = mode in {"stale", "denied", "unavailable"}
             assert provider_roles == ([] if terminal else [delivery_role]), response
             completed = status == 200 and response["data"]["status"] == "completed"
-            assert completed is (not terminal and mode != "quota"), response
+            assert completed is (not terminal and mode != "provider-error"), response
             for item in requests:
                 with pytest.raises(PermissionError):
                     item.assert_current()

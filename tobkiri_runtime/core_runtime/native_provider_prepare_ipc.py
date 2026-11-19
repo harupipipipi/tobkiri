@@ -976,6 +976,20 @@ def _saved_orchestration_input(borrow: NativeSavedOrchestrationRequest) -> bytes
         raise _ProtocolError(invalid) from None
 
 
+def _check_ai_pipeline_json(value: Any) -> None:
+    """Reject Python values that JSON would silently coerce."""
+    if type(value) is dict:
+        for key, member in value.items():
+            if type(key) is not str:
+                raise TypeError
+            _check_ai_pipeline_json(member)
+    elif type(value) is list:
+        for member in value:
+            _check_ai_pipeline_json(member)
+    elif type(value) not in (str, int, float, bool, type(None)):
+        raise TypeError
+
+
 def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
     if (
         type(borrow.role) is not str
@@ -995,7 +1009,8 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
         or (
             borrow.pipeline is not None
             and (
-                borrow.pipeline not in ("prepare", "failover")
+                type(borrow.pipeline) is not str
+                or borrow.pipeline not in ("prepare", "failover")
                 or borrow.stream_result or borrow.usage_cost or borrow.tool_intents
                 or (borrow.pipeline == "failover" and borrow.role != "generate")
             )
@@ -1013,9 +1028,20 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
         )
     ):
         raise NativeAiRoutingFailure("invalid")
+    if borrow.pipeline == "prepare":
+        handle = borrow.input.get("credential_handle")
+        if handle is not None and (
+            type(handle) is not str or not handle.startswith(("credential:", "opaque:"))
+        ):
+            raise NativeProviderRegistryRequiresLegacyRead(
+                "AI request prepare requires the signed credential handle check",
+            )
     try:
+        step_input = dict(borrow.input)
+        if borrow.pipeline is not None:
+            _check_ai_pipeline_json(step_input)
         payload = json.dumps(
-            dict(borrow.input), ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+            step_input, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError, RecursionError):
         raise NativeProviderRegistryRequiresLegacyRead(
@@ -1300,7 +1326,7 @@ def _decode_ai_pipeline_prepare(
         or type(result["parameters"]) is not dict
         or type(result["tools"]) is not list
         or type(result["requirements"]) is not dict
-        or type(result["allow_failover"]) is not bool
+        or result["allow_failover"] is not bool(borrow.input.get("allow_failover"))
         or type(result["policy_revision"]) is not str
     ):
         raise _ProtocolError(invalid)
