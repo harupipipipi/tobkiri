@@ -6218,11 +6218,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   macOS の実ソケットと配布用 Wasm では、表示とカタログ取得前後の3読み取りが元の応答と一致した。
   各読み取りは0.34〜0.36秒で、取得中の削除に対する拒否も確認した。プロセス管理と外部
   カタログ通信には試験用の実装を使った。
-- Model Access の公開応答の生成と検索フィルターの正規化を Rust＋Wasm へつなぐ作業が残る。
-  `rumi_provider_registry_pack/runtime/model_access_presentation.py` のポリシーとカタログの投影は、
-  `local.provider-model-access-rust` のポリシー検証・正規化を共用できる候補。
-  接続 ID、公式カタログの判定、フィルター、別 Provider の結果と資格情報を除く公開形式を維持する。
-  他の旧経路も移植と検証を終えてから、Python の共通読み取りを廃止する。
+- `9ca1c6ec8` は、Model Access のポリシー表示、検索フィルターの正規化、カタログ応答の
+  生成を `local.provider-registry.model-access-projection@1.0` に実装した。既存の
+  `local.provider-model-access-rust` のポリシー検証と OpenRouter フィルターを共用する。
+  Core は検証済み Pack と現在の Profile の物理ファイルを選ぶ。カタログでは取得前後に
+  読んだ Registry を既存の変更確認に使えるよう、公開応答と一緒に内部向けの値として返す。
+- WASI2 ビルドと Pack 生成・検証、コンポーネントを含む単体76件、Core と実 Wasm を使った
+  物理 Registry の3件が通過した。表示と公式カタログのフィルター、別 Provider の結果の除外、
+  元ファイルの不変、取得前後の Registry の差を確認した。
+- 既存設定画面への接続は Launcher IPC と元の Host Broker から行う。外部カタログ呼び出しは
+  元の認可を一度だけ使い、取得前後の比較と公開応答の形式を保つ。投影ポートの1 MiB制限と、
+  既存カタログが受け付けるデータ量の差を接続時に検証する。外部呼び出しの再送と
+  64 MiB上限の緩和を避ける。他の旧経路も移植と検証を終えてから、Python の共通読み取りを廃止する。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 
