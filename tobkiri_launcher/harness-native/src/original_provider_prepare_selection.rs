@@ -967,25 +967,41 @@ pub enum OriginalSavedLocalChatRole {
     Generate,
     /// The ordinary saved stream chain, including the Registry's stream child operation.
     Stream,
+    /// The saved generate chain entered through the Side Chat service.
+    SideChatGenerate,
+    /// The saved stream chain entered through the Side Chat service.
+    SideChatStream,
 }
 
 impl OriginalSavedLocalChatRole {
+    /// Whether the selected Gateway and Provider operations stream their results.
+    pub fn is_stream(self) -> bool {
+        matches!(self, Self::Stream | Self::SideChatStream)
+    }
+
+    /// Whether the selected Shell enters Saved Turn through Side Chat.
+    pub fn is_side_chat(self) -> bool {
+        matches!(self, Self::SideChatGenerate | Self::SideChatStream)
+    }
+
     fn routes(self) -> [&'static Route; 3] {
-        match self {
-            Self::Generate => [
+        if self.is_stream() {
+            [&GATEWAY_STREAM, &PROVIDER_STREAM, &PROVIDER_READ_STREAM]
+        } else {
+            [
                 &GATEWAY_GENERATE,
                 &PROVIDER_GENERATE,
                 &PROVIDER_READ_GENERATE,
-            ],
-            Self::Stream => [&GATEWAY_STREAM, &PROVIDER_STREAM, &PROVIDER_READ_STREAM],
+            ]
         }
     }
 }
 
-/// The signed grant chain for one ordinary saved local chat role.
+/// The signed grant chain for one saved local chat role.
 pub struct OriginalSavedLocalChatChoice<'a> {
     _active: &'a OriginalActiveProfile,
     role: OriginalSavedLocalChatRole,
+    side_chat: Option<OriginalRoutePin>,
     pins: [OriginalRoutePin; 5],
 }
 
@@ -1000,20 +1016,28 @@ impl<'a> OriginalSavedLocalChatChoice<'a> {
         role: OriginalSavedLocalChatRole,
     ) -> Result<Option<Self>> {
         Ok(
-            select_saved_local_chat_records(active.records(), budget, role)?.map(|pins| Self {
-                _active: active,
-                role,
-                pins,
-            }),
+            select_saved_local_chat_records(active.records(), budget, role)?.map(
+                |(side_chat, pins)| Self {
+                    _active: active,
+                    role,
+                    side_chat,
+                    pins,
+                },
+            ),
         )
     }
 
-    /// The saved local chat role attested by all five grants.
+    /// The saved local chat role attested by the selected grants.
     pub fn role(&self) -> OriginalSavedLocalChatRole {
         self.role
     }
 
-    /// The chain from Shell through Saved Turn, Saved Orchestration, Gateway,
+    /// The Shell-to-Side Chat grant for a Side Chat role.
+    pub fn side_chat(&self) -> Option<&OriginalRoutePin> {
+        self.side_chat.as_ref()
+    }
+
+    /// The chain from the selected entry point through Saved Turn, Saved Orchestration, Gateway,
     /// and Provider Adapter to the original Provider Registry.
     pub fn pins(&self) -> &[OriginalRoutePin; 5] {
         &self.pins
@@ -1716,15 +1740,21 @@ fn select_turn_entry(
         .map(|turn| (side_chat, turn)))
 }
 
+type SavedLocalChatPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 5]);
+
 fn select_saved_local_chat_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
     role: OriginalSavedLocalChatRole,
-) -> Result<Option<[OriginalRoutePin; 5]>> {
+) -> Result<Option<SavedLocalChatPins>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some([turn, orchestration]) = select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)?
+    let Some((side_chat, turn)) = select_turn_entry(&records, role.is_side_chat(), &SAVED_TURN)?
+    else {
+        return Ok(None);
+    };
+    let Some(orchestration) = records.select_route(turn.function_id(), &SAVED_ORCHESTRATION)?
     else {
         return Ok(None);
     };
@@ -1737,7 +1767,7 @@ fn select_saved_local_chat_records(
     };
     Ok(records
         .select_route(adapter.function_id(), registry_route)?
-        .map(|registry| [turn, orchestration, gateway, adapter, registry]))
+        .map(|registry| (side_chat, [turn, orchestration, gateway, adapter, registry])))
 }
 
 fn select_ordinary_saved_chain(
@@ -3025,11 +3055,13 @@ mod tests {
     const REQUEST_PREPARE_ROWS: std::ops::Range<usize> = 38..42;
     const FAILOVER_GENERATE_ROW: usize = 42;
     const FAILOVER_STREAM_ROW: usize = 43;
+    const SIDE_CHAT_TURN_ROW: usize = 52;
+    const SIDE_CHAT_SAVED_TURN_ROW: usize = 53;
 
     fn select_saved_local_chat(
         records: &Value,
         role: OriginalSavedLocalChatRole,
-    ) -> Result<Option<[OriginalRoutePin; 5]>> {
+    ) -> Result<Option<SavedLocalChatPins>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
         select_saved_local_chat_records((&profile, &lock, &plan), &budget, role)
@@ -3451,23 +3483,34 @@ mod tests {
 
     #[test]
     fn saved_local_chat_selects_exact_grants_for_each_role() {
-        use OriginalSavedLocalChatRole::{Generate, Stream};
+        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
 
         let fixture = records();
         for (role, [gateway, adapter, registry]) in [
             (Generate, LOCAL_CHAT_GENERATE_ROWS),
             (Stream, LOCAL_CHAT_STREAM_ROWS),
+            (SideChatGenerate, LOCAL_CHAT_GENERATE_ROWS),
+            (SideChatStream, LOCAL_CHAT_STREAM_ROWS),
         ] {
-            let pins = select_saved_local_chat(&fixture, role).unwrap().unwrap();
+            let (side_chat, pins) = select_saved_local_chat(&fixture, role).unwrap().unwrap();
             let rows = [
-                SAVED_TURN_SETTLEMENT_ROW,
+                if role.is_side_chat() {
+                    SIDE_CHAT_SAVED_TURN_ROW
+                } else {
+                    SAVED_TURN_SETTLEMENT_ROW
+                },
                 SAVED_ORCHESTRATION_ROW,
                 gateway,
                 adapter,
                 registry,
             ];
             let mut caller = TURN_SHELL_CALLER;
-            for (pin, row) in pins.iter().zip(rows) {
+            assert_eq!(side_chat.is_some(), role.is_side_chat());
+            for (pin, row) in side_chat
+                .iter()
+                .map(|pin| (pin, SIDE_CHAT_TURN_ROW))
+                .chain(pins.iter().zip(rows))
+            {
                 let binding = &fixture["plan"]["bindings"][row];
                 assert_eq!(pin.caller_function_id(), caller);
                 assert_eq!(
@@ -3488,23 +3531,49 @@ mod tests {
     }
 
     #[test]
-    fn saved_local_chat_requires_every_ordinary_grant_without_role_substitution() {
-        use OriginalSavedLocalChatRole::{Generate, Stream};
+    fn saved_local_chat_requires_its_own_entry_and_shared_orchestration() {
+        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
 
         let fixture = records();
-        for row in [SAVED_TURN_SETTLEMENT_ROW, SAVED_ORCHESTRATION_ROW] {
+        for (row, denied) in [
+            (SAVED_TURN_SETTLEMENT_ROW, [true, true, false, false]),
+            (SAVED_ORCHESTRATION_ROW, [true, true, true, true]),
+            (SIDE_CHAT_TURN_ROW, [false, false, true, true]),
+            (SIDE_CHAT_SAVED_TURN_ROW, [false, false, true, true]),
+        ] {
             let mut candidate = fixture.clone();
             candidate["profile"]["requested_edges"][row]["authority_mode"] =
                 json!("interactive_only");
             candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
-            for role in [Generate, Stream] {
-                assert!(select_saved_local_chat(&candidate, role).unwrap().is_none());
+            for (role, denied) in [Generate, Stream, SideChatGenerate, SideChatStream]
+                .into_iter()
+                .zip(denied)
+            {
+                assert_eq!(
+                    select_saved_local_chat(&candidate, role).unwrap().is_none(),
+                    denied,
+                    "binding {row}, role {role:?}"
+                );
             }
         }
+    }
 
-        for (role, other, rows) in [
-            (Generate, Stream, LOCAL_CHAT_GENERATE_ROWS),
-            (Stream, Generate, LOCAL_CHAT_STREAM_ROWS),
+    #[test]
+    fn saved_local_chat_requires_each_operation_grant_without_role_substitution() {
+        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
+
+        let fixture = records();
+        for (denied, allowed, rows) in [
+            (
+                [Generate, SideChatGenerate],
+                [Stream, SideChatStream],
+                LOCAL_CHAT_GENERATE_ROWS,
+            ),
+            (
+                [Stream, SideChatStream],
+                [Generate, SideChatGenerate],
+                LOCAL_CHAT_STREAM_ROWS,
+            ),
         ] {
             for row in rows {
                 let mut candidate = fixture.clone();
@@ -3512,20 +3581,22 @@ mod tests {
                     .as_array_mut()
                     .unwrap()
                     .remove(row);
-                assert!(matches!(
-                    select_saved_local_chat(&candidate, role),
-                    Err(Inconsistent(_))
-                ));
+                for role in denied {
+                    assert!(matches!(
+                        select_saved_local_chat(&candidate, role),
+                        Err(Inconsistent(_))
+                    ));
+                }
                 candidate["plan"]["bindings"]
                     .as_array_mut()
                     .unwrap()
                     .remove(row);
-                assert!(select_saved_local_chat(&candidate, role).unwrap().is_none());
-                assert!(
-                    select_saved_local_chat(&candidate, other)
-                        .unwrap()
-                        .is_some()
-                );
+                for role in denied {
+                    assert!(select_saved_local_chat(&candidate, role).unwrap().is_none());
+                }
+                for role in allowed {
+                    assert!(select_saved_local_chat(&candidate, role).unwrap().is_some());
+                }
             }
         }
     }
@@ -4179,9 +4250,7 @@ mod tests {
         assert_eq!(orchestration.caller_function_id(), turn.function_id());
         assert_eq!(manage.caller_function_id(), orchestration.function_id());
 
-        let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
-        let side_chat_rows = [edges.len() - 2, edges.len() - 1];
-        for row in side_chat_rows {
+        for row in [SIDE_CHAT_TURN_ROW, SIDE_CHAT_SAVED_TURN_ROW] {
             let mut denied = fixture.clone();
             denied["profile"]["requested_edges"][row]["authority_mode"] = json!("interactive_only");
             denied["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");

@@ -130,15 +130,12 @@ impl VerifiedRegistryLaunch {
             .then_some(source.manifest_sha256.as_str())
     }
 
-    /// Authorize just the ordinary Provider operation verified at Launch for this role.
+    /// Authorize the signed entry point and Provider operation verified at Launch.
     pub(crate) fn permits_saved_local_chat(&self, role: OriginalSavedLocalChatRole) -> bool {
-        self.local_chat.as_ref().is_some_and(|source| {
-            source
-                .roles
-                .iter()
-                .flatten()
-                .any(|(granted, _)| *granted == role)
-        })
+        self.local_chat
+            .as_ref()
+            .and_then(|source| source.entry(role))
+            .is_some()
     }
 
     /// Require the original ordinary saved chain and verified pure Wasm computation.
@@ -623,9 +620,29 @@ struct VerifiedSavedOrchestrationSource {
 /// The exact installed Bundle and independent signed roles available for local chat.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedSavedLocalChatSource {
-    bundle: VerifiedOrdinarySavedBundle,
-    roles: [Option<(OriginalSavedLocalChatRole, [VerifiedLegacyRoutePin; 5])>; 2],
+    direct: Option<VerifiedSavedLocalChatEntry>,
+    side_chat: Option<VerifiedSavedLocalChatEntry>,
     adapter: Option<VerifiedProviderAdapterSource>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedSavedLocalChatEntry {
+    bundle: VerifiedOrdinarySavedBundle,
+    side_chat: Option<VerifiedLegacyRoutePin>,
+    roles: [Option<(OriginalSavedLocalChatRole, [VerifiedLegacyRoutePin; 5])>; 2],
+}
+
+impl VerifiedSavedLocalChatSource {
+    fn entry(&self, role: OriginalSavedLocalChatRole) -> Option<&VerifiedSavedLocalChatEntry> {
+        let entry = if role.is_side_chat() {
+            self.side_chat.as_ref()
+        } else {
+            self.direct.as_ref()
+        }?;
+        (entry.side_chat.is_some() == role.is_side_chat()
+            && entry.roles.iter().flatten().any(|(granted, _)| *granted == role))
+        .then_some(entry)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -678,6 +695,37 @@ impl From<&OriginalRoutePin> for VerifiedLegacyRoutePin {
 
 #[cfg(test)]
 impl VerifiedRegistryLaunch {
+    pub(crate) fn test_saved_local_chat_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalSavedLocalChatRole,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
+        proof.provider_prepare = None;
+        let entry = VerifiedSavedLocalChatEntry {
+            bundle: VerifiedOrdinarySavedBundle::fixture(),
+            side_chat: role.is_side_chat().then(VerifiedLegacyRoutePin::fixture),
+            roles: [
+                Some((
+                    role,
+                    std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+                )),
+                None,
+            ],
+        };
+        let (direct, side_chat) = if role.is_side_chat() {
+            (None, Some(entry))
+        } else {
+            (Some(entry), None)
+        };
+        proof.local_chat = Some(VerifiedSavedLocalChatSource {
+            direct,
+            side_chat,
+            adapter: None,
+        });
+        proof
+    }
+
     pub(crate) fn test_conversation_complete_proof(
         identity: ExecutionProfileIdentity,
         catalog_revision: &str,
@@ -1801,11 +1849,15 @@ impl LaunchActivationObserver<'_> {
             conversation_complete,
         };
         if let Some(local_chat) = &verified.local_chat {
-            inspection.with_source(|sources| local_chat.bundle.require_source(sources))??;
-            log::info!(
-                "verified {} ordinary saved local Provider role(s) for this activation",
-                local_chat.roles.iter().flatten().count()
-            );
+            let mut roles = 0;
+            for entry in [&local_chat.direct, &local_chat.side_chat]
+                .into_iter()
+                .flatten()
+            {
+                inspection.with_source(|sources| entry.bundle.require_source(sources))??;
+                roles += entry.roles.iter().flatten().count();
+            }
+            log::info!("verified {roles} saved local Provider role(s) for this activation");
         }
         Ok(Some(verified))
     }
@@ -2436,7 +2488,7 @@ pub(super) fn saved_local_chat_dispatch_bundle<'proof>(
     let source = proof
         .local_chat
         .as_ref()
-        .filter(|_| proof.permits_saved_local_chat(role))
+        .and_then(|source| source.entry(role))
         .context("admitted launch has no verified local Provider source for the role")?;
     checkpoint()?;
     registry_pack_root(inspection, proof)?;
@@ -2875,25 +2927,48 @@ fn verify_saved_local_chat_source(
     adapter: Option<VerifiedProviderAdapterSource>,
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<Option<VerifiedSavedLocalChatSource>> {
-    use OriginalSavedLocalChatRole::{Generate, Stream};
+    use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
 
     let budget = inspection.allocation_budget()?;
-    let [generate, stream] =
-        [Generate, Stream].map(|role| OriginalSavedLocalChatChoice::select(active, budget, role));
-    let selections = [generate?, stream?];
-    if selections.iter().all(Option::is_none) {
+    let verify = |roles: [OriginalSavedLocalChatRole; 2],
+                  via_side_chat|
+     -> Result<Option<VerifiedSavedLocalChatEntry>> {
+        let [generate, stream] =
+            roles.map(|role| OriginalSavedLocalChatChoice::select(active, budget, role));
+        let selections = [generate?, stream?];
+        if selections.iter().all(Option::is_none) {
+            return Ok(None);
+        }
+        let locked = inspection.with_source(|sources| {
+            sources.saved_local_chat_bundle(
+                selections.each_ref().map(Option::as_ref),
+                via_side_chat,
+                budget,
+            )
+        })??;
+        let bundle = locked.verify(&checkpoint)?;
+        let side_chat = selections
+            .iter()
+            .flatten()
+            .find_map(OriginalSavedLocalChatChoice::side_chat)
+            .map(Into::into);
+        let roles = selections.map(|selection| {
+            selection.map(|selected| (selected.role(), selected.pins().each_ref().map(Into::into)))
+        });
+        Ok(Some(VerifiedSavedLocalChatEntry {
+            bundle,
+            side_chat,
+            roles,
+        }))
+    };
+    let direct = verify([Generate, Stream], false)?;
+    let side_chat = verify([SideChatGenerate, SideChatStream], true)?;
+    if direct.is_none() && side_chat.is_none() {
         return Ok(None);
     }
-    let locked = inspection.with_source(|sources| {
-        sources.saved_local_chat_bundle(selections.each_ref().map(Option::as_ref), budget)
-    })??;
-    let bundle = locked.verify(checkpoint)?;
-    let roles = selections.map(|selection| {
-        selection.map(|selected| (selected.role(), selected.pins().each_ref().map(Into::into)))
-    });
     Ok(Some(VerifiedSavedLocalChatSource {
-        bundle,
-        roles,
+        direct,
+        side_chat,
         adapter,
     }))
 }

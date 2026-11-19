@@ -121,10 +121,11 @@ pub(crate) struct LockedSideChatSavedReceiptBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// The installed documents for the independent Generate and Stream grants.
+/// The installed documents for the Generate and Stream grants of one entry point.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) struct LockedSavedLocalChatBundle<'pin> {
     source: VerifiedOrdinarySavedBundle,
+    side_chat: [Option<[LockedRegistryRoute<'pin>; 1]>; 2],
     routes: [Option<[LockedRegistryRoute<'pin>; 5]>; 2],
     budget: Arc<dyn AllocationBudget>,
 }
@@ -417,23 +418,35 @@ impl NativeApplicationSources {
     pub(crate) fn saved_local_chat_bundle<'pin>(
         &self,
         selections: [Option<&'pin OriginalSavedLocalChatChoice<'_>>; 2],
+        via_side_chat: bool,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedSavedLocalChatBundle<'pin>> {
+        let mut side_chat = [None, None];
         let mut routes = [None, None];
-        for (locked, selection) in routes.iter_mut().zip(selections) {
+        for ((locked, locked_side), selection) in
+            routes.iter_mut().zip(&mut side_chat).zip(selections)
+        {
             let Some(selection) = selection else {
                 continue;
             };
             let pins = selection.pins();
+            let side = selection.side_chat();
+            let [turn, orchestration, gateway, adapter, registry] = pins;
             ensure!(
-                pins[0].caller_function_id() == self.authority.shell_provider_id
+                selection.role().is_side_chat() == via_side_chat
+                    && side.is_some() == via_side_chat
+                    && side.unwrap_or(turn).caller_function_id()
+                        == self.authority.shell_provider_id
+                    && side.is_none_or(|pin| pin.function_id() == turn.caller_function_id())
                     && pins
                         .windows(2)
-                        .all(|pair| { pair[0].function_id() == pair[1].caller_function_id() }),
+                        .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
                 "old local chat callers differ from the selected saved chain"
             );
-            let [turn, orchestration, gateway, adapter, registry] = pins;
             let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+            *locked_side = side
+                .map(|pin| from_lock(pin).map(|route| [route]))
+                .transpose()?;
             *locked = Some([
                 from_lock(turn)?,
                 from_lock(orchestration)?,
@@ -448,6 +461,7 @@ impl NativeApplicationSources {
         );
         Ok(LockedSavedLocalChatBundle {
             source: VerifiedOrdinarySavedBundle::new(self)?,
+            side_chat,
             routes,
             budget: Arc::clone(budget),
         })
@@ -1108,11 +1122,12 @@ impl LockedSideChatSavedReceiptBundle<'_> {
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 impl LockedSavedLocalChatBundle<'_> {
-    /// Verify each role against the same bytes for each of the five selected Packs.
+    /// Verify each role against the selected Packs, including Side Chat for its own entry.
     pub(crate) fn verify(
         self,
-        checkpoint: impl FnMut() -> Result<()>,
+        mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<VerifiedOrdinarySavedBundle> {
+        self.source.revalidate(&self.budget, &mut checkpoint)?;
         let effects = [
             "privileged",
             "pure",
@@ -1120,8 +1135,13 @@ impl LockedSavedLocalChatBundle<'_> {
             "privileged",
             "privileged",
         ];
-        self.source
-            .verify_routes(&self.routes, &self.budget, checkpoint, effects)
+        let source =
+            self.source
+                .verify_routes(&self.routes, &self.budget, &mut checkpoint, effects)?;
+        if self.side_chat.iter().any(Option::is_some) {
+            return source.verify_routes(&self.side_chat, &self.budget, checkpoint, ["privileged"]);
+        }
+        Ok(source)
     }
 }
 

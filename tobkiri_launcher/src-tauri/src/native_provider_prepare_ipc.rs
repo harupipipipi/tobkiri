@@ -1017,6 +1017,8 @@ where
     match String::deserialize(deserializer)?.as_str() {
         "generate" => Ok(OriginalSavedLocalChatRole::Generate),
         "stream" => Ok(OriginalSavedLocalChatRole::Stream),
+        "side-chat-generate" => Ok(OriginalSavedLocalChatRole::SideChatGenerate),
+        "side-chat-stream" => Ok(OriginalSavedLocalChatRole::SideChatStream),
         _ => Err(de::Error::custom("unknown Saved Local Chat role")),
     }
 }
@@ -2371,6 +2373,14 @@ mod tests {
         for (role, expected) in [
             ("generate", OriginalSavedLocalChatRole::Generate),
             ("stream", OriginalSavedLocalChatRole::Stream),
+            (
+                "side-chat-generate",
+                OriginalSavedLocalChatRole::SideChatGenerate,
+            ),
+            (
+                "side-chat-stream",
+                OriginalSavedLocalChatRole::SideChatStream,
+            ),
         ] {
             descriptor["role"] = json!(role);
             let named = operation(&descriptor);
@@ -2428,6 +2438,9 @@ mod tests {
         assert_eq!(missing_projection.validate(), Err("invalid"));
         for (key, value) in [
             ("role", json!("shell")),
+            ("role", json!("side-chat")),
+            ("role", json!("side-chat-turn")),
+            ("role", json!("side-chat-reconcile")),
             ("record_revision", json!(true)),
             ("record_revision", json!(-1)),
             ("input_bytes", json!(1.5)),

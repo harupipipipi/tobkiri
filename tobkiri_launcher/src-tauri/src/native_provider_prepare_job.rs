@@ -1444,7 +1444,7 @@ async fn run(
                     };
                     let response_shape = ShapeRef::parse(PROVIDER_ADAPTER_SHAPE)?;
                     let response_operation = OpName::parse(PROVIDER_ADAPTER_OPERATION)?;
-                    let stream = matches!(role, OriginalSavedLocalChatRole::Stream);
+                    let stream = role.is_stream();
                     let provider = LegacyLocalChatSelection {
                         connection_id: &connection_id,
                         record_revision,
@@ -2183,36 +2183,45 @@ mod tests {
     #[test]
     fn saved_local_chat_charges_all_owned_input_and_requires_a_dispatch_permit() {
         use crate::host_contract::ExecutionProfileIdentity;
+        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
 
-        let orchestration = VerifiedRegistryLaunch::test_saved_orchestration_proof(
-            ExecutionProfileIdentity {
-                profile_id: "defaults".into(),
-                profile_revision: "revision:fixture".into(),
-                activation_id: "activation:fixture".into(),
-                plan_digest: "sha256:fixture".into(),
-            },
-            "catalog",
-        );
-        let mut connection_id = String::with_capacity(64);
-        connection_id.push_str("provider");
-        let mut endpoint = String::with_capacity(128);
-        endpoint.push_str("http://127.0.0.1:8080/v1");
-        let mut input = Vec::with_capacity(LEGACY_LOCAL_CHAT_REQUEST_LIMIT);
-        input.extend_from_slice(b"{}");
-        let expected = connection_id.capacity() + endpoint.capacity() + input.capacity();
-        let request = NativeRegistryRequest::SavedLocalChat {
-            role: OriginalSavedLocalChatRole::Generate,
-            connection_id,
-            record_revision: 1,
-            endpoint,
-            input,
-            project_response: false,
-            compile_request: false,
-            compile_policy: false,
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
         };
-        assert!(!request.has_launch_proof(&orchestration));
-        assert!(request.requires_publication_permit());
-        assert_eq!(request.input_capacity().unwrap(), expected);
+        let orchestration =
+            VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
+        let roles = [Generate, Stream, SideChatGenerate, SideChatStream];
+        let proofs = roles.map(|role| {
+            VerifiedRegistryLaunch::test_saved_local_chat_proof(identity.clone(), "catalog", role)
+        });
+        for role in roles {
+            let mut connection_id = String::with_capacity(64);
+            connection_id.push_str("provider");
+            let mut endpoint = String::with_capacity(128);
+            endpoint.push_str("http://127.0.0.1:8080/v1");
+            let mut input = Vec::with_capacity(LEGACY_LOCAL_CHAT_REQUEST_LIMIT);
+            input.extend_from_slice(b"{}");
+            let expected = connection_id.capacity() + endpoint.capacity() + input.capacity();
+            let request = NativeRegistryRequest::SavedLocalChat {
+                role,
+                connection_id,
+                record_revision: 1,
+                endpoint,
+                input,
+                project_response: false,
+                compile_request: false,
+                compile_policy: false,
+            };
+            assert!(!request.has_launch_proof(&orchestration));
+            for (granted, proof) in roles.into_iter().zip(&proofs) {
+                assert_eq!(request.has_launch_proof(proof), role == granted);
+            }
+            assert!(request.requires_publication_permit());
+            assert_eq!(request.input_capacity().unwrap(), expected);
+        }
     }
 
     #[test]
