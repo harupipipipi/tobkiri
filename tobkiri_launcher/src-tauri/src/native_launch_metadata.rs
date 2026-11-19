@@ -4737,7 +4737,7 @@ mod tests {
     }
 
     #[test]
-    fn optional_conversation_declarations_preserve_earlier_ports() {
+    fn conversation_optional_declarations_preserve_earlier_ports() {
         use std::{fs, path::PathBuf};
         use tobkiri_core::pack::{generate_manifest, verify_directory};
 
