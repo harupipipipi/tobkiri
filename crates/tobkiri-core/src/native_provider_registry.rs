@@ -241,32 +241,7 @@ pub(crate) fn read_legacy_document(
 }
 
 fn open_legacy_registry_root(root: &Path) -> Result<DataRoot> {
-    #[cfg(target_os = "macos")]
-    let physical_root = macos_platform_root(root);
-    #[cfg(target_os = "macos")]
-    let root = physical_root.as_ref();
-    DataRoot::open_existing(root).map_err(|error| CoreError::from(error).into())
-}
-
-// Keep the original Host's platform aliases without resolving other symlinks.
-#[cfg(target_os = "macos")]
-fn macos_platform_root(root: &Path) -> std::borrow::Cow<'_, Path> {
-    use std::{borrow::Cow, fs, os::unix::fs::MetadataExt};
-
-    for (alias, physical, relative) in [
-        ("/var", "/private/var", "private/var"),
-        ("/tmp", "/private/tmp", "private/tmp"),
-    ] {
-        if let Ok(suffix) = root.strip_prefix(alias)
-            && fs::symlink_metadata(alias)
-                .is_ok_and(|metadata| metadata.is_symlink() && metadata.uid() == 0)
-            && fs::read_link(alias)
-                .is_ok_and(|link| link == Path::new(physical) || link == Path::new(relative))
-        {
-            return Cow::Owned(Path::new(physical).join(suffix));
-        }
-    }
-    Cow::Borrowed(root)
+    DataRoot::open_legacy_registry(root).map_err(|error| CoreError::from(error).into())
 }
 
 fn copy_document(

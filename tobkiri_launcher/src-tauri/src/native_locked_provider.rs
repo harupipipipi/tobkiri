@@ -91,6 +91,7 @@ pub(crate) struct VerifiedSavedLocalChatBundle {
     application_root: PathBuf,
     bundle_root: PathBuf,
     bundle_lock_digest: Digest,
+    documents: Vec<(String, Digest)>,
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -104,6 +105,27 @@ impl VerifiedSavedLocalChatBundle {
             "signed local chat source differs from the admitted launch"
         );
         Ok(())
+    }
+
+    /// Prove the same bytes are still installed before dispensing a dispatch permit.
+    pub(crate) fn revalidate(
+        &self,
+        budget: &Arc<dyn AllocationBudget>,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let documents = std::iter::once(("bundle.lock.json", &self.bundle_lock_digest)).chain(
+            self.documents
+                .iter()
+                .map(|(path, digest)| (path.as_str(), digest)),
+        );
+        for (path, digest) in documents {
+            LockedDocument::new(path, digest.as_str(), budget)?.read_bytes(
+                &self.bundle_root,
+                budget,
+                &mut checkpoint,
+            )?;
+        }
+        checkpoint()
     }
 }
 
@@ -147,6 +169,7 @@ impl NativeApplicationSources {
                 application_root: self.application_root.clone(),
                 bundle_root: self.bundle_root.clone(),
                 bundle_lock_digest: Digest::parse(&self.bundle_lock.digest)?,
+                documents: Vec::new(),
             },
             routes,
             budget: Arc::clone(budget),
@@ -583,7 +606,7 @@ impl LockedSavedOrchestrationBundle<'_> {
 impl LockedSavedLocalChatBundle<'_> {
     /// Verify each role against the same bytes for each of the five selected Packs.
     pub(crate) fn verify(
-        self,
+        mut self,
         mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<VerifiedSavedLocalChatBundle> {
         let effects = [
@@ -603,6 +626,20 @@ impl LockedSavedLocalChatBundle<'_> {
             )?;
         }
         checkpoint()?;
+        let first = self
+            .routes
+            .iter()
+            .flatten()
+            .next()
+            .context("local chat proof has no route")?;
+        self.source.documents.reserve(2 * first.len());
+        for route in first {
+            for document in [&route.pack, &route.catalog] {
+                self.source
+                    .documents
+                    .push((document.path.as_str()?.to_owned(), document.digest.clone()));
+            }
+        }
         Ok(self.source)
     }
 }

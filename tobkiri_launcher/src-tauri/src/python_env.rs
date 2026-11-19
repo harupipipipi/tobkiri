@@ -352,13 +352,14 @@ where
         command.env_remove("TOBKIRI_NATIVE_SAVED_TURN_READ");
         command.env_remove("TOBKIRI_NATIVE_SAVED_TURN_START");
         command.env_remove("TOBKIRI_NATIVE_SAVED_ORCHESTRATION");
+        command.env_remove("TOBKIRI_NATIVE_SAVED_LOCAL_CHAT");
         command.env_remove(crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV);
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
         if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
             if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
                 use crate::native_provider_prepare_service::{
-                    APPEND_ENV, OWNER_ENV, SAVED_ORCHESTRATION_ENV, SOCKET_ENV, TURN_READ_ENV,
-                    TURN_START_ENV,
+                    APPEND_ENV, OWNER_ENV, SAVED_LOCAL_CHAT_ENV, SAVED_ORCHESTRATION_ENV,
+                    SOCKET_ENV, TURN_READ_ENV, TURN_START_ENV,
                 };
                 command
                     .env(SOCKET_ENV, &endpoint.socket)
@@ -369,7 +370,9 @@ where
                     .env(TURN_READ_ENV, "1")
                     .env(SAVED_ORCHESTRATION_ENV, "1");
                 if role == PythonRole::Defaultspack {
-                    command.env(TURN_START_ENV, "1");
+                    command
+                        .env(TURN_START_ENV, "1")
+                        .env(SAVED_LOCAL_CHAT_ENV, "1");
                     if let Some(manifest) = saved_orchestration_manifest.as_deref() {
                         command.env(
                             crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV,

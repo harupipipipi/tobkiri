@@ -11,7 +11,8 @@ import socket
 import struct
 import sys
 import time
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache, partial
 from typing import Any, Literal, overload
@@ -38,6 +39,7 @@ _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
+_SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -56,6 +58,7 @@ _INAPPLICABLE = 10
 _PUBLISH_CHECK, _PUBLISH_PERMIT = 11, 12
 _START_APPEND = 13
 _BODY_READY, _ORCHESTRATION_INPUT = 14, 15
+_SAVED_LOCAL_CHAT_INPUT, _DISPATCH_CHECK, _DISPATCH_PERMIT = 16, 17, 18
 _JSON_LIMIT = 16 * 1024
 _APPEND_START_LIMIT = 1024 * 1024
 _OWNER_RESULT_LIMIT = 1024 * 1024
@@ -71,6 +74,9 @@ SAVED_TURN_READ_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_START_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_ORCHESTRATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+SAVED_LOCAL_CHAT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+SAVED_LOCAL_CHAT_MAX_INPUT_BYTES = 1024 * 1024
+SAVED_LOCAL_CHAT_MAX_RESULT_BYTES = 4 * 1024 * 1024
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
 SAVED_RECEIPT_MAX_ID_CHARS = _JSON_LIMIT // 8
@@ -92,6 +98,7 @@ _POLL_SECONDS = 0.05
 _CLEANUP_SECONDS = 10.0
 _NANOS_PER_SECOND = 1_000_000_000
 _U64_MAX = (1 << 64) - 1
+_CONNECTION_ERROR = "native Provider preparation connection failed"
 
 
 class NativeProviderPrepareUnavailable(RuntimeError):
@@ -164,6 +171,18 @@ class NativeSavedOrchestrationFailure(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(f"native Saved Orchestration step failed ({code})")
         self.code = code
+
+
+class NativeSavedLocalChatFailure(RuntimeError):
+    """A typed saved local chat failure that does not permit fallback."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native saved local chat failed ({code})")
+        self.code = code
+
+
+class NativeSavedLocalChatDispatchUnconfirmed(RuntimeError):
+    """The Launcher could have dispatched a POST without confirmed cleanup."""
 
 
 class NativeModelSavePublicationUnconfirmed(RuntimeError):
@@ -304,6 +323,26 @@ class NativeSavedOrchestrationRequest:
     deadline_monotonic: float
     assert_current: Callable[[], None]
     input: Mapping[str, Any]
+
+
+SavedLocalChatRole = Literal["generate", "stream"]
+
+
+@dataclass(frozen=True)
+class NativeSavedLocalChatRequest:
+    """Borrow the saved invocation, exact POST body, and live dispatch guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    role: SavedLocalChatRole
+    connection_id: str
+    record_revision: int
+    endpoint: str
+    input: bytes
+    assert_dispatch: Callable[[], None]
+    mark_dispatch_possible: Callable[[], None]
 
 
 @dataclass(frozen=True)
@@ -517,6 +556,18 @@ def capture_launcher_saved_orchestration_step() -> (
     return partial(_invoke, launcher, operation="saved_orchestration")
 
 
+def capture_launcher_saved_local_chat_executor() -> (
+    Callable[[NativeSavedLocalChatRequest], bytes] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for local chat."""
+    if os.environ.get(_SAVED_LOCAL_CHAT_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke_saved_local_chat, launcher)
+
+
 def is_native_saved_turn_read_identifier(value: object) -> bool:
     """Check that a Turn resource identifier can cross the native wire unchanged."""
     if (
@@ -601,7 +652,10 @@ capture_launcher_model_save_writer = model_save_from_environment
 
 
 def _start_payload(
-    borrow: _NativeBorrow, deadline_ns: int, *, orchestration_input_bytes: int = 0,
+    borrow: _NativeBorrow | NativeSavedLocalChatRequest,
+    deadline_ns: int,
+    *,
+    orchestration_input_bytes: int = 0,
 ) -> bytes:
     context = borrow.context
     runtime_instance = borrow.runtime_instance
@@ -671,6 +725,8 @@ def _start_payload(
         if not 0 < orchestration_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Orchestration input size is invalid")
         frame["saved_orchestration"] = {"input_bytes": orchestration_input_bytes}
+    elif isinstance(borrow, NativeSavedLocalChatRequest):
+        frame["saved_local_chat"] = _saved_local_chat_start(borrow)
     elif isinstance(borrow, NativeSavedTurnSettlementRequest):
         frame["turn_settlement"] = _turn_settlement_payload(borrow)
     elif isinstance(borrow, NativeConversationConfirmationRequest):
@@ -709,6 +765,35 @@ def _start_payload(
     if len(encoded) > _JSON_LIMIT:
         raise _ProtocolError("native Provider preparation request exceeds its bound")
     return encoded
+
+
+def _saved_local_chat_start(borrow: NativeSavedLocalChatRequest) -> dict[str, Any]:
+    if (
+        type(borrow.role) is not str
+        or borrow.role not in ("generate", "stream")
+        or type(borrow.connection_id) is not str
+        or type(borrow.endpoint) is not str
+        or not _bounded_revision(borrow.record_revision, 1)
+        or type(borrow.input) is not bytes
+        or not borrow.input
+    ):
+        raise NativeSavedLocalChatFailure("invalid")
+    try:
+        connection_size = len(borrow.connection_id.encode("utf-8"))
+        endpoint_size = len(borrow.endpoint.encode("utf-8"))
+    except UnicodeEncodeError:
+        raise NativeSavedLocalChatFailure("invalid") from None
+    if not 0 < connection_size <= 256 or not 0 < endpoint_size <= 2048:
+        raise NativeSavedLocalChatFailure("invalid")
+    if len(borrow.input) > SAVED_LOCAL_CHAT_MAX_INPUT_BYTES:
+        raise NativeSavedLocalChatFailure("limit-exceeded")
+    return {
+        "role": borrow.role,
+        "connection_id": borrow.connection_id,
+        "record_revision": borrow.record_revision,
+        "endpoint": borrow.endpoint,
+        "input_bytes": len(borrow.input),
+    }
 
 
 def _saved_orchestration_input(borrow: NativeSavedOrchestrationRequest) -> bytes:
@@ -1150,10 +1235,12 @@ class _Exchange:
         permits_publication: bool,
         conversation_mutation: bool,
         requires_body_ready: bool,
+        permits_dispatch: bool = False,
     ) -> None:
         self.connection = connection
         self.plan_limit = plan_limit
         self.permits_publication = permits_publication
+        self.permits_dispatch = permits_dispatch
         self.requires_body_ready = requires_body_ready
         self.legacy_failure = (
             _CONVERSATION_LEGACY_READ_FAILURE
@@ -1173,6 +1260,7 @@ class _Exchange:
         self.started = False
         self.terminal = False
         self.publication_possible = False
+        self.dispatch_possible = False
 
     def send(
         self, tag: int, payload: bytes, wait_seconds: Callable[[], float],
@@ -1211,6 +1299,8 @@ class _Exchange:
         if tag == _FAILURE:
             limit = self.failure_limit
         elif tag == _PUBLISH_CHECK and self.permits_publication:
+            limit = 0
+        elif tag == _DISPATCH_CHECK and self.permits_dispatch:
             limit = 0
         elif tag == _BODY_READY and self.requires_body_ready:
             limit = 0
@@ -1251,15 +1341,65 @@ class _Exchange:
                 tag, payload = self.receive(wait_seconds)
                 if tag == _FAILURE and payload in self.failure_codes:
                     return
+                if tag == _PLAN and self.dispatch_possible:
+                    # The worker already finished. The caller still discards the
+                    # result because its live guard failed before acceptance.
+                    return
                 if not (
                     tag == _CHECK
                     or (tag == _PUBLISH_CHECK and self.permits_publication)
+                    or (tag == _DISPATCH_CHECK and self.permits_dispatch)
                     or (tag == _BODY_READY and self.requires_body_ready)
                 ):
                     break
         except (OSError, _ProtocolError):
             pass
         raise _ProtocolError("native Provider preparation cleanup was unconfirmed")
+
+    def run_saved_local_chat(
+        self,
+        borrow: NativeSavedLocalChatRequest,
+        start: bytes,
+        wait_seconds: Callable[[], float],
+    ) -> bytes | None:
+        self.send(_START, start, wait_seconds)
+        self.started = True
+        body_ready = False
+        entered_live_phase = False
+        while True:
+            tag, payload = self.receive(wait_seconds)
+            if tag == _FAILURE and payload in self.failure_codes:
+                self.terminal = True
+                wait_seconds()
+                raise NativeSavedLocalChatFailure(payload.decode("ascii"))
+            if tag == _INAPPLICABLE and not body_ready:
+                self.terminal = True
+                wait_seconds()
+                return None
+            if tag == _BODY_READY and not body_ready:
+                body_ready = True
+                self.send(_SAVED_LOCAL_CHAT_INPUT, borrow.input, wait_seconds)
+            elif tag == _CHECK and body_ready:
+                self.send(_LIVE, b"", wait_seconds)
+                entered_live_phase = True
+            elif (
+                tag == _DISPATCH_CHECK
+                and entered_live_phase
+                and not self.dispatch_possible
+            ):
+                wait_seconds()
+                borrow.assert_dispatch()
+                # The authority callback may block while it rechecks the binding.
+                wait_seconds()
+                self.dispatch_possible = True
+                borrow.mark_dispatch_possible()
+                self.send(_DISPATCH_PERMIT, b"", wait_seconds)
+            elif tag == _PLAN and self.dispatch_possible:
+                self.terminal = True
+                wait_seconds()
+                return payload
+            else:
+                raise _ProtocolError("native saved local chat frame is out of order")
 
     def run(
         self,
@@ -1407,6 +1547,87 @@ class _Exchange:
                 raise _ProtocolError("native Provider frame is out of order")
 
 
+def _launcher_deadline(
+    launcher: _Launcher, borrow: _NativeBorrow | NativeSavedLocalChatRequest,
+) -> tuple[int, Callable[[], float]]:
+    numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+    deadline_ns = numerator * _NANOS_PER_SECOND // denominator
+    if not 0 < deadline_ns <= _U64_MAX:
+        raise _ProtocolError("native Provider preparation deadline is invalid")
+
+    def wait_seconds() -> float:
+        borrow.assert_current()
+        launcher.assert_parent()
+        remaining = deadline_ns - time.monotonic_ns()
+        if remaining <= 0:
+            raise TimeoutError("native Provider preparation deadline elapsed")
+        return min(_POLL_SECONDS, remaining / _NANOS_PER_SECOND)
+
+    return deadline_ns, wait_seconds
+
+
+@contextmanager
+def _connect_launcher(
+    launcher: _Launcher, wait_seconds: Callable[[], float],
+) -> Iterator[socket.socket]:
+    launcher.assert_start()
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(wait_seconds())
+        try:
+            connection.connect(launcher.address)
+        except OSError:
+            raise _ProtocolError(_CONNECTION_ERROR) from None
+        _authenticate(connection, launcher)
+        yield connection
+
+
+def _invoke_saved_local_chat(
+    launcher: _Launcher, borrow: NativeSavedLocalChatRequest,
+) -> bytes:
+    try:
+        result = _exchange_saved_local_chat(launcher, borrow)
+    except NativeProviderPrepareUnavailable:
+        # Borrowed callbacks cannot authorize fallback for this exchange.
+        raise NativeSavedLocalChatFailure("unavailable") from None
+    if result is None:
+        raise NativeProviderPrepareUnavailable("native saved local chat unavailable")
+    return result
+
+
+def _exchange_saved_local_chat(
+    launcher: _Launcher, borrow: NativeSavedLocalChatRequest,
+) -> bytes | None:
+    deadline_ns, wait_seconds = _launcher_deadline(launcher, borrow)
+    wait_seconds()
+    start = _start_payload(borrow, deadline_ns)
+    with _connect_launcher(launcher, wait_seconds) as connection:
+        exchange = _Exchange(
+            connection,
+            SAVED_LOCAL_CHAT_MAX_RESULT_BYTES,
+            permits_publication=False,
+            conversation_mutation=False,
+            requires_body_ready=True,
+            permits_dispatch=True,
+        )
+        try:
+            return exchange.run_saved_local_chat(borrow, start, wait_seconds)
+        except Exception as error:
+            if (exchange.started or exchange.partial_write) and not exchange.terminal:
+                try:
+                    exchange.cancel_and_confirm()
+                except _ProtocolError:
+                    if exchange.dispatch_possible:
+                        raise NativeSavedLocalChatDispatchUnconfirmed(
+                            "native saved local chat dispatch could not be confirmed",
+                        ) from None
+                    raise
+            if isinstance(error, OSError) and not isinstance(
+                error, (PermissionError, TimeoutError),
+            ):
+                raise _ProtocolError(_CONNECTION_ERROR) from None
+            raise
+
+
 @overload
 def _invoke(
     launcher: _Launcher,
@@ -1457,28 +1678,8 @@ def _invoke(
     ):
         raise _ProtocolError("native Registry request role is invalid")
 
-    numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
-    deadline_ns = numerator * _NANOS_PER_SECOND // denominator
-    if not 0 < deadline_ns <= _U64_MAX:
-        raise _ProtocolError("native Provider preparation deadline is invalid")
-
-    def wait_seconds() -> float:
-        borrow.assert_current()
-        launcher.assert_parent()
-        remaining = deadline_ns - time.monotonic_ns()
-        if remaining <= 0:
-            raise TimeoutError("native Provider preparation deadline elapsed")
-        return min(_POLL_SECONDS, remaining / _NANOS_PER_SECOND)
-
-    launcher.assert_start()
-    connection_error = "native Provider preparation connection failed"
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-        connection.settimeout(wait_seconds())
-        try:
-            connection.connect(launcher.address)
-        except OSError:
-            raise _ProtocolError(connection_error) from None
-        _authenticate(connection, launcher)
+    deadline_ns, wait_seconds = _launcher_deadline(launcher, borrow)
+    with _connect_launcher(launcher, wait_seconds) as connection:
         if saved_orchestration:
             plan_limit = MAX_CANONICAL_JSON_BYTES
         elif turn_start:
@@ -1533,5 +1734,5 @@ def _invoke(
             if isinstance(error, OSError) and not isinstance(
                 error, (PermissionError, TimeoutError),
             ):
-                raise _ProtocolError(connection_error) from None
+                raise _ProtocolError(_CONNECTION_ERROR) from None
             raise

@@ -1,4 +1,4 @@
-//! Tracked Registry reads, Provider preparation, commit staging and publication.
+//! Tracked Registry operations and the original saved local Provider effect.
 
 use std::{
     cell::Cell,
@@ -25,13 +25,15 @@ use tobkiri_harness_native::{
     begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
     invoke_original_saved_orchestration_port, invoke_original_saved_turn_begin_port,
     invoke_original_saved_turn_claim_port, invoke_original_saved_turn_port,
-    invoke_original_saved_turn_read_port, read_legacy_saved_turn,
-    settle_legacy_saved_turn_from_admitted_port, LegacySavedTurnSettlementError,
-    LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest, OriginalSavedTurnCheck,
-    OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
+    invoke_original_saved_turn_read_port, post_original_local_chat, read_legacy_saved_turn,
+    settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
+    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
+    OriginalLocalChatCheck, OriginalLocalChatError, OriginalLocalChatRequest,
+    OriginalSavedLocalChatRole, OriginalSavedTurnCheck, OriginalSavedTurnStartInput,
+    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
 };
 use tobkiri_store::{DataRoot, StoreError};
-use tobkiri_wasm::NativeDataIoError;
+use tobkiri_wasm::{LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT};
 
 use super::{
     caught,
@@ -39,9 +41,10 @@ use super::{
         reacquire_conversation_append_pack, reacquire_conversation_confirmation_pack,
         reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
         reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack, reacquire_turn_read_pack,
-        reacquire_turn_settlement_pack, reacquire_turn_start_pack, ConversationReadCaller,
-        SettlementCaller, VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
+        reacquire_saved_local_chat_source, reacquire_saved_orchestration_pack,
+        reacquire_saved_receipt_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
+        reacquire_turn_start_pack, ConversationReadCaller, SettlementCaller,
+        VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -129,6 +132,13 @@ pub(crate) enum NativeRegistryRequest {
     SavedOrchestration {
         input: Vec<u8>,
     },
+    SavedLocalChat {
+        role: OriginalSavedLocalChatRole,
+        connection_id: String,
+        record_revision: u64,
+        endpoint: String,
+        input: Vec<u8>,
+    },
 }
 
 impl NativeRegistryRequest {
@@ -148,6 +158,7 @@ impl NativeRegistryRequest {
             Self::TurnStart { .. } => proof.permits_turn_start(),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
+            Self::SavedLocalChat { role, .. } => proof.permits_saved_local_chat(*role),
         }
     }
 
@@ -159,6 +170,7 @@ impl NativeRegistryRequest {
                 | Self::ConversationAppend { .. }
                 | Self::TurnStart { .. }
                 | Self::TurnSettlement { .. }
+                | Self::SavedLocalChat { .. }
         )
     }
 
@@ -197,6 +209,29 @@ impl NativeRegistryRequest {
                     return Err(SavedOrchestrationStepError::Capacity.into());
                 }
                 return Ok(input.capacity());
+            }
+            Self::SavedLocalChat {
+                connection_id,
+                endpoint,
+                input,
+                ..
+            } => {
+                if input.is_empty() {
+                    return Err(OriginalLocalChatError::from(
+                        LegacyLocalChatHttpError::InvalidRequest,
+                    )
+                    .into());
+                }
+                return input
+                    .capacity()
+                    .checked_add(connection_id.capacity())
+                    .and_then(|size| size.checked_add(endpoint.capacity()))
+                    .filter(|size| {
+                        input.capacity() <= LEGACY_LOCAL_CHAT_REQUEST_LIMIT && *size <= MAX_BYTES
+                    })
+                    .ok_or_else(|| {
+                        OriginalLocalChatError::from(LegacyLocalChatHttpError::Capacity).into()
+                    });
             }
             Self::TurnSettlement {
                 turn_id,
@@ -414,10 +449,10 @@ struct PreparedReply {
     document: Option<CoreBuffer>,
 }
 
-/// Run one verified request on the managed Registry worker.
+/// Run one verified request on the managed native worker.
 ///
-/// The Host adapter checks continuing eligibility. The worker owns the fixed
-/// Registry and supplies bounded observations to the guest.
+/// The Host adapter checks continuing eligibility. The worker owns Registry
+/// observation and the local POST authorized by the original Provider lease.
 pub(crate) fn start_provider_prepare(
     app: &AppHandle,
     listener: Arc<ProviderPrepareListener>,
@@ -487,7 +522,7 @@ async fn run(
         input_capacity,
         deadline,
         continue_current,
-        publish_permit,
+        mut publish_permit,
     } = request;
     let identity = &listener.verified_source().identity;
     let admitted = (|| {
@@ -551,15 +586,18 @@ async fn run(
         job.ensure_accepting(&runtime.0.jobs)?;
         manager.require_provider_prepare_admission(&listener)
     };
-    let revalidate = || {
-        checkpoint()?;
-        continue_current()?;
+    let require_current_source = || {
         require_current_launch_identity(&config, identity)?;
         ensure!(
             listener.owns_socket(),
             "native Provider preparation listener lost its socket"
         );
         checkpoint()
+    };
+    let revalidate = || {
+        checkpoint()?;
+        continue_current()?;
+        require_current_source()
     };
     let publishes = matches!(
         &operation,
@@ -1031,6 +1069,55 @@ async fn run(
                     let output =
                         invoke_original_saved_orchestration_port(port, input, funding).await?;
                     return decode_saved_orchestration_reply(output.as_str(), &graph);
+                }
+                NativeRegistryRequest::SavedLocalChat {
+                    role,
+                    connection_id,
+                    record_revision,
+                    endpoint,
+                    input,
+                } => {
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let data = DataRoot::open_legacy_registry(&config.user_data_dir)
+                        .map_err(|_| OriginalLocalChatError::RegistryUnavailable)?;
+                    let wire = post_original_local_chat(
+                        &data,
+                        OriginalLocalChatRequest {
+                            profile: &profile,
+                            provider: LegacyLocalChatSelection {
+                                connection_id: &connection_id,
+                                record_revision,
+                                endpoint: &endpoint,
+                            },
+                            body: &input,
+                            deadline: execution_deadline,
+                            cancellation: &cancellation,
+                        },
+                        &graph,
+                        |phase| match phase {
+                            OriginalLocalChatCheck::Live => revalidate(),
+                            OriginalLocalChatCheck::Dispatch => {
+                                reacquire_saved_local_chat_source(
+                                    &inspection,
+                                    listener.verified_source(),
+                                    role,
+                                    checkpoint,
+                                )?;
+                                revalidate()?;
+                                let permit = publish_permit
+                                    .take()
+                                    .context("saved local Provider dispatch permit is missing")?;
+                                permit()?;
+                                require_current_source()
+                            }
+                        },
+                    )
+                    .await?;
+                    return Ok(PreparedReply {
+                        wire,
+                        document: None,
+                    });
                 }
             };
             let input = CoreValue::parse_guest(&request, &graph)?;
@@ -1593,6 +1680,65 @@ mod tests {
         }
 
         fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn saved_local_chat_charges_all_owned_input_and_requires_a_dispatch_permit() {
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let orchestration = VerifiedRegistryLaunch::test_saved_orchestration_proof(
+            ExecutionProfileIdentity {
+                profile_id: "defaults".into(),
+                profile_revision: "revision:fixture".into(),
+                activation_id: "activation:fixture".into(),
+                plan_digest: "sha256:fixture".into(),
+            },
+            "catalog",
+        );
+        let mut connection_id = String::with_capacity(64);
+        connection_id.push_str("provider");
+        let mut endpoint = String::with_capacity(128);
+        endpoint.push_str("http://127.0.0.1:8080/v1");
+        let mut input = Vec::with_capacity(LEGACY_LOCAL_CHAT_REQUEST_LIMIT);
+        input.extend_from_slice(b"{}");
+        let expected = connection_id.capacity() + endpoint.capacity() + input.capacity();
+        let request = NativeRegistryRequest::SavedLocalChat {
+            role: OriginalSavedLocalChatRole::Generate,
+            connection_id,
+            record_revision: 1,
+            endpoint,
+            input,
+        };
+        assert!(!request.has_launch_proof(&orchestration));
+        assert!(request.requires_publication_permit());
+        assert_eq!(request.input_capacity().unwrap(), expected);
+    }
+
+    #[test]
+    fn saved_local_chat_rejects_empty_and_oversized_input_allocations() {
+        let request = |input| NativeRegistryRequest::SavedLocalChat {
+            role: OriginalSavedLocalChatRole::Stream,
+            connection_id: "provider".into(),
+            record_revision: 1,
+            endpoint: "http://127.0.0.1:8080/v1".into(),
+            input,
+        };
+        let empty = request(Vec::new()).input_capacity().unwrap_err();
+        assert!(matches!(
+            empty.downcast_ref::<OriginalLocalChatError>(),
+            Some(OriginalLocalChatError::Transport(
+                LegacyLocalChatHttpError::InvalidRequest
+            ))
+        ));
+        let mut oversized = Vec::with_capacity(LEGACY_LOCAL_CHAT_REQUEST_LIMIT + 1);
+        oversized.extend_from_slice(b"{}");
+        let limit = request(oversized).input_capacity().unwrap_err();
+        assert!(matches!(
+            limit.downcast_ref::<OriginalLocalChatError>(),
+            Some(OriginalLocalChatError::Transport(
+                LegacyLocalChatHttpError::Capacity
+            ))
+        ));
     }
 
     #[test]

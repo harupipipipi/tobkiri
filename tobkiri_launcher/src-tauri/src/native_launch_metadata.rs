@@ -84,6 +84,17 @@ pub(crate) enum ConversationReadCaller {
 }
 
 impl VerifiedRegistryLaunch {
+    /// Authorize just the ordinary Provider operation verified at Launch for this role.
+    pub(crate) fn permits_saved_local_chat(&self, role: OriginalSavedLocalChatRole) -> bool {
+        self.local_chat.as_ref().is_some_and(|source| {
+            source
+                .roles
+                .iter()
+                .flatten()
+                .any(|(granted, _)| *granted == role)
+        })
+    }
+
     /// Require the original ordinary saved chain and verified pure Wasm computation.
     pub(crate) fn permits_saved_orchestration(&self) -> bool {
         self.saved_orchestration_manifest().is_some()
@@ -1378,6 +1389,26 @@ fn reacquire_turn_archive(
         },
     )?
     .context("bundled Registry receipt has no Turn archive")
+}
+
+/// Recheck the installed source used to admit this exact local Provider role.
+pub(super) fn reacquire_saved_local_chat_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalSavedLocalChatRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<()> {
+    let source = proof
+        .local_chat
+        .as_ref()
+        .filter(|_| proof.permits_saved_local_chat(role))
+        .context("admitted launch has no verified local Provider source for the role")?;
+    checkpoint()?;
+    registry_pack_root(inspection, proof)?;
+    inspection.with_source(|sources| source.bundle.require_source(sources))??;
+    source
+        .bundle
+        .revalidate(inspection.allocation_budget()?, checkpoint)
 }
 
 /// Reopen the installed candidate under the original authority source and Launch receipt.

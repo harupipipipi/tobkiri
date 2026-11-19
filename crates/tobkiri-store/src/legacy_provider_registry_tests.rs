@@ -38,6 +38,21 @@ fn assert_no_staged_files(registry: &Path) {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn original_registry_root_keeps_the_macos_system_alias_only() {
+    let temp = tempfile::tempdir_in("/private/tmp").unwrap();
+    let target = temp.path().join("physical");
+    fs::create_dir(&target).unwrap();
+    let via_system = Path::new("/tmp").join(target.strip_prefix("/private/tmp").unwrap());
+    let root = DataRoot::open_legacy_registry(&via_system).unwrap();
+    assert_eq!(root.path(), target);
+
+    let other_link = temp.path().join("replacement");
+    symlink(&target, &other_link).unwrap();
+    assert!(DataRoot::open_legacy_registry(&other_link).is_err());
+}
+
 #[test]
 fn read_only_registry_observes_stable_absence_without_creating_directories_or_lock() {
     let (_temp, root, profile, registry) = fixture();

@@ -13,8 +13,14 @@ use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{Digest, NativeArtifactError};
-use tobkiri_harness_native::LegacySavedTurnSettlementError;
-use tobkiri_wasm::NativeDataIoError;
+use tobkiri_harness_native::{
+    LegacyLocalChatSourceError, LegacySavedTurnSettlementError, OriginalLocalChatError,
+    OriginalSavedLocalChatRole,
+};
+use tobkiri_wasm::{
+    LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT,
+    LEGACY_LOCAL_CHAT_RESPONSE_LIMIT,
+};
 
 use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
@@ -44,6 +50,9 @@ const PUBLISH_PERMIT: u8 = 12;
 const START_APPEND: u8 = 13;
 const BODY_READY: u8 = 14;
 const ORCHESTRATION_INPUT: u8 = 15;
+const SAVED_LOCAL_CHAT_INPUT: u8 = 16;
+const DISPATCH_CHECK: u8 = 17;
+const DISPATCH_PERMIT: u8 = 18;
 const JSON_LIMIT: usize = 16 * 1024;
 const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
 const SAVED_RECEIPT_TURN_ID_MAX_CHARS: usize = 2048;
@@ -89,11 +98,19 @@ struct Start<'a> {
     conversation_append: Option<ConversationAppend<'a>>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     saved_orchestration: Option<SavedOrchestrationStart>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
+    saved_local_chat: Option<SavedLocalChatStart>,
 }
 
 enum RequestStart {
     Inline(NativeRegistryRequest),
     SavedOrchestration { input_bytes: usize },
+    SavedLocalChat(SavedLocalChatStart),
+}
+
+enum BodyStart<'a> {
+    SavedOrchestration(&'a SavedOrchestrationStart),
+    SavedLocalChat(&'a SavedLocalChatStart),
 }
 
 impl Start<'_> {
@@ -124,6 +141,12 @@ impl Start<'_> {
             }
             (Some(_), Some(_)) => bail!("native Registry start must name exactly one operation"),
         };
+        let body = match (&self.saved_orchestration, &self.saved_local_chat) {
+            (None, None) => None,
+            (Some(saved), None) => Some(BodyStart::SavedOrchestration(saved)),
+            (None, Some(chat)) => Some(BodyStart::SavedLocalChat(chat)),
+            (Some(_), Some(_)) => bail!("native Registry start must name exactly one operation"),
+        };
         let operation = match (
             &self.request,
             &self.model_list,
@@ -135,7 +158,7 @@ impl Start<'_> {
             &self.turn_read,
             turn_mutation,
             &self.conversation_append,
-            &self.saved_orchestration,
+            body,
             self.apply,
         ) {
             (Some(request), None, None, None, None, None, None, None, None, None, None, apply) => {
@@ -201,7 +224,20 @@ impl Start<'_> {
             (None, None, None, None, None, None, None, None, None, Some(append), None, None) => {
                 append.operation()?
             }
-            (None, None, None, None, None, None, None, None, None, None, Some(saved), None) => {
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(BodyStart::SavedOrchestration(saved)),
+                None,
+            ) => {
                 ensure!(
                     (1..=SAVED_ORCHESTRATION_FRAME_LIMIT).contains(&saved.input_bytes),
                     "invalid Saved Orchestration input size"
@@ -210,6 +246,20 @@ impl Start<'_> {
                     input_bytes: saved.input_bytes,
                 });
             }
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(BodyStart::SavedLocalChat(chat)),
+                None,
+            ) => return Ok(RequestStart::SavedLocalChat(chat.clone())),
             _ => bail!("native Registry start must name exactly one operation"),
         };
         Ok(RequestStart::Inline(operation))
@@ -219,7 +269,9 @@ impl Start<'_> {
     fn operation(&self) -> Result<NativeRegistryRequest> {
         match self.request_start()? {
             RequestStart::Inline(operation) => Ok(operation),
-            RequestStart::SavedOrchestration { .. } => bail!("request needs a body"),
+            RequestStart::SavedOrchestration { .. } | RequestStart::SavedLocalChat(_) => {
+                bail!("request needs a body")
+            }
         }
     }
 }
@@ -292,6 +344,33 @@ struct TurnStartReply<'a> {
 #[serde(deny_unknown_fields)]
 struct SavedOrchestrationStart {
     input_bytes: usize,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedLocalChatStart {
+    #[serde(deserialize_with = "deserialize_saved_local_chat_role")]
+    role: OriginalSavedLocalChatRole,
+    connection_id: String,
+    record_revision: u64,
+    endpoint: String,
+    input_bytes: usize,
+}
+
+impl SavedLocalChatStart {
+    fn validate(&self) -> Result<(), &'static str> {
+        if self.input_bytes > LEGACY_LOCAL_CHAT_REQUEST_LIMIT {
+            return Err("limit-exceeded");
+        }
+        if self.input_bytes == 0
+            || !(1..=256).contains(&self.connection_id.len())
+            || self.record_revision == 0
+            || !(1..=2048).contains(&self.endpoint.len())
+        {
+            return Err("invalid");
+        }
+        Ok(())
+    }
 }
 
 #[derive(Deserialize)]
@@ -639,6 +718,19 @@ where
         .map_err(de::Error::custom)
 }
 
+fn deserialize_saved_local_chat_role<'de, D>(
+    deserializer: D,
+) -> std::result::Result<OriginalSavedLocalChatRole, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "generate" => Ok(OriginalSavedLocalChatRole::Generate),
+        "stream" => Ok(OriginalSavedLocalChatRole::Stream),
+        _ => Err(de::Error::custom("unknown Saved Local Chat role")),
+    }
+}
+
 fn deserialize_conversation_caller<'de, D>(
     deserializer: D,
 ) -> std::result::Result<ConversationReadCaller, D::Error>
@@ -748,6 +840,7 @@ struct Request {
 enum Stop {
     Cancelled,
     Deadline,
+    Invalid,
     Unavailable,
     Broken,
 }
@@ -757,6 +850,7 @@ impl Stop {
         let error = match self {
             Self::Cancelled => NativeDataIoError::Cancelled,
             Self::Deadline => NativeDataIoError::Deadline,
+            Self::Invalid => return anyhow!("invalid Registry authorization frame"),
             Self::Unavailable => NativeDataIoError::Unavailable,
             Self::Broken => NativeDataIoError::Io,
         };
@@ -766,6 +860,7 @@ impl Stop {
     fn reply(self) -> Option<&'static str> {
         match self {
             Self::Cancelled | Self::Deadline => Some("cancelled"),
+            Self::Invalid => Some("invalid"),
             Self::Unavailable => Some("unavailable"),
             Self::Broken => None,
         }
@@ -789,9 +884,9 @@ fn parse_start(tag: u8, bytes: &[u8]) -> Result<Start<'_>> {
     let start: Start<'_> =
         serde_json::from_slice(bytes).map_err(|_| anyhow!("invalid native Registry start"))?;
     ensure!(
-        start.turn_start.is_none()
+        (start.turn_start.is_none() && start.saved_local_chat.is_none())
             || bytes.iter().find(|byte| !byte.is_ascii_whitespace()) == Some(&b'{'),
-        "Turn start requires a named operation"
+        "native Registry start requires a named operation"
     );
     ensure!(
         (tag == START_APPEND) == start.conversation_append.is_some(),
@@ -800,8 +895,11 @@ fn parse_start(tag: u8, bytes: &[u8]) -> Result<Start<'_>> {
     Ok(start)
 }
 
-/// Handle one accepted macOS connection for the currently managed Host process.
-pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Result<()> {
+/// Authenticate and check launch proof before a connection may accept its body.
+pub(crate) fn admit_connection(
+    app: &AppHandle,
+    mut stream: UnixStream,
+) -> Result<Option<AdmittedConnection>> {
     let peer = authenticate_peer(&stream)?;
     suppress_sigpipe(&stream)?;
     stream.set_nonblocking(true)?;
@@ -825,6 +923,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     let needs_active_host = matches!(
         &request,
         RequestStart::SavedOrchestration { .. }
+            | RequestStart::SavedLocalChat(_)
             | RequestStart::Inline(
                 NativeRegistryRequest::TurnRead { .. }
                     | NativeRegistryRequest::TurnStart { .. }
@@ -851,12 +950,13 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         } else {
             (INAPPLICABLE, &[])
         };
-        return send_frame(
+        send_frame(
             &mut stream,
             tag,
             payload,
             deadline.min(Instant::now() + FRAME_TIMEOUT),
-        );
+        )?;
+        return Ok(None);
     };
     manager.require_provider_prepare_peer(&identity, &peer)?;
     ensure!(
@@ -867,87 +967,168 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     if candidate.verified_source().security_epoch != start.security_epoch
         || (needs_active_host && !matches_runtime)
     {
-        return send_frame(
+        send_frame(
             &mut stream,
             FAILURE,
             b"unavailable",
             deadline.min(Instant::now() + FRAME_TIMEOUT),
-        );
+        )?;
+        return Ok(None);
     }
     manager.require_provider_prepare_admission(&candidate)?;
+    if let RequestStart::SavedLocalChat(chat) = &request {
+        if let Err(code) = chat.validate() {
+            send_frame(
+                &mut stream,
+                FAILURE,
+                code.as_bytes(),
+                deadline.min(Instant::now() + FRAME_TIMEOUT),
+            )?;
+            return Ok(None);
+        }
+    }
     let proof = candidate.verified_source();
     let has_launch_proof = match &request {
         RequestStart::Inline(operation) => operation.has_launch_proof(proof),
         RequestStart::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
+        RequestStart::SavedLocalChat(chat) => proof.permits_saved_local_chat(chat.role),
     };
     if !matches_runtime || !has_launch_proof {
-        return send_frame(
+        send_frame(
             &mut stream,
             INAPPLICABLE,
             &[],
             deadline.min(Instant::now() + FRAME_TIMEOUT),
-        );
+        )?;
+        return Ok(None);
+    }
+    Ok(Some(AdmittedConnection {
+        stream,
+        request,
+        manager,
+        candidate,
+        deadline,
+    }))
+}
+
+/// A managed Host connection authenticated against its current launch.
+pub(crate) struct AdmittedConnection {
+    stream: UnixStream,
+    request: RequestStart,
+    manager: Arc<ApplicationProcessManager>,
+    candidate: Arc<ProviderPrepareListener>,
+    deadline: Instant,
+}
+
+impl AdmittedConnection {
+    /// Return whether the exchange owns the saved local chat transport.
+    pub(crate) fn is_saved_local_chat(&self) -> bool {
+        matches!(self.request, RequestStart::SavedLocalChat(_))
     }
 
-    drop(bytes);
-    let operation = match request {
-        RequestStart::Inline(operation) => operation,
-        RequestStart::SavedOrchestration { input_bytes } => {
-            let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
-            let Some(input) = receive_orchestration_input(&mut stream, input_bytes, body_deadline)?
-            else {
-                return send_frame(&mut stream, FAILURE, b"cancelled", body_deadline);
-            };
-            NativeRegistryRequest::SavedOrchestration { input }
+    /// Reject an authenticated exchange before accepting any body.
+    pub(crate) fn reject_unavailable(mut self) -> Result<()> {
+        send_frame(
+            &mut self.stream,
+            FAILURE,
+            b"unavailable",
+            self.deadline.min(Instant::now() + FRAME_TIMEOUT),
+        )
+    }
+
+    /// Complete the admitted Registry exchange.
+    pub(crate) fn run(self, app: &AppHandle) -> Result<()> {
+        if self.is_saved_local_chat()
+            && self
+                .manager
+                .require_provider_prepare_admission(&self.candidate)
+                .is_err()
+        {
+            return self.reject_unavailable();
         }
-    };
-    let reply = match &operation {
-        NativeRegistryRequest::Provider { .. } => ReplyRole::Provider,
-        NativeRegistryRequest::ModelList => ReplyRole::ModelList,
-        NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
-        NativeRegistryRequest::ConversationGet { .. }
-        | NativeRegistryRequest::ConversationReceipt { .. } => ReplyRole::ConversationRead,
-        NativeRegistryRequest::ConversationConfirmation { .. } => {
-            ReplyRole::ConversationConfirmation
-        }
-        NativeRegistryRequest::ConversationAppend { .. } => ReplyRole::ConversationAppend,
-        NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
-        NativeRegistryRequest::TurnRead { .. } => ReplyRole::TurnRead,
-        NativeRegistryRequest::TurnStart { action, .. } => ReplyRole::TurnStart(*action),
-        NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
-        NativeRegistryRequest::SavedOrchestration { .. } => ReplyRole::SavedOrchestration,
-    };
-    let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
-    let connection = Arc::new(Connection {
-        manager,
-        candidate: Arc::clone(&candidate),
-        wire: Mutex::new(Wire::new(stream)),
-        deadline: Arc::clone(&deadline),
-        reply,
-    });
-    let check_connection = Arc::clone(&connection);
-    let publish_permit = reply.permits_publication().then(|| {
-        let connection = Arc::clone(&connection);
-        Arc::new(move || connection.authorize_publication())
-            as Arc<dyn Fn() -> Result<()> + Send + Sync>
-    });
-    let pending = match start_provider_prepare(
-        app,
-        candidate,
-        operation,
-        deadline,
-        Arc::new(move || check_connection.check_current()),
-        publish_permit,
-    ) {
-        Ok(pending) => pending,
-        Err(error) => {
-            return connection.send_failure(
-                reply.failure_code(WireAuthority::AwaitingLive, &error),
-                connection.deadline.current(),
-            )
-        }
-    };
-    connection.finish(pending)
+        let Self {
+            mut stream,
+            request,
+            manager,
+            candidate,
+            deadline,
+        } = self;
+        let operation = match request {
+            RequestStart::Inline(operation) => operation,
+            RequestStart::SavedOrchestration { input_bytes } => {
+                let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
+                let Some(input) =
+                    receive_orchestration_input(&mut stream, input_bytes, body_deadline)?
+                else {
+                    return send_frame(&mut stream, FAILURE, b"cancelled", body_deadline);
+                };
+                NativeRegistryRequest::SavedOrchestration { input }
+            }
+            RequestStart::SavedLocalChat(chat) => {
+                let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
+                let Some(input) =
+                    receive_saved_local_chat_input(&mut stream, chat.input_bytes, body_deadline)?
+                else {
+                    return Ok(());
+                };
+                NativeRegistryRequest::SavedLocalChat {
+                    role: chat.role,
+                    connection_id: chat.connection_id,
+                    record_revision: chat.record_revision,
+                    endpoint: chat.endpoint,
+                    input,
+                }
+            }
+        };
+        let reply = match &operation {
+            NativeRegistryRequest::Provider { .. } => ReplyRole::Provider,
+            NativeRegistryRequest::ModelList => ReplyRole::ModelList,
+            NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
+            NativeRegistryRequest::ConversationGet { .. }
+            | NativeRegistryRequest::ConversationReceipt { .. } => ReplyRole::ConversationRead,
+            NativeRegistryRequest::ConversationConfirmation { .. } => {
+                ReplyRole::ConversationConfirmation
+            }
+            NativeRegistryRequest::ConversationAppend { .. } => ReplyRole::ConversationAppend,
+            NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
+            NativeRegistryRequest::TurnRead { .. } => ReplyRole::TurnRead,
+            NativeRegistryRequest::TurnStart { action, .. } => ReplyRole::TurnStart(*action),
+            NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
+            NativeRegistryRequest::SavedOrchestration { .. } => ReplyRole::SavedOrchestration,
+            NativeRegistryRequest::SavedLocalChat { .. } => ReplyRole::SavedLocalChat,
+        };
+        let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
+        let connection = Arc::new(Connection {
+            manager,
+            candidate: Arc::clone(&candidate),
+            wire: Mutex::new(Wire::new(stream)),
+            deadline: Arc::clone(&deadline),
+            reply,
+        });
+        let check_connection = Arc::clone(&connection);
+        let publish_permit = reply.effect_check().map(|check| {
+            let connection = Arc::clone(&connection);
+            Arc::new(move || connection.authorize(check))
+                as Arc<dyn Fn() -> Result<()> + Send + Sync>
+        });
+        let pending = match start_provider_prepare(
+            app,
+            candidate,
+            operation,
+            deadline,
+            Arc::new(move || check_connection.check_current()),
+            publish_permit,
+        ) {
+            Ok(pending) => pending,
+            Err(error) => {
+                return connection.send_failure(
+                    reply.failure_code(WireAuthority::AwaitingLive, &error),
+                    connection.deadline.current(),
+                )
+            }
+        };
+        connection.finish(pending)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -963,9 +1144,20 @@ enum ReplyRole {
     TurnStart(SavedTurnStartAction),
     TurnSettlement,
     SavedOrchestration,
+    SavedLocalChat,
 }
 
 impl ReplyRole {
+    fn effect_check(self) -> Option<AuthorityCheck> {
+        if self == Self::SavedLocalChat {
+            Some(AuthorityCheck::Dispatch)
+        } else if self.permits_publication() {
+            Some(AuthorityCheck::Publication)
+        } else {
+            None
+        }
+    }
+
     fn permits_publication(self) -> bool {
         self.uses_conversation_publication()
             || matches!(
@@ -998,6 +1190,7 @@ impl ReplyRole {
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
             Self::SavedOrchestration => (SAVED_ORCHESTRATION_FRAME_LIMIT, "limit-exceeded"),
+            Self::SavedLocalChat => (LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, "limit-exceeded"),
             Self::TurnStart(_) if authority == WireAuthority::PublicationPermitted => {
                 (TURN_START_REPLY_LIMIT, "unavailable")
             }
@@ -1010,6 +1203,33 @@ impl ReplyRole {
     }
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
+        if self == Self::SavedLocalChat {
+            use LegacyLocalChatHttpError as Transport;
+            use LegacyLocalChatSourceError as Source;
+            return match error.downcast_ref::<OriginalLocalChatError>() {
+                Some(OriginalLocalChatError::Source(Source::SelectionChanged)) => "denied",
+                Some(
+                    OriginalLocalChatError::Source(
+                        Source::InvalidSelection | Source::InvalidDocument,
+                    )
+                    | OriginalLocalChatError::Transport(Transport::InvalidRequest),
+                ) => "invalid",
+                Some(OriginalLocalChatError::Transport(
+                    Transport::Deadline | Transport::Revoked,
+                )) => "cancelled",
+                Some(OriginalLocalChatError::Transport(
+                    Transport::ResponseTooLarge | Transport::Capacity,
+                )) => "limit-exceeded",
+                Some(
+                    OriginalLocalChatError::Transport(Transport::Unavailable)
+                    | OriginalLocalChatError::RegistryUnavailable,
+                ) => "unavailable",
+                None => match failure_code(error) {
+                    code @ ("cancelled" | "denied" | "invalid" | "limit-exceeded") => code,
+                    _ => "unavailable",
+                },
+            };
+        }
         if self == Self::SavedOrchestration {
             return match error.downcast_ref::<SavedOrchestrationStepError>() {
                 Some(SavedOrchestrationStepError::Invalid) => "invalid",
@@ -1095,6 +1315,9 @@ impl ReplyRole {
         if output.len() > limit {
             return Err(overflow_code);
         }
+        if self == Self::SavedLocalChat && authority != WireAuthority::PublicationPermitted {
+            return Err("unavailable");
+        }
         if let Self::TurnStart(action) = self {
             if authority == WireAuthority::AwaitingLive {
                 return Err("unavailable");
@@ -1157,6 +1380,13 @@ enum WireAuthority {
     PublicationPermitted,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AuthorityCheck {
+    Live,
+    Publication,
+    Dispatch,
+}
+
 impl Connection {
     fn checkpoint(&self, wire: &mut Wire) -> Result<()> {
         if let Some(stop) = wire.stop {
@@ -1178,22 +1408,14 @@ impl Connection {
     }
 
     fn check_current(&self) -> Result<()> {
-        self.authorize(false)
+        self.authorize(AuthorityCheck::Live)
     }
 
-    fn authorize_publication(&self) -> Result<()> {
-        ensure!(
-            self.reply.permits_publication(),
-            "Registry exchange does not admit publication"
-        );
-        self.authorize(true)
-    }
-
-    fn authorize(&self, publish: bool) -> Result<()> {
+    fn authorize(&self, check: AuthorityCheck) -> Result<()> {
         let mut wire = self.lock_wire()?;
         self.checkpoint(&mut wire)?;
         let deadline = self.deadline.current().min(Instant::now() + FRAME_TIMEOUT);
-        let result = wire.exchange_authority(publish, deadline);
+        let result = wire.exchange_authority(check, deadline);
         if result.is_err() && wire.stop.is_none() {
             wire.stop = Some(if Instant::now() >= self.deadline.current() {
                 Stop::Deadline
@@ -1312,16 +1534,18 @@ impl Wire {
         }
     }
 
-    fn exchange_authority(&mut self, publish: bool, deadline: Instant) -> Result<()> {
+    fn exchange_authority(&mut self, check: AuthorityCheck, deadline: Instant) -> Result<()> {
         self.check_idle(deadline)?;
-        let (challenge, expected) = if publish {
+        if check != AuthorityCheck::Live {
             ensure!(
                 self.authority == WireAuthority::Live,
-                "Registry publication is outside its live phase"
+                "Registry effect is outside its live phase"
             );
-            (PUBLISH_CHECK, PUBLISH_PERMIT)
-        } else {
-            (CHECK, LIVE)
+        }
+        let (challenge, expected) = match check {
+            AuthorityCheck::Live => (CHECK, LIVE),
+            AuthorityCheck::Publication => (PUBLISH_CHECK, PUBLISH_PERMIT),
+            AuthorityCheck::Dispatch => (DISPATCH_CHECK, DISPATCH_PERMIT),
         };
         send_frame(&mut self.stream, challenge, &[], deadline)?;
         let header = read_header(&mut self.stream, deadline)?;
@@ -1329,11 +1553,15 @@ impl Wire {
             self.stop = Some(Stop::Cancelled);
             return Err(Stop::Cancelled.as_error());
         }
+        if check == AuthorityCheck::Dispatch && header != (expected, 0) {
+            self.stop = Some(Stop::Invalid);
+            return Err(Stop::Invalid.as_error());
+        }
         ensure!(
             header == (expected, 0),
             "invalid Registry authorization frame"
         );
-        if publish {
+        if check != AuthorityCheck::Live {
             self.authority = WireAuthority::PublicationPermitted;
         } else if self.authority == WireAuthority::AwaitingLive {
             self.authority = WireAuthority::Live;
@@ -1494,9 +1722,58 @@ fn receive_orchestration_input(
         header == (ORCHESTRATION_INPUT, input_bytes),
         "invalid Saved Orchestration input frame"
     );
+    read_input_bytes(stream, input_bytes, deadline).map(Some)
+}
+
+fn receive_saved_local_chat_input(
+    stream: &mut UnixStream,
+    input_bytes: usize,
+    deadline: Instant,
+) -> Result<Option<Vec<u8>>> {
+    send_frame(stream, BODY_READY, &[], deadline)?;
+    let read = (|| {
+        let header = read_header(stream, deadline)?;
+        let failure = match header {
+            (CANCEL, 0) => "cancelled",
+            (SAVED_LOCAL_CHAT_INPUT, size) if size > LEGACY_LOCAL_CHAT_REQUEST_LIMIT => {
+                "limit-exceeded"
+            }
+            (SAVED_LOCAL_CHAT_INPUT, size) if size > 0 && size == input_bytes => {
+                return read_input_bytes(stream, size, deadline).map(Ok);
+            }
+            _ => "invalid",
+        };
+        Ok(Err(failure))
+    })();
+    let code = match read {
+        Ok(Ok(input)) => return Ok(Some(input)),
+        Ok(Err(code)) => code,
+        Err(error)
+            if error
+                .downcast_ref::<io::Error>()
+                .is_some_and(|error| error.kind() == io::ErrorKind::TimedOut) =>
+        {
+            "cancelled"
+        }
+        Err(error) => return Err(error),
+    };
+    send_frame(
+        stream,
+        FAILURE,
+        code.as_bytes(),
+        Instant::now() + FRAME_TIMEOUT,
+    )?;
+    Ok(None)
+}
+
+fn read_input_bytes(
+    stream: &mut UnixStream,
+    input_bytes: usize,
+    deadline: Instant,
+) -> Result<Vec<u8>> {
     let mut input = vec![0; input_bytes];
     read_exact(stream, &mut input, deadline)?;
-    Ok(Some(input))
+    Ok(input)
 }
 
 fn read_exact(stream: &mut UnixStream, mut bytes: &mut [u8], deadline: Instant) -> Result<()> {
@@ -1577,6 +1854,240 @@ mod tests {
         format!(
             r#"{{"identity":{{"profile_id":"profile","profile_revision":"revision","activation_id":"activation","plan_digest":"digest"}},"runtime_instance":"0123456789abcdef0123456789abcdef","security_epoch":1,"deadline_ns":1{operation}}}"#
         )
+    }
+
+    #[test]
+    fn saved_local_chat_start_names_one_exact_operation_and_bounds_its_descriptor() {
+        use serde_json::json;
+
+        let mut descriptor = json!({
+            "role": "generate",
+            "connection_id": "local/model",
+            "record_revision": u64::MAX,
+            "endpoint": "http://[::1]:1234/v1/",
+            "input_bytes": LEGACY_LOCAL_CHAT_REQUEST_LIMIT,
+        });
+        let operation =
+            |descriptor: &serde_json::Value| format!(r#", "saved_local_chat":{descriptor}"#);
+        for (role, expected) in [
+            ("generate", OriginalSavedLocalChatRole::Generate),
+            ("stream", OriginalSavedLocalChatRole::Stream),
+        ] {
+            descriptor["role"] = json!(role);
+            let named = operation(&descriptor);
+            let frame = start_frame(&named);
+            let RequestStart::SavedLocalChat(chat) = parse_start(START, frame.as_bytes())
+                .unwrap()
+                .request_start()
+                .unwrap()
+            else {
+                panic!("expected Saved Local Chat");
+            };
+            assert_eq!(chat.role, expected);
+            assert_eq!(chat.connection_id, "local/model");
+            assert_eq!(chat.record_revision, u64::MAX);
+            assert_eq!(chat.endpoint, "http://[::1]:1234/v1/");
+            assert_eq!(chat.input_bytes, LEGACY_LOCAL_CHAT_REQUEST_LIMIT);
+            assert_eq!(chat.validate(), Ok(()));
+            assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+            for extra in [
+                named.as_str(),
+                PROVIDER_REQUEST,
+                r#", "saved_orchestration":{"input_bytes":1}"#,
+                r#", "apply":{}"#,
+            ] {
+                let mixed = start_frame(&format!("{named}{extra}"));
+                assert!(parse_start(START, mixed.as_bytes())
+                    .and_then(|parsed| parsed.request_start())
+                    .is_err());
+            }
+        }
+        for (key, value) in [
+            ("role", json!("shell")),
+            ("record_revision", json!(true)),
+            ("record_revision", json!(-1)),
+            ("input_bytes", json!(1.5)),
+            ("profile_id", json!("override")),
+            ("input", json!({})),
+        ] {
+            let mut tampered = descriptor.clone();
+            tampered[key] = value;
+            let frame = start_frame(&operation(&tampered));
+            assert!(parse_start(START, frame.as_bytes()).is_err(), "{key}");
+        }
+        for (key, value, error) in [
+            ("record_revision", json!(0), "invalid"),
+            ("connection_id", json!(""), "invalid"),
+            ("endpoint", json!(""), "invalid"),
+            ("input_bytes", json!(0), "invalid"),
+            (
+                "input_bytes",
+                json!(LEGACY_LOCAL_CHAT_REQUEST_LIMIT + 1),
+                "limit-exceeded",
+            ),
+        ] {
+            let mut tampered = descriptor.clone();
+            tampered[key] = value;
+            let frame = start_frame(&operation(&tampered));
+            let RequestStart::SavedLocalChat(chat) = parse_start(START, frame.as_bytes())
+                .unwrap()
+                .request_start()
+                .unwrap()
+            else {
+                panic!("expected Saved Local Chat");
+            };
+            assert_eq!(chat.validate(), Err(error), "{key}");
+        }
+    }
+
+    #[test]
+    fn saved_local_chat_preserves_exact_bounded_input_and_uses_its_own_single_dispatch() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        client.set_nonblocking(true).unwrap();
+        server.set_nonblocking(true).unwrap();
+        let mut input = vec![b' '; LEGACY_LOCAL_CHAT_REQUEST_LIMIT];
+        input[..5].copy_from_slice(&[b'{', b'\n', 0, 255, b'}']);
+        let deadline = Instant::now() + FRAME_TIMEOUT;
+        let worker = thread::spawn(move || {
+            let input = receive_saved_local_chat_input(
+                &mut server,
+                LEGACY_LOCAL_CHAT_REQUEST_LIMIT,
+                deadline,
+            )
+            .unwrap()
+            .unwrap();
+            let mut wire = Wire::new(server);
+            let dispatch = ReplyRole::SavedLocalChat.effect_check().unwrap();
+            assert!(wire.exchange_authority(dispatch, deadline).is_err());
+            wire.exchange_authority(AuthorityCheck::Live, deadline)
+                .unwrap();
+            wire.exchange_authority(dispatch, deadline).unwrap();
+            wire.exchange_authority(AuthorityCheck::Live, deadline)
+                .unwrap();
+            assert!(wire.exchange_authority(dispatch, deadline).is_err());
+            assert!(wire.authority == WireAuthority::PublicationPermitted);
+            input
+        });
+        assert_eq!(read_header(&mut client, deadline).unwrap(), (BODY_READY, 0));
+        send_frame(&mut client, SAVED_LOCAL_CHAT_INPUT, &input, deadline).unwrap();
+        for (challenge, response) in [
+            (CHECK, LIVE),
+            (DISPATCH_CHECK, DISPATCH_PERMIT),
+            (CHECK, LIVE),
+        ] {
+            assert_eq!(read_header(&mut client, deadline).unwrap(), (challenge, 0));
+            send_frame(&mut client, response, &[], deadline).unwrap();
+        }
+        assert_eq!(worker.join().unwrap(), input);
+    }
+
+    #[test]
+    fn saved_local_chat_rejects_wrong_body_and_dispatch_frames() {
+        for (tag, size, code) in [
+            (ORCHESTRATION_INPUT, 5, "invalid"),
+            (SAVED_LOCAL_CHAT_INPUT, 4, "invalid"),
+            (SAVED_LOCAL_CHAT_INPUT, u32::MAX, "limit-exceeded"),
+            (CANCEL, 0, "cancelled"),
+        ] {
+            let (mut client, mut server) = UnixStream::pair().unwrap();
+            let [a, b, c, d] = size.to_be_bytes();
+            client.write_all(&[tag, a, b, c, d]).unwrap();
+            let deadline = Instant::now() + FRAME_TIMEOUT;
+            assert!(receive_saved_local_chat_input(&mut server, 5, deadline)
+                .unwrap()
+                .is_none());
+            assert_eq!(read_header(&mut client, deadline).unwrap(), (BODY_READY, 0));
+            assert_eq!(
+                read_header(&mut client, deadline).unwrap(),
+                (FAILURE, code.len())
+            );
+            assert_eq!(
+                read_input_bytes(&mut client, code.len(), deadline).unwrap(),
+                code.as_bytes()
+            );
+        }
+        for (response, payload) in [
+            (CANCEL, b"".as_slice()),
+            (PUBLISH_PERMIT, b""),
+            (DISPATCH_PERMIT, b"x"),
+        ] {
+            let (mut client, server) = UnixStream::pair().unwrap();
+            let deadline = Instant::now() + FRAME_TIMEOUT;
+            let peer = thread::spawn(move || {
+                assert_eq!(
+                    read_header(&mut client, deadline).unwrap(),
+                    (DISPATCH_CHECK, 0)
+                );
+                send_frame(&mut client, response, payload, deadline).unwrap();
+                client
+            });
+            let mut wire = Wire::new(server);
+            wire.authority = WireAuthority::Live;
+            assert!(wire
+                .exchange_authority(AuthorityCheck::Dispatch, deadline)
+                .is_err());
+            assert!(wire.authority == WireAuthority::Live);
+            assert_eq!(
+                wire.stop.and_then(Stop::reply),
+                Some(if response == CANCEL {
+                    "cancelled"
+                } else {
+                    "invalid"
+                })
+            );
+            assert!(wire
+                .exchange_authority(AuthorityCheck::Dispatch, deadline)
+                .is_err());
+            let _client = peer.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn saved_local_chat_result_requires_dispatch_and_keeps_raw_or_empty_responses() {
+        use LegacyLocalChatHttpError as Transport;
+        use LegacyLocalChatSourceError as Source;
+
+        let role = ReplyRole::SavedLocalChat;
+        assert!(!role.permits_publication());
+        let dispatched = WireAuthority::PublicationPermitted;
+        assert_eq!(role.validate_result(dispatched, b""), Ok(()));
+        assert_eq!(role.validate_result(dispatched, &[255]), Ok(()));
+        let mut result = vec![0; LEGACY_LOCAL_CHAT_RESPONSE_LIMIT];
+        assert_eq!(role.validate_result(dispatched, &result), Ok(()));
+        result.push(0);
+        assert_eq!(
+            role.validate_result(dispatched, &result),
+            Err("limit-exceeded")
+        );
+        for unpermitted in [WireAuthority::AwaitingLive, WireAuthority::Live] {
+            assert_eq!(role.validate_result(unpermitted, b"{}"), Err("unavailable"));
+        }
+        for (error, code) in [
+            (
+                OriginalLocalChatError::from(Source::SelectionChanged).into(),
+                "denied",
+            ),
+            (
+                OriginalLocalChatError::from(Transport::InvalidRequest).into(),
+                "invalid",
+            ),
+            (
+                OriginalLocalChatError::from(Transport::Revoked).into(),
+                "cancelled",
+            ),
+            (
+                OriginalLocalChatError::from(Transport::ResponseTooLarge).into(),
+                "limit-exceeded",
+            ),
+            (
+                OriginalLocalChatError::RegistryUnavailable.into(),
+                "unavailable",
+            ),
+            (ConversationWriteRequiresLegacyRead.into(), "unavailable"),
+        ] {
+            assert_eq!(role.failure_code(WireAuthority::Live, &error), code);
+            assert_eq!(role.failure_code(dispatched, &error), code);
+        }
     }
 
     fn confirmation_terminal() -> serde_json::Value {
@@ -1962,7 +2473,8 @@ mod tests {
                 .unwrap()
                 .unwrap();
             let mut wire = Wire::new(server);
-            wire.exchange_authority(false, deadline).unwrap();
+            wire.exchange_authority(AuthorityCheck::Live, deadline)
+                .unwrap();
             assert!(wire.authority == WireAuthority::Live);
             input
         });
@@ -2791,7 +3303,9 @@ mod tests {
         server.set_nonblocking(true).unwrap();
         let deadline = Instant::now() + FRAME_TIMEOUT;
         let mut wire = Wire::new(server);
-        assert!(wire.exchange_authority(true, deadline).is_err());
+        assert!(wire
+            .exchange_authority(AuthorityCheck::Publication, deadline)
+            .is_err());
         let peer = thread::spawn(move || {
             assert_eq!(read_header(&mut client, deadline).unwrap(), (CHECK, 0));
             send_frame(&mut client, LIVE, &[], deadline).unwrap();
@@ -2804,11 +3318,16 @@ mod tests {
             send_frame(&mut client, LIVE, &[], deadline).unwrap();
             client
         });
-        wire.exchange_authority(false, deadline).unwrap();
-        wire.exchange_authority(true, deadline).unwrap();
-        wire.exchange_authority(false, deadline).unwrap();
+        wire.exchange_authority(AuthorityCheck::Live, deadline)
+            .unwrap();
+        wire.exchange_authority(AuthorityCheck::Publication, deadline)
+            .unwrap();
+        wire.exchange_authority(AuthorityCheck::Live, deadline)
+            .unwrap();
         let _peer = peer.join().unwrap();
-        assert!(wire.exchange_authority(true, deadline).is_err());
+        assert!(wire
+            .exchange_authority(AuthorityCheck::Publication, deadline)
+            .is_err());
     }
 
     #[test]
@@ -2828,8 +3347,11 @@ mod tests {
             send_frame(&mut client, LIVE, &[], deadline).unwrap();
             client
         });
-        wire.exchange_authority(false, deadline).unwrap();
-        assert!(wire.exchange_authority(true, deadline).is_err());
+        wire.exchange_authority(AuthorityCheck::Live, deadline)
+            .unwrap();
+        assert!(wire
+            .exchange_authority(AuthorityCheck::Publication, deadline)
+            .is_err());
         assert!(wire.authority == WireAuthority::Live);
         peer.join().unwrap();
     }

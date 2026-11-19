@@ -1,6 +1,7 @@
 //! Native access to original Python Profile stores.
 
 use crate::{DataRoot, StoreError};
+use std::path::Path;
 use tobkiri_canon::ids::ProfileId;
 
 /// Outcomes of attempting a legacy Registry publication.
@@ -32,6 +33,16 @@ impl std::fmt::Debug for LegacyRegistryTransaction {
 }
 
 impl DataRoot {
+    /// Open the original Host's Registry root. On macOS the system /var and
+    /// /tmp links are recognized after checking their ownership and target.
+    pub fn open_legacy_registry(path: &Path) -> Result<Self, StoreError> {
+        #[cfg(target_os = "macos")]
+        let physical = macos_platform_root(path);
+        #[cfg(target_os = "macos")]
+        let path = physical.as_ref();
+        Self::open_existing(path)
+    }
+
     /// Read one bounded observation of the original Profile Registry.
     /// Stable absence returns `None`. This never creates a directory or
     /// acquires the publication lock.
@@ -146,6 +157,27 @@ impl DataRoot {
             Err(unavailable("Conversation Store"))
         }
     }
+}
+
+// Keep the original Host's platform aliases without resolving other symlinks.
+#[cfg(target_os = "macos")]
+fn macos_platform_root(root: &Path) -> std::borrow::Cow<'_, Path> {
+    use std::{borrow::Cow, fs, os::unix::fs::MetadataExt};
+
+    for (alias, physical, relative) in [
+        ("/var", "/private/var", "private/var"),
+        ("/tmp", "/private/tmp", "private/tmp"),
+    ] {
+        if let Ok(suffix) = root.strip_prefix(alias)
+            && fs::symlink_metadata(alias)
+                .is_ok_and(|metadata| metadata.is_symlink() && metadata.uid() == 0)
+            && fs::read_link(alias)
+                .is_ok_and(|link| link == Path::new(physical) || link == Path::new(relative))
+        {
+            return Cow::Owned(Path::new(physical).join(suffix));
+        }
+    }
+    Cow::Borrowed(root)
 }
 
 impl LegacyRegistryTransaction {

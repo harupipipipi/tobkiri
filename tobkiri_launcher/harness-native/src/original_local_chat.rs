@@ -5,9 +5,9 @@ use tobkiri_canon::{
     AllocationBudget, AllocationKind, AllocationRequest, CoreBuffer, ids::ProfileId,
 };
 use tobkiri_gate::CoreCancellation;
-pub use tobkiri_pack_provider_registry_rust::LegacyLocalChatSelection;
-use tobkiri_pack_provider_registry_rust::{
-    LegacyLocalChatSourceError, resolve_legacy_local_chat_address,
+use tobkiri_pack_provider_registry_rust::resolve_legacy_local_chat_address;
+pub use tobkiri_pack_provider_registry_rust::{
+    LegacyLocalChatSelection, LegacyLocalChatSourceError,
 };
 use tobkiri_store::DataRoot;
 pub use tobkiri_wasm::LegacyLocalChatHttpCheck as OriginalLocalChatCheck;

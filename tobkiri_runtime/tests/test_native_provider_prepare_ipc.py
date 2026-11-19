@@ -2592,6 +2592,319 @@ def test_saved_orchestration_cancels_after_guard_revocation(
         step(_saved_orchestration_request(borrow, {"request": {}}))
 
 
+@contextmanager
+def _served_saved_local_chat(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeSavedLocalChatRequest], bytes]]:
+    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, "1")
+    with _served(monkeypatch, serve):
+        execute = ipc.capture_launcher_saved_local_chat_executor()
+        assert execute is not None
+        yield execute
+
+
+def _saved_local_chat_request(
+    borrow: _Borrow, *, role: ipc.SavedLocalChatRole = "generate",
+    body: bytes = b'{"model":"fixture"}',
+) -> ipc.NativeSavedLocalChatRequest:
+    return ipc.NativeSavedLocalChatRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        role=role,
+        connection_id="fixture-local",
+        record_revision=7,
+        endpoint="http://127.0.0.1:11434/v1",
+        input=body,
+        assert_dispatch=lambda: None,
+        mark_dispatch_possible=lambda: None,
+    )
+
+
+def _accept_saved_local_chat_body(peer: socket.socket, expected: bytes) -> None:
+    _send(peer, 14)
+    assert _receive(peer) == (16, expected)
+
+
+def _check_saved_local_chat_live(peer: socket.socket) -> None:
+    _send(peer, 2)
+    assert _receive(peer) == (3, b"")
+
+
+def _confirm_saved_local_chat_cancellation(peer: socket.socket) -> None:
+    assert _receive(peer) == (9, b"")
+    _send(peer, 8, b"cancelled")
+    assert peer.recv(1) == b""
+
+
+def test_saved_local_chat_capture_requires_managed_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ipc._SOCKET_ENV, raising=False)
+    monkeypatch.delenv(ipc._OWNER_ENV, raising=False)
+    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, "1")
+    assert ipc.capture_launcher_saved_local_chat_executor() is None
+    monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
+    monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, "true")
+    assert ipc.capture_launcher_saved_local_chat_executor() is None
+    monkeypatch.delenv(ipc._SAVED_LOCAL_CHAT_ENV)
+    assert ipc.capture_launcher_saved_local_chat_executor() is None
+    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, "1")
+    assert ipc.capture_launcher_saved_local_chat_executor() is not None
+
+
+@pytest.mark.parametrize("role", ["generate", "stream"])
+def test_saved_local_chat_passes_exact_bytes_and_permits_dispatch_once(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.SavedLocalChatRole,
+) -> None:
+    borrow = _Borrow()
+    original = ('{ "z": "ローカル", "stream": false, "a": "value" }\n').encode()
+    body = (
+        original + b" " * (1024 * 1024 - len(original))
+        if role == "generate"
+        else original
+    )
+    reply = (b'\xff' + b"x" * (4 * 1024 * 1024 - 1)) if role == "generate" else b""
+    guard_calls: list[str] = []
+
+    def assert_dispatch() -> None:
+        borrow.assert_current()
+        assert not guard_calls
+        guard_calls.append("authority")
+
+    def mark_dispatch() -> None:
+        borrow.assert_current()
+        assert guard_calls == ["authority"]
+        guard_calls.append("marker")
+
+    request = replace(
+        _saved_local_chat_request(borrow, role=role, body=body),
+        assert_dispatch=assert_dispatch,
+        mark_dispatch_possible=mark_dispatch,
+    )
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert tag == 1
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "saved_local_chat": {
+                "role": role,
+                "connection_id": "fixture-local",
+                "record_revision": 7,
+                "endpoint": "http://127.0.0.1:11434/v1",
+                "input_bytes": len(body),
+            },
+        }
+        peer.settimeout(0.02)
+        with pytest.raises(TimeoutError):
+            peer.recv(1)
+        peer.settimeout(5)
+        _accept_saved_local_chat_body(peer, body)
+        _check_saved_local_chat_live(peer)
+        _send(peer, 17)
+        assert _receive(peer) == (18, b"")
+        assert guard_calls == ["authority", "marker"]
+        _check_saved_local_chat_live(peer)
+        _send(peer, 7, reply)
+        assert peer.recv(1) == b""
+
+    with _served_saved_local_chat(monkeypatch, serve) as execute:
+        monkeypatch.delenv(ipc._SAVED_LOCAL_CHAT_ENV)
+        monkeypatch.delenv(ipc._SOCKET_ENV)
+        monkeypatch.delenv(ipc._OWNER_ENV)
+        assert execute(request) == reply
+
+
+@pytest.mark.parametrize(
+    ("body", "code"), [(b"", "invalid"), (b"x" * (1024 * 1024 + 1), "limit-exceeded")],
+)
+def test_saved_local_chat_rejects_out_of_bounds_body_before_connection(
+    monkeypatch: pytest.MonkeyPatch, body: bytes, code: str,
+) -> None:
+    class UnexpectedSocket:
+        def __init__(self, *args: Any) -> None:
+            pytest.fail("invalid input reached the Launcher socket")
+
+    monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, "1")
+    monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
+    monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+    monkeypatch.setattr(ipc.os, "getppid", os.getpid)
+    monkeypatch.setattr(ipc.socket, "socket", UnexpectedSocket)
+    execute = ipc.capture_launcher_saved_local_chat_executor()
+    assert execute is not None
+    with pytest.raises(ipc.NativeSavedLocalChatFailure) as failure:
+        execute(_saved_local_chat_request(_Borrow(), body=body))
+    assert failure.value.code == code
+
+
+@pytest.mark.parametrize(
+    ("phase", "tag", "payload", "exception_type"),
+    [
+        ("start", 10, b"", ipc.NativeProviderPrepareUnavailable),
+        ("start", 8, b"unavailable", ipc.NativeSavedLocalChatFailure),
+        ("body", 8, b"invalid", ipc.NativeSavedLocalChatFailure),
+        ("permit", 8, b"limit-exceeded", ipc.NativeSavedLocalChatFailure),
+        ("permit", 8, b"cancelled", ipc.NativeSavedLocalChatFailure),
+        ("body", 10, b"", ipc._ProtocolError),
+        ("body", 17, b"", ipc._ProtocolError),
+        ("live", 7, b"premature", ipc._ProtocolError),
+        ("permit", 17, b"", ipc._ProtocolError),
+    ],
+)
+def test_saved_local_chat_enforces_terminal_and_dispatch_order(
+    monkeypatch: pytest.MonkeyPatch, phase: str, tag: int, payload: bytes,
+    exception_type: type[RuntimeError],
+) -> None:
+    request = _saved_local_chat_request(_Borrow())
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if phase != "start":
+            _accept_saved_local_chat_body(peer, request.input)
+        if phase in ("live", "permit"):
+            _check_saved_local_chat_live(peer)
+        if phase == "permit":
+            _send(peer, 17)
+            assert _receive(peer) == (18, b"")
+        _send(peer, tag, payload)
+        if exception_type is ipc._ProtocolError:
+            _confirm_saved_local_chat_cancellation(peer)
+        else:
+            assert peer.recv(1) == b""
+
+    with (
+        _served_saved_local_chat(monkeypatch, serve) as execute,
+        pytest.raises(exception_type) as failure,
+    ):
+        execute(request)
+    if isinstance(failure.value, ipc.NativeSavedLocalChatFailure):
+        assert failure.value.code == payload.decode("ascii")
+
+
+@pytest.mark.parametrize("revoke_after", ["authority", "marker", "permit"])
+def test_saved_local_chat_waits_for_cancellation_after_authority_revocation(
+    monkeypatch: pytest.MonkeyPatch, revoke_after: str,
+) -> None:
+    borrow = _Borrow()
+    marked = False
+
+    def assert_dispatch() -> None:
+        if revoke_after == "authority":
+            borrow.revoked.set()
+
+    def mark_dispatch() -> None:
+        nonlocal marked
+        marked = True
+        if revoke_after == "marker":
+            borrow.revoked.set()
+
+    request = replace(
+        _saved_local_chat_request(borrow),
+        assert_dispatch=assert_dispatch,
+        mark_dispatch_possible=mark_dispatch,
+    )
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _accept_saved_local_chat_body(peer, request.input)
+        _check_saved_local_chat_live(peer)
+        _send(peer, 17)
+        if revoke_after == "permit":
+            assert _receive(peer) == (18, b"")
+            borrow.revoked.set()
+        _confirm_saved_local_chat_cancellation(peer)
+
+    with (
+        _served_saved_local_chat(monkeypatch, serve) as execute,
+        pytest.raises(PermissionError, match="fixture lease revoked"),
+    ):
+        execute(request)
+    assert marked == (revoke_after != "authority")
+
+
+def test_saved_local_chat_rejects_fallback_requested_by_authority_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def assert_dispatch() -> None:
+        raise ipc.NativeProviderPrepareUnavailable("unavailable dependency")
+
+    request = replace(
+        _saved_local_chat_request(_Borrow()), assert_dispatch=assert_dispatch,
+    )
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _accept_saved_local_chat_body(peer, request.input)
+        _check_saved_local_chat_live(peer)
+        _send(peer, 17)
+        _confirm_saved_local_chat_cancellation(peer)
+
+    with (
+        _served_saved_local_chat(monkeypatch, serve) as execute,
+        pytest.raises(ipc.NativeSavedLocalChatFailure) as failure,
+    ):
+        execute(request)
+    assert failure.value.code == "unavailable"
+
+
+@pytest.mark.parametrize("oversized_result", [False, True])
+def test_saved_local_chat_reports_unconfirmed_dispatch_without_cleanup_proof(
+    monkeypatch: pytest.MonkeyPatch, oversized_result: bool,
+) -> None:
+    request = _saved_local_chat_request(_Borrow())
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _accept_saved_local_chat_body(peer, request.input)
+        _check_saved_local_chat_live(peer)
+        _send(peer, 17)
+        assert _receive(peer) == (18, b"")
+        if oversized_result:
+            peer.sendall(_HEADER.pack(7, 4 * 1024 * 1024 + 1))
+            assert _receive(peer) == (9, b"")
+            assert peer.recv(1) == b""
+
+    with (
+        _served_saved_local_chat(monkeypatch, serve) as execute,
+        pytest.raises(ipc.NativeSavedLocalChatDispatchUnconfirmed),
+    ):
+        execute(request)
+
+
+@pytest.mark.parametrize("terminal_tag", [7, 8])
+def test_saved_local_chat_drains_to_terminal_after_original_deadline(
+    monkeypatch: pytest.MonkeyPatch, terminal_tag: int,
+) -> None:
+    request = _saved_local_chat_request(_Borrow(lifetime=1.0))
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _accept_saved_local_chat_body(peer, request.input)
+        _check_saved_local_chat_live(peer)
+        _send(peer, 17)
+        assert _receive(peer) == (18, b"")
+        assert _receive(peer) == (9, b"")
+        payload = b"late successful response" if terminal_tag == 7 else b"cancelled"
+        _send(peer, terminal_tag, payload)
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_local_chat(monkeypatch, serve) as execute,
+        pytest.raises(TimeoutError, match="deadline elapsed"),
+    ):
+        execute(request)
+
+
 def _model_resolve_request(
     borrow: _Borrow,
     role: ipc.ModelResolveRole = "generate",

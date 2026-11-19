@@ -19,12 +19,19 @@ use std::{
 use anyhow::{ensure, Context, Result};
 use tauri::AppHandle;
 
+use crate::native_provider_prepare_ipc::{admit_connection, AdmittedConnection};
+
 pub(crate) const SOCKET_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET";
 pub(crate) const OWNER_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER";
 pub(crate) const APPEND_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_APPEND";
 pub(crate) const TURN_READ_ENV: &str = "TOBKIRI_NATIVE_SAVED_TURN_READ";
 pub(crate) const TURN_START_ENV: &str = "TOBKIRI_NATIVE_SAVED_TURN_START";
 pub(crate) const SAVED_ORCHESTRATION_ENV: &str = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION";
+pub(crate) const SAVED_LOCAL_CHAT_ENV: &str = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT";
+
+// The original production Broker can execute at most sixteen requests.
+// Keep their socket handlers bounded while the native Jobs own actual admission.
+const MAX_LOCAL_CHAT_HANDLERS: usize = 16;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProviderPrepareEndpoint {
@@ -44,7 +51,86 @@ impl Drop for PrivateSocketDirectory {
 #[derive(Default)]
 struct ServiceState {
     stopping: AtomicBool,
-    active: Mutex<Option<UnixStream>>,
+    active: Mutex<ActiveConnections>,
+}
+
+#[derive(Default)]
+struct ActiveConnections {
+    admitting_or_inline: Option<UnixStream>,
+    local_chat: Vec<LocalChatHandler>,
+}
+
+struct LocalChatHandler {
+    monitored: UnixStream,
+    thread: JoinHandle<()>,
+}
+
+impl ActiveConnections {
+    fn close(&self) {
+        for stream in self
+            .admitting_or_inline
+            .iter()
+            .chain(self.local_chat.iter().map(|handler| &handler.monitored))
+        {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+    }
+
+    fn reap_local_chat(&mut self) {
+        let mut index = 0;
+        while index < self.local_chat.len() {
+            if self.local_chat[index].thread.is_finished() {
+                let handler = self.local_chat.swap_remove(index);
+                join_local_chat(handler);
+            } else {
+                index += 1;
+            }
+        }
+    }
+}
+
+impl ServiceState {
+    fn active(&self) -> std::sync::MutexGuard<'_, ActiveConnections> {
+        self.active
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn stop(&self) {
+        self.stopping.store(true, Ordering::Release);
+        self.active().close();
+    }
+
+    fn start_local_chat(&self, app: &AppHandle, admitted: AdmittedConnection) -> Result<()> {
+        let mut active = self.active();
+        if self.stopping.load(Ordering::Acquire)
+            || active.local_chat.len() >= MAX_LOCAL_CHAT_HANDLERS
+        {
+            drop(active);
+            return admitted.reject_unavailable();
+        }
+        active.local_chat.try_reserve(1)?;
+        let monitored = active
+            .admitting_or_inline
+            .take()
+            .context("missing admitted local Provider socket")?;
+        let app = app.clone();
+        let thread = thread::Builder::new()
+            .name("tobkiri-saved-local-chat".into())
+            .spawn(move || report_unverified(admitted.run(&app)))?;
+        active
+            .local_chat
+            .push(LocalChatHandler { monitored, thread });
+        Ok(())
+    }
+
+    fn finish(&self) {
+        self.stop();
+        let handlers = std::mem::take(&mut self.active().local_chat);
+        for handler in handlers {
+            join_local_chat(handler);
+        }
+    }
 }
 
 pub(crate) struct ProviderPrepareService {
@@ -91,15 +177,7 @@ impl ProviderPrepareService {
     }
 
     pub(crate) fn request_stop(&self) {
-        self.state.stopping.store(true, Ordering::Release);
-        let active = self
-            .state
-            .active
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        if let Some(stream) = active.as_ref() {
-            let _ = stream.shutdown(Shutdown::Both);
-        }
+        self.state.stop();
     }
 
     pub(crate) fn join_until(&self, deadline: Instant) -> Result<()> {
@@ -133,6 +211,7 @@ impl Drop for ProviderPrepareService {
 
 fn serve(app: AppHandle, listener: UnixListener, state: Arc<ServiceState>) {
     while !state.stopping.load(Ordering::Acquire) {
+        state.active().reap_local_chat();
         match listener.accept() {
             Ok((stream, _)) => {
                 let monitored = match stream.try_clone().context("track Provider connection") {
@@ -140,25 +219,21 @@ fn serve(app: AppHandle, listener: UnixListener, state: Arc<ServiceState>) {
                     Err(_) => continue,
                 };
                 {
-                    let mut active = state
-                        .active
-                        .lock()
-                        .unwrap_or_else(|error| error.into_inner());
+                    let mut active = state.active();
                     if state.stopping.load(Ordering::Acquire) {
                         break;
                     }
-                    *active = Some(monitored);
+                    active.admitting_or_inline = Some(monitored);
                 }
-                // Serve one connection at a time. If cleanup is unconfirmed,
-                // the native job tracker retains the original worker and owner.
-                if crate::native_provider_prepare_ipc::handle_connection(&app, stream).is_err() {
-                    log::debug!("native Provider connection ended without a verified reply");
-                }
-                state
-                    .active
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner())
-                    .take();
+                let result = admit_connection(&app, stream).and_then(|admitted| match admitted {
+                    Some(connection) if connection.is_saved_local_chat() => {
+                        state.start_local_chat(&app, connection)
+                    }
+                    Some(connection) => connection.run(&app),
+                    None => Ok(()),
+                });
+                report_unverified(result);
+                state.active().admitting_or_inline.take();
             }
             Err(error) if error.kind() == ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(20))
@@ -166,5 +241,56 @@ fn serve(app: AppHandle, listener: UnixListener, state: Arc<ServiceState>) {
             Err(error) if error.kind() == ErrorKind::Interrupted => continue,
             Err(_) => break,
         }
+    }
+    state.finish();
+}
+
+fn report_unverified(result: Result<()>) {
+    if result.is_err() {
+        log::debug!("native Provider connection ended without a verified reply");
+    }
+}
+
+fn join_local_chat(handler: LocalChatHandler) {
+    if handler.thread.join().is_err() {
+        log::debug!("native local Provider socket handler terminated unexpectedly");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    #[test]
+    fn stops_the_inline_and_local_sockets_and_joins_the_local_handler() {
+        let state = ServiceState::default();
+        let (inline, mut caller) = UnixStream::pair().unwrap();
+        let (mut worker, mut provider) = UnixStream::pair().unwrap();
+        let monitored = worker.try_clone().unwrap();
+        let joined = Arc::new(AtomicBool::new(false));
+        let completed = Arc::clone(&joined);
+        let timeout = Some(Duration::from_secs(2));
+        caller.set_read_timeout(timeout).unwrap();
+        provider.set_read_timeout(timeout).unwrap();
+        worker.set_read_timeout(timeout).unwrap();
+        let thread = thread::spawn(move || {
+            assert_eq!(worker.read(&mut [0]).unwrap(), 0);
+            completed.store(true, Ordering::Release);
+        });
+        {
+            let mut active = state.active();
+            active.admitting_or_inline = Some(inline);
+            active
+                .local_chat
+                .push(LocalChatHandler { monitored, thread });
+        }
+
+        state.finish();
+
+        assert_eq!(caller.read(&mut [0]).unwrap(), 0);
+        assert_eq!(provider.read(&mut [0]).unwrap(), 0);
+        assert!(state.active().local_chat.is_empty());
+        assert!(joined.load(Ordering::Acquire));
     }
 }
