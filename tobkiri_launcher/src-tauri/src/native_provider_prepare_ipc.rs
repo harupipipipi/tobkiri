@@ -1158,9 +1158,10 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
     type Error = &'static str;
 
     fn try_from(wire: ProviderSnapshotWire) -> std::result::Result<Self, Self::Error> {
+        use tobkiri_harness_native::OriginalWorkflowHealthCaller;
         use OriginalProviderSnapshotRole::{
             Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog,
-            ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
+            ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow, WorkflowHealth,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -1170,15 +1171,6 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
         };
 
         if let Some(entry) = wire.entry {
-            let caller = match wire.role.as_str() {
-                "workflow-text" => Text,
-                "workflow-messages" => Messages,
-                "workflow-text-adapter" => TextAdapter,
-                "workflow-messages-adapter" => MessagesAdapter,
-                "workflow-audio-transcribe" => AudioTranscribe,
-                "workflow-audio-speech" => AudioSpeech,
-                _ => return Err("Provider Snapshot entry requires a Workflow role"),
-            };
             let entry = match entry.as_str() {
                 "run.advance" => Advance,
                 "run.cancel" => Cancel,
@@ -1188,9 +1180,20 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
                 "run.step.retry" => StepRetry,
                 _ => return Err("unknown Workflow Provider Snapshot entry"),
             };
-            return Ok(Self {
-                role: Workflow { caller, entry },
-            });
+            let workflow = |caller| Workflow { caller, entry };
+            let health = |caller| WorkflowHealth { caller, entry };
+            let role = match wire.role.as_str() {
+                "workflow-text" => workflow(Text),
+                "workflow-messages" => workflow(Messages),
+                "workflow-text-adapter" => workflow(TextAdapter),
+                "workflow-messages-adapter" => workflow(MessagesAdapter),
+                "workflow-audio-transcribe" => workflow(AudioTranscribe),
+                "workflow-audio-speech" => workflow(AudioSpeech),
+                "workflow-health-text" => health(OriginalWorkflowHealthCaller::Text),
+                "workflow-health-messages" => health(OriginalWorkflowHealthCaller::Messages),
+                _ => return Err("Provider Snapshot entry requires a Workflow role"),
+            };
+            return Ok(Self { role });
         }
         let snapshot = |role| Ok(Self { role });
         match wire.role.as_str() {
@@ -3340,6 +3343,7 @@ mod tests {
 
     #[test]
     fn workflow_provider_snapshot_start_decodes_exact_callers_and_entries() {
+        use tobkiri_harness_native::OriginalWorkflowHealthCaller;
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
         };
@@ -3347,21 +3351,31 @@ mod tests {
             Advance, Cancel, Selected, StepExecute, StepResume, StepRetry,
         };
 
-        for (role_name, caller) in [
-            ("workflow-text", Text),
-            ("workflow-messages", Messages),
-            ("workflow-text-adapter", TextAdapter),
-            ("workflow-messages-adapter", MessagesAdapter),
-            ("workflow-audio-transcribe", AudioTranscribe),
-            ("workflow-audio-speech", AudioSpeech),
+        for (entry_name, entry) in [
+            ("run.advance", Advance),
+            ("run.cancel", Cancel),
+            ("run.selected", Selected),
+            ("run.step.execute", StepExecute),
+            ("run.step.resume", StepResume),
+            ("run.step.retry", StepRetry),
         ] {
-            for (entry_name, entry) in [
-                ("run.advance", Advance),
-                ("run.cancel", Cancel),
-                ("run.selected", Selected),
-                ("run.step.execute", StepExecute),
-                ("run.step.resume", StepResume),
-                ("run.step.retry", StepRetry),
+            let workflow = |caller| OriginalProviderSnapshotRole::Workflow { caller, entry };
+            let health = |caller| OriginalProviderSnapshotRole::WorkflowHealth { caller, entry };
+            for (role_name, expected) in [
+                ("workflow-text", workflow(Text)),
+                ("workflow-messages", workflow(Messages)),
+                ("workflow-text-adapter", workflow(TextAdapter)),
+                ("workflow-messages-adapter", workflow(MessagesAdapter)),
+                ("workflow-audio-transcribe", workflow(AudioTranscribe)),
+                ("workflow-audio-speech", workflow(AudioSpeech)),
+                (
+                    "workflow-health-text",
+                    health(OriginalWorkflowHealthCaller::Text),
+                ),
+                (
+                    "workflow-health-messages",
+                    health(OriginalWorkflowHealthCaller::Messages),
+                ),
             ] {
                 let fields = format!(
                     r#", "provider_snapshot":{{"role":"{role_name}","entry":"{entry_name}"}}"#
@@ -3369,7 +3383,6 @@ mod tests {
                 let frame = start_frame(&fields);
                 let start = parse_start(START, frame.as_bytes()).unwrap();
                 assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
-                let expected = OriginalProviderSnapshotRole::Workflow { caller, entry };
                 assert!(matches!(
                     start.operation().unwrap(),
                     NativeRegistryRequest::ProviderSnapshot { role } if role == expected
@@ -3446,6 +3459,13 @@ mod tests {
             r#", "provider_snapshot":{"role":"workflow-messages-adapter","entry":"run.advance","profile_id":"elsewhere"}"#,
             r#", "provider_snapshot":{"role":"workflow-generate-adapter","entry":"run.advance"}"#,
             r#", "provider_snapshot":{"role":"workflow-stream","entry":"run.advance"}"#,
+            r#", "provider_snapshot":{"role":"workflow-health-text"}"#,
+            r#", "provider_snapshot":{"role":"workflow-health-messages","entry":null}"#,
+            r#", "provider_snapshot":{"role":"workflow-health-text","entry":"run.resume"}"#,
+            r#", "provider_snapshot":{"role":"workflow-health-text","entry":"run.advance","input_bytes":32}"#,
+            r#", "provider_snapshot":{"role":"workflow-health-messages","entry":"run.advance","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"workflow-health-text-adapter","entry":"run.advance"}"#,
+            r#", "provider_snapshot":{"role":"workflow-health-audio-speech","entry":"run.advance"}"#,
             r#", "provider_snapshot":["workflow-text","run.advance"]"#,
             r#", "provider_snapshot":{"role":"stream"}, "provider_snapshot":{"role":"stream"}"#,
         ] {

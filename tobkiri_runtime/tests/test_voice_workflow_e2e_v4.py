@@ -14,10 +14,10 @@ real credentials or network access:
           still run; only the socket is faked)
       -> typed text and Messages Gateway ops -> real ``run.observe`` bounded projection.
 
-Nothing about the Workflow invoker, Provider callbacks, approvals, or
-Broker dispatch is stubbed: every hop crosses the production captured
-interfaces.  The fake opener asserts exact request URLs, the synthetic
-Bearer credential, and returns canned wire responses by endpoint suffix.
+The Workflow invoker, approvals, and Broker dispatch use the production
+captured interfaces. The native cases inject Registry or health replies
+through the Host's native reader port. The fake opener checks the request
+URLs and synthetic Bearer credential before returning a response by endpoint.
 
 This is an executable integration regression with synthetic owner-store setup
 and a fake wire opener. It does not claim native acceptance, real model output,
@@ -30,6 +30,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,11 @@ from core_runtime.authority.v4 import AuthorityDenied, AuthorityStore
 from core_runtime.bootstrap.profile_capture import (
     capture_default_profile,
     prepare_default_profile_confirmation,
+)
+from ecosystem.rumi_ai_gateway_pack.runtime.gateway import (
+    HEALTH_CONTRACT,
+    HEALTH_GENERATE_OPERATION,
+    HEALTH_STREAM_OPERATION,
 )
 from ecosystem.rumi_credential_broker_pack.runtime.service import (
     CredentialBrokerService,
@@ -63,6 +69,7 @@ from tests.test_workflow_v4_pack_control_integration import (
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.credential_store import host_credential_store_factory
 from tobkiri_host.ports import InteractiveApprovalDecisionCommand
+from tobkiri_host.runtime import V4DispatchSession
 from tobkiri_protocol.canonical import canonical_json
 
 _SESSION_ID = "voice-e2e." + "a" * 32
@@ -354,9 +361,9 @@ def test_audio_palette_schemas_are_finite() -> None:
     assert speech_props.get("voice", {}).get("type") == "string"
 
 
-@pytest.mark.parametrize("native_registry", [False, True], ids=["legacy", "native"])
+@pytest.mark.parametrize("read_path", ("legacy", "native", "health"))
 def test_voice_chain_end_to_end(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_registry: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, read_path: str,
 ) -> None:
     """Published voice run crosses captured Workflow, approvals, Broker and observe.
 
@@ -368,13 +375,21 @@ def test_voice_chain_end_to_end(
         credential_transport, "_open_pinned_request", _fake_opener(calls)
     )
     observed_dispatches: list[RequestEnvelope] = []
-    registry_reads: list[
+    native_reads: list[
         tuple[ipc.NativeProviderSnapshotRequest, tuple[RequestEnvelope, ...]]
     ] = []
+    health_results: list[tuple[RequestEnvelope, Mapping[str, Any]]] = []
+    rejected_stream_health: list[str] = []
+    native_health = {"providers": [{
+        "provider_instance_id": _PROVIDER_INSTANCE,
+        "status": "available", "observed_at": time.time() + 0.125, "verified": True,
+    }]}
     instance = "1" * 32
     operations_by_role = {
         "workflow-text": ("rumi_ai_gateway_pack.ai-gateway.text-generate",),
         "workflow-messages": ("rumi_ai_gateway_pack.ai-gateway.messages-generate",),
+        "workflow-health-text": ("rumi_ai_gateway_pack.ai-gateway.text-generate",),
+        "workflow-health-messages": ("rumi_ai_gateway_pack.ai-gateway.messages-generate",),
         "workflow-text-adapter": (
             "rumi_provider_adapters_pack.provider-generate",
             "rumi_ai_gateway_pack.ai-gateway.text-generate",
@@ -395,20 +410,35 @@ def test_voice_chain_end_to_end(
 
     def snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         request.assert_current()
-        registry_reads.append((request, tuple(observed_dispatches)))
+        native_reads.append((request, tuple(observed_dispatches)))
+        if request.role in ipc.WORKFLOW_PROVIDER_HEALTH_ROLES.values():
+            return native_health
         return ProviderRegistry(
             request.context.profile_id, user_data_root=tmp_path / "user-data",
         ).snapshot()
 
-    snapshot.supports_workflow = True
-    snapshot.supports_workflow_adapter = True
-    if native_registry:
+    snapshot.supports_workflow = read_path == "native"
+    snapshot.supports_workflow_adapter = read_path == "native"
+    snapshot.supports_workflow_health = read_path == "health"
+    if read_path != "legacy":
         monkeypatch.setattr(
             ipc, "capture_launcher_provider_snapshot_reader", lambda: snapshot,
         )
+    if read_path == "health":
+        invoke_provider = V4DispatchSession.invoke
+
+        def invoke(session, contract, operation, payload, **kwargs):
+            if (contract, operation) == (HEALTH_CONTRACT, HEALTH_GENERATE_OPERATION):
+                try:
+                    invoke_provider(session, contract, HEALTH_STREAM_OPERATION, payload, **kwargs)
+                except AuthorityDenied:
+                    rejected_stream_health.append(HEALTH_STREAM_OPERATION)
+            return invoke_provider(session, contract, operation, payload, **kwargs)
+
+        monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     session = _session(tmp_path, monkeypatch)
     try:
-        if native_registry:
+        if read_path != "legacy":
             publish = session.native_provider_runtime_publish
             assert publish is not None
             publish(instance, lambda: None)
@@ -416,7 +446,10 @@ def test_voice_chain_end_to_end(
 
         def observe_dispatch(backend, envelope, *args, **kwargs):
             observed_dispatches.append(envelope)
-            return dispatch(backend, envelope, *args, **kwargs)
+            result = dispatch(backend, envelope, *args, **kwargs)
+            if envelope.contract_id == HEALTH_CONTRACT:
+                health_results.append((envelope, result))
+            return result
 
         monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
         palette = _invoke(session, "operation.palette", {})
@@ -546,17 +579,34 @@ def test_voice_chain_end_to_end(
         assert messages["state"] == "succeeded", messages
         assert messages["outcome"]["text"] == _REPLY
 
-        if native_registry:
-            assert [read.role for read, _ in registry_reads] == [
+        if read_path == "native":
+            assert [read.role for read, _ in native_reads] == [
                 "workflow-audio-transcribe", "workflow-text",
                 "workflow-text-adapter", "workflow-audio-speech",
                 "workflow-messages", "workflow-messages-adapter",
             ]
-            for read, dispatches in registry_reads:
+        elif read_path == "health":
+            assert [read.role for read, _ in native_reads] == [
+                "workflow-health-text", "workflow-health-messages",
+            ]
+            assert rejected_stream_health == [HEALTH_STREAM_OPERATION, HEALTH_STREAM_OPERATION]
+            assert health_results == [
+                (dispatches[-1], native_health) for _, dispatches in native_reads
+            ]
+        else:
+            assert not native_reads
+        if read_path != "legacy":
+            for read, dispatches in native_reads:
                 envelope = dispatches[-1]
-                assert envelope.operation_id == (
-                    "rumi_provider_registry_pack.provider-registry-resource.generate"
-                )
+                if read_path == "health":
+                    assert (envelope.contract_id, envelope.operation_id) == (
+                        HEALTH_CONTRACT, HEALTH_GENERATE_OPERATION,
+                    )
+                    assert envelope.payload == {}
+                else:
+                    assert envelope.operation_id == (
+                        "rumi_provider_registry_pack.provider-registry-resource.generate"
+                    )
                 assert read.context is envelope.context
                 assert read.runtime_instance == instance
                 assert read.deadline_monotonic == envelope.deadline_monotonic

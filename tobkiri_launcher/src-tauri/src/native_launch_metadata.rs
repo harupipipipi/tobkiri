@@ -29,8 +29,9 @@ use tobkiri_harness_native::{
     OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
     OriginalSavedTurnStartChoice, OriginalShellProviderSnapshotSelection,
     OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice, OriginalWorkflowProviderSnapshotSelection,
-    OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
+    OriginalUsageCostChoice, OriginalWorkflowHealthCaller,
+    OriginalWorkflowProviderSnapshotSelection, OriginalWorkflowSnapshotCaller,
+    OriginalWorkflowSnapshotEntry,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
@@ -225,6 +226,9 @@ impl VerifiedRegistryLaunch {
             OriginalProviderSnapshotRole::GatewayHealth { role, side_chat } => {
                 source.gateway_health[usize::from(side_chat)][role.index()].as_ref()?
             }
+            OriginalProviderSnapshotRole::WorkflowHealth { caller, entry } => source
+                .workflow_health
+                .bundle(caller.snapshot_caller(), entry)?,
             _ if !source.raw_snapshot_declared => return None,
             OriginalProviderSnapshotRole::Adapter(role) => {
                 &self.local_chat.as_ref()?.entry(role)?.bundle
@@ -243,10 +247,7 @@ impl VerifiedRegistryLaunch {
                 &entry.bundle
             }
             OriginalProviderSnapshotRole::Workflow { caller, entry } => {
-                if !source.workflow.entries_by_caller[caller.index()][entry.index()] {
-                    return None;
-                }
-                source.workflow.callers[caller.index()].as_ref()?
+                source.workflow.bundle(caller, entry)?
             }
             OriginalProviderSnapshotRole::ShellSettings => source.shell_settings.as_ref()?,
             OriginalProviderSnapshotRole::ModelAccessRead => source.model_access_read.as_ref()?,
@@ -266,6 +267,22 @@ impl VerifiedRegistryLaunch {
         self.provider_snapshot
             .as_ref()
             .filter(|source| source.raw_snapshot_declared)
+    }
+
+    /// Whether the verified Provider Pack exposes the raw Registry read port.
+    pub(crate) fn permits_raw_provider_snapshot(&self) -> bool {
+        self.raw_provider_snapshot().is_some()
+    }
+
+    /// Require a verified Health port and at least one signed Workflow Health path.
+    pub(crate) fn permits_workflow_provider_health(&self) -> bool {
+        self.provider_snapshot.as_ref().is_some_and(|source| {
+            OriginalWorkflowHealthCaller::ALL.into_iter().any(|caller| {
+                source
+                    .workflow_health
+                    .permits_any_entry(caller.snapshot_caller())
+            })
+        })
     }
 
     /// Require the original ordinary saved chain and verified pure Wasm computation.
@@ -801,6 +818,7 @@ struct VerifiedProviderSnapshotSource {
     gateway: [Option<VerifiedGatewayProviderSnapshotEntry>; 2],
     gateway_health: [[Option<VerifiedOrdinarySavedBundle>; OriginalModelResolveRole::ALL.len()]; 2],
     workflow: VerifiedWorkflowProviderSnapshot,
+    workflow_health: VerifiedWorkflowProviderSnapshot,
     shell_settings: Option<VerifiedOrdinarySavedBundle>,
     model_save: Option<VerifiedOrdinarySavedBundle>,
     model_search: Option<VerifiedOrdinarySavedBundle>,
@@ -821,6 +839,33 @@ struct VerifiedWorkflowProviderSnapshot {
 }
 
 impl VerifiedWorkflowProviderSnapshot {
+    fn from_verified_routes(
+        entries: [bool; OriginalWorkflowSnapshotEntry::ALL.len()],
+        callers: [Option<VerifiedOrdinarySavedBundle>; OriginalWorkflowSnapshotCaller::ALL.len()],
+    ) -> Self {
+        Self {
+            entries_by_caller: callers.each_ref().map(|caller| {
+                if caller.is_some() {
+                    entries
+                } else {
+                    [false; OriginalWorkflowSnapshotEntry::ALL.len()]
+                }
+            }),
+            callers,
+        }
+    }
+
+    fn bundle(
+        &self,
+        caller: OriginalWorkflowSnapshotCaller,
+        entry: OriginalWorkflowSnapshotEntry,
+    ) -> Option<&VerifiedOrdinarySavedBundle> {
+        if !self.entries_by_caller[caller.index()][entry.index()] {
+            return None;
+        }
+        self.callers[caller.index()].as_ref()
+    }
+
     fn permits_any_entry(&self, caller: OriginalWorkflowSnapshotCaller) -> bool {
         self.callers[caller.index()].is_some()
             && self.entries_by_caller[caller.index()]
@@ -948,6 +993,7 @@ impl VerifiedRegistryLaunch {
             gateway: [None, None],
             gateway_health: [const { [const { None }; OriginalModelResolveRole::ALL.len()] }; 2],
             workflow: VerifiedWorkflowProviderSnapshot::default(),
+            workflow_health: VerifiedWorkflowProviderSnapshot::default(),
             shell_settings: None,
             model_save: None,
             model_search: None,
@@ -960,8 +1006,7 @@ impl VerifiedRegistryLaunch {
             manifest_sha256: Digest::hash(b"provider-snapshot-manifest").to_string(),
         };
         for role in roles {
-            source.raw_snapshot_declared |=
-                !matches!(role, OriginalProviderSnapshotRole::GatewayHealth { .. });
+            source.raw_snapshot_declared |= !role.is_health();
             let bundle = match role {
                 OriginalProviderSnapshotRole::GatewayHealth { role, side_chat } => {
                     &mut source.gateway_health[usize::from(side_chat)][role.index()]
@@ -987,6 +1032,11 @@ impl VerifiedRegistryLaunch {
                 OriginalProviderSnapshotRole::Workflow { caller, entry } => {
                     source.workflow.entries_by_caller[caller.index()][entry.index()] = true;
                     &mut source.workflow.callers[caller.index()]
+                }
+                OriginalProviderSnapshotRole::WorkflowHealth { caller, entry } => {
+                    let caller = caller.snapshot_caller().index();
+                    source.workflow_health.entries_by_caller[caller][entry.index()] = true;
+                    &mut source.workflow_health.callers[caller]
                 }
                 OriginalProviderSnapshotRole::ShellSettings => &mut source.shell_settings,
                 OriginalProviderSnapshotRole::ModelAccessRead => &mut source.model_access_read,
@@ -1932,16 +1982,9 @@ impl LaunchActivationObserver<'_> {
         let workflow = workflow
             .map(|bundle| {
                 let (entries, callers) = bundle.verify(checkpoint)?;
-                Ok::<_, anyhow::Error>(VerifiedWorkflowProviderSnapshot {
-                    entries_by_caller: callers.each_ref().map(|caller| {
-                        if caller.is_some() {
-                            entries
-                        } else {
-                            [false; OriginalWorkflowSnapshotEntry::ALL.len()]
-                        }
-                    }),
-                    callers,
-                })
+                Ok::<_, anyhow::Error>(VerifiedWorkflowProviderSnapshot::from_verified_routes(
+                    entries, callers,
+                ))
             })
             .transpose()?
             .unwrap_or_default();
@@ -1961,10 +2004,13 @@ impl LaunchActivationObserver<'_> {
                     OriginalGatewayProviderHealthChoice::select(active, budget, role, side_chat)?;
             }
         }
-        let has_health_grants = gateway_health_selections
-            .iter()
-            .flatten()
-            .any(Option::is_some);
+        let workflow_health_selection =
+            OriginalWorkflowProviderSnapshotSelection::select_health(active, budget)?;
+        let has_health_grants = workflow_health_selection.is_some()
+            || gateway_health_selections
+                .iter()
+                .flatten()
+                .any(Option::is_some);
         let has_snapshot_grants = local_chat.is_some()
             || gateway.iter().any(Option::is_some)
             || workflow.callers.iter().any(Option::is_some)
@@ -2005,9 +2051,24 @@ impl LaunchActivationObserver<'_> {
                             .map_err(io::Error::other)?;
                     let mut gateway_health =
                         [const { [const { None }; OriginalModelResolveRole::ALL.len()] }; 2];
-                    if has_health_grants
-                        && observe_provider_health_declaration(&pack).map_err(io::Error::other)?
-                    {
+                    let mut workflow_health = VerifiedWorkflowProviderSnapshot::default();
+                    let health_declared = has_health_grants
+                        && observe_provider_health_declaration(&pack).map_err(io::Error::other)?;
+                    if health_declared {
+                        if let Some(selection) = &workflow_health_selection {
+                            let locked = inspection
+                                .with_source(|sources| {
+                                    sources.workflow_provider_snapshot_bundle(selection, budget)
+                                })
+                                .map_err(io::Error::other)?
+                                .map_err(io::Error::other)?;
+                            let (entries, callers) =
+                                locked.verify(&checkpoint).map_err(io::Error::other)?;
+                            workflow_health =
+                                VerifiedWorkflowProviderSnapshot::from_verified_routes(
+                                    entries, callers,
+                                );
+                        }
                         for (entry, choice) in gateway_health
                             .iter_mut()
                             .flatten()
@@ -2025,14 +2086,13 @@ impl LaunchActivationObserver<'_> {
                             *entry = Some(locked.verify(&checkpoint).map_err(io::Error::other)?);
                         }
                     }
-                    let snapshot = if raw_snapshot_declared
-                        || gateway_health.iter().flatten().any(Option::is_some)
-                    {
+                    let snapshot = if raw_snapshot_declared || health_declared {
                         Some(VerifiedProviderSnapshotSource {
                             raw_snapshot_declared,
                             gateway,
                             gateway_health,
                             workflow,
+                            workflow_health,
                             shell_settings,
                             model_save: model_save_snapshot,
                             model_search,
@@ -2448,13 +2508,10 @@ pub(super) fn reacquire_provider_snapshot_pack(
                 &source.manifest_sha256,
             )?;
             let pack = verify_registry_archive(inspection, receipt, input)?;
-            match role {
-                OriginalProviderSnapshotRole::GatewayHealth { .. } => {
-                    verify_legacy_provider_health_declaration(&pack).map_err(io::Error::other)?;
-                }
-                _ => {
-                    verify_legacy_provider_snapshot_declaration(&pack).map_err(io::Error::other)?;
-                }
+            if role.is_health() {
+                verify_legacy_provider_health_declaration(&pack).map_err(io::Error::other)?;
+            } else {
+                verify_legacy_provider_snapshot_declaration(&pack).map_err(io::Error::other)?;
             }
             if proof.permits_model_access_projection(role) {
                 verify_legacy_provider_model_access_declaration(&pack).map_err(io::Error::other)?;
@@ -4739,7 +4796,7 @@ mod tests {
 
     #[test]
     fn workflow_provider_snapshot_proof_keeps_caller_entry_pairs_independent() {
-        use OriginalProviderSnapshotRole::{Gateway, ShellSettings, Workflow};
+        use OriginalProviderSnapshotRole::{Gateway, ShellSettings, Workflow, WorkflowHealth};
         use OriginalWorkflowSnapshotCaller::{AudioSpeech, Text};
         use OriginalWorkflowSnapshotEntry::{Advance, StepResume};
 
@@ -4772,6 +4829,7 @@ mod tests {
         );
         assert!(proof.permits_workflow_provider_snapshot());
         assert!(!proof.permits_workflow_adapter_provider_snapshot());
+        assert!(!proof.permits_workflow_provider_health());
         assert!(proof.permits_gateway_provider_snapshot());
         assert!(proof.permits_projected_provider_snapshot());
         for caller in OriginalWorkflowSnapshotCaller::ALL {
@@ -4783,10 +4841,40 @@ mod tests {
                 );
             }
         }
-        let gateway_only =
-            VerifiedRegistryLaunch::test_provider_snapshot_proof(identity, "catalog", gateway);
+        let gateway_only = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            identity.clone(),
+            "catalog",
+            gateway,
+        );
         assert!(!gateway_only.permits_workflow_provider_snapshot());
         assert!(!gateway_only.permits_provider_snapshot(workflow[0]));
+
+        let health = [
+            WorkflowHealth {
+                caller: OriginalWorkflowHealthCaller::Text,
+                entry: Advance,
+            },
+            WorkflowHealth {
+                caller: OriginalWorkflowHealthCaller::Messages,
+                entry: StepResume,
+            },
+        ];
+        let health_only = VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
+            identity, "catalog", health,
+        );
+        assert!(health_only.permits_workflow_provider_health());
+        assert!(!health_only.permits_workflow_provider_snapshot());
+        assert!(health_only.raw_provider_snapshot().is_none());
+        for caller in OriginalWorkflowHealthCaller::ALL {
+            for entry in OriginalWorkflowSnapshotEntry::ALL {
+                let candidate = WorkflowHealth { caller, entry };
+                assert_eq!(
+                    health_only.permits_provider_snapshot(candidate),
+                    health.contains(&candidate)
+                );
+                assert!(!proof.permits_provider_snapshot(candidate));
+            }
+        }
     }
 
     #[test]

@@ -154,7 +154,13 @@ impl RoleArguments {
                 let health = |role, side_chat| {
                     proof.permits_provider_snapshot(GatewayHealth { role, side_chat })
                 };
-                if [GatewayRole::QuoteGenerate, GatewayRole::QuoteStream]
+                if proof.permits_workflow_provider_health() {
+                    Some(if proof.permits_raw_provider_snapshot() {
+                        "12"
+                    } else {
+                        "12-health-only"
+                    })
+                } else if [GatewayRole::QuoteGenerate, GatewayRole::QuoteStream]
                     .into_iter()
                     .any(|role| health(role, false) || health(role, true))
                 {
@@ -4672,6 +4678,32 @@ mod tests {
                 entry: OriginalWorkflowSnapshotEntry::StepExecute,
             },
         );
+        let [workflow_text_health, workflow_messages_health] =
+            tobkiri_harness_native::OriginalWorkflowHealthCaller::ALL.map(|caller| {
+                VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                    side_chat.identity.clone(),
+                    "catalog",
+                    OriginalProviderSnapshotRole::WorkflowHealth {
+                        caller,
+                        entry: OriginalWorkflowSnapshotEntry::Advance,
+                    },
+                )
+            });
+        let workflow_snapshot_and_health =
+            VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
+                side_chat.identity.clone(),
+                "catalog",
+                [
+                    OriginalProviderSnapshotRole::Workflow {
+                        caller: OriginalWorkflowSnapshotCaller::Text,
+                        entry: OriginalWorkflowSnapshotEntry::Advance,
+                    },
+                    OriginalProviderSnapshotRole::WorkflowHealth {
+                        caller: tobkiri_harness_native::OriginalWorkflowHealthCaller::Text,
+                        entry: OriginalWorkflowSnapshotEntry::Advance,
+                    },
+                ],
+            );
         let [workflow_text_adapter_snapshot, workflow_messages_adapter_snapshot] = [
             OriginalWorkflowSnapshotCaller::TextAdapter,
             OriginalWorkflowSnapshotCaller::MessagesAdapter,
@@ -4759,6 +4791,13 @@ mod tests {
             (Some(&quote_health_stream), false, Some("11")),
             (Some(&side_chat_quote_health_generate), false, Some("11")),
             (Some(&side_chat_quote_health_stream), false, Some("11")),
+            (Some(&workflow_text_health), false, Some("12-health-only")),
+            (
+                Some(&workflow_messages_health),
+                false,
+                Some("12-health-only"),
+            ),
+            (Some(&workflow_snapshot_and_health), false, Some("12")),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()

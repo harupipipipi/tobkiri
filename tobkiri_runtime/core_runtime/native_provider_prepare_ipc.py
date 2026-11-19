@@ -521,6 +521,16 @@ WorkflowProviderSnapshotRole = Literal[
     "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
     "workflow-text-adapter", "workflow-messages-adapter",
 ]
+WorkflowProviderHealthRole = Literal["workflow-health-text", "workflow-health-messages"]
+WORKFLOW_PROVIDER_HEALTH_ROLES: Mapping[
+    WorkflowProviderSnapshotRole, WorkflowProviderHealthRole
+] = MappingProxyType({
+    "workflow-text": "workflow-health-text",
+    "workflow-messages": "workflow-health-messages",
+})
+_PROVIDER_HEALTH_ROLES = frozenset(GATEWAY_PROVIDER_HEALTH_ROLES.values()) | frozenset(
+    WORKFLOW_PROVIDER_HEALTH_ROLES.values()
+)
 WorkflowSnapshotEntry = Literal[
     "run.advance", "run.cancel", "run.selected", "run.step.execute",
     "run.step.resume", "run.step.retry",
@@ -528,7 +538,7 @@ WorkflowSnapshotEntry = Literal[
 ProviderSnapshotRole = (
     SavedLocalChatRole | GatewayProviderSnapshotRole | GatewayProviderHealthRole
     | ProjectedProviderSnapshotRole
-    | WorkflowProviderSnapshotRole | ModelAccessProviderSnapshotRole
+    | WorkflowProviderSnapshotRole | WorkflowProviderHealthRole | ModelAccessProviderSnapshotRole
 )
 _MODEL_ACCESS_PROVIDER_SNAPSHOT_ROLES = ("model-access-read", "model-access-catalog")
 _MODEL_ACCESS_PROJECTION_ROLES: Mapping[ModelAccessProjectionPhase, ModelAccessProviderSnapshotRole] = {
@@ -800,10 +810,13 @@ class _LauncherProviderSnapshot:
     supports_gateway_health: bool = False
     supports_side_chat_gateway_health: bool = False
     supports_gateway_quote_health: bool = False
+    supports_workflow_health: bool = False
+    supports_raw_snapshot: bool = True
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
-            (not self.supports_gateway
+            (not self.supports_raw_snapshot and request.role not in _PROVIDER_HEALTH_ROLES)
+            or (not self.supports_gateway
              and request.role in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values())
             or (not self.supports_gateway_health
                 and request.role in GATEWAY_PROVIDER_HEALTH_ROLES.values())
@@ -817,6 +830,8 @@ class _LauncherProviderSnapshot:
                 and request.role in _QUERY_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_workflow
                 and request.role in _WORKFLOW_PROVIDER_SNAPSHOT_ROLES)
+            or (not self.supports_workflow_health
+                and request.role in WORKFLOW_PROVIDER_HEALTH_ROLES.values())
             or (not self.supports_workflow_adapter
                 and request.role in _WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_model_access
@@ -831,24 +846,30 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV, "")
-    if re.fullmatch(r"[1-9]|1[01]", version) is None:
-        return None
-    level = int(version)
+    raw_snapshot = version != "12-health-only"
+    if raw_snapshot:
+        if re.fullmatch(r"[1-9]|1[0-2]", version) is None:
+            return None
+        level = int(version)
+    else:
+        level = 12
     launcher = _capture_launcher()
     if launcher is None:
         return None
     return _LauncherProviderSnapshot(
         launcher,
-        supports_gateway=level >= 2,
-        supports_projected=level >= 3,
-        supports_query=level >= 4,
-        supports_workflow=level >= 5,
-        supports_workflow_adapter=level >= 6,
-        supports_model_access=level >= 7,
-        supports_model_access_projection=level >= 8,
+        supports_gateway=raw_snapshot and level >= 2,
+        supports_projected=raw_snapshot and level >= 3,
+        supports_query=raw_snapshot and level >= 4,
+        supports_workflow=raw_snapshot and level >= 5,
+        supports_workflow_adapter=raw_snapshot and level >= 6,
+        supports_model_access=raw_snapshot and level >= 7,
+        supports_model_access_projection=raw_snapshot and level >= 8,
         supports_gateway_health=level >= 9,
         supports_side_chat_gateway_health=level >= 10,
-        supports_gateway_quote_health=level == 11,
+        supports_gateway_quote_health=level >= 11,
+        supports_workflow_health=level == 12,
+        supports_raw_snapshot=raw_snapshot,
     )
 
 
@@ -1205,7 +1226,10 @@ def _start_payload(
         "deadline_ns": deadline_ns,
     }
     if isinstance(borrow, NativeProviderSnapshotRequest):
-        workflow = borrow.role in _WORKFLOW_PROVIDER_SNAPSHOT_ROLES
+        workflow = (
+            borrow.role in _WORKFLOW_PROVIDER_SNAPSHOT_ROLES
+            or borrow.role in WORKFLOW_PROVIDER_HEALTH_ROLES.values()
+        )
         if (
             (workflow and borrow.workflow_entry not in WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES)
             or (not workflow and (
@@ -2093,7 +2117,7 @@ def _decode_provider_snapshot(
 ) -> dict[str, Any]:
     invalid = "native Provider snapshot result is invalid"
     result = _decode_owner_result(payload, invalid)
-    if role in GATEWAY_PROVIDER_HEALTH_ROLES.values():
+    if role in _PROVIDER_HEALTH_ROLES:
         if (
             type(result) is not dict or result.keys() != {"providers"}
             or type(result["providers"]) is not list

@@ -1499,6 +1499,28 @@ impl OriginalWorkflowSnapshotCaller {
     }
 }
 
+/// The two Workflow Gateways that have individual Provider Health grants.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalWorkflowHealthCaller {
+    /// Text Generate Gateway.
+    Text,
+    /// Messages Generate Gateway.
+    Messages,
+}
+
+impl OriginalWorkflowHealthCaller {
+    /// All fixed Workflow Health callers.
+    pub const ALL: [Self; 2] = [Self::Text, Self::Messages];
+
+    /// Identify the shared Workflow-to-Gateway route in the snapshot selection.
+    pub const fn snapshot_caller(self) -> OriginalWorkflowSnapshotCaller {
+        match self {
+            Self::Text => OriginalWorkflowSnapshotCaller::Text,
+            Self::Messages => OriginalWorkflowSnapshotCaller::Messages,
+        }
+    }
+}
+
 /// The fixed Workflow attempt operations that can enter the dispatch chain.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalWorkflowSnapshotEntry {
@@ -1570,6 +1592,13 @@ pub enum OriginalProviderSnapshotRole {
         /// The operation selected by the desktop Shell.
         entry: OriginalWorkflowSnapshotEntry,
     },
+    /// The Workflow attempt entry and its Gateway's own Provider Health grant.
+    WorkflowHealth {
+        /// The Gateway with its own Provider Health grant.
+        caller: OriginalWorkflowHealthCaller,
+        /// The operation selected by the desktop Shell.
+        entry: OriginalWorkflowSnapshotEntry,
+    },
     /// The desktop Shell owns this direct settings read grant.
     ShellSettings,
     /// Model Manage owns a nested read grant on the selected Model Save chain.
@@ -1582,6 +1611,16 @@ pub enum OriginalProviderSnapshotRole {
     ModelAccessRead,
     /// The direct Registry Model Access catalog operation selected by the desktop Shell.
     ModelAccessCatalog,
+}
+
+impl OriginalProviderSnapshotRole {
+    /// Whether the role selects the dedicated Provider Health port.
+    pub const fn is_health(self) -> bool {
+        matches!(
+            self,
+            Self::GatewayHealth { .. } | Self::WorkflowHealth { .. }
+        )
+    }
 }
 
 impl From<OriginalSavedLocalChatRole> for OriginalProviderSnapshotRole {
@@ -1610,15 +1649,45 @@ impl<'a> OriginalWorkflowProviderSnapshotSelection<'a> {
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<Self>> {
-        Ok(
-            select_workflow_provider_snapshot_records(active.records(), budget)?.map(
-                |(entries, callers)| Self {
-                    _active: active,
-                    entries,
-                    callers,
-                },
-            ),
+        Self::select_registry(
+            active,
+            budget,
+            OriginalWorkflowSnapshotCaller::ALL,
+            &PROVIDER_READ_GENERATE,
         )
+    }
+
+    /// Select exact Workflow entries and the Text and Messages Gateway Health grants.
+    /// Verify all returned pins against the signed Bundle before use.
+    pub fn select_health(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Self::select_registry(
+            active,
+            budget,
+            OriginalWorkflowHealthCaller::ALL.map(OriginalWorkflowHealthCaller::snapshot_caller),
+            &PROVIDER_HEALTH_GENERATE,
+        )
+    }
+
+    fn select_registry(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        allowed_callers: impl IntoIterator<Item = OriginalWorkflowSnapshotCaller>,
+        registry: &'static Route,
+    ) -> Result<Option<Self>> {
+        Ok(select_workflow_provider_snapshot_records(
+            active.records(),
+            budget,
+            allowed_callers,
+            registry,
+        )?
+        .map(|(entries, callers)| Self {
+            _active: active,
+            entries,
+            callers,
+        }))
     }
 
     /// The desktop Shell grant for this operation.
@@ -2395,6 +2464,8 @@ type WorkflowProviderSnapshotSelection = (
 fn select_workflow_provider_snapshot_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
+    allowed_callers: impl IntoIterator<Item = OriginalWorkflowSnapshotCaller>,
+    registry_route: &'static Route,
 ) -> Result<Option<WorkflowProviderSnapshotSelection>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
@@ -2411,7 +2482,7 @@ fn select_workflow_provider_snapshot_records(
     }
     // Outgoing edges are keyed by the Workflow function, shared by its allowed entries.
     let mut callers = [const { None }; OriginalWorkflowSnapshotCaller::ALL.len()];
-    for caller in OriginalWorkflowSnapshotCaller::ALL {
+    for caller in allowed_callers {
         let (prefix_route, caller_route) = caller.routes();
         let (prefix, caller_function) = if let Some(route) = prefix_route {
             let Some(pin) = records.select_route(WORKFLOW_ADVANCE.function, route)? else {
@@ -2424,9 +2495,7 @@ fn select_workflow_provider_snapshot_records(
         let Some(caller_pin) = records.select_route(caller_function, caller_route)? else {
             continue;
         };
-        let Some(registry) =
-            records.select_route(caller_pin.function_id(), &PROVIDER_READ_GENERATE)?
-        else {
+        let Some(registry) = records.select_route(caller_pin.function_id(), registry_route)? else {
             continue;
         };
         callers[caller.index()] = Some(WorkflowProviderSnapshotPins {
@@ -3645,7 +3714,7 @@ mod tests {
         })
     }
 
-    fn workflow_snapshot_records() -> Value {
+    fn workflow_snapshot_records(health_callers: &[OriginalWorkflowSnapshotCaller]) -> Value {
         let mut fixture = records();
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let mut add = |caller, route: &Route| {
@@ -3700,6 +3769,9 @@ mod tests {
             add(prefix.unwrap_or(&WORKFLOW_ADVANCE).function, route);
             add(route.function, &PROVIDER_READ_GENERATE);
         }
+        for caller in health_callers {
+            add(caller.routes().1.function, &PROVIDER_HEALTH_GENERATE);
+        }
         fixture
     }
 
@@ -3708,13 +3780,126 @@ mod tests {
     ) -> Result<Option<WorkflowProviderSnapshotSelection>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(fixture, &budget);
-        select_workflow_provider_snapshot_records((&profile, &lock, &plan), &budget)
+        select_workflow_provider_snapshot_records(
+            (&profile, &lock, &plan),
+            &budget,
+            OriginalWorkflowSnapshotCaller::ALL,
+            &PROVIDER_READ_GENERATE,
+        )
+    }
+
+    fn select_workflow_health(
+        fixture: &Value,
+    ) -> Result<Option<WorkflowProviderSnapshotSelection>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(fixture, &budget);
+        select_workflow_provider_snapshot_records(
+            (&profile, &lock, &plan),
+            &budget,
+            OriginalWorkflowHealthCaller::ALL.map(OriginalWorkflowHealthCaller::snapshot_caller),
+            &PROVIDER_HEALTH_GENERATE,
+        )
+    }
+
+    fn set_workflow_grant_interactive_only(fixture: &mut Value, row: usize) {
+        fixture["profile"]["requested_edges"][row]["authority_mode"] = json!("interactive_only");
+        fixture["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+    }
+
+    #[test]
+    fn workflow_provider_health_requires_each_gateways_own_generate_grant() {
+        use OriginalWorkflowSnapshotCaller::{
+            AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
+        };
+
+        let unsupported = [AudioSpeech, AudioTranscribe, MessagesAdapter, TextAdapter];
+        assert!(
+            select_workflow_health(&workflow_snapshot_records(&unsupported))
+                .unwrap()
+                .is_none()
+        );
+
+        let fixture = workflow_snapshot_records(&OriginalWorkflowSnapshotCaller::ALL);
+        for (caller, gateway) in [(Text, &GATEWAY_TEXT), (Messages, &GATEWAY_MESSAGES)] {
+            let mut candidate = fixture.clone();
+            let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
+            for (row, edge) in edges.iter().enumerate() {
+                if edge["operation_id"] == PROVIDER_READ_GENERATE.operation
+                    || (edge["operation_id"] == PROVIDER_HEALTH_GENERATE.operation
+                        && edge["caller_function_id"] != gateway.function)
+                {
+                    set_workflow_grant_interactive_only(&mut candidate, row);
+                }
+            }
+            assert!(select_workflow_snapshot(&candidate).unwrap().is_none());
+            let (_, callers) = select_workflow_health(&candidate).unwrap().unwrap();
+            for row in OriginalWorkflowSnapshotCaller::ALL {
+                assert_eq!(callers[row.index()].is_some(), row == caller);
+            }
+            let pins = callers[caller.index()].as_ref().unwrap();
+            assert!(pins.prefix.is_none());
+            assert_eq!(pins.caller.caller_function_id(), WORKFLOW_ADVANCE.function);
+            assert_eq!(pins.caller.operation_id(), gateway.operation);
+            assert_eq!(pins.registry.caller_function_id(), gateway.function);
+            assert_eq!(
+                pins.registry.operation_id(),
+                PROVIDER_HEALTH_GENERATE.operation
+            );
+        }
+    }
+
+    #[test]
+    fn workflow_provider_health_requires_the_exact_shell_entry_and_gateway_grants() {
+        use OriginalWorkflowSnapshotCaller::Text;
+        use OriginalWorkflowSnapshotEntry::{Advance, StepResume};
+
+        let fixture = workflow_snapshot_records(&[Text]);
+        let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
+        let gateway_row = edges
+            .iter()
+            .position(|edge| {
+                edge["caller_function_id"] == WORKFLOW_ADVANCE.function
+                    && edge["operation_id"] == GATEWAY_TEXT.operation
+            })
+            .unwrap();
+        for root in [Advance, StepResume] {
+            let mut candidate = fixture.clone();
+            for (row, edge) in edges.iter().enumerate() {
+                if edge["caller_function_id"] == TURN_SHELL_CALLER
+                    && edge["target_provider_id"] == WORKFLOW_ADVANCE.function
+                    && edge["operation_id"] != root.route().operation
+                {
+                    set_workflow_grant_interactive_only(&mut candidate, row);
+                }
+            }
+            let (entries, _) = select_workflow_health(&candidate).unwrap().unwrap();
+            for entry in OriginalWorkflowSnapshotEntry::ALL {
+                assert_eq!(entries[entry.index()].is_some(), entry == root);
+            }
+            let pin = entries[root.index()].as_ref().unwrap();
+            assert_eq!(pin.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(pin.function_id(), WORKFLOW_ADVANCE.function);
+            assert_eq!(pin.operation_id(), root.route().operation);
+
+            let root_row = edges
+                .iter()
+                .position(|edge| {
+                    edge["caller_function_id"] == TURN_SHELL_CALLER
+                        && edge["operation_id"] == root.route().operation
+                })
+                .unwrap();
+            for revoked_row in [root_row, gateway_row] {
+                let mut revoked = candidate.clone();
+                set_workflow_grant_interactive_only(&mut revoked, revoked_row);
+                assert!(select_workflow_health(&revoked).unwrap().is_none());
+            }
+        }
     }
 
     #[test]
     fn workflow_provider_snapshot_selects_each_entry_and_the_callers_own_nested_grants() {
         assert!(select_workflow_snapshot(&records()).unwrap().is_none());
-        let (entries, callers) = select_workflow_snapshot(&workflow_snapshot_records())
+        let (entries, callers) = select_workflow_snapshot(&workflow_snapshot_records(&[]))
             .unwrap()
             .unwrap();
         for entry in OriginalWorkflowSnapshotEntry::ALL {
@@ -3745,7 +3930,7 @@ mod tests {
 
     #[test]
     fn workflow_provider_snapshot_requires_each_exact_profile_grant_and_scope() {
-        let fixture = workflow_snapshot_records();
+        let fixture = workflow_snapshot_records(&[]);
         let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
         let first_workflow_edge = edges
             .iter()
@@ -3814,7 +3999,7 @@ mod tests {
         use OriginalWorkflowSnapshotCaller::{MessagesAdapter, TextAdapter};
         use OriginalWorkflowSnapshotEntry::StepResume;
 
-        let fixture = workflow_snapshot_records();
+        let fixture = workflow_snapshot_records(&[]);
         let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
         let first_workflow_edge = edges
             .iter()

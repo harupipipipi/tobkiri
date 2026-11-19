@@ -3713,6 +3713,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   通常の公開とUser overlay、独立したFlow overlayの再取込み後のターンまで通過した。
   型付きツール側で共通の `turn` に旧引数を渡していた2か所を、監査で使うPackのpinを含む
   `ProfileFixture` を渡すように更新した。ストア初期化の前回の失敗はこの実行では再現しなかった。
+  [修正後の実CLI 44629343416](https://github.com/harupipipipi/tobkiri/actions/runs/44629343416) は
+  `52588aba6` で成功。Profile公開・再取込み、Flow Overlay、型付きWasmツールが通過した。
 - A-1 / A-2 は、直接呼び出しのチャットが `ChatRunEngine`、別のエージェントAPIと承認後の再開が
   `AgentEngine`、通常の保存済みデスクトップ会話が `conversation.saved-turn.v1/saved_complete`
   を使うことを確認した。旧 `blocks/chat/send.py` の旧ループは比較・テスト用。
@@ -6298,12 +6300,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rustの経路選択52件とPythonのIPC 637件が通過。署名済みHTTPの4件では、ネイティブ呼び出しを
   差し替え、4種の見積もり、反対側の配信方式を元の所有者で処理すること、親の終了後の拒否、
   従来の互換経路を確認した。Launcherのソケットとバンドルを含む試験は配布CIで行う。
-- PythonのHealth所有者を廃止するには、WorkflowのTextとMessages、
-  `conversation.turn.v1/complete` 経由のGenerate、権限レビューのQuoteとGenerateにも対応が必要。
-  Workflowの同梱Profileは `run.advance` と `run.step.resume` からTextまたはMessagesに入り、
-  各Gatewayが自分の `.generate` のヘルス権限を使う。既存のWorkflowのRegistry一覧から
-  入口の照合を共用し、Healthの認可と応答は専用ポートで検証する。設定画面の旧
-  `/api/ui/provider-health` はv3互換契約に属するため、元の投影と呼び出し経路を別途照合する。
+- Workflow TextとMessagesの `.generate` をWasmのHealthポートへ接続した。Launcherは
+  元のShellの入口、Workflowから各Gatewayへの署名済み権限、Health用の署名とWITを照合する。
+  同梱Profileの入口は `run.advance` と `run.step.resume` を使い、Registry一覧と入口の照合を共用する。
+  Hostは実行中の入口とGateway、子のLeaseと容量予約を読み取りの前後で検査する。
+  起動時はIPCレベル12を通知し、Healthポートのみがある場合は `12-health-only` で通知する。
+  この場合、通常のRegistry一覧には元の読み取りを使う。型付き音声とネストしたAdapterの
+  Registry一覧は、引き続きそれぞれのポートと実行経路を使う。
+  署名済みWorkflowの回帰3件では、ネイティブ応答を差し替え、TextとMessagesの応答、
+  `.stream` の拒否、Lease終了後の拒否、従来およびRegistry一覧の経路を照合した。
+  Rustの経路選択54件とPythonのIPC 674件が通過し、Healthポートだけを通知した場合の
+  IPCフレームと通常読み取りの互換処理を検証した。Launcherを含む試験は配布CIで行う。
+- PythonのHealth所有者を廃止するには、`conversation.turn.v1/complete` 経由のGenerateと
+  権限レビューのQuote・Generateにも対応が必要。設定画面の旧 `/api/ui/provider-health` は
+  v3互換契約に属するため、元の投影と呼び出し経路を別途照合する。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 

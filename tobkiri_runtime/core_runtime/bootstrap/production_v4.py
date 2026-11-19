@@ -1939,6 +1939,7 @@ def capture_production_dispatch(
         GATEWAY_PROVIDER_SNAPSHOT_ROLES,
         MODEL_RESOLVE_MINIMUM_MEMORY,
         PROVIDER_SNAPSHOT_MINIMUM_MEMORY,
+        WORKFLOW_PROVIDER_HEALTH_ROLES,
         WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES,
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
@@ -1977,6 +1978,7 @@ def capture_production_dispatch(
         NativeProviderSnapshotRequest,
         ProjectedProviderSnapshotRole,
         ProviderSnapshotRole,
+        WorkflowProviderHealthRole,
         WorkflowProviderSnapshotRole,
         WorkflowSnapshotEntry,
         NativeSavedReceiptFailure,
@@ -5095,14 +5097,18 @@ def capture_production_dispatch(
     )
     workflow_snapshot_entries: dict[WorkflowSnapshotEntry, _CapturedPlanEdge] = {}
     workflow_snapshot_routes: dict[
-        str, list[
-            tuple[WorkflowProviderSnapshotRole, _CapturedPlanEdge, tuple[_CapturedPlanEdge, ...]]
-        ],
+        str, list[tuple[
+            WorkflowProviderSnapshotRole | WorkflowProviderHealthRole,
+            _CapturedPlanEdge, tuple[_CapturedPlanEdge, ...],
+        ]],
     ] = {}
-    if (
-        workflow_assembly is not None
-        and getattr(native_provider_snapshot_reader, "supports_workflow", False) is True
-    ):
+    supports_workflow_snapshot = (
+        getattr(native_provider_snapshot_reader, "supports_workflow", False) is True
+    )
+    supports_workflow_health = (
+        getattr(native_provider_snapshot_reader, "supports_workflow_health", False) is True
+    )
+    if workflow_assembly is not None and (supports_workflow_snapshot or supports_workflow_health):
         workflow_principal_id = workflow_assembly.binding.principal_ref.value
         for operation in WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES:
             entry = select_original_chat_edge(
@@ -5145,7 +5151,10 @@ def capture_production_dispatch(
                  f"{adapters}.provider-audio-speech", f"{adapters}.provider.compatibility.audio_speech"),
             )),
         )
-        if getattr(native_provider_snapshot_reader, "supports_workflow_adapter", False) is True:
+        if (
+            supports_workflow_snapshot
+            and getattr(native_provider_snapshot_reader, "supports_workflow_adapter", False) is True
+        ):
             generate_adapter = (
                 adapters, "tobkiri.service.ai.provider.generate.v1",
                 f"{adapters}.provider-generate", f"{adapters}.provider.compatibility.generate",
@@ -5156,6 +5165,11 @@ def capture_production_dispatch(
             )
         if workflow_snapshot_entries:
             for role, path in workflow_paths:
+                health_role = (
+                    WORKFLOW_PROVIDER_HEALTH_ROLES.get(role) if supports_workflow_health else None
+                )
+                if not supports_workflow_snapshot and health_role is None:
+                    continue
                 parents: list[_CapturedPlanEdge] = []
                 caller_id = workflow_principal_id
                 for pack_id, contract, operation, function in path:
@@ -5168,13 +5182,25 @@ def capture_production_dispatch(
                     parents.append(selected)
                     caller_id = selected.target.principal_id
                 else:
-                    read = select_original_registry_read(
-                        {caller_id}, f"{_MODEL_PROVIDER_OPERATION}.generate",
-                    )
-                    if read is not None:
-                        workflow_snapshot_routes.setdefault(caller_id, []).append(
-                            (role, read, tuple(reversed(parents)))
+                    lineage = tuple(reversed(parents))
+                    if supports_workflow_snapshot:
+                        read = select_original_registry_read(
+                            {caller_id}, f"{_MODEL_PROVIDER_OPERATION}.generate",
                         )
+                        if read is not None:
+                            workflow_snapshot_routes.setdefault(caller_id, []).append(
+                                (role, read, lineage)
+                            )
+                    if health_role is not None:
+                        health = select_original_chat_edge(
+                            {caller_id}, "rumi_provider_registry_pack", _PROVIDER_HEALTH_CONTRACT,
+                            f"{_PROVIDER_HEALTH_OPERATION}.generate", _PROVIDER_HEALTH_FUNCTION,
+                            EffectClass.PRIVILEGED,
+                        )
+                        if health is not None:
+                            workflow_snapshot_routes.setdefault(caller_id, []).append(
+                                (health_role, health, lineage)
+                            )
 
     interactive_effect_coordinator = _interactive_effect_coordinator_factory(
         tuple(loaded_host_factories)
@@ -5519,6 +5545,25 @@ def capture_production_dispatch(
             or gateway_projection_role("quote-generate", gateway.payload) == role
         )
 
+    def workflow_snapshot_lineage(
+        context: RequestContext,
+        parent: CapturedInvocationScopeV4 | None,
+        operation_id: str,
+    ) -> tuple[
+        WorkflowProviderSnapshotRole | WorkflowProviderHealthRole, _CapturedPlanEdge,
+        WorkflowSnapshotEntry, tuple[RequestEnvelope, ...],
+    ] | None:
+        for role, edge, parents in workflow_snapshot_routes.get(
+            context.caller_principal.value, (),
+        ):
+            if operation_id != edge.binding_key[2]:
+                continue
+            for entry, root in workflow_snapshot_entries.items():
+                ancestors = match_captured_ancestors(parent, (*parents, root))
+                if ancestors is not None:
+                    return role, edge, entry, ancestors
+        return None
+
     def native_provider_snapshot_source(
         context: RequestContext,
         payload: Mapping[str, Any],
@@ -5579,14 +5624,11 @@ def capture_production_dispatch(
                 continue
             return GATEWAY_PROVIDER_SNAPSHOT_ROLES[side_chat, role], edge, parent, None
 
-        for workflow_role, workflow_edge, parents in workflow_snapshot_routes.get(
-            context.caller_principal.value, (),
-        ):
-            if operation_id != workflow_edge.binding_key[2]:
-                continue
-            for entry, root in workflow_snapshot_entries.items():
-                if match_captured_ancestors(parent, (*parents, root)) is not None:
-                    return workflow_role, workflow_edge, parent, entry
+        workflow = workflow_snapshot_lineage(context, parent, operation_id)
+        if workflow is not None:
+            workflow_role, workflow_edge, entry, _ = workflow
+            if not payload or workflow_role not in WORKFLOW_PROVIDER_HEALTH_ROLES.values():
+                return workflow_role, workflow_edge, parent, entry
 
         route = saved_local_chat_lineage(caller.context, caller.payload, parent.parent)
         if (
@@ -5651,6 +5693,18 @@ def capture_production_dispatch(
             health_role, side_chat, health_edge, ancestors = health
             if role != GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, health_role] or edge is not health_edge:
                 raise AuthorityDenied("native Provider health lineage changed")
+        elif role in WORKFLOW_PROVIDER_HEALTH_ROLES.values():
+            workflow = workflow_snapshot_lineage(context, parent, envelope.operation_id)
+            if workflow is None or envelope.payload:
+                raise AuthorityDenied("native Workflow health lineage changed")
+            workflow_role, workflow_edge, entry, ancestors = workflow
+            if (
+                role != workflow_role or edge is not workflow_edge or workflow_entry != entry
+                or any(item.context.profile_id != context.profile_id for item in ancestors)
+            ):
+                raise AuthorityDenied("native Workflow health lineage changed")
+
+        if ancestors is not None:
             chain = (envelope, *ancestors)
             if (
                 len({item.lease.token for item in chain}) != len(chain)
@@ -5669,7 +5723,7 @@ def capture_production_dispatch(
             invocation.assert_current()
             if ancestors is not None:
                 require_retained_ancestors(envelope, ancestors)
-                if health_role is None or not matches_gateway_health_delivery(
+                if health_role is not None and not matches_gateway_health_delivery(
                     health_role, ancestors[0],
                 ):
                     raise AuthorityDenied("native Provider health delivery changed")

@@ -1045,26 +1045,23 @@ async fn run(
                         checkpoint,
                     )?;
                     revalidate()?;
-                    let output = match role {
-                        OriginalProviderSnapshotRole::GatewayHealth { .. } => {
-                            inspection
-                                .read_legacy_provider_health(
-                                    &pack,
-                                    &config.user_data_dir,
-                                    &identity.profile_id,
-                                )
-                                .await
-                        }
-                        _ => {
-                            inspection
-                                .read_legacy_provider_snapshot(
-                                    &pack,
-                                    &config.user_data_dir,
-                                    &identity.profile_id,
-                                    uses_provider_settings_projection(role),
-                                )
-                                .await
-                        }
+                    let output = if role.is_health() {
+                        inspection
+                            .read_legacy_provider_health(
+                                &pack,
+                                &config.user_data_dir,
+                                &identity.profile_id,
+                            )
+                            .await
+                    } else {
+                        inspection
+                            .read_legacy_provider_snapshot(
+                                &pack,
+                                &config.user_data_dir,
+                                &identity.profile_id,
+                                uses_provider_settings_projection(role),
+                            )
+                            .await
                     }
                     .map_err(provider_snapshot_error)?;
                     return decode_owner_read_reply(
@@ -2200,7 +2197,7 @@ fn encode_turn_start_reply(
 fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool {
     use OriginalProviderSnapshotRole::{
         Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog, ModelAccessRead,
-        ModelSave, ModelSearch, ShellSettings, Workflow,
+        ModelSave, ModelSearch, ShellSettings, Workflow, WorkflowHealth,
     };
 
     match role {
@@ -2209,6 +2206,7 @@ fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool
         | Gateway { .. }
         | GatewayHealth { .. }
         | Workflow { .. }
+        | WorkflowHealth { .. }
         | ModelAccessRead
         | ModelAccessCatalog => false,
     }
@@ -2765,13 +2763,14 @@ mod tests {
     fn provider_snapshot_checks_the_exact_role_and_selects_its_projection() {
         use crate::host_contract::ExecutionProfileIdentity;
         use tobkiri_harness_native::{
-            OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
+            OriginalWorkflowHealthCaller, OriginalWorkflowSnapshotCaller,
+            OriginalWorkflowSnapshotEntry,
         };
 
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
         use OriginalProviderSnapshotRole::{
             Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog,
-            ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
+            ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow, WorkflowHealth,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -2833,6 +2832,14 @@ mod tests {
                     ]
                     .map(|entry| Workflow { caller, entry })
                 }),
+            )
+            .chain(
+                OriginalWorkflowHealthCaller::ALL
+                    .into_iter()
+                    .flat_map(|caller| {
+                        OriginalWorkflowSnapshotEntry::ALL
+                            .map(|entry| WorkflowHealth { caller, entry })
+                    }),
             )
             .chain([ModelAccessRead, ModelAccessCatalog])
             .map(|role| (role, false))
