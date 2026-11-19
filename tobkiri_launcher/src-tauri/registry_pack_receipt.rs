@@ -412,15 +412,53 @@ mod unix {
         Ok(model)
     }
 
+    /// Inspect the Conversation archive and verify every installed archive's digest.
+    pub(crate) fn verify_installed_with_conversation<T>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<T>,
+    ) -> io::Result<T> {
+        let ((), (), conversation) = verify_installed_with_archives(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            discard_archive,
+            discard_archive,
+            inspect_conversation,
+        )?;
+        Ok(conversation)
+    }
+
     /// Inspect the Provider and Model archives in a single pass over the
     /// installed packs and return both results only after every digest matches.
     pub(crate) fn verify_installed_with_provider_and_model<P, M>(
         app_root: &Path,
         expected_sha256: &str,
-        mut checkpoint: impl FnMut() -> io::Result<()>,
+        checkpoint: impl FnMut() -> io::Result<()>,
         inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
         inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
     ) -> io::Result<(P, M)> {
+        let (provider, model, ()) = verify_installed_with_archives(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            inspect_provider,
+            inspect_model,
+            discard_archive,
+        )?;
+        Ok((provider, model))
+    }
+
+    /// Inspect all three archives in one receipt pass and return the results only after verification.
+    pub(crate) fn verify_installed_with_archives<P, M, C>(
+        app_root: &Path,
+        expected_sha256: &str,
+        mut checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
+        inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
+        inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
+    ) -> io::Result<(P, M, C)> {
         checkpoint()?;
         let app = open_directory(app_root)?;
         let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
@@ -429,8 +467,13 @@ mod unix {
         let [provider, model, conversation] = &receipt.packs;
         let provider = inspect_archive(&directory, provider, &mut checkpoint, inspect_provider)?;
         let model = inspect_archive(&directory, model, &mut checkpoint, inspect_model)?;
-        inspect_archive(&directory, conversation, &mut checkpoint, discard_archive)?;
-        Ok((provider, model))
+        let conversation = inspect_archive(
+            &directory,
+            conversation,
+            &mut checkpoint,
+            inspect_conversation,
+        )?;
+        Ok((provider, model, conversation))
     }
 
     fn discard_archive(_: &Pack, input: &mut dyn Read) -> io::Result<()> {

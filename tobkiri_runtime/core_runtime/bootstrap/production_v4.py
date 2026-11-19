@@ -1825,11 +1825,17 @@ def capture_production_dispatch(
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
     from ..native_provider_prepare_ipc import (
+        CONVERSATION_GET_MAX_ID_CHARS,
+        CONVERSATION_GET_MINIMUM_MEMORY,
+        ConversationGetCaller,
+        NativeConversationGetFailure,
+        NativeConversationGetRequest,
         NativeModelSaveFailure,
         NativeModelSavePublicationUnconfirmed,
         NativeModelSaveRequest,
         NativeModelSettingsRequest,
         NativeProviderPrepareUnavailable,
+        capture_launcher_conversation_get_reader,
         capture_launcher_model_save_writer,
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
@@ -1845,6 +1851,7 @@ def capture_production_dispatch(
         native_provider_prepare_planner = capture_launcher_provider_prepare_planner()
     native_model_settings_reader = capture_launcher_model_settings_reader()
     native_model_save_writer = capture_launcher_model_save_writer()
+    native_conversation_get_reader = capture_launcher_conversation_get_reader()
 
     authority_path = authority_store.path.resolve()
     if authority_path.name != "v4.sqlite3" or authority_path.parent.name != "authority":
@@ -4007,6 +4014,155 @@ def capture_production_dispatch(
             if len(provider_reads) == 1:
                 native_model_save_edge = manage
 
+    conversation_pack = "rumi_conversation_store_pack"
+    conversation_contract = "tobkiri.resource.conversation.v1"
+    conversation_operation = "rumi_conversation_store_pack.conversation-resource"
+    conversation_function = "rumi_conversation_store_pack.conversation-store.resource"
+    native_conversation_get_edges: dict[
+        str, tuple[ConversationGetCaller, _CapturedPlanEdge]
+    ] = {}
+    if native_conversation_get_reader is not None:
+        conversation_callers: dict[str, tuple[ConversationGetCaller, str | None]] = {
+            "shell.tauri.default": ("shell", None),
+            "rumi_turn_runtime_pack.turn-runtime.saved": (
+                "saved-turn", "rumi_turn_runtime_pack",
+            ),
+            "tobkiri_conversation_orchestration_pack.saved": (
+                "saved-orchestration", "tobkiri_conversation_orchestration_pack",
+            ),
+        }
+        for function_id, (caller, pack_id) in conversation_callers.items():
+            caller_principals = (
+                shell_principal_ids
+                if pack_id is None
+                else {
+                    principal_id for principal_id, pack in pack_by_principal.items()
+                    if pack == pack_id
+                }
+            )
+            matching = tuple(
+                edge for edge in captured_edges
+                if edge.caller.function_id == function_id
+                and edge.caller.principal_id in caller_principals
+                and edge.resolved_binding.artifact.pack_id == conversation_pack
+                and edge.resolved_binding.operation.contract_id == conversation_contract
+                and edge.resolved_binding.operation.operation_id
+                == conversation_operation
+                and edge.resolved_binding.operation.effect_class
+                is EffectClass.PRIVILEGED
+                and is_exact_legacy_host_edge(edge, conversation_function)
+            )
+            if len(matching) == 1:
+                edge = matching[0]
+                native_conversation_get_edges[edge.caller.principal_id] = caller, edge
+
+    def is_native_conversation_get_route(
+        context: RequestContext, payload: Mapping[str, Any],
+    ) -> bool:
+        identifier = payload.get("conversation_id")
+        return (
+            native_provider_runtime is not None
+            and context.caller_principal.value in native_conversation_get_edges
+            and payload.get("operation") == "get"
+            and payload.get("profile_id") == context.profile_id
+            and set(payload) - {"_session_id"}
+            == {"profile_id", "operation", "conversation_id"}
+            and isinstance(identifier, str)
+            and bool(identifier)
+            and len(identifier) <= CONVERSATION_GET_MAX_ID_CHARS
+        )
+
+    def wrap_native_conversation_get(
+        contribution: HostProviderContributionV4,
+        reader: Callable[[NativeConversationGetRequest], Mapping[str, Any]],
+    ) -> HostProviderContributionV4:
+        """Read through the Launcher while the original exact Broker edge is live."""
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native Conversation GET context is unavailable")
+            envelope = invocation.envelope
+            context = envelope.context
+            if not is_native_conversation_get_route(context, payload):
+                return contribution.invoke(operation_id, payload, invocation)
+            caller, edge = native_conversation_get_edges[context.caller_principal.value]
+            parent = invocation.parent_invocation
+            parent_envelope = parent.envelope if parent is not None else None
+            pinned_runtime = native_provider_runtime
+            if (
+                pinned_runtime is None
+                or operation_id != conversation_operation
+                or envelope.contract_id != conversation_contract
+                or envelope.target_principal != edge.resolved_binding.principal_ref
+                or payload is not envelope.payload
+                or (parent is None) != (caller == "shell")
+                or (
+                    parent_envelope is not None
+                    and parent_envelope.target_principal != context.caller_principal
+                )
+            ):
+                raise AuthorityDenied("native Conversation GET lineage changed")
+
+            def guard() -> None:
+                invocation.assert_current()
+                retained = parent_invocation_scopes.lookup(context.caller_session_id)
+                retained_envelope = retained.envelope if retained is not None else None
+                if (
+                    native_provider_runtime is not pinned_runtime
+                    or retained_envelope is not parent_envelope
+                ):
+                    raise AuthorityDenied("native Conversation GET capture changed")
+                pinned_runtime[1]()
+                production_admission.native_resources(envelope.resource_reservation_id)
+
+            def legacy_read() -> Mapping[str, Any]:
+                guard()
+                result = contribution.invoke(operation_id, payload, invocation)
+                guard()
+                return result
+
+            guard()
+            resources = production_admission.native_resources(
+                envelope.resource_reservation_id,
+            )
+            if resources.memory_bytes < CONVERSATION_GET_MINIMUM_MEMORY:
+                return legacy_read()
+            try:
+                result = reader(NativeConversationGetRequest(
+                    context=context,
+                    runtime_instance=pinned_runtime[0],
+                    deadline_monotonic=envelope.deadline_monotonic,
+                    assert_current=guard,
+                    caller=caller,
+                    conversation_id=payload["conversation_id"],
+                ))
+            except (
+                NativeProviderPrepareUnavailable,
+                NativeProviderRegistryRequiresLegacyRead,
+            ):
+                return legacy_read()
+            except NativeConversationGetFailure as error:
+                guard()
+                if error.code == "not-found":
+                    raise KeyError("conversation is unavailable") from None
+                if error.code == "invalid":
+                    raise ValueError(
+                        "conversation or message identifier is invalid",
+                    ) from None
+                if error.code == "denied":
+                    raise PermissionError(
+                        "conversation read operation is denied",
+                    ) from None
+                raise
+            guard()
+            return result
+
+        return replace(contribution, invoke=invoke)
+
     def is_native_model_save_route(
         context: RequestContext, payload: Mapping[str, Any],
     ) -> bool:
@@ -4473,6 +4629,9 @@ def capture_production_dispatch(
     native_execute_key: tuple[str, str, str] | None = None
     native_model_settings_key: tuple[str, str, str] | None = None
     native_model_save_key: tuple[str, str, str] | None = None
+    native_conversation_get_bindings: dict[
+        tuple[str, str, str], ResolvedOperationBinding
+    ] = {}
     captured_wake_ports: list[tuple[LateBoundWakePortV4, CapturedWakeDeclarationV4,
                                    ResolvedOperationBinding]] = []
     for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
@@ -4550,6 +4709,22 @@ def capture_production_dispatch(
                     pass  # Keep the original invalid-capture error primary.
             raise
         contributions = captured_provider.contributions
+        if native_conversation_get_reader is not None:
+            conversation_bindings = {
+                (
+                    conversation_contract,
+                    conversation_operation,
+                    edge.target.principal_id,
+                ): edge.resolved_binding
+                for _caller, edge in native_conversation_get_edges.values()
+                if edge.resolved_binding in captured_bindings
+            }
+            native_conversation_get_bindings.update(conversation_bindings)
+            contributions = tuple(
+                wrap_native_conversation_get(item, native_conversation_get_reader)
+                if item.key in conversation_bindings else item
+                for item in contributions
+            )
         if (
             native_model_save_edge is not None
             and native_model_save_writer is not None
@@ -4634,7 +4809,7 @@ def capture_production_dispatch(
                         native_execute_key,
                         native_model_settings_key,
                         native_model_save_key,
-                    }
+                    } or item.key in native_conversation_get_bindings
                 ),
             ),
         )
@@ -4750,7 +4925,14 @@ def capture_production_dispatch(
                 released.add(reservation_id)
         return tuple(sorted(released))
 
-    native_admission_rules = []
+    native_admission_rules = [
+        (
+            binding,
+            CONVERSATION_GET_MINIMUM_MEMORY,
+            is_native_conversation_get_route,
+        )
+        for binding in native_conversation_get_bindings.values()
+    ]
     if native_model_save_key is not None and native_model_save_edge is not None:
         native_admission_rules.append((
             native_model_save_edge.resolved_binding,
@@ -5507,7 +5689,9 @@ def capture_production_dispatch(
         ),
         before_close_callbacks=(close_wake_drivers,),
         native_provider_runtime_publish=(
-            publish_native_provider_runtime if native_execute_key is not None else None
+            publish_native_provider_runtime
+            if native_execute_key is not None or native_conversation_get_bindings
+            else None
         ),
     )
     dispatch_holder.append(dispatch)

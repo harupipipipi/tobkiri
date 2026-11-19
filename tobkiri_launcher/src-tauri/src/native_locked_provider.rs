@@ -9,8 +9,8 @@ use tobkiri_core::{
     Digest,
 };
 use tobkiri_harness_native::{
-    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin,
+    OriginalConversationReadSelection, OriginalModelSaveSelection, OriginalModelSettingsSelection,
+    OriginalProviderPrepareSelection, OriginalRoutePin,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -19,6 +19,7 @@ pub(crate) struct LockedRegistryBundle<'pin> {
     provider_prepare: Option<[LockedRegistryRoute<'pin>; 2]>,
     model_list: Option<LockedRegistryRoute<'pin>>,
     model_save: Option<[LockedRegistryRoute<'pin>; 2]>,
+    conversation_read: [Option<LockedRegistryRoute<'pin>>; 3],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -30,6 +31,7 @@ impl NativeApplicationSources {
         provider: Option<&'pin OriginalProviderPrepareSelection<'_>>,
         model: Option<&'pin OriginalModelSettingsSelection<'_>>,
         model_save: Option<&'pin OriginalModelSaveSelection<'_>>,
+        conversation_read: Option<&'pin OriginalConversationReadSelection<'_>>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedRegistryBundle<'pin>> {
         let provider_prepare = provider
@@ -80,11 +82,31 @@ impl NativeApplicationSources {
                 ])
             })
             .transpose()?;
+        let mut conversation_routes = [None, None, None];
+        if let Some(selection) = conversation_read {
+            let shell = selection.shell();
+            if let Some(shell) = shell {
+                ensure!(
+                    shell.caller_function_id() == self.authority.shell_provider_id,
+                    "old Conversation read caller differs from the selected Shell"
+                );
+            }
+            for (locked, pin) in conversation_routes.iter_mut().zip([
+                shell,
+                selection.saved_turn(),
+                selection.saved_orchestration(),
+            ]) {
+                *locked = pin
+                    .map(|pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget))
+                    .transpose()?;
+            }
+        }
         Ok(LockedRegistryBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             provider_prepare,
             model_list,
             model_save,
+            conversation_read: conversation_routes,
             budget: Arc::clone(budget),
         })
     }
@@ -104,6 +126,9 @@ impl LockedRegistryBundle<'_> {
         if let Some([model_manage, provider_read]) = &self.model_save {
             model_manage.verify(root, &self.budget, &mut checkpoint)?;
             provider_read.verify(root, &self.budget, &mut checkpoint)?;
+        }
+        for conversation_read in self.conversation_read.iter().flatten() {
+            conversation_read.verify(root, &self.budget, &mut checkpoint)?;
         }
         checkpoint()
     }

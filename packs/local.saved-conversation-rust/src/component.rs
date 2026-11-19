@@ -1,4 +1,4 @@
-//! Read the model reference from the admitted Profile's conversation DATA.
+//! Conversation owner ports for the admitted Profile.
 
 wit_bindgen::generate!({
     path: ["../../crates/tobkiri-wit/wit/core-v1-2/core.wit", "wit"],
@@ -6,7 +6,10 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use crate::saved_model::{SelectionError, select};
+use crate::{
+    legacy_read::{self, ReadError},
+    saved_model::{SelectionError, select},
+};
 use ordered_python_compat::{CodecError, loads};
 use tobkiri::core::{
     flow, storage,
@@ -47,7 +50,32 @@ impl exports::local::saved_conversation::model::Guest for Pack {
     }
 }
 
+impl exports::local::saved_conversation::legacy_read::Guest for Pack {
+    fn get(document: Option<String>, conversation_id: String) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        legacy_read::get(&profile, document.as_deref(), &conversation_id).map_err(read_error)
+    }
+}
+
 export!(Pack);
+
+fn read_error(error: ReadError) -> Error {
+    match error {
+        ReadError::InvalidIdentifier => failure(ErrorCode::Invalid, "conversation id is invalid"),
+        ReadError::InvalidDocument => failure(ErrorCode::Invalid, "conversation store is invalid"),
+        ReadError::Profile => failure(ErrorCode::Denied, "saved conversation Profile is invalid"),
+        ReadError::NotFound => failure(ErrorCode::NotFound, "conversation is unavailable"),
+        ReadError::Limits => failure(
+            ErrorCode::LimitExceeded,
+            "saved conversation exceeds limits",
+        ),
+        ReadError::LegacyCodec => failure(
+            ErrorCode::Unavailable,
+            "saved conversation needs the legacy JSON codec",
+        ),
+        ReadError::Internal => failure(ErrorCode::Internal, "saved conversation read failed"),
+    }
+}
 
 fn selection_error(error: SelectionError) -> Error {
     match error {

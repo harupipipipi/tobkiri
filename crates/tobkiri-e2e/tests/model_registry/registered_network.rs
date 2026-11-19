@@ -293,6 +293,78 @@ async fn select_saved_model(
         .to_owned())
 }
 
+#[cfg(unix)]
+struct LiveConversationFixture<'a> {
+    core: &'a Arc<Core>,
+    root: &'a Path,
+    data: PathBuf,
+    pin: tobkiri_profile::PackPin,
+    profile: &'a ProfileId,
+}
+
+#[cfg(unix)]
+impl<'a> LiveConversationFixture<'a> {
+    async fn import(core: &'a Arc<Core>, root: &'a Path, profile: &'a ProfileId) -> Result<Self> {
+        let data = root.join("original-conversation-data");
+        let store = DataRoot::open(&data)?;
+        let fixture = Self {
+            core,
+            root,
+            data,
+            pin: registry::pack(SAVED_PACK)?.pin,
+            profile,
+        };
+        let missing = fixture
+            .get("one")
+            .await
+            .expect_err("physically absent conversation");
+        ensure!(matches!(missing.downcast_ref::<NativeArtifactError>(),
+                Some(NativeArtifactError::ConversationRegistryRejected(error))
+                    if error.code() == "not-found"));
+        ensure!(!fixture.data.join("packs").exists());
+        store.write_atomic(fixture.relative_path(), CONVERSATION_FIXTURE.as_bytes())?;
+        Ok(fixture)
+    }
+
+    fn relative_path(&self) -> String {
+        format!(
+            "packs/rumi_conversation_store_pack/profiles/{}/conversations.json",
+            self.profile,
+        )
+    }
+
+    async fn get(&self, id: &str) -> Result<Value> {
+        let mut inspection = self
+            .core
+            .inspect_declared_artifacts(Source::new(self.root))?;
+        let path = self
+            .pin
+            .source
+            .strip_prefix("file:")
+            .context("staged Conversation archive")?;
+        let mut archive = fs::File::open(path)?;
+        let length = archive.metadata()?.len();
+        let pack = inspection.verify_pack_archive(&mut archive, length)?;
+        ensure!(pack.hash == self.pin.sha256);
+        tobkiri_wasm::verify_legacy_conversation_read_declaration(&pack)?;
+        let outcome: Result<Value> = async {
+            let result = inspection
+                .get_legacy_conversation(&pack, &self.data, self.profile.as_str(), id)
+                .await?;
+            let wire = result
+                .get_key("owner_result")
+                .context("missing Conversation owner result")?;
+            let wire = wire
+                .as_str()
+                .context("Conversation owner result was not text")?;
+            Ok(serde_json::from_str(wire)?)
+        }
+        .await;
+        inspection.finish().await?;
+        outcome
+    }
+}
+
 fn admitted_ui(session: &Session) -> Result<UiAttachment> {
     session.bind_ui_generation(7)?;
     let [ui] = session
@@ -404,6 +476,11 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
     let root = physical_temp()?;
     let (core, start) = registered_core(root.path(), &origins, 10_000).await?;
     let profile = &start.profile_id;
+    let core = Arc::new(core);
+    #[cfg(unix)]
+    let live = LiveConversationFixture::import(&core, root.path(), profile).await?;
+    #[cfg(unix)]
+    let original: Value = serde_json::from_str(CONVERSATION_FIXTURE)?;
     let session = core.start_bound(&start).await?;
     let checked = async {
         for (origin, (route, cap, revision)) in
@@ -438,6 +515,17 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
         })).await.is_err(), "a request supplied its own model reference");
         for conversation in ["one", "two"] {
             let reference = select_saved_model(&session, conversation, 2).await?;
+            #[cfg(unix)]
+            let reference = {
+                let actual = live.get(conversation).await?;
+                let owner = &actual["conversation"];
+                ensure!(*owner == original["conversations"][conversation]);
+                let stored = owner["model_reference"]
+                    .as_str()
+                    .context("live selected model")?;
+                ensure!(stored == reference);
+                stored.to_owned()
+            };
             let events = stream(&session, &ui, &reference, "Hello").await?;
             ensure!(
                 events
@@ -452,6 +540,8 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
     let closed = session.close().await;
     checked?;
     closed?;
+    #[cfg(unix)]
+    ensure!(fs::read(live.data.join(live.relative_path()))? == CONVERSATION_FIXTURE.as_bytes());
     for (server, (route, cap)) in servers.into_iter().zip([("one", 128), ("two", 256)]) {
         let (path, request) = server
             .join()
@@ -488,6 +578,9 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
     );
     let root = physical_temp()?;
     let (core, start) = registered_core(root.path(), std::slice::from_ref(&origin), 30_000).await?;
+    let core = Arc::new(core);
+    #[cfg(unix)]
+    let live = LiveConversationFixture::import(&core, root.path(), &start.profile_id).await?;
     let expected = json!({
         "profiles": [{
             "profile_id": SELECTION,
@@ -540,6 +633,17 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
         );
         let reference = select_saved_model(&session, "gemma", 2).await?;
         ensure!(reference == SELECTION);
+        #[cfg(unix)]
+        let reference = {
+            let result = live.get("gemma").await?;
+            let record = &result["conversation"];
+            ensure!(record["conversation_revision"] == 2);
+            let original = record["model_reference"]
+                .as_str()
+                .context("live Gemma model")?;
+            ensure!(original == reference);
+            original.to_owned()
+        };
         let ui = admitted_ui(&session)?;
         stream(&session, &ui, &reference, "Name a color.").await
     }

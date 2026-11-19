@@ -123,9 +123,9 @@ mod unix {
     mod tests {
         use super::super::super::raw_byte_digest;
         use super::super::super::registry_pack_receipt::{
-            verify_installed, verify_installed_with_model, verify_installed_with_provider,
-            verify_installed_with_provider_and_model, Pack, ARCHIVE_LIMIT, PACK_IDS,
-            RECEIPT_FORMAT,
+            verify_installed, verify_installed_with_conversation, verify_installed_with_model,
+            verify_installed_with_provider, verify_installed_with_provider_and_model, Pack,
+            ARCHIVE_LIMIT, PACK_IDS, RECEIPT_FORMAT,
         };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
         use super::*;
@@ -352,6 +352,37 @@ mod unix {
                 .join(DIRECTORY)
                 .join("local.saved-conversation.tpk");
             fs::write(conversation, b"local.saved-conversatioN")?;
+            let error = verify().unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert!(error.to_string().contains("local.saved-conversation"));
+            Ok(())
+        }
+
+        #[test]
+        fn conversation_visitor_uses_the_pinned_archive_and_waits_for_its_complete_digest(
+        ) -> io::Result<()> {
+            let fixture = Fixture::new()?;
+            let input = fixture.write_receipt(&fixture.document)?;
+            input.stage(&fixture.stage)?;
+            let verify = || {
+                verify_installed_with_conversation(
+                    &fixture.stage,
+                    input.receipt_sha256(),
+                    || Ok(()),
+                    |pack, archive| {
+                        assert_eq!(pack.id(), "local.saved-conversation");
+                        let mut prefix = [0; 11];
+                        archive.read_exact(&mut prefix)?;
+                        Ok(prefix)
+                    },
+                )
+            };
+            assert_eq!(&verify()?, b"local.saved");
+            let archive = fixture
+                .stage
+                .join(DIRECTORY)
+                .join("local.saved-conversation.tpk");
+            fs::write(archive, b"local.saved-conversatioN")?;
             let error = verify().unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::InvalidData);
             assert!(error.to_string().contains("local.saved-conversation"));

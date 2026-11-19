@@ -1790,6 +1790,7 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
         "provider_error",
         "reply_lost",
         "stop_after_commit",
+        "native_conversation_get",
     ],
 )
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
@@ -1798,9 +1799,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     completion: str,
 ) -> None:
     """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
+    from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.bootstrap.saved_bridge import DEFINITION, READINESS
     from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.credential_store import host_credential_store_factory
     from tobkiri_host.runtime import V4DispatchSession
     from tobkiri_protocol.saved_context import PROMPT_TARGET
     from tobkiri_protocol.turn_progress_v1 import AI_STREAM, ACTION, ACTION_OPERATION
@@ -1822,6 +1825,69 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     native_decisions = []
     calculator_effects = []
     native_window = None
+    native_reads: list[ipc.NativeConversationGetRequest] = []
+    native_envelopes: list[RequestEnvelope] = []
+    native_read_mode = "native"
+
+    if completion == "native_conversation_get":
+        from core_runtime.provider_prepare_native_v4 import (
+            NativeProviderRegistryRequiresLegacyRead,
+        )
+        from tobkiri_host.admission import (
+            DurableResourceLedger, ResourceAmount, ResourceReservation,
+        )
+        from tobkiri_host.errors import ResourceExhaustedError
+
+        reserve = DurableResourceLedger.reserve
+
+        def reserve_read(
+            ledger: DurableResourceLedger, profile_id: str, amount: ResourceAmount,
+            *, detached: bool = False,
+        ) -> ResourceReservation:
+            if (
+                native_read_mode == "unfunded"
+                and amount.memory_bytes >= ipc.CONVERSATION_GET_MINIMUM_MEMORY
+            ):
+                raise ResourceExhaustedError("test Profile capacity")
+            return reserve(ledger, profile_id, amount, detached=detached)
+
+        def native_read(
+            request: ipc.NativeConversationGetRequest,
+        ) -> Mapping[str, object]:
+            request.assert_current()
+            envelope = next(
+                envelope for envelope in native_envelopes
+                if envelope.context.request_id == request.context.request_id
+            )
+            native_reads.append(request)
+            assert request.context == envelope.context
+            assert request.deadline_monotonic == envelope.deadline_monotonic
+            assert envelope.resource_reservation_id is not None
+            assert request.runtime_instance == server._native_provider_prepare_instance
+            assert request.conversation_id == "conversation-1"
+            if native_read_mode == "inapplicable":
+                raise ipc.NativeProviderPrepareUnavailable()
+            if native_read_mode == "legacy-read-required":
+                raise NativeProviderRegistryRequiresLegacyRead()
+            if native_read_mode in {"not-found", "invalid", "denied"}:
+                raise ipc.NativeConversationGetFailure(native_read_mode)
+            if native_read_mode == "transport-error":
+                raise RuntimeError("fixture connection ended without an owner reply")
+            document = json.loads(store.path.read_bytes())
+            return {"conversation": document["conversations"][request.conversation_id]}
+
+        monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_read)
+        monkeypatch.setenv(
+            "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/read.sock",
+        )
+        monkeypatch.setattr(
+            ipc, "capture_launcher_provider_prepare_planner", lambda: None,
+        )
+        monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
+        monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
+        monkeypatch.setattr(
+            ipc, "capture_launcher_conversation_get_reader", lambda: native_read,
+        )
 
     if completion == "calculator":
         from core_runtime.authority.ui_operator import sign_ui_operator
@@ -2064,10 +2130,26 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         tmp_path,
         monkeypatch,
         packvm_backends=BackendRegistry((saved_backend,)),
+        credential_store_factory=(
+            host_credential_store_factory if completion == "native_conversation_get"
+            else None
+        ),
         authority_approval_window_open=native_window,
     )
     server, _session, _authority = next(servers)
     try:
+        if completion == "native_conversation_get":
+            original_dispatch = _session.broker._dispatch
+
+            def observe_owner_dispatch(backend, envelope, *args, **kwargs):
+                if (
+                    (envelope.contract_id, envelope.operation_id) == TARGETS[0]
+                    and envelope.payload.get("operation") == "get"
+                ):
+                    native_envelopes.append(envelope)
+                return original_dispatch(backend, envelope, *args, **kwargs)
+
+            monkeypatch.setattr(_session.broker, "_dispatch", observe_owner_dispatch)
         store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
         conversation = {"id": "conversation-1", "model_reference": "model-profile-1"}
         if completion == "system_prompt":
@@ -2330,6 +2412,40 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             and message["metadata"]["turn_id"] == "turn-1"
             for message in snapshot["data"]["messages"]
         )
+        if completion == "native_conversation_get":
+            assert {request.caller for request in native_reads} == {
+                "shell", "saved-turn", "saved-orchestration",
+            }
+            assert {r.conversation_id for r in native_reads} == {"conversation-1"}
+            assert [request.caller for request in native_reads].count("shell") == 1
+            store_before = store.path.read_bytes()
+            headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+            status, listed, _ = _request(
+                server, "GET", _contract("GET", "/api/chat/conversations"),
+                headers=headers,
+            )
+            assert status == 200, listed
+            assert [request.caller for request in native_reads].count("shell") == 1
+            for native_read_mode in (
+                "inapplicable", "legacy-read-required", "unfunded",
+                "not-found", "invalid", "denied", "transport-error",
+            ):
+                headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+                status, result, _ = _request(
+                    server,
+                    "GET",
+                    _contract("GET", "/api/chat/conversation")
+                    + "?conversation_id=conversation-1",
+                    headers=headers,
+                )
+                if native_read_mode in {
+                    "inapplicable", "legacy-read-required", "unfunded",
+                }:
+                    assert status == 200 and result["data"] == snapshot["data"], result
+                else:
+                    assert status >= 400, (native_read_mode, result)
+            assert [request.caller for request in native_reads].count("shell") == 7
+            assert store.path.read_bytes() == store_before
         ledger = next((tmp_path / "user-data").rglob("turns.sqlite3"))
         ledger_before = ledger.read_bytes()
         for query in ("turn_id=turn-1&profile_id=other", "turn_id=turn-1&operation=begin_saved"):
@@ -3745,6 +3861,7 @@ def test_model_settings_native_read_preserves_signed_http_and_legacy_owner(
     monkeypatch.setattr(Path, "read_text", observe_legacy_document)
     monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_model_read)
     monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
+    monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
     monkeypatch.setattr(
@@ -3921,6 +4038,7 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
         return {"action": "saved", "store_revision": 1, "profile": normalized["record"]}
 
     monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
+    monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: native_save)
@@ -5349,6 +5467,11 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
     planner = NativeProviderPreparePlanner(MINIMUM_PREPARE_MEMORY, plan)
     if launcher_mode is not None:
         monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/provider.sock")
+        monkeypatch.setattr(
+            native_provider_prepare_ipc,
+            "capture_launcher_conversation_get_reader",
+            lambda: None,
+        )
         monkeypatch.setattr(
             native_provider_prepare_ipc, "capture_launcher_model_save_writer", lambda: None,
         )

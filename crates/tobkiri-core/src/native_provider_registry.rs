@@ -168,22 +168,37 @@ impl NativeRegistry {
     }
 }
 
-pub(crate) fn read_legacy_model_document(
+/// The original owner read is fixed by native operation, never by guest input.
+#[derive(Clone, Copy)]
+pub(crate) enum LegacyReadDocument {
+    ModelSettings,
+    Conversation,
+}
+
+pub(crate) fn read_legacy_document(
     invocation: &NativeSetupInvocation,
     root: &Path,
     profile_id: &str,
+    document: LegacyReadDocument,
     output: &mut [u8],
 ) -> Result<usize> {
     let profile = ProfileId::parse(profile_id).map_err(CoreError::from)?;
     let _funding = invocation
         .reserve(CapacityKind::VfsBuffer, DOCUMENT_LIMIT as u64)
         .map_err(CoreError::from)?;
-    let bytes = open_legacy_registry_root(root)?
-        .read_legacy_model_registry(&profile, DOCUMENT_LIMIT)
-        .map_err(|error| match error {
-            StoreError::Quota => NativeArtifactError::TooLarge,
-            error => CoreError::from(error).into(),
-        })?;
+    let root = open_legacy_registry_root(root)?;
+    let bytes = match document {
+        LegacyReadDocument::ModelSettings => {
+            root.read_legacy_model_registry(&profile, DOCUMENT_LIMIT)
+        }
+        LegacyReadDocument::Conversation => {
+            root.read_legacy_conversation_store(&profile, DOCUMENT_LIMIT)
+        }
+    }
+    .map_err(|error| match error {
+        StoreError::Quota => NativeArtifactError::TooLarge,
+        error => CoreError::from(error).into(),
+    })?;
     match bytes {
         None => {
             output[0] = 0;

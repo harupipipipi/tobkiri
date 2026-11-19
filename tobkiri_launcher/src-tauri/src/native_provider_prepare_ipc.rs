@@ -19,8 +19,9 @@ use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
-        PendingProviderPrepare, ProviderPrepareDeadline,
+        start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
+        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, PendingProviderPrepare,
+        ProviderPrepareDeadline, CONVERSATION_GET_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -56,6 +57,8 @@ struct Start<'a> {
     model_list: Option<ModelList>,
     #[serde(borrow, default, deserialize_with = "deserialize_present")]
     model_save: Option<ModelSave<'a>>,
+    #[serde(default, deserialize_with = "deserialize_conversation_get")]
+    conversation_get: Option<ConversationGet>,
 }
 
 impl Start<'_> {
@@ -64,9 +67,10 @@ impl Start<'_> {
             &self.request,
             &self.model_list,
             &self.model_save,
+            &self.conversation_get,
             self.apply,
         ) {
-            (Some(request), None, None, apply) => {
+            (Some(request), None, None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -76,10 +80,14 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 Ok(NativeRegistryRequest::Provider { request, apply })
             }
-            (None, Some(_), None, None) => Ok(NativeRegistryRequest::ModelList),
-            (None, None, Some(save), None) => Ok(NativeRegistryRequest::ModelSave {
+            (None, Some(_), None, None, None) => Ok(NativeRegistryRequest::ModelList),
+            (None, None, Some(save), None, None) => Ok(NativeRegistryRequest::ModelSave {
                 request: save.request.get().as_bytes().to_vec(),
                 provider: save.provider.get().as_bytes().to_vec(),
+            }),
+            (None, None, None, Some(get), None) => Ok(NativeRegistryRequest::ConversationGet {
+                caller: get.caller,
+                conversation_id: get.conversation_id.clone(),
             }),
             _ => bail!("native Registry start must name exactly one operation"),
         }
@@ -97,6 +105,40 @@ struct ModelSave<'a> {
     request: &'a RawValue,
     #[serde(borrow, deserialize_with = "deserialize_object")]
     provider: &'a RawValue,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationGet {
+    #[serde(deserialize_with = "deserialize_conversation_caller")]
+    caller: ConversationReadCaller,
+    conversation_id: String,
+}
+
+fn deserialize_conversation_get<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<ConversationGet>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let object = deserialize_object(deserializer)?;
+    serde_json::from_str(object.get())
+        .map(Some)
+        .map_err(de::Error::custom)
+}
+
+fn deserialize_conversation_caller<'de, D>(
+    deserializer: D,
+) -> std::result::Result<ConversationReadCaller, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "shell" => Ok(ConversationReadCaller::Shell),
+        "saved-turn" => Ok(ConversationReadCaller::SavedTurn),
+        "saved-orchestration" => Ok(ConversationReadCaller::SavedOrchestration),
+        _ => Err(de::Error::custom("unknown Conversation caller")),
+    }
 }
 
 fn deserialize_present<'de, T, D>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
@@ -248,6 +290,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         NativeRegistryRequest::Provider { .. } => ReplyRole::Provider,
         NativeRegistryRequest::ModelList => ReplyRole::ModelList,
         NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
+        NativeRegistryRequest::ConversationGet { .. } => ReplyRole::ConversationGet,
     };
     drop(bytes);
     let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
@@ -285,6 +328,7 @@ enum ReplyRole {
     Provider,
     ModelList,
     ModelSave,
+    ConversationGet,
 }
 
 struct Connection {
@@ -415,18 +459,22 @@ impl Connection {
             drop(wire);
             return self.send_stopped(stop);
         }
-        let limit = match self.reply {
-            ReplyRole::Provider => JSON_LIMIT,
-            ReplyRole::ModelList | ReplyRole::ModelSave => MODEL_RESULT_LIMIT,
+        let (limit, overflow_code) = match self.reply {
+            ReplyRole::Provider => (JSON_LIMIT, "limit-exceeded"),
+            ReplyRole::ModelList => (MODEL_RESULT_LIMIT, "legacy-read-required"),
+            ReplyRole::ModelSave => (MODEL_RESULT_LIMIT, "limit-exceeded"),
+            ReplyRole::ConversationGet => (CONVERSATION_GET_REPLY_LIMIT, "legacy-read-required"),
         };
         match result {
             Ok(output) if output.len() <= limit => {
                 send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline)
             }
-            Ok(_) if self.reply == ReplyRole::ModelList => {
-                send_frame(&mut wire.stream, FAILURE, b"legacy-read-required", deadline)
-            }
-            Ok(_) => send_frame(&mut wire.stream, FAILURE, b"limit-exceeded", deadline),
+            Ok(_) => send_frame(
+                &mut wire.stream,
+                FAILURE,
+                overflow_code.as_bytes(),
+                deadline,
+            ),
             Err(error) => send_frame(
                 &mut wire.stream,
                 FAILURE,
@@ -518,7 +566,9 @@ impl Wire {
 }
 
 fn failure_code(error: &anyhow::Error) -> &'static str {
-    if error.is::<ModelRegistryRequiresLegacyRead>() {
+    if error.is::<ModelRegistryRequiresLegacyRead>()
+        || error.is::<ConversationRegistryRequiresLegacyRead>()
+    {
         return "legacy-read-required";
     }
     match error.downcast_ref::<NativeArtifactError>() {
@@ -529,6 +579,7 @@ fn failure_code(error: &anyhow::Error) -> &'static str {
         Some(NativeArtifactError::ModelRegistryPublicationUnconfirmed(_)) => "unavailable",
         Some(NativeArtifactError::ProviderRejected(error)) => error.code(),
         Some(NativeArtifactError::ModelRegistryRejected(error)) => error.code(),
+        Some(NativeArtifactError::ConversationRegistryRejected(error)) => error.code(),
         Some(NativeArtifactError::Execution(
             NativeDataIoError::Cancelled | NativeDataIoError::Deadline,
         )) => "cancelled",
@@ -827,6 +878,71 @@ mod tests {
             let frame = start_frame(&format!(r#", "model_save":{body}"#));
             assert!(serde_json::from_str::<Start<'_>>(&frame).is_err());
         }
+    }
+
+    #[test]
+    fn conversation_get_accepts_only_its_fixed_caller_and_conversation_id() {
+        for (wire_caller, expected_caller) in [
+            ("shell", ConversationReadCaller::Shell),
+            ("saved-turn", ConversationReadCaller::SavedTurn),
+            (
+                "saved-orchestration",
+                ConversationReadCaller::SavedOrchestration,
+            ),
+        ] {
+            let frame = start_frame(&format!(
+                r#", "conversation_get":{{"caller":"{wire_caller}","conversation_id":"会話"}}"#
+            ));
+            let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+            let NativeRegistryRequest::ConversationGet {
+                caller,
+                conversation_id,
+            } = start.operation().unwrap()
+            else {
+                panic!("expected Conversation Get");
+            };
+            assert_eq!(caller, expected_caller);
+            assert_eq!(conversation_id, "会話");
+        }
+
+        for body in [
+            r#"null"#,
+            r#"{}"#,
+            r#"["shell","stored"]"#,
+            r#"{"caller":"shell"}"#,
+            r#"{"conversation_id":"stored"}"#,
+            r#"{"caller":"unknown","conversation_id":"stored"}"#,
+            r#"{"caller":"saved_turn","conversation_id":"stored"}"#,
+            r#"{"caller":{"shell":null},"conversation_id":"stored"}"#,
+            r#"{"caller":"shell","conversation_id":123}"#,
+            r#"{"caller":"shell","conversation_id":"stored","profile_id":"other"}"#,
+            r#"{"caller":"shell","caller":"saved-turn","conversation_id":"stored"}"#,
+        ] {
+            let frame = start_frame(&format!(r#", "conversation_get":{body}"#));
+            assert!(serde_json::from_str::<Start<'_>>(&frame).is_err(), "{body}");
+        }
+    }
+
+    #[test]
+    fn conversation_get_cannot_share_a_start_with_another_operation() {
+        let get = r#", "conversation_get":{"caller":"shell","conversation_id":"stored"}"#;
+        for extra in [
+            PROVIDER_REQUEST,
+            r#", "apply": {}"#,
+            r#", "model_list": {}"#,
+            r#", "model_save": {"request":{},"provider":{}}"#,
+        ] {
+            let frame = start_frame(&format!("{get}{extra}"));
+            assert!(serde_json::from_str::<Start<'_>>(&frame)
+                .unwrap()
+                .operation()
+                .is_err());
+        }
+        assert!(serde_json::from_str::<Start<'_>>(&start_frame(&format!("{get}{get}"))).is_err());
+        assert_eq!(
+            failure_code(&ConversationRegistryRequiresLegacyRead.into()),
+            "legacy-read-required"
+        );
     }
 
     #[test]

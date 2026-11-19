@@ -263,6 +263,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
                 "sha256:64fa11ae6949412f39039e7069da0a614e78401c55071be40755f2920b28932e"
             );
             check_model_save_grants(&observed, budget);
+            check_conversation_read_grants(&observed, budget);
             assert_eq!(
                 observed
                     .identity()
@@ -469,6 +470,41 @@ fn check_model_save_grants(
         provider.requested_scope_digest(),
         "sha256:1b58a95d7c67e6f789b5e17a10a61c360c706443adbbe3026502e7e29395bd6f"
     );
+}
+
+fn check_conversation_read_grants(
+    observed: &crate::OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+) {
+    let read = crate::OriginalConversationReadSelection::select(observed, budget)
+        .expect("authenticate the selected Conversation owner")
+        .expect("confirmed Profile selects the Conversation owner");
+    for (caller, pin) in [
+        ("shell.tauri.default", read.shell()),
+        (
+            "rumi_turn_runtime_pack.turn-runtime.saved",
+            read.saved_turn(),
+        ),
+        (
+            "tobkiri_conversation_orchestration_pack.saved",
+            read.saved_orchestration(),
+        ),
+    ] {
+        let pin = pin.expect("each original caller has its own signed read grant");
+        assert_eq!(pin.caller_function_id(), caller);
+        assert_eq!(
+            pin.function_id(),
+            "rumi_conversation_store_pack.conversation-store.resource"
+        );
+        assert_eq!(
+            pin.operation_id(),
+            "rumi_conversation_store_pack.conversation-resource"
+        );
+        assert_eq!(
+            pin.requested_scope_digest(),
+            "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c"
+        );
+    }
 }
 
 fn seed_successor_catalog(original: &Path, successor: &Path) {

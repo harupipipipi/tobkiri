@@ -1,4 +1,4 @@
-//! Native access to the original Python Provider and Model Registry stores.
+//! Native access to original Python Profile stores.
 
 use crate::{DataRoot, StoreError};
 use tobkiri_canon::ids::ProfileId;
@@ -42,7 +42,7 @@ impl DataRoot {
     ) -> Result<Option<Vec<u8>>, StoreError> {
         #[cfg(unix)]
         {
-            unix::read_registry(self, profile, max_bytes, &unix::PROVIDER)
+            unix::read_legacy_store(self, profile, max_bytes, &unix::PROVIDER.data)
         }
         #[cfg(not(unix))]
         {
@@ -60,12 +60,30 @@ impl DataRoot {
     ) -> Result<Option<Vec<u8>>, StoreError> {
         #[cfg(unix)]
         {
-            unix::read_registry(self, profile, max_bytes, &unix::MODEL)
+            unix::read_legacy_store(self, profile, max_bytes, &unix::MODEL.data)
         }
         #[cfg(not(unix))]
         {
             let _ = (profile, max_bytes);
             Err(unavailable("Model Registry"))
+        }
+    }
+
+    /// Read the original conversation owner document for this Profile.
+    /// Stable absence returns `None`. The read does not create state or lock the store.
+    pub fn read_legacy_conversation_store(
+        &self,
+        profile: &ProfileId,
+        max_bytes: usize,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        #[cfg(unix)]
+        {
+            unix::read_legacy_store(self, profile, max_bytes, &unix::CONVERSATIONS)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (profile, max_bytes);
+            Err(unavailable("Conversation Store"))
         }
     }
 
@@ -188,27 +206,40 @@ mod unix {
     };
     use tobkiri_canon::Digest;
 
-    pub(super) struct RegistryLayout {
+    pub(super) struct StoreLayout {
         directories: [&'static str; 3],
         store: &'static CStr,
-        lock: &'static CStr,
         label: &'static str,
+    }
+
+    pub(super) struct RegistryLayout {
+        pub(super) data: StoreLayout,
+        lock: &'static CStr,
         private_write_directory: bool,
     }
 
     pub(super) const PROVIDER: RegistryLayout = RegistryLayout {
-        directories: ["packs", "rumi_provider_registry_pack", "profiles"],
-        store: c"provider_registry.store.json",
+        data: StoreLayout {
+            directories: ["packs", "rumi_provider_registry_pack", "profiles"],
+            store: c"provider_registry.store.json",
+            label: "Provider Registry",
+        },
         lock: c"provider-registry.lock",
-        label: "Provider Registry",
         private_write_directory: false,
     };
     pub(super) const MODEL: RegistryLayout = RegistryLayout {
-        directories: ["packs", "rumi_model_registry_pack", "profiles"],
-        store: c"model_registry.store.json",
+        data: StoreLayout {
+            directories: ["packs", "rumi_model_registry_pack", "profiles"],
+            store: c"model_registry.store.json",
+            label: "Model Registry",
+        },
         lock: c"model-registry.lock",
-        label: "Model Registry",
         private_write_directory: true,
+    };
+    pub(super) const CONVERSATIONS: StoreLayout = StoreLayout {
+        directories: ["packs", "rumi_conversation_store_pack", "profiles"],
+        store: c"conversations.json",
+        label: "Conversation Store",
     };
 
     // Keeping the staged descriptor open prevents inode reuse during confirmation.
@@ -240,14 +271,15 @@ mod unix {
             profile: &ProfileId,
             layout: &'static RegistryLayout,
         ) -> Result<Self, StoreError> {
-            verify_root(root, layout)?;
-            let directory = Arc::new(open_registry(root, profile, true, layout)?);
-            let lock_directory = Arc::new(owned_directory(&directory, "locks", true, layout)?);
+            verify_root(root, &layout.data)?;
+            let directory = Arc::new(open_registry(root, profile, true, &layout.data)?);
+            let lock_directory =
+                Arc::new(owned_directory(&directory, "locks", true, &layout.data)?);
             let pid = std::process::id();
             let acquired_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|_| {
-                    StoreError::Unavailable(format!("{} lock clock invalid", layout.label))
+                    StoreError::Unavailable(format!("{} lock clock invalid", layout.data.label))
                 })?
                 .as_secs_f64();
             let payload = serde_json::to_vec(&serde_json::json!({
@@ -256,7 +288,9 @@ mod unix {
                 "pid": pid,
                 "stale_after_seconds": null,
             }))
-            .map_err(|_| StoreError::Invalid(format!("{} lock payload invalid", layout.label)))?;
+            .map_err(|_| {
+                StoreError::Invalid(format!("{} lock payload invalid", layout.data.label))
+            })?;
             let mut lock = match OwnedEntry::create(lock_directory.clone(), layout.lock.to_owned())
             {
                 Ok(lock) => lock,
@@ -265,7 +299,7 @@ mod unix {
                         Ok(entry) if !is_owned_regular(&entry) => {
                             return Err(StoreError::Denied(format!(
                                 "unsafe {} lock entry",
-                                layout.label
+                                layout.data.label
                             )));
                         }
                         Ok(_) => return Err(busy.into()),
@@ -295,13 +329,13 @@ mod unix {
 
         fn verify_binding(&self) -> Result<(), StoreError> {
             let layout = self.layout;
-            verify_root(&self.root, layout)?;
-            let directory = open_registry(&self.root, &self.profile, false, layout)?;
-            let locks = owned_directory(&directory, "locks", false, layout)?;
+            verify_root(&self.root, &layout.data)?;
+            let directory = open_registry(&self.root, &self.profile, false, &layout.data)?;
+            let locks = owned_directory(&directory, "locks", false, &layout.data)?;
             if file_identity(&directory)? != file_identity(&self.directory)?
                 || file_identity(&locks)? != file_identity(&self.lock.directory)?
             {
-                return Err(binding_changed(layout));
+                return Err(binding_changed(&layout.data));
             }
             self.lock_snapshot.verify_current(&locks, layout.lock)
         }
@@ -313,7 +347,7 @@ mod unix {
             verify_store_entry(
                 &self.directory,
                 snapshot.as_ref().map(|(_, file)| file),
-                self.layout,
+                &self.layout.data,
             )?;
             Ok(snapshot.map(|(bytes, _)| bytes))
         }
@@ -331,7 +365,7 @@ mod unix {
             if !matches!(*self.publication.borrow(), Publication::Ready) {
                 return Err(BeforePublish(StoreError::Conflict(format!(
                     "{} transaction has already attempted publication",
-                    layout.label
+                    layout.data.label
                 ))));
             }
             if next.len() > max_bytes || prior.is_some_and(|bytes| bytes.len() > max_bytes) {
@@ -365,7 +399,7 @@ mod unix {
             if observed.as_ref().map(|(bytes, _)| bytes.as_slice()) != prior {
                 return Err(BeforePublish(StoreError::Conflict(format!(
                     "{} bytes changed",
-                    layout.label
+                    layout.data.label
                 ))));
             }
             let prior = observed.as_ref().map(|(_, file)| file);
@@ -376,7 +410,7 @@ mod unix {
             // The guard may cross a process boundary. Check only metadata
             // and pathname identity here, then replace within the pinned dir.
             self.verify_binding().map_err(BeforePublish)?;
-            verify_store_entry(&self.directory, prior, layout).map_err(BeforePublish)?;
+            verify_store_entry(&self.directory, prior, &layout.data).map_err(BeforePublish)?;
             pending
                 .file
                 .verify_current(&self.directory, &staged.name)
@@ -388,7 +422,7 @@ mod unix {
             }
             let fd = self.directory.as_raw_fd();
             let status =
-                unsafe { libc::renameat(fd, staged.name.as_ptr(), fd, layout.store.as_ptr()) };
+                unsafe { libc::renameat(fd, staged.name.as_ptr(), fd, layout.data.store.as_ptr()) };
             if status != 0 {
                 let error = Error::last_os_error();
                 if matches!(
@@ -404,10 +438,10 @@ mod unix {
                 .map_err(StoreError::from)
                 .and_then(|()| self.verify_binding())
                 .and_then(|()| {
-                    if has_owned_link(&self.directory, layout.store, &staged.file)? {
+                    if has_owned_link(&self.directory, layout.data.store, &staged.file)? {
                         Ok(())
                     } else {
-                        Err(binding_changed(layout))
+                        Err(binding_changed(&layout.data))
                     }
                 });
             if let Err(error) = synced {
@@ -436,7 +470,7 @@ mod unix {
                 return Ok(false);
             };
             self.verify_binding()?;
-            snapshot.verify_current(&self.directory, self.layout.store)?;
+            snapshot.verify_current(&self.directory, self.layout.data.store)?;
             Ok(bytes == next && snapshot.identity() == pending.file.identity())
         }
 
@@ -444,20 +478,20 @@ mod unix {
             &self,
             max_bytes: usize,
         ) -> Result<Option<(Vec<u8>, OwnedFileSnapshot)>, StoreError> {
-            read_store(&self.directory, max_bytes, self.layout)
+            read_store(&self.directory, max_bytes, &self.layout.data)
         }
     }
 
-    pub(super) fn read_registry(
+    pub(super) fn read_legacy_store(
         root: &DataRoot,
         profile: &ProfileId,
         max_bytes: usize,
-        layout: &RegistryLayout,
+        layout: &StoreLayout,
     ) -> Result<Option<Vec<u8>>, StoreError> {
         verify_read_root(root, layout)?;
         // Keep every prefix descriptor alive so a removed directory's inode
         // cannot be reused while we verify the observed path or its absence.
-        let observed = registry_directory_prefix(root, profile, layout)?;
+        let observed = store_directory_prefix(root, profile, layout)?;
         let directory = observed
             .last()
             .filter(|_| observed.len() == layout.directories.len() + 1);
@@ -465,7 +499,7 @@ mod unix {
             Some(directory) => read_store(directory, max_bytes, layout),
             None => Ok(None),
         };
-        let current = registry_directory_prefix(root, profile, layout)?;
+        let current = store_directory_prefix(root, profile, layout)?;
         verify_read_root(root, layout)?;
         if observed.len() != current.len() {
             return Err(binding_changed(layout));
@@ -486,7 +520,7 @@ mod unix {
     fn read_store(
         directory: &File,
         max_bytes: usize,
-        layout: &RegistryLayout,
+        layout: &StoreLayout,
     ) -> Result<Option<(Vec<u8>, OwnedFileSnapshot)>, StoreError> {
         match read_existing_owned_at_with_allocation_error(
             directory,
@@ -503,7 +537,7 @@ mod unix {
     fn verify_store_entry(
         directory: &File,
         prior: Option<&OwnedFileSnapshot>,
-        layout: &RegistryLayout,
+        layout: &StoreLayout,
     ) -> Result<(), StoreError> {
         if let Some(prior) = prior {
             return prior.verify_current(directory, layout.store);
@@ -515,7 +549,7 @@ mod unix {
         }
     }
 
-    fn binding_changed(layout: &RegistryLayout) -> StoreError {
+    fn binding_changed(layout: &StoreLayout) -> StoreError {
         StoreError::Conflict(format!("{} filesystem binding changed", layout.label))
     }
 
@@ -524,7 +558,7 @@ mod unix {
         Ok((metadata.dev(), metadata.ino()))
     }
 
-    fn verify_root(root: &DataRoot, layout: &RegistryLayout) -> Result<(), StoreError> {
+    fn verify_root(root: &DataRoot, layout: &StoreLayout) -> Result<(), StoreError> {
         let current = DataRoot::open_existing(root.path())?;
         if current.physical_identity_key()? != root.physical_identity_key()? {
             return Err(binding_changed(layout));
@@ -532,7 +566,7 @@ mod unix {
         Ok(())
     }
 
-    fn verify_read_root(root: &DataRoot, layout: &RegistryLayout) -> Result<(), StoreError> {
+    fn verify_read_root(root: &DataRoot, layout: &StoreLayout) -> Result<(), StoreError> {
         match verify_root(root, layout) {
             Err(StoreError::NotFound) => return Err(binding_changed(layout)),
             result => result?,
@@ -543,21 +577,21 @@ mod unix {
         Ok(())
     }
 
-    fn registry_directories<'a>(
+    fn store_directories<'a>(
         profile: &'a ProfileId,
-        layout: &RegistryLayout,
+        layout: &StoreLayout,
     ) -> impl Iterator<Item = &'a str> + use<'a> {
         layout.directories.into_iter().chain([profile.as_str()])
     }
 
-    fn registry_directory_prefix(
+    fn store_directory_prefix(
         root: &DataRoot,
         profile: &ProfileId,
-        layout: &RegistryLayout,
+        layout: &StoreLayout,
     ) -> Result<Vec<File>, StoreError> {
         let base = root.directory_capability();
         let mut directories = Vec::with_capacity(layout.directories.len() + 1);
-        for name in registry_directories(profile, layout) {
+        for name in store_directories(profile, layout) {
             let parent = directories.last().unwrap_or(base.as_ref());
             match owned_directory(parent, name, false, layout) {
                 Ok(directory) => directories.push(directory),
@@ -572,11 +606,11 @@ mod unix {
         root: &DataRoot,
         profile: &ProfileId,
         create: bool,
-        layout: &RegistryLayout,
+        layout: &StoreLayout,
     ) -> Result<File, StoreError> {
         let base = root.directory_capability();
         let mut directory = owned_directory(&base, layout.directories[0], create, layout)?;
-        for name in registry_directories(profile, layout).skip(1) {
+        for name in store_directories(profile, layout).skip(1) {
             directory = owned_directory(&directory, name, create, layout)?;
         }
         Ok(directory)
@@ -586,7 +620,7 @@ mod unix {
         parent: &File,
         name: &str,
         create: bool,
-        layout: &RegistryLayout,
+        layout: &StoreLayout,
     ) -> Result<File, StoreError> {
         let directory = open_dir(parent, name, create)?;
         let metadata = directory.metadata()?;

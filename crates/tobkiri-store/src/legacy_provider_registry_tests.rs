@@ -14,6 +14,8 @@ const LOCK_PATH: &str = "locks/provider-registry.lock";
 const MODEL_PROFILE_PATH: &str = "packs/rumi_model_registry_pack/profiles/defaults";
 const MODEL_STORE_NAME: &str = "model_registry.store.json";
 const MODEL_LOCK_PATH: &str = "locks/model-registry.lock";
+const CONVERSATION_PROFILE_PATH: &str = "packs/rumi_conversation_store_pack/profiles/defaults";
+const CONVERSATION_STORE_NAME: &str = "conversations.json";
 
 fn fixture() -> (tempfile::TempDir, DataRoot, ProfileId, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
@@ -135,6 +137,79 @@ fn model_registry_absence_never_creates_directories_or_locks() {
         None
     );
     assert_eq!(fs::read_dir(&registry).unwrap().count(), 0);
+}
+
+#[test]
+fn conversation_read_uses_only_the_original_pack_and_selected_profile() {
+    let (_temp, root, profile, provider) = fixture();
+    let conversation = root.path().join(CONVERSATION_PROFILE_PATH);
+    let other = conversation.with_file_name("other");
+    assert_eq!(
+        root.read_legacy_conversation_store(&profile, MAX).unwrap(),
+        None
+    );
+    assert!(!root.path().join("packs").exists());
+
+    for directory in [&provider, &other] {
+        fs::create_dir_all(directory).unwrap();
+        fs::write(directory.join(CONVERSATION_STORE_NAME), b"unrelated").unwrap();
+    }
+    assert_eq!(
+        root.read_legacy_conversation_store(&profile, MAX).unwrap(),
+        None
+    );
+    assert!(!conversation.exists());
+    fs::create_dir(&conversation).unwrap();
+    assert_eq!(
+        root.read_legacy_conversation_store(&profile, MAX).unwrap(),
+        None
+    );
+    assert_eq!(fs::read_dir(&conversation).unwrap().count(), 0);
+
+    let store = conversation.join(CONVERSATION_STORE_NAME);
+    let contents = b"{\r\n  \"model\": \"model\"\r\n}";
+    fs::write(&store, contents).unwrap();
+    assert_eq!(
+        root.read_legacy_conversation_store(&profile, contents.len())
+            .unwrap()
+            .as_deref(),
+        Some(contents.as_slice())
+    );
+    assert!(matches!(
+        root.read_legacy_conversation_store(&profile, contents.len() - 1),
+        Err(StoreError::Quota)
+    ));
+    assert_eq!(fs::read(&store).unwrap(), contents);
+    assert_eq!(fs::read_dir(&conversation).unwrap().count(), 1);
+}
+
+#[test]
+fn conversation_read_rejects_linked_directories_and_files() {
+    let (_temp, root, profile, provider) = fixture();
+    let conversation = root.path().join(CONVERSATION_PROFILE_PATH);
+    let foreign = provider.join(CONVERSATION_STORE_NAME);
+    fs::create_dir_all(&provider).unwrap();
+    fs::write(&foreign, b"foreign").unwrap();
+    fs::create_dir_all(conversation.parent().unwrap()).unwrap();
+    symlink(&provider, &conversation).unwrap();
+    assert!(root.read_legacy_conversation_store(&profile, MAX).is_err());
+    fs::remove_file(&conversation).unwrap();
+
+    fs::create_dir(&conversation).unwrap();
+    let store = conversation.join(CONVERSATION_STORE_NAME);
+    symlink(&foreign, &store).unwrap();
+    assert!(matches!(
+        root.read_legacy_conversation_store(&profile, MAX),
+        Err(StoreError::Denied(_))
+    ));
+    fs::remove_file(&store).unwrap();
+    fs::hard_link(&foreign, &store).unwrap();
+    assert!(matches!(
+        root.read_legacy_conversation_store(&profile, MAX),
+        Err(StoreError::Denied(_))
+    ));
+    assert_eq!(fs::read(&foreign).unwrap(), b"foreign");
+    assert_eq!(fs::read_dir(&conversation).unwrap().count(), 1);
 }
 
 #[test]

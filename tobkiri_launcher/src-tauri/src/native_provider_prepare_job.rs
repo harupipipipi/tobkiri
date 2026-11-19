@@ -1,4 +1,4 @@
-//! Tracked Provider preparation, commit staging and native publication.
+//! Tracked Registry reads, Provider preparation, commit staging and publication.
 
 use std::{
     cell::Cell,
@@ -22,8 +22,9 @@ use tobkiri_wasm::NativeDataIoError;
 use super::{
     caught,
     launch_metadata::{
-        reacquire_model_save_pack, reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
+        reacquire_conversation_read_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
+        reacquire_provider_prepare_pack, ConversationReadCaller, VerifiedRegistryLaunch,
+        REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState,
 };
@@ -36,6 +37,8 @@ use crate::{
 
 type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
 const MODEL_SAVE_REPLY_LIMIT: usize = 1024 * 1024;
+/// Maximum encoded CPython conversation result accepted by the Host.
+pub(crate) const CONVERSATION_GET_REPLY_LIMIT: usize = 1024 * 1024;
 
 pub(crate) enum NativeRegistryRequest {
     Provider {
@@ -47,6 +50,10 @@ pub(crate) enum NativeRegistryRequest {
         request: Vec<u8>,
         provider: Vec<u8>,
     },
+    ConversationGet {
+        caller: ConversationReadCaller,
+        conversation_id: String,
+    },
 }
 
 impl NativeRegistryRequest {
@@ -55,6 +62,7 @@ impl NativeRegistryRequest {
             Self::Provider { .. } => proof.provider_prepare.is_some(),
             Self::ModelList => proof.model_settings.is_some(),
             Self::ModelSave { .. } => proof.model_save.is_some(),
+            Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
         }
     }
 
@@ -63,6 +71,16 @@ impl NativeRegistryRequest {
             Self::Provider { request, apply } => (request, apply.as_ref()),
             Self::ModelList => return Ok(0),
             Self::ModelSave { request, provider } => (request, Some(provider)),
+            Self::ConversationGet {
+                conversation_id, ..
+            } => {
+                let size = conversation_id.capacity();
+                ensure!(
+                    size <= MAX_BYTES,
+                    "native Registry request exceeds its input envelope"
+                );
+                return Ok(size);
+            }
         };
         let size = request
             .capacity()
@@ -86,6 +104,18 @@ impl std::fmt::Display for ModelRegistryRequiresLegacyRead {
 }
 
 impl std::error::Error for ModelRegistryRequiresLegacyRead {}
+
+/// A fixed Conversation read exceeded its compatibility envelope.
+#[derive(Debug)]
+pub(crate) struct ConversationRegistryRequiresLegacyRead;
+
+impl std::fmt::Display for ConversationRegistryRequiresLegacyRead {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("Conversation Registry exceeds the native compatibility envelope")
+    }
+}
+
+impl std::error::Error for ConversationRegistryRequiresLegacyRead {}
 
 /// A running Provider can narrow its Host deadline when the Core begins.
 pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
@@ -183,7 +213,7 @@ struct PreparedReply {
     document: Option<CoreBuffer>,
 }
 
-/// Run one verified Provider or Model Registry request on the managed worker.
+/// Run one verified request on the managed Registry worker.
 ///
 /// The Host adapter checks continuing eligibility. The worker owns the fixed
 /// Registry and supplies bounded observations to the guest.
@@ -414,6 +444,28 @@ async fn run(
                         .map_err(model_save_staging_error)?;
                     return decode_model_save_reply(staged, &graph);
                 }
+                NativeRegistryRequest::ConversationGet {
+                    caller,
+                    conversation_id,
+                } => {
+                    let pack = reacquire_conversation_read_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        caller,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let output = inspection
+                        .get_legacy_conversation(
+                            &pack,
+                            &config.user_data_dir,
+                            &identity.profile_id,
+                            &conversation_id,
+                        )
+                        .await
+                        .map_err(conversation_registry_error)?;
+                    return decode_conversation_get_reply(output, &graph);
+                }
             };
             let input = CoreValue::parse_guest(&request, &graph)?;
             drop(request);
@@ -553,6 +605,18 @@ fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
     }
 }
 
+fn conversation_registry_error(error: NativeArtifactError) -> anyhow::Error {
+    match &error {
+        NativeArtifactError::TooLarge => ConversationRegistryRequiresLegacyRead.into(),
+        NativeArtifactError::ConversationRegistryRejected(error)
+            if matches!(error.code(), "unavailable" | "limit-exceeded") =>
+        {
+            ConversationRegistryRequiresLegacyRead.into()
+        }
+        _ => error.into(),
+    }
+}
+
 fn model_save_staging_error(error: NativeArtifactError) -> anyhow::Error {
     match &error {
         // The fixed Save export reserves these codes for compatibility limits.
@@ -595,6 +659,30 @@ fn decode_model_save_reply(
         // CPython owns this JSON. Preserve its spelling and numeric literals.
         wire: CoreBuffer::copy_from(owner_result.as_bytes(), budget)?,
         document,
+    })
+}
+
+fn decode_conversation_get_reply(
+    output: CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<PreparedReply> {
+    let owner_result = output
+        .get_key("owner_result")
+        .context("native Conversation read omitted its owner result")?;
+    let owner_result = owner_result
+        .as_str()
+        .context("native Conversation read returned a non-string owner result")?;
+    ensure!(
+        owner_result.starts_with('{') && owner_result.ends_with('}'),
+        "native Conversation read returned an invalid owner result"
+    );
+    if owner_result.len() > CONVERSATION_GET_REPLY_LIMIT {
+        return Err(ConversationRegistryRequiresLegacyRead.into());
+    }
+    Ok(PreparedReply {
+        // CPython owns the result, including its numeric literals and spelling.
+        wire: CoreBuffer::copy_from(owner_result.as_bytes(), budget)?,
+        document: None,
     })
 }
 
@@ -777,6 +865,70 @@ mod tests {
         )
         .unwrap();
         assert!(decode_model_save_reply(invalid, &budget).is_err());
+    }
+
+    #[test]
+    fn conversation_get_keeps_the_original_owner_result_and_has_no_document() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let owner =
+            r#"{"conversation": {"id": "会話", "precise": 9007199254740993, "number": NaN}}"#;
+        let output = serde_json::json!({"owner_result": owner});
+        let output =
+            CoreValue::parse_guest(&serde_json::to_vec(&output).unwrap(), &budget).unwrap();
+        let reply = decode_conversation_get_reply(output, &budget).unwrap();
+        assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
+        assert!(reply.document.is_none());
+    }
+
+    #[test]
+    fn conversation_get_bounds_the_owner_result_and_rejects_invalid_shapes() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        for invalid in [
+            serde_json::json!({}),
+            serde_json::json!({"owner_result": {"conversation": {}}}),
+            serde_json::json!({"owner_result": "null"}),
+            serde_json::json!({"owner_result": "[{}]"}),
+        ] {
+            let invalid =
+                CoreValue::parse_guest(&serde_json::to_vec(&invalid).unwrap(), &budget).unwrap();
+            let Err(error) = decode_conversation_get_reply(invalid, &budget) else {
+                panic!("accepted an invalid owner result");
+            };
+            assert!(!error.is::<ConversationRegistryRequiresLegacyRead>());
+        }
+
+        let prefix = r#"{"conversation":{"content":""#;
+        let suffix = r#""}}"#;
+        for extra in [0, 1] {
+            let padding =
+                "a".repeat(CONVERSATION_GET_REPLY_LIMIT - prefix.len() - suffix.len() + extra);
+            let owner = format!("{prefix}{padding}{suffix}");
+            let output = serde_json::json!({"owner_result": owner});
+            let output =
+                CoreValue::parse_guest(&serde_json::to_vec(&output).unwrap(), &budget).unwrap();
+            let result = decode_conversation_get_reply(output, &budget);
+            if extra == 0 {
+                assert_eq!(result.unwrap().wire.len(), CONVERSATION_GET_REPLY_LIMIT);
+            } else {
+                let Err(error) = result else {
+                    panic!("accepted an oversized owner result");
+                };
+                assert!(error.is::<ConversationRegistryRequiresLegacyRead>());
+            }
+        }
+    }
+
+    #[test]
+    fn conversation_get_distinguishes_capacity_from_native_io_failure() {
+        assert!(conversation_registry_error(NativeArtifactError::TooLarge)
+            .is::<ConversationRegistryRequiresLegacyRead>());
+        let error = NativeArtifactError::Execution(NativeDataIoError::Unavailable);
+        assert!(matches!(
+            conversation_registry_error(error).downcast_ref::<NativeArtifactError>(),
+            Some(NativeArtifactError::Execution(
+                NativeDataIoError::Unavailable
+            ))
+        ));
     }
 
     #[test]

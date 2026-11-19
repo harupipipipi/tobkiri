@@ -791,3 +791,140 @@ with socket.socket(socket.AF_UNIX) as listener:
             finally:
                 if server.poll() is None:
                     server.kill()
+
+
+def _conversation_get_request(
+    borrow: _Borrow, caller: ipc.ConversationGetCaller = "shell",
+) -> ipc.NativeConversationGetRequest:
+    return ipc.NativeConversationGetRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        caller=caller,
+        conversation_id="conversation-1",
+    )
+
+
+@contextmanager
+def _served_conversation_get(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeConversationGetRequest], Mapping[str, Any]]]:
+    with _served(monkeypatch, serve):
+        reader = ipc.capture_launcher_conversation_get_reader()
+        assert reader is not None
+        yield reader
+
+
+@pytest.mark.parametrize("caller", ["shell", "saved-turn", "saved-orchestration"])
+def test_conversation_get_uses_closed_role_and_opaque_bounded_owner_json(
+    monkeypatch: pytest.MonkeyPatch, caller: ipc.ConversationGetCaller,
+) -> None:
+    borrow = _Borrow()
+    request = _conversation_get_request(borrow, caller)
+    expected = {
+        "conversation": {
+            "id": request.conversation_id,
+            "metadata": {"probability": 0.25, "huge_id": 1 << 140},
+            "messages": [{"content": "会話", "metadata": {"linked": ["parent"]}}],
+        },
+    }
+    response = json.dumps(expected, ensure_ascii=False).encode("utf-8")
+    response = response.ljust(1024 * 1024, b" ")
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert tag == 1
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "conversation_get": {
+                "caller": caller,
+                "conversation_id": request.conversation_id,
+            },
+        }
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, response)
+        assert peer.recv(1) == b""
+
+    with _served_conversation_get(monkeypatch, serve) as reader:
+        assert reader(request) == expected
+
+
+@pytest.mark.parametrize(
+    ("live", "tag", "payload", "expected"),
+    [
+        (False, 10, b"", ipc.NativeProviderPrepareUnavailable),
+        (False, 8, b"legacy-read-required", ipc._ProtocolError),
+        (
+            True, 8, b"legacy-read-required",
+            ipc.NativeProviderRegistryRequiresLegacyRead,
+        ),
+        (True, 8, b"not-found", ipc.NativeConversationGetFailure),
+        (True, 8, b"invalid", ipc.NativeConversationGetFailure),
+        (True, 8, b"denied", ipc.NativeConversationGetFailure),
+        (True, 8, b"internal", ipc._ProtocolError),
+        (True, 10, b"", ipc._ProtocolError),
+    ],
+)
+def test_conversation_get_distinguishes_authenticated_fallback_and_owner_failure(
+    monkeypatch: pytest.MonkeyPatch, live: bool, tag: int, payload: bytes,
+    expected: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, tag, payload)
+        if live and tag == 10:
+            assert _receive(peer) == (9, b"")
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_conversation_get(monkeypatch, serve) as reader,
+        pytest.raises(expected) as failure,
+    ):
+        reader(_conversation_get_request(_Borrow()))
+    if isinstance(failure.value, ipc.NativeConversationGetFailure):
+        assert failure.value.code == payload.decode("ascii")
+
+
+@pytest.mark.parametrize(
+    ("tag", "size", "payload"),
+    [
+        (7, 1024 * 1024 + 1, b""),
+        (7, None, b'{"conversation":{"value":1e999}}'),
+        (7, None, b'{"conversation":{"value":0,"value":1}}'),
+        (7, None, b'{"conversation":[],"extra":true}'),
+        (11, 0, b""),
+    ],
+)
+def test_conversation_get_rejects_malformed_results_and_publication(
+    monkeypatch: pytest.MonkeyPatch, tag: int, size: int | None, payload: bytes,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        length = len(payload) if size is None else size
+        peer.sendall(_HEADER.pack(tag, length) + payload)
+        assert _receive(peer) == (9, b"")
+        if size is None:
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    message = "owner result is invalid" if size is None else "cleanup was unconfirmed"
+    with (
+        _served_conversation_get(monkeypatch, serve) as reader,
+        pytest.raises(ipc._ProtocolError, match=message),
+    ):
+        reader(_conversation_get_request(_Borrow()))

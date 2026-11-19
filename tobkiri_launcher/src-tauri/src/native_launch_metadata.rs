@@ -16,10 +16,13 @@ use tobkiri_core::{
 };
 use tobkiri_gate::{ControlKind, CoreCancellation};
 use tobkiri_harness_native::{
-    OriginalActivationInspection, OriginalActiveProfile, OriginalModelSaveSelection,
-    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalActivationInspection, OriginalActiveProfile, OriginalConversationReadSelection,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRoutePin,
 };
-use tobkiri_wasm::verify_legacy_model_save_declaration;
+use tobkiri_wasm::{
+    verify_legacy_conversation_read_declaration, verify_legacy_model_save_declaration,
+};
 
 use super::{
     authority, caught, selected_setup_component, JobTicket, NativeRuntimeState,
@@ -52,6 +55,27 @@ pub(crate) struct VerifiedRegistryLaunch {
     pub(crate) provider_prepare: Option<VerifiedProviderPrepareSource>,
     pub(crate) model_settings: Option<VerifiedModelSettingsSource>,
     pub(crate) model_save: Option<VerifiedModelSaveSource>,
+    conversation_read: Option<VerifiedConversationReadSource>,
+}
+
+/// The caller of the original conversation-owner read grant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ConversationReadCaller {
+    /// The selected Shell calling the owner directly.
+    Shell,
+    /// The original Saved Turn function calling the owner.
+    SavedTurn,
+    /// The original Saved Orchestration function calling the owner.
+    SavedOrchestration,
+}
+
+impl VerifiedRegistryLaunch {
+    /// Require the caller's own legacy read edge against the verified replacement.
+    pub(crate) fn permits_conversation_read(&self, caller: ConversationReadCaller) -> bool {
+        self.conversation_read
+            .as_ref()
+            .is_some_and(|source| source.permits(caller))
+    }
 }
 
 /// Signed legacy Provider route pins and the receipt identity of its Wasm Pack.
@@ -81,6 +105,27 @@ pub(crate) struct VerifiedModelSaveSource {
     pub(crate) archive_sha256: String,
     pub(crate) archive_bytes: u64,
     pub(crate) manifest_sha256: String,
+}
+
+/// Separate signed conversation-owner edges and the receipt identity they share.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedConversationReadSource {
+    shell: Option<VerifiedLegacyRoutePin>,
+    saved_turn: Option<VerifiedLegacyRoutePin>,
+    saved_orchestration: Option<VerifiedLegacyRoutePin>,
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
+}
+
+impl VerifiedConversationReadSource {
+    fn permits(&self, caller: ConversationReadCaller) -> bool {
+        match caller {
+            ConversationReadCaller::Shell => self.shell.is_some(),
+            ConversationReadCaller::SavedTurn => self.saved_turn.is_some(),
+            ConversationReadCaller::SavedOrchestration => self.saved_orchestration.is_some(),
+        }
+    }
 }
 
 /// Exact legacy binding digests confirmed against the activation and signed Bundle.
@@ -123,6 +168,7 @@ impl VerifiedRegistryLaunch {
             }),
             model_settings: None,
             model_save: None,
+            conversation_read: None,
         }
     }
 
@@ -142,6 +188,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             model_save: None,
+            conversation_read: None,
         }
     }
 
@@ -162,6 +209,7 @@ impl VerifiedRegistryLaunch {
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
             }),
+            conversation_read: None,
         }
     }
 }
@@ -417,6 +465,10 @@ impl LaunchActivationObserver<'_> {
             .map(|active| OriginalModelSaveSelection::select(active, budget))
             .transpose()?
             .flatten();
+        let conversation_read_selection = active
+            .map(|active| OriginalConversationReadSelection::select(active, budget))
+            .transpose()?
+            .flatten();
         let (app_root, activation) = inspection.with_source(|sources| {
             let catalog_revision = &sources.authority().catalog_revision;
             let activation = active
@@ -425,6 +477,7 @@ impl LaunchActivationObserver<'_> {
                     if provider_selection.is_none()
                         && model_selection.is_none()
                         && model_save_selection.is_none()
+                        && conversation_read_selection.is_none()
                     {
                         return Ok(None);
                     }
@@ -439,6 +492,7 @@ impl LaunchActivationObserver<'_> {
                             provider_selection.as_ref(),
                             model_selection.as_ref(),
                             model_save_selection.as_ref(),
+                            conversation_read_selection.as_ref(),
                             budget,
                         )?,
                         security_epoch,
@@ -460,8 +514,8 @@ impl LaunchActivationObserver<'_> {
             return Ok(None);
         };
         locked.verify(checkpoint)?;
-        let (provider_prepare, (model_settings, model_save)) =
-            registry_pack_receipt::verify_installed_with_provider_and_model(
+        let (provider_prepare, (model_settings, model_save), conversation_read) =
+            registry_pack_receipt::verify_installed_with_archives(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
                 || checkpoint().map_err(io::Error::other),
@@ -513,6 +567,24 @@ impl LaunchActivationObserver<'_> {
                         .transpose()?;
                     Ok((list, save))
                 },
+                |receipt, input| {
+                    conversation_read_selection
+                        .as_ref()
+                        .map(|selection| {
+                            verify_conversation_read_archive(inspection, receipt, input)?;
+                            Ok(VerifiedConversationReadSource {
+                                shell: selection.shell().map(Into::into),
+                                saved_turn: selection.saved_turn().map(Into::into),
+                                saved_orchestration: selection
+                                    .saved_orchestration()
+                                    .map(Into::into),
+                                archive_sha256: receipt.archive_sha256().to_owned(),
+                                archive_bytes: receipt.archive_bytes(),
+                                manifest_sha256: receipt.manifest_sha256().to_owned(),
+                            })
+                        })
+                        .transpose()
+                },
             )
             .context("bundled Registry Pack verification failed during Launch")?;
         if provider_prepare.is_some() {
@@ -524,6 +596,9 @@ impl LaunchActivationObserver<'_> {
         if model_save.is_some() {
             log::info!("verified the selected old Model save grants and its bundled Wasm replacement for this activation");
         }
+        if conversation_read.is_some() {
+            log::info!("verified selected old Conversation read grants and their bundled Wasm replacement for this activation");
+        }
         Ok(Some(VerifiedRegistryLaunch {
             identity: self.identity.clone(),
             security_epoch,
@@ -531,6 +606,7 @@ impl LaunchActivationObserver<'_> {
             provider_prepare,
             model_settings,
             model_save,
+            conversation_read,
         }))
     }
 }
@@ -621,6 +697,36 @@ pub(super) fn reacquire_model_save_pack(
     .context("bundled Model Save archive verification failed")
 }
 
+/// Reacquire the Conversation Pack using the caller's own grant and pinned archive.
+pub(crate) fn reacquire_conversation_read_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    caller: ConversationReadCaller,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .conversation_read
+        .as_ref()
+        .filter(|source| source.permits(caller))
+        .context("admitted launch has no verified Conversation read source for the caller")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    registry_pack_receipt::verify_installed_with_conversation(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            verify_conversation_read_archive(inspection, receipt, input)
+        },
+    )
+    .context("bundled Conversation read archive verification failed")
+}
+
 fn registry_pack_root(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
@@ -686,6 +792,16 @@ fn verify_model_settings_archive(
 ) -> io::Result<VerifiedPack> {
     let pack = verify_registry_archive(inspection, receipt, input)?;
     require_model_list_port(&pack)?;
+    Ok(pack)
+}
+
+fn verify_conversation_read_archive(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+) -> io::Result<VerifiedPack> {
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    verify_legacy_conversation_read_declaration(&pack).map_err(io::Error::other)?;
     Ok(pack)
 }
 
@@ -802,5 +918,58 @@ mod tests {
             apply: None,
         }
         .has_launch_proof(&proof));
+    }
+
+    #[test]
+    fn conversation_read_evidence_is_specific_to_the_selected_caller() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let callers = [
+            ConversationReadCaller::Shell,
+            ConversationReadCaller::SavedTurn,
+            ConversationReadCaller::SavedOrchestration,
+        ];
+        let request = |caller| NativeRegistryRequest::ConversationGet {
+            caller,
+            conversation_id: "fixture".into(),
+        };
+        let provider = VerifiedRegistryLaunch::test_proof(identity.clone(), "catalog:fixture");
+        let model = VerifiedRegistryLaunch::test_model_proof(identity.clone(), "catalog:fixture");
+        let save = VerifiedRegistryLaunch::test_model_save_proof(identity, "catalog:fixture");
+        for caller in callers {
+            for proof in [&provider, &model, &save] {
+                assert!(!request(caller).has_launch_proof(proof));
+            }
+        }
+        let mut proof = save;
+        proof.model_save = None;
+        for selected_caller in callers {
+            let mut source = VerifiedConversationReadSource {
+                shell: None,
+                saved_turn: None,
+                saved_orchestration: None,
+                archive_sha256: "sha256:archive".into(),
+                archive_bytes: 512,
+                manifest_sha256: "sha256:manifest".into(),
+            };
+            let role = match selected_caller {
+                ConversationReadCaller::Shell => &mut source.shell,
+                ConversationReadCaller::SavedTurn => &mut source.saved_turn,
+                ConversationReadCaller::SavedOrchestration => &mut source.saved_orchestration,
+            };
+            *role = Some(VerifiedLegacyRoutePin::fixture());
+            proof.conversation_read = Some(source);
+            for caller in callers {
+                assert_eq!(
+                    request(caller).has_launch_proof(&proof),
+                    caller == selected_caller
+                );
+            }
+            assert!(!NativeRegistryRequest::ModelList.has_launch_proof(&proof));
+        }
     }
 }

@@ -1,0 +1,34 @@
+{
+  "version": "rumi.conversation-store.v1",
+  "profile_id": "profile-1",
+  "revision": {"owner-private": true},
+  "migration": ["ignored"],
+  "saved_receipts": {"owner-private": true},
+  "conversations": {
+    "other": null,
+    "C.1_x-y:z": {
+      "id": "stored-id",
+      "title": "保存済み 🐈",
+      "conversation_revision": 92233720368547758081234567890,
+      "model_reference": "Vendor/Model",
+      "parent_conversation_id": "parent",
+      "context_link": {"version": "tobkiri.conversation-context-link.v1", "parent_conversation_id": "parent", "slot": "child", "created_from_parent_revision": 3},
+      "metadata": {
+        "icon_svg": "<svg/>",
+        "nested": {"icon_svg": "owner data", "temperature": 0.25},
+        "null_value": null
+      },
+      "messages": [
+        {"id": "child-msg", "parent_id": "parent-msg", "sequence_number": -1, "sequence": 76, "payload": [{"text": "\\u0000, \u0000, \u001f", "fraction": -0.0}]},
+        {"id": "parent-msg", "children_ids": ["child-msg"], "role": "system", "token_usage": {"reported": 18446744073709551616}},
+        {"sequence_number": "legacy", "unknown": false}
+      ],
+      "current_node_id": "child-msg",
+      "future_property": {"values": [false, 1.0, -0, 5e-324]}
+    },
+    "absent-meta": {},
+    "mixed-messages": {"metadata": ["legacy"], "messages": [{"sequence": 99}, "legacy"]},
+    "non-array": {"metadata": null, "messages": {"sequence": 99}},
+    "empty-messages": {"metadata": {"icon_svg": "old"}, "messages": []}
+  }
+}

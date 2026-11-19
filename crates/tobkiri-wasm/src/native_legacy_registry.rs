@@ -17,6 +17,7 @@ use wasmtime::{Engine, Store};
 
 const PROVIDER_PACK: &str = "local.provider-registry";
 const MODEL_PACK: &str = "local.model-registry";
+const CONVERSATION_PACK: &str = "local.saved-conversation";
 const FLOW: &str = "tobkiri:core/flow@1.2.0";
 const PROFILE: &str = "current-profile";
 const CALLBACK: &str = "invoke-callback";
@@ -103,6 +104,16 @@ const MODEL_SAVE: RegistryExport = RegistryExport {
     reads: 1,
     clock: RegistryClock::ForReplacement,
 };
+const CONVERSATION_GET: RegistryExport = RegistryExport {
+    pack: CONVERSATION_PACK,
+    shape: "local.saved-conversation.legacy-read@1.0",
+    interface: "local:saved-conversation/legacy-read@1.0.0",
+    function: "get",
+    error_subject: "legacy Conversation read",
+    parameters: &["document", "conversation-id"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 
 enum LegacyProviderOperation<'a> {
     Prepare,
@@ -117,6 +128,10 @@ enum RegistryInput<'a> {
         read: LegacyProviderRegistryRead,
     },
     ModelList(Option<&'a str>),
+    ConversationGet {
+        document: Option<&'a str>,
+        conversation_id: &'a str,
+    },
     ModelSave {
         request: &'a CoreValue,
         provider: &'a CoreValue,
@@ -159,6 +174,14 @@ pub use LegacyRegistryRead as LegacyProviderRegistryRead;
 pub fn verify_legacy_model_save_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &MODEL_SAVE)?;
     declared_registry_function(pack, &MODEL_SAVE)?;
+    Ok(())
+}
+
+/// Check the receipt-verified declaration for the fixed Conversation read.
+/// The actual Component ABI is checked independently at invocation.
+pub fn verify_legacy_conversation_read_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &CONVERSATION_GET)?;
+    declared_registry_function(pack, &CONVERSATION_GET)?;
     Ok(())
 }
 
@@ -297,6 +320,26 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         .await
     }
 
+    /// Project one original Conversation record without granting storage to the guest.
+    pub async fn get_legacy_conversation(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+        conversation_id: &str,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &CONVERSATION_GET,
+            RegistryInput::ConversationGet {
+                document,
+                conversation_id,
+            },
+        )
+        .await
+    }
+
     async fn invoke_legacy_registry(
         &mut self,
         pack: &VerifiedPack,
@@ -328,7 +371,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         .is_some_and(|(_, ty)| *ty == WitType::CallbackHandle)
             }
             RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
-            RegistryInput::ModelSave { .. } => true,
+            RegistryInput::ModelSave { .. } | RegistryInput::ConversationGet { .. } => true,
         };
         ensure!(
             abi_matches,
@@ -364,6 +407,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         // before instantiating anything or accepting an invocation of the host.
         let linker = registry_linker(engine, &component, &function.params, export, &owners)?;
         let model_parameters;
+        let conversation_parameters;
         let without_plan;
         let with_plan;
         let (values, read): (&[Val], _) = match input {
@@ -388,8 +432,16 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 (values, Some(read))
             }
             RegistryInput::ModelList(document) => {
-                model_parameters = [model_document(document, &owners)?];
+                model_parameters = [optional_document(document, &owners)?];
                 (&model_parameters, None)
+            }
+            RegistryInput::ConversationGet {
+                document,
+                conversation_id,
+            } => {
+                let id = BudgetedString::copy_from(conversation_id, owners.component(), 1)?;
+                conversation_parameters = [optional_document(document, &owners)?, Val::String(id)];
+                (&conversation_parameters, None)
             }
             RegistryInput::ModelSave {
                 request,
@@ -416,6 +468,17 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         );
         ensure_active(store.data_mut())?;
         let reply = reply?;
+        if export.shape == CONVERSATION_GET.shape {
+            let owner = reply
+                .get_key("owner_result")
+                .context("missing Conversation result")?;
+            ensure!(
+                matches!(reply.inspect(), CoreRef::Obj(fields) if fields.len() == 1)
+                    && matches!(owner.inspect(), CoreRef::Str(value)
+                        if value.starts_with('{') && value.ends_with('}')),
+                "legacy Conversation owner result differs"
+            );
+        }
         let expected_clock_pending = match export.clock {
             RegistryClock::None | RegistryClock::Required => false,
             RegistryClock::ForReplacement => validate_model_save_reply(&reply)?,
@@ -540,16 +603,22 @@ fn declared_registry_function<'a>(
             "legacy Model Registry save parameter ABI differs"
         );
     }
+    if export.shape == CONVERSATION_GET.shape {
+        ensure!(
+            optional_string(&function.params[0].1) && function.params[1].1 == WitType::String,
+            "legacy Conversation read parameter ABI differs"
+        );
+    }
     Ok(function)
 }
 
-fn model_document(document: Option<&str>, owners: &crate::AllocationOwners) -> Result<Val> {
+fn optional_document(document: Option<&str>, owners: &crate::AllocationOwners) -> Result<Val> {
     let Some(document) = document else {
         return Ok(Val::Option(None));
     };
     ensure!(
         document.len() <= MAX_DOCUMENT_BYTES,
-        "legacy Model Registry input exceeds its limit"
+        "legacy owner document exceeds its limit"
     );
     let owner = owners.component();
     let raw = Val::String(BudgetedString::copy_from(document, owner, 1)?);

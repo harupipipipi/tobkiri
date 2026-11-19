@@ -1,4 +1,4 @@
-//! Select legacy settings routes from authenticated v5 records.
+//! Select legacy Registry routes from authenticated v5 records.
 use crate::OriginalActiveProfile;
 use sha2::{Digest as _, Sha256};
 use std::{fmt, sync::Arc};
@@ -82,6 +82,17 @@ static PROVIDER_READ: Route = Route {
     operation: "rumi_provider_registry_pack.provider-registry-resource",
     variant: "rumi_provider_registry_pack.provider-registry.resource.python",
 };
+
+static CONVERSATION_READ: Route = Route {
+    pack: "rumi_conversation_store_pack",
+    function: "rumi_conversation_store_pack.conversation-store.resource",
+    contract: "tobkiri.resource.conversation.v1",
+    operation: "rumi_conversation_store_pack.conversation-resource",
+    variant: "rumi_conversation_store_pack.conversation-store.resource.python",
+};
+
+const SAVED_TURN_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.saved";
+const SAVED_ORCHESTRATION_CALLER: &str = "tobkiri_conversation_orchestration_pack.saved";
 
 /// The authenticated route is inconsistent or its verification budget is unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -281,6 +292,52 @@ impl<'a> OriginalModelSaveSelection<'a> {
     }
 }
 
+/// The original conversation-owner read grants for the three supported callers.
+pub struct OriginalConversationReadSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    shell: Option<OriginalRoutePin>,
+    saved_turn: Option<OriginalRoutePin>,
+    saved_orchestration: Option<OriginalRoutePin>,
+}
+
+impl<'a> OriginalConversationReadSelection<'a> {
+    /// Select each caller's exact signed Python route independently.
+    ///
+    /// An absent or unsupported role has no pin. Verify each selected pin
+    /// independently against the packaged catalog before using it.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        let [shell, saved_turn, saved_orchestration] =
+            select_conversation_read_records(active.records(), budget)?;
+        if shell.is_none() && saved_turn.is_none() && saved_orchestration.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            _active: active,
+            shell,
+            saved_turn,
+            saved_orchestration,
+        }))
+    }
+
+    /// The selected Shell's direct conversation-owner read grant.
+    pub fn shell(&self) -> Option<&OriginalRoutePin> {
+        self.shell.as_ref()
+    }
+
+    /// The Saved Turn function's nested conversation-owner read grant.
+    pub fn saved_turn(&self) -> Option<&OriginalRoutePin> {
+        self.saved_turn.as_ref()
+    }
+
+    /// The Saved Orchestration function's nested conversation-owner read grant.
+    pub fn saved_orchestration(&self) -> Option<&OriginalRoutePin> {
+        self.saved_orchestration.as_ref()
+    }
+}
+
 /// Immutable metadata for the two Profile grant edges to old Provider prepare.
 pub struct OriginalProviderPrepareSelection<'a> {
     _active: &'a OriginalActiveProfile,
@@ -357,6 +414,20 @@ fn select_model_list_records(
         return Ok(None);
     };
     records.select_shell_route(&MODEL_LIST)
+}
+
+fn select_conversation_read_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<[Option<OriginalRoutePin>; 3]> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok([None, None, None]);
+    };
+    Ok([
+        records.select_shell_route(&CONVERSATION_READ)?,
+        records.select_route(SAVED_TURN_CALLER, &CONVERSATION_READ)?,
+        records.select_route(SAVED_ORCHESTRATION_CALLER, &CONVERSATION_READ)?,
+    ])
 }
 
 fn selected_shell_records<'a>(
@@ -699,7 +770,7 @@ mod tests {
         fn release(&self, _: u64) {}
     }
 
-    // Use the snapshot and exact edge/scope digests for the settings routes.
+    // Use the snapshot and exact edge/scope digests for the Registry routes.
     // The rest of the original activation closure is omitted.
     fn records() -> Value {
         const SHELL: &str = "shell.tauri.default";
@@ -769,6 +840,27 @@ mod tests {
                 "authority-ref:c0b9128e7e44426c9df7b301c4903249948d782b264fdf9c33e9d3b9aebbe310",
                 "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
                 "sha256:1b58a95d7c67e6f789b5e17a10a61c360c706443adbbe3026502e7e29395bd6f",
+            ),
+            (
+                &CONVERSATION_READ,
+                SHELL,
+                "authority-ref:1ac460445bfec95ce8451f251740514d6e4275fb9fdb3bbe3f60a1df9ad41b83",
+                "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+                "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c",
+            ),
+            (
+                &CONVERSATION_READ,
+                SAVED_TURN_CALLER,
+                "authority-ref:102d72ffc48697e9c5aa19b70b82a502237abf81b823ce3bf6fc65ff34729462",
+                "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+                "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c",
+            ),
+            (
+                &CONVERSATION_READ,
+                SAVED_ORCHESTRATION_CALLER,
+                "authority-ref:5d9e74a9f4f8824cdef4dafb34937f7721fd09730df71eb54c14c48a3634b80d",
+                "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+                "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c",
             ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
@@ -877,8 +969,78 @@ mod tests {
         )
     }
 
+    fn select_conversation_read(records: &Value) -> Result<[Option<OriginalRoutePin>; 3]> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_conversation_read_records((&profile, &lock, &plan), &budget)
+    }
+
     const MODEL_MANAGE_ROW: usize = 3;
     const MODEL_PROVIDER_READ_ROW: usize = 4;
+    const CONVERSATION_SHELL_ROW: usize = 6;
+    const CONVERSATION_SAVED_TURN_ROW: usize = 7;
+    const CONVERSATION_SAVED_ORCHESTRATION_ROW: usize = 8;
+
+    #[test]
+    fn conversation_read_selects_each_exact_caller_and_accepts_the_legacy_default_mode() {
+        let mut fixture = records();
+        let rows = [
+            (CONVERSATION_SHELL_ROW, "shell.tauri.default"),
+            (CONVERSATION_SAVED_TURN_ROW, SAVED_TURN_CALLER),
+            (
+                CONVERSATION_SAVED_ORCHESTRATION_ROW,
+                SAVED_ORCHESTRATION_CALLER,
+            ),
+        ];
+        for (row, _) in rows {
+            fixture["profile"]["requested_edges"][row]
+                .as_object_mut()
+                .unwrap()
+                .remove("authority_mode");
+        }
+        for (pin, (row, caller)) in select_conversation_read(&fixture)
+            .unwrap()
+            .into_iter()
+            .zip(rows)
+        {
+            let pin = pin.unwrap();
+            assert_eq!(pin.caller_function_id(), caller);
+            assert_eq!(pin.function_id(), CONVERSATION_READ.function);
+            assert_eq!(pin.contract_id(), CONVERSATION_READ.contract);
+            assert_eq!(pin.operation_id(), CONVERSATION_READ.operation);
+            assert_eq!(pin.variant_id(), CONVERSATION_READ.variant);
+            assert_eq!(
+                pin.authority_reference(),
+                fixture["profile"]["requested_edges"][row]["authority_reference"]
+            );
+        }
+    }
+
+    #[test]
+    fn conversation_read_needs_each_role_to_have_its_own_profile_grant() {
+        let mut fixture = records();
+        let row = CONVERSATION_SAVED_TURN_ROW;
+        fixture["profile"]["requested_edges"][row]["authority_mode"] = json!("interactive_only");
+        fixture["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+        let row = CONVERSATION_SAVED_ORCHESTRATION_ROW;
+        fixture["profile"]["requested_edges"][row]["caller_function_id"] =
+            json!("unrelated.reader");
+        fixture["plan"]["bindings"][row]["caller_function_id"] = json!("unrelated.reader");
+        let [shell, saved_turn, saved_orchestration] = select_conversation_read(&fixture).unwrap();
+        assert!(shell.is_some());
+        assert!(saved_turn.is_none());
+        assert!(saved_orchestration.is_none());
+
+        let mut fixture = records();
+        fixture["plan"]["bindings"][CONVERSATION_SAVED_TURN_ROW]["authority_mode"] =
+            json!("interactive_only");
+        assert!(matches!(
+            select_conversation_read(&fixture),
+            Err(Inconsistent(
+                "the Profile edge and Plan Authority modes differ"
+            ))
+        ));
+    }
 
     #[test]
     fn selects_the_exact_model_save_grants_with_both_scopes_and_variants() {

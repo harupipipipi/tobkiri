@@ -12,8 +12,18 @@ interface model {
   select: func(conversation-id: string, conversation-revision: u64) -> result<string, error>;
 }
 
+interface legacy-read {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Read one complete conversation from the authenticated Profile's physical
+  /// owner document. None represents an absent file.
+  /// The original owner reply is enclosed as the owner-result JSON string.
+  get: func(document: option<string>, conversation-id: string) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
   export model;
+  export legacy-read;
 }

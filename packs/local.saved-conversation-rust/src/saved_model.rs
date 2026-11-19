@@ -2,7 +2,7 @@
 
 use ordered_python_compat::{PyValue, pystrip};
 
-const STORE_VERSION: &str = "rumi.conversation-store.v1";
+pub(super) const STORE_VERSION: &str = "rumi.conversation-store.v1";
 
 /// The reason the owner document could not supply a model reference.
 #[derive(Debug, PartialEq, Eq)]
@@ -67,7 +67,7 @@ pub(super) fn select<'document>(
         .ok_or(SelectionError::Invalid)
 }
 
-fn valid_conversation_id(value: &str) -> bool {
+pub(super) fn valid_conversation_id(value: &str) -> bool {
     let Some((first, rest)) = value.as_bytes().split_first() else {
         return false;
     };

@@ -6,7 +6,10 @@
 //! active state, invocation, jailed open, verification and physical cleanup.
 //! This is separate from ordinary Profile permissions and early Setup reads.
 
-use crate::{Core, CoreError, native_provider_registry::LegacyRegistryKind};
+use crate::{
+    Core, CoreError,
+    native_provider_registry::{LegacyReadDocument, LegacyRegistryKind},
+};
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
@@ -91,6 +94,10 @@ pub enum NativeArtifactError {
     ModelRegistryPublicationUnconfirmed(#[source] tobkiri_store::StoreError),
     #[error("{0}")]
     ModelRegistryRejected(#[source] LegacyRegistryError),
+    #[error("native Conversation read failed")]
+    ConversationRegistry(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("{0}")]
+    ConversationRegistryRejected(#[source] LegacyRegistryError),
 }
 
 const READY: u8 = 0;
@@ -389,12 +396,69 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         root: &Path,
         profile_id: &str,
     ) -> Result<CoreValue, NativeArtifactError> {
-        use std::os::unix::ffi::OsStrExt;
-
-        let budget = self.allocation_budget()?;
+        self.require_ready()?;
         if pack.manifest.id.as_str() != "local.model-registry" {
             return Err(NativeArtifactError::Denied);
         }
+        let framed = self
+            .read_original_document(root, profile_id, LegacyReadDocument::ModelSettings)
+            .await?;
+        let document = original_document_text(&framed, |error| {
+            NativeArtifactError::ModelSettings(Box::new(error))
+        })?;
+        self.require_live()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let settings = store
+            .list_legacy_model_settings(pack, profile_id, document)
+            .await;
+        self.require_live()?;
+        settings.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ModelRegistryRejected(rejected),
+            Err(error) => NativeArtifactError::ModelSettings(error.into()),
+        })
+    }
+
+    /// Load the active Profile's original Conversation Store in place.
+    /// An authorized native caller chooses the Profile and Pack. The guest
+    /// receives the original bytes and one conversation ID as data.
+    pub async fn get_legacy_conversation(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        conversation_id: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.require_ready()?;
+        if pack.manifest.id.as_str() != "local.saved-conversation" {
+            return Err(NativeArtifactError::Denied);
+        }
+        let framed = self
+            .read_original_document(root, profile_id, LegacyReadDocument::Conversation)
+            .await?;
+        let document = original_document_text(&framed, |error| {
+            NativeArtifactError::ConversationRegistry(Box::new(error))
+        })?;
+        self.require_live()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let result = store
+            .get_legacy_conversation(pack, profile_id, document, conversation_id)
+            .await;
+        self.require_live()?;
+        result.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ConversationRegistryRejected(rejected),
+            Err(error) => NativeArtifactError::ConversationRegistry(error.into()),
+        })
+    }
+
+    async fn read_original_document(
+        &mut self,
+        root: &Path,
+        profile_id: &str,
+        document: LegacyReadDocument,
+    ) -> Result<CoreBuffer, NativeArtifactError> {
+        use std::os::unix::ffi::OsStrExt;
+
+        let budget = self.allocation_budget()?;
         let directory = CoreBuffer::copy_from(root.as_os_str().as_bytes(), budget)
             .map_err(|_| NativeDataIoError::Capacity)?;
         let profile = CoreBuffer::copy_from(profile_id.as_bytes(), budget)
@@ -405,7 +469,9 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             .io
             .inspect_retaining(
                 held.project(|work| work as &(dyn std::any::Any + Send + Sync)),
-                move |output| inspect_model_document(&held, &directory, &profile, output),
+                move |output| {
+                    inspect_original_document(&held, &directory, &profile, document, output)
+                },
             )
             .await?;
         if let Some(error) = self
@@ -419,24 +485,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         {
             return Err(error);
         }
-        let document = match framed.as_bytes() {
-            [0] => None,
-            [1, raw @ ..] => Some(
-                std::str::from_utf8(raw)
-                    .map_err(|error| NativeArtifactError::ModelSettings(Box::new(error)))?,
-            ),
-            _ => return Err(NativeDataIoError::CompletionUnknown.into()),
-        };
-        self.require_live()?;
-        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
-        let settings = store
-            .list_legacy_model_settings(pack, profile_id, document)
-            .await;
-        self.require_live()?;
-        settings.map_err(|error| match error.downcast::<LegacyRegistryError>() {
-            Ok(rejected) => NativeArtifactError::ModelRegistryRejected(rejected),
-            Err(error) => NativeArtifactError::ModelSettings(error.into()),
-        })
+        Ok(framed)
     }
 
     fn claim_registry(&self) -> Result<(), NativeArtifactError> {
@@ -646,13 +695,25 @@ fn inspect_selected<S: NativeDeclaredArtifactSource>(
     }
 }
 
-fn inspect_model_document<S: NativeDeclaredArtifactSource>(
+fn original_document_text(
+    framed: &CoreBuffer,
+    invalid_utf8: impl FnOnce(std::str::Utf8Error) -> NativeArtifactError,
+) -> Result<Option<&str>, NativeArtifactError> {
+    match framed.as_bytes() {
+        [0] => Ok(None),
+        [1, raw @ ..] => std::str::from_utf8(raw).map(Some).map_err(invalid_utf8),
+        _ => Err(NativeDataIoError::CompletionUnknown.into()),
+    }
+}
+
+fn inspect_original_document<S: NativeDeclaredArtifactSource>(
     held: &Held<S>,
     directory: &CoreBuffer,
     profile: &CoreBuffer,
+    document: LegacyReadDocument,
     output: &mut NativeInspectionOutput<'_>,
 ) -> Result<(), NativeDataIoError> {
-    use crate::native_provider_registry::{DOCUMENT_LIMIT, read_legacy_model_document};
+    use crate::native_provider_registry::{DOCUMENT_LIMIT, read_legacy_document};
     use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
 
     let work = held.get();
@@ -667,7 +728,7 @@ fn inspect_model_document<S: NativeDeclaredArtifactSource>(
         .map_err(|_| output.reject_execution(NativeDataIoError::Unavailable))?;
     let result = output.write_chunk_checked(DOCUMENT_LIMIT + 1, |tail, checkpoint| {
         checkpoint.charge_work(1)?;
-        let read = read_legacy_model_document(&work.invocation, directory, profile, tail);
+        let read = read_legacy_document(&work.invocation, directory, profile, document, tail);
         checkpoint.charge_work(0)?;
         read
     })?;
