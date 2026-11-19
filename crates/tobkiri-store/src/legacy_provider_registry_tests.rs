@@ -288,8 +288,15 @@ fn conversation_transaction_uses_the_original_lock_and_replaces_only_the_origina
     fs::create_dir_all(lock.parent().unwrap()).unwrap();
     fs::set_permissions(&conversation, fs::Permissions::from_mode(0o755)).unwrap();
     fs::write(&store, b"prior").unwrap();
-    let legacy = br#"{"acquired_at":0.0,"owner":"pid:999","pid":999,"stale_after_seconds":0}"#;
-    fs::write(&lock, legacy).unwrap();
+    let pid = std::process::id();
+    let legacy = serde_json::to_vec(&serde_json::json!({
+        "acquired_at": 1.0,
+        "owner": format!("pid:{pid}"),
+        "pid": pid,
+        "stale_after_seconds": null,
+    }))
+    .unwrap();
+    fs::write(&lock, &legacy).unwrap();
     assert_busy(root.lock_legacy_conversation_store(&profile));
     assert_eq!(fs::read(&lock).unwrap(), legacy);
     fs::remove_file(&lock).unwrap();
@@ -351,6 +358,126 @@ fn conversation_transaction_uses_the_original_lock_and_replaces_only_the_origina
     drop(transaction);
     assert!(!lock.exists());
     assert_eq!(fs::read_dir(&conversation).unwrap().count(), 2);
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn conversation_lock_fixture() -> (tempfile::TempDir, DataRoot, ProfileId, PathBuf) {
+    let (temp, root, profile, _) = fixture();
+    let conversation = root.path().join(CONVERSATION_PROFILE_PATH);
+    let lock = conversation.join(CONVERSATION_LOCK_PATH);
+    fs::create_dir_all(lock.parent().unwrap()).unwrap();
+    fs::write(conversation.join(CONVERSATION_STORE_NAME), b"prior").unwrap();
+    (temp, root, profile, lock)
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn conversation_lock_recovers_a_dead_legacy_writer() {
+    let (_temp, root, profile, lock) = conversation_lock_fixture();
+    let mut writer = std::process::Command::new("/bin/sh")
+        .args(["-c", "exit 0"])
+        .spawn()
+        .unwrap();
+    let pid = writer.id();
+    assert!(writer.wait().unwrap().success());
+    let legacy = serde_json::json!({
+        "acquired_at": 1.0,
+        "owner": format!("pid:{pid}"),
+        "pid": pid,
+        "stale_after_seconds": null,
+    });
+    fs::write(&lock, serde_json::to_vec(&legacy).unwrap()).unwrap();
+
+    let transaction = root.lock_legacy_conversation_store(&profile).unwrap();
+    let current: serde_json::Value = serde_json::from_slice(&fs::read(&lock).unwrap()).unwrap();
+    assert_eq!(current["lease"], "directory-flock-v1");
+    assert_eq!(current["pid"], std::process::id());
+    assert_eq!(current.as_object().unwrap().len(), 5);
+    assert_eq!(fs::read_dir(lock.parent().unwrap()).unwrap().count(), 1);
+    assert_eq!(
+        transaction.read(MAX).unwrap().as_deref(),
+        Some(b"prior".as_slice())
+    );
+    drop(transaction);
+    assert!(!lock.exists());
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn conversation_lock_recovers_a_marked_record_only_after_the_directory_lease_ends() {
+    use std::os::fd::AsRawFd;
+
+    let (_temp, root, profile, lock) = conversation_lock_fixture();
+    let external_lease = fs::File::open(lock.parent().unwrap()).unwrap();
+    assert_eq!(
+        unsafe { libc::flock(external_lease.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+        0
+    );
+    let pid = std::process::id();
+    let marked = serde_json::to_vec(&serde_json::json!({
+        "acquired_at": 1.0,
+        "owner": format!("pid:{pid}"),
+        "pid": pid,
+        "stale_after_seconds": null,
+        "lease": "directory-flock-v1",
+    }))
+    .unwrap();
+    assert_busy(root.lock_legacy_conversation_store(&profile));
+    fs::write(&lock, &marked).unwrap();
+    assert_busy(root.lock_legacy_conversation_store(&profile));
+    assert_eq!(fs::read(&lock).unwrap(), marked);
+    drop(external_lease);
+
+    let transaction = root.lock_legacy_conversation_store(&profile).unwrap();
+    assert_ne!(fs::read(&lock).unwrap(), marked);
+    assert_busy(root.lock_legacy_conversation_store(&profile));
+    drop(transaction);
+    assert!(!lock.exists());
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn conversation_lock_leaves_malformed_or_unsafe_records_in_place() {
+    let (temp, root, profile, lock) = conversation_lock_fixture();
+    let too_large = vec![b' '; 4097];
+    for malformed in [
+        b"{".as_slice(),
+        br#"["owner",1,1,null,"directory-flock-v1"]"#,
+        br#"{"owner":"legacy","pid":1,"acquired_at":1,"stale_after_seconds":null,"lease":null}"#,
+        br#"{"owner":"legacy","pid":1,"acquired_at":1,"stale_after_seconds":null,"lease":{"directory-flock-v1":null}}"#,
+        br#"{"owner":"legacy","pid":1,"acquired_at":1,"stale_after_seconds":null,"lease":"future"}"#,
+        br#"{"owner":"legacy","pid":1,"pid":2,"acquired_at":1,"stale_after_seconds":null,"lease":"directory-flock-v1"}"#,
+        br#"{"owner":"legacy","pid":1,"acquired_at":1,"lease":"directory-flock-v1"}"#,
+        br#"{"owner":"legacy","pid":0,"acquired_at":1,"stale_after_seconds":null,"lease":"directory-flock-v1"}"#,
+        &too_large,
+    ] {
+        fs::write(&lock, malformed).unwrap();
+        assert_busy(root.lock_legacy_conversation_store(&profile));
+        assert_eq!(fs::read(&lock).unwrap(), malformed);
+    }
+
+    let marked = br#"{"owner":"legacy","pid":1,"acquired_at":1,"stale_after_seconds":null,"lease":"directory-flock-v1"}"#;
+    fs::write(&lock, marked).unwrap();
+    fs::set_permissions(&lock, fs::Permissions::from_mode(0o622)).unwrap();
+    assert!(matches!(
+        root.lock_legacy_conversation_store(&profile),
+        Err(StoreError::Denied(_))
+    ));
+    assert_eq!(fs::read(&lock).unwrap(), marked);
+    fs::remove_file(&lock).unwrap();
+
+    let foreign = temp.path().join("foreign");
+    fs::write(&foreign, marked).unwrap();
+    for create in [symlink::<&PathBuf, &PathBuf>, fs::hard_link] {
+        create(&foreign, &lock).unwrap();
+        assert!(matches!(
+            root.lock_legacy_conversation_store(&profile),
+            Err(StoreError::Denied(_))
+        ));
+        assert_eq!(fs::read(&lock).unwrap(), marked);
+        assert_eq!(fs::read(&foreign).unwrap(), marked);
+        fs::remove_file(&lock).unwrap();
+    }
 }
 
 #[test]

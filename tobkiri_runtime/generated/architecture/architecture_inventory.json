@@ -8789,7 +8789,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:f1ea04ce558dc1243ed5b6aaaa5862e20ae9f6237c9fd2512baa3943339a3018",
+        "digest": "sha256:0527b085d97c50610077410ff9b506f2745a73504b7ffb3e039d39c8bb64a022",
         "identity": "rumi_conversation_store_pack",
         "kind": "manifest",
         "legacy": true,
@@ -8797,7 +8797,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:0c2f8f2dc25f8fe7ee116f97a564a055008476e7957198f5db53f5ef4ba75ce0",
+        "digest": "sha256:702412d2e00a481c19f72d08be4d37e758dc17d6993a984bdf15fa2b50c900c5",
         "identity": "rumi.conversation_store",
         "kind": "manifest",
         "legacy": true,
@@ -13589,19 +13589,19 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:f1ea04ce558dc1243ed5b6aaaa5862e20ae9f6237c9fd2512baa3943339a3018",
+        "evidence_digest": "sha256:0527b085d97c50610077410ff9b506f2745a73504b7ffb3e039d39c8bb64a022",
         "line": 15,
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/ecosystem.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:0c2f8f2dc25f8fe7ee116f97a564a055008476e7957198f5db53f5ef4ba75ce0",
+        "evidence_digest": "sha256:702412d2e00a481c19f72d08be4d37e758dc17d6993a984bdf15fa2b50c900c5",
         "line": 194,
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:0c2f8f2dc25f8fe7ee116f97a564a055008476e7957198f5db53f5ef4ba75ce0",
+        "evidence_digest": "sha256:702412d2e00a481c19f72d08be4d37e758dc17d6993a984bdf15fa2b50c900c5",
         "line": 209,
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
@@ -16013,13 +16013,13 @@
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:f1ea04ce558dc1243ed5b6aaaa5862e20ae9f6237c9fd2512baa3943339a3018",
+        "evidence_digest": "sha256:0527b085d97c50610077410ff9b506f2745a73504b7ffb3e039d39c8bb64a022",
         "line": 28,
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/ecosystem.json",
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:0c2f8f2dc25f8fe7ee116f97a564a055008476e7957198f5db53f5ef4ba75ce0",
+        "evidence_digest": "sha256:702412d2e00a481c19f72d08be4d37e758dc17d6993a984bdf15fa2b50c900c5",
         "line": 286,
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json",
         "rule_id": "legacy_v3_manifest"
@@ -17332,14 +17332,14 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:f1ea04ce558dc1243ed5b6aaaa5862e20ae9f6237c9fd2512baa3943339a3018",
+        "manifest_digest": "sha256:0527b085d97c50610077410ff9b506f2745a73504b7ffb3e039d39c8bb64a022",
         "pack_id": "rumi_conversation_store_pack",
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/ecosystem.json",
         "version": "1.0.0"
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:0c2f8f2dc25f8fe7ee116f97a564a055008476e7957198f5db53f5ef4ba75ce0",
+        "manifest_digest": "sha256:702412d2e00a481c19f72d08be4d37e758dc17d6993a984bdf15fa2b50c900c5",
         "pack_id": "rumi.conversation_store",
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json",
         "version": "1.0.0"
@@ -18666,8 +18666,8 @@
     ]
   },
   "repository": {
-    "commit": "350517a72cec88b33fcc0c2bac960961dc54da2f",
-    "tree_digest": "3379b4fa2d41dd75e94b5fae2276c9b55bffb7a346d932073f4ef7a588455c9c"
+    "commit": "9429e94c64c33bce2f41060c64aae3b38c585b33",
+    "tree_digest": "a222a42b786950b91d9a5b2c5fabcf3180364cb4457c5db012cf6503b3e9e658"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"

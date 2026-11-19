@@ -138,9 +138,9 @@ impl DataRoot {
         }
     }
 
-    /// Acquire the original Python Conversation Store lock without waiting or
-    /// breaking stale locks. The store and its Profile directory must exist.
-    /// An existing owned regular lock file returns `Io(AlreadyExists)`.
+    /// Acquire the original Python Conversation Store lock without waiting.
+    /// The store and its Profile directory must exist. A held or unverifiable
+    /// lock returns `Io(AlreadyExists)`.
     pub fn lock_legacy_conversation_store(
         &self,
         profile: &ProfileId,
@@ -269,6 +269,7 @@ mod unix {
         lock: &'static CStr,
         private_write_directory: bool,
         requires_existing_store: bool,
+        recoverable_lock: bool,
     }
 
     pub(super) const PROVIDER: RegistryLayout = RegistryLayout {
@@ -280,6 +281,7 @@ mod unix {
         lock: c"provider-registry.lock",
         private_write_directory: false,
         requires_existing_store: false,
+        recoverable_lock: false,
     };
     pub(super) const MODEL: RegistryLayout = RegistryLayout {
         data: StoreLayout {
@@ -290,6 +292,7 @@ mod unix {
         lock: c"model-registry.lock",
         private_write_directory: true,
         requires_existing_store: false,
+        recoverable_lock: false,
     };
     pub(super) const CONVERSATIONS: RegistryLayout = RegistryLayout {
         data: StoreLayout {
@@ -300,7 +303,10 @@ mod unix {
         lock: c"conversations.lock",
         private_write_directory: true,
         requires_existing_store: true,
+        recoverable_lock: cfg!(any(target_os = "macos", target_os = "linux")),
     };
+
+    const CONVERSATION_LEASE: &str = "directory-flock-v1";
 
     // Keeping the staged descriptor open prevents inode reuse during confirmation.
     struct PendingPublication {
@@ -350,6 +356,13 @@ mod unix {
             let directory = Arc::new(directory);
             let lock_directory =
                 Arc::new(owned_directory(&directory, "locks", true, &layout.data)?);
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            if layout.recoverable_lock {
+                // OwnedEntry holds this descriptor until after its record is removed.
+                acquire_directory_lease(&lock_directory)?;
+                verify_lock_directory(root, profile, layout, &directory, &lock_directory)?;
+                reap_conversation_lock(&lock_directory, layout)?;
+            }
             let pid = std::process::id();
             let acquired_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -357,37 +370,31 @@ mod unix {
                     StoreError::Unavailable(format!("{} lock clock invalid", layout.data.label))
                 })?
                 .as_secs_f64();
-            let payload = serde_json::to_vec(&serde_json::json!({
+            let mut payload = serde_json::json!({
                 "acquired_at": acquired_at,
                 "owner": format!("tobkiri-launcher:pid:{pid}:{}", temporary_name()?),
                 "pid": pid,
                 "stale_after_seconds": null,
-            }))
-            .map_err(|_| {
+            });
+            let name = if layout.recoverable_lock {
+                payload["lease"] = CONVERSATION_LEASE.into();
+                CString::new(temporary_name()?).expect("generated temporary name is NUL-free")
+            } else {
+                layout.lock.to_owned()
+            };
+            let payload = serde_json::to_vec(&payload).map_err(|_| {
                 StoreError::Invalid(format!("{} lock payload invalid", layout.data.label))
             })?;
-            let mut lock = match OwnedEntry::create(lock_directory.clone(), layout.lock.to_owned())
-            {
-                Ok(lock) => lock,
-                Err(StoreError::Io(busy)) if busy.kind() == ErrorKind::AlreadyExists => {
-                    match stat_entry(&lock_directory, layout.lock) {
-                        Ok(entry) if !is_owned_regular(&entry) => {
-                            return Err(StoreError::Denied(format!(
-                                "unsafe {} lock entry",
-                                layout.data.label
-                            )));
-                        }
-                        Ok(_) => return Err(busy.into()),
-                        // The cooperative holder may have just released it.
-                        Err(StoreError::Io(error)) if error.kind() == ErrorKind::NotFound => {
-                            return Err(busy.into());
-                        }
-                        Err(error) => return Err(error),
-                    }
-                }
-                Err(error) => return Err(error),
-            };
+            let mut lock = OwnedEntry::create(lock_directory.clone(), name)
+                .map_err(|error| classify_lock_creation(&lock_directory, layout, error))?;
             lock.file.write_all(&payload)?;
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            if layout.recoverable_lock {
+                lock.file.sync_all()?;
+                OwnedFileSnapshot::capture(lock.file.try_clone()?)?
+                    .verify_current(&lock.directory, &lock.name)?;
+                publish_conversation_lock(&mut lock, layout)?;
+            }
             let lock_snapshot = OwnedFileSnapshot::capture(lock.file.try_clone()?)?;
             let transaction = Self {
                 root: root.clone(),
@@ -404,14 +411,13 @@ mod unix {
 
         fn verify_binding(&self) -> Result<(), StoreError> {
             let layout = self.layout;
-            verify_root(&self.root, &layout.data)?;
-            let directory = open_registry(&self.root, &self.profile, false, &layout.data)?;
-            let locks = owned_directory(&directory, "locks", false, &layout.data)?;
-            if file_identity(&directory)? != file_identity(&self.directory)?
-                || file_identity(&locks)? != file_identity(&self.lock.directory)?
-            {
-                return Err(binding_changed(&layout.data));
-            }
+            let locks = verify_lock_directory(
+                &self.root,
+                &self.profile,
+                layout,
+                &self.directory,
+                &self.lock.directory,
+            )?;
             self.lock_snapshot.verify_current(&locks, layout.lock)
         }
 
@@ -641,6 +647,185 @@ mod unix {
     fn file_identity(file: &File) -> Result<(u64, u64), StoreError> {
         let metadata = file.metadata()?;
         Ok((metadata.dev(), metadata.ino()))
+    }
+
+    fn verify_lock_directory(
+        root: &DataRoot,
+        profile: &ProfileId,
+        layout: &RegistryLayout,
+        pinned_directory: &File,
+        pinned_locks: &File,
+    ) -> Result<File, StoreError> {
+        verify_root(root, &layout.data)?;
+        let directory = open_registry(root, profile, false, &layout.data)?;
+        let locks = owned_directory(&directory, "locks", false, &layout.data)?;
+        if file_identity(&directory)? != file_identity(pinned_directory)?
+            || file_identity(&locks)? != file_identity(pinned_locks)?
+        {
+            return Err(binding_changed(&layout.data));
+        }
+        Ok(locks)
+    }
+
+    fn classify_lock_creation(
+        directory: &File,
+        layout: &RegistryLayout,
+        error: StoreError,
+    ) -> StoreError {
+        if !matches!(&error, StoreError::Io(io) if io.kind() == ErrorKind::AlreadyExists) {
+            return error;
+        }
+        match stat_entry(directory, layout.lock) {
+            Ok(entry)
+                if !is_owned_regular(&entry)
+                    || (layout.recoverable_lock && entry.st_mode & 0o022 != 0) =>
+            {
+                unsafe_lock_entry(layout)
+            }
+            Ok(_) => error,
+            // The cooperative holder may have just released it.
+            Err(StoreError::Io(io)) if io.kind() == ErrorKind::NotFound => error,
+            Err(error) => error,
+        }
+    }
+
+    fn unsafe_lock_entry(layout: &RegistryLayout) -> StoreError {
+        StoreError::Denied(format!("unsafe {} lock entry", layout.data.label))
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn lock_busy() -> StoreError {
+        Error::from_raw_os_error(libc::EEXIST).into()
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn acquire_directory_lease(directory: &File) -> Result<(), StoreError> {
+        let status = unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if status == 0 {
+            return Ok(());
+        }
+        let error = Error::last_os_error();
+        if error.kind() == ErrorKind::WouldBlock {
+            return Err(lock_busy());
+        }
+        Err(error.into())
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ConversationLockRecord {
+        owner: String,
+        pid: libc::pid_t,
+        acquired_at: f64,
+        #[serde(rename = "stale_after_seconds")]
+        _stale_after_seconds: (),
+        #[serde(default, deserialize_with = "present_lease")]
+        lease: Option<String>,
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn present_lease<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<String>, D::Error> {
+        serde::Deserialize::deserialize(deserializer).map(Some)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn reap_conversation_lock(directory: &File, layout: &RegistryLayout) -> Result<(), StoreError> {
+        const MAX_LOCK_BYTES: usize = 4096;
+        let name = layout.lock;
+        let entry = match stat_entry(directory, name) {
+            Ok(entry) => entry,
+            Err(StoreError::Io(error)) if error.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        if !is_owned_regular(&entry) || entry.st_mode & 0o022 != 0 {
+            return Err(unsafe_lock_entry(layout));
+        }
+        let (bytes, snapshot) =
+            match crate::secure::read_existing_owned_at(directory, name, MAX_LOCK_BYTES) {
+                Ok(observed) => observed,
+                Err(StoreError::NotFound | StoreError::Quota | StoreError::Conflict(_)) => {
+                    return Err(lock_busy());
+                }
+                Err(error) => return Err(error),
+            };
+        // The derived Deserialize implementation also accepts positional arrays.
+        if bytes
+            .iter()
+            .copied()
+            .find(|byte| !byte.is_ascii_whitespace())
+            != Some(b'{')
+        {
+            return Err(lock_busy());
+        }
+        let record: ConversationLockRecord =
+            serde_json::from_slice(&bytes).map_err(|_| lock_busy())?;
+        if record.owner.is_empty()
+            || record.pid <= 0
+            || !record.acquired_at.is_finite()
+            || record.acquired_at <= 0.0
+        {
+            return Err(lock_busy());
+        }
+        match record.lease.as_deref() {
+            Some(CONVERSATION_LEASE) => {}
+            None if legacy_lock_pid_has_exited(record.pid) => {}
+            _ => return Err(lock_busy()),
+        }
+        // Authenticate the same owned snapshot immediately before unlinking it.
+        if stat_entry(directory, name)?.st_mode & 0o022 != 0 {
+            return Err(unsafe_lock_entry(layout));
+        }
+        snapshot.verify_current(directory, name)?;
+        if unsafe { libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0) } != 0 {
+            return Err(Error::last_os_error().into());
+        }
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn legacy_lock_pid_has_exited(pid: libc::pid_t) -> bool {
+        let status = unsafe { libc::kill(pid, 0) };
+        status != 0 && Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn publish_conversation_lock(
+        lock: &mut OwnedEntry,
+        layout: &RegistryLayout,
+    ) -> Result<(), StoreError> {
+        let fd = lock.directory.as_raw_fd();
+        #[cfg(target_os = "macos")]
+        let status = unsafe {
+            libc::renameatx_np(
+                fd,
+                lock.name.as_ptr(),
+                fd,
+                layout.lock.as_ptr(),
+                libc::RENAME_EXCL,
+            )
+        };
+        #[cfg(target_os = "linux")]
+        let status = unsafe {
+            libc::renameat2(
+                fd,
+                lock.name.as_ptr(),
+                fd,
+                layout.lock.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        if status != 0 {
+            return Err(classify_lock_creation(
+                &lock.directory,
+                layout,
+                Error::last_os_error().into(),
+            ));
+        }
+        lock.name = layout.lock.to_owned();
+        Ok(())
     }
 
     fn verify_root(root: &DataRoot, layout: &StoreLayout) -> Result<(), StoreError> {

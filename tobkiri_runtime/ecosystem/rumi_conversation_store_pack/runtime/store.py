@@ -12,13 +12,13 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from core_runtime.conversation_store_lock import conversation_store_lock
 from core_runtime.paths import USER_DATA_DIR
 from tobkiri_protocol.conversation_lifecycle import (
     LIFECYCLE_VERSION, message_task_state,
 )
 from tobkiri_protocol.conversation_context import context_link
 from core_runtime.profile_workspace import validate_profile_id
-from core_runtime.runtime_locks import NamedLock
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.conversation_context import resolve_request_context
 from ecosystem.rumi_conversation_store_pack.runtime.saved_receipt import append_receipt
@@ -96,7 +96,7 @@ class ConversationStore:
             or turn["revision"] < 3
         ):
             raise PermissionError("saved completion requires a durable terminal")
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             state = self._read()
             receipt = state.get("saved_receipts", {}).get(turn_id)
             if (
@@ -177,7 +177,7 @@ class ConversationStore:
     ) -> dict[str, Any]:
         """Create one conversation at an exact store revision."""
         normalized = _conversation(record, allow_messages=False)
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             state = self._read()
             _assert_store_revision(state, expected_revision)
             conversation_id = normalized["id"]
@@ -241,7 +241,7 @@ class ConversationStore:
     ) -> dict[str, Any]:
         """Update mutable conversation metadata at an exact record revision."""
         conversation_id = _identifier(conversation_id)
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             state = self._read()
             current = state["conversations"].get(conversation_id)
             if not isinstance(current, Mapping):
@@ -321,7 +321,7 @@ class ConversationStore:
     ) -> dict[str, Any]:
         """Delete a conversation and all owned messages atomically."""
         conversation_id = _identifier(conversation_id)
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             state = self._read()
             current = state["conversations"].get(conversation_id)
             if not isinstance(current, Mapping):
@@ -374,7 +374,7 @@ class ConversationStore:
         """Append one normalized message at an exact conversation revision."""
         conversation_id = _identifier(conversation_id)
         normalized = _message(message)
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             state = self._read()
             current = state["conversations"].get(conversation_id)
             if not isinstance(current, Mapping):
@@ -464,7 +464,7 @@ class ConversationStore:
         """Update or delete one message while preserving sequence order."""
         conversation_id = _identifier(conversation_id)
         message_id = _identifier(message_id)
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             state = self._read()
             current = state["conversations"].get(conversation_id)
             if not isinstance(current, Mapping):
@@ -604,7 +604,7 @@ class ConversationStore:
             raise ValueError("duplicate message ID in replacement")
         _normalize_message_links(normalized)
         _normalize_message_order(normalized)
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             state = self._read()
             current = state["conversations"].get(conversation_id)
             if not isinstance(current, Mapping):
@@ -646,7 +646,7 @@ class ConversationStore:
         ids = [item["id"] for item in normalized]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate conversation ID in migration")
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             if self.path.is_file():
                 raise RuntimeError("conversation target is already initialized")
             migration_id = f"migration-{uuid.uuid4().hex}"
@@ -672,7 +672,7 @@ class ConversationStore:
 
     def rollback_migration(self, migration_id: str) -> dict[str, Any]:
         """Remove migrated owner state for an exact migration marker."""
-        with NamedLock(self.lock_root, "conversations"):
+        with conversation_store_lock(self.lock_root):
             state = self._read()
             marker = state.get("migration")
             if not isinstance(marker, Mapping) or marker.get(
