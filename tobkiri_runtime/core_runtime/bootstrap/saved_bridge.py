@@ -782,27 +782,31 @@ class SavedBridgeCallbacks:
             self._check_append(
                 request, payload, 1 if stage == "user" else 3, trace if stage == "assistant" else []
             )
-            if stage == "user":
-                selected = self._tools(outer, request)
-                conversation = self._conversation(outer, request)
-                _require_resolved_context(conversation)
-                prompt = self._system_prompt(outer, conversation)
-                if payload.get("system_prompt_digest") != saved_prompt_digest(prompt):
-                    raise AuthorityDenied("saved bridge system prompt changed before append")
-                if (
-                    payload["expected_conversation_revision"] != request["conversation_revision"]
-                    or conversation.get("conversation_revision") != request["conversation_revision"]
-                    or payload["message"]["parent_id"] != conversation.get("current_node_id")
-                ):
-                    raise AuthorityDenied("saved bridge selected branch changed")
-                payload = {
-                    key: value for key, value in payload.items() if key != "system_prompt_digest"
-                }
-            else:
+            if stage == "assistant":
+                # This is the final owner read before the append. The owner
+                # revalidates the child revision and linked parent under its
+                # write lock, so no earlier snapshot is needed in this stage.
                 conversation = self._conversation(outer, request)
                 self._require_acknowledged_branch(
                     conversation, owner_revision, owner_current_node_id,
                 )
+                self._check_history_capacity(conversation, request, None, append_user=False)
+                return self._dispatch(outer, target, payload)
+            selected = self._tools(outer, request)
+            conversation = self._conversation(outer, request)
+            _require_resolved_context(conversation)
+            prompt = self._system_prompt(outer, conversation)
+            if payload.get("system_prompt_digest") != saved_prompt_digest(prompt):
+                raise AuthorityDenied("saved bridge system prompt changed before append")
+            if (
+                payload["expected_conversation_revision"] != request["conversation_revision"]
+                or conversation.get("conversation_revision") != request["conversation_revision"]
+                or payload["message"]["parent_id"] != conversation.get("current_node_id")
+            ):
+                raise AuthorityDenied("saved bridge selected branch changed")
+            payload = {
+                key: value for key, value in payload.items() if key != "system_prompt_digest"
+            }
         elif stage == "ai":
             conversation = self._conversation(outer, request)
             self._require_acknowledged_branch(
@@ -1035,8 +1039,6 @@ class SavedBridgeCallbacks:
                 ],
                 selected=selected, prompt=prompt,
             )
-        elif stage == "assistant":
-            self._check_history_capacity(conversation, request, None, append_user=False)
         if stage == "tool" and workspace_execution is not None:
             assert self._workspace_execution_registry is not None
             with self._workspace_execution_registry.register(workspace_execution):

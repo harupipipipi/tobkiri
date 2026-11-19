@@ -15,6 +15,7 @@ from tobkiri_host.continuation_envelope import seal_continuation_intent
 from tobkiri_host.saved_turn_plan import TOOL
 from tobkiri_host.saved_workspace_context import WORKSPACE_TARGET
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
+from tobkiri_protocol.conversation_context import LINK_VERSION, context_binding
 from tobkiri_protocol.saved_context import PROMPT_TARGET
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 
@@ -127,6 +128,46 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
         saved.TARGETS[2],
         saved.TARGETS[0],
         saved.TARGETS[3],
+    ]
+
+
+def test_linked_assistant_append_reads_each_owner_once(tmp_path: Path) -> None:
+    """Read the linked child and parent immediately before the owner append."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.create(
+        {
+            "id": "side-chat",
+            "parent_conversation_id": "conversation-1",
+            "context_link": {
+                "version": LINK_VERSION,
+                "parent_conversation_id": "conversation-1",
+                "slot": "side-chat",
+                "created_from_parent_revision": 1,
+            },
+        },
+        expected_revision=1,
+    )
+    request = outer.payload["request"]
+    request.update(
+        conversation_id="side-chat",
+        context_binding=context_binding(store.get("conversation-1"), "defaults"),
+    )
+    intent = saved.start(request)
+    for _ in range(3):
+        intent = saved.resume(intent["state"], callbacks(outer, _frame(intent)))
+
+    calls.clear()
+    result = saved.resume(intent["state"], callbacks(outer, _frame(intent)))
+
+    assert result["status"] == "ok"
+    assert [target for target, _ in calls] == [
+        saved.TARGETS[0], saved.TARGETS[0], saved.TARGETS[3],
+    ]
+    assert [payload["conversation_id"] for _, payload in calls] == [
+        "side-chat", "conversation-1", "side-chat",
+    ]
+    assert [message["role"] for message in store.get("side-chat")["messages"]] == [
+        "user", "assistant",
     ]
 
 
