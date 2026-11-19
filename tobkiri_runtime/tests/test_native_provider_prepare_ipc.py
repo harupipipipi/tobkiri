@@ -2389,6 +2389,126 @@ _STREAM_RESULT = {"events": [{
 }]}
 
 
+def _ai_gateway_result_fixture(
+    role: ipc.ModelResolveRole,
+) -> tuple[ipc.NativeAiRoutingRequest, dict[str, Any]]:
+    candidate = {
+        "model_id": "模型", "provider_instance_id": "provider.fixture",
+        "catalog_provider_instance_id": "catalog.fixture", "catalog_revision": "r1",
+    }
+    value = {"output": ["例", 2**70, 0.125, -0.0], "finish_reason": "stop"}
+    payload = {
+        "role": role, "value": value, "request_id": "request.fixture",
+        "candidate": candidate,
+    }
+    result = {
+        "status": "ok", "request_id": payload["request_id"],
+        "model_id": candidate["model_id"], "provider_instance_id": "provider.fixture",
+        **value, "tool_intents": [],
+    }
+    if role == "stream":
+        additions = {"tool_intents": [], "events": [], "attempts": []}
+        payload.update(additions)
+        result.update(additions, delivery_mode="buffered")
+    else:
+        result.update(
+            candidate, pricing_revision="r1", usage={},
+            usage_provenance="provider_reported",
+        )
+    return replace(
+        _ai_routing_request(_Borrow(), role, payload), gateway_result=True,
+    ), result
+
+
+@pytest.mark.parametrize("role", ["generate", "stream"])
+def test_ai_gateway_result_uses_its_own_route_and_preserves_lossless_json(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ModelResolveRole,
+) -> None:
+    borrow, result = _ai_gateway_result_fixture(role)
+    expected_input = json.dumps(
+        dict(borrow.input), ensure_ascii=False, separators=(",", ":"),
+    ).encode("utf-8")
+
+    def serve(peer: socket.socket) -> None:
+        tag, body = _receive(peer)
+        assert tag == ipc._START
+        assert json.loads(body)["ai_route"] == {
+            "role": role, "input_bytes": len(expected_input), "gateway_result": True,
+        }
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, expected_input)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, json.dumps(result, ensure_ascii=False).encode("utf-8"))
+        assert peer.recv(1) == b""
+
+    monkeypatch.setenv(ipc._AI_ROUTING_ENV, "1")
+    monkeypatch.delenv(ipc._AI_GATEWAY_RESULT_ENV, raising=False)
+    with _served(monkeypatch, serve):
+        assert ipc.capture_launcher_ai_gateway_result_projector() is None
+        route = ipc.capture_launcher_ai_routing_evaluator()
+        assert route is not None
+        with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+            route(borrow)
+        monkeypatch.setenv(ipc._AI_GATEWAY_RESULT_ENV, "1")
+        project = ipc.capture_launcher_ai_gateway_result_projector()
+        assert project is not None
+        for invalid in (
+            replace(borrow, role="quote-generate"),
+            replace(borrow, stream_result=True),
+            replace(borrow, usage_cost=True),
+            replace(borrow, tool_intents=True),
+            replace(borrow, pipeline="prepare"),
+            replace(borrow, input={**borrow.input, "role": "quote-stream"}),
+            replace(borrow, input={**borrow.input, "execute": True}),
+        ):
+            with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+                project(invalid)
+        for value in ({1: "json key"}, ("tuple",), "x" * ipc._AI_ROUTING_LIMIT):
+            with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
+                project(replace(borrow, input={**borrow.input, "value": value}))
+        assert project(borrow) == result
+
+
+@pytest.mark.parametrize("terminal", [
+    "inapplicable", "legacy-read-required", "denied", "unavailable", "malformed",
+])
+def test_ai_gateway_result_preserves_the_terminal_frame(
+    monkeypatch: pytest.MonkeyPatch, terminal: str,
+) -> None:
+    borrow, result = _ai_gateway_result_fixture("generate")
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == ipc._START
+        if terminal == "inapplicable":
+            _send(peer, ipc._INAPPLICABLE)
+        else:
+            _send(peer, ipc._BODY_READY)
+            assert _receive(peer)[0] == ipc._ORCHESTRATION_INPUT
+            _send(peer, ipc._CHECK)
+            assert _receive(peer) == (ipc._LIVE, b"")
+            if terminal == "malformed":
+                malformed = json.dumps({**result, "executes": True}).encode()
+                _send(peer, ipc._PLAN, malformed)
+            else:
+                _send(peer, ipc._FAILURE, terminal.encode())
+        assert peer.recv(1) == b""
+
+    failures = {
+        "inapplicable": ipc.NativeProviderPrepareUnavailable,
+        "legacy-read-required": ipc.NativeProviderRegistryRequiresLegacyRead,
+        "malformed": ipc._ProtocolError,
+    }
+    monkeypatch.setenv(ipc._AI_GATEWAY_RESULT_ENV, "1")
+    with _served(monkeypatch, serve):
+        project = ipc.capture_launcher_ai_gateway_result_projector()
+        assert project is not None
+        with pytest.raises(failures.get(terminal, ipc.NativeAiRoutingFailure)) as error:
+            project(borrow)
+        if isinstance(error.value, ipc.NativeAiRoutingFailure):
+            assert error.value.code == terminal
+
+
 def test_ai_stream_result_uses_its_own_opt_in_and_preserves_signed_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

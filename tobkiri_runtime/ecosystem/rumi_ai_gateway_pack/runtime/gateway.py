@@ -578,7 +578,22 @@ def _finalize_generate_result(
     packvm_response: bool,
 ) -> dict[str, Any]:
     """Finalize one provider generation without changing dependency custody."""
-    result = _normalize_result(value, request_id, attempt_candidate)
+    project = getattr(client, "host_gateway_result", None)
+    result = None if project is None else project({
+        "role": "generate",
+        "value": value,
+        "request_id": request_id,
+        "candidate": {
+            "model_id": attempt_candidate.model_id,
+            "provider_instance_id": attempt_candidate.provider_instance_id,
+            "catalog_provider_instance_id": attempt_candidate.catalog_provider_instance_id,
+            "catalog_revision": attempt_candidate.catalog_revision,
+        },
+    })
+    if result is None:
+        result = _normalize_result(value, request_id, attempt_candidate)
+    else:
+        result = dict(result)
     result["tool_intents"] = _tool_intents(
         client,
         result["tool_intents"],
@@ -628,12 +643,31 @@ def _finalize_stream_result(
         )
     _attach_stream_usage_cost(client, events, attempt_candidate)
     _attach_stream_tool_intents(client, events, request_id)
+    output = value.get("output", "")
+    intents = _tool_intents(
+        client, value.get("tool_intents", []), request_id,
+        streaming=True,
+    )
+    project = getattr(client, "host_gateway_result", None)
+    projected = None if project is None else project({
+        "role": "stream",
+        "value": value,
+        "request_id": request_id,
+        "candidate": {
+            "model_id": attempt_candidate.model_id,
+            "provider_instance_id": attempt_candidate.provider_instance_id,
+            "catalog_provider_instance_id": attempt_candidate.catalog_provider_instance_id,
+            "catalog_revision": attempt_candidate.catalog_revision,
+        },
+        "tool_intents": intents,
+        "events": events,
+        "attempts": attempts,
+    })
+    if projected is not None:
+        return _maybe_packvm_safe_response(dict(projected), packvm_response)
     return _maybe_packvm_safe_response({
-        "status": "ok", "output": value.get("output", ""),
-        "tool_intents": _tool_intents(
-            client, value.get("tool_intents", []), request_id,
-            streaming=True,
-        ),
+        "status": "ok", "output": output,
+        "tool_intents": intents,
         "finish_reason": value.get("finish_reason"),
         "delivery_mode": value.get("delivery_mode", "buffered"),
         "request_id": request_id,

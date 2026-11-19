@@ -224,5 +224,42 @@ async fn ai_routing_uses_verified_wasm_port() -> Result<()> {
     ensure!(reply["allowed"] == false);
     ensure!(reply["checks"]["tool_free"] == false);
     ensure!(reply["reason"] == "tool_free");
+
+    let shape = ShapeRef::parse("local.ai-routing.gateway-result@1.0")?;
+    let operation = OpName::parse("project")?;
+    let candidate = json!({
+        "model_id":"org/local", "provider_instance_id":"local-model",
+        "catalog_provider_instance_id":"catalog", "catalog_revision":"r1",
+    });
+    let generate = json!({
+        "role":"generate", "request_id":"fixture-result", "candidate":candidate,
+        "value":{"output":"こんにちは", "usage":{"completion_tokens":2},
+                 "finish_reason":"tool_calls", "task_state":"waiting_approval"},
+    });
+    let reply: Value =
+        serde_json::from_str(&invoke(&shape, &operation, &generate.to_string()).await?)?;
+    ensure!(reply["output"] == "こんにちは");
+    ensure!(reply["task_state"] == "waiting_approval");
+    ensure!(reply["usage_provenance"] == "provider_reported");
+    ensure!(reply["pricing_revision"] == "r1");
+    let mut rejected = generate;
+    rejected["value"]["status"] = json!("failed");
+    ensure!(
+        invoke(&shape, &operation, &rejected.to_string())
+            .await?
+            .is_empty()
+    );
+    let stream = json!({
+        "role":"stream", "request_id":"fixture-result", "candidate":candidate,
+        "value":{"output":null, "delivery_mode":"incremental"},
+        "tool_intents":[{"operation":"notes.lookup","approved":false,"executes":false}],
+        "events":[{"type":"finish"}], "attempts":[],
+    });
+    let reply: Value =
+        serde_json::from_str(&invoke(&shape, &operation, &stream.to_string()).await?)?;
+    ensure!(reply["output"].is_null());
+    ensure!(reply["delivery_mode"] == "incremental");
+    ensure!(reply["tool_intents"] == stream["tool_intents"]);
+    ensure!(reply["events"] == stream["events"]);
     Ok(())
 }

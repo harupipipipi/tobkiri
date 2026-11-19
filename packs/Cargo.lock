@@ -637,6 +637,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-ai-gateway-finalizer-core"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+]
+
+[[package]]
 name = "tobkiri-ai-stream-normalizer-core"
 version = "0.1.0"
 dependencies = [
@@ -688,6 +695,7 @@ dependencies = [
  "ordered-python-compat",
  "serde_json",
  "sha2",
+ "tobkiri-ai-gateway-finalizer-core",
  "wit-bindgen",
 ]
 
@@ -704,6 +712,7 @@ name = "tobkiri-pack-ai-routing-rust"
 version = "0.1.0"
 dependencies = [
  "ordered-python-compat",
+ "tobkiri-ai-gateway-finalizer-core",
  "tobkiri-ai-stream-normalizer-core",
  "tobkiri-ai-tool-bridge-core",
  "tobkiri-ai-usage-cost-core",

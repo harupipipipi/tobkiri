@@ -23,6 +23,9 @@ use exports::local::ai_gateway_finalizer_python::finalizer::{
 use exports::tobkiri::core::lifecycle::Guest as Lifecycle;
 use ordered_python_compat::{CodecError, PyValue, dumps, loads, pystr, pytruthy};
 use tobkiri::core::types::{Error, ErrorCode};
+use tobkiri_ai_gateway_finalizer_core::{
+    CandidateIdentity, ProjectionError, assemble_stream_result,
+};
 
 const USAGE_GENERATE_OPERATION: &str = "rumi_ai_usage_pack.ai-usage-cost.generate";
 const USAGE_STREAM_OPERATION: &str = "rumi_ai_usage_pack.ai-usage-cost.stream";
@@ -65,6 +68,17 @@ enum Failure {
     Imported(Error),
     #[cfg(not(target_arch = "wasm32"))]
     NativeUnavailable,
+}
+
+impl From<ProjectionError> for Failure {
+    fn from(error: ProjectionError) -> Self {
+        match error {
+            ProjectionError::Terminal => Self::Terminal,
+            ProjectionError::Domain { code, message } => {
+                Self::Domain(DomainErrorData { code, message })
+            }
+        }
+    }
 }
 
 impl Failure {
@@ -116,6 +130,17 @@ struct Candidate {
     input_cost: PyValue,
     output_cost: PyValue,
     raw: PyValue,
+}
+
+impl Candidate {
+    fn identity(&self) -> CandidateIdentity<'_> {
+        CandidateIdentity {
+            model_id: &self.model_id,
+            provider_instance_id: &self.provider_instance_id,
+            catalog_provider_instance_id: &self.catalog_provider_instance_id,
+            catalog_revision: &self.catalog_revision,
+        }
+    }
 }
 
 struct Pack;
@@ -332,90 +357,12 @@ fn normalize_generate_result(
     request_id: &str,
     selected: &Candidate,
 ) -> Result<(PyValue, bool), Failure> {
-    let fields = value
-        .as_object()
-        .ok_or_else(|| domain("invalid_response", "provider result must be an object"))?;
-    let status = get_field(fields, "status");
-    if let Some(status) = status {
-        if matches!(status, PyValue::Array(_) | PyValue::Object(_)) {
-            return Err(Failure::Terminal);
-        }
-        if !matches!(status, PyValue::Null)
-            && !matches!(status, PyValue::String(text) if text == "ok")
-        {
-            let code = truthy_field(fields, "error_code")
-                .map(pystr)
-                .unwrap_or_else(|| "provider_unavailable".into());
-            let message = truthy_field(fields, "message")
-                .map(pystr)
-                .unwrap_or_else(|| "provider failed".into());
-            return Err(domain(code, message));
-        }
-    }
-
-    let output = clone_field_or(fields, "output", PyValue::Null);
-    let tool_intents = iterable_list(
-        truthy_field(fields, "tool_intents"),
-        PyValue::Array(Vec::new()),
-    )?;
-    let finish_reason = truthy_field(fields, "finish_reason")
-        .map(pystr)
-        .unwrap_or_else(|| "stop".into());
-    let (usage, usage_has_non_string_key) =
-        python_dict(truthy_field(fields, "usage"), PyValue::object([]))?;
-    let usage_provenance = truthy_field(fields, "usage_provenance")
-        .map(pystr)
-        .unwrap_or_else(|| "provider_reported".into());
-
-    let mut output_fields = vec![
-        ("status".into(), PyValue::String("ok".into())),
-        ("request_id".into(), PyValue::String(request_id.into())),
-        (
-            "model_id".into(),
-            PyValue::String(selected.model_id.clone()),
-        ),
-        (
-            "provider_instance_id".into(),
-            PyValue::String(selected.provider_instance_id.clone()),
-        ),
-        (
-            "catalog_provider_instance_id".into(),
-            PyValue::String(selected.catalog_provider_instance_id.clone()),
-        ),
-        (
-            "catalog_revision".into(),
-            PyValue::String(selected.catalog_revision.clone()),
-        ),
-        (
-            "pricing_revision".into(),
-            PyValue::String(selected.catalog_revision.clone()),
-        ),
-        ("output".into(), output),
-        ("tool_intents".into(), tool_intents),
-        ("finish_reason".into(), PyValue::String(finish_reason)),
-        ("usage".into(), usage),
-        ("usage_provenance".into(), PyValue::String(usage_provenance)),
-    ];
-
-    let metadata = get_field(fields, "metadata");
-    if get_field(fields, "task_state").is_some() || matches!(metadata, Some(PyValue::Object(_))) {
-        let mut evidence = metadata
-            .and_then(PyValue::as_object)
-            .map(|entries| {
-                PyValue::object(
-                    entries
-                        .iter()
-                        .map(|(key, value)| (key.clone(), value.clone())),
-                )
-            })
-            .unwrap_or_else(|| PyValue::object([]));
-        if let Some(task_state) = get_field(fields, "task_state") {
-            set_field(&mut evidence, "task_state", task_state.clone())?;
-        }
-        let task_state = message_task_state(get_field(fields, "finish_reason"), &evidence);
-        output_fields.push(("task_state".into(), PyValue::String(task_state.into())));
-    }
-    Ok((PyValue::Object(output_fields), usage_has_non_string_key))
+    tobkiri_ai_gateway_finalizer_core::normalize_generate_result(
+        value,
+        request_id,
+        selected.identity(),
+    )
+    .map_err(Failure::from)
 }
 
 fn finalize_stream(request: &Request) -> Result<PyValue, Failure> {
@@ -473,30 +420,15 @@ fn finalize_stream(request: &Request) -> Result<PyValue, Failure> {
     let fields = request.value.as_object().ok_or(Failure::Terminal)?;
     let intents = clone_field_or(fields, "tool_intents", PyValue::Array(Vec::new()));
     let intents = tool_intents(&intents, &request.request_id, true)?;
-    let output = clone_field_or(fields, "output", PyValue::String(String::new()));
-    let finish_reason = clone_field_or(fields, "finish_reason", PyValue::Null);
-    let delivery_mode = clone_field_or(fields, "delivery_mode", PyValue::String("buffered".into()));
-    Ok(PyValue::object([
-        ("status".into(), PyValue::String("ok".into())),
-        ("output".into(), output),
-        ("tool_intents".into(), intents),
-        ("finish_reason".into(), finish_reason),
-        ("delivery_mode".into(), delivery_mode),
-        (
-            "request_id".into(),
-            PyValue::String(request.request_id.clone()),
-        ),
-        (
-            "model_id".into(),
-            PyValue::String(request.candidate.model_id.clone()),
-        ),
-        (
-            "provider_instance_id".into(),
-            PyValue::String(request.candidate.provider_instance_id.clone()),
-        ),
-        ("events".into(), PyValue::Array(events)),
-        ("attempts".into(), request.attempts.clone()),
-    ]))
+    assemble_stream_result(
+        &request.value,
+        &request.request_id,
+        request.candidate.identity(),
+        intents,
+        PyValue::Array(events),
+        request.attempts.clone(),
+    )
+    .map_err(Failure::from)
 }
 
 fn stream_normalize(
@@ -661,186 +593,10 @@ fn map_projection_codec(error: CodecError) -> Failure {
     }
 }
 
-fn domain(code: impl Into<String>, message: impl Into<String>) -> Failure {
-    Failure::Domain(DomainErrorData {
-        code: code.into(),
-        message: message.into(),
-    })
-}
-
 #[derive(Debug)]
 struct DomainErrorData {
     code: String,
     message: String,
-}
-
-fn message_task_state(finish_reason: Option<&PyValue>, metadata: &PyValue) -> &'static str {
-    let metadata_fields = metadata.as_object().unwrap_or(&[]);
-    let thinking = get_field(metadata_fields, "thinking").and_then(PyValue::as_object);
-    let status = "complete".to_owned();
-    let states = [
-        status,
-        finish_reason
-            .filter(|value| pytruthy(value))
-            .map(pystr)
-            .unwrap_or_default(),
-        get_field(metadata_fields, "task_state")
-            .filter(|value| pytruthy(value))
-            .map(pystr)
-            .unwrap_or_default(),
-        thinking
-            .and_then(|fields| get_field(fields, "state"))
-            .filter(|value| pytruthy(value))
-            .map(pystr)
-            .unwrap_or_default(),
-    ]
-    .map(|state| state.to_lowercase());
-    let contains = |choices: &[&str]| states.iter().any(|state| choices.contains(&state.as_str()));
-    if contains(&["cancelled", "canceled", "interrupted"])
-        || get_field(metadata_fields, "cancelled") == Some(&PyValue::Bool(true))
-    {
-        return "cancelled";
-    }
-    if contains(&[
-        "waiting_approval",
-        "awaiting_approval",
-        "approval_required",
-        "authority_approval_required",
-    ]) || get_field(metadata_fields, "approval_required") == Some(&PyValue::Bool(true))
-    {
-        return "waiting_approval";
-    }
-    if contains(&["waiting_user", "waiting_for_user", "awaiting_user"])
-        || get_field(metadata_fields, "waiting_for_user") == Some(&PyValue::Bool(true))
-    {
-        return "waiting_user";
-    }
-    if contains(&["error", "failed", "failure"]) {
-        return "failed";
-    }
-    if contains(&["running", "streaming", "pending", "tool_call", "tool_calls"])
-        || get_field(metadata_fields, "draft") == Some(&PyValue::Bool(true))
-        || get_field(metadata_fields, "streaming") == Some(&PyValue::Bool(true))
-    {
-        return "running";
-    }
-    let known = [
-        "stop",
-        "end_turn",
-        "completed",
-        "complete",
-        "waiting_user",
-        "waiting_for_user",
-        "awaiting_user",
-        "waiting_approval",
-        "awaiting_approval",
-        "approval_required",
-        "authority_approval_required",
-        "running",
-        "streaming",
-        "pending",
-        "tool_call",
-        "tool_calls",
-        "cancelled",
-        "canceled",
-        "interrupted",
-    ];
-    for value in [
-        get_field(metadata_fields, "task_state"),
-        thinking.and_then(|fields| get_field(fields, "state")),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if !matches!(value, PyValue::Null)
-            && !matches!(value, PyValue::String(text) if text.is_empty())
-            && !known.contains(&pystr(value).to_lowercase().as_str())
-        {
-            return "unknown";
-        }
-    }
-    let finish = states.get(1).map(String::as_str).unwrap_or_default();
-    if ["stop", "end_turn", "completed", "complete"].contains(&finish)
-        && ["complete", "completed", "success", "succeeded"].contains(&states[0].as_str())
-    {
-        return "completed";
-    }
-    if !finish.is_empty() {
-        return "failed";
-    }
-    "unknown"
-}
-
-fn iterable_list(value: Option<&PyValue>, fallback: PyValue) -> Result<PyValue, Failure> {
-    let Some(value) = value.filter(|value| pytruthy(value)) else {
-        return Ok(fallback);
-    };
-    let values = match value {
-        PyValue::Array(values) => values.clone(),
-        PyValue::Object(values) => values
-            .iter()
-            .map(|(key, _)| PyValue::String(key.clone()))
-            .collect(),
-        PyValue::String(text) => text
-            .chars()
-            .map(|character| PyValue::String(character.to_string()))
-            .collect(),
-        _ => return Err(Failure::Terminal),
-    };
-    Ok(PyValue::Array(values))
-}
-
-fn python_dict(value: Option<&PyValue>, fallback: PyValue) -> Result<(PyValue, bool), Failure> {
-    let Some(value) = value.filter(|value| pytruthy(value)) else {
-        return Ok((fallback, false));
-    };
-    match value {
-        PyValue::Object(fields) => Ok((
-            PyValue::Object(
-                fields
-                    .iter()
-                    .map(|(key, value)| (key.clone(), value.clone()))
-                    .collect(),
-            ),
-            false,
-        )),
-        PyValue::Array(rows) => {
-            let mut fields = Vec::with_capacity(rows.len());
-            let mut non_string_key = false;
-            for row in rows {
-                // dict(sequence) iterates each row: arrays yield values,
-                // objects yield keys, and strings yield Unicode code points.
-                let (key, value) = match row {
-                    PyValue::Array(pair) if pair.len() == 2 => (pair[0].clone(), pair[1].clone()),
-                    PyValue::Object(pair) if pair.len() == 2 => (
-                        PyValue::String(pair[0].0.clone()),
-                        PyValue::String(pair[1].0.clone()),
-                    ),
-                    PyValue::String(pair) => {
-                        let mut characters = pair.chars();
-                        match (characters.next(), characters.next(), characters.next()) {
-                            (Some(key), Some(value), None) => (
-                                PyValue::String(key.to_string()),
-                                PyValue::String(value.to_string()),
-                            ),
-                            _ => return Err(Failure::Terminal),
-                        }
-                    }
-                    _ => return Err(Failure::Terminal),
-                };
-                match &key {
-                    PyValue::String(key) => fields.push((key.clone(), value)),
-                    PyValue::Array(_) | PyValue::Object(_) => return Err(Failure::Terminal),
-                    _ => non_string_key = true,
-                }
-            }
-            // Continue validating all rows even after a hashable non-string
-            // key: a later malformed/unhashable row still fails dict() before
-            // any dependency call. String-key replacement keeps first order.
-            Ok((PyValue::object(fields), non_string_key))
-        }
-        _ => Err(Failure::Terminal),
-    }
 }
 
 fn get_field<'a>(fields: &'a [(String, PyValue)], name: &str) -> Option<&'a PyValue> {
@@ -877,10 +633,6 @@ fn clone_field(fields: &[(String, PyValue)], name: &str) -> Result<PyValue, Fail
 
 fn clone_field_or(fields: &[(String, PyValue)], name: &str, fallback: PyValue) -> PyValue {
     get_field(fields, name).cloned().unwrap_or(fallback)
-}
-
-fn truthy_field<'a>(fields: &'a [(String, PyValue)], name: &str) -> Option<&'a PyValue> {
-    get_field(fields, name).filter(|value| pytruthy(value))
 }
 
 fn set_field(value: &mut PyValue, name: &str, replacement: PyValue) -> Result<(), Failure> {

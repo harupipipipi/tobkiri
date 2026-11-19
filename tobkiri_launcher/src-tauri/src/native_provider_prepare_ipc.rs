@@ -300,9 +300,10 @@ impl Start<'_> {
                     routing.usage_cost,
                     routing.tool_intents,
                     routing.pipeline,
+                    routing.gateway_result,
                     routing.role,
                 ) {
-                    (false, false, false, AiPipelineStart::Off, role) => {
+                    (false, false, false, AiPipelineStart::Off, false, role) => {
                         AiGatewayDataOperation::Route(role)
                     }
                     (
@@ -310,6 +311,7 @@ impl Start<'_> {
                         false,
                         false,
                         AiPipelineStart::Off,
+                        false,
                         OriginalModelResolveRole::Stream,
                     ) => AiGatewayDataOperation::StreamResult,
                     (
@@ -317,6 +319,7 @@ impl Start<'_> {
                         true,
                         false,
                         AiPipelineStart::Off,
+                        false,
                         role @ (OriginalModelResolveRole::Generate
                         | OriginalModelResolveRole::Stream),
                     ) => AiGatewayDataOperation::UsageCost(role),
@@ -325,10 +328,11 @@ impl Start<'_> {
                         false,
                         true,
                         AiPipelineStart::Off,
+                        false,
                         role @ (OriginalModelResolveRole::Generate
                         | OriginalModelResolveRole::Stream),
                     ) => AiGatewayDataOperation::ToolIntents(role),
-                    (false, false, false, AiPipelineStart::Prepare, role) => {
+                    (false, false, false, AiPipelineStart::Prepare, false, role) => {
                         AiGatewayDataOperation::RequestPrepare(role)
                     }
                     (
@@ -336,8 +340,18 @@ impl Start<'_> {
                         false,
                         false,
                         AiPipelineStart::Failover,
+                        false,
                         OriginalModelResolveRole::Generate,
                     ) => AiGatewayDataOperation::Failover,
+                    (
+                        false,
+                        false,
+                        false,
+                        AiPipelineStart::Off,
+                        true,
+                        role @ (OriginalModelResolveRole::Generate
+                        | OriginalModelResolveRole::Stream),
+                    ) => AiGatewayDataOperation::GatewayResult(role),
                     _ => bail!("AI Gateway DATA operation does not match its role"),
                 };
                 return Ok(RequestStart::AiGatewayData {
@@ -447,6 +461,8 @@ struct AiRoutingStart {
     tool_intents: bool,
     #[serde(default)]
     pipeline: AiPipelineStart,
+    #[serde(default)]
+    gateway_result: bool,
 }
 
 #[derive(Clone, Copy, Default, Deserialize)]
@@ -2818,6 +2834,43 @@ mod tests {
             ("generate", r#","pipeline":true"#),
             ("generate", r#","pipeline":null"#),
             ("generate", r#","pipeline":"prepare","pipeline":"failover""#),
+        ] {
+            let frame = start(role, flags);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.request_start())
+                .is_err());
+        }
+    }
+
+    #[test]
+    fn ai_gateway_result_requires_an_original_generation_role_without_siblings() {
+        let start = |role, flags| {
+            start_frame(&format!(
+                r#", "ai_route":{{"role":"{role}","input_bytes":12{flags}}}"#
+            ))
+        };
+        for (role, expected) in [
+            ("generate", OriginalModelResolveRole::Generate),
+            ("stream", OriginalModelResolveRole::Stream),
+        ] {
+            let frame = start(role, r#","gateway_result":true"#);
+            assert!(matches!(
+                parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                Ok(RequestStart::AiGatewayData {
+                    operation: AiGatewayDataOperation::GatewayResult(role),
+                    input_bytes: 12,
+                }) if role == expected
+            ));
+        }
+        for (role, flags) in [
+            ("quote-generate", r#","gateway_result":true"#),
+            ("quote-stream", r#","gateway_result":true"#),
+            ("stream", r#","gateway_result":true,"stream_result":true"#),
+            ("generate", r#","gateway_result":true,"usage_cost":true"#),
+            ("generate", r#","gateway_result":true,"tool_intents":true"#),
+            ("generate", r#","gateway_result":true,"pipeline":"prepare""#),
+            ("generate", r#","gateway_result":"true""#),
+            ("generate", r#","gateway_result":null"#),
         ] {
             let frame = start(role, flags);
             assert!(parse_start(START, frame.as_bytes())

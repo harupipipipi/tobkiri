@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 component = ["dep:wit-bindgen"]
 
 [dependencies]
+tobkiri-ai-gateway-finalizer-core = { path = "../local.ai-gateway-finalizer-rust/core" }
 ordered-python-compat = { path = "../ordered-python-compat" }
 tobkiri-ai-stream-normalizer-core = { path = "../local.ai-stream-normalizer-rust/core" }
 tobkiri-ai-tool-bridge-core = { path = "../local.ai-tool-bridge-rust/core" }

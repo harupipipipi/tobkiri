@@ -15,7 +15,7 @@ import secrets
 import stat
 import threading
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -1926,6 +1926,7 @@ def capture_production_dispatch(
         NativeSavedTurnStartRequest,
         SavedReceiptCaller,
         SavedTurnStartAction,
+        capture_launcher_ai_gateway_result_projector,
         capture_launcher_ai_pipeline_evaluator,
         capture_launcher_ai_routing_evaluator,
         capture_launcher_ai_stream_result_normalizer,
@@ -1963,6 +1964,7 @@ def capture_production_dispatch(
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
     native_ai_routing_evaluator = capture_launcher_ai_routing_evaluator()
     native_ai_pipeline_evaluator = capture_launcher_ai_pipeline_evaluator()
+    native_ai_gateway_result_projector = capture_launcher_ai_gateway_result_projector()
     native_ai_stream_result_normalizer = capture_launcher_ai_stream_result_normalizer()
     native_ai_tool_intents_normalizer = capture_launcher_ai_tool_intents_normalizer()
     native_ai_usage_cost_calculator = capture_launcher_ai_usage_cost_calculator()
@@ -3917,6 +3919,7 @@ def capture_production_dispatch(
                 consumer_pack_id=consumer_pack_id,
                 host_credential_transport=transport,
                 host_local_model_transport=local_transport,
+                host_gateway_result=borrow_gateway_result(self),
             )
             self._client_binding = binding
             return self._client
@@ -5657,6 +5660,9 @@ def capture_production_dispatch(
     ai_routing_routes: dict[
         tuple[str, str], tuple[ModelResolveRole, tuple[_CapturedPlanEdge, ...]]
     ] = {}
+    gateway_result_routes: dict[
+        str, tuple[ModelResolveRole, tuple[_CapturedPlanEdge, ...]]
+    ] = {}
     stream_operation = "rumi_ai_stream_pack.ai-stream-normalize"
     usage_pack = "rumi_ai_usage_pack"
     usage_operations = {
@@ -5702,6 +5708,7 @@ def capture_production_dispatch(
         or native_ai_usage_cost_calculator is not None
         or native_ai_tool_intents_normalizer is not None
         or native_ai_pipeline_evaluator is not None
+        or native_ai_gateway_result_projector is not None
         or native_append_writer is not None
     ):
         turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
@@ -5724,7 +5731,8 @@ def capture_production_dispatch(
              or native_ai_stream_result_normalizer is not None
              or native_ai_usage_cost_calculator is not None
              or native_ai_tool_intents_normalizer is not None
-             or native_ai_pipeline_evaluator is not None)
+             or native_ai_pipeline_evaluator is not None
+             or native_ai_gateway_result_projector is not None)
             and turn_edge is not None
             and orchestration_edge is not None
         ):
@@ -5746,6 +5754,10 @@ def capture_production_dispatch(
                     continue
                 gateway_principal = gateway_edge.target.principal_id
                 parents = (gateway_edge, orchestration_edge, turn_edge)
+                if native_ai_gateway_result_projector is not None and role in (
+                    "generate", "stream",
+                ):
+                    gateway_result_routes[gateway_principal] = role, parents
                 if native_model_resolve_reader is not None:
                     model_operation = f"{NATIVE_MODEL_SETTINGS_OPERATION}.{call_kind}"
                     model_edge = select_original_chat_edge(
@@ -5978,7 +5990,7 @@ def capture_production_dispatch(
 
     def match_saved_gateway_ancestors(
         parent: CapturedInvocationScopeV4 | None,
-        parent_edges: list[_CapturedPlanEdge],
+        parent_edges: Sequence[_CapturedPlanEdge],
     ) -> tuple[RequestEnvelope, ...] | None:
         ancestors: list[RequestEnvelope] = []
         for edge in parent_edges:
@@ -5987,6 +5999,97 @@ def capture_production_dispatch(
             ancestors.append(parent.envelope)
             parent = parent.parent
         return tuple(ancestors) if parent is None else None
+
+    def is_native_gateway_result_route(
+        context: RequestContext,
+        _payload: Mapping[str, Any],
+        *,
+        edges: tuple[_CapturedPlanEdge, ...],
+    ) -> bool:
+        return (
+            native_provider_runtime is not None
+            and context.caller_principal.value == edges[0].caller.principal_id
+            and match_saved_gateway_ancestors(
+                parent_invocation_scopes.lookup(context.caller_session_id), edges[1:],
+            ) is not None
+        )
+
+    def borrow_gateway_result(
+        invocation: _HostInvocation,
+    ) -> Callable[[Mapping[str, Any]], Mapping[str, Any] | None] | None:
+        runtime = native_provider_runtime
+        projector = native_ai_gateway_result_projector
+        if runtime is None or projector is None:
+            return None
+        envelope = invocation.envelope
+        route = gateway_result_routes.get(envelope.target_principal.value)
+        if route is None:
+            return None
+        role, (gateway_edge, *parent_edges) = route
+        ancestors = match_saved_gateway_ancestors(
+            invocation.parent_invocation, parent_edges,
+        )
+        if ancestors is None or not matches_captured_edge(envelope, gateway_edge):
+            return None
+
+        chain = (envelope, *ancestors)
+        reservation = envelope.resource_reservation_id
+        if (
+            len({item.lease.token for item in chain}) != len(chain)
+            or len({item.resource_reservation_id for item in chain}) != len(chain)
+            or any(
+                child.deadline_monotonic > parent.deadline_monotonic
+                for child, parent in zip(chain, ancestors)
+            )
+        ):
+            raise AuthorityDenied("native AI Gateway result lineage changed")
+
+        def guard() -> None:
+            invocation.assert_current()
+            for child, parent in zip(chain, ancestors):
+                retained = parent_invocation_scopes.lookup(
+                    child.context.caller_session_id,
+                )
+                if retained is None or retained.envelope is not parent:
+                    raise AuthorityDenied("native AI Gateway result parent changed")
+            if (
+                native_provider_runtime is not runtime
+                or parent_invocation_scopes.lookup(
+                    ancestors[-1].context.caller_session_id,
+                ) is not None
+            ):
+                raise AuthorityDenied("native AI Gateway result capture changed")
+            runtime[1]()
+            production_admission.native_resources(reservation)
+
+        def project(request: Mapping[str, Any]) -> Mapping[str, Any] | None:
+            guard()
+            if not isinstance(request, Mapping) or request.get("role") != role:
+                raise NativeAiRoutingFailure("invalid")
+            if production_admission.native_resources(reservation).memory_bytes < (
+                AI_ROUTING_MINIMUM_MEMORY
+            ):
+                return None
+            try:
+                result = projector(NativeAiRoutingRequest(
+                    context=envelope.context,
+                    runtime_instance=runtime[0],
+                    deadline_monotonic=envelope.deadline_monotonic,
+                    assert_current=guard,
+                    role=role,
+                    input=request,
+                    gateway_result=True,
+                ))
+            except (
+                NativeProviderPrepareUnavailable,
+                NativeProviderRegistryRequiresLegacyRead,
+            ):
+                return None
+            finally:
+                guard()
+            return result
+
+        return project
 
     def model_resolve_lineage(
         context: RequestContext,
@@ -7240,6 +7343,14 @@ def capture_production_dispatch(
         )
         for (_, operation_id, _), binding in native_ai_routing_bindings.items()
     )
+    native_admission_rules.extend(
+        (
+            edges[0].resolved_binding,
+            AI_ROUTING_MINIMUM_MEMORY,
+            partial(is_native_gateway_result_route, edges=edges),
+        )
+        for _, edges in gateway_result_routes.values()
+    )
     if native_saved_append_binding is not None:
         native_admission_rules.append((
             native_saved_append_binding,
@@ -8034,6 +8145,7 @@ def capture_production_dispatch(
             if (native_execute_key is not None or native_conversation_get_bindings
                 or native_saved_receipt_bindings or native_model_resolve_bindings
                 or native_ai_routing_bindings
+                or gateway_result_routes
                 or native_turn_settlement_bindings or native_conversation_confirmation_bindings
                 or native_saved_turn_read_bindings
                 or native_saved_turn_start_key is not None

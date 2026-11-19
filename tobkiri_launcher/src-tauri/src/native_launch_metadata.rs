@@ -19,12 +19,12 @@ use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
     OriginalAiRoutingSelection, OriginalConversationAppendChoice,
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalFailoverChoice, OriginalModelResolveRole, OriginalModelResolveSelection,
-    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRequestPrepareChoice, OriginalRoutePin, OriginalSavedLocalChatChoice,
-    OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole,
-    OriginalSavedReceiptSelection, OriginalSavedTurnStartChoice, OriginalStreamResultSelection,
-    OriginalToolIntentsChoice, OriginalUsageCostChoice,
+    OriginalFailoverChoice, OriginalGatewayResultChoice, OriginalModelResolveRole,
+    OriginalModelResolveSelection, OriginalModelSaveSelection, OriginalModelSettingsSelection,
+    OriginalProviderPrepareSelection, OriginalRequestPrepareChoice, OriginalRoutePin,
+    OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice,
+    OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnStartChoice,
+    OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
@@ -162,6 +162,14 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.failover.is_some())
     }
 
+    /// Require the signed ordinary Generate or Stream Gateway and the verified result port.
+    pub(crate) fn permits_gateway_result(&self, role: OriginalModelResolveRole) -> bool {
+        self.ai_routing
+            .as_ref()
+            .and_then(|source| source.gateway_result(role))
+            .is_some()
+    }
+
     /// Require the caller's own legacy read edge against the verified replacement.
     pub(crate) fn permits_conversation_read(&self, caller: ConversationReadCaller) -> bool {
         self.conversation
@@ -268,6 +276,7 @@ struct VerifiedAiRoutingSource {
     request_prepare: [Option<VerifiedAiGatewayRole>; 4],
     failover: Option<VerifiedAiGatewayRole>,
     tool_intents: [Option<VerifiedAiGatewayRole>; 2],
+    gateway_result: [Option<VerifiedAiGatewayRole<3>>; 2],
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -304,6 +313,13 @@ impl VerifiedAiRoutingSource {
             .flatten()
             .find(|grant| grant.role == role)
     }
+
+    fn gateway_result(&self, role: OriginalModelResolveRole) -> Option<&VerifiedAiGatewayRole<3>> {
+        self.gateway_result
+            .iter()
+            .flatten()
+            .find(|grant| grant.role == role)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -319,10 +335,10 @@ struct VerifiedStreamResultRole {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct VerifiedAiGatewayRole {
+struct VerifiedAiGatewayRole<const PINS: usize = 4> {
     role: OriginalModelResolveRole,
     bundle: VerifiedOrdinarySavedBundle,
-    pins: [VerifiedLegacyRoutePin; 4],
+    pins: [VerifiedLegacyRoutePin; PINS],
 }
 
 /// Separate signed conversation-owner edges and the receipt identity they share.
@@ -572,6 +588,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: [None, None],
+            gateway_result: [None, None],
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -595,6 +612,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: [None, None],
+            gateway_result: [None, None],
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -616,6 +634,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: [None, None],
+            gateway_result: [None, None],
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -637,6 +656,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: Self::test_ai_gateway_roles(role),
+            gateway_result: [None, None],
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -667,6 +687,17 @@ impl VerifiedRegistryLaunch {
         proof
     }
 
+    pub(crate) fn test_gateway_result_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalModelResolveRole,
+    ) -> Self {
+        let mut proof = Self::test_pipeline_proof(identity, catalog_revision);
+        proof.ai_routing.as_mut().unwrap().gateway_result = AI_GATEWAY_ROLES
+            .map(|candidate| (candidate == role).then(|| Self::test_ai_gateway_grant(role)));
+        proof
+    }
+
     fn test_pipeline_proof(identity: ExecutionProfileIdentity, catalog_revision: &str) -> Self {
         let mut proof = Self::test_proof(identity, catalog_revision);
         proof.provider_prepare = None;
@@ -677,6 +708,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: [None, None],
+            gateway_result: [None, None],
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -684,7 +716,9 @@ impl VerifiedRegistryLaunch {
         proof
     }
 
-    fn test_ai_gateway_grant(role: OriginalModelResolveRole) -> VerifiedAiGatewayRole {
+    fn test_ai_gateway_grant<const PINS: usize>(
+        role: OriginalModelResolveRole,
+    ) -> VerifiedAiGatewayRole<PINS> {
         VerifiedAiGatewayRole {
             role,
             bundle: VerifiedOrdinarySavedBundle::fixture(),
@@ -1643,6 +1677,29 @@ pub(super) fn reacquire_failover_pack(
     Ok(pack)
 }
 
+/// Reacquire the result port under the original saved Gateway grant for this role.
+pub(super) fn reacquire_gateway_result_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalModelResolveRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .ai_routing
+        .as_ref()
+        .context("admitted launch has no verified AI Routing archive")?;
+    let grant = source
+        .gateway_result(role)
+        .context("admitted launch has no verified ordinary saved Gateway grant for the role")?;
+    let (pack, declaration) =
+        reacquire_ai_routing_archive(inspection, proof, source, &grant.bundle, checkpoint)?;
+    ensure!(
+        declaration.has_gateway_result(),
+        "bundled AI Routing Pack has no verified Gateway result port"
+    );
+    Ok(pack)
+}
+
 fn reacquire_ai_routing_archive(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
@@ -2216,6 +2273,7 @@ fn verify_ai_routing_source(
             | USAGE_COST_PACK_VERSION
             | TOOL_INTENTS_PACK_VERSION
             | PIPELINE_PACK_VERSION
+            | GATEWAY_RESULT_PACK_VERSION
     ) {
         OriginalStreamResultSelection::select(active, budget)?
     } else {
@@ -2224,7 +2282,10 @@ fn verify_ai_routing_source(
     let mut usage_cost_selections = [None, None];
     if matches!(
         receipt.version(),
-        USAGE_COST_PACK_VERSION | TOOL_INTENTS_PACK_VERSION | PIPELINE_PACK_VERSION
+        USAGE_COST_PACK_VERSION
+            | TOOL_INTENTS_PACK_VERSION
+            | PIPELINE_PACK_VERSION
+            | GATEWAY_RESULT_PACK_VERSION
     ) {
         for (selection, role) in usage_cost_selections.iter_mut().zip(AI_GATEWAY_ROLES) {
             *selection =
@@ -2234,7 +2295,7 @@ fn verify_ai_routing_source(
     let mut tool_intents_selections = [None, None];
     if matches!(
         receipt.version(),
-        TOOL_INTENTS_PACK_VERSION | PIPELINE_PACK_VERSION
+        TOOL_INTENTS_PACK_VERSION | PIPELINE_PACK_VERSION | GATEWAY_RESULT_PACK_VERSION
     ) {
         for (selection, role) in tool_intents_selections.iter_mut().zip(AI_GATEWAY_ROLES) {
             *selection = OriginalToolIntentsChoice::select(active, budget, role)?
@@ -2243,7 +2304,10 @@ fn verify_ai_routing_source(
     }
     let mut request_prepare_selections = [None, None, None, None];
     let mut failover_selection = None;
-    if receipt.version() == PIPELINE_PACK_VERSION {
+    if matches!(
+        receipt.version(),
+        PIPELINE_PACK_VERSION | GATEWAY_RESULT_PACK_VERSION
+    ) {
         failover_selection = OriginalFailoverChoice::select(active, budget)?;
         for (selection, role) in request_prepare_selections
             .iter_mut()
@@ -2253,12 +2317,20 @@ fn verify_ai_routing_source(
                 .map(|choice| (role, choice));
         }
     }
+    let mut gateway_result_selections = [None, None];
+    if receipt.version() == GATEWAY_RESULT_PACK_VERSION {
+        for (selection, role) in gateway_result_selections.iter_mut().zip(AI_GATEWAY_ROLES) {
+            *selection = OriginalGatewayResultChoice::select(active, budget, role)?
+                .map(|choice| (role, choice));
+        }
+    }
     if routing_selection.is_none()
         && stream_result_selection.is_none()
         && usage_cost_selections.iter().all(Option::is_none)
         && request_prepare_selections.iter().all(Option::is_none)
         && failover_selection.is_none()
         && tool_intents_selections.iter().all(Option::is_none)
+        && gateway_result_selections.iter().all(Option::is_none)
     {
         return Ok(None);
     }
@@ -2357,6 +2429,23 @@ fn verify_ai_routing_source(
     } else {
         None
     };
+    let mut gateway_result = [None, None];
+    for (grant, selection) in gateway_result.iter_mut().zip(gateway_result_selections) {
+        let Some((role, choice)) = selection else {
+            continue;
+        };
+        ensure!(
+            declaration.has_gateway_result(),
+            "bundled AI Routing Pack has no verified Gateway result port"
+        );
+        let locked =
+            inspection.with_source(|sources| sources.gateway_result_bundle(&choice, budget))??;
+        *grant = Some(VerifiedAiGatewayRole {
+            role,
+            bundle: locked.verify(&checkpoint)?,
+            pins: choice.pins().each_ref().map(Into::into),
+        });
+    }
     Ok(Some(VerifiedAiRoutingSource {
         routing,
         stream_result,
@@ -2364,6 +2453,7 @@ fn verify_ai_routing_source(
         request_prepare,
         failover,
         tool_intents,
+        gateway_result,
         archive_sha256: receipt.archive_sha256().to_owned(),
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -2382,6 +2472,9 @@ pub(super) const REQUEST_PREPARE_SHAPE: &str = "local.ai-routing.request-prepare
 pub(super) const REQUEST_PREPARE_OPERATION: &str = "prepare";
 pub(super) const FAILOVER_SHAPE: &str = "local.ai-routing.failover@1.0";
 pub(super) const FAILOVER_OPERATION: &str = "decide";
+pub(super) const GATEWAY_RESULT_SHAPE: &str = "local.ai-routing.gateway-result@1.0";
+pub(super) const GATEWAY_RESULT_OPERATION: &str = "project";
+const GATEWAY_RESULT_PACK_VERSION: &str = "0.6.0";
 const PIPELINE_PACK_VERSION: &str = "0.5.0";
 const STREAM_RESULT_PACK_VERSION: &str = "0.2.0";
 const USAGE_COST_PACK_VERSION: &str = "0.3.0";
@@ -2400,6 +2493,8 @@ const AI_ROUTING_USAGE_COST_WIT: &str =
     "sha256:a6808c624f89f0feef62f2d8df783d7e7750ac6b0cfb39f7c57d70ccc138e779";
 const AI_ROUTING_TOOL_INTENTS_WIT: &str =
     "sha256:4f70172ce8537aeb23fcf67b605a3608ec0232a03face1f9df1969c2c62b6289";
+const AI_ROUTING_PIPELINE_WIT: &str =
+    "sha256:93e81c7f38f59735f23075a06b4dcf01f8c5997531d149904ca253c40d5908e1";
 const AI_ROUTING_LEGACY_CORE_WIT: &str =
     "sha256:b5604d1611c56eff3078e43b6f0ba30a10f6b2793c8fe9480c240c58a6c390d5";
 const AI_ROUTING_LEGACY_SIDECAR: &str =
@@ -2436,6 +2531,10 @@ const FAILOVER_SIDECAR: (&str, &[u8]) = (
     "wit/failover.shape.json",
     include_bytes!("../../../packs/local.ai-routing-rust/wit/failover.shape.json"),
 );
+const GATEWAY_RESULT_SIDECAR: (&str, &[u8]) = (
+    "wit/gateway-result.shape.json",
+    include_bytes!("../../../packs/local.ai-routing-rust/wit/gateway-result.shape.json"),
+);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AiRoutingDeclaration {
@@ -2444,6 +2543,7 @@ enum AiRoutingDeclaration {
     RoutingWithUsageCost,
     RoutingWithToolIntents,
     RoutingWithPipeline,
+    RoutingWithGatewayResult,
 }
 
 impl AiRoutingDeclaration {
@@ -2454,23 +2554,35 @@ impl AiRoutingDeclaration {
     fn has_usage_cost(self) -> bool {
         matches!(
             self,
-            Self::RoutingWithUsageCost | Self::RoutingWithToolIntents | Self::RoutingWithPipeline
+            Self::RoutingWithUsageCost
+                | Self::RoutingWithToolIntents
+                | Self::RoutingWithPipeline
+                | Self::RoutingWithGatewayResult
         )
     }
 
     fn has_tool_intents(self) -> bool {
         matches!(
             self,
-            Self::RoutingWithToolIntents | Self::RoutingWithPipeline
+            Self::RoutingWithToolIntents
+                | Self::RoutingWithPipeline
+                | Self::RoutingWithGatewayResult
         )
     }
 
     fn has_request_prepare(self) -> bool {
-        self == Self::RoutingWithPipeline
+        matches!(
+            self,
+            Self::RoutingWithPipeline | Self::RoutingWithGatewayResult
+        )
     }
 
     fn has_failover(self) -> bool {
-        self == Self::RoutingWithPipeline
+        self.has_request_prepare()
+    }
+
+    fn has_gateway_result(self) -> bool {
+        self == Self::RoutingWithGatewayResult
     }
 }
 
@@ -2499,8 +2611,13 @@ fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<AiRoutingDeclar
         ),
         PIPELINE_PACK_VERSION => (
             AiRoutingDeclaration::RoutingWithPipeline,
-            Digest::hash(AI_ROUTING_WIT.1),
+            Digest::parse(AI_ROUTING_PIPELINE_WIT)?,
             6,
+        ),
+        GATEWAY_RESULT_PACK_VERSION => (
+            AiRoutingDeclaration::RoutingWithGatewayResult,
+            Digest::hash(AI_ROUTING_WIT.1),
+            7,
         ),
         _ => bail!("bundled AI Routing Pack has an unsupported version"),
     };
@@ -2510,7 +2627,7 @@ fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<AiRoutingDeclar
             .get(path)
             .is_some_and(|file| file.digest() == digest)
     };
-    let shared_wit_matches = if declaration == AiRoutingDeclaration::RoutingWithPipeline {
+    let shared_wit_matches = if declaration.has_request_prepare() {
         AI_ROUTING_SHARED_WIT_FILES
             .into_iter()
             .chain([
@@ -2536,7 +2653,12 @@ fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<AiRoutingDeclar
                 .iter()
                 .all(|shape| shape.wit == AI_ROUTING_WIT.0)
             && file_matches(AI_ROUTING_WIT.0, &wit)
-            && shared_wit_matches,
+            && shared_wit_matches
+            && (!declaration.has_gateway_result()
+                || file_matches(
+                    GATEWAY_RESULT_SIDECAR.0,
+                    &Digest::hash(GATEWAY_RESULT_SIDECAR.1)
+                )),
         "bundled AI Routing Pack has unexpected WIT files"
     );
     require_registry_ports(pack, AI_ROUTING_OPERATION, &[AI_ROUTING_SHAPE])?;
@@ -2554,6 +2676,9 @@ fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<AiRoutingDeclar
     }
     if declaration.has_failover() {
         require_registry_ports(pack, FAILOVER_OPERATION, &[FAILOVER_SHAPE])?;
+    }
+    if declaration.has_gateway_result() {
+        require_registry_ports(pack, GATEWAY_RESULT_OPERATION, &[GATEWAY_RESULT_SHAPE])?;
     }
     Ok(declaration)
 }
@@ -2941,6 +3066,7 @@ mod tests {
             TOOL_INTENTS_SIDECAR,
             REQUEST_PREPARE_SIDECAR,
             FAILOVER_SIDECAR,
+            GATEWAY_RESULT_SIDECAR,
         ]) {
             fs::write(path.join(relative), wit).unwrap();
         }
@@ -2952,12 +3078,13 @@ mod tests {
             verify_directory(&path, &Default::default()).unwrap()
         };
         let declaration = require_ai_routing_declaration(&verify(draft)).unwrap();
-        assert_eq!(declaration, AiRoutingDeclaration::RoutingWithPipeline);
+        assert_eq!(declaration, AiRoutingDeclaration::RoutingWithGatewayResult);
         assert!(declaration.has_stream_result());
         assert!(declaration.has_usage_cost());
         assert!(declaration.has_tool_intents());
         assert!(declaration.has_request_prepare());
         assert!(declaration.has_failover());
+        assert!(declaration.has_gateway_result());
 
         let mut modified: serde_json::Value = serde_json::from_slice(draft).unwrap();
         modified["permissions"]["storage"] = serde_json::json!({"private": true});
@@ -2979,6 +3106,7 @@ mod tests {
             TOOL_INTENTS_SIDECAR,
             REQUEST_PREPARE_SIDECAR,
             FAILOVER_SIDECAR,
+            GATEWAY_RESULT_SIDECAR,
         ] {
             let sidecar = std::str::from_utf8(sidecar).unwrap();
             fs::write(path.join(relative), format!("{sidecar}\n")).unwrap();
@@ -3026,6 +3154,17 @@ mod tests {
                 fs::write(path.join(AI_ROUTING_WIT.0), &legacy_wit).unwrap();
                 fs::remove_file(path.join(removed_sidecar)).unwrap();
             };
+        remove_port(&mut legacy, "gateway-result", GATEWAY_RESULT_SIDECAR.0);
+        assert!(
+            require_ai_routing_declaration(&verify(&serde_json::to_vec(&legacy).unwrap())).is_err()
+        );
+        legacy["version"] = serde_json::json!(PIPELINE_PACK_VERSION);
+        let pipeline =
+            require_ai_routing_declaration(&verify(&serde_json::to_vec(&legacy).unwrap())).unwrap();
+        assert_eq!(pipeline, AiRoutingDeclaration::RoutingWithPipeline);
+        assert!(pipeline.has_request_prepare());
+        assert!(pipeline.has_failover());
+        assert!(!pipeline.has_gateway_result());
         // A .5 declaration still needs both ports even after the bytes are re-hashed.
         remove_port(&mut legacy, "failover", FAILOVER_SIDECAR.0);
         let missing_failover = serde_json::to_vec(&legacy).unwrap();
@@ -3063,6 +3202,7 @@ mod tests {
             assert_eq!(verified, declaration);
             assert!(!verified.has_request_prepare());
             assert!(!verified.has_failover());
+            assert!(!verified.has_gateway_result());
             assert_eq!(
                 verified.has_tool_intents(),
                 version == TOOL_INTENTS_PACK_VERSION
@@ -3120,6 +3260,38 @@ mod tests {
                 assert!(!failover.permits_usage_cost(other));
                 assert!(!failover.permits_tool_intents(other));
             }
+        }
+    }
+
+    #[test]
+    fn gateway_result_evidence_requires_its_own_exact_gateway_role() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let catalog = "catalog:fixture";
+        let without_result = VerifiedRegistryLaunch::test_pipeline_proof(identity.clone(), catalog);
+        for granted in OriginalModelResolveRole::ALL {
+            let result = VerifiedRegistryLaunch::test_gateway_result_proof(
+                identity.clone(),
+                catalog,
+                granted,
+            );
+            for role in OriginalModelResolveRole::ALL {
+                assert_eq!(
+                    result.permits_gateway_result(role),
+                    AI_GATEWAY_ROLES.contains(&granted) && role == granted
+                );
+                assert!(!without_result.permits_gateway_result(role));
+                assert!(!result.permits_ai_routing(role));
+                assert!(!result.permits_usage_cost(role));
+                assert!(!result.permits_tool_intents(role));
+                assert!(!result.permits_request_prepare(role));
+            }
+            assert!(!result.permits_stream_result());
+            assert!(!result.permits_failover());
         }
     }
 

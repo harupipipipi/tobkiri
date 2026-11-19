@@ -45,6 +45,7 @@ _AI_STREAM_RESULT_ENV = "TOBKIRI_NATIVE_AI_STREAM_RESULT"
 _AI_USAGE_COST_ENV = "TOBKIRI_NATIVE_AI_USAGE_COST"
 _AI_TOOL_INTENTS_ENV = "TOBKIRI_NATIVE_AI_TOOL_INTENTS"
 _AI_PIPELINE_ENV = "TOBKIRI_NATIVE_AI_PIPELINE"
+_AI_GATEWAY_RESULT_ENV = "TOBKIRI_NATIVE_AI_GATEWAY_RESULT"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -89,6 +90,14 @@ AI_USAGE_COST_INPUT_FIELDS = frozenset({
     "usage", "pricing", "usage_provenance", "pricing_revision",
 })
 AI_TOOL_INTENTS_INPUT_FIELDS = frozenset({"request_id", "intents"})
+_AI_GATEWAY_RESULT_INPUT_FIELDS = frozenset({
+    "role", "value", "request_id", "candidate",
+})
+_AI_GATEWAY_STREAM_RESULT_FIELDS = frozenset({"tool_intents", "events", "attempts"})
+_AI_GATEWAY_CANDIDATE_FIELDS = frozenset({
+    "model_id", "provider_instance_id", "catalog_provider_instance_id",
+    "catalog_revision",
+})
 AI_PIPELINE_PREPARE_REQUIRED_FIELDS = frozenset({"request_id", "decision_time"})
 AI_PIPELINE_FAILOVER_INPUT_FIELDS = frozenset({
     "allow_failover", "idempotency_key", "tools", "error_code", "attempt",
@@ -433,7 +442,7 @@ class NativeModelResolveRequest:
 
 @dataclass(frozen=True)
 class NativeAiRoutingRequest:
-    """Borrow one live signed Gateway child invocation."""
+    """Borrow a live signed Gateway invocation or one of its children."""
 
     context: RequestContext
     runtime_instance: str
@@ -445,6 +454,7 @@ class NativeAiRoutingRequest:
     usage_cost: bool = False
     tool_intents: bool = False
     pipeline: AiPipelineStep | None = None
+    gateway_result: bool = False
 
 
 _NativeBorrow = (
@@ -697,6 +707,18 @@ def capture_launcher_ai_pipeline_evaluator() -> (
     return partial(_invoke_ai_route, launcher, stream_result=False, pipeline=True)
 
 
+def capture_launcher_ai_gateway_result_projector() -> (
+    Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
+):
+    """Capture the Launcher's opted-in endpoint for Gateway result projection."""
+    if os.environ.get(_AI_GATEWAY_RESULT_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke_ai_route, launcher, stream_result=False, gateway_result=True)
+
+
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
     """Capture the managed Launcher's opted-in endpoint for local chat."""
     version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
@@ -882,6 +904,8 @@ def _start_payload(
             frame["ai_route"]["tool_intents"] = True
         elif borrow.pipeline is not None:
             frame["ai_route"]["pipeline"] = borrow.pipeline
+        elif borrow.gateway_result:
+            frame["ai_route"]["gateway_result"] = True
     elif isinstance(borrow, NativeSavedLocalChatRequest):
         frame["saved_local_chat"] = _saved_local_chat_start(borrow)
         if project_local_chat_response:
@@ -976,16 +1000,16 @@ def _saved_orchestration_input(borrow: NativeSavedOrchestrationRequest) -> bytes
         raise _ProtocolError(invalid) from None
 
 
-def _check_ai_pipeline_json(value: Any) -> None:
+def _check_lossless_json(value: Any) -> None:
     """Reject Python values that JSON would silently coerce."""
     if type(value) is dict:
         for key, member in value.items():
             if type(key) is not str:
                 raise TypeError
-            _check_ai_pipeline_json(member)
+            _check_lossless_json(member)
     elif type(value) is list:
         for member in value:
-            _check_ai_pipeline_json(member)
+            _check_lossless_json(member)
     elif type(value) not in (str, int, float, bool, type(None)):
         raise TypeError
 
@@ -1015,6 +1039,14 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
                 or (borrow.pipeline == "failover" and borrow.role != "generate")
             )
         )
+        or (
+            borrow.gateway_result
+            and (
+                borrow.role not in ("generate", "stream")
+                or borrow.stream_result or borrow.usage_cost or borrow.tool_intents
+                or borrow.pipeline is not None
+            )
+        )
         or not isinstance(borrow.input, Mapping)
         or (borrow.usage_cost and borrow.input.keys() != AI_USAGE_COST_INPUT_FIELDS)
         or (borrow.tool_intents and borrow.input.keys() != AI_TOOL_INTENTS_INPUT_FIELDS)
@@ -1028,6 +1060,21 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
         )
     ):
         raise NativeAiRoutingFailure("invalid")
+    if borrow.gateway_result:
+        fields = _AI_GATEWAY_RESULT_INPUT_FIELDS
+        if borrow.role == "stream":
+            fields |= _AI_GATEWAY_STREAM_RESULT_FIELDS
+        candidate = borrow.input.get("candidate")
+        if (
+            borrow.input.keys() != fields
+            or type(borrow.input["role"]) is not str
+            or borrow.input["role"] != borrow.role
+            or type(borrow.input["request_id"]) is not str
+            or type(candidate) is not dict
+            or candidate.keys() != _AI_GATEWAY_CANDIDATE_FIELDS
+            or any(type(field) is not str for field in candidate.values())
+        ):
+            raise NativeAiRoutingFailure("invalid")
     if borrow.pipeline == "prepare":
         handle = borrow.input.get("credential_handle")
         if handle is not None and (
@@ -1038,8 +1085,8 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
             )
     try:
         step_input = dict(borrow.input)
-        if borrow.pipeline is not None:
-            _check_ai_pipeline_json(step_input)
+        if borrow.pipeline is not None or borrow.gateway_result:
+            _check_lossless_json(step_input)
         payload = json.dumps(
             step_input, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
         ).encode("utf-8")
@@ -1356,6 +1403,53 @@ def _decode_ai_pipeline_failover(payload: bytes) -> dict[str, Any]:
     )
     if result["reason"] != reason or result["allowed"] is not (
         reason == "replay_safe_failover"
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_ai_gateway_result(
+    payload: bytes, borrow: NativeAiRoutingRequest,
+) -> dict[str, Any]:
+    invalid = "native AI Gateway result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    fields = {
+        "status", "request_id", "model_id", "provider_instance_id", "output",
+        "tool_intents", "finish_reason",
+    }
+    if borrow.role == "stream":
+        fields.update({"delivery_mode", "events", "attempts"})
+        valid_fields = type(result) is dict and result.keys() == fields
+    else:
+        fields.update({
+            "catalog_provider_instance_id", "catalog_revision", "pricing_revision",
+            "usage", "usage_provenance",
+        })
+        valid_fields = type(result) is dict and (
+            result.keys() in (fields, fields | {"task_state"})
+        )
+    candidate = borrow.input["candidate"]
+    if (
+        not valid_fields
+        or result["status"] != "ok"
+        or result["request_id"] != borrow.input["request_id"]
+        or result["model_id"] != candidate["model_id"]
+        or result["provider_instance_id"] != candidate["provider_instance_id"]
+        or type(result["tool_intents"]) is not list
+    ):
+        raise _ProtocolError(invalid)
+    if borrow.role == "stream":
+        if type(result["events"]) is not list or type(result["attempts"]) is not list:
+            raise _ProtocolError(invalid)
+    elif (
+        result["catalog_provider_instance_id"]
+        != candidate["catalog_provider_instance_id"]
+        or result["catalog_revision"] != candidate["catalog_revision"]
+        or result["pricing_revision"] != candidate["catalog_revision"]
+        or type(result["usage"]) is not dict
+        or type(result["usage_provenance"]) is not str
+        or type(result["finish_reason"]) is not str
+        or ("task_state" in result and type(result["task_state"]) is not str)
     ):
         raise _ProtocolError(invalid)
     return result
@@ -2028,6 +2122,8 @@ class _Exchange:
                         plan = _decode_ai_pipeline_prepare(payload, borrow)
                     elif borrow.pipeline == "failover":
                         plan = _decode_ai_pipeline_failover(payload)
+                    elif borrow.gateway_result:
+                        plan = _decode_ai_gateway_result(payload, borrow)
                     else:
                         plan = _decode_ai_routing(payload)
                 else:
@@ -2148,12 +2244,14 @@ def _invoke_ai_route(
     usage_cost: bool = False,
     tool_intents: bool = False,
     pipeline: bool = False,
+    gateway_result: bool = False,
 ) -> dict[str, Any]:
     if (
         borrow.stream_result is not stream_result
         or borrow.usage_cost is not usage_cost
         or borrow.tool_intents is not tool_intents
         or (borrow.pipeline is not None) is not pipeline
+        or borrow.gateway_result is not gateway_result
     ):
         raise NativeAiRoutingFailure("invalid")
     return _invoke(launcher, borrow, operation="ai_route")

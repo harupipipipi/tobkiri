@@ -41,16 +41,16 @@ use super::{
     launch_metadata::{
         reacquire_ai_routing_pack, reacquire_conversation_append_pack,
         reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
-        reacquire_failover_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
-        reacquire_model_settings_pack, reacquire_provider_prepare_pack,
+        reacquire_failover_pack, reacquire_gateway_result_pack, reacquire_model_resolve_pack,
+        reacquire_model_save_pack, reacquire_model_settings_pack, reacquire_provider_prepare_pack,
         reacquire_request_prepare_pack, reacquire_saved_local_chat_adapter,
         reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
         reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
         reacquire_turn_settlement_pack, reacquire_turn_start_pack, reacquire_usage_cost_pack,
         saved_local_chat_dispatch_bundle, ConversationReadCaller, SettlementCaller,
         VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION,
-        FAILOVER_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
-        PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
+        FAILOVER_SHAPE, GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION,
+        PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
         REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION, REQUEST_PREPARE_SHAPE,
         STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE, TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE,
@@ -93,6 +93,7 @@ pub(crate) enum AiGatewayDataOperation {
     ToolIntents(OriginalModelResolveRole),
     RequestPrepare(OriginalModelResolveRole),
     Failover,
+    GatewayResult(OriginalModelResolveRole),
 }
 
 impl AiGatewayDataOperation {
@@ -104,6 +105,7 @@ impl AiGatewayDataOperation {
             Self::ToolIntents(role) => proof.permits_tool_intents(role),
             Self::RequestPrepare(role) => proof.permits_request_prepare(role),
             Self::Failover => proof.permits_failover(),
+            Self::GatewayResult(role) => proof.permits_gateway_result(role),
         }
     }
 }
@@ -1191,6 +1193,11 @@ async fn run(
                             reacquire_failover_pack(&inspection, source, checkpoint)?,
                             FAILOVER_SHAPE,
                             FAILOVER_OPERATION,
+                        ),
+                        AiGatewayDataOperation::GatewayResult(role) => (
+                            reacquire_gateway_result_pack(&inspection, source, role, checkpoint)?,
+                            GATEWAY_RESULT_SHAPE,
+                            GATEWAY_RESULT_OPERATION,
                         ),
                     };
                     revalidate()?;

@@ -5,7 +5,7 @@ wit_bindgen::generate!({
 });
 
 use exports::local::ai_routing::{
-    failover, request_prepare, routing, stream_result, tool_intents, usage_cost,
+    failover, gateway_result, request_prepare, routing, stream_result, tool_intents, usage_cost,
 };
 use tobkiri::core::types::Error;
 
@@ -52,6 +52,12 @@ impl request_prepare::Guest for Pack {
 impl failover::Guest for Pack {
     fn decide(request: String) -> Result<String, Error> {
         Ok(crate::decide_failover(&request).unwrap_or_default())
+    }
+}
+
+impl gateway_result::Guest for Pack {
+    fn project(request: String) -> Result<String, Error> {
+        Ok(crate::project_gateway_result(&request).unwrap_or_default())
     }
 }
 

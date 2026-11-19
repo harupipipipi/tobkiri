@@ -12,8 +12,10 @@ use ordered_python_compat::{
 
 #[cfg(all(feature = "component", target_arch = "wasm32"))]
 mod component;
+mod gateway_result;
 mod pipeline;
 
+pub use gateway_result::project_gateway_result;
 pub use pipeline::{decide_failover, prepare_request};
 
 const MAX_OUTPUT_BYTES: usize = 1024 * 1024;

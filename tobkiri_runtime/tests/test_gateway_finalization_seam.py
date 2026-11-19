@@ -306,7 +306,30 @@ def test_frozen_source_identity_and_exact_branch_extraction() -> None:
         actual = _function_ast(
             inspect.getsource(getattr(gateway, f"_finalize_{mode}_result"))
         )
-        assert ast.dump(ast.Module(actual.body[1:], [])) == ast.dump(
+        if mode == "generate":
+            # The opt-in projection runs before either signed child.
+            branch = actual.body[3]
+            assert isinstance(branch, ast.If)
+            assert ast.unparse(branch.test) == "result is None"
+            fallback = [*branch.body, *actual.body[4:]]
+        else:
+            # The stream hook runs after the signed children. Restore the two
+            # locals evaluated before the hook to their original positions.
+            output, intents = actual.body[6:8]
+            assert isinstance(output, ast.Assign) and isinstance(intents, ast.Assign)
+            assert ast.unparse(output.targets[0]) == "output"
+            assert ast.unparse(intents.targets[0]) == "intents"
+            returned = actual.body[-1]
+            assert isinstance(returned, ast.Return) and isinstance(returned.value, ast.Call)
+            fields = returned.value.args[0]
+            assert isinstance(fields, ast.Dict)
+            fields.values = [
+                {"output": output.value, "intents": intents.value}.get(value.id, value)
+                if isinstance(value, ast.Name) else value
+                for value in fields.values
+            ]
+            fallback = [*actual.body[1:6], returned]
+        assert ast.dump(ast.Module(fallback, [])) == ast.dump(
             ast.Module(branches[f"baseline_{mode}"].body, [])
         )
 

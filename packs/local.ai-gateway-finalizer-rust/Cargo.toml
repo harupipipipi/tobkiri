@@ -9,6 +9,7 @@ license.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+tobkiri-ai-gateway-finalizer-core = { path = "core" }
 ordered-python-compat = { path = "../ordered-python-compat" }
 wit-bindgen.workspace = true
 

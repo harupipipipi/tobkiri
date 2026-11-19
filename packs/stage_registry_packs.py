@@ -25,7 +25,7 @@ PACKS = (*PROVIDER_ADAPTER_PACKS, AI_ROUTING_PACK)
 PINNED_VERSIONS = {
     ORCHESTRATION_PACK: "0.1.0",
     PROVIDER_ADAPTER_PACK: "0.3.0",
-    AI_ROUTING_PACK: "0.5.0",
+    AI_ROUTING_PACK: "0.6.0",
 }
 CORE_WIT = REPO / "crates/tobkiri-wit/wit/core-v1-2/core.wit"
 

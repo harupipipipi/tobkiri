@@ -48,6 +48,14 @@ interface failover {
   decide: func(request: string) -> result<string, error>;
 }
 
+interface gateway-result {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Project the Gateway generate or stream result as ordered finite JSON.
+  /// An empty result leaves projection and exceptions to the original Gateway.
+  project: func(request: string) -> result<string, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
@@ -57,4 +65,5 @@ world pack {
   export tool-intents;
   export request-prepare;
   export failover;
+  export gateway-result;
 }

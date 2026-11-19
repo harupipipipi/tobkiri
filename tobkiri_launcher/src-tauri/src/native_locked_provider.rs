@@ -15,9 +15,9 @@ use tobkiri_core::{
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
-    OriginalAiRoutingSelection, OriginalFailoverChoice, OriginalRequestPrepareChoice,
-    OriginalSavedLocalChatChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice,
+    OriginalAiRoutingSelection, OriginalFailoverChoice, OriginalGatewayResultChoice,
+    OriginalRequestPrepareChoice, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
+    OriginalToolIntentsChoice, OriginalUsageCostChoice,
 };
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
@@ -90,9 +90,9 @@ pub(crate) struct LockedSavedLocalChatBundle<'pin> {
 
 /// Signed Bundle documents for an ordinary Gateway call and its selected AI operation.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) struct LockedAiRoutingBundle<'pin, const ROLES: usize> {
+pub(crate) struct LockedAiRoutingBundle<'pin, const ROLES: usize, const PINS: usize = 4> {
     source: VerifiedOrdinarySavedBundle,
-    routes: [Option<[LockedRegistryRoute<'pin>; 4]>; ROLES],
+    routes: [Option<[LockedRegistryRoute<'pin>; PINS]>; ROLES],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -224,6 +224,28 @@ impl NativeApplicationSources {
         self.ordinary_ai_bundle([Some(choice.pins())], budget)
     }
 
+    /// Capture the signed Bundle documents through the original Gateway itself.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn gateway_result_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalGatewayResultChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin, 1, 3>> {
+        let pins = choice.pins();
+        self.require_ordinary_ai_callers(pins)?;
+        let [turn, orchestration, gateway] = pins;
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        Ok(LockedAiRoutingBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            routes: [Some([
+                from_lock(turn)?,
+                from_lock(orchestration)?,
+                from_lock(gateway)?,
+            ])],
+            budget: Arc::clone(budget),
+        })
+    }
+
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     fn ordinary_ai_bundle<'pin, const ROLES: usize>(
         &self,
@@ -235,13 +257,7 @@ impl NativeApplicationSources {
             let Some(pins) = selection else {
                 continue;
             };
-            ensure!(
-                pins[0].caller_function_id() == self.authority.shell_provider_id
-                    && pins
-                        .windows(2)
-                        .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
-                "old AI operation callers differ from the selected saved chain"
-            );
+            self.require_ordinary_ai_callers(pins)?;
             let [turn, orchestration, gateway, child] = pins;
             let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
             *locked = Some([
@@ -256,6 +272,19 @@ impl NativeApplicationSources {
             routes,
             budget: Arc::clone(budget),
         })
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn require_ordinary_ai_callers(&self, pins: &[OriginalRoutePin]) -> Result<()> {
+        ensure!(
+            pins.first()
+                .is_some_and(|pin| pin.caller_function_id() == self.authority.shell_provider_id)
+                && pins
+                    .windows(2)
+                    .all(|pair| pair[0].function_id() == pair[1].caller_function_id()),
+            "old AI operation callers differ from the selected saved chain"
+        );
+        Ok(())
     }
 
     /// Capture the Bundle files already pinned by the original signed resolver.
@@ -756,6 +785,22 @@ impl<const ROLES: usize> LockedAiRoutingBundle<'_, ROLES> {
             &self.budget,
             checkpoint,
             ["privileged", "pure", "privileged", "privileged"],
+        )
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedAiRoutingBundle<'_, 1, 3> {
+    /// Verify the signed Turn, Orchestration and Gateway Packs for this role.
+    pub(crate) fn verify(
+        self,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        self.source.verify_routes(
+            &self.routes,
+            &self.budget,
+            checkpoint,
+            ["privileged", "pure", "privileged"],
         )
     }
 }

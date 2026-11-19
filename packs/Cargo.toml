@@ -14,6 +14,7 @@ members = [
   "local.ai-usage-cost-rust",
   "local.ai-stream-normalizer-rust",
   "local.ai-gateway-finalizer-rust",
+  "local.ai-gateway-finalizer-rust/core",
   "local.ai-gateway-tool-caller-rust",
   "local.ai-tool-bridge-rust",
   "local.openai-compat-provider",

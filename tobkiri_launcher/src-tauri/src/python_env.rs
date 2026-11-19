@@ -358,14 +358,16 @@ where
         command.env_remove("TOBKIRI_NATIVE_AI_USAGE_COST");
         command.env_remove("TOBKIRI_NATIVE_AI_TOOL_INTENTS");
         command.env_remove("TOBKIRI_NATIVE_AI_PIPELINE");
+        command.env_remove("TOBKIRI_NATIVE_AI_GATEWAY_RESULT");
         command.env_remove(crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV);
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
         if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
             if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
                 use crate::native_provider_prepare_service::{
-                    AI_PIPELINE_ENV, AI_ROUTING_ENV, AI_STREAM_RESULT_ENV, AI_TOOL_INTENTS_ENV,
-                    AI_USAGE_COST_ENV, APPEND_ENV, OWNER_ENV, SAVED_LOCAL_CHAT_ENV,
-                    SAVED_ORCHESTRATION_ENV, SOCKET_ENV, TURN_READ_ENV, TURN_START_ENV,
+                    AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV, AI_STREAM_RESULT_ENV,
+                    AI_TOOL_INTENTS_ENV, AI_USAGE_COST_ENV, APPEND_ENV, OWNER_ENV,
+                    SAVED_LOCAL_CHAT_ENV, SAVED_ORCHESTRATION_ENV, SOCKET_ENV, TURN_READ_ENV,
+                    TURN_START_ENV,
                 };
                 command
                     .env(SOCKET_ENV, &endpoint.socket)
@@ -383,7 +385,8 @@ where
                         .env(AI_STREAM_RESULT_ENV, "1")
                         .env(AI_USAGE_COST_ENV, "1")
                         .env(AI_TOOL_INTENTS_ENV, "1")
-                        .env(AI_PIPELINE_ENV, "1");
+                        .env(AI_PIPELINE_ENV, "1")
+                        .env(AI_GATEWAY_RESULT_ENV, "1");
                     if let Some(manifest) = saved_orchestration_manifest.as_deref() {
                         command.env(
                             crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV,

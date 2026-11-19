@@ -8338,6 +8338,208 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
         assert len(requests) == calls_after_turn and len(original_calls) == len(contracts)
 
 
+def test_signed_saved_gateway_response_borrows_own_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Project the Gateway response inside its original signed saved invocation."""
+    import io
+    from types import SimpleNamespace
+
+    from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
+    from core_runtime.bootstrap.saved_bridge import SavedBridgeCallbacks
+    from core_runtime.provider_prepare_native_v4 import (
+        NativeProviderRegistryRequiresLegacyRead,
+    )
+    from ecosystem.rumi_ai_gateway_pack.runtime import gateway
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    lineage_operations = {
+        "rumi_turn_runtime_pack.turn-saved", "saved_complete",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+        "rumi_ai_gateway_pack.ai-gateway.stream",
+    }
+    dependency_contracts = {
+        gateway.GENERATE_PROVIDER_CONTRACT, gateway.STREAM_PROVIDER_CONTRACT,
+        gateway.STREAM_NORMALIZE_CONTRACT, gateway.USAGE_CONTRACT,
+        gateway.TOOL_BRIDGE_CONTRACT, "tobkiri.service.tool.invoke.v1",
+    }
+    lineage: list[RequestEnvelope] = []
+    requests: list[ipc.NativeAiRoutingRequest] = []
+    dependencies: list[str] = []
+    provider_calls: list[str] = []
+    role = "generate"
+    mode = "native"
+
+    def project(request: ipc.NativeAiRoutingRequest) -> Mapping[str, object]:
+        request.assert_current()
+        requests.append(request)
+        assert [envelope.operation_id for envelope in lineage] == [
+            "rumi_turn_runtime_pack.turn-saved", "saved_complete",
+            f"rumi_ai_gateway_pack.ai-gateway.{role}",
+        ]
+        envelope = lineage[-1]
+        assert request.context is envelope.context
+        assert request.deadline_monotonic == envelope.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert len({item.lease.token for item in lineage}) == 3
+        assert None not in {item.resource_reservation_id for item in lineage}
+        assert len({item.resource_reservation_id for item in lineage}) == 3
+        for parent, child in zip(lineage, lineage[1:]):
+            assert child.context.caller_principal == parent.target_principal
+            assert child.deadline_monotonic <= parent.deadline_monotonic
+        assert request.role == role and request.input["role"] == role
+        assert request.gateway_result
+        assert not (request.stream_result or request.usage_cost or request.tool_intents)
+        assert request.pipeline is None
+        assert request.input["request_id"] == envelope.payload["request_id"]
+        candidate = request.input["candidate"]
+        value = request.input["value"]
+        assert set(candidate) == {
+            "model_id", "provider_instance_id", "catalog_provider_instance_id",
+            "catalog_revision",
+        }
+        assert value["output"] == "Reply" and provider_calls == [role]
+        if role == "generate":
+            assert set(request.input) == {"role", "value", "request_id", "candidate"}
+            assert dependencies == [gateway.GENERATE_PROVIDER_OPERATION]
+        else:
+            assert set(request.input) == {
+                "role", "value", "request_id", "candidate",
+                "tool_intents", "events", "attempts",
+            }
+            assert dependencies == [
+                gateway.STREAM_PROVIDER_OPERATION, gateway.STREAM_NORMALIZE_OPERATION,
+                gateway.USAGE_STREAM_OPERATION, gateway.TOOL_BRIDGE_STREAM_OPERATION,
+            ]
+        if mode == "inapplicable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if mode == "legacy-read":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode == "stale":
+            with server._lifecycle_lock:
+                server._native_provider_prepare_instance = "0" * 32
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode in {"denied", "unavailable"}:
+            raise ipc.NativeAiRoutingFailure(mode)
+        if role == "generate":
+            return gateway._normalize_result(
+                value, request.input["request_id"], SimpleNamespace(**candidate),
+            )
+        return {
+            "status": "ok", "output": value.get("output", ""),
+            "tool_intents": request.input["tool_intents"],
+            "finish_reason": value.get("finish_reason"),
+            "delivery_mode": value.get("delivery_mode", "buffered"),
+            "request_id": request.input["request_id"],
+            "model_id": candidate["model_id"],
+            "provider_instance_id": candidate["provider_instance_id"],
+            "events": request.input["events"], "attempts": request.input["attempts"],
+        }
+
+    def open_provider(request, *, timeout, **lifetime):
+        assert timeout > 0
+        assert request.full_url == "https://provider.example/v1/chat/completions"
+        streaming = json.loads(request.data).get("stream") is True
+        provider_calls.append("stream" if streaming else "generate")
+        body_key = "delta" if streaming else "message"
+        chunk = {
+            "choices": [{body_key: {"content": "Reply"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+        }
+        if streaming:
+            return io.BytesIO(f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode())
+        return io.BytesIO(json.dumps(chunk).encode())
+
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_ai_gateway_result_projector", lambda: project,
+    )
+    monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
+    stream_ready = SavedBridgeCallbacks._stream_ready
+    monkeypatch.setattr(
+        SavedBridgeCallbacks, "_stream_ready",
+        lambda *args, **kwargs: role == "stream" and stream_ready(*args, **kwargs),
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as fixture:
+        server, session, _authority = fixture
+        _exercise_provider_configuration_http(fixture, tmp_path, monkeypatch)
+        root = tmp_path / "user-data"
+        store = ConversationStore("defaults", user_data_root=root)
+        ModelRegistry("defaults", user_data_root=root).save({
+            "model_profile_id": "daily", "model_id": "organization/raw-model",
+            "parameters": {"max_tokens": 16},
+            "metadata": {"provider_connection_id": "provider.fixture"},
+        }, expected_revision=0)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            if envelope.operation_id in lineage_operations:
+                lineage.append(envelope)
+            if envelope.contract_id in dependency_contracts:
+                dependencies.append(envelope.operation_id)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        cookie, csrf, origin = _authenticate(server)
+        instance = server._native_provider_prepare_instance
+        for role, mode in (
+            ("generate", "native"), ("stream", "native"),
+            ("generate", "inapplicable"), ("stream", "legacy-read"),
+            ("generate", "stale"), ("generate", "denied"), ("stream", "unavailable"),
+        ):
+            lineage.clear()
+            requests.clear()
+            dependencies.clear()
+            provider_calls.clear()
+            turn_id = f"{role}-{mode}"
+            store.create({"id": turn_id, "model_reference": "daily"},
+                         expected_revision=store.snapshot()["revision"])
+            body = {"turn_id": turn_id, "conversation_id": turn_id,
+                    "conversation_revision": 1, "content": "Hello"}
+            try:
+                status, response, _ = _request(
+                    server, "POST", _contract("POST", "/api/chat/turn"),
+                    body={"request": body}, headers={
+                        "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                    }, timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+                )
+            finally:
+                with server._lifecycle_lock:
+                    server._native_provider_prepare_instance = instance
+            assert len(requests) == 1 and provider_calls == [role], response
+            with pytest.raises(PermissionError):
+                requests[0].assert_current()
+            if mode in {"stale", "denied", "unavailable"}:
+                assert status != 200 or response["data"]["status"] != "completed"
+                if role == "generate":
+                    assert dependencies == [gateway.GENERATE_PROVIDER_OPERATION]
+                continue
+            assert status == 200 and response["data"]["status"] == "completed", response
+            if role == "generate":
+                assert dependencies == [
+                    gateway.GENERATE_PROVIDER_OPERATION,
+                    gateway.TOOL_BRIDGE_GENERATE_OPERATION,
+                    gateway.USAGE_GENERATE_OPERATION,
+                ]
+            else:
+                assert dependencies == [
+                    gateway.STREAM_PROVIDER_OPERATION,
+                    gateway.STREAM_NORMALIZE_OPERATION,
+                    gateway.USAGE_STREAM_OPERATION,
+                    gateway.TOOL_BRIDGE_STREAM_OPERATION,
+                ]
+            assert [item["content"] for item in store.get(turn_id)["messages"]] == [
+                "Hello", "Reply",
+            ]
+
+
 def test_signed_saved_tool_intents_borrows_each_gateway_role(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
