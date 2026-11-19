@@ -4183,6 +4183,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [0db5f7134 の実1B CI 44443876778](https://github.com/harupipipipi/tobkiri/actions/runs/44443876778)
   は、元のRegistryと会話文書を使うWasm読取、認証付きFlow、保存モデルからの実1B推論まで通過した。
   インストール済みDMG上のGUIからの確認は別に行う。
+- `454a84311` で、元のキー不要なProviderのローカルPOSTをRust Hostへ移した。
+  実行Profileの既存Registryから有効な接続ID、レコードrevision、保存済みloopbackを照合する。
+  元の1 MiBのリクエストをそのまま送り、従来どおりHTTP 200から最大4 MiBのJSONを読み取る。
+  IPv4とIPv6の数値loopback、固定パスとヘッダー、30秒以内の元の期限、取消を維持する。
+  実通信は元の呼出リースを再確認し、送信許可を一度だけ取得する。応答を保持する間も
+  Coreの容量に計上する。実TCPの7件で上限ちょうどの応答、1バイト超過、リダイレクト拒否、
+  切断と容量解放、別Profile・古いrevision・無効接続での送信拒否を確認した。
+  元のPythonから採取したRegistryを使うProviderの58件と比較試験1件、既存ネットワークの
+  回帰2件も通過。
+  通常チャットの署名付きSaved Turn→Gateway→Adapterの呼出から、元のRegistryを読む
+  権限と実行リースを引き継いでこの処理へ接続する作業が残る。最大4 MiBの応答は、
+  専用IPCの既存長さ付き結果フレームを再利用し、元のAdapterがJSONを解釈できるよう
+  生バイトで渡す。長い推論中も他の設定操作が進められるよう共有リスナーの直列処理を確認する。
+  通常のDMG LauncherからこのRust経路での実モデル会話は未検証。
 - A-6 の調査では、現行の `ContractLLMGateway` とv4ストリームは受け取った使用量を保持し、
   旧Providerの一部はキャッシュ内訳やOpenAIストリーム末尾の使用量を捨てることを確認した。
   現行OpenAIアダプターは明示の指定がなければ使用量を要求しない。
