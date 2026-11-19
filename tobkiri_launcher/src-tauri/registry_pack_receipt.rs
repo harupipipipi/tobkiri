@@ -38,8 +38,9 @@ mod unix {
     const RECEIPT_LIMIT: u64 = 16 * 1024;
     // The Pack authoring CLI's .tpk size ceiling.
     pub(crate) const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
+    const PROVIDER_REGISTRY_PACK_ID: &str = "local.provider-registry";
     pub(crate) const PACK_IDS: [&str; 3] = [
-        "local.provider-registry",
+        PROVIDER_REGISTRY_PACK_ID,
         "local.model-registry",
         "local.saved-conversation",
     ];
@@ -741,6 +742,26 @@ mod unix {
             provider_adapter,
             ai_routing,
         ))
+    }
+
+    /// Reopen the Provider Registry archive under the exact installed receipt.
+    #[allow(dead_code)]
+    pub(crate) fn verify_installed_with_provider_snapshot<R>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
+    ) -> io::Result<R> {
+        inspect_installed_pack(
+            app_root,
+            expected_sha256,
+            PROVIDER_REGISTRY_PACK_ID,
+            checkpoint,
+            inspect_provider,
+        )?
+        .ok_or_else(|| {
+            io::Error::other("bundled Registry receipt has no Provider Registry archive")
+        })
     }
 
     /// Reopen the presentation archive under the exact installed receipt.

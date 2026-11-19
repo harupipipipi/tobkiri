@@ -47,14 +47,14 @@ use super::{
         reacquire_failover_pack, reacquire_gateway_policy_pack, reacquire_gateway_result_pack,
         reacquire_linked_conversation_context_pack, reacquire_model_resolve_pack,
         reacquire_model_save_pack, reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_request_prepare_pack, reacquire_saved_local_chat_adapter,
-        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
-        reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
-        reacquire_turn_settlement_pack, reacquire_turn_start_pack_for, reacquire_usage_cost_pack,
-        saved_local_chat_dispatch_bundle, ApplicationPresentationRole, ConversationAppendCaller,
-        ConversationReadCaller, SavedTurnStartCaller, SettlementCaller, VerifiedRegistryLaunch,
-        AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE,
-        GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
+        reacquire_provider_snapshot_pack, reacquire_request_prepare_pack,
+        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
+        reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
+        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack_for,
+        reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
+        ConversationAppendCaller, ConversationReadCaller, SavedTurnStartCaller, SettlementCaller,
+        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION,
+        FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
         GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
         PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
@@ -73,6 +73,8 @@ use crate::{
 
 type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
 const MODEL_SAVE_REPLY_LIMIT: usize = 1024 * 1024;
+/// Maximum encoded original Provider snapshot sent to the managed Host.
+pub(crate) const PROVIDER_SNAPSHOT_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded CPython Conversation read result accepted by the Host.
 pub(crate) const CONVERSATION_READ_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum terminal evidence and result JSON in the Conversation confirmation exchange.
@@ -182,6 +184,9 @@ pub(crate) enum NativeRegistryRequest {
         apply: Option<Vec<u8>>,
     },
     ModelList,
+    ProviderSnapshot {
+        role: OriginalSavedLocalChatRole,
+    },
     ModelSave {
         request: Vec<u8>,
         provider: Vec<u8>,
@@ -270,6 +275,7 @@ impl NativeRegistryRequest {
         match self {
             Self::Provider { .. } => proof.provider_prepare.is_some(),
             Self::ModelList => proof.model_settings.is_some(),
+            Self::ProviderSnapshot { role } => proof.permits_provider_snapshot(*role),
             Self::ModelSave { .. } => proof.model_save.is_some(),
             Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
             Self::LinkedConversationContext { .. } | Self::LinkedConversationRead { .. } => {
@@ -318,7 +324,7 @@ impl NativeRegistryRequest {
     fn input_capacity(&self) -> Result<usize> {
         let (request, extra) = match self {
             Self::Provider { request, apply } => (request, apply.as_ref()),
-            Self::ModelList => return Ok(0),
+            Self::ModelList | Self::ProviderSnapshot { .. } => return Ok(0),
             Self::ModelSave { request, provider } => (request, Some(provider)),
             Self::ConversationConfirmation {
                 conversation_id,
@@ -461,6 +467,18 @@ fn turn_input_capacity<'a>(values: impl IntoIterator<Item = &'a String>) -> Resu
     );
     Ok(capacity)
 }
+
+/// The original owner can read a Provider snapshot outside the native format envelope.
+#[derive(Debug)]
+pub(crate) struct ProviderSnapshotRequiresLegacyRead;
+
+impl std::fmt::Display for ProviderSnapshotRequiresLegacyRead {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("Provider snapshot exceeds the native compatibility envelope")
+    }
+}
+
+impl std::error::Error for ProviderSnapshotRequiresLegacyRead {}
 
 #[derive(Debug)]
 pub(crate) struct ModelRegistryRequiresLegacyRead;
@@ -968,6 +986,30 @@ async fn run(
             };
             let (request, apply) = match operation {
                 NativeRegistryRequest::Provider { request, apply } => (request, apply),
+                NativeRegistryRequest::ProviderSnapshot { role } => {
+                    let pack = reacquire_provider_snapshot_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        role,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let output = inspection
+                        .read_legacy_provider_snapshot(
+                            &pack,
+                            &config.user_data_dir,
+                            &identity.profile_id,
+                            false,
+                        )
+                        .await
+                        .map_err(provider_snapshot_error)?;
+                    return decode_owner_read_reply(
+                        output,
+                        &graph,
+                        PROVIDER_SNAPSHOT_REPLY_LIMIT,
+                        ProviderSnapshotRequiresLegacyRead,
+                    );
+                }
                 NativeRegistryRequest::ModelList => {
                     let pack = reacquire_model_settings_pack(
                         &inspection,
@@ -2052,6 +2094,18 @@ fn encode_turn_start_reply(
     .map_err(|_| LegacySavedTurnSettlementError::Capacity)
 }
 
+fn provider_snapshot_error(error: NativeArtifactError) -> anyhow::Error {
+    match &error {
+        NativeArtifactError::TooLarge => ProviderSnapshotRequiresLegacyRead.into(),
+        NativeArtifactError::ProviderRejected(error)
+            if matches!(error.code(), "invalid" | "limit-exceeded") =>
+        {
+            ProviderSnapshotRequiresLegacyRead.into()
+        }
+        _ => error.into(),
+    }
+}
+
 fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
     match &error {
         NativeArtifactError::TooLarge => ModelRegistryRequiresLegacyRead.into(),
@@ -2539,7 +2593,19 @@ mod tests {
         let proofs = roles.map(|role| {
             VerifiedRegistryLaunch::test_saved_local_chat_proof(identity.clone(), "catalog", role)
         });
+        let snapshot_proofs = roles.map(|role| {
+            VerifiedRegistryLaunch::test_provider_snapshot_proof(identity.clone(), "catalog", role)
+        });
         for role in roles {
+            let snapshot = NativeRegistryRequest::ProviderSnapshot { role };
+            assert!(!snapshot.requires_publication_permit());
+            assert_eq!(snapshot.input_capacity().unwrap(), 0);
+            assert!(!snapshot.has_launch_proof(&orchestration));
+            assert!(proofs.iter().all(|proof| !snapshot.has_launch_proof(proof)));
+            for (granted, proof) in roles.into_iter().zip(&snapshot_proofs) {
+                assert_eq!(snapshot.has_launch_proof(proof), role == granted);
+            }
+
             let mut connection_id = String::with_capacity(64);
             connection_id.push_str("provider");
             let mut endpoint = String::with_capacity(128);
@@ -3130,6 +3196,21 @@ mod tests {
         let output = serde_json::json!({"owner_result": owner});
         let output =
             CoreValue::parse_guest(&serde_json::to_vec(&output).unwrap(), &budget).unwrap();
+        let snapshot = decode_owner_read_reply(
+            output.clone(),
+            &budget,
+            PROVIDER_SNAPSHOT_REPLY_LIMIT,
+            ProviderSnapshotRequiresLegacyRead,
+        )
+        .unwrap();
+        assert_eq!(snapshot.wire.as_bytes(), owner.as_bytes());
+        assert!(snapshot.document.is_none());
+        assert!(!snapshot.projected_local_chat);
+        assert!(provider_snapshot_error(NativeArtifactError::TooLarge)
+            .is::<ProviderSnapshotRequiresLegacyRead>());
+        for error in [NativeArtifactError::Denied, NativeArtifactError::Integrity] {
+            assert!(!provider_snapshot_error(error).is::<ProviderSnapshotRequiresLegacyRead>());
+        }
         let reply = decode_conversation_read_reply(output, &budget).unwrap();
         assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
         let row = r#"{"id":"child","precise":9007199254740993,"cost":-0.0}"#;

@@ -34,6 +34,7 @@ use tobkiri_wasm::{
     verify_legacy_conversation_linked_context_declaration,
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
+    verify_legacy_provider_snapshot_declaration,
 };
 
 use super::{
@@ -137,6 +138,22 @@ impl VerifiedRegistryLaunch {
             .as_ref()
             .and_then(|source| source.entry(role))
             .is_some()
+    }
+
+    /// Require this Adapter's own original Registry resource grant and the verified read port.
+    pub(crate) fn permits_provider_snapshot(&self, role: OriginalSavedLocalChatRole) -> bool {
+        self.provider_snapshot(role).is_some()
+    }
+
+    fn provider_snapshot(
+        &self,
+        role: OriginalSavedLocalChatRole,
+    ) -> Option<(
+        &VerifiedSavedLocalChatEntry,
+        &VerifiedProviderSnapshotSource,
+    )> {
+        let source = self.local_chat.as_ref()?;
+        Some((source.entry(role)?, source.provider_snapshot.as_ref()?))
     }
 
     /// Require the original ordinary saved chain and verified pure Wasm computation.
@@ -636,12 +653,14 @@ struct VerifiedSavedLocalChatSource {
     direct: Option<VerifiedSavedLocalChatEntry>,
     side_chat: Option<VerifiedSavedLocalChatEntry>,
     adapter: Option<VerifiedProviderAdapterSource>,
+    provider_snapshot: Option<VerifiedProviderSnapshotSource>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedSavedLocalChatEntry {
     bundle: VerifiedOrdinarySavedBundle,
     side_chat: Option<VerifiedLegacyRoutePin>,
+    // The last pin is the Adapter's separate Registry resource edge for this exact role.
     roles: [Option<(OriginalSavedLocalChatRole, [VerifiedLegacyRoutePin; 5])>; 2],
 }
 
@@ -660,6 +679,13 @@ impl VerifiedSavedLocalChatSource {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedProviderAdapterSource {
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedProviderSnapshotSource {
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -735,7 +761,23 @@ impl VerifiedRegistryLaunch {
             direct,
             side_chat,
             adapter: None,
+            provider_snapshot: None,
         });
+        proof
+    }
+
+    pub(crate) fn test_provider_snapshot_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalSavedLocalChatRole,
+    ) -> Self {
+        let mut proof = Self::test_saved_local_chat_proof(identity, catalog_revision, role);
+        proof.local_chat.as_mut().unwrap().provider_snapshot =
+            Some(VerifiedProviderSnapshotSource {
+                archive_sha256: Digest::hash(b"provider-snapshot-archive").to_string(),
+                archive_bytes: 512,
+                manifest_sha256: Digest::hash(b"provider-snapshot-manifest").to_string(),
+            });
         proof
     }
 
@@ -1612,17 +1654,22 @@ impl LaunchActivationObserver<'_> {
         if let Some(locked) = locked {
             locked.verify(checkpoint)?;
         }
+        let mut local_chat = verify_saved_local_chat_source(inspection, active, checkpoint)?;
         let verified_registry_pack_evidence =
             registry_pack_receipt::verify_installed_with_ai_routing_archives(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
                 || checkpoint().map_err(io::Error::other),
                 |receipt, input| {
-                    provider_selection
+                    if provider_selection.is_none() && local_chat.is_none() {
+                        return Ok((None, None));
+                    }
+                    let pack = verify_registry_archive(inspection, receipt, input)?;
+                    let prepare = provider_selection
                         .as_ref()
                         .map(|selection| {
-                            verify_provider_prepare_archive(inspection, receipt, input)?;
-                            Ok(VerifiedProviderPrepareSource {
+                            require_provider_prepare_ports(&pack)?;
+                            Ok::<_, io::Error>(VerifiedProviderPrepareSource {
                                 coordinator: selection.coordinator().into(),
                                 provider: selection.provider().into(),
                                 archive_sha256: receipt.archive_sha256().to_owned(),
@@ -1630,7 +1677,19 @@ impl LaunchActivationObserver<'_> {
                                 manifest_sha256: receipt.manifest_sha256().to_owned(),
                             })
                         })
-                        .transpose()
+                        .transpose()?;
+                    let snapshot = if local_chat.is_some()
+                        && observe_provider_snapshot_declaration(&pack).map_err(io::Error::other)?
+                    {
+                        Some(VerifiedProviderSnapshotSource {
+                            archive_sha256: receipt.archive_sha256().to_owned(),
+                            archive_bytes: receipt.archive_bytes(),
+                            manifest_sha256: receipt.manifest_sha256().to_owned(),
+                        })
+                    } else {
+                        None
+                    };
+                    Ok((prepare, snapshot))
                 },
                 |receipt, input| {
                     let model_list = model_selection.as_ref();
@@ -1774,7 +1833,7 @@ impl LaunchActivationObserver<'_> {
             )
             .context("bundled Registry Pack verification failed during Launch")?;
         let (
-            provider_prepare,
+            (provider_prepare, provider_snapshot),
             (model_settings, model_save, model_resolve),
             conversation,
             turn,
@@ -1785,7 +1844,10 @@ impl LaunchActivationObserver<'_> {
         let turn = turn.flatten();
         let orchestration = orchestration.flatten();
         let ai_routing = ai_routing.flatten();
-        let local_chat = verify_saved_local_chat_source(inspection, active, adapter, checkpoint)?;
+        if let Some(source) = &mut local_chat {
+            source.adapter = adapter;
+            source.provider_snapshot = provider_snapshot;
+        }
         let application_presentation =
             registry_pack_receipt::verify_installed_with_application_presentation(
                 &app_root,
@@ -1992,10 +2054,47 @@ pub(super) fn reacquire_provider_prepare_pack(
                 source.archive_bytes,
                 &source.manifest_sha256,
             )?;
-            verify_provider_prepare_archive(inspection, receipt, input)
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            require_provider_prepare_ports(&pack)?;
+            Ok(pack)
         },
     )
     .context("bundled Provider prepare archive verification failed")
+}
+
+/// Reopen the read-only Registry Pack after revalidating this saved Adapter's signed caller chain.
+pub(super) fn reacquire_provider_snapshot_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalSavedLocalChatRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let (entry, source) = proof
+        .provider_snapshot(role)
+        .context("admitted launch has no verified Provider Registry snapshot grant for the role")?;
+    checkpoint()?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    inspection.with_source(|sources| entry.bundle.require_source(sources))??;
+    entry
+        .bundle
+        .revalidate(inspection.allocation_budget()?, &checkpoint)?;
+    registry_pack_receipt::verify_installed_with_provider_snapshot(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            verify_legacy_provider_snapshot_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )
+    .context("bundled Provider Registry snapshot archive verification failed")
 }
 
 /// Reacquire the Model Pack from the original signed resolver source and receipt pin.
@@ -2620,8 +2719,7 @@ pub(super) fn reacquire_saved_orchestration_pack(
 }
 
 fn observe_linked_conversation_context_declaration(pack: &VerifiedPack) -> Result<bool> {
-    let declared =
-        conversation_port_declared(pack, "local.saved-conversation.legacy-linked-context");
+    let declared = registry_port_declared(pack, "local.saved-conversation.legacy-linked-context");
     if declared {
         verify_legacy_conversation_linked_context_declaration(pack)?;
     }
@@ -2629,7 +2727,7 @@ fn observe_linked_conversation_context_declaration(pack: &VerifiedPack) -> Resul
 }
 
 fn observe_conversation_confirmation_declaration(pack: &VerifiedPack) -> Result<bool> {
-    let declared = conversation_port_declared(pack, "local.saved-conversation.legacy-confirmation");
+    let declared = registry_port_declared(pack, "local.saved-conversation.legacy-confirmation");
     if declared {
         verify_legacy_conversation_confirmation_declaration(pack)?;
     }
@@ -2637,14 +2735,22 @@ fn observe_conversation_confirmation_declaration(pack: &VerifiedPack) -> Result<
 }
 
 fn observe_conversation_append_declaration(pack: &VerifiedPack) -> Result<bool> {
-    let declared = conversation_port_declared(pack, "local.saved-conversation.legacy-append");
+    let declared = registry_port_declared(pack, "local.saved-conversation.legacy-append");
     if declared {
         verify_legacy_conversation_append_declaration(pack)?;
     }
     Ok(declared)
 }
 
-fn conversation_port_declared(pack: &VerifiedPack, name: &str) -> bool {
+fn observe_provider_snapshot_declaration(pack: &VerifiedPack) -> Result<bool> {
+    let declared = registry_port_declared(pack, "local.provider-registry.legacy-resource");
+    if declared {
+        verify_legacy_provider_snapshot_declaration(pack)?;
+    }
+    Ok(declared)
+}
+
+fn registry_port_declared(pack: &VerifiedPack, name: &str) -> bool {
     pack.manifest
         .ports
         .provides
@@ -2989,7 +3095,6 @@ fn verify_saved_orchestration_source(
 fn verify_saved_local_chat_source(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     active: &OriginalActiveProfile,
-    adapter: Option<VerifiedProviderAdapterSource>,
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<Option<VerifiedSavedLocalChatSource>> {
     use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
@@ -3034,7 +3139,8 @@ fn verify_saved_local_chat_source(
     Ok(Some(VerifiedSavedLocalChatSource {
         direct,
         side_chat,
-        adapter,
+        adapter: None,
+        provider_snapshot: None,
     }))
 }
 
@@ -3848,21 +3954,15 @@ fn verify_stateless_registry_surface(pack: &VerifiedPack, id: &str, ports: usize
     Ok(())
 }
 
-fn verify_provider_prepare_archive(
-    inspection: &NativeArtifactInspection<NativeApplicationSources>,
-    receipt: &registry_pack_receipt::Pack,
-    input: &mut dyn io::Read,
-) -> io::Result<VerifiedPack> {
-    let pack = verify_registry_archive(inspection, receipt, input)?;
+fn require_provider_prepare_ports(pack: &VerifiedPack) -> io::Result<()> {
     require_registry_ports(
-        &pack,
+        pack,
         "prepare-local",
         &[
             "local.provider-registry.legacy-configuration@1.0",
             "local.provider-registry.legacy-configuration-live@1.0",
         ],
-    )?;
-    Ok(pack)
+    )
 }
 
 fn verify_model_settings_archive(
@@ -3966,6 +4066,45 @@ fn validate_observed_activation(
 mod tests {
     use super::*;
     use crate::native_harness_bootstrap::NativeRegistryRequest;
+
+    #[test]
+    fn provider_snapshot_requires_its_port_and_the_exact_saved_adapter_role() {
+        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
+
+        let digest = Digest::hash(b"provider-snapshot-activation");
+        let identity = ExecutionProfileIdentity::new(
+            "defaults",
+            digest.as_str(),
+            "activation:provider-snapshot-test",
+            Digest::hash(b"plan").as_str(),
+        )
+        .unwrap();
+        let roles = [Generate, Stream, SideChatGenerate, SideChatStream];
+        let prepare_only = VerifiedRegistryLaunch::test_proof(identity.clone(), digest.as_str());
+        for role in roles {
+            assert!(!prepare_only.permits_provider_snapshot(role));
+            let older_pack = VerifiedRegistryLaunch::test_saved_local_chat_proof(
+                identity.clone(),
+                digest.as_str(),
+                role,
+            );
+            assert!(older_pack.permits_saved_local_chat(role));
+            assert!(!older_pack.permits_provider_snapshot(role));
+
+            let proof = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                identity.clone(),
+                digest.as_str(),
+                role,
+            );
+            assert!(proof.provider_prepare.is_none());
+            for candidate in roles {
+                assert_eq!(
+                    proof.permits_provider_snapshot(candidate),
+                    candidate == role
+                );
+            }
+        }
+    }
 
     #[test]
     fn conversation_complete_declaration_pins_both_effect_free_phases() {

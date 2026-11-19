@@ -360,6 +360,7 @@ where
         command.env_remove("TOBKIRI_NATIVE_AI_PIPELINE");
         command.env_remove("TOBKIRI_NATIVE_AI_GATEWAY_RESULT");
         command.env_remove("TOBKIRI_NATIVE_AI_GATEWAY_POLICY");
+        command.env_remove(crate::sealed_python::PROVIDER_SNAPSHOT_ENV);
         command.env_remove(crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV);
         command.env_remove(crate::sealed_python::APPLICATION_PRESENTATION_ENV);
         command.env_remove(crate::sealed_python::CONVERSATION_COMPLETE_ENV);
@@ -393,6 +394,9 @@ where
                         .env(AI_PIPELINE_ENV, "1")
                         .env(AI_GATEWAY_RESULT_ENV, "1")
                         .env(AI_GATEWAY_POLICY_ENV, "1");
+                    if native_registry.provider_snapshot {
+                        command.env(crate::sealed_python::PROVIDER_SNAPSHOT_ENV, "1");
+                    }
                     if let Some(manifest) = native_registry.saved_orchestration_manifest.as_deref()
                     {
                         command.env(

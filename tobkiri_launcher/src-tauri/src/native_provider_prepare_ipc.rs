@@ -32,13 +32,14 @@ use crate::{
         ConversationWriteRequiresLegacyRead, LinkedConversationReadMode,
         ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
         OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
-        RegistryResponse, SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError,
-        SavedTurnStartAction, SavedTurnStartCaller, SettlementCaller,
+        ProviderSnapshotRequiresLegacyRead, RegistryResponse, SavedLocalChatRequiresLegacyRequest,
+        SavedOrchestrationStepError, SavedTurnStartAction, SavedTurnStartCaller, SettlementCaller,
         TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT,
         APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
         CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT,
         CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
-        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+        PROVIDER_SNAPSHOT_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT,
+        TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -112,6 +113,8 @@ struct Start<'a> {
     saved_local_chat: Option<SavedLocalChatStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     ai_route: Option<AiRoutingStart>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
+    provider_snapshot: Option<ProviderSnapshot>,
 }
 
 enum RequestStart {
@@ -207,9 +210,17 @@ impl Start<'_> {
             (None, None, None, None, Some(routing)) => Some(BodyStart::AiRouting(routing)),
             _ => bail!("native Registry start must name exactly one operation"),
         };
+        let registry_read = match (&self.model_list, &self.provider_snapshot) {
+            (Some(_), None) => Some(NativeRegistryRequest::ModelList),
+            (None, Some(snapshot)) => Some(NativeRegistryRequest::ProviderSnapshot {
+                role: snapshot.role,
+            }),
+            (None, None) => None,
+            (Some(_), Some(_)) => bail!("native Registry start must name exactly one operation"),
+        };
         let operation = match (
             &self.request,
-            &self.model_list,
+            registry_read,
             &self.model_save,
             &self.conversation_get,
             &self.conversation_receipt,
@@ -231,9 +242,7 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 NativeRegistryRequest::Provider { request, apply }
             }
-            (None, Some(_), None, None, None, None, None, None, None, None, None, None) => {
-                NativeRegistryRequest::ModelList
-            }
+            (None, Some(read), None, None, None, None, None, None, None, None, None, None) => read,
             (None, None, Some(save), None, None, None, None, None, None, None, None, None) => {
                 NativeRegistryRequest::ModelSave {
                     request: save.request.get().as_bytes().to_vec(),
@@ -407,6 +416,13 @@ impl Start<'_> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ModelList {}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProviderSnapshot {
+    #[serde(deserialize_with = "deserialize_saved_local_chat_role")]
+    role: OriginalSavedLocalChatRole,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1239,6 +1255,7 @@ fn parse_start(tag: u8, bytes: &[u8]) -> Result<Start<'_>> {
     ensure!(
         (start.turn_start.is_none()
             && start.saved_local_chat.is_none()
+            && start.provider_snapshot.is_none()
             && start.application_presentation.is_none()
             && start.conversation_complete.is_none())
             || bytes.iter().find(|byte| !byte.is_ascii_whitespace()) == Some(&b'{'),
@@ -1301,7 +1318,8 @@ pub(crate) fn admit_connection(
             | RequestStart::AiGatewayData { .. }
             | RequestStart::SavedLocalChat(_)
             | RequestStart::Inline(
-                NativeRegistryRequest::TurnRead { .. }
+                NativeRegistryRequest::ProviderSnapshot { .. }
+                    | NativeRegistryRequest::TurnRead { .. }
                     | NativeRegistryRequest::LinkedConversationContext { .. }
                     | NativeRegistryRequest::LinkedConversationRead { .. }
                     | NativeRegistryRequest::TurnStart { .. }
@@ -1322,7 +1340,7 @@ pub(crate) fn admit_connection(
         .inner()
         .clone();
     let Some(candidate) = manager.admitted_provider_prepare(&identity)? else {
-        // An absent or stale admission cannot authorize a completion fallback.
+        // An absent or stale admission cannot authorize fallback for an active Host operation.
         let (tag, payload): (u8, &[u8]) = if needs_active_host {
             (FAILURE, b"unavailable")
         } else {
@@ -1519,6 +1537,7 @@ impl AdmittedConnection {
         let reply = match &operation {
             NativeRegistryRequest::Provider { .. } => ReplyRole::Provider,
             NativeRegistryRequest::ModelList => ReplyRole::ModelList,
+            NativeRegistryRequest::ProviderSnapshot { .. } => ReplyRole::ProviderSnapshot,
             NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
             NativeRegistryRequest::ConversationGet { .. }
             | NativeRegistryRequest::LinkedConversationContext { .. }
@@ -1548,6 +1567,7 @@ impl AdmittedConnection {
 enum ReplyRole {
     Provider,
     ModelList,
+    ProviderSnapshot,
     ModelSave,
     ConversationRead,
     ConversationConfirmation,
@@ -1600,6 +1620,10 @@ impl ReplyRole {
         match self {
             Self::Provider => (JSON_LIMIT, "limit-exceeded"),
             Self::ModelList => (MODEL_RESULT_LIMIT, "legacy-read-required"),
+            Self::ProviderSnapshot => (
+                PROVIDER_SNAPSHOT_REPLY_LIMIT,
+                provider_snapshot_fallback(authority),
+            ),
             Self::ModelSave => (MODEL_RESULT_LIMIT, "limit-exceeded"),
             Self::ConversationRead => (CONVERSATION_READ_REPLY_LIMIT, "legacy-read-required"),
             Self::ConversationConfirmation => (
@@ -1631,6 +1655,17 @@ impl ReplyRole {
     }
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
+        if self == Self::ProviderSnapshot {
+            return if error.is::<ProviderSnapshotRequiresLegacyRead>() {
+                provider_snapshot_fallback(authority)
+            } else {
+                match failure_code(error) {
+                    "legacy-read-required" => "unavailable",
+                    code => code,
+                }
+            };
+        }
+
         if self == Self::SavedLocalChat {
             if let Some(error) = error.downcast_ref::<OriginalLocalChatPolicyError>() {
                 return match (authority, error) {
@@ -1769,6 +1804,15 @@ impl ReplyRole {
         if output.len() > limit {
             return Err(overflow_code);
         }
+        if self == Self::ProviderSnapshot {
+            if authority != WireAuthority::Live {
+                return Err("unavailable");
+            }
+            // The owner can emit Python numeric literals outside serde_json.
+            if !(output.starts_with(b"{") && output.ends_with(b"}")) {
+                return Err("internal");
+            }
+        }
         if self == Self::SavedLocalChat && authority != WireAuthority::PublicationPermitted {
             return Err("unavailable");
         }
@@ -1808,6 +1852,13 @@ impl ReplyRole {
             }
         }
         Ok(())
+    }
+}
+
+fn provider_snapshot_fallback(authority: WireAuthority) -> &'static str {
+    match authority {
+        WireAuthority::Live => "legacy-read-required",
+        _ => "unavailable",
     }
 }
 
@@ -3006,7 +3057,7 @@ mod tests {
     }
 
     #[test]
-    fn start_distinguishes_prepare_and_preserves_frozen_apply_bytes() {
+    fn start_distinguishes_provider_prepare_apply_and_registry_reads() {
         let prepare = start_frame(PROVIDER_REQUEST);
         let prepare: Start<'_> = serde_json::from_str(&prepare).unwrap();
         assert!(prepare.apply.is_none());
@@ -3027,6 +3078,27 @@ mod tests {
             list.operation().unwrap(),
             NativeRegistryRequest::ModelList
         ));
+
+        for (name, expected) in [
+            ("generate", OriginalSavedLocalChatRole::Generate),
+            ("stream", OriginalSavedLocalChatRole::Stream),
+            (
+                "side-chat-generate",
+                OriginalSavedLocalChatRole::SideChatGenerate,
+            ),
+            (
+                "side-chat-stream",
+                OriginalSavedLocalChatRole::SideChatStream,
+            ),
+        ] {
+            let frame = start_frame(&format!(r#", "provider_snapshot":{{"role":"{name}"}}"#));
+            let start = parse_start(START, frame.as_bytes()).unwrap();
+            assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+            assert!(matches!(
+                start.operation().unwrap(),
+                NativeRegistryRequest::ProviderSnapshot { role } if role == expected
+            ));
+        }
     }
 
     #[test]
@@ -3053,6 +3125,13 @@ mod tests {
             r#", "model_list":true"#,
             r#", "model_list":{"profile_id":"elsewhere"}"#,
             r#", "model_list":{}, "model_list":{}"#,
+            r#", "provider_snapshot":null"#,
+            r#", "provider_snapshot":["stream"]"#,
+            r#", "provider_snapshot":{}"#,
+            r#", "provider_snapshot":{"role":"quote-generate"}"#,
+            r#", "provider_snapshot":{"role":"stream","role":"generate"}"#,
+            r#", "provider_snapshot":{"role":"stream","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"stream"}, "provider_snapshot":{"role":"stream"}"#,
         ] {
             let payload = start_frame(extra);
             assert!(
@@ -3064,6 +3143,9 @@ mod tests {
             String::new(),
             format!(r#"{PROVIDER_REQUEST}, "model_list":{{}}"#),
             r#", "apply":{}, "model_list":{}"#.to_owned(),
+            r#", "apply":{}, "provider_snapshot":{"role":"stream"}"#.to_owned(),
+            r#", "model_list":{}, "provider_snapshot":{"role":"stream"}"#.to_owned(),
+            format!(r#"{PROVIDER_REQUEST}, "provider_snapshot":{{"role":"stream"}}"#),
         ] {
             let payload = start_frame(&extra);
             let parsed: Start<'_> = serde_json::from_str(&payload).unwrap();
@@ -4374,7 +4456,7 @@ mod tests {
     }
 
     #[test]
-    fn turn_read_replies_require_live_and_only_explicit_legacy_codec_can_fallback() {
+    fn owner_read_replies_require_live_and_only_explicit_legacy_errors_can_fallback() {
         use LegacySavedTurnSettlementError as Error;
         let role = ReplyRole::TurnRead;
         assert!(!role.permits_publication());
@@ -4418,6 +4500,49 @@ mod tests {
         assert_eq!(
             role.validate_result(live, oversized.as_bytes()),
             Err("limit-exceeded")
+        );
+
+        let provider_snapshot = ReplyRole::ProviderSnapshot;
+        assert!(provider_snapshot.effect_check().is_none());
+        let codec = ProviderSnapshotRequiresLegacyRead.into();
+        assert_eq!(
+            provider_snapshot.failure_code(WireAuthority::AwaitingLive, &codec),
+            "unavailable"
+        );
+        assert_eq!(
+            provider_snapshot.failure_code(WireAuthority::Live, &codec),
+            "legacy-read-required"
+        );
+        assert_eq!(
+            provider_snapshot.failure_code(WireAuthority::PublicationPermitted, &codec),
+            "unavailable"
+        );
+        for (error, code) in [
+            (NativeArtifactError::Integrity, "unavailable"),
+            (NativeArtifactError::Denied, "denied"),
+            (NativeDataIoError::Cancelled.into(), "cancelled"),
+        ] {
+            assert_eq!(
+                provider_snapshot.failure_code(WireAuthority::Live, &error.into()),
+                code
+            );
+        }
+        let owner_result = br#"{"providers":[{"number": NaN, "precise": 9007199254740993}]}"#;
+        assert_eq!(
+            provider_snapshot.validate_result(WireAuthority::Live, owner_result),
+            Ok(())
+        );
+        assert_eq!(
+            provider_snapshot.validate_result(WireAuthority::AwaitingLive, owner_result),
+            Err("unavailable")
+        );
+        assert_eq!(
+            provider_snapshot.validate_result(WireAuthority::Live, b"[]"),
+            Err("internal")
+        );
+        assert_eq!(
+            provider_snapshot.result_limit(WireAuthority::Live),
+            (PROVIDER_SNAPSHOT_REPLY_LIMIT, "legacy-read-required")
         );
     }
 

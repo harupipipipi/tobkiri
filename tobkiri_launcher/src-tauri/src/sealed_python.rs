@@ -58,6 +58,7 @@ const SNAPSHOT_RUNTIME_MANIFEST: &str = "app/runtime-resource-manifest.v1.json";
 const RUNTIME_OVERLAY_SCHEMA: &str = "io.tobkiri.sealed-runtime-overlay.v1";
 pub(crate) const SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
     "TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST";
+pub(crate) const PROVIDER_SNAPSHOT_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_SNAPSHOT";
 pub(crate) const APPLICATION_PRESENTATION_ENV: &str = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION";
 pub(crate) const CONVERSATION_COMPLETE_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE";
 pub(crate) const CONVERSATION_SIDE_CHAT_APPEND_ENV: &str =
@@ -92,6 +93,7 @@ pub struct RoleArguments {
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[derive(Debug, Default)]
 pub(crate) struct NativeRegistryEnvironment {
+    pub(crate) provider_snapshot: bool,
     pub(crate) saved_orchestration_manifest: Option<String>,
     pub(crate) application_presentation_manifest: Option<String>,
     pub(crate) conversation_complete_manifest: Option<String>,
@@ -140,7 +142,15 @@ impl RoleArguments {
         mut self,
         proof: Option<&crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
     ) -> Self {
+        use tobkiri_harness_native::OriginalSavedLocalChatRole::{
+            Generate, SideChatGenerate, SideChatStream, Stream,
+        };
         self.native_registry = NativeRegistryEnvironment {
+            provider_snapshot: proof.is_some_and(|proof| {
+                [Generate, Stream, SideChatGenerate, SideChatStream]
+                    .into_iter()
+                    .any(|role| proof.permits_provider_snapshot(role))
+            }),
             saved_orchestration_manifest: proof
                 .and_then(|proof| proof.saved_orchestration_manifest())
                 .map(str::to_owned),
@@ -314,7 +324,8 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     if matches!(
         key,
-        SAVED_ORCHESTRATION_MANIFEST_ENV
+        PROVIDER_SNAPSHOT_ENV
+            | SAVED_ORCHESTRATION_MANIFEST_ENV
             | APPLICATION_PRESENTATION_ENV
             | CONVERSATION_COMPLETE_ENV
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
@@ -4563,17 +4574,24 @@ mod tests {
             "catalog",
             SavedTurnStartCaller::SideChat,
         );
-        for (proof, expected) in [
-            (None, false),
-            (Some(&append), false),
-            (Some(&saved_turn), false),
-            (Some(&side_chat), true),
+        let snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            side_chat.identity.clone(),
+            "catalog",
+            tobkiri_harness_native::OriginalSavedLocalChatRole::SideChatStream,
+        );
+        for (proof, expected_turn_start, expected_snapshot) in [
+            (None, false, false),
+            (Some(&append), false, false),
+            (Some(&saved_turn), false, false),
+            (Some(&side_chat), true, false),
+            (Some(&snapshot), false, true),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
                 .with_native_registry_admission(proof)
                 .split_native_registry_environment();
-            assert_eq!(environment.side_chat_saved_turn_start, expected);
+            assert_eq!(environment.side_chat_saved_turn_start, expected_turn_start);
+            assert_eq!(environment.provider_snapshot, expected_snapshot);
         }
     }
 
@@ -4587,6 +4605,7 @@ mod tests {
         };
 
         for key in [
+            PROVIDER_SNAPSHOT_ENV,
             APPLICATION_PRESENTATION_ENV,
             CONVERSATION_COMPLETE_ENV,
             CONVERSATION_SIDE_CHAT_APPEND_ENV,
