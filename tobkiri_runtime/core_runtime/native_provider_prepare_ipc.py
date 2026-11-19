@@ -485,7 +485,11 @@ GatewayProviderSnapshotRole = Literal[
     "side-chat-gateway-generate", "side-chat-gateway-stream",
     "side-chat-gateway-quote-generate", "side-chat-gateway-quote-stream",
 ]
-ProviderSnapshotRole = SavedLocalChatRole | GatewayProviderSnapshotRole
+ProjectedProviderSnapshotRole = Literal["shell-settings", "model-save"]
+ProviderSnapshotRole = (
+    SavedLocalChatRole | GatewayProviderSnapshotRole | ProjectedProviderSnapshotRole
+)
+_PROJECTED_PROVIDER_SNAPSHOT_ROLES = ("shell-settings", "model-save")
 GATEWAY_PROVIDER_SNAPSHOT_ROLES: Mapping[
     tuple[bool, ModelResolveRole], GatewayProviderSnapshotRole
 ] = MappingProxyType({
@@ -726,25 +730,30 @@ def capture_launcher_provider_prepare_planner() -> NativeProviderPreparePlanner 
 class _LauncherProviderSnapshot:
     launcher: _Launcher
     supports_gateway: bool
+    supports_projected: bool
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
-            not self.supports_gateway
-            and request.role in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values()
+            (not self.supports_gateway
+             and request.role in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values())
+            or (not self.supports_projected
+                and request.role in _PROJECTED_PROVIDER_SNAPSHOT_ROLES)
         ):
-            raise NativeProviderPrepareUnavailable("native Gateway Registry read is unavailable")
+            raise NativeProviderPrepareUnavailable("native Registry read role is unavailable")
         return _invoke(self.launcher, request, operation="provider_snapshot")
 
 
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV)
-    if version not in ("1", "2"):
+    if version not in ("1", "2", "3"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return _LauncherProviderSnapshot(launcher, supports_gateway=version == "2")
+    return _LauncherProviderSnapshot(
+        launcher, supports_gateway=version in ("2", "3"), supports_projected=version == "3",
+    )
 
 
 def capture_launcher_model_settings_reader() -> (
@@ -1103,6 +1112,7 @@ def _start_payload(
         if (
             borrow.role not in _SAVED_LOCAL_CHAT_ROLES
             and borrow.role not in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values()
+            and borrow.role not in _PROJECTED_PROVIDER_SNAPSHOT_ROLES
         ):
             raise _ProtocolError("native Provider snapshot role is invalid")
         frame["provider_snapshot"] = {"role": borrow.role}
@@ -1931,9 +1941,50 @@ def _decode_ai_tool_intents(
     return result
 
 
-def _decode_provider_snapshot(payload: bytes, profile_id: str) -> dict[str, Any]:
+_PROJECTED_PROVIDER_REQUIRED = frozenset({
+    "provider_instance_id", "display_name", "enabled", "credential_status",
+    "health_status", "reachability", "observed_at",
+})
+_PROJECTED_PROVIDER_OPTIONAL = frozenset({"adapter_id", "catalog_provider_id"})
+
+
+def _is_projected_provider(record: Any) -> bool:
+    if (
+        type(record) is not dict
+        or not _PROJECTED_PROVIDER_REQUIRED <= record.keys()
+        or record.keys() - _PROJECTED_PROVIDER_REQUIRED - _PROJECTED_PROVIDER_OPTIONAL
+    ):
+        return False
+    observed_at = record["observed_at"]
+    return (
+        all(
+            type(record[key]) is str and bool(record[key])
+            for key in {"provider_instance_id", "display_name"}
+            | (_PROJECTED_PROVIDER_OPTIONAL & record.keys())
+        )
+        and type(record["enabled"]) is bool
+        and record["credential_status"] in ("not_required", "configured", "missing")
+        and record["health_status"] in ("verified", "unverified")
+        and record["reachability"] in ("available", "unavailable", "unknown")
+        and (observed_at is None
+             or type(observed_at) is int and 0 <= observed_at <= MAX_SAFE_INTEGER)
+    )
+
+
+def _decode_provider_snapshot(
+    payload: bytes, profile_id: str, role: ProviderSnapshotRole,
+) -> dict[str, Any]:
     invalid = "native Provider snapshot result is invalid"
     result = _decode_owner_result(payload, invalid)
+    if role in _PROJECTED_PROVIDER_SNAPSHOT_ROLES:
+        if (
+            type(result) is not dict or result.keys() != {"revision", "providers"}
+            or type(result["revision"]) is not int or result["revision"] < 0
+            or type(result["providers"]) is not list
+            or not all(_is_projected_provider(record) for record in result["providers"])
+        ):
+            raise _ProtocolError(invalid)
+        return result
     if (
         type(result) is not dict
         or result.keys() != {"version", "profile_id", "revision", "providers"}
@@ -2509,7 +2560,9 @@ class _Exchange:
                 elif isinstance(borrow, NativeModelResolveRequest):
                     plan = _decode_model_resolve(payload, borrow.identifier)
                 elif isinstance(borrow, NativeProviderSnapshotRequest):
-                    plan = _decode_provider_snapshot(payload, borrow.context.profile_id)
+                    plan = _decode_provider_snapshot(
+                        payload, borrow.context.profile_id, borrow.role,
+                    )
                 elif isinstance(borrow, NativeModelSaveRequest):
                     plan = _decode_model_save(payload)
                 elif isinstance(borrow, NativeAiRoutingRequest):

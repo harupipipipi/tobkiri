@@ -6522,6 +6522,7 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
 ) -> None:
     """Borrow the exact Settings POST and reconcile a lost publication reply."""
     from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import AuthorityDenied, LeaseState
     from core_runtime.model_settings_native_v4 import (
         SAVE_CONTRACT,
         SAVE_OPERATION,
@@ -6529,11 +6530,15 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
         publication_possible,
     )
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_provider_registry_pack.runtime.process import (
+        _provider_connection_snapshot,
+    )
     from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
     from tobkiri_host.credential_store import host_credential_store_factory
 
     root = tmp_path / "user-data"
     models = ModelRegistry("defaults", user_data_root=root)
+    providers = ProviderRegistry("defaults", user_data_root=root)
     route = _contract("POST", "/api/ai/profiles")
     body = {
         "model_profile_id": "daily",
@@ -6560,7 +6565,39 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
     }
     observed: list[RequestEnvelope] = []
     borrowed: list[ipc.NativeModelSaveRequest] = []
+    reads: list[ipc.NativeProviderSnapshotRequest] = []
     unconfirmed = False
+    decline_snapshot = False
+    provider_read_operation = "rumi_provider_registry_pack.provider-registry-resource"
+
+    def native_snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, object]:
+        read = observed[-1]
+        assert read.operation_id == provider_read_operation
+        assert request.context is read.context
+        assert request.deadline_monotonic == read.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert read.resource_reservation_id is not None
+        chain = [read]
+        if request.role == "model-save":
+            manage = observed[-2]
+            assert manage.operation_id == SAVE_OPERATION
+            assert read.context.caller_principal == manage.target_principal
+            assert read.lease.token != manage.lease.token
+            assert read.resource_reservation_id != manage.resource_reservation_id
+            assert read.deadline_monotonic <= manage.deadline_monotonic
+            chain.append(manage)
+        else:
+            assert request.role == "shell-settings"
+        for envelope in chain:
+            _, state = authority.inspect_lease_token(envelope.lease.token.decode("ascii"))
+            assert state is LeaseState.DISPATCHED
+        request.assert_current()
+        reads.append(request)
+        if decline_snapshot:
+            raise ipc.NativeProviderRegistryRequiresLegacyRead()
+        return _provider_connection_snapshot(providers.snapshot())
+
+    native_snapshot.supports_projected = True
 
     def native_save(request: ipc.NativeModelSaveRequest) -> Mapping[str, object]:
         borrowed.append(request)
@@ -6599,11 +6636,14 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
     monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: native_save)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_provider_snapshot_reader", lambda: native_snapshot,
+    )
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch,
         packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
         credential_store_factory=host_credential_store_factory,
-    ) as (server, session, _authority):
+    ) as (server, session, authority):
         dispatch = session.broker._dispatch
 
         def observe_dispatch(backend, envelope, *args, **kwargs):
@@ -6611,7 +6651,7 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
             return dispatch(backend, envelope, *args, **kwargs)
 
         monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
-        ProviderRegistry("defaults", user_data_root=root).save({
+        providers.save({
             "provider_instance_id": "provider.fixture",
             "adapter_id": "openai-compatible",
             "endpoint": "https://provider.example/v1",
@@ -6619,7 +6659,29 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
         }, expected_revision=0)
         status, result, _ = _request(server, "POST", route, body=body)
         assert status == 401 and not borrowed, result
+        connections_route = _contract("GET", "/api/connections/status")
+        status, result, _ = _request(server, "GET", connections_route)
+        assert status == 401 and not reads, result
         cookie, csrf, origin = _authenticate(server)
+
+        def get_connections() -> Mapping[str, object]:
+            status, result, _ = _request(server, "GET", connections_route, headers={
+                "Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            })
+            assert status == 200, result
+            return result["data"]
+
+        connections = get_connections()
+        assert "opaque:test-only" not in json.dumps(connections)
+        assert "https://provider.example" not in json.dumps(connections)
+        assert [request.role for request in reads] == ["shell-settings"]
+        with pytest.raises((AuthorityDenied, PermissionError)):
+            reads[-1].assert_current()
+        decline_snapshot = True
+        assert get_connections() == connections
+        assert [request.role for request in reads] == ["shell-settings"] * 2
+        decline_snapshot = False
+        reads.clear()
 
         def post(request_id: str) -> tuple[int, dict[str, object]]:
             status, result, _ = _request(
@@ -6698,6 +6760,10 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
         assert internal["action"] == "saved"
         assert models.resolve("daily")["profile"]["parameters"]["max_tokens"] == 2048
         assert len(borrowed) == 3
+        assert [request.role for request in reads] == ["model-save"] * 4
+        for request in reads:
+            with pytest.raises((AuthorityDenied, PermissionError)):
+                request.assert_current()
 
 
 @pytest.mark.parametrize("provider_in_requirements", [False, True])

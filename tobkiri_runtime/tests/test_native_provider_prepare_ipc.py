@@ -2038,6 +2038,57 @@ def test_provider_snapshot_receives_the_original_owner_reply(
         assert reader(request) == expected
 
 
+@pytest.mark.parametrize("role", ipc._PROJECTED_PROVIDER_SNAPSHOT_ROLES)
+@pytest.mark.parametrize("unexpected_field", [None, "credential_handle", "endpoint"])
+def test_provider_snapshot_settings_role_only_accepts_the_public_view(
+    monkeypatch: pytest.MonkeyPatch,
+    role: ipc.ProjectedProviderSnapshotRole,
+    unexpected_field: str | None,
+) -> None:
+    borrow = _Borrow()
+    request = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
+        borrow.assert_current, role,
+    )
+    row = {
+        "provider_instance_id": "provider/one", "display_name": "ローカル",
+        "enabled": True, "credential_status": "not_required",
+        "health_status": "verified", "reachability": "available",
+        "observed_at": 108, "adapter_id": "local-openai-compatible",
+    }
+    if unexpected_field is not None:
+        row[unexpected_field] = "unexpected value"
+    result = {"revision": 2, "providers": [row]}
+
+    def serve(peer: socket.socket) -> None:
+        tag, frame = _receive(peer)
+        assert tag == 1
+        assert json.loads(frame)["provider_snapshot"] == {"role": role}
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, json.dumps(result, ensure_ascii=False).encode())
+        if unexpected_field is not None:
+            assert _receive(peer) == (9, b"")
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with _served(monkeypatch, serve):
+        for old_version in ("1", "2"):
+            monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, old_version)
+            reader = ipc.capture_launcher_provider_snapshot_reader()
+            assert reader is not None
+            with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+                reader(request)
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "3")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and reader.supports_gateway and reader.supports_projected
+        if unexpected_field is not None:
+            with pytest.raises(ipc._ProtocolError):
+                reader(request)
+        else:
+            assert reader(request) == result
+
+
 @pytest.mark.parametrize(
     ("live", "tag", "response", "error"),
     [

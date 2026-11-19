@@ -1969,6 +1969,7 @@ def capture_production_dispatch(
         NativeModelSettingsRequest,
         NativeProviderPrepareUnavailable,
         NativeProviderSnapshotRequest,
+        ProjectedProviderSnapshotRole,
         ProviderSnapshotRole,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
@@ -5060,32 +5061,45 @@ def capture_production_dispatch(
         if len(model_settings_edges) == 1:
             native_model_settings_edge = model_settings_edges[0]
 
-    native_model_save_edge: _CapturedPlanEdge | None = None
-    if native_model_save_writer is not None:
-        save_edges = tuple(
-            edge for edge in captured_edges
-            if edge.caller.principal_id in shell_principal_ids
-            and edge.caller.function_id == "shell.tauri.default"
-            and edge.resolved_binding.artifact.pack_id == NATIVE_MODEL_SETTINGS_PACK
-            and edge.resolved_binding.operation.contract_id == _MODEL_SAVE_CONTRACT
-            and edge.resolved_binding.operation.operation_id == _MODEL_SAVE_OPERATION
-            and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
-            and is_exact_original_python_edge(edge, _MODEL_SAVE_FUNCTION)
+    projected_snapshot_routes: dict[
+        str, tuple[
+            ProjectedProviderSnapshotRole, _CapturedPlanEdge, _CapturedPlanEdge | None,
+        ],
+    ] = {}
+    supports_projected_snapshot = (
+        getattr(native_provider_snapshot_reader, "supports_projected", False) is True
+    )
+
+    def select_original_provider_connections(
+        caller_ids: set[str],
+    ) -> _CapturedPlanEdge | None:
+        return select_original_chat_edge(
+            caller_ids, "rumi_provider_registry_pack", _MODEL_PROVIDER_CONTRACT,
+            _MODEL_PROVIDER_OPERATION, _MODEL_PROVIDER_FUNCTION, EffectClass.PRIVILEGED,
         )
-        if len(save_edges) == 1:
-            manage = save_edges[0]
-            provider_reads = tuple(
-                edge for edge in captured_edges
-                if edge.caller == manage.target
-                and edge.resolved_binding.artifact.pack_id == "rumi_provider_registry_pack"
-                and edge.resolved_binding.operation.contract_id == _MODEL_PROVIDER_CONTRACT
-                and edge.resolved_binding.operation.operation_id == _MODEL_PROVIDER_OPERATION
-                # The original catalog classifies this Registry resource as privileged.
-                and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
-                and is_exact_original_python_edge(edge, _MODEL_PROVIDER_FUNCTION)
+
+    if supports_projected_snapshot:
+        settings_read = select_original_provider_connections(desktop_shell_principal_ids)
+        if settings_read is not None:
+            projected_snapshot_routes[settings_read.caller.principal_id] = (
+                "shell-settings", settings_read, None,
             )
-            if len(provider_reads) == 1:
-                native_model_save_edge = manage
+
+    native_model_save_edge: _CapturedPlanEdge | None = None
+    if native_model_save_writer is not None or supports_projected_snapshot:
+        manage = select_original_chat_edge(
+            desktop_shell_principal_ids, NATIVE_MODEL_SETTINGS_PACK, _MODEL_SAVE_CONTRACT,
+            _MODEL_SAVE_OPERATION, _MODEL_SAVE_FUNCTION, EffectClass.PRIVILEGED,
+        )
+        if manage is not None:
+            provider_read = select_original_provider_connections({manage.target.principal_id})
+            if provider_read is not None:
+                if native_model_save_writer is not None:
+                    native_model_save_edge = manage
+                if supports_projected_snapshot:
+                    projected_snapshot_routes[provider_read.caller.principal_id] = (
+                        "model-save", provider_read, manage,
+                    )
 
     conversation_pack = "rumi_conversation_store_pack"
     conversation_contract = "tobkiri.resource.conversation.v1"
@@ -5257,13 +5271,31 @@ def capture_production_dispatch(
         context: RequestContext,
         payload: Mapping[str, Any],
         operation_id: str,
-    ) -> tuple[ProviderSnapshotRole, _CapturedPlanEdge, CapturedInvocationScopeV4] | None:
+    ) -> tuple[
+        ProviderSnapshotRole, _CapturedPlanEdge, CapturedInvocationScopeV4 | None,
+    ] | None:
         if native_provider_runtime is None or (
             set(payload) - {"profile_id", "_session_id"}
             or payload.get("profile_id", context.profile_id) != context.profile_id
         ):
             return None
         parent = parent_invocation_scopes.lookup(context.caller_session_id)
+        if operation_id == _MODEL_PROVIDER_OPERATION:
+            projected = projected_snapshot_routes.get(context.caller_principal.value)
+            if projected is None:
+                return None
+            projected_role, projected_edge, manage = projected
+            if manage is None:
+                return (projected_role, projected_edge, None) if parent is None else None
+            if (
+                parent is not None and parent.parent is None
+                and parent.envelope.context.profile_id == context.profile_id
+                and parent.envelope.target_principal == context.caller_principal
+                and matches_captured_edge(parent.envelope, manage)
+            ):
+                return projected_role, projected_edge, parent
+            return None
+
         if parent is None:
             return None
         caller = parent.envelope
@@ -5300,7 +5332,7 @@ def capture_production_dispatch(
         contribution: HostProviderContributionV4,
         reader: Callable[[NativeProviderSnapshotRequest], Mapping[str, Any]],
     ) -> HostProviderContributionV4:
-        """Use Wasm for the independently admitted raw Registry GET."""
+        """Use Wasm for the independently admitted Registry GET."""
 
         def invoke(
             operation_id: str,
@@ -5322,9 +5354,11 @@ def capture_production_dispatch(
                 or envelope.operation_id != operation_id
                 or payload is not envelope.payload
                 or invocation.parent_invocation is not parent
-                or envelope.lease.token == parent.envelope.lease.token
-                or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
-                or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
+                or (parent is not None and (
+                    envelope.lease.token == parent.envelope.lease.token
+                    or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
+                    or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
+                ))
             ):
                 raise AuthorityDenied("native Provider snapshot lineage changed")
 
@@ -7868,6 +7902,7 @@ def capture_production_dispatch(
                   for route in routes),
                 *(edge for routes in gateway_snapshot_routes.values()
                   for _, _, edge, _ in routes),
+                *(edge for _, edge, _ in projected_snapshot_routes.values()),
             )
             snapshot_bindings = {
                 (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
