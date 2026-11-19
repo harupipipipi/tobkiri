@@ -3838,6 +3838,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Model Pack 34件、実Core＋WasmのModel 3件とProvider 1件、Store 150件、JSON互換19件が通過。
   元のPython保存データ7件の再生成も固定証拠と一致した。実Core試験はProvider応答とBrokerの
   権限チェックをfixtureで供給し、実際に旧パスへ作成・更新してファイルと記録の内容を確認した。
+  起動済みのv5 Profileから、Shell→Model ManageとModel Manage→Provider Registry読取りを
+  一組として選定する処理も追加した。両方の権限、スコープ、実行バリアントが揃った場合だけ
+  対応するpinを返す。Model一覧とShell自身のProvider読取りに与えられた別の権限を流用しない。
+  既存のProvider準備と同じ選定処理を使い、重複する照合を増やさなかった。Launcherでの
+  署名済みBundleと同梱Wasmの再照合、通常保存のBroker経路への接続が残る。設定経路の
+  選定8件と、旧Setupの原本から発行されたProfileの両方のスコープを照合する1件が通過。
   キー不要のローカル会話では、既存のOpenAI SSE処理から、選択された
   保存モデルのIDとProvider接続を実行中のProfileで解決する。選択先のloopback URLと
   モデル名を取り出し、保存した出力上限を適用する。送信先の許可は既存のCore Gateが判定する。

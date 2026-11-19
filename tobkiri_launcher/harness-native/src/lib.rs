@@ -29,8 +29,9 @@ pub use original_authority::{
 };
 #[cfg(unix)]
 pub use original_provider_prepare_selection::{
-    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
-    OriginalRoutePin as OriginalProviderPreparePin,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRoutePin, OriginalRoutePin as OriginalProviderPreparePin,
+    OriginalRouteSelectionError as OriginalModelSaveSelectionError,
     OriginalRouteSelectionError as OriginalModelSettingsSelectionError,
     OriginalRouteSelectionError as OriginalProviderPrepareSelectionError,
 };

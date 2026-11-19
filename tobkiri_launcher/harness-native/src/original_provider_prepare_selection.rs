@@ -67,6 +67,22 @@ static MODEL_LIST: Route = Route {
     variant: "rumi_model_registry_pack.model-registry.profile.python",
 };
 
+static MODEL_MANAGE: Route = Route {
+    pack: "rumi_model_registry_pack",
+    function: "rumi_model_registry_pack.model-registry.manage",
+    contract: "tobkiri.action.ai.model.profile.manage.v1",
+    operation: "rumi_model_registry_pack.model-profile-manage",
+    variant: "rumi_model_registry_pack.model-registry.manage.python",
+};
+
+static PROVIDER_READ: Route = Route {
+    pack: "rumi_provider_registry_pack",
+    function: "rumi_provider_registry_pack.provider-registry.resource",
+    contract: "tobkiri.resource.ai.provider.registry.v1",
+    operation: "rumi_provider_registry_pack.provider-registry-resource",
+    variant: "rumi_provider_registry_pack.provider-registry.resource.python",
+};
+
 /// The authenticated route is inconsistent or its verification budget is unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalRouteSelectionError {
@@ -225,6 +241,46 @@ impl<'a> OriginalModelSettingsSelection<'a> {
     }
 }
 
+/// Immutable metadata for the two original Profile grant edges used by Model Save.
+pub struct OriginalModelSaveSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    model_manage: OriginalRoutePin,
+    provider_read: OriginalRoutePin,
+}
+
+impl<'a> OriginalModelSaveSelection<'a> {
+    /// Select the exact Shell Model Manage route and its Provider Registry read.
+    ///
+    /// An absent or unsupported route yields `None`. Inconsistent records and
+    /// exhausted budget produce errors. Verify both returned pins independently
+    /// against the packaged catalogs before using them.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        let Some((model_manage, provider_read)) =
+            select_route_chain(active.records(), &MODEL_MANAGE, &PROVIDER_READ, budget)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(Self {
+            _active: active,
+            model_manage,
+            provider_read,
+        }))
+    }
+
+    /// The selected Shell-to-Model Manage grant target.
+    pub fn model_manage(&self) -> &OriginalRoutePin {
+        &self.model_manage
+    }
+
+    /// The selected Model Manage-to-Provider Registry read grant target.
+    pub fn provider_read(&self) -> &OriginalRoutePin {
+        &self.provider_read
+    }
+}
+
 /// Immutable metadata for the two Profile grant edges to old Provider prepare.
 pub struct OriginalProviderPrepareSelection<'a> {
     _active: &'a OriginalActiveProfile,
@@ -242,7 +298,9 @@ impl<'a> OriginalProviderPrepareSelection<'a> {
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<Self>> {
-        let Some((coordinator, provider)) = select_records(active.records(), budget)? else {
+        let Some((coordinator, provider)) =
+            select_route_chain(active.records(), &COORDINATOR, &PROVIDER_PREPARE, budget)?
+        else {
             return Ok(None);
         };
         Ok(Some(Self {
@@ -274,19 +332,21 @@ struct Records<'a> {
     budget: &'a Arc<dyn AllocationBudget>,
 }
 
-fn select_records(
+fn select_route_chain(
     active: (&CoreValue, &CoreValue, &CoreValue),
+    shell_target: &'static Route,
+    nested_target: &'static Route,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some(coordinator) = records.select_shell_route(&COORDINATOR)? else {
+    let Some(first) = records.select_shell_route(shell_target)? else {
         return Ok(None);
     };
     Ok(records
-        .select_route(COORDINATOR.function, &PROVIDER_PREPARE)?
-        .map(|provider| (coordinator, provider)))
+        .select_route(first.function_id(), nested_target)?
+        .map(|second| (first, second)))
 }
 
 fn select_model_list_records(
@@ -639,7 +699,7 @@ mod tests {
         fn release(&self, _: u64) {}
     }
 
-    // Use the snapshot and exact edge/scope digests for these three routes.
+    // Use the snapshot and exact edge/scope digests for the settings routes.
     // The rest of the original activation closure is omitted.
     fn records() -> Value {
         const SHELL: &str = "shell.tauri.default";
@@ -689,6 +749,27 @@ mod tests {
                 "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658",
                 "sha256:64fa11ae6949412f39039e7069da0a614e78401c55071be40755f2920b28932e",
             ),
+            (
+                &MODEL_MANAGE,
+                SHELL,
+                "authority-ref:370c601554aeff4cfeea4302eb9e9a53652f6ff5f801936d26b558a122899a2b",
+                "sha256:e6a4c0eb6f5dd04d117aa8343af2319b3d5d06a502b14ecebfbba08e0b2dd052",
+                "sha256:7e5d3aa5434e2f9a7d23ed7df2bab9df80d2bd8bcf5811ef9af33aa1bada567b",
+            ),
+            (
+                &PROVIDER_READ,
+                MODEL_MANAGE.function,
+                "authority-ref:e432e888768241f9db182dfbe3b5278b04787a3d6e16f6856dd512a5af3654a7",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:1b58a95d7c67e6f789b5e17a10a61c360c706443adbbe3026502e7e29395bd6f",
+            ),
+            (
+                &PROVIDER_READ,
+                SHELL,
+                "authority-ref:c0b9128e7e44426c9df7b301c4903249948d782b264fdf9c33e9d3b9aebbe310",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:1b58a95d7c67e6f789b5e17a10a61c360c706443adbbe3026502e7e29395bd6f",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -724,18 +805,18 @@ mod tests {
                 .as_array_mut()
                 .unwrap()
                 .push(binding);
-            records["lock"]["variant_pins"]
-                .as_array_mut()
-                .unwrap()
-                .push(pin);
-            records["profile"]["packs"]
-                .as_array_mut()
-                .unwrap()
-                .push(json!({
+            let variant_pins = records["lock"]["variant_pins"].as_array_mut().unwrap();
+            if !variant_pins.contains(&pin) {
+                variant_pins.push(pin);
+            }
+            let packs = records["profile"]["packs"].as_array_mut().unwrap();
+            if !packs.iter().any(|pack| pack["pack_id"] == route.pack) {
+                packs.push(json!({
                     "pack_id": route.pack,
                     "role": "provider",
                     "artifact_digest": artifact.as_str(),
                 }));
+            }
             records["profile"]["authority_references"]
                 .as_array_mut()
                 .unwrap()
@@ -771,13 +852,125 @@ mod tests {
     fn select(records: &Value) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
-        select_records((&profile, &lock, &plan), &budget)
+        select_route_chain(
+            (&profile, &lock, &plan),
+            &COORDINATOR,
+            &PROVIDER_PREPARE,
+            &budget,
+        )
     }
 
     fn select_model_list(records: &Value) -> Result<Option<OriginalRoutePin>> {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
         select_model_list_records((&profile, &lock, &plan), &budget)
+    }
+
+    fn select_model_save(records: &Value) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_route_chain(
+            (&profile, &lock, &plan),
+            &MODEL_MANAGE,
+            &PROVIDER_READ,
+            &budget,
+        )
+    }
+
+    const MODEL_MANAGE_ROW: usize = 3;
+    const MODEL_PROVIDER_READ_ROW: usize = 4;
+
+    #[test]
+    fn selects_the_exact_model_save_grants_with_both_scopes_and_variants() {
+        let fixture = records();
+        let (manage, read) = select_model_save(&fixture).unwrap().unwrap();
+        assert_eq!(manage.caller_function_id(), "shell.tauri.default");
+        assert_eq!(
+            manage.function_id(),
+            "rumi_model_registry_pack.model-registry.manage"
+        );
+        assert_eq!(read.caller_function_id(), manage.function_id());
+        assert_eq!(
+            read.function_id(),
+            "rumi_provider_registry_pack.provider-registry.resource"
+        );
+        for (row, pin) in [(MODEL_MANAGE_ROW, manage), (MODEL_PROVIDER_READ_ROW, read)] {
+            let binding = &fixture["plan"]["bindings"][row];
+            assert_eq!(pin.contract_id(), binding["contract_id"].as_str().unwrap());
+            assert_eq!(
+                pin.operation_id(),
+                binding["operation_id"].as_str().unwrap()
+            );
+            assert_eq!(pin.variant_id(), binding["variant_id"].as_str().unwrap());
+            assert_eq!(
+                pin.requested_scope_digest(),
+                binding["requested_scope_digest"].as_str().unwrap()
+            );
+            assert_eq!(
+                pin.authority_reference(),
+                binding["authority_reference"].as_str().unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn model_save_requires_each_grant_even_when_other_settings_grants_are_present() {
+        for row in [MODEL_MANAGE_ROW, MODEL_PROVIDER_READ_ROW] {
+            let mut fixture = records();
+            fixture["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(
+                matches!(select_model_save(&fixture), Err(Inconsistent(_))),
+                "row {row}"
+            );
+
+            fixture["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(select_model_save(&fixture).unwrap().is_none(), "row {row}");
+            assert!(select_model_list(&fixture).unwrap().is_some());
+
+            let mut fixture = records();
+            fixture["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(
+                matches!(select_model_save(&fixture), Err(Inconsistent(_))),
+                "row {row}"
+            );
+        }
+    }
+
+    #[test]
+    fn model_save_rejects_drift_in_each_grant_scope_authority_and_pin() {
+        for row in [MODEL_MANAGE_ROW, MODEL_PROVIDER_READ_ROW] {
+            for field in [
+                "requested_scope_digest",
+                "authority_reference",
+                "variant_id",
+            ] {
+                let mut fixture = records();
+                fixture["plan"]["bindings"][row][field] = json!("changed");
+                assert!(
+                    matches!(select_model_save(&fixture), Err(Inconsistent(_))),
+                    "row {row} {field}"
+                );
+            }
+
+            let mut fixture = records();
+            fixture["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            assert!(
+                matches!(select_model_save(&fixture), Err(Inconsistent(_))),
+                "row {row}"
+            );
+            fixture["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            assert!(select_model_save(&fixture).unwrap().is_none(), "row {row}");
+        }
     }
 
     #[test]

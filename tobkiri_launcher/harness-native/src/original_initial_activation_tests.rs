@@ -262,6 +262,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
                 model_list.requested_scope_digest(),
                 "sha256:64fa11ae6949412f39039e7069da0a614e78401c55071be40755f2920b28932e"
             );
+            check_model_save_grants(&observed, budget);
             assert_eq!(
                 observed
                     .identity()
@@ -415,6 +416,59 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             ));
         });
     }
+}
+
+fn check_model_save_grants(
+    observed: &crate::OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+) {
+    let save = crate::OriginalModelSaveSelection::select(observed, budget)
+        .expect("authenticate both Model save bindings")
+        .expect("confirmed Profile selects Model Manage and its Provider Registry read");
+    let manage = save.model_manage();
+    assert_eq!(manage.caller_function_id(), "shell.tauri.default");
+    assert_eq!(
+        manage.function_id(),
+        "rumi_model_registry_pack.model-registry.manage"
+    );
+    assert_eq!(
+        manage.variant_id(),
+        "rumi_model_registry_pack.model-registry.manage.python"
+    );
+    assert_eq!(
+        manage.contract_id(),
+        "tobkiri.action.ai.model.profile.manage.v1"
+    );
+    assert_eq!(
+        manage.operation_id(),
+        "rumi_model_registry_pack.model-profile-manage"
+    );
+    assert_eq!(
+        manage.requested_scope_digest(),
+        "sha256:7e5d3aa5434e2f9a7d23ed7df2bab9df80d2bd8bcf5811ef9af33aa1bada567b"
+    );
+    let provider = save.provider_read();
+    assert_eq!(provider.caller_function_id(), manage.function_id());
+    assert_eq!(
+        provider.function_id(),
+        "rumi_provider_registry_pack.provider-registry.resource"
+    );
+    assert_eq!(
+        provider.variant_id(),
+        "rumi_provider_registry_pack.provider-registry.resource.python"
+    );
+    assert_eq!(
+        provider.contract_id(),
+        "tobkiri.resource.ai.provider.registry.v1"
+    );
+    assert_eq!(
+        provider.operation_id(),
+        "rumi_provider_registry_pack.provider-registry-resource"
+    );
+    assert_eq!(
+        provider.requested_scope_digest(),
+        "sha256:1b58a95d7c67e6f789b5e17a10a61c360c706443adbbe3026502e7e29395bd6f"
+    );
 }
 
 fn seed_successor_catalog(original: &Path, successor: &Path) {
