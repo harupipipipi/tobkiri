@@ -148,7 +148,9 @@ impl RoleArguments {
         };
         self.native_registry = NativeRegistryEnvironment {
             provider_snapshot_version: proof.and_then(|proof| {
-                if proof.permits_projected_provider_snapshot() {
+                if proof.permits_query_provider_snapshot() {
+                    Some("4")
+                } else if proof.permits_projected_provider_snapshot() {
                     Some("3")
                 } else if proof.permits_gateway_provider_snapshot() {
                     Some("2")
@@ -4619,6 +4621,16 @@ mod tests {
             "catalog",
             OriginalProviderSnapshotRole::ModelSave,
         );
+        let model_search_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            side_chat.identity.clone(),
+            "catalog",
+            OriginalProviderSnapshotRole::ModelSearch,
+        );
+        let command_datasource_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            side_chat.identity.clone(),
+            "catalog",
+            OriginalProviderSnapshotRole::CommandDatasource,
+        );
         for (proof, expected_turn_start, expected_snapshot) in [
             (None, false, None),
             (Some(&append), false, None),
@@ -4629,6 +4641,8 @@ mod tests {
             (Some(&side_chat_gateway_snapshot), false, Some("2")),
             (Some(&shell_settings_snapshot), false, Some("3")),
             (Some(&model_save_snapshot), false, Some("3")),
+            (Some(&model_search_snapshot), false, Some("4")),
+            (Some(&command_datasource_snapshot), false, Some("4")),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()

@@ -995,18 +995,12 @@ async fn run(
                         checkpoint,
                     )?;
                     revalidate()?;
-                    let settings_projection = match role {
-                        OriginalProviderSnapshotRole::ShellSettings
-                        | OriginalProviderSnapshotRole::ModelSave => true,
-                        OriginalProviderSnapshotRole::Adapter(_)
-                        | OriginalProviderSnapshotRole::Gateway { .. } => false,
-                    };
                     let output = inspection
                         .read_legacy_provider_snapshot(
                             &pack,
                             &config.user_data_dir,
                             &identity.profile_id,
-                            settings_projection,
+                            uses_provider_settings_projection(role),
                         )
                         .await
                         .map_err(provider_snapshot_error)?;
@@ -2101,6 +2095,17 @@ fn encode_turn_start_reply(
     .map_err(|_| LegacySavedTurnSettlementError::Capacity)
 }
 
+fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool {
+    use OriginalProviderSnapshotRole::{
+        Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings,
+    };
+
+    match role {
+        ShellSettings | ModelSave | ModelSearch | CommandDatasource => true,
+        Adapter(_) | Gateway { .. } => false,
+    }
+}
+
 fn provider_snapshot_error(error: NativeArtifactError) -> anyhow::Error {
     match &error {
         NativeArtifactError::TooLarge => ProviderSnapshotRequiresLegacyRead.into(),
@@ -2628,10 +2633,12 @@ mod tests {
     }
 
     #[test]
-    fn provider_snapshot_requires_its_exact_role_and_carries_no_input() {
+    fn provider_snapshot_checks_the_exact_role_and_selects_its_projection() {
         use crate::host_contract::ExecutionProfileIdentity;
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
-        use OriginalProviderSnapshotRole::{Adapter, Gateway, ModelSave, ShellSettings};
+        use OriginalProviderSnapshotRole::{
+            Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings,
+        };
 
         let identity = ExecutionProfileIdentity {
             profile_id: "defaults".into(),
@@ -2658,11 +2665,14 @@ mod tests {
                     .into_iter()
                     .flat_map(|role| [false, true].map(|side_chat| Gateway { role, side_chat })),
             )
-            .chain([ShellSettings, ModelSave])
+            .map(|role| (role, false))
+            .chain(
+                [ShellSettings, ModelSave, ModelSearch, CommandDatasource].map(|role| (role, true)),
+            )
             .collect::<Vec<_>>();
         let snapshot_proofs = snapshot_roles
             .iter()
-            .map(|&role| {
+            .map(|&(role, _)| {
                 VerifiedRegistryLaunch::test_provider_snapshot_proof(
                     identity.clone(),
                     "catalog",
@@ -2670,15 +2680,16 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
-        for &role in &snapshot_roles {
+        for &(role, settings_projection) in &snapshot_roles {
             let snapshot = NativeRegistryRequest::ProviderSnapshot { role };
+            assert_eq!(uses_provider_settings_projection(role), settings_projection);
             assert!(!snapshot.requires_publication_permit());
             assert_eq!(snapshot.input_capacity().unwrap(), 0);
             assert!(!snapshot.has_launch_proof(&orchestration));
             assert!(chat_proofs
                 .iter()
                 .all(|proof| !snapshot.has_launch_proof(proof)));
-            for (&granted, proof) in snapshot_roles.iter().zip(&snapshot_proofs) {
+            for (&(granted, _), proof) in snapshot_roles.iter().zip(&snapshot_proofs) {
                 assert_eq!(snapshot.has_launch_proof(proof), role == granted);
             }
         }

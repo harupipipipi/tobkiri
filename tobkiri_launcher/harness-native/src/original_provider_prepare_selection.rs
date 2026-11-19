@@ -160,6 +160,24 @@ static MODEL_MANAGE: Route = Route {
     execution: PYTHON_HOST,
 };
 
+static MODEL_SEARCH: Route = Route {
+    pack: "tobkiri_ui_settings_pack",
+    function: "tobkiri.ui.model-search.read",
+    contract: "tobkiri.resource.ui.model-search.v1",
+    operation: "tobkiri_ui_settings_pack.model-search",
+    variant: "tobkiri.ui.model-search.read.python",
+    execution: PYTHON_HOST,
+};
+
+static COMMAND_DATASOURCE: Route = Route {
+    pack: "rumi_command_protocol_pack",
+    function: "rumi_command_protocol_pack.command.datasource",
+    contract: "tobkiri.resource.command.datasource.v1",
+    operation: "command.datasource.query",
+    variant: "rumi_command_protocol_pack.command.datasource.python",
+    execution: PYTHON_HOST,
+};
+
 static PROVIDER_READ: Route = Route {
     pack: "rumi_provider_registry_pack",
     function: "rumi_provider_registry_pack.provider-registry.resource",
@@ -671,6 +689,44 @@ impl<'a> OriginalShellProviderSnapshotSelection<'a> {
     /// The selected Shell-to-Provider Registry read grant target.
     pub fn provider_read(&self) -> &OriginalRoutePin {
         &self.provider_read
+    }
+}
+
+/// Immutable metadata for the desktop Shell's query owners and their Registry grants.
+pub struct OriginalQueryProviderSnapshotSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    model_search: Option<[OriginalRoutePin; 2]>,
+    command_datasource: Option<[OriginalRoutePin; 2]>,
+}
+
+impl<'a> OriginalQueryProviderSnapshotSelection<'a> {
+    /// Select each exact desktop Shell query and its owner's separate Registry grant.
+    ///
+    /// Verify both pins of each selected query against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        let [model_search, command_datasource] =
+            select_query_provider_snapshot_records(active.records(), budget)?;
+        if model_search.is_none() && command_datasource.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            _active: active,
+            model_search,
+            command_datasource,
+        }))
+    }
+
+    /// The selected Model Search and its own Provider Registry read, in call order.
+    pub fn model_search(&self) -> Option<&[OriginalRoutePin; 2]> {
+        self.model_search.as_ref()
+    }
+
+    /// The selected Command Datasource and its own Provider Registry read, in call order.
+    pub fn command_datasource(&self) -> Option<&[OriginalRoutePin; 2]> {
+        self.command_datasource.as_ref()
     }
 }
 
@@ -1260,6 +1316,10 @@ pub enum OriginalProviderSnapshotRole {
     ShellSettings,
     /// Model Manage owns a nested read grant on the selected Model Save chain.
     ModelSave,
+    /// Model Search owns a nested read grant on the selected desktop Shell chain.
+    ModelSearch,
+    /// Command Datasource owns a nested read grant on the selected desktop Shell chain.
+    CommandDatasource,
 }
 
 impl From<OriginalSavedLocalChatRole> for OriginalProviderSnapshotRole {
@@ -1595,12 +1655,7 @@ fn select_route_chain(
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some(first) = records.select_shell_route(shell_target)? else {
-        return Ok(None);
-    };
-    Ok(records
-        .select_route(first.function_id(), nested_target)?
-        .map(|second| (first, second)))
+    records.select_shell_chain(shell_target, nested_target)
 }
 
 fn select_application_presentation_records(
@@ -1713,6 +1768,28 @@ fn select_shell_provider_snapshot_records(
         return Ok(None);
     }
     records.select_shell_route(&PROVIDER_READ)
+}
+
+fn select_query_provider_snapshot_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<[Option<[OriginalRoutePin; 2]>; 2]> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok([None, None]);
+    };
+    let shell = required(active.0, "shell")?;
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER
+        || !is_text(&shell, "pack_id", TURN_SHELL_CALLER)
+    {
+        return Ok([None, None]);
+    }
+
+    let select = |owner| -> Result<Option<[OriginalRoutePin; 2]>> {
+        Ok(records
+            .select_shell_chain(owner, &PROVIDER_READ)?
+            .map(|(query, read)| [query, read]))
+    };
+    Ok([select(&MODEL_SEARCH)?, select(&COMMAND_DATASOURCE)?])
 }
 
 fn select_conversation_read_records(
@@ -2177,6 +2254,19 @@ fn selected_shell_records<'a>(
 }
 
 impl Records<'_> {
+    fn select_shell_chain(
+        &self,
+        shell_target: &'static Route,
+        nested_target: &'static Route,
+    ) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {
+        let Some(first) = self.select_shell_route(shell_target)? else {
+            return Ok(None);
+        };
+        Ok(self
+            .select_route(first.function_id(), nested_target)?
+            .map(|second| (first, second)))
+    }
+
     fn select_shell_route(&self, route: &'static Route) -> Result<Option<OriginalRoutePin>> {
         self.select_route(verified_text(&self.shell_caller), route)
     }
@@ -2934,6 +3024,34 @@ mod tests {
                 "authority-ref:3de4d2eec347e6f6d995739d9187f0898fc2e8a6978a360674e52a9fd7116c18",
                 "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
                 "sha256:ba31ddc2fe6a194376c0130d1cce5b2bd6af8c36c5c7353584443247786bf883",
+            ),
+            (
+                &MODEL_SEARCH,
+                SHELL,
+                "authority-ref:0a9ae4ecb5ba14e4781dd6558d076a2f0acaccec4f082f6fda07cf11ff645cbc",
+                "sha256:ffff3d094eb89e7ce42a67a600c717036d20f2b2bb3fabeab19a79574a16369a",
+                "sha256:46b9fcfddedb6966576d9d8d94b96bdcc3fe6204e2e3c26e00eb821e0416034c",
+            ),
+            (
+                &PROVIDER_READ,
+                MODEL_SEARCH.function,
+                "authority-ref:a1029edaefa8d9500b023e60d6ac2bd56a7fd51e107674b77a8813aed8487e30",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:1b58a95d7c67e6f789b5e17a10a61c360c706443adbbe3026502e7e29395bd6f",
+            ),
+            (
+                &COMMAND_DATASOURCE,
+                SHELL,
+                "authority-ref:15324217b3da35c98a17a55304dec45cb039323d9459243d9e9a6dab06a26213",
+                "sha256:0e660d5b3ebc6ebcdff186a95ab831dd056a354ce6278a5661d771701a0a4647",
+                "sha256:9870e0eed292e2c21eae4ecf0954e5ed3b277ccf080f32c3e1167138b70e3ae0",
+            ),
+            (
+                &PROVIDER_READ,
+                COMMAND_DATASOURCE.function,
+                "authority-ref:9dc62018a5fd2b7acce6094a373f01dd133619eb4b4b8f5de762091e793ba537",
+                "sha256:081588f1316a3daf91c2223f8a6c2625cd2ce2dc08c40be0c7d87d87c74d698d",
+                "sha256:1b58a95d7c67e6f789b5e17a10a61c360c706443adbbe3026502e7e29395bd6f",
             ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
@@ -4945,6 +5063,75 @@ mod tests {
             .remove(SHELL_PROVIDER_READ_ROW);
         assert!(select(&fixture).unwrap().is_none());
         assert!(select_model_save(&fixture).unwrap().is_some());
+    }
+
+    #[test]
+    fn query_provider_snapshots_require_the_exact_desktop_shell_and_both_grants() {
+        let fixture = records();
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_query_provider_snapshot_records((&profile, &lock, &plan), &budget)
+        };
+
+        let selected = select(&fixture).unwrap();
+        for (role, (owner, pins)) in [&MODEL_SEARCH, &COMMAND_DATASOURCE]
+            .into_iter()
+            .zip(selected)
+            .enumerate()
+        {
+            let [query, read] = pins.unwrap();
+            assert_eq!(query.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(read.caller_function_id(), owner.function);
+            for (pin, route) in [(query, owner), (read, &PROVIDER_READ)] {
+                assert_eq!(pin.pack_id(), route.pack);
+                assert_eq!(pin.function_id(), route.function);
+                assert_eq!(pin.contract_id(), route.contract);
+                assert_eq!(pin.operation_id(), route.operation);
+                assert_eq!(pin.variant_id(), route.variant);
+                assert_eq!(pin.execution_kind(), "host_extension");
+
+                let row = fixture["plan"]["bindings"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .position(|binding| binding["authority_reference"] == pin.authority_reference())
+                    .unwrap();
+                let mut missing = fixture.clone();
+                missing["profile"]["requested_edges"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                assert!(matches!(select(&missing), Err(Inconsistent(_))));
+                missing["plan"]["bindings"]
+                    .as_array_mut()
+                    .unwrap()
+                    .remove(row);
+                let grants = select(&missing).unwrap();
+                assert!(grants[role].is_none());
+                assert!(grants[1 - role].is_some());
+
+                let mut interactive = fixture.clone();
+                interactive["profile"]["requested_edges"][row]["authority_mode"] =
+                    json!("interactive_only");
+                interactive["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+                let grants = select(&interactive).unwrap();
+                assert!(grants[role].is_none());
+                assert!(grants[1 - role].is_some());
+
+                let mut changed_pin = fixture.clone();
+                changed_pin["plan"]["bindings"][row]["execution_kind"] = json!("pack_vm");
+                assert!(matches!(select(&changed_pin), Err(Inconsistent(_))));
+            }
+        }
+
+        for field in ["provider_id", "pack_id"] {
+            let mut other_shell = fixture.clone();
+            for record in ["profile", "lock", "plan"] {
+                other_shell[record]["shell"][field] = json!("unrelated.shell");
+            }
+            assert!(select(&other_shell).unwrap().iter().all(Option::is_none));
+        }
     }
 
     #[test]

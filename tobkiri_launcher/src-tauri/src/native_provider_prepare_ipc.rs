@@ -1104,7 +1104,9 @@ fn deserialize_provider_snapshot_role<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    use OriginalProviderSnapshotRole::{Adapter, Gateway, ModelSave, ShellSettings};
+    use OriginalProviderSnapshotRole::{
+        Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings,
+    };
 
     let (role, side_chat) = match String::deserialize(deserializer)?.as_str() {
         "generate" => return Ok(Adapter(OriginalSavedLocalChatRole::Generate)),
@@ -1121,6 +1123,8 @@ where
         "side-chat-gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, true),
         "shell-settings" => return Ok(ShellSettings),
         "model-save" => return Ok(ModelSave),
+        "model-search" => return Ok(ModelSearch),
+        "command-datasource" => return Ok(CommandDatasource),
         _ => return Err(de::Error::custom("unknown Provider Snapshot role")),
     };
     Ok(Gateway { role, side_chat })
@@ -3109,8 +3113,10 @@ mod tests {
     }
 
     #[test]
-    fn provider_snapshot_start_decodes_closed_adapter_gateway_and_settings_roles() {
-        use OriginalProviderSnapshotRole::{Adapter, Gateway, ModelSave, ShellSettings};
+    fn provider_snapshot_start_decodes_the_closed_role_set() {
+        use OriginalProviderSnapshotRole::{
+            Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings,
+        };
 
         let assert_role = |name: &str, expected| {
             let frame = start_frame(&format!(r#", "provider_snapshot":{{"role":"{name}"}}"#));
@@ -3158,6 +3164,8 @@ mod tests {
         }
         assert_role("shell-settings", ShellSettings);
         assert_role("model-save", ModelSave);
+        assert_role("model-search", ModelSearch);
+        assert_role("command-datasource", CommandDatasource);
     }
 
     #[test]
@@ -3197,6 +3205,11 @@ mod tests {
             r#", "provider_snapshot":{"role":"stream","settings_projection":true}"#,
             r#", "provider_snapshot":{"role":"shell-settings","settings_projection":false}"#,
             r#", "provider_snapshot":{"role":"model-save","settings_projection":false}"#,
+            r#", "provider_snapshot":{"role":"model-search","settings_projection":false}"#,
+            r#", "provider_snapshot":{"role":"model-search","query":"example"}"#,
+            r#", "provider_snapshot":{"role":"command-datasource","settings_projection":false}"#,
+            r#", "provider_snapshot":{"role":"command-datasource","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"command-data-source"}"#,
             r#", "provider_snapshot":{"role":"stream"}, "provider_snapshot":{"role":"stream"}"#,
         ] {
             let payload = start_frame(extra);
