@@ -21,8 +21,11 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 from weakref import WeakValueDictionary
+
+if TYPE_CHECKING:
+    from core_runtime.native_provider_prepare_ipc import SavedLocalChatRole
 
 from core_runtime.capture_guard_traversal_v4 import (
     _capture_guard_traversal,
@@ -350,10 +353,11 @@ class _CapturedPlanEdge:
 
 @dataclass(frozen=True)
 class _SavedLocalChatRoute:
-    role: Literal["generate", "stream"]
+    role: SavedLocalChatRole
     adapter: _CapturedPlanEdge
     registry: _CapturedPlanEdge
     parents: tuple[_CapturedPlanEdge, ...]
+    via_side_chat: bool
 
 
 _PRESENTATION_OPERATION = (
@@ -2721,46 +2725,68 @@ def capture_production_dispatch(
         if side_chat_edge is not None else None
     )
 
-    saved_local_chat_routes: dict[str, _SavedLocalChatRoute] = {}
-    if (
-        native_saved_local_chat is not None
-        and ordinary_turn_edge is not None
-        and ordinary_orchestration_edge is not None
-    ):
+    saved_local_chat_routes: dict[str, list[_SavedLocalChatRoute]] = {}
+    saved_local_chat_bindings: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
+
+    def capture_saved_local_chat_routes(
+        turn: _CapturedPlanEdge,
+        orchestration: _CapturedPlanEdge,
+        side_chat: _CapturedPlanEdge | None = None,
+    ) -> None:
         gateway_pack = "rumi_ai_gateway_pack"
         adapter_pack = "rumi_provider_adapters_pack"
         registry_pack = "rumi_provider_registry_pack"
-        local_roles: tuple[Literal["generate", "stream"], ...] = ("generate", "stream")
-        for role in local_roles:
-            gateway_function = f"{gateway_pack}.ai-gateway.{role}"
+        local_roles: tuple[tuple[str, SavedLocalChatRole, SavedLocalChatRole], ...] = (
+            ("generate", "generate", "side-chat-generate"),
+            ("stream", "stream", "side-chat-stream"),
+        )
+        for delivery, ordinary_role, side_chat_role in local_roles:
+            gateway_function = f"{gateway_pack}.ai-gateway.{delivery}"
             gateway = select_original_chat_edge(
-                {ordinary_orchestration_edge.target.principal_id}, gateway_pack,
-                f"tobkiri.service.ai.{role}.v1", gateway_function, gateway_function,
+                {orchestration.target.principal_id}, gateway_pack,
+                f"tobkiri.service.ai.{delivery}.v1", gateway_function, gateway_function,
                 EffectClass.PRIVILEGED,
             )
             if gateway is None:
                 continue
             adapter = select_original_chat_edge(
                 {gateway.target.principal_id}, adapter_pack,
-                f"tobkiri.service.ai.provider.{role}.v1", f"{adapter_pack}.provider-{role}",
-                f"{adapter_pack}.provider.compatibility.{role}", EffectClass.PRIVILEGED,
+                f"tobkiri.service.ai.provider.{delivery}.v1", f"{adapter_pack}.provider-{delivery}",
+                f"{adapter_pack}.provider.compatibility.{delivery}", EffectClass.PRIVILEGED,
             )
             if adapter is None:
                 continue
             registry = select_original_chat_edge(
                 {adapter.target.principal_id}, registry_pack, LOCAL_REGISTRY_CONTRACT,
-                f"{registry_pack}.provider-registry-resource.{role}",
+                f"{registry_pack}.provider-registry-resource.{delivery}",
                 f"{registry_pack}.provider-registry.resource", EffectClass.PRIVILEGED,
             )
             if registry is not None:
-                saved_local_chat_routes[adapter.caller.principal_id] = _SavedLocalChatRoute(
-                    role, adapter, registry,
-                    (gateway, ordinary_orchestration_edge, ordinary_turn_edge),
+                parents = (gateway, orchestration, turn)
+                route = _SavedLocalChatRoute(
+                    side_chat_role if side_chat is not None else ordinary_role,
+                    adapter, registry,
+                    (*parents, side_chat) if side_chat is not None else parents,
+                    side_chat is not None,
                 )
-    saved_local_chat_keys = {
-        (*route.adapter.binding_key[1:], route.adapter.target.principal_id)
-        for route in saved_local_chat_routes.values()
-    }
+                saved_local_chat_routes.setdefault(adapter.caller.principal_id, []).append(route)
+                saved_local_chat_bindings[
+                    (*adapter.binding_key[1:], adapter.target.principal_id)
+                ] = adapter.resolved_binding
+
+    if native_saved_local_chat is not None:
+        if ordinary_turn_edge is not None and ordinary_orchestration_edge is not None:
+            capture_saved_local_chat_routes(ordinary_turn_edge, ordinary_orchestration_edge)
+        if (
+            side_chat_edge is not None
+            and side_chat_turn_edge is not None
+            and getattr(native_saved_local_chat, "supports_side_chat", False) is True
+        ):
+            side_chat_orchestration = select_original_orchestration(side_chat_turn_edge)
+            if side_chat_orchestration is not None:
+                capture_saved_local_chat_routes(
+                    side_chat_turn_edge, side_chat_orchestration, side_chat_edge,
+                )
 
     turn_start_routes: dict[SavedTurnStartCaller, tuple[_CapturedPlanEdge, ...]] = {}
 
@@ -3942,22 +3968,32 @@ def capture_production_dispatch(
         payload: Mapping[str, Any],
         parent: CapturedInvocationScopeV4 | None,
     ) -> _SavedLocalChatRoute | None:
-        route = saved_local_chat_routes.get(context.caller_principal.value)
         connection_id = payload.get("provider_connection_id")
         if (
-            route is None
-            or payload.get("request_surface") != "conversation.saved"
+            payload.get("request_surface") != "conversation.saved"
             or payload.get("profile_id") not in (None, context.profile_id)
             or payload.get("credential_handle") is not None
             or not isinstance(connection_id, str)
             or not connection_id
         ):
             return None
-        for edge in route.parents:
-            if parent is None or not matches_captured_edge(parent.envelope, edge):
-                return None
-            parent = parent.parent
-        return route if parent is None else None
+        for route in saved_local_chat_routes.get(context.caller_principal.value, ()):
+            ancestors = match_captured_ancestors(parent, route.parents)
+            if ancestors is None:
+                continue
+            if route.via_side_chat:
+                _, _, turn, side = ancestors
+                turn_id = requested_saved_turn_id("saved-turn", turn.payload)
+                if (
+                    turn.context.profile_id != context.profile_id
+                    or turn_id is None
+                    or not matches_side_turn_request(
+                        turn.payload, turn_id, side, context.profile_id, reconcile=False,
+                    )
+                ):
+                    return None
+            return route
+        return None
 
     def is_native_saved_local_chat_route(
         context: RequestContext, payload: Mapping[str, Any],
@@ -5643,10 +5679,9 @@ def capture_production_dispatch(
         return candidate if isinstance(candidate, str) and 0 < len(candidate) <= 256 else None
 
     def matches_side_turn_request(
-        route: _SavedTurnRoute, turn: Mapping[str, Any], turn_id: str,
-        side: RequestEnvelope, profile_id: str,
+        turn: Mapping[str, Any], turn_id: str, side: RequestEnvelope, profile_id: str,
+        *, reconcile: bool,
     ) -> bool:
-        reconcile = route.is_reconcile()
         if (
             side.context.profile_id != profile_id
             or side.payload.get("operation") != ("reconcile" if reconcile else "send")
@@ -5674,7 +5709,7 @@ def capture_production_dispatch(
         turn = ancestors[0]
         if turn.context.profile_id != profile_id or (
             route.side_chat is not None and not matches_side_turn_request(
-                route, turn.payload, turn_id, ancestors[1], profile_id,
+                turn.payload, turn_id, ancestors[1], profile_id, reconcile=route.is_reconcile(),
             )
         ):
             return None
@@ -5699,7 +5734,7 @@ def capture_production_dispatch(
             if ancestors is None:
                 continue
             if ancestors and not matches_side_turn_request(
-                route, payload, turn_id, ancestors[0], context.profile_id,
+                payload, turn_id, ancestors[0], context.profile_id, reconcile=route.is_reconcile(),
             ):
                 return None
             return route, turn_id, ancestors
@@ -7793,7 +7828,7 @@ def capture_production_dispatch(
                     or item.key in native_turn_settlement_bindings
                     or item.key in native_conversation_confirmation_bindings
                     or item.key in native_saved_turn_read_bindings
-                    or item.key in saved_local_chat_keys
+                    or item.key in saved_local_chat_bindings
                 ),
             ),
         )
@@ -8001,11 +8036,11 @@ def capture_production_dispatch(
     )
     native_admission_rules.extend(
         (
-            route.adapter.resolved_binding,
+            binding,
             SAVED_LOCAL_CHAT_MINIMUM_MEMORY,
             is_native_saved_local_chat_route,
         )
-        for route in saved_local_chat_routes.values()
+        for binding in saved_local_chat_bindings.values()
     )
     if native_model_save_key is not None and native_model_save_edge is not None:
         native_admission_rules.append((

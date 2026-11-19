@@ -10040,12 +10040,13 @@ def test_signed_saved_tool_intents_borrows_each_gateway_role(
 
 
 @pytest.mark.parametrize(
-    "native_source, native_policy",
-    [(False, False), (True, False), (True, True)],
-    ids=["encoded", "source", "policy"],
+    "native_source, native_policy, side_chat",
+    [(False, False, False), (True, False, False), (True, True, False), (True, True, True)],
+    ids=["encoded", "source", "policy", "side-chat"],
 )
 def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_source: bool, native_policy: bool,
+    side_chat: bool,
 ) -> None:
     """Exercise the signed HTTP chain with the real Provider and Model owners."""
     from core_runtime import native_provider_prepare_ipc as ipc
@@ -10091,17 +10092,27 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     def execute(request: ipc.NativeSavedLocalChatRequest) -> bytes | dict[str, object]:
         native_calls.append(request)
         adapter, = adapter_calls
-        turn, orchestration, gateway = parents
+        turn, orchestration, gateway = parents[-3:]
         assert turn.operation_id == "rumi_turn_runtime_pack.turn-saved"
         assert orchestration.operation_id == "saved_complete"
         assert gateway.operation_id == f"rumi_ai_gateway_pack.ai-gateway.{role}"
-        for parent, child in zip(parents, [orchestration, gateway, adapter]):
+        for parent, child in zip(parents, [*parents[1:], adapter], strict=True):
             assert child.context.caller_principal == parent.target_principal
         turn_lease, turn_state = authority.inspect_lease_token(
             turn.lease.token.decode("ascii")
         )
         assert turn_state is LeaseState.DISPATCHED
-        assert turn_lease.caller.function_id == "shell.tauri.default"
+        assert turn_lease.caller.function_id == (
+            "tobkiri_side_chat_pack.turn" if side_chat else "shell.tauri.default"
+        )
+        if side_chat:
+            side, *_ = parents
+            assert side.payload["operation"] == "send"
+            _, side_state = authority.inspect_lease_token(side.lease.token.decode("ascii"))
+            assert side_state is LeaseState.DISPATCHED
+            source = turn.payload["request"]
+            assert source["turn_id"] == side.payload["turn_id"]
+            assert source["conversation_id"] == side.payload["conversation_id"]
         assert adapter.payload["request_surface"] == "conversation.saved"
         assert adapter.payload["provider_connection_id"] == provider_id
         registry, value = registry_reads[-1]
@@ -10120,7 +10131,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         assert state is LeaseState.DISPATCHED
         assert lease.target.principal_id == adapter.target_principal.value
         assert lease.request_digest == adapter.request_digest
-        assert request.role == role
+        assert request.role == (f"side-chat-{role}" if side_chat else role)
         assert request.connection_id == provider_id
         assert request.record_revision == 2
         assert request.endpoint == endpoint
@@ -10180,6 +10191,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
 
     execute.supports_request_compilation = native_source
     execute.supports_policy_compilation = native_policy
+    execute.supports_side_chat = True
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(
         ipc, "capture_launcher_model_resolve_reader", lambda: read_model,
@@ -10217,6 +10229,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             backend: object, envelope: RequestEnvelope, *args: object, **kwargs: object,
         ) -> Mapping[str, object]:
             if envelope.operation_id in {
+                "tobkiri_side_chat_pack.side-chat-turn",
                 "rumi_turn_runtime_pack.turn-saved",
                 "saved_complete",
                 "rumi_ai_gateway_pack.ai-gateway.generate",
@@ -10239,14 +10252,47 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
         monkeypatch.setattr(http.client, "HTTPConnection", connect)
         cookie, csrf, origin = _authenticate(server)
+        headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+        if side_chat:
+            status, ui, _ = _request(
+                server, "GET", _contract("GET", "/api/ui/catalog"), headers=headers,
+            )
+            assert status == 200, ui
+            catalog = ui["data"]["dynamic_host"]
+            view, = [
+                item["view"] for item in catalog["contributions"]
+                if item["contribution_id"] == "tobkiri.side-chat"
+            ]
+            thread = view["conversation_thread"]
+
+        def side_invoke(
+            operation: Mapping[str, str], payload: Mapping[str, object],
+        ) -> tuple[int, dict[str, object]]:
+            status, result, _ = _request(
+                server, "POST", _contract("POST", "/api/ui/capability/invoke"),
+                body={
+                    **{key: catalog[key] for key in (
+                        "profile_id", "profile_revision", "activation_id",
+                        "plan_hash", "catalog_hash",
+                    )},
+                    "request_id": str(uuid.uuid4()),
+                    "expires_at": time.time() + 30,
+                    "contribution_id": operation["contribution_id"],
+                    "owner_pack_id": "tobkiri_side_chat_pack",
+                    "contract_id": operation["contract_id"],
+                    "payload": payload,
+                },
+                headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+            )
+            return status, result
 
         def post(turn: Mapping[str, object]) -> tuple[int, dict[str, object]]:
             status, result, _ = _request(
                 server, "POST", _contract("POST", "/api/chat/turn"),
-                body={"request": turn}, headers={
-                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
-                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
-                },
+                body={"request": turn},
+                headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
                 timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
             )
             return status, result
@@ -10270,20 +10316,36 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             registry_reads.clear()
             native_calls.clear()
             permitted_posts.clear()
-            conversation_id = f"{role}-{outcome}"
-            content = f"こんにちは {conversation_id}"
+            turn_id = f"{role}-{outcome}"
+            conversation_id = turn_id
+            content = f"こんにちは {turn_id}"
             store.create(
                 {"id": conversation_id, "model_reference": model_profile_id},
                 expected_revision=store.snapshot()["revision"],
             )
             turn = {
-                "turn_id": conversation_id,
+                "turn_id": turn_id,
                 "conversation_id": conversation_id,
                 "conversation_revision": 1,
                 "content": content,
                 "tool_selection": {"mode": "none"},
             }
-            status, result = post(turn)
+            if side_chat:
+                status, opened = side_invoke(view["controls"][0]["operation"], {
+                    "operation": "ensure", "parent_conversation_id": conversation_id,
+                    "expected_parent_revision": 1,
+                })
+                assert status == 200, opened
+                child = opened["data"]
+                conversation_id = child["conversation_id"]
+                status, result = side_invoke(thread["send"]["operation"], {
+                    "operation": "send", "turn_id": turn_id, "content": content,
+                    "conversation_id": conversation_id,
+                    "expected_child_revision": child["revision"],
+                    "expected_parent_revision": child["parent_revision"],
+                })
+            else:
+                status, result = post(turn)
             expected_native_calls = 2 if outcome == "legacy-denied" else 1
             assert len(native_calls) == expected_native_calls, result
             assert len(adapter_calls) == 1, result
@@ -10308,11 +10370,19 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                 else:
                     assert adapter_result["output"] == "Local reply"
                     assert adapter_result["finish_reason"] == "stop"
-                status, replay = post(turn)
-                assert status == 200 and replay["data"]["status"] == "existing", replay
+                if side_chat:
+                    status, replay = side_invoke(thread["reconcile"]["operation"], {
+                        "operation": "reconcile", "conversation_id": conversation_id,
+                        "turn_id": turn_id,
+                    })
+                    assert status == 200 and replay["data"]["turn"] == result["data"]["turn"], replay
+                    assert store.get(turn_id)["messages"] == []
+                else:
+                    status, replay = post(turn)
+                    assert status == 200 and replay["data"]["status"] == "existing", replay
             else:
                 assert status != 200 or result["data"]["status"] != "completed", result
-                receipt = store.saved_receipt(conversation_id)
+                receipt = store.saved_receipt(turn_id)
                 assert receipt is not None and receipt.get("result_reference") is None
                 assert [
                     (item["role"], item["content"])

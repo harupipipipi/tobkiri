@@ -452,7 +452,11 @@ class NativeConversationCompleteRequest:
     input: Mapping[str, Any]
 
 
-SavedLocalChatRole = Literal["generate", "stream"]
+SavedLocalChatRole = Literal[
+    "generate", "stream", "side-chat-generate", "side-chat-stream",
+]
+_SIDE_CHAT_LOCAL_ROLES = ("side-chat-generate", "side-chat-stream")
+_SAVED_LOCAL_CHAT_ROLES = ("generate", "stream", *_SIDE_CHAT_LOCAL_ROLES)
 
 
 @dataclass(frozen=True)
@@ -587,11 +591,14 @@ class NativeSavedLocalChatExecutor:
     _project_response: bool
     supports_request_compilation: bool
     supports_policy_compilation: bool = False
+    supports_side_chat: bool = False
 
     def __call__(
         self, borrow: NativeSavedLocalChatRequest,
     ) -> bytes | dict[str, Any]:
         """Exchange one request in its negotiated input form."""
+        if borrow.role in _SIDE_CHAT_LOCAL_ROLES and not self.supports_side_chat:
+            raise NativeProviderPrepareUnavailable("Launcher does not support Side Chat")
         if borrow.compile_request and not self.supports_request_compilation:
             raise NativeSavedLocalChatFailure("invalid")
         if borrow.compile_policy and not self.supports_policy_compilation:
@@ -856,15 +863,16 @@ def capture_launcher_ai_gateway_policy_projector() -> (
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
     """Capture the managed Launcher's opted-in endpoint for local chat."""
     version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
-    if version not in ("1", "2", "3", "4"):
+    if version not in ("1", "2", "3", "4", "5"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
         return None
     return NativeSavedLocalChatExecutor(
-        launcher, version in ("2", "3", "4"),
-        supports_request_compilation=version in ("3", "4"),
-        supports_policy_compilation=version == "4",
+        launcher, version in ("2", "3", "4", "5"),
+        supports_request_compilation=version in ("3", "4", "5"),
+        supports_policy_compilation=version in ("4", "5"),
+        supports_side_chat=version == "5",
     )
 
 
@@ -1125,7 +1133,7 @@ def _start_payload(
 def _saved_local_chat_start(borrow: NativeSavedLocalChatRequest) -> dict[str, Any]:
     if (
         type(borrow.role) is not str
-        or borrow.role not in ("generate", "stream")
+        or borrow.role not in _SAVED_LOCAL_CHAT_ROLES
         or type(borrow.connection_id) is not str
         or type(borrow.endpoint) is not str
         or not _bounded_revision(borrow.record_revision, 1)
@@ -1513,14 +1521,15 @@ def _decode_projected_local_chat(
     invalid = "native saved local chat projection is invalid"
     result = _decode_owner_result(payload, invalid)
     keys = {"output", "tool_intents", "usage", "finish_reason"}
-    if role == "stream":
+    stream = role in ("stream", "side-chat-stream")
+    if stream:
         keys.add("events")
     if (
         type(result) is not dict
         or set(result) != keys
         or type(result["tool_intents"]) is not list
         or type(result["usage"]) is not dict
-        or (role == "stream" and type(result["events"]) is not list)
+        or (stream and type(result["events"]) is not list)
     ):
         raise _ProtocolError(invalid)
     return result

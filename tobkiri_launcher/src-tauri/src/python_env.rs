@@ -384,7 +384,7 @@ where
                 if role == PythonRole::Defaultspack {
                     command
                         .env(TURN_START_ENV, "1")
-                        .env(SAVED_LOCAL_CHAT_ENV, "4")
+                        .env(SAVED_LOCAL_CHAT_ENV, "5")
                         .env(AI_ROUTING_ENV, "1")
                         .env(AI_STREAM_RESULT_ENV, "1")
                         .env(AI_USAGE_COST_ENV, "1")

@@ -3454,12 +3454,16 @@ def test_saved_local_chat_capture_requires_managed_opt_in(
     assert ipc.capture_launcher_saved_local_chat_executor() is None
     monkeypatch.delenv(ipc._SAVED_LOCAL_CHAT_ENV)
     assert ipc.capture_launcher_saved_local_chat_executor() is None
-    for version in ("1", "2", "3", "4"):
+    for version in ("1", "2", "3", "4", "5"):
         monkeypatch.setenv(ipc._SAVED_LOCAL_CHAT_ENV, version)
         execute = ipc.capture_launcher_saved_local_chat_executor()
         assert execute is not None
-        assert execute.supports_request_compilation is (version in ("3", "4"))
-        assert execute.supports_policy_compilation is (version == "4")
+        assert execute.supports_request_compilation is (version in ("3", "4", "5"))
+        assert execute.supports_policy_compilation is (version in ("4", "5"))
+        assert execute.supports_side_chat is (version == "5")
+        if not execute.supports_side_chat:
+            with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+                execute(_saved_local_chat_request(_Borrow(), role="side-chat-generate"))
 
 
 @pytest.mark.parametrize("version", ["1", "2", "3", "4"])
@@ -3674,7 +3678,9 @@ def test_saved_local_chat_rejects_policy_without_negotiated_source(
     assert failure.value.code == "invalid"
 
 
-@pytest.mark.parametrize("role", ["generate", "stream"])
+@pytest.mark.parametrize(
+    "role", ["generate", "stream", "side-chat-generate", "side-chat-stream"],
+)
 def test_saved_local_chat_decodes_projected_terminal_after_permit(
     monkeypatch: pytest.MonkeyPatch, role: ipc.SavedLocalChatRole,
 ) -> None:
@@ -3685,7 +3691,7 @@ def test_saved_local_chat_decodes_projected_terminal_after_permit(
         "usage": {"fixture": {"large": -int("7" * 4300)}},
         "finish_reason": 0,
     }
-    if role == "stream":
+    if role in ("stream", "side-chat-stream"):
         expected["events"] = [
             {"type": "tool_intent_delta", "tool_intent": {"id": "call_1"}},
             {"type": "usage", "usage": expected["usage"]},
@@ -3693,7 +3699,9 @@ def test_saved_local_chat_decodes_projected_terminal_after_permit(
         ]
 
     def serve(peer: socket.socket) -> None:
-        assert _receive(peer)[0] == 1
+        tag, start = _receive(peer)
+        assert tag == 1
+        assert json.loads(start)["saved_local_chat"]["role"] == role
         _accept_saved_local_chat_body(peer, request.input)
         _check_saved_local_chat_live(peer)
         _send(peer, 17)
@@ -3701,7 +3709,8 @@ def test_saved_local_chat_decodes_projected_terminal_after_permit(
         _send(peer, 19, json.dumps(expected, separators=(",", ":")).encode())
         assert peer.recv(1) == b""
 
-    with _served_saved_local_chat(monkeypatch, serve, version="2") as execute:
+    version = "5" if role.startswith("side-chat-") else "2"
+    with _served_saved_local_chat(monkeypatch, serve, version=version) as execute:
         result = execute(request)
     assert isinstance(result, dict)
     assert result == expected
