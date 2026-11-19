@@ -4343,7 +4343,33 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   対象タスクの中止が残った。57回目までの照会で3秒以内の空きslotを観測できず、後続の直接プローブ
   開始時点では既に空いていた。サーバーが中止を検出してからslotが空くまでの時間は特定できていない。
   同じ3秒の上限で [948fe27fa の実1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44509752472)
-  を開始した。
+  は認証付きFlowとキー不要の保存モデル経路の両方で通過した。
+- `1df9a002d` は既存Gatewayの `tobkiri.service.ai.route.v1` の候補評価を
+  `local.ai-routing` 0.1.0に移した。二つの事前照会とGenerate・Streamの4ロールについて、
+  Shell→保存ターン→保存済みOrchestration→Gateway→署名済みRouterの元のgrantと文書を
+  選択する。Launcherは実行前に配布物とアーカイブを照合する。Packは渡された記述子、要件、
+  稼働情報、評価時刻を使って、元の候補順・除外理由・曖昧なProviderの扱いを決める。
+  Registry取得、資格情報、送信許可の所有者は元の経路にある。v5レシートは7本を順序付きで
+  検証し、v1〜v4も引き続き読む。
+  `8244d3f5a` で、同じ署名済みRouter呼び出しのリース、親の連鎖、期限、予約量を
+  確認してからNativeへ渡す。入出力は1 MiBの範囲で、ネイティブ実行対象外または明示的な
+  変換辞退の場合は元の処理へ戻る前に同じリースを確認する。署名済みPython Routerの配布元は
+  既存のものを参照する。
+  実WasmアーカイブをCoreから呼ぶ試験1件、4ロール選択と無関係なgrant拒否2件、
+  Rustゲスト単体6件とstrict Clippy、Python IPC39件、レシートRust15件が通過。
+  macOSのLauncherテスト型チェック、Harness Nativeのstrict Clippy、分離Rust IPC40件、
+  固定CPython 3.13.16の署名付きHTTP回帰1件と生成物照合6件も通過した。
+  クリーンな `8244d3f5a` のmacOS結合試験では、署名付き保存チャットから4ロールを
+  Launcherの実IPCで呼び、v5レシートから検証した実Wasmの結果を元のPython Routerと照合した。
+  バッファ応答とストリームで返信を保存し、同じターンの再送で候補評価や生成が増えないことを確認。
+  Application管理、配布物resolver入口、PackVMの搬送とProvider応答はfixtureで供給した。
+  CPython原本との3000件のソース比較では、出力2560件がバイト一致し、変換対象外440件で
+  元の処理に戻ることを確認した。既存v4を含むDMG検証器とワークフロー検査214件も通過。
+  [現在の実1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44513762760)を開始した。
+  元のPythonでは候補ごとにProvider一覧を走査する。Wasmでは要求ごとの索引を使い、
+  完全一致の重複やワイルドカードの曖昧性を維持する。署名済みGatewayとBrokerをCoreへ
+  移した段階で、ルート別のIPCとPython側の予約額設定を除去できる。元の承認・取消・同時処理と、
+  各ロールが別々の現在値を読むことを確認してから行う。
 - [容量CI 44487465360](https://github.com/harupipipipi/tobkiri/actions/runs/44487465360)は
   実容量の計測前にルート全体のrustfmtで止まった。`ecda8e89c` からLauncherの依存を
   経由して17ファイルが対象に入り、同じ差分が繰り返し報告されていた。`6407eea34` で
