@@ -1970,6 +1970,7 @@ def capture_production_dispatch(
         NativeConversationConfirmationRequest,
         NativeConversationGetFailure,
         NativeConversationGetRequest,
+        NativeConversationListRequest,
         NativeModelResolveFailure,
         NativeModelResolveRequest,
         NativeModelSaveFailure,
@@ -2043,6 +2044,9 @@ def capture_production_dispatch(
     native_provider_snapshot_reader = capture_launcher_provider_snapshot_reader()
     native_model_save_writer = capture_launcher_model_save_writer()
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
+    native_conversation_list_supported = (
+        getattr(native_conversation_get_reader, "supports_list", False) is True
+    )
     linked_parent_reads = (
         getattr(native_conversation_get_reader, "supports_linked_parent", False) is True
     )
@@ -5460,25 +5464,42 @@ def capture_production_dispatch(
                 edge = matching[0]
                 native_conversation_get_edges[edge.caller.principal_id] = caller, edge
 
-    def is_native_conversation_get_route(
+    def is_native_conversation_read_route(
         context: RequestContext, payload: Mapping[str, Any],
     ) -> bool:
+        route = native_conversation_get_edges.get(context.caller_principal.value)
+        runtime = native_provider_runtime
+        if (
+            runtime is None or route is None
+            or payload.get("profile_id") != context.profile_id
+        ):
+            return False
+        fields = set(payload) - {"_session_id"}
+        if payload.get("operation") == "list":
+            http_scope = current_provider_prepare_http_scope()
+            return (
+                native_conversation_list_supported
+                and route[0] == "shell"
+                and fields == {"profile_id", "operation"}
+                and http_scope is not None
+                and http_scope[0] == runtime[0]
+                and parent_invocation_scopes.lookup(context.caller_session_id) is None
+            )
         identifier = payload.get("conversation_id")
         return (
-            native_provider_runtime is not None
-            and context.caller_principal.value in native_conversation_get_edges
-            and payload.get("operation") == "get"
-            and payload.get("profile_id") == context.profile_id
-            and set(payload) - {"_session_id"}
-            == {"profile_id", "operation", "conversation_id"}
+            payload.get("operation") == "get"
+            and fields == {"profile_id", "operation", "conversation_id"}
             and isinstance(identifier, str)
             and bool(identifier)
             and len(identifier) <= CONVERSATION_GET_MAX_ID_CHARS
         )
 
-    def wrap_native_conversation_get(
+    def wrap_native_conversation_read(
         contribution: HostProviderContributionV4,
-        reader: Callable[[NativeConversationGetRequest], Mapping[str, Any]],
+        reader: Callable[
+            [NativeConversationGetRequest | NativeConversationListRequest],
+            Mapping[str, Any],
+        ],
     ) -> HostProviderContributionV4:
         """Read through the Launcher while the original exact Broker edge is live."""
 
@@ -5488,15 +5509,17 @@ def capture_production_dispatch(
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
             if type(invocation) is not _HostInvocation:
-                raise AuthorityDenied("native Conversation GET context is unavailable")
+                raise AuthorityDenied("native Conversation read context is unavailable")
             envelope = invocation.envelope
             context = envelope.context
-            if not is_native_conversation_get_route(context, payload):
+            if not is_native_conversation_read_route(context, payload):
                 return contribution.invoke(operation_id, payload, invocation)
             caller, edge = native_conversation_get_edges[context.caller_principal.value]
             parent = invocation.parent_invocation
             parent_envelope = parent.envelope if parent is not None else None
             pinned_runtime = native_provider_runtime
+            listing = payload["operation"] == "list"
+            http_scope = current_provider_prepare_http_scope() if listing else None
             if (
                 pinned_runtime is None
                 or operation_id != conversation_operation
@@ -5505,11 +5528,15 @@ def capture_production_dispatch(
                 or payload is not envelope.payload
                 or (parent is None) != (caller == "shell")
                 or (
+                    listing
+                    and (http_scope is None or http_scope[0] != pinned_runtime[0])
+                )
+                or (
                     parent_envelope is not None
                     and parent_envelope.target_principal != context.caller_principal
                 )
             ):
-                raise AuthorityDenied("native Conversation GET lineage changed")
+                raise AuthorityDenied("native Conversation read lineage changed")
 
             def guard() -> None:
                 invocation.assert_current()
@@ -5518,9 +5545,15 @@ def capture_production_dispatch(
                 if (
                     native_provider_runtime is not pinned_runtime
                     or retained_envelope is not parent_envelope
+                    or (
+                        listing
+                        and current_provider_prepare_http_scope() is not http_scope
+                    )
                 ):
-                    raise AuthorityDenied("native Conversation GET capture changed")
+                    raise AuthorityDenied("native Conversation read capture changed")
                 pinned_runtime[1]()
+                if http_scope is not None:
+                    http_scope[1]()
                 production_admission.native_resources(envelope.resource_reservation_id)
 
             def legacy_read() -> Mapping[str, Any]:
@@ -5535,23 +5568,32 @@ def capture_production_dispatch(
             )
             if resources.memory_bytes < CONVERSATION_GET_MINIMUM_MEMORY:
                 return legacy_read()
-            borrow = NativeConversationGetRequest(
-                context=context,
-                runtime_instance=pinned_runtime[0],
-                deadline_monotonic=envelope.deadline_monotonic,
-                assert_current=guard,
-                caller=caller,
-                conversation_id=payload["conversation_id"],
-            )
-            linked_read = (
-                _LINKED_PARENT_READ.get()
-                if linked_parent_reads and caller == "saved-orchestration" else None
-            )
             try:
-                result = (
-                    reader(borrow) if linked_read is None
-                    else linked_read.read(parent_envelope, borrow, reader)
-                )
+                if listing:
+                    result = reader(NativeConversationListRequest(
+                        context=context,
+                        runtime_instance=pinned_runtime[0],
+                        deadline_monotonic=envelope.deadline_monotonic,
+                        assert_current=guard,
+                    ))
+                else:
+                    borrow = NativeConversationGetRequest(
+                        context=context,
+                        runtime_instance=pinned_runtime[0],
+                        deadline_monotonic=envelope.deadline_monotonic,
+                        assert_current=guard,
+                        caller=caller,
+                        conversation_id=payload["conversation_id"],
+                    )
+                    linked_read = (
+                        _LINKED_PARENT_READ.get()
+                        if linked_parent_reads and caller == "saved-orchestration"
+                        else None
+                    )
+                    result = (
+                        reader(borrow) if linked_read is None
+                        else linked_read.read(parent_envelope, borrow, reader)
+                    )
             except (
                 NativeProviderPrepareUnavailable,
                 NativeProviderRegistryRequiresLegacyRead,
@@ -5563,7 +5605,8 @@ def capture_production_dispatch(
                     raise KeyError("conversation is unavailable") from None
                 if error.code == "invalid":
                     raise ValueError(
-                        "conversation or message identifier is invalid",
+                        "conversation store is invalid" if listing
+                        else "conversation or message identifier is invalid",
                     ) from None
                 if error.code == "denied":
                     raise PermissionError(
@@ -8519,7 +8562,7 @@ def capture_production_dispatch(
             }
             native_conversation_get_bindings.update(conversation_bindings)
             contributions = tuple(
-                wrap_native_conversation_get(item, native_conversation_get_reader)
+                wrap_native_conversation_read(item, native_conversation_get_reader)
                 if item.key in conversation_bindings else item
                 for item in contributions
             )
@@ -8786,7 +8829,7 @@ def capture_production_dispatch(
         (
             binding,
             CONVERSATION_GET_MINIMUM_MEMORY,
-            is_native_conversation_get_route,
+            is_native_conversation_read_route,
         )
         for binding in native_conversation_get_bindings.values()
     ]

@@ -1,0 +1,15 @@
+{
+  "migration": {"migration_id":"m1","before":[-0.0,1e-07,18446744073709551616]},
+  "conversations": {
+    "𐀀": true,
+    "é": {"messages":[{"sequence":8},null],"metadata":"invalid","lifecycle":{"extra":"retain"}},
+    "z": {"id":"a","metadata":{"icon_svg":"drop","custom":{"icon_svg":"nested"}},"messages":[{"sequence_number":888,"id":"second","content":"雪"},{"id":"first","sequence":20}]},
+    "m": ["opaque",1.0],
+    "a": {"id":"z","updated_at":-0.0,"conversation_revision":18446744073709551617,"tags":["\u0000",1e+20],"extra":{"b":2,"a":1}},
+    "": null
+  },
+  "version": "rumi.conversation-store.v1",
+  "saved_receipts": {"turn":{"private":"not returned"}},
+  "revision": 18446744073709551618,
+  "profile_id": "profile-1"
+}

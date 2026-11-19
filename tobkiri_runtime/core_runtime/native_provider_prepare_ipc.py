@@ -360,6 +360,16 @@ class NativeConversationGetRequest:
     linked_parent: NativeConversationLinkedParent | None = None
 
 
+@dataclass(frozen=True)
+class NativeConversationListRequest:
+    """Borrow the direct Shell conversation list capture and live guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+
+
 def is_native_linked_conversation_identifier(value: object) -> bool:
     """Check the strict owner identifier accepted on the linked GET path."""
     return isinstance(value, str) and _TURN_IDENTIFIER.fullmatch(value) is not None
@@ -682,6 +692,7 @@ _NativeBorrow = (
     | NativeModelSettingsRequest
     | NativeModelSaveRequest
     | NativeConversationGetRequest
+    | NativeConversationListRequest
     | NativeConversationAppendRequest
     | NativeSavedReceiptRequest
     | NativeSavedTurnReadRequest
@@ -696,7 +707,8 @@ _NativeBorrow = (
 )
 _NativeOperation = Literal[
     "provider_prepare", "provider_snapshot", "model_list", "model_save", "conversation_get",
-    "conversation_receipt", "model_resolve", "turn_start", "turn_settlement",
+    "conversation_list", "conversation_receipt", "model_resolve", "turn_start",
+    "turn_settlement",
     "conversation_confirmation", "conversation_append", "saved_orchestration", "ai_route",
     "application_presentation", "conversation_complete",
 ]
@@ -903,8 +915,15 @@ class _LauncherConversationGet:
     launcher: _Launcher
     supports_linked_parent: bool
     supports_linked_recheck: bool
+    supports_list: bool
 
-    def __call__(self, borrow: NativeConversationGetRequest) -> Mapping[str, Any]:
+    def __call__(
+        self, borrow: NativeConversationGetRequest | NativeConversationListRequest,
+    ) -> Mapping[str, Any]:
+        if isinstance(borrow, NativeConversationListRequest):
+            if not self.supports_list:
+                raise _ProtocolError("native Conversation list is unavailable")
+            return _invoke(self.launcher, borrow, operation="conversation_list")
         linked = borrow.linked_parent
         if linked is not None:
             if not self.supports_linked_parent:
@@ -925,7 +944,12 @@ def capture_launcher_conversation_get_reader() -> _LauncherConversationGet | Non
     if launcher is None:
         return None
     version = os.environ.get(_LINKED_CONVERSATION_READ_ENV)
-    return _LauncherConversationGet(launcher, version in ("1", "2"), version == "2")
+    return _LauncherConversationGet(
+        launcher,
+        supports_linked_parent=version in ("1", "2", "3"),
+        supports_linked_recheck=version in ("2", "3"),
+        supports_list=version in ("3", "3-list-only"),
+    )
 
 
 def capture_launcher_conversation_append_writer() -> (
@@ -1311,6 +1335,8 @@ def _start_payload(
                 "nonce": linked_parent.nonce,
             }
         frame["conversation_get"] = conversation_get
+    elif isinstance(borrow, NativeConversationListRequest):
+        frame["conversation_list"] = {}
     elif isinstance(borrow, NativeConversationAppendRequest):
         frame["conversation_append"] = _conversation_append_payload(borrow)
     elif isinstance(borrow, NativeSavedReceiptRequest):
@@ -2366,6 +2392,23 @@ def _decode_conversation_get(payload: bytes) -> dict[str, Any]:
     return result
 
 
+def _decode_conversation_list(payload: bytes, profile_id: str) -> dict[str, Any]:
+    invalid = "native Conversation list owner result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or result.keys() != {
+            "version", "profile_id", "revision", "conversations", "migration",
+        }
+        or result["version"] != "rumi.conversation-store.v1"
+        or result["profile_id"] != profile_id
+        or type(result["conversations"]) is not list
+    ):
+        raise _ProtocolError(invalid)
+    # The original HTTP presenter validates the revision and conversation rows.
+    return result
+
+
 def _decode_conversation_append(
     payload: bytes, borrow: NativeConversationAppendRequest,
 ) -> dict[str, Any]:
@@ -2798,6 +2841,7 @@ class _Exchange:
         self.send(_START_APPEND if conversation_append else _START, start, wait_seconds)
         self.started = True
         conversation_get = isinstance(borrow, NativeConversationGetRequest)
+        conversation_list = isinstance(borrow, NativeConversationListRequest)
         model_access_projection = (
             borrow.model_access_projection if isinstance(borrow, NativeProviderSnapshotRequest)
             else None
@@ -2861,7 +2905,7 @@ class _Exchange:
                         if payload == b"invalid":
                             raise ValueError("native Model Access input or data is invalid")
                         raise PermissionError("native Model Access connection is unavailable")
-                    if conversation_get:
+                    if conversation_get or conversation_list:
                         wait_seconds()
                         raise NativeConversationGetFailure(payload.decode("ascii"))
                     if isinstance(borrow, NativeSavedReceiptRequest):
@@ -2906,6 +2950,8 @@ class _Exchange:
                 plan: dict[str, Any] | None
                 if conversation_get:
                     plan = _decode_conversation_get(payload)
+                elif conversation_list:
+                    plan = _decode_conversation_list(payload, borrow.context.profile_id)
                 elif conversation_append:
                     if not self.publication_possible:
                         raise _ProtocolError("native Conversation append permit is missing")
@@ -3121,6 +3167,7 @@ def _invoke(
     model_access_projection = provider_snapshot and borrow.model_access_projection is not None
     model_save = isinstance(borrow, NativeModelSaveRequest)
     conversation_get = isinstance(borrow, NativeConversationGetRequest)
+    conversation_list = isinstance(borrow, NativeConversationListRequest)
     conversation_append = isinstance(borrow, NativeConversationAppendRequest)
     saved_receipt = isinstance(borrow, NativeSavedReceiptRequest)
     turn_read = isinstance(borrow, NativeSavedTurnReadRequest)
@@ -3137,6 +3184,7 @@ def _invoke(
         or provider_snapshot != (operation == "provider_snapshot")
         or model_save != (operation == "model_save")
         or conversation_get != (operation == "conversation_get")
+        or conversation_list != (operation == "conversation_list")
         or conversation_append != (operation == "conversation_append")
         or saved_receipt != (operation == "conversation_receipt")
         or turn_read != (operation == "turn_read")
@@ -3179,10 +3227,9 @@ def _invoke(
         elif ai_routing:
             plan_limit = _AI_ROUTING_LIMIT
         elif (
-            model_settings or model_save or conversation_get or provider_snapshot
-            or saved_receipt or model_resolve or turn_read or turn_settlement
-            or conversation_append
-            or application_presentation
+            model_settings or model_save or provider_snapshot or conversation_get
+            or conversation_list or saved_receipt or model_resolve or turn_read
+            or turn_settlement or conversation_append or application_presentation
         ):
             plan_limit = _OWNER_RESULT_LIMIT
         else:

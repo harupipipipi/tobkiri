@@ -38,10 +38,10 @@ use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
     verify_legacy_conversation_confirmation_declaration,
     verify_legacy_conversation_linked_context_declaration,
-    verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
-    verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
-    verify_legacy_provider_health_declaration, verify_legacy_provider_model_access_declaration,
-    verify_legacy_provider_snapshot_declaration,
+    verify_legacy_conversation_list_declaration, verify_legacy_conversation_read_declaration,
+    verify_legacy_conversation_receipt_declaration, verify_legacy_model_resolve_declaration,
+    verify_legacy_model_save_declaration, verify_legacy_provider_health_declaration,
+    verify_legacy_provider_model_access_declaration, verify_legacy_provider_snapshot_declaration,
 };
 
 use super::{
@@ -379,6 +379,13 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.permits_read(caller))
     }
 
+    /// The exact original Shell read grant may use the separate list port when declared.
+    pub(crate) fn permits_conversation_list(&self) -> bool {
+        self.conversation
+            .as_ref()
+            .is_some_and(VerifiedConversationSource::permits_list)
+    }
+
     /// Require the Saved Orchestration read edge and the verified private linked context port.
     pub(crate) fn permits_linked_conversation_context(&self) -> bool {
         self.conversation
@@ -625,6 +632,7 @@ struct VerifiedConversationSource {
     saved_turn: Option<VerifiedLegacyRoutePin>,
     saved_orchestration: Option<VerifiedLegacyRoutePin>,
     linked_context_declared: bool,
+    list_declared: bool,
     saved_receipt: [Option<(OriginalSavedReceiptRole, VerifiedLegacyRoutePin)>; 2],
     side_chat_saved_receipt: VerifiedSideChatSavedRoles,
     confirmation: VerifiedConversationConfirmationRoles,
@@ -711,6 +719,10 @@ impl VerifiedConversationSource {
 
     fn permits_linked_context(&self) -> bool {
         self.saved_orchestration.is_some() && self.linked_context_declared
+    }
+
+    fn permits_list(&self) -> bool {
+        self.shell.is_some() && self.list_declared
     }
 
     fn permits_saved_receipt(&self, role: OriginalSavedReceiptRole) -> bool {
@@ -1440,6 +1452,7 @@ impl VerifiedRegistryLaunch {
                 saved_turn: None,
                 saved_orchestration: None,
                 linked_context_declared: false,
+                list_declared: false,
                 saved_receipt: OriginalSavedReceiptRole::ALL.map(|candidate| {
                     (candidate == role).then(|| (role, VerifiedLegacyRoutePin::fixture()))
                 }),
@@ -1476,6 +1489,19 @@ impl VerifiedRegistryLaunch {
         source.side_chat_saved_receipt = [None, None];
         source.saved_orchestration = Some(VerifiedLegacyRoutePin::fixture());
         source.linked_context_declared = true;
+        proof
+    }
+
+    pub(crate) fn test_conversation_list_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        let mut proof = Self::test_linked_conversation_context_proof(identity, catalog_revision);
+        let source = proof.conversation.as_mut().unwrap();
+        source.saved_orchestration = None;
+        source.linked_context_declared = false;
+        source.shell = Some(VerifiedLegacyRoutePin::fixture());
+        source.list_declared = true;
         proof
     }
 
@@ -2231,6 +2257,8 @@ impl LaunchActivationObserver<'_> {
                     let linked_context_declared =
                         observe_linked_conversation_context_declaration(&pack)
                             .map_err(io::Error::other)?;
+                    let list_declared =
+                        observe_conversation_list_declaration(&pack).map_err(io::Error::other)?;
                     if saved_receipt.is_some() || has_side_chat_saved_receipt {
                         verify_legacy_conversation_receipt_declaration(&pack)
                             .map_err(io::Error::other)?;
@@ -2270,6 +2298,7 @@ impl LaunchActivationObserver<'_> {
                             .and_then(|selection| selection.saved_orchestration())
                             .map(Into::into),
                         linked_context_declared,
+                        list_declared,
                         saved_receipt: OriginalSavedReceiptRole::ALL.map(|role| {
                             saved_receipt
                                 .and_then(|selection| selection.pin(role))
@@ -2905,6 +2934,27 @@ pub(crate) fn reacquire_conversation_read_pack(
     .context("bundled Conversation read archive verification failed")
 }
 
+/// Reopen the read-only list port against the admitted Shell read grant.
+pub(super) fn reacquire_conversation_list_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .conversation
+        .as_ref()
+        .filter(|source| source.permits_list())
+        .context("admitted launch has no verified Shell Conversation list source")?;
+    reacquire_conversation_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        verify_legacy_conversation_list_declaration,
+    )
+    .context("bundled Conversation list archive verification failed")
+}
+
 /// Reopen the private linked context port against the admitted Saved Orchestration read grant.
 pub(super) fn reacquire_linked_conversation_context_pack(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
@@ -3205,6 +3255,14 @@ fn observe_linked_conversation_context_declaration(pack: &VerifiedPack) -> Resul
     let declared = registry_port_declared(pack, "local.saved-conversation.legacy-linked-context");
     if declared {
         verify_legacy_conversation_linked_context_declaration(pack)?;
+    }
+    Ok(declared)
+}
+
+fn observe_conversation_list_declaration(pack: &VerifiedPack) -> Result<bool> {
+    let declared = registry_port_declared(pack, "local.saved-conversation.legacy-list");
+    if declared {
+        verify_legacy_conversation_list_declaration(pack)?;
     }
     Ok(declared)
 }
@@ -5812,6 +5870,7 @@ mod tests {
             "legacy-append.shape.json",
             "legacy-confirmation.shape.json",
             "legacy-linked-context.shape.json",
+            "legacy-list.shape.json",
             "legacy-read.shape.json",
             "legacy-receipt.shape.json",
             "model.shape.json"
@@ -5835,10 +5894,12 @@ mod tests {
         assert!(observe_conversation_append_declaration(&current).unwrap());
         assert!(observe_conversation_confirmation_declaration(&current).unwrap());
         assert!(observe_linked_conversation_context_declaration(&current).unwrap());
+        assert!(observe_conversation_list_declaration(&current).unwrap());
 
         let append = "local.saved-conversation.legacy-append";
         let confirmation = "local.saved-conversation.legacy-confirmation";
         let linked_context = "local.saved-conversation.legacy-linked-context";
+        let list = "local.saved-conversation.legacy-list";
         let undeclare = |draft: &mut serde_json::Value, shape: &str| {
             draft["shapes"]
                 .as_array_mut()
@@ -5851,6 +5912,11 @@ mod tests {
         };
 
         let mut previous = draft.clone();
+        undeclare(&mut previous, list);
+        let previous_pack = verify(&previous);
+        assert!(!observe_conversation_list_declaration(&previous_pack).unwrap());
+        verify_legacy_conversation_read_declaration(&previous_pack).unwrap();
+
         undeclare(&mut previous, linked_context);
         let previous_pack = verify(&previous);
         assert!(!observe_linked_conversation_context_declaration(&previous_pack).unwrap());
@@ -5872,9 +5938,10 @@ mod tests {
         verify_legacy_conversation_read_declaration(&old).unwrap();
         verify_legacy_conversation_receipt_declaration(&old).unwrap();
 
-        let ports: [(&str, fn(&VerifiedPack) -> Result<bool>); 3] = [
+        let ports: [(&str, fn(&VerifiedPack) -> Result<bool>); 4] = [
             (append, observe_conversation_append_declaration),
             (confirmation, observe_conversation_confirmation_declaration),
+            (list, observe_conversation_list_declaration),
             (
                 linked_context,
                 observe_linked_conversation_context_declaration,
@@ -6246,6 +6313,7 @@ mod tests {
                 saved_turn: None,
                 saved_orchestration: None,
                 linked_context_declared: false,
+                list_declared: false,
                 saved_receipt: [None, None],
                 side_chat_saved_receipt: [None, None],
                 confirmation: VerifiedConversationConfirmationRoles::default(),

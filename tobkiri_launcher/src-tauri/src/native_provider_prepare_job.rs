@@ -47,18 +47,19 @@ use super::{
     launch_metadata::{
         reacquire_ai_routing_pack, reacquire_application_presentation_pack,
         reacquire_conversation_append_pack_for, reacquire_conversation_complete_pack,
-        reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
-        reacquire_failover_pack, reacquire_gateway_policy_pack, reacquire_gateway_result_pack,
-        reacquire_linked_conversation_context_pack, reacquire_model_resolve_pack,
-        reacquire_model_save_pack, reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_provider_snapshot_pack, reacquire_request_prepare_pack,
-        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
-        reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
-        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack_for,
-        reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
-        ConversationAppendCaller, ConversationReadCaller, SavedTurnStartCaller, SettlementCaller,
-        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION,
-        FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
+        reacquire_conversation_confirmation_pack, reacquire_conversation_list_pack,
+        reacquire_conversation_read_pack, reacquire_failover_pack, reacquire_gateway_policy_pack,
+        reacquire_gateway_result_pack, reacquire_linked_conversation_context_pack,
+        reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
+        reacquire_provider_prepare_pack, reacquire_provider_snapshot_pack,
+        reacquire_request_prepare_pack, reacquire_saved_local_chat_adapter,
+        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
+        reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
+        reacquire_turn_settlement_pack, reacquire_turn_start_pack_for, reacquire_usage_cost_pack,
+        saved_local_chat_dispatch_bundle, ApplicationPresentationRole, ConversationAppendCaller,
+        ConversationReadCaller, SavedTurnStartCaller, SettlementCaller, VerifiedRegistryLaunch,
+        AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE,
+        GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
         GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
         PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
@@ -237,6 +238,7 @@ pub(crate) enum NativeRegistryRequest {
         caller: ConversationReadCaller,
         conversation_id: String,
     },
+    ConversationList,
     LinkedConversationContext {
         conversation_id: String,
     },
@@ -323,6 +325,7 @@ impl NativeRegistryRequest {
             }
             Self::ModelSave { .. } => proof.model_save.is_some(),
             Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
+            Self::ConversationList => proof.permits_conversation_list(),
             Self::LinkedConversationContext { .. } | Self::LinkedConversationRead { .. } => {
                 proof.permits_linked_conversation_context()
             }
@@ -371,7 +374,9 @@ impl NativeRegistryRequest {
     fn input_capacity(&self) -> Result<usize> {
         let (request, extra) = match self {
             Self::Provider { request, apply } => (request, apply.as_ref()),
-            Self::ModelList | Self::ProviderSnapshot { .. } => return Ok(0),
+            Self::ModelList | Self::ProviderSnapshot { .. } | Self::ConversationList => {
+                return Ok(0)
+            }
             Self::ModelAccessProjection { input_bytes, .. } => {
                 ModelAccessProjectionPhase::check_input_size(*input_bytes)?;
                 return Ok(*input_bytes);
@@ -1174,6 +1179,23 @@ async fn run(
                             &config.user_data_dir,
                             &identity.profile_id,
                             &conversation_id,
+                        )
+                        .await
+                        .map_err(conversation_registry_error)?;
+                    return decode_conversation_read_reply(output, &graph);
+                }
+                NativeRegistryRequest::ConversationList => {
+                    let pack = reacquire_conversation_list_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let output = inspection
+                        .list_legacy_conversations(
+                            &pack,
+                            &config.user_data_dir,
+                            &identity.profile_id,
                         )
                         .await
                         .map_err(conversation_registry_error)?;
@@ -3682,6 +3704,15 @@ mod tests {
             caller: ConversationReadCaller::SavedTurn,
             conversation_id: "stored".into(),
         };
+        let list = NativeRegistryRequest::ConversationList;
+        let proof = VerifiedRegistryLaunch::test_conversation_list_proof(
+            identity.clone(),
+            "catalog:fixture",
+        );
+        assert!(list.has_launch_proof(&proof));
+        assert!(!list.requires_publication_permit());
+        assert_eq!(list.input_capacity().unwrap(), 0);
+        assert!(!conversation.has_launch_proof(&proof));
         let callers = [SavedTurn, SavedReconcile, SideChatTurn, SideChatReconcile];
         for granted in callers {
             let proof = VerifiedRegistryLaunch::test_saved_receipt_proof(
@@ -3690,6 +3721,7 @@ mod tests {
                 granted,
             );
             assert!(!conversation.has_launch_proof(&proof));
+            assert!(!list.has_launch_proof(&proof));
             for caller in callers {
                 let request = NativeRegistryRequest::ConversationReceipt {
                     caller,

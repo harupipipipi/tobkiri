@@ -417,8 +417,17 @@ where
                     if native_registry.conversation_side_chat_append {
                         command.env(crate::sealed_python::CONVERSATION_SIDE_CHAT_APPEND_ENV, "1");
                     }
-                    if native_registry.linked_conversation_read {
-                        command.env(LINKED_CONVERSATION_READ_ENV, "2");
+                    let conversation_read_version = match (
+                        native_registry.conversation_list,
+                        native_registry.linked_conversation_read,
+                    ) {
+                        (true, true) => Some("3"),
+                        (true, false) => Some("3-list-only"),
+                        (false, true) => Some("2"),
+                        (false, false) => None,
+                    };
+                    if let Some(version) = conversation_read_version {
+                        command.env(LINKED_CONVERSATION_READ_ENV, version);
                     }
                     if native_registry.side_chat_saved_turn_start {
                         command.env(crate::sealed_python::SIDE_CHAT_SAVED_TURN_START_ENV, "1");

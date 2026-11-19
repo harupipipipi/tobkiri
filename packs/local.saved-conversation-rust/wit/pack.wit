@@ -21,6 +21,14 @@ interface legacy-read {
   get: func(document: option<string>, conversation-id: string) -> result<json, error>;
 }
 
+interface legacy-list {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Return the complete snapshot of the authenticated Profile's owner document.
+  /// None represents an absent file. The snapshot is the owner-result JSON string.
+  %list: func(document: option<string>) -> result<json, error>;
+}
+
 interface legacy-linked-context {
   use tobkiri:core/types@1.2.0.{json, error};
 
@@ -66,4 +74,5 @@ world pack {
   export legacy-confirmation;
   import tobkiri:core/clock@1.2.0;
   export legacy-append;
+  export legacy-list;
 }

@@ -91,6 +91,8 @@ struct Start<'a> {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     conversation_get: Option<ConversationGet>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
+    conversation_list: Option<ConversationList>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     conversation_receipt: Option<ConversationReceipt>,
     #[serde(borrow, default, deserialize_with = "deserialize_present")]
     conversation_confirmation: Option<ConversationConfirmation<'a>>,
@@ -226,13 +228,18 @@ impl Start<'_> {
             (None, None, None, None, None, Some(routing)) => Some(BodyStart::AiRouting(routing)),
             _ => bail!("native Registry start must name exactly one operation"),
         };
-        let registry_read = match (&self.model_list, &self.provider_snapshot) {
-            (Some(_), None) => Some(NativeRegistryRequest::ModelList),
-            (None, Some(snapshot)) => Some(NativeRegistryRequest::ProviderSnapshot {
+        let registry_read = match (
+            &self.model_list,
+            &self.provider_snapshot,
+            &self.conversation_list,
+        ) {
+            (Some(_), None, None) => Some(NativeRegistryRequest::ModelList),
+            (None, Some(snapshot), None) => Some(NativeRegistryRequest::ProviderSnapshot {
                 role: snapshot.role,
             }),
-            (None, None) => None,
-            (Some(_), Some(_)) => bail!("native Registry start must name exactly one operation"),
+            (None, None, Some(_)) => Some(NativeRegistryRequest::ConversationList),
+            (None, None, None) => None,
+            _ => bail!("native Registry start must name exactly one operation"),
         };
         let operation = match (
             &self.request,
@@ -488,6 +495,10 @@ struct ConversationGet {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     linked_parent: Option<LinkedParent>,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationList {}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1467,6 +1478,7 @@ pub(crate) fn admit_connection(
             | RequestStart::SavedLocalChat(_)
             | RequestStart::Inline(
                 NativeRegistryRequest::ProviderSnapshot { .. }
+                    | NativeRegistryRequest::ConversationList
                     | NativeRegistryRequest::TurnRead { .. }
                     | NativeRegistryRequest::LinkedConversationContext { .. }
                     | NativeRegistryRequest::LinkedConversationRead { .. }
@@ -1712,6 +1724,7 @@ impl AdmittedConnection {
             NativeRegistryRequest::ModelAccessProjection { .. } => ReplyRole::ModelAccessProjection,
             NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
             NativeRegistryRequest::ConversationGet { .. }
+            | NativeRegistryRequest::ConversationList
             | NativeRegistryRequest::LinkedConversationContext { .. }
             | NativeRegistryRequest::LinkedConversationRead { .. }
             | NativeRegistryRequest::ConversationReceipt { .. } => ReplyRole::ConversationRead,
@@ -4621,6 +4634,7 @@ mod tests {
             PROVIDER_REQUEST,
             r#", "apply": {}"#,
             r#", "model_list": {}"#,
+            r#", "conversation_list": {}"#,
             r#", "model_save": {"request":{},"provider":{}}"#,
         ] {
             let frame = start_frame(&format!("{get}{extra}"));
@@ -4634,6 +4648,27 @@ mod tests {
             failure_code(&ConversationRegistryRequiresLegacyRead.into()),
             "legacy-read-required"
         );
+    }
+
+    #[test]
+    fn conversation_list_start_has_no_caller_or_arguments() {
+        let start = start_frame(r#", "conversation_list": {}"#);
+        assert!(matches!(
+            serde_json::from_str::<Start<'_>>(&start)
+                .unwrap()
+                .operation()
+                .unwrap(),
+            RequestStart::Inline(NativeRegistryRequest::ConversationList)
+        ));
+        for value in [
+            "null",
+            "[]",
+            r#"{"caller":"shell"}"#,
+            r#"{"conversation_id":"id"}"#,
+        ] {
+            let start = start_frame(&format!(r#", "conversation_list": {value}"#));
+            assert!(serde_json::from_str::<Start<'_>>(&start).is_err());
+        }
     }
 
     #[test]

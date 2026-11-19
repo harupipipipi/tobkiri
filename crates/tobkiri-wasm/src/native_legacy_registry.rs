@@ -158,6 +158,16 @@ const CONVERSATION_GET: RegistryExport = RegistryExport {
     reads: 0,
     clock: RegistryClock::None,
 };
+const CONVERSATION_LIST: RegistryExport = RegistryExport {
+    pack: CONVERSATION_PACK,
+    shape: "local.saved-conversation.legacy-list@1.0",
+    interface: "local:saved-conversation/legacy-list@1.0.0",
+    function: "list",
+    error_subject: "legacy Conversation list",
+    parameters: &["document"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 const CONVERSATION_LINKED_CONTEXT: RegistryExport = RegistryExport {
     pack: CONVERSATION_PACK,
     shape: "local.saved-conversation.legacy-linked-context@1.0",
@@ -307,6 +317,13 @@ pub fn verify_legacy_model_resolve_declaration(pack: &VerifiedPack) -> Result<()
 pub fn verify_legacy_conversation_read_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &CONVERSATION_GET)?;
     declared_registry_function(pack, &CONVERSATION_GET)?;
+    Ok(())
+}
+
+/// Check the separate, read-only Conversation list declared by the signed archive.
+pub fn verify_legacy_conversation_list_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &CONVERSATION_LIST)?;
+    declared_registry_function(pack, &CONVERSATION_LIST)?;
     Ok(())
 }
 
@@ -567,6 +584,22 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 document,
                 identifier: conversation_id,
             },
+        )
+        .await
+    }
+
+    /// Project the original ordered Conversation snapshot without granting storage.
+    pub async fn list_legacy_conversations(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &CONVERSATION_LIST,
+            RegistryInput::DocumentOnly(document),
         )
         .await
     }
@@ -982,7 +1015,7 @@ fn declared_registry_function<'a>(
             "legacy Model Registry save parameter ABI differs"
         );
     }
-    if returns_owner_result(export) {
+    if returns_owner_result(export) && export.shape != CONVERSATION_LIST.shape {
         let expected_second = match export.shape {
             shape if shape == PROVIDER_SNAPSHOT.shape => WitType::Bool,
             shape if shape == MODEL_ACCESS_PROJECTION.shape => WitType::Json,
@@ -999,10 +1032,11 @@ fn declared_registry_function<'a>(
             "legacy Model Access projection requires a single provider"
         );
     }
-    if export.shape == PROVIDER_HEALTH.shape {
+    if [PROVIDER_HEALTH.shape, CONVERSATION_LIST.shape].contains(&export.shape) {
         ensure!(
             definition.cardinality == Cardinality::One && optional_string(&function.params[0].1),
-            "legacy Provider Registry health parameter ABI or cardinality differs"
+            "{} parameter ABI or cardinality differs",
+            export.error_subject,
         );
     }
     if [CONVERSATION_CONFIRMATION.shape, CONVERSATION_APPEND.shape].contains(&export.shape) {
@@ -1023,6 +1057,7 @@ fn declared_registry_function<'a>(
 fn returns_owner_result(export: &RegistryExport) -> bool {
     [
         CONVERSATION_GET.shape,
+        CONVERSATION_LIST.shape,
         CONVERSATION_LINKED_CONTEXT.shape,
         CONVERSATION_RECEIPT.shape,
         MODEL_RESOLVE.shape,

@@ -34,6 +34,45 @@ pub(super) fn get(
     owner_reply("conversation", conversation)
 }
 
+/// Return the original owner's snapshot ordered by the persisted row keys.
+pub(super) fn list(profile: &str, document: Option<&str>) -> Result<String, ReadError> {
+    validate_profile(profile)?;
+    let (revision, conversations, migration) = if let Some(document) = document {
+        let mut state = decode_document(document, profile, None)?;
+        // The legacy owner raises KeyError when revision is missing.
+        let revision = field(&mut state, "revision")
+            .ok_or(ReadError::LegacyCodec)?
+            .take();
+        let Some(PyValue::Object(rows)) = field(&mut state, "conversations") else {
+            return Err(ReadError::InvalidDocument);
+        };
+        let mut rows = std::mem::take(rows);
+        let migration = field(&mut state, "migration").map_or(PyValue::Null, PyValue::take);
+        drop(state);
+        rows.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+        let conversations = rows
+            .into_iter()
+            .map(|(_, mut row)| {
+                if let PyValue::Object(fields) = &mut row {
+                    normalize(fields);
+                }
+                row
+            })
+            .collect();
+        (revision, conversations, migration)
+    } else {
+        (PyValue::Int("0".into()), Vec::new(), PyValue::Null)
+    };
+    let snapshot = PyValue::Object(vec![
+        ("version".into(), PyValue::String(STORE_VERSION.into())),
+        ("profile_id".into(), PyValue::String(profile.into())),
+        ("revision".into(), revision),
+        ("conversations".into(), PyValue::Array(conversations)),
+        ("migration".into(), migration),
+    ]);
+    encode_owner_reply(snapshot, None)
+}
+
 /// Project the child's persisted context and prepare the original parent reply
 /// for a separately authorized owner read of the same snapshot.
 pub(super) fn get_linked(

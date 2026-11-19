@@ -2648,10 +2648,19 @@ def _conversation_get_request(
     )
 
 
+def _conversation_list_request(borrow: _Borrow) -> ipc.NativeConversationListRequest:
+    return ipc.NativeConversationListRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+    )
+
+
 @contextmanager
-def _served_conversation_get(
+def _served_conversation_read(
     monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
-) -> Iterator[Callable[[ipc.NativeConversationGetRequest], Mapping[str, Any]]]:
+) -> Iterator[ipc._LauncherConversationGet]:
     with _served(monkeypatch, serve):
         reader = ipc.capture_launcher_conversation_get_reader()
         assert reader is not None
@@ -2696,8 +2705,106 @@ def test_conversation_get_uses_closed_role_and_opaque_bounded_owner_json(
         _send(peer, 7, response)
         assert peer.recv(1) == b""
 
-    with _served_conversation_get(monkeypatch, serve) as reader:
+    with _served_conversation_read(monkeypatch, serve) as reader:
         assert reader(request) == expected
+
+
+def test_conversation_list_sends_empty_role_and_preserves_owner_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+    expected = {
+        "version": "rumi.conversation-store.v1",
+        "profile_id": borrow.context.profile_id,
+        "revision": 1 << 70,
+        "conversations": [
+            {"id": "a", "metadata": {"probability": 0.25, "large_value": 1 << 140}},
+            {"id": "b", "messages": [{"content": "会話"}]},
+        ],
+        "migration": {"opaque": "保管"},
+    }
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert tag == 1
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "conversation_list": {},
+        }
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        response = json.dumps(expected, ensure_ascii=False).encode("utf-8")
+        _send(peer, 7, response.ljust(1024 * 1024, b" "))
+        assert peer.recv(1) == b""
+
+    monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, "3-list-only")
+    with _served_conversation_read(monkeypatch, serve) as reader:
+        monkeypatch.delenv(ipc._LINKED_CONVERSATION_READ_ENV)
+        assert reader(_conversation_list_request(borrow)) == expected
+
+
+@pytest.mark.parametrize(
+    "invalid_fields",
+    [
+        {"version": "other"}, {"profile_id": "other"},
+        {"conversations": {}}, {"extra": True},
+    ],
+)
+def test_conversation_list_rejects_invalid_snapshot_fields(
+    invalid_fields: dict[str, Any],
+) -> None:
+    snapshot = {
+        "version": "rumi.conversation-store.v1", "profile_id": "defaults",
+        "revision": 0, "conversations": [], "migration": None,
+    }
+    with pytest.raises(ipc._ProtocolError, match="owner result is invalid"):
+        ipc._decode_conversation_list(
+            json.dumps({**snapshot, **invalid_fields}).encode(), "defaults",
+        )
+
+
+def test_conversation_list_leaves_legacy_revision_and_row_validation_to_http() -> None:
+    snapshot = {
+        "version": "rumi.conversation-store.v1", "profile_id": "defaults",
+        "revision": "legacy", "conversations": [None], "migration": None,
+    }
+    decoded = ipc._decode_conversation_list(json.dumps(snapshot).encode(), "defaults")
+    assert decoded == snapshot
+
+
+@pytest.mark.parametrize(
+    ("version", "linked", "recheck", "listing"),
+    [
+        (None, False, False, False), ("1", True, False, False),
+        ("2", True, True, False), ("3", True, True, True),
+        ("3-list-only", False, False, True), ("4", False, False, False),
+    ],
+)
+def test_conversation_read_negotiates_list_independently_of_linked_modes(
+    monkeypatch: pytest.MonkeyPatch, version: str | None,
+    linked: bool, recheck: bool, listing: bool,
+) -> None:
+    launcher = ipc._Launcher(b"/fixture.sock", 2, "darwin:2:1:000000")
+    monkeypatch.setattr(ipc, "_capture_launcher", lambda: launcher)
+    if version is None:
+        monkeypatch.delenv(ipc._LINKED_CONVERSATION_READ_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, version)
+    reader = ipc.capture_launcher_conversation_get_reader()
+    assert reader is not None
+    assert reader.supports_linked_parent is linked
+    assert reader.supports_linked_recheck is recheck
+    assert reader.supports_list is listing
+    if not listing:
+        with pytest.raises(ipc._ProtocolError, match="list is unavailable"):
+            reader(_conversation_list_request(_Borrow()))
 
 
 @pytest.mark.parametrize(
@@ -2706,6 +2813,7 @@ def test_conversation_get_uses_closed_role_and_opaque_bounded_owner_json(
         ("1", "retain", "child"), ("1", "reuse", "parent"),
         ("2", "retain-for-recheck", "child"), ("2", "reuse", "parent"),
         ("2", "recheck-child", "child"), ("2", "recheck-parent", "parent"),
+        ("3", "recheck-parent", "parent"),
     ],
 )
 def test_linked_conversation_get_sends_only_the_selected_id_and_nonce(
@@ -2733,7 +2841,7 @@ def test_linked_conversation_get_sends_only_the_selected_id_and_nonce(
         assert peer.recv(1) == b""
 
     monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, version)
-    with _served_conversation_get(monkeypatch, serve) as reader:
+    with _served_conversation_read(monkeypatch, serve) as reader:
         # Capture the opt-in once with the managed Launcher endpoint.
         monkeypatch.delenv(ipc._LINKED_CONVERSATION_READ_ENV)
         assert reader(request) == expected
@@ -2805,9 +2913,10 @@ def test_linked_conversation_get_requires_managed_launch_capture_and_opt_in(
         (True, 10, b"", ipc._ProtocolError),
     ],
 )
-def test_conversation_get_distinguishes_authenticated_fallback_and_owner_failure(
+@pytest.mark.parametrize("listing", [False, True])
+def test_conversation_read_distinguishes_authenticated_fallback_and_owner_failure(
     monkeypatch: pytest.MonkeyPatch, live: bool, tag: int, payload: bytes,
-    expected: type[RuntimeError],
+    expected: type[RuntimeError], listing: bool,
 ) -> None:
     def serve(peer: socket.socket) -> None:
         assert _receive(peer)[0] == 1
@@ -2820,11 +2929,17 @@ def test_conversation_get_distinguishes_authenticated_fallback_and_owner_failure
             _send(peer, 8, b"cancelled")
         assert peer.recv(1) == b""
 
+    monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, "3")
+    borrow = _Borrow()
+    request = (
+        _conversation_list_request(borrow) if listing
+        else _conversation_get_request(borrow)
+    )
     with (
-        _served_conversation_get(monkeypatch, serve) as reader,
+        _served_conversation_read(monkeypatch, serve) as reader,
         pytest.raises(expected) as failure,
     ):
-        reader(_conversation_get_request(_Borrow()))
+        reader(request)
     if isinstance(failure.value, ipc.NativeConversationGetFailure):
         assert failure.value.code == payload.decode("ascii")
 
@@ -2855,10 +2970,31 @@ def test_conversation_get_rejects_malformed_results_and_publication(
 
     message = "owner result is invalid" if size is None else "cleanup was unconfirmed"
     with (
-        _served_conversation_get(monkeypatch, serve) as reader,
+        _served_conversation_read(monkeypatch, serve) as reader,
         pytest.raises(ipc._ProtocolError, match=message),
     ):
         reader(_conversation_get_request(_Borrow()))
+
+
+@pytest.mark.parametrize("tag", [ipc._PLAN, ipc._PUBLISH_CHECK])
+def test_conversation_list_rejects_overflow_and_publication(
+    monkeypatch: pytest.MonkeyPatch, tag: int,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == ipc._START
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        size = (1024 * 1024 + 1) if tag == ipc._PLAN else 0
+        peer.sendall(_HEADER.pack(tag, size))
+        assert _receive(peer) == (ipc._CANCEL, b"")
+        assert peer.recv(1) == b""
+
+    monkeypatch.setenv(ipc._LINKED_CONVERSATION_READ_ENV, "3")
+    with (
+        _served_conversation_read(monkeypatch, serve) as reader,
+        pytest.raises(ipc._ProtocolError),
+    ):
+        reader(_conversation_list_request(_Borrow()))
 
 
 def _saved_receipt_request(

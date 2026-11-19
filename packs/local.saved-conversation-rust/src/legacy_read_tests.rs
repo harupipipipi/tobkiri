@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 const PROFILE: &str = "profile-1";
 const DOCUMENT: &str = include_str!("../fixtures/legacy-get-document.json");
 const OWNER: &str = include_str!("../fixtures/legacy-get-owner-result.json");
+const LIST_DOCUMENT: &str = include_str!("../fixtures/legacy-list-document.json");
+const LIST_OWNER: &str = include_str!("../fixtures/legacy-list-owner-result.json");
 const RECEIPT_DOCUMENT: &str = include_str!("../fixtures/legacy-receipt-document.json");
 const RECEIPT_OWNER: &str = include_str!("../fixtures/legacy-receipt-owner-result.json");
 
@@ -32,6 +34,74 @@ fn matches_the_python_owner_row_including_linked_context_and_opaque_numbers() {
         let reply = get(PROFILE, Some(DOCUMENT), id).unwrap();
         assert_eq!(owner(&reply), OWNER.trim_end());
     }
+}
+
+#[test]
+fn list_matches_the_python_snapshot_including_legacy_rows_and_numbers() {
+    let reply = list(PROFILE, Some(LIST_DOCUMENT)).unwrap();
+    assert_eq!(owner(&reply), LIST_OWNER.trim_end());
+}
+
+#[test]
+fn list_defaults_only_absent_document_and_migration() {
+    let snapshot = |revision| {
+        format!(
+            r#"{{"version":"{STORE_VERSION}","profile_id":"{PROFILE}","revision":{revision},"conversations":[],"migration":null}}"#
+        )
+    };
+    assert_eq!(owner(&list(PROFILE, None).unwrap()), snapshot("0"));
+
+    for revision in ["-0.0", "true", "null", r#"{"z":1,"a":2}"#] {
+        let raw = list_document(revision, "{}");
+        assert_eq!(
+            owner(&list(PROFILE, Some(&raw)).unwrap()),
+            snapshot(revision)
+        );
+    }
+    let missing_revision = document("{}");
+    assert_eq!(
+        list(PROFILE, Some(&missing_revision)),
+        Err(ReadError::LegacyCodec)
+    );
+}
+
+#[test]
+fn list_checks_profile_and_document_shape_before_compatibility() {
+    assert_eq!(list("../foreign", None), Err(ReadError::Profile));
+    assert_eq!(
+        list("foreign", Some(LIST_DOCUMENT)),
+        Err(ReadError::Profile)
+    );
+    for raw in ["bad".to_owned(), list_document("1", "[]")] {
+        assert_eq!(list(PROFILE, Some(&raw)), Err(ReadError::InvalidDocument));
+    }
+
+    for rows in [
+        r#"{"x":NaN}"#,
+        r#"{"x":{"\ud800":"\ud800"}}"#,
+        r#"{"x":1,"x":2}"#,
+        &format!(r#"{{"x":{}0{}}}"#, "[".repeat(256), "]".repeat(256)),
+    ] {
+        let raw = list_document("1", rows);
+        assert_eq!(list(PROFILE, Some(&raw)), Err(ReadError::LegacyCodec));
+        assert_eq!(list("foreign", Some(&raw)), Err(ReadError::Profile));
+    }
+}
+
+#[test]
+fn list_respects_both_document_and_escaped_owner_result_limits() {
+    let raw = list_document("1", &format!(r#"{{"x":"{}"}}"#, "z".repeat(MAX_BYTES)));
+    assert_eq!(list(PROFILE, Some(&raw)), Err(ReadError::Limits));
+
+    let raw = list_document("1", &format!(r#"{{"x":"{}"}}"#, r#"\""#.repeat(300_000)));
+    assert!(raw.len() < MAX_BYTES);
+    assert_eq!(list(PROFILE, Some(&raw)), Err(ReadError::LegacyCodec));
+}
+
+fn list_document(revision: &str, conversations: &str) -> String {
+    format!(
+        r#"{{"version":"{STORE_VERSION}","profile_id":"{PROFILE}","revision":{revision},"conversations":{conversations}}}"#
+    )
 }
 
 fn linked_rows() -> Value {

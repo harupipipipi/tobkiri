@@ -147,6 +147,7 @@ type Held<S> = ControlHandle<Work<S>>;
 
 enum LegacyConversationLookup<'a> {
     Conversation(&'a str),
+    List,
     LinkedContext {
         id: &'a str,
         retain: LinkedConversationRetention,
@@ -804,6 +805,24 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         .map(|read| read.reply)
     }
 
+    /// Read the original ordered Conversation list through the read-only component.
+    pub async fn list_legacy_conversations(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.lookup_legacy_conversation(
+            pack,
+            root,
+            profile_id,
+            LegacyConversationLookup::List,
+            None,
+        )
+        .await
+        .map(|read| read.reply)
+    }
+
     /// Take one fresh owner snapshot for trusted linked context inspection.
     /// The caller must authorize child and parent reads before exposing their data.
     pub async fn get_legacy_linked_conversation_context(
@@ -1028,6 +1047,11 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         }
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let result = match lookup {
+            LegacyConversationLookup::List => {
+                store
+                    .list_legacy_conversations(pack, profile_id, document)
+                    .await
+            }
             LegacyConversationLookup::Conversation(id) => {
                 store
                     .get_legacy_conversation(pack, profile_id, document, id)

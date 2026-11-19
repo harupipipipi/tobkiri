@@ -47,6 +47,12 @@
       "wit": "wit/pack.wit"
     },
     {
+      "name": "local.saved-conversation.legacy-list",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
       "name": "local.saved-conversation.data",
       "version": "1.0",
       "kind": "data",
@@ -82,6 +88,11 @@
       },
       {
         "shape": "local.saved-conversation.legacy-append",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.saved-conversation.legacy-list",
         "version": "1.0",
         "optional": false
       }
@@ -125,6 +136,7 @@
     "wit/legacy-append.shape.json",
     "wit/legacy-confirmation.shape.json",
     "wit/legacy-linked-context.shape.json",
+    "wit/legacy-list.shape.json",
     "wit/legacy-read.shape.json",
     "wit/legacy-receipt.shape.json",
     "wit/model.shape.json",

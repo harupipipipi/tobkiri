@@ -1830,6 +1830,130 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
     approval.reset_approval_state_for_tests()
 
 
+def test_conversation_list_http_borrows_only_the_live_shell_owner_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from ecosystem.defaultspack.defaultspack.conversation_list_presentation import (
+        CONVERSATION_LIST_TARGET,
+        present_conversation_list,
+    )
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.admission import (
+        DurableResourceLedger, ResourceAmount, ResourceReservation,
+    )
+    from tobkiri_host.errors import ResourceExhaustedError
+
+    mode = "native"
+    borrows: list[ipc.NativeConversationListRequest] = []
+    envelopes: list[RequestEnvelope] = []
+    original_reads: list[Path] = []
+    store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+    original_read_text = Path.read_text
+    original_reserve = DurableResourceLedger.reserve
+
+    def observe_original_read(path: Path, *args: object, **kwargs: object) -> str:
+        if path == store.path:
+            original_reads.append(path)
+        return original_read_text(path, *args, **kwargs)
+
+    def reserve(
+        ledger: DurableResourceLedger, profile_id: str, amount: ResourceAmount,
+        *, detached: bool = False,
+    ) -> ResourceReservation:
+        if (
+            mode == "unfunded"
+            and amount.memory_bytes >= ipc.CONVERSATION_GET_MINIMUM_MEMORY
+        ):
+            raise ResourceExhaustedError("fixture Profile capacity")
+        return original_reserve(ledger, profile_id, amount, detached=detached)
+
+    def read(request: ipc.NativeConversationListRequest) -> Mapping[str, object]:
+        request.assert_current()
+        assert type(request) is ipc.NativeConversationListRequest
+        envelope = envelopes[-1]
+        assert request.context is envelope.context
+        assert dict(envelope.payload) == {
+            "profile_id": store.profile_id, "operation": "list",
+        }
+        assert request.deadline_monotonic == envelope.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert envelope.resource_reservation_id is not None
+        borrows.append(request)
+        if mode == "inapplicable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if mode == "legacy-read-required":
+            raise ipc.NativeProviderRegistryRequiresLegacyRead()
+        if mode == "denied":
+            raise ipc.NativeConversationGetFailure("denied")
+        return snapshot
+
+    _publish_native_runtime_fixture(monkeypatch)
+    read.supports_list = True
+    monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: read)
+    monkeypatch.setattr(DurableResourceLedger, "reserve", reserve)
+
+    _, contract_id, operation_id, *_ = CONVERSATION_LIST_TARGET
+    route = _contract("GET", "/api/chat/conversations")
+    servers = _captured_production_server(tmp_path, monkeypatch)
+    server, session, _authority = next(servers)
+    try:
+        original_dispatch = session.broker._dispatch
+
+        def observe_broker(backend, envelope, *args, **kwargs):
+            if (envelope.contract_id, envelope.operation_id) == (
+                contract_id, operation_id,
+            ):
+                envelopes.append(envelope)
+            return original_dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_broker)
+        store.create({"id": "second", "model_reference": "demo"}, expected_revision=0)
+        store.create({"id": "first", "metadata": {"custom": 0.25}}, expected_revision=1)
+        before = store.path.read_bytes()
+        snapshot = store.snapshot()
+        expected = present_conversation_list(snapshot)
+        monkeypatch.setattr(Path, "read_text", observe_original_read)
+
+        status, _, _ = _request(server, "GET", route)
+        assert status == 401
+        assert not envelopes and not borrows and not original_reads
+
+        cookie, _csrf, _origin = _authenticate(server)
+        for mode in (
+            "native", "inapplicable", "legacy-read-required", "unfunded", "denied",
+        ):
+            status, payload, _ = _request(
+                server, "GET", route,
+                headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+            )
+            if mode == "denied":
+                assert status >= 400 and payload["success"] is False
+            else:
+                assert status == 200 and payload["data"] == expected, (mode, payload)
+            if mode == "native":
+                assert len(borrows) == 1 and not original_reads
+
+        assert len(borrows) == 4
+        assert original_reads == [store.path] * 3
+
+        # A live Shell principal can still read the original owner through
+        # Broker. Outside its captured HTTP request that read stays in Python.
+        context = replace(borrows[0].context, request_id=f"request.{uuid.uuid4().hex}")
+        frame = InvocationFrame(
+            contract_id=contract_id, version_range=None, operation_id=operation_id,
+            payload=envelopes[0].payload,
+        )
+        scope = session.effect_scope_for(
+            contract_id, operation_id, frame.payload, context,
+        )
+        assert session.broker.invoke(frame, context, effect_scope=scope) == snapshot
+        assert len(borrows) == 4 and original_reads == [store.path] * 4
+        assert store.path.read_bytes() == before
+    finally:
+        servers.close()
+
+
 @pytest.mark.parametrize(
     "completion",
     [

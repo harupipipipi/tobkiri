@@ -99,6 +99,7 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) conversation_complete_manifest: Option<String>,
     pub(crate) conversation_side_chat_append: bool,
     pub(crate) linked_conversation_read: bool,
+    pub(crate) conversation_list: bool,
     pub(crate) side_chat_saved_turn_start: bool,
 }
 
@@ -235,6 +236,7 @@ impl RoleArguments {
             }),
             linked_conversation_read: proof
                 .is_some_and(|proof| proof.permits_linked_conversation_context()),
+            conversation_list: proof.is_some_and(|proof| proof.permits_conversation_list()),
             side_chat_saved_turn_start: proof.is_some_and(|proof| {
                 proof.permits_turn_start_for(
                     crate::native_harness_bootstrap::SavedTurnStartCaller::SideChat,
@@ -4595,14 +4597,18 @@ mod tests {
         );
         let orchestration =
             VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
-        let linked =
-            VerifiedRegistryLaunch::test_linked_conversation_context_proof(identity, "catalog");
-        for (proof, expected_append, expected_linked_read) in [
-            (None, false, false),
-            (Some(&saved_turn), false, false),
-            (Some(&side_chat), true, false),
-            (Some(&orchestration), false, false),
-            (Some(&linked), false, true),
+        let linked = VerifiedRegistryLaunch::test_linked_conversation_context_proof(
+            identity.clone(),
+            "catalog",
+        );
+        let list = VerifiedRegistryLaunch::test_conversation_list_proof(identity, "catalog");
+        for (proof, expected_append, expected_linked_read, expected_list) in [
+            (None, false, false, false),
+            (Some(&saved_turn), false, false, false),
+            (Some(&side_chat), true, false, false),
+            (Some(&orchestration), false, false, false),
+            (Some(&linked), false, true, false),
+            (Some(&list), false, false, true),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
@@ -4610,6 +4616,7 @@ mod tests {
                 .split_native_registry_environment();
             assert_eq!(environment.conversation_side_chat_append, expected_append);
             assert_eq!(environment.linked_conversation_read, expected_linked_read);
+            assert_eq!(environment.conversation_list, expected_list);
         }
     }
 

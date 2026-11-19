@@ -312,6 +312,7 @@ struct LiveConversationFixture<'a> {
 #[cfg(unix)]
 enum OriginalConversationLookup {
     Conversation,
+    List,
     SavedReceipt,
 }
 
@@ -393,6 +394,12 @@ impl<'a> LiveConversationFixture<'a> {
                     tobkiri_wasm::verify_legacy_conversation_read_declaration(&pack)?;
                     inspection
                         .get_legacy_conversation(&pack, &self.data, profile_id, id)
+                        .await?
+                }
+                OriginalConversationLookup::List => {
+                    tobkiri_wasm::verify_legacy_conversation_list_declaration(&pack)?;
+                    inspection
+                        .list_legacy_conversations(&pack, &self.data, profile_id)
                         .await?
                 }
                 OriginalConversationLookup::SavedReceipt => {
@@ -654,6 +661,48 @@ async fn original_saved_linked_context_reads_the_physical_owner() -> Result<()> 
     );
     ensure!(fs::symlink_metadata(&file)?.is_symlink());
     ensure!(fs::read(&original)? == bytes);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires the staged Conversation Registry Pack archive"]
+async fn original_saved_list_matches_python_without_writing_the_physical_owner() -> Result<()> {
+    const DOCUMENT: &str = include_str!(
+        "../../../../packs/local.saved-conversation-rust/fixtures/legacy-list-document.json"
+    );
+    const PYTHON_REPLY: &str = include_str!(
+        "../../../../packs/local.saved-conversation-rust/fixtures/legacy-list-owner-result.json"
+    );
+    let root = physical_temp()?;
+    let data = root.path().join("owner");
+    let store = DataRoot::open(&data)?;
+    let profile = ProfileId::parse("profile-1")?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(root.path().join("core")),
+        Arc::new(Host::default()),
+    )?);
+    let fixture = LiveConversationFixture {
+        core: &core,
+        root: root.path(),
+        data,
+        pin: registry::pack(SAVED_PACK)?.pin,
+        profile: &profile,
+    };
+    let list = || fixture.lookup("", OriginalConversationLookup::List);
+    ensure!(
+        list().await?
+            == concat!(
+                r#"{"version":"rumi.conversation-store.v1","profile_id":"profile-1","#,
+                r#""revision":0,"conversations":[],"migration":null}"#
+            )
+    );
+    ensure!(!fixture.data.join("packs").exists());
+
+    let relative = fixture.relative_path();
+    store.write_atomic(&relative, DOCUMENT.as_bytes())?;
+    ensure!(list().await? == PYTHON_REPLY.trim_end());
+    ensure!(fs::read(fixture.data.join(&relative))? == DOCUMENT.as_bytes());
     Ok(())
 }
 

@@ -5882,6 +5882,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ゲストが未準備の配布物での起動と、PackVMを含まない配布物での起動は別の検証になる。
   `spawn_defaultspack_local_server` 付近の古いpack-shell表記も、実際の永続プロセス所有と
   揃える。配布ファイルの削除前にPythonの依存を外した同じLauncherの起動を確認する。
+- 現在の通常配布の `release.yml` は `native-first-setup` を有効にしない。起動に必要な
+  `conversation.turn.v1/complete` と `defaultspack.presentation.read` をWasmに接続する証明は、
+  `desktop-installers.yml` のnative Setup付きCIビルドで供給している。配布物からVMを除く前に、
+  同じ証明と署名の照合を通常リリースで使えるようにし、Setupが読む認証済みDoctorの応答を維持する。
+  Python Sandbox、MCP Gateway、DeepThink、メディア検査の既存PackにもVM経路が残る。
 
 ## 050: Side Chatのターン開始と実行権の取得
 
@@ -6121,6 +6126,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Cranelift `OptLevel::None` で起動とコンパイルの中央値は各7〜18ms短縮したが、全9件で
   コードイメージが大きくなった。フルターンの実行時間やゲストの消費量は未計測のため、
   この比較ではコンパイラの設定を変更していない。
+- 通常の会話一覧も `local.saved-conversation.legacy-list@1.0` を通せるようにした。元のShellの
+  署名済み読み取り権限、認証済みHTTP、実行中のBroker Leaseと容量予約に結び付け、Coreが
+  既存のProfileファイルを一度読む。ゲストは従来の保存キー順、会話とメッセージの正規化、
+  migration情報とPythonの数値精度を維持する。新しいポートがある署名済みアーカイブにだけ
+  IPCレベル3を通知する。親子の再照合も有効な場合は `3`、一覧だけを追加する場合は `3-list-only`。
+  Packの45件、strict Clippy、WASI2リリースビルドと実CLIでのPack検証が通過した。実Wasmを
+  使うmacOSの5件では、会話一覧をPython応答とバイト単位で照合し、元ファイルに書き込まないことと
+  読み取り・追記・確定の互換を確認した。IPCの763件と署名済みProfileのHTTP 2件も通過した。
+  HTTP試験ではLauncherへの呼び出しを差し替え、認証済み一覧と既存の保存ターンを照合した。
+  元のPython `ConversationStore.snapshot()` を除くには、その他の呼び出し元とサイズ上限を超える
+  既存の会話ファイルを扱う経路も置換する。表示側の検証と旧アーカイブとの互換性を保つ。
 
 ## 056 既存Provider Registryの読み取りと設定画面の投影を移植
 
