@@ -9,7 +9,7 @@ import re
 import threading
 import time
 import uuid
-from contextlib import ExitStack
+from contextlib import AbstractContextManager, ExitStack, nullcontext
 from dataclasses import dataclass
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -72,6 +72,11 @@ from .host_contract import (
     capture_host_contract,
     capture_host_contract_from_file,
     validate_host_contract,
+)
+from .model_settings_native_v4 import (
+    ModelSettingsHTTPScope,
+    bind_model_settings_http_scope,
+    is_model_settings_read,
 )
 from .panel_auth import PanelAuthBinding, PanelAuthManager, get_panel_auth_manager
 from .pack_control_v4 import RuntimeSurfaceFactory
@@ -1693,11 +1698,28 @@ class PackAPIHandler(
                 return True
         try:
             session.assert_current()
-            result = session.invoke(
-                target.contract_id,
-                target.operation_id,
-                payload,
-            )
+            model_settings_scope: AbstractContextManager[None] = nullcontext()
+            if is_model_settings_read(route_binding):
+                instance = self._current_native_provider_prepare_instance()
+
+                def check_model_settings_capture() -> None:
+                    if (
+                        instance is None
+                        or self._current_native_provider_prepare_instance() != instance
+                    ):
+                        raise PermissionError("Model Settings HTTP capture changed")
+
+                model_settings_scope = bind_model_settings_http_scope(
+                    ModelSettingsHTTPScope(
+                        session_id, session, instance, check_model_settings_capture,
+                    ),
+                )
+            with model_settings_scope:
+                result = session.invoke(
+                    target.contract_id,
+                    target.operation_id,
+                    payload,
+                )
             if result.get("code") == HTTPRuntimeErrorCode.SAVED_TURN_NOT_STARTED.value:
                 # No-start proof is emitted only from the owner exception
                 # path. A provider-controlled result cannot mint this proof.

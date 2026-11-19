@@ -3667,6 +3667,184 @@ def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
     assert payload["data"]["code"] == "invalid_contract_payload"
 
 
+def test_model_settings_native_read_preserves_signed_http_and_legacy_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the signed direct GET lends its live lease to the Model read port."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.model_settings_native_v4 import MINIMUM_MEMORY
+    from core_runtime.provider_prepare_native_v4 import (
+        NativeProviderRegistryRequiresLegacyRead,
+    )
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.admission import (
+        DurableResourceLedger, ResourceAmount, ResourceReservation,
+    )
+    from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.errors import ResourceExhaustedError
+
+    root = tmp_path / "user-data"
+    registry = ModelRegistry("defaults", user_data_root=root)
+    mode = "native"
+    native_reads: list[ipc.NativeModelSettingsRequest] = []
+    legacy_reads: list[str] = []
+    admitted_amounts: list[int] = []
+    read_text = Path.read_text
+    reserve = DurableResourceLedger.reserve
+
+    def observe_legacy_document(path: Path, *args, **kwargs) -> str:
+        # The sealed owner can load its class under a different module name.
+        # Observe the original file read instead of one imported class copy.
+        if path == registry.path:
+            legacy_reads.append(registry.profile_id)
+        return read_text(path, *args, **kwargs)
+
+    def reserve_model_read(
+        ledger: DurableResourceLedger, profile_id: str, amount: ResourceAmount,
+        *, detached: bool = False,
+    ) -> ResourceReservation:
+        admitted_amounts.append(amount.memory_bytes)
+        if mode == "unfunded" and amount.memory_bytes >= MINIMUM_MEMORY:
+            raise ResourceExhaustedError("test Profile capacity")
+        return reserve(ledger, profile_id, amount, detached=detached)
+
+    def native_read(request: ipc.NativeModelSettingsRequest) -> Mapping[str, object]:
+        request.assert_current()
+        native_reads.append(request)
+        assert request.context.profile_id == "defaults"
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic > time.monotonic()
+        assert max(admitted_amounts) >= MINIMUM_MEMORY
+        if mode == "inapplicable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if mode == "legacy-read-required":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode == "unconfirmed":
+            raise RuntimeError("physical completion unconfirmed")
+        document = json.loads(registry.path.read_bytes())
+        saved = document["profiles"]["daily"]
+        row = {
+            "profile_id": saved["model_profile_id"],
+            "model_id": saved["model_id"],
+            "display_name": saved["display_name"],
+            "max_output_tokens": saved["parameters"]["max_tokens"],
+            "provider_id": saved["metadata"]["provider_connection_id"],
+            "route_configured": True,
+        }
+        if mode == "invalid":
+            row["credential_handle"] = "must-not-be-public"
+        if mode == "stale":
+            with server._lifecycle_lock:
+                server._native_provider_prepare_instance = "0" * 32
+            raise NativeProviderRegistryRequiresLegacyRead()
+        return {
+            "profiles": [row], "count": 1, "registry_revision": document["revision"],
+        }
+
+    monkeypatch.setattr(Path, "read_text", observe_legacy_document)
+    monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_model_read)
+    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
+    monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_model_settings_reader", lambda: native_read,
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as (server, session, _authority):
+        observed: list[RequestEnvelope] = []
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            observed.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        get_route = _contract("GET", "/api/ai/profiles")
+        status, result, _ = _request(server, "GET", get_route)
+        assert status == 401, result
+        assert not native_reads and not legacy_reads
+
+        ProviderRegistry("defaults", user_data_root=root).save({
+            "provider_instance_id": "provider.fixture",
+            "adapter_id": "openai-compatible",
+            "endpoint": "https://provider.example/v1",
+        }, expected_revision=0)
+        cookie, csrf, origin = _authenticate(server)
+        status, result, _ = _request(
+            server, "POST", _contract("POST", "/api/ai/profiles"),
+            body={
+                "model_profile_id": "daily",
+                "model_id": "test-model",
+                "provider_instance_id": "provider.fixture",
+                "display_name": "Daily",
+                "expected_revision": 0,
+                "provider_registry_revision": 1,
+                "max_output_tokens": 2048,
+            },
+            headers={
+                "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        assert status == 200, result
+        assert not native_reads
+        expected = result["data"]
+        assert expected["profiles"][0]["max_output_tokens"] == 2048
+        assert expected["registry_revision"] == 1
+        before = registry.path.read_bytes()
+
+        def get(
+            path: str, request_id: str | None = None,
+        ) -> tuple[int, dict[str, object]]:
+            status, result, _ = _request(
+                server, "GET", path,
+                headers={
+                    "Cookie": cookie,
+                    "X-Tobkiri-Request-ID": request_id or str(uuid.uuid4()),
+                },
+            )
+            return status, result
+
+        request_id = str(uuid.uuid4())
+        observed.clear()
+        legacy_reads.clear()
+        admitted_amounts.clear()
+        status, result = get(get_route, request_id)
+        assert status == 200 and result["data"] == expected, result
+        assert len(native_reads) == len(observed) == 1 and legacy_reads == []
+        assert observed[0].resource_reservation_id is not None
+        assert observed[0].payload == {"profile_id": "defaults", "operation": "list"}
+        assert native_reads[0].context == observed[0].context
+        assert native_reads[0].deadline_monotonic == observed[0].deadline_monotonic
+        status, result = get(get_route, request_id)
+        assert status == 409, result
+
+        status, result = get(_contract("GET", "/api/ui/settings"))
+        assert status == 200, result
+        assert len(native_reads) == 1 and legacy_reads == ["defaults"]
+
+        for mode in ("inapplicable", "legacy-read-required", "unfunded"):
+            legacy_reads.clear()
+            previous_native = len(native_reads)
+            status, result = get(get_route)
+            assert status == 200 and result["data"] == expected, (mode, result)
+            assert len(native_reads) == previous_native + (mode != "unfunded")
+            assert legacy_reads == ["defaults"]
+
+        instance = server._native_provider_prepare_instance
+        for mode in ("invalid", "unconfirmed", "stale"):
+            legacy_reads.clear()
+            status, result = get(get_route)
+            assert status >= 400 and legacy_reads == [], (mode, result)
+            assert "must-not-be-public" not in str(result)
+        with server._lifecycle_lock:
+            server._native_provider_prepare_instance = instance
+        assert registry.path.read_bytes() == before
+
+
 @pytest.mark.parametrize("provider_in_requirements", [False, True])
 def test_model_profile_save_http_rejects_authority_and_stale_revision(
     production_server,
@@ -4991,6 +5169,11 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
     planner = NativeProviderPreparePlanner(MINIMUM_PREPARE_MEMORY, plan)
     if launcher_mode is not None:
         monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/provider.sock")
+        monkeypatch.setattr(
+            native_provider_prepare_ipc,
+            "capture_launcher_model_settings_reader",
+            lambda: None,
+        )
         monkeypatch.setattr(
             native_provider_prepare_ipc, "capture_launcher_provider_prepare_planner", lambda: planner,
         )

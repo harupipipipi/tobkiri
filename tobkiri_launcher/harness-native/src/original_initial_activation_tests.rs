@@ -236,6 +236,32 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
                 prepare.provider().operation_id(),
                 "rumi_provider_registry_pack.provider-configure-prepare"
             );
+            let models = crate::OriginalModelSettingsSelection::select(&observed, budget)
+                .expect("authenticate the selected Model List binding")
+                .expect("confirmed Profile selects the bundled Model List");
+            let model_list = models.model_list();
+            assert_eq!(model_list.caller_function_id(), "shell.tauri.default");
+            assert_eq!(model_list.pack_id(), "rumi_model_registry_pack");
+            assert_eq!(
+                model_list.function_id(),
+                "rumi_model_registry_pack.model-registry.profile"
+            );
+            assert_eq!(
+                model_list.contract_id(),
+                "tobkiri.resource.ai.model.profile.v1"
+            );
+            assert_eq!(
+                model_list.operation_id(),
+                "rumi_model_registry_pack.model-profile-resource"
+            );
+            assert_eq!(
+                model_list.variant_id(),
+                "rumi_model_registry_pack.model-registry.profile.python"
+            );
+            assert_eq!(
+                model_list.requested_scope_digest(),
+                "sha256:64fa11ae6949412f39039e7069da0a614e78401c55071be40755f2920b28932e"
+            );
             assert_eq!(
                 observed
                     .identity()

@@ -373,9 +373,7 @@ mod unix {
         expected_sha256: &str,
         checkpoint: impl FnMut() -> io::Result<()>,
     ) -> io::Result<()> {
-        verify_installed_with_provider(app_root, expected_sha256, checkpoint, |_, input| {
-            io::copy(input, &mut io::sink()).map(|_| ())
-        })
+        verify_installed_with_provider(app_root, expected_sha256, checkpoint, discard_archive)
     }
 
     /// Inspect the exact Provider archive stream and publish its result only
@@ -383,21 +381,59 @@ mod unix {
     pub(crate) fn verify_installed_with_provider<T>(
         app_root: &Path,
         expected_sha256: &str,
-        mut checkpoint: impl FnMut() -> io::Result<()>,
+        checkpoint: impl FnMut() -> io::Result<()>,
         inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<T>,
     ) -> io::Result<T> {
+        let (provider, ()) = verify_installed_with_provider_and_model(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            inspect_provider,
+            discard_archive,
+        )?;
+        Ok(provider)
+    }
+
+    /// Inspect the exact Model archive stream and publish its result only
+    /// after all installed archives have matched their receipt entries.
+    pub(crate) fn verify_installed_with_model<T>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<T>,
+    ) -> io::Result<T> {
+        let ((), model) = verify_installed_with_provider_and_model(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            discard_archive,
+            inspect_model,
+        )?;
+        Ok(model)
+    }
+
+    /// Inspect the Provider and Model archives in a single pass over the
+    /// installed packs and return both results only after every digest matches.
+    pub(crate) fn verify_installed_with_provider_and_model<P, M>(
+        app_root: &Path,
+        expected_sha256: &str,
+        mut checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
+        inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
+    ) -> io::Result<(P, M)> {
         checkpoint()?;
         let app = open_directory(app_root)?;
         let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
         let directory = open_child_directory(&app, &name)?;
         let (receipt, _) = read_verified_receipt(&directory, expected_sha256, &mut checkpoint)?;
         let [provider, model, conversation] = &receipt.packs;
-        let result = inspect_archive(&directory, provider, &mut checkpoint, inspect_provider)?;
-        for pack in [model, conversation] {
-            inspect_archive(&directory, pack, &mut checkpoint, |_, input| {
-                io::copy(input, &mut io::sink()).map(|_| ())
-            })?;
-        }
-        Ok(result)
+        let provider = inspect_archive(&directory, provider, &mut checkpoint, inspect_provider)?;
+        let model = inspect_archive(&directory, model, &mut checkpoint, inspect_model)?;
+        inspect_archive(&directory, conversation, &mut checkpoint, discard_archive)?;
+        Ok((provider, model))
+    }
+
+    fn discard_archive(_: &Pack, input: &mut dyn Read) -> io::Result<()> {
+        io::copy(input, &mut io::sink()).map(|_| ())
     }
 }

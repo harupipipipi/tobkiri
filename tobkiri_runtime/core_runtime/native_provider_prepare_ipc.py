@@ -1,4 +1,4 @@
-"""Launcher-private IPC for the original Host's keyless Provider preparation."""
+"""Launcher-private IPC for the original Host's local Registry operations."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from core_runtime.provider_prepare_native_v4 import (
     NativeProviderPreparePlanner,
     NativeProviderRegistryRequiresLegacyRead,
 )
+from tobkiri_host.models import RequestContext
 from tobkiri_protocol.canonical import strict_loads
 
 
@@ -37,13 +38,13 @@ _START, _CHECK, _LIVE = 1, 2, 3
 _PLAN, _FAILURE, _CANCEL = 7, 8, 9
 _INAPPLICABLE = 10
 _JSON_LIMIT = 16 * 1024
+_MODEL_SETTINGS_RESULT_LIMIT = 1024 * 1024
 _FAILURES = frozenset({
     b"denied", b"approval-required", b"cancelled", b"not-found", b"invalid",
     b"limit-exceeded", b"conflict", b"unavailable", b"internal", b"legacy-read-required",
 })
 _INBOUND_LIMITS = {
     _CHECK: 0,
-    _PLAN: _JSON_LIMIT,
     _FAILURE: max(map(len, _FAILURES)),
     _INAPPLICABLE: 0,
 }
@@ -59,6 +60,16 @@ class NativeProviderPrepareUnavailable(RuntimeError):
 
 class _ProtocolError(RuntimeError):
     """A fixed transport or protocol failure without peer-supplied details."""
+
+
+@dataclass(frozen=True)
+class NativeModelSettingsRequest:
+    """Borrow the original settings request's capture and live guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
 
 
 @dataclass(frozen=True)
@@ -105,8 +116,7 @@ def _authenticate(connection: socket.socket, launcher: _Launcher) -> None:
     launcher.assert_start()
 
 
-def capture_launcher_provider_prepare_planner() -> NativeProviderPreparePlanner | None:
-    """Capture the managed Launcher's fixed endpoint when the Host is composed."""
+def _capture_launcher() -> _Launcher | None:
     if sys.platform != "darwin":
         return None
     address_env = os.environ.get(_SOCKET_ENV)
@@ -125,15 +135,34 @@ def capture_launcher_provider_prepare_planner() -> NativeProviderPreparePlanner 
     pid, seconds, microseconds = map(int, owner.groups())
     if not (1 < pid <= (1 << 31) - 1 and 0 < seconds <= _U64_MAX):
         raise _ProtocolError("native Provider preparation launch binding is invalid")
-    launcher = _Launcher(address, pid, f"darwin:{pid}:{seconds}:{microseconds:06d}")
-    plan = partial(_plan, launcher)
-    return NativeProviderPreparePlanner(MINIMUM_PREPARE_MEMORY, plan)
+    return _Launcher(address, pid, f"darwin:{pid}:{seconds}:{microseconds:06d}")
 
 
-def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> bytes:
+def capture_launcher_provider_prepare_planner() -> NativeProviderPreparePlanner | None:
+    """Capture the managed Launcher's fixed endpoint when the Host is composed."""
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return NativeProviderPreparePlanner(
+        MINIMUM_PREPARE_MEMORY, partial(_invoke, launcher, model_settings=False),
+    )
+
+
+def capture_launcher_model_settings_reader() -> (
+    Callable[[NativeModelSettingsRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's fixed endpoint for model settings reads."""
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, model_settings=True)
+
+
+def _start_payload(
+    borrow: NativeProviderPrepareBorrow | NativeModelSettingsRequest, deadline_ns: int,
+) -> bytes:
     context = borrow.context
     runtime_instance = borrow.runtime_instance
-    request = borrow.request
     if (
         not isinstance(runtime_instance, str)
         or _INSTANCE.fullmatch(runtime_instance) is None
@@ -141,7 +170,7 @@ def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> byt
         or not 0 < context.security_epoch <= _U64_MAX
     ):
         raise _ProtocolError("native Provider preparation binding is invalid")
-    frame = {
+    frame: dict[str, Any] = {
         "identity": {
             "profile_id": context.profile_id,
             "profile_revision": context.profile_revision,
@@ -151,17 +180,21 @@ def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> byt
         "security_epoch": context.security_epoch,
         "runtime_instance": runtime_instance,
         "deadline_ns": deadline_ns,
-        "request": {
+    }
+    if isinstance(borrow, NativeModelSettingsRequest):
+        frame["model_list"] = {}
+    else:
+        request = borrow.request
+        frame["request"] = {
             "connection-name": request["connection_name"],
             "endpoint": request["endpoint"],
             "catalog-provider-id": request.get("catalog_provider_id"),
             "display-name": request.get("display_name"),
             "capabilities": request.get("capabilities"),
-        },
-    }
-    frozen_plan = borrow.frozen_plan
-    if frozen_plan is not None:
-        frame["apply"] = dict(frozen_plan)
+        }
+        frozen_plan = borrow.frozen_plan
+        if frozen_plan is not None:
+            frame["apply"] = dict(frozen_plan)
     payload = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
     try:
         encoded = payload.encode("utf-8")
@@ -172,9 +205,9 @@ def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> byt
     return encoded
 
 
-def _decode_plan(payload: bytes) -> dict[str, Any]:
+def _decode_plan(payload: bytes, limit: int) -> dict[str, Any]:
     try:
-        plan = strict_loads(payload, max_bytes=_JSON_LIMIT)
+        plan = strict_loads(payload, max_bytes=limit)
     except (ValueError, RecursionError):
         raise _ProtocolError("native Provider preparation plan is invalid") from None
     if not isinstance(plan, dict):
@@ -183,8 +216,9 @@ def _decode_plan(payload: bytes) -> dict[str, Any]:
 
 
 class _Exchange:
-    def __init__(self, connection: socket.socket) -> None:
+    def __init__(self, connection: socket.socket, plan_limit: int) -> None:
         self.connection = connection
+        self.plan_limit = plan_limit
         self.received = bytearray()
         self.partial_write = False
         self.started = False
@@ -219,7 +253,7 @@ class _Exchange:
     def receive(self, wait_seconds: Callable[[], float]) -> tuple[int, bytes]:
         self._receive_until(_FRAME.size, wait_seconds)
         tag, size = _FRAME.unpack_from(self.received)
-        limit = _INBOUND_LIMITS.get(tag)
+        limit = self.plan_limit if tag == _PLAN else _INBOUND_LIMITS.get(tag)
         if limit is None or size > limit:
             raise _ProtocolError("native Provider preparation frame is invalid")
         self._receive_until(_FRAME.size + size, wait_seconds)
@@ -259,7 +293,7 @@ class _Exchange:
 
     def run(
         self,
-        borrow: NativeProviderPrepareBorrow,
+        borrow: NativeProviderPrepareBorrow | NativeModelSettingsRequest,
         deadline_ns: int,
         wait_seconds: Callable[[], float],
     ) -> dict[str, Any]:
@@ -283,7 +317,7 @@ class _Exchange:
                 self.send(_LIVE, b"", wait_seconds)
                 entered_live_phase = True
             elif tag == _PLAN and entered_live_phase:
-                plan = _decode_plan(payload)
+                plan = _decode_plan(payload, self.plan_limit)
                 wait_seconds()
                 self.terminal = True
                 return plan
@@ -294,9 +328,15 @@ class _Exchange:
                 raise _ProtocolError("native Provider frame is out of order")
 
 
-def _plan(
-    launcher: _Launcher, borrow: NativeProviderPrepareBorrow,
+def _invoke(
+    launcher: _Launcher,
+    borrow: NativeProviderPrepareBorrow | NativeModelSettingsRequest,
+    *,
+    model_settings: bool,
 ) -> Mapping[str, Any]:
+    if model_settings != isinstance(borrow, NativeModelSettingsRequest):
+        raise _ProtocolError("native Registry request role is invalid")
+
     numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
     deadline_ns = numerator * _NANOS_PER_SECOND // denominator
     if not 0 < deadline_ns <= _U64_MAX:
@@ -319,7 +359,8 @@ def _plan(
         except OSError:
             raise _ProtocolError(connection_error) from None
         _authenticate(connection, launcher)
-        exchange = _Exchange(connection)
+        plan_limit = _MODEL_SETTINGS_RESULT_LIMIT if model_settings else _JSON_LIMIT
+        exchange = _Exchange(connection, plan_limit)
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds)
         except Exception as error:

@@ -1,4 +1,4 @@
-//! Verify the old Provider prepare route against the accepted v4 Bundle.
+//! Verify legacy Registry routes against the accepted v4 Bundle.
 
 use super::super::{BundleEntryKind, VerifiedBundleLock, MAX_CANONICAL_JSON_BYTES};
 use super::NativeApplicationSources;
@@ -8,63 +8,91 @@ use tobkiri_core::{
     read_relative_with, AllocationBudget, AllocationError, CanonError, CoreBuffer, CoreValue,
     Digest,
 };
-use tobkiri_harness_native::{OriginalProviderPreparePin, OriginalProviderPrepareSelection};
+use tobkiri_harness_native::{
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+};
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
-/// This snapshot only carries the data needed to confirm the two legacy pins.
-pub(crate) struct LockedProviderPrepareBundle<'pin> {
+pub(crate) struct LockedRegistryBundle<'pin> {
     root: CoreBuffer,
-    coordinator: LockedProvider<'pin>,
-    provider: LockedProvider<'pin>,
+    provider_prepare: Option<[LockedRegistryRoute<'pin>; 2]>,
+    model_list: Option<LockedRegistryRoute<'pin>>,
     budget: Arc<dyn AllocationBudget>,
 }
 
 impl NativeApplicationSources {
     /// Capture Bundle-relative file identities from the original verified lock.
     /// File reads happen after the Core source borrow has ended.
-    pub(crate) fn provider_prepare_bundle<'pin>(
+    pub(crate) fn registry_bundle<'pin>(
         &self,
-        selection: &'pin OriginalProviderPrepareSelection<'_>,
+        provider: Option<&'pin OriginalProviderPrepareSelection<'_>>,
+        model: Option<&'pin OriginalModelSettingsSelection<'_>>,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedProviderPrepareBundle<'pin>> {
-        ensure!(
-            selection.coordinator().caller_function_id() == self.authority.shell_provider_id,
-            "old Provider prepare coordinator differs from the selected Shell"
-        );
-        Ok(LockedProviderPrepareBundle {
+    ) -> Result<LockedRegistryBundle<'pin>> {
+        let provider_prepare = provider
+            .map(|selection| {
+                ensure!(
+                    selection.coordinator().caller_function_id()
+                        == self.authority.shell_provider_id,
+                    "old Provider prepare coordinator differs from the selected Shell"
+                );
+                Ok::<_, anyhow::Error>([
+                    LockedRegistryRoute::from_lock(
+                        &self.bundle_lock,
+                        selection.coordinator(),
+                        budget,
+                    )?,
+                    LockedRegistryRoute::from_lock(
+                        &self.bundle_lock,
+                        selection.provider(),
+                        budget,
+                    )?,
+                ])
+            })
+            .transpose()?;
+        let model_list = model
+            .map(|selection| {
+                ensure!(
+                    selection.model_list().caller_function_id() == self.authority.shell_provider_id,
+                    "old Model list caller differs from the selected Shell"
+                );
+                LockedRegistryRoute::from_lock(&self.bundle_lock, selection.model_list(), budget)
+            })
+            .transpose()?;
+        Ok(LockedRegistryBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
-            coordinator: LockedProvider::from_lock(
-                &self.bundle_lock,
-                selection.coordinator(),
-                budget,
-            )?,
-            provider: LockedProvider::from_lock(&self.bundle_lock, selection.provider(), budget)?,
+            provider_prepare,
+            model_list,
             budget: Arc::clone(budget),
         })
     }
 }
 
-impl LockedProviderPrepareBundle<'_> {
+impl LockedRegistryBundle<'_> {
     /// Reread and confirm the locked Pack and executable catalog for each pin.
     pub(crate) fn verify(&self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<()> {
         let root = Path::new(OsStr::from_bytes(self.root.as_bytes()));
-        self.coordinator
-            .verify(root, &self.budget, &mut checkpoint)?;
-        self.provider.verify(root, &self.budget, &mut checkpoint)?;
+        if let Some([coordinator, provider]) = &self.provider_prepare {
+            coordinator.verify(root, &self.budget, &mut checkpoint)?;
+            provider.verify(root, &self.budget, &mut checkpoint)?;
+        }
+        if let Some(model_list) = &self.model_list {
+            model_list.verify(root, &self.budget, &mut checkpoint)?;
+        }
         checkpoint()
     }
 }
 
-struct LockedProvider<'pin> {
-    pin: &'pin OriginalProviderPreparePin,
+struct LockedRegistryRoute<'pin> {
+    pin: &'pin OriginalRoutePin,
     pack: LockedDocument,
     catalog: LockedDocument,
 }
 
-impl<'pin> LockedProvider<'pin> {
+impl<'pin> LockedRegistryRoute<'pin> {
     fn from_lock(
         lock: &VerifiedBundleLock,
-        pin: &'pin OriginalProviderPreparePin,
+        pin: &'pin OriginalRoutePin,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Self> {
         let pack_id = pin.pack_id();
@@ -72,11 +100,11 @@ impl<'pin> LockedProvider<'pin> {
             .pack_paths
             .get(pack_id)
             .filter(|path| lock.authority_roles.get(*path) == Some(&BundleEntryKind::Pack))
-            .context("old Provider Pack is absent from the accepted Bundle authority")?;
+            .context("legacy Registry Pack is absent from the accepted Bundle authority")?;
         let pack_digest = lock
             .authority_digests
             .get(path)
-            .context("old Provider Pack is missing its accepted Bundle digest")?;
+            .context("legacy Registry Pack is missing its accepted Bundle digest")?;
         let (catalog_path, catalog_digest) = lock
             .sidecar_digests
             .iter()
@@ -86,7 +114,7 @@ impl<'pin> LockedProvider<'pin> {
                     .and_then(|name| name.strip_suffix(".executables.v4.json"))
                     == Some(pack_id)
             })
-            .context("old Provider executable catalog is absent from the accepted Bundle")?;
+            .context("legacy Registry executable catalog is absent from the accepted Bundle")?;
         Ok(Self {
             pin,
             pack: LockedDocument::new(path, pack_digest, budget)?,
@@ -132,13 +160,13 @@ impl<'pin> LockedProvider<'pin> {
                     .as_ref()
                     .and_then(CoreValue::as_str)
                     == Some(pin.executable_catalog_digest()),
-            "old Provider Pack or canonical catalog identity differs from the selected pin"
+            "legacy Registry Pack or canonical catalog identity differs from the selected pin"
         );
         let sidecar = unique_row(pack, "artifacts", "path", "executables.v4.json")?;
         ensure!(
             text_matches(&sidecar, "kind", "sidecar")
                 && text_matches(&sidecar, "digest", self.catalog.digest.as_str()),
-            "old Provider Pack does not commit the selected locked catalog bytes"
+            "legacy Registry Pack does not commit the selected locked catalog bytes"
         );
 
         let function = unique_row(pack, "functions", "id", pin.function_id())?;
@@ -223,7 +251,7 @@ impl<'pin> LockedProvider<'pin> {
                         )
                     }) == Some(1)
                 }),
-            "old Provider Pack or variant does not match the selected function and operation"
+            "legacy Registry Pack or variant does not match the selected function and operation"
         );
         Ok(())
     }
@@ -267,7 +295,7 @@ impl LockedDocument {
                     }
                     Ok(())
                 })
-                .map_err(|_| CanonError::Limit("old Provider Bundle input"))?;
+                .map_err(|_| CanonError::Limit("legacy Registry Bundle input"))?;
                 Ok(bytes)
             },
         );

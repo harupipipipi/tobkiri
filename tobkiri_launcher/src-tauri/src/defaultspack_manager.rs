@@ -114,7 +114,7 @@ fn application_instance_matches(
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProviderPrepareListener {
-    proof: crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch,
+    proof: crate::native_harness_bootstrap::VerifiedRegistryLaunch,
     process: crate::shell_handoff::LauncherProcessIdentity,
     application: ApplicationInstanceKey,
     port: u16,
@@ -126,7 +126,7 @@ pub(crate) struct ProviderPrepareListener {
 impl ProviderPrepareListener {
     pub(crate) fn verified_source(
         &self,
-    ) -> &crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch {
+    ) -> &crate::native_harness_bootstrap::VerifiedRegistryLaunch {
         &self.proof
     }
 
@@ -147,7 +147,7 @@ impl ProviderPrepareListener {
     }
 
     pub(crate) fn observe(
-        proof: crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch,
+        proof: crate::native_harness_bootstrap::VerifiedRegistryLaunch,
         metadata: &DefaultspackDesktopMetadata,
         pid: u32,
     ) -> Option<Self> {
@@ -355,7 +355,7 @@ impl ApplicationProcessManager {
         let state = self.lock_state()?;
         anyhow::ensure!(
             self.provider_prepare_still_admitted(&state, candidate),
-            "the admitted Provider prepare source changed"
+            "the admitted Registry listener changed"
         );
         Ok(())
     }
@@ -375,7 +375,7 @@ impl ApplicationProcessManager {
                         && state.matches_provider_slot(candidate)
                         && candidate.process_is_current()
                 }),
-            "Provider preparation peer does not own the admitted listener"
+            "Registry operation peer does not own the admitted listener"
         );
         Ok(())
     }
@@ -2027,7 +2027,7 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
-    fn provider_prepare_evidence_is_bound_to_the_current_listener_and_generation() {
+    fn registry_evidence_binds_provider_to_the_current_listener_and_generation() {
         let identity = test_execution_identity(
             "profile-a",
             &"a".repeat(64),
@@ -2035,12 +2035,14 @@ mod tests {
             &"b".repeat(64),
         );
         let metadata = DefaultspackDesktopMetadata::test_metadata(identity.clone());
-        let proof = crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch::test_proof(
+        let proof = crate::native_harness_bootstrap::VerifiedRegistryLaunch::test_proof(
             identity,
             metadata.catalog_revision(),
         );
         let mut candidate = ProviderPrepareListener::observe(proof, &metadata, std::process::id())
             .expect("fixture must use the actual test process");
+        assert!(candidate.verified_source().provider_prepare.is_some());
+        assert!(candidate.verified_source().model_settings.is_none());
         let mut state = DefaultspackState {
             active_guardian_pid: Some(candidate.process.pid),
             active_run_id: Some("fixture".into()),
@@ -2071,6 +2073,54 @@ mod tests {
         assert!(state.matches_provider_listener(&candidate));
         candidate.application.artifact_digest = Some("sha256:other".into());
         assert!(!state.matches_provider_listener(&candidate));
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
+    fn registry_evidence_replaces_model_slot_when_the_epoch_changes() {
+        let identity = test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-test",
+            &"b".repeat(64),
+        );
+        let metadata = DefaultspackDesktopMetadata::test_metadata(identity.clone());
+        let mut proof = crate::native_harness_bootstrap::VerifiedRegistryLaunch::test_model_proof(
+            identity,
+            metadata.catalog_revision(),
+        );
+        let mut state = DefaultspackState {
+            active_guardian_pid: Some(std::process::id()),
+            active_run_id: Some("fixture".into()),
+            launch_metadata: Some(metadata.clone()),
+            ..DefaultspackState::default()
+        };
+        let observe = |proof, generation| {
+            let mut candidate =
+                ProviderPrepareListener::observe(proof, &metadata, std::process::id())
+                    .expect("fixture must use the actual test process");
+            candidate.generation = Some(generation);
+            Arc::new(candidate)
+        };
+        let old = observe(proof.clone(), state.provider_listener_generation);
+        state.provider_prepare = Some(Arc::clone(&old));
+        assert!(state.matches_provider_slot(&old));
+        assert!(old.verified_source().provider_prepare.is_none());
+        assert!(old.verified_source().model_settings.is_some());
+
+        proof.security_epoch += 1;
+        let replacement = observe(proof, state.provider_listener_generation);
+        state.provider_prepare = Some(Arc::clone(&replacement));
+        assert!(!state.matches_provider_slot(&old));
+        assert!(state.matches_provider_slot(&replacement));
+        assert_eq!(
+            replacement.verified_source().security_epoch,
+            old.verified_source().security_epoch + 1
+        );
+        assert!(replacement.verified_source().provider_prepare.is_none());
+        assert!(replacement.verified_source().model_settings.is_some());
+        state.retire_provider_prepare();
+        assert!(!state.matches_provider_slot(&replacement));
     }
 
     #[cfg(target_os = "linux")]

@@ -16,8 +16,8 @@ use tobkiri_core::{
 };
 use tobkiri_gate::{ControlKind, CoreCancellation};
 use tobkiri_harness_native::{
-    OriginalActivationInspection, OriginalActiveProfile, OriginalProviderPreparePin,
-    OriginalProviderPrepareSelection,
+    OriginalActivationInspection, OriginalActiveProfile, OriginalModelSettingsSelection,
+    OriginalProviderPrepareSelection, OriginalRoutePin,
 };
 
 use super::{
@@ -42,14 +42,30 @@ const REGISTRY_RECEIPT_SHA256: &str = env!("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256
 // when their fixed working set fits the real Launch job's control ledger.
 pub(super) const REGISTRY_VERIFICATION_BYTES: u64 = 256 * 1024;
 
-/// Detached launch evidence for the verified legacy route and its bundled Wasm Pack.
+/// Detached launch evidence for the verified legacy routes and their bundled Wasm Packs.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct VerifiedProviderPrepareLaunch {
+pub(crate) struct VerifiedRegistryLaunch {
     pub(crate) identity: ExecutionProfileIdentity,
     pub(crate) security_epoch: u64,
     pub(crate) catalog_revision: String,
-    pub(crate) coordinator: VerifiedLegacyProviderPreparePin,
-    pub(crate) provider: VerifiedLegacyProviderPreparePin,
+    pub(crate) provider_prepare: Option<VerifiedProviderPrepareSource>,
+    pub(crate) model_settings: Option<VerifiedModelSettingsSource>,
+}
+
+/// Signed legacy Provider route pins and the receipt identity of its Wasm Pack.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VerifiedProviderPrepareSource {
+    pub(crate) coordinator: VerifiedLegacyRoutePin,
+    pub(crate) provider: VerifiedLegacyRoutePin,
+    pub(crate) archive_sha256: String,
+    pub(crate) archive_bytes: u64,
+    pub(crate) manifest_sha256: String,
+}
+
+/// Signed legacy Model list pin and the receipt identity of its Wasm Pack.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VerifiedModelSettingsSource {
+    pub(crate) model_list: VerifiedLegacyRoutePin,
     pub(crate) archive_sha256: String,
     pub(crate) archive_bytes: u64,
     pub(crate) manifest_sha256: String,
@@ -57,7 +73,7 @@ pub(crate) struct VerifiedProviderPrepareLaunch {
 
 /// Exact legacy binding digests confirmed against the activation and signed Bundle.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct VerifiedLegacyProviderPreparePin {
+pub(crate) struct VerifiedLegacyRoutePin {
     pub(crate) artifact_digest: String,
     pub(crate) executable_catalog_digest: String,
     pub(crate) contract_revision_digest: String,
@@ -66,8 +82,8 @@ pub(crate) struct VerifiedLegacyProviderPreparePin {
     pub(crate) requested_scope_digest: String,
 }
 
-impl From<&OriginalProviderPreparePin> for VerifiedLegacyProviderPreparePin {
-    fn from(pin: &OriginalProviderPreparePin) -> Self {
+impl From<&OriginalRoutePin> for VerifiedLegacyRoutePin {
+    fn from(pin: &OriginalRoutePin) -> Self {
         Self {
             artifact_digest: pin.artifact_digest().to_owned(),
             executable_catalog_digest: pin.executable_catalog_digest().to_owned(),
@@ -80,25 +96,52 @@ impl From<&OriginalProviderPreparePin> for VerifiedLegacyProviderPreparePin {
 }
 
 #[cfg(test)]
-impl VerifiedProviderPrepareLaunch {
+impl VerifiedRegistryLaunch {
     pub(crate) fn test_proof(identity: ExecutionProfileIdentity, catalog_revision: &str) -> Self {
-        let pin = VerifiedLegacyProviderPreparePin {
+        Self {
+            identity,
+            security_epoch: 7,
+            catalog_revision: catalog_revision.to_owned(),
+            provider_prepare: Some(VerifiedProviderPrepareSource {
+                coordinator: VerifiedLegacyRoutePin::fixture(),
+                provider: VerifiedLegacyRoutePin::fixture(),
+                archive_sha256: "sha256:archive".into(),
+                archive_bytes: 512,
+                manifest_sha256: "sha256:manifest".into(),
+            }),
+            model_settings: None,
+        }
+    }
+
+    pub(crate) fn test_model_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        Self {
+            identity,
+            security_epoch: 7,
+            catalog_revision: catalog_revision.to_owned(),
+            provider_prepare: None,
+            model_settings: Some(VerifiedModelSettingsSource {
+                model_list: VerifiedLegacyRoutePin::fixture(),
+                archive_sha256: "sha256:archive".into(),
+                archive_bytes: 512,
+                manifest_sha256: "sha256:manifest".into(),
+            }),
+        }
+    }
+}
+
+#[cfg(test)]
+impl VerifiedLegacyRoutePin {
+    fn fixture() -> Self {
+        Self {
             artifact_digest: "sha256:artifact".into(),
             executable_catalog_digest: "sha256:catalog".into(),
             contract_revision_digest: "sha256:contract".into(),
             function_implementation_digest: "sha256:implementation".into(),
             authority_reference: "authority-ref:fixture".into(),
             requested_scope_digest: "sha256:scope".into(),
-        };
-        Self {
-            identity,
-            security_epoch: 7,
-            catalog_revision: catalog_revision.to_owned(),
-            coordinator: pin.clone(),
-            provider: pin,
-            archive_sha256: "sha256:archive".into(),
-            archive_bytes: 512,
-            manifest_sha256: "sha256:manifest".into(),
         }
     }
 }
@@ -242,7 +285,7 @@ impl LaunchActivationObserver<'_> {
     async fn read(
         &self,
         inspection: &NativeArtifactInspection<NativeApplicationSources>,
-    ) -> (Result<Option<VerifiedProviderPrepareLaunch>>, bool) {
+    ) -> (Result<Option<VerifiedRegistryLaunch>>, bool) {
         let Self {
             app,
             runtime,
@@ -315,7 +358,7 @@ impl LaunchActivationObserver<'_> {
         &self,
         inspection: &NativeArtifactInspection<NativeApplicationSources>,
         active: Option<&OriginalActiveProfile>,
-    ) -> Result<Option<VerifiedProviderPrepareLaunch>> {
+    ) -> Result<Option<VerifiedRegistryLaunch>> {
         let checkpoint = || {
             preparation_budget::check(self.deadline)?;
             self.job.ensure_accepting(&self.runtime.0.jobs)?;
@@ -328,117 +371,239 @@ impl LaunchActivationObserver<'_> {
             .invocation
             .control()
             .reserve(ControlKind::Frame, REGISTRY_VERIFICATION_BYTES)?;
-        let selection = active
+        let provider_selection = active
             .map(|active| OriginalProviderPrepareSelection::select(active, budget))
             .transpose()?
             .flatten();
-        let (app_root, locked_prepare) = inspection.with_source(|sources| {
-            if let Some(active) = active {
-                validate_observed_activation(
-                    active,
-                    self.identity,
-                    &sources.authority().catalog_revision,
-                )?;
-            }
-            let locked_prepare = active
-                .zip(selection.as_ref())
-                .map(|(active, selection)| {
+        let model_selection = active
+            .map(|active| OriginalModelSettingsSelection::select(active, budget))
+            .transpose()?
+            .flatten();
+        let (app_root, activation) = inspection.with_source(|sources| {
+            let catalog_revision = &sources.authority().catalog_revision;
+            let activation = active
+                .map(|active| {
+                    validate_observed_activation(active, self.identity, catalog_revision)?;
+                    if provider_selection.is_none() && model_selection.is_none() {
+                        return Ok(None);
+                    }
                     let security_epoch = active
                         .identity()
                         .get_key("security_epoch")
                         .and_then(|value| value.as_i64())
                         .and_then(|epoch| u64::try_from(epoch).ok())
                         .context("native Authority activation has an invalid security epoch")?;
-                    Ok::<_, anyhow::Error>((
-                        sources.provider_prepare_bundle(selection, budget)?,
-                        selection,
+                    Ok::<_, anyhow::Error>(Some((
+                        sources.registry_bundle(
+                            provider_selection.as_ref(),
+                            model_selection.as_ref(),
+                            budget,
+                        )?,
                         security_epoch,
-                        sources.authority().catalog_revision.clone(),
-                    ))
+                        catalog_revision.clone(),
+                    )))
                 })
-                .transpose()?;
+                .transpose()?
+                .flatten();
             Ok::<_, anyhow::Error>((
                 sources.root(NativeSourceRoot::Application).to_path_buf(),
-                locked_prepare,
+                activation,
             ))
         })??;
-        if let Some((locked_prepare, selection, security_epoch, catalog_revision)) = locked_prepare
-        {
-            locked_prepare.verify(checkpoint)?;
-            let proof = registry_pack_receipt::verify_installed_with_provider(
-                &app_root,
-                REGISTRY_RECEIPT_SHA256,
-                || checkpoint().map_err(io::Error::other),
-                |receipt, input| {
-                    verify_provider_prepare_archive(inspection, receipt, input)?;
-                    Ok(VerifiedProviderPrepareLaunch {
-                        identity: self.identity.clone(),
-                        security_epoch,
-                        catalog_revision,
-                        coordinator: selection.coordinator().into(),
-                        provider: selection.provider().into(),
-                        archive_sha256: receipt.archive_sha256().to_owned(),
-                        archive_bytes: receipt.archive_bytes(),
-                        manifest_sha256: receipt.manifest_sha256().to_owned(),
-                    })
-                },
-            )
-            .context("bundled Provider prepare archive verification failed during Launch")?;
-            log::info!("verified the selected old Provider prepare and its bundled Wasm replacement for this activation");
-            Ok(Some(proof))
-        } else {
+        let Some((locked, security_epoch, catalog_revision)) = activation else {
             registry_pack_receipt::verify_installed(&app_root, REGISTRY_RECEIPT_SHA256, || {
                 checkpoint().map_err(io::Error::other)
             })
             .context("bundled Registry Pack verification failed during Launch")?;
-            Ok(None)
+            return Ok(None);
+        };
+        locked.verify(checkpoint)?;
+        let (provider_prepare, model_settings) =
+            registry_pack_receipt::verify_installed_with_provider_and_model(
+                &app_root,
+                REGISTRY_RECEIPT_SHA256,
+                || checkpoint().map_err(io::Error::other),
+                |receipt, input| {
+                    provider_selection
+                        .as_ref()
+                        .map(|selection| {
+                            verify_provider_prepare_archive(inspection, receipt, input)?;
+                            Ok(VerifiedProviderPrepareSource {
+                                coordinator: selection.coordinator().into(),
+                                provider: selection.provider().into(),
+                                archive_sha256: receipt.archive_sha256().to_owned(),
+                                archive_bytes: receipt.archive_bytes(),
+                                manifest_sha256: receipt.manifest_sha256().to_owned(),
+                            })
+                        })
+                        .transpose()
+                },
+                |receipt, input| {
+                    model_selection
+                        .as_ref()
+                        .map(|selection| {
+                            verify_model_settings_archive(inspection, receipt, input)?;
+                            Ok(VerifiedModelSettingsSource {
+                                model_list: selection.model_list().into(),
+                                archive_sha256: receipt.archive_sha256().to_owned(),
+                                archive_bytes: receipt.archive_bytes(),
+                                manifest_sha256: receipt.manifest_sha256().to_owned(),
+                            })
+                        })
+                        .transpose()
+                },
+            )
+            .context("bundled Registry Pack verification failed during Launch")?;
+        if provider_prepare.is_some() {
+            log::info!("verified the selected old Provider prepare and its bundled Wasm replacement for this activation");
         }
+        if model_settings.is_some() {
+            log::info!("verified the selected old Model list and its bundled Wasm replacement for this activation");
+        }
+        Ok(Some(VerifiedRegistryLaunch {
+            identity: self.identity.clone(),
+            security_epoch,
+            catalog_revision,
+            provider_prepare,
+            model_settings,
+        }))
     }
 }
 
-/// Reacquire the exact verified Pack from the original signed resolver source
-/// and compile-time receipt pin. Return only after the whole receipt matches.
+/// Reacquire the Provider Pack from the original signed resolver source and receipt pin.
 pub(super) fn reacquire_provider_prepare_pack(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
-    proof: &VerifiedProviderPrepareLaunch,
+    proof: &VerifiedRegistryLaunch,
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<VerifiedPack> {
-    let app_root = inspection.with_source(|sources| {
-        let authority = sources.authority();
-        ensure!(
-            proof.identity.matches(&authority.execution_identity()?)
-                && proof.catalog_revision == authority.catalog_revision,
-            "signed Provider preparation source differs from the admitted launch"
-        );
-        Ok::<_, anyhow::Error>(sources.root(NativeSourceRoot::Application).to_path_buf())
-    })??;
+    let source = proof
+        .provider_prepare
+        .as_ref()
+        .context("admitted launch has no verified Provider preparation source")?;
+    let app_root = registry_pack_root(inspection, proof)?;
     registry_pack_receipt::verify_installed_with_provider(
         &app_root,
         REGISTRY_RECEIPT_SHA256,
-        || {
-            checkpoint().map_err(io::Error::other)?;
-            inspection.allocation_budget().map_err(io::Error::other)?;
-            Ok(())
-        },
+        || registry_checkpoint(inspection, &checkpoint),
         |receipt, input| {
-            if receipt.archive_sha256() != proof.archive_sha256
-                || receipt.archive_bytes() != proof.archive_bytes
-                || receipt.manifest_sha256() != proof.manifest_sha256
-            {
-                return Err(io::Error::other(
-                    "installed Provider receipt differs from the admitted launch",
-                ));
-            }
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
             verify_provider_prepare_archive(inspection, receipt, input)
         },
     )
     .context("bundled Provider prepare archive verification failed")
 }
 
+/// Reacquire the Model Pack from the original signed resolver source and receipt pin.
+pub(super) fn reacquire_model_settings_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .model_settings
+        .as_ref()
+        .context("admitted launch has no verified Model settings source")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    registry_pack_receipt::verify_installed_with_model(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            verify_model_settings_archive(inspection, receipt, input)
+        },
+    )
+    .context("bundled Model settings archive verification failed")
+}
+
+fn registry_pack_root(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+) -> Result<std::path::PathBuf> {
+    inspection.with_source(|sources| {
+        let authority = sources.authority();
+        ensure!(
+            proof.identity.matches(&authority.execution_identity()?)
+                && proof.catalog_revision == authority.catalog_revision,
+            "signed Registry source differs from the admitted launch"
+        );
+        Ok(sources.root(NativeSourceRoot::Application).to_path_buf())
+    })?
+}
+
+fn registry_checkpoint(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    checkpoint: &impl Fn() -> Result<()>,
+) -> io::Result<()> {
+    checkpoint().map_err(io::Error::other)?;
+    inspection.allocation_budget().map_err(io::Error::other)?;
+    Ok(())
+}
+
+fn require_archive_receipt(
+    receipt: &registry_pack_receipt::Pack,
+    archive_sha256: &str,
+    archive_bytes: u64,
+    manifest_sha256: &str,
+) -> io::Result<()> {
+    if receipt.archive_sha256() != archive_sha256
+        || receipt.archive_bytes() != archive_bytes
+        || receipt.manifest_sha256() != manifest_sha256
+    {
+        return Err(io::Error::other(
+            "installed Registry receipt differs from the admitted launch",
+        ));
+    }
+    Ok(())
+}
+
 fn verify_provider_prepare_archive(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     receipt: &registry_pack_receipt::Pack,
     input: &mut dyn io::Read,
+) -> io::Result<VerifiedPack> {
+    verify_registry_archive(
+        inspection,
+        receipt,
+        input,
+        "prepare-local",
+        &[
+            "local.provider-registry.legacy-configuration@1.0",
+            "local.provider-registry.legacy-configuration-live@1.0",
+        ],
+    )
+}
+
+fn verify_model_settings_archive(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+) -> io::Result<VerifiedPack> {
+    verify_registry_archive(
+        inspection,
+        receipt,
+        input,
+        "list-models",
+        &["local.model-registry.legacy-settings@1.0"],
+    )
+}
+
+fn verify_registry_archive(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+    operation: &str,
+    shapes: &[&str],
 ) -> io::Result<VerifiedPack> {
     (|| {
         let pack = inspection.verify_pack_archive(input, receipt.archive_bytes())?;
@@ -447,13 +612,10 @@ fn verify_provider_prepare_archive(
                 && pack.manifest.version == receipt.version()
                 && pack.hash.as_str() == receipt.manifest_sha256()
                 && matches!(&pack.manifest.runtime, RuntimeSpec::Wasm { .. }),
-            "Provider Pack manifest differs from the bundled receipt"
+            "Registry Pack manifest differs from the bundled receipt"
         );
-        let prepare = OpName::parse("prepare-local")?;
-        for name in [
-            "local.provider-registry.legacy-configuration@1.0",
-            "local.provider-registry.legacy-configuration-live@1.0",
-        ] {
+        let operation = OpName::parse(operation)?;
+        for name in shapes {
             let shape = ShapeRef::parse(name)?;
             ensure!(
                 pack.manifest.ports.provides.iter().any(|port| {
@@ -462,11 +624,11 @@ fn verify_provider_prepare_archive(
                     definition.reference == shape
                         && definition.kind == ShapeKind::Port
                         && definition.functions.len() == 1
-                        && definition.functions.contains_key(&prepare)
+                        && definition.functions.contains_key(&operation)
                         && definition.streams.is_empty()
                         && definition.callbacks.is_empty()
                 }),
-                "bundled Provider Pack has no exact legacy prepare-local port {name}"
+                "bundled Registry Pack has no exact legacy {operation} port {name}"
             );
         }
         Ok::<_, anyhow::Error>(pack)

@@ -20,7 +20,10 @@ use tobkiri_wasm::NativeDataIoError;
 
 use super::{
     caught,
-    launch_metadata::{reacquire_provider_prepare_pack, REGISTRY_VERIFICATION_BYTES},
+    launch_metadata::{
+        reacquire_model_settings_pack, reacquire_provider_prepare_pack, VerifiedRegistryLaunch,
+        REGISTRY_VERIFICATION_BYTES,
+    },
     NativeRuntimeState,
 };
 use crate::{
@@ -31,6 +34,51 @@ use crate::{
 };
 
 type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
+
+pub(crate) enum NativeRegistryRequest {
+    Provider {
+        request: Vec<u8>,
+        apply: Option<Vec<u8>>,
+    },
+    ModelList,
+}
+
+impl NativeRegistryRequest {
+    pub(crate) fn has_launch_proof(&self, proof: &VerifiedRegistryLaunch) -> bool {
+        match self {
+            Self::Provider { .. } => proof.provider_prepare.is_some(),
+            Self::ModelList => proof.model_settings.is_some(),
+        }
+    }
+
+    fn input_capacity(&self) -> Result<usize> {
+        let Self::Provider { request, apply } = self else {
+            return Ok(0);
+        };
+        let size = request
+            .capacity()
+            .checked_add(apply.as_ref().map_or(0, Vec::capacity))
+            .context("native Provider preparation input capacity overflow")?;
+        ensure!(
+            !request.is_empty()
+                && apply.as_ref().is_none_or(|plan| !plan.is_empty())
+                && size <= MAX_BYTES,
+            "native Provider preparation request exceeds its input envelope"
+        );
+        Ok(size)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ModelRegistryRequiresLegacyRead;
+
+impl std::fmt::Display for ModelRegistryRequiresLegacyRead {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("Model Registry exceeds the native compatibility envelope")
+    }
+}
+
+impl std::error::Error for ModelRegistryRequiresLegacyRead {}
 
 /// A running Provider can narrow its Host deadline when the Core begins.
 pub(crate) struct ProviderPrepareDeadline(Mutex<Instant>);
@@ -110,8 +158,7 @@ impl Drop for PendingProviderPrepare {
 
 struct Request {
     listener: Arc<ProviderPrepareListener>,
-    bytes: Vec<u8>,
-    apply: Option<Vec<u8>>,
+    operation: NativeRegistryRequest,
     input_capacity: u64,
     deadline: Arc<ProviderPrepareDeadline>,
     continue_current: ContinueCurrent,
@@ -128,29 +175,23 @@ struct PreparedReply {
     document: Option<CoreBuffer>,
 }
 
-/// Run the installed Provider planner or apply its frozen approved plan.
+/// Run one verified Provider or Model Registry request on the managed worker.
 ///
 /// The Host adapter checks continuing eligibility. The worker owns the fixed
 /// Registry and supplies bounded observations to the guest.
 pub(crate) fn start_provider_prepare(
     app: &AppHandle,
     listener: Arc<ProviderPrepareListener>,
-    request: Vec<u8>,
-    apply: Option<Vec<u8>>,
+    operation: NativeRegistryRequest,
     deadline: Arc<ProviderPrepareDeadline>,
     continue_current: ContinueCurrent,
 ) -> Result<PendingProviderPrepare> {
     check_live(deadline.current(), None)?;
-    let input_capacity = request
-        .capacity()
-        .checked_add(apply.as_ref().map_or(0, Vec::capacity))
-        .context("native Provider preparation input capacity overflow")?;
     ensure!(
-        !request.is_empty()
-            && apply.as_ref().is_none_or(|plan| !plan.is_empty())
-            && input_capacity <= MAX_BYTES,
-        "native Provider preparation request exceeds its input envelope"
+        operation.has_launch_proof(listener.verified_source()),
+        "native Registry operation has no matching Launch proof"
     );
+    let input_capacity = operation.input_capacity()?;
     listener.verified_source().identity.validate()?;
     let runtime = app
         .try_state::<NativeRuntimeState>()
@@ -160,8 +201,7 @@ pub(crate) fn start_provider_prepare(
     let jobs = runtime.0.jobs.clone();
     let request = Request {
         listener,
-        bytes: request,
-        apply,
+        operation,
         input_capacity: u64::try_from(input_capacity)?,
         deadline: Arc::clone(&deadline),
         continue_current: Arc::clone(&continue_current),
@@ -198,8 +238,7 @@ async fn run(
 ) -> (Result<Prepared>, bool) {
     let Request {
         listener,
-        bytes,
-        apply,
+        operation,
         input_capacity,
         deadline,
         continue_current,
@@ -227,7 +266,9 @@ async fn run(
         let custody = job.source_custody()?;
         let sources = SignedApplicationResolver::resolve_sources(&config)?;
         check_live(execution_deadline, Some(&cancellation))?;
-        let input_funding = invocation.reserve(CapacityKind::VfsBuffer, input_capacity)?;
+        let input_funding = (input_capacity != 0)
+            .then(|| invocation.reserve(CapacityKind::VfsBuffer, input_capacity))
+            .transpose()?;
         let control_funding = invocation.control().reserve(
             ControlKind::Frame,
             input_capacity + REGISTRY_VERIFICATION_BYTES,
@@ -274,14 +315,33 @@ async fn run(
         );
         checkpoint()
     };
-    let publishes = apply.is_some();
+    let publishes = matches!(
+        &operation,
+        NativeRegistryRequest::Provider { apply: Some(_), .. }
+    );
     let registry = Arc::new(Mutex::new(None));
     let registry_limit = Arc::new(AtomicBool::new(false));
     let outcome = {
         let prepare = caught(async {
             let graph = inspection.allocation_budget()?.clone();
-            let input = CoreValue::parse_guest(&bytes, &graph)?;
-            drop(bytes);
+            let NativeRegistryRequest::Provider { request, apply } = operation else {
+                let pack = reacquire_model_settings_pack(
+                    &inspection,
+                    listener.verified_source(),
+                    checkpoint,
+                )?;
+                revalidate()?;
+                let output = inspection
+                    .list_legacy_model_settings(&pack, &config.user_data_dir, &identity.profile_id)
+                    .await
+                    .map_err(model_registry_error)?;
+                return Ok(PreparedReply {
+                    wire: output.encode_guest(&graph)?,
+                    document: None,
+                });
+            };
+            let input = CoreValue::parse_guest(&request, &graph)?;
+            drop(request);
             let input_plan = apply
                 .as_ref()
                 .map(|plan| CoreValue::parse_guest(plan, &graph))
@@ -411,6 +471,18 @@ async fn run(
         }),
         cleanup_verified,
     )
+}
+
+fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
+    match &error {
+        NativeArtifactError::TooLarge => ModelRegistryRequiresLegacyRead.into(),
+        NativeArtifactError::ModelRegistryRejected(error)
+            if matches!(error.code(), "unavailable" | "limit-exceeded") =>
+        {
+            ModelRegistryRequiresLegacyRead.into()
+        }
+        _ => error.into(),
+    }
 }
 
 fn decode_staged_reply(

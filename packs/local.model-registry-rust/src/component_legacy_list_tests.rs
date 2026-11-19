@@ -60,6 +60,18 @@ fn legacy_list_checks_raw_input_size_and_strict_output() {
     let wide_revision = r#"{"version":"rumi.model-registry.store.v1","profile_id":"fixture",
         "revision":9007199254740993,"profiles":{},"aliases":{}}"#;
     let error = list_legacy_models("fixture", Some(wide_revision)).unwrap_err();
-    assert!(matches!(error.code, ErrorCode::Invalid));
-    assert_eq!(error.message, "model Settings response is invalid");
+    assert!(matches!(error.code, ErrorCode::Unavailable));
+    assert_eq!(error.message, "model Registry needs the legacy JSON codec");
+}
+
+#[test]
+fn legacy_list_reports_compatibility_only_for_python_json() {
+    for opaque in [r#"{"key":1,"key":2}"#, "NaN", r#""\ud800""#] {
+        let document = format!(
+            r#"{{"version":"rumi.model-registry.store.v1",
+            "profile_id":"fixture","revision":0,"profiles":{{}},"aliases":{{}},"opaque":{opaque}}}"#
+        );
+        let error = list_legacy_models("fixture", Some(&document)).unwrap_err();
+        assert!(matches!(error.code, ErrorCode::Unavailable));
+    }
 }

@@ -1,4 +1,4 @@
-//! Select the old read-only Provider prepare path from authenticated v5 records.
+//! Select legacy settings routes from authenticated v5 records.
 use crate::OriginalActiveProfile;
 use sha2::{Digest as _, Sha256};
 use std::{fmt, sync::Arc};
@@ -59,34 +59,40 @@ static PROVIDER_PREPARE: Route = Route {
     variant: "rumi_provider_registry_pack.provider-configure.prepare.python",
 };
 
+static MODEL_LIST: Route = Route {
+    pack: "rumi_model_registry_pack",
+    function: "rumi_model_registry_pack.model-registry.profile",
+    contract: "tobkiri.resource.ai.model.profile.v1",
+    operation: "rumi_model_registry_pack.model-profile-resource",
+    variant: "rumi_model_registry_pack.model-registry.profile.python",
+};
+
 /// The authenticated route is inconsistent or its verification budget is unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OriginalProviderPrepareSelectionError {
+pub enum OriginalRouteSelectionError {
     /// An exact route disagrees across its current Profile, Plan, or Lock.
     Inconsistent(&'static str),
     /// The current owner could not fund the record checks.
     Capacity,
 }
 
-impl fmt::Display for OriginalProviderPrepareSelectionError {
+impl fmt::Display for OriginalRouteSelectionError {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Inconsistent(reason) => {
-                write!(output, "old Provider prepare selection: {reason}")
+                write!(output, "old settings route selection: {reason}")
             }
-            Self::Capacity => {
-                output.write_str("old Provider prepare selection exceeded its budget")
-            }
+            Self::Capacity => output.write_str("old settings route selection exceeded its budget"),
         }
     }
 }
-impl std::error::Error for OriginalProviderPrepareSelectionError {}
+impl std::error::Error for OriginalRouteSelectionError {}
 
-use OriginalProviderPrepareSelectionError::{Capacity, Inconsistent};
-type Result<T> = std::result::Result<T, OriginalProviderPrepareSelectionError>;
+use OriginalRouteSelectionError::{Capacity, Inconsistent};
+type Result<T> = std::result::Result<T, OriginalRouteSelectionError>;
 
 /// Pins for a selected function, backed by the original authenticated record storage.
-pub struct OriginalProviderPreparePin {
+pub struct OriginalRoutePin {
     route: &'static Route,
     caller: CoreValue,
     artifact_digest: CoreValue,
@@ -97,7 +103,7 @@ pub struct OriginalProviderPreparePin {
     requested_scope_digest: Digest,
 }
 
-impl OriginalProviderPreparePin {
+impl OriginalRoutePin {
     /// Selected old Pack identity.
     pub fn pack_id(&self) -> &'static str {
         self.route.pack
@@ -189,11 +195,41 @@ impl OriginalProviderPreparePin {
     }
 }
 
+/// Immutable metadata for the selected Shell's direct Model List grant.
+pub struct OriginalModelSettingsSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    model_list: OriginalRoutePin,
+}
+
+impl<'a> OriginalModelSettingsSelection<'a> {
+    /// Select the exact signed Python Model List route from the active records.
+    ///
+    /// An absent or unsupported route yields `None`. Inconsistent records and
+    /// exhausted budget produce errors. Verify the returned pin independently
+    /// against the packaged catalog before using it.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_model_list_records(active.records(), budget)?.map(|model_list| Self {
+                _active: active,
+                model_list,
+            }),
+        )
+    }
+
+    /// The selected Shell-to-Model List grant target.
+    pub fn model_list(&self) -> &OriginalRoutePin {
+        &self.model_list
+    }
+}
+
 /// Immutable metadata for the two Profile grant edges to old Provider prepare.
 pub struct OriginalProviderPrepareSelection<'a> {
     _active: &'a OriginalActiveProfile,
-    coordinator: OriginalProviderPreparePin,
-    provider: OriginalProviderPreparePin,
+    coordinator: OriginalRoutePin,
+    provider: OriginalRoutePin,
 }
 
 impl<'a> OriginalProviderPrepareSelection<'a> {
@@ -217,17 +253,18 @@ impl<'a> OriginalProviderPrepareSelection<'a> {
     }
 
     /// The selected Shell-to-coordinator grant target.
-    pub fn coordinator(&self) -> &OriginalProviderPreparePin {
+    pub fn coordinator(&self) -> &OriginalRoutePin {
         &self.coordinator
     }
 
     /// The selected coordinator-to-Provider-prepare grant target.
-    pub fn provider(&self) -> &OriginalProviderPreparePin {
+    pub fn provider(&self) -> &OriginalRoutePin {
         &self.provider
     }
 }
 
 struct Records<'a> {
+    shell_caller: CoreValue,
     edges: CoreValue,
     references: CoreValue,
     bindings: CoreValue,
@@ -238,9 +275,34 @@ struct Records<'a> {
 }
 
 fn select_records(
-    (profile, lock, plan): (&CoreValue, &CoreValue, &CoreValue),
+    active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<Option<(OriginalProviderPreparePin, OriginalProviderPreparePin)>> {
+) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    let Some(coordinator) = records.select_shell_route(&COORDINATOR)? else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(COORDINATOR.function, &PROVIDER_PREPARE)?
+        .map(|provider| (coordinator, provider)))
+}
+
+fn select_model_list_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<OriginalRoutePin>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    records.select_shell_route(&MODEL_LIST)
+}
+
+fn selected_shell_records<'a>(
+    (profile, lock, plan): (&CoreValue, &CoreValue, &CoreValue),
+    budget: &'a Arc<dyn AllocationBudget>,
+) -> Result<Option<Records<'a>>> {
     let shell = required(profile, "shell")?;
     if !shell
         .eq_guest(&required(lock, "shell")?, budget)
@@ -266,8 +328,8 @@ fn select_records(
     if !is_text(&shell, "contract_id", "app.shell.v1") {
         return Ok(None);
     }
-    let caller = text_field(&shell, "provider_id")?;
-    let records = Records {
+    Ok(Some(Records {
+        shell_caller: text_field(&shell, "provider_id")?,
         edges: required(profile, "requested_edges")?,
         references: required(profile, "authority_references")?,
         bindings: required(plan, "bindings")?,
@@ -275,21 +337,19 @@ fn select_records(
         variant_pins: required(lock, "variant_pins")?,
         snapshot: digest_field(profile, "profile_authority_snapshot_digest")?,
         budget,
-    };
-    let Some(coordinator) = records.select_route(verified_text(&caller), &COORDINATOR)? else {
-        return Ok(None);
-    };
-    Ok(records
-        .select_route(COORDINATOR.function, &PROVIDER_PREPARE)?
-        .map(|provider| (coordinator, provider)))
+    }))
 }
 
 impl Records<'_> {
+    fn select_shell_route(&self, route: &'static Route) -> Result<Option<OriginalRoutePin>> {
+        self.select_route(verified_text(&self.shell_caller), route)
+    }
+
     fn select_route(
         &self,
         caller: &str,
         route: &'static Route,
-    ) -> Result<Option<OriginalProviderPreparePin>> {
+    ) -> Result<Option<OriginalRoutePin>> {
         let matches_route = |value: &CoreValue| {
             is_text(value, "caller_function_id", caller)
                 && is_text(value, "contract_id", route.contract)
@@ -404,7 +464,7 @@ impl Records<'_> {
         {
             return Ok(None);
         }
-        Ok(Some(OriginalProviderPreparePin {
+        Ok(Some(OriginalRoutePin {
             route,
             caller: text_field(&binding, "caller_function_id")?,
             artifact_digest: artifact,
@@ -579,8 +639,8 @@ mod tests {
         fn release(&self, _: u64) {}
     }
 
-    // Keep the two edge references and scope digests from an activation
-    // published by the original resolver. The unrelated closure is omitted.
+    // Use the snapshot and exact edge/scope digests for these three routes.
+    // The rest of the original activation closure is omitted.
     fn records() -> Value {
         const SHELL: &str = "shell.tauri.default";
         let mut shell = json!({
@@ -621,6 +681,13 @@ mod tests {
                 "authority-ref:33b0249506c3d5ae1b94c9aa40fa766708ec93a2ff1e24b9cc9e7ff11de7c35f",
                 "sha256:f4d8e87f748eee562a010984e56839084ac012ad6bd7ceec5f55f2e30bf6adb9",
                 "sha256:5e79aeb456ca085625c28d9f4d8fe219d1c1a0a621bdcabd66ba8b8eec01a5e3",
+            ),
+            (
+                &MODEL_LIST,
+                SHELL,
+                "authority-ref:805eb0ebcb6d6d912e6f9080be3a75c5d16ff2f0ffaf20f7fe8dc5bce6eafac3",
+                "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658",
+                "sha256:64fa11ae6949412f39039e7069da0a614e78401c55071be40755f2920b28932e",
             ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
@@ -694,15 +761,76 @@ mod tests {
         records
     }
 
-    fn select(
-        records: &Value,
-    ) -> Result<Option<(OriginalProviderPreparePin, OriginalProviderPreparePin)>> {
-        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
-        let [profile, lock, plan] = ["profile", "lock", "plan"].map(|field| {
+    fn parse_records(records: &Value, budget: &Arc<dyn AllocationBudget>) -> [CoreValue; 3] {
+        ["profile", "lock", "plan"].map(|field| {
             let bytes = serde_json::to_vec(&records[field]).unwrap();
-            CoreValue::parse_guest(&bytes, &budget).unwrap()
-        });
+            CoreValue::parse_guest(&bytes, budget).unwrap()
+        })
+    }
+
+    fn select(records: &Value) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
         select_records((&profile, &lock, &plan), &budget)
+    }
+
+    fn select_model_list(records: &Value) -> Result<Option<OriginalRoutePin>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_model_list_records((&profile, &lock, &plan), &budget)
+    }
+
+    #[test]
+    fn selects_only_the_shell_model_list_grant_with_exact_scope_and_variant() {
+        let fixture = records();
+        let model_list = select_model_list(&fixture).unwrap().unwrap();
+        assert_eq!(model_list.caller_function_id(), "shell.tauri.default");
+        assert_eq!(
+            model_list.requested_scope_digest(),
+            fixture["plan"]["bindings"][2]["requested_scope_digest"]
+                .as_str()
+                .unwrap()
+        );
+
+        let mut other_caller = fixture.clone();
+        other_caller["profile"]["requested_edges"][2]["caller_function_id"] =
+            json!(COORDINATOR.function);
+        other_caller["plan"]["bindings"][2]["caller_function_id"] = json!(COORDINATOR.function);
+        assert!(select_model_list(&other_caller).unwrap().is_none());
+
+        let mut interactive = fixture.clone();
+        interactive["profile"]["requested_edges"][2]["authority_mode"] = json!("interactive_only");
+        assert!(matches!(
+            select_model_list(&interactive),
+            Err(Inconsistent(_))
+        ));
+        interactive["plan"]["bindings"][2]["authority_mode"] = json!("interactive_only");
+        assert!(select_model_list(&interactive).unwrap().is_none());
+
+        let mut other_variant = fixture.clone();
+        other_variant["plan"]["bindings"][2]["variant_id"] = json!("other.model.profile");
+        assert!(matches!(
+            select_model_list(&other_variant),
+            Err(Inconsistent(_))
+        ));
+        other_variant["lock"]["variant_pins"][2]["variant_id"] = json!("other.model.profile");
+        assert!(select_model_list(&other_variant).unwrap().is_none());
+
+        let mut other_scope = fixture;
+        let scope = &mut other_scope["profile"]["requested_edges"][2]["requested_scope_template"];
+        scope["dimensions"]["operation"] =
+            json!(["rumi_model_registry_pack.model-profile-resource.generate"]);
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let digest = CoreValue::parse_guest(&serde_json::to_vec(scope).unwrap(), &budget)
+            .unwrap()
+            .digest_guest(&budget)
+            .unwrap();
+        assert!(matches!(
+            select_model_list(&other_scope),
+            Err(Inconsistent(_))
+        ));
+        other_scope["plan"]["bindings"][2]["requested_scope_digest"] = json!(digest.as_str());
+        assert!(select_model_list(&other_scope).unwrap().is_none());
     }
 
     #[test]
@@ -767,7 +895,10 @@ mod tests {
         }
 
         let mut fixture = records();
-        fixture["plan"]["bindings"].as_array_mut().unwrap().pop();
+        fixture["plan"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .remove(1);
         assert!(matches!(select(&fixture), Err(Inconsistent(_))));
 
         let mut fixture = records();

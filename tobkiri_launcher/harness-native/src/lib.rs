@@ -29,8 +29,10 @@ pub use original_authority::{
 };
 #[cfg(unix)]
 pub use original_provider_prepare_selection::{
-    OriginalProviderPreparePin, OriginalProviderPrepareSelection,
-    OriginalProviderPrepareSelectionError,
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalRoutePin as OriginalProviderPreparePin,
+    OriginalRouteSelectionError as OriginalModelSettingsSelectionError,
+    OriginalRouteSelectionError as OriginalProviderPrepareSelectionError,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

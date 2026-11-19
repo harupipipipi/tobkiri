@@ -1,4 +1,4 @@
-"""Exercise the original Host's synchronous macOS Provider connection."""
+"""Exercise the original Host's synchronous macOS Registry connection."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
@@ -115,6 +115,128 @@ def _served(
             result = pool.submit(accept)
             yield planner
             result.result(timeout=5)
+
+
+@contextmanager
+def _served_model_settings(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeModelSettingsRequest], Mapping[str, Any]]]:
+    with _served(monkeypatch, serve):
+        reader = ipc.capture_launcher_model_settings_reader()
+        assert reader is not None
+        yield reader
+
+
+def _model_request(borrow: _Borrow) -> ipc.NativeModelSettingsRequest:
+    return ipc.NativeModelSettingsRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+    )
+
+
+def test_model_settings_reader_sends_only_its_role_and_accepts_one_mib_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+    request = _model_request(borrow)
+    result = {"profiles": [], "count": 0, "registry_revision": 12}
+    response = json.dumps(result).encode("utf-8").ljust(1024 * 1024, b" ")
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == 1
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": "a" * 32,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "model_list": {},
+        }
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, response)
+
+    with _served_model_settings(monkeypatch, serve) as reader:
+        monkeypatch.setenv(ipc._SOCKET_ENV, "/invalidated-after-capture")
+        monkeypatch.delenv(ipc._OWNER_ENV)
+        assert reader(request) == result
+
+
+def test_captured_registry_callables_reject_requests_for_the_other_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _listener() as (_, address):
+        monkeypatch.setenv(ipc._SOCKET_ENV, address)
+        monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+        planner = ipc.capture_launcher_provider_prepare_planner()
+        reader = ipc.capture_launcher_model_settings_reader()
+        assert planner is not None
+        assert reader is not None
+        with pytest.raises(RuntimeError, match="request role is invalid"):
+            planner.plan(_model_request(_Borrow()))
+        with pytest.raises(RuntimeError, match="request role is invalid"):
+            reader(_Borrow())
+
+
+def test_model_settings_start_still_uses_the_16_kib_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+    identity = vars(borrow.context) | {"profile_id": "p" * (16 * 1024)}
+    borrow.context = SimpleNamespace(**identity)
+
+    def serve(peer: socket.socket) -> None:
+        assert peer.recv(1) == b""
+
+    with _served_model_settings(monkeypatch, serve) as reader:
+        with pytest.raises(RuntimeError, match="request exceeds its bound"):
+            reader(_model_request(borrow))
+
+
+def test_model_settings_revocation_waits_for_cleanup_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        pending_check = _HEADER.pack(2, 0)
+        peer.sendall(pending_check[:2])
+        borrow.revoked.set()
+        assert _receive(peer) == (9, b"")
+        peer.sendall(pending_check[2:])
+        _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with _served_model_settings(monkeypatch, serve) as reader:
+        with pytest.raises(PermissionError, match="fixture lease revoked"):
+            reader(_model_request(borrow))
+
+
+def test_model_settings_result_above_one_mib_cancels_at_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        peer.sendall(_HEADER.pack(7, 1024 * 1024 + 1))
+        assert _receive(peer) == (9, b"")
+        assert peer.recv(1) == b""
+
+    with _served_model_settings(monkeypatch, serve) as reader:
+        with pytest.raises(RuntimeError, match="cleanup was unconfirmed"):
+            reader(_model_request(_Borrow()))
 
 
 @pytest.mark.parametrize("apply", [False, True])

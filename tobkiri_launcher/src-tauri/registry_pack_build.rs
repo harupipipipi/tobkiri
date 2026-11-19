@@ -123,7 +123,8 @@ mod unix {
     mod tests {
         use super::super::super::raw_byte_digest;
         use super::super::super::registry_pack_receipt::{
-            verify_installed, verify_installed_with_provider, ARCHIVE_LIMIT, PACK_IDS,
+            verify_installed, verify_installed_with_model, verify_installed_with_provider,
+            verify_installed_with_provider_and_model, Pack, ARCHIVE_LIMIT, PACK_IDS,
             RECEIPT_FORMAT,
         };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
@@ -211,8 +212,7 @@ mod unix {
             let fixture = Fixture::new()?;
             let input = fixture.write_receipt(&fixture.document)?;
             input.stage(&fixture.stage)?;
-            let read_prefix = |pack: &super::super::super::registry_pack_receipt::Pack,
-                               source: &mut dyn std::io::Read| {
+            let read_prefix = |pack: &Pack, source: &mut dyn std::io::Read| {
                 assert_eq!(pack.id(), PACK_IDS[0]);
                 assert_eq!(pack.version(), "0.1.0");
                 assert_eq!(pack.archive_bytes(), PACK_IDS[0].len() as u64);
@@ -238,6 +238,123 @@ mod unix {
             *bytes.last_mut().unwrap() ^= 1;
             fs::write(&archive, bytes)?;
             assert!(verify().is_err());
+            Ok(())
+        }
+
+        #[test]
+        fn model_visitor_reads_the_exact_authenticated_receipt_record_and_archive() -> io::Result<()>
+        {
+            let fixture = Fixture::new()?;
+            let mut document = fixture.document.clone();
+            let manifest_sha256 = format!("sha256:{}", "2".repeat(64));
+            document["packs"][1]["manifest_sha256"] = json!(manifest_sha256);
+            document["packs"][1]["version"] = json!("0.2.0");
+            let input = fixture.write_receipt(&document)?;
+            input.stage(&fixture.stage)?;
+            let archived_id = b"local.model-registry";
+            let bytes = verify_installed_with_model(
+                &fixture.stage,
+                input.receipt_sha256(),
+                || Ok(()),
+                |pack, archive| {
+                    assert_eq!(pack.id(), "local.model-registry");
+                    assert_eq!(pack.version(), "0.2.0");
+                    assert_eq!(pack.archive_bytes(), archived_id.len() as u64);
+                    assert_eq!(
+                        pack.archive_sha256(),
+                        format!("sha256:{}", raw_byte_digest(archived_id))
+                    );
+                    assert_eq!(pack.manifest_sha256(), manifest_sha256);
+                    let mut bytes = Vec::new();
+                    archive.read_to_end(&mut bytes)?;
+                    Ok(bytes)
+                },
+            )?;
+            assert_eq!(bytes, archived_id);
+            Ok(())
+        }
+
+        #[test]
+        fn model_visitor_runs_after_receipt_authentication_and_requires_all_archive_digests(
+        ) -> io::Result<()> {
+            let fixture = Fixture::new()?;
+            let input = fixture.write_receipt(&fixture.document)?;
+            input.stage(&fixture.stage)?;
+            let pin = input.receipt_sha256();
+
+            let mut visited = false;
+            let reject_pin = verify_installed_with_model(
+                &fixture.stage,
+                &"0".repeat(64),
+                || Ok(()),
+                |_, _| {
+                    visited = true;
+                    Ok(())
+                },
+            );
+            assert!(reject_pin.is_err());
+            assert!(!visited);
+
+            let read_prefix = |_: &Pack, archive: &mut dyn std::io::Read| {
+                let mut prefix = [0; 11];
+                archive.read_exact(&mut prefix)?;
+                assert_eq!(&prefix, b"local.model");
+                Ok(prefix)
+            };
+            let verify =
+                || verify_installed_with_model(&fixture.stage, pin, || Ok(()), read_prefix);
+            assert_eq!(&verify()?, b"local.model");
+            for id in PACK_IDS {
+                let archive = fixture.stage.join(DIRECTORY).join(format!("{id}.tpk"));
+                let mut tampered = id.as_bytes().to_vec();
+                *tampered.last_mut().unwrap() ^= 1;
+                fs::write(&archive, tampered)?;
+                let error = verify().unwrap_err();
+                assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+                assert!(error.to_string().contains(id));
+                fs::write(archive, id.as_bytes())?;
+            }
+            assert_eq!(&verify()?, b"local.model");
+            Ok(())
+        }
+
+        #[test]
+        fn combined_visitors_return_both_results_after_the_conversation_digest() -> io::Result<()> {
+            let fixture = Fixture::new()?;
+            let input = fixture.write_receipt(&fixture.document)?;
+            input.stage(&fixture.stage)?;
+            let verify = || {
+                verify_installed_with_provider_and_model(
+                    &fixture.stage,
+                    input.receipt_sha256(),
+                    || Ok(()),
+                    |pack, archive| {
+                        assert_eq!(pack.id(), "local.provider-registry");
+                        let mut prefix = [0; 14];
+                        archive.read_exact(&mut prefix)?;
+                        assert_eq!(&prefix, b"local.provider");
+                        Ok(prefix)
+                    },
+                    |pack, archive| {
+                        assert_eq!(pack.id(), "local.model-registry");
+                        let mut id = String::new();
+                        archive.read_to_string(&mut id)?;
+                        Ok(id)
+                    },
+                )
+            };
+            assert_eq!(
+                verify()?,
+                (*b"local.provider", "local.model-registry".to_owned())
+            );
+            let conversation = fixture
+                .stage
+                .join(DIRECTORY)
+                .join("local.saved-conversation.tpk");
+            fs::write(conversation, b"local.saved-conversatioN")?;
+            let error = verify().unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert!(error.to_string().contains("local.saved-conversation"));
             Ok(())
         }
 

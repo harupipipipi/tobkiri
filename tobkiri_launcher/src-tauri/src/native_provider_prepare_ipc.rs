@@ -1,4 +1,4 @@
-//! Private Provider requests and live authorization checks for the managed Host.
+//! Private Registry requests and live authorization checks for the managed Host.
 
 use std::{
     io::{self, Read, Write},
@@ -19,7 +19,8 @@ use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, PendingProviderPrepare, ProviderPrepareDeadline,
+        start_provider_prepare, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
+        PendingProviderPrepare, ProviderPrepareDeadline,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -32,6 +33,7 @@ const FAILURE: u8 = 8;
 const CANCEL: u8 = 9;
 const INAPPLICABLE: u8 = 10;
 const JSON_LIMIT: usize = 16 * 1024;
+const MODEL_LIST_LIMIT: usize = 1024 * 1024;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CLEANUP_WAIT: Duration = Duration::from_secs(10);
@@ -44,9 +46,43 @@ struct Start<'a> {
     runtime_instance: String,
     security_epoch: u64,
     deadline_ns: u64,
-    request: Request,
+    #[serde(default, deserialize_with = "deserialize_present")]
+    request: Option<Request>,
     #[serde(borrow, default, deserialize_with = "deserialize_plan")]
     apply: Option<&'a RawValue>,
+    #[serde(default, deserialize_with = "deserialize_present")]
+    model_list: Option<ModelList>,
+}
+
+impl Start<'_> {
+    fn operation(&self) -> Result<NativeRegistryRequest> {
+        match (&self.request, &self.model_list, self.apply) {
+            (Some(request), None, apply) => {
+                let request = serde_json::to_vec(request)?;
+                ensure!(
+                    request.len() <= JSON_LIMIT,
+                    "Provider request exceeds its envelope"
+                );
+                // Preserve the frozen plan's exact JSON for the Core parser.
+                let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
+                Ok(NativeRegistryRequest::Provider { request, apply })
+            }
+            (None, Some(_), None) => Ok(NativeRegistryRequest::ModelList),
+            _ => bail!("native Registry start must name exactly one operation"),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModelList {}
+
+fn deserialize_present<'de, T, D>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }
 
 fn deserialize_plan<'de, D>(deserializer: D) -> std::result::Result<Option<&'de RawValue>, D::Error>
@@ -132,6 +168,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     );
     ensure!(start.security_epoch != 0, "invalid Provider prepare epoch");
     let deadline = host_deadline(start.deadline_ns)?;
+    let operation = start.operation()?;
     let identity = ExecutionProfileIdentity::new(
         start.identity.profile_id,
         start.identity.profile_revision,
@@ -165,7 +202,9 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         );
     }
     manager.require_provider_prepare_admission(&candidate)?;
-    if !candidate.matches_runtime_instance(&start.runtime_instance) {
+    if !candidate.matches_runtime_instance(&start.runtime_instance)
+        || !operation.has_launch_proof(candidate.verified_source())
+    {
         return send_frame(
             &mut stream,
             INAPPLICABLE,
@@ -174,13 +213,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         );
     }
 
-    let request = serde_json::to_vec(&start.request)?;
-    ensure!(
-        request.len() <= JSON_LIMIT,
-        "Provider prepare request exceeds its envelope"
-    );
-    // Keep the frozen plan's exact JSON for the Core's funded strict parser.
-    let apply = start.apply.map(|plan| plan.get().as_bytes().to_vec());
+    let model_list = matches!(operation, NativeRegistryRequest::ModelList);
     drop(bytes);
     let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
     let connection = Arc::new(Connection {
@@ -188,13 +221,13 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         candidate: Arc::clone(&candidate),
         wire: Mutex::new(Wire { stream, stop: None }),
         deadline: Arc::clone(&deadline),
+        model_list,
     });
     let check_connection = Arc::clone(&connection);
     let pending = match start_provider_prepare(
         app,
         candidate,
-        request,
-        apply,
+        operation,
         deadline,
         Arc::new(move || check_connection.check_current()),
     ) {
@@ -212,6 +245,7 @@ struct Connection {
     // The worker's authorization checks and the idle actor share one reader.
     wire: Mutex<Wire>,
     deadline: Arc<ProviderPrepareDeadline>,
+    model_list: bool,
 }
 
 struct Wire {
@@ -323,9 +357,17 @@ impl Connection {
             drop(wire);
             return self.send_stopped(stop);
         }
+        let limit = if self.model_list {
+            MODEL_LIST_LIMIT
+        } else {
+            JSON_LIMIT
+        };
         match result {
-            Ok(output) if output.len() <= JSON_LIMIT => {
+            Ok(output) if output.len() <= limit => {
                 send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline)
+            }
+            Ok(_) if self.model_list => {
+                send_frame(&mut wire.stream, FAILURE, b"legacy-read-required", deadline)
             }
             Ok(_) => send_frame(&mut wire.stream, FAILURE, b"limit-exceeded", deadline),
             Err(error) => send_frame(
@@ -382,9 +424,13 @@ impl Wire {
 }
 
 fn failure_code(error: &anyhow::Error) -> &'static str {
+    if error.is::<ModelRegistryRequiresLegacyRead>() {
+        return "legacy-read-required";
+    }
     match error.downcast_ref::<NativeArtifactError>() {
         Some(NativeArtifactError::ProviderRegistryLimitBeforePublish) => "legacy-read-required",
         Some(NativeArtifactError::ProviderRejected(error)) => error.code(),
+        Some(NativeArtifactError::ModelRegistryRejected(error)) => error.code(),
         Some(NativeArtifactError::Execution(
             NativeDataIoError::Cancelled | NativeDataIoError::Deadline,
         )) => "cancelled",
@@ -555,24 +601,37 @@ fn poll(stream: &UnixStream, events: libc::c_short, milliseconds: libc::c_int) -
 mod tests {
     use super::*;
 
-    fn start_frame(extra: &str) -> String {
+    const PROVIDER_REQUEST: &str =
+        r#", "request":{"connection-name":"local","endpoint":"http://localhost"}"#;
+
+    fn start_frame(operation: &str) -> String {
         format!(
-            r#"{{"identity":{{"profile_id":"profile","profile_revision":"revision","activation_id":"activation","plan_digest":"digest"}},"runtime_instance":"0123456789abcdef0123456789abcdef","security_epoch":1,"deadline_ns":1,"request":{{"connection-name":"local","endpoint":"http://localhost"}}{extra}}}"#
+            r#"{{"identity":{{"profile_id":"profile","profile_revision":"revision","activation_id":"activation","plan_digest":"digest"}},"runtime_instance":"0123456789abcdef0123456789abcdef","security_epoch":1,"deadline_ns":1{operation}}}"#
         )
     }
 
     #[test]
     fn start_distinguishes_prepare_and_preserves_frozen_apply_bytes() {
-        let prepare = start_frame("");
+        let prepare = start_frame(PROVIDER_REQUEST);
         let prepare: Start<'_> = serde_json::from_str(&prepare).unwrap();
         assert!(prepare.apply.is_none());
-        assert_eq!(prepare.request.connection_name, "local");
+        assert_eq!(prepare.request.as_ref().unwrap().connection_name, "local");
+        assert!(matches!(
+            prepare.operation().unwrap(),
+            NativeRegistryRequest::Provider { apply: None, .. }
+        ));
 
         // Leave semantic checks, including duplicate object keys, to the Core.
         let plan = r#"{"record": {"name":"ä", "name":"same"}}"#;
-        let apply = start_frame(&format!(r#", "apply": {plan}"#));
+        let apply = start_frame(&format!(r#"{PROVIDER_REQUEST}, "apply": {plan}"#));
         let apply: Start<'_> = serde_json::from_str(&apply).unwrap();
         assert_eq!(apply.apply.unwrap().get(), plan);
+        let list = start_frame(r#", "model_list": {}"#);
+        let list: Start<'_> = serde_json::from_str(&list).unwrap();
+        assert!(matches!(
+            list.operation().unwrap(),
+            NativeRegistryRequest::ModelList
+        ));
     }
 
     #[test]
@@ -587,11 +646,33 @@ mod tests {
             r#","apply":null"#,
             r#","apply":[] "#,
         ] {
+            let payload = start_frame(&format!("{PROVIDER_REQUEST}{extra}"));
+            assert!(
+                serde_json::from_str::<Start<'_>>(&payload).is_err(),
+                "{extra}"
+            );
+        }
+        for extra in [
+            r#", "request":null, "model_list":{}"#,
+            r#", "model_list":null"#,
+            r#", "model_list":true"#,
+            r#", "model_list":{"profile_id":"elsewhere"}"#,
+            r#", "model_list":{}, "model_list":{}"#,
+        ] {
             let payload = start_frame(extra);
             assert!(
                 serde_json::from_str::<Start<'_>>(&payload).is_err(),
                 "{extra}"
             );
+        }
+        for extra in [
+            String::new(),
+            format!(r#"{PROVIDER_REQUEST}, "model_list":{{}}"#),
+            r#", "apply":{}, "model_list":{}"#.to_owned(),
+        ] {
+            let payload = start_frame(&extra);
+            let parsed: Start<'_> = serde_json::from_str(&payload).unwrap();
+            assert!(parsed.operation().is_err(), "{extra}");
         }
     }
 

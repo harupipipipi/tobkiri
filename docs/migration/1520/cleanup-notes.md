@@ -3803,6 +3803,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Store 148件、Model Pack 28件、strict Clippy、ビルドして検証済み `.tpk` を使うModel E2E 3件と
   Provider E2Eが通過。旧ファイルの有無・Profileの不一致・上限と原子的な更新を含めて照合した。
   既存のProvider実通信の13条件も通過。通常画面の実経路は署名付きHTTPとの接続後に検証する。
+  `9560234d9` に続き、通常のモデル一覧を同じProfileの旧ファイルを読むWasmへ接続した。
+  Launcherは元のShellの直接の `profile_grant` をProfile・Plan・Lockと署名済みBundleで照合する。
+  ProviderとModelの許可とreceiptを別々に保持し、両方が使える場合も同梱3アーカイブの照合は一回。
+  認証済みソケットでは同じ起動世代が持つ該当操作の証拠だけを受け付ける。元のHTTPセッション、
+  Brokerのlease・予約・期限を確認し、workerとStoreの終了後に同じ画面へ一覧を返す。
+  Rust開始後は、書式・サイズ上限で互換読取りが必要な場合に限り、元のleaseを再確認して旧ownerに戻る。
+  無効な文書、Profileや証拠の不一致と取消を、互換読取りに切り替える理由にしない。
+  `model_settings_presenter_input` はWasmの公開行だけを元の署名済み表示処理が受け取れる形式に戻す。
+  通常表示の契約とHTTPセッションをNative側が直接持てる段階で、この変換と同期ソケット借用を
+  削除できる。モデル検索と内部Settingsの生データ参照、保存、会話の解決はそれぞれ移行を残す。
+  署名済みHTTPとソケット試験39件、Model Pack 29件、receipt 10件、Harnessの選択5件と
+  原本Setupの発行試験1件、strict Clippyが通過。macOSの分離実通信はProviderとModelの20条件。
+  Tauri登録とresolverはfixtureを使い、署名済みHTTP試験ではソケットをfixtureへ置き換えた。
+  実アプリの両方の起動証拠と、インストール後の通し検証は同じDMGで確認する。
   モデル登録の保存では、現在のProfileで実行中のModel Registryが、既存のProvider Registry
   の読み取りポートを呼ぶ。ProviderとModelのrevisionを照合し、無効な接続への登録を拒否する。
   SQLiteは読み取った文書のハッシュを条件にして保存する。既存ルートの再確認は書き込まず、

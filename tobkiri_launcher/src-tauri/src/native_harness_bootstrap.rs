@@ -42,14 +42,15 @@ pub(crate) use authority::{
 mod launch_metadata;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use launch_metadata::{
-    read_launch_metadata, registry_pack_receipt_bound, VerifiedProviderPrepareLaunch,
+    read_launch_metadata, registry_pack_receipt_bound, VerifiedRegistryLaunch,
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[path = "native_provider_prepare_job.rs"]
 mod provider_prepare;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use provider_prepare::{
-    start_provider_prepare, PendingProviderPrepare, ProviderPrepareDeadline,
+    start_provider_prepare, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
+    PendingProviderPrepare, ProviderPrepareDeadline,
 };
 
 enum OwnedRuntime {

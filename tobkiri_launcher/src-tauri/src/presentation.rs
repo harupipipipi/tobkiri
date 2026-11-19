@@ -819,7 +819,7 @@ fn launch_verified_target_once(
     ) {
         Ok(status) => {
             #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-            admit_shell_provider_prepare(app, deadline, prepared_runtime, status);
+            admit_shell_registry_listener(app, deadline, prepared_runtime, status);
             Ok(status)
         }
         Err(error) => {
@@ -830,7 +830,7 @@ fn launch_verified_target_once(
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-fn admit_shell_provider_prepare(
+fn admit_shell_registry_listener(
     app: &AppHandle,
     deadline: Instant,
     runtime: crate::dock_registration::PreparedShellRuntime,
@@ -865,9 +865,7 @@ fn admit_shell_provider_prepare(
                 )
                 .is_ok()
             {
-                log::debug!(
-                    "verified native Provider prepare evidence for the admitted Shell listener"
-                );
+                log::debug!("verified native Registry evidence for the admitted Shell listener");
             } else {
                 manager.admit_provider_prepare(None)?;
             }
@@ -875,7 +873,7 @@ fn admit_shell_provider_prepare(
         Ok(())
     });
     if verified.is_err() {
-        log::warn!("native Provider prepare evidence was unavailable after Shell admission");
+        log::warn!("native Registry evidence was unavailable after Shell admission");
     }
 }
 

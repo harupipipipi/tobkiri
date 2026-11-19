@@ -18,7 +18,9 @@ use crate::{
     routing,
     settings_save::{captured_save_result, normalize, present_saved},
 };
-use ordered_python_compat::{CodecError, PyValue, dumps, loads, utc_timestamp_from_millis};
+use ordered_python_compat::{
+    CodecError, PyValue, dumps, loads, loads_python_json, utc_timestamp_from_millis,
+};
 use tobkiri::core::{
     clock, flow,
     types::{Error, ErrorCode},
@@ -97,17 +99,43 @@ fn list_legacy_models(profile: &str, document: Option<&str>) -> Result<String, E
                     "model Registry document exceeds limits",
                 ));
             }
-            decode_document(document)
+            match decode_document(document) {
+                Err(error)
+                    if matches!(error.code, ErrorCode::Invalid)
+                        && loads_python_json(document).is_ok() =>
+                {
+                    Err(legacy_codec_required())
+                }
+                result => result,
+            }
         })
         .transpose()?;
-    list_models(profile, document)
+    let projected = project_models(profile, document)?;
+    encode_reply(&projected, "model Settings response").map_err(|error| {
+        if matches!(error.code, ErrorCode::Invalid) {
+            legacy_codec_required()
+        } else {
+            error
+        }
+    })
 }
 
 fn list_models(profile: &str, document: Option<PyValue>) -> Result<String, Error> {
+    let projected = project_models(profile, document)?;
+    encode_reply(&projected, "model Settings response")
+}
+
+fn project_models(profile: &str, document: Option<PyValue>) -> Result<PyValue, Error> {
     let registry = Registry::new(profile, document).map_err(source_error)?;
     let snapshot = registry.snapshot().map_err(source_error)?;
-    let projected = project_list(&snapshot).map_err(source_error)?;
-    encode_reply(&projected, "model Settings response")
+    project_list(&snapshot).map_err(source_error)
+}
+
+fn legacy_codec_required() -> Error {
+    failure(
+        ErrorCode::Unavailable,
+        "model Registry needs the legacy JSON codec",
+    )
 }
 
 fn validate_provider(profile: &str, request: &PyValue) -> Result<(), Error> {

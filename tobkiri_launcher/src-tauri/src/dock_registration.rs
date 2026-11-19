@@ -114,7 +114,7 @@ pub(crate) struct DefaultspackDesktopMetadata {
     host_contract_contributions: crate::host_contract_contributions::HostContractContributionValues,
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) native_provider_prepare:
-        Option<crate::native_harness_bootstrap::VerifiedProviderPrepareLaunch>,
+        Option<crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
 }
 
 impl DefaultspackDesktopMetadata {
@@ -794,10 +794,10 @@ fn ensure_defaultspack_desktop_ready(
         }
     };
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    let (metadata, verified_provider) = {
+    let (metadata, verified_registry) = {
         let mut metadata = metadata;
-        let verified_provider = metadata.native_provider_prepare.take();
-        (metadata, verified_provider)
+        let verified_registry = metadata.native_provider_prepare.take();
+        (metadata, verified_registry)
     };
     publish_active_host_contract(
         config,
@@ -934,7 +934,7 @@ fn ensure_defaultspack_desktop_ready(
         bail!("replacement Defaultspack listener is not owned by this Launcher");
     }
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    let native_provider_prepare = verified_provider.and_then(|proof| {
+    let native_provider_prepare = verified_registry.and_then(|proof| {
         crate::defaultspack_manager::ProviderPrepareListener::observe(
             proof,
             &metadata,
